@@ -224,7 +224,7 @@ Status PlasmaObjectHeader::WriteRelease(Semaphores &sem) {
 
 Status PlasmaObjectHeader::ReadAcquire(Semaphores &sem,
                                        int64_t version_to_read,
-                                       int64_t *version_read) {
+                                       int64_t &version_read) {
   return Status::NotImplemented("Not supported on Windows.");
 }
 
