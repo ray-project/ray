@@ -41,12 +41,17 @@ def run_basic_workload():
 
 
 def is_dir_empty(
-    temp_folder, append_path=ray._private.ray_constants.DEFAULT_OBJECT_PREFIX
+    temp_folder,
+    append_path=ray._private.ray_constants.DEFAULT_OBJECT_PREFIX,
+    node_id=None
 ):
     # append_path is used because the file based spilling will append
     # new directory path.
     num_files = 0
-    temp_folder = temp_folder / append_path
+    if node_id:
+        temp_folder = temp_folder / f"{ray._private.ray_constants.DEFAULT_OBJECT_PREFIX}_{node_id}"
+    else:
+        temp_folder = temp_folder / append_path
     if not temp_folder.exists():
         return True
     for path in temp_folder.iterdir():
@@ -577,8 +582,10 @@ def test_spill_worker_failure(ray_start_regular):
                 if proc.cmdline() and "--worker-type=SPILL_WORKER" in proc.cmdline():
                     return proc
             except psutil.AccessDenied:
+                print("AccessDenied")
                 pass
-            except psutil.NoSuchProcess:
+            except psutil.NoSuchProcess as e:
+                print("NoSuchProcess exception: ", e)
                 pass
 
     # Spilling occurred. Get the PID of the spill worker.
