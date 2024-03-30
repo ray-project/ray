@@ -331,11 +331,13 @@ def mock_deployment_state_manager(
         dead_replicas_context.clear()
 
 
-class FakeDeploymentReplica:
+class FakeDeploymentReplica(DeploymentReplica):
     """Fakes the DeploymentReplica class."""
 
     def __init__(self, version: DeploymentVersion):
         self._version = version
+        self._replica_id = ReplicaID("fake", DeploymentID("fake", "fake"))
+        super().__init__(self._replica_id, self._version)
 
     @property
     def version(self):
