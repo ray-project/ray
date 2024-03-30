@@ -13,6 +13,10 @@ apt-get update
 apt-get upgrade -y
 apt-get install -y curl zip clang-12 git
 
+# Needs to be synchronized to the host group id as we map /var/run/docker.sock
+# into the container.
+addgroup --gid 993 docker
+
 ln -s /usr/bin/clang-12 /usr/bin/clang
 
 # Install miniconda
@@ -29,6 +33,7 @@ ln -s /usr/local/bin/bazelisk /usr/local/bin/bazel
 
 # A non-root user. Use 2000, which is the same as our buildkite agent VM uses.
 adduser --home /home/forge --uid 2000 forge --gid 100
+usermod -a -G docker forge
 
 EOF
 
