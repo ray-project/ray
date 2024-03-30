@@ -757,7 +757,7 @@ class ActorUnavailableError(RayError):
 
     def __str__(self):
         return f"The actor {self.actor_id} is unavailable: {self.error_message}"
-    
+
 
 RAY_EXCEPTION_TYPES = [
     PlasmaObjectNotAvailable,
