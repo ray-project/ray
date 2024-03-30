@@ -73,6 +73,7 @@ def test_actor_unavailable_conn_broken(ray_start_regular, caller):
         # Break the grpc connection from this process to the actor process. Next
         # `ray.get` call would fail with ActorUnavailableError.
         close_common_connections(pid)
+        ray.get(task)
         with pytest.raises(ActorUnavailableError, match="GrpcUnavailable"):
             ray.get(task)
         # Since the remote() call happens *before* the break, the actor did receive the

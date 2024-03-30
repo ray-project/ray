@@ -751,8 +751,13 @@ class ObjectRefStreamEndOfStreamError(RayError):
 class ActorUnavailableError(RayError):
     """Raised when the actor is temporarily unavailable but may be available later."""
 
-    pass
+    def __init__(self, error_message: str, actor_id: Optional[bytes]):
+        self.error_message = error_message
+        self.actor_id = ActorID(actor_id) if actor_id is not None else None
 
+    def __str__(self):
+        return f"The actor {self.actor_id} is unavailable: {self.error_message}"
+    
 
 RAY_EXCEPTION_TYPES = [
     PlasmaObjectNotAvailable,

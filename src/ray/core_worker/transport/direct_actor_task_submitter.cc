@@ -589,6 +589,7 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
         error_info.set_error_message("The actor is temporarily unavailable: " +
                                      status.ToString());
         error_info.set_error_type(rpc::ErrorType::ACTOR_UNAVAILABLE);
+        error_info.mutable_actor_unavailable_error()->set_actor_id(actor_id.Binary());
       }
     }
 
