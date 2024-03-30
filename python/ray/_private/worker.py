@@ -1705,7 +1705,6 @@ def init(
             metrics_export_port=_metrics_export_port,
         )
         try:
-            logger.info("Creating a node for connect only")
             _global_node = ray._private.node.Node(
                 ray_params,
                 head=False,
@@ -1837,7 +1836,6 @@ def shutdown(_exiting_interpreter: bool = False):
 
     # Shut down the Ray processes.
     global _global_node
-    print(f"Shutting down Ray, global node: {_global_node}")
     if _global_node is not None:
         if _global_node.is_head():
             _global_node.destroy_external_storage()

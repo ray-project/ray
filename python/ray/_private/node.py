@@ -72,7 +72,6 @@ class Node:
             default_worker: Whether it's running from a ray worker or not
             ray_init_cluster: Whether it's a cluster created by ray.init()
         """
-        print(f"ray_params: {ray_params}")
         if shutdown_at_exit:
             if connect_only:
                 raise ValueError(
@@ -332,12 +331,9 @@ class Node:
                 self._raylet_ip_address,
             )
             self._node_id = node_info["node_id"]
-            print(f"L329 node_id: {self._node_id}")
             if self._ray_params.node_manager_port == 0:
                 self._ray_params.node_manager_port = node_info["node_manager_port"]
-            print(f"L332 node_id: {self._node_id}")
 
-        print(f"L334 node_id: {self._node_id}")
         # If it is a head node, try validating if
         # external storage is configurable.
         if head:
@@ -1375,9 +1371,6 @@ class Node:
                 f" Local system config: {self._config},"
                 f" GCS system config: {new_config}"
             )
-            logger.info(
-                f"Overwriting local system config {self._config} with GCS system config {new_config}"
-            )
             self._config = new_config
 
         # Make sure we don't call `determine_plasma_store_config` multiple
@@ -1729,10 +1722,6 @@ class Node:
         # We need to set both ray param's system config and self._config
         # because they could've been diverged at this point.
         self._config["object_spilling_config"] = object_spilling_config
-        logger.info(
-            "Setting self._config['object_spilling_config'] to %s",
-            object_spilling_config,
-        )
 
         self._ray_params._system_config[
             "object_spilling_config"

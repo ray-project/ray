@@ -29,7 +29,6 @@ RayConfig &RayConfig::instance() {
 RayConfig::RayConfig() { initialize(""); }
 
 void RayConfig::initialize(const std::string &config_list) {
-  RAY_LOG(ERROR) << "config_list is: " << config_list;
 #define RAY_CONFIG(type, name, default_value) \
   name##_ = ReadEnv<type>("RAY_" #name, #type, default_value);
 

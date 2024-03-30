@@ -42,7 +42,7 @@ def run_basic_workload():
 def is_dir_empty(
     temp_folder,
     append_path=ray._private.ray_constants.DEFAULT_OBJECT_PREFIX,
-    node_id=None
+    node_id=None,
 ):
     # append_path is used because the file based spilling will append
     # new directory path.
@@ -241,12 +241,11 @@ def test_node_id_in_spill_dir_name(shutdown_only):
     assert config["type"] == file_system_object_spilling_config["type"]
     import os
 
+    dir_prefix = ray._private.ray_constants.DEFAULT_OBJECT_PREFIX
+    expected_dir_name = f"{dir_prefix}_{ray_context['node_id']}"
     for path in ray._private.external_storage._external_storage._directory_paths:
         dir_name = os.path.basename(path)
-        assert (
-            dir_name
-            == f"{ray._private.ray_constants.DEFAULT_OBJECT_PREFIX}_{ray_context['node_id']}"
-        )
+        assert dir_name == expected_dir_name
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hangs on Windows.")

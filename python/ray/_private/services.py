@@ -1454,7 +1454,6 @@ def start_gcs_server(
     """
     assert gcs_server_port > 0
 
-    logger.info(f"--config_list: {config}")
     command = [
         GCS_SERVER_EXECUTABLE,
         f"--log_dir={log_dir}",
