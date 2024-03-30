@@ -756,7 +756,10 @@ class SingleAgentEpisode:
 
         .. testcode::
 
+            import gymnasium as gym
+
             from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+            from ray.rllib.utils.test_utils import check
 
             episode = SingleAgentEpisode(
                 # Discrete(4) observations (ints between 0 and 4 (excl.))
@@ -766,29 +769,29 @@ class SingleAgentEpisode:
                 len_lookback_buffer=0,  # no lookback; all data is actually "in" episode
             )
             # Plain usage (`indices` arg only).
-            episode.get_observations(-1)  # 3
-            episode.get_observations(0)  # 0
-            episode.get_observations([0, 2])  # [0, 2]
-            episode.get_observations([-1, 0])  # [3, 0]
-            episode.get_observations(slice(None, 2))  # [0, 1]
-            episode.get_observations(slice(-2, None))  # [2, 3]
+            check(episode.get_observations(-1), 3)
+            check(episode.get_observations(0), 0)
+            check(episode.get_observations([0, 2]), [0, 2])
+            check(episode.get_observations([-1, 0]), [3, 0])
+            check(episode.get_observations(slice(None, 2)), [0, 1])
+            check(episode.get_observations(slice(-2, None)), [2, 3])
             # Using `fill=...` (requesting slices beyond the boundaries).
-            episode.get_observations(slice(-6, -2), fill=-9)  # [-9, -9, 0, 1]
-            episode.get_observations(slice(2, 5), fill=-7)  # [2, 3, -7]
+            check(episode.get_observations(slice(-6, -2), fill=-9), [-9, -9, 0, 1])
+            check(episode.get_observations(slice(2, 5), fill=-7), [2, 3, -7])
             # Using `one_hot_discrete=True`.
-            episode.get_observations(2, one_hot_discrete=True)  # [0 0 1 0]
-            episode.get_observations(3, one_hot_discrete=True)  # [0 0 0 1]
-            episode.get_observations(
+            check(episode.get_observations(2, one_hot_discrete=True), [0, 0, 1, 0])
+            check(episode.get_observations(3, one_hot_discrete=True), [0, 0, 0, 1])
+            check(episode.get_observations(
                 slice(0, 3),
                 one_hot_discrete=True,
-            )   # [[1 0 0 0], [0 1 0 0], [0 0 1 0]]
+            ), [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0]])
             # Special case: Using `fill=0.0` AND `one_hot_discrete=True`.
-            episode.get_observations(
+            check(episode.get_observations(
                 -1,
                 neg_indices_left_of_zero=True,  # -1 means one left of ts=0
                 fill=0.0,
                 one_hot_discrete=True,
-            )  # [0 0 0 0]  <- all 0s one-hot tensor (note difference to [1 0 0 0]!)
+            ), [0, 0, 0, 0])  # <- all 0s one-hot tensor (note difference to [1 0 0 0]!)
 
         Returns:
             The collected observations.

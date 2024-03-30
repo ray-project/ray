@@ -88,10 +88,17 @@ class NodeUpdater:
         restart_only=False,
         for_recovery=False,
     ):
-
         self.log_prefix = "NodeUpdater: {}: ".format(node_id)
-        use_internal_ip = use_internal_ip or provider_config.get(
-            "use_internal_ips", False
+        # Three cases:
+        # 1) use_internal_ip arg is True -> use_internal_ip is True
+        # 2) worker node -> use value of provider_config["use_internal_ips"]
+        # 3) head node -> use value of provider_config["use_internal_ips"] unless
+        #                 overriden by provider_config["use_external_head_ip"]
+        use_internal_ip = use_internal_ip or (
+            provider_config.get("use_internal_ips", False)
+            and not (
+                is_head_node and provider_config.get("use_external_head_ip", False)
+            )
         )
         self.cmd_runner = provider.get_command_runner(
             self.log_prefix,
@@ -271,7 +278,6 @@ class NodeUpdater:
             "Waiting for SSH to become available", _numbered=("[]", 1, NUM_SETUP_STEPS)
         ):
             with LogTimer(self.log_prefix + "Got remote shell"):
-
                 cli_logger.print("Running `{}` as a test.", cf.bold("uptime"))
                 first_conn_refused_time = None
                 while True:
@@ -465,7 +471,6 @@ class NodeUpdater:
                         with LogTimer(
                             self.log_prefix + "Setup commands", show_status=True
                         ):
-
                             total = len(self.setup_commands)
                             for i, cmd in enumerate(self.setup_commands):
                                 global_event_system.execute_callback(
@@ -501,7 +506,6 @@ class NodeUpdater:
             global_event_system.execute_callback(CreateClusterEvent.start_ray_runtime)
             with LogTimer(self.log_prefix + "Ray start commands", show_status=True):
                 for cmd in self.ray_start_commands:
-
                     env_vars = {}
                     if self.is_head_node:
                         if usage_lib.usage_stats_enabled():
