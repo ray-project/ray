@@ -524,6 +524,8 @@ class CompiledDAG:
                     actor = tuple[0]
                     method_name = tuple[1]
                     logger.info(f"Cancelling compiled worker on actor: {actor}")
+                    # TODO(swang): Suppress exceptions from actors trying to
+                    # read closed channels when DAG is being torn down.
                     try:
                         ray.get(
                             actor.__ray_call__.remote(
