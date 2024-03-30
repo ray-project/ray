@@ -235,7 +235,7 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
   PlasmaObjectHeader::Semaphores sem = GetSemaphores(object_id);
   int64_t version_read = 0;
   RAY_RETURN_NOT_OK(channel->mutable_object->header->ReadAcquire(
-      sem, channel->next_version_to_read, &version_read));
+      sem, channel->next_version_to_read, version_read));
   RAY_CHECK_GT(version_read, 0);
   channel->next_version_to_read = version_read;
 

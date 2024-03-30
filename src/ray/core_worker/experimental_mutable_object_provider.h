@@ -24,6 +24,9 @@ namespace ray {
 namespace core {
 namespace experimental {
 
+// This class coordinates the transfer of mutable objects between different nodes. It
+// handles mutable objects that are received from remote nodes, and it also observes local
+// mutable objects and pushes them to remote nodes as needed.
 class MutableObjectProvider {
  public:
   typedef std::function<std::shared_ptr<MutableObjectReaderInterface>(
@@ -49,15 +52,18 @@ class MutableObjectProvider {
   /// \param[in] object_id The ID of the object.
   void RegisterReaderChannel(const ObjectID &object_id);
 
-  // RPC callback for when a writer pushes a mutable object over the network to a reader
-  // on this node.
+  /// RPC callback for when a writer pushes a mutable object over the network to a reader
+  /// on this node.
   void HandlePushMutableObject(const rpc::PushMutableObjectRequest &request,
                                rpc::PushMutableObjectReply *reply);
 
  private:
+  /// Listens for local changes to `object_id` and sends the changes to remote nodes via
+  /// the network.
   void PollWriterClosure(const ObjectID &object_id,
                          std::shared_ptr<MutableObjectReaderInterface> reader);
 
+  // Kicks off `io_service_`.
   void RunIOService();
 
   // The plasma store.
@@ -70,10 +76,15 @@ class MutableObjectProvider {
   // then sends those changes to a remote node via RPC.
   std::function<std::shared_ptr<MutableObjectReaderInterface>(const NodeID &node_id)>
       raylet_client_factory_;
-  // Manages RPCs for inter-node communication of mutable objects.
+  // Context in which the application looks for local changes to mutable objects and sends
+  // the changes to remote nodes via the network.
   instrumented_io_context io_service_;
+  // Manages RPCs for inter-node communication of mutable objects.
   boost::asio::io_service::work io_work_;
+  // Manages outgoing RPCs that send mutable object changes to remote nodes.
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
+  // Thread that waits for local mutable object changes and then sends the changes to
+  // remote nodes via the network.
   std::thread io_thread_;
 };
 
