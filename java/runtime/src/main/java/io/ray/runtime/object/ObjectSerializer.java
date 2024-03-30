@@ -44,6 +44,8 @@ public class ObjectSerializer {
       String.valueOf(ErrorType.OBJECT_LOST.getNumber()).getBytes();
   private static final byte[] OWNER_DIED_META =
       String.valueOf(ErrorType.OWNER_DIED.getNumber()).getBytes();
+  private static final byte[] OBJECT_FREED_META =
+      String.valueOf(ErrorType.OBJECT_FREED.getNumber()).getBytes();
   private static final byte[] OBJECT_DELETED_META =
       String.valueOf(ErrorType.OBJECT_DELETED.getNumber()).getBytes();
   private static final byte[] TASK_EXECUTION_EXCEPTION_META =
@@ -97,6 +99,7 @@ public class ObjectSerializer {
           || Arrays.equals(meta, UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED_EXCEPTION_META)
           || Arrays.equals(meta, OBJECT_LOST_META)
           || Arrays.equals(meta, OWNER_DIED_META)
+          || Arrays.equals(meta, OWNER_FREED_META)
           || Arrays.equals(meta, OBJECT_DELETED_META)) {
         // TODO: Differentiate object errors.
         return new UnreconstructableException(objectId);
