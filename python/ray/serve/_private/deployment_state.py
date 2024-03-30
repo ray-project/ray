@@ -1085,8 +1085,8 @@ class ReplicaStateContainer:
             state: state to add the replica under.
             replica: replica to add.
         """
-        assert isinstance(state, ReplicaState)
-        assert isinstance(replica, DeploymentReplica)
+        assert isinstance(state, ReplicaState), f"Type: {type(state)}"
+        assert isinstance(replica, DeploymentReplica), f"Type: {type(replica)}"
         replica.update_state(state)
         self._replicas[state].append(replica)
 
