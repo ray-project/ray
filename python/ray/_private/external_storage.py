@@ -345,7 +345,6 @@ class FileSystemStorage(ExternalStorage):
 
     def destroy_external_storage(self):
         for directory_path in self._directory_paths:
-            logger.info(f"Cleaning up {directory_path}")
             self._destroy_external_storage(directory_path)
 
     def _destroy_external_storage(self, directory_path):
