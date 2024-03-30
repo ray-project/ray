@@ -1,6 +1,5 @@
 import copy
 import json
-import os
 import platform
 import random
 import sys
@@ -49,7 +48,10 @@ def is_dir_empty(
     # new directory path.
     num_files = 0
     if node_id:
-        temp_folder = temp_folder / f"{ray._private.ray_constants.DEFAULT_OBJECT_PREFIX}_{node_id}"
+        temp_folder = (
+            temp_folder
+            / f"{ray._private.ray_constants.DEFAULT_OBJECT_PREFIX}_{node_id}"
+        )
     else:
         temp_folder = temp_folder / append_path
     if not temp_folder.exists():
@@ -226,7 +228,7 @@ def test_default_config_cluster(ray_start_cluster_enabled):
     ray.get([task.remote() for _ in range(2)])
 
 
-def test_node_id_part_of_spill_path(shutdown_only):
+def test_node_id_in_spill_dir_name(shutdown_only):
     ray_context = ray.init(
         object_store_memory=75 * 1024 * 1024,
         _system_config={
@@ -237,11 +239,14 @@ def test_node_id_part_of_spill_path(shutdown_only):
         ray._private.worker._global_node._config["object_spilling_config"]
     )
     assert config["type"] == file_system_object_spilling_config["type"]
+    import os
+
     for path in ray._private.external_storage._external_storage._directory_paths:
-        # expected path structure: {spill_dir}/node_id/_spill_dir_name
-        path_components = os.path.normpath(path).split(os.sep)
-        second_last_subdir = path_components[-2] if len(path_components) > 1 else None
-        assert second_last_subdir == ray_context["node_id"]
+        dir_name = os.path.basename(path)
+        assert (
+            dir_name
+            == f"{ray._private.ray_constants.DEFAULT_OBJECT_PREFIX}_{ray_context['node_id']}"
+        )
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hangs on Windows.")
@@ -271,7 +276,6 @@ def test_spill_remote_object(
 ):
     cluster = ray_start_cluster_enabled
     object_spilling_config, _ = multi_node_object_spilling_config
-    print(f"Adding node 1 with object_spilling_config: {object_spilling_config}")
     cluster.add_node(
         num_cpus=0,
         object_store_memory=75 * 1024 * 1024,
@@ -284,7 +288,6 @@ def test_spill_remote_object(
         },
     )
     ray.init(address=cluster.address)
-    print(f"Adding node 2")
     cluster.add_node(object_store_memory=75 * 1024 * 1024)
     cluster.wait_for_nodes()
 
@@ -582,10 +585,8 @@ def test_spill_worker_failure(ray_start_regular):
                 if proc.cmdline() and "--worker-type=SPILL_WORKER" in proc.cmdline():
                     return proc
             except psutil.AccessDenied:
-                print("AccessDenied")
                 pass
-            except psutil.NoSuchProcess as e:
-                print("NoSuchProcess exception: ", e)
+            except psutil.NoSuchProcess:
                 pass
 
     # Spilling occurred. Get the PID of the spill worker.

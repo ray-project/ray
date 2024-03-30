@@ -239,6 +239,9 @@ class Node:
                 storage_uri = ray_params.storage
             storage._init_storage(storage_uri, is_head=False)
 
+        if head:
+            self.configure_object_spilling()
+
         if connect_only:
             # Get socket names from the configuration.
             self._plasma_store_socket_name = ray_params.plasma_store_socket_name
@@ -1372,6 +1375,9 @@ class Node:
                 f" Local system config: {self._config},"
                 f" GCS system config: {new_config}"
             )
+            logger.info(
+                f"Overwriting local system config {self._config} with GCS system config {new_config}"
+            )
             self._config = new_config
 
         # Make sure we don't call `determine_plasma_store_config` multiple
@@ -1696,17 +1702,13 @@ class Node:
             from ray._private import external_storage
 
             storage = external_storage.setup_external_storage(
-                object_spilling_config, self._session_name,
+                object_spilling_config,
+                self._session_name,
             )
             storage.destroy_external_storage()
 
-    def validate_external_storage(self):
-        """Make sure we can setup the object spilling external storage.
-        This will also fill up the default setting for object spilling
-        if not specified.
-
-        This method assumes self._node_id is already set.
-        """
+    def configure_object_spilling(self):
+        """Configure object spilling for the cluster."""
         object_spilling_config = self._config.get("object_spilling_config", {})
         automatic_spilling_enabled = self._config.get(
             "automatic_object_spilling_enabled", True
@@ -1723,25 +1725,40 @@ class Node:
                 {"type": "filesystem", "params": {"directory_path": self._session_dir}}
             )
 
-        # Try setting up the storage.
         # Configure the proper system config.
         # We need to set both ray param's system config and self._config
         # because they could've been diverged at this point.
-        deserialized_config = json.loads(object_spilling_config)
-        self._ray_params._system_config[
-            "object_spilling_config"
-        ] = object_spilling_config
         self._config["object_spilling_config"] = object_spilling_config
         logger.info(
             "Setting self._config['object_spilling_config'] to %s",
             object_spilling_config,
         )
 
+        self._ray_params._system_config[
+            "object_spilling_config"
+        ] = object_spilling_config
+
+        deserialized_config = json.loads(object_spilling_config)
         is_external_storage_type_fs = deserialized_config["type"] == "filesystem"
         self._ray_params._system_config[
             "is_external_storage_type_fs"
         ] = is_external_storage_type_fs
         self._config["is_external_storage_type_fs"] = is_external_storage_type_fs
+
+    def validate_external_storage(self):
+        """Make sure we can setup the object spilling external storage.
+        This will also fill up the default setting for object spilling
+        if not specified.
+
+        This method assumes self._node_id is already set.
+        """
+        automatic_spilling_enabled = self._config.get(
+            "automatic_object_spilling_enabled", True
+        )
+        if not automatic_spilling_enabled:
+            return
+        # Try setting up the storage.
+        deserialized_config = json.loads(self._config["object_spilling_config"])
         if "params" in deserialized_config:
             deserialized_config["params"]["node_id"] = self._node_id
 

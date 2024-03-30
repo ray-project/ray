@@ -357,8 +357,12 @@ def class_ray_instance():
 
 @contextmanager
 def _ray_start(**kwargs):
+    print(f"kwargs = {kwargs}   ")
+    logger.info(f"kwargs: {kwargs}")
     init_kwargs = get_default_fixture_ray_kwargs()
     init_kwargs.update(kwargs)
+    print(f"init_kwargs = {init_kwargs}  ")
+    logger.info(f"init_kwargs: {init_kwargs}")
     # Start the Ray processes.
     address_info = ray.init("local", **init_kwargs)
 
