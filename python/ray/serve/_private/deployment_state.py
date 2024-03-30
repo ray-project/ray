@@ -2839,9 +2839,9 @@ class DeploymentStateManager:
             ):
                 failed_replicas.append(scheduling_request.replica_id)
                 self._deployment_states[deployment_id].record_replica_startup_failure(
-                    "Failed to create a placement group for replica "
-                    f"{scheduling_request.replica_id}. See Serve controller "
-                    "logs for more details."
+                    "Replica scheduling failed. Failed to create a placement "
+                    f"group for replica {scheduling_request.replica_id}. "
+                    "See Serve controller logs for more details."
                 )
         if failed_replicas:
             self._deployment_states[deployment_id].stop_replicas(failed_replicas)

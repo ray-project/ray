@@ -560,7 +560,8 @@ class DeploymentScheduler(ABC):
                 # make progress even if the placement group isn't created.
                 # See https://github.com/ray-project/ray/issues/43888.
                 logger.exception(
-                    f"Failed to create a placement group for {replica_id}."
+                    "Replica scheduling failed. Failed to create a "
+                    f"placement group for {replica_id}."
                 )
                 scheduling_request.status = (
                     ReplicaSchedulingRequestStatus.PLACEMENT_GROUP_CREATION_FAILED
