@@ -669,7 +669,7 @@ def test_actor_task_fast_fail(ray_start_cluster):
     time.sleep(1)
     # An actor task should fail quickly until the actor is restarted if
     # `max_task_retries` is 0.
-    with pytest.raises(ray.exceptions.RayActorError):
+    with pytest.raises(ray.exceptions.ActorUnavailableError):
         ray.get(actor.ping.remote())
 
     signal.send.remote()

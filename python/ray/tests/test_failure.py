@@ -17,7 +17,7 @@ from ray._private.test_utils import (
     init_error_pubsub,
     wait_for_condition,
 )
-from ray.exceptions import GetTimeoutError, RayActorError, RayTaskError
+from ray.exceptions import GetTimeoutError, ActorUnavailableError, RayTaskError
 
 
 def test_unhandled_errors(ray_start_regular):
@@ -601,9 +601,9 @@ def test_actor_failover_with_bad_network(ray_start_cluster_head):
     cluster.remove_node(node, allow_graceful=False)
     cluster.add_node(num_cpus=1)
 
-    # The removed node will be marked as dead by GCS after 1 second and task 1
+    # The removed node will be marked as restarting by GCS after 1 second and task 1
     # will return with failure after that.
-    with pytest.raises(RayActorError):
+    with pytest.raises(ActorUnavailableError):
         ray.get(obj1, timeout=2)
 
     # Wait for the actor to be alive again in a new worker process.

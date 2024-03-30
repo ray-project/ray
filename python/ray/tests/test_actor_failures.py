@@ -105,13 +105,13 @@ def test_actor_restart(ray_init_with_task_retry_delay):
                 break
             results.pop(0)
             i += 1
-        except ray.exceptions.RayActorError:
+        except ray.exceptions.ActorUnavailableError:
             break
     # Skip any tasks that errored.
     while results:
         try:
             ray.get(results[0])
-        except ray.exceptions.RayActorError:
+        except ray.exceptions.ActorUnavailableError:
             results.pop(0)
         else:
             break
@@ -133,7 +133,7 @@ def test_actor_restart(ray_init_with_task_retry_delay):
             try:
                 ray.get(actor.increase.remote())
                 return True
-            except ray.exceptions.RayActorError:
+            except ray.exceptions.ActorUnavailableError:
                 return False
 
         wait_for_condition(ping)

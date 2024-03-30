@@ -570,10 +570,12 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
       auto &queue = queue_pair->second;
 
       // If the actor is already dead, immediately mark the task object as failed.
-      // Otherwise, start the grace period, waiting for the actor death reason.
-      // - If we got the death reason within the grace period: mark the object as failed
-      // with that reason.
+      // Otherwise, start the grace period, waiting for the actor death reason. Before the
+      // deadline:
+      // - If we got the death reason: mark the object as failed with that reason.
       // - If we did not get the death reason: raise ACTOR_UNAVAILABLE with the status.
+      // - If we did not get the death reason, but *the actor is preempted*: raise
+      // ACTOR_DIED. See `CheckTimeoutTasks`.
       is_actor_dead = queue.state == rpc::ActorTableData::DEAD;
       if (is_actor_dead) {
         const auto &death_cause = queue.death_cause;
