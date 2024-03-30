@@ -378,7 +378,7 @@ void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
           task->actor_preempted);
 
       error_info.set_error_type(rpc::ErrorType::ACTOR_DIED);
-      error_info.set_error_message("Actor died.");
+      error_info.set_error_message("Actor died by preemption.");
     }
     GetTaskFinisherWithoutMu().FailPendingTask(
         task->task_spec.TaskId(), error_info.error_type(), &task->status, &error_info);
