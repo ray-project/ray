@@ -2569,11 +2569,10 @@ def maybe_initialize_job_config():
         # to sys.path.
         this_node_id = ray._private.worker.global_worker.current_node_id
         driver_node_id = ray.NodeID(core_worker.get_job_config().driver_node_id)
-        if this_node_id == driver_node_id:
-            py_driver_sys_path = core_worker.get_job_config().py_driver_sys_path
-            if py_driver_sys_path:
-                for p in py_driver_sys_path:
-                    sys.path.insert(0, p)
+        py_driver_sys_path = core_worker.get_job_config().py_driver_sys_path
+        if py_driver_sys_path:
+            for p in py_driver_sys_path:
+                sys.path.insert(0, p)
 
         # Cache and set the current job id.
         job_id = core_worker.get_current_job_id()
