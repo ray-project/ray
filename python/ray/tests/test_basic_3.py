@@ -350,12 +350,12 @@ print(ray.get(my_file.remote()))
     ],
     indirect=True,
 )
-def test_worker_exception_if_no_working_dir_diff_node(ray_start_cluster):
+def test_worker_no_exception_if_no_working_dir_diff_node(ray_start_cluster):
     """
     Tests that, in a cluster of 2 nodes, a job with no working_dir that runs
     a function with an import from driver's path, on both nodes.
 
-    On the driver's node it should work, but on the other node it should raise an
+    On the driver's node it should work, and on the other node it should not raise an
     error about failing to import.
     """
     lib_code = """
@@ -387,7 +387,7 @@ assert ray.get(my_file.options(
     )
 ).remote()) == lib_path
 
-# runs on different node, fails
+# runs on different node does not fail
 exc = None
 try:
     ray.get(my_file.options(
@@ -398,8 +398,8 @@ try:
     ).remote())
 except ray.exceptions.RayTaskError as e:
     exc = e
-assert isinstance(exc, ray.exceptions.RayTaskError), type(exc)
-assert "The remote function failed to import on the worker" in str(exc), str(exc)
+assert not isinstance(exc, ray.exceptions.RayTaskError), type(exc)
+assert not "The remote function failed to import on the worker" in str(exc), str(exc)
     """
 
     with tempfile.TemporaryDirectory() as tmpdir:
