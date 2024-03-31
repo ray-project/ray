@@ -99,7 +99,7 @@ public class ObjectSerializer {
           || Arrays.equals(meta, UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED_EXCEPTION_META)
           || Arrays.equals(meta, OBJECT_LOST_META)
           || Arrays.equals(meta, OWNER_DIED_META)
-          || Arrays.equals(meta, OWNER_FREED_META)
+          || Arrays.equals(meta, OBJECT_FREED_META)
           || Arrays.equals(meta, OBJECT_DELETED_META)) {
         // TODO: Differentiate object errors.
         return new UnreconstructableException(objectId);
