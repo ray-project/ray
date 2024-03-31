@@ -59,7 +59,8 @@ def test_multiple_directories(tmp_path, shutdown_only):
 
     num_files = defaultdict(int)
     for temp_dir in temp_dirs:
-        # temp_folder = temp_dir / ray._private.ray_constants.DEFAULT_OBJECT_PREFIX
+        # Under temp_dir there are spilled_objects_dir(s) with name pattern
+        # "ray_spilled_objects[_<node_id>]", each containing spilled object files.
         for spilled_objects_dir in temp_folder.iterdir():
             for path in spilled_objects_dir.iterdir():
                 num_files[str(temp_folder)] += 1

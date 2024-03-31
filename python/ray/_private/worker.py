@@ -1781,7 +1781,6 @@ def init(
         hook()
 
     node_id = global_worker.core_worker.get_current_node_id()
-    # _global_node.prepare_external_storage(node_id.hex())
     global_node_address_info = _global_node.address_info.copy()
     global_node_address_info["webui_url"] = _remove_protocol_from_url(dashboard_url)
     return RayContext(dict(global_node_address_info, node_id=node_id.hex()))

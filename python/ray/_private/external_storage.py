@@ -253,7 +253,7 @@ class FileSystemStorage(ExternalStorage):
 
     def __init__(
         self,
-        directory_path: Optional[Union[str, List[str]]] = None,
+        directory_path: Union[str, List[str]],
         node_id: Optional[str] = None,
         buffer_size: Optional[int] = None,
     ):

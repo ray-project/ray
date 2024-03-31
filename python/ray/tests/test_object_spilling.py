@@ -239,6 +239,7 @@ def test_node_id_in_spill_dir_name(shutdown_only):
         ray._private.worker._global_node._config["object_spilling_config"]
     )
     assert config["type"] == file_system_object_spilling_config["type"]
+
     import os
 
     dir_prefix = ray._private.ray_constants.DEFAULT_OBJECT_PREFIX

@@ -263,7 +263,6 @@ class Node:
                 self._plasma_store_socket_name = node_info["object_store_socket_name"]
                 self._raylet_socket_name = node_info["raylet_socket_name"]
                 self._ray_params.node_manager_port = node_info["node_manager_port"]
-
         else:
             # If the user specified a socket name, use it.
             self._plasma_store_socket_name = self._prepare_socket_file(
@@ -1701,7 +1700,7 @@ class Node:
             storage.destroy_external_storage()
 
     def configure_object_spilling(self):
-        """Configure object spilling for the cluster.
+        """Configure object spilling for this node.
         This will fill up the default setting for object spilling
         if not specified.
         """
@@ -1746,7 +1745,7 @@ class Node:
         )
         if not automatic_spilling_enabled:
             return
-        # Try setting up the storage.
+
         deserialized_config = json.loads(self._config["object_spilling_config"])
         if "params" in deserialized_config:
             deserialized_config["params"]["node_id"] = self._node_id
