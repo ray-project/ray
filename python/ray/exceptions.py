@@ -1,3 +1,4 @@
+import logging
 import os
 from traceback import format_exception
 from typing import Optional, Union
@@ -17,6 +18,8 @@ from ray.core.generated.common_pb2 import (
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 import setproctitle
+
+logger = logging.getLogger(__name__)
 
 
 @PublicAPI
@@ -132,11 +135,28 @@ class RayTaskError(RayError):
         assert traceback_str is not None
 
     def as_instanceof_cause(self):
+        """Same as `as_instanceof_cause_or_raise()` but handles the case when the cause
+        can not be subclassed. Issues a warning and returns `self`.
+        """
+        try:
+            return self.as_instanceof_cause_or_raise()
+        except TypeError as e:
+            logger.warning(
+                f"User exception type {type(self.cause)} in RayTaskError can"
+                " not be subclassed! This exception will be raised as"
+                " RayTaskError only. User can use `ray_task_error.cause` to"
+                " access the user exception."
+            )
+            return self
+
+    def as_instanceof_cause_or_raise(self):
         """Returns an exception that is an instance of the cause's class.
 
         The returned exception will inherit from both RayTaskError and the
         cause class and will contain all of the attributes of the cause
         exception.
+
+        If the cause class can not be subclassed, raises TypeError.
         """
 
         cause_cls = self.cause.__class__
