@@ -1701,7 +1701,10 @@ class Node:
             storage.destroy_external_storage()
 
     def configure_object_spilling(self):
-        """Configure object spilling for the cluster."""
+        """Configure object spilling for the cluster.
+        This will fill up the default setting for object spilling
+        if not specified.
+        """
         object_spilling_config = self._config.get("object_spilling_config", {})
         automatic_spilling_enabled = self._config.get(
             "automatic_object_spilling_enabled", True
@@ -1736,9 +1739,6 @@ class Node:
 
     def validate_external_storage(self):
         """Make sure we can setup the object spilling external storage.
-        This will also fill up the default setting for object spilling
-        if not specified.
-
         This method assumes self._node_id is already set.
         """
         automatic_spilling_enabled = self._config.get(
@@ -1756,13 +1756,6 @@ class Node:
 
         external_storage.setup_external_storage(deserialized_config, self._session_name)
         external_storage.reset_external_storage()
-
-    def prepare_external_storage(self):
-        # If it is a head node, try validating if
-        # external storage is configurable.
-        if self.is_head:
-            self.validate_external_storage(self._node_id)
-        self.destroy_external_storage(self._node_id)
 
     def _record_stats(self):
         # This is only called when a new node is started.
