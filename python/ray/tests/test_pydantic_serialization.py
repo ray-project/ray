@@ -229,7 +229,7 @@ def test_validation_error(
     def func():
         # This should also error. Problem is, Pydantic v2 ValidationError is marked
         # @final so we can't subclass it. This means Ray cannot raise an exception that
-        # can be catched as both `RayTaskError` and `pydantic.ValidationError`. So we
+        # can be caught as both `RayTaskError` and `pydantic.ValidationError`. So we
         # issue a warning and just raise it as `RayTaskError`. User needs to use
         # `e.cause` to get the ValidationError.
         class B(BaseModel):
