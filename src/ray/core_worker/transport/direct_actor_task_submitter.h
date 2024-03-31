@@ -388,10 +388,10 @@ class CoreWorkerDirectActorTaskSubmitter
   /// Disconnect the RPC client for an actor.
   void DisconnectRpcClient(ClientQueue &queue) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  /// Fail all in-flight tasks.
+  /// Fail all in-flight tasks with `status`.
   void FailInflightTasks(
       const absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
-          &inflight_task_callbacks) ABSL_LOCKS_EXCLUDED(mu_);
+          &inflight_task_callbacks, const Status& status) ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Pool for producing new core worker clients.
   rpc::CoreWorkerClientPool &core_worker_client_pool_;

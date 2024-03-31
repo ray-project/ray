@@ -172,11 +172,11 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectRpcClient(ClientQueue &queue)
 
 void CoreWorkerDirectActorTaskSubmitter::FailInflightTasks(
     const absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
-        &inflight_task_callbacks) {
+        &inflight_task_callbacks,
+    const Status &status) {
   // NOTE(kfstorm): We invoke the callbacks with a bad status to act like there's a
   // network issue. We don't call `task_finisher_.FailOrRetryPendingTask` directly because
   // there's much more work to do in the callback.
-  auto status = Status::IOError("Fail all inflight tasks due to actor state change.");
   rpc::PushTaskReply reply;
   for (const auto &[_, callback] : inflight_task_callbacks) {
     callback(status, reply);
@@ -191,6 +191,7 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
 
   absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
       inflight_task_callbacks;
+  ray::rpc::ActorTableData::ActorState new_state;
 
   {
     absl::MutexLock lock(&mu_);
@@ -238,10 +239,15 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
                   << WorkerID::FromBinary(address.worker_id());
     ResendOutOfOrderCompletedTasks(actor_id);
     SendPendingTasks(actor_id);
+    new_state = queue->second.state;
   }
 
   // NOTE(kfstorm): We need to make sure the lock is released before invoking callbacks.
-  FailInflightTasks(inflight_task_callbacks);
+  FailInflightTasks(
+      inflight_task_callbacks,
+      Status::IOError("Fail all inflight tasks due to actor state change to " +
+                      rpc::ActorTableData::ActorState_Name(new_state) +
+                      " from connecting actor."));
 }
 
 void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
@@ -257,6 +263,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
   std::deque<std::shared_ptr<ClientQueue::PendingTaskWaitingForDeathInfo>>
       wait_for_death_info_tasks;
   std::vector<TaskID> task_ids_to_fail;
+  ray::rpc::ActorTableData::ActorState new_state;
   {
     absl::MutexLock lock(&mu_);
     auto queue = client_queues_.find(actor_id);
@@ -299,6 +306,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
       queue->second.state = rpc::ActorTableData::RESTARTING;
       queue->second.num_restarts = num_restarts;
     }
+    new_state = queue->second.state;
   }
 
   if (task_ids_to_fail.size() + wait_for_death_info_tasks.size() != 0) {
@@ -336,7 +344,11 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
     }
   }
   // NOTE(kfstorm): We need to make sure the lock is released before invoking callbacks.
-  FailInflightTasks(inflight_task_callbacks);
+  FailInflightTasks(
+      inflight_task_callbacks,
+      Status::IOError("Fail all inflight tasks due to actor state change to " +
+                      rpc::ActorTableData::ActorState_Name(new_state) +
+                      "from disconnecting actor."));
 }
 
 void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
