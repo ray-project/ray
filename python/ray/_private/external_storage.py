@@ -7,7 +7,7 @@ import time
 import urllib
 import uuid
 from collections import namedtuple
-from typing import IO, List, Optional, Tuple
+from typing import IO, List, Optional, Tuple, Union
 
 import ray
 from ray._private.ray_constants import DEFAULT_OBJECT_PREFIX
@@ -251,7 +251,12 @@ class FileSystemStorage(ExternalStorage):
             spill objects doesn't exist.
     """
 
-    def __init__(self, directory_path, node_id=None, buffer_size=None):
+    def __init__(
+        self,
+        directory_path: Optional[Union[str, List[str]]] = None,
+        node_id: Optional[str] = None,
+        buffer_size: Optional[int] = None,
+    ):
         # -- sub directory name --
         self._spill_dir_name = DEFAULT_OBJECT_PREFIX
         # -- A list of directory paths to spill objects --
@@ -374,7 +379,7 @@ class ExternalStorageRayStorageImpl(ExternalStorage):
     def __init__(
         self,
         session_name: str,
-        node_id: str = None,
+        node_id: Optional[str] = None,
         # For remote spilling, at least 1MB is recommended.
         buffer_size=1024 * 1024,
         # Override the storage config for unit tests.
@@ -390,10 +395,12 @@ class ExternalStorageRayStorageImpl(ExternalStorage):
         self._buffer_size = buffer_size
         if node_id:
             self._prefix = os.path.join(
-                storage_prefix, "spilled_objects", node_id, session_name
+                storage_prefix, f"{DEFAULT_OBJECT_PREFIX}_{node_id}", session_name
             )
         else:
-            self._prefix = os.path.join(storage_prefix, "spilled_objects", session_name)
+            self._prefix = os.path.join(
+                storage_prefix, DEFAULT_OBJECT_PREFIX, session_name
+            )
         self._fs.create_dir(self._prefix)
 
     def spill_objects(self, object_refs, owner_addresses) -> List[str]:
