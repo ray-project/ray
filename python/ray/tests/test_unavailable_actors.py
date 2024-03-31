@@ -62,7 +62,7 @@ def call_from(f, source):
 
 @pytest.mark.parametrize(
     "caller",
-    ["driver", "actor", "task"],
+    ["actor", "task", "driver"],
 )
 def test_actor_unavailable_conn_broken(ray_start_regular, caller):
     def body():
@@ -85,7 +85,7 @@ def test_actor_unavailable_conn_broken(ray_start_regular, caller):
 
 @pytest.mark.parametrize(
     "caller",
-    ["driver", "actor", "task"],
+    ["actor", "task", "driver"],
 )
 def test_actor_unavailable_restarting(ray_start_regular, caller):
     def body():
@@ -124,7 +124,7 @@ def test_actor_unavailable_restarting(ray_start_regular, caller):
 
 @pytest.mark.parametrize(
     "caller",
-    ["driver", "actor", "task"],
+    ["actor", "task", "driver"],
 )
 def test_actor_unavailable_norestart(ray_start_regular, caller):
     def body():
@@ -143,7 +143,7 @@ def test_actor_unavailable_norestart(ray_start_regular, caller):
 @pytest.mark.skip(reason="https://github.com/ray-project/ray/issues/44357")
 @pytest.mark.parametrize(
     "caller",
-    ["driver", "actor", "task"],
+    ["actor", "task", "driver"],
 )
 def test_generators_early_stop_unavailable(ray_start_regular, caller):
     """
