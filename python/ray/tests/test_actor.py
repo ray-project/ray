@@ -1388,6 +1388,30 @@ def test_actor_equal(ray_start_regular_shared):
     assert origin == remote
 
 
+def test_can_create_actor_in_multiple_sessions(shutdown_only):
+    """Validates a bugfix that, if you create an actor in driver, then you shutdown and
+    restart and create the actor in task, it fails.
+    https://github.com/ray-project/ray/issues/44380
+    """
+
+    @ray.remote
+    class A:
+        def __init__(self):
+            print("A.__init__")
+
+    @ray.remote
+    def make_actor_in_task():
+        a = A.remote()
+        return a
+
+    ray.init()
+    A.remote()
+    ray.shutdown()
+
+    ray.init()
+    ray.get(make_actor_in_task.remote())
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
