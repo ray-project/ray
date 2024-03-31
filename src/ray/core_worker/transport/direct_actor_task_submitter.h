@@ -391,7 +391,8 @@ class CoreWorkerDirectActorTaskSubmitter
   /// Fail all in-flight tasks with `status`.
   void FailInflightTasks(
       const absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
-          &inflight_task_callbacks, const Status& status) ABSL_LOCKS_EXCLUDED(mu_);
+          &inflight_task_callbacks,
+      const Status &status) ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Pool for producing new core worker clients.
   rpc::CoreWorkerClientPool &core_worker_client_pool_;
