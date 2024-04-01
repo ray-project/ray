@@ -237,11 +237,10 @@ if __name__ == "__main__":
         if args.object_spilling_config:
             object_spilling_config = base64.b64decode(args.object_spilling_config)
             object_spilling_config = json.loads(object_spilling_config)
-            object_spilling_config["params"]["node_id"] = node._node_id
         else:
             object_spilling_config = {}
         external_storage.setup_external_storage(
-            object_spilling_config, node.session_name
+            object_spilling_config, node._node_id, node.session_name
         )
 
     ray._private.worker._global_node = node
