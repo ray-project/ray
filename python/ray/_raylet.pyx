@@ -2579,10 +2579,23 @@ def maybe_initialize_job_config():
         # to sys.path.
         this_node_id = ray._private.worker.global_worker.current_node_id
         driver_node_id = ray.NodeID(core_worker.get_job_config().driver_node_id)
+        runtime_env_working_dir = core_worker.get_job_config().runtime_env_info.uris.working_dir_uri
         if this_node_id == driver_node_id:
             py_driver_sys_path = core_worker.get_job_config().py_driver_sys_path
             if py_driver_sys_path:
                 for p in py_driver_sys_path:
+                    # change /tmp/ray/session_xxx/runtime_resources/working_dir_files/git_inf_xxx
+                    # to /tmp/ray/session_xxx/runtime_resources/working_dir_files/_ray_pkg_xxx
+                    # in not driver actor
+                    if p.find("runtime_resources/working_dir_files/git") != -1 and runtime_env_working_dir is not None:
+                        str_len = len("runtime_resources/working_dir_files/")
+                        index = p.find("runtime_resources/working_dir_files/git")
+                        first_index = p[index + str_len:].find("/")
+                        if runtime_env_working_dir.startswith("gcs://") and runtime_env_working_dir.endswith(".zip"):
+                            p_tmp = p[:index + str_len] + runtime_env_working_dir[6:-4]
+                            if first_index != -1:
+                                p_tmp += p[index + str_len:][first_index:]
+                            p = p_tmp
                     sys.path.insert(0, p)
 
         # Cache and set the current job id.

@@ -208,6 +208,8 @@ class HttpServerDashboardHead:
         # Http server should be initialized after all modules loaded.
         # working_dir uploads for job submission can be up to 100MiB.
         mega = int(os.getenv("BYTED_RAY_DASHBOARD_CLIENT_MAX_SIZE", "500"))
+        mega_from_grpc = int(os.getenv("RAY_max_grpc_message_size", "524288000"))
+        mega = max(mega_from_grpc // 1048576, mega)
         logger.info(f"Byted use BYTED_RAY_DASHBOARD_CLIENT_MAX_SIZE {mega}M.")
         app = aiohttp.web.Application(
             client_max_size=mega * 1024**2,

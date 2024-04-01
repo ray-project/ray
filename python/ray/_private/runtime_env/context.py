@@ -46,6 +46,14 @@ class RuntimeEnvContext:
         return RuntimeEnvContext(**json.loads(json_string))
 
     def exec_worker(self, passthrough_args: List[str], language: Language):
+        if (
+            self.env_vars is not None
+            and isinstance(self.env_vars, dict)
+            and "PYTHONPATH" in self.env_vars
+            and "PYTHONPATH" in os.environ
+        ):
+            self.env_vars["PYTHONPATH"] += os.pathsep + os.environ["PYTHONPATH"]
+
         update_envs(self.env_vars)
 
         if language == Language.PYTHON and sys.platform == "win32":

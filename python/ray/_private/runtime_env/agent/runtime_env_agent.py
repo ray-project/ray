@@ -26,6 +26,7 @@ from ray._private.runtime_env.plugin import (
 from ray._private.utils import get_or_create_event_loop
 from ray._private.runtime_env.plugin import RuntimeEnvPluginManager
 from ray._private.runtime_env.py_modules import PyModulesPlugin
+from ray._private.runtime_env.packaging import merge_runtime_env_from_git
 from ray._private.runtime_env.working_dir import WorkingDirPlugin
 from ray._private.runtime_env.nsight import NsightPlugin
 from ray._private.runtime_env.mpi import MPIPlugin
@@ -325,30 +326,54 @@ class RuntimeEnvAgent:
             # created in the priority order (smaller priority value -> earlier to
             # create), with a special environment variable being set to the working dir.
             # ${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}
+                """Run setup for each plugin unless it has already been cached."""
 
             # First create working dir...
-            working_dir_ctx = self._plugin_manager.plugins[WorkingDirPlugin.name]
-            await create_for_plugin_if_needed(
-                runtime_env,
-                working_dir_ctx.class_instance,
-                working_dir_ctx.uri_cache,
-                context,
-                per_job_logger,
-            )
+            if runtime_env.working_dir().startswith("git://"):
+                plugin_git = self._plugin_manager.plugins["working_dir"].class_instance
+                uri_cache_git = self._plugin_manager.plugins["working_dir"].uri_cache
+                await create_for_plugin_if_needed(
+                    runtime_env, plugin_git, uri_cache_git, context, per_job_logger
+                )
+                new_runtime_env_dict = merge_runtime_env_from_git(
+                    self._runtime_env_dir, runtime_env.to_dict(), per_job_logger
+                )
+                for key in new_runtime_env_dict:
+                    if key != "working_dir":
+                        old_dict = runtime_env.get(key)
+                        new_dict = new_runtime_env_dict.get(key)
+                        per_job_logger.warning(
+                            f"replace key, {key}, {old_dict}, {new_dict}"
+                        )
+                        runtime_env.set(key, new_runtime_env_dict[key])
+                    if key == "env_vars" and new_runtime_env_dict["env_vars"]:
+                        for item in new_runtime_env_dict["env_vars"]:
+                            context.env_vars[item] = new_runtime_env_dict["env_vars"][
+                                item
+                            ]
+            else:
+                working_dir_ctx = self._plugin_manager.plugins[WorkingDirPlugin.name]
+                await create_for_plugin_if_needed(
+                    runtime_env,
+                    working_dir_ctx.class_instance,
+                    working_dir_ctx.uri_cache,
+                    context,
+                    per_job_logger,
+                )
 
             # Then within the working dir, create the other plugins.
             working_dir_uri_or_none = runtime_env.working_dir_uri()
             with self._working_dir_plugin.with_working_dir_env(working_dir_uri_or_none):
-                """Run setup for each plugin unless it has already been cached."""
                 for (
                     plugin_setup_context
                 ) in self._plugin_manager.sorted_plugin_setup_contexts():
                     plugin = plugin_setup_context.class_instance
+                    uri_cache = plugin_setup_context.uri_cache
                     if plugin.name != WorkingDirPlugin.name:
-                        uri_cache = plugin_setup_context.uri_cache
                         await create_for_plugin_if_needed(
                             runtime_env, plugin, uri_cache, context, per_job_logger
                         )
+
             return context
 
         async def _create_runtime_env_with_retry(
@@ -397,6 +422,8 @@ class RuntimeEnvAgent:
                     error_message = "".join(
                         traceback.format_exception(type(e), e, e.__traceback__)
                     )
+                    # and some message to ganrantee raise error
+                    error_message += "[bytedance error]"
                     if isinstance(e, asyncio.TimeoutError):
                         hint = (
                             f"Failed due to timeout; check runtime_env setup logs"

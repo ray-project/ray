@@ -88,13 +88,79 @@ async def check_output_cmd(
         #     child process. Please refer to:
         #     https://docs.python.org/3/library/asyncio-subprocess.html#asyncio.asyncio.subprocess.Process.stderr
         #   * Avoid mixing multiple outputs of concurrent cmds.
-        stdout, _ = await proc.communicate()
+        stdout, stderr = await proc.communicate()
     except asyncio.exceptions.CancelledError as e:
         # since Python 3.9, when cancelled, the inner process needs to throw as it is
         # for asyncio to timeout properly https://bugs.python.org/issue40607
         raise e
     except BaseException as e:
-        raise RuntimeError(f"Run cmd[{cmd_index}] got exception.") from e
+        raise RuntimeError(f"Run cmd[{cmd_index}] got exception. {e}") from e
+    else:
+        stdout = stdout.decode("utf-8")
+        if stdout:
+            logger.info("Output of cmd[%s]: %s", cmd_index, stdout)
+        else:
+            logger.info("No output for cmd[%s]", cmd_index)
+        if proc.returncode != 0:
+            raise SubprocessCalledProcessError(
+                proc.returncode, cmd, output=stdout, cmd_index=cmd_index
+            )
+        return stdout
+    finally:
+        if proc is not None:
+            # Kill process.
+            try:
+                proc.kill()
+            except ProcessLookupError:
+                pass
+            # Wait process exit.
+            await proc.wait()
+
+
+async def check_output_shell(
+    cmd: List[str],
+    *,
+    logger: logging.Logger,
+    cmd_index_gen: types.GeneratorType = itertools.count(1),
+) -> str:
+    """Run command with arguments and return its output.
+
+    If the return code was non-zero it raises a CalledProcessError. The
+    CalledProcessError object will have the return code in the returncode
+    attribute and any output in the output attribute.
+
+    Args:
+        cmd: The cmdline should be a sequence of program arguments or else
+            a single string or path-like object. The program to execute is
+            the first item in cmd.
+        logger: The logger instance.
+        cmd_index_gen: The cmd index generator, default is itertools.count(1).
+        kwargs: All arguments are passed to the create_subprocess_exec.
+
+    Returns:
+        The stdout of cmd.
+
+    Raises:
+        CalledProcessError: If the return code of cmd is not 0.
+    """
+
+    cmd_index = next(cmd_index_gen)
+    logger.info("Run cmd[%s] %s", cmd_index, repr(cmd))
+
+    proc = None
+    try:
+        proc = await asyncio.create_subprocess_shell(
+            cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT
+        )
+        # Use communicate instead of polling stdout:
+        #   * Avoid deadlocks due to streams pausing reading or writing and blocking the
+        #     child process. Please refer to:
+        #     https://docs.python.org/3/library/asyncio-subprocess.html#asyncio.asyncio.subprocess.Process.stderr
+        #   * Avoid mixing multiple outputs of concurrent cmds.
+        stdout, stderr = await proc.communicate()
+        logger.info(f"Output of shell cmd [{cmd_index}]: {stdout}, {stderr}")
+    except BaseException as e:
+        raise RuntimeError(f"Run cmd[{cmd_index}] got exception. {e}") from e
     else:
         stdout = stdout.decode("utf-8")
         if stdout:

@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import logging
 import os
+import json
 import subprocess
 import shutil
 from enum import Enum
@@ -92,12 +93,13 @@ class Protocol(Enum):
     GS = "gs", "Remote google storage path, assumes everything packed in one zip file."
     FILE = "file", "File storage path, assumes everything packed in one zip file."
     HDFS = "hdfs", "Remote HDFS path, assumes everything packed in one zip file."
+    GIT = "git", "Git project"
 
     @classmethod
     def remote_protocols(cls):
         # Returns a list of protocols that support remote storage
         # These protocols should only be used with paths that end in ".zip"
-        return [cls.HTTPS, cls.S3, cls.GS, cls.FILE, cls.HDFS]
+        return [cls.HTTPS, cls.S3, cls.GS, cls.FILE, cls.HDFS, cls.GIT]
 
 
 def _xor_bytes(left: bytes, right: bytes) -> bytes:
@@ -213,9 +215,11 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
             for disallowed_char in disallowed_chars:
                 package_name = package_name.replace(disallowed_char, "_")
 
-            # Remove all periods except the last, which is part of the
-            # file extension
+        if protocol != Protocol.GIT:
+            # Remove all periods except the last, which is part of the file extension
             package_name = package_name.replace(".", "_", package_name.count(".") - 1)
+        else:
+            package_name = package_name.replace(".", "_")
     else:
         package_name = uri.netloc
 
@@ -546,6 +550,7 @@ def upload_package_if_needed(
     include_parent_dir: bool = False,
     excludes: Optional[List[str]] = None,
     logger: Optional[logging.Logger] = default_logger,
+    runtime_env_expiration_s: Optional[int] = None,
 ) -> bool:
     """Upload the contents of the directory under the given URI.
 
@@ -574,7 +579,7 @@ def upload_package_if_needed(
     if logger is None:
         logger = default_logger
 
-    pin_runtime_env_uri(pkg_uri)
+    pin_runtime_env_uri(pkg_uri, expiration_s=runtime_env_expiration_s)
 
     if package_exists(pkg_uri):
         return False
@@ -608,6 +613,7 @@ async def download_and_unpack_package(
     base_directory: str,
     gcs_aio_client: Optional["GcsAioClient"] = None,  # noqa: F821
     logger: Optional[logging.Logger] = default_logger,
+    runtime_env : Optional[dict] = None,
 ) -> str:
     """Download the package corresponding to this URI and unpack it if zipped.
 
@@ -633,7 +639,8 @@ async def download_and_unpack_package(
 
     """
     pkg_file = Path(_get_local_path(base_directory, pkg_uri))
-    if pkg_file.suffix == "":
+
+    if not pkg_uri.startswith("git://") and pkg_file.suffix == "":
         raise ValueError(
             f"Invalid package URI: {pkg_uri}."
             "URI must have a file extension and the URI must be valid."
@@ -646,7 +653,9 @@ async def download_and_unpack_package(
         logger.debug(f"Fetching package for URI: {pkg_uri}")
 
         local_dir = get_local_dir_from_uri(pkg_uri, base_directory)
-        assert local_dir != pkg_file, "Invalid pkg_file!"
+        if not pkg_uri.startswith("git://"):
+            assert local_dir != pkg_file, "Invalid pkg_file!"
+
         if local_dir.exists():
             assert local_dir.is_dir(), f"{local_dir} is not a directory"
         else:
@@ -754,12 +763,16 @@ async def download_and_unpack_package(
                         )
                 if protocol == Protocol.HDFS:
                     subprocess.check_call(["hdfs", "dfs", "-get", pkg_uri, pkg_file])
+                elif protocol == Protocol.GIT:
+                    await download_package_from_git(runtime_env, str(pkg_file), logger, pkg_uri)
                 else:
                     with open_file(pkg_uri, "rb", transport_params=tp) as package_zip:
                         with open_file(pkg_file, "wb") as fin:
                             fin.write(package_zip.read())
 
-                if pkg_file.suffix in [".zip", ".jar"]:
+                if protocol == Protocol.GIT:
+                    pass
+                elif pkg_file.suffix in [".zip", ".jar"]:
                     unzip_package(
                         package_path=pkg_file,
                         target_dir=local_dir,
@@ -778,6 +791,233 @@ async def download_and_unpack_package(
                 raise NotImplementedError(f"Protocol {protocol} is not supported")
 
         return str(local_dir)
+
+
+def get_sec_token_string() -> str:
+    byted_sec_string = ""
+    if os.environ.get("SEC_TOKEN_PATH") is not None:
+        sec_path = os.environ.get("SEC_TOKEN_PATH")
+        if os.path.exists(sec_path):
+            try:
+                f = open(sec_path, "r")
+                byted_sec_string = f.read()
+            except Exception as e:
+                raise RuntimeError("bytedray failed to open sec_token_path, error: ", e)
+
+    if os.environ.get("SEC_TOKEN_STRING") is not None:
+        byted_sec_string = os.environ.get("SEC_TOKEN_STRING")
+    return byted_sec_string
+
+
+async def download_package_from_git(
+    runtime_env: dict,
+    base_directory: str,
+    logger: Optional[logging.Logger] = default_logger,
+    pkg_uri: Optional[str] = None,
+):
+    if runtime_env is None:
+        raise RuntimeError("runtime env is not provided")
+
+    from ray.dashboard.modules.job.git import download_from_git
+
+    working_dir = runtime_env.get("working_dir")
+
+    py_modules_mode = False
+    if base_directory and base_directory.find("py_modules_files") != -1:
+        working_dir = pkg_uri
+        py_modules_mode = True
+
+    if working_dir and working_dir.startswith("git"):
+        git_path = working_dir.split("//")[1]
+        git_path_list = git_path.split("@")
+
+        if len(git_path_list) < 2 or len(git_path_list) > 3:
+            if py_modules_mode:
+                logger.info(f"failed to find git path in pymodules mode, url: {working_dir}")
+                return
+            raise RuntimeError(
+                "must have project, branch, commit in working_dir, split by @"
+            )
+
+        git_project = git_path_list[0] if len(git_path_list) > 0 else None
+        git_commit = git_path_list[1] if len(git_path_list) > 1 else None
+        git_branch = git_path_list[2] if len(git_path_list) > 2 else None
+        git_post_download_command = None
+        git_use_platform_key = False
+
+        git_private_key = runtime_env.get("git_private_key")
+        if git_private_key is None:
+            default_ssh_path = os.environ.get(
+                "BYTED_RAY_DEFAULT_SSH_PATH", "/Users/bytedance/.ssh/id_rsa"
+            )
+            if os.path.exists(default_ssh_path):
+                f = open(default_ssh_path, "r")
+                git_private_key = f.read()
+            else:
+                raise RuntimeError(
+                    "must have git_private_key(provided by arnold) in runtime_env or ~/.ssh/id_rsa existed in pod"
+                )
+        elif os.environ.get("BYTED_RAY_GIT_SECRET_KEY") is not None:
+            from Crypto.Cipher import AES
+            import base64
+
+            def unpad(s):
+                return s[: -ord(s[len(s) - 1 :])]
+
+            key = os.environ.get("BYTED_RAY_GIT_SECRET_KEY")
+            new_encrypted = base64.b64decode(git_private_key)
+            iv = new_encrypted[:16]
+            cipher = AES.new(key.encode(), AES.MODE_CBC, iv)
+            git_private_key = unpad(cipher.decrypt(new_encrypted[16:])).decode()
+
+            if git_private_key == working_dir + "platform":
+                # get token from platform
+                platform_key = os.environ.get("BYTED_RAY_PLATFORM_GIT_QUERY_KEY")
+                platform_link = os.environ.get("BYTED_RAY_PLATFORM_GIT_QUERY_LINK")
+                if platform_key is None or platform_link is None:
+                    raise RuntimeError("platform query information should be provideded in platform clone mode")
+
+                import requests
+                result = requests.post(platform_link, headers={"mlx-zti-token": get_sec_token_string()}, timeout=10)
+                if result.status_code == 200 and "encrypt_token" in result.json():
+                    encrypt_git_private_key = result.json()["encrypt_token"]
+                    new_encrypted = base64.b64decode(encrypt_git_private_key)
+                    iv = new_encrypted[:16]
+                    cipher = AES.new(platform_key.encode(), AES.MODE_CBC, iv)
+                    git_private_key = unpad(cipher.decrypt(new_encrypted[16:])).decode()
+                    git_use_platform_key = True
+                else:
+                    raise RuntimeError("failed to get tmp key from platform server")
+        else:
+            raise RuntimeError(
+                "git_private_key error from kuberay"
+            )
+
+        if "git_post_commands" in runtime_env:
+            git_post_download_command = runtime_env["git_post_commands"]
+
+        try:
+            await download_from_git(
+                git_project,
+                git_branch,
+                git_commit,
+                git_private_key,
+                base_directory,
+                git_use_platform_key,
+                logger,
+                git_post_download_command,
+            )
+        except Exception as e:
+            logger.info("Delete incomplete git path: %s, error %s", base_directory, e)
+            shutil.rmtree(base_directory, ignore_errors=True)
+            raise
+
+
+def merge_runtime_env_from_git(
+    base_directory: str,
+    runtime_env: dict,
+    logger: Optional[logging.Logger] = default_logger,
+) -> dict:
+    git_overwrite_by_outer = os.environ.get("BYTED_RAY_RUNTIME_GIT_OVERWITE_BY_OUTER") is not None
+    # ganrantee not modify the origin runtime_env
+    import copy
+    runtime_env = copy.deepcopy(runtime_env)
+    protocal, uri = parse_uri(runtime_env["working_dir"])
+    if protocal != Protocol.GIT:
+        raise RuntimeError("working_dir should be git from protocal")
+
+    base_runtime_env_directory = os.path.join(base_directory, "working_dir_files")
+    git_dir = os.path.join(base_runtime_env_directory, uri)
+    job_runtime_path = os.environ.get("BYTED_RAY_JOB_RUNTIME_PATH", "ray_runtime_env_config.json")
+    job_runtime_sub_json_key = None
+    if job_runtime_path.find(":") != -1:
+        split_index = job_runtime_path.find(":")
+        job_runtime_sub_json_key = job_runtime_path[split_index + 1:]
+        job_runtime_path = job_runtime_path[:split_index]
+    git_runtime_env_path = os.path.join(git_dir, job_runtime_path)
+    # if json is not existed, try to find the yaml file
+    if not os.path.exists(git_runtime_env_path) and git_runtime_env_path.endswith(".json") \
+            and os.path.exists(git_runtime_env_path[:-5] + ".yaml"):
+        git_runtime_env_path = git_runtime_env_path[:-5] + ".yaml"
+    logger.info(f"read runtime env from path: {git_runtime_env_path}, json subkey {job_runtime_sub_json_key}")
+
+    if os.path.exists(git_runtime_env_path):
+        # read ray_runtime_env_config.json from git repo
+        # skip working_dir
+        # combine env_vars
+        # other would just use value from json file
+        try:
+            with open(git_runtime_env_path, "r") as config_json_file:
+                combined_fields = set("env_vars")
+                skip_fields = set("working_dir")
+                if git_runtime_env_path.endswith(".yaml"):
+                    import yaml
+                    runtime_env_config = yaml.safe_load(config_json_file)
+                else:
+                    runtime_env_config = json.load(config_json_file)
+                if job_runtime_sub_json_key is not None and \
+                        job_runtime_sub_json_key in runtime_env_config:
+                    runtime_env_config = runtime_env_config[job_runtime_sub_json_key]
+                for field in runtime_env_config:
+                    if field in skip_fields:
+                        continue
+                    if field not in combined_fields:
+                        if field == "py_modules" and field in runtime_env:
+                            logger.info("not allow to overwrite py_modules depends on git repo")
+                            continue
+                        if git_overwrite_by_outer or field not in runtime_env:
+                            runtime_env[field] = runtime_env_config[field]
+                        continue
+                    # just combine env_vars
+                    src_field = runtime_env_config[field]
+                    dst_field = runtime_env.get(field)
+                    if not dst_field:
+                        dst_field = {}
+                    if not src_field:
+                        continue
+                    for key in src_field:
+                        if key == "PYTHONPATH":
+                            origin_python_path = (
+                                "" if key not in dst_field else (dst_field[key] + ":")
+                            )
+                            dst_field[key] = origin_python_path + src_field[key]
+                            continue
+                        if git_overwrite_by_outer or key not in dst_field:
+                            dst_field[key] = src_field[key]
+                    runtime_env[field] = dst_field
+        except Exception as e:
+            logger.error(
+                f"failed parse ray_runtime_env_config.json to exist runtime_env, error {e}"
+            )
+            raise
+
+    py_modules = runtime_env.get("py_modules", [])
+    new_py_modules = []
+    # we would not judge py_modules is a folder of this git path
+    # replace this py_modules with git://... for hack
+    # if not would raise error
+    for key in py_modules:
+        if os.path.exists(os.path.join(git_dir, key)):
+            if key.find("/") != -1:
+                new_py_modules.append("git://" + "/".join(key.split("/")[:-1]))
+            else:
+                logger.info(
+                    "skip these py_modules because it is the same with working_dirs"
+                )
+                continue
+        else:
+            try:
+                protocal, uri = parse_uri(key)
+            except Exception as e:
+                logger.error(f"{key} in pymodules is not correct protocol, error {e}")
+                raise
+            new_py_modules.append(key)
+
+    if len(new_py_modules) > 0:
+        runtime_env["py_modules"] = new_py_modules
+
+    logger.info(f"new config runtime_env after parsed {runtime_env}")
+    return runtime_env
 
 
 def get_top_level_dir_from_compressed_package(package_path: str):
