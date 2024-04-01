@@ -384,7 +384,10 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
             "CoreWorker.HandleException");
       }));
 
-  experimental_mutable_object_manager_.reset(new ExperimentalMutableObjectManager());
+#if defined(__APPLE__) || defined(__linux__)
+  experimental_mutable_object_manager_ =
+      std::make_shared<ExperimentalMutableObjectManager>();
+#endif
 
   auto push_error_callback = [this](const JobID &job_id,
                                     const std::string &type,
