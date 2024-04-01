@@ -3,6 +3,7 @@
 # cython: embedsignature = True
 # cython: language_level = 3
 # cython: c_string_encoding = default
+from datetime import datetime
 
 from cpython.exc cimport PyErr_CheckSignals
 
@@ -4543,6 +4544,8 @@ cdef class CoreWorker:
         if num_returns == 0:
             return num_outputs_stored
 
+        logger.info(f">>> [DBG][{datetime.utcnow()}] (store_task_outputs) Storing outputs {len(outputs)} ({self.get_current_task_id()}) ({threading.get_ident()} / {threading.get_native_id()})")
+
         task_output_inlined_bytes = 0
         i = -1
         for i, output in enumerate(outputs):
@@ -4755,8 +4758,16 @@ cdef class CoreWorker:
                 else:
                     coroutine = func_or_coro(*func_args, **func_kwargs)
 
-                return await coroutine
+                logger.info(f">>> [DBG][{datetime.utcnow()}] (async_func) Awaiting ({task_id}) (loop: {id(asyncio._get_running_loop())} / {repr(asyncio._get_running_loop())})  (t: {threading.get_ident()})")
+
+                res = await coroutine
+
+                logger.info(f">>> [DBG][{datetime.utcnow()}] (async_func) Obtained result ({task_id}) (loop: {id(asyncio._get_running_loop())} / {repr(asyncio._get_running_loop())})  (t: {threading.get_ident()})")
+
+                return res
             finally:
+                logger.info(f">>> [DBG][{datetime.utcnow()}] (async_func) Notifying ({task_id}) (loop: {id(asyncio._get_running_loop())} / {repr(asyncio._get_running_loop())})  (t: {threading.get_ident()})")
+
                 event.Notify()
 
         future = asyncio.run_coroutine_threadsafe(async_func(), eventloop)
@@ -4764,10 +4775,19 @@ cdef class CoreWorker:
             with self._task_id_to_future_lock:
                 self._task_id_to_future[task_id] = future
 
+        logger.info(f">>> [DBG][{datetime.utcnow()}] (run_async_func_or_coro_in_event_loop) Yielding fiber ({task_id}) (loop: {id(asyncio._get_running_loop())} / {repr(asyncio._get_running_loop())})  (t: {threading.get_ident()})")
+
         with nogil:
             (CCoreWorkerProcess.GetCoreWorker()
                 .YieldCurrentFiber(event))
+
+        logger.info(f">>> [DBG][{datetime.utcnow()}] (run_async_func_or_coro_in_event_loop) Reclaiming fiber ({task_id}) (loop: {id(asyncio._get_running_loop())} / {repr(asyncio._get_running_loop())})  (t: {threading.get_ident()})")
+
         try:
+            future.add_done_callback(lambda fut: logger.info(f">>> [DBG][{datetime.utcnow()}] (Future callback) Future status: {fut.done()} (fut: {str(fut)}) (task: {task_id}) (loop: {id(asyncio._get_running_loop())} / {repr(asyncio._get_running_loop())})  (t: {threading.get_ident()})"))
+
+            logger.info(f">>> [DBG][{datetime.utcnow()}] (run_async_func_or_coro_in_event_loop) Future status: {future.done()} (fut: {str(future)}) (task: {task_id}) (loop: {id(asyncio._get_running_loop())} / {repr(asyncio._get_running_loop())})  (t: {threading.get_ident()})")
+
             result = future.result()
         except concurrent.futures.CancelledError:
             raise TaskCancelledError(task_id)
