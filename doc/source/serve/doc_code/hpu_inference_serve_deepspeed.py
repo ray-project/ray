@@ -118,7 +118,7 @@ class DeepSpeedInferenceWorker:
     def get_streamer(self):
         """Return a streamer.
 
-        Only the rank 0 worker's result is needed.
+        We only need the rank 0 worker's result.
         Other workers return a fake streamer.
         """
 
@@ -168,7 +168,7 @@ class RayTextIteratorStreamer(TextStreamer):
 # __worker_def_end__
 
 # __deploy_def_start__
-# Required variables for DeepSpeed on HPU.
+# We need to set these variables for this example.
 HABANA_ENVS = {
     "PT_HPU_LAZY_ACC_PAR_MODE": "0",
     "PT_HPU_ENABLE_REFINE_DYNAMIC_SHAPES": "0",
