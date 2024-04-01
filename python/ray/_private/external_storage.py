@@ -282,9 +282,9 @@ class FileSystemStorage(ExternalStorage):
         # Create directories.
         for path in directory_path:
             if node_id:
-                full_dir_path = os.path.join(path, f"{self._spill_dir_name}_{node_id}")
+                full_dir_path = os.path.join(path, f"{DEFAULT_OBJECT_PREFIX}_{node_id}")
             else:
-                full_dir_path = os.path.join(path, self._spill_dir_name)
+                full_dir_path = os.path.join(path, DEFAULT_OBJECT_PREFIX)
             os.makedirs(full_dir_path, exist_ok=True)
             if not os.path.exists(full_dir_path):
                 raise ValueError(

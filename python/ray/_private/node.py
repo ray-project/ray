@@ -337,7 +337,8 @@ class Node:
         # external storage is configurable.
         if head:
             self.validate_external_storage()
-        self.destroy_external_storage()
+        if not connect_only:
+            self.destroy_external_storage()
         # Makes sure the Node object has valid addresses after setup.
         self.validate_ip_port(self.address)
         self.validate_ip_port(self.gcs_address)
