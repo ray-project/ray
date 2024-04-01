@@ -1,5 +1,9 @@
 jupyterlab
-ipywidgets
+# Ray Data progress bars do not load with newer versions of
+# ipywidgets + older versions of VSCode Web. Pin the version
+# until VSCode Web is updated, as recommended in
+# https://github.com/microsoft/vscode-jupyter/issues/8552.
+ipywidgets==7.7.2
 opentelemetry-api
 opentelemetry-sdk
 opentelemetry-exporter-otlp
