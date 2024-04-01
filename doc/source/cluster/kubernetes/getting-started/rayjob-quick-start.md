@@ -34,7 +34,6 @@ To understand the following content better, you should understand the difference
   Example:
 
     ```yaml
-    # [...]
     spec:
       runtimeEnvYAML: |
         pip:
