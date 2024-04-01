@@ -472,8 +472,8 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
 
     def __init__(
         self,
+        node_id: str,
         uri: str or list,
-        prefix: str = DEFAULT_OBJECT_PREFIX,
         override_transport_params: dict = None,
         buffer_size=1024 * 1024,  # For remote spilling, at least 1MB is recommended.
     ):
@@ -503,7 +503,7 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
         assert len(self._uris) == len(uri)
 
         self._current_uri_index = random.randrange(0, len(self._uris))
-        self.prefix = prefix
+        self.prefix = f"{DEFAULT_OBJECT_PREFIX}_{node_id}"
         self.override_transport_params = override_transport_params or {}
 
         if self.is_for_s3:
@@ -627,6 +627,7 @@ class SlowFileStorage(FileSystemStorage):
 
 def setup_external_storage(config, node_id, session_name):
     """Setup the external storage according to the config."""
+    assert node_id is not None, "node_id should be provided."
     global _external_storage
     if config:
         storage_type = config["type"]
@@ -637,7 +638,9 @@ def setup_external_storage(config, node_id, session_name):
                 node_id, session_name, **config["params"]
             )
         elif storage_type == "smart_open":
-            _external_storage = ExternalStorageSmartOpenImpl(**config["params"])
+            _external_storage = ExternalStorageSmartOpenImpl(
+                node_id, **config["params"]
+            )
         elif storage_type == "mock_distributed_fs":
             # This storage is used to unit test distributed external storages.
             # TODO(sang): Delete it after introducing the mock S3 test.
