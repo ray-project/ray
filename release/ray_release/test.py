@@ -56,6 +56,7 @@ class TestState(enum.Enum):
 class TestResult:
     status: str
     commit: str
+    branch: str
     url: str
     timestamp: int
 
@@ -64,6 +65,7 @@ class TestResult:
         return cls(
             status=result.status,
             commit=os.environ.get("BUILDKITE_COMMIT", ""),
+            branch=os.environ.get("BUILDKITE_BRANCH", ""),
             url=result.buildkite_url,
             timestamp=int(time.time() * 1000),
         )
@@ -87,6 +89,7 @@ class TestResult:
         return cls(
             status=result["status"],
             commit=result["commit"],
+            branch=result.get("branch", ""),
             url=result["url"],
             timestamp=result["timestamp"],
         )

@@ -8,9 +8,9 @@ from unittest import mock
 from typing import List, Optional
 
 from ci.ray_ci.linux_tester_container import LinuxTesterContainer
-from ci.ray_ci.tester_container import PIPELINE_POSTMERGE
 from ci.ray_ci.utils import chunk_into_n
 from ci.ray_ci.container import _DOCKER_ECR_REPO, _RAYCI_BUILD_ID
+from release.ray_release.configs.global_config import BRANCH_PIPELINES
 
 
 class MockPopen:
@@ -46,7 +46,7 @@ def test_persist_test_results(mock_upload_build_info, mock_upload_test_result) -
         os.environ,
         {
             "BUILDKITE_BRANCH": "master",
-            "BUILDKITE_PIPELINE_ID": PIPELINE_POSTMERGE,
+            "BUILDKITE_PIPELINE_ID": BRANCH_PIPELINES[0],
         },
     ):
         container._persist_test_results("team", "log_dir")
