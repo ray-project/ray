@@ -567,6 +567,11 @@ class Node:
         return self._resource_spec
 
     @property
+    def node_id(self):
+        """Get the node ID."""
+        return self._node_id
+
+    @property
     def session_name(self):
         """Get the session name (cluster ID)."""
         return self._session_name
