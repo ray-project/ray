@@ -257,8 +257,6 @@ class FileSystemStorage(ExternalStorage):
         node_id: Optional[str] = None,
         buffer_size: Optional[int] = None,
     ):
-        # -- sub directory name --
-        self._spill_dir_name = DEFAULT_OBJECT_PREFIX
         # -- A list of directory paths to spill objects --
         self._directory_paths = []
         # -- Current directory to spill objects --
