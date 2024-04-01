@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { SWRConfig } from "swr";
 import { listStateApiLogs } from "../../service/log";
 import { getNodeList } from "../../service/node";
+import { STYLE_WRAPPER } from "../../util/test-utils";
 import { useStateApiLogs } from "./hooks";
 import { StateApiLogsListPage, StateApiLogViewerPage } from "./Logs";
 
@@ -60,6 +61,7 @@ describe("LogsPage", () => {
       >
         <StateApiLogsListPage />
       </MemoryRouter>,
+      { wrapper: STYLE_WRAPPER },
     );
     await screen.findByText("Select a node to view logs");
 
@@ -105,10 +107,11 @@ describe("LogsPage", () => {
       >
         <StateApiLogsListPage />
       </MemoryRouter>,
+      { wrapper: STYLE_WRAPPER },
     );
     await screen.findByText(`Node: node-id-1`);
 
-    expect(screen.getByRole("button", { name: "Back To ../" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Back To ../" })).toHaveAttribute(
       "href",
       "/logs/",
     );
@@ -164,10 +167,11 @@ describe("LogsPage", () => {
           <StateApiLogsListPage />
         </SWRConfig>
       </MemoryRouter>,
+      { wrapper: STYLE_WRAPPER },
     );
     await screen.findByText(`Node: node-id-1`);
 
-    expect(screen.getByRole("button", { name: "Back To ../" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Back To ../" })).toHaveAttribute(
       "href",
       "/logs/?nodeId=node-id-1&folder=",
     );
@@ -212,11 +216,12 @@ describe("LogsPage", () => {
       >
         <StateApiLogViewerPage />
       </MemoryRouter>,
+      { wrapper: STYLE_WRAPPER },
     );
     await screen.findByText(`Node: node-id-1`);
     expect(screen.getByText("File: dashboard.log")).toBeVisible();
 
-    expect(screen.getByRole("button", { name: "Back To ../" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Back To ../" })).toHaveAttribute(
       "href",
       "/logs/?nodeId=node-id-1&folder=",
     );

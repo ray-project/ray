@@ -1,5 +1,5 @@
-import { Typography } from "@material-ui/core";
-import { HelpOutlineOutlined } from "@material-ui/icons";
+import { HelpOutlineOutlined } from "@mui/icons-material";
+import { Typography } from "@mui/material";
 import React from "react";
 
 const Error404 = () => {

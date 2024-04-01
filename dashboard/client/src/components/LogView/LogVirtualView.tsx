@@ -1,4 +1,5 @@
-import { createStyles, makeStyles } from "@material-ui/core";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import dayjs from "dayjs";
 import low from "lowlight";
 import React, { MutableRefObject, useEffect, useRef, useState } from "react";
