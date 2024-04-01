@@ -137,6 +137,10 @@ attrs==23.1.0 \
     # via
     #   aiohttp
     #   jsonschema
+aws-requests-auth==0.4.3 \
+    --hash=sha256:33593372018b960a31dbbe236f89421678b885c35f0b6a7abfae35bb77e069b2 \
+    --hash=sha256:646bc37d62140ea1c709d20148f5d43197e6bd2d63909eb36fa4bb2345759977
+    # via -r release/requirements_buildkite.in
 bazel-runfiles==0.21.0 \
     --hash=sha256:3e430dd9a5aba90a90bc2493fdcfce02a3ece47fb574db0f4ac898261e6b068d
     # via -r release/requirements_buildkite.in
@@ -1018,6 +1022,7 @@ requests==2.31.0 \
     # via
     #   -r release/requirements_buildkite.in
     #   anyscale
+    #   aws-requests-auth
     #   docker
     #   google-api-core
     #   google-cloud-storage
