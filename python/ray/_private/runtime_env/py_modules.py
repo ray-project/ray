@@ -33,6 +33,8 @@ def _check_is_uri(s: str) -> bool:
     except ValueError:
         protocol, path = None, None
 
+    if protocol is Protocol.GIT:
+        return protocol
     if (
         protocol in Protocol.remote_protocols()
         and not path.endswith(".zip")
@@ -153,9 +155,8 @@ class PyModulesPlugin(RuntimeEnvPlugin):
 
     name = "py_modules"
 
-    def __init__(
-        self, resources_dir: str, gcs_aio_client: "GcsAioClient"  # noqa: F821
-    ):
+    def __init__(self, resources_dir: str, gcs_aio_client: "GcsAioClient"):
+        self._runtime_env_dir = resources_dir
         self._resources_dir = os.path.join(resources_dir, "py_modules_files")
         self._gcs_aio_client = gcs_aio_client
         try_to_create_directory(self._resources_dir)
@@ -188,9 +189,19 @@ class PyModulesPlugin(RuntimeEnvPlugin):
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ) -> int:
+        if uri.startswith("git://"):
+            git_path_list = uri.split("@")
+            if len(git_path_list) >= 2:
+                if uri.find("$") != -1:
+                    python_path_index = uri.find("$")
+                    uri = uri[:python_path_index]
+        if uri.startswith("gcs://"):
+            if uri.find("$") != -1:
+                python_path_index = uri.find("$")
+                uri = uri[:python_path_index]
 
         module_dir = await download_and_unpack_package(
-            uri, self._resources_dir, self._gcs_aio_client, logger=logger
+            uri, self._resources_dir, self._gcs_aio_client, logger=logger, runtime_env=runtime_env
         )
 
         if is_whl_uri(uri):
@@ -211,6 +222,33 @@ class PyModulesPlugin(RuntimeEnvPlugin):
     ):
         module_dirs = []
         for uri in uris:
+            if uri.startswith("git://"):
+                git_path_list = uri.split("@")
+                added_python_path = ""
+                # mode 1, git;//xxxx/xxx@xxx$xxxx, download pymodules
+                # mdoe 2, git://xxx/xxxx, path from working_dirs (deprecated)
+                if len(git_path_list) >= 2:
+                    if uri.find("$") != -1:
+                        python_path_index = uri.find("$")
+                        added_python_path = "/" + uri[python_path_index + 1:]
+                        uri = uri[:python_path_index]
+                    module_dir = self._get_local_dir_from_uri(uri)
+                    module_dirs.append(str(module_dir) + added_python_path)
+                continue
+            if uri.startswith("gcs://") and uri.find("$") != -1:
+                python_path_index = uri.find("$")
+                added_python_path = "/" + uri[python_path_index + 1:]
+                uri = uri[:python_path_index]
+                module_dir = self._get_local_dir_from_uri(uri)
+                if not module_dir.exists():
+                    raise ValueError(
+                        f"Local directory {module_dir} for URI {uri} does "
+                        "not exist on the cluster. Something may have gone wrong while "
+                        "downloading, unpacking or installing the py_modules files."
+                    )
+                module_dirs.append(str(module_dir) + added_python_path)
+                continue
+
             module_dir = self._get_local_dir_from_uri(uri)
             if not module_dir.exists():
                 raise ValueError(

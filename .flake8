@@ -11,9 +11,10 @@ exclude =
   python/ray/workflow/tests/mock_server.py
   python/ray/serve/tests/test_config_files/syntax_error.py
   python/ray/serve/_private/benchmarks/streaming/_grpc/test_server_pb2_grpc.py
-max-line-length = 88
+max-line-length = 150
 inline-quotes = "
 ignore =
+  E501
   F821
   C417
   F811

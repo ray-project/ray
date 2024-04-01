@@ -26,7 +26,9 @@ def validate_uri(uri: str):
             "(i.e., passed to `ray.init`)."
         )
 
-    if (
+    if protocol is Protocol.GIT:
+        pass
+    elif(
         protocol in Protocol.remote_protocols()
         and not path.endswith(".zip")
         and not path.endswith(".whl")

@@ -1,5 +1,10 @@
 #!/bin/bash
 source .codebase/patch/_codebase_prepare.sh
+
+if [ -z "$CUSTOM_RAY_UPLOAD_TOS" ]; then
+    export CUSTOM_RAY_UPLOAD_TOS=true
+fi
+
 export BAZEL_LIMIT_CPUS=8
 if [[ -n "${CUSTOM_PYTHON_VERSION:-}" ]]; then
     python/build-wheel-manylinux2014.sh ${CUSTOM_PYTHON_VERSION}

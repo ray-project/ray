@@ -51,7 +51,6 @@ from ray.dashboard.modules.job.history_server_storage import (
     append_job_event,
     generate_logagent_url,
 )
-from ray._private.gcs_pubsub import GcsAioPublisher
 from ray._private import ray_constants
 
 
@@ -192,8 +191,6 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         # from it unless `JobAgentSubmissionClient` is no
         # longer available (the corresponding agent process is dead)
         self._agents = dict()
-
-        self.gcs_publisher = GcsAioPublisher(address=self._dashboard_head.gcs_address)
 
     async def choose_agent(
         self, choose_head_node: Optional[bool] = False

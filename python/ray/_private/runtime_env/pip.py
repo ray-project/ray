@@ -134,6 +134,9 @@ class PipProcessor:
         self._pip_config = self._runtime_env.pip_config()
         self._pip_env = os.environ.copy()
         self._pip_env.update(self._runtime_env.env_vars())
+        if "PYTHONPATH" in self._pip_env:
+            # del python path from env to solve bug when install pip exit after git clone
+            del self._pip_env["PYTHONPATH"]
 
     @staticmethod
     def _is_in_virtualenv() -> bool:

@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import Optional
 
 from ray._private import ray_constants
@@ -55,7 +56,7 @@ WORKER = 0
 DRIVER = 1
 
 # Cap messages at 512MB
-_MAX_MESSAGE_LENGTH = 512 * 1024 * 1024
+_MAX_MESSAGE_LENGTH = int(os.getenv("RAY_max_grpc_message_size", 512 * 1024 * 1024))
 # Send keepalive every 60s
 _GRPC_KEEPALIVE_TIME_MS = 60 * 1000
 # Keepalive should be replied < 60s

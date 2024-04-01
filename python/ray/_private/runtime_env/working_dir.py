@@ -56,7 +56,9 @@ def upload_working_dir_if_needed(
         protocol, path = None, None
 
     if protocol is not None:
-        if protocol in Protocol.remote_protocols() and not path.endswith(".zip"):
+        if protocol is Protocol.GIT:
+            pass
+        elif protocol in Protocol.remote_protocols() and not path.endswith(".zip"):
             raise ValueError("Only .zip files supported for remote URIs.")
         return runtime_env
 
@@ -112,8 +114,8 @@ def set_pythonpath_in_context(python_path: str, context: RuntimeEnvContext):
     """
     if "PYTHONPATH" in context.env_vars:
         python_path += os.pathsep + context.env_vars["PYTHONPATH"]
-    if "PYTHONPATH" in os.environ:
-        python_path += os.pathsep + os.environ["PYTHONPATH"]
+    # if "PYTHONPATH" in os.environ:
+    #     python_path += os.pathsep + os.environ["PYTHONPATH"]
     context.env_vars["PYTHONPATH"] = python_path
 
 
@@ -161,7 +163,11 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
         logger: logging.Logger = default_logger,
     ) -> int:
         local_dir = await download_and_unpack_package(
-            uri, self._resources_dir, self._gcs_aio_client, logger=logger
+            uri,
+            self._resources_dir,
+            self._gcs_aio_client,
+            logger=logger,
+            runtime_env=runtime_env,
         )
         return get_directory_size_bytes(local_dir)
 

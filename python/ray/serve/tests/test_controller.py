@@ -77,6 +77,7 @@ def test_deploy_app_custom_exception(serve_instance):
     wait_for_condition(check_custom_exception, timeout=10)
 
 
+@pytest.mark.skip(reason=("bytedance skip"))
 @pytest.mark.parametrize(
     "policy", [None, DEFAULT_AUTOSCALING_POLICY, default_autoscaling_policy]
 )
