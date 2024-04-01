@@ -13,7 +13,6 @@ import pytest
 
 import ray
 from ray.data._internal.block_builder import BlockBuilder
-from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import BlockAccessor, BlockMetadata

@@ -1,15 +1,15 @@
 import inspect
+import logging
 from typing import Any, Dict, Iterable, Optional, Union
 
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
-from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators.one_to_one_operator import AbstractOneToOne
 from ray.data.block import UserDefinedFunction
 from ray.data.context import DEFAULT_BATCH_SIZE
 from ray.data.preprocessor import Preprocessor
 
-logger = DatasetLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class AbstractMap(AbstractOneToOne):
@@ -115,7 +115,7 @@ class AbstractUDFMap(AbstractMap):
                 # callable object.
                 return f"{op_name}({fn.__class__.__name__})"
         except AttributeError as e:
-            logger.get_logger().error("Failed to get name of UDF %s: %s", fn, e)
+            logger.error("Failed to get name of UDF %s: %s", fn, e)
             return "<unknown>"
 
 

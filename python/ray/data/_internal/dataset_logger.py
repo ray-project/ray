@@ -15,10 +15,10 @@ class DatasetLogger:
     After initialization, always use the `get_logger()` method to correctly
     set whether to log to stdout. Example usage:
     ```
-    logger = DatasetLogger(__name__)
+    logger = logging.getLogger(__name__)
     logger.get_logger().info("This logs to file and stdout")
-    logger.get_logger(log_to_stdout=False).info("This logs to file only)
-    logger.get_logger().warning("Can call the usual Logger methods")
+    logger.info("This logs to file only)
+    logger.warning("Can call the usual Logger methods")
     ```
     """
 

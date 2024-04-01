@@ -7,7 +7,6 @@ from unittest.mock import patch
 import pytest
 
 import ray
-from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data.exceptions import SystemException, UserCodeException
 from ray.exceptions import RayTaskError
 from ray.tests.conftest import *  # noqa

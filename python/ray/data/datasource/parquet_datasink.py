@@ -1,7 +1,7 @@
+import logging
 import posixpath
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, Optional
 
-from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import call_with_retry
 from ray.data.block import Block, BlockAccessor
@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 WRITE_FILE_MAX_ATTEMPTS = 10
 WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
 
-logger = DatasetLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class _ParquetDatasink(_FileDatasink):
@@ -77,7 +77,7 @@ class _ParquetDatasink(_FileDatasink):
                         table = BlockAccessor.for_block(block).to_arrow()
                         writer.write_table(table)
 
-        logger.get_logger(log_to_stdout=False).debug(f"Writing {write_path} file.")
+        logger.debug(f"Writing {write_path} file.")
         call_with_retry(
             write_blocks_to_path,
             description=f"write '{write_path}'",

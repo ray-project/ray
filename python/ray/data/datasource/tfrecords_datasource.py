@@ -1,3 +1,4 @@
+import logging
 import struct
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, Iterable, Iterator, List, Optional, Union
@@ -5,7 +6,6 @@ from typing import TYPE_CHECKING, Dict, Iterable, Iterator, List, Optional, Unio
 import numpy as np
 import pyarrow
 
-from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data.aggregate import AggregateFn
 from ray.data.block import Block
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 # Ray will use this parameter by default to read the tf.examples in batches.
 DEFAULT_BATCH_SIZE = 2048
 
-logger = DatasetLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="alpha")
@@ -123,7 +123,7 @@ class TFRecordDatasource(FileBasedDatasource):
                     pyarrow.Table.from_batches([decoder.DecodeBatch(record.numpy())])
                 )
         except Exception as error:
-            logger.get_logger().exception(f"Failed to read TFRecord file {full_path}")
+            logger.exception(f"Failed to read TFRecord file {full_path}")
             exception_thrown = error
 
         # we need to do this hack were we raise an exception outside of the

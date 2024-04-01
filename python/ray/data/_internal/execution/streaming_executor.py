@@ -1,9 +1,9 @@
+import logging
 import threading
 import time
 import uuid
 from typing import Dict, Iterator, List, Optional
 
-from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
 )
@@ -34,7 +34,7 @@ from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats, StatsManager
 from ray.data.context import DataContext
 
-logger = DatasetLogger(__name__)
+logger = logging.getLogger(__name__)
 
 # Force a progress bar update after this many events processed . This avoids the
 # progress bar seeming to stall for very large scale workloads.
@@ -102,18 +102,17 @@ class StreamingExecutor(Executor, threading.Thread):
         self._start_time = time.perf_counter()
 
         if not isinstance(dag, InputDataBuffer):
-            stdout_logger = logger.get_logger()
             log_path = logger.get_datasets_log_path()
             message = "Starting execution of Dataset."
             if log_path is not None:
                 message += f" Full log is in {log_path}"
-            stdout_logger.info(message)
-            stdout_logger.info("Execution plan of Dataset: %s\n", dag)
-            logger.get_logger(log_to_stdout=False).info(
-                "Execution config: %s", self._options
-            )
+            message += f"\nExecution plan of Dataset: {dag}\n"
+            print(message)
+            logger.info(message)
+
+            logger.info("Execution config: %s", self._options)
             if not self._options.verbose_progress:
-                logger.get_logger(log_to_stdout=False).info(
+                logger.info(
                     "Tip: For detailed progress reporting, run "
                     "`ray.data.DataContext.get_current()."
                     "execution_options.verbose_progress = True`"
@@ -171,7 +170,7 @@ class StreamingExecutor(Executor, threading.Thread):
         with self._shutdown_lock:
             if not self._execution_started or self._shutdown:
                 return
-            logger.get_logger(log_to_stdout=False).debug(f"Shutting down {self}.")
+            logger.debug(f"Shutting down {self}.")
             _num_shutdown += 1
             self._shutdown = True
             # Give the scheduling loop some time to finish processing.
@@ -190,9 +189,9 @@ class StreamingExecutor(Executor, threading.Thread):
             stats_summary_string = self._final_stats.to_summary().to_string(
                 include_parent=False
             )
-            logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
-                stats_summary_string,
-            )
+            logger.info(stats_summary_string)
+            if context.enable_auto_log_stats:
+                print(stats_summary_string)
             # Close the progress bars from top to bottom to avoid them jumping
             # around in the console after completion.
             if self._global_info:
@@ -325,7 +324,7 @@ class StreamingExecutor(Executor, threading.Thread):
                     f"Operator {op} completed. "
                     f"Operator Metrics:\n{op._metrics.as_dict()}"
                 )
-                logger.get_logger(log_to_stdout=False).info(log_str)
+                logger.info(log_str)
                 self._has_op_completed[op] = True
 
         # Keep going until all operators run to completion.
@@ -436,13 +435,13 @@ def _debug_dump_topology(topology: Topology, resource_manager: ResourceManager) 
         topology: The topology to debug.
         resource_manager: The resource manager for this topology.
     """
-    logger.get_logger(log_to_stdout=False).info("Execution Progress:")
+    logger.info("Execution Progress:")
     for i, (op, state) in enumerate(topology.items()):
         logger.info(
             f"{i}: {state.summary_str(resource_manager)}, "
             f"Blocks Outputted: {state.num_completed_tasks}/{op.num_outputs_total()}"
         )
-    logger.get_logger(log_to_stdout=False).info("")
+    logger.info("")
 
 
 def _log_op_metrics(topology: Topology) -> None:
@@ -454,4 +453,4 @@ def _log_op_metrics(topology: Topology) -> None:
     log_str = "Operator Metrics:\n"
     for op in topology:
         log_str += f"{op.name}: {op.metrics.as_dict()}\n"
-    logger.get_logger(log_to_stdout=False).info(log_str)
+    logger.info(log_str)
