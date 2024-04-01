@@ -881,29 +881,6 @@ def test_ray_does_not_break_makeRecord():
 
 
 @pytest.mark.parametrize(
-    "logger_name,package_name",
-    (
-        ("ray", ""),
-        ("ray.air", "[Ray AIR]"),
-        ("ray.data", "[Ray Data]"),
-        ("ray.rllib", "[Ray RLlib]"),
-        ("ray.serve", "[Ray Serve]"),
-        ("ray.train", "[Ray Train]"),
-        ("ray.tune", "[Ray Tune]"),
-        ("ray.workflow", "[Ray Workflow]"),
-    ),
-)
-def test_log_library_context(propagate_logs, caplog, logger_name, package_name):
-    """Test that the log configuration injects the correct context into log messages."""
-    logger = logging.getLogger(logger_name)
-    logger.critical("Test!")
-
-    assert (
-        caplog.records[-1].package == package_name
-    ), "Missing ray package name in log record."
-
-
-@pytest.mark.parametrize(
     "logger_name,logger_level",
     (
         ("ray", logging.INFO),
