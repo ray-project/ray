@@ -106,7 +106,7 @@ service ReporterService {
 message StreamLogRequest {
   // File name of the log file
   string log_file_name = 1;
-  // Keeps stream alive perpertually if true, else terminates on EOF
+  // Keeps stream alive perpetually if true, else terminates on EOF
   bool keep_alive = 2;
   // Number of lines to tail from the log file initially
   // -1 indicates to fetch the whole file
