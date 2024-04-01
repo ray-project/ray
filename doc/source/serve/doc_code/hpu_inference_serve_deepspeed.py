@@ -18,7 +18,7 @@ class DeepSpeedInferenceWorker:
         """An actor that runs a DeepSpeed inference engine.
 
         Arguments:
-            model_id_or_path: Either a HuggingFace model ID
+            model_id_or_path: Either a Hugging Face model ID
                 or a path to a cached model.
             world_size: Total number of worker processes.
             local_rank: Rank of this worker process.
@@ -29,7 +29,7 @@ class DeepSpeedInferenceWorker:
             adapt_transformers_to_gaudi,
         )
 
-        # Tweak transformers for better performance on Gaudi
+        # Tweak transformers for better performance on Gaudi.
         adapt_transformers_to_gaudi()
 
         self.model_id_or_path = model_id_or_path
@@ -44,7 +44,7 @@ class DeepSpeedInferenceWorker:
             trust_remote_code=False,
         )
 
-        # Load and configure the tokenizer
+        # Load and configure the tokenizer.
         self.tokenizer = AutoTokenizer.from_pretrained(
             model_id_or_path, use_fast=False, token=""
         )
@@ -54,7 +54,7 @@ class DeepSpeedInferenceWorker:
 
         import habana_frameworks.torch.distributed.hccl as hccl
 
-        # Initialize distributed backend
+        # Initialize the distributed backend.
         hccl.initialize_distributed_hpu(
             world_size=world_size, rank=local_rank, local_rank=local_rank
         )
@@ -70,30 +70,30 @@ class DeepSpeedInferenceWorker:
             write_checkpoints_json,
         )
 
-        # Construct the model with fake meta tensors
-        # It will load the model weights from the checkpoint later
+        # Construct the model with fake meta Tensors.
+        # Loads the model weights from the checkpoint later.
         with deepspeed.OnDevice(dtype=torch.bfloat16, device="meta"):
             model = AutoModelForCausalLM.from_config(
                 self.model_config, torch_dtype=torch.bfloat16
             )
         model = model.eval()
 
-        # Create a file to indicate where the checkpoint is
+        # Create a file to indicate where the checkpoint is.
         checkpoints_json = tempfile.NamedTemporaryFile(suffix=".json", mode="w+")
         write_checkpoints_json(
             self.model_id_or_path, self._local_rank, checkpoints_json, token=""
         )
 
-        # Prepare DeepSpeed inference configuration
+        # Prepare the DeepSpeed inference configuration.
         kwargs = {"dtype": torch.bfloat16}
         kwargs["checkpoint"] = checkpoints_json.name
         kwargs["tensor_parallel"] = {"tp_size": self._world_size}
-        # Enable hpu graph, similar to cuda graph
+        # Enable the HPU graph, similar to the cuda graph.
         kwargs["enable_cuda_graph"] = True
-        # Specify injection policy, required by DeepSpeed tensor parallelism
+        # Specify the injection policy, required by DeepSpeed Tensor parallelism.
         kwargs["injection_policy"] = get_ds_injection_policy(self.model_config)
 
-        # Initialize the inference engine
+        # Initialize the inference engine.
         self.model = deepspeed.init_inference(model, **kwargs).module
 
     def tokenize(self, prompt: str):
@@ -110,7 +110,7 @@ class DeepSpeedInferenceWorker:
         return self.tokenizer.batch_decode(gen_tokens, skip_special_tokens=True)[0]
 
     def streaming_generate(self, prompt: str, streamer, **config: Dict[str, Any]):
-        """Generate streamed response given an input."""
+        """Generate a streamed response given an input."""
 
         input_ids = self.tokenize(prompt)
         self.model.generate(input_ids, streamer=streamer, **config)
@@ -168,7 +168,7 @@ class RayTextIteratorStreamer(TextStreamer):
 # __worker_def_end__
 
 # __deploy_def_start__
-# Required variables for DeepSpeed on HPU
+# Required variables for DeepSpeed on HPU.
 HABANA_ENVS = {
     "PT_HPU_LAZY_ACC_PAR_MODE": "0",
     "PT_HPU_ENABLE_REFINE_DYNAMIC_SHAPES": "0",
@@ -178,7 +178,7 @@ HABANA_ENVS = {
 }
 
 
-# Define the Ray Serve deployment
+# Define the Ray Serve deployment.
 @serve.deployment
 class DeepSpeedLlamaModel:
     def __init__(self, world_size: int, model_id_or_path: str):
@@ -193,11 +193,11 @@ class DeepSpeedLlamaModel:
                 ).remote(model_id_or_path, world_size, i)
             )
 
-        # Load model in all workers
+        # Load the model to all workers.
         for worker in self.deepspeed_workers:
             worker.load_model.remote()
 
-        # Get workers' streamers
+        # Get the workers' streamers.
         self.streamers = ray.get(
             [worker.get_streamer.remote() for worker in self.deepspeed_workers]
         )
@@ -205,7 +205,7 @@ class DeepSpeedLlamaModel:
     def generate(self, prompt: str, **config: Dict[str, Any]):
         """Send the prompt to workers for generation.
 
-        Return after all workers have finished generation.
+        Return after all workers finish the generation.
         Only return the rank 0 worker's result.
         """
 
@@ -246,12 +246,12 @@ class DeepSpeedLlamaModel:
         else:
             prompts.append(text)
 
-        # Process config
+        # Process the configuration.
         config.setdefault("max_new_tokens", 128)
 
-        # Enable HPU graph runtime
+        # Enable HPU graph runtime.
         config["hpu_graphs"] = True
-        # Lazy mode should be True when using HPU graphs
+        # Lazy mode should be True when using HPU graphs.
         config["lazy_mode"] = True
 
         # Non-streaming case
@@ -267,6 +267,6 @@ class DeepSpeedLlamaModel:
         )
 
 
-# Replace the model ID with path if necessary
+# Replace the model ID with a path if necessary.
 entrypoint = DeepSpeedLlamaModel.bind(8, "meta-llama/Llama-2-70b-chat-hf")
 # __deploy_def_end__

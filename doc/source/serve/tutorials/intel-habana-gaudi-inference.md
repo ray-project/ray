@@ -4,33 +4,33 @@ orphan: true
 
 # Serve a model on Intel Habana Gaudi
 
-[Habana Gaudi AI Processors (HPUs)](https://habana.ai) are AI hardware accelerators designed by Habana Labs. For more information, see [Gaudi Architecture](https://docs.habana.ai/en/latest/Gaudi_Overview/index.html) and [Gaudi Developer Docs](https://developer.habana.ai/).
+[Habana Gaudi AI Processors (HPUs)](https://habana.ai) are AI hardware accelerators designed by Habana Labs. See [Gaudi Architecture](https://docs.habana.ai/en/latest/Gaudi_Overview/index.html) and [Gaudi Developer Docs](https://developer.habana.ai/) for more details.
 
-This tutorial walks through two examples:
+This tutorial has two examples:
 
 1. Deployment of [Llama2-7b](https://huggingface.co/meta-llama/Llama-2-7b-chat-hf) using a single HPU:
 
-    * How to load a model onto an HPU
+    * Load a model onto an HPU.
 
-    * How to perform generation on an HPU
+    * Perform generation on an HPU.
 
-    * How to enable HPU Graph optimizations
+    * Enable HPU Graph optimizations.
 
 2. Deployment of [Llama2-70b](https://huggingface.co/meta-llama/Llama-2-70b-chat-hf) using multiple HPUs on a single node:
 
-    * How to initialize a distributed backend
+    * Initialize a distributed backend.
 
-    * How to load a sharded model onto DeepSpeed workers
+    * Load a sharded model onto DeepSpeed workers.
 
-    * How to stream responses from DeepSpeed workers
+    * Stream responses from DeepSpeed workers.
 
-This tutorial helps you serve a large language model on HPUs.
+This tutorial serves a large language model (LLM) on HPUs.
 
 
 
 ## Environment setup
 
-We recommend using a prebuilt container to run these examples. To run a container, you need Docker. See [Install Docker Engine](https://docs.docker.com/engine/install/) for installation instructions.
+Use a prebuilt container to run these examples. To run a container, you need Docker. See [Install Docker Engine](https://docs.docker.com/engine/install/) for installation instructions.
 
 Next, follow [Run Using Containers](https://docs.habana.ai/en/latest/Installation_Guide/Bare_Metal_Fresh_OS.html?highlight=installer#run-using-containers) to install the Habana drivers and container runtime. To verify your installation, start a shell and run `hl-smi`. It should print status information about the HPUs on the machine:
 
@@ -90,9 +90,9 @@ To follow the examples in this tutorial, mount the directory containing the exam
 ```bash
 pip install ray[tune,serve]
 pip install git+https://github.com/huggingface/optimum-habana.git
-# Replace 1.14.0 with the driver version of the container
+# Replace 1.14.0 with the driver version of the container.
 pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.14.0
-# Only needed by the DeepSpeed example
+# Only needed by the DeepSpeed example.
 export RAY_EXPERIMENTAL_NOSET_HABANA_VISIBLE_MODULES=1
 ```
 
@@ -177,7 +177,7 @@ One day, a wicked sorcerer cast a spell on the kingdom, causing all
 
 ## Running a sharded model on multiple HPUs
 
-This example shows how to deploy a Llama2-70b model using 8 HPUs orchestrated by DeepSpeed. 
+This example deploys a Llama2-70b model using 8 HPUs orchestrated by DeepSpeed. 
 
 The example requires caching the Llama2-70b model. Run the following Python code in the Habana container to cache the model. 
 
@@ -185,9 +185,9 @@ The example requires caching the Llama2-70b model. Run the following Python code
 from huggingface_hub import snapshot_download
 snapshot_download(
     "meta-llama/Llama-2-70b-chat-hf",
-    # Replace the path if necessary
+    # Replace the path if necessary.
     cache_dir=os.getenv("TRANSFORMERS_CACHE", None),
-    # Specify your Hugging Face token
+    # Specify your Hugging Face token.
     token=""
 )
 ```
@@ -288,4 +288,4 @@ The path was overgrown with weeds and vines, and it looked as though it hadn't b
 ```
 
 ## Next Steps
-Check out [llm-on-ray](https://github.com/intel/llm-on-ray) for more ways to customize and deploy LLMs at scale.
+See [llm-on-ray](https://github.com/intel/llm-on-ray) for more ways to customize and deploy LLMs at scale.
