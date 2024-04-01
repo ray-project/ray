@@ -994,6 +994,13 @@ def get_gpu_ids() -> Union[List[int], List[str]]:
     """
     worker = global_worker
     worker.check_connected()
+    # respect placement_group_bundle_index if specified.
+    gpu_ids = worker.get_accelerator_ids_for_accelerator_resource(
+        ray_constants.GPU, f"^{ray_constants.GPU}_group_[0-9]+_[0-9A-Za-z]+$"
+    )
+    if len(gpu_ids) != 0:
+        return gpu_ids
+
     return worker.get_accelerator_ids_for_accelerator_resource(
         ray_constants.GPU, f"^{ray_constants.GPU}_group_[0-9A-Za-z]+$"
     )
@@ -2671,9 +2678,9 @@ def get(
                 port=None,
                 patch_stdstreams=False,
                 quiet=None,
-                breakpoint_uuid=debugger_breakpoint.decode()
-                if debugger_breakpoint
-                else None,
+                breakpoint_uuid=(
+                    debugger_breakpoint.decode() if debugger_breakpoint else None
+                ),
                 debugger_external=worker.ray_debugger_external,
             )
             rdb.set_trace(frame=frame)
