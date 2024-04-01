@@ -1,11 +1,12 @@
-import { makeStyles, Paper } from "@material-ui/core";
+import { Paper } from "@mui/material";
+import makeStyles from "@mui/styles/makeStyles";
 import React, { PropsWithChildren, ReactNode } from "react";
 
 const useStyles = makeStyles((theme) => ({
   card: {
     padding: theme.spacing(2),
     paddingTop: theme.spacing(1.5),
-    margin: [theme.spacing(2), theme.spacing(1)].map((e) => `${e}px`).join(" "),
+    margin: theme.spacing(2, 1),
   },
   title: {
     fontSize: theme.typography.fontSize + 2,
@@ -22,7 +23,7 @@ const TitleCard = ({
 }: PropsWithChildren<{ title?: ReactNode | string }>) => {
   const classes = useStyles();
   return (
-    <Paper className={classes.card}>
+    <Paper className={classes.card} elevation={0}>
       {title && <div className={classes.title}>{title}</div>}
       <div className={classes.body}>{children}</div>
     </Paper>

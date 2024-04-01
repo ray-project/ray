@@ -1,8 +1,10 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import React from "react";
-import { MemoryRouter } from "react-router-dom";
 import { ActorDetail } from "../type/actor";
+import { TEST_APP_WRAPPER } from "../util/test-utils";
 import ActorTable from "./ActorTable";
+
 const MOCK_ACTORS: { [actorId: string]: ActorDetail } = {
   ACTOR_1: {
     actorId: "ACTOR_1",
@@ -101,6 +103,10 @@ const MOCK_ACTORS: { [actorId: string]: ActorDetail } = {
     },
   },
 };
+
+// For some reason these tests are really slow, so we need to increase the timeout
+jest.setTimeout(20000);
+
 describe("ActorTable", () => {
   it("renders a table of actors filtered by node ID", async () => {
     const RUNNING_ACTORS = {
@@ -116,32 +122,29 @@ describe("ActorTable", () => {
       },
     };
 
-    const { getByTestId } = render(
-      <MemoryRouter>
-        <ActorTable actors={RUNNING_ACTORS} />
-      </MemoryRouter>,
-    );
-
-    const nodeIdFilter = getByTestId("nodeIdFilter");
-    const input = within(nodeIdFilter).getByRole("textbox");
-    // Filter by node ID of ACTOR_2
-    fireEvent.change(input, {
-      target: {
-        value: "426854e68e4225b3941deaf03c8dcfcb1daacc69a92711d370dbb0e2",
-      },
+    const user = userEvent.setup();
+    render(<ActorTable actors={RUNNING_ACTORS} />, {
+      wrapper: TEST_APP_WRAPPER,
     });
-    await screen.findByText("Actor ID");
+
+    const nodeIdFilter = screen.getByTestId("nodeIdFilter");
+    const input = within(nodeIdFilter).getByRole("combobox");
+
+    // Filter by node ID of ACTOR_2
+    await user.type(
+      input,
+      "426854e68e4225b3941deaf03c8dcfcb1daacc69a92711d370dbb0e2",
+    );
+    await screen.findAllByText("Actor ID");
 
     expect(screen.queryByText("ACTOR_1")).not.toBeInTheDocument();
     expect(screen.queryByText("ACTOR_2")).toBeInTheDocument();
   });
 
   it("renders a table of actors sorted by state", () => {
-    const { getByRole } = render(
-      <MemoryRouter>
-        <ActorTable actors={MOCK_ACTORS} />
-      </MemoryRouter>,
-    );
+    const { getByRole } = render(<ActorTable actors={MOCK_ACTORS} />, {
+      wrapper: TEST_APP_WRAPPER,
+    });
 
     const actor1Row = getByRole("row", {
       name: /ACTOR_1/,
@@ -167,11 +170,9 @@ describe("ActorTable", () => {
       },
     };
 
-    const { getByRole } = render(
-      <MemoryRouter>
-        <ActorTable actors={RUNNING_ACTORS} />
-      </MemoryRouter>,
-    );
+    const { getByRole } = render(<ActorTable actors={RUNNING_ACTORS} />, {
+      wrapper: TEST_APP_WRAPPER,
+    });
     const actor1Row = getByRole("row", {
       name: /ACTOR_1/,
     });
@@ -197,11 +198,9 @@ describe("ActorTable", () => {
       },
     };
 
-    const { getByRole } = render(
-      <MemoryRouter>
-        <ActorTable actors={RUNNING_ACTORS} />
-      </MemoryRouter>,
-    );
+    const { getByRole } = render(<ActorTable actors={RUNNING_ACTORS} />, {
+      wrapper: TEST_APP_WRAPPER,
+    });
     const actor1Row = getByRole("row", {
       name: /ACTOR_1/,
     });
@@ -217,7 +216,7 @@ describe("ActorTable", () => {
     ); // actor1Row appear before actor2Row
   });
 
-  it("renders a table of actors with same state sorted by resource utilization", () => {
+  it("renders a table of actors with same state sorted by resource utilization", async () => {
     /*
     When sorted by
       - CPU: Actor 2 CPU > Actor 1 CPU --> Actor 2 row before Actor 1 row
@@ -300,23 +299,18 @@ describe("ActorTable", () => {
       },
     };
 
-    const { getByRole } = render(
-      <MemoryRouter>
-        <ActorTable actors={RUNNING_ACTORS} />
-      </MemoryRouter>,
-    );
-    const sortByFilter = screen.getByTestId("sortByFilter");
-    const input = within(sortByFilter).getByRole("textbox", { hidden: true });
-    // Sort by CPU utilization
-    fireEvent.change(input, {
-      target: {
-        value: "processStats.cpuPercent",
-      },
+    const user = userEvent.setup();
+    render(<ActorTable actors={RUNNING_ACTORS} />, {
+      wrapper: TEST_APP_WRAPPER,
     });
-    const actor1CPURow = getByRole("row", {
+
+    // Sort by CPU utilization
+    await user.click(screen.getByRole("combobox", { name: /Sort By/ }));
+    await user.click(screen.getByRole("option", { name: /CPU/ }));
+    const actor1CPURow = screen.getByRole("row", {
       name: /ACTOR_1/,
     });
-    const actor2CPURow = getByRole("row", {
+    const actor2CPURow = screen.getByRole("row", {
       name: /ACTOR_2/,
     });
     expect(within(actor1CPURow).getByText("ACTOR_1")).toBeInTheDocument();
@@ -326,15 +320,12 @@ describe("ActorTable", () => {
     ); // actor2Row appear before actor1Row
 
     // Sort by used memory
-    fireEvent.change(input, {
-      target: {
-        value: "processStats.memoryInfo.rss",
-      },
-    });
-    const actor1MemRow = getByRole("row", {
+    await user.click(screen.getByRole("combobox", { name: /Sort By/ }));
+    await user.click(screen.getByRole("option", { name: /Used Memory/ }));
+    const actor1MemRow = screen.getByRole("row", {
       name: /ACTOR_1/,
     });
-    const actor2MemRow = getByRole("row", {
+    const actor2MemRow = screen.getByRole("row", {
       name: /ACTOR_2/,
     });
     expect(within(actor1MemRow).getByText("ACTOR_1")).toBeInTheDocument();
@@ -344,15 +335,12 @@ describe("ActorTable", () => {
     ); // actor1Row appear before actor2Row
 
     // Sort by uptime
-    fireEvent.change(input, {
-      target: {
-        value: "fake_uptime_attr",
-      },
-    });
-    const actor1UptimeRow = getByRole("row", {
+    await user.click(screen.getByRole("combobox", { name: /Sort By/ }));
+    await user.click(screen.getByRole("option", { name: /Uptime/ }));
+    const actor1UptimeRow = screen.getByRole("row", {
       name: /ACTOR_1/,
     });
-    const actor2UptimeRow = getByRole("row", {
+    const actor2UptimeRow = screen.getByRole("row", {
       name: /ACTOR_2/,
     });
     expect(within(actor1UptimeRow).getByText("ACTOR_1")).toBeInTheDocument();
@@ -362,15 +350,12 @@ describe("ActorTable", () => {
     ); // actor2Row appear before actor1Row
 
     // Sort by GPU utilization
-    fireEvent.change(input, {
-      target: {
-        value: "fake_gpu_attr",
-      },
-    });
-    const actor1GPURow = getByRole("row", {
+    await user.click(screen.getByRole("combobox", { name: /Sort By/ }));
+    await user.click(screen.getByRole("option", { name: /GPU Utilization/ }));
+    const actor1GPURow = screen.getByRole("row", {
       name: /ACTOR_1/,
     });
-    const actor2GPURow = getByRole("row", {
+    const actor2GPURow = screen.getByRole("row", {
       name: /ACTOR_2/,
     });
     expect(within(actor1GPURow).getByText("ACTOR_1")).toBeInTheDocument();
@@ -380,15 +365,12 @@ describe("ActorTable", () => {
     ); // actor1Row appear before actor2Row
 
     // Sort by GRAM usage
-    fireEvent.change(input, {
-      target: {
-        value: "fake_gram_attr",
-      },
-    });
-    const actor1GRAMRow = getByRole("row", {
+    await user.click(screen.getByRole("combobox", { name: /Sort By/ }));
+    await user.click(screen.getByRole("option", { name: /GRAM Usage/ }));
+    const actor1GRAMRow = screen.getByRole("row", {
       name: /ACTOR_1/,
     });
-    const actor2GRAMRow = getByRole("row", {
+    const actor2GRAMRow = screen.getByRole("row", {
       name: /ACTOR_2/,
     });
     expect(within(actor1GRAMRow).getByText("ACTOR_1")).toBeInTheDocument();
