@@ -1796,7 +1796,9 @@ cdef void execute_task(
         def function_executor(*arguments, **kwarguments):
             function = execution_info.function
 
-            if core_worker.current_actor_is_asyncio():
+            if not core_worker.current_actor_is_asyncio():
+                return function(actor, *arguments, **kwarguments)
+            else:
                 if len(inspect.getmembers(
                         actor.__class__,
                         predicate=is_async_func)) == 0:
@@ -1852,8 +1854,10 @@ cdef void execute_task(
                                     .deserialize_objects(
                                         metadata_pairs, object_refs))
                         args = core_worker.run_async_func_or_coro_in_event_loop(
-                            deserialize_args, function_descriptor,
-                            name_of_concurrency_group_to_execute)
+                            deserialize_args,
+                            function_descriptor,
+                            name_of_concurrency_group_to_execute,
+                        )
                     else:
                         # Defer task cancellation (SIGINT) until after the task argument
                         # deserialization context has been left.
