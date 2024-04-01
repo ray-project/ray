@@ -11,6 +11,7 @@ import boto3
 from botocore.exceptions import ClientError
 from github import Repository
 
+from ray_release.aws import s3_put_rayci_test_data
 from ray_release.configs.global_config import get_global_config
 from ray_release.result import (
     ResultStatus,
@@ -429,7 +430,7 @@ class Test(dict):
         """
         Persist test result object to s3
         """
-        boto3.client("s3").put_object(
+        s3_put_rayci_test_data(
             Bucket=get_write_state_machine_aws_bucket(),
             Key=f"{AWS_TEST_RESULT_KEY}/"
             f"{self._get_s3_name()}-{int(time.time() * 1000)}.json",
@@ -440,7 +441,7 @@ class Test(dict):
         """
         Persist test object to s3
         """
-        boto3.client("s3").put_object(
+        s3_put_rayci_test_data(
             Bucket=get_write_state_machine_aws_bucket(),
             Key=f"{AWS_TEST_KEY}/{self._get_s3_name()}.json",
             Body=json.dumps(self),

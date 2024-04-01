@@ -64,7 +64,8 @@ def get_write_state_machine_aws_bucket() -> str:
         "Test state machine is only supported for branch or pr pipeline, "
         f"{pipeline_id} is given"
     )
-    # TODO(can): return the pr bucket once that is setup
+    if pipeline_id in PR_PIPELINES:
+        return get_global_config()["state_machine_pr_aws_bucket"]
     return get_global_config()["state_machine_branch_aws_bucket"]
 
 
