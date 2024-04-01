@@ -105,15 +105,15 @@ class TesterContainer(Container):
         return all(exit == 0 for exit in exits)
 
     def _persist_test_results(self, team: str, bazel_log_dir: str) -> None:
-        if (
-            os.environ.get("BUILDKITE_PIPELINE_ID") in BRANCH_PIPELINES
-            and os.environ.get("BUILDKITE_BRANCH") != "master"
-        ):
-            logger.info(
-                "Skip upload test results. "
-                "We only upload the master branch results on a branch pipeline",
-            )
-            return
+        # if (
+        #     os.environ.get("BUILDKITE_PIPELINE_ID") in BRANCH_PIPELINES
+        #     and os.environ.get("BUILDKITE_BRANCH") != "master"
+        # ):
+        #     logger.info(
+        #         "Skip upload test results. "
+        #         "We only upload the master branch results on a branch pipeline",
+        #     )
+        #     return
         self._upload_build_info(bazel_log_dir)
         TesterContainer.upload_test_results(team, bazel_log_dir)
 
