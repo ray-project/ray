@@ -15,7 +15,7 @@ from ray.air.execution.resources import (
 
 from ray.air.execution._internal.tracked_actor import TrackedActor
 from ray.air.execution._internal.tracked_actor_task import TrackedActorTask
-from ray.exceptions import RayTaskError, RayActorError
+from ray.exceptions import RayTaskError, RayActorError, ActorUnavailableError
 
 logger = logging.getLogger(__name__)
 
@@ -269,7 +269,13 @@ class RayActorManager:
         """
         tracked_actor = tracked_actor_task._tracked_actor
 
-        if isinstance(exception, RayActorError):
+        if isinstance(exception, (RayActorError, ActorUnavailableError)):
+            if isinstance(exception, ActorUnavailableError):
+                # The actor *may* be dead, but may also recover. To be safe, we kill the
+                # actor and mark it as failed.
+                # IDEA: we can retry by feeding the task back to the event manager
+                # several times and then give up.
+                ray.kill(exception.actor_id)
             self._failed_actor_ids.add(tracked_actor.actor_id)
 
             # Clean up any references to the actor and its futures
