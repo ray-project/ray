@@ -18,8 +18,8 @@ namespace ray {
 namespace core {
 namespace experimental {
 
-MutableObjectProvider::MutableObjectProvider(std::shared_ptr<plasma::PlasmaClient> plasma,
-                                             const RayletFactory &factory)
+MutableObjectProvider::MutableObjectProvider(
+    std::shared_ptr<plasma::PlasmaClientInterface> plasma, const RayletFactory &factory)
     : plasma_(plasma),
       object_manager_(std::make_unique<ray::experimental::MutableObjectManager>()),
       raylet_client_factory_(factory),
