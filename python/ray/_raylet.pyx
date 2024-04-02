@@ -4708,7 +4708,7 @@ cdef class CoreWorker:
 
     def run_async_func_or_coro_in_event_loop(
           self,
-          func_or_coro: Union[Callable[[Any, Any], Awaitable[Any]], Awaitable],
+          func: Callable[[Any, Any], Any],
           function_descriptor: FunctionDescriptor,
           specified_cgname: str,
           *,
@@ -4721,7 +4721,7 @@ cdef class CoreWorker:
         The event loop is running in a separate thread.
 
         Args:
-            func_or_coro: Async function (not a generator) or awaitable objects.
+            func: Function (not a generator!) that could either be sync or async
             function_descriptor: The function descriptor.
             specified_cgname: The name of a concurrent group.
             task_id: The task ID to track the future. If None is provided
@@ -4752,32 +4752,43 @@ cdef class CoreWorker:
         # transport with max_concurrency flag.
         increase_recursion_limit()
 
-        eventloop, async_thread = self.get_event_loop(
-            function_descriptor, specified_cgname)
+        eventloop, _ = self.get_event_loop(function_descriptor, specified_cgname)
 
-        async def async_func():
+
+        assert not inspect.isawaitable(func), "Either sync or async function is expected (not Awaitable)"
+
+        target_method = getattr(func, "method", func)
+
+        logger.info(f">>> [DBG][{datetime.utcnow()}] (run_async_func_or_coro_in_event_loop) Func: {target_method} {is_async_func(target_method)} {func} (loop: {id(asyncio._get_running_loop())} / {repr(asyncio._get_running_loop())})  (t: {threading.get_ident()})")
+
+        async def _async_function():
+            # TODO elaborate
+            if is_async_func(target_method):
+                async_function = func
+            else:
+                async def async_function(*args, **kwargs):
+                    return await eventloop.run_in_executor(None, func, *args, **kwargs)
+
             try:
                 if task_id:
                     async_task_id.set(task_id)
 
-                if inspect.isawaitable(func_or_coro):
-                    coroutine = func_or_coro
-                else:
-                    coroutine = func_or_coro(*func_args, **func_kwargs)
+                awaitable = async_function(*func_args, **func_kwargs)
 
-                logger.info(f">>> [DBG][{datetime.utcnow()}] (async_func) Awaiting ({task_id}) (loop: {id(asyncio._get_running_loop())} / {repr(asyncio._get_running_loop())})  (t: {threading.get_ident()})")
+                logger.info(f">>> [DBG][{datetime.utcnow()}] (_async_function) Awaiting ({task_id}) (loop: {id(asyncio._get_running_loop())} / {repr(asyncio._get_running_loop())})  (t: {threading.get_ident()})")
 
-                res = await coroutine
+                res = await awaitable
 
-                logger.info(f">>> [DBG][{datetime.utcnow()}] (async_func) Obtained result ({task_id}) (loop: {id(asyncio._get_running_loop())} / {repr(asyncio._get_running_loop())})  (t: {threading.get_ident()})")
+                logger.info(f">>> [DBG][{datetime.utcnow()}] (_async_function) Obtained result: {res} {awaitable} ({task_id}) (loop: {id(asyncio._get_running_loop())} / {repr(asyncio._get_running_loop())})  (t: {threading.get_ident()})")
 
                 return res
             finally:
-                logger.info(f">>> [DBG][{datetime.utcnow()}] (async_func) Notifying ({task_id}) (loop: {id(asyncio._get_running_loop())} / {repr(asyncio._get_running_loop())})  (t: {threading.get_ident()})")
+                logger.info(f">>> [DBG][{datetime.utcnow()}] (_async_function) Notifying ({task_id}) (loop: {id(asyncio._get_running_loop())} / {repr(asyncio._get_running_loop())})  (t: {threading.get_ident()})")
 
                 event.Notify()
 
-        future = asyncio.run_coroutine_threadsafe(async_func(), eventloop)
+        future = asyncio.run_coroutine_threadsafe(_async_function(), eventloop)
+
         if task_id:
             with self._task_id_to_future_lock:
                 self._task_id_to_future[task_id] = future
