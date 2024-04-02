@@ -4,7 +4,7 @@ from tempfile import TemporaryDirectory
 
 import pytest
 
-from release.ray_release.configs.global_config import (
+from ray_release.configs.global_config import (
     init_global_config,
     get_global_config,
 )
