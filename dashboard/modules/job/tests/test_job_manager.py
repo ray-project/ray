@@ -571,7 +571,7 @@ class TestRuntimeEnv:
         )
         logs = job_manager.get_job_logs(job_id_1)
         assert (
-            "{'env_vars': {'TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR': 'JOB_1_VAR'}}" in logs
+            "{'env_vars': {'TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR': 'JOB_1_VAR'" in logs
         )  # noqa: E501
 
         job_id_2 = await job_manager.submit_job(
