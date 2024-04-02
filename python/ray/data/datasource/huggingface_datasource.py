@@ -1,4 +1,3 @@
-import logging
 import sys
 from typing import TYPE_CHECKING, Iterable, List, Optional, Union
 
@@ -7,8 +6,6 @@ from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.dataset import Dataset
 from ray.data.datasource import Datasource, ReadTask
 from ray.util.annotations import DeveloperAPI
-
-logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     import datasets

@@ -21,6 +21,7 @@ from ray.data.datasource import (
     RowBasedFileDatasink,
 )
 from ray.data.iterator import DataIterator, DatasetIterator
+from ray.data.logging import configure_logging
 from ray.data.preprocessor import Preprocessor
 from ray.data.read_api import (  # noqa: F401
     from_arrow,
@@ -62,6 +63,7 @@ from ray.data.read_api import (  # noqa: F401
 _cached_fn = None
 _cached_cls = None
 
+configure_logging()
 
 try:
     import pyarrow as pa

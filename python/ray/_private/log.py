@@ -71,6 +71,21 @@ class ContextFilter(logging.Filter):
         return True
 
 
+class RayDataFilter(logging.Filter):
+    """Filters out info and debug messages from Ray Data.
+
+    This prevents Ray Data from spamming users with info and debug messages.
+    """
+
+    logger_regex = re.compile(r"ray(\.(?P<subpackage>\w+))?(\..*)?")
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        match = self.logger_regex.search(record.name)
+        if match["subpackage"] == "data" and record.levelno < logging.WARNING:
+            return False
+        return True
+
+
 class PlainRayHandler(logging.StreamHandler):
     """A plain log handler.
 
@@ -125,12 +140,15 @@ def generate_logging_config():
                 ),
             },
         }
-        filters = {"context_filter": {"()": ContextFilter}}
+        filters = {
+            "context_filter": {"()": ContextFilter},
+            "ray_data_filter": {"()": RayDataFilter},
+        }
         handlers = {
             "default": {
                 "()": PlainRayHandler,
                 "formatter": "plain",
-                "filters": ["context_filter"],
+                "filters": ["context_filter", "ray_data_filter"],
             }
         }
 

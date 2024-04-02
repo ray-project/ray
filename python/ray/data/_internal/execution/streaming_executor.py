@@ -33,6 +33,7 @@ from ray.data._internal.execution.streaming_executor_state import (
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats, StatsManager
 from ray.data.context import DataContext
+from ray.data.logging import get_log_path
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +103,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self._start_time = time.perf_counter()
 
         if not isinstance(dag, InputDataBuffer):
-            log_path = logger.get_datasets_log_path()
+            log_path = get_log_path()
             message = "Starting execution of Dataset."
             if log_path is not None:
                 message += f" Full log is in {log_path}"

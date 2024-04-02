@@ -6,8 +6,6 @@ import numpy as np
 from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
 from ray.data._internal.util import _truncated_repr
 
-logger = logging.getLogger(__name__)
-
 
 def is_array_like(value: Any) -> bool:
     """Checks whether objects are array-like, excluding numpy scalars."""
