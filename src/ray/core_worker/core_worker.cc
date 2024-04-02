@@ -384,7 +384,10 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
             "CoreWorker.HandleException");
       }));
 
-  experimental_mutable_object_manager_.reset(new ExperimentalMutableObjectManager());
+#if defined(__APPLE__) || defined(__linux__)
+  experimental_mutable_object_manager_ =
+      std::make_shared<experimental::MutableObjectManager>();
+#endif
 
   auto push_error_callback = [this](const JobID &job_id,
                                     const std::string &type,
@@ -1374,7 +1377,7 @@ Status CoreWorker::ExperimentalChannelWriteAcquire(
     int64_t num_readers,
     std::shared_ptr<Buffer> *data) {
   return experimental_mutable_object_manager_->WriteAcquire(
-      object_id, data_size, metadata->Data(), metadata->Size(), num_readers, data);
+      object_id, data_size, metadata->Data(), metadata->Size(), num_readers, *data);
 }
 
 Status CoreWorker::ExperimentalChannelWriteRelease(const ObjectID &object_id) {
@@ -1499,7 +1502,7 @@ Status CoreWorker::GetExperimentalMutableObjects(
     const std::vector<ObjectID> &ids, std::vector<std::shared_ptr<RayObject>> *results) {
   for (size_t i = 0; i < ids.size(); i++) {
     RAY_RETURN_NOT_OK(
-        experimental_mutable_object_manager_->ReadAcquire(ids[i], &(*results)[i]));
+        experimental_mutable_object_manager_->ReadAcquire(ids[i], (*results)[i]));
   }
   return Status::OK();
 }

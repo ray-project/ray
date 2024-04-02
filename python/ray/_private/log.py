@@ -1,5 +1,4 @@
 import logging
-import re
 from logging.config import dictConfig
 import threading
 from typing import Union
@@ -26,49 +25,6 @@ def clear_logger(logger: Union[str, logging.Logger]):
         logger = logging.getLogger(logger)
     logger.propagate = True
     logger.handlers.clear()
-
-
-class ContextFilter(logging.Filter):
-    """A filter that adds ray context info to log records.
-
-    This filter adds a package name to append to the message as well as information
-    about what worker emitted the message, if applicable.
-    """
-
-    logger_regex = re.compile(r"ray(\.(?P<subpackage>\w+))?(\..*)?")
-    package_message_names = {
-        "air": "AIR",
-        "data": "Data",
-        "rllib": "RLlib",
-        "serve": "Serve",
-        "train": "Train",
-        "tune": "Tune",
-        "workflow": "Workflow",
-    }
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        """Add context information to the log record.
-
-        This filter adds a package name from where the message was generated as
-        well as the worker IP address, if applicable.
-
-        Args:
-            record: Record to be filtered
-
-        Returns:
-            True if the record is to be logged, False otherwise. (This filter only
-            adds context, so records are always logged.)
-        """
-        match = self.logger_regex.search(record.name)
-        if match and match["subpackage"] in self.package_message_names:
-            record.package = f"[Ray {self.package_message_names[match['subpackage']]}]"
-        else:
-            record.package = ""
-
-        return True
 
 
 class PlainRayHandler(logging.StreamHandler):
@@ -125,12 +81,11 @@ def generate_logging_config():
                 ),
             },
         }
-        filters = {"context_filter": {"()": ContextFilter}}
+
         handlers = {
             "default": {
                 "()": PlainRayHandler,
                 "formatter": "plain",
-                "filters": ["context_filter"],
             }
         }
 
@@ -155,7 +110,6 @@ def generate_logging_config():
             {
                 "version": 1,
                 "formatters": formatters,
-                "filters": filters,
                 "handlers": handlers,
                 "loggers": loggers,
                 "disable_existing_loggers": False,

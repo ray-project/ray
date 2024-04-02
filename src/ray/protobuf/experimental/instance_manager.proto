@@ -51,7 +51,7 @@ message Instance {
   // Represents the state of a launched instance.
   // See
   // https://docs.google.com/document/d/1NzQjA8Mh-oMc-QxXOa529oneWCoA8sDiVoNkBqqDb4U/edit#heading=h.k9a1sp4qpqj4
-  // for lifecyle of an instance.
+  // for lifecycle of an instance.
   enum InstanceStatus {
     // The unspecified state
     UNKNOWN = 0;
@@ -72,7 +72,7 @@ message Instance {
     RAY_STOPPING = 7;
     // Ray stopped - follows from the RAY_STOPPING/RAY_RUNNING state.
     RAY_STOPPED = 8;
-    // The instance is terminatng - follows from the RAY_STOPPED state.
+    // The instance is terminating - follows from the RAY_STOPPED state.
     TERMINATING = 9;
     // The instance is terminated - follows from TERMINATING state or any other running
     // states when instance was preempted.
@@ -143,7 +143,7 @@ message InstanceUpdateEvent {
   // doesn't exist, if false, the instance must exist or the update will fail.
   bool upsert = 4;
 
-  /// Additional metdata for the update event.
+  /// Additional metadata for the update event.
 
   // The instance type for QUEUED/REQUESTED/ALLOCATED event.
   optional string instance_type = 5;

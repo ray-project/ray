@@ -1,17 +1,17 @@
+import { SearchOutlined } from "@mui/icons-material";
 import {
   Button,
   Chip,
   Grid,
   InputAdornment,
   LinearProgress,
-  makeStyles,
   TextField,
   TextFieldProps,
   Tooltip,
-} from "@material-ui/core";
-import { SearchOutlined } from "@material-ui/icons";
-import Autocomplete from "@material-ui/lab/Autocomplete";
-import Pagination from "@material-ui/lab/Pagination";
+} from "@mui/material";
+import Autocomplete from "@mui/material/Autocomplete";
+import Pagination from "@mui/material/Pagination";
+import makeStyles from "@mui/styles/makeStyles";
 import dayjs from "dayjs";
 import React, { useContext, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
@@ -43,8 +43,6 @@ const useStyles = makeStyles((theme) => ({
     margin: theme.spacing(1),
     display: "inline-block",
     fontSize: 12,
-    lineHeight: "46px",
-    height: 56,
   },
   infokv: {
     margin: theme.spacing(1),
@@ -231,16 +229,25 @@ const EventTable = (props: EventTableProps) => {
           }}
         />
         <TextField
-          className={classes.search}
           label="Page Size"
+          sx={{ margin: 1, width: 120 }}
+          size="small"
+          defaultValue={10}
           InputProps={{
             onChange: ({ target: { value } }) => {
               changePage("pageSize", Math.min(Number(value), 500) || 10);
             },
-            value: pagination.pageSize,
+            endAdornment: (
+              <InputAdornment position="end">Per Page</InputAdornment>
+            ),
           }}
         />
-        <Button className={classes.search} onClick={() => reverseEvents()}>
+        <Button
+          className={classes.search}
+          size="small"
+          variant="contained"
+          onClick={() => reverseEvents()}
+        >
           Reverse
         </Button>
       </div>
@@ -291,7 +298,6 @@ const EventTable = (props: EventTableProps) => {
                       {customFields && (
                         <Grid item>
                           <Tooltip
-                            interactive
                             title={
                               <pre style={{ whiteSpace: "pre-wrap" }}>
                                 {JSON.stringify(customFields, null, 2)}

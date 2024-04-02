@@ -1,4 +1,5 @@
-import { createStyles, makeStyles } from "@material-ui/core";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import classNames from "classnames";
 import React from "react";
 import { RiCloseCircleFill, RiRecordCircleFill } from "react-icons/ri";

@@ -1,6 +1,11 @@
+import io
 import os
+import time
+import sys
+import requests
 from copy import deepcopy
 from typing import Optional
+from aws_requests_auth.boto_utils import BotoAWSRequestsAuth
 
 import boto3
 from botocore.exceptions import ClientError
@@ -26,6 +31,9 @@ RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING = [
     "instance",
     "volume",
 ]
+
+S3_PRESIGNED_CACHE = None
+S3_PRESIGNED_KEY = "rayci_result_bucket"
 
 
 def get_secret_token(secret_id: str) -> str:
@@ -107,3 +115,59 @@ def upload_to_s3(src_path: str, bucket: str, key_path: str) -> Optional[str]:
         return None
 
     return f"https://{bucket}.s3.us-west-2.amazonaws.com/{key_path}"
+
+
+def _retry(f):
+    def inner():
+        resp = None
+        for _ in range(5):
+            resp = f()
+            print("Getting Presigned URL, status_code", resp.status_code)
+            if resp.status_code >= 500:
+                print("errored, retrying...")
+                print(resp.text)
+                time.sleep(5)
+            else:
+                return resp
+        if resp is None or resp.status_code >= 500:
+            print("still errorred after many retries")
+            sys.exit(1)
+
+    return inner
+
+
+@_retry
+def _get_s3_rayci_test_data_presigned():
+    global S3_PRESIGNED_CACHE
+    if not S3_PRESIGNED_CACHE:
+        auth = BotoAWSRequestsAuth(
+            aws_host="vop4ss7n22.execute-api.us-west-2.amazonaws.com",
+            aws_region="us-west-2",
+            aws_service="execute-api",
+        )
+        S3_PRESIGNED_CACHE = requests.get(
+            "https://vop4ss7n22.execute-api.us-west-2.amazonaws.com/endpoint/",
+            auth=auth,
+            params={"job_id": os.environ["BUILDKITE_JOB_ID"]},
+        )
+    return S3_PRESIGNED_CACHE
+
+
+def s3_put_rayci_test_data(Bucket: str, Key: str, Body: str):
+    try:
+        boto3.client("s3").put_object(
+            Bucket=Bucket,
+            Key=Key,
+            Body=Body,
+        )
+    except ClientError:
+        # or use presigned URL
+        resp = _get_s3_rayci_test_data_presigned().json()[S3_PRESIGNED_KEY]
+        data = resp["fields"]
+        data.update(
+            {
+                "key": Key,
+                "file": io.StringIO(Body),
+            }
+        )
+        requests.post(resp["url"], files=data)

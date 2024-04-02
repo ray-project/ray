@@ -1,8 +1,7 @@
 import {
+  Autocomplete,
   Box,
-  createStyles,
-  InputAdornment,
-  makeStyles,
+  Pagination,
   Table,
   TableBody,
   TableCell,
@@ -12,8 +11,9 @@ import {
   TextField,
   TextFieldProps,
   Typography,
-} from "@material-ui/core";
-import { Autocomplete, Pagination } from "@material-ui/lab";
+} from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import React, { ReactElement } from "react";
 import { Outlet, useParams } from "react-router-dom";
 import { CodeDialogButton } from "../../common/CodeDialogButton";
@@ -200,9 +200,6 @@ export const ServeApplicationDetailPage = () => {
                 onChange: ({ target: { value } }) => {
                   setPage("pageSize", Math.min(Number(value), 500) || 10);
                 },
-                endAdornment: (
-                  <InputAdornment position="end">Per Page</InputAdornment>
-                ),
               }}
             />
           </div>

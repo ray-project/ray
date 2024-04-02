@@ -137,6 +137,10 @@ attrs==23.1.0 \
     # via
     #   aiohttp
     #   jsonschema
+aws-requests-auth==0.4.3 \
+    --hash=sha256:33593372018b960a31dbbe236f89421678b885c35f0b6a7abfae35bb77e069b2 \
+    --hash=sha256:646bc37d62140ea1c709d20148f5d43197e6bd2d63909eb36fa4bb2345759977
+    # via -r release/requirements_buildkite.in
 bazel-runfiles==0.21.0 \
     --hash=sha256:3e430dd9a5aba90a90bc2493fdcfce02a3ece47fb574db0f4ac898261e6b068d
     # via -r release/requirements_buildkite.in
@@ -355,6 +359,10 @@ deprecated==1.2.13 \
     --hash=sha256:43ac5335da90c31c24ba028af536a91d41d53f9e6901ddb021bcc572ce44e38d \
     --hash=sha256:64756e3e14c8c5eea9795d93c524551432a0be75629f8f29e67ab8caf076c76d
     # via pygithub
+docker==7.0.0 \
+    --hash=sha256:12ba681f2777a0ad28ffbcc846a69c31b4dfd9752b47eb425a274ee269c5e14b \
+    --hash=sha256:323736fb92cd9418fc5e7133bc953e11a9da04f4483f828b527db553f1e7e5a3
+    # via -r release/requirements_buildkite.in
 docutils==0.20.1 \
     --hash=sha256:96f387a2c5562db4476f09f13bbab2192e764cac08ebbf3a34a95d9b1e4a59d6 \
     --hash=sha256:f08a4e276c3a1583a86dce3e34aba3fe04d02bba2dd51ed16106244e8a923e3b
@@ -794,6 +802,7 @@ packaging==23.1 \
     --hash=sha256:a392980d2b6cffa644431898be54b0045151319d1e7ec34f0cfed48767dd334f
     # via
     #   anyscale
+    #   docker
     #   pytest
 pathspec==0.11.1 \
     --hash=sha256:2798de800fa92780e33acca925945e9a19a133b715067cf165b8866c15a31687 \
@@ -1013,6 +1022,8 @@ requests==2.31.0 \
     # via
     #   -r release/requirements_buildkite.in
     #   anyscale
+    #   aws-requests-auth
+    #   docker
     #   google-api-core
     #   google-cloud-storage
     #   pybuildkite
@@ -1110,6 +1121,7 @@ urllib3==1.26.16 \
     # via
     #   anyscale
     #   botocore
+    #   docker
     #   requests
     #   twine
 wrapt==1.15.0 \

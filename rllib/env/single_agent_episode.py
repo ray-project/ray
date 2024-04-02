@@ -791,7 +791,7 @@ class SingleAgentEpisode:
                 neg_indices_left_of_zero=True,  # -1 means one left of ts=0
                 fill=0.0,
                 one_hot_discrete=True,
-            ), [0, 0, 0, 0])  <- all 0s one-hot tensor (note difference to [1 0 0 0]!)
+            ), [0, 0, 0, 0])  # <- all 0s one-hot tensor (note difference to [1 0 0 0]!)
 
         Returns:
             The collected observations.

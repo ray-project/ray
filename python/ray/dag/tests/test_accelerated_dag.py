@@ -20,8 +20,8 @@ from ray._private.utils import (
 
 logger = logging.getLogger(__name__)
 
-if sys.platform != "linux":
-    pytest.skip("Skipping, requires Linux.", allow_module_level=True)
+if sys.platform != "linux" and sys.platform != "darwin":
+    pytest.skip("Skipping, requires Linux or Mac.", allow_module_level=True)
 
 
 @ray.remote
@@ -253,7 +253,7 @@ def test_dag_fault_tolerance_sys_exit(ray_start_regular_shared):
         assert results == [i + 1] * 4
         output_channels.end_read()
 
-    with pytest.raises(RaySystemError, match="channel closed"):
+    with pytest.raises(RaySystemError, match="Channel closed."):
         for i in range(99):
             output_channels = compiled_dag.execute(1)
             output_channels.begin_read()

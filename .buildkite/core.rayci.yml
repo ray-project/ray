@@ -183,22 +183,6 @@ steps:
       - corebuild
       - forge
 
-  - label: ":ray: core: wheel-aarch64 tests"
-    tags: linux_wheels
-    instance_type: medium-arm64
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //doc/... core 
-        --build-type wheel-aarch64
-        --build-name oss-ci-base_build-aarch64
-        --parallelism-per-worker 3
-        --only-tags post_wheel_build
-        --test-env=RAY_CI_POST_WHEEL_TESTS=True
-    depends_on: 
-      - manylinux-aarch64
-      - oss-ci-base_build-aarch64
-      - forge-aarch64
-    job_env: forge-aarch64
-
   - label: ":ray: core: minimal tests {{matrix}}"
     tags:
       - python
@@ -287,13 +271,6 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //... core 
         --run-flaky-tests  --build-type clang
-      - bazel run //ci/ray_ci:test_in_docker -- 
-        //python/ray/tests:test_placement_group
-        //python/ray/tests:test_runtime_env_working_dir_3 
-        //python/ray/tests:test_state_api_log
-        //python/ray/tests:test_object_assign_owner_client_mode core 
-        --test-env CI_SKIP_FLAKY_TEST=0
-        --skip-ray-installation
 
   - label: ":ray: core: cpp worker tests"
     tags: core_cpp
