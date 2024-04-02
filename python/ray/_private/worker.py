@@ -2351,10 +2351,6 @@ def connect(
         # (3) it's not in dashboard (should only skip script location but still append
         #   current directory),
         # (4) it's not client mode, (handled by client code)
-        # (5) the driver is at the same node (machine) as the worker.
-        #
-        # We only do the first 4 checks here. The (5) check is done in _raylet.pyx
-        # maybe_initialize_job_config.
         if not any(
             [
                 job_config._runtime_env_has_working_dir(),
