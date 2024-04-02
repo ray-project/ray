@@ -63,6 +63,7 @@ def enable_periodic_logging():
     _periodic_log = True
 
 
+@DeveloperAPI
 def reset_log_once(key: Optional[str] = None):
     """Resets log_once for the provided key.
 
