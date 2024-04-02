@@ -279,7 +279,7 @@ class RuntimeEnvAgent:
         job_id = job_id.decode()
         if job_id not in self._per_job_logger_cache:
             params = self._logging_params.copy()
-            params["filenames"] = [f"runtime_env_setup-{job_id}.log", *log_files]
+            params["filename"] = [f"runtime_env_setup-{job_id}.log", *log_files]
             params["logger_name"] = f"runtime_env_{job_id}"
             params["propagate"] = False
             per_job_logger = setup_component_logger(**params)

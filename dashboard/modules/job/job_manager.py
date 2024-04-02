@@ -226,7 +226,9 @@ class JobSupervisor:
             child_process: Child process that runs the driver command. Can be
                 terminated or killed upon user calling stop().
         """
-        with open(logs_path, "w") as logs_file:
+        # Open in append mode to avoid overwriting runtime_env setup logs for the
+        # supervisor actor, which are also written to the same file.
+        with open(logs_path, "a") as logs_file:
             child_process = subprocess.Popen(
                 self._entrypoint,
                 shell=True,
@@ -812,6 +814,7 @@ class JobManager:
 
         config = runtime_env.get("config", RuntimeEnvConfig())
         config["log_files"] = [self._log_client.get_log_file_path(submission_id)]
+        runtime_env["config"] = config
         return runtime_env
 
     async def _get_scheduling_strategy(

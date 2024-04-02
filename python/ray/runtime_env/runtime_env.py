@@ -75,7 +75,10 @@ class RuntimeEnvConfig(dict):
         # Typecheck log_files
         if log_files is not None:
             if not isinstance(log_files, list):
-                raise TypeError("log_files must be a list of strings or None.")
+                raise TypeError(
+                    "log_files must be a list of strings or None, got "
+                    f"{log_files} with type {type(log_files)}."
+                )
             for file_name in log_files:
                 if not isinstance(file_name, str):
                     raise TypeError("Each item in log_files must be a string.")
@@ -116,7 +119,8 @@ class RuntimeEnvConfig(dict):
         runtime_env_config = ProtoRuntimeEnvConfig()
         runtime_env_config.setup_timeout_seconds = self["setup_timeout_seconds"]
         runtime_env_config.eager_install = self["eager_install"]
-        runtime_env_config.log_files = self["log_files"] or []
+        if self["log_files"] is not None:
+            runtime_env_config.log_files.extend(self["log_files"])
         return runtime_env_config
 
     @classmethod
@@ -132,7 +136,7 @@ class RuntimeEnvConfig(dict):
         return cls(
             setup_timeout_seconds=setup_timeout_seconds,
             eager_install=runtime_env_config.eager_install,
-            log_files=runtime_env_config.log_files,
+            log_files=list(runtime_env_config.log_files),
         )
 
     def to_dict(self) -> Dict:

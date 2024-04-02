@@ -35,7 +35,7 @@ def setup_component_logger(
     logging_level,
     logging_format,
     log_dir,
-    filenames: Union[str, Iterable[str]],
+    filename: Union[str, Iterable[str]],
     max_bytes,
     backup_count,
     logger_name=None,
@@ -58,7 +58,7 @@ def setup_component_logger(
         logging_format: Logging format string.
         log_dir: Log directory path. If empty, logs will go to
             stderr.
-        filenames: A single filename or an iterable of filenames to write logs to.
+        filename: A single filename or an iterable of filenames to write logs to.
             If empty, logs will go to stderr.
         max_bytes: Same argument as RotatingFileHandler's maxBytes.
         backup_count: Same argument as RotatingFileHandler's backupCount.
@@ -75,8 +75,7 @@ def setup_component_logger(
         logging_level = logging.getLevelName(logging_level.upper())
     logger.setLevel(logging_level)
 
-    if not isinstance(filenames, Iterable) or isinstance(filenames, str):
-        filenames = [filenames]
+    filenames = [filename] if isinstance(filename, str) else filename
 
     for filename in filenames:
         if not filename or not log_dir:
