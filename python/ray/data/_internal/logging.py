@@ -1,13 +1,14 @@
 import logging
+import logging.config
 import os
 from typing import Optional
+
+import yaml
 
 import ray
 from ray._private.ray_constants import LOGGER_FORMAT
 
-_default_log_handler: logging.Handler = None
-
-DEFAULT_DATASET_LOG_FILENAME = "ray-data.log"
+CONFIG_FILENAME = "logging.yaml"
 
 
 class LogHandler(logging.Handler):
@@ -26,39 +27,32 @@ class LogHandler(logging.Handler):
             self._handler.emit(record)
 
     def setFormatter(self, fmt: logging.Formatter) -> None:
+        if self._handler is not None:
+            self._handler.setFormatter(fmt)
         self._formatter = fmt
 
     def _initialize_handler(self):
-        global_node = ray._private.worker._global_node
-        if global_node is None:
-            self._handler = None
-        else:
-            session_dir = global_node.get_session_dir_path()
-            self._path = os.path.join(session_dir, "logs", self._filename)
+        log_dir = get_log_directory()
+        if log_dir is not None:
+            self._path = os.path.join(log_dir, self._filename)
             self._handler = logging.FileHandler(self._path)
             if self._formatter is not None:
                 self._handler.setFormatter(self._formatter)
         self._initialized = True
 
-    @property
-    def path(self) -> Optional[str]:
-        return self._path
-
 
 def configure_logging():
-    global _default_log_handler
-    assert _default_log_handler is None, "Logging already configured."
-
-    logger = logging.getLogger("ray.data")
-    logger.setLevel(logging.INFO)
-
-    formatter = logging.Formatter(fmt=LOGGER_FORMAT)
-    log_handler = LogHandler(DEFAULT_DATASET_LOG_FILENAME)
-    log_handler.setFormatter(formatter)
-    logger.addHandler(log_handler)
-
-    _default_log_handler = log_handler
+    with open(
+        os.abspath(os.path.join(os.path.dirname(__file__), CONFIG_FILENAME))
+    ) as file:
+        config = yaml.safe_load(file)
+    logging.config.dictConfig(config)
 
 
-def get_log_path() -> Optional[str]:
-    return _default_log_handler.path
+def get_log_directory() -> Optional[str]:
+    global_node = ray._private.worker._global_node
+    if global_node is None:
+        return None
+
+    session_dir = global_node.get_session_dir_path()
+    return os.path.join(session_dir, "logs")

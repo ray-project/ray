@@ -30,7 +30,7 @@ from ray.data._internal.execution.streaming_executor_state import (
     select_operator_to_run,
     update_operator_states,
 )
-from ray.data._internal.logging import get_log_path
+from ray.data._internal.logging import get_log_directory
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats, StatsManager
 from ray.data.context import DataContext
@@ -103,10 +103,10 @@ class StreamingExecutor(Executor, threading.Thread):
         self._start_time = time.perf_counter()
 
         if not isinstance(dag, InputDataBuffer):
-            log_path = get_log_path()
+            log_path = get_log_directory()
             message = "Starting execution of Dataset."
             if log_path is not None:
-                message += f" Full log is in {log_path}"
+                message += f" Full logs are in {log_path}"
             message += f"\nExecution plan of Dataset: {dag}"
             logger.info(message)
 

@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 
 import ray
-from ray.data._internal.logging import DEFAULT_DATASET_LOG_FILENAME, get_log_path
+from ray.data._internal.logging import get_log_directory
 from ray.data.exceptions import SystemException, UserCodeException
 from ray.exceptions import RayTaskError
 from ray.tests.conftest import *  # noqa
@@ -21,7 +21,7 @@ def test_dataset_logger(shutdown_only):
 
     # Read from log file, and parse each component of emitted log row
     session_dir = ray._private.worker._global_node.get_session_dir_path()
-    log_file_path = os.path.join(session_dir, "logs", DEFAULT_DATASET_LOG_FILENAME)
+    log_file_path = os.path.join(get_log_directory(), "ray_data.log")
     with open(log_file_path, "r") as f:
         raw_logged_msg = f.read()
     (
@@ -49,7 +49,7 @@ def test_dataset_logger(shutdown_only):
 def check_full_stack_trace_logged_to_file():
     # Checks that the prefix text for the full stack trace is present
     # in the Ray Data log file.
-    log_path = get_log_path()
+    log_path = os.path.join(get_log_directory(), "ray_data.log")
     with open(log_path, "r") as file:
         data = file.read()
         assert "Full stack trace:" in data

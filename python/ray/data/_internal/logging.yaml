@@ -1,0 +1,18 @@
+version: 1
+disable_existing_loggers: False
+
+formatters:
+    ray:
+        format: '%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s'
+
+handlers:
+    file:
+        class: ray.data._internal.logging.LogHandler
+        level: INFO
+        formatter: ray
+        filename: ray-data.log
+
+loggers:
+    ray.data:
+        level: INFO
+        handlers: [file]
