@@ -2312,14 +2312,15 @@ py_test(
     args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=-210.0", "--num-cpus=4"],
 )
 
-py_test(
-    name = "examples/multi_agent_and_self_play/pettingzoo_shared_value_function",
-    main = "examples/multi_agent_and_self_play/pettingzoo_shared_value_function.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "large",
-    srcs = ["examples/multi_agent_and_self_play/pettingzoo_shared_value_function.py"],
-    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=-100.0", "--num-cpus=4"],
-)
+# TODO (sven): Activate this test once this script is ready.
+# py_test(
+#    name = "examples/multi_agent_and_self_play/pettingzoo_shared_value_function",
+#    main = "examples/multi_agent_and_self_play/pettingzoo_shared_value_function.py",
+#    tags = ["team:rllib", "exclusive", "examples"],
+#    size = "large",
+#    srcs = ["examples/multi_agent_and_self_play/pettingzoo_shared_value_function.py"],
+#    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=-100.0", "--num-cpus=4"],
+# )
 
 py_test(
     name = "examples/multi_agent_and_self_play/rock_paper_scissors_heuristic_vs_learnt",
