@@ -2768,7 +2768,7 @@ class AlgorithmConfig(_Config):
             deprecation_warning(
                 old="AlgorithmConfig.rl_module(_enable_rl_module_api=True|False)",
                 new="AlgorithmConfig.experimental(_enable_new_api_stack=True|False)",
-                error=True,
+                error=False,
             )
         return self
 
