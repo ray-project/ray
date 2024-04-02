@@ -30,7 +30,20 @@ To understand the following content better, you should understand the difference
   * `rayClusterSpec` - Defines the **RayCluster** custom resource to run the Ray job on.
 * Ray job configuration
   * `entrypoint` - The submitter runs `ray job submit --address ... --submission-id ... -- $entrypoint` to submit a Ray job to the RayCluster.
-  * `runtimeEnvYAML` (Optional): A runtime environment that describes the dependencies the Ray job needs to run, including files, packages, environment variables, and more. Provide the configuration as a multi-line YAML string. See {ref}`Runtime Environments <runtime-environments>` for more details. _(New in KubeRay version 1.0.0)_
+  * `runtimeEnvYAML` (Optional): A runtime environment that describes the dependencies the Ray job needs to run, including files, packages, environment variables, and more. Provide the configuration as a multi-line YAML string.
+  Example:
+
+    ```yaml
+    spec:
+      runtimeEnvYAML: |
+        pip:
+          - requests==2.26.0
+          - pendulum==2.1.2
+        env_vars:
+          KEY: "VALUE"
+    ```
+
+  See {ref}`Runtime Environments <runtime-environments>` for more details. _(New in KubeRay version 1.0.0)_
   * `jobId` (Optional): Defines the submission ID for the Ray job. If not provided, KubeRay generates one automatically. See {ref}`Ray Jobs CLI API Reference <ray-job-submission-cli-ref>` for more details about the submission ID.
   * `metadata` (Optional): See {ref}`Ray Jobs CLI API Reference <ray-job-submission-cli-ref>` for more details about the `--metadata-json` option.
   * `entrypointNumCpus` / `entrypointNumGpus` / `entrypointResources` (Optional): See {ref}`Ray Jobs CLI API Reference <ray-job-submission-cli-ref>` for more details.
