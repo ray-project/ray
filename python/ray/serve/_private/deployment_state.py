@@ -38,6 +38,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS,
     RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS,
+    RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
     RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     SERVE_LOGGER_NAME,
@@ -48,6 +49,7 @@ from ray.serve._private.deployment_scheduler import (
     DeploymentDownscaleRequest,
     DeploymentScheduler,
     ReplicaSchedulingRequest,
+    ReplicaSchedulingRequestStatus,
     SpreadDeploymentSchedulingPolicy,
 )
 from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
@@ -635,7 +637,7 @@ class ActorReplicaWrapper:
                 ) = ray.get(self._allocated_obj_ref)
             except RayTaskError as e:
                 logger.exception(
-                    f"Exception in {self._replica_id}, " "the replica will be stopped."
+                    f"Exception in {self._replica_id}, the replica will be stopped."
                 )
                 return ReplicaStartupStatus.FAILED, str(e.as_instanceof_cause())
             except RuntimeEnvSetupError as e:
@@ -823,6 +825,11 @@ class ActorReplicaWrapper:
         elif response is ReplicaHealthCheckResponse.SUCCEEDED:
             # Health check succeeded. Reset the consecutive failure counter
             # and mark the replica healthy.
+            if self._consecutive_health_check_failures > 0:
+                logger.info(
+                    f"{self._replica_id} passed the health check after "
+                    f"{self._consecutive_health_check_failures} consecutive failures."
+                )
             self._consecutive_health_check_failures = 0
             self._healthy = True
         elif response is ReplicaHealthCheckResponse.APP_FAILURE:
@@ -1608,6 +1615,26 @@ class DeploymentState:
             RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
             or len(running_replicas) == 0
         ):
+            # Drop metrics for handles that haven't sent an update in a while.
+            # This is expected behavior for handles that were on replicas or
+            # proxies that have been shut down.
+            timeout_s = max(
+                2 * self.autoscaling_policy_manager.get_metrics_interval_s(),
+                RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
+            )
+            for handle_id, handle_metric in list(self.handle_requests.items()):
+                if time.time() - handle_metric.timestamp >= timeout_s:
+                    del self.handle_requests[handle_id]
+                    total_ongoing_requests = handle_metric.queued_requests + sum(
+                        handle_metric.running_requests.values()
+                    )
+                    if total_ongoing_requests > 0:
+                        logger.info(
+                            f"Dropping stale metrics for handle '{handle_id}' "
+                            f"because no update was received for {timeout_s:.1f}s. "
+                            f"Ongoing requests was: {total_ongoing_requests}."
+                        )
+
             for handle_metric in self.handle_requests.values():
                 total_requests += handle_metric.queued_requests
                 for replica in running_replicas:
@@ -1645,12 +1672,6 @@ class DeploymentState:
         ):
             return
 
-        logger.info(
-            f"Autoscaling {self._id} to {decision_num_replicas} replicas. "
-            f"Current num requests: {total_num_requests}, "
-            f"current num running replicas: {num_running_replicas}."
-        )
-
         new_info = copy(self._target_state.info)
         new_info.version = self._target_state.version.code_version
 
@@ -1662,13 +1683,25 @@ class DeploymentState:
         if not self._is_within_autoscaling_bounds():
             return
 
+        curr_stats_str = (
+            f"Current ongoing requests: {total_num_requests:.2f}, "
+            f"current running replicas: {num_running_replicas}."
+        )
         new_num = self._target_state.target_num_replicas
         if new_num > old_num:
+            logger.info(
+                f"Upscaling {self._id} from {old_num} to {new_num} replicas. "
+                f"{curr_stats_str}"
+            )
             self._curr_status_info = self._curr_status_info.handle_transition(
                 trigger=DeploymentStatusInternalTrigger.AUTOSCALE_UP,
                 message=f"Upscaling from {old_num} to {new_num} replicas.",
             )
         elif new_num < old_num:
+            logger.info(
+                f"Downscaling {self._id} from {old_num} to {new_num} replicas. "
+                f"{curr_stats_str}"
+            )
             self._curr_status_info = self._curr_status_info.handle_transition(
                 trigger=DeploymentStatusInternalTrigger.AUTOSCALE_DOWN,
                 message=f"Downscaling from {old_num} to {new_num} replicas.",
@@ -2019,12 +2052,8 @@ class DeploymentState:
                 )
             elif start_status == ReplicaStartupStatus.FAILED:
                 # Replica reconfigure (deploy / upgrade) failed
-                if self._replica_constructor_retry_counter >= 0:
-                    # Increase startup failure counter if we're tracking it
-                    self._replica_constructor_retry_counter += 1
-                    self._replica_constructor_error_msg = error_msg
-
                 replicas_failed = True
+                self.record_replica_startup_failure(error_msg)
                 self._stop_replica(replica)
             elif start_status in [
                 ReplicaStartupStatus.PENDING_ALLOCATION,
@@ -2041,6 +2070,22 @@ class DeploymentState:
                 else:
                     self._replicas.add(original_state, replica)
 
+        if replicas_failed:
+            self.update_replica_startup_backoff_time()
+
+        return slow_replicas
+
+    def record_replica_startup_failure(self, error_msg: str):
+        """Record that a replica failed to start."""
+
+        if self._replica_constructor_retry_counter >= 0:
+            # Increase startup failure counter if we're tracking it
+            self._replica_constructor_retry_counter += 1
+            self._replica_constructor_error_msg = error_msg
+
+    def update_replica_startup_backoff_time(self):
+        """Updates the replica startup backoff time."""
+
         # If replicas have failed enough times, execute exponential backoff
         # Wait 1, 2, 4, ... seconds before consecutive retries (or use a custom
         # backoff factor by setting EXPONENTIAL_BACKOFF_FACTOR)
@@ -2048,15 +2093,10 @@ class DeploymentState:
             MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
             self._target_state.target_num_replicas * 3,
         )
-        if (
-            replicas_failed
-            and self._replica_constructor_retry_counter > failed_to_start_threshold
-        ):
+        if self._replica_constructor_retry_counter > failed_to_start_threshold:
             self._backoff_time_s = min(
                 EXPONENTIAL_BACKOFF_FACTOR * self._backoff_time_s, MAX_BACKOFF_TIME_S
             )
-
-        return slow_replicas
 
     def stop_replicas(self, replicas_to_stop) -> None:
         for replica in self._replicas.pop():
@@ -2377,6 +2417,7 @@ class DeploymentStateManager:
         all_current_placement_group_names: List[str],
         cluster_node_info_cache: ClusterNodeInfoCache,
         head_node_id_override: Optional[str] = None,
+        create_placement_group_fn_override: Optional[Callable] = None,
     ):
         self._kv_store = kv_store
         self._long_poll_host = long_poll_host
@@ -2384,6 +2425,7 @@ class DeploymentStateManager:
         self._deployment_scheduler = default_impl.create_deployment_scheduler(
             cluster_node_info_cache,
             head_node_id_override,
+            create_placement_group_fn_override,
         )
 
         self._deployment_states: Dict[DeploymentID, DeploymentState] = dict()
@@ -2433,6 +2475,8 @@ class DeploymentStateManager:
 
         return {
             deployment: deployment_state.get_total_num_requests()
+            if deployment_state.should_autoscale()
+            else None
             for deployment, deployment_state in self._deployment_states.items()
         }
 
@@ -2699,8 +2743,8 @@ class DeploymentStateManager:
 
         deleted_ids = []
         any_recovering = False
-        upscales = {}
-        downscales = {}
+        upscales: Dict[DeploymentID, List[ReplicaSchedulingRequest]] = {}
+        downscales: Dict[DeploymentID, DeploymentDownscaleRequest] = {}
 
         # STEP 1: Update current state
         for deployment_state in self._deployment_states.values():
@@ -2763,6 +2807,8 @@ class DeploymentStateManager:
         )
         for deployment_id, replicas_to_stop in deployment_to_replicas_to_stop.items():
             self._deployment_states[deployment_id].stop_replicas(replicas_to_stop)
+        for deployment_id, scheduling_requests in upscales.items():
+            self._handle_scheduling_request_failures(deployment_id, scheduling_requests)
 
         # STEP 7: Broadcast long poll information
         for deployment_state in self._deployment_states.values():
@@ -2778,6 +2824,28 @@ class DeploymentStateManager:
             self._record_deployment_usage()
 
         return any_recovering
+
+    def _handle_scheduling_request_failures(
+        self,
+        deployment_id: DeploymentID,
+        scheduling_requests: List[ReplicaSchedulingRequest],
+    ):
+        """Updates internal datastructures when replicas fail to be scheduled."""
+        failed_replicas: List[ReplicaID] = []
+        for scheduling_request in scheduling_requests:
+            if (
+                scheduling_request.status
+                == ReplicaSchedulingRequestStatus.PLACEMENT_GROUP_CREATION_FAILED
+            ):
+                failed_replicas.append(scheduling_request.replica_id)
+                self._deployment_states[deployment_id].record_replica_startup_failure(
+                    "Replica scheduling failed. Failed to create a placement "
+                    f"group for replica {scheduling_request.replica_id}. "
+                    "See Serve controller logs for more details."
+                )
+        if failed_replicas:
+            self._deployment_states[deployment_id].stop_replicas(failed_replicas)
+            self._deployment_states[deployment_id].update_replica_startup_backoff_time()
 
     def _record_deployment_usage(self):
         ServeUsageTag.NUM_DEPLOYMENTS.record(str(len(self._deployment_states)))

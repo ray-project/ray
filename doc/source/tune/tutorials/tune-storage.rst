@@ -169,13 +169,6 @@ that implements saving and loading checkpoints.
     from ray import train, tune
     from your_module import my_trainable
 
-    # Look for the existing cluster and connect to it
-    ray.init()
-
-    # Set the local caching directory. Results will be stored here
-    # before they are synced to remote storage. This env variable is ignored
-    # if `storage_path` below is set to a local directory.
-    os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = "/tmp/mypath"
 
     tuner = tune.Tuner(
         my_trainable,
@@ -198,14 +191,7 @@ that implements saving and loading checkpoints.
     # This starts the run!
     results = tuner.fit()
 
-In this example, here's how trial checkpoints will be saved:
-
-- On head node where we are running from:
-    - ``/tmp/mypath/my-tune-exp/<trial_name>/checkpoint_<step>`` (but only for trials running on this node)
-- On worker nodes:
-    - ``/tmp/mypath/my-tune-exp/<trial_name>/checkpoint_<step>`` (but only for trials running on this node)
-- S3:
-    - ``s3://my-checkpoints-bucket/path/my-tune-exp/<trial_name>/checkpoint_<step>`` (all trials)
+In this example, trial checkpoints will be saved to: ``s3://my-checkpoints-bucket/path/my-tune-exp/<trial_name>/checkpoint_<step>``
 
 .. _tune-syncing-restore-from-uri:
 
@@ -218,7 +204,7 @@ you can resume it any time starting from the experiment state saved in the cloud
     tuner = tune.Tuner.restore(
         "s3://my-checkpoints-bucket/path/my-tune-exp",
         trainable=my_trainable,
-        resume_errored=True
+        resume_errored=True,
     )
     tuner.fit()
 
@@ -228,3 +214,9 @@ There are a few options for restoring an experiment:
 Please see the documentation of
 :meth:`Tuner.restore() <ray.tune.tuner.Tuner.restore>` for more details.
 
+
+Advanced configuration
+----------------------
+
+See :ref:`Ray Train's section on advanced storage configuration <train-storage-advanced>`.
+All of the configurations also apply to Ray Tune.

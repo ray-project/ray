@@ -1,4 +1,4 @@
-import { Box, Tooltip, Typography } from "@material-ui/core";
+import { Box, Tooltip, Typography } from "@mui/material";
 import React from "react";
 import { RightPaddedTypography } from "../../common/CustomTypography";
 import PercentageBar from "../../components/PercentageBar";
@@ -105,7 +105,7 @@ const GRAMEntry: React.FC<GRAMEntryProps> = ({
   return (
     <Box display="flex" flexWrap="nowrap" style={{ minWidth: GRAM_COL_WIDTH }}>
       <Tooltip title={gpuName}>
-        <Box display="flex" flexWrap="nowrap">
+        <Box display="flex" flexWrap="nowrap" flexGrow={1}>
           <RightPaddedTypography variant="body1">
             [{slot}]:{" "}
           </RightPaddedTypography>
