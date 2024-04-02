@@ -107,7 +107,7 @@ class StreamingExecutor(Executor, threading.Thread):
             message = "Starting execution of Dataset."
             if log_path is not None:
                 message += f" Full log is in {log_path}"
-            message += f"\nExecution plan of Dataset: {dag}\n"
+            message += f"\nExecution plan of Dataset: {dag}"
             print(message)
             logger.info(message)
 
