@@ -1,3 +1,8 @@
+# ***********************************************************************************
+# IMPORTANT NOTE: This script is using the old API stack and will soon be replaced by
+# `ray.rllib.examples.multi_agent_and_self_play.pettingzoo_shared_value_function.py`!
+# ***********************************************************************************
+
 """An example of customizing PPO to leverage a centralized critic.
 
 Here the model and policy are hard-coded to implement a centralized critic
@@ -14,8 +19,8 @@ modifies the environment.
 """
 
 import argparse
-import numpy as np
 from gymnasium.spaces import Discrete
+import numpy as np
 import os
 
 import ray

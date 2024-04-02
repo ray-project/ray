@@ -357,6 +357,7 @@ class WriterInterface:
 @DeveloperAPI
 class SynchronousWriter(WriterInterface):
     def start(self):
+        self._output_channel._ensure_registered_as_writer()
         pass
 
     def write(self, val: Any) -> None:
@@ -377,6 +378,7 @@ class AwaitableBackgroundWriter(WriterInterface):
         )
 
     def start(self):
+        self._output_channel._ensure_registered_as_writer()
         self._background_task = asyncio.ensure_future(self.run())
 
     def _run(self, res):
