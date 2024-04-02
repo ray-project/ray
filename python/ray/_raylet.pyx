@@ -1796,7 +1796,10 @@ cdef void execute_task(
         def function_executor(*arguments, **kwarguments):
             function = execution_info.function
 
-            if not core_worker.current_actor_is_asyncio():
+            # Just execute the method if either of the following is true
+            #   - It's Ray's internal method
+            #   - Target actor is NOT an async actor (ie all of its methods are sync ones)
+            if not core_worker.current_actor_is_asyncio() or function.name.startswith("__ray"):
                 return function(actor, *arguments, **kwarguments)
             else:
                 if len(inspect.getmembers(
