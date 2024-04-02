@@ -1133,11 +1133,11 @@ class SingleAgentEpisode:
                 neg_indices_left_of_zero=neg_indices_left_of_zero,
                 fill=fill,
             )
-        assert False  # TODO(sven)
         # TODO (sven): This does not seem to be solid yet. Users should NOT be able
         #  to just write directly into our buffers. Instead, use:
         #  `self.set_extra_model_outputs(key, new_data, at_indices=...)` and if key
         #  is not known, add a new buffer to the `extra_model_outputs` dict.
+        assert False
         # It might be that the user has added new key/value pairs in their custom
         # postprocessing/connector logic. The values are then most likely numpy
         # arrays. We convert them automatically to buffers and get the requested
@@ -1631,37 +1631,3 @@ class SingleAgentEpisode:
                 f"SingleAgentEpisode does not support getting item '{item}'! "
                 "Only slice objects allowed with the syntax: `episode[a:b]`."
             )
-
-    def _interpret_slice(self, slice_, obs_or_infos=False):
-        """
-        obs: 0, 1, 2, 3, 4, 5
-        act:    1, 2, 3, 4, 5
-        slice(-2, None) -> translation=3,5 -> obs=slice(3, 6) act=slice(3, 5)
-        slice(None, 1) -> translation=0,1 -> obs=slice(0, 2) act=slice(0, 1)
-        slice(1, 3) -> translation=1,3 -> obs=slice(1, 4) act=slice(1, 3)
-        slice(-3, -1) -> translation=2,4 -> obs=slice(2, 5) act=slice(2, 4)
-        # easy rules:
-        # 1) translate slice into a pos-numbers-only slice
-        # 2) use that as act/rew-slice; for obs-slice, simply add +1 to slice's `stop`
-
-        # What about lookback buffer?
-        obs: [0, 1]<-lb,    2, 3, 4, 5
-        act:    [1, 2]<-lb,    3, 4, 5
-        TODO: slice(-2, None) -> translation=1,3 -> obs=slice(1, 4) act=slice(1, 3)
-        slice(-6, -4) -> neg=True translation=0,1 -> obs=slice(1, 4) act=slice(0, 1)
-
-        Args:
-            slice_:
-
-        Returns:
-
-        """
-        start = slice_.start or 0
-        stop = slice_.stop
-        step = slice_.step
-        # Obs and infos need one more step at the end.
-        stop_obs_infos = ((stop if stop != -1 else (len(self) - 1)) or len(self)) + 1
-
-        neg_indices_left_of_zero = start >= 0
-        t_started = self.t_started + start + (0 if start >= 0 else len(self))
-        keep_done = slice_.stop is None or slice_.stop == len(self)
