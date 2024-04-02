@@ -1935,11 +1935,10 @@ cdef void execute_task(
                             # Note that the report RPCs are called inside an
                             # event loop thread.
                             core_worker.run_async_func_or_coro_in_event_loop(
-                                execute_streaming_generator_async,
+                                execute_streaming_generator_async(context),
                                 function_descriptor,
                                 name_of_concurrency_group_to_execute,
                                 task_id=task_id,
-                                func_args=(context,),
                             )
                         else:
                             execute_streaming_generator_sync(context)
@@ -4701,7 +4700,7 @@ cdef class CoreWorker:
 
     def run_async_func_or_coro_in_event_loop(
           self,
-          func: Callable[[Any, Any], Any],
+          func_or_coro: Union[Callable[[Any, Any], Any], typing.Coroutine],
           function_descriptor: FunctionDescriptor,
           specified_cgname: str,
           *,
@@ -4747,26 +4746,35 @@ cdef class CoreWorker:
 
         eventloop, _ = self.get_event_loop(function_descriptor, specified_cgname)
 
-
-        assert not inspect.isawaitable(func), "Either sync or async function is expected (not Awaitable)"
-
-        target_method = getattr(func, "method", func)
-
-        logger.info(f">>> [DBG][{datetime.utcnow()}] (run_async_func_or_coro_in_event_loop) Func: {target_method} {is_async_func(target_method)} {func} (loop: {id(asyncio._get_running_loop())} / {repr(asyncio._get_running_loop())})  (t: {threading.get_ident()})")
+        logger.info(f">>> [DBG][{datetime.utcnow()}] (run_async_func_or_coro_in_event_loop) Func: {func_or_coro} {is_async_func(_try_unwrap_remote_decorator(func_or_coro))} (loop: {id(asyncio._get_running_loop())} / {repr(asyncio._get_running_loop())})  (t: {threading.get_ident()})")
 
         async def _async_function():
-            # TODO elaborate
-            if is_async_func(target_method):
-                async_function = func
-            else:
-                async def async_function(*args, **kwargs):
-                    return await eventloop.run_in_executor(None, func, *args, **kwargs)
-
             try:
                 if task_id:
                     async_task_id.set(task_id)
 
-                awaitable = async_function(*func_args, **func_kwargs)
+                # In cases when coroutine is passed in for execution, we handle it
+                # by directly submitting it into the event-loop 
+                if inspect.isawaitable(func_or_coro):
+                    awaitable = func_or_coro
+                else:
+                    # Extract target method wrapped into `ray.remote` decorator (to be 
+                    # able to analyze whether target method is async or not)
+                    target_method = _try_unwrap_remote_decorator(func_or_coro)
+                    
+                    assert not inspect.isgeneratorfunction(target_method) and not inspect.isasyncgenfunction(target_method), "Functions returning generator/asyncgen should not be submitted into the event-loop directly"
+
+                    # At this stage passed in function/method will be either of
+                    #   - Async function: in which case we execute provided method directly on the event-loop
+                    #   - Sync function: in which case we submit provided function for execution on the event-loop's
+                    #     (default) internal executor to make sure that user's code can not block the event-loop,
+                    #     potentially resulting in unexpected behavior (see attached ticket).
+                    #
+                    # For more context please check out https://github.com/ray-project/ray/issues/44354
+                    if is_async_func(target_method):
+                        awaitable = func_or_coro(*func_args, **func_kwargs)
+                    else:
+                        awaitable = eventloop.run_in_executor(None, func_or_coro, *func_args, **func_kwargs)
 
                 logger.info(f">>> [DBG][{datetime.utcnow()}] (_async_function) Awaiting ({task_id}) (loop: {id(asyncio._get_running_loop())} / {repr(asyncio._get_running_loop())})  (t: {threading.get_ident()})")
 
@@ -5085,6 +5093,12 @@ cdef class CoreWorker:
                     c_object_ref_and_is_ready_pair.first.object_id(),
                     c_object_ref_and_is_ready_pair.first.owner_address().SerializeAsString()), # noqa
                 c_object_ref_and_is_ready_pair.second)
+
+
+def _try_unwrap_remote_decorator(func):
+    """TODO elaborate"""
+    return getattr(func, "method", func)
+
 
 cdef void async_callback(shared_ptr[CRayObject] obj,
                          CObjectID object_ref,
