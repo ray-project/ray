@@ -8,6 +8,8 @@ import signal
 import socket
 import logging
 import threading
+import ray
+import os
 
 from ray.util.spark.cluster_init import (
     RAY_ON_SPARK_COLLECT_LOG_TO_PATH,
@@ -49,7 +51,18 @@ if __name__ == "__main__":
 
         temp_dir = _get_default_ray_tmp_dir()
 
-    ray_cli_cmd = "ray"
+    RAY_PEX_FILE = os.getenv("RAY_PEX_FILE", None)
+    if RAY_PEX_FILE is not None:
+        ray_path = ray.__path__
+        command = [
+            RAY_PEX_FILE,
+            f'{ray_path[0]}/scripts/scripts.py'
+        ]
+    else:
+        command = [
+            "ray"
+        ]
+
     lock_file = temp_dir + ".lock"
 
     lock_fd = os.open(lock_file, os.O_RDWR | os.O_CREAT | os.O_TRUNC)
@@ -58,7 +71,8 @@ if __name__ == "__main__":
     # same temp directory, adding a shared lock representing current ray node is
     # using the temp directory.
     fcntl.flock(lock_fd, fcntl.LOCK_SH)
-    process = subprocess.Popen([ray_cli_cmd, "start", *arg_list], text=True)
+    command.extend(["start", *arg_list])
+    process = subprocess.Popen(command, text=True)
 
     def try_clean_temp_dir_at_exit():
         try:

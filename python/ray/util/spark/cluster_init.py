@@ -479,6 +479,7 @@ def _setup_ray_cluster(
     autoscale_upscaling_speed: float,
     autoscale_idle_timeout_minutes: float,
     is_global: bool,
+    uses_pex: bool,
 ) -> Type[RayClusterOnSpark]:
     """
     The public API `ray.util.spark.setup_ray_cluster` does some argument
@@ -499,6 +500,10 @@ def _setup_ray_cluster(
 
     start_hook = _create_hook_entry(is_global)
     spark = get_spark_session()
+    if uses_pex and (spark.conf.get("spark.executorEnv.RAY_PEX_FILE", None) is None):
+        raise RuntimeError("Start Ray head node failed!\n" + "To setup a Ray cluster on Spark launched from PEX you must intiliaze your SparkSession with spark.executorEnv.RAY_PEX_FILE=<your_pex_file_path> IE conf.set('spark.executorEnv.RAY_PEX_FILE', './your_pex_file.pex')")
+    if uses_pex and (os.getenv("RAY_PEX_FILE", None) is None):
+        raise RuntimeError("Start Ray head node failed!\n" + "To setup a Ray cluster on Spark launched from PEX you must have the RAY_PEX_FILE environment variable set in/on your spark driver IE os.environ['RAY_PEX_FILE']='./your_pex_file.pex')")
 
     ray_head_ip = socket.gethostbyname(get_spark_application_driver_host(spark))
     ray_head_port = get_random_unused_port(ray_head_ip, min_port=9000, max_port=10000)
@@ -670,6 +675,7 @@ def _setup_ray_cluster(
             dashboard_options,
             head_node_options,
             collect_log_to_path,
+            uses_pex,
         )
         ray_head_node_cmd = autoscaling_cluster.ray_head_node_cmd
     else:
@@ -678,10 +684,21 @@ def _setup_ray_cluster(
             worker_port_range_end,
         ) = _preallocate_ray_worker_port_range()
 
-        ray_head_node_cmd = [
-            sys.executable,
-            "-m",
-            "ray.util.spark.start_ray_node",
+        if uses_pex:
+            import ray
+            ray_path = ray.__path__
+            ray_head_node_cmd = [
+                os.getenv("RAY_PEX_FILE"),
+                f"{ray_path[0]}/util/spark/start_ray_node.py",
+            ]
+        else:
+            ray_head_node_cmd = [
+                sys.executable,
+                "-m",
+                "ray.util.spark.start_ray_node"
+            ]
+
+        ray_head_node_cmd.extend([
             "--block",
             "--head",
             f"--node-ip-address={ray_head_ip}",
@@ -695,7 +712,7 @@ def _setup_ray_cluster(
             f"--max-worker-port={worker_port_range_end - 1}",
             *dashboard_options,
             *_convert_ray_node_options(head_node_options),
-        ]
+        ])
         if ray_temp_dir is not None:
             ray_head_node_cmd.append(f"--temp-dir={ray_temp_dir}")
 
@@ -775,6 +792,7 @@ def _setup_ray_cluster(
                     collect_log_to_path=collect_log_to_path,
                     autoscale_mode=False,
                     spark_job_server_port=spark_job_server_port,
+                    uses_pex=uses_pex,
                 )
             except Exception as e:
                 # NB:
@@ -911,6 +929,7 @@ def _setup_ray_cluster_internal(
     autoscale_upscaling_speed: Optional[float],
     autoscale_idle_timeout_minutes: Optional[float],
     is_global: bool,
+    uses_pex: bool,
     **kwargs,
 ) -> Tuple[str, str]:
     global _active_ray_cluster
@@ -1284,6 +1303,7 @@ def _setup_ray_cluster_internal(
             autoscale_upscaling_speed=autoscale_upscaling_speed,
             autoscale_idle_timeout_minutes=autoscale_idle_timeout_minutes,
             is_global=is_global,
+            uses_pex=uses_pex,
         )
 
         cluster.wait_until_ready()  # NB: this line might raise error.
@@ -1317,6 +1337,7 @@ def setup_ray_cluster(
     collect_log_to_path: Optional[str] = None,
     autoscale_upscaling_speed: Optional[float] = 1.0,
     autoscale_idle_timeout_minutes: Optional[float] = 1.0,
+    uses_pex: bool = False,
     **kwargs,
 ) -> Tuple[str, str]:
     """
@@ -1460,6 +1481,7 @@ def setup_ray_cluster(
         autoscale_upscaling_speed=autoscale_upscaling_speed,
         autoscale_idle_timeout_minutes=autoscale_idle_timeout_minutes,
         is_global=False,
+        uses_pex=uses_pex,
         **kwargs,
     )
 
@@ -1483,6 +1505,7 @@ def setup_global_ray_cluster(
     collect_log_to_path: Optional[str] = None,
     autoscale_upscaling_speed: Optional[float] = 1.0,
     autoscale_idle_timeout_minutes: Optional[float] = 1.0,
+    uses_pex: bool = False,
 ):
     """
     Set up a global mode cluster.
@@ -1532,6 +1555,7 @@ def setup_global_ray_cluster(
         autoscale_upscaling_speed=autoscale_upscaling_speed,
         autoscale_idle_timeout_minutes=autoscale_idle_timeout_minutes,
         is_global=True,
+        uses_pex=uses_pex,
     )
 
     if not is_blocking:
@@ -1568,6 +1592,7 @@ def _start_ray_worker_nodes(
     collect_log_to_path,
     autoscale_mode,
     spark_job_server_port,
+    uses_pex,
 ):
     # NB:
     # In order to start ray worker nodes on spark cluster worker machines,
@@ -1604,10 +1629,22 @@ def _start_ray_worker_nodes(
         ray_worker_node_dashboard_agent_port = get_random_unused_port(
             ray_head_ip, min_port=10002, max_port=20000
         )
-        ray_worker_node_cmd = [
-            sys.executable,
-            "-m",
-            "ray.util.spark.start_ray_node",
+
+        if uses_pex:
+            import ray
+            ray_path = ray.__path__
+            ray_worker_node_cmd = [
+                os.getenv("RAY_PEX_FILE"),
+                f"{ray_path[0]}/util/spark/start_ray_node.py",
+            ]
+        else:
+            ray_worker_node_cmd = [
+                sys.executable,
+                "-m",
+                "ray.util.spark.start_ray_node",
+            ]
+
+        ray_worker_node_cmd.extend([
             f"--num-cpus={num_cpus_per_node}",
             "--block",
             f"--address={ray_head_ip}:{ray_head_port}",
@@ -1617,7 +1654,7 @@ def _start_ray_worker_nodes(
             f"--max-worker-port={worker_port_range_end - 1}",
             f"--dashboard-agent-listen-port={ray_worker_node_dashboard_agent_port}",
             *_convert_ray_node_options(worker_node_options),
-        ]
+        ])
         if ray_temp_dir is not None:
             ray_worker_node_cmd.append(f"--temp-dir={ray_temp_dir}")
 
@@ -1824,6 +1861,7 @@ class AutoscalingCluster:
         dashboard_options,
         head_node_options,
         collect_log_to_path,
+        uses_pex,
     ):
         """Start the cluster.
 
@@ -1851,10 +1889,21 @@ class AutoscalingCluster:
             worker_port_range_end,
         ) = _preallocate_ray_worker_port_range()
 
-        ray_head_node_cmd = [
-            sys.executable,
-            "-m",
-            "ray.util.spark.start_ray_node",
+        if uses_pex:
+            import ray
+            ray_path = ray.__path__
+            ray_head_node_cmd = [
+                os.getenv("RAY_PEX_FILE"),
+                f"{ray_path[0]}/util/spark/start_ray_node.py",
+            ]
+        else:
+            ray_head_node_cmd = [
+                sys.executable,
+                "-m",
+                "ray.util.spark.start_ray_node",
+            ]
+
+        ray_head_node_cmd.extend([
             "--block",
             "--head",
             f"--node-ip-address={ray_head_ip}",
@@ -1864,7 +1913,7 @@ class AutoscalingCluster:
             f"--min-worker-port={worker_port_range_begin}",
             f"--max-worker-port={worker_port_range_end - 1}",
             *dashboard_options,
-        ]
+        ])
 
         if ray_temp_dir is not None:
             ray_head_node_cmd.append(f"--temp-dir={ray_temp_dir}")

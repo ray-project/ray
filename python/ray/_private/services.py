@@ -106,6 +106,13 @@ ProcessInfo = collections.namedtuple(
 )
 
 
+RAY_PEX_FILE = os.getenv("RAY_PEX_FILE", None)
+if RAY_PEX_FILE is not None:
+    RAY_USES_PEX = True
+else:
+    RAY_USES_PEX = False
+
+
 def _site_flags() -> List[str]:
     """Detect whether flags related to site packages are enabled for the current
     interpreter. To run Ray in hermetic build environments, it helps to pass these flags
@@ -146,9 +153,16 @@ def _build_python_executable_command_memory_profileable(
             It means the logs are flushed immediately (good when there's a failure),
             but writing to a log file can be slower.
     """
-    command = [
-        sys.executable,
-    ]
+
+    if RAY_USES_PEX:
+        command = [
+            RAY_PEX_FILE,
+        ]
+    else:
+        command = [
+            sys.executable,
+        ]
+
     if unbuffered:
         command.append("-u")
     components_to_memory_profile = os.getenv(RAY_MEMRAY_PROFILE_COMPONENT_ENV, "")
@@ -171,7 +185,12 @@ def _build_python_executable_command_memory_profileable(
         output_file_path = profile_dir / f"{session_name}_memory_{component}.bin"
         options = os.getenv(RAY_MEMRAY_PROFILE_OPTIONS_ENV, None)
         options = options.split(",") if options else []
-        command.extend(["-m", "memray", "run", "-o", str(output_file_path), *options])
+        if RAY_USES_PEX:
+            import memray
+            memray_path = memray.__path__
+            command.extend([f"{memray_path[0]}/__main__.py", "run", "-o", str(output_file_path), *options])
+        else:
+            command.extend(["-m", "memray", "run", "-o", str(output_file_path), *options])
 
     return command
 
@@ -1064,7 +1083,16 @@ def start_reaper(fate_share=None):
             return None
 
     reaper_filepath = os.path.join(RAY_PATH, RAY_PRIVATE_DIR, "ray_process_reaper.py")
-    command = [sys.executable, "-u", reaper_filepath]
+    if RAY_USES_PEX:
+        command = [
+            RAY_PEX_FILE,
+        ]
+    else:
+        command = [
+            sys.executable,
+        ]
+
+    command.extend(["-u", reaper_filepath])
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_REAPER,
@@ -1109,8 +1137,16 @@ def start_log_monitor(
     """
     log_monitor_filepath = os.path.join(RAY_PATH, RAY_PRIVATE_DIR, "log_monitor.py")
 
-    command = [
-        sys.executable,
+    if RAY_USES_PEX:
+        command = [
+            RAY_PEX_FILE,
+        ]
+    else:
+        command = [
+            sys.executable,
+        ]
+
+    command.extend([
         "-u",
         log_monitor_filepath,
         f"--session-dir={session_dir}",
@@ -1118,7 +1154,7 @@ def start_log_monitor(
         f"--gcs-address={gcs_address}",
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
-    ]
+    ])
 
     if not redirect_logging:
         # If not redirecting logging to files, unset log filename.
@@ -1649,9 +1685,14 @@ def start_raylet(
     # TODO(architkulkarni): Pipe in setup worker args separately instead of
     # inserting them into start_worker_command and later erasing them if
     # needed.
+    if RAY_USES_PEX:
+        launch_cmd = RAY_PEX_FILE
+    else:
+        launch_cmd = sys.executable
+
     start_worker_command = (
         [
-            sys.executable,
+            launch_cmd,
             setup_worker_path,
         ]
         + _site_flags()  # Inherit "-S" and "-s" flags from current Python interpreter.
@@ -1880,9 +1921,18 @@ def build_java_worker_command(
     pairs.append(("ray.home", RAY_HOME))
     pairs.append(("ray.logging.dir", os.path.join(session_dir, "logs")))
     pairs.append(("ray.session-dir", session_dir))
-    command = (
-        [sys.executable]
-        + [setup_worker_path]
+
+    if RAY_USES_PEX:
+        command = [
+            RAY_PEX_FILE,
+        ]
+    else:
+        command = [
+            sys.executable,
+        ]
+
+    command.extend(
+        [setup_worker_path]
         + ["-D{}={}".format(*pair) for pair in pairs]
     )
 
@@ -1919,8 +1969,16 @@ def build_cpp_worker_command(
         The command string for starting CPP worker.
     """
 
-    command = [
-        sys.executable,
+    if RAY_USES_PEX:
+        command = [
+            RAY_PEX_FILE,
+        ]
+    else:
+        command = [
+            sys.executable,
+        ]
+
+    command.extend([
         setup_worker_path,
         DEFAULT_WORKER_EXECUTABLE,
         f"--ray_plasma_store_socket_name={plasma_store_name}",
@@ -1932,7 +1990,7 @@ def build_cpp_worker_command(
         f"--ray_logs_dir={log_dir}",
         f"--ray_node_ip_address={node_ip_address}",
         "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
-    ]
+    ])
 
     return command
 
@@ -2105,14 +2163,22 @@ def start_monitor(
     else:
         entrypoint = os.path.join(RAY_PATH, AUTOSCALER_PRIVATE_DIR, "monitor.py")
 
-    command = [
-        sys.executable,
+    if RAY_USES_PEX:
+        command = [
+            RAY_PEX_FILE,
+        ]
+    else:
+        command = [
+            sys.executable,
+        ]
+
+    command.extend([
         "-u",
         entrypoint,
         f"--logs-dir={logs_dir}",
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
-    ]
+    ])
     assert gcs_address is not None
     command.append(f"--gcs-address={gcs_address}")
 
@@ -2179,17 +2245,29 @@ def start_ray_client_server(
     ray_client_server_host = (
         "127.0.0.1" if ray_client_server_ip == "127.0.0.1" else "0.0.0.0"
     )
-    command = [
-        sys.executable,
-        setup_worker_path,
-        "-m",
-        "ray.util.client.server",
+
+    if RAY_USES_PEX:
+        import ray
+        ray_path = ray.__path__
+        command = [
+            RAY_PEX_FILE,
+            f"{ray_path[0]}/util/client/server/server.py",
+        ]
+    else:
+        command = [
+            sys.executable,
+            setup_worker_path,
+            "-m",
+            "ray.util.client.server",
+        ]
+
+    command.extend([
         f"--address={address}",
         f"--host={ray_client_server_host}",
         f"--port={ray_client_server_port}",
         f"--mode={server_type}",
         f"--language={Language.Name(Language.PYTHON)}",
-    ]
+    ])
     if redis_password:
         command.append(f"--redis-password={redis_password}")
     if serialized_runtime_env_context:
