@@ -85,8 +85,9 @@ class TestPlasma : public plasma::PlasmaClientInterface {
 
     uint8_t *ptr = static_cast<uint8_t *>(malloc(kSize));
     RAY_CHECK(ptr);
-    memset(ptr, 0, kSize);
-    return std::make_unique<plasma::MutableObject>(ptr, info);
+    auto ret = std::make_unique<plasma::MutableObject>(ptr, info);
+    ret->header->Init();
+    return ret;
   }
 };
 
