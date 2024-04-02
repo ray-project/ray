@@ -270,16 +270,17 @@ class RayActorManager:
         tracked_actor = tracked_actor_task._tracked_actor
 
         if isinstance(exception, (RayActorError, ActorUnavailableError)):
-            if isinstance(exception, ActorUnavailableError):
-                # The actor *may* be dead, but may also recover. To be safe, we kill the
-                # actor and mark it as failed.
-                # IDEA: we can retry by feeding the task back to the event manager
-                # several times and then give up.
-                ray.kill(exception.actor_id)
+            # On ActorUnavailableError: The actor *may* be dead, but may also recover.
+            # To be safe, we kill the actor and mark it as failed.
+            # IDEA: we can retry by feeding the task back to the event manager
+            # several times and then give up.
+            # On RayActorError: actor is already dead, no need to kill.
+            need_kill = isinstance(exception, ActorUnavailableError)
+
             self._failed_actor_ids.add(tracked_actor.actor_id)
 
             # Clean up any references to the actor and its futures
-            self._cleanup_actor(tracked_actor=tracked_actor)
+            self._cleanup_actor(tracked_actor=tracked_actor, kill=need_kill)
 
             # Handle actor state callbacks
             if tracked_actor._on_error:
@@ -448,7 +449,7 @@ class RayActorManager:
 
         return True
 
-    def _cleanup_actor(self, tracked_actor: TrackedActor):
+    def _cleanup_actor(self, tracked_actor: TrackedActor, kill=False):
         self._cleanup_actor_futures(tracked_actor)
 
         # Remove from tracked actors
@@ -456,6 +457,8 @@ class RayActorManager:
             ray_actor,
             acquired_resources,
         ) = self._live_actors_to_ray_actors_resources.pop(tracked_actor)
+        if kill:
+            ray.kill(ray_actor)
         self._live_resource_cache = None
 
         # Return resources
