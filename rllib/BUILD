@@ -358,7 +358,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_ppo_w_env_runner",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "no_tf_static_graph"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "no_tf_static_graph", "rlm"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/cartpole_ppo_envrunner.py"],

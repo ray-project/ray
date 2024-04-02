@@ -231,7 +231,7 @@ class TestRLModuleSpecs(unittest.TestCase):
         self.assertEqual(
             marl_spec_1.module_specs["agent_1"].model_config_dict, "Update me!"
         )
-        marl_spec_1.update(marl_spec_2, overwrite=True)
+        marl_spec_1.update(marl_spec_2, override=True)
         self.assertEqual(marl_spec_1.module_specs["agent_1"], module_spec_2)
 
         # Test if updating MultiAgentRLModuleSpec without overwriting works. This
@@ -244,7 +244,7 @@ class TestRLModuleSpecs(unittest.TestCase):
         self.assertEqual(
             marl_spec_3.module_specs["agent_1"].observation_space, "Do not update me!"
         )
-        marl_spec_3.update(marl_spec_2, overwrite=False)
+        marl_spec_3.update(marl_spec_2, override=False)
         # If we would overwrite, we would replace the observation space even though
         # it was None. This is not the case here.
         self.assertEqual(
