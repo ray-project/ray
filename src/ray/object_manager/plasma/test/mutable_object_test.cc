@@ -130,7 +130,7 @@ TEST(MutableObjectTest, TestBasic) {
     std::unique_ptr<plasma::MutableObject> object = MakeObject();
     header = object->header;
     header->Init();
-    ASSERT_TRUE(manager.RegisterReaderChannel(object_id, std::move(object)).ok());
+    ASSERT_TRUE(manager.RegisterChannel(object_id, std::move(object)).ok());
   }
   manager.OpenSemaphores(object_id, header);
   PlasmaObjectHeader::Semaphores sem = manager.GetSemaphores(object_id);
@@ -175,7 +175,7 @@ TEST(MutableObjectTest, TestMultipleReaders) {
     std::unique_ptr<plasma::MutableObject> object = MakeObject();
     header = object->header;
     header->Init();
-    ASSERT_TRUE(manager.RegisterReaderChannel(object_id, std::move(object)).ok());
+    ASSERT_TRUE(manager.RegisterChannel(object_id, std::move(object)).ok());
   }
   manager.OpenSemaphores(object_id, header);
   PlasmaObjectHeader::Semaphores sem = manager.GetSemaphores(object_id);
@@ -230,7 +230,7 @@ TEST(MutableObjectTest, TestWriterFails) {
     std::unique_ptr<plasma::MutableObject> object = MakeObject();
     header = object->header;
     header->Init();
-    ASSERT_TRUE(manager.RegisterReaderChannel(object_id, std::move(object)).ok());
+    ASSERT_TRUE(manager.RegisterChannel(object_id, std::move(object)).ok());
   }
   manager.OpenSemaphores(object_id, header);
   PlasmaObjectHeader::Semaphores sem = manager.GetSemaphores(object_id);
@@ -295,7 +295,7 @@ TEST(MutableObjectTest, TestWriterFailsAfterAcquire) {
     std::unique_ptr<plasma::MutableObject> object = MakeObject();
     header = object->header;
     header->Init();
-    ASSERT_TRUE(manager.RegisterReaderChannel(object_id, std::move(object)).ok());
+    ASSERT_TRUE(manager.RegisterChannel(object_id, std::move(object)).ok());
   }
   manager.OpenSemaphores(object_id, header);
   PlasmaObjectHeader::Semaphores sem = manager.GetSemaphores(object_id);
@@ -362,7 +362,7 @@ TEST(MutableObjectTest, TestReaderFails) {
     std::unique_ptr<plasma::MutableObject> object = MakeObject();
     header = object->header;
     header->Init();
-    ASSERT_TRUE(manager.RegisterReaderChannel(object_id, std::move(object)).ok());
+    ASSERT_TRUE(manager.RegisterChannel(object_id, std::move(object)).ok());
   }
   manager.OpenSemaphores(object_id, header);
   PlasmaObjectHeader::Semaphores sem = manager.GetSemaphores(object_id);
@@ -433,7 +433,7 @@ TEST(MutableObjectTest, TestWriteAcquireDuringFailure) {
     std::unique_ptr<plasma::MutableObject> object = MakeObject();
     header = object->header;
     header->Init();
-    ASSERT_TRUE(manager.RegisterReaderChannel(object_id, std::move(object)).ok());
+    ASSERT_TRUE(manager.RegisterChannel(object_id, std::move(object)).ok());
   }
   manager.OpenSemaphores(object_id, header);
   PlasmaObjectHeader::Semaphores sem = manager.GetSemaphores(object_id);
@@ -467,7 +467,7 @@ TEST(MutableObjectTest, TestReadAcquireDuringFailure) {
     std::unique_ptr<plasma::MutableObject> object = MakeObject();
     header = object->header;
     header->Init();
-    ASSERT_TRUE(manager.RegisterReaderChannel(object_id, std::move(object)).ok());
+    ASSERT_TRUE(manager.RegisterChannel(object_id, std::move(object)).ok());
   }
   manager.OpenSemaphores(object_id, header);
   PlasmaObjectHeader::Semaphores sem = manager.GetSemaphores(object_id);
@@ -527,7 +527,7 @@ TEST(MutableObjectTest, TestReadMultipleAcquireDuringFailure) {
     std::unique_ptr<plasma::MutableObject> object = MakeObject();
     header = object->header;
     header->Init();
-    ASSERT_TRUE(manager.RegisterReaderChannel(object_id, std::move(object)).ok());
+    ASSERT_TRUE(manager.RegisterChannel(object_id, std::move(object)).ok());
   }
   manager.OpenSemaphores(object_id, header);
   PlasmaObjectHeader::Semaphores sem = manager.GetSemaphores(object_id);
