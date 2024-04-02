@@ -436,7 +436,7 @@ def process_completed_tasks(
                                 " Ignoring this exception with remaining"
                                 f" max_errored_blocks={remaining}."
                             )
-                            logger.warning(error_message, exc_info=e)
+                            logger.error(error_message, exc_info=e)
                         else:
                             error_message += (
                                 " Dataset execution will now abort."
