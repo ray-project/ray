@@ -13,6 +13,7 @@ Exceptions
     ray.exceptions.TaskCancelledError
     ray.exceptions.TaskUnschedulableError
     ray.exceptions.ActorUnschedulableError
+    ray.exceptions.ActorUnavailableError
     ray.exceptions.AsyncioActorExit
     ray.exceptions.LocalRayletDiedError
     ray.exceptions.WorkerCrashedError

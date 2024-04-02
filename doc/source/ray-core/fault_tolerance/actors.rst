@@ -135,6 +135,38 @@ original handle to the actor.
 
 If ``max_restarts`` is set, you can also allow Ray to automatically restart the actor by passing ``no_restart=False`` to ``ray.kill``.
 
+Unavailable Actors
+----------------------
+
+When an actor can't accept method calls,
+a method call or a `ray.get` on the method return object reference may raise
+`ActorUnavailableError`. This exception indicates the actor isn't accessible for the
+moment, but may recover after some wait and retry. Typical cases include:
+
+- The actor is starting, for example it's still running the class constructor.
+- The actor is restarting, for example it's waiting for resources.
+- The actor is experiencing transient network issues, for example connection breaks.
+- The actor is dead but the local Raylet hasn't yet reported to the GCS.
+
+When a `actor.method.remote()` or `ray.get()` call raises this exception, there is no guarantee on
+whether the actor received the invocation or not. If the method has side effects, it may or may not
+be observable after the actor recovered. However Ray do guarantee at-most-once, that a single invocation won't land on the actor twice, unless the actor or the method is configured with retries described in the next section.
+
+The actor may or may not recover in the next calls. Those subsequent calls
+may raise `RayActorError` if the actor is confirmed dead, `ActorUnavailableError` if it's
+still unreachable, or return values normally if the actor recovered.
+
+Best practice on `ActorUnavailableError`: upon such error the control plane control plane
+can "quarantine" the actor by stop sending production loads and periodically pinging
+the actor until it raises `RayActorError` or returns OK. Here is a simple example:
+
+
+.. literalinclude:: ../doc_code/actor_quarantine.py
+  :language: python
+  :start-after: __actor_quarantine_begin__
+  :end-before: __actor_quarantine_end__
+
+
 
 Actor method exceptions
 -----------------------
@@ -159,3 +191,4 @@ Retry behavior depends on the value you set ``retry_exceptions`` to:
 - The default value,`0`.
 
 For example, if a method sets `max_task_retries=5` and `retry_exceptions=True`, and the actor sets `max_restarts=2`, Ray executes the method up to 6 times: once for the initial invocation, and 5 additional retries. The 6 invocations may include 2 actor crashes. After the 6th invocation, a `ray.get` call to the result Ray ObjectRef raises the exception raised in the last invocation, or `ray.exceptions.RayActorError` if the actor crashed in the last invocation.
+
