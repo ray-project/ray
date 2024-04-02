@@ -411,8 +411,8 @@ class SACConfig(AlgorithmConfig):
             )
 
     @property
-    def _model_auto_keys(self):
-        return super()._model_auto_keys | {"twin_q": self.twin_q}
+    def _model_config_auto_includes(self):
+        return super()._model_config_auto_includes | {"twin_q": self.twin_q}
 
 
 class SAC(DQN):

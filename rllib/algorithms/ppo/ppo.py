@@ -374,8 +374,9 @@ class PPOConfig(AlgorithmConfig):
             raise ValueError("`entropy_coeff` must be >= 0.0")
 
     @property
-    def _auto_model_keys(self) -> Dict[str, Any]:
-        return self.super()._auto_model_keys | {"vf_share_layers": False}
+    @override(AlgorithmConfig)
+    def _model_config_auto_includes(self) -> Dict[str, Any]:
+        return self.super()._model_config_auto_includes | {"vf_share_layers": False}
 
 
 class PPO(Algorithm):

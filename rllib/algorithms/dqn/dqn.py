@@ -385,24 +385,6 @@ class DQNConfig(AlgorithmConfig):
                 categorical_distribution_temperature
             )
 
-        # if self._enable_new_api_stack:
-        #     # Include the architecture hyperparameters into the model config.
-        #     # TODO (simon, sven): Find a general way to update the model_config.
-        #     if "double_q" not in self.model:
-        #         self.model.update({"double_q": self.double_q})
-        #     if "dueling" not in self.model:
-        #         self.model.update({"dueling": self.dueling})
-        #     if "noisy" not in self.model:
-        #         self.model.update({"noisy": self.noisy})
-        #     if "simga0" not in self.model:
-        #         self.model.update({"sigma0": self.sigma0})
-        #     if "num_atoms" not in self.model:
-        #         self.model.update({"num_atoms": self.num_atoms})
-        #     if "v_max" not in self.model:
-        #         self.model.update({"v_max": self.v_max})
-        #     if "v_min" not in self.model:
-        #         self.model.update({"v_min": self.v_min})
-
         return self
 
     @override(AlgorithmConfig)
@@ -502,14 +484,13 @@ class DQNConfig(AlgorithmConfig):
                 "Use `config.framework('torch')` instead."
             )
 
-    # TODO (sven, simon): We cannot use our `override` decorator here, as the
-    # this only works on an instance not a class. We should refactor this.
     @property
-    def _model_auto_keys(self) -> Dict[str, Any]:
-        return super()._model_auto_keys | {
+    @override(AlgorithmConfig)
+    def _model_config_auto_includes(self) -> Dict[str, Any]:
+        return super()._model_config_auto_includes | {
             "double_q": self.double_q,
             "dueling": self.dueling,
-            "epsilon": [(0, 1.0), (10000, 0.05)],
+            "epsilon": self.epsilon,
             "noisy": self.noisy,
             "num_atoms": self.num_atoms,
             "std_init": self.sigma0,

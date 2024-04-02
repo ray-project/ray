@@ -189,7 +189,6 @@ class TestDreamerV3(unittest.TestCase):
             # of parameters to RLlib's implementation.
             for model_size in ["XS", "S", "M", "L", "XL"]:
                 config.model_size = model_size
-                # config.training(model={"model_size": model_size})
 
                 # Atari and CartPole spaces.
                 for obs_space, num_actions, env_name in [

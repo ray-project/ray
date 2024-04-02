@@ -450,8 +450,9 @@ class DreamerV3Config(AlgorithmConfig):
         return self.num_learner_workers == 0 and self.num_rollout_workers == 0
 
     @property
-    def _model_auto_keys(self) -> Dict[str, Any]:
-        return super()._model_auto_keys | {
+    @override(AlgorithmConfig)
+    def _model_config_auto_includes(self) -> Dict[str, Any]:
+        return super()._model_config_auto_includes | {
             "gamma": self.gamma,
             "horizon_H": self.horizon_H,
             "model_size": self.model_size,

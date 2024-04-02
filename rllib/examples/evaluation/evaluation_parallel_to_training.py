@@ -74,7 +74,7 @@ class AssertEvalCallback(DefaultCallbacks):
                 # Compare number of entries in episode_lengths (this is the
                 # number of episodes actually run) with desired number of
                 # episodes from the config.
-                assert num_episodes_done + 5 == algorithm.config.evaluation_duration, (
+                assert num_episodes_done == algorithm.config.evaluation_duration, (
                     num_episodes_done,
                     algorithm.config.evaluation_duration,
                 )
@@ -86,7 +86,7 @@ class AssertEvalCallback(DefaultCallbacks):
                 num_timesteps_wanted = algorithm.config.evaluation_duration
                 delta = num_timesteps_wanted - num_timesteps_reported
                 # Expect roughly the same (desired // num-eval-workers).
-                assert abs(delta) < 50, (
+                assert abs(delta) < 20, (
                     delta,
                     num_timesteps_wanted,
                     num_timesteps_reported,

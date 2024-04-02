@@ -537,6 +537,7 @@ class AlgorithmConfig(_Config):
         self.synchronize_filters = DEPRECATED_VALUE
         self.enable_async_evaluation = DEPRECATED_VALUE
         self.custom_async_evaluation_function = DEPRECATED_VALUE
+        self._enable_rl_module_api = DEPRECATED_VALUE
 
         # The following values have moved because of the new ReplayBuffer API
         self.buffer_size = DEPRECATED_VALUE
@@ -2741,7 +2742,7 @@ class AlgorithmConfig(_Config):
         model_config_dict: Optional[Dict[str, Any]] = NotProvided,
         rl_module_spec: Optional[RLModuleSpec] = NotProvided,
         # Deprecated arg.
-        _enable_rl_module_api: Optional[bool] = NotProvided,
+        _enable_rl_module_api=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the config's RLModule settings.
 
@@ -3619,12 +3620,12 @@ class AlgorithmConfig(_Config):
             # the one defined by the auto keys and the `model_config_dict` arguments in
             # `self.rl_module()`.
             if module_spec.model_config_dict is None:
-                module_spec.model_config_dict = self.model_config_dict
+                module_spec.model_config_dict = self.model_config
             # Otherwise we combine the two dictionaries where settings from the
             # `RLModuleSpec` have higher priority.
             else:
                 module_spec.model_config_dict = (
-                    self.model_config_dict | module_spec.model_config_dict
+                    self.model_config | module_spec.model_config_dict
                 )
 
         return marl_module_spec
@@ -3722,10 +3723,10 @@ class AlgorithmConfig(_Config):
         return self.to_dict().items()
 
     @property
-    def model_config_dict(self):
+    def model_config(self):
         """Defines the model configuration used.
 
-        This method combines the auto configuration `self._model_auto_keys`
+        This method combines the auto configuration `self _model_config_auto_includes`
         defined by an algorithm with the user-defined configuration in
         `self._model_config_dict`.This configuration dictionary will be used to
         configure the `RLModule` in the new stack and the `ModelV2` in the old
@@ -3734,18 +3735,20 @@ class AlgorithmConfig(_Config):
         Returns:
             A dictionary with the model configuration.
         """
-        return self._model_auto_keys | self._model_config_dict
+        return self._model_config_auto_includes | self._model_config_dict
 
     @property
-    def _model_auto_keys(self) -> Dict[str, Any]:
-        """Defines the main keys for auto-model configuration.
+    def _model_config_auto_includes(self) -> Dict[str, Any]:
+        """Defines which `AlgorithmConfig` settings/properties should be
+        auto-included into `self.model_config`.
 
         The dictionary in this property contains the default configuration of an
         algorithm. Together with the `self._model`, this method will be used to
         define the configuration sent to the `RLModule`.
 
         Returns:
-            A dictionary with the main keys for auto-model configuration.
+            A dictionary with the automatically included properties/settings of this
+            `AlgorithmConfig` object into `self.model_config`.
         """
         return MODEL_DEFAULTS
 

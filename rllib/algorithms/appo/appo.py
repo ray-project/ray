@@ -256,6 +256,11 @@ class APPOConfig(ImpalaConfig):
 
         return SingleAgentRLModuleSpec(module_class=RLModule, catalog_class=APPOCatalog)
 
+    @property
+    @override(AlgorithmConfig)
+    def _model_config_auto_includes(self):
+        return super()._model_config_auto_includes | {"vf_share_layers": False}
+
 
 class APPO(Impala):
     def __init__(self, config, *args, **kwargs):
