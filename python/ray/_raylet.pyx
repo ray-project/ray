@@ -2574,7 +2574,7 @@ def maybe_initialize_job_config():
         py_driver_sys_path = core_worker.get_job_config().py_driver_sys_path
         if py_driver_sys_path:
             for p in py_driver_sys_path:
-                sys.path.append(p)
+                sys.path.insert(0, p)
 
         # Cache and set the current job id.
         job_id = core_worker.get_current_job_id()
