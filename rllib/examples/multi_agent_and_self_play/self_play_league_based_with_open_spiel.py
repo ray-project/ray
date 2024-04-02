@@ -1,4 +1,4 @@
-"""Example showing how one can implement a league-based training workflow.
+"""Example showing how to implement a league-based training workflow.
 
 Uses the open spiel adapter of RLlib with the "markov_soccer" game and
 a simplified multi-agent, league-based setup:

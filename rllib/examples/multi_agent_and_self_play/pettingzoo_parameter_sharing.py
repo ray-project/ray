@@ -1,14 +1,14 @@
 """Runs the PettingZoo Waterworld multi-agent env in RLlib using single policy learning.
 
 Other than the `pettingzoo_independent_learning.py` example (in this same folder),
-in this example, we simply train a single policy (shared by all agents).
+this example simply trains a single policy (shared by all agents).
 
 See: https://pettingzoo.farama.org/environments/sisl/waterworld/
 for more details on the environment.
 
 
-How to run this script?
------------------------
+How to run this script
+----------------------
 `python [script file name].py --enable-new-api-stack --num-agents=2`
 
 Control the number of agents and policies (RLModules) via --num-agents and
@@ -19,7 +19,7 @@ many policies might take some time.
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`
-Which should allow you to set breakpoints anywhere in the RLlib code and
+which should allow you to set breakpoints anywhere in the RLlib code and
 have the execution stop there for inspection and debugging.
 
 For logging to your WandB account, use:

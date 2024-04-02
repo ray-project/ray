@@ -7,13 +7,13 @@ This example has two RLModules (as action computing policies):
 The environment is MultiAgentCartPole, in which there are n agents both policies
 
 
-How to run this script?
------------------------
+How to run this script
+----------------------
 `python [script file name].py --enable-new-api-stack --num-agents=2`
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`
-Which should allow you to set breakpoints anywhere in the RLlib code and
+which should allow you to set breakpoints anywhere in the RLlib code and
 have the execution stop there for inspection and debugging.
 
 For logging to your WandB account, use:
@@ -66,7 +66,7 @@ if __name__ == "__main__":
         args.enable_new_api_stack
     ), "Must set --enable-new-api-stack when running this script!"
 
-    # Simple environment with n independent cartpole entities
+    # Simple environment with n independent cartpole entities.
     register_env(
         "multi_agent_cartpole",
         lambda _: MultiAgentCartPole({"num_agents": args.num_agents}),

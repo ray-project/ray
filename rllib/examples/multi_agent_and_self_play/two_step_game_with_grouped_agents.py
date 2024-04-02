@@ -3,8 +3,8 @@ https://arxiv.org/pdf/1803.11485.pdf
 
 See also: rllib/examples/centralized_critic.py for centralized critic PPO on this game.
 
-How to run this script?
------------------------
+How to run this script
+----------------------
 `python [script file name].py --enable-new-api-stack --num-agents=2`
 
 Note that in this script, we use an multi-agent environment in which both
