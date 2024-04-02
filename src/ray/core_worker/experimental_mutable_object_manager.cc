@@ -182,7 +182,7 @@ Status MutableObjectManager::WriteAcquire(const ObjectID &object_id,
   if (!channel) {
     return Status::ObjectNotFound("Writer channel has not been registered");
   }
-  RAY_CHECK(!channel->written);
+  RAY_CHECK(!channel->written) << "You must call WriteAcquire() before WriteRelease()";
 
   std::unique_ptr<plasma::MutableObject> &object = channel->mutable_object;
   int64_t total_size = data_size + metadata_size;
@@ -212,7 +212,7 @@ Status MutableObjectManager::WriteRelease(const ObjectID &object_id) {
   if (!channel) {
     return Status::ObjectNotFound("Writer channel has not been registered");
   }
-  RAY_CHECK(channel->written);
+  RAY_CHECK(channel->written) << "You must call WriteAcquire() before WriteRelease()";
 
   PlasmaObjectHeader::Semaphores sem = GetSemaphores(object_id);
   std::unique_ptr<plasma::MutableObject> &object = channel->mutable_object;
@@ -228,7 +228,8 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
   if (!channel) {
     return Status::ObjectNotFound("Reader channel has not been registered");
   }
-
+  // This lock ensures that there is only one reader at a time. The lock is released in
+  // `ReadRelease()`.
   channel->lock->Lock();
 
   PlasmaObjectHeader::Semaphores sem = GetSemaphores(object_id);
@@ -268,6 +269,8 @@ Status MutableObjectManager::ReadRelease(const ObjectID &object_id)
   // The next read needs to read at least this version.
   channel->next_version_to_read++;
 
+  // This lock ensures that there is only one reader at a time. The lock is acquired in
+  // `ReadAcquire()`.
   channel->lock->Unlock();
   return Status::OK();
 }
