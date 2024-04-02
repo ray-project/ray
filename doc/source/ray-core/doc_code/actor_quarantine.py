@@ -1,7 +1,7 @@
 # flake8: noqa
 
 # fmt: off
-# __actor_qurantine_begin__
+# __actor_quarantine_begin__
 import os
 import ray
 from typing import List, Tuple
@@ -21,6 +21,7 @@ class Actor:
         self.counter += 1
         return self.counter
 
+@ray.remote
 class ControlPlane:
     def __init__(self, num_replicas=10) -> None:
         self.actors = []
@@ -102,8 +103,8 @@ class ControlPlane:
         ...
 
 # User code
-control_plane = ControlPlane.remote()
+control_plane = ControlPlane()
 print(ray.get(control_plane.workload.remote()))
 
-# __actor_qurantine_end__
+# __actor_quarantine_end__
 # fmt: on

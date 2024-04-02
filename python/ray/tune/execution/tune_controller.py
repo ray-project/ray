@@ -19,7 +19,7 @@ from ray.air.execution._internal import RayActorManager, TrackedActor
 from ray.train import CheckpointConfig
 from ray.train._internal.session import _TrainingResult, _FutureTrainingResult
 from ray.train._internal.storage import StorageContext
-from ray.exceptions import RayActorError, RayTaskError
+from ray.exceptions import RayActorError, RayTaskError, ActorUnavailableError
 from ray.tune.error import _AbortTrialExecution, _TuneStopTrialError
 from ray.tune.execution.class_cache import _ActorClassCache
 from ray.tune.execution.experiment_state import (
@@ -1234,7 +1234,9 @@ class TuneController:
             def _on_error(tracked_actor: TrackedActor, exception: Exception):
                 # If the actor failed, it has already been cleaned up.
                 if tracked_actor not in self._actor_to_trial:
-                    assert isinstance(exception, RayActorError), type(exception)
+                    assert isinstance(
+                        exception, (RayActorError, ActorUnavailableError)
+                    ), type(exception)
                 else:
                     assert trial == self._actor_to_trial[tracked_actor]
 
