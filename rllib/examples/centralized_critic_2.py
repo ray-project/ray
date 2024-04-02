@@ -1,5 +1,5 @@
 # ***********************************************************************************
-# IMPORTANT NOTE: This script is using the old API stack and should be replaced by
+# IMPORTANT NOTE: This script is using the old API stack and will soon be replaced by
 # `ray.rllib.examples.multi_agent_and_self_play.pettingzoo_shared_value_function.py`!
 # ***********************************************************************************
 
