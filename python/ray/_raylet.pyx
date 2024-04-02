@@ -4543,8 +4543,6 @@ cdef class CoreWorker:
         if num_returns == 0:
             return num_outputs_stored
 
-        logger.info(f">>> [DBG][{datetime.utcnow()}] (store_task_outputs) Storing outputs {len(outputs)} ({self.get_current_task_id()}) ({threading.get_ident()} / {threading.get_native_id()})")
-
         task_output_inlined_bytes = 0
         i = -1
         for i, output in enumerate(outputs):
@@ -4746,8 +4744,6 @@ cdef class CoreWorker:
 
         eventloop, _ = self.get_event_loop(function_descriptor, specified_cgname)
 
-        logger.info(f">>> [DBG][{datetime.utcnow()}] (run_async_func_or_coro_in_event_loop) Func: {func_or_coro} {is_async_func(_try_unwrap_remote_decorator(func_or_coro))} (loop: {id(asyncio._get_running_loop())} / {repr(asyncio._get_running_loop())})  (t: {threading.get_ident()})")
-
         async def _async_function():
             try:
                 # TODO fix
@@ -4777,16 +4773,9 @@ cdef class CoreWorker:
                     else:
                         awaitable = eventloop.run_in_executor(None, func_or_coro, *func_args, **func_kwargs)
 
-                logger.info(f">>> [DBG][{datetime.utcnow()}] (_async_function) Awaiting ({task_id}) (loop: {id(asyncio._get_running_loop())} / {repr(asyncio._get_running_loop())})  (t: {threading.get_ident()})")
-
-                res = await awaitable
-
-                logger.info(f">>> [DBG][{datetime.utcnow()}] (_async_function) Obtained result: {res} {awaitable} ({task_id}) (loop: {id(asyncio._get_running_loop())} / {repr(asyncio._get_running_loop())})  (t: {threading.get_ident()})")
-
-                return res
+                return await awaitable
             finally:
-                logger.info(f">>> [DBG][{datetime.utcnow()}] (_async_function) Notifying ({task_id}) (loop: {id(asyncio._get_running_loop())} / {repr(asyncio._get_running_loop())})  (t: {threading.get_ident()})")
-
+                # TODO elaborate
                 event.Notify()
 
         future = asyncio.run_coroutine_threadsafe(_async_function(), eventloop)
@@ -4795,19 +4784,12 @@ cdef class CoreWorker:
             with self._task_id_to_future_lock:
                 self._task_id_to_future[task_id] = future
 
-        logger.info(f">>> [DBG][{datetime.utcnow()}] (run_async_func_or_coro_in_event_loop) Yielding fiber ({task_id}) (loop: {id(asyncio._get_running_loop())} / {repr(asyncio._get_running_loop())})  (t: {threading.get_ident()})")
-
         with nogil:
             (CCoreWorkerProcess.GetCoreWorker()
                 .YieldCurrentFiber(event))
 
-        logger.info(f">>> [DBG][{datetime.utcnow()}] (run_async_func_or_coro_in_event_loop) Reclaiming fiber ({task_id}) (loop: {id(asyncio._get_running_loop())} / {repr(asyncio._get_running_loop())})  (t: {threading.get_ident()})")
-
         try:
-            future.add_done_callback(lambda fut: logger.info(f">>> [DBG][{datetime.utcnow()}] (Future callback) Future status: {fut.done()} (fut: {str(fut)}) (task: {task_id}) (loop: {id(asyncio._get_running_loop())} / {repr(asyncio._get_running_loop())})  (t: {threading.get_ident()})"))
-
-            logger.info(f">>> [DBG][{datetime.utcnow()}] (run_async_func_or_coro_in_event_loop) Future status: {future.done()} (fut: {str(future)}) (task: {task_id}) (loop: {id(asyncio._get_running_loop())} / {repr(asyncio._get_running_loop())})  (t: {threading.get_ident()})")
-
+            # TODO elaborate that this might block
             result = future.result()
         except concurrent.futures.CancelledError:
             raise TaskCancelledError(task_id)
