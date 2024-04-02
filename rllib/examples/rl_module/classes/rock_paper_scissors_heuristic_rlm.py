@@ -61,10 +61,10 @@ class BeatLastHeuristicRLM(RLModule):
     def _forward_inference(self, batch, **kwargs):
         """Returns the exact action that would beat the previous action of the opponent.
 
-        The opponent's prev. action is the current observation for this agent.
+        The opponent's previous action is the current observation for this agent.
 
         Both action- and observation spaces are discrete. There are 3 actions available.
-        (0-2) and 4 observations (0-2 plus 3, where 3 is te observation after the env
+        (0-2) and 4 observations (0-2 plus 3, where 3 is the observation after the env
         reset, when no action has been taken yet). Thereby:
         0=Rock
         1=Paper

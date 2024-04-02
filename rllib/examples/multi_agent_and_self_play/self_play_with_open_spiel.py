@@ -44,7 +44,7 @@ from ray.tune.registry import get_trainable_cls, register_env
 open_spiel = try_import_open_spiel(error=True)
 pyspiel = try_import_pyspiel(error=True)
 
-# Import after try_import_open_spiel, so we can error out with hints
+# Import after try_import_open_spiel, so we can error out with hints.
 from open_spiel.python.rl_environment import Environment  # noqa: E402
 
 
@@ -233,7 +233,7 @@ if __name__ == "__main__":
                 print("You lose")
             else:
                 print("Draw")
-            # Switch order of players
+            # Switch order of players.
             human_player = 1 - human_player
 
             num_episodes += 1

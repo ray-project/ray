@@ -1,18 +1,18 @@
 """
-Example showing how one can create a multi-agent env, in which the different agents
+Example showing how to create a multi-agent env, in which the different agents
 have different observation and action spaces.
 
 These spaces do NOT necessarily have to be specified manually by the user. Instead,
-RLlib will try to automatically infer them from the env provided spaces dicts
+RLlib tries to automatically infer them from the env provided spaces dicts
 (agentID -> obs/act space) and the policy mapping fn (mapping agent IDs to policy IDs).
 
-How to run this script?
------------------------
+How to run this script
+----------------------
 `python [script file name].py --enable-new-api-stack --num-agents=2`
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`
-Which should allow you to set breakpoints anywhere in the RLlib code and
+which should allow you to set breakpoints anywhere in the RLlib code and
 have the execution stop there for inspection and debugging.
 
 For logging to your WandB account, use:
@@ -37,7 +37,7 @@ class BasicMultiAgentMultiSpaces(MultiAgentEnv):
     agent1: obs=(20,), act=Discrete(3)
 
     The logic of the env doesn't really matter for this example. The point of this env
-    is to show how one can use multi-agent envs, in which the different agents utilize
+    is to show how to use multi-agent envs, in which the different agents utilize
     different obs- and action spaces.
     """
 
@@ -101,7 +101,7 @@ if __name__ == "__main__":
         .training(train_batch_size=1024)
         .multi_agent(
             # Use a simple set of policy IDs. Spaces for the individual policies
-            # will be inferred automatically using reverse lookup via the
+            # are inferred automatically using reverse lookup via the
             # `policy_mapping_fn` and the env provided spaces for the different
             # agents. Alternatively, you could use:
             # policies: {main0: PolicySpec(...), main1: PolicySpec}

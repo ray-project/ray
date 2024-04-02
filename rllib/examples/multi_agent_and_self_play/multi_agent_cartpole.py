@@ -1,7 +1,7 @@
 """Simple example of setting up an agent-to-module mapping function.
 
-How to run this script?
------------------------
+How to run this script
+----------------------
 `python [script file name].py --enable-new-api-stack --num-agents=2`
 
 Control the number of agents and policies (RLModules) via --num-agents and
@@ -9,7 +9,7 @@ Control the number of agents and policies (RLModules) via --num-agents and
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`
-Which should allow you to set breakpoints anywhere in the RLlib code and
+which should allow you to set breakpoints anywhere in the RLlib code and
 have the execution stop there for inspection and debugging.
 
 For logging to your WandB account, use:
