@@ -143,11 +143,10 @@ TEST(MutableObjectProvider, RegisterWriterChannel) {
   MutableObjectProvider provider(
       plasma,
       /*factory=*/absl::bind_front(GetTestInterface, interface));
-  ray::experimental::MutableObjectManager &object_manager = provider.object_manager();
   provider.RegisterWriterChannel(object_id, node_id);
 
   std::shared_ptr<Buffer> data;
-  EXPECT_EQ(object_manager
+  EXPECT_EQ(provider.object_manager()
                 .WriteAcquire(object_id,
                               /*data_size=*/0,
                               /*metadata=*/nullptr,
@@ -156,7 +155,7 @@ TEST(MutableObjectProvider, RegisterWriterChannel) {
                               data)
                 .code(),
             StatusCode::OK);
-  EXPECT_EQ(object_manager.WriteRelease(object_id).code(), StatusCode::OK);
+  EXPECT_EQ(provider.object_manager().WriteRelease(object_id).code(), StatusCode::OK);
 
   while (interface->pushed_objects().empty()) {
   }
@@ -165,7 +164,30 @@ TEST(MutableObjectProvider, RegisterWriterChannel) {
   EXPECT_EQ(interface->pushed_objects().front(), object_id);
 }
 
-TEST(MutableObjectProvider, HandlePushMutableObject) {}
+TEST(MutableObjectProvider, HandlePushMutableObject) {
+  ObjectID object_id = ObjectID::FromRandom();
+  auto plasma = std::make_shared<TestPlasma>();
+  auto interface = std::make_shared<TestInterface>();
+
+  MutableObjectProvider provider(
+      plasma,
+      /*factory=*/absl::bind_front(GetTestInterface, interface));
+  provider.RegisterReaderChannel(object_id);
+
+  ray::rpc::PushMutableObjectRequest request;
+  request.set_object_id(object_id.Binary());
+  request.set_data_size(0);
+  request.set_metadata_size(0);
+
+  ray::rpc::PushMutableObjectReply reply;
+  provider.HandlePushMutableObject(request, &reply);
+
+  std::shared_ptr<RayObject> result;
+  EXPECT_EQ(provider.object_manager().ReadAcquire(object_id, result).code(),
+            StatusCode::OK);
+  EXPECT_EQ(result->GetSize(), 0UL);
+  EXPECT_EQ(provider.object_manager().ReadRelease(object_id).code(), StatusCode::OK);
+}
 
 #endif  // defined(__APPLE__) || defined(__linux__)
 
