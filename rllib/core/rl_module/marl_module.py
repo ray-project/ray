@@ -545,7 +545,7 @@ class MultiAgentRLModuleSpec:
             module_specs: The mapping for the module_id to the single-agent module
                 specs to be added to this multi-agent module spec.
             override: Whether to override the existing module specs if they already
-                exist. If False, they will be updated only.
+                exist. If False, they are only updated.
         """
         if self.module_specs is None:
             self.module_specs = {}
@@ -620,7 +620,7 @@ class MultiAgentRLModuleSpec:
         Args:
             other: The other spec to update this spec with.
             override: Whether to override the existing module specs if they already
-                exist. If False, they will be updated only.
+                exist. If False, they are only updated.
         """
         if isinstance(other, SingleAgentRLModuleSpec):
             for mid, spec in self.module_specs.items():

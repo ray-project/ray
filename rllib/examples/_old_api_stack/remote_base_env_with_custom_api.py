@@ -1,10 +1,10 @@
 """
-This script demonstrates how one can specify custom env APIs in
+This script demonstrates how to specify custom env APIs in
 combination with RLlib's `remote_worker_envs` setting, which
 parallelizes individual sub-envs within a vector env by making each
-one a ray Actor.
+one a Ray Actor.
 
-You can access your Env's API via a custom callback as shown below.
+Access your Env's API with a custom callback as shown below.
 """
 import argparse
 import gymnasium as gym
@@ -58,11 +58,11 @@ class NonVectorizedEnvToBeVectorizedIntoRemoteBaseEnv(TaskSettableEnv):
     """Class for a single sub-env to be vectorized into RemoteBaseEnv.
 
     If you specify this class directly under the "env" config key, RLlib
-    will auto-wrap
+    auto-wraps.
 
-    Note that you may implement your own custom APIs. Here, we demonstrate
-    using RLlib's TaskSettableEnv API (which is a simple sub-class
-    of gym.Env).
+    Note that you can implement your own custom APIs. The following demonstrates
+    using RLlib's TaskSettableEnv API, which is a simple sub-class
+    of gym.Env.
     """
 
     def __init__(self, config=None):

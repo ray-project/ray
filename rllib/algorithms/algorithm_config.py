@@ -2861,7 +2861,7 @@ class AlgorithmConfig(_Config):
             # Merge provided RL Module spec class with defaults
             _check_rl_module_spec(self._rl_module_spec)
             # Merge given spec with default one (in case items are missing, such as
-            # spaces, module class, etc..).
+            # spaces, module class, etc.)
             if isinstance(self._rl_module_spec, SingleAgentRLModuleSpec):
                 if isinstance(default_rl_module_spec, SingleAgentRLModuleSpec):
                     default_rl_module_spec.update(self._rl_module_spec)

@@ -1,6 +1,6 @@
 """Example of using variable-length Repeated / struct observation spaces.
 
-This example shows:
+This example demonstrates the following:
   - using a custom environment with Repeated / struct observations
   - using a custom model to view the batched list observations
 
