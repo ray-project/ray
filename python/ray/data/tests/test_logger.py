@@ -24,7 +24,6 @@ def test_dataset_logger(shutdown_only):
     log_file_path = os.path.join(session_dir, "logs", DEFAULT_DATASET_LOG_FILENAME)
     with open(log_file_path, "r") as f:
         raw_logged_msg = f.read()
-        print(raw_logged_msg)
     (
         logged_ds,
         logged_ts,
