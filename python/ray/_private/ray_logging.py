@@ -89,7 +89,7 @@ def setup_component_logger(
         handler.setLevel(logging_level)
         handler.setFormatter(logging.Formatter(logging_format))
         logger.addHandler(handler)
-    logger.setLevel(logging_level)
+
     logger.propagate = propagate
     return logger
 
