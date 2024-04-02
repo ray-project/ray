@@ -364,11 +364,7 @@ def test_dataset_stats_basic(
 ):
     context = DataContext.get_current()
     context.verbose_stats_logs = verbose_stats_logs
-    logger = DatasetLogger(
-        "ray.data._internal.execution.streaming_executor"
-    ).get_logger(
-        log_to_stdout=enable_auto_log_stats,
-    )
+    logger = logging.getLogger("ray.data._internal.execution.streaming_executor")
 
     with patch.object(logger, "info") as mock_logger:
         ds = ray.data.range(1000, override_num_blocks=10)
@@ -1475,9 +1471,7 @@ def test_dataset_name():
 
 
 def test_op_metrics_logging():
-    logger = DatasetLogger(
-        "ray.data._internal.execution.streaming_executor"
-    ).get_logger()
+    logger = logging.getLogger("ray.data._internal.execution.streaming_executor")
     with patch.object(logger, "info") as mock_logger:
         ray.data.range(100).map_batches(lambda x: x).materialize()
         logs = [canonicalize(call.args[0]) for call in mock_logger.call_args_list]
@@ -1497,9 +1491,7 @@ def test_op_metrics_logging():
 
 
 def test_op_state_logging():
-    logger = DatasetLogger(
-        "ray.data._internal.execution.streaming_executor"
-    ).get_logger()
+    logger = logging.getLogger("ray.data._internal.execution.streaming_executor")
     with patch.object(logger, "info") as mock_logger:
         ray.data.range(100).map_batches(lambda x: x).materialize()
         logs = [canonicalize(call.args[0]) for call in mock_logger.call_args_list]
