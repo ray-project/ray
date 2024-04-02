@@ -1394,6 +1394,9 @@ def test_can_create_actor_in_multiple_sessions(shutdown_only):
     https://github.com/ray-project/ray/issues/44380
     """
 
+    # To avoid interference with other tests, we need a fresh cluster.
+    ray.shutdown()
+
     @ray.remote
     class A:
         def __init__(self):
