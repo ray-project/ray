@@ -30,10 +30,10 @@ from ray.data._internal.execution.streaming_executor_state import (
     select_operator_to_run,
     update_operator_states,
 )
+from ray.data._internal.logging import get_log_path
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats, StatsManager
 from ray.data.context import DataContext
-from ray.data.logging import get_log_path
 
 logger = logging.getLogger(__name__)
 

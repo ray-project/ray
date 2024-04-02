@@ -10,6 +10,7 @@ from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     NodeIdStr,
 )
+from ray.data._internal.logging import configure_logging
 from ray.data._internal.progress_bar import set_progress_bars
 from ray.data.context import DataContext, DatasetContext
 from ray.data.dataset import Dataset, Schema
@@ -21,7 +22,6 @@ from ray.data.datasource import (
     RowBasedFileDatasink,
 )
 from ray.data.iterator import DataIterator, DatasetIterator
-from ray.data.logging import configure_logging
 from ray.data.preprocessor import Preprocessor
 from ray.data.read_api import (  # noqa: F401
     from_arrow,
