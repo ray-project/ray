@@ -240,7 +240,7 @@ if __name__ == "__main__":
         else:
             object_spilling_config = {}
         external_storage.setup_external_storage(
-            object_spilling_config, node.session_name
+            object_spilling_config, node.node_id, node.session_name
         )
 
     ray._private.worker._global_node = node
