@@ -31,6 +31,7 @@ env:
   RAYCI_DISABLE_CPP_WHEEL: "true"
   RAYCI_DISABLE_JAVA: "true"
   RAYCI_DISABLE_TEST_DB: "true"
+  RAYCI_GLOBAL_CONFIG: "ci/ray_ci/runtime_config.yaml"
 tag_filter_command:
   - ./ci/ci_tags_from_change.sh
 hook_env_keys:
