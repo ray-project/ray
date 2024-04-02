@@ -438,7 +438,7 @@ def _debug_dump_topology(topology: Topology, resource_manager: ResourceManager) 
     """
     logger.get_logger(log_to_stdout=False).info("Execution Progress:")
     for i, (op, state) in enumerate(topology.items()):
-        logger.info(
+        logger.get_logger(log_to_stdout=False).info(
             f"{i}: {state.summary_str(resource_manager)}, "
             f"Blocks Outputted: {state.num_completed_tasks}/{op.num_outputs_total()}"
         )
