@@ -1017,7 +1017,7 @@ def start_open_port_check_server():
 
 
 def test_ray_check_open_ports(shutdown_only, start_open_port_check_server):
-    ray.init()
+    context = ray.init()
 
     open_port_check_server = start_open_port_check_server
 
@@ -1031,11 +1031,15 @@ def test_ray_check_open_ports(shutdown_only, start_open_port_check_server):
         ],
     )
     assert result.exit_code == 0
-    # 6379 is GCS server port
-    assert 6379 in open_port_check_server.request_ports
+    assert (
+        context.address_info["dashboard_agent_listen_port"]
+        in open_port_check_server.request_ports
+    )
     assert "[🟢] No open ports detected" in result.output
 
-    open_port_check_server.response_open_ports = [6379]
+    open_port_check_server.response_open_ports = [
+        context.address_info["metrics_export_port"]
+    ]
     result = runner.invoke(
         check_open_ports,
         [
@@ -1045,7 +1049,10 @@ def test_ray_check_open_ports(shutdown_only, start_open_port_check_server):
         ],
     )
     assert result.exit_code == 0
-    assert 6379 in open_port_check_server.request_ports
+    assert (
+        context.address_info["metrics_export_port"]
+        in open_port_check_server.request_ports
+    )
     assert "[🛑] open ports detected" in result.output
 
 
