@@ -1,4 +1,8 @@
-"""A CLI utility for check open ports in the Ray cluster."""
+"""A CLI utility for check open ports in the Ray cluster.
+
+See https://www.anyscale.com/blog/update-on-ray-cve-2023-48022-new-verification-tooling-available # noqa: E501
+for more details.
+"""
 from typing import List, Tuple
 import subprocess
 import click
