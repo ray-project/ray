@@ -1,5 +1,5 @@
-import { TableCell } from "@material-ui/core";
-import { styled } from "@material-ui/core/styles";
+import { TableCell } from "@mui/material";
+import { styled } from "@mui/material/styles";
 
 export const StyledTableCell = styled(TableCell)(({ theme }) => ({
   padding: theme.spacing(1),

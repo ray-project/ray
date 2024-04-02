@@ -1,4 +1,5 @@
-import { Box, makeStyles } from "@material-ui/core";
+import { Box } from "@mui/material";
+import makeStyles from "@mui/styles/makeStyles";
 import React, { useRef, useState } from "react";
 import useSWR from "swr";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
@@ -174,7 +175,7 @@ export const JobDetailChartsPage = () => {
         <Box
           display="flex"
           flexDirection="row"
-          gridGap={24}
+          gap={3}
           alignItems="stretch"
           className={classes.autoscalerSection}
         >

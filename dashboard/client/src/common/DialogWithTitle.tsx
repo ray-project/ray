@@ -1,14 +1,9 @@
-import {
-  createStyles,
-  Dialog,
-  IconButton,
-  Theme,
-  Typography,
-  WithStyles,
-  withStyles,
-} from "@material-ui/core";
-import CloseIcon from "@material-ui/icons/Close";
-import React from "react";
+import CloseIcon from "@mui/icons-material/Close";
+import { Dialog, IconButton, Theme, Typography } from "@mui/material";
+import { WithStyles } from "@mui/styles";
+import createStyles from "@mui/styles/createStyles";
+import withStyles from "@mui/styles/withStyles";
+import React, { PropsWithChildren } from "react";
 
 const styles = (theme: Theme) =>
   createStyles({
@@ -38,7 +33,7 @@ type Props = {
 };
 
 class DialogWithTitle extends React.Component<
-  Props & WithStyles<typeof styles>
+  PropsWithChildren<Props> & WithStyles<typeof styles>
 > {
   render() {
     const { classes, handleClose, title } = this.props;
@@ -51,7 +46,11 @@ class DialogWithTitle extends React.Component<
         open
         scroll="body"
       >
-        <IconButton className={classes.closeButton} onClick={handleClose}>
+        <IconButton
+          className={classes.closeButton}
+          onClick={handleClose}
+          size="large"
+        >
           <CloseIcon />
         </IconButton>
         <Typography className={classes.title}>{title}</Typography>
