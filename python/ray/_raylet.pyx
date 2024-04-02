@@ -1816,7 +1816,7 @@ cdef void execute_task(
                             )
                         )
 
-                if inspect.isasyncgenfunction(function.method):
+                if inspect.isgeneratorfunction(function.method) or inspect.isasyncgenfunction(function.method):
                     # The coroutine will be handled separately by
                     # execute_dynamic_generator_and_store_task_outputs
                     return function(actor, *arguments, **kwarguments)
