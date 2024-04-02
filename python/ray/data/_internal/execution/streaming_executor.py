@@ -108,8 +108,11 @@ class StreamingExecutor(Executor, threading.Thread):
             if log_path is not None:
                 message += f" Full log is in {log_path}"
             message += f"\nExecution plan of Dataset: {dag}"
-            print(message)
             logger.info(message)
+
+            context = DataContext.get_current()
+            if context.print_on_execution_start:
+                print(message)
 
             logger.info("Execution config: %s", self._options)
             if not self._options.verbose_progress:
