@@ -28,7 +28,10 @@ class MockPopen:
 
 @mock.patch("ci.ray_ci.tester_container.TesterContainer._upload_build_info")
 @mock.patch("ci.ray_ci.tester_container.TesterContainer.upload_test_results")
-def test_persist_test_results(mock_upload_build_info, mock_upload_test_result) -> None:
+@mock.patch("ci.ray_ci.tester_container.TesterContainer.move_test_state")
+def test_persist_test_results(
+    mock_upload_build_info, mock_upload_test_result, mock_move_test_state
+) -> None:
     container = LinuxTesterContainer("team", skip_ray_installation=True)
     with mock.patch.dict(
         os.environ,
@@ -39,6 +42,7 @@ def test_persist_test_results(mock_upload_build_info, mock_upload_test_result) -
     ):
         container._persist_test_results("team", "log_dir")
         assert not mock_upload_build_info.called
+        assert not mock_move_test_state.called
     with mock.patch.dict(
         os.environ,
         {
@@ -48,6 +52,7 @@ def test_persist_test_results(mock_upload_build_info, mock_upload_test_result) -
     ):
         container._persist_test_results("team", "log_dir")
         assert not mock_upload_build_info.called
+        assert not mock_move_test_state.called
     with mock.patch.dict(
         os.environ,
         {
@@ -57,6 +62,7 @@ def test_persist_test_results(mock_upload_build_info, mock_upload_test_result) -
     ):
         container._persist_test_results("team", "log_dir")
         assert mock_upload_build_info.called
+        assert mock_move_test_state.called
     with mock.patch.dict(
         os.environ,
         {
@@ -66,6 +72,7 @@ def test_persist_test_results(mock_upload_build_info, mock_upload_test_result) -
     ):
         container._persist_test_results("team", "log_dir")
         assert mock_upload_build_info.called
+        assert mock_move_test_state.called
 
 
 def test_enough_gpus() -> None:
