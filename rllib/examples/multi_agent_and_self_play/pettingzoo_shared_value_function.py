@@ -7,8 +7,8 @@ Note that this example is different from the old API stack scripts:
 `examples/centralized_critic.py` and `examples/centralized_critic_2.py` in the
 sense that here, a true shared value function is used via the new
 `MultiAgentRLModule` class as opposed to both of the old API stack scripts, which
-do NOT use a single central value function, but 2: One for each policy learned.
-However, these 2 value functions are trained in the exact same fashion and with
+do NOT use a single central value function, but two (one for each policy learned).
+However, these two value functions are trained in the exact same fashion and with
 almost the same data (except for the opponent actions).
 The approach used here is cleaner and should serve as a template for similar setups,
 both cooperative and adversarial.
