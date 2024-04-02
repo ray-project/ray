@@ -299,10 +299,12 @@ class TestActiveCompaction:
             timer.advance(100)
             for _ in range(10):
                 opp = scheduler.get_node_to_compact(allow_new_compaction=False)
+                assert opp[0] == "node2"
             # Should print second warning
             timer.advance(1000)
             for _ in range(10):
                 opp = scheduler.get_node_to_compact(allow_new_compaction=False)
+                assert opp[0] == "node2"
 
             # Advance a LOT of time. We should give up on the compaction
             # because of timeout.
@@ -310,6 +312,96 @@ class TestActiveCompaction:
             opp = scheduler.get_node_to_compact(allow_new_compaction=False)
             assert opp is None
             assert scheduler._compacting_node is None
+
+    def test_exponential_backoff_cancellation(self):
+        """Test exponential backoff due to repeated cancellations."""
+
+        timer = MockTimer(0)
+        with patch("time.time", new=timer.time):
+            d_id = DeploymentID(name="deployment1")
+
+            cluster_node_info_cache = MockClusterNodeInfoCache()
+            cluster_node_info_cache.add_node("node1", {"CPU": 3})
+            cluster_node_info_cache.add_node("node2", {"CPU": 2})
+            scheduler = default_impl.create_deployment_scheduler(
+                cluster_node_info_cache,
+                head_node_id_override="fake-head-node-id",
+                create_placement_group_fn_override=None,
+            )
+
+            scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+            scheduler.on_deployment_deployed(
+                d_id, rconfig(ray_actor_options={"num_cpus": 1})
+            )
+
+            scheduler.on_replica_running(ReplicaID("r0", d_id), "node1")
+            scheduler.on_replica_running(ReplicaID("r1", d_id), "node1")
+            scheduler.on_replica_running(ReplicaID("r2", d_id), "node2")
+            opp = scheduler.get_node_to_compact(allow_new_compaction=True)
+            assert opp[0] == "node2"
+
+            for i in range(5):
+                # Compaction should be cancelled because of new replica
+                scheduler.on_replica_running(ReplicaID("r3", d_id), "node2")
+                opp = scheduler.get_node_to_compact(allow_new_compaction=True)
+                assert opp is None
+                scheduler.on_replica_stopping(ReplicaID("r3", d_id))
+
+                # Exponential backoff
+                expected_backoff = 2**i
+                timer.advance(expected_backoff / 2)
+                opp = scheduler.get_node_to_compact(allow_new_compaction=True)
+                assert opp is None
+                timer.advance(expected_backoff / 2)
+                opp = scheduler.get_node_to_compact(allow_new_compaction=True)
+                assert opp[0] == "node2"
+
+    def test_exponential_backoff_timeout(self):
+        """Test exponential backoff due to continued timeout."""
+
+        timer = MockTimer(0)
+        with patch("time.time", new=timer.time):
+            d_id = DeploymentID(name="deployment1")
+
+            cluster_node_info_cache = MockClusterNodeInfoCache()
+            cluster_node_info_cache.add_node("node1", {"CPU": 3})
+            cluster_node_info_cache.add_node("node2", {"CPU": 2})
+            scheduler = default_impl.create_deployment_scheduler(
+                cluster_node_info_cache,
+                head_node_id_override="fake-head-node-id",
+                create_placement_group_fn_override=None,
+            )
+
+            scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+            scheduler.on_deployment_deployed(
+                d_id, rconfig(ray_actor_options={"num_cpus": 1})
+            )
+
+            scheduler.on_replica_running(ReplicaID("r0", d_id), "node1")
+            scheduler.on_replica_running(ReplicaID("r1", d_id), "node1")
+            scheduler.on_replica_running(ReplicaID("r2", d_id), "node2")
+            opp = scheduler.get_node_to_compact(allow_new_compaction=True)
+            assert opp[0] == "node2"
+
+            for i in range(5):
+                # After 1000 seconds, compaction should still be happening
+                timer.advance(1000)
+                opp = scheduler.get_node_to_compact(allow_new_compaction=True)
+                assert opp[0] == "node2"
+
+                # At 1800 seconds, compaction times out / fails
+                timer.advance(800)
+                opp = scheduler.get_node_to_compact(allow_new_compaction=True)
+                assert opp is None
+
+                # Exponential backoff starts
+                expected_backoff = 2**i
+                timer.advance(expected_backoff / 2)
+                opp = scheduler.get_node_to_compact(allow_new_compaction=True)
+                assert opp is None
+                timer.advance(expected_backoff / 2)
+                opp = scheduler.get_node_to_compact(allow_new_compaction=True)
+                assert opp[0] == "node2"
 
     def test_head_node_not_considered(self):
         """The head node should not be considered as a compaction target."""

@@ -1,6 +1,7 @@
 # Copyright (2023 and onwards) Anyscale, Inc.
 
 import logging
+import os
 import sys
 import time
 from collections import defaultdict
@@ -26,6 +27,10 @@ from ray.serve._private.deployment_scheduler import (
 from ray.util.scheduling_strategies import In
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+MAX_BACKOFF_TIME_S = int(
+    os.environ.get("ANYSCALE_RAY_SERVE_COMPACTION_MAX_BACKOFF_TIME_S", 3600)
+)
 
 
 @dataclass
@@ -95,6 +100,8 @@ class AnyscaleDeploymentScheduler(DeploymentScheduler):
         # reconcile the deployments towards a healthy state, then
         # re-identify new compaction opportunities.
         self._compacting_node: Optional[CompactingNodeInfo] = None
+        self._failed_compaction_counter: int = 0
+        self._next_allowed_compaction_timestamp_s: float = 0
 
     def schedule(
         self,
@@ -379,19 +386,29 @@ class AnyscaleDeploymentScheduler(DeploymentScheduler):
                 f"have been scheduled on {target_node}: {new_replicas}."
             )
             self._compacting_node = None
+            self._failed_compaction_counter += 1
+            backoff_s = min(2 ** (self._failed_compaction_counter), MAX_BACKOFF_TIME_S)
+            self._next_allowed_compaction_timestamp_s = time.time() + backoff_s
+            if self._failed_compaction_counter >= 2:
+                logger.info(
+                    f"Compaction failed {self._failed_compaction_counter} times in a "
+                    f"row. Retrying after {backoff_s} seconds."
+                )
 
         # If all replicas have migrated off of the node, compaction is
         # complete.
         elif len(current_replicas_on_target_compact) == 0:
             logger.info(f"Successfully migrated replicas off of {target_node}.")
             self._compacting_node = None
+            self._failed_compaction_counter = 0
+            self._next_allowed_compaction_timestamp_s = 0
 
         # If we have been trying to compact the node for too long and
         # still haven't succeeded in making the target node idle, then
         # there may be resource constrainment issues, cancel compaction
         elif (
             time.time()
-            > self._compacting_node.start_timestamp_s
+            >= self._compacting_node.start_timestamp_s
             + ANYSCALE_RAY_SERVE_COMPACTION_TIMEOUT_S
         ):
             logger.info(
@@ -401,6 +418,14 @@ class AnyscaleDeploymentScheduler(DeploymentScheduler):
                 f"{target_node}: {current_replicas_on_target_compact}."
             )
             self._compacting_node = None
+            self._failed_compaction_counter += 1
+            backoff_s = min(2 ** (self._failed_compaction_counter), MAX_BACKOFF_TIME_S)
+            self._next_allowed_compaction_timestamp_s = time.time() + backoff_s
+            if self._failed_compaction_counter >= 2:
+                logger.debug(
+                    f"Compaction failed {self._failed_compaction_counter} times in a "
+                    f"row. Retrying after {backoff_s} seconds."
+                )
 
         else:
             # Print warnings at 1min, 10min
@@ -441,7 +466,8 @@ class AnyscaleDeploymentScheduler(DeploymentScheduler):
 
         # Check if we should be starting a new compaction.
         if (
-            not allow_new_compaction
+            time.time() < self._next_allowed_compaction_timestamp_s
+            or not allow_new_compaction
             or any(len(r) > 0 for r in self._pending_replicas.values())
             or any(len(r) > 0 for r in self._launching_replicas.values())
             or any(len(r) > 0 for r in self._recovering_replicas.values())
