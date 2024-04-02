@@ -578,10 +578,6 @@ class InfiniteLookbackBuffer:
             stop = -LARGE_INTEGER
 
         assert start >= 0 and (stop >= 0 or stop == -LARGE_INTEGER), (start, stop)
-        # assert start <= len_self_plus_lookback and stop <= len_self_plus_lookback, (
-        #    start,
-        #    stop,
-        # )
 
         step = slice_.step if slice_.step is not None else 1
         slice_ = slice(start, stop, step)

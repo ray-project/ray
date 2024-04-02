@@ -1398,6 +1398,32 @@ class SingleAgentEpisode:
         beginning in order for the returned SingleAgentEpisode to have such a
         lookback buffer.
 
+        .. testcode::
+
+            from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+            from ray.rllib.utils.test_utils import check
+
+            # Generate a simple multi-agent episode.
+            observations = [0, 1, 2, 3, 4, 5]
+            actions = [1, 2, 3, 4, 5]
+            rewards = [0.1, 0.2, 0.3, 0.4, 0.5]
+            episode = SingleAgentEpisode(
+                observations=observations,
+                actions=actions,
+                rewards=rewards,
+                len_lookback_buffer=0,  # all given data is part of the episode
+            )
+            slice_1 = episode[:1]
+            check(slice_1.observations, [0, 1])
+            check(slice_1.actions, [1])
+            check(slice_1.rewards, [0.1])
+
+            slice_2 = episode[-2:]
+            check(slice_1.observations, [3, 4, 5])
+            check(slice_1.actions, [4, 5])
+            check(slice_1.rewards, [0.4, 0.5])
+
+
         Args:
             slice_: The slice object to use for slicing. This should exclude the
                 lookback buffer, which will be prepended automatically to the returned
@@ -1412,7 +1438,7 @@ class SingleAgentEpisode:
         start = slice_.start or 0
         t_started = self.t_started + start + (0 if start >= 0 else len(self))
 
-        neg_indices_left_of_zero = (slice_.start or 0) >= 0
+        neg_indices_left_of_zero = start >= 0
 
         start = slice_.start or 0
         stop = slice_.stop
@@ -1605,3 +1631,37 @@ class SingleAgentEpisode:
                 f"SingleAgentEpisode does not support getting item '{item}'! "
                 "Only slice objects allowed with the syntax: `episode[a:b]`."
             )
+
+    def _interpret_slice(self, slice_):
+        """
+        obs: 0, 1, 2, 3, 4, 5
+        act:    1, 2, 3, 4, 5
+        slice(-2, None) -> translation=3,5 -> obs=slice(3, 6) act=slice(3, 5)
+        slice(None, 1) -> translation=0,1 -> obs=slice(0, 2) act=slice(0, 1)
+        slice(1, 3) -> translation=1,3 -> obs=slice(1, 4) act=slice(1, 3)
+        slice(-3, -1) -> translation=2,4 -> obs=slice(2, 5) act=slice(2, 4)
+        # easy rules:
+        # 1) translate slice into a pos-numbers-only slice
+        # 2) use that as act/rew-slice; for obs-slice, simply add +1 to slice's `stop`
+
+        # What about lookback buffer?
+        obs: [0, 1]<-lb,    2, 3, 4, 5
+        act:    [1, 2]<-lb,    3, 4, 5
+        TODO: slice(-2, None) -> translation=1,3 -> obs=slice(1, 4) act=slice(1, 3)
+        slice(-6, -4) -> neg=True translation=0,1 -> obs=slice(1, 4) act=slice(0, 1)
+
+        Args:
+            slice_:
+
+        Returns:
+
+        """
+        start = slice_.start or 0
+        stop = slice_.stop
+        step = slice_.step
+        # Obs and infos need one more step at the end.
+        stop_obs_infos = ((stop if stop != -1 else (len(self) - 1)) or len(self)) + 1
+
+        neg_indices_left_of_zero = start >= 0
+        t_started = self.t_started + start + (0 if start >= 0 else len(self))
+        keep_done = slice_.stop is None or slice_.stop == len(self)
