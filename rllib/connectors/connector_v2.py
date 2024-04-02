@@ -622,8 +622,8 @@ class ConnectorV2(abc.ABC):
         and transform them in place.
 
         `func` takes the following as arguments:
-        - The item itself. If column is a list of column names, this argument is a tuple of
-        items.
+        - The item itself. If column is a list of column names, this argument is a tuple
+        of items.
         - The EpisodeID. This value might be None.
         - The AgentID. This value might be None in the single-agent case.
         - The ModuleID. This value might be None in the single-agent case.
