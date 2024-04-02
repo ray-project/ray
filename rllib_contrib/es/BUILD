@@ -2,11 +2,14 @@
 
 py_test(
     name = "example_es_cartpole_v1",
-    main = "es_cartpole_v1.py",
-    tags = ["team:rllib", "example"],
     size = "large",
     srcs = ["examples/es_cartpole_v1.py"],
-    args = ["--run-as-test"]
+    args = ["--run-as-test"],
+    main = "es_cartpole_v1.py",
+    tags = [
+        "example",
+        "team:rllib",
+    ],
 )
 
 # Learning Tests
@@ -15,7 +18,10 @@ py_test(
 
 py_test(
     name = "test_es",
-    tags = ["team:rllib", "algorithms_dir"],
     size = "large",
-    srcs = ["tests/test_es.py"]
+    srcs = ["tests/test_es.py"],
+    tags = [
+        "algorithms_dir",
+        "team:rllib",
+    ],
 )

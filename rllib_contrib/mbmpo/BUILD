@@ -2,11 +2,14 @@
 
 py_test(
     name = "example_mbmpo_cartpole_v1_model_based",
-    main = "mbmpo_cartpole_v1_model_based.py",
-    tags = ["team:rllib", "example"],
     size = "large",
     srcs = ["examples/mbmpo_cartpole_v1_model_based.py"],
-    args = ["--run-as-test"]
+    args = ["--run-as-test"],
+    main = "mbmpo_cartpole_v1_model_based.py",
+    tags = [
+        "example",
+        "team:rllib",
+    ],
 )
 
 # Learning Tests
@@ -28,7 +31,10 @@ py_test(
 
 py_test(
     name = "test_mbmpo",
-    tags = ["team:rllib", "algorithms_dir"],
     size = "large",
-    srcs = ["tests/test_mbmpo.py"]
+    srcs = ["tests/test_mbmpo.py"],
+    tags = [
+        "algorithms_dir",
+        "team:rllib",
+    ],
 )

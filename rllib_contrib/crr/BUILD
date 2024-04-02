@@ -2,11 +2,14 @@
 
 py_test(
     name = "example_crr_cartpole_v1",
-    main = "crr_cartpole_v1.py",
-    tags = ["team:rllib", "example"],
     size = "large",
     srcs = ["examples/crr_cartpole_v1.py"],
-    args = ["--run-as-test"]
+    args = ["--run-as-test"],
+    main = "crr_cartpole_v1.py",
+    tags = [
+        "example",
+        "team:rllib",
+    ],
 )
 
 # Learning Tests
@@ -25,12 +28,14 @@ py_test(
 #   args = ["--dir=crr/tuned_examples/"]
 # )
 
-
 # Compilation Tests
 
 py_test(
     name = "test_crr",
-    tags = ["team:rllib", "algorithms_dir"],
     size = "large",
-    srcs = ["tests/test_crr.py"]
+    srcs = ["tests/test_crr.py"],
+    tags = [
+        "algorithms_dir",
+        "team:rllib",
+    ],
 )
