@@ -1758,7 +1758,6 @@ class Node:
             deserialized_config, self._node_id, self._session_name
         )
         storage.destroy_external_storage()
-        external_storage.reset_external_storage()
 
     def _record_stats(self):
         # This is only called when a new node is started.

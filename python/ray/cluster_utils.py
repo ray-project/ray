@@ -290,6 +290,7 @@ class Cluster:
                 )
 
         if self.head_node == node:
+            self.head_node.destroy_external_storage()
             # We have to wait to prevent the raylet becomes a zombie which will prevent
             # worker from exiting
             self.head_node.kill_all_processes(
@@ -298,6 +299,7 @@ class Cluster:
             self.head_node = None
             # TODO(rliaw): Do we need to kill all worker processes?
         else:
+            self.head_node.destroy_external_storage()
             # We have to wait to prevent the raylet becomes a zombie which will prevent
             # worker from exiting
             node.kill_all_processes(

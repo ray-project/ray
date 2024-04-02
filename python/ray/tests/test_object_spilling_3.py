@@ -256,7 +256,7 @@ def test_pull_spilled_object_failure(object_spilling_config, ray_start_cluster):
 
 
 @pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
-def test_spill_dir_cleanup_on_raylet_start(fs_only_object_spilling_config):
+def test_spill_dir_cleanup_on_node_removal(fs_only_object_spilling_config):
     object_spilling_config, temp_folder = fs_only_object_spilling_config
     cluster = Cluster()
     cluster.add_node(
@@ -283,16 +283,11 @@ def test_spill_dir_cleanup_on_raylet_start(fs_only_object_spilling_config):
     # Kill node 2
     cluster.remove_node(node2)
 
-    # Verify that the spill folder is not empty
-    assert not is_dir_empty(temp_folder, node2_id)
-
-    # Start a new node
-    cluster.add_node(num_cpus=1, object_store_memory=75 * 1024 * 1024)
-
-    # Verify that the spill folder is now cleaned up
+    # Verify that the spill folder is cleaned up upon node removal
     assert is_dir_empty(temp_folder, node2_id)
 
     # We hold the object refs to prevent them from being deleted
+    # due to out of scope.
     del ids
     ray.shutdown()
     cluster.shutdown()
