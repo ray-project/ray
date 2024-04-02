@@ -8,21 +8,23 @@ import pytest
 
 import ray
 from ray.data.exceptions import SystemException, UserCodeException
+from ray.data.logging import DEFAULT_DATASET_LOG_FILENAME
 from ray.exceptions import RayTaskError
 from ray.tests.conftest import *  # noqa
 
 
 def test_dataset_logger(shutdown_only):
     ray.init()
-    log_name, msg = "test_name", "test_message_1234"
-    logger = DatasetLogger(log_name)
-    logger.get_logger().info(msg)
+    log_name, msg = "ray.data.spam", "test_message_1234"
+    logger = logging.getLogger(log_name)
+    logger.info(msg)
 
     # Read from log file, and parse each component of emitted log row
     session_dir = ray._private.worker._global_node.get_session_dir_path()
-    log_file_path = os.path.join(session_dir, DatasetLogger.DEFAULT_DATASET_LOG_PATH)
+    log_file_path = os.path.join(session_dir, "logs", DEFAULT_DATASET_LOG_FILENAME)
     with open(log_file_path, "r") as f:
         raw_logged_msg = f.read()
+        print(raw_logged_msg)
     (
         logged_ds,
         logged_ts,

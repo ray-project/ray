@@ -1815,7 +1815,7 @@ def test_nowarning_execute_with_cpu(ray_start_cluster):
     # Create one node with CPUs to avoid triggering the Dataset warning
     ray.init(ray_start_cluster.address)
 
-    logger = DatasetLogger("ray.data._internal.plan").get_logger()
+    logger = logging.getLogger("ray.data._internal.plan")
     with patch.object(
         logger,
         "warning",
