@@ -399,6 +399,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         bk_require("anyscale"),
+        bk_require("aws-requests-auth"),
         bk_require("bazel-runfiles"),
         bk_require("boto3"),
         bk_require("botocore"),
@@ -407,6 +408,7 @@ py_library(
         bk_require("jinja2"),
         bk_require("pybuildkite"),
         bk_require("pygithub"),
+        bk_require("requests"),
         bk_require("retry"),
     ],
 )
