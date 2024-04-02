@@ -221,7 +221,7 @@ def test_validation_error(
     class B(BaseModel):
         s: str
 
-    # this should error.
+    # This should error.
     with pytest.raises(ValidationError):
         B(s=None)
 
@@ -243,14 +243,17 @@ def test_validation_error(
 
     if BaseModel == BaseModelV1:
         # Pydantic v1 validation errors can be subclassed.
+        assert isinstance(exc_info.value, ray.exceptions.RayTaskError)
         assert isinstance(exc_info.value, ValidationError)
     else:
-        # Pydantic v2 validation errors are final, can't subclass.
+        # Pydantic v2 validation errors are final, can't be subclassed.
         assert (
             "This exception will be raised as RayTaskError only. User can use "
             "`ray_task_error.cause` to access the user exception."
         ) in caplog.text
+        assert isinstance(exc_info.value, ray.exceptions.RayTaskError)
         assert isinstance(exc_info.value.cause, ValidationError)
+
     caplog.clear()
 
 

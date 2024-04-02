@@ -135,12 +135,12 @@ class RayTaskError(RayError):
         assert traceback_str is not None
 
     def as_instanceof_cause(self):
-        """Same as `as_instanceof_cause_or_raise()` but handles the case when the cause
-        can not be subclassed. Issues a warning and returns `self`.
+        """Same as `try_as_instanceof_cause()` but handles the case when the cause can
+        not be subclassed by issuing a warning and returning `self`.
         """
         try:
-            return self.as_instanceof_cause_or_raise()
-        except TypeError as e:
+            return self.try_as_instanceof_cause()
+        except TypeError:
             logger.warning(
                 f"User exception type {type(self.cause)} in RayTaskError can"
                 " not be subclassed! This exception will be raised as"
@@ -149,7 +149,7 @@ class RayTaskError(RayError):
             )
             return self
 
-    def as_instanceof_cause_or_raise(self):
+    def try_as_instanceof_cause(self):
         """Returns an exception that is an instance of the cause's class.
 
         The returned exception will inherit from both RayTaskError and the

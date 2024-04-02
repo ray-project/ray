@@ -23,6 +23,22 @@ another task that depends on the object.
   :start-after: __task_exceptions_begin__
   :end-before: __task_exceptions_end__
 
+For developer ergonomics, Ray raises the exception as an instance of both `RayTaskError`
+and the user exception type, so that user can just catch by their own exception types.
+
+.. literalinclude:: ../doc_code/task_exceptions.py
+  :language: python
+  :start-after: __catch_user_exceptions_begin__
+  :end-before: __catch_user_exceptions_end__
+
+However, if a user exception is `@final`, or it can not be subclassed, Ray would raise
+only as `RayTaskError`. User can access the user exception via `ray_task_error.cause`.
+
+.. literalinclude:: ../doc_code/task_exceptions.py
+  :language: python
+  :start-after: __catch_user_final_exceptions_begin__
+  :end-before: __catch_user_final_exceptions_end__
+
 Use `ray list tasks` from :ref:`State API CLI <state-api-overview-ref>` to query task exit details:
 
 .. code-block:: bash

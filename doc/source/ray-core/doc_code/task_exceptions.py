@@ -35,4 +35,47 @@ except ray.exceptions.RayTaskError as e:
     # Exception: the real error
 
 # __task_exceptions_end__
+# __catch_user_exceptions_begin__
+
+class MyException(Exception):
+    ...
+
+@ray.remote
+def raises_my_exc():
+    raise MyException("a user exception")
+try:
+    ray.get(raises_my_exc.remote())
+except MyException as e:
+    print(e)
+    # ray::raises_my_exc() (pid=15329, ip=127.0.0.1)
+    #   File "/Users/ruiyangwang/gits/ray/doc/source/ray-core/doc_code/task_exceptions.py", line 45, in raises_my_exc
+    #     raise MyException("a user exception")
+    # MyException: a user exception
+
+# __catch_user_exceptions_end__
+# __catch_user_final_exceptions_begin__
+
+from typing import final
+
+@final
+class MyFinalException(Exception):
+    ...
+
+@ray.remote
+def raises_my_final_exc():
+    raise MyFinalException("a *final* user exception")
+try:
+    ray.get(raises_my_final_exc.remote())
+except ray.exceptions.RayTaskError as e:
+    assert isinstance(e.cause, MyFinalException)
+    print(e)
+    # ray::raises_my_final_exc() (pid=26737, ip=127.0.0.1)
+    #   File "/Users/ruiyangwang/gits/ray/doc/source/ray-core/doc_code/task_exceptions.py", line 66, in raises_my_final_exc
+    #     raise MyFinalException("a *final* user exception")
+    # MyFinalException: a *final* user exception
+    print(type(e.cause))
+    # <class '__main__.MyFinalException'>
+    print(e.cause)
+    # a *final* user exception
+# __catch_user_final_exceptions_end__
 # fmt: on
