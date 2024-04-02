@@ -1,11 +1,6 @@
-import {
-  Button,
-  createStyles,
-  makeStyles,
-  MenuItem,
-  Paper,
-  TextField,
-} from "@material-ui/core";
+import { Button, MenuItem, Paper, TextField } from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import React, { useContext, useEffect, useState } from "react";
 import { RiExternalLinkLine } from "react-icons/ri";
 import { GlobalContext } from "../../App";
@@ -33,7 +28,7 @@ const useStyles = makeStyles((theme) =>
       overflow: "hidden",
       [theme.breakpoints.up("md")]: {
         // Calculate max width based on 1/3 of the total width minus gap between cards
-        width: `calc((100% - ${theme.spacing(3)}px * 2) / 3)`,
+        width: `calc((100% - ${theme.spacing(3)} * 2) / 3)`,
       },
     },
     grafanaEmbed: {
@@ -156,7 +151,6 @@ export const ServeReplicaMetricsSection = ({
               <Paper
                 key={pathParams}
                 className={classes.chart}
-                elevation={1}
                 variant="outlined"
               >
                 <iframe

@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
 import { Link, MemoryRouter, Outlet, Route, Routes } from "react-router-dom";
+import { STYLE_WRAPPER } from "../../util/test-utils";
 import { MainNavPageInfo } from "./mainNavContext";
 import { MainNavLayout } from "./MainNavLayout";
 
@@ -85,23 +86,25 @@ const TestPageC = () => {
 
 const TestApp = ({ location = "/" }: { location?: string }) => {
   return (
-    <MemoryRouter initialEntries={[location]}>
-      <Routes>
-        <Route element={<MainNavLayout />}>
-          <Route element={<TestPageA />} path="a1">
-            <Route element={<TestChildPageA />} path="a2">
-              <Route element={<TestGrandChildPageA />} path="a3" />
+    <STYLE_WRAPPER>
+      <MemoryRouter initialEntries={[location]}>
+        <Routes>
+          <Route element={<MainNavLayout />}>
+            <Route element={<TestPageA />} path="a1">
+              <Route element={<TestChildPageA />} path="a2">
+                <Route element={<TestGrandChildPageA />} path="a3" />
+              </Route>
             </Route>
-          </Route>
-          <Route element={<TestPageB />} path="b1">
-            <Route element={<TestChildNonMainNavPageB />} path="b2">
-              <Route element={<TestGrandChildPageB />} path="b3" />
+            <Route element={<TestPageB />} path="b1">
+              <Route element={<TestChildNonMainNavPageB />} path="b2">
+                <Route element={<TestGrandChildPageB />} path="b3" />
+              </Route>
             </Route>
+            <Route element={<TestPageC />} path="c" />
           </Route>
-          <Route element={<TestPageC />} path="c" />
-        </Route>
-      </Routes>
-    </MemoryRouter>
+        </Routes>
+      </MemoryRouter>
+    </STYLE_WRAPPER>
   );
 };
 

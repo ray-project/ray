@@ -1,19 +1,18 @@
-import { Table, TableBody } from "@material-ui/core";
-import { ThemeProvider } from "@material-ui/styles";
+import { Table, TableBody } from "@mui/material";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React, { PropsWithChildren } from "react";
-import { lightTheme } from "../../../theme";
 import { TypeTaskType } from "../../../type/task";
+import { STYLE_WRAPPER } from "../../../util/test-utils";
 import { AdvancedProgressBarSegment } from "./AdvancedProgressBar";
 
 const Wrapper = ({ children }: PropsWithChildren<{}>) => {
   return (
-    <ThemeProvider theme={lightTheme}>
+    <STYLE_WRAPPER>
       <Table>
         <TableBody>{children}</TableBody>
       </Table>
-    </ThemeProvider>
+    </STYLE_WRAPPER>
   );
 };
 

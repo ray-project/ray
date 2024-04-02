@@ -1,16 +1,16 @@
 import {
   Box,
   Button,
-  createStyles,
   IconButton,
   Link,
   List,
   ListItem,
-  makeStyles,
   Paper,
   Typography,
-} from "@material-ui/core";
-import { grey } from "@material-ui/core/colors";
+} from "@mui/material";
+import { grey } from "@mui/material/colors";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import React, { useMemo, useState } from "react";
 import { RiDownload2Line } from "react-icons/ri";
 import { Outlet, Link as RouterLink, useSearchParams } from "react-router-dom";
@@ -34,9 +34,6 @@ const useStyles = makeStyles((theme) => ({
   pageMeta: {
     padding: theme.spacing(2),
     marginTop: theme.spacing(2),
-  },
-  search: {
-    margin: theme.spacing(1),
   },
 }));
 
@@ -63,7 +60,7 @@ export const StateApiLogsListPage = () => {
   return (
     <div className={classes.root}>
       <TitleCard title="Logs Viewer">
-        <Paper>
+        <Paper elevation={0}>
           {!nodeId && <p>Select a node to view logs</p>}
           {nodeId && (
             <React.Fragment>
@@ -72,13 +69,17 @@ export const StateApiLogsListPage = () => {
             </React.Fragment>
           )}
           {nodeId && (
-            <div>
-              <Button
-                component={RouterLink}
-                variant="contained"
-                to={backHref}
-                className={classes.search}
-              >
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: "row",
+                flexWrap: "nowrap",
+                alignItems: "center",
+                margin: 1,
+                gap: 2,
+              }}
+            >
+              <Button component={RouterLink} variant="contained" to={backHref}>
                 Back To ../
               </Button>
               <SearchInput
@@ -88,10 +89,10 @@ export const StateApiLogsListPage = () => {
                   setFileName(val);
                 }}
               />
-            </div>
+            </Box>
           )}
         </Paper>
-        <Paper>
+        <Paper elevation={0}>
           {nodeId ? (
             <StateApiLogsFilesList
               nodeId={nodeId}
@@ -280,7 +281,7 @@ export const StateApiLogViewerPage = () => {
   return (
     <div className={classes.root}>
       <TitleCard title="Logs Viewer">
-        <Paper>
+        <Paper elevation={0}>
           {!nodeId && <p>Select a node to view logs</p>}
           {nodeId && (
             <React.Fragment>
@@ -289,19 +290,18 @@ export const StateApiLogViewerPage = () => {
             </React.Fragment>
           )}
           {nodeId && (
-            <div>
-              <Button
-                component={RouterLink}
-                variant="contained"
-                to={backHref}
-                className={classes.search}
-              >
+            <Box
+              sx={{
+                margin: 1,
+              }}
+            >
+              <Button component={RouterLink} variant="contained" to={backHref}>
                 Back To ../
               </Button>
-            </div>
+            </Box>
           )}
         </Paper>
-        <Paper>
+        <Paper elevation={0}>
           {nodeId && fileName ? (
             <StateApiLogViewer
               data={{
