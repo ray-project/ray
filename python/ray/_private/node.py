@@ -337,6 +337,8 @@ class Node:
         # external storage is configurable.
         if head:
             self.validate_external_storage()
+        if not connect_only:
+            self.destroy_external_storage()
         # Makes sure the Node object has valid addresses after setup.
         self.validate_ip_port(self.address)
         self.validate_ip_port(self.gcs_address)
@@ -1754,10 +1756,9 @@ class Node:
         # Validate external storage usage.
         from ray._private import external_storage
 
-        storage = external_storage.setup_external_storage(
+        external_storage.setup_external_storage(
             deserialized_config, self._node_id, self._session_name
         )
-        storage.destroy_external_storage()
         external_storage.reset_external_storage()
 
     def _record_stats(self):
