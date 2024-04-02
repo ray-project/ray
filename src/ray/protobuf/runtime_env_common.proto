@@ -35,7 +35,7 @@ message RuntimeEnvConfig {
   bool eager_install = 2;
 }
 
-/// The runtime env information which is transfered between ray core processes.
+/// The runtime env information which is transferred between ray core processes.
 message RuntimeEnvInfo {
   /// The serialized runtime env passed from the user.
   string serialized_runtime_env = 1;

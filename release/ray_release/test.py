@@ -56,6 +56,7 @@ class TestState(enum.Enum):
 class TestResult:
     status: str
     commit: str
+    branch: str
     url: str
     timestamp: int
 
@@ -64,6 +65,7 @@ class TestResult:
         return cls(
             status=result.status,
             commit=os.environ.get("BUILDKITE_COMMIT", ""),
+            branch=os.environ.get("BUILDKITE_BRANCH", ""),
             url=result.buildkite_url,
             timestamp=int(time.time() * 1000),
         )
@@ -87,6 +89,7 @@ class TestResult:
         return cls(
             status=result["status"],
             commit=result["commit"],
+            branch=result.get("branch", ""),
             url=result["url"],
             timestamp=result["timestamp"],
         )
@@ -387,11 +390,12 @@ class Test(dict):
             return self.test_results
 
         s3_client = boto3.client("s3")
+        pages = s3_client.get_paginator("list_objects_v2").paginate(
+            Bucket=get_global_config()["state_machine_aws_bucket"],
+            Prefix=f"{AWS_TEST_RESULT_KEY}/{self._get_s3_name()}-",
+        )
         files = sorted(
-            s3_client.list_objects_v2(
-                Bucket=get_global_config()["state_machine_aws_bucket"],
-                Prefix=f"{AWS_TEST_RESULT_KEY}/{self._get_s3_name()}-",
-            ).get("Contents", []),
+            chain.from_iterable([page.get("Contents", []) for page in pages]),
             key=lambda file: int(file["LastModified"].strftime("%s")),
             reverse=True,
         )[:limit]

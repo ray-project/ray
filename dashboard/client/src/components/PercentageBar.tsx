@@ -1,4 +1,4 @@
-import { makeStyles } from "@material-ui/core";
+import makeStyles from "@mui/styles/makeStyles";
 import React, { PropsWithChildren } from "react";
 
 const useStyle = makeStyles((theme) => ({
@@ -11,6 +11,7 @@ const useStyle = makeStyles((theme) => ({
     position: "relative",
     boxSizing: "content-box",
     borderRadius: 4,
+    flexGrow: 1,
   },
   displayBar: {
     background: theme.palette.background.paper,
@@ -31,6 +32,7 @@ const useStyle = makeStyles((theme) => ({
     color: theme.palette.text.primary,
     width: "100%",
     textAlign: "center",
+    whiteSpace: "nowrap",
   },
 }));
 
