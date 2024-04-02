@@ -1406,7 +1406,7 @@ ipython-genutils==0.2.0 \
     #   ipywidgets
     #   nbclassic
     #   notebook
-ipywidgets==7.8.1 \
+ipywidgets==7.7.2 \
     --hash=sha256:050b87bb9ac11641859af4c36cdb639ca072fb5e121f0f1a401f8a80f9fa008d \
     --hash=sha256:29f7056d368bf0a7b35d51cf0c56b58582da57c78bb9f765965fef7c332e807c
     # via
