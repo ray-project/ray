@@ -42,6 +42,8 @@ class MutableObjectProvider {
     return client_call_manager_;
   }
 
+  ray::experimental::MutableObjectManager &object_manager() { return object_manager_; }
+
   /// Registers a writer channel for `object_id` on this node. On each write to this
   /// channel, the write will be sent via RPC to node `node_id`.
   /// \param[in] object_id The ID of the object.
@@ -70,7 +72,7 @@ class MutableObjectProvider {
   std::shared_ptr<plasma::PlasmaClientInterface> plasma_;
 
   // Object manager for the mutable objects.
-  std::unique_ptr<ray::experimental::MutableObjectManager> object_manager_;
+  ray::experimental::MutableObjectManager object_manager_;
 
   // Creates a function for each object. This object waits for changes on the object and
   // then sends those changes to a remote node via RPC.

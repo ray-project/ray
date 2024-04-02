@@ -132,7 +132,7 @@ TEST(MutableObjectTest, TestBasic) {
     header->Init();
     ASSERT_TRUE(manager.RegisterReaderChannel(object_id, std::move(object)).ok());
   }
-  manager.OpenSemaphores(object_id);
+  manager.OpenSemaphores(object_id, header);
   PlasmaObjectHeader::Semaphores sem = manager.GetSemaphores(object_id);
 
   std::vector<std::string> data_results;
@@ -177,7 +177,7 @@ TEST(MutableObjectTest, TestMultipleReaders) {
     header->Init();
     ASSERT_TRUE(manager.RegisterReaderChannel(object_id, std::move(object)).ok());
   }
-  manager.OpenSemaphores(object_id);
+  manager.OpenSemaphores(object_id, header);
   PlasmaObjectHeader::Semaphores sem = manager.GetSemaphores(object_id);
 
   std::vector<std::vector<std::string>> data_results(/*count=*/kNumReaders,
@@ -232,7 +232,7 @@ TEST(MutableObjectTest, TestWriterFails) {
     header->Init();
     ASSERT_TRUE(manager.RegisterReaderChannel(object_id, std::move(object)).ok());
   }
-  manager.OpenSemaphores(object_id);
+  manager.OpenSemaphores(object_id, header);
   PlasmaObjectHeader::Semaphores sem = manager.GetSemaphores(object_id);
 
   std::vector<std::vector<std::string>> data_results(/*count=*/kNumReaders,
@@ -297,7 +297,7 @@ TEST(MutableObjectTest, TestWriterFailsAfterAcquire) {
     header->Init();
     ASSERT_TRUE(manager.RegisterReaderChannel(object_id, std::move(object)).ok());
   }
-  manager.OpenSemaphores(object_id);
+  manager.OpenSemaphores(object_id, header);
   PlasmaObjectHeader::Semaphores sem = manager.GetSemaphores(object_id);
 
   std::vector<std::vector<std::string>> data_results(/*count=*/kNumReaders,
@@ -364,7 +364,7 @@ TEST(MutableObjectTest, TestReaderFails) {
     header->Init();
     ASSERT_TRUE(manager.RegisterReaderChannel(object_id, std::move(object)).ok());
   }
-  manager.OpenSemaphores(object_id);
+  manager.OpenSemaphores(object_id, header);
   PlasmaObjectHeader::Semaphores sem = manager.GetSemaphores(object_id);
 
   std::vector<std::vector<std::string>> data_results(/*count=*/kNumReaders,
@@ -435,7 +435,7 @@ TEST(MutableObjectTest, TestWriteAcquireDuringFailure) {
     header->Init();
     ASSERT_TRUE(manager.RegisterReaderChannel(object_id, std::move(object)).ok());
   }
-  manager.OpenSemaphores(object_id);
+  manager.OpenSemaphores(object_id, header);
   PlasmaObjectHeader::Semaphores sem = manager.GetSemaphores(object_id);
 
   ASSERT_EQ(sem_wait(sem.object_sem), 0);
@@ -469,7 +469,7 @@ TEST(MutableObjectTest, TestReadAcquireDuringFailure) {
     header->Init();
     ASSERT_TRUE(manager.RegisterReaderChannel(object_id, std::move(object)).ok());
   }
-  manager.OpenSemaphores(object_id);
+  manager.OpenSemaphores(object_id, header);
   PlasmaObjectHeader::Semaphores sem = manager.GetSemaphores(object_id);
 
   std::vector<std::string> data_results;
@@ -529,7 +529,7 @@ TEST(MutableObjectTest, TestReadMultipleAcquireDuringFailure) {
     header->Init();
     ASSERT_TRUE(manager.RegisterReaderChannel(object_id, std::move(object)).ok());
   }
-  manager.OpenSemaphores(object_id);
+  manager.OpenSemaphores(object_id, header);
   PlasmaObjectHeader::Semaphores sem = manager.GetSemaphores(object_id);
 
   std::vector<std::vector<std::string>> data_results(/*count=*/kNumReaders,

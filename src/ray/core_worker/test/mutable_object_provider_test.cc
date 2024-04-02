@@ -49,7 +49,12 @@ class TestPlasma : public plasma::PlasmaClientInterface {
   Status GetExperimentalMutableObject(
       const ObjectID &object_id,
       std::unique_ptr<plasma::MutableObject> *mutable_object) override {
-    *mutable_object = MakeObject();
+    if (!objects_.count(object_id)) {
+      *mutable_object = MakeObject();
+      objects_.insert(object_id);
+    } else {
+      *mutable_object = nullptr;
+    }
     return Status::OK();
   }
 
@@ -89,6 +94,9 @@ class TestPlasma : public plasma::PlasmaClientInterface {
     ret->header->Init();
     return ret;
   }
+
+  // Tracks the mutable objects that have been created.
+  std::unordered_set<ObjectID> objects_;
 };
 
 class TestInterface : public MutableObjectReaderInterface {
@@ -97,9 +105,7 @@ class TestInterface : public MutableObjectReaderInterface {
       const ObjectID &object_id,
       int64_t num_readers,
       const ObjectID &local_reader_object_id,
-      const rpc::ClientCallback<rpc::RegisterMutableObjectReply> &callback) override {
-    absl::PrintF("RegisterMutableObject\n");
-  }
+      const rpc::ClientCallback<rpc::RegisterMutableObjectReply> &callback) override {}
 
   void PushMutableObject(
       const ObjectID &object_id,
@@ -107,12 +113,17 @@ class TestInterface : public MutableObjectReaderInterface {
       uint64_t metadata_size,
       void *data,
       const rpc::ClientCallback<rpc::PushMutableObjectReply> &callback) override {
+    absl::MutexLock guard(&lock_);
     pushed_objects_.push_back(object_id);
   }
 
-  const std::vector<ObjectID> &pushed_objects() const { return pushed_objects_; }
+  std::vector<ObjectID> pushed_objects() {
+    absl::MutexLock guard(&lock_);
+    return pushed_objects_;
+  }
 
  private:
+  absl::Mutex lock_;
   std::vector<ObjectID> pushed_objects_;
 };
 
@@ -132,8 +143,24 @@ TEST(MutableObjectProvider, RegisterWriterChannel) {
   MutableObjectProvider provider(
       plasma,
       /*factory=*/absl::bind_front(GetTestInterface, interface));
+  ray::experimental::MutableObjectManager &object_manager = provider.object_manager();
   provider.RegisterWriterChannel(object_id, node_id);
-  return;
+
+  std::shared_ptr<Buffer> data;
+  EXPECT_EQ(object_manager
+                .WriteAcquire(object_id,
+                              /*data_size=*/0,
+                              /*metadata=*/nullptr,
+                              /*metadata_size=*/0,
+                              /*num_readers=*/1,
+                              data)
+                .code(),
+            StatusCode::OK);
+  EXPECT_EQ(object_manager.WriteRelease(object_id).code(), StatusCode::OK);
+
+  while (interface->pushed_objects().empty()) {
+  }
+
   EXPECT_EQ(interface->pushed_objects().size(), 1);
   EXPECT_EQ(interface->pushed_objects().front(), object_id);
 }

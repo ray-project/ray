@@ -21,7 +21,6 @@ namespace experimental {
 MutableObjectProvider::MutableObjectProvider(
     std::shared_ptr<plasma::PlasmaClientInterface> plasma, const RayletFactory &factory)
     : plasma_(plasma),
-      object_manager_(std::make_unique<ray::experimental::MutableObjectManager>()),
       raylet_client_factory_(factory),
       io_work_(io_service_),
       client_call_manager_(std::make_unique<rpc::ClientCallManager>(io_service_)),
@@ -39,7 +38,7 @@ void MutableObjectProvider::RegisterWriterChannel(const ObjectID &object_id,
   {
     std::unique_ptr<plasma::MutableObject> object;
     RAY_CHECK_OK(plasma_->GetExperimentalMutableObject(object_id, &object));
-    RAY_CHECK_OK(object_manager_->RegisterWriterChannel(object_id, std::move(object)));
+    RAY_CHECK_OK(object_manager_.RegisterWriterChannel(object_id, std::move(object)));
     // `object` is now a nullptr.
   }
 
@@ -56,7 +55,7 @@ void MutableObjectProvider::RegisterWriterChannel(const ObjectID &object_id,
 void MutableObjectProvider::RegisterReaderChannel(const ObjectID &object_id) {
   std::unique_ptr<plasma::MutableObject> object;
   RAY_CHECK_OK(plasma_->GetExperimentalMutableObject(object_id, &object));
-  RAY_CHECK_OK(object_manager_->RegisterReaderChannel(object_id, std::move(object)));
+  RAY_CHECK_OK(object_manager_.RegisterReaderChannel(object_id, std::move(object)));
   // `object` is now a nullptr.
 }
 
@@ -71,7 +70,7 @@ void MutableObjectProvider::HandlePushMutableObject(
   const uint8_t *metadata_ptr =
       reinterpret_cast<const uint8_t *>(request.data().data()) + request.data_size();
   // TODO(jhumphri): Set `num_readers` correctly for this local node.
-  RAY_CHECK_OK(object_manager_->WriteAcquire(
+  RAY_CHECK_OK(object_manager_.WriteAcquire(
       object_id, data_size, metadata_ptr, metadata_size, /*num_readers=*/1, data));
   RAY_CHECK(data);
 
@@ -79,13 +78,13 @@ void MutableObjectProvider::HandlePushMutableObject(
   // The buffer has the data immediately followed by the metadata. `WriteAcquire()`
   // above checks that the buffer size is at least `total_size`.
   memcpy(data->Data(), request.data().data(), total_size);
-  RAY_CHECK_OK(object_manager_->WriteRelease(object_id));
+  RAY_CHECK_OK(object_manager_.WriteRelease(object_id));
 }
 
 void MutableObjectProvider::PollWriterClosure(
     const ObjectID &object_id, std::shared_ptr<MutableObjectReaderInterface> reader) {
   std::shared_ptr<RayObject> object;
-  RAY_CHECK_OK(object_manager_->ReadAcquire(object_id, object));
+  RAY_CHECK_OK(object_manager_.ReadAcquire(object_id, object));
 
   RAY_CHECK(object->GetData());
   RAY_CHECK(object->GetMetadata());
@@ -96,7 +95,7 @@ void MutableObjectProvider::PollWriterClosure(
       object->GetData()->Data(),
       [this, object_id, reader](const Status &status,
                                 const rpc::PushMutableObjectReply &reply) {
-        RAY_CHECK_OK(object_manager_->ReadRelease(object_id));
+        RAY_CHECK_OK(object_manager_.ReadRelease(object_id));
         PollWriterClosure(object_id, reader);
       });
 }

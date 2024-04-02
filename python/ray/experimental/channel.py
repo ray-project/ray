@@ -186,7 +186,6 @@ class Channel:
         channel is closed.
         """
         logger.debug(f"Setting error bit on channel: {self._base_ref}")
-        self.ensure_registered_as_writer()
         self._worker.core_worker.experimental_channel_set_error(self._base_ref)
 
 
