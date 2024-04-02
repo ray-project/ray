@@ -197,7 +197,6 @@ from ray.core.generated.common_pb2 import ActorDiedErrorContext
 from ray.core.generated.gcs_pb2 import JobTableData
 from ray.core.generated.gcs_service_pb2 import GetAllResourceUsageReply
 from ray._private.async_compat import (
-    sync_to_async,
     get_new_event_loop,
     is_async_func
 )
@@ -1817,25 +1816,19 @@ cdef void execute_task(
                             )
                         )
 
-                if is_async_func(function.method):
-                    async_function = function
-                else:
-                    # Just execute the method if it's ray internal method.
-                    if function.name.startswith("__ray"):
-                        return function(actor, *arguments, **kwarguments)
-                    async_function = sync_to_async(function)
-
                 if inspect.isasyncgenfunction(function.method):
                     # The coroutine will be handled separately by
                     # execute_dynamic_generator_and_store_task_outputs
-                    return async_function(actor, *arguments, **kwarguments)
+                    return function(actor, *arguments, **kwarguments)
                 else:
                     return core_worker.run_async_func_or_coro_in_event_loop(
-                        async_function, function_descriptor,
-                        name_of_concurrency_group_to_execute, task_id=task_id,
-                        func_args=(actor, *arguments), func_kwargs=kwarguments)
-
-            return function(actor, *arguments, **kwarguments)
+                        function,
+                        function_descriptor,
+                        name_of_concurrency_group_to_execute,
+                        task_id=task_id,
+                        func_args=(actor, *arguments),
+                        func_kwargs=kwarguments
+                    )
 
     with core_worker.profile_event(b"task::" + name, extra_data=extra_data), \
          ray._private.worker._changeproctitle(title, next_title):
@@ -1850,16 +1843,14 @@ cdef void execute_task(
                             c_arg_refs,
                             skip_adding_local_ref=False)
                     if core_worker.current_actor_is_asyncio():
+                        # TODO update
                         # We deserialize objects in event loop thread to
                         # prevent segfaults. See #7799
-                        async def deserialize_args():
-                            return (ray._private.worker.global_worker
-                                    .deserialize_objects(
-                                        metadata_pairs, object_refs))
                         args = core_worker.run_async_func_or_coro_in_event_loop(
-                            deserialize_args,
+                            ray._private.worker.global_worker.deserialize_objects,
                             function_descriptor,
                             name_of_concurrency_group_to_execute,
+                            func_args=(metadata_pairs, object_refs),
                         )
                     else:
                         # Defer task cancellation (SIGINT) until after the task argument
@@ -1944,10 +1935,12 @@ cdef void execute_task(
                             # Note that the report RPCs are called inside an
                             # event loop thread.
                             core_worker.run_async_func_or_coro_in_event_loop(
-                                execute_streaming_generator_async(context),
+                                execute_streaming_generator_async,
                                 function_descriptor,
                                 name_of_concurrency_group_to_execute,
-                                task_id=task_id)
+                                task_id=task_id,
+                                func_args=(context,),
+                            )
                         else:
                             execute_streaming_generator_sync(context)
 
