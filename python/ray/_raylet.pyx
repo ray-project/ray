@@ -4750,6 +4750,7 @@ cdef class CoreWorker:
 
         async def _async_function():
             try:
+                # TODO fix
                 if task_id:
                     async_task_id.set(task_id)
 
@@ -4814,6 +4815,7 @@ cdef class CoreWorker:
             if task_id:
                 with self._task_id_to_future_lock:
                     self._task_id_to_future.pop(task_id)
+
         return result
 
     def stop_and_join_asyncio_threads_if_exist(self):
