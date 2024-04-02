@@ -571,7 +571,6 @@ comm==0.2.0 \
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   ipykernel
-    #   ipywidgets
 commonmark==0.9.1 \
     --hash=sha256:452f9dc859be7f06631ddcb328b6919c67984aca654e5fefb3914d54691aed60 \
     --hash=sha256:da2f38c92590f83de410ba1a3cbceafbc74fee9def35f9251ba9a971d6d66fd9
@@ -1654,6 +1653,7 @@ ipykernel==6.27.1 \
     --hash=sha256:dab88b47f112f9f7df62236511023c9bdeef67abc73af7c652e4ce4441601686
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
+    #   ipywidgets
     #   nbclassic
     #   notebook
 ipython==8.12.3 \
@@ -1672,8 +1672,8 @@ ipython-genutils==0.2.0 \
     #   nbclassic
     #   notebook
 ipywidgets==7.7.2 \
-    --hash=sha256:050b87bb9ac11641859af4c36cdb639ca072fb5e121f0f1a401f8a80f9fa008d \
-    --hash=sha256:29f7056d368bf0a7b35d51cf0c56b58582da57c78bb9f765965fef7c332e807c
+    --hash=sha256:3d47a7826cc6e2644d7cb90db26699451f8b42379cf63b761431b63d19984ca2 \
+    --hash=sha256:449ab8e7872d0f388ee5c5b3666b9d6af5e5618a5749fd62652680be37dff2af
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
