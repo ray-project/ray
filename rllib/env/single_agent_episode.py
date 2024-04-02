@@ -1632,7 +1632,7 @@ class SingleAgentEpisode:
                 "Only slice objects allowed with the syntax: `episode[a:b]`."
             )
 
-    def _interpret_slice(self, slice_):
+    def _interpret_slice(self, slice_, obs_or_infos=False):
         """
         obs: 0, 1, 2, 3, 4, 5
         act:    1, 2, 3, 4, 5

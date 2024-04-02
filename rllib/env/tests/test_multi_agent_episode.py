@@ -2552,6 +2552,111 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # observations.
         self.assertTrue(episode_2.agent_buffers["agent_1"]["actions"].empty())
 
+    def test_slice(self):
+        # Generate a simple multi-agent episode.
+        observations = [
+            {"a0": 0, "a1": 0},
+            {"a1": 1},
+            {"a1": 2},
+            {"a0": 3, "a1": 3},
+            {"a0": 4},
+            {"a0": 5, "a1": 5},
+            {"a0": 6, "a1": 6},
+            {"a1": 7},
+            {"a1": 8},
+            {"a0": 9},
+        ]
+        actions = observations[:-1]
+        rewards = [{aid: r / 10 + 0.1 for aid, r in o.items()} for o in observations]
+        episode = MultiAgentEpisode(
+            observations=observations,
+            actions=actions,
+            rewards=rewards,
+            len_lookback_buffer=0,
+        )
+
+        # Slice the episode in different ways and check results.
+        slice = episode[:]
+        a0 = slice.agent_episodes["a0"]
+        a1 = slice.agent_episodes["a1"]
+        check((len(a0), len(a1)), (5, 7))
+        check(
+            (a0.observations, a1.observations),
+            ([0, 3, 4, 5, 6, 9], [0, 1, 2, 3, 5, 6, 7, 8]),
+        )
+        check((a0.actions, a1.actions), ([0, 3, 4, 5, 6], [0, 1, 2, 3, 5, 6, 7]))
+        check(
+            (a0.rewards, a1.rewards),
+            ([0.1, 0.4, 0.5, 0.6, 0.7], [0.1, 0.2, 0.3, 0.4, 0.6, 0.7, 0.8]),
+        )
+        check((a0.is_done, a1.is_done), (False, False))
+
+        slice = episode[:1]
+        a0 = slice.agent_episodes["a0"]
+        a1 = slice.agent_episodes["a1"]
+        check((len(a0), len(a1)), (0, 1))
+        check((a0.observations, a1.observations), ([0], [0, 1]))
+        check((a0.actions, a1.actions), ([], [0]))
+        check((a0.rewards, a1.rewards), ([], [0.1]))
+        check((a0.is_done, a1.is_done), (False, False))
+
+        slice = episode[:3]
+        a0 = slice.agent_episodes["a0"]
+        a1 = slice.agent_episodes["a1"]
+        check((len(a0), len(a1)), (1, 3))
+        check((a0.observations, a1.observations), ([0, 3], [0, 1, 2, 3]))
+        check((a0.actions, a1.actions), ([0], [0, 1, 2]))
+        check((a0.rewards, a1.rewards), ([0.1], [0.1, 0.2, 0.3]))
+        check((a0.is_done, a1.is_done), (False, False))
+
+        slice = episode[:-4]
+        a0 = slice.agent_episodes["a0"]
+        a1 = slice.agent_episodes["a1"]
+        check((len(a0), len(a1)), (4, 5))
+        check((a0.observations, a1.observations), ([0, 3, 4, 5, 6], [0, 1, 2, 3, 5, 6]))
+        check((a0.actions, a1.actions), ([0, 3, 4, 5], [0, 1, 2, 3, 5]))
+        check(
+            (a0.rewards, a1.rewards),
+            ([0.1, 0.4, 0.5, 0.6], [0.1, 0.2, 0.3, 0.4, 0.6]),
+        )
+        check((a0.is_done, a1.is_done), (False, False))
+
+        slice = episode[-2:]
+        a0 = slice.agent_episodes["a0"]
+        a1 = slice.agent_episodes["a1"]
+        check((len(a0), len(a1)), (0, 1))
+        check((a0.observations, a1.observations), ([9], [7, 8]))
+        check((a0.actions, a1.actions), ([], [7]))
+        check((a0.rewards, a1.rewards), ([], [0.8]))
+        check((a0.is_done, a1.is_done), (False, False))
+
+        slice = episode[-3:]
+        a0 = slice.agent_episodes["a0"]
+        a1 = slice.agent_episodes["a1"]
+        check((len(a0), len(a1)), (1, 2))
+        check((a0.observations, a1.observations), ([6, 9], [6, 7, 8]))
+        check((a0.actions, a1.actions), ([6], [6, 7]))
+        check((a0.rewards, a1.rewards), ([0.7], [0.7, 0.8]))
+        check((a0.is_done, a1.is_done), (False, False))
+
+        slice = episode[-5:]
+        a0 = slice.agent_episodes["a0"]
+        a1 = slice.agent_episodes["a1"]
+        check((len(a0), len(a1)), (3, 3))
+        check((a0.observations, a1.observations), ([4, 5, 6, 9], [5, 6, 7, 8]))
+        check((a0.actions, a1.actions), ([4, 5, 6], [5, 6, 7]))
+        check((a0.rewards, a1.rewards), ([0.5, 0.6, 0.7], [0.6, 0.7, 0.8]))
+        check((a0.is_done, a1.is_done), (False, False))
+
+        slice = episode[-4:-2]
+        a0 = slice.agent_episodes["a0"]
+        a1 = slice.agent_episodes["a1"]
+        check((len(a0), len(a1)), (1, 2))
+        check((a0.observations, a1.observations), ([5, 6], [5, 6, 7]))
+        check((a0.actions, a1.actions), ([5], [5, 6]))
+        check((a0.rewards, a1.rewards), ([0.6], [0.6, 0.7]))
+        check((a0.is_done, a1.is_done), (False, False))
+
     def test_concat_episode(self):
         # TODO (sven): Revisit this test and the MultiAgentEpisode.episode_concat API.
         return

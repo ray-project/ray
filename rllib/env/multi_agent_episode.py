@@ -885,9 +885,9 @@ class MultiAgentEpisode:
             The ModuleID mapped to from the given `agent_id`.
         """
         if agent_id not in self._agent_to_module_mapping:
-            module_id = self._agent_to_module_mapping[agent_id] = (
-                self.agent_to_module_mapping_fn(agent_id, self)
-            )
+            module_id = self._agent_to_module_mapping[
+                agent_id
+            ] = self.agent_to_module_mapping_fn(agent_id, self)
             return module_id
         else:
             return self._agent_to_module_mapping[agent_id]
@@ -1355,72 +1355,106 @@ class MultiAgentEpisode:
         Returns:
             The new MultiAgentEpisode representing the requested slice.
         """
+        if slice_.step not in [1, None]:
+            raise NotImplementedError(
+                "Slicing MultiAgentEnv with a step other than 1 (you used"
+                f" {slice_.step}) is not supported!"
+            )
+
+        # Interpret `slice_` into all-ints, all-positive new slice, depending on
+        # self.
+        # clean_slice_oi = self._interpret_slice(slice_, obs_or_infos=True)
+        # clean_slice_ar = self._interpret_slice(slice_)
+
         ma_episode = MultiAgentEpisode()
+
+        slice_from_end = slice_.start is not None and slice_.start < 0
 
         # Translate slice separately for each agent's SingleAgentEpisode, then slice
         # those and return a new MultiAgentEpisode with the sliced SingleAgentEpisodes
         # in it.
         for agent_id, sa_episode in self.agent_episodes.items():
             # TODO: Sven Use this procedure
-            s = sa_episode.observations._interpret_slice(slice_, False)[0]
-            s = slice(s.start, s.stop + 1, s.step)
-            indices_obs = self.env_t_to_agent_t[agent_id][s]
+            ma_slice_oi = self.env_t_to_agent_t[agent_id]._interpret_slice(
+                slice_, neg_indices_left_of_zero=False
+            )[0]
+            # sa_episode.observations._interpret_slice(slice_, False)[0]
+            # If start of the original `slice_` is negative, we need to move the start
+            # one to the left (to include one more observation than actions).
+            if slice_from_end:
+                ma_slice_oi = slice(max(ma_slice_oi.start - 1, 0), ma_slice_oi.stop)
+            # Otherwise, we need to move the stop one to the right (to include one more
+            # observation than actions).
+            else:
+                ma_slice_oi = slice(ma_slice_oi.start, ma_slice_oi.stop + 1)
+            sa_indices_obs = self.env_t_to_agent_t[agent_id][ma_slice_oi]
 
             # 2) determine dones/truncateds/terminateds
             terminated = sa_episode.is_terminated
             truncated = sa_episode.is_truncated
 
-            # 0) indices_obs is empty -> skip
-            if len(indices_obs) == 0:
+            # 0) sa_indices_obs is empty -> skip
+            if len(sa_indices_obs) == 0:
                 continue
             # 1) If 'S' at end (last step NOT completed yet) -> shorten slice again by
             # n steps (from end); put action, reward, at `s.stop - n` into agent
             # buffers.
-            if indices_obs[-1] == self.SKIP_ENV_TS_TAG:
-                for n in range(2, len(indices_obs) + 1):
-                    if indices_obs[-n] != self.SKIP_ENV_TS_TAG:
-                        s = slice(s.start, s.stop - n + 1, s.step)
-                        if indices_obs[-n] < len(sa_episode):
+            if sa_indices_obs[-1] == self.SKIP_ENV_TS_TAG:
+                for n in range(2, len(sa_indices_obs) + 1):
+                    if sa_indices_obs[-n] != self.SKIP_ENV_TS_TAG:
+                        # s = slice(s.start, s.stop - n + 1)
+                        sa_slice_oi = slice(sa_indices_obs[0], sa_indices_obs[-n] + 1)
+                        if sa_indices_obs[-n] < len(sa_episode):
                             terminated = truncated = False
                         break
+            else:
+                sa_slice_oi = slice(sa_indices_obs[0], sa_indices_obs[-1] + 1)
+
             # If 'S' at start, simply move right until no 'S' is found, then start from there.
             # -> In this case, we simply chose the start boundary of the slice "badly" and
             # adjust the slice.
-            if indices_obs[0] == self.SKIP_ENV_TS_TAG:
-                for n in range(1, len(indices_obs)):
-                    if indices_obs[n] != self.SKIP_ENV_TS_TAG:
-                        s = slice(s.start + n, s.stop, s.step)
-                        if indices_obs[n] < len(sa_episode):
+            if sa_indices_obs[0] == self.SKIP_ENV_TS_TAG:
+                for n in range(1, len(sa_indices_obs)):
+                    if sa_indices_obs[n] != self.SKIP_ENV_TS_TAG:
+                        # sa_slice_oi = slice(sa_indices_obs[n], sa_indices_obs[-1] + 1)
+                        sa_slice_oi = slice(sa_indices_obs[n], sa_slice_oi.stop)
+                        if sa_indices_obs[n] < len(sa_episode):
                             terminated = truncated = False
                         break
+            else:
+                sa_slice_oi = slice(sa_indices_obs[0], sa_slice_oi.stop)
 
             # Slice observations using s.start to s.stop-n
             # slice actions/rewards using s.start to s.stop-n-1
-            s_ar = slice(s.start, s.stop - 1, s.step)
+            # if slice_from_end:
+            #    sa_slice_ar = slice(sa_slice_oi.start + 1, sa_slice_oi.stop)
+            # else:
+            sa_slice_ar = slice(sa_slice_oi.start, max(sa_slice_oi.stop - 1, 0))
 
             # 3) Create sa-episode from above slices for observations and actions/rewards.
             sliced_sa_episode = SingleAgentEpisode(
                 id_=sa_episode.id_,
-                observations=sa_episode.observations[s],
+                observations=sa_episode.observations[sa_slice_oi],
                 observation_space=sa_episode.observation_space,
-                infos=sa_episode.infos[s],
-                actions=sa_episode.actions[s_ar],
+                infos=sa_episode.infos[sa_slice_oi],
+                actions=sa_episode.actions[sa_slice_ar],
                 action_space=sa_episode.action_space,
-                rewards=sa_episode.rewards[s_ar],
+                rewards=sa_episode.rewards[sa_slice_ar],
                 extra_model_outputs={
-                    key: value[s_ar]
+                    key: value[sa_slice_ar]
                     for key, value in sa_episode.extra_model_outputs.items()
                 },
                 terminated=terminated,
                 truncated=truncated,
-                t_started=sa_episode.t_started + s.start,
+                t_started=sa_episode.t_started + sa_slice_oi.start,
                 agent_id=sa_episode.agent_id,
                 module_id=sa_episode.module_id,
                 multi_agent_episode_id=self.id_,
+                len_lookback_buffer=0,  # TOD
             )
             # 4) slice env_t mapping (already done?)
             ma_episode.env_t_to_agent_t[agent_id] = InfiniteLookbackBuffer(
-                indices_obs, lookback=0 # 0??
+                sa_indices_obs, lookback=0  # 0??
             )
 
             # 5) assign sa episode to the new ma episode
@@ -2371,3 +2405,37 @@ class MultiAgentEpisode:
             return inf_lookback_buffer_or_dict, filter_for_skip_indices
         else:
             return inf_lookback_buffer_or_dict
+
+    def _XYZ_interpret_slice(self, slice_, obs_or_infos=False):
+        """
+        obs: 0, 1, 2, 3, 4, 5
+        act:    1, 2, 3, 4, 5
+        slice(-2, None) -> translation=3,5 -> obs=slice(3, 6) act=slice(3, 5)
+        slice(None, 1) -> translation=0,1 -> obs=slice(0, 2) act=slice(0, 1)
+        slice(1, 3) -> translation=1,3 -> obs=slice(1, 4) act=slice(1, 3)
+        slice(-3, -1) -> translation=2,4 -> obs=slice(2, 5) act=slice(2, 4)
+        # easy rules:
+        # 1) translate slice into a pos-numbers-only slice
+        # 2) use that as act/rew-slice; for obs-slice, simply add +1 to slice's `stop`
+
+        # What about lookback buffer?
+        obs: [0, 1]<-lb,    2, 3, 4, 5
+        act:    [1, 2]<-lb,    3, 4, 5
+        TODO: slice(-2, None) -> translation=1,3 -> obs=slice(1, 4) act=slice(1, 3)
+        slice(-6, -4) -> neg=True translation=0,1 -> obs=slice(1, 4) act=slice(0, 1)
+
+        Args:
+            slice_:
+
+        Returns:
+
+        """
+        start = slice_.start or 0
+        stop = slice_.stop or len(self)
+        step = slice_.step or 1
+        # Obs and infos need one more step at the end.
+        stop_obs_infos = ((stop if stop != -1 else (len(self) - 1)) or len(self)) + 1
+
+        neg_indices_left_of_zero = start >= 0
+        t_started = self.t_started + start + (0 if start >= 0 else len(self))
+        keep_done = slice_.stop is None or slice_.stop == len(self)
