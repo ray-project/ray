@@ -113,7 +113,9 @@ std::unique_ptr<plasma::MutableObject> MakeObject() {
   info.allocated_size = kPayloadSize;
 
   uint8_t *ptr = static_cast<uint8_t *>(malloc(kSize));
-  return std::make_unique<plasma::MutableObject>(ptr, info);
+  auto ret = std::make_unique<plasma::MutableObject>(ptr, info);
+  ret->header->Init();
+  return ret;
 }
 
 }  // namespace
