@@ -5,7 +5,7 @@ from ci.ray_ci.container import _DOCKER_ECR_REPO
 from ci.ray_ci.docker_container import DockerContainer
 from ci.ray_ci.builder_container import PYTHON_VERSIONS, DEFAULT_ARCHITECTURE
 from ci.ray_ci.utils import docker_pull, RAY_VERSION
-from release.ray_release.configs.global_config import BRANCH_PIPELINES
+from ray_release.configs.global_config import BRANCH_PIPELINES
 
 
 class RayDockerContainer(DockerContainer):

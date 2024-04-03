@@ -1,8 +1,8 @@
 import {
+  Alert,
   Box,
-  createStyles,
   InputAdornment,
-  makeStyles,
+  Pagination,
   Table,
   TableBody,
   TableCell,
@@ -11,8 +11,9 @@ import {
   TableRow,
   TextField,
   Typography,
-} from "@material-ui/core";
-import { Alert, Pagination } from "@material-ui/lab";
+} from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import React, { ReactElement } from "react";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import Loading from "../../components/Loading";

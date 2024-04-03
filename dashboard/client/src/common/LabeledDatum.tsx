@@ -1,4 +1,5 @@
-import { Box, Grid, makeStyles, Tooltip } from "@material-ui/core";
+import { Box, Grid, Tooltip } from "@mui/material";
+import makeStyles from "@mui/styles/makeStyles";
 import React, { ReactChild } from "react";
 
 type LabeledDatumProps = {

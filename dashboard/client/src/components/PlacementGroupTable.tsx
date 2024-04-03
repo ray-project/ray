@@ -9,9 +9,9 @@ import {
   TextField,
   TextFieldProps,
   Tooltip,
-} from "@material-ui/core";
-import Autocomplete from "@material-ui/lab/Autocomplete";
-import Pagination from "@material-ui/lab/Pagination";
+} from "@mui/material";
+import Autocomplete from "@mui/material/Autocomplete";
+import Pagination from "@mui/material/Pagination";
 import React, { useState } from "react";
 import rowStyles from "../common/RowStyles";
 import { Bundle, PlacementGroup } from "../type/placementGroup";
@@ -106,8 +106,8 @@ const PlacementGroupTable = ({
           )}
         />
         <TextField
-          style={{ margin: 8, width: 120 }}
           label="Page Size"
+          sx={{ margin: 1, width: 120 }}
           size="small"
           defaultValue={10}
           InputProps={{
@@ -165,7 +165,6 @@ const PlacementGroupTable = ({
                       className={classes.idCol}
                       title={placement_group_id}
                       arrow
-                      interactive
                     >
                       <div>{placement_group_id}</div>
                     </Tooltip>
@@ -180,7 +179,6 @@ const PlacementGroupTable = ({
                       className={classes.OverflowCol}
                       title={<BundleResourceRequirements bundles={bundles} />}
                       arrow
-                      interactive
                     >
                       <BundleResourceRequirements bundles={bundles} />
                     </Tooltip>
