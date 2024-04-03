@@ -91,6 +91,130 @@ class TestMultiAgentEpisodeReplayBuffer(unittest.TestCase):
             == {"3", "4", "5", "6", "7", "8", "9", "G"}
         )
 
+    def test_buffer_independent_sample_logic(self):
+        buffer = MultiAgentEpisodeReplayBuffer(capacity=10000)
+
+        for _ in range(200):
+            episode = self._get_episode()
+            buffer.add(episode)
+
+        for _ in range(1000):
+            sample = buffer.sample(batch_size_B=16, n_step=1)
+            self.assertTrue("module_1" in sample)
+            self.assertTrue("module_2" in sample)
+            for module_id in sample:
+                (
+                    obs,
+                    actions,
+                    rewards,
+                    next_obs,
+                    is_terminated,
+                    is_truncated,
+                    weights,
+                    n_steps,
+                ) = (
+                    sample[module_id]["obs"],
+                    sample[module_id]["actions"],
+                    sample[module_id]["rewards"],
+                    sample[module_id]["new_obs"],
+                    sample[module_id]["terminateds"],
+                    sample[module_id]["truncateds"],
+                    sample[module_id]["weights"],
+                    sample[module_id]["n_steps"],
+                )
+
+                # Make sure terminated and truncated are never both True.
+                assert not np.any(np.logical_and(is_truncated, is_terminated))
+
+                # All fields have same shape.
+                assert (
+                    obs.shape[:2]
+                    == rewards.shape
+                    == actions.shape
+                    == next_obs.shape
+                    == is_truncated.shape
+                    == is_terminated.shape
+                )
+
+                # Note, floating point numbers cannot be compared directly.
+                tolerance = 1e-8
+                # Assert that actions correspond to the observations.
+                self.assertTrue(np.all(actions - obs < tolerance))
+                # Assert that next observations are correctly one step after
+                # observations.
+                self.assertTrue(np.all(next_obs - obs - 1 < tolerance))
+                # Assert that the reward comes from the next observation.
+                self.assertTrue(np.all(rewards * 10 - next_obs < tolerance))
+
+                # Furthermore, assert that the importance sampling weights are
+                # one for `beta=0.0`.
+                self.assertTrue(np.all(weights - 1.0 < tolerance))
+
+                # Assert that all n-steps are 1.0 as passed into `sample`.
+                self.assertTrue(np.all(n_steps - 1.0 < tolerance))
+
+    def test_buffer_synchronized_sample_logic(self):
+        buffer = MultiAgentEpisodeReplayBuffer(capacity=10000)
+
+        for _ in range(200):
+            episode = self._get_episode()
+            buffer.add(episode)
+
+        for _ in range(1000):
+            sample = buffer.sample(batch_size_B=16, n_step=1, replay_mode="synchronize")
+            self.assertTrue("module_1" in sample)
+            self.assertTrue("module_2" in sample)
+            for module_id in sample:
+                (
+                    obs,
+                    actions,
+                    rewards,
+                    next_obs,
+                    is_terminated,
+                    is_truncated,
+                    weights,
+                    n_steps,
+                ) = (
+                    sample[module_id]["obs"],
+                    sample[module_id]["actions"],
+                    sample[module_id]["rewards"],
+                    sample[module_id]["new_obs"],
+                    sample[module_id]["terminateds"],
+                    sample[module_id]["truncateds"],
+                    sample[module_id]["weights"],
+                    sample[module_id]["n_steps"],
+                )
+
+                # Make sure terminated and truncated are never both True.
+                assert not np.any(np.logical_and(is_truncated, is_terminated))
+
+                # All fields have same shape.
+                assert (
+                    obs.shape[:2]
+                    == rewards.shape
+                    == actions.shape
+                    == next_obs.shape
+                    == is_truncated.shape
+                    == is_terminated.shape
+                )
+
+                # Note, floating point numbers cannot be compared directly.
+                tolerance = 1e-8
+                # Assert that actions correspond to the observations.
+                self.assertTrue(np.all(actions - obs < tolerance))
+                # Assert that next observations are correctly one step after
+                # observations.
+                self.assertTrue(np.all(next_obs - obs - 1 < tolerance))
+                # Assert that the reward comes from the next observation.
+                self.assertTrue(np.all(rewards * 10 - next_obs < tolerance))
+
+                # Furthermore, assert that the importance sampling weights are
+                # one for `beta=0.0`.
+                self.assertTrue(np.all(weights - 1.0 < tolerance))
+
+                # Assert that all n-steps are 1.0 as passed into `sample`.
+                self.assertTrue(np.all(n_steps - 1.0 < tolerance))
+
 
 if __name__ == "__main__":
     import pytest

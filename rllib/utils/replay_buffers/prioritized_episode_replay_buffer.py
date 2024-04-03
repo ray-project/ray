@@ -9,12 +9,11 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from ray.rllib.core.columns import Columns
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.execution.segment_tree import MinSegmentTree, SumSegmentTree
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import force_list
 from ray.rllib.utils.replay_buffers.episode_replay_buffer import EpisodeReplayBuffer
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import SampleBatchType
 from ray.rllib.utils.spaces.space_utils import batch
+from ray.rllib.utils.typing import SampleBatchType
 
 
 class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
@@ -533,7 +532,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         if include_infos:
             ret.update(
                 {
-                    SampleBatch.INFOS: infos,
+                    Columns.INFOS: infos,
                 }
             )
         # Include extra model outputs, if necessary.
