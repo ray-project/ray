@@ -2556,14 +2556,14 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Generate a simple multi-agent episode.
         observations = [
             {"a0": 0, "a1": 0},
-            {"a1": 1},
-            {"a1": 2},
+            {         "a1": 1},
+            {         "a1": 2},
             {"a0": 3, "a1": 3},
-            {"a0": 4},
+            {"a0": 4         },
             {"a0": 5, "a1": 5},
             {"a0": 6, "a1": 6},
-            {"a1": 7},
-            {"a1": 8},
+            {         "a1": 7},
+            {         "a1": 8},
             {"a0": 9},
         ]
         actions = observations[:-1]
@@ -2574,9 +2574,11 @@ class TestMultiAgentEpisode(unittest.TestCase):
             rewards=rewards,
             len_lookback_buffer=0,
         )
+        check(len(episode), 9)
 
         # Slice the episode in different ways and check results.
         slice = episode[:]
+        check(len(slice), len(episode))
         a0 = slice.agent_episodes["a0"]
         a1 = slice.agent_episodes["a1"]
         check((len(a0), len(a1)), (5, 7))
@@ -2591,9 +2593,26 @@ class TestMultiAgentEpisode(unittest.TestCase):
         )
         check((a0.is_done, a1.is_done), (False, False))
 
+        slice = episode[2:]
+        check(len(slice), 8)
+        a0 = slice.agent_episodes["a0"]
+        a1 = slice.agent_episodes["a1"]
+        check((len(a0), len(a1)), (4, 5))
+        check(
+            (a0.observations, a1.observations),
+            ([3, 4, 5, 6, 9], [2, 3, 5, 6, 7, 8]),
+        )
+        check((a0.actions, a1.actions), ([3, 4, 5, 6], [2, 3, 5, 6, 7]))
+        check(
+            (a0.rewards, a1.rewards),
+            ([0.4, 0.5, 0.6, 0.7], [0.3, 0.4, 0.6, 0.7, 0.8]),
+        )
+        check((a0.is_done, a1.is_done), (False, False))
+
         # If a slice ends in a "gap" for an agent, expect actions and rewards to be
         # cached in the agent's buffer.
         slice = episode[:1]
+        check(len(slice), 1)
         a0 = slice.agent_episodes["a0"]
         a1 = slice.agent_episodes["a1"]
         check((len(a0), len(a1)), (0, 1))
@@ -2603,10 +2622,9 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check((a0.is_done, a1.is_done), (False, False))
         check(slice._agent_buffered_actions["a0"], 0)
         check(slice._agent_buffered_rewards["a0"], 0.1)
-        # {"a0": 0, "a1": 0},
-        # {         "a1": 1},
 
         slice = episode[:3]
+        check(len(slice), 3)
         a0 = slice.agent_episodes["a0"]
         a1 = slice.agent_episodes["a1"]
         check((len(a0), len(a1)), (1, 3))
@@ -2616,6 +2634,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check((a0.is_done, a1.is_done), (False, False))
 
         slice = episode[:-4]
+        check(len(slice), 6)
         a0 = slice.agent_episodes["a0"]
         a1 = slice.agent_episodes["a1"]
         check((len(a0), len(a1)), (4, 5))
@@ -2628,6 +2647,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check((a0.is_done, a1.is_done), (False, False))
 
         slice = episode[-2:]
+        check(len(slice), 2)
         a0 = slice.agent_episodes["a0"]
         a1 = slice.agent_episodes["a1"]
         check((len(a0), len(a1)), (0, 1))
@@ -2637,6 +2657,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check((a0.is_done, a1.is_done), (False, False))
 
         slice = episode[-3:]
+        check(len(slice), 3)
         a0 = slice.agent_episodes["a0"]
         a1 = slice.agent_episodes["a1"]
         check((len(a0), len(a1)), (1, 2))
@@ -2646,6 +2667,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check((a0.is_done, a1.is_done), (False, False))
 
         slice = episode[-5:]
+        check(len(slice), 5)
         a0 = slice.agent_episodes["a0"]
         a1 = slice.agent_episodes["a1"]
         check((len(a0), len(a1)), (3, 3))
@@ -2655,6 +2677,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check((a0.is_done, a1.is_done), (False, False))
 
         slice = episode[-4:-2]
+        check(len(slice), 2)
         a0 = slice.agent_episodes["a0"]
         a1 = slice.agent_episodes["a1"]
         check((len(a0), len(a1)), (1, 2))
@@ -2662,6 +2685,33 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check((a0.actions, a1.actions), ([5], [5, 6]))
         check((a0.rewards, a1.rewards), ([0.6], [0.6, 0.7]))
         check((a0.is_done, a1.is_done), (False, False))
+
+        # Test what happens if one single-agent episode terminates earlier than the
+        # other.
+        observations = [
+            {"a0": 0, "a1": 0},  # 0
+            {"a0": 1, "a1": 1},  # 1
+            {         "a1": 2},  # 2
+            {         "a1": 3},  # 3
+        ]
+        actions = observations[:-1]
+        rewards = [{aid: r / 10 + 0.1 for aid, r in o.items()} for o in observations]
+        episode = MultiAgentEpisode(
+            observations=observations,
+            actions=actions,
+            rewards=rewards,
+            terminateds={"a0": True},
+            len_lookback_buffer=0,
+        )
+        slice = episode[2:]
+        self.assertTrue("a0" not in slice.agent_episodes)
+        a1 = slice.agent_episodes["a1"]
+        check(len(slice), 1)
+        check(len(a1), 1)
+        check(a1.observations, [2, 3])
+        check(a1.actions, [2])
+        check(a1.rewards, [0.3])
+        check(a1.is_done, False)
 
     def test_concat_episode(self):
         # TODO (sven): Revisit this test and the MultiAgentEpisode.episode_concat API.
@@ -2898,14 +2948,33 @@ class TestMultiAgentEpisode(unittest.TestCase):
         )
 
     def test_len(self):
-        # TODO (simon): Revisit this test and the MultiAgentEpisode.episode_concat API.
-        return
-
         # Generate an empty episode and ensure that `len()` raises an error.
         episode = MultiAgentEpisode()
         # Now raise an error.
         with self.assertRaises(AssertionError):
             len(episode)
+
+        # Generate a new episode with some initialization data.
+        episode = MultiAgentEpisode(
+            observations=[
+                {"a0": 0, "a1": 0},
+                {"a1": 1},
+                {"a0": 2},
+                {"a0": 3, "a1": 3},
+            ],
+            actions=[
+                {"a0": 0, "a1": 0},
+                {"a1": 1},
+                {"a0": 2},
+            ],
+            rewards=[
+                {"a0": 0, "a1": 0},
+                {"a1": 1},
+                {"a0": 2},
+            ],
+            len_lookback_buffer=0,
+        )
+        check(len(episode), 3)
 
         # Create an episode and environment and sample 100 timesteps.
         episode, env = self._mock_multi_agent_records_from_env()
@@ -2922,9 +2991,9 @@ class TestMultiAgentEpisode(unittest.TestCase):
         self.assertTrue(len(successor), 100)
 
         # Now concatenate the two episodes.
-        episode.concat_episode(successor)
+        #episode.concat_episode(successor)
         # Assert that the length is now 100.
-        self.assertTrue(len(episode), 200)
+        #self.assertTrue(len(episode), 200)
 
     def test_get_sample_batch(self):
         # TODO (simon): Revisit this test and the MultiAgentEpisode.episode_concat API.

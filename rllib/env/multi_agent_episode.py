@@ -1360,49 +1360,57 @@ class MultiAgentEpisode:
                 f" {slice_.step}) is not supported!"
             )
 
-        ma_episode = MultiAgentEpisode()
-
         slice_from_end = slice_.start is not None and slice_.start < 0
+
+        # Translate `slice_` into proper multi-agent env timesteps slice (`ma_slice`),
+        # which will only contain 0-or-positive ints and will NOT contain any None.
+        ma_slice = None
+        for aid in self.agent_episodes:
+            ma_ = self.env_t_to_agent_t[aid]._interpret_slice(slice_, False)[0]
+            if ma_slice is None:
+                ma_slice = ma_
+            else:
+                assert ma_ == ma_slice
+        # If `start` of the original `slice_` is negative, we need to move the
+        # `start` one to the left (to include one more observation than actions).
+        if slice_from_end:
+            ma_slice_obs_infos = slice(max(ma_slice.start - 1, 0), ma_slice.stop)
+        # Otherwise, we need to move the stop one to the right (to include one more
+        # observation than actions).
+        else:
+            ma_slice_obs_infos = slice(ma_slice.start, ma_slice.stop + 1)
+
+        ma_episode = MultiAgentEpisode(
+            env_t_started=self.env_t_started + ma_slice.start,
+        )
+        ma_episode.env_t = self.env_t_started + ma_slice.stop
 
         # Translate slice separately for each agent's SingleAgentEpisode, then slice
         # those and return a new MultiAgentEpisode with the sliced SingleAgentEpisodes
         # in it.
         for agent_id, sa_episode in self.agent_episodes.items():
-            # Translate given slice_ into proper multi-agent env timesteps slice
-            # (only 0 or positive ints, no Nones).
-            ma_slice_oi = self.env_t_to_agent_t[agent_id]._interpret_slice(
-                slice_, neg_indices_left_of_zero=False
-            )[0]
-            # If `start` of the original `slice_` is negative, we need to move the
-            # `start` one to the left (to include one more observation than actions).
-            if slice_from_end:
-                ma_slice_oi = slice(max(ma_slice_oi.start - 1, 0), ma_slice_oi.stop)
-            # Otherwise, we need to move the stop one to the right (to include one more
-            # observation than actions).
-            else:
-                ma_slice_oi = slice(ma_slice_oi.start, ma_slice_oi.stop + 1)
-            sa_indices_obs = self.env_t_to_agent_t[agent_id][ma_slice_oi]
+            sa_indices_obs_infos = self.env_t_to_agent_t[agent_id][ma_slice_obs_infos]
 
             # Determine dones/truncateds/terminateds.
             terminated = sa_episode.is_terminated
             truncated = sa_episode.is_truncated
 
             # `sa_indices_obs` is empty -> Skip.
-            if len(sa_indices_obs) == 0:
+            if len(sa_indices_obs_infos) == 0:
                 continue
 
             # If `SKIP_ENV_TS_TAG` at end (last step NOT completed yet) -> shorten slice
             # again by n steps (from end); put action/reward at `s.stop - n` into
             # agent's buffers.
-            if sa_indices_obs[-1] == self.SKIP_ENV_TS_TAG:
+            if sa_indices_obs_infos[-1] == self.SKIP_ENV_TS_TAG:
                 idx = None
-                for n in range(2, len(sa_indices_obs) + 1):
-                    idx = sa_indices_obs[-n]
+                for n in range(2, len(sa_indices_obs_infos) + 1):
+                    idx = sa_indices_obs_infos[-n]
                     if idx != self.SKIP_ENV_TS_TAG:
-                        sa_slice_oi = slice(sa_indices_obs[0], idx + 1)
+                        sa_slice_obs_infos = slice(sa_indices_obs_infos[0], idx + 1)
                         break
                 # All items in `sa_indices_obs` are `SKIP_ENV_TS_TAG` -> Skip.
-                if idx is None:
+                if idx in [None, self.SKIP_ENV_TS_TAG]:
                     continue
                 # Correctly setup the buffers only if we are still in an ongoing single
                 # agent episode.
@@ -1418,44 +1426,50 @@ class MultiAgentEpisode:
                         for k in sa_episode.extra_model_outputs.keys()
                     }
             else:
-                sa_slice_oi = slice(sa_indices_obs[0], sa_indices_obs[-1] + 1)
+                sa_slice_obs_infos = (
+                    slice(sa_indices_obs_infos[0], sa_indices_obs_infos[-1] + 1)
+                )
 
             # If 'S' at start, simply move right until no 'S' is found, then start from
             # there. -> In this case, we simply chose the start boundary of the slice
             # "badly" and adjust the slice.
-            if sa_indices_obs[0] == self.SKIP_ENV_TS_TAG:
-                for n in range(1, len(sa_indices_obs)):
-                    idx = sa_indices_obs[n]
+            if sa_indices_obs_infos[0] == self.SKIP_ENV_TS_TAG:
+                for n in range(1, len(sa_indices_obs_infos)):
+                    idx = sa_indices_obs_infos[n]
                     if idx != self.SKIP_ENV_TS_TAG:
-                        sa_slice_oi = slice(idx, sa_slice_oi.stop)
+                        sa_slice_obs_infos = slice(idx, sa_slice_obs_infos.stop)
                         break
             else:
-                sa_slice_oi = slice(sa_indices_obs[0], sa_slice_oi.stop)
+                sa_slice_obs_infos = (
+                    slice(sa_indices_obs_infos[0], sa_slice_obs_infos.stop)
+                )
 
             # Our slice stops before the single-agent episode ends
             # -> Set truncated/terminated to False.
-            if sa_slice_oi.stop < len(sa_episode):
+            if sa_slice_obs_infos.stop < len(sa_episode):
                 terminated = truncated = False
 
-            sa_slice_ar = slice(sa_slice_oi.start, max(sa_slice_oi.stop - 1, 0))
+            sa_slice_act_rew = (
+                slice(sa_slice_obs_infos.start, max(sa_slice_obs_infos.stop - 1, 0))
+            )
 
             # Create SingleAgentEpisode from above slices for observations and
             # actions/rewards.
             sliced_sa_episode = SingleAgentEpisode(
                 id_=sa_episode.id_,
-                observations=sa_episode.observations[sa_slice_oi],
+                observations=sa_episode.observations[sa_slice_obs_infos],
                 observation_space=sa_episode.observation_space,
-                infos=sa_episode.infos[sa_slice_oi],
-                actions=sa_episode.actions[sa_slice_ar],
+                infos=sa_episode.infos[sa_slice_obs_infos],
+                actions=sa_episode.actions[sa_slice_act_rew],
                 action_space=sa_episode.action_space,
-                rewards=sa_episode.rewards[sa_slice_ar],
+                rewards=sa_episode.rewards[sa_slice_act_rew],
                 extra_model_outputs={
-                    key: value[sa_slice_ar]
+                    key: value[sa_slice_act_rew]
                     for key, value in sa_episode.extra_model_outputs.items()
                 },
                 terminated=terminated,
                 truncated=truncated,
-                t_started=sa_episode.t_started + sa_slice_oi.start,
+                t_started=sa_episode.t_started + sa_slice_obs_infos.start,
                 agent_id=sa_episode.agent_id,
                 module_id=sa_episode.module_id,
                 multi_agent_episode_id=self.id_,
@@ -1463,7 +1477,7 @@ class MultiAgentEpisode:
             )
             # Slice the env_t mapping.
             ma_episode.env_t_to_agent_t[agent_id] = InfiniteLookbackBuffer(
-                sa_indices_obs, lookback=0
+                sa_indices_obs_infos, lookback=0
             )
 
             # Assign created SingleAgentEpisode slice the new MultiAgentEpisode.
