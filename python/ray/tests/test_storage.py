@@ -3,9 +3,11 @@ import subprocess
 import urllib
 from pathlib import Path
 
+import json
 from packaging.version import parse as parse_version
 import pyarrow.fs
 import pytest
+import requests
 
 import ray
 import ray._private.storage as storage
@@ -67,16 +69,30 @@ def test_get_filesystem_s3(shutdown_only):
 def test_escape_storage_uri_with_runtime_env(shutdown_only):
     # https://github.com/ray-project/ray/issues/41568
     # Test to make sure we can successfully start worker process
-    # when storage uri contains ? and we use runtime env.
-    with simulate_storage("s3") as s3_uri:
+    # when storage uri contains ?,& and we use runtime env and that the
+    # moto mocking actually works with the escaped uri
+    port = 5002
+    with simulate_storage("s3", port=port) as s3_uri:
         assert "?" in s3_uri
         ray.init(storage=s3_uri, runtime_env={"env_vars": {"TEST_ENV": "1"}})
 
+        recorder_uri = f"http://localhost:{port}/moto-api/recorder"
+        requests.post(f"{recorder_uri}/start-recording")
+        client = storage.get_client("foo")
+        client.put("bar", b"baz")
+
         @ray.remote
         def f():
-            return 1
+            client = storage.get_client("foo")
+            return client.get("bar")
 
-        assert ray.get(f.remote()) == 1
+        assert ray.get(f.remote()) == b"baz"
+        requests.post(f"{recorder_uri}/stop-recording")
+        log = requests.get(f"{recorder_uri}/download-recording").content
+        # The recording is a set of json strings separated by b'\n'
+        # The last one is empty, so ignore it.
+        data = list(map(json.loads, log.split(b'\n')[:-1]))
+        assert "foo/bar" in data[-2]["url"]
 
 
 def test_get_filesystem_invalid(shutdown_only, tmp_path):
