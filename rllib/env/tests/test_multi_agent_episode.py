@@ -2591,6 +2591,8 @@ class TestMultiAgentEpisode(unittest.TestCase):
         )
         check((a0.is_done, a1.is_done), (False, False))
 
+        # If a slice ends in a "gap" for an agent, expect actions and rewards to be
+        # cached in the agent's buffer.
         slice = episode[:1]
         a0 = slice.agent_episodes["a0"]
         a1 = slice.agent_episodes["a1"]
@@ -2599,6 +2601,10 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check((a0.actions, a1.actions), ([], [0]))
         check((a0.rewards, a1.rewards), ([], [0.1]))
         check((a0.is_done, a1.is_done), (False, False))
+        check(slice._agent_buffered_actions["a0"], 0)
+        check(slice._agent_buffered_rewards["a0"], 0.1)
+        # {"a0": 0, "a1": 0},
+        # {         "a1": 1},
 
         slice = episode[:3]
         a0 = slice.agent_episodes["a0"]
