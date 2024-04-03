@@ -137,6 +137,43 @@ def test_put_remote_get(ray_start_regular, num_readers):
     ray.get(done)
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="Requires Linux.")
+@pytest.mark.parametrize("num_buffers", [1, 2, 4])
+def test_pipelined_channel(ray_start_regular, num_buffers):
+    @ray.remote
+    class Actor:
+        def make_chan(self):
+            self.chan = ray_channel.Channel(1000, num_buffers=num_buffers)
+            return self.chan
+
+        def write(self, val):
+            self.chan.write(val)
+            return
+
+    a = Actor.remote()
+    # Wait for the actor to start.
+    chan = ray.get(a.make_chan.remote())
+    ray.get(a.write.remote(b"hello"))
+    assert chan.begin_read() == b"hello"
+    chan.end_read()
+
+    # It should be possible to have up to num_buffers concurrent values written
+    # to the channel.
+    write_refs = [a.write.remote(i) for i in range(num_buffers)]
+    for write_ref in write_refs:
+        # This should not hang.
+        ray.get(write_ref)
+
+    ref = a.write.remote(num_buffers + 1)
+    done, _ = ray.wait([ref], timeout=1)
+    assert not done
+
+    assert chan.begin_read() == 0
+    chan.end_read()
+    done, _ = ray.wait([ref], timeout=1)
+    assert done
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
