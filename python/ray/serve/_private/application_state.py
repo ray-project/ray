@@ -11,6 +11,7 @@ from ray import cloudpickle
 from ray._private.utils import import_attr
 from ray.exceptions import RuntimeEnvSetupError
 from ray.serve._private.common import (
+    APISource,
     ApplicationStatus,
     ApplicationStatusInfo,
     DeploymentID,
@@ -115,6 +116,7 @@ class ApplicationState:
     def __init__(
         self,
         name: str,
+        api_source: APISource,
         deployment_state_manager: DeploymentStateManager,
         endpoint_state: EndpointState,
         save_checkpoint_func: Callable,
@@ -133,6 +135,7 @@ class ApplicationState:
         """
 
         self._name = name
+        self._api_source = APISource
         self._status_msg = ""
         self._deployment_state_manager = deployment_state_manager
         self._endpoint_state = endpoint_state
@@ -752,9 +755,10 @@ class ApplicationStateManager:
         if checkpoint is not None:
             application_state_info = cloudpickle.loads(checkpoint)
 
-            for app_name, checkpoint_data in application_state_info.items():
+            for (app_name, api_source), checkpoint_data in application_state_info.items():
                 app_state = ApplicationState(
                     app_name,
+                    api_source,
                     self._deployment_state_manager,
                     self._endpoint_state,
                     self._save_checkpoint_func,
