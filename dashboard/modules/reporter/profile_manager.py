@@ -353,6 +353,9 @@ class MemoryProfilingManager:
             cmd.append("--verbose")
         cmd.append(str(pid))
 
+        if await _can_passwordless_sudo():
+            cmd = ["sudo", "-n"] + cmd
+
         process = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=subprocess.PIPE,
