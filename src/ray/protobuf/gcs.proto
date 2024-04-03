@@ -620,7 +620,7 @@ message PlacementGroupStats {
     // Scheduling Finished.
     //
     // Placement group creation failed because there was
-    // an issue commiting resources to nodes
+    // an issue committing resources to nodes
     // (e.g., node failures).
     FAILED_TO_COMMIT_RESOURCES = 5;
     // Scheduling has finished properly.

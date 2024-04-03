@@ -149,14 +149,14 @@ def test_scaling_config_accelerator_type():
     }
     assert scaling_config._resources_per_worker_not_none == {
         "GPU": 1,
-        "accelerator_type:A100": 1,
+        "accelerator_type:A100": 0.001,
     }
     assert scaling_config.additional_resources_per_worker == {
-        "accelerator_type:A100": 1
+        "accelerator_type:A100": 0.001
     }
     assert scaling_config.as_placement_group_factory().bundles == [
-        {"GPU": 1, "accelerator_type:A100": 1, "CPU": 1},
-        {"GPU": 1, "accelerator_type:A100": 1},
+        {"GPU": 1, "accelerator_type:A100": 0.001, "CPU": 1},
+        {"GPU": 1, "accelerator_type:A100": 0.001},
     ]
 
     # With resources_per_worker
@@ -172,15 +172,15 @@ def test_scaling_config_accelerator_type():
     assert scaling_config._resources_per_worker_not_none == {
         "GPU": 1,
         "custom_resource": 1,
-        "accelerator_type:A100": 1,
+        "accelerator_type:A100": 0.001,
     }
     assert scaling_config.additional_resources_per_worker == {
         "custom_resource": 1,
-        "accelerator_type:A100": 1,
+        "accelerator_type:A100": 0.001,
     }
     assert scaling_config.as_placement_group_factory().bundles == [
-        {"GPU": 1, "custom_resource": 1, "accelerator_type:A100": 1, "CPU": 1},
-        {"GPU": 1, "custom_resource": 1, "accelerator_type:A100": 1},
+        {"GPU": 1, "custom_resource": 1, "accelerator_type:A100": 0.001, "CPU": 1},
+        {"GPU": 1, "custom_resource": 1, "accelerator_type:A100": 0.001},
     ]
 
     # With trainer_resources
@@ -195,14 +195,14 @@ def test_scaling_config_accelerator_type():
     }
     assert scaling_config._resources_per_worker_not_none == {
         "GPU": 1,
-        "accelerator_type:A100": 1,
+        "accelerator_type:A100": 0.001,
     }
     assert scaling_config.additional_resources_per_worker == {
-        "accelerator_type:A100": 1
+        "accelerator_type:A100": 0.001
     }
     assert scaling_config.as_placement_group_factory().bundles == [
-        {"GPU": 1, "accelerator_type:A100": 1, "memory": 10 * 1024**3},
-        {"GPU": 1, "accelerator_type:A100": 1},
+        {"GPU": 1, "accelerator_type:A100": 0.001, "memory": 10 * 1024**3},
+        {"GPU": 1, "accelerator_type:A100": 0.001},
     ]
 
 

@@ -1010,7 +1010,7 @@ class Node:
                 logger.info(
                     f"Can't find a `{ray_constants.RAY_NODE_IP_FILENAME}` "
                     f"file from {self.get_session_dir_path()}. "
-                    "Have you started Ray instsance using "
+                    "Have you started Ray instance using "
                     "`ray start` or `ray.init`?"
                 )
 

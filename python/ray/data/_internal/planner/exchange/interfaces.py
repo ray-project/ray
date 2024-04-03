@@ -115,7 +115,7 @@ class ExchangeTaskScheduler:
             "This can happen when many tiny blocks are created. "
             "Check the block size using Dataset.stats() and see "
             "https://docs.ray.io/en/latest/data/performance-tips.html"
-            "#TODO for mitigation.",
+            " for mitigation.",
         )
 
     def warn_on_driver_memory_usage(

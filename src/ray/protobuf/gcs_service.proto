@@ -556,12 +556,12 @@ message GcsPublishReply {
 message GcsSubscriberPollRequest {
   /// The id of the subscriber.
   bytes subscriber_id = 1;
-  /// The max squence_id that has been processed by the subscriber. The Publisher
+  /// The max sequence_id that has been processed by the subscriber. The Publisher
   /// will drop queued messages with smaller sequence_id for this subscriber.
   int64 max_processed_sequence_id = 2;
   /// The expected publisher_id. The publisher will ignore the
   /// max_processed_sequence_id if the publisher_id doesn't match.
-  /// This usuall happens when gcs failover.
+  /// This usually happens when gcs failover.
   bytes publisher_id = 3;
 }
 
@@ -655,7 +655,7 @@ service NodeInfoGcsService {
   // When the RPC is replied,
   // - It is guaranteed that the requested nodes are going to be drained eventually.
   // - It is guaranteed that GCS has persisted the draining states.
-  // - It is **not** guarateed that nodes receive the drain requests from GCS.
+  // - It is **not** guaranteed that nodes receive the drain requests from GCS.
   rpc DrainNode(DrainNodeRequest) returns (DrainNodeReply);
   // Get information of all nodes from GCS Service.
   rpc GetAllNodeInfo(GetAllNodeInfoRequest) returns (GetAllNodeInfoReply);
