@@ -513,7 +513,7 @@ class Worker:
         return self.core_worker.get_current_task_id()
 
     @property
-    def current_node_id(self) -> ray.NodeID:
+    def current_node_id(self):
         return self.core_worker.get_current_node_id()
 
     @property
@@ -2336,50 +2336,29 @@ def connect(
 
     if mode == SCRIPT_MODE:
         # Add the directory containing the script that is running to the Python
-        # paths of the workers. Also add the current directory. This is useful when the
-        # worker code references local libraries like `import local_lib`, *without*
-        # working_dir set and the worker and driver are on the same node, e.g. when the
-        # user is running on a single node cluster on their laptop.
-        #
-        # In production, This is not encouraged, and won't work if the driver and worker
-        # are on different nodes. In that case, the user should use `working_dir` to
-        # specify the code search path.
-        #
-        # Formally, the local path(s) should be added when all of these are true:
-        # (1) there's no working_dir (or code search path should be in working_dir),
-        # (2) it's not interactive mode, (there's no script file in interactive mode),
-        # (3) it's not in dashboard (should only skip script location but still append
-        #   current directory),
-        # (4) it's not client mode, (handled by client code)
-        # (5) the driver is at the same node (machine) as the worker.
-        #
-        # We only do the first 4 checks here. The (5) check is done in _raylet.pyx
-        # maybe_initialize_job_config.
-        if not any(
-            [
-                job_config._runtime_env_has_working_dir(),
-                interactive_mode,
-                job_config._client_job,
-            ]
+        # paths of the workers. Also add the current directory. Note that this
+        # assumes that the directory structures on the machines in the clusters
+        # are the same.
+        # When using an interactive shell, there is no script directory.
+        # We also want to skip adding script directory when running from dashboard.
+        code_paths = []
+        if not interactive_mode and not (
+            namespace and namespace == ray_constants.RAY_INTERNAL_DASHBOARD_NAMESPACE
         ):
-            code_paths = set()
-            script_directory = os.path.dirname(os.path.realpath(driver_name))
+            script_directory = os.path.dirname(os.path.realpath(sys.argv[0]))
             # If driver's sys.path doesn't include the script directory
             # (e.g driver is started via `python -m`,
             # see https://peps.python.org/pep-0338/),
             # then we shouldn't add it to the workers.
             if script_directory in sys.path:
-                # If user code contains names like `utils`, it will be conflicting with
-                # the `utils` module in the dashboard module. We should skip adding
-                # script directory for dashboard clients and should have the
-                # current directory available for loading user code.
-                # See: https://github.com/anyscale/product/issues/20746
-                if namespace != ray_constants.RAY_INTERNAL_DASHBOARD_NAMESPACE:
-                    code_paths.add(script_directory)
+                code_paths.append(script_directory)
+        # In client mode, if we use runtime envs with "working_dir", then
+        # it'll be handled automatically.  Otherwise, add the current dir.
+        if not job_config._client_job and not job_config._runtime_env_has_working_dir():
             current_directory = os.path.abspath(os.path.curdir)
-            code_paths.add(current_directory)
-            if len(code_paths) != 0:
-                job_config._py_driver_sys_path.extend(code_paths)
+            code_paths.append(current_directory)
+        if len(code_paths) != 0:
+            job_config._py_driver_sys_path.extend(code_paths)
 
     serialized_job_config = job_config._serialize()
     if not node.should_redirect_logs():

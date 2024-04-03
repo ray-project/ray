@@ -817,7 +817,7 @@ ipython-genutils==0.2.0
     #   ipywidgets
     #   nbclassic
     #   notebook
-ipywidgets==7.8.1
+ipywidgets==7.7.2
     # via
     #   -r /ray/ci/../python/requirements/anyscale-requirements.txt
     #   -r /ray/ci/../python/requirements/docker/ray-docker-requirements.txt
