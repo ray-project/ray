@@ -12,15 +12,18 @@ https://docs.ray.io/en/master/rllib-algorithms.html#deep-q-networks-dqn-rainbow-
 import logging
 from typing import Callable, List, Optional, Type, Union
 import numpy as np
+import tree
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.algorithms.dqn.dqn_torch_policy import DQNTorchPolicy
+from ray.rllib.core.learner import Learner
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
-from ray.rllib.policy.sample_batch import MultiAgentBatch
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.execution.train_ops import (
     train_one_step,
     multi_gpu_train_one_step,
@@ -28,21 +31,26 @@ from ray.rllib.execution.train_ops import (
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils import deep_update
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
-from ray.rllib.utils.metrics import (
-    LAST_TARGET_UPDATE_TS,
-    NUM_AGENT_STEPS_SAMPLED,
-    NUM_ENV_STEPS_SAMPLED,
-    NUM_TARGET_UPDATES,
-    SAMPLE_TIMER,
-    SYNCH_WORKER_WEIGHTS_TIMER,
-)
 from ray.rllib.utils.replay_buffers.utils import (
-    sample_min_n_steps_from_buffer,
+    update_priorities_in_episode_replay_buffer,
     update_priorities_in_replay_buffer,
     validate_buffer_config,
 )
 from ray.rllib.utils.typing import ResultDict
+from ray.rllib.utils.metrics import (
+    ALL_MODULES,
+    LAST_TARGET_UPDATE_TS,
+    NUM_AGENT_STEPS_SAMPLED,
+    NUM_AGENT_STEPS_TRAINED,
+    NUM_ENV_STEPS_SAMPLED,
+    NUM_ENV_STEPS_TRAINED,
+    NUM_TARGET_UPDATES,
+    SAMPLE_TIMER,
+    SYNCH_WORKER_WEIGHTS_TIMER,
+)
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
+from ray.rllib.utils.typing import EpisodeType, RLModuleSpec, SampleBatchType
 
 logger = logging.getLogger(__name__)
 
@@ -373,6 +381,24 @@ class DQNConfig(AlgorithmConfig):
                 categorical_distribution_temperature
             )
 
+        if self._enable_new_api_stack:
+            # Include the architecture hyperparameters into the model config.
+            # TODO (simon, sven): Find a general way to update the model_config.
+            if "double_q" not in self.model:
+                self.model.update({"double_q": self.double_q})
+            if "dueling" not in self.model:
+                self.model.update({"dueling": self.dueling})
+            if "noisy" not in self.model:
+                self.model.update({"noisy": self.noisy})
+            if "simga0" not in self.model:
+                self.model.update({"sigma0": self.sigma0})
+            if "num_atoms" not in self.model:
+                self.model.update({"num_atoms": self.num_atoms})
+            if "v_max" not in self.model:
+                self.model.update({"v_max": self.v_max})
+            if "v_min" not in self.model:
+                self.model.update({"v_min": self.v_min})
+
         return self
 
     @override(AlgorithmConfig)
@@ -380,7 +406,10 @@ class DQNConfig(AlgorithmConfig):
         # Call super's validation method.
         super().validate()
 
-        if self.exploration_config["type"] == "ParameterNoise":
+        if (
+            not self._enable_new_api_stack
+            and self.exploration_config["type"] == "ParameterNoise"
+        ):
             if self.batch_mode != "complete_episodes":
                 raise ValueError(
                     "ParameterNoise Exploration requires `batch_mode` to be "
@@ -388,7 +417,7 @@ class DQNConfig(AlgorithmConfig):
                     "batch_mode='complete_episodes')`."
                 )
 
-        if not self.in_evaluation:
+        if not self.uses_new_env_runners and not self.in_evaluation:
             validate_buffer_config(self)
 
         if self.td_error_loss_fn not in ["huber", "mse"]:
@@ -406,7 +435,12 @@ class DQNConfig(AlgorithmConfig):
                 f"Try setting config.rollouts(rollout_fragment_length={self.n_step})."
             )
 
-        if self.exploration_config["type"] == "ParameterNoise":
+        # TODO (simon): Find a clean solution to deal with
+        # configuration configs when using the new API stack.
+        if (
+            not self._enable_new_api_stack
+            and self.exploration_config["type"] == "ParameterNoise"
+        ):
             if self.batch_mode != "complete_episodes":
                 raise ValueError(
                     "ParameterNoise Exploration requires `batch_mode` to be "
@@ -419,12 +453,63 @@ class DQNConfig(AlgorithmConfig):
                     " used at the same time!"
                 )
 
+        # Validate that we use the corresponding `EpisodeReplayBuffer` when using
+        # episodes.
+        # TODO (sven, simon): Implement the multi-agent case for replay buffers.
+        from ray.rllib.utils.replay_buffers.episode_replay_buffer import (
+            EpisodeReplayBuffer,
+        )
+
+        if (
+            self.uses_new_env_runners
+            and not isinstance(self.replay_buffer_config["type"], str)
+            and not issubclass(self.replay_buffer_config["type"], EpisodeReplayBuffer)
+        ):
+            raise ValueError(
+                "When using the new `EnvRunner API` the replay buffer must be of type "
+                "`EpisodeReplayBuffer`."
+            )
+
     @override(AlgorithmConfig)
     def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
         if self.rollout_fragment_length == "auto":
             return self.n_step
         else:
             return self.rollout_fragment_length
+
+    @override(AlgorithmConfig)
+    def get_default_rl_module_spec(self) -> RLModuleSpec:
+        from ray.rllib.algorithms.dqn.dqn_rainbow_catalog import DQNRainbowCatalog
+
+        if self.framework_str == "torch":
+            from ray.rllib.algorithms.dqn.torch.dqn_rainbow_torch_rl_module import (
+                DQNRainbowTorchRLModule,
+            )
+
+            return SingleAgentRLModuleSpec(
+                module_class=DQNRainbowTorchRLModule,
+                catalog_class=DQNRainbowCatalog,
+                # model_config_dict=self.model,
+            )
+        else:
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported! "
+                "Use `config.framework('torch')` instead."
+            )
+
+    @override(AlgorithmConfig)
+    def get_default_learner_class(self) -> Union[Type["Learner"], str]:
+        if self.framework_str == "torch":
+            from ray.rllib.algorithms.dqn.torch.dqn_rainbow_torch_learner import (
+                DQNRainbowTorchLearner,
+            )
+
+            return DQNRainbowTorchLearner
+        else:
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported! "
+                "Use `config.framework('torch')` instead."
+            )
 
 
 def calculate_rr_weights(config: AlgorithmConfig) -> List[float]:
@@ -486,6 +571,129 @@ class DQN(Algorithm):
         Returns:
             The results dict from executing the training iteration.
         """
+        # New API stack (RLModule, Learner, EnvRunner, ConnectorV2).
+        if self.config.uses_new_env_runners:
+            return self._training_step_new_api_stack()
+        # Old and hybrid API stacks (Policy, RolloutWorker, Connector, maybe RLModule,
+        # maybe Learner).
+        else:
+            return self._training_step_old_and_hybrid_api_stack()
+
+    def _training_step_new_api_stack(self) -> ResultDict:
+        # Alternate between storing and sampling and training.
+        store_weight, sample_and_train_weight = calculate_rr_weights(self.config)
+        train_results = {}
+
+        # Run multiple sampling + storing to buffer iterations.
+        for _ in range(store_weight):
+            with self._timers[SAMPLE_TIMER]:
+                episodes: EpisodeType = synchronous_parallel_sample(
+                    worker_set=self.workers,
+                    concat=True,
+                    _uses_new_env_runners=True,
+                )
+
+            # TODO (sven): single- vs multi-agent.
+            self._counters[NUM_AGENT_STEPS_SAMPLED] += sum(
+                e.agent_steps() for e in episodes
+            )
+            self._counters[NUM_ENV_STEPS_SAMPLED] += sum(
+                e.env_steps() for e in episodes
+            )
+
+            # Add the sampled experiences to the replay buffer.
+            self.local_replay_buffer.add(episodes)
+
+        # Update the target network each `target_network_update_freq` steps.
+        current_ts = self._counters[
+            NUM_AGENT_STEPS_SAMPLED
+            if self.config.count_steps_by == "agent_steps"
+            else NUM_ENV_STEPS_SAMPLED
+        ]
+
+        # If enough experiences have been sampled start training.
+        if current_ts > self.config.num_steps_sampled_before_learning_starts:
+            # Resample noise for noisy networks, if necessary. Note, this
+            # is proposed in the "Noisy Networks for Exploration" paper
+            # (https://arxiv.org/abs/1706.10295) in Algorithm 1. The noise
+            # gets sampled once for each training loop.
+            self.learner_group.foreach_learner(lambda l: l._reset_noise())
+            # Run multiple sample-from-buffer and update iterations.
+            for _ in range(sample_and_train_weight):
+                # Sample training batch from replay_buffer.
+                # TODO (simon): Use sample_with_keys() here.
+                train_dict = self.local_replay_buffer.sample(
+                    num_items=self.config.train_batch_size,
+                    n_step=self.config.n_step,
+                    gamma=self.config.gamma,
+                    beta=self.config.replay_buffer_config["beta"],
+                )
+                train_batch = SampleBatch(train_dict)
+
+                # Convert to multi-agent batch as `LearnerGroup` depends on it.
+                # TODO (sven, simon): Remove this conversion once the `LearnerGroup`
+                # supports dict.
+                train_batch = train_batch.as_multi_agent()
+
+                # Perform an update on the buffer-sampled train batch.
+                train_results = self.learner_group.update_from_batch(
+                    train_batch,
+                    reduce_fn=self._reduce_fn,
+                )
+
+                # Update the counters.
+                self._counters[NUM_AGENT_STEPS_TRAINED] += train_batch.agent_steps()
+                self._counters[NUM_ENV_STEPS_TRAINED] += train_batch.env_steps()
+
+                # Update replay buffer priorities.
+                update_priorities_in_episode_replay_buffer(
+                    self.local_replay_buffer,
+                    self.config,
+                    train_batch,
+                    train_results,
+                )
+
+                # Update the target networks if necessary.
+                modules_to_update = set(train_results.keys()) - {ALL_MODULES}
+                additional_results = self.learner_group.additional_update(
+                    module_ids_to_update=modules_to_update,
+                    timestep=current_ts,
+                    last_update=self._counters[LAST_TARGET_UPDATE_TS],
+                )
+                # Add the additional results to the training results, if any.
+                for pid, res in additional_results.items():
+                    if LAST_TARGET_UPDATE_TS in res:
+                        self._counters[LAST_TARGET_UPDATE_TS] = res[
+                            LAST_TARGET_UPDATE_TS
+                        ]
+                    if NUM_TARGET_UPDATES in res:
+                        self._counters[NUM_TARGET_UPDATES] += res[NUM_TARGET_UPDATES]
+                    train_results[pid].update(res)
+
+            # Update weights and global_vars - after learning on the local worker -
+            # on all remote workers.
+            # TODO (simon): For better performance, synch only the online network
+            # weights and not the target network weights.
+            with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+                if self.workers.num_remote_workers() > 0:
+                    # NOTE: the new API stack does not use global vars.
+                    self.workers.sync_weights(
+                        from_worker_or_learner_group=self.learner_group,
+                        policies=modules_to_update,
+                        global_vars=None,
+                    )
+                # Then we must have a local worker.
+                else:
+                    weights = self.learner_group.get_weights()
+                    self.workers.local_worker().set_weights(weights)
+
+        return train_results
+
+    def _training_step_old_and_hybrid_api_stack(self) -> ResultDict:
+        """Training step for the old and hybrid training stacks.
+
+        More specifically this training step relies on `RolloutWorker`.
+        """
         train_results = {}
 
         # We alternate between storing new samples and sampling and training
@@ -494,7 +702,7 @@ class DQN(Algorithm):
         for _ in range(store_weight):
             # Sample (MultiAgentBatch) from workers.
             with self._timers[SAMPLE_TIMER]:
-                new_sample_batch = synchronous_parallel_sample(
+                new_sample_batch: SampleBatchType = synchronous_parallel_sample(
                     worker_set=self.workers, concat=True
                 )
 
@@ -529,10 +737,6 @@ class DQN(Algorithm):
                 post_fn = self.config.get("before_learn_on_batch") or (lambda b, *a: b)
                 train_batch = post_fn(train_batch, self.workers, self.config)
 
-                # for policy_id, sample_batch in train_batch.policy_batches.items():
-                #     print(len(sample_batch["obs"]))
-                #     print(sample_batch.count)
-
                 # Learn on training batch.
                 # Use simple optimizer (only for multi-agent or tf-eager; all other
                 # cases should use the multi-GPU optimizer, even if only using 1 GPU)
@@ -565,3 +769,27 @@ class DQN(Algorithm):
 
         # Return all collected metrics for the iteration.
         return train_results
+
+    # TODO (sven, simon): Streamline the custom metrics reduction
+    # functions via the `Learner`'s `register_metrics()` API.
+    def _reduce_fn(self, results: List[ResultDict]) -> ResultDict:
+        """Reduces all metrics, but the TD-errors."""
+        # First get the single modules' results.
+        module_results = [
+            v for res in results for k, v in res.items() if k != "__all__"
+        ]
+        # Extract the TD-errors as we want to keep them as arrays.
+        td_errors = tree.map_structure_up_to(
+            {"td_error": True}, lambda x: x, *module_results
+        )
+        # Now reduce all other results.
+        reduced_results = tree.map_structure(lambda *x: np.mean(x), *results)
+        # Add the TD-error arrays to the results and return.
+        return {
+            k: v if k == "__all__" else {**v, "td_error": td_error}
+            for k, v, td_error in zip(
+                reduced_results.keys(),
+                reduced_results.values(),
+                [None] + list(td_errors.values()),
+            )
+        }

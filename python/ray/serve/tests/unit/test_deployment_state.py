@@ -47,6 +47,7 @@ from ray.serve._private.utils import (
     get_capacity_adjusted_num_replicas,
     get_random_string,
 )
+from ray.util.placement_group import validate_placement_group
 
 # Global variable that is fetched during controller recovery that
 # marks (simulates) which replicas have died since controller first
@@ -57,6 +58,7 @@ from ray.serve._private.utils import (
 # state is cleared after each test that uses the fixtures in this file.
 dead_replicas_context = set()
 TEST_DEPLOYMENT_ID = DeploymentID(name="test_deployment", app_name="test_app")
+TEST_DEPLOYMENT_ID_2 = DeploymentID(name="test_deployment_2", app_name="test_app")
 
 
 class MockReplicaActorWrapper:
@@ -89,6 +91,7 @@ class MockReplicaActorWrapper:
         self._actor_handle = MockActorHandle()
         self._node_id = None
         self._node_id_is_set = False
+        self._pg_bundles = None
 
     @property
     def is_cross_language(self) -> bool:
@@ -195,8 +198,11 @@ class MockReplicaActorWrapper:
             replica_id=self._replica_id,
             actor_def=Mock(),
             actor_resources={},
-            actor_options={},
+            actor_options={"name": "placeholder"},
             actor_init_args=(),
+            placement_group_bundles=(
+                deployment_info.replica_config.placement_group_bundles
+            ),
             on_scheduled=_on_scheduled_stub,
         )
 
@@ -310,7 +316,9 @@ def mock_deployment_state_manager(
         cluster_node_info_cache.add_node("node-id")
 
         def create_deployment_state_manager(
-            actor_names=None, placement_group_names=None
+            actor_names=None,
+            placement_group_names=None,
+            create_placement_group_fn_override=None,
         ):
             if actor_names is None:
                 actor_names = []
@@ -325,6 +333,7 @@ def mock_deployment_state_manager(
                 placement_group_names,
                 cluster_node_info_cache,
                 head_node_id_override="fake-head-node-id",
+                create_placement_group_fn_override=create_placement_group_fn_override,
             )
 
         yield create_deployment_state_manager, timer, cluster_node_info_cache
@@ -2860,6 +2869,103 @@ def test_deploy_with_partial_constructor_failure(mock_deployment_state_manager):
         ds.curr_status_info.status_trigger
         == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
     )
+
+
+def test_deploy_with_placement_group_failure(mock_deployment_state_manager):
+    """
+    Test deploy with a placement group failure.
+    """
+
+    def fake_create_placement_group_fn(placement_group_bundles, *args, **kwargs):
+        """Fakes the placement_group_fn used by the scheduler.
+
+        Lets the test to run without starting Ray. Raises an exception if the
+        bundles are invalid.
+        """
+
+        validate_placement_group(bundles=placement_group_bundles)
+
+    create_dsm, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm(
+        create_placement_group_fn_override=fake_create_placement_group_fn,
+    )
+
+    def create_deployment_state(
+        deployment_id: DeploymentID, pg_bundles=None
+    ) -> List[DeploymentState]:
+        b_info, _ = deployment_info(num_replicas=3)
+        b_info.replica_config.placement_group_bundles = pg_bundles
+        assert dsm.deploy(deployment_id, b_info)
+        ds = dsm._deployment_states[deployment_id]
+        assert ds.curr_status_info.status == DeploymentStatus.UPDATING
+        assert (
+            ds.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+        )
+        return ds
+
+    # Make all of ds1's replica's placement groups invalid.
+    invalid_bundle = [{"GPU": 0}]
+    with pytest.raises(ValueError):
+        validate_placement_group(invalid_bundle)
+
+    ds1 = create_deployment_state(TEST_DEPLOYMENT_ID, pg_bundles=invalid_bundle)
+    ds2 = create_deployment_state(TEST_DEPLOYMENT_ID_2)
+
+    # Now ds1's replicas should all fail, while ds2's replicas should run.
+    dsm.update()
+
+    check_counts(ds1, total=3, by_state=[(ReplicaState.STOPPING, 3, None)])
+    assert ds1._replica_constructor_retry_counter == 3
+    # An error message should show up after
+    # 3 * num_replicas startup failures.
+    assert "" == ds1.curr_status_info.message
+
+    # Set all of ds1's replicas to stopped.
+    for replica in ds1._replicas.get():
+        replica._actor.set_done_stopping()
+
+    check_counts(ds2, total=3, by_state=[(ReplicaState.STARTING, 3, None)])
+    assert ds2._replica_constructor_retry_counter == 0
+
+    # Set all of ds2's replicas to ready.
+    for replica in ds2._replicas.get():
+        replica._actor.set_ready()
+
+    dsm.update()
+
+    assert ds1.curr_status_info.status == DeploymentStatus.UPDATING
+    check_counts(ds1, total=3, by_state=[(ReplicaState.STOPPING, 3, None)])
+    assert ds1._replica_constructor_retry_counter == 6
+    assert "" == ds1.curr_status_info.message
+
+    # Set all of ds1's replicas to stopped.
+    for replica in ds1._replicas.get():
+        replica._actor.set_done_stopping()
+
+    assert ds2.curr_status_info.status == DeploymentStatus.HEALTHY
+    check_counts(ds2, total=3, by_state=[(ReplicaState.RUNNING, 3, None)])
+    assert ds2._replica_constructor_retry_counter == 0
+
+    dsm.update()
+
+    assert ds1.curr_status_info.status == DeploymentStatus.UPDATING
+    check_counts(ds1, total=3, by_state=[(ReplicaState.STOPPING, 3, None)])
+    assert ds1._replica_constructor_retry_counter == 9
+    assert "" == ds1.curr_status_info.message
+
+    # Set all of ds1's replicas to stopped.
+    for replica in ds1._replicas.get():
+        replica._actor.set_done_stopping()
+
+    dsm.update()
+
+    # All replicas have failed to initialize 3 times. The deployment should
+    # stop trying to initialize replicas.
+    assert ds1.curr_status_info.status == DeploymentStatus.UNHEALTHY
+    check_counts(ds1, total=0)
+    assert ds1._replica_constructor_retry_counter == 9
+    assert "Replica scheduling failed" in ds1.curr_status_info.message
 
 
 def test_deploy_with_transient_constructor_failure(mock_deployment_state_manager):

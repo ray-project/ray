@@ -1,5 +1,7 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
+.. include:: /_includes/rllib/new_api_stack.rst
+
 .. _rllib-index:
 
 RLlib: Industry-Grade Reinforcement Learning
@@ -14,6 +16,7 @@ RLlib: Industry-Grade Reinforcement Learning
     rllib-algorithms
     user-guides
     rllib-examples
+    rllib-new-api-stack
     package_ref/index
 
 

@@ -229,7 +229,7 @@ class ExecutionOptions:
         preserve_order: bool = False,
         # TODO(hchen): Re-enable `actor_locality_enabled` by default after fixing
         # https://github.com/ray-project/ray/issues/43466
-        actor_locality_enabled: bool = True,
+        actor_locality_enabled: bool = False,
         verbose_progress: Optional[bool] = None,
     ):
         if resource_limits is None:

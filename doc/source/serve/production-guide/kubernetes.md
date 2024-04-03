@@ -8,9 +8,10 @@ This section should help you:
 - understand how to deploy a Ray Serve application using a [RayService].
 - understand how to monitor and update your application.
 
-The recommended way to deploy Ray Serve is on Kubernetes, providing the best of both worlds: the user experience and scalable compute of Ray Serve and operational benefits of Kubernetes.
-This also allows you to integrate with existing applications that may be running on Kubernetes.
-The recommended practice when running on Kubernetes is to use the [RayService] controller that's provided as part of [KubeRay]. The RayService controller automatically handles important production requirements such as health checking, status reporting, failure recovery, and upgrades.
+Deploying Ray Serve on Kubernetes provides the scalable compute of Ray Serve and operational benefits of Kubernetes.
+This combination also allows you to integrate with existing applications that may be running on Kubernetes. When running on Kubernetes, use the [RayService] controller from [KubeRay].
+
+> NOTE: [Anyscale](https://www.anyscale.com/get-started) is a managed Ray solution that provides high-availability, high-performance autoscaling, multi-cloud clusters, spot instance support, and more out of the box.
 
 A [RayService] CR encapsulates a multi-node Ray Cluster and a Serve application that runs on top of it into a single Kubernetes manifest.
 Deploying, upgrading, and getting the status of the application can be done using standard `kubectl` commands.

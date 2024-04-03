@@ -290,6 +290,7 @@ if __name__ == "__main__":
                     changed_file.endswith(".py")
                     or changed_file.endswith(".ipynb")
                     or changed_file.endswith("BUILD")
+                    or changed_file.endswith(".rst")
                 ):
                     RAY_CI_DOC_AFFECTED = 1
                 # Else, this affects only a rst file or so. In that case,
