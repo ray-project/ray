@@ -203,9 +203,6 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         new_episode_ids = []
         for eps in episodes:
             new_episode_ids.append(eps.id_)
-            # We subtract a single timestep per episode b/c each sample consists
-            # of a transition from `o_t` to `o_(t+n)`, so the first timestep is
-            # never sampled.
             self._num_timesteps += len(eps)
             self._num_timesteps_added += len(eps)
 
@@ -224,7 +221,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             # we subtract it again.
             # TODO (sven, simon): Should we just treat such an episode chunk
             # as a new episode?
-            if eps_evicted_idxs[-1] in new_episode_ids:
+            if eps_evicted_ids[-1] in new_episode_ids:
                 len_to_subtract = len(
                     episodes[new_episode_ids.index(eps_evicted_idxs[-1])]
                 )
