@@ -98,21 +98,21 @@ Serving and Offline
 Multi-Agent and Hierarchical
 ----------------------------
 
-- `Simple independent multi-agent setup vs a PettingZoo env <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_and_self_play/independent_learning.py>`__:
+- `Simple independent multi-agent setup vs a PettingZoo env <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_and_self_play/pettingzoo_independent_learning.py>`__:
    Setup RLlib to run any algorithm in (independent) multi-agent mode against a multi-agent environment.
-- `More complex (shared-parameter) multi-agent setup vs a PettingZoo env <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_and_self_play/parameter_sharing.py>`__:
+- `More complex (shared-parameter) multi-agent setup vs a PettingZoo env <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_and_self_play/pettingzoo_parameter_sharing.py>`__:
    Setup RLlib to run any algorithm in (shared-parameter) multi-agent mode against a multi-agent environment.
-- `Rock-paper-scissors <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_and_self_play/rock_paper_scissors.py>`__:
-   Example of different heuristic and learned policies competing against each other in rock-paper-scissors.
-- `Two-step game <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_and_self_play/two_step_game.py>`__:
-   Example of the two-step game from the `QMIX paper <https://arxiv.org/pdf/1803.11485.pdf>`__.
+- `Rock-paper-scissors heuristic vs learned <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_and_self_play/rock_paper_scissors_heuristic_vs_learned.py>`__ and `Rock-paper-scissors learned vs learned <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_and_self_play/rock_paper_scissors_learned_vs_learned.py>`__:
+   Two examples of different heuristic and learned policies competing against each other in the rock-paper-scissors environment.
+- `Two-step game <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_and_self_play/two_step_game_with_grouped_agents.py>`__:
+   Example on how to use agent grouping in a multi-agent environment (the two-step game from the `QMIX paper <https://arxiv.org/pdf/1803.11485.pdf>`__).
 - `PettingZoo multi-agent example <https://github.com/Farama-Foundation/PettingZoo/blob/master/tutorials/Ray/rllib_pistonball.py>`__:
    Example on how to use RLlib to learn in `PettingZoo <https://www.pettingzoo.ml>`__ multi-agent environments.
 - `PPO with centralized critic on two-step game <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic.py>`__:
    Example of customizing PPO to leverage a centralized value function.
 - `Centralized critic in the env <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic_2.py>`__:
    A simpler method of implementing a centralized critic by augmentating agent observations with global information.
-- `Hand-coded policy <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_and_self_play/custom_heuristic_rl_module.py>`__:
+- `Hand-coded policy <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_and_self_play/custom_heuristic_policy.py>`__:
    Example of running a custom hand-coded policy alongside trainable policies.
 - `Weight sharing between policies <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_and_self_play/multi_agent_cartpole.py>`__:
    Example of how to define weight-sharing layers between two different policies.
