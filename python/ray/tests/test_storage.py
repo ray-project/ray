@@ -91,7 +91,7 @@ def test_escape_storage_uri_with_runtime_env(shutdown_only):
         log = requests.get(f"{recorder_uri}/download-recording").content
         # The recording is a set of json strings separated by b'\n'
         # The last one is empty, so ignore it.
-        data = list(map(json.loads, log.split(b'\n')[:-1]))
+        data = list(map(json.loads, log.split(b"\n")[:-1]))
         assert "foo/bar" in data[-2]["url"]
 
 
