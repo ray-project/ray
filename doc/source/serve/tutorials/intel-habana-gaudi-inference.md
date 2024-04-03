@@ -2,7 +2,7 @@
 orphan: true
 ---
 
-# Serve a model on Intel Habana Gaudi
+# Serve Llama2-7b/70b on a single or multiple Intel Gaudi Habana
 
 [Habana Gaudi AI Processors (HPUs)](https://habana.ai) are AI hardware accelerators designed by Habana Labs. See [Gaudi Architecture](https://docs.habana.ai/en/latest/Gaudi_Overview/index.html) and [Gaudi Developer Docs](https://developer.habana.ai/) for more details.
 
