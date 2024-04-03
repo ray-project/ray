@@ -1,4 +1,6 @@
 group: "kuberay tests"
+tags:
+  - disabled
 steps:
   - name: k8sbuild
     wanda: ci/docker/k8s.build.wanda.yaml

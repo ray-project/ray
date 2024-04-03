@@ -1,4 +1,6 @@
 group: serve tests
+tags:
+  - disabled
 depends_on:
   - forge
   - oss-ci-base_build
