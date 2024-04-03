@@ -993,7 +993,7 @@ class Impala(Algorithm):
                     # from thrashing when there are more samples than the learner can
                     # reasonably process.
                     # see https://github.com/ray-project/ray/pull/26581#issuecomment-1187877674  # noqa
-                    block=i == len(self.batches_to_place_on_learner) - 1
+                    block=i == len(self.batches_to_place_on_learner) - 1,
                 )
                 self._counters["num_samples_added_to_queue"] += (
                     batch.agent_steps()
