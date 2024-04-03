@@ -10,7 +10,7 @@ from typing import List, Optional
 from ci.ray_ci.linux_tester_container import LinuxTesterContainer
 from ci.ray_ci.utils import chunk_into_n
 from ci.ray_ci.container import _DOCKER_ECR_REPO, _RAYCI_BUILD_ID
-from release.ray_release.configs.global_config import BRANCH_PIPELINES, PR_PIPELINES
+from ray_release.configs.global_config import BRANCH_PIPELINES, PR_PIPELINES
 
 
 class MockPopen:
