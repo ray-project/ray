@@ -1006,11 +1006,14 @@ def start_open_port_check_server():
                 ).encode("utf-8")
             )
 
-    server = HTTPServer(("127.0.0.1", 9000), OpenPortCheckServer)
+    server = HTTPServer(("127.0.0.1", 0), OpenPortCheckServer)
     server_thread = threading.Thread(target=server.serve_forever)
     server_thread.start()
 
-    yield OpenPortCheckServer
+    yield (
+        OpenPortCheckServer,
+        f"http://{server.server_address[0]}:{server.server_address[1]}",
+    )
 
     server.shutdown()
     server_thread.join()
@@ -1019,7 +1022,7 @@ def start_open_port_check_server():
 def test_ray_check_open_ports(shutdown_only, start_open_port_check_server):
     context = ray.init()
 
-    open_port_check_server = start_open_port_check_server
+    open_port_check_server, url = start_open_port_check_server
 
     runner = CliRunner()
     result = runner.invoke(
@@ -1027,7 +1030,7 @@ def test_ray_check_open_ports(shutdown_only, start_open_port_check_server):
         [
             "-y",
             "--service-url",
-            "http://127.0.0.1:9000",
+            url,
         ],
     )
     assert result.exit_code == 0
@@ -1045,7 +1048,7 @@ def test_ray_check_open_ports(shutdown_only, start_open_port_check_server):
         [
             "-y",
             "--service-url",
-            "http://127.0.0.1:9000",
+            url,
         ],
     )
     assert result.exit_code == 0

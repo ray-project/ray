@@ -110,6 +110,7 @@ def _check_ray_cluster(
             results.append(ray.get(per_node_task))
         except Exception as e:
             cli_logger.info(f"Failed to check on node {node_id}: {e}")
+
     return results
 
 
