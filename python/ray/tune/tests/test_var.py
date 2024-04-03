@@ -7,7 +7,7 @@ import ray
 from ray.rllib import _register_all
 
 from ray import tune
-from ray.tune.result import DEFAULT_RESULTS_DIR
+from ray.train.constants import DEFAULT_STORAGE_PATH
 from ray.tune.search import grid_search, BasicVariantGenerator
 from ray.tune.search.variant_generator import (
     RecursiveDependencyError,
@@ -54,7 +54,8 @@ class VariantGeneratorTest(unittest.TestCase):
         self.assertEqual(trials[0].max_failures, 5)
         self.assertEqual(trials[0].evaluated_params, {})
         self.assertEqual(
-            trials[0].local_dir, os.path.join(DEFAULT_RESULTS_DIR, "tune-pong")
+            trials[0].storage.experiment_fs_path,
+            os.path.join(DEFAULT_STORAGE_PATH, "tune-pong"),
         )
         self.assertEqual(trials[1].experiment_tag, "1")
 

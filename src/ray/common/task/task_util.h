@@ -134,7 +134,8 @@ class TaskSpecBuilder {
       int64_t depth,
       const TaskID &submitter_task_id,
       const std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info = nullptr,
-      const std::string &concurrency_group_name = "") {
+      const std::string &concurrency_group_name = "",
+      bool enable_task_events = true) {
     message_->set_type(TaskType::NORMAL_TASK);
     message_->set_name(name);
     message_->set_language(language);
@@ -163,6 +164,7 @@ class TaskSpecBuilder {
       message_->mutable_runtime_env_info()->CopyFrom(*runtime_env_info);
     }
     message_->set_concurrency_group_name(concurrency_group_name);
+    message_->set_enable_task_events(enable_task_events);
     return *this;
   }
 

@@ -16,13 +16,13 @@ import numpy as np
 import tree  # pip install dm_tree
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.core.models.base import STATE_IN, STATE_OUT
+from ray.rllib.core.columns import Columns
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.wrappers.atari_wrappers import NoopResetEnv, MaxAndSkipEnv
 from ray.rllib.env.wrappers.dm_control_wrapper import DMCEnv
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.evaluation.metrics import RolloutMetrics
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
@@ -296,10 +296,10 @@ class DreamerV3EnvRunner(EnvRunner):
             # Compute an action using our RLModule.
             else:
                 batch = {
-                    STATE_IN: tree.map_structure(
+                    Columns.STATE_IN: tree.map_structure(
                         lambda s: tf.convert_to_tensor(s), states
                     ),
-                    SampleBatch.OBS: tf.convert_to_tensor(obs),
+                    Columns.OBS: tf.convert_to_tensor(obs),
                     "is_first": tf.convert_to_tensor(is_first),
                 }
                 # Explore or not.
@@ -310,10 +310,12 @@ class DreamerV3EnvRunner(EnvRunner):
 
                 # Model outputs one-hot actions (if discrete). Convert to int actions
                 # as well.
-                actions = outs[SampleBatch.ACTIONS].numpy()
+                actions = outs[Columns.ACTIONS].numpy()
                 if isinstance(self.env.single_action_space, gym.spaces.Discrete):
                     actions = np.argmax(actions, axis=-1)
-                states = tree.map_structure(lambda s: s.numpy(), outs[STATE_OUT])
+                states = tree.map_structure(
+                    lambda s: s.numpy(), outs[Columns.STATE_OUT]
+                )
 
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
             ts += self.num_envs
@@ -404,10 +406,10 @@ class DreamerV3EnvRunner(EnvRunner):
                 actions = self.env.action_space.sample()
             else:
                 batch = {
-                    STATE_IN: tree.map_structure(
+                    Columns.STATE_IN: tree.map_structure(
                         lambda s: tf.convert_to_tensor(s), states
                     ),
-                    SampleBatch.OBS: tf.convert_to_tensor(obs),
+                    Columns.OBS: tf.convert_to_tensor(obs),
                     "is_first": tf.convert_to_tensor(is_first),
                 }
 
@@ -416,10 +418,12 @@ class DreamerV3EnvRunner(EnvRunner):
                 else:
                     outs = self.module.forward_inference(batch)
 
-                actions = outs[SampleBatch.ACTIONS].numpy()
+                actions = outs[Columns.ACTIONS].numpy()
                 if isinstance(self.env.single_action_space, gym.spaces.Discrete):
                     actions = np.argmax(actions, axis=-1)
-                states = tree.map_structure(lambda s: s.numpy(), outs[STATE_OUT])
+                states = tree.map_structure(
+                    lambda s: s.numpy(), outs[Columns.STATE_OUT]
+                )
 
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
             if with_render_data:

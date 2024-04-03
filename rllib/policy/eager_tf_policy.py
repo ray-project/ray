@@ -17,7 +17,7 @@ from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import add_mixins, force_list
-from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
     deprecation_warning,
@@ -144,7 +144,7 @@ def _check_too_many_retraces(obj):
     return _func
 
 
-@DeveloperAPI
+@OldAPIStack
 class EagerTFPolicy(Policy):
     """Dummy class to recognize any eagerized TFPolicy by its inheritance."""
 
@@ -301,6 +301,7 @@ class _OptimizerWrapper:
         return list(zip(self.tape.gradient(loss, var_list), var_list))
 
 
+@OldAPIStack
 def _build_eager_tf_policy(
     name,
     loss_fn,

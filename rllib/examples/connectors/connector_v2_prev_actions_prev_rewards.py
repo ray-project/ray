@@ -2,13 +2,11 @@ import functools
 
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.connectors.env_to_module import (
-    AddLastObservationToBatch,
+    AddObservationsFromEpisodesToBatch,
     FlattenObservations,
     PrevActionsPrevRewardsConnector,
     WriteObservationsToEpisodes,
 )
-from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
-from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 from ray.rllib.examples.env.multi_agent import MultiAgentStatelessCartPole
 from ray.rllib.utils.framework import try_import_torch
@@ -35,7 +33,7 @@ if __name__ == "__main__":
     def _env_to_module(env):
         # Create the env-to-module connector pipeline.
         return [
-            AddLastObservationToBatch(),
+            AddObservationsFromEpisodesToBatch(),
             PrevActionsPrevRewardsConnector(
                 multi_agent=args.num_agents > 0,
                 n_prev_rewards=args.n_prev_rewards,
@@ -56,30 +54,10 @@ if __name__ == "__main__":
     else:
         register_env("env", lambda _: StatelessCartPole())
 
-    config = (
+    base_config = (
         PPOConfig()
-        # Use new API stack.
-        .experimental(_enable_new_api_stack=args.enable_new_api_stack)
         .environment("env")
-        # And new EnvRunner.
-        .rollouts(
-            env_to_module_connector=_env_to_module,
-            num_rollout_workers=args.num_env_runners,
-            # Set up the correct env-runner to use depending on
-            # old-stack/new-stack and multi-agent settings.
-            env_runner_cls=(
-                None
-                if not args.enable_new_api_stack
-                else SingleAgentEnvRunner
-                if args.num_agents == 0
-                else MultiAgentEnvRunner
-            ),
-        )
-        .resources(
-            num_learner_workers=args.num_gpus,
-            num_gpus_per_learner_worker=1 if args.num_gpus else 0,
-            num_cpus_for_local_worker=1,
-        )
+        .rollouts(env_to_module_connector=_env_to_module)
         .training(
             num_sgd_iter=6,
             lr=0.0003,
@@ -88,6 +66,7 @@ if __name__ == "__main__":
             model=dict(
                 {
                     "use_lstm": True,
+                    "max_seq_len": 50,
                     "fcnet_hiddens": [32],
                     "fcnet_activation": "linear",
                     "vf_share_layers": True,
@@ -105,9 +84,9 @@ if __name__ == "__main__":
 
     # Add a simple multi-agent setup.
     if args.num_agents > 0:
-        config.multi_agent(
+        base_config.multi_agent(
             policies={f"p{i}" for i in range(args.num_agents)},
             policy_mapping_fn=lambda aid, *a, **kw: f"p{aid}",
         )
 
-    run_rllib_example_script_experiment(config, args)
+    run_rllib_example_script_experiment(base_config, args)

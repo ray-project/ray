@@ -1,9 +1,9 @@
 # __sphinx_doc_replay_buffer_api_example_script_begin__
 """Simple example of how to modify replay buffer behaviour.
 
-We modify R2D2 to utilize prioritized replay but supplying it with the
+We modify DQN to utilize prioritized replay but supplying it with the
 PrioritizedMultiAgentReplayBuffer instead of the standard MultiAgentReplayBuffer.
-This is possible because R2D2 uses the DQN training iteration function,
+This is possible because DQN uses the DQN training iteration function,
 which includes and a priority update, given that a fitting buffer is provided.
 """
 
@@ -11,7 +11,7 @@ import argparse
 
 import ray
 from ray import air, tune
-from ray.rllib.algorithms.r2d2 import R2D2Config
+from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.replay_buffers.replay_buffer import StorageUnit
 
@@ -39,8 +39,8 @@ if __name__ == "__main__":
     ray.init(num_cpus=args.num_cpus or None)
 
     # This is where we add prioritized experiences replay
-    # The training iteration function that is shared by DQN and R2D2 already
-    # includes a priority update step.
+    # The training iteration function that is used by DQN already includes a priority
+    # update step.
     replay_buffer_config = {
         "type": "MultiAgentPrioritizedReplayBuffer",
         # Although not necessary, we can modify the default constructor args of
@@ -52,7 +52,7 @@ if __name__ == "__main__":
     }
 
     config = (
-        R2D2Config()
+        DQNConfig()
         .environment("CartPole-v1")
         .framework(framework=args.framework)
         .rollouts(num_rollout_workers=4)
@@ -68,7 +68,9 @@ if __name__ == "__main__":
     }
 
     results = tune.Tuner(
-        "R2D2", param_space=config.to_dict(), run_config=air.RunConfig(stop=stop_config)
+        config.algo_class,
+        param_space=config,
+        run_config=air.RunConfig(stop=stop_config),
     ).fit()
 
     ray.shutdown()

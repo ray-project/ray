@@ -59,7 +59,7 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             "amount of driver memory needed, enable push-based shuffle using "
             "RAY_DATA_PUSH_BASED_SHUFFLE=1 "
             "(https://docs.ray.io/en/latest/data/performance-tips.html"
-            "#enabling-push-based-shuffle).",
+            ").",
         )
 
         if map_ray_remote_args is None:

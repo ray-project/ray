@@ -129,7 +129,7 @@ if __name__ == "__main__":
         num_rows_per_partition = partition_size // (8 + args.row_size_bytes)
         ds = ray.data.read_datasource(
             source,
-            parallelism=num_partitions,
+            override_num_blocks=num_partitions,
             n=num_rows_per_partition * num_partitions,
             row_size_bytes=args.row_size_bytes,
         )

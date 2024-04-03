@@ -1,16 +1,47 @@
 import struct
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, Iterable, Iterator, List, Optional, Union
 
 import numpy as np
+import pyarrow
 
+from ray.data._internal.dataset_logger import DatasetLogger
+from ray.data.aggregate import AggregateFn
 from ray.data.block import Block
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
-    import pyarrow
+    import pandas as pd
     import tensorflow as tf
     from tensorflow_metadata.proto.v0 import schema_pb2
+
+    from ray.data.dataset import Dataset
+
+
+# Default batch size to be used when using TFX BSL for reading tfrecord files
+# Ray will use this parameter by default to read the tf.examples in batches.
+DEFAULT_BATCH_SIZE = 2048
+
+logger = DatasetLogger(__name__)
+
+
+@PublicAPI(stability="alpha")
+@dataclass
+class TFXReadOptions:
+    """
+    Specifies read options when reading TFRecord files with TFX.
+    """
+
+    # An int representing the number of consecutive elements of
+    # this dataset to combine in a single batch when tfx-bsl is used to read
+    # the tfrecord files.
+    batch_size: int = DEFAULT_BATCH_SIZE
+
+    # Toggles the schema inference applied; applicable
+    # only if tfx-bsl is used and tf_schema argument is missing.
+    # Defaults to True.
+    auto_infer_schema: bool = True
 
 
 @PublicAPI(stability="alpha")
@@ -23,13 +54,31 @@ class TFRecordDatasource(FileBasedDatasource):
         self,
         paths: Union[str, List[str]],
         tf_schema: Optional["schema_pb2.Schema"] = None,
+        tfx_read_options: Optional[TFXReadOptions] = None,
         **file_based_datasource_kwargs,
     ):
+        """
+        Args:
+            tf_schema: Optional TensorFlow Schema which is used to explicitly set
+                the schema of the underlying Dataset.
+            tfx_read_options: Optional options for enabling reading tfrecords
+                using tfx-bsl.
+
+        """
         super().__init__(paths, **file_based_datasource_kwargs)
 
-        self.tf_schema = tf_schema
+        self._tf_schema = tf_schema
+        self._tfx_read_options = tfx_read_options
 
     def _read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
+        if self._tfx_read_options:
+            yield from self._tfx_read_stream(f, path)
+        else:
+            yield from self._default_read_stream(f, path)
+
+    def _default_read_stream(
+        self, f: "pyarrow.NativeFile", path: str
+    ) -> Iterator[Block]:
         import pyarrow as pa
         import tensorflow as tf
         from google.protobuf.message import DecodeError
@@ -46,14 +95,66 @@ class TFRecordDatasource(FileBasedDatasource):
                 )
 
             yield pa.Table.from_pydict(
-                _convert_example_to_dict(example, self.tf_schema)
+                _convert_example_to_dict(example, self._tf_schema)
             )
+
+    def _tfx_read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
+        import tensorflow as tf
+        from tfx_bsl.cc.tfx_bsl_extension.coders import ExamplesToRecordBatchDecoder
+
+        full_path = self._resolve_full_path(path)
+
+        compression = (self._open_stream_args or {}).get("compression", None)
+
+        if compression:
+            compression = compression.upper()
+
+        tf_schema_string = (
+            self._tf_schema.SerializeToString() if self._tf_schema else None
+        )
+
+        decoder = ExamplesToRecordBatchDecoder(tf_schema_string)
+        exception_thrown = None
+        try:
+            for record in tf.data.TFRecordDataset(
+                full_path, compression_type=compression
+            ).batch(self._tfx_read_options.batch_size):
+                yield _cast_large_list_to_list(
+                    pyarrow.Table.from_batches([decoder.DecodeBatch(record.numpy())])
+                )
+        except Exception as error:
+            logger.get_logger().exception(f"Failed to read TFRecord file {full_path}")
+            exception_thrown = error
+
+        # we need to do this hack were we raise an exception outside of the
+        # except block because tensorflow DataLossError is unpickable, and
+        # even if we raise a runtime error, ray keeps information about the
+        # original error, which makes it unpickable still.
+        if exception_thrown:
+            raise RuntimeError(f"Failed to read TFRecord file {full_path}.")
+
+    def _resolve_full_path(self, relative_path):
+        if isinstance(self._filesystem, pyarrow.fs.S3FileSystem):
+            return f"s3://{relative_path}"
+        if isinstance(self._filesystem, pyarrow.fs.GcsFileSystem):
+            return f"gs://{relative_path}"
+        if isinstance(self._filesystem, pyarrow.fs.HadoopFileSystem):
+            return f"hdfs:///{relative_path}"
+        if isinstance(self._filesystem, pyarrow.fs.PyFileSystem):
+            protocol = self._filesystem.handler.fs.protocol
+            if isinstance(protocol, list) or isinstance(protocol, tuple):
+                protocol = protocol[0]
+            if protocol == "gcs":
+                protocol = "gs"
+            return f"{protocol}://{relative_path}"
+
+        return relative_path
 
 
 def _convert_example_to_dict(
     example: "tf.train.Example",
     tf_schema: Optional["schema_pb2.Schema"],
-) -> Dict[str, "pyarrow.Array"]:
+) -> Dict[str, pyarrow.Array]:
     record = {}
     schema_dict = {}
     # Convert user-specified schema into dict for convenient mapping
@@ -73,7 +174,7 @@ def _convert_example_to_dict(
 
 
 def _convert_arrow_table_to_examples(
-    arrow_table: "pyarrow.Table",
+    arrow_table: pyarrow.Table,
     tf_schema: Optional["schema_pb2.Schema"] = None,
 ) -> Iterable["tf.train.Example"]:
     import tensorflow as tf
@@ -118,7 +219,7 @@ def _get_single_true_type(dct) -> str:
 def _get_feature_value(
     feature: "tf.train.Feature",
     schema_feature_type: Optional["schema_pb2.FeatureType"] = None,
-) -> "pyarrow.Array":
+) -> pyarrow.Array:
     import pyarrow as pa
 
     underlying_feature_type = {
@@ -359,6 +460,96 @@ def _read_records(
             if data_length is not None:
                 error_message += f" Byte size of current record data is {data_length}."
             raise RuntimeError(error_message) from e
+
+
+def _cast_large_list_to_list(batch: pyarrow.Table):
+    """
+    This function transform pyarrow.large_list into list and pyarrow.large_binary into
+    pyarrow.binary so that all types resulting from the tfrecord_datasource are usable
+    with dataset.to_tf().
+    """
+    old_schema = batch.schema
+    fields = {}
+
+    for column_name in old_schema.names:
+        field_type = old_schema.field(column_name).type
+        if type(field_type) == pyarrow.lib.LargeListType:
+            value_type = field_type.value_type
+
+            if value_type == pyarrow.large_binary():
+                value_type = pyarrow.binary()
+
+            fields[column_name] = pyarrow.list_(value_type)
+        elif field_type == pyarrow.large_binary():
+            fields[column_name] = pyarrow.binary()
+        else:
+            fields[column_name] = old_schema.field(column_name)
+
+    new_schema = pyarrow.schema(fields)
+    return batch.cast(new_schema)
+
+
+def _infer_schema_and_transform(dataset: "Dataset"):
+    list_sizes = dataset.aggregate(_MaxListSize(dataset.schema().names))
+
+    return dataset.map_batches(
+        _unwrap_single_value_lists,
+        fn_kwargs={"col_lengths": list_sizes["max_list_size"]},
+        batch_format="pyarrow",
+    )
+
+
+def _unwrap_single_value_lists(batch: pyarrow.Table, col_lengths: Dict[str, int]):
+    """
+    This function will transfrom the dataset converting list types that always
+    contain single values to thery underlying data type
+    (i.e. pyarrow.int64() and pyarrow.float64())
+    """
+    columns = {}
+
+    for col in col_lengths:
+        value_type = batch[col].type.value_type
+
+        if col_lengths[col] == 1:
+            if batch[col]:
+                columns[col] = pyarrow.array(
+                    [x.as_py()[0] if x.as_py() else None for x in batch[col]],
+                    type=value_type,
+                )
+        else:
+            columns[col] = batch[col]
+
+    return pyarrow.table(columns)
+
+
+class _MaxListSize(AggregateFn):
+    def __init__(self, columns: List[str]):
+        self._columns = columns
+        super().__init__(
+            init=self._init,
+            merge=self._merge,
+            accumulate_row=self._accumulate_row,
+            finalize=lambda a: a,
+            name="max_list_size",
+        )
+
+    def _init(self, k: str):
+        return {col: 0 for col in self._columns}
+
+    def _merge(self, acc1: Dict[str, int], acc2: Dict[str, int]):
+        merged = {}
+        for col in self._columns:
+            merged[col] = max(acc1[col], acc2[col])
+
+        return merged
+
+    def _accumulate_row(self, acc: Dict[str, int], row: "pd.Series"):
+        for k in row:
+            value = row[k]
+            if value:
+                acc[k] = max(len(value), acc[k])
+
+        return acc
 
 
 # Adapted from https://github.com/vahidk/tfrecord/blob/74b2d24a838081356d993ec0e147eaf59ccd4c84/tfrecord/writer.py#L57-L72  # noqa: E501

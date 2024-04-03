@@ -10,8 +10,7 @@ from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils import NullContextManager
-from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
-from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, TensorType
 from ray.rllib.utils.spaces.repeated import Repeated
 from ray.rllib.utils.typing import ModelConfigDict, ModelInputDict, TensorStructType
@@ -20,7 +19,7 @@ tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 
-@PublicAPI
+@OldAPIStack
 class ModelV2:
     r"""Defines an abstract neural network model for use with RLlib.
 
@@ -71,9 +70,6 @@ class ModelV2:
             SampleBatch.OBS: ViewRequirement(shift=0, space=self.obs_space),
         }
 
-    # TODO: (sven): Get rid of `get_initial_state` once Trajectory
-    #  View API is supported across all of RLlib.
-    @PublicAPI
     def get_initial_state(self) -> List[TensorType]:
         """Get the initial recurrent state values for the model.
 
@@ -96,7 +92,6 @@ class ModelV2:
         """
         return []
 
-    @PublicAPI
     def forward(
         self,
         input_dict: Dict[str, TensorType],
@@ -142,7 +137,6 @@ class ModelV2:
         """
         raise NotImplementedError
 
-    @PublicAPI
     def value_function(self) -> TensorType:
         """Returns the value function output for the most recent forward pass.
 
@@ -155,7 +149,6 @@ class ModelV2:
         """
         raise NotImplementedError
 
-    @PublicAPI
     def custom_loss(
         self, policy_loss: TensorType, loss_inputs: Dict[str, TensorType]
     ) -> Union[List[TensorType], TensorType]:
@@ -178,7 +171,6 @@ class ModelV2:
         """
         return policy_loss
 
-    @PublicAPI
     def metrics(self) -> Dict[str, TensorType]:
         """Override to return custom metrics from your model.
 
@@ -297,17 +289,14 @@ class ModelV2:
         """
         raise NotImplementedError
 
-    @PublicAPI
     def last_output(self) -> TensorType:
         """Returns the last output returned from calling the model."""
         return self._last_output
 
-    @PublicAPI
     def context(self) -> contextlib.AbstractContextManager:
         """Returns a contextmanager for the current forward pass."""
         return NullContextManager()
 
-    @PublicAPI
     def variables(
         self, as_dict: bool = False
     ) -> Union[List[TensorType], Dict[str, TensorType]]:
@@ -323,7 +312,6 @@ class ModelV2:
         """
         raise NotImplementedError
 
-    @PublicAPI
     def trainable_variables(
         self, as_dict: bool = False
     ) -> Union[List[TensorType], Dict[str, TensorType]]:
@@ -339,7 +327,6 @@ class ModelV2:
         """
         raise NotImplementedError
 
-    @PublicAPI
     def is_time_major(self) -> bool:
         """If True, data for calling this ModelV2 must be in time-major format.
 
@@ -349,28 +336,8 @@ class ModelV2:
         """
         return self.time_major is True
 
-    @Deprecated(new="ModelV2.__call__()", error=True)
-    def from_batch(
-        self, train_batch: SampleBatch, is_training: bool = True
-    ) -> (TensorType, List[TensorType]):
-        """Convenience function that calls this model with a tensor batch.
 
-        All this does is unpack the tensor batch to call this model with the
-        right input dict, state, and seq len arguments.
-        """
-
-        input_dict = train_batch.copy()
-        input_dict.set_training(is_training)
-        states = []
-        i = 0
-        while "state_in_{}".format(i) in input_dict:
-            states.append(input_dict["state_in_{}".format(i)])
-            i += 1
-        ret = self.__call__(input_dict, states, input_dict.get(SampleBatch.SEQ_LENS))
-        return ret
-
-
-@DeveloperAPI
+@OldAPIStack
 def flatten(obs: TensorType, framework: str) -> TensorType:
     """Flatten the given tensor."""
     if framework in ["tf2", "tf"]:
@@ -382,7 +349,7 @@ def flatten(obs: TensorType, framework: str) -> TensorType:
         raise NotImplementedError("flatten", framework)
 
 
-@DeveloperAPI
+@OldAPIStack
 def restore_original_dimensions(
     obs: TensorType, obs_space: Space, tensorlib: Any = tf
 ) -> TensorStructType:
@@ -421,6 +388,7 @@ def restore_original_dimensions(
 _cache = {}
 
 
+@OldAPIStack
 def _unpack_obs(obs: TensorType, space: Space, tensorlib: Any = tf) -> TensorStructType:
     """Unpack a flattened Dict or Tuple observation array/tensor.
 

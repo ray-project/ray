@@ -4,8 +4,8 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 from ray.serve._private.common import (
     ApplicationName,
+    DeploymentID,
     EndpointInfo,
-    EndpointTag,
     RequestProtocol,
 )
 from ray.serve._private.constants import (
@@ -21,7 +21,7 @@ class ProxyRouter(ABC):
     """Router interface for the proxy to use."""
 
     @abstractmethod
-    def update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]):
+    def update_routes(self, endpoints: Dict[DeploymentID, EndpointInfo]):
         raise NotImplementedError
 
 
@@ -40,13 +40,13 @@ class LongestPrefixRouter(ProxyRouter):
         # Routes sorted in order of decreasing length.
         self.sorted_routes: List[str] = list()
         # Endpoints associated with the routes.
-        self.route_info: Dict[str, EndpointTag] = dict()
+        self.route_info: Dict[str, DeploymentID] = dict()
         # Contains a ServeHandle for each endpoint.
-        self.handles: Dict[EndpointTag, DeploymentHandle] = dict()
+        self.handles: Dict[DeploymentID, DeploymentHandle] = dict()
         # Map of application name to is_cross_language.
         self.app_to_is_cross_language: Dict[ApplicationName, bool] = dict()
 
-    def update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
+    def update_routes(self, endpoints: Dict[DeploymentID, EndpointInfo]) -> None:
         logger.info(
             f"Got updated endpoints: {endpoints}.", extra={"log_to_stderr": False}
         )
@@ -58,11 +58,11 @@ class LongestPrefixRouter(ProxyRouter):
         for endpoint, info in endpoints.items():
             routes.append(info.route)
             route_info[info.route] = endpoint
-            app_to_is_cross_language[endpoint.app] = info.app_is_cross_language
+            app_to_is_cross_language[endpoint.app_name] = info.app_is_cross_language
             if endpoint in self.handles:
                 existing_handles.remove(endpoint)
             else:
-                handle = self._get_handle(endpoint.name, endpoint.app).options(
+                handle = self._get_handle(endpoint.name, endpoint.app_name).options(
                     # Streaming codepath isn't supported for Java.
                     stream=not info.app_is_cross_language,
                     _prefer_local_routing=RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
@@ -116,7 +116,7 @@ class LongestPrefixRouter(ProxyRouter):
                     return (
                         route,
                         self.handles[endpoint],
-                        self.app_to_is_cross_language[endpoint.app],
+                        self.app_to_is_cross_language[endpoint.app_name],
                     )
 
         return None
@@ -131,11 +131,11 @@ class EndpointRouter(ProxyRouter):
         # Protocol to config handle
         self._protocol = protocol
         # Contains a ServeHandle for each endpoint.
-        self.handles: Dict[EndpointTag, DeploymentHandle] = dict()
+        self.handles: Dict[DeploymentID, DeploymentHandle] = dict()
         # Endpoints info associated with endpoints.
-        self.endpoints: Dict[EndpointTag, EndpointInfo] = dict()
+        self.endpoints: Dict[DeploymentID, EndpointInfo] = dict()
 
-    def update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]):
+    def update_routes(self, endpoints: Dict[DeploymentID, EndpointInfo]):
         logger.info(
             f"Got updated endpoints: {endpoints}.", extra={"log_to_stderr": False}
         )
@@ -145,7 +145,7 @@ class EndpointRouter(ProxyRouter):
             if endpoint in self.handles:
                 existing_handles.remove(endpoint)
             else:
-                handle = self._get_handle(endpoint.name, endpoint.app).options(
+                handle = self._get_handle(endpoint.name, endpoint.app_name).options(
                     # Streaming codepath isn't supported for Java.
                     stream=not info.app_is_cross_language,
                     _prefer_local_routing=RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
@@ -176,7 +176,7 @@ class EndpointRouter(ProxyRouter):
         for endpoint_tag, handle in self.handles.items():
             # If the target_app_name matches with the endpoint or if
             # there is only one endpoint.
-            if target_app_name == endpoint_tag.app or len(self.handles) == 1:
+            if target_app_name == endpoint_tag.app_name or len(self.handles) == 1:
                 endpoint_info = self.endpoints[endpoint_tag]
                 return (
                     endpoint_info.route,

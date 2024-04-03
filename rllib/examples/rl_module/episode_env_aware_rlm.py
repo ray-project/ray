@@ -1,11 +1,11 @@
 import numpy as np
 from gymnasium.spaces import Box
 
-from ray.rllib.utils.annotations import override
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module import RLModule
 from ray.rllib.examples.rl_module.random_rl_module import RandomRLModule
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.core.models.base import STATE_OUT
+from ray.rllib.utils.annotations import override
 
 
 class StatefulRandomRLModule(RandomRLModule):
@@ -27,7 +27,7 @@ class StatefulRandomRLModule(RandomRLModule):
     def _random_forward(self, batch, **kwargs):
         batch = super()._random_forward(batch, **kwargs)
         batch[SampleBatch.ACTIONS] = np.array(batch[SampleBatch.ACTIONS])
-        batch[STATE_OUT] = np.array(
+        batch[Columns.STATE_OUT] = np.array(
             [[self.state_space.sample()] for a in batch[SampleBatch.ACTIONS]]
         )
         return batch

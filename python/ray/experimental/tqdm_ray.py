@@ -388,7 +388,7 @@ if __name__ == "__main__":
             time.sleep(delay)
             return x
 
-        ray.data.range(1000, parallelism=100).map(
+        ray.data.range(1000, override_num_blocks=100).map(
             sleep, compute=ray.data.ActorPoolStrategy(size=1)
         ).count()
 

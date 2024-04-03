@@ -1,12 +1,20 @@
 import pytest
 import sys
 
+import ray
 from ray.tune import PlacementGroupFactory
 
 from ray.tune.tests.execution.utils import create_execution_test_objects, TestingTrial
 
 
-def test_actor_cached(tmpdir):
+@pytest.fixture
+def ray_start_2_cpus():
+    address_info = ray.init(num_cpus=2)
+    yield address_info
+    ray.shutdown()
+
+
+def test_actor_cached(tmpdir, ray_start_2_cpus):
     tune_controller, actor_manger, resource_manager = create_execution_test_objects(
         max_pending_trials=8
     )
@@ -20,7 +28,7 @@ def test_actor_cached(tmpdir):
     assert cls_name == "trainable1"
 
 
-def test_actor_reuse_unstaged(tmpdir):
+def test_actor_reuse_unstaged(tmpdir, ray_start_2_cpus):
     """A trial that hasn't been staged can re-use an actor.
 
     In specific circumstances, this can lead to errors. Notably, when an

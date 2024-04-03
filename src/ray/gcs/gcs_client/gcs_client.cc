@@ -522,6 +522,26 @@ Status PythonGcsClient::RequestClusterResourceConstraint(
   return Status::RpcError(status.error_message(), status.error_code());
 }
 
+Status PythonGcsClient::GetClusterResourceState(int64_t timeout_ms,
+                                                std::string &serialized_reply) {
+  rpc::autoscaler::GetClusterResourceStateRequest request;
+  rpc::autoscaler::GetClusterResourceStateReply reply;
+  grpc::ClientContext context;
+  PrepareContext(context, timeout_ms);
+
+  absl::ReaderMutexLock lock(&mutex_);
+  grpc::Status status =
+      autoscaler_stub_->GetClusterResourceState(&context, request, &reply);
+
+  if (status.ok()) {
+    if (!reply.SerializeToString(&serialized_reply)) {
+      return Status::IOError("Failed to serialize GetClusterResourceState");
+    }
+    return Status::OK();
+  }
+  return Status::RpcError(status.error_message(), status.error_code());
+}
+
 Status PythonGcsClient::GetClusterStatus(int64_t timeout_ms,
                                          std::string &serialized_reply) {
   rpc::autoscaler::GetClusterStatusRequest request;
@@ -536,6 +556,28 @@ Status PythonGcsClient::GetClusterStatus(int64_t timeout_ms,
     if (!reply.SerializeToString(&serialized_reply)) {
       return Status::IOError("Failed to serialize GetClusterStatusReply");
     }
+    return Status::OK();
+  }
+  return Status::RpcError(status.error_message(), status.error_code());
+}
+
+Status PythonGcsClient::ReportAutoscalingState(int64_t timeout_ms,
+                                               const std::string &serialized_state) {
+  rpc::autoscaler::ReportAutoscalingStateRequest request;
+  rpc::autoscaler::ReportAutoscalingStateReply reply;
+  rpc::autoscaler::AutoscalingState state;
+  grpc::ClientContext context;
+  PrepareContext(context, timeout_ms);
+
+  absl::ReaderMutexLock lock(&mutex_);
+  if (!state.ParseFromString(serialized_state)) {
+    return Status::IOError("Failed to parse ReportAutoscalingState");
+  }
+  request.mutable_autoscaling_state()->CopyFrom(state);
+  grpc::Status status =
+      autoscaler_stub_->ReportAutoscalingState(&context, request, &reply);
+
+  if (status.ok()) {
     return Status::OK();
   }
   return Status::RpcError(status.error_message(), status.error_code());

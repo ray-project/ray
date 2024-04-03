@@ -39,7 +39,7 @@ export type ServeDeployment = {
 export type ServeDeploymentConfig = {
   name: string;
   num_replicas: number;
-  max_concurrent_queries: number;
+  max_ongoing_requests: number;
   user_config: Record<string, any> | null;
   autoscaling_config: ServeAutoscalingConfig | null;
   graceful_shutdown_wait_loop_s: number;
@@ -54,7 +54,7 @@ export type ServeAutoscalingConfig = {
   min_replicas: number;
   initial_replicas: number | null;
   max_replicas: number;
-  target_num_ongoing_requests_per_replica: number;
+  target_ongoing_requests: number;
 };
 
 export enum ServeReplicaState {

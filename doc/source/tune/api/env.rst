@@ -11,11 +11,6 @@ These are the environment variables Ray Tune currently considers:
   JSON logger callback if they haven't been passed. Setting this variable to
   `1` disables this automatic creation. Please note that this will most likely
   affect analyzing your results after the tuning run.
-* **TUNE_DISABLE_AUTO_CALLBACK_SYNCER**: Ray Tune automatically adds a
-  Syncer callback to sync logs and checkpoints between different nodes if none
-  has been passed. Setting this variable to `1` disables this automatic creation.
-  Please note that this will most likely affect advanced scheduling algorithms
-  like PopulationBasedTraining.
 * **TUNE_DISABLE_AUTO_INIT**: Disable automatically calling ``ray.init()`` if
   not attached to a Ray session.
 * **TUNE_DISABLE_DATED_SUBDIR**: Ray Tune automatically adds a date string to experiment
@@ -30,31 +25,23 @@ These are the environment variables Ray Tune currently considers:
   Ctrl+C) to gracefully shutdown and do a final checkpoint. Setting this variable
   to ``1`` will disable signal handling and stop execution right away. Defaults to
   ``0``.
-* **TUNE_FALLBACK_TO_LATEST_CHECKPOINT**: If Ray Tune tries to recover from a checkpoint
-  that has been deleted from local and remote storage, it tries to recover from the
-  latest available checkpoint instead. Setting this variable to ``0`` will disable this
-  behavior and fail restoration/start the trial from scratch instead. Defaults to ``1``.
 * **TUNE_FORCE_TRIAL_CLEANUP_S**: By default, Ray Tune will gracefully terminate trials,
   letting them finish the current training step and any user-defined cleanup.
   Setting this variable to a non-zero, positive integer will cause trials to be forcefully
   terminated after a grace period of that many seconds. Defaults to ``600`` (seconds).
 * **TUNE_FUNCTION_THREAD_TIMEOUT_S**: Time in seconds the function API waits
   for threads to finish after instructing them to complete. Defaults to ``2``.
-* **TUNE_GLOBAL_CHECKPOINT_S**: Time in seconds that limits how often Tune's
-  experiment state is checkpointed. If not set this will default to ``10``.
+* **TUNE_GLOBAL_CHECKPOINT_S**: Time in seconds that limits how often
+  experiment state is checkpointed. If not, set this will default to ``'auto'``.
+  ``'auto'`` measures the time it takes to snapshot the experiment state
+  and adjusts the period so that ~5% of the driver's time is spent on snapshotting.
+  You should set this to a fixed value (ex: ``TUNE_GLOBAL_CHECKPOINT_S=60``)
+  to snapshot your experiment state every X seconds.
 * **TUNE_MAX_LEN_IDENTIFIER**: Maximum length of trial subdirectory names (those
   with the parameter values in them)
 * **TUNE_MAX_PENDING_TRIALS_PG**: Maximum number of pending trials when placement groups are used. Defaults
   to ``auto``, which will be updated to ``max(200, cluster_cpus * 1.1)`` for random/grid search and ``1``
   for any other search algorithms.
-* **TUNE_NODE_SYNCING_MIN_ITER_THRESHOLD**: When syncing trial data between nodes, only sync if this many
-  iterations were recorded for the trial or the minimum time threshold was met. This will prevent unnecessary
-  double syncing for trials that finish quickly or report only once. Defaults to ``2``. Disabled
-  when using external storage (e.g., cloud storage).
-* **TUNE_NODE_SYNCING_MIN_TIME_S_THRESHOLD**: When syncing trial data between nodes, only sync if this much
-  time has been spent training or the minimum iteration threshold was met. This will prevent unnecessary
-  double syncing for trials that finish quickly or report only once. Defaults to ``10`` (seconds).
-  Disabled when using external storage (e.g., cloud storage).
 * **TUNE_PLACEMENT_GROUP_PREFIX**: Prefix for placement groups created by Ray Tune. This prefix is used
   e.g. to identify placement groups that should be cleaned up on start/stop of the tuning run. This is
   initialized to a unique name at the start of the first run.
@@ -65,8 +52,6 @@ These are the environment variables Ray Tune currently considers:
   running a large number of short trials. Defaults to every ``5`` (seconds).
 * **TUNE_PRINT_ALL_TRIAL_ERRORS**: If ``1``, will print all trial errors as they come up. Otherwise, errors
   will only be saved as text files to the trial directory and not printed. Defaults to ``1``.
-* **TUNE_RESULT_DIR**: Directory where Ray Tune trial results are stored. If this
-  is not set, ``~/ray_results`` will be used.
 * **TUNE_RESULT_BUFFER_LENGTH**: Ray Tune can buffer results from trainables before they are passed
   to the driver. Enabling this might delay scheduling decisions, as trainables are speculatively
   continued. Setting this to ``1`` disables result buffering. Cannot be used with ``checkpoint_at_end``.
@@ -85,19 +70,14 @@ These are the environment variables Ray Tune currently considers:
   if no active trials are in ``RUNNING`` state for this amount of seconds.
   If the Ray Tune job is stuck in this state (most likely due to insufficient resources), the warning message is printed
   repeatedly every this amount of seconds. Defaults to 60 (seconds).
-* **TUNE_WARN_EXCESSIVE_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S**: Threshold for throwing a warning if the experiment state is synced
-  multiple times in that many seconds. Defaults to 5 (seconds).
-* **TUNE_WARN_SLOW_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S**: Threshold for throwing a warning if the experiment state syncing
-  takes longer than this time in seconds. Defaults to 30 (seconds).
+* **TUNE_WARN_SLOW_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S**: Threshold for logging a warning if the experiment state syncing
+  takes longer than this time in seconds. The experiment state files should be very lightweight, so this should not take longer than ~5 seconds.
+  Defaults to 5 (seconds).
 * **TUNE_STATE_REFRESH_PERIOD**: Frequency of updating the resource tracking from Ray. Defaults to 10 (seconds).
 * **TUNE_RESTORE_RETRY_NUM**: The number of retries that are done before a particular trial's restore is determined
   unsuccessful. After that, the trial is not restored to its previous checkpoint but rather from scratch.
   Default is ``0``. While this retry counter is taking effect, per trial failure number will not be incremented, which
   is compared against ``max_failures``.
-* **TUNE_CHECKPOINT_CLOUD_RETRY_NUM**: The number of retries that are done if a cloud checkpoint operation (uploading, downloading, removing)
-  fails. Default is ``2``.
-* **TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S**: The amount of time in seconds spent on waiting between cloud checkpoint operation retries. Default is
-  ``1``.
 * **RAY_AIR_FULL_TRACEBACKS**: If set to 1, will print full tracebacks for training functions,
   including internal code paths. Otherwise, abbreviated tracebacks that only show user code
   are printed. Defaults to 0 (disabled).

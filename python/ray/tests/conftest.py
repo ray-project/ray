@@ -134,6 +134,7 @@ def get_default_fixure_system_config():
         "health_check_initial_delay_ms": 0,
         "health_check_failure_threshold": 10,
         "object_store_full_delay_ms": 100,
+        "local_gc_min_interval_s": 1,
     }
     return system_config
 

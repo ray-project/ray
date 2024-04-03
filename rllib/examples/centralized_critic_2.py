@@ -1,3 +1,9 @@
+# ***********************************************************************************
+# IMPORTANT NOTE: This script is using the old API stack and will soon be replaced by
+# `ray.rllib.examples.multi_agent_and_self_play.pettingzoo_shared_value_function.py`!
+# ***********************************************************************************
+
+
 """An example of implementing a centralized critic with ObservationFunction.
 
 The advantage of this approach is that it's very simple and you don't have to

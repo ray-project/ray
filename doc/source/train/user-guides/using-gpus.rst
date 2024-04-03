@@ -55,7 +55,7 @@ You can get the associated devices with :meth:`ray.train.torch.get_device`.
     from ray.train.torch import TorchTrainer, get_device
 
 
-    def train_func(config):
+    def train_func():
         assert torch.cuda.is_available()
 
         device = get_device()
@@ -85,7 +85,7 @@ You can get a list of associated devices with :meth:`ray.train.torch.get_devices
     from ray.train.torch import TorchTrainer, get_device, get_devices
 
 
-    def train_func(config):
+    def train_func():
         assert torch.cuda.is_available()
 
         device = get_device()

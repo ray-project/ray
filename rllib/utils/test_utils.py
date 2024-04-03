@@ -30,7 +30,10 @@ import yaml
 import ray
 from ray import air, tune
 from ray.air.integrations.wandb import WandbLoggerCallback
+from ray.rllib.common import SupportedFileType
 from ray.rllib.env.wrappers.atari_wrappers import is_atari, wrap_deepmind
+from ray.rllib.train import load_experiments_from_file
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
     DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
@@ -143,7 +146,16 @@ def add_rllib_example_script_args(
         default=0,
         help=(
             "The frequency (in training iterations) with which to create checkpoints. "
-            "Note that if --wandb-key is provided, these checkpoints will "
+            "Note that if --wandb-key is provided, all checkpoints will "
+            "automatically be uploaded to WandB."
+        ),
+    )
+    parser.add_argument(
+        "--checkpoint-at-end",
+        action="store_true",
+        help=(
+            "Whether to create a checkpoint at the very end of the experiment. "
+            "Note that if --wandb-key is provided, all checkpoints will "
             "automatically be uploaded to WandB."
         ),
     )
@@ -585,9 +597,9 @@ def check_inference_w_connectors(policy, env_name, max_steps: int = 100):
 
 def check_learning_achieved(
     tune_results: "tune.ResultGrid",
-    min_value,
-    evaluation=False,
-    metric: str = "episode_reward_mean",
+    min_value: float,
+    evaluation: Optional[bool] = None,
+    metric: str = "sampler_results/episode_reward_mean",
 ):
     """Throws an error if `min_reward` is not reached within tune_results.
 
@@ -597,16 +609,21 @@ def check_learning_achieved(
     Args:
         tune_results: The tune.Tuner().fit() returned results object.
         min_reward: The min reward that must be reached.
+        evaluation: If True, use `evaluation/sampler_results/[metric]`, if False, use
+            `sampler_results/[metric]`, if None, use evaluation sampler results if
+            available otherwise, use train sampler results.
 
     Raises:
         ValueError: If `min_reward` not reached.
     """
     # Get maximum reward of all trials
     # (check if at least one trial achieved some learning)
-    recorded_values = [
-        (row[metric] if not evaluation else row[f"evaluation/{metric}"])
-        for _, row in tune_results.get_dataframe().iterrows()
-    ]
+    recorded_values = []
+    for _, row in tune_results.get_dataframe().iterrows():
+        if evaluation or (evaluation is None and f"evaluation/{metric}" in row):
+            recorded_values.append(row[f"evaluation/{metric}"])
+        else:
+            recorded_values.append(row[metric])
     best_value = max(recorded_values)
     if best_value < min_value:
         raise ValueError(f"`{metric}` of {min_value} not reached!")
@@ -854,6 +871,7 @@ def framework_iterator(
             sess.__exit__(None, None, None)
 
 
+@Deprecated(new="run_learning_tests_from_yaml_or_py(config_files=...)", error=False)
 def run_learning_tests_from_yaml(
     yaml_files: List[str],
     *,
@@ -861,13 +879,30 @@ def run_learning_tests_from_yaml(
     max_num_repeats: int = 2,
     use_pass_criteria_as_stop: bool = True,
     smoke_test: bool = False,
+):
+    return run_learning_tests_from_yaml_or_py(
+        yaml_files,
+        framework=framework,
+        max_num_repeats=max_num_repeats,
+        use_pass_criteria_as_stop=use_pass_criteria_as_stop,
+        smoke_test=smoke_test,
+    )
+
+
+def run_learning_tests_from_yaml_or_py(
+    config_files: List[str],
+    *,
+    framework: Optional[str] = None,
+    max_num_repeats: int = 2,
+    use_pass_criteria_as_stop: bool = True,
+    smoke_test: bool = False,
 ) -> Dict[str, Any]:
-    """Runs the given experiments in yaml_files and returns results dict.
+    """Runs the given experiments in config_files and returns results dict.
 
     Args:
         framework: The framework to use for running this test. If None,
             run the test on all frameworks.
-        yaml_files: List of yaml file names.
+        config_files: List of yaml or py config file names.
         max_num_repeats: How many times should we repeat a failed
             experiment?
         use_pass_criteria_as_stop: Configure the Trial so that it stops
@@ -880,9 +915,9 @@ def run_learning_tests_from_yaml(
         A results dict mapping strings (e.g. "time_taken", "stats", "passed") to
             the respective stats/values.
     """
-    print("Will run the following yaml files:")
-    for yaml_file in yaml_files:
-        print("->", yaml_file)
+    print("Will run the following config files:")
+    for config_file in config_files:
+        print("->", config_file)
 
     # All trials we'll ever run in this test script.
     all_trials = []
@@ -899,12 +934,25 @@ def run_learning_tests_from_yaml(
         # If we have evaluation workers, use their rewards.
         # This is useful for offline learning tests, where
         # we evaluate against an actual environment.
-        return experiment["config"].get("evaluation_interval", None) is not None
+        return bool(experiment["config"].get("evaluation_interval"))
 
     # Loop through all collected files and gather experiments.
     # Set correct framework(s).
-    for yaml_file in yaml_files:
-        tf_experiments = yaml.safe_load(open(yaml_file).read())
+    for config_file in config_files:
+        # For python files, need to make sure, we only deliver the module name into the
+        # `load_experiments_from_file` function (everything from "/ray/rllib" on).
+        if config_file.endswith(".py"):
+            if config_file.endswith(
+                "__init__.py"
+            ):  # weird CI learning test (BAZEL) case
+                continue
+            tf_experiments = load_experiments_from_file(
+                config_file, SupportedFileType.python
+            )
+        else:
+            tf_experiments = load_experiments_from_file(
+                config_file, SupportedFileType.yaml
+            )
 
         # Add torch version of all experiments to the list.
         for k, e in tf_experiments.items():
@@ -1140,9 +1188,11 @@ def run_learning_tests_from_yaml(
 
 
 def run_rllib_example_script_experiment(
-    config: "AlgorithmConfig",
+    base_config: "AlgorithmConfig",
     args: argparse.Namespace,
+    *,
     stop: Optional[Dict] = None,
+    success_metric: str = "sampler_results/episode_reward_mean",
 ) -> Union[ResultDict, tune.result_grid.ResultGrid]:
     """Given an algorithm config and some command line args, runs an experiment.
 
@@ -1150,7 +1200,10 @@ def run_rllib_example_script_experiment(
     It should ideally be generated via the ``
 
     Args:
-        config: The AlgorithmConfig object to use for this experiment.
+        base_config: The AlgorithmConfig object to use for this experiment. This base
+            config will be automatically "extended" based on some of the provided
+            `args`. For example, `args.num_env_runners` is used to set
+            `config.num_rollout_workers`, etc..
         args: A argparse.Namespace object which must have the following properties
             defined: `stop_iters`, `stop_reward`, `stop_timesteps`, `no_tune`,
             `verbose`, `checkpoint_freq`, `as_test`. Optionally, for wandb logging:
@@ -1164,17 +1217,55 @@ def run_rllib_example_script_experiment(
 
     stop = stop or {
         "training_iteration": args.stop_iters,
-        "episode_reward_mean": args.stop_reward,
+        "sampler_results/episode_reward_mean": args.stop_reward,
         "timesteps_total": args.stop_timesteps,
     }
+
+    from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
+    from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
+
+    # Extend the `base_config` based on provided `args`.
+    config = (
+        base_config.framework(args.framework)
+        .experimental(_enable_new_api_stack=args.enable_new_api_stack)
+        .rollouts(
+            num_rollout_workers=args.num_env_runners,
+            # Set up the correct env-runner to use depending on
+            # old-stack/new-stack and multi-agent settings.
+            env_runner_cls=(
+                None
+                if not args.enable_new_api_stack
+                else SingleAgentEnvRunner
+                if args.num_agents == 0
+                else MultiAgentEnvRunner
+            ),
+        )
+        .resources(
+            num_gpus=args.num_gpus,  # old stack
+            num_learner_workers=args.num_gpus,  # new stack
+            num_gpus_per_learner_worker=1 if args.num_gpus else 0,
+            num_cpus_for_local_worker=1,
+        )
+    )
 
     if args.no_tune:
         algo = config.build()
         for iter in range(args.stop_iters):
             results = algo.train()
-            print(f"R={results['episode_reward_mean']}")
+            print(f"R={results['sampler_results']['episode_reward_mean']}", end="")
+            if "evaluation" in results:
+                Reval = results["evaluation"]["sampler_results"]["episode_reward_mean"]
+                print(f" R(eval)={Reval}", end="")
+            print()
             for key, value in stop.items():
-                if results.get(key, float("-inf")) > value:
+                val = results
+                for k in key.split("/"):
+                    try:
+                        val = val[k]
+                    except KeyError:
+                        val = None
+                        break
+                if val is not None and val >= value:
                     print(f"Stop criterium ({key}={value}) fulfilled!")
                     return results
         return results
@@ -1193,22 +1284,50 @@ def run_rllib_example_script_experiment(
             )
         ]
 
+    progress_reporter = None
+    # Use better ProgressReporter for multi-agent cases: List individual policy rewards.
+    if args.num_agents > 0:
+        progress_reporter = CLIReporter(
+            metric_columns={
+                **{
+                    "training_iteration": "iter",
+                    "time_total_s": "total time (s)",
+                    "timesteps_total": "ts",
+                    "sampler_results/episode_reward_mean": "combined reward",
+                },
+                **{
+                    f"policy_reward_mean/{pid}": f"reward {pid}"
+                    for pid in config.policies
+                },
+            },
+        )
+
+    # Force Tuner to use old progress output as the new one silently ignores our custom
+    # `CLIReporter`.
+    os.environ["RAY_AIR_NEW_OUTPUT"] = "0"
+
     results = tune.Tuner(
         config.algo_class,
         param_space=config,
         run_config=air.RunConfig(
             stop=stop,
-            verbose=2 if args.verbose else 1,
+            verbose=args.verbose,
             callbacks=callbacks,
             checkpoint_config=air.CheckpointConfig(
                 checkpoint_frequency=args.checkpoint_freq,
+                checkpoint_at_end=args.checkpoint_at_end,
             ),
+            progress_reporter=progress_reporter,
         ),
         tune_config=tune.TuneConfig(num_samples=args.num_samples),
     ).fit()
 
     if args.as_test:
-        check_learning_achieved(results, args.stop_reward)
+        check_learning_achieved(
+            results,
+            args.stop_reward,
+            metric=success_metric,
+        )
 
     return results
 

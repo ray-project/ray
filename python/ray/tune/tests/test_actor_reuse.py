@@ -299,17 +299,24 @@ def test_trial_reuse_log_to_file(trainable, ray_start_1_cpu, tmp_path):
         reuse_actors=True,
     ).trials
 
+    def get_trial_logfiles(trial):
+        return (
+            os.path.join(trial.storage.trial_working_directory, "stdout"),
+            os.path.join(trial.storage.trial_working_directory, "stderr"),
+        )
+
     # Check trial 1
     assert trial1.last_result["num_resets"] == 2
-    assert os.path.exists(os.path.join(trial1.local_path, "stdout"))
-    assert os.path.exists(os.path.join(trial1.local_path, "stderr"))
+    [stdout, stderr] = get_trial_logfiles(trial1)
+    assert os.path.exists(stdout)
+    assert os.path.exists(stderr)
 
     # We expect that only "First" output is found in the first trial output
-    with open(os.path.join(trial1.local_path, "stdout"), "rt") as fp:
+    with open(stdout, "rt") as fp:
         content = fp.read()
         assert "PRINT_STDOUT: First" in content
         assert "PRINT_STDOUT: Second" not in content
-    with open(os.path.join(trial1.local_path, "stderr"), "rt") as fp:
+    with open(stderr, "rt") as fp:
         content = fp.read()
         assert "PRINT_STDERR: First" in content
         assert "LOG_STDERR: First" in content
@@ -318,15 +325,16 @@ def test_trial_reuse_log_to_file(trainable, ray_start_1_cpu, tmp_path):
 
     # Check trial 2
     assert trial2.last_result["num_resets"] == 3
-    assert os.path.exists(os.path.join(trial2.local_path, "stdout"))
-    assert os.path.exists(os.path.join(trial2.local_path, "stderr"))
+    [stdout, stderr] = get_trial_logfiles(trial2)
+    assert os.path.exists(stdout)
+    assert os.path.exists(stderr)
 
     # We expect that only "Second" output is found in the first trial output
-    with open(os.path.join(trial2.local_path, "stdout"), "rt") as fp:
+    with open(stdout, "rt") as fp:
         content = fp.read()
         assert "PRINT_STDOUT: Second" in content
         assert "PRINT_STDOUT: First" not in content
-    with open(os.path.join(trial2.local_path, "stderr"), "rt") as fp:
+    with open(stderr, "rt") as fp:
         content = fp.read()
         assert "PRINT_STDERR: Second" in content
         assert "LOG_STDERR: Second" in content
@@ -481,15 +489,12 @@ def test_detect_reuse_mixins():
     assert _check_mixin(dummy_mixin(MyTrainable))
 
 
-def test_remote_trial_dir_with_reuse_actors(
-    trainable, ray_start_2_cpus, monkeypatch, tmp_path
-):
+def test_remote_trial_dir_with_reuse_actors(trainable, ray_start_2_cpus, tmp_path):
     """Check that the trainable has its remote directory set to the right
     location, when new trials get swapped in on actor reuse.
     Each trial runs for 2 iterations, with checkpoint_frequency=1, so each
     remote trial dir should have 2 checkpoints.
     """
-    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path))
     tmp_target = str(tmp_path / "upload_dir")
     exp_name = "remote_trial_dir_update_on_actor_reuse"
 

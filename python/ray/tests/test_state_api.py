@@ -2340,9 +2340,14 @@ def test_list_get_tasks(shutdown_only):
     def impossible():
         pass
 
-    out = [f.options(name=f"f_{i}").remote() for i in range(2)]  # noqa
-    g_out = g.remote(f.remote())  # noqa
-    im = impossible.remote()  # noqa
+    f_refs = [f.options(name=f"f_{i}").remote() for i in range(2)]  # noqa
+    g_ref = g.remote(f.remote())  # noqa
+    im_ref = impossible.remote()  # noqa
+
+    def verify_task_from_objectref(task, job_id, tasks):
+        assert task["job_id"] == job_id
+        assert task["actor_id"] is None
+        assert any(task["task_id"] == t["task_id"] for t in tasks)
 
     def verify():
         tasks = list_tasks()
@@ -2351,6 +2356,12 @@ def test_list_get_tasks(shutdown_only):
             assert task["job_id"] == job_id
         for task in tasks:
             assert task["actor_id"] is None
+
+        # Test get_task by objectRef
+        for ref in f_refs:
+            verify_task_from_objectref(get_task(ref), job_id, tasks)
+        verify_task_from_objectref(get_task(g_ref), job_id, tasks)
+        verify_task_from_objectref(get_task(im_ref), job_id, tasks)
 
         waiting_for_execution = len(
             list(

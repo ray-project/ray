@@ -350,6 +350,16 @@ class RaySystemError(RayError):
         return error_msg
 
 
+@DeveloperAPI
+class UserCodeException(RayError):
+    """Indicates that an exception occurred while executing user code.
+    For example, this exception can be used to wrap user code exceptions
+    from a remote task or actor. The `retry_exceptions` parameter will
+    still respect the underlying cause of this exception."""
+
+    pass
+
+
 @PublicAPI
 class ObjectStoreFullError(RayError):
     """Indicates that the object store is full.

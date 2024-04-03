@@ -106,7 +106,7 @@ class MockDeploymentStateManager:
     def get_deployments_in_application(self, app_name: str):
         deployments = []
         for deployment_id in self.deployment_infos:
-            if deployment_id.app == app_name:
+            if deployment_id.app_name == app_name:
                 deployments.append(deployment_id.name)
 
         return deployments
@@ -361,8 +361,8 @@ def test_deploy_and_delete_app(mocked_application_state):
     app_state, deployment_state_manager = mocked_application_state
 
     # DEPLOY application with deployments {d1, d2}
-    d1_id = DeploymentID("d1", "test_app")
-    d2_id = DeploymentID("d2", "test_app")
+    d1_id = DeploymentID(name="d1", app_name="test_app")
+    d2_id = DeploymentID(name="d2", app_name="test_app")
     app_state.deploy(
         {
             "d1": deployment_info("d1", "/hi", "/documentation"),
@@ -419,8 +419,8 @@ def test_deploy_and_delete_app(mocked_application_state):
 def test_app_deploy_failed_and_redeploy(mocked_application_state):
     """Test DEPLOYING -> DEPLOY_FAILED -> (redeploy) -> DEPLOYING -> RUNNING"""
     app_state, deployment_state_manager = mocked_application_state
-    d1_id = DeploymentID("d1", "test_app")
-    d2_id = DeploymentID("d2", "test_app")
+    d1_id = DeploymentID(name="d1", app_name="test_app")
+    d2_id = DeploymentID(name="d2", app_name="test_app")
     app_state.deploy({"d1": deployment_info("d1")})
     assert app_state.status == ApplicationStatus.DEPLOYING
 
@@ -471,7 +471,7 @@ def test_app_deploy_failed_and_recover(mocked_application_state):
     the application status should update to running.
     """
     app_state, deployment_state_manager = mocked_application_state
-    deployment_id = DeploymentID("d1", "test_app")
+    deployment_id = DeploymentID(name="d1", app_name="test_app")
     app_state.deploy({"d1": deployment_info("d1")})
     assert app_state.status == ApplicationStatus.DEPLOYING
 
@@ -501,7 +501,9 @@ def test_app_unhealthy(mocked_application_state):
     updated to unhealthy.
     """
     app_state, deployment_state_manager = mocked_application_state
-    id_a, id_b = DeploymentID("a", "test_app"), DeploymentID("b", "test_app")
+    id_a, id_b = DeploymentID(name="a", app_name="test_app"), DeploymentID(
+        name="b", app_name="test_app"
+    )
     app_state.deploy({"a": deployment_info("a"), "b": deployment_info("b")})
     assert app_state.status == ApplicationStatus.DEPLOYING
     app_state.update()
@@ -535,7 +537,7 @@ def test_deploy_through_config_succeed(check_obj_ref_ready_nowait):
     Deploy obj ref finishes successfully, so status should transition to running.
     """
     kv_store = MockKVStore()
-    deployment_id = DeploymentID("a", "test_app")
+    deployment_id = DeploymentID(name="a", app_name="test_app")
     deployment_state_manager = MockDeploymentStateManager(kv_store)
     app_state_manager = ApplicationStateManager(
         deployment_state_manager, MockEndpointState(), kv_store
@@ -608,9 +610,9 @@ def test_deploy_through_config_fail(check_obj_ref_ready_nowait):
 def test_redeploy_same_app(mocked_application_state):
     """Test redeploying same application with updated deployments."""
     app_state, deployment_state_manager = mocked_application_state
-    a_id = DeploymentID("a", "test_app")
-    b_id = DeploymentID("b", "test_app")
-    c_id = DeploymentID("c", "test_app")
+    a_id = DeploymentID(name="a", app_name="test_app")
+    b_id = DeploymentID(name="b", app_name="test_app")
+    c_id = DeploymentID(name="c", app_name="test_app")
     app_state.deploy({"a": deployment_info("a"), "b": deployment_info("b")})
     assert app_state.status == ApplicationStatus.DEPLOYING
 
@@ -663,7 +665,9 @@ def test_deploy_with_renamed_app(mocked_application_state_manager):
     conflict with an old app running on the cluster.
     """
     app_state_manager, deployment_state_manager, _ = mocked_application_state_manager
-    a_id, b_id = DeploymentID("a", "app1"), DeploymentID("b", "app2")
+    a_id, b_id = DeploymentID(name="a", app_name="app1"), DeploymentID(
+        name="b", app_name="app2"
+    )
 
     # deploy app1
     app_state_manager.apply_deployment_args("app1", [deployment_params("a", "/url1")])
@@ -710,7 +714,7 @@ def test_application_state_recovery(mocked_application_state_manager):
         deployment_state_manager,
         kv_store,
     ) = mocked_application_state_manager
-    deployment_id = DeploymentID("d1", "test_app")
+    deployment_id = DeploymentID(name="d1", app_name="test_app")
     app_name = "test_app"
 
     # DEPLOY application with deployments {d1, d2}
@@ -759,7 +763,7 @@ def test_recover_during_update(mocked_application_state_manager):
         deployment_state_manager,
         kv_store,
     ) = mocked_application_state_manager
-    deployment_id = DeploymentID("d1", "test_app")
+    deployment_id = DeploymentID(name="d1", app_name="test_app")
     app_name = "test_app"
 
     # DEPLOY application with deployment "d1"
@@ -824,7 +828,7 @@ def test_is_ready_for_shutdown(mocked_application_state_manager):
     ) = mocked_application_state_manager
     app_name = "test_app"
     deployment_name = "d1"
-    deployment_id = DeploymentID(deployment_name, app_name)
+    deployment_id = DeploymentID(name=deployment_name, app_name=app_name)
 
     # DEPLOY application with deployment "d1"
     params = deployment_params(deployment_name)
@@ -875,7 +879,7 @@ class TestOverrideDeploymentInfo:
                 DeploymentSchema(
                     name="A",
                     num_replicas=3,
-                    max_concurrent_queries=200,
+                    max_ongoing_requests=200,
                     user_config={"price": "4"},
                     graceful_shutdown_wait_loop_s=4,
                     graceful_shutdown_timeout_s=40,
@@ -889,7 +893,7 @@ class TestOverrideDeploymentInfo:
         updated_info = updated_infos["A"]
         assert updated_info.route_prefix == "/"
         assert updated_info.version == "123"
-        assert updated_info.deployment_config.max_concurrent_queries == 200
+        assert updated_info.deployment_config.max_ongoing_requests == 200
         assert updated_info.deployment_config.user_config == {"price": "4"}
         assert updated_info.deployment_config.graceful_shutdown_wait_loop_s == 4
         assert updated_info.deployment_config.graceful_shutdown_timeout_s == 40

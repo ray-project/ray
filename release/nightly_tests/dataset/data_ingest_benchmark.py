@@ -119,7 +119,7 @@ def make_ds(size_gb: int, parallelism: int = -1):
     record_size = record_dim * 8
     num_records = int(total_size / record_size)
     dataset = ray.data.range_tensor(
-        num_records, shape=(record_dim,), parallelism=parallelism
+        num_records, shape=(record_dim,), override_num_blocks=parallelism
     )
     print("Created dataset", dataset, "of size", dataset.size_bytes())
     return dataset

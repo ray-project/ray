@@ -52,7 +52,6 @@ config = (
         evaluation_duration=25,
         evaluation_duration_unit="episodes",
         evaluation_parallel_to_training=True,
-        enable_async_evaluation=True,
         evaluation_config=APPOConfig.overrides(
             explore=False,
             env_config={

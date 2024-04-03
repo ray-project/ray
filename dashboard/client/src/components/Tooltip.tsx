@@ -1,10 +1,7 @@
-import {
-  createStyles,
-  makeStyles,
-  Tooltip,
-  TooltipProps,
-} from "@material-ui/core";
-import HelpOutlineIcon from "@material-ui/icons/HelpOutline";
+import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
+import { Tooltip, TooltipProps } from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import React, { ReactNode } from "react";
 
 const useStyles = makeStyles((theme) =>
@@ -41,7 +38,7 @@ export const HelpInfo = ({ children, className }: HelpInfoProps) => {
   const classes = useHelpInfoStyles();
 
   return (
-    <StyledTooltip className={className} interactive title={children}>
+    <StyledTooltip className={className} title={children}>
       <HelpOutlineIcon fontSize="small" className={classes.helpIcon} />
     </StyledTooltip>
   );

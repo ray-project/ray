@@ -37,7 +37,7 @@ OPERATOR_SCHEMA = [
 )
 def test_get_datasets():
     ray.init()
-    ds = ray.data.range(100, parallelism=20).map_batches(lambda x: x)
+    ds = ray.data.range(100, override_num_blocks=20).map_batches(lambda x: x)
     ds._set_name("data_head_test")
     ds.materialize()
 

@@ -105,6 +105,9 @@ class _FakeResourceUpdater(_ResourceUpdater):
     def get_num_gpus(self) -> int:
         return self._resource_manager._total_resources.get("GPU", 0)
 
+    def update_avail_resources(self, *args, **kwargs):
+        pass
+
 
 class TestingTrial(Trial):
     def __init__(self, *args, **kwargs):

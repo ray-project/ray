@@ -1,3 +1,7 @@
+---
+orphan: true
+---
+
 # Scale a Gradio App with Ray Serve
 
 This guide shows how to scale up your [Gradio](https://gradio.app/) application using Ray Serve. Keep the internal architecture of your Gradio app intact, with no code changes. Simply wrap the app within Ray Serve as a deployment and scale it to access more resources.

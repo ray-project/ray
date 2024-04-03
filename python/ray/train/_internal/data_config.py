@@ -120,14 +120,16 @@ class DataConfig:
     def default_ingest_options() -> ExecutionOptions:
         """The default Ray Data options used for data ingest.
 
-        By default, output locality is enabled, which means that Ray Data will try to
-        place tasks on the node the data is consumed. The remaining configurations are
-        carried over from what is already set in DataContext.
+        By default, configurations are carried over from what is already set
+        in DataContext.
         """
         ctx = ray.data.DataContext.get_current()
         return ExecutionOptions(
-            locality_with_output=True,
+            # TODO(hchen): Re-enable `locality_with_output` by default after fixing
+            # https://github.com/ray-project/ray/issues/40607
+            locality_with_output=ctx.execution_options.locality_with_output,
             resource_limits=ctx.execution_options.resource_limits,
+            exclude_resources=ctx.execution_options.exclude_resources,
             preserve_order=ctx.execution_options.preserve_order,
             verbose_progress=ctx.execution_options.verbose_progress,
         )

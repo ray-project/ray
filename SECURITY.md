@@ -1,5 +1,7 @@
 # Security Policy
 
-## Reporting a Vulnerability
+If you are deploying Ray, read [Security](ray-security/index.html).
 
-Please report security issues to `security@anyscale.com`
+## Reporting a vulnerability
+
+Please report security issues to `security@anyscale.com`.
