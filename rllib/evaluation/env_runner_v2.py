@@ -269,11 +269,6 @@ class EnvRunnerV2:
         self._count_steps_by = count_steps_by
         self._render = render
 
-        # May be populated for image rendering.
-        self._simple_image_viewer: Optional[
-            "SimpleImageViewer"
-        ] = self._get_simple_image_viewer()
-
         # Keeps track of active episodes.
         self._active_episodes: Dict[EnvID, EpisodeV2] = {}
         self._batch_builders: Dict[EnvID, _PolicyCollectorGroup] = _NewDefaultDict(
@@ -285,25 +280,6 @@ class EnvRunnerV2:
             if self._rollout_fragment_length != float("inf")
             else DEFAULT_LARGE_BATCH_THRESHOLD
         )
-
-    def _get_simple_image_viewer(self):
-        """Maybe construct a SimpleImageViewer instance for episode rendering."""
-        # Try to render the env, if required.
-        if not self._render:
-            return None
-
-        try:
-            from gymnasium.envs.classic_control.rendering import SimpleImageViewer
-
-            return SimpleImageViewer()
-        except (ImportError, ModuleNotFoundError):
-            self._render = False  # disable rendering
-            logger.warning(
-                "Could not import gymnasium.envs.classic_control."
-                "rendering! Try `pip install gymnasium[all]`."
-            )
-
-        return None
 
     def _call_on_episode_start(self, episode, env_id):
         # Call each policy's Exploration.on_episode_start method.
@@ -1191,7 +1167,7 @@ class EnvRunnerV2:
     def _maybe_render(self):
         """Visualize environment."""
         # Check if we should render.
-        if not self._render or not self._simple_image_viewer:
+        if not self._render:
             return
 
         t5 = time.time()
@@ -1201,7 +1177,9 @@ class EnvRunnerV2:
         rendered = self._base_env.try_render()
         # Rendering returned an image -> Display it in a SimpleImageViewer.
         if isinstance(rendered, np.ndarray) and len(rendered.shape) == 3:
-            self._simple_image_viewer.imshow(rendered)
+            # TODO: Gymnasium no longer provides a simple rendering solution.
+            # Would be good to replace it with something else.
+            pass
         elif rendered not in [True, False, None]:
             raise ValueError(
                 f"The env's ({self._base_env}) `try_render()` method returned an"
