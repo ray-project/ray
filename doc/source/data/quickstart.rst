@@ -1,7 +1,7 @@
-.. _data_key_concepts:
+.. _data_quickstart:
 
-Key Concepts
-============
+Quickstart
+==========
 
 Learn about :class:`Dataset <ray.data.Dataset>` and the capabilities it provides.
 
@@ -90,52 +90,19 @@ Consuming data
 Pass datasets to Ray Tasks or Actors, and access records with methods like
 :meth:`~ray.data.Dataset.take_batch` and :meth:`~ray.data.Dataset.iter_batches`.
 
-.. tab-set::
+.. testcode::
 
-    .. tab-item:: Local
+    print(transformed_ds.take_batch(batch_size=3))
 
-        .. testcode::
+.. testoutput::
+    :options: +NORMALIZE_WHITESPACE
 
-            print(transformed_ds.take_batch(batch_size=3))
-
-        .. testoutput::
-            :options: +NORMALIZE_WHITESPACE
-
-            {'sepal length (cm)': array([5.1, 4.9, 4.7]),
-             'sepal width (cm)': array([3.5, 3. , 3.2]),
-             'petal length (cm)': array([1.4, 1.4, 1.3]),
-             'petal width (cm)': array([0.2, 0.2, 0.2]),
-             'target': array([0, 0, 0]),
-             'petal area (cm^2)': array([0.28, 0.28, 0.26])}
-
-    .. tab-item:: Tasks
-
-       .. testcode::
-
-            @ray.remote
-            def consume(ds: ray.data.Dataset) -> int:
-                num_batches = 0
-                for batch in ds.iter_batches(batch_size=8):
-                    num_batches += 1
-                return num_batches
-
-            ray.get(consume.remote(transformed_ds))
-
-    .. tab-item:: Actors
-
-        .. testcode::
-
-            @ray.remote
-            class Worker:
-
-                def train(self, data_iterator):
-                    for batch in data_iterator.iter_batches(batch_size=8):
-                        pass
-
-            workers = [Worker.remote() for _ in range(4)]
-            shards = transformed_ds.streaming_split(n=4, equal=True)
-            ray.get([w.train.remote(s) for w, s in zip(workers, shards)])
-
+    {'sepal length (cm)': array([5.1, 4.9, 4.7]),
+        'sepal width (cm)': array([3.5, 3. , 3.2]),
+        'petal length (cm)': array([1.4, 1.4, 1.3]),
+        'petal width (cm)': array([0.2, 0.2, 0.2]),
+        'target': array([0, 0, 0]),
+        'petal area (cm^2)': array([0.28, 0.28, 0.26])}
 
 To learn more about consuming datasets, see
 :ref:`Iterating over Data <iterating-over-data>` and :ref:`Saving Data <saving-data>`.

@@ -38,6 +38,7 @@ from ray.serve._private.deployment_state import (
     VersionedReplica,
 )
 from ray.serve._private.test_utils import (
+    MockActorHandle,
     MockClusterNodeInfoCache,
     MockKVStore,
     MockTimer,
@@ -56,29 +57,6 @@ from ray.serve._private.utils import (
 # state is cleared after each test that uses the fixtures in this file.
 dead_replicas_context = set()
 TEST_DEPLOYMENT_ID = DeploymentID(name="test_deployment", app_name="test_app")
-
-
-class FakeRemoteFunction:
-    def remote(self):
-        pass
-
-
-class MockActorHandle:
-    def __init__(self):
-        self._actor_id = "fake_id"
-        self.initialize_and_get_metadata_called = False
-        self.is_allocated_called = False
-
-    @property
-    def initialize_and_get_metadata(self):
-        self.initialize_and_get_metadata_called = True
-        # return a mock object so that we can call `remote()` on it.
-        return FakeRemoteFunction()
-
-    @property
-    def is_allocated(self):
-        self.is_allocated_called = True
-        return FakeRemoteFunction()
 
 
 class MockReplicaActorWrapper:
@@ -1984,6 +1962,7 @@ def test_basic_autoscaling(mock_deployment_state_manager, target_capacity_direct
             "initial_replicas": 3,
             "upscale_delay_s": 0,
             "downscale_delay_s": 0,
+            "metrics_interval_s": 100,
         }
     )
     dsm.deploy(TEST_DEPLOYMENT_ID, info)
@@ -2113,6 +2092,7 @@ def test_downscaling_reclaiming_starting_replicas_first(
             "initial_replicas": 3,
             "upscale_delay_s": 0,
             "downscale_delay_s": 0,
+            "metrics_interval_s": 100,
         }
     )
 
@@ -2348,6 +2328,68 @@ def test_update_autoscaling_config(mock_deployment_state_manager):
         ds.curr_status_info.status_trigger
         == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
     )
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+    reason="Testing handle metrics behavior.",
+)
+def test_handle_metrics_timeout(mock_deployment_state_manager):
+    create_dsm, timer, cluster_node_info_cache = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    # Deploy, start with 1 replica
+    info, _ = deployment_info(
+        autoscaling_config={
+            "target_ongoing_requests": 1,
+            "min_replicas": 0,
+            "max_replicas": 6,
+            "initial_replicas": 1,
+            "upscale_delay_s": 0,
+            "downscale_delay_s": 0,
+        }
+    )
+    dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    ds: DeploymentState = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+    dsm.update()
+    ds._replicas.get()[0]._actor.set_ready()
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, None)])
+
+    # Record 2 requests/replica -> trigger upscale
+    dsm.record_handle_metrics(
+        deployment_id=TEST_DEPLOYMENT_ID,
+        handle_id="random",
+        queued_requests=0,
+        running_requests={ds._replicas.get()[0]._actor.replica_id: 2},
+        send_timestamp=timer.time(),
+    )
+    dsm.update()
+    check_counts(
+        ds,
+        total=2,
+        by_state=[(ReplicaState.RUNNING, 1, None), (ReplicaState.STARTING, 1, None)],
+    )
+    assert ds.get_total_num_requests() == 2
+    ds._replicas.get([ReplicaState.STARTING])[0]._actor.set_ready()
+    dsm.update()
+    check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
+    assert ds.get_total_num_requests() == 2
+
+    # Simulate handle was on an actor that died. 10 seconds later
+    # the handle fails to push metrics
+    timer.advance(10)
+    dsm.update()
+    check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
+    assert ds.get_total_num_requests() == 2
+
+    # Another 10 seconds later handle still fails to push metrics. At
+    # this point the data from the handle should be invalidated. As a
+    # result, the replicas should scale back down to 0.
+    timer.advance(10)
+    dsm.update()
+    check_counts(ds, total=2, by_state=[(ReplicaState.STOPPING, 2, None)])
+    assert ds.get_total_num_requests() == 0
 
 
 @pytest.mark.parametrize("force_stop_unhealthy_replicas", [False, True])

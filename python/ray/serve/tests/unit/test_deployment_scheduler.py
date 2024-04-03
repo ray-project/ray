@@ -41,7 +41,7 @@ def get_random_resources(n: int) -> List[Resources]:
         "CPU": lambda: random.randint(0, 10),
         "GPU": lambda: random.randint(0, 10),
         "memory": lambda: random.randint(0, 10),
-        "resources": lambda: {"custom_A": random.randint(0, 10)},
+        "custom_A": lambda: random.randint(0, 10),
     }
 
     res = list()
@@ -51,7 +51,7 @@ def get_random_resources(n: int) -> List[Resources]:
             if random.randint(0, 1) == 0:
                 resource_dict[resource] = callable()
 
-        res.append(Resources.from_ray_resource_dict(resource_dict))
+        res.append(Resources(resource_dict))
 
     return res
 
@@ -60,14 +60,14 @@ class TestResources:
     @pytest.mark.parametrize("resource_type", ["CPU", "GPU", "memory"])
     def test_basic(self, resource_type: str):
         # basic resources
-        a = Resources.from_ray_resource_dict({resource_type: 1, "resources": {}})
-        b = Resources.from_ray_resource_dict({resource_type: 0})
+        a = Resources({resource_type: 1})
+        b = Resources({resource_type: 0})
         assert a.can_fit(b)
         assert not b.can_fit(a)
 
     def test_neither_bigger(self):
-        a = Resources.from_ray_resource_dict({"CPU": 1, "GPU": 0})
-        b = Resources.from_ray_resource_dict({"CPU": 0, "GPU": 1})
+        a = Resources({"CPU": 1, "GPU": 0})
+        b = Resources({"CPU": 0, "GPU": 1})
         assert not a == b
         assert not a.can_fit(b)
         assert not b.can_fit(a)
@@ -86,56 +86,34 @@ class TestResources:
 
     def test_compare_resources(self):
         # Prioritize GPU
-        a = Resources.from_ray_resource_dict(
-            {"GPU": 1, "CPU": 10, "memory": 10, "resources": {"custom": 10}}
-        )
-        b = Resources.from_ray_resource_dict(
-            {"GPU": 2, "CPU": 0, "memory": 0, "resources": {"custom": 0}}
-        )
+        a = Resources({"GPU": 1, "CPU": 10, "memory": 10, "custom": 10})
+        b = Resources({"GPU": 2, "CPU": 0, "memory": 0, "custom": 0})
         assert b > a
 
         # Then CPU
-        a = Resources.from_ray_resource_dict(
-            {"GPU": 1, "CPU": 1, "memory": 10, "resources": {"custom": 10}}
-        )
-        b = Resources.from_ray_resource_dict(
-            {"GPU": 1, "CPU": 2, "memory": 0, "resources": {"custom": 0}}
-        )
+        a = Resources({"GPU": 1, "CPU": 1, "memory": 10, "custom": 10})
+        b = Resources({"GPU": 1, "CPU": 2, "memory": 0, "custom": 0})
         assert b > a
 
         # Then memory
-        a = Resources.from_ray_resource_dict(
-            {"GPU": 1, "CPU": 1, "memory": 1, "resources": {"custom": 10}}
-        )
-        b = Resources.from_ray_resource_dict(
-            {"GPU": 1, "CPU": 1, "memory": 2, "resources": {"custom": 0}}
-        )
+        a = Resources({"GPU": 1, "CPU": 1, "memory": 1, "custom": 10})
+        b = Resources({"GPU": 1, "CPU": 1, "memory": 2, "custom": 0})
         assert b > a
 
         # Then custom resources
-        a = Resources.from_ray_resource_dict(
-            {"GPU": 1, "CPU": 1, "memory": 1, "resources": {"custom": 1}}
-        )
-        b = Resources.from_ray_resource_dict(
-            {"GPU": 1, "CPU": 1, "memory": 1, "resources": {"custom": 2}}
-        )
+        a = Resources({"GPU": 1, "CPU": 1, "memory": 1, "custom": 1})
+        b = Resources({"GPU": 1, "CPU": 1, "memory": 1, "custom": 2})
         assert b > a
 
     def test_sort_resources(self):
         """Prioritize GPUs, CPUs, memory, then custom resources when sorting."""
 
-        a = Resources.from_ray_resource_dict(
-            {"GPU": 0, "CPU": 4, "memory": 99, "resources": {"A": 10}}
-        )
-        b = Resources.from_ray_resource_dict({"GPU": 0, "CPU": 2, "memory": 100})
-        c = Resources.from_ray_resource_dict({"GPU": 1, "CPU": 1, "memory": 50})
-        d = Resources.from_ray_resource_dict({"GPU": 2, "CPU": 0, "memory": 0})
-        e = Resources.from_ray_resource_dict(
-            {"GPU": 3, "CPU": 8, "memory": 10000, "resources": {"A": 6}}
-        )
-        f = Resources.from_ray_resource_dict(
-            {"GPU": 3, "CPU": 8, "memory": 10000, "resources": {"A": 2}}
-        )
+        a = Resources({"GPU": 0, "CPU": 4, "memory": 99, "A": 10})
+        b = Resources({"GPU": 0, "CPU": 2, "memory": 100})
+        c = Resources({"GPU": 1, "CPU": 1, "memory": 50})
+        d = Resources({"GPU": 2, "CPU": 0, "memory": 0})
+        e = Resources({"GPU": 3, "CPU": 8, "memory": 10000, "A": 6})
+        f = Resources({"GPU": 3, "CPU": 8, "memory": 10000, "A": 2})
 
         for _ in range(10):
             resources = [a, b, c, d, e, f]
@@ -144,14 +122,14 @@ class TestResources:
             assert resources == [e, f, d, c, a, b]
 
     def test_custom_resources(self):
-        a = Resources.from_ray_resource_dict({"resources": {"alice": 2}})
-        b = Resources.from_ray_resource_dict({"resources": {"alice": 3}})
+        a = Resources({"alice": 2})
+        b = Resources({"alice": 3})
         assert a < b
         assert b.can_fit(a)
         assert a + b == Resources(**{"alice": 5})
 
-        a = Resources.from_ray_resource_dict({"resources": {"bob": 2}})
-        b = Resources.from_ray_resource_dict({"CPU": 4})
+        a = Resources({"bob": 2})
+        b = Resources({"CPU": 4})
         assert a + b == Resources(**{"CPU": 4, "bob": 2})
 
     def test_implicit_resources(self):
@@ -167,7 +145,7 @@ class TestResources:
         # Arithmetric with implicit resources
         implicit_resource = f"{ray._raylet.IMPLICIT_RESOURCE_PREFIX}whatever"
         a = Resources()
-        b = Resources.from_ray_resource_dict({"resources": {implicit_resource: 0.5}})
+        b = Resources({implicit_resource: 0.5})
         assert a.get(implicit_resource) == 1
         assert b.get(implicit_resource) == 0.5
         assert a.can_fit(b)
@@ -185,41 +163,35 @@ def test_deployment_scheduling_info():
     info = DeploymentSchedulingInfo(
         deployment_id=DeploymentID("a", "b"),
         scheduling_policy=SpreadDeploymentSchedulingPolicy,
-        actor_resources=Resources.from_ray_resource_dict({"CPU": 2, "GPU": 1}),
+        actor_resources=Resources({"CPU": 2, "GPU": 1}),
     )
-    assert info.required_resources == Resources.from_ray_resource_dict(
-        {"CPU": 2, "GPU": 1}
-    )
+    assert info.required_resources == Resources({"CPU": 2, "GPU": 1})
     assert not info.is_non_strict_pack_pg()
 
     info = DeploymentSchedulingInfo(
         deployment_id=DeploymentID("a", "b"),
         scheduling_policy=SpreadDeploymentSchedulingPolicy,
-        actor_resources=Resources.from_ray_resource_dict({"CPU": 2, "GPU": 1}),
+        actor_resources=Resources({"CPU": 2, "GPU": 1}),
         placement_group_bundles=[
-            Resources.from_ray_resource_dict({"CPU": 100}),
-            Resources.from_ray_resource_dict({"GPU": 100}),
+            Resources({"CPU": 100}),
+            Resources({"GPU": 100}),
         ],
         placement_group_strategy="STRICT_PACK",
     )
-    assert info.required_resources == Resources.from_ray_resource_dict(
-        {"CPU": 100, "GPU": 100}
-    )
+    assert info.required_resources == Resources({"CPU": 100, "GPU": 100})
     assert not info.is_non_strict_pack_pg()
 
     info = DeploymentSchedulingInfo(
         deployment_id=DeploymentID("a", "b"),
         scheduling_policy=SpreadDeploymentSchedulingPolicy,
-        actor_resources=Resources.from_ray_resource_dict({"CPU": 2, "GPU": 1}),
+        actor_resources=Resources({"CPU": 2, "GPU": 1}),
         placement_group_bundles=[
-            Resources.from_ray_resource_dict({"CPU": 100}),
-            Resources.from_ray_resource_dict({"GPU": 100}),
+            Resources({"CPU": 100}),
+            Resources({"GPU": 100}),
         ],
         placement_group_strategy="PACK",
     )
-    assert info.required_resources == Resources.from_ray_resource_dict(
-        {"CPU": 2, "GPU": 1}
-    )
+    assert info.required_resources == Resources({"CPU": 2, "GPU": 1})
     assert info.is_non_strict_pack_pg()
 
 
@@ -227,7 +199,9 @@ def test_get_available_resources_per_node():
     d_id = DeploymentID("a", "b")
 
     cluster_node_info_cache = MockClusterNodeInfoCache()
-    cluster_node_info_cache.add_node("node1", {"GPU": 10, "CPU": 32, "memory": 1024})
+    cluster_node_info_cache.add_node(
+        "node1", {"GPU": 10, "CPU": 32, "memory": 1024, "customx": 1}
+    )
 
     scheduler = default_impl.create_deployment_scheduler(
         cluster_node_info_cache,
@@ -239,7 +213,11 @@ def test_get_available_resources_per_node():
         d_id,
         ReplicaConfig.create(
             dummy,
-            ray_actor_options={"num_gpus": 1, "num_cpus": 3},
+            ray_actor_options={
+                "num_gpus": 1,
+                "num_cpus": 3,
+                "resources": {"customx": 0.1},
+            },
             max_replicas_per_node=4,
         ),
     )
@@ -255,6 +233,7 @@ def test_get_available_resources_per_node():
             "GPU": 9,
             "CPU": 29,
             "memory": 1024,
+            "customx": 0.9,
             f"{ray._raylet.IMPLICIT_RESOURCE_PREFIX}b:a": 0.75,
         }
     )
@@ -269,23 +248,95 @@ def test_get_available_resources_per_node():
             "GPU": 8,
             "CPU": 26,
             "memory": 1024,
+            "customx": 0.8,
             f"{ray._raylet.IMPLICIT_RESOURCE_PREFIX}b:a": 0.5,
         }
     )
 
-    # Get updated info from GCS that available memory has dropped,
+    # Get updated info from GCS that available MEMORY has dropped,
     # the decreased memory should reflect in current available resources
-    # per node, while also keeping track of the CPU and GPU resources
+    # per node, while also keeping track of the CPU, GPU, custom resources
     # used by launching and running replicas
     cluster_node_info_cache.set_available_resources_per_node(
-        "node1", {"GPU": 10, "CPU": 32, "memory": 256}
+        "node1", {"GPU": 10, "CPU": 32, "memory": 256, "customx": 1}
     )
     assert scheduler._get_available_resources_per_node().get("node1") == Resources(
         **{
             "GPU": 8,
             "CPU": 26,
             "memory": 256,
+            "customx": 0.8,
             f"{ray._raylet.IMPLICIT_RESOURCE_PREFIX}b:a": 0.5,
+        }
+    )
+
+
+def test_get_available_resources_per_node_pg():
+    d_id = DeploymentID("a", "b")
+
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    cluster_node_info_cache.add_node(
+        "node1", {"GPU": 10, "CPU": 32, "memory": 1024, "customx": 1}
+    )
+
+    scheduler = default_impl.create_deployment_scheduler(
+        cluster_node_info_cache,
+        head_node_id_override="fake-head-node-id",
+        create_placement_group_fn_override=None,
+    )
+    scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(
+        d_id,
+        ReplicaConfig.create(
+            dummy,
+            ray_actor_options={"num_cpus": 0},
+            placement_group_bundles=[{"GPU": 1}, {"CPU": 3}, {"customx": 0.1}],
+            placement_group_strategy="STRICT_PACK",
+        ),
+    )
+
+    # Without updating cluster node info cache, when a replica is marked
+    # as launching, the resources it uses should decrease the scheduler's
+    # view of current available resources per node in the cluster
+    scheduler._on_replica_launching(
+        ReplicaID(unique_id="replica0", deployment_id=d_id), target_node_id="node1"
+    )
+    assert scheduler._get_available_resources_per_node().get("node1") == Resources(
+        **{
+            "GPU": 9,
+            "CPU": 29,
+            "memory": 1024,
+            "customx": 0.9,
+        }
+    )
+
+    # Similarly when a replica is marked as running, the resources it
+    # uses should decrease current available resources per node
+    scheduler.on_replica_running(
+        ReplicaID(unique_id="replica1", deployment_id=d_id), node_id="node1"
+    )
+    assert scheduler._get_available_resources_per_node().get("node1") == Resources(
+        **{
+            "GPU": 8,
+            "CPU": 26,
+            "memory": 1024,
+            "customx": 0.8,
+        }
+    )
+
+    # Get updated info from GCS that available MEMORY has dropped,
+    # the decreased memory should reflect in current available resources
+    # per node, while also keeping track of the CPU, GPU, custom resources
+    # used by launching and running replicas
+    cluster_node_info_cache.set_available_resources_per_node(
+        "node1", {"GPU": 10, "CPU": 32, "memory": 256, "customx": 1}
+    )
+    assert scheduler._get_available_resources_per_node().get("node1") == Resources(
+        **{
+            "GPU": 8,
+            "CPU": 26,
+            "memory": 256,
+            "customx": 0.8,
         }
     )
 
@@ -828,6 +879,50 @@ class TestCompactScheduling:
         )
         assert state["node1"] == 4
         assert state["node2"] == 1
+
+    def test_custom_resources(self):
+        d_id = DeploymentID(name="deployment1")
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        cluster_node_info_cache.add_node("node1", {"CPU": 3})
+        cluster_node_info_cache.add_node("node2", {"CPU": 100, "customA": 1})
+
+        scheduler = default_impl.create_deployment_scheduler(
+            cluster_node_info_cache,
+            head_node_id_override="fake-head-node-id",
+            create_placement_group_fn_override=lambda *args, **kwargs: MockPlacementGroup(  # noqa
+                *args, **kwargs
+            ),
+        )
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id,
+            ReplicaConfig.create(
+                dummy, ray_actor_options={"num_cpus": 2, "resources": {"customA": 0.1}}
+            ),
+        )
+
+        # Despite trying to schedule on node that minimizes fragmentation,
+        # should respect custom resources and schedule onto node2
+        def on_scheduled(actor_handle, placement_group):
+            scheduling_strategy = actor_handle._options["scheduling_strategy"]
+            assert isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy)
+            assert scheduling_strategy.node_id == "node2"
+
+        scheduler.schedule(
+            upscales={
+                d_id: [
+                    ReplicaSchedulingRequest(
+                        replica_id=ReplicaID(unique_id="r0", deployment_id=d_id),
+                        actor_def=MockActorClass(),
+                        actor_resources={"CPU": 2, "customA": 0.1},
+                        actor_options={"name": "random"},
+                        actor_init_args=(),
+                        on_scheduled=on_scheduled,
+                    )
+                ]
+            },
+            downscales={},
+        )
 
 
 if __name__ == "__main__":

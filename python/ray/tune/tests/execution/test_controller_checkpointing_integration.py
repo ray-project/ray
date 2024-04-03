@@ -274,7 +274,7 @@ def test_checkpoint_num_to_keep(
     assert len(cp_dirs) == 2, f"Checkpoint dirs: {cp_dirs}"
 
     # Re-instantiate trial runner and resume
-    runner.checkpoint(force=True)
+    runner.checkpoint(force=True, wait=True)
     runner = TuneController(
         resource_manager_factory=lambda: resource_manager_cls(),
         storage=STORAGE,
@@ -427,9 +427,7 @@ def test_checkpoint_user_checkpoint(
         {"TUNE_RESULT_BUFFER_LENGTH": "1", "TUNE_MAX_PENDING_TRIALS_PG": "1"},
     ):
         runner = TuneController(
-            resource_manager_factory=lambda: resource_manager_cls(),
-            storage=STORAGE,
-            checkpoint_period=0,
+            resource_manager_factory=lambda: resource_manager_cls(), storage=STORAGE
         )
         runner.add_trial(
             Trial("__fake", config={"user_checkpoint_freq": 2}, storage=STORAGE)
@@ -452,6 +450,7 @@ def test_checkpoint_user_checkpoint(
         runner.step()
 
         assert trials[0].has_checkpoint()
+        runner.checkpoint(force=True, wait=True)
 
         runner2 = TuneController(
             resource_manager_factory=lambda: resource_manager_cls(),

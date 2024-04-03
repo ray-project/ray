@@ -253,6 +253,37 @@ class TestCompactScheduling:
         wait_for_condition(check_apps_running, apps=[f"app{n}" for n in app_resources])
         print("Test passed!")
 
+    @pytest.mark.parametrize("use_pg", [True, False])
+    def test_e2e_custom_resources(self, ray_cluster, use_pg):
+        cluster = ray_cluster
+        cluster.add_node(num_cpus=1, resources={"head": 1})
+        cluster.add_node(num_cpus=3, resources={"worker1": 1, "customabcd": 1})
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+
+        worker1_node_id = ray.get(
+            get_node_id.options(resources={"worker1": 1}).remote()
+        )
+
+        if use_pg:
+            app = A.options(
+                num_replicas=1,
+                ray_actor_options={"num_cpus": 0},
+                placement_group_bundles=[{"CPU": 0.5}, {"CPU": 0.5, "customabcd": 0.1}],
+                placement_group_strategy="STRICT_PACK",
+            ).bind()
+        else:
+            app = A.options(
+                num_replicas=1,
+                ray_actor_options={"num_cpus": 1, "resources": {"customabcd": 0.1}},
+            ).bind()
+
+        handle1 = serve.run(app, name="app1", route_prefix="/app1")
+        refs = [handle1.remote() for _ in range(20)]
+        assert all(ref.result() == worker1_node_id for ref in refs)
+
+        serve.shutdown()
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

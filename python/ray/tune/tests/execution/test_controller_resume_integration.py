@@ -150,7 +150,7 @@ def test_controller_restore_no_error_resume(
     while not runner.is_finished():
         runner.step()
 
-    runner.checkpoint(force=True)
+    runner.checkpoint(force=True, wait=True)
 
     assert trials[0].status == Trial.ERROR
     del runner
@@ -195,7 +195,7 @@ def test_controller_restore_error_only_resume(
     while not runner.is_finished():
         runner.step()
 
-    runner.checkpoint(force=True)
+    runner.checkpoint(force=True, wait=True)
 
     assert trials[0].status == Trial.ERROR
     del runner
@@ -508,7 +508,7 @@ def test_controller_restore_with_dataset(
     )
     runner.add_trial(trial)
     # Req: TrialRunner checkpointing shouldn't error
-    runner.checkpoint(force=True)
+    runner.checkpoint(force=True, wait=True)
 
     # Manually clear all block refs that may have been created
     ray.shutdown()

@@ -14,13 +14,7 @@ from ray import serve
 
 @serve.deployment(
     ray_actor_options={"num_cpus": 1},
-    max_ongoing_requests=5,
-    autoscaling_config={
-        "target_ongoing_requests": 1,
-        "min_replicas": 0,
-        "initial_replicas": 0,
-        "max_replicas": 200,
-    },
+    num_replicas="auto",
 )
 class Model:
     def __init__(self):

@@ -308,7 +308,7 @@ class TestReplicaConfig:
 
         # Invalid: unsupported placement_group_strategy.
         with pytest.raises(
-            ValueError, match="Invalid placement group strategy 'FAKE_NEWS'"
+            ValueError, match="Invalid placement group strategy FAKE_NEWS"
         ):
             ReplicaConfig.create(
                 Class,
@@ -321,16 +321,26 @@ class TestReplicaConfig:
         # Invalid: malformed placement_group_bundles.
         with pytest.raises(
             ValueError,
-            match=(
-                "`placement_group_bundles` must be a non-empty list "
-                "of resource dictionaries."
-            ),
+            match=("Bundles must be a non-empty list " "of resource dictionaries."),
         ):
             ReplicaConfig.create(
                 Class,
                 tuple(),
                 dict(),
                 placement_group_bundles=[{"CPU": "1.0"}],
+            )
+
+        # Invalid: invalid placement_group_bundles.
+        with pytest.raises(
+            ValueError,
+            match="cannot be an empty dictionary or resources with only 0",
+        ):
+            ReplicaConfig.create(
+                Class,
+                tuple(),
+                dict(),
+                ray_actor_options={"num_cpus": 0, "num_gpus": 0},
+                placement_group_bundles=[{"CPU": 0, "GPU": 0}],
             )
 
         # Invalid: replica actor does not fit in the first bundle (CPU).
