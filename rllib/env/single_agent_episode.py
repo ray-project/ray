@@ -261,10 +261,9 @@ class SingleAgentEpisode:
 
         # Lookback buffer length is not provided. Interpret already given data as
         # lookback buffer lengths for all data types.
-        if len_lookback_buffer == "auto":
-            len_lookback_buffer = len(rewards or [])
-        elif len_lookback_buffer > len(rewards or []):
-            len_lookback_buffer = len(rewards or [])
+        len_rewards = len(rewards) if rewards is not None else 0
+        if len_lookback_buffer == "auto" or len_lookback_buffer > len_rewards:
+            len_lookback_buffer = len_rewards
 
         infos = infos or [{} for _ in range(len(observations or []))]
 

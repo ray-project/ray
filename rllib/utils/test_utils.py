@@ -1241,9 +1241,11 @@ def run_rllib_example_script_experiment(
             ),
         )
         .resources(
-            num_gpus=args.num_gpus,  # old stack
-            num_learner_workers=args.num_gpus,  # new stack
-            num_gpus_per_learner_worker=1 if args.num_gpus else 0,
+            # Old stack.
+            num_gpus=0 if args.enable_new_api_stack else args.num_gpus,
+            # New stack.
+            num_learner_workers=args.num_gpus,
+            num_gpus_per_learner_worker=1 if torch.cuda.is_available() else 0,
             num_cpus_for_local_worker=1,
         )
     )
