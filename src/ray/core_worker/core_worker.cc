@@ -204,7 +204,14 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   NodeID local_raylet_id;
   int assigned_port;
 
-  JobID job_id = worker_context_.GetCurrentJobID();
+  if (options_.worker_type == WorkerType::DRIVER &&
+      !options_.serialized_job_config.empty()) {
+    // Driver populates the job config via initialization.
+    // Workers populates it when the first task is received.
+    rpc::JobConfig job_config;
+    job_config.ParseFromString(options_.serialized_job_config);
+    worker_context_.MaybeInitializeJobInfo(worker_context_.GetCurrentJobID(), job_config);
+  }
 
   local_raylet_client_ =
       std::make_shared<raylet::RayletClient>(io_service_,
@@ -212,7 +219,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                              options_.raylet_socket,
                                              GetWorkerID(),
                                              options_.worker_type,
-                                             job_id,
+                                             worker_context_.GetCurrentJobID(),
                                              options_.runtime_env_hash,
                                              options_.language,
                                              options_.node_ip_address,
@@ -252,17 +259,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   RAY_LOG(INFO) << "Initializing worker at address: " << rpc_address_.ip_address() << ":"
                 << rpc_address_.port() << ", worker ID " << worker_context_.GetWorkerID()
                 << ", raylet " << local_raylet_id;
-
-  if (options_.worker_type == WorkerType::DRIVER &&
-      !options_.serialized_job_config.empty()) {
-    // Driver populates the job config via initialization.
-    // Workers populates it when the first task is received.
-    rpc::JobConfig job_config;
-    job_config.ParseFromString(options_.serialized_job_config);
-    // Reads rpc_address_, have to happen after it's set.
-    *job_config.mutable_driver_node_id() = GetCurrentNodeId().Binary();
-    worker_context_.MaybeInitializeJobInfo(worker_context_.GetCurrentJobID(), job_config);
-  }
 
   gcs_client_ = std::make_shared<gcs::GcsClient>(options_.gcs_options, GetWorkerID());
 
