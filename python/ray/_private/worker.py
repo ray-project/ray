@@ -1836,7 +1836,8 @@ def shutdown(_exiting_interpreter: bool = False):
     # Shut down the Ray processes.
     global _global_node
     if _global_node is not None:
-        _global_node.destroy_external_storage()
+        if _global_node.is_head():
+            _global_node.destroy_external_storage()
         _global_node.kill_all_processes(check_alive=False, allow_graceful=True)
         _global_node = None
     storage._reset()
