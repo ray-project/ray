@@ -3,7 +3,7 @@ disable_existing_loggers: False
 
 formatters:
     ray:
-        format: '%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s'
+        format: "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s"
 
 handlers:
     file:

@@ -6,7 +6,6 @@ from typing import Optional
 import yaml
 
 import ray
-from ray._private.ray_constants import LOGGER_FORMAT
 
 CONFIG_FILENAME = "logging.yaml"
 
@@ -43,7 +42,7 @@ class LogHandler(logging.Handler):
 
 def configure_logging():
     with open(
-        os.abspath(os.path.join(os.path.dirname(__file__), CONFIG_FILENAME))
+        os.path.abspath(os.path.join(os.path.dirname(__file__), CONFIG_FILENAME))
     ) as file:
         config = yaml.safe_load(file)
     logging.config.dictConfig(config)
