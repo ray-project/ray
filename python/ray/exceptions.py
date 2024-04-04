@@ -756,7 +756,12 @@ class ActorUnavailableError(RayError):
         self.actor_id = ActorID(actor_id) if actor_id is not None else None
 
     def __str__(self):
-        return f"The task {task ID} could not be completed because the actor {self.actor_id} is unavailable: {self.error_message}.\n\nThis task will be automatically retried if `max_retries` is set and there are retries remaining."
+        return (
+            f"The task could not be completed because the actor "
+            f"{self.actor_id.hex()} is "
+            f"unavailable: {self.error_message}.\n\nThis task will be automatically "
+            "retried if `max_retries` is set and there are retries remaining."
+        )
 
 
 RAY_EXCEPTION_TYPES = [

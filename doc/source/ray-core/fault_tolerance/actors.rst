@@ -138,34 +138,25 @@ If ``max_restarts`` is set, you can also allow Ray to automatically restart the 
 Unavailable Actors
 ----------------------
 
-When an actor can't accept method calls,
-a method call or a `ray.get` on the method return object reference may raise
+When an actor can't accept method calls, a `ray.get` on the method's returned return object reference may raise
 `ActorUnavailableError`. This exception indicates the actor isn't accessible for the
 moment, but may recover after some wait and retry. Typical cases include:
 
-- The actor is starting, for example it's still running the class constructor.
-- The actor is restarting, for example it's waiting for resources.
+- The actor is restarting, for example it's waiting for resources, or running the class constructor in the restarting.
 - The actor is experiencing transient network issues, for example connection breaks.
 - The actor is dead but the death hasn't yet been reported to the system.
 
-Actor method calls are at-most-once. This means that when an `actor.method.remote()` or `ray.get()` call raises the `ActorUnavailableError` exception, there is no guarantee on
+Actor method calls are at-most-once execution. This means that when a `ray.get()` call raises the `ActorUnavailableError` exception, there is no guarantee on
 whether the actor executed the task or not. If the method has side effects, they may or may not
-be observable. Ray does guarantee that the method will not be executed twice, unless the actor or the method is configured with retries, as described in the next section.
+be observable. Ray does guarantee that the method won't be executed twice, unless the actor or the method is configured with retries, as described in the next section.
 
 The actor may or may not recover in the next calls. Those subsequent calls
 may raise `RayActorError` if the actor is confirmed dead, `ActorUnavailableError` if it's
 still unreachable, or return values normally if the actor recovered.
 
-Best practice on `ActorUnavailableError`: upon such error the control plane control plane
-can "quarantine" the actor by stop sending production loads and periodically pinging
-the actor until it raises `RayActorError` or returns OK. Here is a simple example:
-
-
-.. literalinclude:: ../doc_code/actor_quarantine.py
-  :language: python
-  :start-after: __actor_quarantine_begin__
-  :end-before: __actor_quarantine_end__
-
+Best practice on `ActorUnavailableError`: upon such error the caller
+can "quarantine" the actor and stop sending it traffics. It can then periodically ping
+the actor until it raises `RayActorError` or returns OK.
 
 
 Actor method exceptions

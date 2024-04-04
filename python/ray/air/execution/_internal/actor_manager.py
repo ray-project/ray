@@ -449,7 +449,7 @@ class RayActorManager:
 
         return True
 
-    def _cleanup_actor(self, tracked_actor: TrackedActor, kill=False):
+    def _cleanup_actor(self, tracked_actor: TrackedActor):
         self._cleanup_actor_futures(tracked_actor)
 
         # Remove from tracked actors
@@ -457,8 +457,8 @@ class RayActorManager:
             ray_actor,
             acquired_resources,
         ) = self._live_actors_to_ray_actors_resources.pop(tracked_actor)
-        if kill:
-            ray.kill(ray_actor)
+        # Always kill the actor to be safe in case it's left running.
+        ray.kill(ray_actor)
         self._live_resource_cache = None
 
         # Return resources

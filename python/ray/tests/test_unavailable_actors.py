@@ -16,12 +16,9 @@ class Counter:
         time.sleep(init_time_s)
         self.c = 0
 
-    def sum(self, i, j):
-        return i + j
-
     def slow_increment(self, i, secs):
         self.c += i
-        print(f"incrementing {i} to {self.c}")
+        print(f"incrementing self.c by {i} to {self.c}")
         time.sleep(secs)
         return self.c
 
@@ -33,7 +30,6 @@ class Counter:
 
     def gen_iota(self, n):
         for i in range(n):
-            # time.sleep(1.1)
             yield i
 
 
@@ -60,6 +56,14 @@ def call_from(f, source):
         raise ValueError(f"unknown {source}")
 
 
+def sigkill_actor(actor):
+    """Sends SIGKILL to an actor's process. The actor must be on the same node, and it
+    must has a `getpid` method."""
+    pid = ray.get(actor.getpid.remote())
+    print(f"killing actor {actor}'s process {pid}")
+    os.kill(pid, signal.SIGKILL)
+
+
 @pytest.mark.parametrize(
     "caller",
     ["actor", "task", "driver"],
@@ -80,6 +84,16 @@ def test_actor_unavailable_conn_broken(ray_start_regular, caller):
         assert ray.get(a.read.remote()) == 5
         assert ray.get(a.slow_increment.remote(4, 0.1)) == 9
 
+        # Break the connection again. This time, the method call happens after the break
+        # so it did not reach the actor. The actor is still in the previous state and
+        # the side effects are not observable. Regardless, the method call `.remote()`
+        # itself won't raise an error.
+        close_common_connections(pid)
+        task2 = a.slow_increment.remote(5, 0.1)
+        with pytest.raises(ActorUnavailableError, match="GrpcUnavailable"):
+            ray.get(task2)
+        assert ray.get(a.read.remote()) == 9
+
     call_from(body, caller)
 
 
@@ -94,8 +108,7 @@ def test_actor_unavailable_restarting(ray_start_regular, caller):
 
         # Kill the actor process. The actor will restart so we get a temporal
         # unavailable.
-        pid = ray.get(a.getpid.remote())
-        os.kill(pid, signal.SIGKILL)
+        sigkill_actor(a)
         with pytest.raises(ActorUnavailableError):
             print(ray.get(a.slow_increment.remote(2, 0.1)))
 
@@ -114,8 +127,7 @@ def test_actor_unavailable_restarting(ray_start_regular, caller):
             assert ray.get(a.slow_increment.remote(i, 0.1)) == total
 
         # Kill the actor again. This time it's not gonna restart so RayActorError.
-        pid = ray.get(a.getpid.remote())
-        os.kill(pid, signal.SIGKILL)
+        sigkill_actor(a)
         with pytest.raises(RayActorError):
             print(ray.get(a.slow_increment.remote(1, 0.1)))
 
@@ -129,13 +141,12 @@ def test_actor_unavailable_restarting(ray_start_regular, caller):
 def test_actor_unavailable_norestart(ray_start_regular, caller):
     def body():
         a = Counter.remote()
-        assert ray.get(a.sum.remote(1, 2)) == 3
-        pid = ray.get(a.getpid.remote())
+        assert ray.get(a.read.remote()) == 0
 
         # Kill the actor process. The actor died permanently so RayActorError.
-        os.kill(pid, signal.SIGKILL)
+        sigkill_actor(a)
         with pytest.raises(RayActorError):
-            print(ray.get(a.sum.remote(1, 2)))
+            print(ray.get(a.read.remote()))
 
     call_from(body, caller)
 
@@ -175,6 +186,64 @@ def test_generators_early_stop_unavailable(ray_start_regular, caller):
             ray.get(obj_refs)
 
     call_from(body, caller)
+
+
+def test_unavailable_then_actor_error(ray_start_regular):
+    @ray.remote(max_restarts=-1, max_task_retries=0)
+    class SlowCtor:
+        """
+        An actor that has a slow constructor. It increments the counter in the
+        constructor, and if the counter reaches `die_at_count` after this time's
+        increment, it dies.
+
+        To precisely control test behavior, sets infinite restarts, no task retries.
+        """
+
+        def __init__(self, start_time_s, counter: Counter, die_at_count):
+            count = ray.get(counter.read.remote())
+            print(f"SlowCtor init! count = {count}, sleeping {start_time_s}s...")
+            time.sleep(start_time_s)
+            if count >= die_at_count:
+                raise ValueError(f"die at count {die_at_count}!")
+            else:
+                ray.get(counter.slow_increment.remote(1, 0.1))
+
+        def ping(self, name):
+            print(f"ping from {name}")
+            return f"hello {name}!"
+
+        def getpid(self):
+            return os.getpid()
+
+    c = Counter.remote()
+    CTOR_SLEEP_TIME_S = 2
+    DIE_AT_COUNT = 2
+    # The actor spends 2s in the init; it fails after 1 initial start + 1 restart.
+    a = SlowCtor.remote(CTOR_SLEEP_TIME_S, c, DIE_AT_COUNT)
+    assert ray.get(a.ping.remote("lemon")) == "hello lemon!"
+
+    # Kill the actor process. The actor will restart so we get a temporal unavailable
+    # actor for 2s.
+    sigkill_actor(a)
+
+    with pytest.raises(ActorUnavailableError, match="GrpcUnavailable"):
+        print(ray.get(a.ping.remote("unavailable")))
+    # When the actor is restarting, any method call raises ActorUnavailableError.
+    with pytest.raises(ActorUnavailableError, match="The actor is in RESTARTING state"):
+        print(ray.get(a.ping.remote("unavailable")))
+
+    # waits for the actor to restart
+    time.sleep(3)
+    assert ray.get(a.ping.remote("ok")) == "hello ok!"
+
+    # Kill the actor again. First ActorUnavailableError in the init sleep; then the init
+    # raised exception so RayActorError.
+    sigkill_actor(a)
+    with pytest.raises(ActorUnavailableError):
+        print(ray.get(a.ping.remote("unavailable")))
+    time.sleep(3)
+    with pytest.raises(RayActorError, match="an error raised in its creation task"):
+        print(ray.get(a.ping.remote("actor error")))
 
 
 if __name__ == "__main__":
