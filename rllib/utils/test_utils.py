@@ -12,6 +12,7 @@ import os
 import pprint
 import random
 import re
+import sys
 import time
 import tree  # pip install dm_tree
 from typing import (
@@ -813,7 +814,13 @@ def framework_iterator(
     for fw in frameworks:
         # Skip tf if on new API stack.
         if fw == "tf" and config.get("_enable_new_api_stack", False):
-            logger.warning("framework_iterator skipping tf (new API stack configured)!")
+            logger.warning("Skipping `framework=tf` (new API stack configured)!")
+            continue
+        # Skip if tf/tf2 and py >= 3.11.
+        elif fw in ["tf", "tf2"] and (
+            sys.version_info.major == 3 and sys.version_info.minor >= 11
+        ):
+            logger.warning("Skipping `framework=tf/tf2` (python >= 3.11)!")
             continue
 
         # Skip non-installed frameworks.
