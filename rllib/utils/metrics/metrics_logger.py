@@ -8,7 +8,7 @@ class MetricsLogger:
     def __init__(self):
         self.scalar_values = NestedDict()
 
-    def log_scalar(self, keys, value, reduce="mean"):
+    def log_scalar(self, keys, value, reduce="mean", ttl="until_reduce"):
         for red in force_list(reduce):
             key = force_list(keys)
             key[-1] = reduce + "_" + key[-1]
@@ -23,6 +23,8 @@ class MetricsLogger:
             reduced = stat.reduce()
             ret[key] = reduced
         return ret.asdict()
+
+    def to_dict(self):
 
 
 
