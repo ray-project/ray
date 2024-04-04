@@ -544,6 +544,7 @@ const MetricsSection = ({
               key={pathParams}
               className={classes.chart}
               variant="outlined"
+              elevation={0}
             >
               <iframe
                 key={title}

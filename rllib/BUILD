@@ -2323,29 +2323,29 @@ py_test(
 # )
 
 py_test(
-    name = "examples/multi_agent_and_self_play/rock_paper_scissors_heuristic_vs_learnt",
-    main = "examples/multi_agent_and_self_play/rock_paper_scissors_heuristic_vs_learnt.py",
+    name = "examples/multi_agent_and_self_play/rock_paper_scissors_heuristic_vs_learned",
+    main = "examples/multi_agent_and_self_play/rock_paper_scissors_heuristic_vs_learned.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/multi_agent_and_self_play/rock_paper_scissors_heuristic_vs_learnt.py"],
+    srcs = ["examples/multi_agent_and_self_play/rock_paper_scissors_heuristic_vs_learned.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=6.5"],
 )
 
 py_test(
-    name = "examples/multi_agent_and_self_play/rock_paper_scissors_heuristic_vs_learnt_w_lstm",
-    main = "examples/multi_agent_and_self_play/rock_paper_scissors_heuristic_vs_learnt.py",
+    name = "examples/multi_agent_and_self_play/rock_paper_scissors_heuristic_vs_learned_w_lstm",
+    main = "examples/multi_agent_and_self_play/rock_paper_scissors_heuristic_vs_learned.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "large",
-    srcs = ["examples/multi_agent_and_self_play/rock_paper_scissors_heuristic_vs_learnt.py"],
+    srcs = ["examples/multi_agent_and_self_play/rock_paper_scissors_heuristic_vs_learned.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=7.2", "--use-lstm", "--num-env-runners=4", "--num-cpus=6"],
 )
 
 py_test(
-    name = "examples/multi_agent_and_self_play/rock_paper_scissors_learnt_vs_learnt",
-    main = "examples/multi_agent_and_self_play/rock_paper_scissors_learnt_vs_learnt.py",
+    name = "examples/multi_agent_and_self_play/rock_paper_scissors_learned_vs_learned",
+    main = "examples/multi_agent_and_self_play/rock_paper_scissors_learned_vs_learned.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/multi_agent_and_self_play/rock_paper_scissors_learnt_vs_learnt.py"],
+    srcs = ["examples/multi_agent_and_self_play/rock_paper_scissors_learned_vs_learned.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--framework=torch", "--stop-iter=10"],
 )
 
