@@ -27,6 +27,7 @@
 #include "ray/core_worker/core_worker_options.h"
 #include "ray/core_worker/core_worker_process.h"
 #include "ray/core_worker/experimental_mutable_object_manager.h"
+#include "ray/core_worker/experimental_mutable_object_provider.h"
 #include "ray/core_worker/future_resolver.h"
 #include "ray/core_worker/generator_waiter.h"
 #include "ray/core_worker/lease_policy.h"
@@ -725,9 +726,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] object_ids The IDs of the objects.
   Status ExperimentalChannelReadRelease(const std::vector<ObjectID> &object_ids);
 
-  Status ExperimentalChannelRegisterReader(const ObjectID &object_id);
-
-  Status ExperimentalChannelRegisterWriter(const ObjectID &object_id);
+  Status ExperimentalRegisterMutableObjectWriter(const ObjectID &object_id);
+  Status ExperimentalRegisterMutableObjectWriterNetwork(const ObjectID &object_id, const NodeID &node_id);
+  Status ExperimentalRegisterMutableObjectReader(const ObjectID &object_id, int64_t num_readers, const ObjectID &local_reader_object_id);
+  Status ExperimentalRegisterMutableObjectReaderNetwork(const ObjectID &object_id, int64_t num_readers, const ObjectID &local_reader_object_id);
 
   /// Get a list of objects from the object store. Objects that failed to be retrieved
   /// will be returned as nullptrs.
@@ -1763,8 +1765,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider_;
 
   /// Manages mutable objects on the local node.
-  std::shared_ptr<experimental::MutableObjectManager>
+  std::shared_ptr<ray::experimental::MutableObjectManager>
       experimental_mutable_object_manager_;
+
+  /// Manages mutable objects that must be transferred across nodes.
+  std::shared_ptr<experimental::MutableObjectProvider>
+      experimental_mutable_object_provider_;
 
   std::unique_ptr<FutureResolver> future_resolver_;
 

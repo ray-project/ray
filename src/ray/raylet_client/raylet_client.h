@@ -172,7 +172,7 @@ class ResourceTrackingInterface {
 
 class MutableObjectReaderInterface {
  public:
-  virtual void RegisterMutableObject(
+  virtual void RegisterMutableObjectReader(
       const ObjectID &object_id,
       int64_t num_readers,
       const ObjectID &local_reader_object_id,
@@ -429,7 +429,7 @@ class RayletClient : public RayletClientInterface {
       const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback)
       override;
 
-  void RegisterMutableObject(
+  void RegisterMutableObjectReader(
       const ObjectID &object_id,
       int64_t num_readers,
       const ObjectID &local_reader_object_id,

@@ -406,7 +406,7 @@ void raylet::RayletClient::GetTaskFailureCause(
       });
 }
 
-void raylet::RayletClient::RegisterMutableObject(
+void raylet::RayletClient::RegisterMutableObjectReader(
     const ObjectID &object_id,
     int64_t num_readers,
     const ObjectID &local_reader_object_id,

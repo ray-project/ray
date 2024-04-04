@@ -58,6 +58,8 @@ class Channel:
         self,
         buffer_size_bytes: Optional[int] = None,
         num_readers: int = 1,
+        _reader_node_id: Optional[str] = None,
+        _writer_channel: Optional["Channel"] = None,
         _base_ref: Optional["ray.ObjectRef"] = None,
     ):
         """
@@ -99,14 +101,35 @@ class Channel:
         if self._writer_registered:
             return
 
-        self._worker.core_worker.experimental_channel_register_writer(self._base_ref)
+        if _reader_node_id is None:
+            # Writing locally.
+            self._worker.core_worker.experimental_channel_register_writer(
+                self._base_ref
+            )
+        else:
+            # Writing across the network.
+            if not isinstance(_reader_node_id, str):
+                raise ValueError("`_reader_node_id` must be a str")
+            print(self._base_ref, _reader_node_id)
+            self._worker.core_worker.experimental_channel_register_network(
+                self._base_ref, _reader_node_id
+            )
         self._writer_registered = True
 
     def ensure_registered_as_reader(self):
         if self._reader_registered:
             return
 
-        self._worker.core_worker.experimental_channel_register_reader(self._base_ref)
+        if _writer_channel is None:
+            # Reading locally.
+            self._worker.core_worker.experimental_channel_register_reader(
+                self._base_ref
+            )
+        else:
+            # Reading across the network.
+            self._worker.core_worker.experimental_register_mutable_object_reader(
+                _writer_channel._base_ref, self._num_readers, self._base_ref
+            )
         self._reader_registered = True
 
     @staticmethod

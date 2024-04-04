@@ -359,6 +359,26 @@ def test_asyncio_exceptions(ray_start_regular_shared, max_queue_size):
     compiled_dag.teardown()
 
 
+def test_multinode(ray_start_regular):
+    num_actors = 2
+    actors = [Actor.remote(i) for i in range(num_actors)]
+    with InputNode() as inp:
+        dag = inp
+        for a in actors:
+            dag = a.append_to.bind(dag)
+
+    compiled_dag = dag.experimental_compile()
+
+    for i in range(3):
+        output_channel = compiled_dag.execute([])
+        # TODO(swang): Replace with fake ObjectRef.
+        result = output_channel.begin_read()
+        assert result == list(range(num_actors))
+        output_channel.end_read()
+
+    compiled_dag.teardown()
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

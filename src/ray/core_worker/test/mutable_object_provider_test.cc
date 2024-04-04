@@ -101,7 +101,7 @@ class TestPlasma : public plasma::PlasmaClientInterface {
 
 class TestInterface : public MutableObjectReaderInterface {
  public:
-  void RegisterMutableObject(
+  void RegisterMutableObjectReader(
       const ObjectID &object_id,
       int64_t num_readers,
       const ObjectID &local_reader_object_id,

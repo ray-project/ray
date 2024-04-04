@@ -93,7 +93,7 @@ class MockRayletClientInterface : public RayletClientInterface {
               (const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback),
               (override));
   MOCK_METHOD(void,
-              RegisterMutableObject,
+              RegisterMutableObjectReader,
               (const ObjectID &object_id,
                int64_t num_readers,
                const ObjectID &local_reader_object_id,

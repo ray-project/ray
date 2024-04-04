@@ -122,7 +122,7 @@ struct GcsServerMocker {
     void GetResourceLoad(
         const ray::rpc::ClientCallback<rpc::GetResourceLoadReply> &) override {}
 
-    void RegisterMutableObject(
+    void RegisterMutableObjectReader(
         const ObjectID &object_id,
         int64_t num_readers,
         const ObjectID &local_reader_object_id,

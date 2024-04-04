@@ -380,7 +380,9 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
 #if defined(__APPLE__) || defined(__linux__)
   experimental_mutable_object_manager_ =
-      std::make_shared<experimental::MutableObjectManager>();
+      std::make_shared<ray::experimental::MutableObjectManager>();
+  experimental_mutable_object_provider_ =
+      std::make_shared<experimental::MutableObjectProvider>(plasma_store_provider_->store_client(), nullptr);
 #endif
 
   auto push_error_callback = [this](const JobID &job_id,
@@ -1444,22 +1446,38 @@ Status CoreWorker::ExperimentalChannelReadRelease(
   return experimental_mutable_object_manager_->ReadRelease(object_ids[0]);
 }
 
-Status CoreWorker::ExperimentalChannelRegisterReader(const ObjectID &object_id) {
-  std::unique_ptr<plasma::MutableObject> object;
-  RAY_RETURN_NOT_OK(
-      plasma_store_provider_->GetExperimentalMutableObject(object_id, &object));
-  RAY_CHECK(object) << "Mutable object must be local to be registered";
-  return experimental_mutable_object_manager_->RegisterReaderChannel(object_id,
-                                                                     std::move(object));
-}
-
-Status CoreWorker::ExperimentalChannelRegisterWriter(const ObjectID &object_id) {
+Status CoreWorker::ExperimentalRegisterMutableObjectWriter(const ObjectID &object_id) {
   std::unique_ptr<plasma::MutableObject> object;
   RAY_RETURN_NOT_OK(
       plasma_store_provider_->GetExperimentalMutableObject(object_id, &object));
   RAY_CHECK(object) << "Mutable object must be local to be registered";
   return experimental_mutable_object_manager_->RegisterWriterChannel(object_id,
                                                                      std::move(object));
+}
+
+Status CoreWorker::ExperimentalRegisterMutableObjectWriterNetwork(const ObjectID &object_id, const NodeID &node_id) {
+  experimental_mutable_object_provider_->RegisterWriterChannel(object_id, node_id);
+  return Status::OK();
+}
+
+Status CoreWorker::ExperimentalRegisterMutableObjectReader(
+    const ObjectID &object_id,
+    int64_t num_readers,
+    const ObjectID &local_reader_object_id) {
+  std::promise<void> promise;
+  std::future<void> future = promise.get_future();
+
+  local_raylet_client_->RegisterMutableObjectReader(
+      object_id,
+      num_readers,
+      local_reader_object_id,
+      [this, &promise, object_id](
+          const Status &status,
+          const rpc::RegisterMutableObjectReply &reply) {
+        promise.set_value();
+      });
+  future.wait();
+  return Status::OK();
 }
 
 Status CoreWorker::Get(const std::vector<ObjectID> &ids,
