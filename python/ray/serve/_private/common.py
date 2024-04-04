@@ -712,9 +712,3 @@ class TargetCapacityDirection(str, Enum):
 class ReplicaQueueLengthInfo:
     accepted: bool
     num_ongoing_requests: int
-
-class APISource(Enum):
-    """Used to determine what frontend API an operation originates from."""
-    UNKNOWN = 0
-    PYTHON = 1
-    REST_API = 2
