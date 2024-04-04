@@ -193,8 +193,8 @@ def test_unavailable_then_actor_error(ray_start_regular):
     @ray.remote(max_restarts=-1, max_task_retries=0)
     class SlowCtor:
         """
-        An actor that has a slow constructor. It increments the counter in the
-        constructor, and if the counter reaches `die_at_count` after this time's
+        An actor that has a slow init. It increments the counter in the
+        init, and if the counter reaches `die_at_count` after this time's
         increment, it dies.
 
         To precisely control test behavior, sets infinite restarts, no task retries.
@@ -251,7 +251,7 @@ def test_task_retries(ray_start_regular):
     @ray.remote(max_restarts=-1, max_task_retries=0)
     class SlowCtor:
         """
-        An actor that has a slow constructor. It increments the counter in the constructor,
+        An actor that has a slow init. It increments the counter in the init,
         and if the counter is within the `die_range` it dies.
 
         To precisely control test behavior, sets infinite restarts, no task retries.
@@ -263,7 +263,8 @@ def test_task_retries(ray_start_regular):
             time.sleep(start_time_s)
             if die_range[0] <= count and count < die_range[1]:
                 print(
-                    f"die at count {count} because it's in range [{die_range[0]}, {die_range[1]})!"
+                    f"die at count {count} because it's in range"
+                    f" [{die_range[0]}, {die_range[1]})!"
                 )
                 sys.exit(1)
 
@@ -276,7 +277,7 @@ def test_task_retries(ray_start_regular):
 
     c = Counter.remote()
     CTOR_SLEEP_TIME_S = 2
-    # The actor spends 2s in the constructor; it fails after 1 initial start + 1 restart.
+    # The actor spends 2s in the init; it fails after 1 initial start + 1 restart.
     a = SlowCtor.remote(CTOR_SLEEP_TIME_S, c, [2, 5])
     assert ray.get(a.ping.remote("lemon")) == "hello lemon!"
 
