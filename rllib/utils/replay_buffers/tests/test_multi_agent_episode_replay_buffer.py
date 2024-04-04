@@ -31,7 +31,7 @@ class TestMultiAgentEpisodeReplayBuffer(unittest.TestCase):
         return eps
 
     def test_add_and_eviction_logic(self):
-        """Tests batches getting properly added to buffer and cause proper eviction."""
+        """Tests episodes getting properly added to buffer and cause proper eviction."""
 
         # Fill a buffer till capacity (100 ts).
         buffer = MultiAgentEpisodeReplayBuffer(capacity=100)
@@ -92,6 +92,7 @@ class TestMultiAgentEpisodeReplayBuffer(unittest.TestCase):
         )
 
     def test_buffer_independent_sample_logic(self):
+        """Samples independently from the multi-agent buffer."""
         buffer = MultiAgentEpisodeReplayBuffer(capacity=10000)
 
         for _ in range(200):
@@ -154,6 +155,7 @@ class TestMultiAgentEpisodeReplayBuffer(unittest.TestCase):
                 self.assertTrue(np.all(n_steps - 1.0 < tolerance))
 
     def test_buffer_synchronized_sample_logic(self):
+        """Samples synchronized from the multi-agent buffer."""
         buffer = MultiAgentEpisodeReplayBuffer(capacity=10000)
 
         for _ in range(200):
@@ -161,7 +163,9 @@ class TestMultiAgentEpisodeReplayBuffer(unittest.TestCase):
             buffer.add(episode)
 
         for _ in range(1000):
-            sample = buffer.sample(batch_size_B=16, n_step=1, replay_mode="synchronize")
+            sample = buffer.sample(
+                batch_size_B=16, n_step=1, replay_mode="synchronized"
+            )
             self.assertTrue("module_1" in sample)
             self.assertTrue("module_2" in sample)
             for module_id in sample:
