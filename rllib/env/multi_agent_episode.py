@@ -1428,6 +1428,7 @@ class MultiAgentEpisode:
             return_list=True,
         )
 
+        # Create the actual slice to be returned.
         ma_episode = MultiAgentEpisode(
             id_=self.id_,
             # In the following, offset `start`s automatically by lookbacks.
@@ -1444,6 +1445,11 @@ class MultiAgentEpisode:
             agent_module_ids=self._agent_to_module_mapping,
             agent_to_module_mapping_fn=self.agent_to_module_mapping_fn,
         )
+
+        # Finalize slice if `self` is finalized.
+        if self.is_finalized:
+            ma_episode.finalize()
+
         return ma_episode
 
     def __len__(self):
