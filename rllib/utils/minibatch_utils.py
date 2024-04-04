@@ -229,6 +229,11 @@ class ShardEpisodesIterator:
                         episode[:remaining_length],
                         episode[remaining_length:],
                     )
+                    if type(slice_part).__name__ == "MultiAgentEpisode":
+                        if any(len(s) == 0 for s in slice_part.agent_episodes.values()):
+                            assert False
+                        if any(len(s) == 0 for s in remaining_part.agent_episodes.values()):
+                            assert False
                     sublists[min_index].append(slice_part)
                     lengths[min_index] += len(slice_part)
                     self._episodes[episode_index] = remaining_part
