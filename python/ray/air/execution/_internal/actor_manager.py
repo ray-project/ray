@@ -270,17 +270,10 @@ class RayActorManager:
         tracked_actor = tracked_actor_task._tracked_actor
 
         if isinstance(exception, (RayActorError, ActorUnavailableError)):
-            # On ActorUnavailableError: The actor *may* be dead, but may also recover.
-            # To be safe, we kill the actor and mark it as failed.
-            # IDEA: we can retry by feeding the task back to the event manager
-            # several times and then give up.
-            # On RayActorError: actor is already dead, no need to kill.
-            need_kill = isinstance(exception, ActorUnavailableError)
-
             self._failed_actor_ids.add(tracked_actor.actor_id)
 
             # Clean up any references to the actor and its futures
-            self._cleanup_actor(tracked_actor=tracked_actor, kill=need_kill)
+            self._cleanup_actor(tracked_actor=tracked_actor)
 
             # Handle actor state callbacks
             if tracked_actor._on_error:

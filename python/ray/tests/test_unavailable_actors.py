@@ -7,6 +7,7 @@ import signal
 import ray
 from ray._private.test_utils import close_common_connections
 from ray.exceptions import ActorUnavailableError, RayActorError
+from typing import Tuple
 
 
 @ray.remote
@@ -244,6 +245,53 @@ def test_unavailable_then_actor_error(ray_start_regular):
     time.sleep(3)
     with pytest.raises(RayActorError, match="an error raised in its creation task"):
         print(ray.get(a.ping.remote("actor error")))
+
+
+def test_task_retries(ray_start_regular):
+    @ray.remote(max_restarts=-1, max_task_retries=0)
+    class SlowCtor:
+        """
+        An actor that has a slow constructor. It increments the counter in the constructor,
+        and if the counter is within the `die_range` it dies.
+
+        To precisely control test behavior, sets infinite restarts, no task retries.
+        """
+
+        def __init__(self, start_time_s, counter: Counter, die_range: Tuple[int, int]):
+            count = ray.get(counter.slow_increment.remote(1, 0.1))
+            print(f"SlowCtor init! count = {count}, sleeping {start_time_s}s...")
+            time.sleep(start_time_s)
+            if die_range[0] <= count and count < die_range[1]:
+                print(
+                    f"die at count {count} because it's in range [{die_range[0]}, {die_range[1]})!"
+                )
+                sys.exit(1)
+
+        def ping(self, name):
+            print(f"ping from {name}")
+            return f"hello {name}!"
+
+        def getpid(self):
+            return os.getpid()
+
+    c = Counter.remote()
+    CTOR_SLEEP_TIME_S = 2
+    # The actor spends 2s in the constructor; it fails after 1 initial start + 1 restart.
+    a = SlowCtor.remote(CTOR_SLEEP_TIME_S, c, [2, 5])
+    assert ray.get(a.ping.remote("lemon")) == "hello lemon!"
+
+    # Kill the actor process. The actor will restart so we get a temporal unavailable
+    # actor for 2s.
+    sigkill_actor(a)
+    # Actor is restarting, any method call raises ActorUnavailableError.
+    with pytest.raises((ActorUnavailableError)):
+        ray.get(a.ping.remote("unavailable"))
+    # But if the task has retries, it will retry until the actor is available.
+    # Each retry happens after RAY_task_retry_delay_ms (default 0) wait.
+    # On my laptop, it took 8 retries for the 2s actor init time.
+    assert (
+        ray.get(a.ping.options(max_task_retries=-1).remote("retry")) == "hello retry!"
+    )
 
 
 if __name__ == "__main__":
