@@ -217,9 +217,9 @@ class MultiAgentEpisode:
         # Thus, agents that are part of the reset obs, will start their mapping data
         # with a [0 ...], all other agents will start their mapping data with:
         # [self.SKIP_ENV_TS_TAG, ...].
-        self.env_t_to_agent_t: DefaultDict[AgentID, InfiniteLookbackBuffer] = (
-            defaultdict(InfiniteLookbackBuffer)
-        )
+        self.env_t_to_agent_t: DefaultDict[
+            AgentID, InfiniteLookbackBuffer
+        ] = defaultdict(InfiniteLookbackBuffer)
 
         # In the `MultiAgentEpisode` we need these buffers to keep track of actions,
         # that happen when an agent got observations and acted, but did not receive
@@ -531,9 +531,9 @@ class MultiAgentEpisode:
                     assert agent_id not in self._agent_buffered_actions
                     self._agent_buffered_actions[agent_id] = _action
                     self._agent_buffered_rewards[agent_id] = _reward
-                    self._agent_buffered_extra_model_outputs[agent_id] = (
-                        _extra_model_outputs
-                    )
+                    self._agent_buffered_extra_model_outputs[
+                        agent_id
+                    ] = _extra_model_outputs
 
             # CASE 4: Step has started in the past and is still ongoing (no observation,
             # no action).
@@ -889,9 +889,9 @@ class MultiAgentEpisode:
             The ModuleID mapped to from the given `agent_id`.
         """
         if agent_id not in self._agent_to_module_mapping:
-            module_id = self._agent_to_module_mapping[agent_id] = (
-                self.agent_to_module_mapping_fn(agent_id, self)
-            )
+            module_id = self._agent_to_module_mapping[
+                agent_id
+            ] = self.agent_to_module_mapping_fn(agent_id, self)
             return module_id
         else:
             return self._agent_to_module_mapping[agent_id]
@@ -1767,9 +1767,10 @@ class MultiAgentEpisode:
                     self._agent_buffered_extra_model_outputs[agent_id] = extra_outs.get(
                         agent_id, {}
                     )
-                    self._agent_buffered_rewards[agent_id] = (
-                        self._agent_buffered_rewards.get(agent_id, 0.0)
-                        + rew.get(agent_id, 0.0)
+                    self._agent_buffered_rewards[
+                        agent_id
+                    ] = self._agent_buffered_rewards.get(agent_id, 0.0) + rew.get(
+                        agent_id, 0.0
                     )
                 # Agent is done (has no action for the next step).
                 elif terminateds.get(agent_id) or truncateds.get(agent_id):
