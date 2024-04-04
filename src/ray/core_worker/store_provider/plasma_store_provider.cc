@@ -122,14 +122,14 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
   }
   Status status =
       store_client_->CreateAndSpillIfNeeded(object_id,
-                                           owner_address,
-                                           is_mutable,
-                                           data_size,
-                                           metadata ? metadata->Data() : nullptr,
-                                           metadata ? metadata->Size() : 0,
-                                           data,
-                                           source,
-                                           /*device_num=*/0);
+                                            owner_address,
+                                            is_mutable,
+                                            data_size,
+                                            metadata ? metadata->Data() : nullptr,
+                                            metadata ? metadata->Size() : 0,
+                                            data,
+                                            source,
+                                            /*device_num=*/0);
 
   if (status.IsObjectStoreFull()) {
     RAY_LOG(ERROR) << "Failed to put object " << object_id
@@ -178,9 +178,9 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
 
   std::vector<plasma::ObjectBuffer> plasma_results;
   RAY_RETURN_NOT_OK(store_client_->Get(batch_ids,
-                                      timeout_ms,
-                                      &plasma_results,
-                                      /*is_from_worker=*/true));
+                                       timeout_ms,
+                                       &plasma_results,
+                                       /*is_from_worker=*/true));
 
   // Add successfully retrieved objects to the result map and remove them from
   // the set of IDs to get.
@@ -219,9 +219,9 @@ Status CoreWorkerPlasmaStoreProvider::GetIfLocal(
   std::vector<plasma::ObjectBuffer> plasma_results;
   // Since this path is used only for spilling, we should set is_from_worker: false.
   RAY_RETURN_NOT_OK(store_client_->Get(object_ids,
-                                      /*timeout_ms=*/0,
-                                      &plasma_results,
-                                      /*is_from_worker=*/false));
+                                       /*timeout_ms=*/0,
+                                       &plasma_results,
+                                       /*is_from_worker=*/false));
 
   for (size_t i = 0; i < object_ids.size(); i++) {
     if (plasma_results[i].data != nullptr || plasma_results[i].metadata != nullptr) {

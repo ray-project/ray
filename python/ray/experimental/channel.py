@@ -90,6 +90,9 @@ class Channel:
         if not isinstance(num_readers, int):
             raise ValueError("num_readers must be an integer")
 
+        self._reader_node_id = _reader_node_id
+        self._writer_channel = _writer_channel
+
         self._num_readers = num_readers
         self._worker = ray._private.worker.global_worker
         self._worker.check_connected()
@@ -101,18 +104,18 @@ class Channel:
         if self._writer_registered:
             return
 
-        if _reader_node_id is None:
+        if self._reader_node_id is None:
             # Writing locally.
             self._worker.core_worker.experimental_channel_register_writer(
                 self._base_ref
             )
         else:
             # Writing across the network.
-            if not isinstance(_reader_node_id, str):
-                raise ValueError("`_reader_node_id` must be a str")
-            print(self._base_ref, _reader_node_id)
+            if not isinstance(self._reader_node_id, str):
+                raise ValueError("`self._reader_node_id` must be a str")
+            print(self._base_ref, self._reader_node_id)
             self._worker.core_worker.experimental_channel_register_network(
-                self._base_ref, _reader_node_id
+                self._base_ref, self._reader_node_id
             )
         self._writer_registered = True
 
@@ -120,7 +123,7 @@ class Channel:
         if self._reader_registered:
             return
 
-        if _writer_channel is None:
+        if self._writer_channel is None:
             # Reading locally.
             self._worker.core_worker.experimental_channel_register_reader(
                 self._base_ref
@@ -128,7 +131,7 @@ class Channel:
         else:
             # Reading across the network.
             self._worker.core_worker.experimental_register_mutable_object_reader(
-                _writer_channel._base_ref, self._num_readers, self._base_ref
+                self._writer_channel._base_ref, self._num_readers, self._base_ref
             )
         self._reader_registered = True
 

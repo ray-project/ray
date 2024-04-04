@@ -223,7 +223,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       int64_t limit,
       const std::function<void()> &on_all_replied);
 
-  std::unique_ptr<core::experimental::MutableObjectProvider> &mutable_object_provider() { return mutable_object_provider_; }
+  std::unique_ptr<core::experimental::MutableObjectProvider> &mutable_object_provider() {
+    return mutable_object_provider_;
+  }
 
  private:
   void ReleaseWorker(const WorkerID &worker_id) {
