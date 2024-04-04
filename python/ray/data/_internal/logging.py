@@ -14,31 +14,31 @@ class LogHandler(logging.Handler):
     def __init__(self, filename: str):
         super().__init__()
         self._filename = filename
-        self._initialized = False
         self._handler = None
         self._formatter = None
         self._path = None
 
     def emit(self, record):
-        if not self._initialized:
-            self._initialize_handler()
+        if self._handler is None:
+            self._try_create_handler()
         if self._handler is not None:
             self._handler.emit(record)
 
     def setFormatter(self, fmt: logging.Formatter) -> None:
         self._formatter = fmt
 
-    def _initialize_handler(self):
+    def _try_create_handler(self):
+        assert self._handler is None
+
         global_node = ray._private.worker._global_node
         if global_node is None:
-            self._handler = None
-        else:
-            session_dir = global_node.get_session_dir_path()
-            self._path = os.path.join(session_dir, "logs", self._filename)
-            self._handler = logging.FileHandler(self._path)
-            if self._formatter is not None:
-                self._handler.setFormatter(self._formatter)
-        self._initialized = True
+            return
+
+        session_dir = global_node.get_session_dir_path()
+        self._path = os.path.join(session_dir, "logs", self._filename)
+        self._handler = logging.FileHandler(self._path)
+        if self._formatter is not None:
+            self._handler.setFormatter(self._formatter)
 
     @property
     def path(self) -> Optional[str]:
