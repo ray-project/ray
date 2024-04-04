@@ -1,4 +1,5 @@
-import { createStyles, makeStyles } from "@material-ui/core";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import classNames from "classnames";
 import React, { PropsWithChildren, useContext } from "react";
 import { IconType } from "react-icons/lib";

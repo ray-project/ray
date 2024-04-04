@@ -14,23 +14,8 @@ Tuned Examples
 --------------
 
 - `Tuned examples <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples>`__:
-   Collection of tuned hyperparameters by algorithm.
-- `MuJoCo and Atari benchmarks <https://github.com/ray-project/rl-experiments>`__:
-   Collection of reasonably optimized Atari and MuJoCo results.
+   Collection of tuned hyperparameters sorted by algorithm.
 
-Blog Posts
-----------
-
-- `Attention Nets and More with RLlib’s Trajectory View API <https://medium.com/distributed-computing-with-ray/attention-nets-and-more-with-rllibs-trajectory-view-api-d326339a6e65>`__:
-   This blog describes RLlib's new "trajectory view API" and how it enables implementations of GTrXL (attention net) architectures.
-- `Reinforcement Learning with RLlib in the Unity Game Engine <https://medium.com/distributed-computing-with-ray/reinforcement-learning-with-rllib-in-the-unity-game-engine-1a98080a7c0d>`__:
-   A how-to on connecting RLlib with the Unity3D game engine for running visual- and physics-based RL experiments.
-- `Lessons from Implementing 12 Deep RL Algorithms in TF and PyTorch <https://medium.com/distributed-computing-with-ray/lessons-from-implementing-12-deep-rl-algorithms-in-tf-and-pytorch-1b412009297d>`__:
-   Discussion on how we ported 12 of RLlib's algorithms from TensorFlow to PyTorch and what we learnt on the way.
-- `Scaling Multi-Agent Reinforcement Learning <http://bair.berkeley.edu/blog/2018/12/12/rllib>`__:
-   This blog post is a brief tutorial on multi-agent RL and its design in RLlib.
-- `Functional RL with Keras and TensorFlow Eager <https://medium.com/riselab/functional-rl-with-keras-and-tensorflow-eager-7973f81d6345>`__:
-   Exploration of a functional paradigm for implementing reinforcement learning (RL) algorithms.
 
 Environments and Adapters
 -------------------------
@@ -47,7 +32,7 @@ Environments and Adapters
 Custom- and Complex Models
 --------------------------
 
-- `Custom Keras model <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_keras_model.py>`__:
+- `Custom Keras model <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/custom_keras_model.py>`__:
    Example of using a custom Keras model.
 - `Registering a custom model with supervised loss <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_model_loss_and_metrics.py>`__:
    Example of defining and registering a custom model with a supervised loss.
@@ -83,9 +68,9 @@ Training Workflows
 
 Evaluation:
 -----------
-- `Custom evaluation function <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_eval.py>`__:
+- `Custom evaluation function <https://github.com/ray-project/ray/blob/master/rllib/examples/evaluation/custom_evaluation.py>`__:
    Example of how to write a custom evaluation function that is called instead of the default behavior, which is running with the evaluation worker set through n episodes.
-- `Parallel evaluation and training <https://github.com/ray-project/ray/blob/master/rllib/examples/parallel_evaluation_and_training.py>`__:
+- `Parallel evaluation and training <https://github.com/ray-project/ray/blob/master/rllib/examples/evaluation/evaluation_parallel_to_training.py>`__:
    Example showing how the evaluation workers and the "normal" rollout workers can run (to some extend) in parallel to speed up training.
 
 
@@ -113,23 +98,23 @@ Serving and Offline
 Multi-Agent and Hierarchical
 ----------------------------
 
-- `Simple independent multi-agent setup vs a PettingZoo env <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_independent_learning.py>`__:
+- `Simple independent multi-agent setup vs a PettingZoo env <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_and_self_play/pettingzoo_independent_learning.py>`__:
    Setup RLlib to run any algorithm in (independent) multi-agent mode against a multi-agent environment.
-- `More complex (shared-parameter) multi-agent setup vs a PettingZoo env <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_parameter_sharing.py>`__:
+- `More complex (shared-parameter) multi-agent setup vs a PettingZoo env <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_and_self_play/pettingzoo_parameter_sharing.py>`__:
    Setup RLlib to run any algorithm in (shared-parameter) multi-agent mode against a multi-agent environment.
-- `Rock-paper-scissors <https://github.com/ray-project/ray/blob/master/rllib/examples/rock_paper_scissors_multiagent.py>`__:
-   Example of different heuristic and learned policies competing against each other in rock-paper-scissors.
-- `Two-step game <https://github.com/ray-project/ray/blob/master/rllib/examples/two_step_game.py>`__:
-   Example of the two-step game from the `QMIX paper <https://arxiv.org/pdf/1803.11485.pdf>`__.
+- `Rock-paper-scissors heuristic vs learned <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_and_self_play/rock_paper_scissors_heuristic_vs_learned.py>`__ and `Rock-paper-scissors learned vs learned <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_and_self_play/rock_paper_scissors_learned_vs_learned.py>`__:
+   Two examples of different heuristic and learned policies competing against each other in the rock-paper-scissors environment.
+- `Two-step game <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_and_self_play/two_step_game_with_grouped_agents.py>`__:
+   Example on how to use agent grouping in a multi-agent environment (the two-step game from the `QMIX paper <https://arxiv.org/pdf/1803.11485.pdf>`__).
 - `PettingZoo multi-agent example <https://github.com/Farama-Foundation/PettingZoo/blob/master/tutorials/Ray/rllib_pistonball.py>`__:
    Example on how to use RLlib to learn in `PettingZoo <https://www.pettingzoo.ml>`__ multi-agent environments.
 - `PPO with centralized critic on two-step game <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic.py>`__:
    Example of customizing PPO to leverage a centralized value function.
 - `Centralized critic in the env <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic_2.py>`__:
    A simpler method of implementing a centralized critic by augmentating agent observations with global information.
-- `Hand-coded policy <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_custom_policy.py>`__:
+- `Hand-coded policy <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_and_self_play/custom_heuristic_policy.py>`__:
    Example of running a custom hand-coded policy alongside trainable policies.
-- `Weight sharing between policies <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_cartpole.py>`__:
+- `Weight sharing between policies <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_and_self_play/multi_agent_cartpole.py>`__:
    Example of how to define weight-sharing layers between two different policies.
 - `Multiple algorithms <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_two_trainers.py>`__:
    Example of alternating training between DQN and PPO.
@@ -140,11 +125,11 @@ Multi-Agent and Hierarchical
 Special Action- and Observation Spaces
 --------------------------------------
 
-- `Nested action spaces <https://github.com/ray-project/ray/blob/master/rllib/examples/nested_action_spaces.py>`__:
+- `Nested action spaces <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/connector_v2_nested_action_spaces.py>`__:
    Learning in arbitrarily nested action spaces.
-- `Parametric actions <https://github.com/ray-project/ray/blob/master/rllib/examples/parametric_actions_cartpole.py>`__:
+- `Parametric actions <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/parametric_actions_cartpole.py>`__:
    Example of how to handle variable-length or parametric action spaces.
-- `Using the "Repeated" space of RLlib for variable lengths observations <https://github.com/ray-project/ray/blob/master/rllib/examples/complex_struct_space.py>`__:
+- `Using the "Repeated" space of RLlib for variable lengths observations <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/complex_struct_space.py>`__:
    How to use RLlib's `Repeated` space to handle variable length observations.
 - `Autoregressive action distribution example <https://github.com/ray-project/ray/blob/master/rllib/examples/autoregressive_action_dist.py>`__:
    Learning with auto-regressive action dependencies (e.g. 2 action components; distribution for 2nd component depends on the 1st component's actually sampled value).
@@ -185,3 +170,18 @@ Community Examples
    Example of training in StarCraft2 maps with RLlib / multi-agent.
 - `Traffic Flow <https://berkeleyflow.readthedocs.io/en/latest/flow_setup.html>`__:
    Example of optimizing mixed-autonomy traffic simulations with RLlib / multi-agent.
+
+
+Blog Posts
+----------
+
+- `Attention Nets and More with RLlib’s Trajectory View API <https://medium.com/distributed-computing-with-ray/attention-nets-and-more-with-rllibs-trajectory-view-api-d326339a6e65>`__:
+   Blog describing RLlib's new "trajectory view API" and how it enables implementations of GTrXL (attention net) architectures.
+- `Reinforcement Learning with RLlib in the Unity Game Engine <https://medium.com/distributed-computing-with-ray/reinforcement-learning-with-rllib-in-the-unity-game-engine-1a98080a7c0d>`__:
+   How-To guide about connecting RLlib with the Unity3D game engine for running visual- and physics-based RL experiments.
+- `Lessons from Implementing 12 Deep RL Algorithms in TF and PyTorch <https://medium.com/distributed-computing-with-ray/lessons-from-implementing-12-deep-rl-algorithms-in-tf-and-pytorch-1b412009297d>`__:
+   Discussion on how the Ray Team ported 12 of RLlib's algorithms from TensorFlow to PyTorch and the lessons learned.
+- `Scaling Multi-Agent Reinforcement Learning <http://bair.berkeley.edu/blog/2018/12/12/rllib>`__:
+   Blog post of a brief tutorial on multi-agent RL and its design in RLlib.
+- `Functional RL with Keras and TensorFlow Eager <https://medium.com/riselab/functional-rl-with-keras-and-tensorflow-eager-7973f81d6345>`__:
+   Exploration of a functional paradigm for implementing reinforcement learning (RL) algorithms.
