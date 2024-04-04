@@ -204,12 +204,12 @@ message WorkerObjectLocationsSubMessage {
 message PubsubLongPollingRequest {
   /// The id of the subscriber.
   bytes subscriber_id = 1;
-  /// The max squence_id that has been processed by the subscriber. The Publisher
+  /// The max sequence_id that has been processed by the subscriber. The Publisher
   /// will drop queued messages with smaller sequence_id for this subscriber.
   int64 max_processed_sequence_id = 2;
   /// The expected publisher_id. The publisher will ignore the
   /// max_processed_sequence_id if the publisher_id doesn't match.
-  /// This usuall happens when gcs failover.
+  /// This usually happens when gcs failover.
   bytes publisher_id = 3;
 }
 

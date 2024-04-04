@@ -618,6 +618,10 @@ Status PlasmaClient::Impl::GetBuffers(
 
 Status PlasmaClient::Impl::GetExperimentalMutableObject(
     const ObjectID &object_id, std::unique_ptr<MutableObject> *mutable_object) {
+#if defined(_WIN32)
+  return Status::NotImplemented("Not supported on Windows.");
+#endif
+
   std::unique_lock<std::recursive_mutex> guard(client_mutex_);
 
   auto object_entry = objects_in_use_.find(object_id);
