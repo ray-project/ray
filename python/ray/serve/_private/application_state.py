@@ -290,7 +290,11 @@ class ApplicationState:
         self,
         target_config: Optional[ServeApplicationSchema],
     ):
-        """Clears the target state and stores the config."""
+        """Clears the target state and stores the config.
+
+        NOTE: this currently assumes that this method is *only* called when managing
+        apps deployed with the declarative API.
+        """
         self._set_target_state(
             deployment_infos=None,
             api_type=APIType.DECLARATIVE,
@@ -865,18 +869,11 @@ class ApplicationStateManager:
 
         The applications will be reconciled to match the target state of the config.
 
-        Any applications previously deployed through this method that are *not*
-        present in the list will be deleted.
+        Any applications previously deployed declaratively that are *not* present in
+        the list will be deleted.
         """
-        # Track all existing apps and pop those that are in the newly applied config.
-        existing_apps = {
-            name
-            for name, app_state in self._application_states.items()
-            if app_state.api_type == APIType.DECLARATIVE
-        }
-
         for app_config in app_configs:
-            if app_config.name not in existing_apps:
+            if app_config.name not in self._application_states:
                 logger.info(f"Deploying new app '{app_config.name}'.")
                 self._application_states[app_config.name] = ApplicationState(
                     app_config.name,
@@ -884,8 +881,6 @@ class ApplicationStateManager:
                     endpoint_state=self._endpoint_state,
                     save_checkpoint_func=self._save_checkpoint_func,
                 )
-            else:
-                existing_apps.remove(app_config.name)
 
             self._application_states[app_config.name].apply_app_config(
                 app_config,
@@ -894,10 +889,16 @@ class ApplicationStateManager:
                 deployment_time=deployment_time,
             )
 
-        # At this point, `existing_apps` contains apps that were previously deployed
-        # but are no longer present in the config.
-        for app_name in existing_apps:
-            self.delete_app(app_name)
+        # Delete all apps that were previously deployed via the declarative API
+        # but are not in the config being applied.
+        existing_apps = {
+            name
+            for name, app_state in self._application_states.items()
+            if app_state.api_type == APIType.DECLARATIVE
+        }
+        apps_in_config = {app_config.name for app_config in app_configs}
+        for app_to_delete in existing_apps - apps_in_config:
+            self.delete_app(app_to_delete)
 
         ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
 

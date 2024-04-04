@@ -1301,7 +1301,44 @@ def test_deploy_does_not_affect_dynamic_apps(client: ServeControllerClient):
 
     wait_for_condition(lambda: "declarative-app-1" not in serve.status().applications)
 
-    # Also verify that the controller does not delete the dynamic app on recovery.
+    # Now overwrite the declarative app with a dynamic app with the same name.
+    # On subsequent declarative apply, that app should not be affected.
+    serve.run(D.bind(), name="declarative-app-2", route_prefix="/app-2")
+    wait_for_condition(
+        check_application_running,
+        name="declarative-app-2",
+        route_prefix="/app-2",
+        msg="Hello!",
+    )
+
+    config.applications = [
+        ServeApplicationSchema(
+            name="declarative-app-1",
+            route_prefix="/app-1",
+            import_path="ray.serve.tests.test_config_files.world.DagNode",
+        ),
+    ]
+    client.deploy_apps(config)
+
+    wait_for_condition(
+        check_application_running,
+        name="declarative-app-1",
+        route_prefix="/app-1",
+    )
+    wait_for_condition(
+        check_application_running,
+        name="dynamic-app",
+        route_prefix="/dynamic",
+        msg="Hello!",
+    )
+    wait_for_condition(
+        check_application_running,
+        name="declarative-app-2",
+        route_prefix="/app-2",
+        msg="Hello!",
+    )
+
+    # Verify that the controller does not delete the dynamic apps on recovery.
     ray.kill(client._controller, no_restart=False)
     wait_for_condition(
         check_application_running,
@@ -1309,6 +1346,33 @@ def test_deploy_does_not_affect_dynamic_apps(client: ServeControllerClient):
         route_prefix="/dynamic",
         msg="Hello!",
     )
+    wait_for_condition(
+        check_application_running,
+        name="declarative-app-2",
+        route_prefix="/app-2",
+        msg="Hello!",
+    )
+
+    # Now overwrite the dynamic app with a declarative one and check that it gets
+    # deleted upon another apply that doesn't include it.
+    config.applications = [
+        ServeApplicationSchema(
+            name="declarative-app-2",
+            route_prefix="/app-2",
+            import_path="ray.serve.tests.test_config_files.world.DagNode",
+        ),
+    ]
+    client.deploy_apps(config)
+    wait_for_condition(
+        check_application_running,
+        name="declarative-app-2",
+        route_prefix="/app-2",
+    )
+
+    config.applications = []
+    client.deploy_apps(config)
+
+    wait_for_condition(lambda: "declarative-app-2" not in serve.status().applications)
 
 
 def test_change_route_prefix(client: ServeControllerClient):
