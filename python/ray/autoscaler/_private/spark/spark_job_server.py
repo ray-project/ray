@@ -40,6 +40,7 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
             object_store_memory_per_node = data["object_store_memory_per_node"]
             worker_node_options = data["worker_node_options"]
             collect_log_to_path = data["collect_log_to_path"]
+            uses_pex=data["uses_pex"]
 
             def start_ray_worker_thread_fn():
                 try:
@@ -60,6 +61,7 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
                         collect_log_to_path=collect_log_to_path,
                         autoscale_mode=True,
                         spark_job_server_port=self.server.server_address[1],
+                        uses_pex=uses_pex,
                     )
                 except Exception:
                     if spark_job_group_id in self.server.task_status_dict:

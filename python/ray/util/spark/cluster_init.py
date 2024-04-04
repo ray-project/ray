@@ -98,6 +98,7 @@ class RayClusterOnSpark:
         spark_job_server,
         global_cluster_lock_fd,
         ray_client_server_port,
+        uses_pex,
     ):
         self.autoscale = autoscale
         self.address = address
@@ -112,6 +113,7 @@ class RayClusterOnSpark:
         self.spark_job_server = spark_job_server
         self.global_cluster_lock_fd = global_cluster_lock_fd
         self.ray_client_server_port = ray_client_server_port
+        self.uses_pex = uses_pex
 
         self.is_shutdown = False
         self.spark_job_is_canceled = False
@@ -663,6 +665,7 @@ def _setup_ray_cluster(
                 "worker_node_options": worker_node_options,
                 "collect_log_to_path": collect_log_to_path,
                 "spark_job_server_port": spark_job_server_port,
+                "uses_pex": uses_pex,
             },
             upscaling_speed=autoscale_upscaling_speed,
             idle_timeout_minutes=autoscale_idle_timeout_minutes,
@@ -764,6 +767,7 @@ def _setup_ray_cluster(
         spark_job_server=spark_job_server,
         global_cluster_lock_fd=global_cluster_lock_fd,
         ray_client_server_port=ray_client_server_port,
+        uses_pex=uses_pex,
     )
 
     if not autoscale:
