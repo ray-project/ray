@@ -2716,13 +2716,17 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Test what happens if one single-agent episode terminates earlier than the
         # other.
         observations = [
-            {"a0": 0, "a1": 0},  # 0
-            {"a0": 1, "a1": 1},  # 1
-            {"a1": 2},  # 2
-            {"a1": 3},  # 3
+            {"a0": 0, "a1": 0},
+            {"a0": 1, "a1": 1},
+            {         "a1": 2},
+            {         "a1": 3},
         ]
-        actions = observations[:-1]
-        rewards = [{aid: a / 10 + 0.1 for aid, a in a.items()} for a in actions]
+        actions = [
+            {"a0": 0, "a1": 0},
+            {         "a1": 1},
+            {         "a1": 2},
+        ]
+        rewards = [{aid: a/10 for aid, a in a.items()} for a in actions]
         episode = MultiAgentEpisode(
             observations=observations,
             actions=actions,
@@ -2730,6 +2734,16 @@ class TestMultiAgentEpisode(unittest.TestCase):
             terminateds={"a0": True},
             len_lookback_buffer=0,
         )
+        slice_ = episode[:2]
+        a0 = slice_.agent_episodes["a0"]
+        a1 = slice_.agent_episodes["a1"]
+        check(len(slice_), 2)
+        check((len(a0), len(a1)), (1, 2))
+        check((a0.observations, a1.observations), ([0, 1], [0, 1, 2]))
+        check((a0.actions, a1.actions), ([0], [0, 1]))
+        check((a0.rewards, a1.rewards), ([0.0], [0.0, 0.1]))
+        check((a0.is_done, a1.is_done), (True, False))
+
         slice_ = episode[2:]
         self.assertTrue("a0" not in slice_.agent_episodes)
         a1 = slice_.agent_episodes["a1"]
@@ -2737,7 +2751,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check(len(a1), 1)
         check(a1.observations, [2, 3])
         check(a1.actions, [2])
-        check(a1.rewards, [0.3])
+        check(a1.rewards, [0.2])
         check(a1.is_done, False)
 
     def test_concat_episode(self):

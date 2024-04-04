@@ -330,6 +330,11 @@ class SingleAgentEpisode:
                     data=v, lookback=len_lookback_buffer
                 )
 
+        # TODO (sven): Remove this in favor of logging render images from an env inside
+        #  custom callbacks and using a to-be-designed metrics logger. Render images
+        #  from the env should NOT be stored in an episode (b/c they have nothing to do
+        #  with the data to be learned from, which should be the only thing an episode
+        #  has to be concerned with).
         # RGB uint8 images from rendering the env; the images include the corresponding
         # rewards.
         assert render_images is None or observations is not None

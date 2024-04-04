@@ -259,8 +259,12 @@ class MultiAgentEpisode:
             len_lookback_buffer=len_lookback_buffer,
         )
 
-        # RGB uint8 images from rendering the env; the images include the corresponding
-        # rewards.
+        # TODO (sven): Remove this in favor of logging render images from an env inside
+        #  custom callbacks and using a to-be-designed metrics logger. Render images
+        #  from the env should NOT be stored in an episode (b/c they have nothing to do
+        #  with the data to be learned from, which should be the only thing an episode
+        #  has to be concerned with).
+        # RGB uint8 images from rendering the env.
         assert render_images is None or observations is not None
         self.render_images: Union[List[np.ndarray], List[object]] = (
             [] if render_images is None else render_images
@@ -1386,42 +1390,55 @@ class MultiAgentEpisode:
             stop = len(self)
 
         ref_lookback = None
-        for aid, sa_episode in self.agent_episodes.items():
-            if ref_lookback is None:
-                ref_lookback = sa_episode.observations.lookback
-            assert sa_episode.observations.lookback == ref_lookback
-            assert sa_episode.actions.lookback == ref_lookback
-            assert sa_episode.rewards.lookback == ref_lookback
-            assert all(
-                ilb.lookback == ref_lookback
-                for ilb in sa_episode.extra_model_outputs.values()
+        try:
+            for aid, sa_episode in self.agent_episodes.items():
+                if ref_lookback is None:
+                    ref_lookback = sa_episode.observations.lookback
+                assert sa_episode.observations.lookback == ref_lookback
+                assert sa_episode.actions.lookback == ref_lookback
+                assert sa_episode.rewards.lookback == ref_lookback
+                assert all(
+                    ilb.lookback == ref_lookback
+                    for ilb in sa_episode.extra_model_outputs.values()
+                )
+        except AssertionError:
+            raise ValueError(
+                "Can only slice a MultiAgentEpisode if all lookback buffers in this "
+                "episode have the exact same size!"
             )
+
+        observations = self.get_observations(
+            slice(start - ref_lookback, stop + 1),
+            neg_indices_left_of_zero=True,
+            return_list=True,
+        )
+        actions = self.get_actions(
+            slice(start - ref_lookback, stop),
+            neg_indices_left_of_zero=True,
+            return_list=True,
+        )
+        rewards = self.get_rewards(
+            slice(start - ref_lookback, stop),
+            neg_indices_left_of_zero=True,
+            return_list=True,
+        )
+        extra_model_outputs = self.get_extra_model_outputs(
+            indices=slice(start - ref_lookback, stop),
+            neg_indices_left_of_zero=True,
+            return_list=True,
+        )
 
         ma_episode = MultiAgentEpisode(
             id_=self.id_,
             # In the following, offset `start`s automatically by lookbacks.
-            observations=self.get_observations(
-                slice(start - ref_lookback, stop + 1),
-                neg_indices_left_of_zero=True,
-                return_list=True,
-            ),
+            observations=observations,
             observation_space=self.observation_space,
-            actions=self.get_actions(
-                slice(start - ref_lookback, stop),
-                neg_indices_left_of_zero=True,
-                return_list=True,
-            ),
+            actions=actions,
             action_space=self.action_space,
-            rewards=self.get_rewards(
-                slice(start - ref_lookback, stop),
-                neg_indices_left_of_zero=True,
-                return_list=True,
-            ),
-            extra_model_outputs=self.get_extra_model_outputs(
-                indices=slice(start - ref_lookback, stop),
-                neg_indices_left_of_zero=True,
-                return_list=True,
-            ),
+            rewards=rewards,
+            extra_model_outputs=extra_model_outputs,
+            #terminateds=terminateds,
+            #truncateds=truncateds,
             len_lookback_buffer=ref_lookback,
             agent_episode_ids={aid: eid for aid, eid in self.agent_episodes.items()},
             agent_module_ids=self._agent_to_module_mapping,
@@ -1645,10 +1662,10 @@ class MultiAgentEpisode:
         if observations is None:
             return
         if actions is None:
-            actions = []
             assert not rewards
-            rewards = []
             assert not extra_model_outputs
+            actions = []
+            rewards = []
             extra_model_outputs = []
 
         # Infos and extra_model_outputs are allowed to be None -> Fill them with
@@ -1727,9 +1744,10 @@ class MultiAgentEpisode:
                 # Agent is done (has no action for the next step).
                 elif terminateds.get(agent_id) or truncateds.get(agent_id):
                     done_per_agent[agent_id] = True
-                # This is the last obs (no further action/reward data).
-                else:
-                    assert data_idx == len(observations) - 1
+                # There is more (global) action/reward data. This agent must therefore
+                # be done. Auto-add it to terminateds.
+                elif data_idx < len(observations) - 1:
+                    done_per_agent[agent_id] = terminateds[agent_id] = True
 
                 # Update env_t_to_agent_t mapping.
                 self.env_t_to_agent_t[agent_id].append(
