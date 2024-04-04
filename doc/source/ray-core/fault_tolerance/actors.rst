@@ -146,7 +146,7 @@ moment, but may recover after some wait and retry. Typical cases include:
 - The actor is starting, for example it's still running the class constructor.
 - The actor is restarting, for example it's waiting for resources.
 - The actor is experiencing transient network issues, for example connection breaks.
-- The actor is dead but the local Raylet hasn't yet reported to the GCS.
+- The actor is dead but the death hasn't yet been reported to the system.
 
 Actor method calls are at-most-once. This means that when an `actor.method.remote()` or `ray.get()` call raises the `ActorUnavailableError` exception, there is no guarantee on
 whether the actor executed the task or not. If the method has side effects, they may or may not
