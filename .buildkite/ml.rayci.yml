@@ -71,6 +71,7 @@ steps:
         --build-name mlgpubuild
         --build-only
       - sleep 10800
+    depends_on: [ "mlgpubuild", "forge" ]
 
   - label: ":train: ml: train authentication tests"
     tags:
