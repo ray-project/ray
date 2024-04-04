@@ -8,24 +8,25 @@ class MetricsLogger:
     def __init__(self):
         self.scalar_values = NestedDict()
 
-    def log_scalar(self, keys, value, reduce="mean", ttl="until_reduce"):
+    def log_scalar(self, keys, value, reduce="mean", window=None, ema_coeff=None):
         for red in force_list(reduce):
             key = force_list(keys)
             key[-1] = reduce + "_" + key[-1]
             if key not in self.scalar_values:
-                self.scalar_values[key] = Stats(value, reduce=red)
+                self.scalar_values[key] = Stats(value, reduce=red, window=window, ema_coeff=ema_coeff)
             else:
                 self.scalar_values[key].push(value)
 
     def reduce(self):
-        ret = NestedDict()
-        for key, stat in self.scalar_values.items():
-            reduced = stat.reduce()
-            ret[key] = reduced
-        return ret.asdict()
+        # Reduce all stats according to each of their reduce-settings.
+        for stat in self.scalar_values.values():
+            stat.reduce()
+        # Return scalar values as dict (not NestedDict).
+        return self.scalar_values.asdict()
 
     def to_dict(self):
-
+        result_stats_dict = self.reduce()
+        result_stats_dict
 
 
 if __name__ == "__main__":

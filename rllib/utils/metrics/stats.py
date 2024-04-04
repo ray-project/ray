@@ -14,6 +14,10 @@ class Stats:
         self.values = force_list(init_value)
 
         self._reduce_method = reduce
+
+        # One or both window and ema must be None.
+        assert window is None or ema_coeff is None
+
         self._window = window
         self._ema_coeff = ema_coeff
 
@@ -27,17 +31,20 @@ class Stats:
             return self._reduced_values()
 
     def reduce(self):
+        # Reduce everything to a single (init) value.
         self.values = [self._reduced_values()]
-
         # Return self.
         return self
 
     def _reduced_values(self):
-        # Reduce everything.
-        if self._window is None:
-            return getattr(np, self._reduce_method)(self.values)
-        # Reduce only over some window into the past, drop the rest.
-        elif isinstance(self._window, int):
-            return getattr(np, self._reduce_method)(self.values[-self._window:])
-        elif self._ema_coeff is not None:
-
+        # Do EMA.
+        if self._ema_coeff is not None:
+            mean_value = self.values[0]
+            for v in self.values[1:]:
+                mean_value = self._ema_coeff * v + (1.0 - self._ema_coeff) * mean_value
+            return mean_value
+        # Do some other reduction.
+        else:
+            reduce_meth = getattr(np, self._reduce_method)
+            values = self.values if self._window is None else self.values[-self._window:]
+            return reduce_meth(values)
