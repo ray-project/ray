@@ -148,9 +148,9 @@ moment, but may recover after some wait and retry. Typical cases include:
 - The actor is experiencing transient network issues, for example connection breaks.
 - The actor is dead but the local Raylet hasn't yet reported to the GCS.
 
-When a `actor.method.remote()` or `ray.get()` call raises this exception, there is no guarantee on
-whether the actor received the invocation or not. If the method has side effects, it may or may not
-be observable after the actor recovered. However Ray do guarantee at-most-once, that a single invocation won't land on the actor twice, unless the actor or the method is configured with retries described in the next section.
+Actor method calls are at-most-once. This means that when an `actor.method.remote()` or `ray.get()` call raises the `ActorUnavailableError` exception, there is no guarantee on
+whether the actor executed the task or not. If the method has side effects, they may or may not
+be observable. Ray does guarantee that the method will not be executed twice, unless the actor or the method is configured with retries, as described in the next section.
 
 The actor may or may not recover in the next calls. Those subsequent calls
 may raise `RayActorError` if the actor is confirmed dead, `ActorUnavailableError` if it's
