@@ -6,6 +6,7 @@ import pytest
 
 from ray.exceptions import RayTaskError
 from ray.serve._private.application_state import (
+    APIType,
     ApplicationState,
     ApplicationStateManager,
     override_deployment_info,
@@ -636,6 +637,7 @@ def test_apply_app_configs_deletes_existing(check_obj_ref_ready_nowait):
     a_id = DeploymentID(name="a", app_name="imperative_app")
     app_state_manager.deploy_app("imperative_app", [deployment_params("a", "/hi")])
     imperative_app_state = app_state_manager._application_states["imperative_app"]
+    assert imperative_app_state.api_type == APIType.IMPERATIVE
     assert imperative_app_state.status == ApplicationStatus.DEPLOYING
 
     imperative_app_state.update()
@@ -652,7 +654,9 @@ def test_apply_app_configs_deletes_existing(check_obj_ref_ready_nowait):
     )
     app_state_manager.apply_app_configs([app1_config, app2_config])
     app1_state = app_state_manager._application_states["app1"]
+    assert app1_state.api_type == APIType.DECLARATIVE
     app2_state = app_state_manager._application_states["app2"]
+    assert app2_state.api_type == APIType.DECLARATIVE
     app1_state.update()
     app2_state.update()
     assert app1_state.status == ApplicationStatus.DEPLOYING
@@ -664,6 +668,7 @@ def test_apply_app_configs_deletes_existing(check_obj_ref_ready_nowait):
     )
     app_state_manager.apply_app_configs([app3_config, app2_config])
     app3_state = app_state_manager._application_states["app3"]
+    assert app3_state.api_type == APIType.DECLARATIVE
     app1_state.update()
     app2_state.update()
     app3_state.update()
