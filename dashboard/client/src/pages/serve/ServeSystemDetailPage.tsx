@@ -1,5 +1,6 @@
-import { createStyles, makeStyles, Typography } from "@material-ui/core";
-import { Alert } from "@material-ui/lab";
+import { Alert, Typography } from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import React from "react";
 import { Outlet } from "react-router-dom";
 import Loading from "../../components/Loading";

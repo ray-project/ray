@@ -12,6 +12,7 @@ py_library(
         ],
     ),
     visibility = ["//ci/ray_ci:__subpackages__"],
+    data = glob(["*.yaml"]),
     deps = [
         ci_require("boto3"),
         ci_require("pyyaml"),
