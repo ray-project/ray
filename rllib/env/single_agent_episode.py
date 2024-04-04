@@ -1431,57 +1431,55 @@ class SingleAgentEpisode:
         Returns:
             The new SingleAgentEpisode representing the requested slice.
         """
+        # Translate `slice_` into one that only contains 0-or-positive ints and will
+        # NOT contain any None.
+        sa_slice = self.actions._interpret_slice(slice_, False)[0]
+        sa_slice_obs_infos = slice(sa_slice.start, sa_slice.stop + 1, sa_slice.step)
+
         # Figure out, whether slicing stops at the very end of this episode to know
         # whether `self.is_terminated/is_truncated` should be kept as-is.
-        keep_done = slice_.stop is None or slice_.stop == len(self)
-        start = slice_.start or 0
-        t_started = self.t_started + start + (0 if start >= 0 else len(self))
+        keep_done = sa_slice.stop == len(self)
+        t_started = self.t_started + sa_slice.start
 
-        neg_indices_left_of_zero = start >= 0
-
-        start = slice_.start or 0
-        stop = slice_.stop
-        # Obs and infos need one more step at the end.
-        stop_obs_infos = ((stop if stop != -1 else (len(self) - 1)) or len(self)) + 1
-        step = slice_.step
         return SingleAgentEpisode(
             id_=self.id_,
             observations=InfiniteLookbackBuffer(
-                data=self.get_observations(
-                    slice(start - self.observations.lookback, stop_obs_infos, step),
-                    neg_indices_left_of_zero=neg_indices_left_of_zero,
+                data=self.observations.get(
+                    slice(sa_slice_obs_infos.start - self.observations.lookback, sa_slice_obs_infos.stop, sa_slice_obs_infos.step),
+                    neg_indices_left_of_zero=True,
                 ),
                 lookback=self.observations.lookback,
                 space=self.observation_space,
             ),
             infos=InfiniteLookbackBuffer(
-                data=self.get_infos(
-                    slice(start - self.infos.lookback, stop_obs_infos, step),
-                    neg_indices_left_of_zero=neg_indices_left_of_zero,
+                data=self.infos.get(
+                    slice(sa_slice_obs_infos.start - self.infos.lookback, sa_slice_obs_infos.stop, sa_slice_obs_infos.step),
+                    neg_indices_left_of_zero=True,
                 ),
                 lookback=self.infos.lookback,
             ),
             actions=InfiniteLookbackBuffer(
-                data=self.get_actions(
-                    slice(start - self.actions.lookback, stop, step),
-                    neg_indices_left_of_zero=neg_indices_left_of_zero,
+                data=self.actions.get(
+                    slice(sa_slice.start - self.actions.lookback, sa_slice.stop, sa_slice.step),
+                    neg_indices_left_of_zero=True,
                 ),
                 lookback=self.actions.lookback,
                 space=self.action_space,
             ),
             rewards=InfiniteLookbackBuffer(
-                data=self.get_rewards(
-                    slice(start - self.rewards.lookback, stop, step),
-                    neg_indices_left_of_zero=neg_indices_left_of_zero,
+                data=self.rewards.get(
+                    slice(sa_slice.start - self.rewards.lookback, sa_slice.stop, sa_slice.step),
+                    neg_indices_left_of_zero=True,
                 ),
                 lookback=self.rewards.lookback,
             ),
             extra_model_outputs={
                 k: InfiniteLookbackBuffer(
-                    data=self.get_extra_model_outputs(
-                        k,
-                        slice(start - v.lookback, stop, step),
-                        neg_indices_left_of_zero=neg_indices_left_of_zero,
+                    data=self.extra_model_outputs[k].get(
+                        slice(
+                            sa_slice.start - v.lookback, sa_slice.stop, sa_slice.step
+                        ),
+                        neg_indices_left_of_zero=True,
                     ),
                     lookback=v.lookback,
                 )

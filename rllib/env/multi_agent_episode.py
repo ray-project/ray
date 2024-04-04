@@ -1383,7 +1383,7 @@ class MultiAgentEpisode:
         ma_episode = MultiAgentEpisode(
             env_t_started=self.env_t_started + ma_slice.start,
         )
-        ma_episode.env_t = self.env_t_started + ma_slice.stop
+        ma_episode.env_t = self.env_t_started + ma_slice.stop - 1
 
         # Translate slice separately for each agent's SingleAgentEpisode, then slice
         # those and return a new MultiAgentEpisode with the sliced SingleAgentEpisodes
