@@ -259,8 +259,12 @@ class MultiAgentEpisode:
             len_lookback_buffer=len_lookback_buffer,
         )
 
-        # RGB uint8 images from rendering the env; the images include the corresponding
-        # rewards.
+        # TODO (sven): Remove this in favor of logging render images from an env inside
+        #  custom callbacks and using a to-be-designed metrics logger. Render images
+        #  from the env should NOT be stored in an episode (b/c they have nothing to do
+        #  with the data to be learned from, which should be the only thing an episode
+        #  has to be concerned with).
+        # RGB uint8 images from rendering the env.
         assert render_images is None or observations is not None
         self.render_images: Union[List[np.ndarray], List[object]] = (
             [] if render_images is None else render_images
@@ -1286,6 +1290,192 @@ class MultiAgentEpisode:
         truncateds.update({"__all__": self.is_terminated})
         return truncateds
 
+    def slice(self, slice_: slice) -> "MultiAgentEpisode":
+        """Returns a slice of this episode with the given slice object.
+
+        Works analogous to
+        :py:meth:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode.slice`
+
+        However, the important differences are:
+        - `slice_` is provided in (global) env steps, not agent steps.
+        - In case `slice_` ends - for a certain agent - in an env step, where that
+        particular agent does not have an observation, the previous observation will
+        be included, but the next action and sum of rewards until this point will
+        be stored in the agent's buffer for the returned MultiAgentEpisode slice.
+
+        .. testcode::
+
+            from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
+            from ray.rllib.utils.test_utils import check
+
+            # Generate a simple multi-agent episode.
+            observations = [
+                {"a0": 0, "a1": 0},  # 0
+                {         "a1": 1},  # 1
+                {         "a1": 2},  # 2
+                {"a0": 3, "a1": 3},  # 3
+                {"a0": 4},           # 4
+            ]
+            # Actions are the same as observations (except for last obs, which doesn't
+            # have an action).
+            actions = observations[:-1]
+            # Make up a reward for each action.
+            rewards = [
+                {aid: r / 10 + 0.1 for aid, r in o.items()}
+                for o in observations
+            ]
+            episode = MultiAgentEpisode(
+                observations=observations,
+                actions=actions,
+                rewards=rewards,
+                len_lookback_buffer=0,
+            )
+
+            # Slice the episode and check results.
+            slice = episode[1:3]
+            a0 = slice.agent_episodes["a0"]
+            a1 = slice.agent_episodes["a1"]
+            check((a0.observations, a1.observations), ([3], [1, 2, 3]))
+            check((a0.actions, a1.actions), ([], [1, 2]))
+            check((a0.rewards, a1.rewards), ([], [0.2, 0.3]))
+            check((a0.is_done, a1.is_done), (False, False))
+
+            # If a slice ends in a "gap" for an agent, expect actions and rewards to be
+            # cached in the agent's buffer.
+            slice = episode[:2]
+            a0 = slice.agent_episodes["a0"]
+            check(a0.observations, [0])
+            check(a0.actions, [])
+            check(a0.rewards, [])
+            check(slice._agent_buffered_actions["a0"], 0)
+            check(slice._agent_buffered_rewards["a0"], 0.1)
+
+        Args:
+            slice_: The slice object to use for slicing. This should exclude the
+                lookback buffer, which will be prepended automatically to the returned
+                slice.
+
+        Returns:
+            The new MultiAgentEpisode representing the requested slice.
+        """
+        if slice_.step not in [1, None]:
+            raise NotImplementedError(
+                "Slicing MultiAgentEnv with a step other than 1 (you used"
+                f" {slice_.step}) is not supported!"
+            )
+
+        # Translate `slice_` into one that only contains 0-or-positive ints and will
+        # NOT contain any None.
+        start = slice_.start
+        stop = slice_.stop
+
+        # Start is None -> 0.
+        if start is None:
+            start = 0
+        # Start is negative -> Interpret index as counting "from end".
+        elif start < 0:
+            start = max(len(self) + start, 0)
+        # Start is larger than len(self) -> Clip to len(self).
+        elif start > len(self):
+            start = len(self)
+
+        # Stop is None -> Set stop to our len (one ts past last valid index).
+        if stop is None:
+            stop = len(self)
+        # Stop is negative -> Interpret index as counting "from end".
+        elif stop < 0:
+            stop = max(len(self) + stop, 0)
+        # Stop is larger than len(self) -> Clip to len(self).
+        elif stop > len(self):
+            stop = len(self)
+
+        ref_lookback = None
+        try:
+            for aid, sa_episode in self.agent_episodes.items():
+                if ref_lookback is None:
+                    ref_lookback = sa_episode.observations.lookback
+                assert sa_episode.observations.lookback == ref_lookback
+                assert sa_episode.actions.lookback == ref_lookback
+                assert sa_episode.rewards.lookback == ref_lookback
+                assert all(
+                    ilb.lookback == ref_lookback
+                    for ilb in sa_episode.extra_model_outputs.values()
+                )
+        except AssertionError:
+            raise ValueError(
+                "Can only slice a MultiAgentEpisode if all lookback buffers in this "
+                "episode have the exact same size!"
+            )
+
+        # Determine terminateds/truncateds.
+        terminateds = {}
+        truncateds = {}
+        for aid, sa_episode in self.agent_episodes.items():
+            # If the (agent) timestep directly at the slice stop boundary is equal to
+            # the length of the single-agent episode of this agent -> Use the
+            # single-agent episode's terminated/truncated flags.
+            # If `stop` is already beyond this agents single-agent episode, then we
+            # don't have to keep track of this: The MultiAgentEpisode initializer will
+            # automatically determine that this agent must be done (b/c has no action
+            # following its final observation).
+            if (
+                stop < len(self.env_t_to_agent_t[aid])
+                and self.env_t_to_agent_t[aid][stop] != self.SKIP_ENV_TS_TAG
+                and len(sa_episode) == self.env_t_to_agent_t[aid][stop]
+            ):
+                terminateds[aid] = sa_episode.is_terminated
+                truncateds[aid] = sa_episode.is_truncated
+        terminateds["__all__"] = all(
+            terminateds.get(aid) for aid in self.agent_episodes
+        )
+        truncateds["__all__"] = all(truncateds.get(aid) for aid in self.agent_episodes)
+
+        # Determine all other slice contents.
+        observations = self.get_observations(
+            slice(start - ref_lookback, stop + 1),
+            neg_indices_left_of_zero=True,
+            return_list=True,
+        )
+        actions = self.get_actions(
+            slice(start - ref_lookback, stop),
+            neg_indices_left_of_zero=True,
+            return_list=True,
+        )
+        rewards = self.get_rewards(
+            slice(start - ref_lookback, stop),
+            neg_indices_left_of_zero=True,
+            return_list=True,
+        )
+        extra_model_outputs = self.get_extra_model_outputs(
+            indices=slice(start - ref_lookback, stop),
+            neg_indices_left_of_zero=True,
+            return_list=True,
+        )
+
+        # Create the actual slice to be returned.
+        ma_episode = MultiAgentEpisode(
+            id_=self.id_,
+            # In the following, offset `start`s automatically by lookbacks.
+            observations=observations,
+            observation_space=self.observation_space,
+            actions=actions,
+            action_space=self.action_space,
+            rewards=rewards,
+            extra_model_outputs=extra_model_outputs,
+            terminateds=terminateds,
+            truncateds=truncateds,
+            len_lookback_buffer=ref_lookback,
+            agent_episode_ids={aid: eid for aid, eid in self.agent_episodes.items()},
+            agent_module_ids=self._agent_to_module_mapping,
+            agent_to_module_mapping_fn=self.agent_to_module_mapping_fn,
+        )
+
+        # Finalize slice if `self` is finalized.
+        if self.is_finalized:
+            ma_episode.finalize()
+
+        return ma_episode
+
     def __len__(self):
         """Returns the length of an `MultiAgentEpisode`.
 
@@ -1303,14 +1493,6 @@ class MultiAgentEpisode:
             "first (after which `len(MultiAgentEpisode)` will be 0)."
         )
         return self.env_t - self.env_t_started
-
-    def __repr__(self):
-        sa_eps = {
-            aid: sa_eps.get_return() for aid, sa_eps in self.agent_episodes.items()
-        }
-        return (
-            f"MAEps(len={len(self)} done={self.is_done} " f"Rs={sa_eps} id_={self.id_})"
-        )
 
     def get_state(self) -> Dict[str, Any]:
         """Returns the state of a multi-agent episode.
@@ -1471,6 +1653,25 @@ class MultiAgentEpisode:
         """
         return sum(len(eps) for eps in self.agent_episodes.values())
 
+    def __repr__(self):
+        sa_eps_returns = {
+            aid: sa_eps.get_return() for aid, sa_eps in self.agent_episodes.items()
+        }
+        return (
+            f"MAEps(len={len(self)} done={self.is_done} "
+            f"Rs={sa_eps_returns} id_={self.id_})"
+        )
+
+    def __getitem__(self, item: slice) -> "MultiAgentEpisode":
+        """Enable squared bracket indexing- and slicing syntax, e.g. episode[-4:]."""
+        if isinstance(item, slice):
+            return self.slice(slice_=item)
+        else:
+            raise NotImplementedError(
+                f"MultiAgentEpisode does not support getting item '{item}'! "
+                "Only slice objects allowed with the syntax: `episode[a:b]`."
+            )
+
     # TODO (sven, simon): This function can only deal with data if it does not contain
     #  terminated or truncated agents (i.e. you have to provide ONLY alive agents in the
     #  agent_ids in the constructor - the episode does not deduce the agents).
@@ -1491,10 +1692,10 @@ class MultiAgentEpisode:
         if observations is None:
             return
         if actions is None:
-            actions = []
             assert not rewards
-            rewards = []
             assert not extra_model_outputs
+            actions = []
+            rewards = []
             extra_model_outputs = []
 
         # Infos and extra_model_outputs are allowed to be None -> Fill them with
@@ -1574,9 +1775,10 @@ class MultiAgentEpisode:
                 # Agent is done (has no action for the next step).
                 elif terminateds.get(agent_id) or truncateds.get(agent_id):
                     done_per_agent[agent_id] = True
-                # This is the last obs (no further action/reward data).
-                else:
-                    assert data_idx == len(observations) - 1
+                # There is more (global) action/reward data. This agent must therefore
+                # be done. Auto-add it to terminateds.
+                elif data_idx < len(observations) - 1:
+                    done_per_agent[agent_id] = terminateds[agent_id] = True
 
                 # Update env_t_to_agent_t mapping.
                 self.env_t_to_agent_t[agent_id].append(
@@ -1642,12 +1844,14 @@ class MultiAgentEpisode:
                 actions=actions_per_agent[agent_id],
                 action_space=self.action_space.get(agent_id),
                 rewards=rewards_per_agent[agent_id],
-                extra_model_outputs={
-                    k: [i[k] for i in extra_model_outputs_per_agent[agent_id]]
-                    for k in extra_model_outputs_per_agent[agent_id][0].keys()
-                }
-                if extra_model_outputs_per_agent[agent_id]
-                else None,
+                extra_model_outputs=(
+                    {
+                        k: [i[k] for i in extra_model_outputs_per_agent[agent_id]]
+                        for k in extra_model_outputs_per_agent[agent_id][0].keys()
+                    }
+                    if extra_model_outputs_per_agent[agent_id]
+                    else None
+                ),
                 terminated=terminateds.get(agent_id, False),
                 truncated=truncateds.get(agent_id, False),
                 t_started=self.agent_t_started[agent_id],
