@@ -1286,206 +1286,6 @@ class MultiAgentEpisode:
         truncateds.update({"__all__": self.is_terminated})
         return truncateds
 
-    def slice(self, slice_: slice) -> "MultiAgentEpisode":
-        """Returns a slice of this episode with the given slice object.
-
-        Works analogous to
-        :py:meth:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode.slice`
-
-        However, the important differences are:
-        - `slice_` is provided in (global) env steps, not agent steps.
-        - In case `slice_` ends - for a certain agent - in an env step, where that
-        particular agent does not have an observation, the previous observation will
-        be included, but the next action and sum of rewards until this point will
-        be stored in the agent's buffer for the returned MultiAgentEpisode slice.
-
-        .. testcode::
-
-            from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
-            from ray.rllib.utils.test_utils import check
-
-            # Generate a simple multi-agent episode.
-            observations = [
-                {"a0": 0, "a1": 0},  # 0
-                {         "a1": 1},  # 1
-                {         "a1": 2},  # 2
-                {"a0": 3, "a1": 3},  # 3
-                {"a0": 4},           # 4
-            ]
-            # Actions are the same as observations (except for last obs, which doesn't
-            # have an action).
-            actions = observations[:-1]
-            # Make up a reward for each action.
-            rewards = [
-                {aid: r / 10 + 0.1 for aid, r in o.items()}
-                for o in observations
-            ]
-            episode = MultiAgentEpisode(
-                observations=observations,
-                actions=actions,
-                rewards=rewards,
-                len_lookback_buffer=0,
-            )
-
-            # Slice the episode and check results.
-            slice = episode[1:3]
-            a0 = slice.agent_episodes["a0"]
-            a1 = slice.agent_episodes["a1"]
-            check((a0.observations, a1.observations), ([3], [1, 2, 3]))
-            check((a0.actions, a1.actions), ([], [1, 2]))
-            check((a0.rewards, a1.rewards), ([], [0.2, 0.3]))
-            check((a0.is_done, a1.is_done), (False, False))
-
-            # If a slice ends in a "gap" for an agent, expect actions and rewards to be
-            # cached in the agent's buffer.
-            slice = episode[:2]
-            a0 = slice.agent_episodes["a0"]
-            check(a0.observations, [0])
-            check(a0.actions, [])
-            check(a0.rewards, [])
-            check(slice._agent_buffered_actions["a0"], 0)
-            check(slice._agent_buffered_rewards["a0"], 0.1)
-
-        Args:
-            slice_: The slice object to use for slicing. This should exclude the
-                lookback buffer, which will be prepended automatically to the returned
-                slice.
-
-        Returns:
-            The new MultiAgentEpisode representing the requested slice.
-        """
-        if slice_.step not in [1, None]:
-            raise NotImplementedError(
-                "Slicing MultiAgentEnv with a step other than 1 (you used"
-                f" {slice_.step}) is not supported!"
-            )
-
-        slice_from_end = slice_.start is not None and slice_.start < 0
-
-        # Translate `slice_` into proper multi-agent env timesteps slice (`ma_slice`),
-        # which will only contain 0-or-positive ints and will NOT contain any None.
-        ma_slice = None
-        for aid in self.agent_episodes:
-            ma_ = self.env_t_to_agent_t[aid]._interpret_slice(slice_, False)[0]
-            if ma_slice is None:
-                ma_slice = ma_
-            else:
-                assert ma_ == ma_slice
-        # If `start` of the original `slice_` is negative, we need to move the
-        # `start` one to the left (to include one more observation than actions).
-        if slice_from_end:
-            ma_slice_obs_infos = slice(max(ma_slice.start - 1, 0), ma_slice.stop)
-        # Otherwise, we need to move the stop one to the right (to include one more
-        # observation than actions).
-        else:
-            ma_slice_obs_infos = slice(ma_slice.start, ma_slice.stop + 1)
-
-        ma_episode = MultiAgentEpisode(
-            env_t_started=self.env_t_started + ma_slice.start,
-        )
-        ma_episode.env_t = self.env_t_started + ma_slice.stop - 1
-
-        # Translate slice separately for each agent's SingleAgentEpisode, then slice
-        # those and return a new MultiAgentEpisode with the sliced SingleAgentEpisodes
-        # in it.
-        for agent_id, sa_episode in self.agent_episodes.items():
-            sa_indices_obs_infos = self.env_t_to_agent_t[agent_id][ma_slice_obs_infos]
-
-            # Determine dones/truncateds/terminateds.
-            terminated = sa_episode.is_terminated
-            truncated = sa_episode.is_truncated
-
-            # `sa_indices_obs` is empty -> Skip.
-            if len(sa_indices_obs_infos) == 0:
-                continue
-
-            # If `SKIP_ENV_TS_TAG` at end (last step NOT completed yet) -> shorten slice
-            # again by n steps (from end); put action/reward at `s.stop - n` into
-            # agent's buffers.
-            if sa_indices_obs_infos[-1] == self.SKIP_ENV_TS_TAG:
-                idx = None
-                for n in range(2, len(sa_indices_obs_infos) + 1):
-                    idx = sa_indices_obs_infos[-n]
-                    if idx != self.SKIP_ENV_TS_TAG:
-                        sa_slice_obs_infos = slice(sa_indices_obs_infos[0], idx + 1)
-                        break
-                # All items in `sa_indices_obs` are `SKIP_ENV_TS_TAG` -> Skip.
-                if idx in [None, self.SKIP_ENV_TS_TAG]:
-                    continue
-                # Correctly setup the buffers only if we are still in an ongoing single
-                # agent episode.
-                if idx < len(sa_episode):
-                    ma_episode._agent_buffered_actions[
-                        agent_id
-                    ] = sa_episode.get_actions(idx)
-                    ma_episode._agent_buffered_rewards[
-                        agent_id
-                    ] = sa_episode.get_rewards(idx)
-                    ma_episode._agent_buffered_extra_model_outputs[agent_id] = {
-                        sa_episode.get_extra_model_outputs(key=k, indices=idx)
-                        for k in sa_episode.extra_model_outputs.keys()
-                    }
-            else:
-                sa_slice_obs_infos = (
-                    slice(sa_indices_obs_infos[0], sa_indices_obs_infos[-1] + 1)
-                )
-
-            # If 'S' at start, simply move right until no 'S' is found, then start from
-            # there. -> In this case, we simply chose the start boundary of the slice
-            # "badly" and adjust the slice.
-            if sa_indices_obs_infos[0] == self.SKIP_ENV_TS_TAG:
-                for n in range(1, len(sa_indices_obs_infos)):
-                    idx = sa_indices_obs_infos[n]
-                    if idx != self.SKIP_ENV_TS_TAG:
-                        sa_slice_obs_infos = slice(idx, sa_slice_obs_infos.stop)
-                        break
-            else:
-                sa_slice_obs_infos = (
-                    slice(sa_indices_obs_infos[0], sa_slice_obs_infos.stop)
-                )
-
-            # Our slice stops before the single-agent episode ends
-            # -> Set truncated/terminated to False.
-            if sa_slice_obs_infos.stop < len(sa_episode):
-                terminated = truncated = False
-
-            sa_slice_act_rew = (
-                slice(sa_slice_obs_infos.start, max(sa_slice_obs_infos.stop - 1, 0))
-            )
-
-            # Create SingleAgentEpisode from above slices for observations and
-            # actions/rewards.
-            sliced_sa_episode = SingleAgentEpisode(
-                id_=sa_episode.id_,
-                observations=sa_episode.observations[sa_slice_obs_infos],
-                observation_space=sa_episode.observation_space,
-                infos=sa_episode.infos[sa_slice_obs_infos],
-                actions=sa_episode.actions[sa_slice_act_rew],
-                action_space=sa_episode.action_space,
-                rewards=sa_episode.rewards[sa_slice_act_rew],
-                extra_model_outputs={
-                    key: value[sa_slice_act_rew]
-                    for key, value in sa_episode.extra_model_outputs.items()
-                },
-                terminated=terminated,
-                truncated=truncated,
-                t_started=sa_episode.t_started + sa_slice_obs_infos.start,
-                agent_id=sa_episode.agent_id,
-                module_id=sa_episode.module_id,
-                multi_agent_episode_id=self.id_,
-                len_lookback_buffer=0,
-            )
-            # Slice the env_t mapping.
-            ma_episode.env_t_to_agent_t[agent_id] = InfiniteLookbackBuffer(
-                sa_indices_obs_infos, lookback=0
-            )
-
-            # Assign created SingleAgentEpisode slice the new MultiAgentEpisode.
-            ma_episode.agent_episodes[agent_id] = sliced_sa_episode
-
-        # 5) return new MAEpisode
-        return ma_episode
-
     def __len__(self):
         """Returns the length of an `MultiAgentEpisode`.
 
@@ -1503,6 +1303,14 @@ class MultiAgentEpisode:
             "first (after which `len(MultiAgentEpisode)` will be 0)."
         )
         return self.env_t - self.env_t_started
+
+    def __repr__(self):
+        sa_eps = {
+            aid: sa_eps.get_return() for aid, sa_eps in self.agent_episodes.items()
+        }
+        return (
+            f"MAEps(len={len(self)} done={self.is_done} " f"Rs={sa_eps} id_={self.id_})"
+        )
 
     def get_state(self) -> Dict[str, Any]:
         """Returns the state of a multi-agent episode.
@@ -1662,25 +1470,6 @@ class MultiAgentEpisode:
             episode instance records.
         """
         return sum(len(eps) for eps in self.agent_episodes.values())
-
-    def __repr__(self):
-        sa_eps_returns = {
-            aid: sa_eps.get_return() for aid, sa_eps in self.agent_episodes.items()
-        }
-        return (
-            f"MAEps(len={len(self)} done={self.is_done} "
-            f"Rs={sa_eps_returns} id_={self.id_})"
-        )
-
-    def __getitem__(self, item: slice) -> "MultiAgentEpisode":
-        """Enable squared bracket indexing- and slicing syntax, e.g. episode[-4:]."""
-        if isinstance(item, slice):
-            return self.slice(slice_=item)
-        else:
-            raise NotImplementedError(
-                f"MultiAgentEpisode does not support getting item '{item}'! "
-                "Only slice objects allowed with the syntax: `episode[a:b]`."
-            )
 
     # TODO (sven, simon): This function can only deal with data if it does not contain
     #  terminated or truncated agents (i.e. you have to provide ONLY alive agents in the

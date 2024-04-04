@@ -261,9 +261,10 @@ class SingleAgentEpisode:
 
         # Lookback buffer length is not provided. Interpret already given data as
         # lookback buffer lengths for all data types.
-        len_rewards = len(rewards) if rewards is not None else 0
-        if len_lookback_buffer == "auto" or len_lookback_buffer > len_rewards:
-            len_lookback_buffer = len_rewards
+        if len_lookback_buffer == "auto":
+            len_lookback_buffer = len(rewards or [])
+        elif len_lookback_buffer > len(rewards or []):
+            len_lookback_buffer = len(rewards or [])
 
         infos = infos or [{} for _ in range(len(observations or []))]
 
@@ -1132,11 +1133,11 @@ class SingleAgentEpisode:
                 neg_indices_left_of_zero=neg_indices_left_of_zero,
                 fill=fill,
             )
+        assert False  # TODO(sven)
         # TODO (sven): This does not seem to be solid yet. Users should NOT be able
         #  to just write directly into our buffers. Instead, use:
         #  `self.set_extra_model_outputs(key, new_data, at_indices=...)` and if key
         #  is not known, add a new buffer to the `extra_model_outputs` dict.
-        assert False
         # It might be that the user has added new key/value pairs in their custom
         # postprocessing/connector logic. The values are then most likely numpy
         # arrays. We convert them automatically to buffers and get the requested
@@ -1397,32 +1398,6 @@ class SingleAgentEpisode:
         beginning in order for the returned SingleAgentEpisode to have such a
         lookback buffer.
 
-        .. testcode::
-
-            from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-            from ray.rllib.utils.test_utils import check
-
-            # Generate a simple multi-agent episode.
-            observations = [0, 1, 2, 3, 4, 5]
-            actions = [1, 2, 3, 4, 5]
-            rewards = [0.1, 0.2, 0.3, 0.4, 0.5]
-            episode = SingleAgentEpisode(
-                observations=observations,
-                actions=actions,
-                rewards=rewards,
-                len_lookback_buffer=0,  # all given data is part of the episode
-            )
-            slice_1 = episode[:1]
-            check(slice_1.observations, [0, 1])
-            check(slice_1.actions, [1])
-            check(slice_1.rewards, [0.1])
-
-            slice_2 = episode[-2:]
-            check(slice_1.observations, [3, 4, 5])
-            check(slice_1.actions, [4, 5])
-            check(slice_1.rewards, [0.4, 0.5])
-
-
         Args:
             slice_: The slice object to use for slicing. This should exclude the
                 lookback buffer, which will be prepended automatically to the returned
@@ -1431,55 +1406,57 @@ class SingleAgentEpisode:
         Returns:
             The new SingleAgentEpisode representing the requested slice.
         """
-        # Translate `slice_` into one that only contains 0-or-positive ints and will
-        # NOT contain any None.
-        sa_slice = self.actions._interpret_slice(slice_, False)[0]
-        sa_slice_obs_infos = slice(sa_slice.start, sa_slice.stop + 1, sa_slice.step)
-
         # Figure out, whether slicing stops at the very end of this episode to know
         # whether `self.is_terminated/is_truncated` should be kept as-is.
-        keep_done = sa_slice.stop == len(self)
-        t_started = self.t_started + sa_slice.start
+        keep_done = slice_.stop is None or slice_.stop == len(self)
+        start = slice_.start or 0
+        t_started = self.t_started + start + (0 if start >= 0 else len(self))
 
+        neg_indices_left_of_zero = (slice_.start or 0) >= 0
+
+        start = slice_.start or 0
+        stop = slice_.stop
+        # Obs and infos need one more step at the end.
+        stop_obs_infos = ((stop if stop != -1 else (len(self) - 1)) or len(self)) + 1
+        step = slice_.step
         return SingleAgentEpisode(
             id_=self.id_,
             observations=InfiniteLookbackBuffer(
-                data=self.observations.get(
-                    slice(sa_slice_obs_infos.start - self.observations.lookback, sa_slice_obs_infos.stop, sa_slice_obs_infos.step),
-                    neg_indices_left_of_zero=True,
+                data=self.get_observations(
+                    slice(start - self.observations.lookback, stop_obs_infos, step),
+                    neg_indices_left_of_zero=neg_indices_left_of_zero,
                 ),
                 lookback=self.observations.lookback,
                 space=self.observation_space,
             ),
             infos=InfiniteLookbackBuffer(
-                data=self.infos.get(
-                    slice(sa_slice_obs_infos.start - self.infos.lookback, sa_slice_obs_infos.stop, sa_slice_obs_infos.step),
-                    neg_indices_left_of_zero=True,
+                data=self.get_infos(
+                    slice(start - self.infos.lookback, stop_obs_infos, step),
+                    neg_indices_left_of_zero=neg_indices_left_of_zero,
                 ),
                 lookback=self.infos.lookback,
             ),
             actions=InfiniteLookbackBuffer(
-                data=self.actions.get(
-                    slice(sa_slice.start - self.actions.lookback, sa_slice.stop, sa_slice.step),
-                    neg_indices_left_of_zero=True,
+                data=self.get_actions(
+                    slice(start - self.actions.lookback, stop, step),
+                    neg_indices_left_of_zero=neg_indices_left_of_zero,
                 ),
                 lookback=self.actions.lookback,
                 space=self.action_space,
             ),
             rewards=InfiniteLookbackBuffer(
-                data=self.rewards.get(
-                    slice(sa_slice.start - self.rewards.lookback, sa_slice.stop, sa_slice.step),
-                    neg_indices_left_of_zero=True,
+                data=self.get_rewards(
+                    slice(start - self.rewards.lookback, stop, step),
+                    neg_indices_left_of_zero=neg_indices_left_of_zero,
                 ),
                 lookback=self.rewards.lookback,
             ),
             extra_model_outputs={
                 k: InfiniteLookbackBuffer(
-                    data=self.extra_model_outputs[k].get(
-                        slice(
-                            sa_slice.start - v.lookback, sa_slice.stop, sa_slice.step
-                        ),
-                        neg_indices_left_of_zero=True,
+                    data=self.get_extra_model_outputs(
+                        k,
+                        slice(start - v.lookback, stop, step),
+                        neg_indices_left_of_zero=neg_indices_left_of_zero,
                     ),
                     lookback=v.lookback,
                 )
