@@ -1274,6 +1274,10 @@ def test_deploy_does_not_affect_dynamic_apps(client: ServeControllerClient):
         lambda: "declarative-app-1" not in serve.status().applications
     )
 
+    # Also verify that the controller does not delete the dynamic app on recovery.
+    ray.kill(client._controller, no_restart=False)
+    wait_for_condition(check_application_running, name="dynamic-app", route_prefix="/dynamic", msg="Hello!")
+
 
 def test_change_route_prefix(client: ServeControllerClient):
     # Deploy application with route prefix /old
