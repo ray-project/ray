@@ -214,10 +214,12 @@ def test_serialize_nested_field(start_ray, BaseModel: Type):
     ray.get(func.remote())
 
 
-@pytest.mark.skipif(version.parse(pydantic.__version__) < version.parse("2.6.0"),
-                    reason="pydantic version < 2.6.0 has a bug that ValidationError "
-                    "is not unpicklable: See "
-                    "https://github.com/pydantic/pydantic-core/pull/1119")
+@pytest.mark.skipif(
+    version.parse(pydantic.__version__) < version.parse("2.6.0"),
+    reason="pydantic version < 2.6.0 has a bug that ValidationError "
+    "is not unpicklable: See "
+    "https://github.com/pydantic/pydantic-core/pull/1119",
+)
 @pytest.mark.parametrize("base_model_and_error", BASE_MODEL_AND_ERRORS)
 def test_validation_error(
     start_ray, propagate_logs, caplog, base_model_and_error: Tuple[Type, Type]
