@@ -65,13 +65,12 @@ steps:
       - train
       - gpu
     instance_type: gpu-large
-    parallelism: 2
+    # parallelism: 2
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... //python/ray/air/... //doc/... ml
-        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 2
         --build-name mlgpubuild
-        --only-tags gpu,gpu_only
-    depends_on: [ "mlgpubuild", "forge" ]
+        --build-only
+      - sleep 10800
 
   - label: ":train: ml: train authentication tests"
     tags:
