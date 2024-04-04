@@ -216,13 +216,13 @@ class ShardEpisodesIterator:
             episode = self._episodes[episode_index]
             min_index = lengths.index(min(lengths))
 
+            # Add the whole episode if it fits within the target length
             if lengths[min_index] + len(episode) <= self._target_lengths[min_index]:
-                # Add the whole episode if it fits within the target length
                 sublists[min_index].append(episode)
                 lengths[min_index] += len(episode)
                 episode_index += 1
+            # Otherwise, slice the episode
             else:
-                # Otherwise, slice the episode
                 remaining_length = self._target_lengths[min_index] - lengths[min_index]
                 if remaining_length > 0:
                     slice_part, remaining_part = (

@@ -261,11 +261,24 @@ class TestSingelAgentEpisode(unittest.TestCase):
         check(len(episode), 9)
 
         # Slice the episode in different ways and check results.
-        slice_ = episode[:]
+        for s in [
+            slice(None, None, None),
+            slice(-100, None, None),
+            slice(None, 1000, None),
+            slice(-1000, 1000, None),
+        ]:
+            slice_ = episode[s]
+            check(len(slice_), len(episode))
+            check(slice_.observations, observations)
+            check(slice_.actions, observations[:-1])
+            check(slice_.rewards, [o / 10 for o in observations[:-1]])
+            check(slice_.is_done, False)
+
+        slice_ = episode[-100:]
         check(len(slice_), len(episode))
         check(slice_.observations, observations)
         check(slice_.actions, observations[:-1])
-        check(slice_.rewards, [o/10 for o in observations[:-1]])
+        check(slice_.rewards, [o / 10 for o in observations[:-1]])
         check(slice_.is_done, False)
 
         slice_ = episode[2:]
@@ -275,8 +288,6 @@ class TestSingelAgentEpisode(unittest.TestCase):
         check(slice_.rewards, [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8])
         check(slice_.is_done, False)
 
-        # If a slice ends in a "gap" for an agent, expect actions and rewards to be
-        # cached in the agent's buffer.
         slice_ = episode[:1]
         check(len(slice_), 1)
         check(slice_.observations, [0, 1])
@@ -320,6 +331,113 @@ class TestSingelAgentEpisode(unittest.TestCase):
         check(slice_.is_done, False)
 
         slice_ = episode[-4:-2]
+        check(len(slice_), 2)
+        check(slice_.observations, [5, 6, 7])
+        check(slice_.actions, [5, 6])
+        check(slice_.rewards, [0.5, 0.6])
+        check(slice_.is_done, False)
+
+        slice_ = episode[-4:6]
+        check(len(slice_), 1)
+        check(slice_.observations, [5, 6])
+        check(slice_.actions, [5])
+        check(slice_.rewards, [0.5])
+        check(slice_.is_done, False)
+
+        slice_ = episode[1:3]
+        check(len(slice_), 2)
+        check(slice_.observations, [1, 2, 3])
+        check(slice_.actions, [1, 2])
+        check(slice_.rewards, [0.1, 0.2])
+        check(slice_.is_done, False)
+
+        # Generate a single-agent episode with lookback.
+        episode = SingleAgentEpisode(
+            observations=observations,
+            actions=actions,
+            rewards=rewards,
+            len_lookback_buffer=4,  # some data is in lookback buffer
+        )
+        check(len(episode), 5)
+
+        # Slice the episode in different ways and check results.
+        for s in [
+            slice(None, None, None),
+            slice(-100, None, None),
+            slice(None, 1000, None),
+            slice(-1000, 1000, None),
+        ]:
+            slice_ = episode[s]
+            check(len(slice_), len(episode))
+            check(slice_.observations, [4, 5, 6, 7, 8, 9])
+            check(slice_.actions, [4, 5, 6, 7, 8])
+            check(slice_.rewards, [0.4, 0.5, 0.6, 0.7, 0.8])
+            check(slice_.is_done, False)
+
+        slice_ = episode[2:]
+        check(len(slice_), 3)
+        check(slice_.observations, [6, 7, 8, 9])
+        check(slice_.actions, [6, 7, 8])
+        check(slice_.rewards, [0.6, 0.7, 0.8])
+        check(slice_.is_done, False)
+
+        slice_ = episode[:1]
+        check(len(slice_), 1)
+        check(slice_.observations, [4, 5])
+        check(slice_.actions, [4])
+        check(slice_.rewards, [0.4])
+        check(slice_.is_done, False)
+
+        slice_ = episode[:3]
+        check(len(slice_), 3)
+        check(slice_.observations, [4, 5, 6, 7])
+        check(slice_.actions, [4, 5, 6])
+        check(slice_.rewards, [0.4, 0.5, 0.6])
+        check(slice_.is_done, False)
+
+        slice_ = episode[:-4]
+        check(len(slice_), 1)
+        check(slice_.observations, [4, 5])
+        check(slice_.actions, [4])
+        check(slice_.rewards, [0.4])
+        check(slice_.is_done, False)
+
+        slice_ = episode[-2:]
+        check(len(slice_), 2)
+        check(slice_.observations, [7, 8, 9])
+        check(slice_.actions, [7, 8])
+        check(slice_.rewards, [0.7, 0.8])
+        check(slice_.is_done, False)
+
+        slice_ = episode[-3:]
+        check(len(slice_), 3)
+        check(slice_.observations, [6, 7, 8, 9])
+        check(slice_.actions, [6, 7, 8])
+        check(slice_.rewards, [0.6, 0.7, 0.8])
+        check(slice_.is_done, False)
+
+        slice_ = episode[-5:]
+        check(len(slice_), 5)
+        check(slice_.observations, [4, 5, 6, 7, 8, 9])
+        check(slice_.actions, [4, 5, 6, 7, 8])
+        check(slice_.rewards, [0.4, 0.5, 0.6, 0.7, 0.8])
+        check(slice_.is_done, False)
+
+        slice_ = episode[-4:-2]
+        check(len(slice_), 2)
+        check(slice_.observations, [5, 6, 7])
+        check(slice_.actions, [5, 6])
+        check(slice_.rewards, [0.5, 0.6])
+        check(slice_.is_done, False)
+
+        slice_ = episode[-4:2]
+        check(len(slice_), 1)
+        check(slice_.observations, [5, 6])
+        check(slice_.actions, [5])
+        check(slice_.rewards, [0.5])
+        check(slice_.is_done, False)
+
+        slice_ = episode[1:3]
         check(len(slice_), 2)
         check(slice_.observations, [5, 6, 7])
         check(slice_.actions, [5, 6])

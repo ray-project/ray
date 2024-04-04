@@ -1433,51 +1433,70 @@ class SingleAgentEpisode:
         """
         # Translate `slice_` into one that only contains 0-or-positive ints and will
         # NOT contain any None.
-        sa_slice = self.actions._interpret_slice(slice_, False)[0]
-        sa_slice_obs_infos = slice(sa_slice.start, sa_slice.stop + 1, sa_slice.step)
+        start = slice_.start
+        stop = slice_.stop
+
+        # Start is None -> 0.
+        if start is None:
+            start = 0
+        # Start is negative -> Interpret index as counting "from end".
+        elif start < 0:
+            start = len(self) + start
+
+        # Stop is None -> Set stop to our len (one ts past last valid index).
+        if stop is None:
+            stop = len(self)
+        # Stop is negative -> Interpret index as counting "from end".
+        elif stop < 0:
+            stop = len(self) + stop
+
+        step = slice_.step if slice_.step is not None else 1
 
         # Figure out, whether slicing stops at the very end of this episode to know
         # whether `self.is_terminated/is_truncated` should be kept as-is.
-        keep_done = sa_slice.stop == len(self)
-        t_started = self.t_started + sa_slice.start
+        keep_done = stop == len(self)
+        # Provide correct timestep- and pre-buffer information.
+        t_started = self.t_started + start
 
         return SingleAgentEpisode(
             id_=self.id_,
+            # In the following, offset `start`s automatically by lookbacks.
             observations=InfiniteLookbackBuffer(
-                data=self.observations.get(
-                    slice(sa_slice_obs_infos.start - self.observations.lookback, sa_slice_obs_infos.stop, sa_slice_obs_infos.step),
+                data=self.get_observations(
+                    slice(start - self.observations.lookback, stop + 1, step),
                     neg_indices_left_of_zero=True,
                 ),
                 lookback=self.observations.lookback,
                 space=self.observation_space,
             ),
             infos=InfiniteLookbackBuffer(
-                data=self.infos.get(
-                    slice(sa_slice_obs_infos.start - self.infos.lookback, sa_slice_obs_infos.stop, sa_slice_obs_infos.step),
+                data=self.get_infos(
+                    slice(start - self.infos.lookback, stop + 1, step),
                     neg_indices_left_of_zero=True,
                 ),
                 lookback=self.infos.lookback,
             ),
             actions=InfiniteLookbackBuffer(
-                data=self.actions.get(
-                    slice(sa_slice.start - self.actions.lookback, sa_slice.stop, sa_slice.step),
+                data=self.get_actions(
+                    slice(start - self.actions.lookback, stop, step),
                     neg_indices_left_of_zero=True,
                 ),
                 lookback=self.actions.lookback,
                 space=self.action_space,
             ),
             rewards=InfiniteLookbackBuffer(
-                data=self.rewards.get(
-                    slice(sa_slice.start - self.rewards.lookback, sa_slice.stop, sa_slice.step),
+                data=self.get_rewards(
+                    slice(start - self.rewards.lookback, stop, step),
                     neg_indices_left_of_zero=True,
                 ),
                 lookback=self.rewards.lookback,
             ),
             extra_model_outputs={
                 k: InfiniteLookbackBuffer(
-                    data=self.extra_model_outputs[k].get(
-                        slice(
-                            sa_slice.start - v.lookback, sa_slice.stop, sa_slice.step
+                    data=self.get_extra_model_outputs(
+                        key=k,
+                        indices=slice(
+                            start - self.extra_model_outputs[k].lookback, stop, step
                         ),
                         neg_indices_left_of_zero=True,
                     ),
@@ -1487,7 +1506,6 @@ class SingleAgentEpisode:
             },
             terminated=(self.is_terminated if keep_done else False),
             truncated=(self.is_truncated if keep_done else False),
-            # Provide correct timestep- and pre-buffer information.
             t_started=t_started,
         )
 
