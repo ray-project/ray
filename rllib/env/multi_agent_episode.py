@@ -1407,6 +1407,30 @@ class MultiAgentEpisode:
                 "episode have the exact same size!"
             )
 
+        # Determine terminateds/truncateds.
+        terminateds = {}
+        truncateds = {}
+        for aid, sa_episode in self.agent_episodes.items():
+            # If the (agent) timestep directly at the slice stop boundary is equal to
+            # the length of the single-agent episode of this agent -> Use the
+            # single-agent episode's terminated/truncated flags.
+            # If `stop` is already beyond this agents single-agent episode, then we
+            # don't have to keep track of this: The MultiAgentEpisode initializer will
+            # automatically determine that this agent must be done (b/c has no action
+            # following its final observation).
+            if (
+                stop < len(self.env_t_to_agent_t[aid])
+                and self.env_t_to_agent_t[aid][stop] != self.SKIP_ENV_TS_TAG
+                and len(sa_episode) == self.env_t_to_agent_t[aid][stop]
+            ):
+                terminateds[aid] = sa_episode.is_terminated
+                truncateds[aid] = sa_episode.is_truncated
+        terminateds["__all__"] = all(
+            terminateds.get(aid) for aid in self.agent_episodes
+        )
+        truncateds["__all__"] = all(truncateds.get(aid) for aid in self.agent_episodes)
+
+        # Determine all other slice contents.
         observations = self.get_observations(
             slice(start - ref_lookback, stop + 1),
             neg_indices_left_of_zero=True,
@@ -1438,8 +1462,8 @@ class MultiAgentEpisode:
             action_space=self.action_space,
             rewards=rewards,
             extra_model_outputs=extra_model_outputs,
-            #terminateds=terminateds,
-            #truncateds=truncateds,
+            terminateds=terminateds,
+            truncateds=truncateds,
             len_lookback_buffer=ref_lookback,
             agent_episode_ids={aid: eid for aid, eid in self.agent_episodes.items()},
             agent_module_ids=self._agent_to_module_mapping,

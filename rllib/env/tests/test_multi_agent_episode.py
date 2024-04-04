@@ -2718,15 +2718,15 @@ class TestMultiAgentEpisode(unittest.TestCase):
         observations = [
             {"a0": 0, "a1": 0},
             {"a0": 1, "a1": 1},
-            {         "a1": 2},
-            {         "a1": 3},
+            {"a1": 2},
+            {"a1": 3},
         ]
         actions = [
             {"a0": 0, "a1": 0},
-            {         "a1": 1},
-            {         "a1": 2},
+            {"a1": 1},
+            {"a1": 2},
         ]
-        rewards = [{aid: a/10 for aid, a in a.items()} for a in actions]
+        rewards = [{aid: a / 10 for aid, a in a.items()} for a in actions]
         episode = MultiAgentEpisode(
             observations=observations,
             actions=actions,
@@ -2734,6 +2734,16 @@ class TestMultiAgentEpisode(unittest.TestCase):
             terminateds={"a0": True},
             len_lookback_buffer=0,
         )
+        slice_ = episode[:1]
+        a0 = slice_.agent_episodes["a0"]
+        a1 = slice_.agent_episodes["a1"]
+        check(len(slice_), 1)
+        check((len(a0), len(a1)), (1, 1))
+        check((a0.observations, a1.observations), ([0, 1], [0, 1]))
+        check((a0.actions, a1.actions), ([0], [0]))
+        check((a0.rewards, a1.rewards), ([0.0], [0.0]))
+        check((a0.is_done, a1.is_done), (True, False))
+
         slice_ = episode[:2]
         a0 = slice_.agent_episodes["a0"]
         a1 = slice_.agent_episodes["a1"]
