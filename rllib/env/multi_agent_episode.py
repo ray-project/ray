@@ -1465,7 +1465,7 @@ class MultiAgentEpisode:
             terminateds=terminateds,
             truncateds=truncateds,
             len_lookback_buffer=ref_lookback,
-            agent_episode_ids={aid: eid for aid, eid in self.agent_episodes.items()},
+            agent_episode_ids={aid: eid.id_ for aid, eid in self.agent_episodes.items()},
             agent_module_ids=self._agent_to_module_mapping,
             agent_to_module_mapping_fn=self.agent_to_module_mapping_fn,
         )
@@ -1816,6 +1816,14 @@ class MultiAgentEpisode:
 
         # Now create the individual episodes from the collected per-agent data.
         for agent_id, agent_obs in observations_per_agent.items():
+            # If agent only has a single obs AND is already done, remove all its traces
+            # from this MultiAgentEpisode.
+            if len(agent_obs) == 1 and done_per_agent.get(agent_id):
+                self._del_agent(agent_id)
+                continue
+
+            # Compute the correct lookback length to use for this agent's
+            # SingleAgentEpisode.
             lookback = sum(
                 s != self.SKIP_ENV_TS_TAG
                 for s in self.env_t_to_agent_t[agent_id].get(
@@ -1829,6 +1837,7 @@ class MultiAgentEpisode:
             module_id = agent_module_ids.get(
                 agent_id, self.agent_to_module_mapping_fn(agent_id, self)
             )
+            # Create this agent's SingleAgentEpisode.
             sa_episode = SingleAgentEpisode(
                 id_=(
                     agent_episode_ids.get(agent_id)
@@ -1857,6 +1866,7 @@ class MultiAgentEpisode:
                 t_started=self.agent_t_started[agent_id],
                 len_lookback_buffer=lookback,
             )
+            # .. and store it.
             self.agent_episodes[agent_id] = sa_episode
 
     def _get(
@@ -2374,6 +2384,15 @@ class MultiAgentEpisode:
         self._agent_buffered_actions.pop(agent_id, None)
         self._agent_buffered_extra_model_outputs.pop(agent_id, None)
         self._agent_buffered_rewards.pop(agent_id, None)
+
+    def _del_agent(self, agent_id: AgentID) -> None:
+        """Deletes all data of given agent from this episode."""
+        self._del_buffers(agent_id)
+        self.agent_episodes.pop(agent_id, None)
+        self.agent_ids.discard(agent_id)
+        self.env_t_to_agent_t.pop(agent_id, None)
+        self._agent_to_module_mapping.pop(agent_id, None)
+        self.agent_t_started.pop(agent_id, None)
 
     def _get_inf_lookback_buffer_or_dict(
         self,
