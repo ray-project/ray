@@ -52,7 +52,8 @@ std::string RayLog::app_name_ = "";
 std::string RayLog::log_dir_ = "";
 // Format pattern is 2020-08-21 17:00:00,000 I 100 1001 msg.
 // %L is loglevel, %P is process id, %t for thread id.
-std::string RayLog::log_format_pattern_ = "[%Y-%m-%d %H:%M:%S,%e %L %P %t] %v";
+std::string RayLog::log_format_pattern_ =
+    "{\"ts\":\"%Y-%m-%d %H:%M:%S,%e\", \"level\": \"%l\", %v";
 std::string RayLog::logger_name_ = "ray_log_sink";
 long RayLog::log_rotation_max_size_ = 1 << 29;
 long RayLog::log_rotation_file_num_ = 10;
@@ -148,9 +149,7 @@ class SpdLogMessage final {
                          int line,
                          int loglevel,
                          std::shared_ptr<std::ostringstream> expose_osstream)
-      : loglevel_(loglevel), expose_osstream_(expose_osstream) {
-    stream() << ConstBasename(file) << ":" << line << ": ";
-  }
+      : loglevel_(loglevel), expose_osstream_(expose_osstream) {}
 
   inline void Flush() {
     auto logger = spdlog::get(RayLog::GetLoggerName());
@@ -164,6 +163,7 @@ class SpdLogMessage final {
     if (expose_osstream_) {
       *expose_osstream_ << "\n*** StackTrace Information ***\n" << ray::StackTrace();
     }
+    stream() << "\"}";
     // NOTE(lingxuan.zlx): See more fmt by visiting https://github.com/fmtlib/fmt.
     logger->log(
         static_cast<spdlog::level::level_enum>(loglevel_), /*fmt*/ "{}", str_.str());
@@ -293,8 +293,6 @@ void RayLog::StartRayLog(const std::string &app_name,
   } else {
     // Format pattern is 2020-08-21 17:00:00,000 I 100 1001 msg.
     // %L is loglevel, %P is process id, %t for thread id.
-    log_format_pattern_ =
-        "[%Y-%m-%d %H:%M:%S,%e %L %P %t] (" + app_name_without_path + ") %v";
     auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
     console_sink->set_pattern(log_format_pattern_);
     console_sink->set_level(level);

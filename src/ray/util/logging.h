@@ -103,9 +103,17 @@ enum class RayLogLevel {
 
 #define RAY_LOG_ENABLED(level) ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level)
 
-#define RAY_LOG(level)                                      \
+#define GET_MACRO(_1, _2, _3, NAME, ...) NAME
+#define RAY_LOG(...) GET_MACRO(__VA_ARGS__, RAY_LOG3, RAY_LOG2, RAY_LOG1)(__VA_ARGS__)
+
+#define RAY_LOG1(level)                                     \
   if (ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level)) \
-  RAY_LOG_INTERNAL(ray::RayLogLevel::level)
+  RAY_LOG_INTERNAL(ray::RayLogLevel::level) << "\"msg\": \""
+
+#define RAY_LOG3(level, key1, value1)                                 \
+  if (ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level))           \
+  RAY_LOG_INTERNAL(ray::RayLogLevel::level) << "\"" << key1 << "\": " \
+                                            << "\"" << value1 << "\", \"msg\": \""
 
 #define RAY_IGNORE_EXPR(expr) ((void)(expr))
 
