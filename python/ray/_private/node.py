@@ -238,15 +238,19 @@ class Node:
                 storage_uri = ray_params.storage
             storage._init_storage(storage_uri, is_head=False)
 
-        # If it is a head node, try validating if
-        # external storage is configurable.
         if head:
-            self.validate_external_storage()
+            self.configure_object_spilling()
 
         if connect_only:
             # Get socket names from the configuration.
             self._plasma_store_socket_name = ray_params.plasma_store_socket_name
             self._raylet_socket_name = ray_params.raylet_socket_name
+
+            node_info = ray._private.services.get_node_to_connect_for_driver(
+                self.gcs_address,
+                self._raylet_ip_address,
+            )
+            self._node_id = node_info["node_id"]
 
             # If user does not provide the socket name, get it from Redis.
             if (
@@ -256,10 +260,6 @@ class Node:
             ):
                 # Get the address info of the processes to connect to
                 # from Redis or GCS.
-                node_info = ray._private.services.get_node_to_connect_for_driver(
-                    self.gcs_address,
-                    self._raylet_ip_address,
-                )
                 self._plasma_store_socket_name = node_info["object_store_socket_name"]
                 self._raylet_socket_name = node_info["raylet_socket_name"]
                 self._ray_params.node_manager_port = node_info["node_manager_port"]
@@ -329,9 +329,14 @@ class Node:
                 self.gcs_address,
                 self._raylet_ip_address,
             )
+            self._node_id = node_info["node_id"]
             if self._ray_params.node_manager_port == 0:
                 self._ray_params.node_manager_port = node_info["node_manager_port"]
 
+        # If it is a head node, try validating if
+        # external storage is configurable.
+        if head:
+            self.validate_external_storage()
         # Makes sure the Node object has valid addresses after setup.
         self.validate_ip_port(self.address)
         self.validate_ip_port(self.gcs_address)
@@ -558,6 +563,11 @@ class Node:
                 self._ray_params.redis_max_memory,
             ).resolve(is_head=self.head, node_ip_address=self.node_ip_address)
         return self._resource_spec
+
+    @property
+    def node_id(self):
+        """Get the node ID."""
+        return self._node_id
 
     @property
     def session_name(self):
@@ -1365,7 +1375,6 @@ class Node:
                 f" GCS system config: {new_config}"
             )
             self._config = new_config
-        self.destroy_external_storage()
 
         # Make sure we don't call `determine_plasma_store_config` multiple
         # times to avoid printing multiple warnings.
@@ -1687,13 +1696,15 @@ class Node:
             from ray._private import external_storage
 
             storage = external_storage.setup_external_storage(
-                object_spilling_config, self._session_name
+                object_spilling_config,
+                self._node_id,
+                self._session_name,
             )
             storage.destroy_external_storage()
 
-    def validate_external_storage(self):
-        """Make sure we can setup the object spilling external storage.
-        This will also fill up the default setting for object spilling
+    def configure_object_spilling(self):
+        """Configure object spilling for this node.
+        This will fill up the default setting for object spilling
         if not specified.
         """
         object_spilling_config = self._config.get("object_spilling_config", {})
@@ -1712,27 +1723,41 @@ class Node:
                 {"type": "filesystem", "params": {"directory_path": self._session_dir}}
             )
 
-        # Try setting up the storage.
         # Configure the proper system config.
         # We need to set both ray param's system config and self._config
         # because they could've been diverged at this point.
-        deserialized_config = json.loads(object_spilling_config)
+        self._config["object_spilling_config"] = object_spilling_config
+
         self._ray_params._system_config[
             "object_spilling_config"
         ] = object_spilling_config
-        self._config["object_spilling_config"] = object_spilling_config
 
+        deserialized_config = json.loads(object_spilling_config)
         is_external_storage_type_fs = deserialized_config["type"] == "filesystem"
         self._ray_params._system_config[
             "is_external_storage_type_fs"
         ] = is_external_storage_type_fs
         self._config["is_external_storage_type_fs"] = is_external_storage_type_fs
 
+    def validate_external_storage(self):
+        """Make sure we can setup the object spilling external storage.
+        This method assumes self._node_id is already set.
+        """
+        automatic_spilling_enabled = self._config.get(
+            "automatic_object_spilling_enabled", True
+        )
+        if not automatic_spilling_enabled:
+            return
+
+        deserialized_config = json.loads(self._config["object_spilling_config"])
+
         # Validate external storage usage.
         from ray._private import external_storage
 
-        external_storage.setup_external_storage(deserialized_config, self._session_name)
-        external_storage.reset_external_storage()
+        storage = external_storage.setup_external_storage(
+            deserialized_config, self._node_id, self._session_name
+        )
+        storage.destroy_external_storage()
 
     def _record_stats(self):
         # This is only called when a new node is started.

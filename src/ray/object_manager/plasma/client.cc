@@ -378,9 +378,9 @@ Status PlasmaClient::Impl::HandleCreateReply(const ObjectID &object_id,
     // they are not evicted before the writer has a chance to register the
     // object.
     // TODO(swang): GC these once they are deleted by the
-    // ExperimentalMutableObjectManager. This can be done by pinning the object
+    // experimental::MutableObjectManager. This can be done by pinning the object
     // using the shared_ptr to the memory buffer that is held by the
-    // ExperimentalMutableObjectManager.
+    // experimental::MutableObjectManager.
     IncrementObjectCount(object_id);
   }
 
@@ -636,9 +636,9 @@ Status PlasmaClient::Impl::GetExperimentalMutableObject(
   // Pin experimental mutable object so that it is not evicted before the
   // caller has a chance to register the object.
   // TODO(swang): GC once they are deleted by the
-  // ExperimentalMutableObjectManager. This can be done by pinning the object
+  // experimental::MutableObjectManager. This can be done by pinning the object
   // using the shared_ptr to the memory buffer that is held by the
-  // ExperimentalMutableObjectManager.
+  // experimental::MutableObjectManager.
   IncrementObjectCount(object_id);
 
   const auto &object = object_entry->second->object;

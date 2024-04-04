@@ -50,7 +50,6 @@ class JobConfig:
         ray_namespace: Optional[str] = None,
         default_actor_lifetime: str = "non_detached",
         _py_driver_sys_path: Optional[List[str]] = None,
-        _driver_node_id_bytes: Optional[bytes] = None,
     ):
         #: The jvm options for java workers of the job.
         self.jvm_options = jvm_options or []
@@ -71,8 +70,6 @@ class JobConfig:
         self.set_default_actor_lifetime(default_actor_lifetime)
         # A list of directories that specify the search path for python workers.
         self._py_driver_sys_path = _py_driver_sys_path or []
-        # Only storing bytes not ray.NodeID to avoid circular import.
-        self._driver_node_id_bytes = _driver_node_id_bytes
 
     def set_metadata(self, key: str, value: str) -> None:
         """Add key-value pair to the metadata dictionary.
@@ -177,8 +174,6 @@ class JobConfig:
             pb.jvm_options.extend(self.jvm_options)
             pb.code_search_path.extend(self.code_search_path)
             pb.py_driver_sys_path.extend(self._py_driver_sys_path)
-            if self._driver_node_id_bytes is not None:
-                pb.driver_node_id = self._driver_node_id_bytes
             for k, v in self.metadata.items():
                 pb.metadata[k] = v
 
@@ -231,5 +226,4 @@ class JobConfig:
             ray_namespace=job_config_json.get("ray_namespace", None),
             _client_job=job_config_json.get("client_job", False),
             _py_driver_sys_path=job_config_json.get("py_driver_sys_path", None),
-            _driver_node_id_bytes=job_config_json.get("driver_node_id", None),
         )

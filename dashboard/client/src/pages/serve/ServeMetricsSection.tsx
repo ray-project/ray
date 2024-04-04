@@ -1,4 +1,4 @@
-import { Button, MenuItem, Paper, TextField } from "@mui/material";
+import { Box, Button, MenuItem, Paper, TextField } from "@mui/material";
 import createStyles from "@mui/styles/createStyles";
 import makeStyles from "@mui/styles/makeStyles";
 import React, { useContext, useEffect, useState } from "react";
@@ -130,7 +130,7 @@ export const ServeMetricsSection = ({
   return grafanaHost === undefined || !prometheusHealth ? null : (
     <CollapsibleSection className={className} title="Metrics" startExpanded>
       <div>
-        <Paper className={classes.topBar}>
+        <Box className={classes.topBar}>
           <Button
             href={`${grafanaHost}/d/${grafanaServeDashboardUid}?var-datasource=${dashboardDatasource}`}
             target="_blank"
@@ -155,7 +155,7 @@ export const ServeMetricsSection = ({
               </MenuItem>
             ))}
           </TextField>
-        </Paper>
+        </Box>
         <div className={classes.grafanaEmbedsContainer}>
           {metricsConfig.map(({ title, pathParams }) => {
             const path =
@@ -166,6 +166,7 @@ export const ServeMetricsSection = ({
                 key={pathParams}
                 className={classes.chart}
                 variant="outlined"
+                elevation={0}
               >
                 <iframe
                   key={title}
