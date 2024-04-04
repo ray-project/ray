@@ -1385,10 +1385,6 @@ class MultiAgentEpisode:
         elif stop > len(self):
             stop = len(self)
 
-        ## Empty slice -> Return empty MAEpisode.
-        #if start == stop == len(self):
-        #    return MultiAgentEpisode()
-
         ref_lookback = None
         for aid, sa_episode in self.agent_episodes.items():
             if ref_lookback is None:
