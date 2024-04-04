@@ -72,7 +72,6 @@ class RuntimeEnvConfig(dict):
             )
         self["eager_install"] = eager_install
 
-        # Typecheck log_files
         if log_files is not None:
             if not isinstance(log_files, list):
                 raise TypeError(
