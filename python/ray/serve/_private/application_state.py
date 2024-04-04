@@ -244,9 +244,6 @@ class ApplicationState:
         When a request to delete the application has been received, this should be
             ({}, True)
         """
-        if api_type == APIType.UNKNOWN:
-            raise Exception("asdfa")
-
         if deleting:
             self._update_status(ApplicationStatus.DELETING)
         else:
