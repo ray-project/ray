@@ -1423,10 +1423,9 @@ class SingleAgentEpisode:
             check(slice_1.rewards, [0.1])
 
             slice_2 = episode[-2:]
-            check(slice_1.observations, [3, 4, 5])
-            check(slice_1.actions, [4, 5])
-            check(slice_1.rewards, [0.4, 0.5])
-
+            check(slice_2.observations, [3, 4, 5])
+            check(slice_2.actions, [4, 5])
+            check(slice_2.rewards, [0.4, 0.5])
 
         Args:
             slice_: The slice object to use for slicing. This should exclude the
