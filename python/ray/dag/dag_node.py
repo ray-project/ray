@@ -122,12 +122,12 @@ class DAGNode(DAGNodeBase):
                 invoke the DAG. Otherwise, the caller should use `execute` to
                 invoke the DAG.
             async_max_queue_size: Optional parameter to limit how many DAG
-                inputs can be queued at a time. The actual number of concurrent
-                DAG invocations may be higher than this, if there are already
-                inputs being processed by the DAG executors. If used, the
-                caller is responsible for preventing deadlock, i.e. if the
-                input queue is full, another asyncio task is reading from the
-                DAG output.
+                inputs can be queued at a time, if enable_asyncio=True. The
+                actual number of concurrent DAG invocations may be higher than
+                this, if there are already inputs being processed by the DAG
+                executors. If used, the caller is responsible for preventing
+                deadlock, i.e. if the input queue is full, another asyncio task
+                is reading from the DAG output.
             _num_buffers: The number of buffers to allocate for each
                 (intermediate) output of the DAG. Passing N=1 means that
                 executors adjacent in the DAG will be synchronized; the

@@ -359,6 +359,35 @@ def test_asyncio_exceptions(ray_start_regular_shared, max_queue_size):
     compiled_dag.teardown()
 
 
+@pytest.mark.parametrize("num_buffers", [1, 2, 4])
+def test_pipelined_dag(ray_start_regular_shared, num_buffers):
+    a = Actor.remote(0)
+    with InputNode() as i:
+        dag = a.echo.bind(i)
+
+    compiled_dag = dag.experimental_compile(_num_buffers=num_buffers)
+
+    # It should be possible to have up to num_buffers concurrent values written
+    # to the channel.
+    max_values = num_buffers * 2
+    for i in range(max_values):
+        dag_reader = compiled_dag.execute(i)
+
+    with pytest.raises(
+        ray.dag.compiled_dag_node.MaxConcurrentExecutionsExceededError,
+        match=f"Number of concurrent executions would exceed the max \({max_values}\).",
+    ):
+        dag_reader = compiled_dag.execute(i + 1)
+
+    for i in range(max_values):
+        assert dag_reader.begin_read() == i
+        dag_reader.end_read()
+
+        compiled_dag.execute(i)
+
+    compiled_dag.teardown()
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

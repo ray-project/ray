@@ -241,10 +241,10 @@ class ReaderInterface:
 
         self._input_channels = input_channels
         self._closed = False
-        self._num_reads = 0
+        self._num_reads_complete = 0
 
-    def get_num_reads(self) -> int:
-        return self._num_reads
+    def get_num_reads_complete(self) -> int:
+        return self._num_reads_complete
 
     def start(self):
         raise NotImplementedError
@@ -254,7 +254,6 @@ class ReaderInterface:
 
     def begin_read(self) -> Any:
         outputs = self._begin_read_list()
-        self._num_reads += 1
         if self._has_single_output:
             return outputs[0]
         else:
@@ -283,6 +282,7 @@ class SynchronousReader(ReaderInterface):
     def end_read(self) -> Any:
         for c in self._input_channels:
             c.end_read()
+        self._num_reads_complete += 1
 
 
 @DeveloperAPI
@@ -327,6 +327,7 @@ class AwaitableBackgroundReader(ReaderInterface):
     def end_read(self) -> Any:
         for c in self._input_channels:
             c.end_read()
+        self._num_reads_complete += 1
 
     def close(self):
         self._background_task.cancel()

@@ -25,6 +25,16 @@ DEFAULT_NUM_BUFFERS = 1
 logger = logging.getLogger(__name__)
 
 
+@PublicAPI(stability="alpha")
+class MaxConcurrentExecutionsExceededError(RuntimeError):
+    def __init__(self, max_concurrent_executions):
+        super().__init__(
+            "Number of concurrent executions would exceed the max "
+            f"({max_concurrent_executions}). Caller must read at least one "
+            "output before calling dag.execute() again to avoid hanging."
+        )
+
+
 @DeveloperAPI
 def do_allocate_channel(
     self, buffer_size_bytes: int, num_buffers: int, num_readers: int = 1
@@ -201,12 +211,12 @@ class CompiledDAG:
                 invoke the DAG. Otherwise, the caller should use `execute` to
                 invoke the DAG.
             async_max_queue_size: Optional parameter to limit how many DAG
-                inputs can be queued at a time. The actual number of concurrent
-                DAG invocations may be higher than this, if there are already
-                inputs being processed by the DAG executors. If used, the
-                caller is responsible for preventing deadlock, i.e. if the
-                input queue is full, another asyncio task is reading from the
-                DAG output.
+                inputs can be queued at a time, if enable_asyncio=True. The
+                actual number of concurrent DAG invocations may be higher than
+                this, if there are already inputs being processed by the DAG
+                executors. If used, the caller is responsible for preventing
+                deadlock, i.e. if the input queue is full, another asyncio task
+                is reading from the DAG output.
             _num_buffers: The number of buffers to allocate for each
                 (intermediate) output of the DAG. Passing N=1 means that
                 executors adjacent in the DAG will be synchronized; the
@@ -256,6 +266,8 @@ class CompiledDAG:
         self.dag_output_channels: Optional[List[Channel]] = None
         self._dag_submitter: Optional[WriterInterface] = None
         self._dag_output_fetcher: Optional[ReaderInterface] = None
+        self._num_executions: int = 0
+        self._max_concurrent_executions: int = 0
 
         # ObjectRef for each worker's task. The task is an infinite loop that
         # repeatedly executes the method specified in the DAG.
@@ -384,11 +396,12 @@ class CompiledDAG:
             assert self._dag_output_fetcher is not None
             return
 
-        frontier = [self.input_task_idx]
+        frontier = [(self.input_task_idx, 0)]
         visited = set()
+        shortest_path_len = -1
         # Create output buffers
         while frontier:
-            cur_idx = frontier.pop(0)
+            cur_idx, path_len = frontier.pop(0)
             if cur_idx in visited:
                 continue
             visited.add(cur_idx)
@@ -417,7 +430,13 @@ class CompiledDAG:
                 assert isinstance(task.dag_node, MultiOutputNode)
 
             for idx in task.downstream_node_idxs:
-                frontier.append(idx)
+                frontier.append((idx, path_len + 1))
+
+            if not task.downstream_node_idxs:
+                if shortest_path_len == -1 or path_len < shortest_path_len:
+                    shortest_path_len = path_len
+
+        self._max_concurrent_executions = shortest_path_len * self._num_buffers
 
         for node_idx, task in self.idx_to_task.items():
             if node_idx == self.input_task_idx:
@@ -569,6 +588,12 @@ class CompiledDAG:
             raise ValueError("Use execute_async if enable_asyncio=True")
 
         self._get_or_compile()
+        if (
+            self._num_executions - self._dag_output_fetcher.get_num_reads_complete()
+            >= self._max_concurrent_executions
+        ):
+            raise MaxConcurrentExecutionsExceededError(self._max_concurrent_executions)
+        self._num_executions += 1
         self._dag_submitter.write(args[0])
 
         return self._dag_output_fetcher
@@ -624,11 +649,13 @@ def build_compiled_dag_from_ray_dag(
     buffer_size_bytes: Optional[int],
     enable_asyncio: bool = False,
     async_max_queue_size: Optional[int] = None,
+    _num_buffers: Optional[int] = None,
 ) -> "CompiledDAG":
     compiled_dag = CompiledDAG(
         buffer_size_bytes,
         enable_asyncio,
         async_max_queue_size,
+        _num_buffers,
     )
 
     def _build_compiled_dag(node):
