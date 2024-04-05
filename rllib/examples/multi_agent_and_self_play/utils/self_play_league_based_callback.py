@@ -35,6 +35,9 @@ class SelfPlayLeagueBasedCallback(DefaultCallbacks):
     def on_train_result(self, *, algorithm, result, **kwargs):
         local_worker = algorithm.workers.local_worker()
 
+        # Avoid `self` being pickled into the remote function below.
+        _trainable_policies = self.trainable_policies
+
         # Get the win rate for the train batch.
         # Note that normally, one should set up a proper evaluation config,
         # such that evaluation always happens on the already updated policy,
@@ -186,7 +189,7 @@ class SelfPlayLeagueBasedCallback(DefaultCallbacks):
                         # This setting doesn't really matter for EnvRunners (no
                         # training going on there, but we'll update this as well
                         # here for good measure).
-                        policies_to_train=self.trainable_policies,
+                        policies_to_train=_trainable_policies,
                     ),
                     local_worker=True,
                 )
@@ -194,7 +197,7 @@ class SelfPlayLeagueBasedCallback(DefaultCallbacks):
                 # value.
                 algorithm.learner_group.foreach_learner(
                     lambda learner: learner.config.multi_agent(
-                        policies_to_train=self.trainable_policies,
+                        policies_to_train=_trainable_policies,
                     )
                 )
                 league_changed = True
