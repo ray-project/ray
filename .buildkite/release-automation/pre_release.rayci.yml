@@ -46,7 +46,7 @@ steps:
   - label: "Trigger Release nightly test"
     key: trigger-release-nightly
     trigger: "release"
-    depends_on: check-commit-hash
+    depends_on: block-release-nightly-test
     build:
       commit: "${BUILDKITE_COMMIT}"
       branch: "${BUILDKITE_BRANCH}"
