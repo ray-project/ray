@@ -2196,9 +2196,9 @@ class DeploymentState:
                 required, available = pending_allocation[0].resource_requirements()
                 message = (
                     f"Deployment '{self.deployment_name}' in application "
-                    f"'{self.app_name}' {len(pending_allocation)} replicas that have "
-                    f"taken more than {SLOW_STARTUP_WARNING_S}s to be scheduled. This "
-                    "may be due to waiting for the cluster to auto-scale or for a "
+                    f"'{self.app_name}' has {len(pending_allocation)} replicas that "
+                    f"have taken more than {SLOW_STARTUP_WARNING_S}s to be scheduled. "
+                    "This may be due to waiting for the cluster to auto-scale or for a "
                     "runtime environment to be installed. Resources required for each "
                     f"replica: {required}, total resources available: {available}. Use "
                     "`ray status` for more details."

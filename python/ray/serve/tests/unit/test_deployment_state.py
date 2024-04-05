@@ -2184,8 +2184,8 @@ def test_downscaling_reclaiming_starting_replicas_first(
         )
     elif target_startup_status == ReplicaStartupStatus.PENDING_ALLOCATION:
         expected_message = (
-            "Deployment 'test_deployment' in application "
-            "'test_app' 3 replicas that have taken more than 30s to be scheduled. This "
+            "Deployment 'test_deployment' in application 'test_app' "
+            "has 3 replicas that have taken more than 30s to be scheduled. This "
             "may be due to waiting for the cluster to auto-scale or for a runtime "
             "environment to be installed. Resources required for each replica: "
             '{"CPU": 0.1}, total resources available: {}. Use `ray status` for '
