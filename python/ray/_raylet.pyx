@@ -2696,22 +2696,20 @@ cdef class GcsClient:
         shared_ptr[CPythonGcsClient] inner
         object address
         object _nums_reconnect_retry
-        CClusterID cluster_id
+        CClusterID init_cluster_id
 
     def __cinit__(self, address,
                   nums_reconnect_retry=RayConfig.instance().nums_py_gcs_reconnect_retry(
                   ),
-                  cluster_id=None):
+                  cluster_id: str=None):
         cdef GcsClientOptions gcs_options = GcsClientOptions.from_gcs_address(address)
         self.inner.reset(new CPythonGcsClient(dereference(gcs_options.native())))
         self.address = address
         self._nums_reconnect_retry = nums_reconnect_retry
-        cdef c_string c_cluster_id
         if cluster_id is None:
-            self.cluster_id = CClusterID.Nil()
+            self.init_cluster_id = CClusterID.Nil()
         else:
-            c_cluster_id = cluster_id
-            self.cluster_id = CClusterID.FromHex(c_cluster_id)
+            self.init_cluster_id = CClusterID.FromHex(cluster_id)
         self._connect(RayConfig.instance().py_gcs_connect_timeout_s())
 
     def _connect(self, timeout_s=None):
@@ -2719,15 +2717,14 @@ cdef class GcsClient:
             int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
             size_t num_retries = self._nums_reconnect_retry
         with nogil:
-            status = self.inner.get().Connect(self.cluster_id, timeout_ms, num_retries)
+            status = self.inner.get().Connect(self.init_cluster_id, timeout_ms, num_retries)
 
         check_status(status)
-        if self.cluster_id.IsNil():
-            self.cluster_id = self.inner.get().GetClusterId()
-            assert not self.cluster_id.IsNil()
+        assert not self.cluster_id.is_nil()
 
-    def get_cluster_id(self):
-        return self.cluster_id.Hex().decode()
+    @property
+    def cluster_id(self) -> ray.ClusterID:
+        return ClusterID(self.inner.get().GetClusterId().Binary())
 
     @property
     def address(self):
@@ -4331,7 +4328,7 @@ cdef class CoreWorker:
                                          method_meta.enable_task_events,
                                          actor_method_cpu,
                                          actor_creation_function_descriptor,
-                                         worker.current_session_and_job)
+                                         worker.current_cluster_and_job)
         else:
             return ray.actor.ActorHandle(language, actor_id,
                                          0,   # max_task_retries,
@@ -4346,7 +4343,7 @@ cdef class CoreWorker:
                                          {},  # enable_task_events
                                          0,  # actor method cpu
                                          actor_creation_function_descriptor,
-                                         worker.current_session_and_job)
+                                         worker.current_cluster_and_job)
 
     def deserialize_and_register_actor_handle(self, const c_string &bytes,
                                               ObjectRef
