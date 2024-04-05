@@ -83,7 +83,7 @@ FILE_READING_RETRY = 8
 PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT = 5
 
 # The lower bound size to estimate Parquet encoding ratio.
-PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND = 2
+PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND = 1
 
 # The percentage of files (1% by default) to be sampled from the dataset to estimate
 # Parquet encoding ratio.

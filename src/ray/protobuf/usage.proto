@@ -75,7 +75,7 @@ enum TagKey {
   // Whether the `to_object_ref` or any of its variants were used in the
   // `DeploymentHandle` API.
   SERVE_DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED = 21;
-  // Whether multuplexed API is was used.
+  // Whether multiplexed API is was used.
   SERVE_MULTIPLEXED_API_USED = 22;
   // Whether or not an HTTP proxy was used ("1" if used).
   SERVE_HTTP_PROXY_USED = 23;

@@ -10,7 +10,7 @@ from ci.ray_ci.container import _DOCKER_ECR_REPO
 from ci.ray_ci.ray_docker_container import RayDockerContainer
 from ci.ray_ci.test_base import RayCITestBase
 from ci.ray_ci.utils import RAY_VERSION
-from release.ray_release.configs.global_config import BRANCH_PIPELINES
+from ray_release.configs.global_config import BRANCH_PIPELINES
 
 
 class TestRayDockerContainer(RayCITestBase):
