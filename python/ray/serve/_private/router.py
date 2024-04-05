@@ -396,7 +396,9 @@ class Router:
                         "this feature, please file a feature request on GitHub."
                     )
                 elif isinstance(obj, DeploymentResponse):
-                    if not _WARNED_ABOUT_NESTED_OBJ and (obj not in request_args and obj not in kwarg_values):
+                    if not _WARNED_ABOUT_NESTED_OBJ and (
+                        obj not in request_args and obj not in kwarg_values
+                    ):
                         _WARNED_ABOUT_NESTED_OBJ = True
                         warnings.warn(
                             f"`DeploymentResponse` objects passed in nested objects "
