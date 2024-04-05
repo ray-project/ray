@@ -5,6 +5,7 @@ from ray.data.context import DataContext
 from ray.exceptions import UserCodeException
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
+from ray.util.rpdb import _is_ray_debugger_enabled
 
 
 @DeveloperAPI
@@ -77,9 +78,17 @@ def omit_traceback_stdout(fn: Callable) -> Callable:
                 "Full stack trace:"
             )
 
-            if is_user_code_exception:
-                raise e.with_traceback(None)
+            # If the Ray Debugger is enabled, keep the full stack trace unmodified
+            # so that the debugger can stop at the initial unhandled exception.
+            # Otherwise, clear the stack trace to omit noisy internal code path.
+            if _is_ray_debugger_enabled():
+                exception_to_raise = e
             else:
-                raise e.with_traceback(None) from SystemException()
+                exception_to_raise = e.with_traceback(None)
+
+            if is_user_code_exception or _is_ray_debugger_enabled():
+                raise exception_to_raise
+            else:
+                raise exception_to_raise from SystemException()
 
     return handle_trace
