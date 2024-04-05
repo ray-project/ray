@@ -185,6 +185,9 @@ class OpState:
         # Used for StreamingExecutor to signal exception or end of execution
         self._finished: bool = False
         self._exception: Optional[Exception] = None
+        self.start_time = time.time()
+        self.output_budget = 0
+        self.output_budget_used = 0
 
     def __repr__(self):
         return f"OpState({self.op.name})"
@@ -251,6 +254,7 @@ class OpState:
 
     def dispatch_next_task(self) -> None:
         """Move a bundle from the operator inqueue to the operator itself."""
+        logger.get_logger().info(f"@lsf Dispatch: {self.op.name}")
         for i, inqueue in enumerate(self.inqueues):
             ref = inqueue.pop()
             if ref is not None:
@@ -302,6 +306,28 @@ class OpState:
             self._finished = True
         else:
             self._exception = exception
+
+    def lsf_admission_control(self) -> bool:
+        if self.op.name != "ReadRange->MapBatches(produce)":
+            return True
+        OUTPUT_SIZE = 10
+        self.output_budget = _get_output_budget(self)
+        logger.get_logger().info(
+            f"@lsf output_budget: {self.output_budget}, output_budget_used: {self.output_budget_used}, OUTPUT_SIZE: {OUTPUT_SIZE}"
+        )
+        if self.output_budget_used + OUTPUT_SIZE > self.output_budget:
+            logger.get_logger().info("@lsf admission control: denied")
+            return False
+        self.output_budget_used += OUTPUT_SIZE
+        logger.get_logger().info("@lsf admission control: allowed")
+        return True
+
+
+def _get_output_budget(state: OpState) -> float:
+    now = time.time()
+    GROW_RATE = 8
+    INITIAL_BUDGET = 20
+    return (now - state.start_time) * GROW_RATE + INITIAL_BUDGET
 
 
 def build_streaming_topology(
@@ -378,7 +404,7 @@ def process_completed_tasks(
             active_tasks[task.get_waitable()] = (state, task)
 
     max_bytes_to_read_per_op: Dict[OpState, int] = {}
-    if resource_manager.op_resource_allocator_enabled():
+    if False and resource_manager.op_resource_allocator_enabled(): # @lsf
         for op, state in topology.items():
             max_bytes_to_read = (
                 resource_manager.op_resource_allocator.max_task_output_bytes_to_read(op)
@@ -411,20 +437,16 @@ def process_completed_tasks(
             for task in ready_tasks:
                 if isinstance(task, DataOpTask):
                     try:
-                        bytes_read = task.on_data_ready(
-                            max_bytes_to_read_per_op.get(state, None)
-                        )
+                        bytes_read = task.on_data_ready(max_bytes_to_read_per_op.get(state, None))
                         if state in max_bytes_to_read_per_op:
                             max_bytes_to_read_per_op[state] -= bytes_read
                     except Exception as e:
                         num_errored_blocks += 1
                         should_ignore = (
-                            max_errored_blocks < 0
-                            or max_errored_blocks >= num_errored_blocks
+                            max_errored_blocks < 0 or max_errored_blocks >= num_errored_blocks
                         )
                         error_message = (
-                            "An exception was raised from a task of "
-                            f'operator "{state.op.name}".'
+                            "An exception was raised from a task of " f'operator "{state.op.name}".'
                         )
                         if should_ignore:
                             remaining = (
@@ -515,10 +537,8 @@ def select_operator_to_run(
     # Filter to ops that are eligible for execution.
     ops = []
     for op, state in topology.items():
-        if resource_manager.op_resource_allocator_enabled():
-            under_resource_limits = (
-                resource_manager.op_resource_allocator.can_submit_new_task(op)
-            )
+        if False and resource_manager.op_resource_allocator_enabled(): # @lsf
+            under_resource_limits = resource_manager.op_resource_allocator.can_submit_new_task(op)
         else:
             under_resource_limits = _execution_allowed(op, resource_manager)
         in_backpressure = not under_resource_limits or any(
@@ -529,6 +549,7 @@ def select_operator_to_run(
             and not op.completed()
             and state.num_queued() > 0
             and op.should_add_input()
+            and state.lsf_admission_control()
         ):
             ops.append(op)
         # Signal whether op in backpressure for stats collections
@@ -540,10 +561,7 @@ def select_operator_to_run(
     # cluster scale-up.
     if not ops and any(state.num_queued() > 0 for state in topology.values()):
         now = time.time()
-        if (
-            now
-            > autoscaling_state.last_request_ts + MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS
-        ):
+        if now > autoscaling_state.last_request_ts + MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS:
             autoscaling_state.last_request_ts = now
             _try_to_scale_up_cluster(topology, execution_id)
 
@@ -556,9 +574,7 @@ def select_operator_to_run(
     ):
         # The topology is entirely idle, so choose from all ready ops ignoring limits.
         ops = [
-            op
-            for op, state in topology.items()
-            if state.num_queued() > 0 and not op.completed()
+            op for op, state in topology.items() if state.num_queued() > 0 and not op.completed()
         ]
 
     # Nothing to run.
@@ -567,13 +583,18 @@ def select_operator_to_run(
 
     # Run metadata-only operators first. After that, choose the operator with the least
     # memory usage.
-    return min(
-        ops,
-        key=lambda op: (
-            not op.throttling_disabled(),
-            resource_manager.get_op_usage(op).object_store_memory,
-        ),
-    )
+    # op = min(
+    #     ops,
+    #     key=lambda op: (
+    #         not op.throttling_disabled(),
+    #         resource_manager.get_op_usage(op).object_store_memory,
+    #     ),
+    # )
+    op = ops[0]  # @lsf prefer the producer
+    if op is not None:
+        wall_time = time.time() - topology[op].start_time
+        logger.get_logger().info(f"@lsf Selected: {op.name} @ {wall_time:.3f}")
+    return op
 
 
 def _try_to_scale_up_cluster(topology: Topology, execution_id: str):
@@ -639,7 +660,7 @@ def _execution_allowed(op: PhysicalOperator, resource_manager: ResourceManager) 
     Returns:
         Whether the op is allowed to run.
     """
-    if op.throttling_disabled():
+    if True and op.throttling_disabled():
         return True
 
     global_usage = resource_manager.get_global_usage()
@@ -667,6 +688,11 @@ def _execution_allowed(op: PhysicalOperator, resource_manager: ResourceManager) 
         cpu=1 if inc.cpu else 0,
         gpu=1 if inc.gpu else 0,
         object_store_memory=0,
+        # object_store_memory=inc.object_store_memory,
+    )
+
+    logger.get_logger().info(
+        f"@lsf execution_allowed: global_floored: {global_floored}, inc_indicator: {inc_indicator}, global_limits: {global_limits}"
     )
 
     # Under global limits; always allow.
