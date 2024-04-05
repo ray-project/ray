@@ -1,3 +1,4 @@
+import logging
 import math
 from typing import List
 
@@ -5,6 +6,9 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch, concat_samples
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.typing import EpisodeType
+
+
+logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
@@ -141,6 +145,7 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
             # multi-agent batch is covering. It should be simply inherited from the
             # original multi-agent batch.
             minibatch = MultiAgentBatch(minibatch, len(self._batch))
+            logger.warning(f"yielding minibatch with policy_ids={set(minibatch.policy_batches.keys())}")
             yield minibatch
 
 

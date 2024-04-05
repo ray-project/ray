@@ -287,7 +287,7 @@ class Learner:
         self._metrics = defaultdict(dict)
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def build(self, index) -> None:
+    def build(self) -> None:
         """Builds the Learner.
 
         This method should be called before the learner is used. It is responsible for
@@ -297,8 +297,6 @@ class Learner:
         if self._is_built:
             logger.debug("Learner already built. Skipping build.")
             return
-
-        self._learner_index = index
 
         # Build learner connector pipeline used on this Learner worker.
         if self.config.uses_new_env_runners:
@@ -1354,17 +1352,22 @@ class Learner:
             )
             # TODO (sven): Try to not require MultiAgentBatch anymore.
             batch = MultiAgentBatch(
-                {mid: SampleBatch(v) for mid, v in batch.items()},
+                {
+                    module_id: SampleBatch(module_data)
+                    for module_id, module_data in batch.items()
+                },
                 env_steps=sum(len(e) for e in episodes),
             )
+            for mid, b in batch.policy_batches.items():
+                logger.warning(f"{mid} len={len(b)}")
 
         # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
         # found in this batch. If not, throw an error.
         unknown_module_ids = set(batch.policy_batches.keys()) - set(self.module.keys())
         if len(unknown_module_ids) > 0:
             raise ValueError(
-                "Batch contains module ids that are not in the learner: "
-                f"{unknown_module_ids}"
+                "Batch contains one or more ModuleIDs that are not in this Learner! "
+                f"Found IDs: {unknown_module_ids}"
             )
 
         # Filter out those RLModules from the final train batch that should not be
@@ -1397,14 +1400,14 @@ class Learner:
         batch = self._set_slicing_by_batch_id(batch, value=True)
 
         for tensor_minibatch in batch_iter(batch, minibatch_size, num_iters):
-            print("in sgd loop")
+            logger.warning("in sgd loop")
             # Make the actual in-graph/traced `_update` call. This should return
             # all tensor values (no numpy).
             nested_tensor_minibatch = NestedDict(tensor_minibatch.policy_batches)
             (fwd_out, loss_per_module, metrics_per_module) = self._update(
                 nested_tensor_minibatch
             )
-            print("after update")
+            logger.warning("after update")
 
             result = self.compile_results(
                 batch=tensor_minibatch,
@@ -1412,15 +1415,15 @@ class Learner:
                 loss_per_module=loss_per_module,
                 metrics_per_module=defaultdict(dict, **metrics_per_module),
             )
-            print("after compile results")
+            logger.warning("after compile results")
             self._check_result(result)
-            print("after check results")
+            logger.warning("after check results")
             # TODO (sven): Figure out whether `compile_results` should be forced
             #  to return all numpy/python data, then we can skip this conversion
             #  step here.
             results.append(result)
 
-        print("out of sgd loop")
+        logger.warning("out of sgd loop")
 
         self._set_slicing_by_batch_id(batch, value=False)
 

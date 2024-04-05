@@ -51,7 +51,9 @@ def _get_backend_config(learner_class: Type[Learner]) -> str:
 
         backend_config = TensorflowConfig()
     else:
-        raise ValueError("framework must be either torch or tf")
+        raise ValueError(
+            "`learner_class.framework` must be either 'torch' or 'tf2' (but is "
+            f"{learner_class.framework}!")
 
     return backend_config
 
@@ -164,7 +166,7 @@ class LearnerGroup:
             self._workers = [w.actor for w in backend_executor.worker_group.workers]
 
             # Run the neural network building code on remote workers.
-            ray.get([w.build.remote(index=i) for i, w in enumerate(self._workers)])
+            ray.get([w.build.remote() for w in self._workers])
 
             self._worker_manager = FaultTolerantActorManager(
                 self._workers,
@@ -342,7 +344,8 @@ class LearnerGroup:
                     "Cannot call `update_from_batch(update_async=True)` when running in"
                     " local mode! Try setting `config.num_learner_workers > 0`."
                 )
-
+            #episodes_shards = list(ShardEpisodesIterator(episodes, 2))
+            #import random
             results = [
                 _learner_update(
                     learner=self._learner,
@@ -357,15 +360,6 @@ class LearnerGroup:
                     for batch_shard in ShardBatchIterator(batch, len(self._workers))
                 ]
             else:
-                #a = 1  # TEST: remove shard hack below
-                #shards = list(ShardEpisodesIterator(
-                #    episodes, 10
-                #))
-                #partials = [
-                #    #partial(_learner_update, episodes_shard=shards[4])
-                #    #for i in range(len(self._workers))
-                #]
-
                 episodes_shards = list(ShardEpisodesIterator(episodes, len(self._workers)))
                 partials = [
                     partial(_learner_update, episodes_shard=e)

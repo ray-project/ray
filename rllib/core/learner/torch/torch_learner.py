@@ -124,11 +124,20 @@ class TorchLearner(Learner):
     ):
         """Performs a single update given a batch of data."""
         fwd_out = self.module.forward_train(batch)
+        if "p0" not in batch or "p1" not in batch:
+            raise ValueError("p0 or p1 NOT found in batch!!")
+        logger.warning("\tafter forward_train")
         loss_per_module = self.compute_loss(fwd_out=fwd_out, batch=batch)
+        logger.warning("\tafter compute_loss")
+
+        return fwd_out, loss_per_module, self._metrics
 
         gradients = self.compute_gradients(loss_per_module)
+        logger.warning("\tafter compute_gradients")
         postprocessed_gradients = self.postprocess_gradients(gradients)
+        logger.warning("\tafter postprocess_gradients")
         self.apply_gradients(postprocessed_gradients)
+        logger.warning("\tafter apply_gradients")
         return fwd_out, loss_per_module, self._metrics
 
     @override(Learner)
