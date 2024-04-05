@@ -497,7 +497,7 @@ class ServeController:
             logger.info(
                 "Recovered config from checkpoint.", extra={"log_to_stderr": False}
             )
-            self.deploy_config(serve_config, deployment_time=deployment_time)
+            self.apply_config(serve_config, deployment_time=deployment_time)
 
     def _read_config_checkpoint(
         self,
@@ -726,11 +726,9 @@ class ServeController:
                     else None,
                 }
             )
-        self.application_state_manager.apply_deployment_args(
-            name, deployment_args_deserialized
-        )
+        self.application_state_manager.deploy_app(name, deployment_args_deserialized)
 
-    def deploy_config(
+    def apply_config(
         self,
         config: ServeDeploySchema,
         deployment_time: float = 0.0,
@@ -779,14 +777,6 @@ class ServeController:
             app_config_dict = app_config.dict(exclude_unset=True)
             new_config_checkpoint[app_config.name] = app_config_dict
 
-            self.application_state_manager.deploy_config(
-                app_config.name,
-                app_config,
-                deployment_time=deployment_time,
-                target_capacity=self._target_capacity,
-                target_capacity_direction=self._target_capacity_direction,
-            )
-
         self.kv_store.put(
             CONFIG_CHECKPOINT_KEY,
             pickle.dumps(
@@ -799,12 +789,15 @@ class ServeController:
             ),
         )
 
-        # Delete live applications not listed in the config.
-        existing_applications = set(
-            self.application_state_manager._application_states.keys()
+        # Declaratively apply the new set of applications.
+        # This will delete any applications no longer in the config that were
+        # previously deployed via the REST API.
+        self.application_state_manager.apply_app_configs(
+            config.applications,
+            deployment_time=deployment_time,
+            target_capacity=self._target_capacity,
+            target_capacity_direction=self._target_capacity_direction,
         )
-        new_applications = {app_config.name for app_config in config.applications}
-        self.delete_apps(existing_applications.difference(new_applications))
 
     def get_deployment_info(self, name: str, app_name: str = "") -> bytes:
         """Get the current information about a deployment.
@@ -983,7 +976,7 @@ class ServeController:
         During deletion, the application status is DELETING
         """
         for name in names:
-            self.application_state_manager.delete_application(name)
+            self.application_state_manager.delete_app(name)
 
     def record_multiplexed_replica_info(self, info: MultiplexedReplicaInfo):
         """Record multiplexed model ids for a replica of deployment

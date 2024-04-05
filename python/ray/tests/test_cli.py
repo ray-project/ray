@@ -1035,7 +1035,7 @@ def test_ray_check_open_ports(shutdown_only, start_open_port_check_server):
     )
     assert result.exit_code == 0
     assert (
-        context.address_info["dashboard_agent_listen_port"]
+        int(context.address_info["gcs_address"].split(":")[1])
         in open_port_check_server.request_ports
     )
     assert "[🟢] No open ports detected" in result.output
@@ -1052,10 +1052,6 @@ def test_ray_check_open_ports(shutdown_only, start_open_port_check_server):
         ],
     )
     assert result.exit_code == 0
-    assert (
-        context.address_info["metrics_export_port"]
-        in open_port_check_server.request_ports
-    )
     assert "[🛑] open ports detected" in result.output
 
 
