@@ -329,6 +329,10 @@ class LearnerGroup:
                     num_iters=num_iters,
                 )
             else:
+                #TEST
+                a=1
+                episodes_shard = ray.get(episodes_shard)
+                #END TEST
                 return learner.update_from_episodes(
                     episodes=episodes_shard,
                     reduce_fn=reduce_fn,
@@ -343,13 +347,11 @@ class LearnerGroup:
                     " local mode! Try setting `config.num_learner_workers > 0`."
                 )
 
-            a=1#TEST: remove shard hack below
             results = [
                 _learner_update(
                     learner=self._learner,
                     batch_shard=batch,
-                    #episodes_shard=episodes,
-                    episodes_shard=list(ShardEpisodesIterator(episodes, 10))[9],
+                    episodes_shard=episodes,
                 )
             ]
         else:
@@ -369,7 +371,8 @@ class LearnerGroup:
                 #]
 
                 partials = [
-                    partial(_learner_update, episodes_shard=episodes_shard)
+                    #partial(_learner_update, episodes_shard=episodes_shard)
+                    partial(_learner_update, episodes_shard=ray.put(episodes_shard))
                     for episodes_shard in ShardEpisodesIterator(
                         episodes, len(self._workers)
                     )
