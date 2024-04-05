@@ -90,6 +90,10 @@ def test_actor_used_multiple_times(ray_start_regular):
     output_channel = compiled_dag.execute(1)
     result = output_channel.begin_read()
     assert result == 1
+    output_channel.end_read()
+
+    logger.info("Explicit teardown")
+    compiled_dag.teardown()
 
 
 def test_regular_args(ray_start_regular):
