@@ -164,7 +164,7 @@ class LearnerGroup:
             self._workers = [w.actor for w in backend_executor.worker_group.workers]
 
             # Run the neural network building code on remote workers.
-            ray.get([w.build.remote() for w in self._workers])
+            ray.get([w.build.remote(index=i) for i, w in enumerate(self._workers)])
 
             self._worker_manager = FaultTolerantActorManager(
                 self._workers,
@@ -329,10 +329,6 @@ class LearnerGroup:
                     num_iters=num_iters,
                 )
             else:
-                #TEST
-                a=1
-                episodes_shard = ray.get(episodes_shard)
-                #END TEST
                 return learner.update_from_episodes(
                     episodes=episodes_shard,
                     reduce_fn=reduce_fn,
@@ -370,12 +366,10 @@ class LearnerGroup:
                 #    #for i in range(len(self._workers))
                 #]
 
+                episodes_shards = list(ShardEpisodesIterator(episodes, len(self._workers)))
                 partials = [
-                    #partial(_learner_update, episodes_shard=episodes_shard)
-                    partial(_learner_update, episodes_shard=ray.put(episodes_shard))
-                    for episodes_shard in ShardEpisodesIterator(
-                        episodes, len(self._workers)
-                    )
+                    partial(_learner_update, episodes_shard=e)
+                    for e in episodes_shards
                 ]
 
             if async_update:

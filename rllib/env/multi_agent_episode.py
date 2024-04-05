@@ -1664,6 +1664,28 @@ class MultiAgentEpisode:
             f"Rs={sa_eps_returns} id_={self.id_})"
         )
 
+    def print(self) -> None:
+        # Find the maximum timestep across all agents to determine the grid width.
+        max_ts = max(len(ts) for ts in self.env_t_to_agent_t.values())
+        # Construct the header.
+        header = "ts   " + " ".join(str(i) for i in range(max_ts)) + "\n"
+        # Construct each agent's row.
+        rows = []
+        for agent, timesteps in self.env_t_to_agent_t.items():
+            row = f"{agent}  "
+            for t in timesteps:
+                # Two spaces for alignment.
+                if t == "S":
+                    row += "  "
+                # Mark the step with an x.
+                else:
+                    row += "x "
+            # Remove trailing space for alignment.
+            rows.append(row.rstrip())
+
+        # Join all components into a final string
+        return header + "\n".join(rows)
+
     def __getitem__(self, item: slice) -> "MultiAgentEpisode":
         """Enable squared bracket indexing- and slicing syntax, e.g. episode[-4:]."""
         if isinstance(item, slice):

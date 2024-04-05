@@ -287,7 +287,7 @@ class Learner:
         self._metrics = defaultdict(dict)
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def build(self) -> None:
+    def build(self, index) -> None:
         """Builds the Learner.
 
         This method should be called before the learner is used. It is responsible for
@@ -297,6 +297,8 @@ class Learner:
         if self._is_built:
             logger.debug("Learner already built. Skipping build.")
             return
+
+        self._learner_index = index
 
         # Build learner connector pipeline used on this Learner worker.
         if self.config.uses_new_env_runners:

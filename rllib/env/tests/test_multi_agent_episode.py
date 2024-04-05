@@ -971,6 +971,11 @@ class TestMultiAgentEpisode(unittest.TestCase):
         for i in range(-1, -5, -1):
             act = episode.get_actions(i)
             check(act, actions[i])
+        # Access positive integer indices (expect index error as everything is in
+        # lookback buffer).
+        for i in range(0, 5):
+            with self.assertRaises(IndexError):
+                episode.get_actions(i)
         # Access list of indices, env steps.
         act = episode.get_actions([-1, -2])
         check(act, {"a0": [], "a1": [3, 2]})
@@ -1120,10 +1125,10 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check(
             act,
             {
-                "agent_1": [-10, 0],
-                "agent_2": [-10, 0],
-                "agent_3": [-10, 0],
-                "agent_4": [-10, -10],
+                "agent_1": [0, 1],
+                "agent_2": [0, -10],
+                "agent_3": [0, 1],
+                "agent_4": [-10, 0],
             },
         )
         # Same, but w/o fill (should produce error as the lookback is only 1 long).
