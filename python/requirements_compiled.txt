@@ -212,7 +212,7 @@ beautifulsoup4==4.11.1
     # via
     #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   nbconvert
-black==22.10.0
+black==24.3.0
     # via -r /home/ubuntu/ray/ci/../python/requirements/lint-requirements.txt
 bleach==6.1.0
     # via nbconvert
