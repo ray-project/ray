@@ -140,7 +140,6 @@ def test_put_remote_get(ray_start_regular, num_readers):
 
 @pytest.mark.parametrize("remote", [True, False])
 def test_remote_reader(ray_start_cluster, remote):
-    return
     num_readers = 2
     cluster = ray_start_cluster
     if remote:
@@ -161,7 +160,7 @@ def test_remote_reader(ray_start_cluster, remote):
 
         def allocate_local_reader_channel(self, writer_channel, num_readers):
             return ray_channel.Channel(
-                _writer_channel=writer_channel, num_readers=num_readers
+                1000, _writer_channel=writer_channel, num_readers=num_readers
             )
 
         def send_channel(self, reader_channel):
