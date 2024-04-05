@@ -401,7 +401,7 @@ def test_can_create_actor_in_multiple_sessions(shutdown_only):
     """
 
     # To avoid interference with other tests, we need a fresh cluster.
-    ray.shutdown()
+    assert not ray.is_initialized()
 
     @ray.remote
     class A:
@@ -428,7 +428,7 @@ def test_can_create_task_in_multiple_sessions(shutdown_only):
     """
 
     # To avoid interference with other tests, we need a fresh cluster.
-    ray.shutdown()
+    assert not ray.is_initialized()
 
     @ray.remote
     def the_task():
