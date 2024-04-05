@@ -2239,23 +2239,6 @@ class Algorithm(Trainable, AlgorithmBase):
             raise KeyError(f"Policy with ID {policy_id} not found in Algorithm!")
         policy.export_checkpoint(export_dir)
 
-    @DeveloperAPI
-    def import_policy_model_from_h5(
-        self,
-        import_file: str,
-        policy_id: PolicyID = DEFAULT_POLICY_ID,
-    ) -> None:
-        """Imports a policy's model with given policy_id from a local h5 file.
-
-        Args:
-            import_file: The h5 file to import from.
-            policy_id: Optional policy id to import into.
-
-        """
-        self.get_policy(policy_id).import_model_from_h5(import_file)
-        # Sync new weights to remote workers.
-        self._sync_weights_to_workers(worker_set=self.workers)
-
     @override(Trainable)
     def save_checkpoint(self, checkpoint_dir: str) -> None:
         """Exports checkpoint to a local directory.
@@ -2584,17 +2567,6 @@ class Algorithm(Trainable, AlgorithmBase):
                 timeout_seconds=config.sync_filters_on_rollout_workers_timeout_s,
                 use_remote_data_for_update=config.use_worker_filter_stats,
             )
-
-    @DeveloperAPI
-    def _sync_weights_to_workers(
-        self,
-        *,
-        worker_set: WorkerSet,
-    ) -> None:
-        """Sync "main" weights to given WorkerSet or list of workers."""
-        # Broadcast the new policy weights to all remote workers in worker_set.
-        logger.info("Synchronizing weights to workers.")
-        worker_set.sync_weights()
 
     @classmethod
     @override(Trainable)
@@ -3295,9 +3267,21 @@ class Algorithm(Trainable, AlgorithmBase):
             alg = "USER_DEFINED"
         record_extra_usage_tag(TagKey.RLLIB_ALGORITHM, alg)
 
-    @Deprecated(new="AlgorithmConfig.validate()", error=True)
-    def validate_config(self, config):
-        pass
+    @Deprecated(error=False)
+    def import_policy_model_from_h5(self,
+        import_file: str,
+        policy_id: PolicyID = DEFAULT_POLICY_ID,
+    ) -> None:
+        """Imports a policy's model with given policy_id from a local h5 file.
+
+        Args:
+            import_file: The h5 file to import from.
+            policy_id: Optional policy id to import into.
+
+        """
+        self.get_policy(policy_id).import_model_from_h5(import_file)
+        # Sync new weights to remote workers.
+        self.workers.sync_weights()
 
 
 class TrainIterCtx:
