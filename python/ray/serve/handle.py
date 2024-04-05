@@ -115,6 +115,11 @@ class _DeploymentHandleBase:
 
         self._router: Optional[Router] = _router
 
+        logger.info(
+            f"Created DeploymentHandle '{self.handle_id}' for {self.deployment_id}.",
+            extra={"log_to_stderr": False},
+        )
+
     def _record_telemetry_if_needed(self):
         # Record telemetry once per handle and not when used from the proxy
         # (detected via request protocol).
