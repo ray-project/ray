@@ -428,9 +428,9 @@ class WorkerSet:
             )
             # Update the global number of environment steps for each worker.
             if "env_steps_sampled" in env_runner_states:
-                _env_runner.global_num_env_steps_sampled = (
-                    env_runner_states["env_steps_sampled"]
-                )
+                _env_runner.global_num_env_steps_sampled = env_runner_states[
+                    "env_steps_sampled"
+                ]
 
         # Broadcast updated states back to all workers (including the local one).
         self.foreach_worker(

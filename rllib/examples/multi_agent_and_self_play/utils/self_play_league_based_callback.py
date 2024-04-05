@@ -35,6 +35,9 @@ class SelfPlayLeagueBasedCallback(DefaultCallbacks):
     def on_train_result(self, *, algorithm, result, **kwargs):
         local_worker = algorithm.workers.local_worker()
 
+        # Avoid `self` being pickled into the remote function below.
+        _trainable_policies = self.trainable_policies
+
         # Get the win rate for the train batch.
         # Note that normally, one should set up a proper evaluation config,
         # such that evaluation always happens on the already updated policy,
@@ -179,9 +182,6 @@ class SelfPlayLeagueBasedCallback(DefaultCallbacks):
                         module_spec=SingleAgentRLModuleSpec.from_module(main_module),
                         module_state=marl_module[module_id].get_state(),
                     )
-
-                # Avoid `self` being pickled into the remote function below.
-                _trainable_policies = self.trainable_policies
 
                 algorithm.workers.foreach_worker(
                     lambda env_runner: env_runner.config.multi_agent(

@@ -29,6 +29,9 @@ class SelfPlayLeagueBasedCallbackOldAPIStack(DefaultCallbacks):
         self.win_rates = {}
 
     def on_train_result(self, *, algorithm, result, **kwargs):
+        # Avoid `self` being pickled into the remote function below.
+        _trainable_policies = self.trainable_policies
+
         # Get the win rate for the train batch.
         # Note that normally, one should set up a proper evaluation config,
         # such that evaluation always happens on the already updated policy,
@@ -156,8 +159,6 @@ class SelfPlayLeagueBasedCallbackOldAPIStack(DefaultCallbacks):
                     algorithm.workers.sync_weights(
                         policies=["main_0", "league_exploiter_1", "main_exploiter_1"]
                     )
-                    # Avoid `self` being pickled into the remote function below.
-                    _trainable_policies = self.trainable_policies
 
                     def _set(worker):
                         worker.set_policy_mapping_fn(policy_mapping_fn)
