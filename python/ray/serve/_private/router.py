@@ -2,6 +2,7 @@ import asyncio
 import logging
 import threading
 import time
+import warnings
 from collections import defaultdict
 from contextlib import contextmanager
 from functools import partial
@@ -38,6 +39,8 @@ from ray.serve.exceptions import BackPressureError
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+_WARNED_ABOUT_NESTED_OBJ = False
 
 
 class RouterMetricsManager:
@@ -368,6 +371,8 @@ class Router:
         Uses the `_PyObjScanner` to find and replace the objects. This
         enables composition without explicitly calling `_to_object_ref`.
         """
+        global _WARNED_ABOUT_NESTED_OBJ
+
         from ray.serve.handle import (
             DeploymentResponse,
             DeploymentResponseGenerator,
@@ -378,6 +383,7 @@ class Router:
             source_type=(_DeploymentResponseBase, ray.ObjectRef, ray.ObjectRefGenerator)
         )
 
+        kwarg_values = list(request_kwargs.values())
         try:
             responses = []
             replacement_table = {}
@@ -390,6 +396,14 @@ class Router:
                         "this feature, please file a feature request on GitHub."
                     )
                 elif isinstance(obj, DeploymentResponse):
+                    if not _WARNED_ABOUT_NESTED_OBJ and (obj not in request_args and obj not in kwarg_values):
+                        _WARNED_ABOUT_NESTED_OBJ = True
+                        warnings.warn(
+                            f"`DeploymentResponse` objects passed in nested objects "
+                            "will not be supported in the future. Pass them directly "
+                            "as args or kwarg values instead."
+                        )
+
                     responses.append(obj)
 
                 # This is no-op replacing the object with itself. The purpose is to make
