@@ -49,9 +49,13 @@ def omit_traceback_stdout(fn: Callable) -> Callable:
         try:
             return fn(*args, **kwargs)
         except Exception as e:
-            # Only log the full internal stack trace to stdout when configured.
+            # Only log the full internal stack trace to stdout when configured
+            # via DataContext, or when the Ray Debugger is enabled.
             # The full stack trace will always be emitted to the Ray Data log file.
             log_to_stdout = DataContext.get_current().log_internal_stack_trace_to_stdout
+            if _is_ray_debugger_enabled() or log_to_stdout:
+                data_exception_logger.get_logger().exception("Full stack trace:")
+                raise e
 
             is_user_code_exception = isinstance(e, UserCodeException)
             if is_user_code_exception:
@@ -78,17 +82,9 @@ def omit_traceback_stdout(fn: Callable) -> Callable:
                 "Full stack trace:"
             )
 
-            # If the Ray Debugger is enabled, keep the full stack trace unmodified
-            # so that the debugger can stop at the initial unhandled exception.
-            # Otherwise, clear the stack trace to omit noisy internal code path.
-            if _is_ray_debugger_enabled():
-                exception_to_raise = e
+            if is_user_code_exception:
+                raise e.with_traceback(None)
             else:
-                exception_to_raise = e.with_traceback(None)
-
-            if is_user_code_exception or _is_ray_debugger_enabled():
-                raise exception_to_raise
-            else:
-                raise exception_to_raise from SystemException()
+                raise e.with_traceback(None) from SystemException()
 
     return handle_trace
