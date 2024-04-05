@@ -227,25 +227,23 @@ def test_default_config_cluster(ray_start_cluster_enabled):
     ray.get([task.remote() for _ in range(2)])
 
 
-def test_node_id_in_spill_dir_name(shutdown_only):
-    ray_context = ray.init(
-        object_store_memory=75 * 1024 * 1024,
-        _system_config={
-            "object_spilling_config": (json.dumps(file_system_object_spilling_config))
-        },
+def test_node_id_in_spill_dir_name():
+    node_id = ray.NodeID.from_random().hex()
+    session_dir = "test_session_dir"
+    storage = ray._private.external_storage.setup_external_storage(
+        buffer_object_spilling_config, node_id, session_dir
     )
-    config = json.loads(
-        ray._private.worker._global_node._config["object_spilling_config"]
-    )
-    assert config["type"] == file_system_object_spilling_config["type"]
 
     import os
 
     dir_prefix = ray._private.ray_constants.DEFAULT_OBJECT_PREFIX
-    expected_dir_name = f"{dir_prefix}_{ray_context['node_id']}"
-    for path in ray._private.external_storage._external_storage._directory_paths:
+    expected_dir_name = f"{dir_prefix}_{node_id}"
+    for path in storage._directory_paths:
         dir_name = os.path.basename(path)
         assert dir_name == expected_dir_name
+
+    # Clean up
+    storage.destroy_external_storage()
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hangs on Windows.")
