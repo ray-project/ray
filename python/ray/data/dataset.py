@@ -3440,6 +3440,7 @@ class Dataset:
         dataset: str,
         max_retry_cnt: int = 10,
         overwrite_table: Optional[bool] = True,
+        enable_list_inference: Optional[bool] = False,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
     ) -> None:
@@ -3476,6 +3477,9 @@ class Dataset:
             overwrite_table: Whether the write will overwrite the table if it already
                 exists. The default behavior is to overwrite the table.
                 ``overwrite_table=False`` will append to the table if it exists.
+            enable_list_inference: Whether to enable list inference for the BigQuery.
+                Disabled by default. See details in
+                `List logical type <https://cloud.google.com/bigquery/docs/loading-data-cloud-storage-parquet#list_logical_type>`.
             ray_remote_args: Kwargs passed to ray.remote in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -3500,6 +3504,7 @@ class Dataset:
             dataset=dataset,
             max_retry_cnt=max_retry_cnt,
             overwrite_table=overwrite_table,
+            enable_list_inference=enable_list_inference,
         )
         self.write_datasink(
             datasink,

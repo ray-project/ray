@@ -27,6 +27,7 @@ class _BigQueryDatasink(Datasink):
         dataset: str,
         max_retry_cnt: int = DEFAULT_MAX_RETRY_CNT,
         overwrite_table: Optional[bool] = True,
+        enable_list_inference: Optional[bool] = False,
     ) -> None:
         _check_import(self, module="google.cloud", package="bigquery")
         _check_import(self, module="google.cloud", package="bigquery_storage")
@@ -36,6 +37,7 @@ class _BigQueryDatasink(Datasink):
         self.dataset = dataset
         self.max_retry_cnt = max_retry_cnt
         self.overwrite_table = overwrite_table
+        self.enable_list_inference = enable_list_inference
 
     def on_write_start(self) -> None:
         from google.api_core import exceptions
@@ -81,6 +83,9 @@ class _BigQueryDatasink(Datasink):
             job_config = bigquery.LoadJobConfig(autodetect=True)
             job_config.source_format = bigquery.SourceFormat.PARQUET
             job_config.write_disposition = bigquery.WriteDisposition.WRITE_APPEND
+            parquet_options = bigquery.ParquetOptions()
+            parquet_options.enable_list_inference = self.enable_list_inference
+            job_config.parquet_options = parquet_options
 
             with tempfile.TemporaryDirectory() as temp_dir:
                 fp = os.path.join(temp_dir, f"block_{uuid.uuid4()}.parquet")
