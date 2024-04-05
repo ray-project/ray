@@ -289,6 +289,7 @@ class Cluster:
                     "a node that the Ray client is connected."
                 )
 
+        node.destroy_external_storage()
         if self.head_node == node:
             # We have to wait to prevent the raylet becomes a zombie which will prevent
             # worker from exiting
