@@ -955,40 +955,38 @@ class Algorithm(Trainable, AlgorithmBase):
                 agent_steps,
                 batches,
             ) = self._evaluate_on_local_env_runner(self.workers.local_worker())
-        else:
-            # self.evaluation_workers.probe_unhealthy_workers()
-            # There is only a local eval EnvRunner -> Run on that.
-            if self.evaluation_workers.num_healthy_remote_workers() == 0:
+        # There is only a local eval EnvRunner -> Run on that.
+        elif self.evaluation_workers.num_healthy_remote_workers() == 0:
+            (
+                eval_results,
+                env_steps,
+                agent_steps,
+                batches,
+            ) = self._evaluate_on_local_env_runner(
+                self.evaluation_workers.local_worker()
+            )
+        # There are healthy remote evaluation workers -> Run on these.
+        elif self.evaluation_workers.num_healthy_remote_workers() > 0:
+            # Running in automatic duration mode (parallel with training step).
+            if self.config.evaluation_duration == "auto":
+                assert parallel_train_future is not None
                 (
                     eval_results,
                     env_steps,
                     agent_steps,
                     batches,
-                ) = self._evaluate_on_local_env_runner(
-                    self.evaluation_workers.local_worker()
-                )
-            # There are healthy remote evaluation workers -> Run on these.
-            elif self.evaluation_workers.num_healthy_remote_workers() > 0:
-                # Running in automatic duration mode (parallel with training step).
-                if self.config.evaluation_duration == "auto":
-                    assert parallel_train_future is not None
-                    (
-                        eval_results,
-                        env_steps,
-                        agent_steps,
-                        batches,
-                    ) = self._evaluate_with_auto_duration(parallel_train_future)
-                # Running with a fixed amount of data to sample.
-                else:
-                    (
-                        eval_results,
-                        env_steps,
-                        agent_steps,
-                        batches,
-                    ) = self._evaluate_with_fixed_duration()
-            # Can't find a good way to run this evaluation -> Wait for next iteration.
+                ) = self._evaluate_with_auto_duration(parallel_train_future)
+            # Running with a fixed amount of data to sample.
             else:
-                pass
+                (
+                    eval_results,
+                    env_steps,
+                    agent_steps,
+                    batches,
+                ) = self._evaluate_with_fixed_duration()
+        # Can't find a good way to run this evaluation -> Wait for next iteration.
+        else:
+            pass
 
         # TODO: Don't dump sampler results into top-level.
         eval_results = dict({"sampler_results": eval_results}, **eval_results)
@@ -1176,7 +1174,7 @@ class Algorithm(Trainable, AlgorithmBase):
 
                 self.evaluation_workers.foreach_worker_async(
                     func=functools.partial(
-                        _env_runner_remote, num=_num, round=_round, iter=self.iteration
+                        _env_runner_remote, num=_num, round=_round, iter=algo_iteration
                     ),
                     healthy_only=True,
                 )
@@ -1306,7 +1304,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 ]
                 self.evaluation_workers.foreach_worker_async(
                     func=functools.partial(
-                        _env_runner_remote, num=_num, round=_round, iter=self.iteration
+                        _env_runner_remote, num=_num, round=_round, iter=algo_iteration
                     ),
                     healthy_only=True,
                 )
