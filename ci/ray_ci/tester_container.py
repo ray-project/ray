@@ -114,14 +114,14 @@ class TesterContainer(Container):
                 "We only upload results on branch and PR pipelines",
             )
             return
-        if pipeline_id in BRANCH_PIPELINES and branch != "master":
-            logger.info(
-                "Skip upload test results. "
-                "We only upload the master branch results on a branch pipeline",
-            )
-            return
-        self._upload_build_info(bazel_log_dir)
-        TesterContainer.upload_test_results(team, bazel_log_dir)
+        # if pipeline_id in BRANCH_PIPELINES and branch != "master":
+        #     logger.info(
+        #         "Skip upload test results. "
+        #         "We only upload the master branch results on a branch pipeline",
+        #     )
+        #     return
+        # self._upload_build_info(bazel_log_dir)
+        # TesterContainer.upload_test_results(team, bazel_log_dir)
         TesterContainer.move_test_state(team, bazel_log_dir)
 
     def _upload_build_info(self, bazel_log_dir) -> None:
@@ -146,7 +146,7 @@ class TesterContainer(Container):
     def move_test_state(cls, team: str, bazel_log_dir: str) -> None:
         pipeline_id = os.environ.get("BUILDKITE_PIPELINE_ID")
         branch = os.environ.get("BUILDKITE_BRANCH")
-        if pipeline_id not in BRANCH_PIPELINES or branch != "master":
+        if pipeline_id not in BRANCH_PIPELINES:
             logger.info("Skip updating test state. We only update on master branch.")
             return
         for test, _ in cls.get_test_and_results(team, bazel_log_dir):
