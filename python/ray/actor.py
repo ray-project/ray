@@ -543,6 +543,12 @@ class _ActorClassMetadata:
             modified_class, actor_creation_function_descriptor
         )
 
+    def __getstate__(self):
+        # `last_export_session_and_job` is worker-local. Reset it when pickling.
+        state = dict(self.__dict__)
+        state["last_export_session_and_job"] = None
+        return state
+
 
 @PublicAPI
 class ActorClassInheritanceException(TypeError):
