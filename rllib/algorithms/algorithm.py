@@ -1140,6 +1140,7 @@ class Algorithm(Trainable, AlgorithmBase):
         env_steps = agent_steps = 0
         train_mean_time = self._timers[TRAINING_ITERATION_TIMER].mean
         t0 = time.time()
+        algo_iteration = self.iteration
 
         _round = -1
         while (
@@ -1190,9 +1191,8 @@ class Algorithm(Trainable, AlgorithmBase):
                     all_metrics.extend(metrics)
             # Old API Stack -> RolloutWorkers return batches.
             else:
-                iter = self.iteration
                 self.evaluation_workers.foreach_worker_async(
-                    func=lambda w: (w.sample(), w.get_metrics(), iter),
+                    func=lambda w: (w.sample(), w.get_metrics(), algo_iteration),
                     healthy_only=True,
                 )
                 results = self.evaluation_workers.fetch_ready_async_reqs(
@@ -1287,6 +1287,8 @@ class Algorithm(Trainable, AlgorithmBase):
 
         t_last_result = time.time()
         _round = -1
+        algo_iteration = self.iteration
+
         # In case all the remote evaluation workers die during a round of
         # evaluation, we need to stop.
         while num_healthy_workers > 0:
@@ -1345,9 +1347,8 @@ class Algorithm(Trainable, AlgorithmBase):
                     )
                     if i * units_per_healthy_remote_worker < units_left_to_do
                 ]
-                iter = self.iteration
                 self.evaluation_workers.foreach_worker_async(
-                    func=lambda w: (w.sample(), w.get_metrics(), iter),
+                    func=lambda w: (w.sample(), w.get_metrics(), algo_iteration),
                     remote_worker_ids=selected_eval_worker_ids,
                 )
                 results = self.evaluation_workers.fetch_ready_async_reqs(
@@ -3268,7 +3269,8 @@ class Algorithm(Trainable, AlgorithmBase):
         record_extra_usage_tag(TagKey.RLLIB_ALGORITHM, alg)
 
     @Deprecated(error=False)
-    def import_policy_model_from_h5(self,
+    def import_policy_model_from_h5(
+        self,
         import_file: str,
         policy_id: PolicyID = DEFAULT_POLICY_ID,
     ) -> None:
