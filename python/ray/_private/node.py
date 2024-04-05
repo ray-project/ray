@@ -241,11 +241,7 @@ class Node:
         # If it is a head node, try validating if
         # external storage is configurable.
         if head:
-            # Since node_id is not yet available, we use a dummy one
-            self._node_id = ray.NodeID.from_random().hex()
             self.validate_external_storage()
-            # Clear the dummy node_id to avoid accidental usage
-            self._node_id = None
 
         if connect_only:
             # Get socket names from the configuration.
@@ -1740,8 +1736,9 @@ class Node:
         # Validate external storage usage.
         from ray._private import external_storage
 
+        dummy_node_id = ray.NodeID.from_random().hex()
         storage = external_storage.setup_external_storage(
-            deserialized_config, self._node_id, self._session_name
+            deserialized_config, dummy_node_id, self._session_name
         )
         storage.destroy_external_storage()
         external_storage.reset_external_storage()
