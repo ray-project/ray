@@ -20,6 +20,7 @@ from ray.serve._private import default_impl
 from ray.serve._private.autoscaling_policy import AutoscalingPolicyManager
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import (
+    DeploymentHandleSource,
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusInfo,
@@ -193,9 +194,22 @@ _SCALING_LOG_ENABLED = os.environ.get("SERVE_ENABLE_SCALING_LOG", "0") != "0"
 
 @dataclass
 class HandleRequestMetric:
+    actor_id: str
+    handle_source: DeploymentHandleSource
     queued_requests: float
     running_requests: Dict[ReplicaID, float]
     timestamp: float
+
+    @property
+    def total_requests(self) -> float:
+        return self.queued_requests + sum(self.running_requests.values())
+
+    @property
+    def is_serve_component_source(self) -> bool:
+        return self.handle_source in [
+            DeploymentHandleSource.PROXY,
+            DeploymentHandleSource.REPLICA,
+        ]
 
 
 def print_verbose_scaling_log():
@@ -934,6 +948,10 @@ class DeploymentReplica(VersionedReplica):
         return self._actor.version
 
     @property
+    def actor_id(self) -> str:
+        return self._actor.actor_id
+
+    @property
     def actor_handle(self) -> ActorHandle:
         return self._actor.actor_handle
 
@@ -1355,6 +1373,9 @@ class DeploymentState:
     def app_name(self) -> str:
         return self._id.app_name
 
+    def get_alive_replica_actor_ids(self) -> Set[str]:
+        return {replica.actor_id for replica in self._replicas.get()}
+
     def get_running_replica_infos(self) -> List[RunningReplicaInfo]:
         return [
             replica.get_running_replica_info(self._cluster_node_info_cache)
@@ -1593,6 +1614,44 @@ class DeploymentState:
         self._backoff_time_s = 1
         return True
 
+    def drop_stale_handle_metrics(self, alive_serve_actor_ids: Set[str]) -> None:
+        """Drops handle metrics that are no longer valid.
+
+        This includes handles that live on Serve Proxy or replica actors
+        that have died AND handles from which the controller hasn't
+        received an update for too long.
+        """
+
+        timeout_s = max(
+            2 * self.autoscaling_policy_manager.get_metrics_interval_s(),
+            RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
+        )
+        for handle_id, handle_metric in list(self.handle_requests.items()):
+            # Drop metrics for handles that are on Serve proxy/replica
+            # actors that have died
+            if (
+                handle_metric.is_serve_component_source
+                and handle_metric.actor_id not in alive_serve_actor_ids
+            ):
+                del self.handle_requests[handle_id]
+                if handle_metric.total_requests > 0:
+                    logger.debug(
+                        f"Dropping metrics for handle '{handle_id}' because the Serve "
+                        f"actor it was on ({handle_metric.actor_id}) is no longer "
+                        f"alive. It had {handle_metric.total_requests} ongoing requests"
+                    )
+            # Drop metrics for handles that haven't sent an update in a while.
+            # This is expected behavior for handles that were on replicas or
+            # proxies that have been shut down.
+            elif time.time() - handle_metric.timestamp >= timeout_s:
+                del self.handle_requests[handle_id]
+                if handle_metric.total_requests > 0:
+                    logger.info(
+                        f"Dropping stale metrics for handle '{handle_id}' "
+                        f"because no update was received for {timeout_s:.1f}s. "
+                        f"Ongoing requests was: {handle_metric.total_requests}."
+                    )
+
     def get_total_num_requests(self) -> float:
         """Get average total number of requests aggregated over the past
         `look_back_period_s` number of seconds.
@@ -1615,26 +1674,6 @@ class DeploymentState:
             RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
             or len(running_replicas) == 0
         ):
-            # Drop metrics for handles that haven't sent an update in a while.
-            # This is expected behavior for handles that were on replicas or
-            # proxies that have been shut down.
-            timeout_s = max(
-                2 * self.autoscaling_policy_manager.get_metrics_interval_s(),
-                RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
-            )
-            for handle_id, handle_metric in list(self.handle_requests.items()):
-                if time.time() - handle_metric.timestamp >= timeout_s:
-                    del self.handle_requests[handle_id]
-                    total_ongoing_requests = handle_metric.queued_requests + sum(
-                        handle_metric.running_requests.values()
-                    )
-                    if total_ongoing_requests > 0:
-                        logger.info(
-                            f"Dropping stale metrics for handle '{handle_id}' "
-                            f"because no update was received for {timeout_s:.1f}s. "
-                            f"Ongoing requests was: {total_ongoing_requests}."
-                        )
-
             for handle_metric in self.handle_requests.values():
                 total_requests += handle_metric.queued_requests
                 for replica in running_replicas:
@@ -2359,6 +2398,8 @@ class DeploymentState:
     def record_request_metrics_for_handle(
         self,
         handle_id: str,
+        actor_id: Optional[str],
+        handle_source: DeploymentHandleSource,
         queued_requests: float,
         running_requests: Dict[ReplicaID, float],
         send_timestamp: float,
@@ -2370,6 +2411,8 @@ class DeploymentState:
             or send_timestamp > self.handle_requests[handle_id].timestamp
         ):
             self.handle_requests[handle_id] = HandleRequestMetric(
+                actor_id=actor_id,
+                handle_source=handle_source,
                 queued_requests=queued_requests,
                 running_requests=running_requests,
                 timestamp=send_timestamp,
@@ -2459,6 +2502,8 @@ class DeploymentStateManager:
         self,
         deployment_id: str,
         handle_id: str,
+        actor_id: Optional[str],
+        handle_source: DeploymentHandleSource,
         queued_requests: float,
         running_requests: Dict[ReplicaID, float],
         send_timestamp: float,
@@ -2467,7 +2512,12 @@ class DeploymentStateManager:
         # sending metrics to the controller
         if deployment_id in self._deployment_states:
             self._deployment_states[deployment_id].record_request_metrics_for_handle(
-                handle_id, queued_requests, running_requests, send_timestamp
+                handle_id=handle_id,
+                actor_id=actor_id,
+                handle_source=handle_source,
+                queued_requests=queued_requests,
+                running_requests=running_requests,
+                send_timestamp=send_timestamp,
             )
 
     def get_autoscaling_metrics(self):
@@ -2510,6 +2560,25 @@ class DeploymentStateManager:
                 )
 
         return deployment_to_current_replicas
+
+    def drop_stale_handle_metrics(self, alive_proxy_actor_ids: Set[str]):
+        """Drops handle metrics that are no longer valid.
+
+        This includes handles that live on Serve Proxy or replica actors
+        that have died AND handles from which the controller hasn't
+        received an update for too long.
+        """
+
+        all_alive_serve_actor_ids = set.union(
+            alive_proxy_actor_ids,
+            *[
+                ds.get_alive_replica_actor_ids()
+                for ds in self._deployment_states.values()
+            ],
+        )
+        for deployment_state in self._deployment_states.values():
+            if deployment_state.should_autoscale():
+                deployment_state.drop_stale_handle_metrics(all_alive_serve_actor_ids)
 
     def _detect_and_remove_leaked_placement_groups(
         self,

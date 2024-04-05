@@ -9,6 +9,7 @@ import pytest
 
 from ray._private.utils import get_or_create_event_loop
 from ray.serve._private.common import (
+    DeploymentHandleSource,
     DeploymentID,
     ReplicaID,
     ReplicaQueueLengthInfo,
@@ -152,6 +153,7 @@ def setup_router(request) -> Tuple[Router, FakeReplicaScheduler]:
         self_node_id="test-node-id",
         self_actor_id="test-node-id",
         self_availability_zone="test-az",
+        handle_source=DeploymentHandleSource.UNKNOWN,
         event_loop=get_or_create_event_loop(),
         _prefer_local_node_routing=False,
         # TODO(edoakes): just pass a class instance here.
@@ -515,6 +517,7 @@ class TestRouterMetricsManager:
             DeploymentID(name="a", app_name="b"),
             "random_handle",
             "random_actor",
+            DeploymentHandleSource.UNKNOWN,
             Mock(),
             FakeCounter(
                 tag_keys=("deployment", "route", "application", "handle", "actor_id")
@@ -540,6 +543,7 @@ class TestRouterMetricsManager:
             DeploymentID(name="a", app_name="b"),
             "random_handle",
             "random_actor",
+            DeploymentHandleSource.UNKNOWN,
             Mock(),
             FakeCounter(
                 tag_keys=("deployment", "route", "application", "handle", "actor_id")
@@ -563,6 +567,7 @@ class TestRouterMetricsManager:
             d_id,
             "random",
             "random_actor",
+            DeploymentHandleSource.UNKNOWN,
             Mock(),
             FakeCounter(
                 tag_keys=("deployment", "route", "application", "handle", "actor_id")
@@ -641,6 +646,7 @@ class TestRouterMetricsManager:
             DeploymentID(name="a", app_name="b"),
             "random",
             "random_actor",
+            DeploymentHandleSource.UNKNOWN,
             Mock(),
             FakeCounter(
                 tag_keys=("deployment", "route", "application", "handle", "actor_id")
@@ -674,13 +680,15 @@ class TestRouterMetricsManager:
         timer.reset(start)
         deployment_id = DeploymentID(name="a", app_name="b")
         handle_id = "random"
+        self_actor_id = "abc"
         mock_controller_handle = Mock()
 
         with patch("time.time", new=timer.time):
             metrics_manager = RouterMetricsManager(
                 deployment_id,
                 handle_id,
-                "random_actor",
+                self_actor_id,
+                DeploymentHandleSource.PROXY,
                 mock_controller_handle,
                 FakeCounter(
                     tag_keys=(
@@ -716,6 +724,8 @@ class TestRouterMetricsManager:
             mock_controller_handle.record_handle_metrics.remote.assert_called_with(
                 deployment_id=deployment_id,
                 handle_id=handle_id,
+                actor_id=self_actor_id,
+                handle_source=DeploymentHandleSource.PROXY,
                 queued_requests=n,
                 running_requests=running_requests,
                 send_timestamp=start,
@@ -730,6 +740,7 @@ class TestRouterMetricsManager:
             DeploymentID(name="a", app_name="b"),
             "random",
             "random_actor",
+            DeploymentHandleSource.UNKNOWN,
             Mock(),
             FakeCounter(
                 tag_keys=("deployment", "route", "application", "handle", "actor_id")
