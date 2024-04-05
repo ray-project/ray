@@ -6,8 +6,6 @@ import unittest
 
 import ray
 from ray.rllib.algorithms import sac
-from ray.rllib.algorithms.sac.sac_tf_policy import sac_actor_critic_loss as tf_loss
-from ray.rllib.algorithms.sac.sac_torch_policy import actor_critic_loss as loss_torch
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.examples.models.batch_norm_model import (
     KerasBatchNormModel,
@@ -28,7 +26,6 @@ from ray.rllib.utils.test_utils import (
 )
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray import tune
-from ray.rllib.utils.replay_buffers.utils import patch_buffer_with_fake_sampling_method
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
