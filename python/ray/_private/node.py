@@ -1739,6 +1739,14 @@ class Node:
         ] = is_external_storage_type_fs
         self._config["is_external_storage_type_fs"] = is_external_storage_type_fs
 
+        # Pre-validate external storage can be setup with the provided configs.
+        # Note that we use dummy node_id here when node_id is not available yet.
+        self._node_id = "dummy_node_id"
+        self.validate_external_storage()
+        self.destroy_external_storage()
+        # Reset the node_id to avoid accidental usage
+        self._node_id = None
+
     def validate_external_storage(self):
         """Make sure we can setup the object spilling external storage.
         This method assumes self._node_id is already set.
