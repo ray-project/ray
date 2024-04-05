@@ -106,7 +106,7 @@ class Channel:
 
         if self._reader_node_id is None:
             # Writing locally.
-            self._worker.core_worker.experimental_channel_register_writer(
+            self._worker.core_worker.experimental_channel_register_writer_local(
                 self._base_ref
             )
         else:
@@ -114,7 +114,7 @@ class Channel:
             if not isinstance(self._reader_node_id, str):
                 raise ValueError("`self._reader_node_id` must be a str")
             print(self._base_ref, self._reader_node_id)
-            self._worker.core_worker.experimental_channel_register_network(
+            self._worker.core_worker.experimental_channel_register_writer_network(
                 self._base_ref, self._reader_node_id
             )
         self._writer_registered = True
@@ -125,12 +125,12 @@ class Channel:
 
         if self._writer_channel is None:
             # Reading locally.
-            self._worker.core_worker.experimental_channel_register_reader(
+            self._worker.core_worker.experimental_channel_register_reader_local(
                 self._base_ref
             )
         else:
             # Reading across the network.
-            self._worker.core_worker.experimental_register_mutable_object_reader(
+            self._worker.core_worker.experimental_channel_register_reader_network(
                 self._writer_channel._base_ref, self._num_readers, self._base_ref
             )
         self._reader_registered = True

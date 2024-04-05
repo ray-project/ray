@@ -3671,7 +3671,7 @@ cdef class CoreWorker:
                          .ExperimentalRegisterMutableObjectWriterNetwork(c_object_id,
                                                                          c_node_id))
 
-    def experimental_channel_register_reader(self, ObjectRef object_ref):
+    def experimental_channel_register_reader_local(self, ObjectRef object_ref):
         cdef:
             CObjectID c_object_id = object_ref.native()
 

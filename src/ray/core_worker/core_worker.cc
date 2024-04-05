@@ -1452,8 +1452,8 @@ Status CoreWorker::ExperimentalRegisterMutableObjectWriter(const ObjectID &objec
   RAY_RETURN_NOT_OK(
       plasma_store_provider_->GetExperimentalMutableObject(object_id, &object));
   RAY_CHECK(object) << "Mutable object must be local to be registered";
-  return experimental_mutable_object_manager_->RegisterWriterChannel(object_id,
-                                                                     std::move(object));
+  return experimental_mutable_object_manager_->RegisterChannel(
+      object_id, std::move(object), /*reader=*/false);
 }
 
 Status CoreWorker::ExperimentalRegisterMutableObjectWriterNetwork(
@@ -1467,8 +1467,8 @@ Status CoreWorker::ExperimentalRegisterMutableObjectReader(const ObjectID &objec
   RAY_RETURN_NOT_OK(
       plasma_store_provider_->GetExperimentalMutableObject(object_id, &object));
   RAY_CHECK(object) << "Mutable object must be local to be registered";
-  return experimental_mutable_object_manager_->RegisterChannel(object_id,
-                                                               std::move(object));
+  return experimental_mutable_object_manager_->RegisterChannel(
+      object_id, std::move(object), /*reader=*/true);
 }
 
 Status CoreWorker::ExperimentalRegisterMutableObjectReaderNetwork(

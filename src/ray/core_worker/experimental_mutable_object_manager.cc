@@ -39,40 +39,32 @@ std::string GetSemaphoreHeaderName(const std::string &name) {
 }  // namespace
 
 Status MutableObjectManager::RegisterChannel(
-    const ObjectID &object_id, std::unique_ptr<plasma::MutableObject> mutable_object) {
+    const ObjectID &object_id,
+    std::unique_ptr<plasma::MutableObject> mutable_object,
+    bool reader) {
   absl::MutexLock guard(&channel_lock_);
   const auto &[channel_pair, success] =
       channels_.emplace(object_id, std::move(mutable_object));
+  Channel &channel = channel_pair->second;
+  RAY_CHECK(channel.mutable_object);
+
   if (!success) {
-    return Status::Invalid("Channel already registered");
+    if ((reader && channel.reader_registered) ||
+        (!reader && channel.writer_registered)) {
+      return Status::Invalid("Channel already registered");
+    }
+  }
+
+  if (reader) {
+    channel.reader_registered = true;
+  } else {
+    channel.writer_registered = true;
   }
   const Channel &channel = channel_pair->second;
   RAY_CHECK(channel.mutable_object);
 
   OpenSemaphores(object_id, channel.mutable_object->header);
   return Status::OK();
-}
-
-Status MutableObjectManager::RegisterReaderChannel(
-    const ObjectID &object_id, std::unique_ptr<plasma::MutableObject> mutable_object) {
-  Status s = RegisterChannel(object_id, std::move(mutable_object));
-  if (s.ok()) {
-    Channel *c = GetChannel(object_id);
-    RAY_CHECK(c);
-    c->reader_registered = true;
-  }
-  return s;
-}
-
-Status MutableObjectManager::RegisterWriterChannel(
-    const ObjectID &object_id, std::unique_ptr<plasma::MutableObject> mutable_object) {
-  Status s = RegisterChannel(object_id, std::move(mutable_object));
-  if (s.ok()) {
-    Channel *c = GetChannel(object_id);
-    RAY_CHECK(c);
-    c->writer_registered = true;
-  }
-  return s;
 }
 
 MutableObjectManager::Channel *MutableObjectManager::GetChannel(
@@ -310,7 +302,9 @@ Status MutableObjectManager::SetError(const ObjectID &object_id) {
 MutableObjectManager::~MutableObjectManager() {}
 
 Status MutableObjectManager::RegisterChannel(
-    const ObjectID &object_id, std::unique_ptr<plasma::MutableObject> &mutable_object) {
+    const ObjectID &object_id,
+    std::unique_ptr<plasma::MutableObject> &mutable_object,
+    bool reader) {
   return Status::NotImplemented("Not supported on Windows.");
 }
 

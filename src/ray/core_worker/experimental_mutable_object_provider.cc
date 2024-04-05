@@ -38,7 +38,8 @@ void MutableObjectProvider::RegisterWriterChannel(const ObjectID &object_id,
   {
     std::unique_ptr<plasma::MutableObject> object;
     RAY_CHECK_OK(plasma_->GetExperimentalMutableObject(object_id, &object));
-    RAY_CHECK_OK(object_manager_.RegisterWriterChannel(object_id, std::move(object)));
+    RAY_CHECK_OK(
+        object_manager_.RegisterChannel(object_id, std::move(object), /*reader=*/false));
     // `object` is now a nullptr.
   }
 
@@ -55,7 +56,8 @@ void MutableObjectProvider::RegisterWriterChannel(const ObjectID &object_id,
 void MutableObjectProvider::RegisterReaderChannel(const ObjectID &object_id) {
   std::unique_ptr<plasma::MutableObject> object;
   RAY_CHECK_OK(plasma_->GetExperimentalMutableObject(object_id, &object));
-  RAY_CHECK_OK(object_manager_.RegisterReaderChannel(object_id, std::move(object)));
+  RAY_CHECK_OK(
+      object_manager_.RegisterChannel(object_id, std::move(object), /*reader=*/true));
   // `object` is now a nullptr.
 }
 
