@@ -6,6 +6,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from ray.serve._private.common import (
+    DeploymentHandleSource,
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusTrigger,
@@ -91,6 +92,7 @@ class MockReplicaActorWrapper:
         self._actor_handle = MockActorHandle()
         self._node_id = None
         self._node_id_is_set = False
+        self._actor_id = None
         self._pg_bundles = None
 
     @property
@@ -131,7 +133,7 @@ class MockReplicaActorWrapper:
 
     @property
     def actor_id(self) -> Optional[str]:
-        return None
+        return self._actor_id
 
     @property
     def worker_id(self) -> Optional[str]:
@@ -187,6 +189,9 @@ class MockReplicaActorWrapper:
     def set_node_id(self, node_id: str):
         self._node_id = node_id
         self._node_id_is_set = True
+
+    def set_actor_id(self, actor_id: str):
+        self._actor_id = actor_id
 
     def start(self, deployment_info: DeploymentInfo):
         self.started = True
@@ -2005,6 +2010,8 @@ def test_basic_autoscaling(mock_deployment_state_manager, target_capacity_direct
         dsm.record_handle_metrics(
             deployment_id=TEST_DEPLOYMENT_ID,
             handle_id="random",
+            actor_id=None,
+            handle_source=DeploymentHandleSource.UNKNOWN,
             queued_requests=0,
             running_requests={
                 replica._actor.replica_id: req_per_replica for replica in replicas
@@ -2138,6 +2145,8 @@ def test_downscaling_reclaiming_starting_replicas_first(
         dsm.record_handle_metrics(
             deployment_id=TEST_DEPLOYMENT_ID,
             handle_id="random",
+            actor_id=None,
+            handle_source=DeploymentHandleSource.UNKNOWN,
             queued_requests=0,
             running_requests={replica._actor.replica_id: 2 for replica in replicas},
             send_timestamp=timer.time(),
@@ -2202,6 +2211,8 @@ def test_downscaling_reclaiming_starting_replicas_first(
         dsm.record_handle_metrics(
             deployment_id=TEST_DEPLOYMENT_ID,
             handle_id="random",
+            actor_id=None,
+            handle_source=DeploymentHandleSource.UNKNOWN,
             queued_requests=0,
             running_requests={replica._actor.replica_id: 1 for replica in replicas},
             send_timestamp=timer.time(),
@@ -2285,6 +2296,8 @@ def test_update_autoscaling_config(mock_deployment_state_manager):
         dsm.record_handle_metrics(
             deployment_id=TEST_DEPLOYMENT_ID,
             handle_id="random",
+            actor_id=None,
+            handle_source=DeploymentHandleSource.UNKNOWN,
             queued_requests=0,
             running_requests={replica._actor.replica_id: 1 for replica in replicas},
             send_timestamp=timer.time(),
@@ -2344,7 +2357,7 @@ def test_update_autoscaling_config(mock_deployment_state_manager):
     reason="Testing handle metrics behavior.",
 )
 def test_handle_metrics_timeout(mock_deployment_state_manager):
-    create_dsm, timer, cluster_node_info_cache = mock_deployment_state_manager
+    create_dsm, timer, _ = mock_deployment_state_manager
     dsm: DeploymentStateManager = create_dsm()
 
     # Deploy, start with 1 replica
@@ -2362,6 +2375,7 @@ def test_handle_metrics_timeout(mock_deployment_state_manager):
     ds: DeploymentState = dsm._deployment_states[TEST_DEPLOYMENT_ID]
     dsm.update()
     ds._replicas.get()[0]._actor.set_ready()
+    dsm.drop_stale_handle_metrics(set())
     dsm.update()
     check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, None)])
 
@@ -2369,10 +2383,13 @@ def test_handle_metrics_timeout(mock_deployment_state_manager):
     dsm.record_handle_metrics(
         deployment_id=TEST_DEPLOYMENT_ID,
         handle_id="random",
+        actor_id=None,
+        handle_source=DeploymentHandleSource.UNKNOWN,
         queued_requests=0,
         running_requests={ds._replicas.get()[0]._actor.replica_id: 2},
         send_timestamp=timer.time(),
     )
+    dsm.drop_stale_handle_metrics(set())
     dsm.update()
     check_counts(
         ds,
@@ -2381,6 +2398,7 @@ def test_handle_metrics_timeout(mock_deployment_state_manager):
     )
     assert ds.get_total_num_requests() == 2
     ds._replicas.get([ReplicaState.STARTING])[0]._actor.set_ready()
+    dsm.drop_stale_handle_metrics(set())
     dsm.update()
     check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
     assert ds.get_total_num_requests() == 2
@@ -2388,6 +2406,7 @@ def test_handle_metrics_timeout(mock_deployment_state_manager):
     # Simulate handle was on an actor that died. 10 seconds later
     # the handle fails to push metrics
     timer.advance(10)
+    dsm.drop_stale_handle_metrics(set())
     dsm.update()
     check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
     assert ds.get_total_num_requests() == 2
@@ -2396,9 +2415,102 @@ def test_handle_metrics_timeout(mock_deployment_state_manager):
     # this point the data from the handle should be invalidated. As a
     # result, the replicas should scale back down to 0.
     timer.advance(10)
+    dsm.drop_stale_handle_metrics(set())
     dsm.update()
     check_counts(ds, total=2, by_state=[(ReplicaState.STOPPING, 2, None)])
     assert ds.get_total_num_requests() == 0
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+    reason="Testing handle metrics behavior.",
+)
+def test_handle_metrics_on_dead_serve_actor(mock_deployment_state_manager):
+    """When there are handles on dead serve actors, their metrics should be dropped."""
+
+    create_dsm, timer, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+    d_id1 = DeploymentID("d1", "app")
+    d_id2 = DeploymentID("d2", "app")
+
+    # Deploy, start with 1 replica
+    info1, _ = deployment_info(
+        autoscaling_config={
+            "target_ongoing_requests": 1,
+            "min_replicas": 0,
+            "max_replicas": 6,
+            "initial_replicas": 1,
+            "upscale_delay_s": 0,
+            "downscale_delay_s": 0,
+        },
+    )
+    info2, _ = deployment_info(health_check_period_s=0.1)
+    dsm.deploy(d_id1, info1)
+    dsm.deploy(d_id2, info2)
+
+    ds1: DeploymentState = dsm._deployment_states[d_id1]
+    ds2: DeploymentState = dsm._deployment_states[d_id2]
+
+    # One replica each
+    dsm.drop_stale_handle_metrics(set())
+    dsm.update()
+    ds1._replicas.get()[0]._actor.set_ready()
+    ds2._replicas.get()[0]._actor.set_ready()
+    ds2._replicas.get()[0]._actor.set_actor_id("d2_replica_actor_id")
+    dsm.drop_stale_handle_metrics(set())
+    dsm.update()
+    check_counts(ds1, total=1, by_state=[(ReplicaState.RUNNING, 1, None)])
+    check_counts(ds2, total=1, by_state=[(ReplicaState.RUNNING, 1, None)])
+
+    # Record 2 requests/replica (sent from d2 replica) -> trigger upscale
+    dsm.record_handle_metrics(
+        deployment_id=d_id1,
+        handle_id="random",
+        actor_id="d2_replica_actor_id",
+        handle_source=DeploymentHandleSource.REPLICA,
+        queued_requests=0,
+        running_requests={ds1._replicas.get()[0]._actor.replica_id: 2},
+        send_timestamp=timer.time(),
+    )
+    dsm.drop_stale_handle_metrics(set())
+    dsm.update()
+    check_counts(
+        ds1,
+        total=2,
+        by_state=[(ReplicaState.RUNNING, 1, None), (ReplicaState.STARTING, 1, None)],
+    )
+    assert ds1.get_total_num_requests() == 2
+    ds1._replicas.get([ReplicaState.STARTING])[0]._actor.set_ready()
+    dsm.drop_stale_handle_metrics(set())
+    dsm.update()
+    check_counts(ds1, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
+    assert ds1.get_total_num_requests() == 2
+
+    # d2 replica died
+    ds2._replicas.get()[0]._actor.set_unhealthy()
+    dsm.drop_stale_handle_metrics(set())
+    dsm.update()
+    if RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS:
+        check_counts(
+            ds2,
+            total=2,
+            by_state=[
+                (ReplicaState.STARTING, 1, None),
+                (ReplicaState.STOPPING, 1, None),
+            ],
+        )
+    else:
+        check_counts(ds2, total=1, by_state=[(ReplicaState.STOPPING, 1, None)])
+    ds2._replicas.get(states=[ReplicaState.STOPPING])[0]._actor.set_done_stopping()
+    dsm.drop_stale_handle_metrics(set())
+    dsm.update()
+    check_counts(ds2, total=1, by_state=[(ReplicaState.STARTING, 1, None)])
+
+    # Now that the d2 replica is dead, its metrics should be dropped.
+    # Consequently d1 should scale down to 0 replicas
+    dsm.drop_stale_handle_metrics(set())
+    dsm.update()
+    check_counts(ds1, total=2, by_state=[(ReplicaState.STOPPING, 2, None)])
 
 
 @pytest.mark.parametrize("force_stop_unhealthy_replicas", [False, True])
