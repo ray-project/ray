@@ -2,6 +2,7 @@
 import logging
 import os
 import sys
+import time
 
 import numpy as np
 import pytest
@@ -135,6 +136,63 @@ def test_put_remote_get(ray_start_regular, num_readers):
         chan.write(val, num_readers=num_readers)
 
     ray.get(done)
+
+
+@pytest.mark.parametrize("remote", [True, False])
+def test_remote_reader(ray_start_cluster, remote):
+    num_readers = 2
+    cluster = ray_start_cluster
+    if remote:
+        cluster.add_node(num_cpus=0)
+        ray.init(address=cluster.address)
+        cluster.add_node(num_cpus=num_readers)
+    else:
+        cluster.add_node(num_cpus=num_readers)
+        ray.init(address=cluster.address)
+
+    @ray.remote(num_cpus=1)
+    class Reader:
+        def __init__(self):
+            pass
+
+        def get_node_id(self) -> str:
+            return ray.get_runtime_context().get_node_id()
+
+        def allocate_local_reader_channel(self, writer_channel, num_readers):
+            return ray_channel.Channel(
+                _writer_channel=writer_channel, num_readers=num_readers
+            )
+
+        def send_channel(self, reader_channel):
+            self._reader_chan = reader_channel
+
+        def read(self):
+            while True:
+                self._reader_chan.begin_read()
+                self._reader_chan.end_read()
+
+    readers = [Reader.remote() for _ in range(num_readers)]
+    if remote:
+        reader_node_id = ray.get(readers[0].get_node_id.remote())
+        channel = ray_channel.Channel(1000, _reader_node_id=reader_node_id)
+        reader_channel = ray.get(
+            readers[0].allocate_local_reader_channel.remote(channel, num_readers)
+        )
+    else:
+        channel = ray_channel.Channel(1000, num_readers=num_readers)
+        reader_channel = channel
+
+    ray.get([reader.send_channel.remote(reader_channel) for reader in readers])
+
+    for reader in readers:
+        reader.read.remote()
+
+    for _ in range(3):
+        start = time.perf_counter()
+        for _ in range(1000):
+            channel.write(b"x")
+        end = time.perf_counter()
+        print(end - start, 10_000 / (end - start))
 
 
 if __name__ == "__main__":

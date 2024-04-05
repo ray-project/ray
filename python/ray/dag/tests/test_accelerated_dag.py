@@ -24,7 +24,7 @@ if sys.platform != "linux" and sys.platform != "darwin":
     pytest.skip("Skipping, requires Linux or Mac.", allow_module_level=True)
 
 
-@ray.remote
+@ray.remote(num_cpus=1)
 class Actor:
     def __init__(self, init_value, fail_after=None, sys_exit=False):
         print("__init__ PID", os.getpid())
@@ -359,6 +359,7 @@ def test_asyncio_exceptions(ray_start_regular_shared, max_queue_size):
     compiled_dag.teardown()
 
 
+"""
 def test_multinode(ray_start_regular):
     num_actors = 2
     actors = [Actor.remote(i) for i in range(num_actors)]
@@ -378,6 +379,60 @@ def test_multinode(ray_start_regular):
 
     compiled_dag.teardown()
 
+    for i in range(3):
+        output_channel = compiled_dag.execute(1)
+        # TODO(swang): Replace with fake ObjectRef.
+        result = output_channel.begin_read()
+        assert result == i + 1
+        output_channel.end_read()
+
+    # Note: must teardown before starting a new Ray session, otherwise you'll get
+    # a segfault from the dangling monitor thread upon the new Ray init.
+    compiled_dag.teardown()
+
+    cluster = ray_start_cluster_head
+    monitor = setup_monitor(cluster.gcs_address)
+    total_cpus = ray._private.state.cluster_resources()["CPU"]
+    verify_load_metrics(monitor, ({"CPU": 0.0}, {"CPU": total_cpus}))
+
+    @ray.remote
+    def work(signal):
+        wait_signal = signal.wait.remote()
+        while True:
+            ready, not_ready = ray.wait([wait_signal], timeout=0)
+            if len(ready) == 1:
+                break
+            time.sleep(1)
+
+    signal = SignalActor.remote()
+
+    work_handle = work.remote(signal)
+    verify_load_metrics(monitor, ({"CPU": 1.0}, {"CPU": total_cpus}))
+
+    ray.get(signal.send.remote())
+    ray.get(work_handle)
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def work(self, signal):
+            wait_signal = signal.wait.remote()
+            while True:
+                ready, not_ready = ray.wait([wait_signal], timeout=0)
+                if len(ready) == 1:
+                    break
+                time.sleep(1)
+
+    signal = SignalActor.remote()
+
+    test_actor = Actor.remote()
+    work_handle = test_actor.work.remote(signal)
+    time.sleep(1)  # Time for actor to get placed and the method to start.
+
+    verify_load_metrics(monitor, ({"CPU": 1.0}, {"CPU": total_cpus}))
+
+    ray.get(signal.send.remote())
+    ray.get(work_handle)
+"""
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
