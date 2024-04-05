@@ -343,11 +343,13 @@ class LearnerGroup:
                     " local mode! Try setting `config.num_learner_workers > 0`."
                 )
 
+            a=1#TEST: remove shard hack below
             results = [
                 _learner_update(
                     learner=self._learner,
                     batch_shard=batch,
-                    episodes_shard=episodes,
+                    #episodes_shard=episodes,
+                    episodes_shard=list(ShardEpisodesIterator(episodes, 10))[9],
                 )
             ]
         else:
@@ -357,6 +359,15 @@ class LearnerGroup:
                     for batch_shard in ShardBatchIterator(batch, len(self._workers))
                 ]
             else:
+                #a = 1  # TEST: remove shard hack below
+                #shards = list(ShardEpisodesIterator(
+                #    episodes, 10
+                #))
+                #partials = [
+                #    #partial(_learner_update, episodes_shard=shards[4])
+                #    #for i in range(len(self._workers))
+                #]
+
                 partials = [
                     partial(_learner_update, episodes_shard=episodes_shard)
                     for episodes_shard in ShardEpisodesIterator(

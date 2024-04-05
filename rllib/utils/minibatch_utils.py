@@ -212,7 +212,10 @@ class ShardEpisodesIterator:
         lengths = [0 for _ in range(self._num_shards)]
         episode_index = 0
 
+        print("entering while loop")
         while episode_index < len(self._episodes):
+            print("in while loop")
+
             episode = self._episodes[episode_index]
             min_index = lengths.index(min(lengths))
 
@@ -229,11 +232,16 @@ class ShardEpisodesIterator:
                         episode[:remaining_length],
                         episode[remaining_length:],
                     )
+                    # TODO: remove this code!
+                    a = 1
                     if type(slice_part).__name__ == "MultiAgentEpisode":
-                        if any(len(s) == 0 for s in slice_part.agent_episodes.values()):
+                        if any(not s.is_finalized for s in slice_part.agent_episodes.values()):
                             assert False
-                        if any(len(s) == 0 for s in remaining_part.agent_episodes.values()):
+                        if any(
+                            not s.is_finalized for s in remaining_part.agent_episodes.values()
+                        ):
                             assert False
+
                     sublists[min_index].append(slice_part)
                     lengths[min_index] += len(slice_part)
                     self._episodes[episode_index] = remaining_part
@@ -241,6 +249,8 @@ class ShardEpisodesIterator:
                     assert remaining_length == 0
                     sublists[min_index].append(episode)
                     episode_index += 1
+
+        print("exited while loop")
 
         for sublist in sublists:
             yield sublist

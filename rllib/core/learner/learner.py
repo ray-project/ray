@@ -1395,12 +1395,14 @@ class Learner:
         batch = self._set_slicing_by_batch_id(batch, value=True)
 
         for tensor_minibatch in batch_iter(batch, minibatch_size, num_iters):
+            print("in sgd loop")
             # Make the actual in-graph/traced `_update` call. This should return
             # all tensor values (no numpy).
             nested_tensor_minibatch = NestedDict(tensor_minibatch.policy_batches)
             (fwd_out, loss_per_module, metrics_per_module) = self._update(
                 nested_tensor_minibatch
             )
+            print("after update")
 
             result = self.compile_results(
                 batch=tensor_minibatch,
@@ -1408,11 +1410,15 @@ class Learner:
                 loss_per_module=loss_per_module,
                 metrics_per_module=defaultdict(dict, **metrics_per_module),
             )
+            print("after compile results")
             self._check_result(result)
+            print("after check results")
             # TODO (sven): Figure out whether `compile_results` should be forced
             #  to return all numpy/python data, then we can skip this conversion
             #  step here.
             results.append(result)
+
+        print("out of sgd loop")
 
         self._set_slicing_by_batch_id(batch, value=False)
 

@@ -1465,7 +1465,9 @@ class MultiAgentEpisode:
             terminateds=terminateds,
             truncateds=truncateds,
             len_lookback_buffer=ref_lookback,
-            agent_episode_ids={aid: eid.id_ for aid, eid in self.agent_episodes.items()},
+            agent_episode_ids={
+                aid: eid.id_ for aid, eid in self.agent_episodes.items()
+            },
             agent_module_ids=self._agent_to_module_mapping,
             agent_to_module_mapping_fn=self.agent_to_module_mapping_fn,
         )
