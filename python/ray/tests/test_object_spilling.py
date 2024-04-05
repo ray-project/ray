@@ -231,7 +231,7 @@ def test_node_id_in_spill_dir_name():
     node_id = ray.NodeID.from_random().hex()
     session_dir = "test_session_dir"
     storage = ray._private.external_storage.setup_external_storage(
-        buffer_object_spilling_config, node_id, session_dir
+        file_system_object_spilling_config, node_id, session_dir
     )
 
     import os
