@@ -180,13 +180,16 @@ class SelfPlayLeagueBasedCallback(DefaultCallbacks):
                         module_state=marl_module[module_id].get_state(),
                     )
 
+                # Avoid `self` being pickled into the remote function below.
+                _trainable_policies = self.trainable_policies
+
                 algorithm.workers.foreach_worker(
                     lambda env_runner: env_runner.config.multi_agent(
                         policy_mapping_fn=agent_to_module_mapping_fn,
                         # This setting doesn't really matter for EnvRunners (no
                         # training going on there, but we'll update this as well
                         # here for good measure).
-                        policies_to_train=self.trainable_policies,
+                        policies_to_train=_trainable_policies,
                     ),
                     local_worker=True,
                 )
@@ -194,7 +197,7 @@ class SelfPlayLeagueBasedCallback(DefaultCallbacks):
                 # value.
                 algorithm.learner_group.foreach_learner(
                     lambda learner: learner.config.multi_agent(
-                        policies_to_train=self.trainable_policies,
+                        policies_to_train=_trainable_policies,
                     )
                 )
                 league_changed = True

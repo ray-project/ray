@@ -156,10 +156,12 @@ class SelfPlayLeagueBasedCallbackOldAPIStack(DefaultCallbacks):
                     algorithm.workers.sync_weights(
                         policies=["main_0", "league_exploiter_1", "main_exploiter_1"]
                     )
+                    # Avoid `self` being pickled into the remote function below.
+                    _trainable_policies = self.trainable_policies
 
                     def _set(worker):
                         worker.set_policy_mapping_fn(policy_mapping_fn)
-                        worker.set_is_policy_to_train(self.trainable_policies)
+                        worker.set_is_policy_to_train(_trainable_policies)
 
                     algorithm.workers.foreach_worker(_set)
                 else:

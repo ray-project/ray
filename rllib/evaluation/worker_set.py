@@ -4,6 +4,7 @@ import logging
 import importlib.util
 import os
 from typing import (
+    Any,
     Callable,
     Container,
     Dict,
@@ -413,21 +414,23 @@ class WorkerSet:
         if env_steps_sampled:
             env_runner_states["env_steps_sampled"] = env_steps_sampled
 
-        # Put the state dicitonary into Ray's object store to avoid having to make n
+        # Put the state dictionary into Ray's object store to avoid having to make n
         # pickled copies of the state dict.
         ref_env_runner_states = ray.put(env_runner_states)
 
-        def _update(w):
+        def _update(_env_runner: EnvRunner) -> Any:
             env_runner_states = ray.get(ref_env_runner_states)
-            w._env_to_module.set_state(
+            _env_runner._env_to_module.set_state(
                 env_runner_states["connector_states"]["env_to_module_states"]
             )
-            w._module_to_env.set_state(
+            _env_runner._module_to_env.set_state(
                 env_runner_states["connector_states"]["module_to_env_states"]
             )
             # Update the global number of environment steps for each worker.
             if "env_steps_sampled" in env_runner_states:
-                w.global_num_env_steps_sampled = env_runner_states["env_steps_sampled"]
+                _env_runner.global_num_env_steps_sampled = (
+                    env_runner_states["env_steps_sampled"]
+                )
 
         # Broadcast updated states back to all workers (including the local one).
         self.foreach_worker(

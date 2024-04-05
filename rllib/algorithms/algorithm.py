@@ -2769,19 +2769,21 @@ class Algorithm(Trainable, AlgorithmBase):
 
         if hasattr(self, "workers") and "worker" in state and state["worker"]:
             self.workers.local_worker().set_state(state["worker"])
-            remote_state = ray.put(state["worker"])
+            remote_state_ref = ray.put(state["worker"])
             self.workers.foreach_worker(
-                lambda w: w.set_state(ray.get(remote_state)),
+                lambda w: w.set_state(ray.get(remote_state_ref)),
                 local_worker=False,
                 healthy_only=False,
             )
             if self.evaluation_workers:
+                # Avoid `state` being pickled into the remote function below.
+                _eval_policy_mapping_fn = state.get("eval_policy_mapping_fn")
 
                 def _setup_eval_worker(w):
-                    w.set_state(ray.get(remote_state))
+                    w.set_state(ray.get(remote_state_ref))
                     # Override `policy_mapping_fn` as it might be different for eval
                     # workers.
-                    w.set_policy_mapping_fn(state.get("eval_policy_mapping_fn"))
+                    w.set_policy_mapping_fn(_eval_policy_mapping_fn)
 
                 # If evaluation workers are used, also restore the policies
                 # there in case they are used for evaluation purpose.
