@@ -954,6 +954,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             check(inf[agent_id][0], agent_inf)
 
     def test_get_actions(self):
+        """Tests whether the `MultiAgentEpisode.get_actions()` API works as expected."""
         # Generate a simple multi-agent episode.
         observations = [
             {"a0": 0, "a1": 0},
