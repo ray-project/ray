@@ -1736,6 +1736,12 @@ class Node:
         # Validate external storage usage.
         from ray._private import external_storage
 
+        # Node ID is available only after GCS is connected. However,
+        # validate_external_storage() needs to be called before it to
+        # be able to validate the configs early. Therefore, we use a
+        # dummy node ID here and make sure external storage can be set
+        # up based on the provided config. This storage is destroyed
+        # right after the validation.
         dummy_node_id = ray.NodeID.from_random().hex()
         storage = external_storage.setup_external_storage(
             deserialized_config, dummy_node_id, self._session_name
