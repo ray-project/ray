@@ -45,7 +45,7 @@ from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
-from ray.rllib.examples.rl_module.random_rl_module import RandomRLModule
+from ray.rllib.examples.rl_module.classes.random_rlm import RandomRLModule
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,

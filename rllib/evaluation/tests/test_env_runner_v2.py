@@ -16,7 +16,7 @@ from ray.rllib.policy.sample_batch import convert_ma_batch_to_sample_batch
 # The new RLModule / Learner API
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
-from ray.rllib.examples.rl_module.random_rl_module import RandomRLModule
+from ray.rllib.examples.rl_module.classes.random_rlm import RandomRLModule
 
 from ray.rllib.utils.test_utils import check
 
