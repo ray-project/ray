@@ -328,7 +328,7 @@ class LearnerGroup:
             learner: Learner,
             batch_shard=None,
             episodes_shard=None,
-            min_total_mini_batches=None,
+            min_total_mini_batches=0,
         ):
             if batch_shard is not None:
                 return learner.update_from_batch(
