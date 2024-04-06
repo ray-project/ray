@@ -1,9 +1,9 @@
 # These requirements are used for the CI and CPU-only Docker images so we install CPU only versions of torch.
 # For GPU Docker images, you should install dl-gpu-requirements.txt afterwards.
 
-tensorflow==2.11.0; sys_platform != 'darwin' or platform_machine != 'arm64'
-tensorflow-macos==2.11.0; sys_platform == 'darwin' and platform_machine == 'arm64'
-tensorflow-probability==0.19.0
+tensorflow==2.15.1; sys_platform != 'darwin' or platform_machine != 'arm64'
+tensorflow-macos==2.15.1; sys_platform == 'darwin' and platform_machine == 'arm64'
+tensorflow-probability==0.23.0
 tensorflow-io-gcs-filesystem==0.31.0
 tensorflow-datasets
 array-record==0.5.0; sys_platform != 'darwin' and platform_system != "Windows"

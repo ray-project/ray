@@ -1002,6 +1002,56 @@ def test_deployment_handle_nested_in_obj(serve_instance):
     assert h.remote().result() == "hi"
 
 
+def test_max_ongoing_requests_none(serve_instance):
+    """We should not allow setting `max_ongoing_requests` to None. To maintain backwards
+    compatibility, we SHOULD allow setting `max_concurrent_queries` to None.
+    """
+
+    def get_max_ongoing_requests():
+        details = serve_instance.get_serve_details()
+        return details["applications"]["default"]["deployments"]["A"][
+            "deployment_config"
+        ]["max_ongoing_requests"]
+
+    class A:
+        pass
+
+    with pytest.raises(ValueError):
+        serve.deployment(max_ongoing_requests=None)(A).bind()
+    with pytest.raises(ValueError):
+        serve.deployment(A).options(max_ongoing_requests=None).bind()
+    with pytest.raises(ValueError):
+        serve.deployment(max_ongoing_requests=None, max_concurrent_queries=None)(
+            A
+        ).bind()
+
+    with pytest.raises(ValueError):
+        serve.deployment(max_ongoing_requests=None, max_concurrent_queries=7)(A).bind()
+
+    with pytest.raises(ValueError):
+        serve.deployment(A).options(
+            max_ongoing_requests=None, max_concurrent_queries=7
+        ).bind()
+
+    serve.run(serve.deployment(max_concurrent_queries=None)(A).bind())
+    assert get_max_ongoing_requests() == 100
+
+    serve.run(serve.deployment(A).options(max_concurrent_queries=None).bind())
+    assert get_max_ongoing_requests() == 100
+
+    serve.run(
+        serve.deployment(max_ongoing_requests=8, max_concurrent_queries=None)(A).bind()
+    )
+    assert get_max_ongoing_requests() == 8
+
+    serve.run(
+        serve.deployment(A)
+        .options(max_ongoing_requests=12, max_concurrent_queries=None)
+        .bind()
+    )
+    assert get_max_ongoing_requests() == 12
+
+
 if __name__ == "__main__":
     import sys
 
