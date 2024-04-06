@@ -2565,15 +2565,11 @@ def maybe_initialize_job_config():
                 sys.path.insert(0, p)
         ray._private.worker.global_worker.set_load_code_from_local(load_code_from_local)
 
-        # If this worker is on the same node with the driver, add driver's system path
-        # to sys.path.
-        this_node_id = ray._private.worker.global_worker.current_node_id
-        driver_node_id = ray.NodeID(core_worker.get_job_config().driver_node_id)
-        if this_node_id == driver_node_id:
-            py_driver_sys_path = core_worker.get_job_config().py_driver_sys_path
-            if py_driver_sys_path:
-                for p in py_driver_sys_path:
-                    sys.path.insert(0, p)
+        # Add driver's system path to sys.path
+        py_driver_sys_path = core_worker.get_job_config().py_driver_sys_path
+        if py_driver_sys_path:
+            for p in py_driver_sys_path:
+                sys.path.insert(0, p)
 
         # Cache and set the current job id.
         job_id = core_worker.get_current_job_id()
@@ -2881,7 +2877,7 @@ cdef class GcsClient:
         return result
 
     @_auto_reconnect
-    def get_all_job_info(self, timeout=None) -> Dict[str, JobTableData]:
+    def get_all_job_info(self, timeout=None):
         # Ideally we should use json_format.MessageToDict(job_info),
         # but `job_info` is a cpp pb message not a python one.
         # Manually converting each and every protobuf field is out of question,

@@ -1,2 +1,3 @@
 evaluate==0.4.0
+mosaicml
 sentencepiece==0.1.96

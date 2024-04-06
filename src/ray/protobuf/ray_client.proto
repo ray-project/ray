@@ -36,7 +36,7 @@ message Arg {
   Type type = 4;
 }
 
-// A message representing the valid options to modify a task exectution
+// A message representing the valid options to modify a task execution
 //
 // TODO(barakmich): In the longer term, if everything were a client,
 // this message could be the actual standard for which options are
@@ -73,7 +73,7 @@ message ClientTask {
   string client_id = 6;
   // Options for modifying the remote task execution environment.
   TaskOptions options = 7;
-  // Options passed to create the default remote task excution environment.
+  // Options passed to create the default remote task execution environment.
   TaskOptions baseline_options = 8;
   // A namespace parameter.
   string namespace = 9;
@@ -445,7 +445,7 @@ service RayletDataStreamer {
 // A request to change the quantity or type of the logs
 // currently being streamed. Initially, all logs are disabled.
 message LogSettingsRequest {
-  // Set to recieve logs.
+  // Set to receive logs.
   bool enabled = 1;
   // At what loglevel should logs be forwarded on the stream.
   int32 loglevel = 2;

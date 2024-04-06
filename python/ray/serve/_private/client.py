@@ -8,6 +8,7 @@ import ray
 from ray.actor import ActorHandle
 from ray.serve._private.common import (
     ApplicationStatus,
+    DeploymentHandleSource,
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusInfo,
@@ -30,7 +31,7 @@ from ray.serve.generated.serve_pb2 import (
     DeploymentStatusInfo as DeploymentStatusInfoProto,
 )
 from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
-from ray.serve.handle import DeploymentHandle
+from ray.serve.handle import DeploymentHandle, _HandleOptions
 from ray.serve.schema import LoggingConfig, ServeApplicationSchema, ServeDeploySchema
 
 logger = logging.getLogger(__file__)
@@ -303,7 +304,7 @@ class ServeControllerClient:
                 because a single-app config was deployed after deploying a multi-app
                 config, or vice versa.
         """
-        ray.get(self._controller.deploy_config.remote(config))
+        ray.get(self._controller.apply_config.remote(config))
 
         if _blocking:
             timeout_s = 60
@@ -422,6 +423,8 @@ class ServeControllerClient:
         Returns:
             DeploymentHandle
         """
+        from ray.serve.context import _get_internal_replica_context
+
         cache_key = (deployment_name, app_name, missing_ok)
         if cache_key in self.handle_cache:
             return self.handle_cache[cache_key]
@@ -437,10 +440,17 @@ class ServeControllerClient:
                 "exist."
             )
 
-        handle = DeploymentHandle(
-            deployment_name,
-            app_name,
-        )
+        if _get_internal_replica_context() is not None:
+            handle = DeploymentHandle(
+                deployment_name,
+                app_name,
+                handle_options=_HandleOptions(_source=DeploymentHandleSource.REPLICA),
+            )
+        else:
+            handle = DeploymentHandle(
+                deployment_name,
+                app_name,
+            )
 
         self.handle_cache[cache_key] = handle
         if cache_key in self._evicted_handle_keys:

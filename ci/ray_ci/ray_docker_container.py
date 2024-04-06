@@ -4,7 +4,8 @@ from typing import List
 from ci.ray_ci.container import _DOCKER_ECR_REPO
 from ci.ray_ci.docker_container import DockerContainer
 from ci.ray_ci.builder_container import PYTHON_VERSIONS, DEFAULT_ARCHITECTURE
-from ci.ray_ci.utils import docker_pull, RAY_VERSION, POSTMERGE_PIPELINE
+from ci.ray_ci.utils import docker_pull, RAY_VERSION
+from ray_release.configs.global_config import BRANCH_PIPELINES
 
 
 class RayDockerContainer(DockerContainer):
@@ -58,7 +59,7 @@ class RayDockerContainer(DockerContainer):
     def _should_upload(self) -> bool:
         if not self.upload:
             return False
-        if os.environ.get("BUILDKITE_PIPELINE_ID") != POSTMERGE_PIPELINE:
+        if os.environ.get("BUILDKITE_PIPELINE_ID") not in BRANCH_PIPELINES:
             return False
         if os.environ.get("BUILDKITE_BRANCH", "").startswith("releases/"):
             return True
