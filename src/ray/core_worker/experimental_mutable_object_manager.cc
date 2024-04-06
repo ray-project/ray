@@ -319,7 +319,10 @@ Status MutableObjectManager::RegisterChannel(
   return Status::NotImplemented("Not supported on Windows.");
 }
 
-Channel *MutableObjectManager::GetChannel(const ObjectID &object_id) { return nullptr; }
+MutableObjectManager::Channel *MutableObjectManager::GetChannel(
+    const ObjectID &object_id) {
+  return nullptr;
+}
 
 PlasmaObjectHeader *MutableObjectManager::GetHeader(const ObjectID &object_id) {
   return nullptr;
