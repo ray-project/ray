@@ -2667,24 +2667,6 @@ py_test(
 )
 
 py_test(
-    name = "examples/deterministic_training_tf",
-    main = "examples/deterministic_training.py",
-    tags = ["team:rllib", "exclusive", "multi_gpu", "examples"],
-    size = "medium",
-    srcs = ["examples/deterministic_training.py"],
-    args = ["--as-test", "--stop-iters=1", "--framework=tf", "--num-gpus=1", "--num-gpus-per-worker=1"]
-)
-
-py_test(
-    name = "examples/deterministic_training_tf2",
-    main = "examples/deterministic_training.py",
-    tags = ["team:rllib", "exclusive", "multi_gpu", "examples"],
-    size = "medium",
-    srcs = ["examples/deterministic_training.py"],
-    args = ["--as-test", "--stop-iters=1", "--framework=tf2", "--num-gpus=1", "--num-gpus-per-worker=1"]
-)
-
-py_test(
     name = "examples/deterministic_training_torch",
     main = "examples/deterministic_training.py",
     tags = ["team:rllib", "exclusive", "multi_gpu", "examples"],
@@ -2756,15 +2738,6 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
     srcs = ["examples/export/cartpole_dqn_export.py"],
-)
-
-py_test(
-    name = "examples/export/onnx_tf",
-    main = "examples/export/onnx_tf.py",
-    tags = ["team:rllib", "exclusive", "examples", "no_main"],
-    size = "small",
-    srcs = ["examples/export/onnx_tf.py"],
-    args = ["--framework=tf"],
 )
 
 py_test(

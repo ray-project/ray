@@ -81,9 +81,9 @@ def test_omit_traceback_stdout_user_exception(ray_start_regular_shared):
     with patch.object(logging.Logger, "error") as mock_logger:
         exc_info = run_with_patch()
 
-        issubclass(exc_info.type, ZeroDivisionError)
-        issubclass(exc_info.type, RayTaskError)
-        issubclass(exc_info.type, UserCodeException)
+        assert issubclass(exc_info.type, RayTaskError)
+        assert issubclass(exc_info.type, UserCodeException)
+        assert ZeroDivisionError.__name__ in str(exc_info.value)
 
         check_exception_text_logged_to_stdout(
             "Exception occurred in user code,", mock_logger.mock_calls
@@ -121,6 +121,29 @@ def test_omit_traceback_stdout_system_exception(ray_start_regular_shared):
             "Exception occurred in Ray Data or Ray Core internal code.",
             mock_logger.mock_calls,
         )
+
+    # To check the output log file, we need to run the code again without
+    # the logging method patched, so that the logger actually writes to the
+    # log file.
+    run_with_patch()
+    check_full_stack_trace_logged_to_file()
+
+
+@patch("ray.data.exceptions._is_ray_debugger_enabled", return_value=True)
+def test_omit_traceback_skipped_with_ray_debugger(ray_start_regular_shared):
+    def f(x):
+        1 / 0
+        return x
+
+    def run_with_patch():
+        with pytest.raises(Exception) as exc_info:
+            ray.data.range(10).map(f).take_all()
+        return exc_info
+
+    exc_info = run_with_patch()
+    assert issubclass(exc_info.type, RayTaskError)
+    assert issubclass(exc_info.type, UserCodeException)
+    assert ZeroDivisionError.__name__ in str(exc_info.value)
 
     # To check the output log file, we need to run the code again without
     # the logging method patched, so that the logger actually writes to the

@@ -151,6 +151,7 @@ class RemoteFunction:
     def __getstate__(self):
         attrs = self.__dict__.copy()
         del attrs["_inject_lock"]
+        attrs["_last_export_session_and_job"] = None
         return attrs
 
     def __setstate__(self, state):
