@@ -1200,6 +1200,7 @@ class Learner:
         #  algos that actually need (and know how) to do minibatching.
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
+        min_total_mini_batches: int = 0,
     ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
         """Do `num_iters` minibatch updates given a list of episodes.
 
@@ -1219,6 +1220,13 @@ class Learner:
             minibatch_size: The size of the minibatch to use for each update.
             num_iters: The number of complete passes over all the sub-batches
                 in the input multi-agent batch.
+            min_total_mini_batches: The minimum number of mini-batches to loop through
+                (across all `num_sgd_iter` SGD iterations). It's required to set this
+                for multi-agent + multi-GPU situations in which the MultiAgentEpisodes
+                themselves are roughly sharded equally, however, they might contain
+                SingleAgentEpisodes with very lopsided length distributions. Thus,
+                without this limit it can happen that one Learner goes through a
+                different number of mini-batches than other Learners, causing deadlocks.
 
         Returns:
             A dictionary of results, in numpy format or a list of such dictionaries in
@@ -1230,6 +1238,7 @@ class Learner:
             reduce_fn=reduce_fn,
             minibatch_size=minibatch_size,
             num_iters=num_iters,
+            min_total_mini_batches=min_total_mini_batches,
         )
 
     @OverrideToImplementCustomLogic
@@ -1335,6 +1344,7 @@ class Learner:
         #  algos that actually need (and know how) to do minibatching.
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
+        min_total_mini_batches: int = 0,
     ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
         self._check_is_built()
 
@@ -1358,8 +1368,6 @@ class Learner:
                 },
                 env_steps=sum(len(e) for e in episodes),
             )
-            for mid, b in batch.policy_batches.items():
-                logger.warning(f"{mid} len={len(b)}")
 
         # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
         # found in this batch. If not, throw an error.
@@ -1377,7 +1385,11 @@ class Learner:
                 del batch.policy_batches[module_id]
 
         if minibatch_size and self._learner_connector is not None:
-            batch_iter = partial(MiniBatchCyclicIterator, uses_new_env_runners=True)
+            batch_iter = partial(
+                MiniBatchCyclicIterator,
+                uses_new_env_runners=True,
+                min_total_mini_batches=min_total_mini_batches,
+            )
         elif minibatch_size:
             batch_iter = MiniBatchCyclicIterator
         elif num_iters > 1:
@@ -1400,30 +1412,20 @@ class Learner:
         batch = self._set_slicing_by_batch_id(batch, value=True)
 
         for tensor_minibatch in batch_iter(batch, minibatch_size, num_iters):
-            logger.warning("in sgd loop")
             # Make the actual in-graph/traced `_update` call. This should return
             # all tensor values (no numpy).
             nested_tensor_minibatch = NestedDict(tensor_minibatch.policy_batches)
             (fwd_out, loss_per_module, metrics_per_module) = self._update(
                 nested_tensor_minibatch
             )
-            logger.warning("after update")
-
             result = self.compile_results(
                 batch=tensor_minibatch,
                 fwd_out=fwd_out,
                 loss_per_module=loss_per_module,
                 metrics_per_module=defaultdict(dict, **metrics_per_module),
             )
-            logger.warning("after compile results")
             self._check_result(result)
-            logger.warning("after check results")
-            # TODO (sven): Figure out whether `compile_results` should be forced
-            #  to return all numpy/python data, then we can skip this conversion
-            #  step here.
             results.append(result)
-
-        logger.warning("out of sgd loop")
 
         self._set_slicing_by_batch_id(batch, value=False)
 

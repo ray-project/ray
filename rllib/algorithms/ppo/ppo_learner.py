@@ -57,9 +57,7 @@ class PPOLearner(Learner):
         *,
         batch=None,
         episodes=None,
-        reduce_fn=_reduce_mean_results,
-        minibatch_size=None,
-        num_iters=1,
+        **kwargs,
     ):
         # First perform GAE computation on the entirety of the given train data (all
         # episodes).
@@ -70,9 +68,7 @@ class PPOLearner(Learner):
         return super()._update_from_batch_or_episodes(
             batch=batch,
             episodes=episodes,
-            reduce_fn=reduce_fn,
-            minibatch_size=minibatch_size,
-            num_iters=num_iters,
+            **kwargs,
         )
 
     def _compute_gae_from_episodes(

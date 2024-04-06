@@ -49,11 +49,11 @@ if __name__ == "__main__":
         .environment("env" if args.num_agents > 0 else "Pendulum-v1")
         .rollouts(num_rollout_workers=4)
         .training(
-            train_batch_size=512,
+            train_batch_size_per_learner=512,
+            mini_batch_size_per_learner=64,
             lambda_=0.1,
             gamma=0.95,
             lr=0.0003,
-            sgd_minibatch_size=64,
             model={"fcnet_activation": "relu"},
             vf_clip_param=10.0,
         )
@@ -66,4 +66,5 @@ if __name__ == "__main__":
             policy_mapping_fn=lambda aid, *a, **kw: f"p{aid}",
         )
 
+    # Augment
     run_rllib_example_script_experiment(base_config, args)

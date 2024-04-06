@@ -1,4 +1,3 @@
-import logging
 import math
 from typing import List
 
@@ -6,9 +5,6 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch, concat_samples
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.typing import EpisodeType
-
-
-logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
@@ -53,6 +49,7 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
         minibatch_size: int,
         num_iters: int = 1,
         uses_new_env_runners: bool = False,
+        min_total_mini_batches: int = 0,
     ) -> None:
         super().__init__(batch, minibatch_size, num_iters)
         self._batch = batch
@@ -66,8 +63,17 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
 
         self._uses_new_env_runners = uses_new_env_runners
 
+        self._mini_batch_count = 0
+        self._min_total_mini_batches = min_total_mini_batches
+
     def __iter__(self):
-        while min(self._num_covered_epochs.values()) < self._num_iters:
+        while (
+            # Make sure each item in the total batch gets at least iterated over
+            # `self._num_iters` times.
+            min(self._num_covered_epochs.values()) < self._num_iters
+            # Make sure we reach at least the given minimum number of mini-batches.
+            or self._mini_batch_count < self._min_total_mini_batches
+        ):
 
             minibatch = {}
             for module_id, module_batch in self._batch.policy_batches.items():
@@ -145,8 +151,9 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
             # multi-agent batch is covering. It should be simply inherited from the
             # original multi-agent batch.
             minibatch = MultiAgentBatch(minibatch, len(self._batch))
-            logger.warning(f"yielding minibatch with policy_ids={set(minibatch.policy_batches.keys())}")
             yield minibatch
+            
+            self._mini_batch_count += 1
 
 
 class MiniBatchDummyIterator(MiniBatchIteratorBase):
@@ -176,6 +183,10 @@ class ShardBatchIterator:
 
     def __iter__(self):
         for i in range(self._num_shards):
+            # TODO (sven): The following way of sharding a multi-agent batch destroys
+            #  the relationship of the different agents' timesteps to each other.
+            #  Thus, in case the algorithm requires agent-synchronized data (aka.
+            #  "lockstep"), the `ShardBatchIterator` cannot be used.
             batch_to_send = {}
             for pid, sub_batch in self._batch.policy_batches.items():
                 batch_size = math.ceil(len(sub_batch) / self._num_shards)
@@ -217,10 +228,7 @@ class ShardEpisodesIterator:
         lengths = [0 for _ in range(self._num_shards)]
         episode_index = 0
 
-        print("entering while loop")
         while episode_index < len(self._episodes):
-            print("in while loop")
-
             episode = self._episodes[episode_index]
             min_index = lengths.index(min(lengths))
 
@@ -237,16 +245,6 @@ class ShardEpisodesIterator:
                         episode[:remaining_length],
                         episode[remaining_length:],
                     )
-                    # TODO: remove this code!
-                    a = 1
-                    if type(slice_part).__name__ == "MultiAgentEpisode":
-                        if any(not s.is_finalized for s in slice_part.agent_episodes.values()):
-                            assert False
-                        if any(
-                            not s.is_finalized for s in remaining_part.agent_episodes.values()
-                        ):
-                            assert False
-
                     sublists[min_index].append(slice_part)
                     lengths[min_index] += len(slice_part)
                     self._episodes[episode_index] = remaining_part
@@ -254,8 +252,6 @@ class ShardEpisodesIterator:
                     assert remaining_length == 0
                     sublists[min_index].append(episode)
                     episode_index += 1
-
-        print("exited while loop")
 
         for sublist in sublists:
             yield sublist
