@@ -1492,8 +1492,7 @@ Status CoreWorker::ExperimentalRegisterMutableObjectReaderNetwork(
       object_id,
       num_readers,
       local_reader_object_id,
-      [this, &promise, object_id](const Status &status,
-                                  const rpc::RegisterMutableObjectReply &reply) {
+      [&promise](const Status &status, const rpc::RegisterMutableObjectReply &reply) {
         promise.set_value();
       });
   future.wait();

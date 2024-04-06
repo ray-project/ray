@@ -66,9 +66,13 @@ void MutableObjectProvider::HandleRegisterMutableObject(const ObjectID &object_i
                                                         int64_t num_readers,
                                                         const ObjectID &local_object_id) {
   absl::MutexLock guard(&cross_node_map_lock_);
-  LocalInfo info = {.num_readers = num_readers, .local_object_id = local_object_id};
+
+  LocalInfo info;
+  info.num_readers = num_readers;
+  info.local_object_id = local_object_id;
   bool success = cross_node_map_.insert({object_id, info}).second;
   RAY_CHECK(success);
+
   RegisterReaderChannel(local_object_id);
 }
 
