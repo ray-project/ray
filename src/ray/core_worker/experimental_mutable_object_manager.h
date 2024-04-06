@@ -66,10 +66,6 @@ class MutableObjectManager {
   /// \param[in] reader True if the reader is registering this channel. False if the
   /// writer is registering this channel.
   /// \return The return status.
-  Status RegisterReaderChannel(const ObjectID &object_id,
-                               std::unique_ptr<plasma::MutableObject> mutable_object);
-  Status RegisterWriterChannel(const ObjectID &object_id,
-                               std::unique_ptr<plasma::MutableObject> mutable_object);
   Status RegisterChannel(const ObjectID &object_id,
                          std::unique_ptr<plasma::MutableObject> mutable_object,
                          bool reader);
@@ -79,6 +75,20 @@ class MutableObjectManager {
   /// \param[in] object_id The ID of the object.
   /// The return status. True if the channel is registered for object_id, false otherwise.
   bool ChannelRegistered(const ObjectID &object_id) { return GetChannel(object_id); }
+  bool ReaderChannelRegistered(const ObjectID &object_id) {
+    Channel *c = GetChannel(object_id);
+    if (!c) {
+      return false;
+    }
+    return c->reader_registered;
+  }
+  bool WriterChannelRegistered(const ObjectID &object_id) {
+    Channel *c = GetChannel(object_id);
+    if (!c) {
+      return false;
+    }
+    return c->writer_registered;
+  }
 
   /// Acquires a write lock on the object that prevents readers from reading
   /// until we are done writing. This is safe for concurrent writers.

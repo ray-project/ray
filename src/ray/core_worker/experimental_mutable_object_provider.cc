@@ -19,7 +19,7 @@ namespace core {
 namespace experimental {
 
 MutableObjectProvider::MutableObjectProvider(
-    std::shared_ptr<plasma::PlasmaClientInterface> plasma, const RayletFactory &factory)
+    std::shared_ptr<plasma::PlasmaClientInterface> plasma, RayletFactory factory)
     : plasma_(plasma),
       raylet_client_factory_(factory),
       io_work_(io_service_),

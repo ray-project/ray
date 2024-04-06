@@ -34,7 +34,7 @@ class MutableObjectProvider {
       RayletFactory;
 
   MutableObjectProvider(std::shared_ptr<plasma::PlasmaClientInterface> plasma,
-                        const RayletFactory &factory);
+                        RayletFactory factory);
 
   ~MutableObjectProvider();
 
