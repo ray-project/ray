@@ -15,4 +15,4 @@ accelerate==0.28.0
 -r dl-cpu-requirements.txt
 
 # Cloud storage tools
-s3fs==2023.6.0
+s3fs==2023.5.0
