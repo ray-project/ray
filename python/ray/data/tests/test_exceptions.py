@@ -70,8 +70,11 @@ def test_system_exception(caplog, ray_start_regular_shared):
     ), caplog.records
 
 
-@patch("ray.data.exceptions._is_ray_debugger_enabled", return_value=True)
-def test_full_traceback_logged_with_ray_debugger(caplog, ray_start_regular_shared):
+def test_full_traceback_logged_with_ray_debugger(
+    caplog, ray_start_regular_shared, monkeypatch
+):
+    monkeypatch.setenv("RAY_PDB", 1)
+
     def f(row):
         1 / 0
         return row
