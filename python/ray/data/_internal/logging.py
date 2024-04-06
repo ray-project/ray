@@ -35,6 +35,8 @@ class SessionFileHandler(logging.Handler):
             self._handler.emit(record)
 
     def setFormatter(self, fmt: logging.Formatter) -> None:
+        if self._handler is not None:
+            self._handler.setFormatter(fmt)
         self._formatter = fmt
 
     def _try_create_handler(self):
