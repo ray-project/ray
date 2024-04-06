@@ -4,7 +4,7 @@ import click
 
 from ci.ray_ci.utils import logger, ci_init
 from ci.ray_ci.tester_container import TesterContainer
-from release.ray_release.configs.global_config import BRANCH_PIPELINES
+from ray_release.configs.global_config import BRANCH_PIPELINES
 
 
 @click.command()

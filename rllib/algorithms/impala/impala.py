@@ -984,16 +984,17 @@ class Impala(Algorithm):
         NOTE: This method is called if self.config._enable_new_api_stack is False.
 
         """
-        while self.batches_to_place_on_learner:
-            batch = self.batches_to_place_on_learner[0]
+        for i, batch in enumerate(self.batches_to_place_on_learner):
             try:
-                # Setting block = True prevents the learner thread,
-                # the main thread, and the gpu loader threads from
-                # thrashing when there are more samples than the
-                # learner can reasonable process.
-                # see https://github.com/ray-project/ray/pull/26581#issuecomment-1187877674  # noqa
-                self._learner_thread.inqueue.put(batch, block=True)
-                self.batches_to_place_on_learner.pop(0)
+                self._learner_thread.inqueue.put(
+                    batch,
+                    # Setting block = True for the very last item in our list prevents
+                    # the learner thread, this main thread, and the GPU loader threads
+                    # from thrashing when there are more samples than the learner can
+                    # reasonably process.
+                    # see https://github.com/ray-project/ray/pull/26581#issuecomment-1187877674  # noqa
+                    block=i == len(self.batches_to_place_on_learner) - 1,
+                )
                 self._counters["num_samples_added_to_queue"] += (
                     batch.agent_steps()
                     if self.config.count_steps_by == "agent_steps"
@@ -1001,6 +1002,8 @@ class Impala(Algorithm):
                 )
             except queue.Full:
                 self._counters["num_times_learner_queue_full"] += 1
+
+        self.batches_to_place_on_learner.clear()
 
     def process_trained_results(self) -> ResultDict:
         """Process training results that are outputed by the learner thread.
@@ -1208,13 +1211,13 @@ class Impala(Algorithm):
             weights = local_worker.get_weights(policy_ids)
             if self.config.policy_states_are_swappable:
                 local_worker.unlock()
-            weights = ray.put(weights)
+            weights_ref = ray.put(weights)
 
             self._learner_thread.policy_ids_updated.clear()
             self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] = 0
             self._counters[NUM_SYNCH_WORKER_WEIGHTS] += 1
             self.workers.foreach_worker(
-                func=lambda w: w.set_weights(ray.get(weights), global_vars),
+                func=lambda w: w.set_weights(ray.get(weights_ref), global_vars),
                 local_worker=False,
                 remote_worker_ids=list(workers_that_need_updates),
                 timeout_seconds=0,  # Don't wait for the workers to finish.

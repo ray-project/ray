@@ -12,7 +12,7 @@ from ci.ray_ci.utils import shard_tests, chunk_into_n
 from ci.ray_ci.utils import logger
 from ci.ray_ci.container import Container
 from ray_release.test import TestResult, Test
-from release.ray_release.configs.global_config import BRANCH_PIPELINES, PR_PIPELINES
+from ray_release.configs.global_config import BRANCH_PIPELINES, PR_PIPELINES
 
 
 class TesterContainer(Container):
