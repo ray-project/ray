@@ -16,7 +16,7 @@ evaluate
 fairscale
 fastapi
 filelock
-gcsfs==2023.5.0
+gcsfs==2023.6.0
 gsutil
 # Ray Data progress bars do not load with newer versions of
 # ipywidgets + older versions of VSCode Web. Pin the version
