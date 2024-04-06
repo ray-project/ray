@@ -314,7 +314,7 @@ MutableObjectManager::~MutableObjectManager() {}
 
 Status MutableObjectManager::RegisterChannel(
     const ObjectID &object_id,
-    std::unique_ptr<plasma::MutableObject> &mutable_object,
+    std::unique_ptr<plasma::MutableObject> mutable_object,
     bool reader) {
   return Status::NotImplemented("Not supported on Windows.");
 }

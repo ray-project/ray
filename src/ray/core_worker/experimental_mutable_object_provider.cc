@@ -28,7 +28,7 @@ MutableObjectProvider::MutableObjectProvider(
 
 MutableObjectProvider::~MutableObjectProvider() {
   io_service_.stop();
-  object_manager_.SetError();
+  RAY_CHECK(object_manager_.SetError().code() == StatusCode::OK);
 
   RAY_CHECK(io_thread_.joinable());
   io_thread_.join();
