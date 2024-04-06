@@ -12,6 +12,7 @@ from ci.ray_ci.utils import shard_tests, chunk_into_n
 from ci.ray_ci.utils import logger
 from ci.ray_ci.container import Container
 from ray_release.test import TestResult, Test
+from ray_release.test_automation.ci_state_machine import CITestStateMachine
 from ray_release.configs.global_config import BRANCH_PIPELINES, PR_PIPELINES
 
 
@@ -121,6 +122,7 @@ class TesterContainer(Container):
             return
         self._upload_build_info(bazel_log_dir)
         TesterContainer.upload_test_results(team, bazel_log_dir)
+        TesterContainer.move_test_state(team, bazel_log_dir)
 
     def _upload_build_info(self, bazel_log_dir) -> None:
         logger.info("Uploading bazel test logs")
@@ -139,6 +141,21 @@ class TesterContainer(Container):
             test.update_from_s3()
             test.persist_to_s3()
             test.persist_test_result_to_s3(result)
+
+    @classmethod
+    def move_test_state(cls, team: str, bazel_log_dir: str) -> None:
+        pipeline_id = os.environ.get("BUILDKITE_PIPELINE_ID")
+        branch = os.environ.get("BUILDKITE_BRANCH")
+        if pipeline_id not in BRANCH_PIPELINES or branch != "master":
+            logger.info("Skip updating test state. We only update on master branch.")
+            return
+        for test, _ in cls.get_test_and_results(team, bazel_log_dir):
+            logger.info(f"Updating test state for {test.get_name()}")
+            test.update_from_s3()
+            logger.info(f"\tOld state: {test.get_state()}")
+            CITestStateMachine(test).move()
+            test.persist_to_s3()
+            logger.info(f"\tNew state: {test.get_state()}")
 
     @classmethod
     def get_test_and_results(
