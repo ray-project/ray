@@ -188,10 +188,11 @@ TEST(MutableObjectProvider, HandlePushMutableObject) {
   provider.HandlePushMutableObject(request, &reply);
 
   std::shared_ptr<RayObject> result;
-  EXPECT_EQ(provider.object_manager().ReadAcquire(object_id, result).code(),
+  EXPECT_EQ(provider.object_manager().ReadAcquire(local_object_id, result).code(),
             StatusCode::OK);
   EXPECT_EQ(result->GetSize(), 0UL);
-  EXPECT_EQ(provider.object_manager().ReadRelease(object_id).code(), StatusCode::OK);
+  EXPECT_EQ(provider.object_manager().ReadRelease(local_object_id).code(),
+            StatusCode::OK);
 }
 
 #endif  // defined(__APPLE__) || defined(__linux__)
