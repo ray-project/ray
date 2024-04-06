@@ -78,7 +78,7 @@ def omit_traceback_stdout(fn: Callable) -> Callable:
             if log_to_stdout:
                 data_exception_logger.exception("Full stack trace:")
             else:
-                data_exception_logger.info("Full stack trace:", exc_info=True)
+                data_exception_logger.debug("Full stack trace:", exc_info=True)
 
             if is_user_code_exception:
                 raise e.with_traceback(None)

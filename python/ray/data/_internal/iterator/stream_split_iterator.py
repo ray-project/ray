@@ -142,7 +142,7 @@ class SplitCoordinator:
         # Automatically set locality with output to the specified location hints.
         if locality_hints:
             dataset.context.execution_options.locality_with_output = locality_hints
-            logger.info(f"Auto configuring locality_with_output={locality_hints}")
+            logger.debug(f"Auto configuring locality_with_output={locality_hints}")
 
         # Set current DataContext.
         ray.data.DataContext._set_current(dataset.context)

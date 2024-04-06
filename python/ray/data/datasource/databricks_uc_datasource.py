@@ -180,7 +180,7 @@ class DatabricksUCDatasource(Datasource):
 
         if parallelism > self.num_chunks:
             parallelism = self.num_chunks
-            logger.info(
+            logger.debug(
                 "The parallelism is reduced to chunk number due to "
                 "insufficient chunk parallelism."
             )

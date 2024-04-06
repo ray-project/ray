@@ -114,14 +114,14 @@ class SetReadParallelismRule(Rule):
 
         if logical_op._parallelism == -1:
             assert reason != ""
-            logger.info(
+            logger.debug(
                 f"Using autodetected parallelism={detected_parallelism} "
                 f"for operator {logical_op.name} to satisfy {reason}."
             )
         logical_op.set_detected_parallelism(detected_parallelism)
 
         if k is not None:
-            logger.info(
+            logger.debug(
                 f"To satisfy the requested parallelism of {detected_parallelism}, "
                 f"each read task output is split into {k} smaller blocks."
             )

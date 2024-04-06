@@ -195,7 +195,7 @@ class ParquetDatasource(Datasource):
 
             filtered_paths = set(expanded_paths) - set(paths)
             if filtered_paths:
-                logger.info(f"Filtered out {len(filtered_paths)} paths")
+                logger.debug(f"Filtered out {len(filtered_paths)} paths")
         else:
             if len(paths) == 1:
                 paths = paths[0]

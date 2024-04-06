@@ -563,7 +563,7 @@ class _StatsManager:
                                 iter_stats_inactivity
                                 >= _StatsManager.UPDATE_THREAD_INACTIVITY_LIMIT
                             ):
-                                logger.info(
+                                logger.debug(
                                     "Terminating StatsManager thread due to inactivity."
                                 )
                                 return

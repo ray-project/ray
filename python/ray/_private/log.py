@@ -28,21 +28,6 @@ def clear_logger(logger: Union[str, logging.Logger]):
     logger.handlers.clear()
 
 
-class RayDataInfoFilter(logging.Filter):
-    """Filters out info and debug messages from Ray Data.
-
-    This prevents Ray Data from spamming users with info and debug messages.
-    """
-
-    logger_regex = re.compile(r"ray(\.(?P<subpackage>\w+))?(\..*)?")
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        match = self.logger_regex.search(record.name)
-        if match["subpackage"] == "data" and record.levelno < logging.WARNING:
-            return False
-        return True
-
-
 class PlainRayHandler(logging.StreamHandler):
     """A plain log handler.
 
@@ -97,14 +82,10 @@ def generate_logging_config():
                 ),
             },
         }
-        filters = {
-            "ray_data_info": {"()": RayDataInfoFilter},
-        }
         handlers = {
             "default": {
                 "()": PlainRayHandler,
                 "formatter": "plain",
-                "filters": ["ray_data_info"],
             }
         }
 
@@ -129,7 +110,6 @@ def generate_logging_config():
             {
                 "version": 1,
                 "formatters": formatters,
-                "filters": filters,
                 "handlers": handlers,
                 "loggers": loggers,
                 "disable_existing_loggers": False,
