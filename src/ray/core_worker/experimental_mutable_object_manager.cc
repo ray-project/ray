@@ -14,8 +14,6 @@
 
 #include "ray/core_worker/experimental_mutable_object_manager.h"
 
-#include <fstream>
-
 #include "absl/strings/str_format.h"
 #include "ray/object_manager/common.h"
 
@@ -80,11 +78,6 @@ MutableObjectManager::Channel *MutableObjectManager::GetChannel(
 }
 
 MutableObjectManager::~MutableObjectManager() {
-  std::ofstream f;
-  f.open("/tmp/blah", std::ofstream::app);
-  f << "MutableObjectManager destructor" << std::endl;
-  f.close();
-
   // Copy `semaphores_` into `tmp` because `DestroySemaphores()` mutates `semaphores_`.
   absl::flat_hash_map<ObjectID, PlasmaObjectHeader::Semaphores> tmp = semaphores_;
   for (const auto &[object_id, _] : tmp) {
