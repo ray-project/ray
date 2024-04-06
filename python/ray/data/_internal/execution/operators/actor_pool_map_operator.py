@@ -123,7 +123,7 @@ class ActorPoolMapOperator(MapOperator):
         # situations where the scheduler is unable to schedule downstream operators
         # due to lack of available actors, causing an initial "pileup" of objects on
         # upstream operators, leading to a spike in memory usage prior to steady state.
-        logger.info(f"{self._name}: Waiting for {len(refs)} pool actors to start...")
+        logger.debug(f"{self._name}: Waiting for {len(refs)} pool actors to start...")
         try:
             ray.get(refs, timeout=DEFAULT_WAIT_FOR_MIN_ACTORS_SEC)
         except ray.exceptions.GetTimeoutError:

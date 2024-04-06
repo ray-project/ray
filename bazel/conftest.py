@@ -17,5 +17,8 @@ def preserve_block_order():
 
 @pytest.fixture(autouse=True)
 def disable_start_message():
-    ray.data.context.DataContext.get_current().print_on_execution_start = False
+    context = ray.data.context.DataContext.get_current()
+    original_value = context.print_on_execution_start
+    context.print_on_execution_start = False
     yield
+    context.print_on_execution_start = original_value

@@ -173,7 +173,6 @@ Saving and Restoring
     ~Algorithm.export_model
     ~Algorithm.export_policy_checkpoint
     ~Algorithm.export_policy_model
-    ~Algorithm.import_policy_model_from_h5
     ~Algorithm.restore
     ~Algorithm.restore_workers
     ~Algorithm.save

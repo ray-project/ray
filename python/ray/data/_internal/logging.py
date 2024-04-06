@@ -10,18 +10,27 @@ import ray
 CONFIG_FILENAME = "logging.yaml"
 
 
-class LogHandler(logging.Handler):
+class SessionFileHandler(logging.Handler):
+    """A handler that writes to a log file in the Ray session directory.
+
+    The Ray session directory isn't available until Ray is initialized, so this handler
+    lazily creates the file handler when you emit a log record.
+
+    Args:
+        filename: The name of the log file. The file is created in the 'logs' directory
+            of the Ray session directory.
+    """
+
     def __init__(self, filename: str):
         super().__init__()
         self._filename = filename
-        self._initialized = False
         self._handler = None
         self._formatter = None
         self._path = None
 
     def emit(self, record):
-        if not self._initialized:
-            self._initialize_handler()
+        if self._handler is None:
+            self._try_create_handler()
         if self._handler is not None:
             self._handler.emit(record)
 
@@ -30,22 +39,45 @@ class LogHandler(logging.Handler):
             self._handler.setFormatter(fmt)
         self._formatter = fmt
 
-    def _initialize_handler(self):
-        log_dir = get_log_directory()
-        if log_dir is not None:
-            self._path = os.path.join(log_dir, self._filename)
-            self._handler = logging.FileHandler(self._path)
-            if self._formatter is not None:
-                self._handler.setFormatter(self._formatter)
-        self._initialized = True
+    def _try_create_handler(self):
+        assert self._handler is None
+
+        log_directory = get_log_directory()
+        if log_directory is None:
+            return
+
+        self._path = os.path.join(log_directory, self._filename)
+        self._handler = logging.FileHandler(self._path)
+        if self._formatter is not None:
+            self._handler.setFormatter(self._formatter)
+
+    @property
+    def path(self) -> Optional[str]:
+        """Path to the log file or ``None`` if the file hasn't been created yet."""
+        return self._path
 
 
 def configure_logging():
+    """Configure the Python logger named 'ray.data'.
+
+    This function loads the configuration in `logging.yaml`. The configuration file
+    should be placed in the same directory as this module.
+    """
     with open(
         os.path.abspath(os.path.join(os.path.dirname(__file__), CONFIG_FILENAME))
     ) as file:
         config = yaml.safe_load(file)
     logging.config.dictConfig(config)
+
+
+def reset_logging() -> None:
+    """Reset the logger named 'ray.data' to its initial state.
+
+    Used for testing.
+    """
+    logger = logging.getLogger("ray.data")
+    logger.handlers.clear()
+    logger.setLevel(logging.NOTSET)
 
 
 def get_log_directory() -> Optional[str]:

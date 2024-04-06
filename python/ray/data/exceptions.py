@@ -6,6 +6,7 @@ from ray.data.context import DataContext
 from ray.exceptions import UserCodeException
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
+from ray.util.rpdb import _is_ray_debugger_enabled
 
 
 @DeveloperAPI
@@ -49,10 +50,13 @@ def omit_traceback_stdout(fn: Callable) -> Callable:
         try:
             return fn(*args, **kwargs)
         except Exception as e:
-            # Only log the full internal stack trace to stdout when configured.
+            # Only log the full internal stack trace to stdout when configured
+            # via DataContext, or when the Ray Debugger is enabled.
             # The full stack trace will always be emitted to the Ray Data log file.
             log_to_stdout = DataContext.get_current().log_internal_stack_trace_to_stdout
-            datsets_log_path = get_log_directory()
+            if _is_ray_debugger_enabled() or log_to_stdout:
+                data_exception_logger.get_logger().exception("Full stack trace:")
+                raise e
 
             is_user_code_exception = isinstance(e, UserCodeException)
             if is_user_code_exception:
@@ -62,7 +66,7 @@ def omit_traceback_stdout(fn: Callable) -> Callable:
                         "Exception occurred in user code, with the abbreviated stack "
                         "trace below. By default, the Ray Data internal stack trace "
                         "is omitted from stdout, and only written to the Ray Data log "
-                        f"files at {datsets_log_path}. To "
+                        f"files at {get_log_directory()}. To "
                         "output the full stack trace to stdout, set "
                         "`DataContext.log_internal_stack_trace_to_stdout` to True."
                     )
@@ -78,7 +82,7 @@ def omit_traceback_stdout(fn: Callable) -> Callable:
             if log_to_stdout:
                 data_exception_logger.exception("Full stack trace:")
             else:
-                data_exception_logger.info("Full stack trace:", exc_info=True)
+                data_exception_logger.debug("Full stack trace:", exc_info=True)
 
             if is_user_code_exception:
                 raise e.with_traceback(None)

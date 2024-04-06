@@ -594,9 +594,9 @@ class ExecutionPlan:
                 stats_summary_string = stats.to_summary().to_string(
                     include_parent=False
                 )
-                logger.info(stats_summary_string)
                 if context.enable_auto_log_stats:
-                    print(stats_summary_string)
+                    logger.info(stats_summary_string)
+
             # TODO(ekl) we shouldn't need to set this in the future once we move
             # to a fully lazy execution model, unless .materialize() is used. Th
             # reason we need it right now is since the user may iterate over a
