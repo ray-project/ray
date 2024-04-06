@@ -2293,15 +2293,23 @@ py_test(
     args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=600.0", "--num-cpus=4"]
 )
 
-# TODO (sven): Activate once MultiAgentEpisode splitting works and we can do multi-agent + multi-gpu.
-# py_test(
-#    name = "examples/multi_agent_and_self_play/multi_agent_cartpole_multi_gpu",
-#    main = "examples/multi_agent_and_self_play/multi_agent_cartpole.py",
-#    tags = ["team:rllib", "exclusive", "examples", "multi_gpu"],
-#    size = "medium",
-#    srcs = ["examples/multi_agent_and_self_play/multi_agent_cartpole.py"],
-#    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=600.0", "--num-cpus=4", "--num-gpus=2"]
-# )
+py_test(
+    name = "examples/multi_agent_and_self_play/multi_agent_cartpole_multi_gpu",
+    main = "examples/multi_agent_and_self_play/multi_agent_cartpole.py",
+    tags = ["team:rllib", "exclusive", "examples", "multi_gpu"],
+    size = "large",
+    srcs = ["examples/multi_agent_and_self_play/multi_agent_cartpole.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=600.0", "--num-cpus=4", "--num-gpus=2"]
+)
+
+py_test(
+    name = "examples/multi_agent_and_self_play/multi_agent_pendulum_multi_gpu",
+    main = "examples/multi_agent_and_self_play/multi_agent_pendulum.py",
+    tags = ["team:rllib", "exclusive", "examples", "multi_gpu"],
+    size = "large",
+    srcs = ["examples/multi_agent_and_self_play/multi_agent_pendulum.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=-500.0", "--num-cpus=4", "--num-gpus=2"]
+)
 
 py_test(
     name = "examples/multi_agent_and_self_play/pettingzoo_parameter_sharing",

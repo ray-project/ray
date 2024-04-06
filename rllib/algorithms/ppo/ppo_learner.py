@@ -6,7 +6,6 @@ from ray.rllib.algorithms.ppo.ppo import (
 )
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import Learner
-from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
@@ -57,9 +56,7 @@ class PPOLearner(Learner):
         *,
         batch=None,
         episodes=None,
-        reduce_fn=_reduce_mean_results,
-        minibatch_size=None,
-        num_iters=1,
+        **kwargs,
     ):
         # First perform GAE computation on the entirety of the given train data (all
         # episodes).
@@ -70,9 +67,7 @@ class PPOLearner(Learner):
         return super()._update_from_batch_or_episodes(
             batch=batch,
             episodes=episodes,
-            reduce_fn=reduce_fn,
-            minibatch_size=minibatch_size,
-            num_iters=num_iters,
+            **kwargs,
         )
 
     def _compute_gae_from_episodes(

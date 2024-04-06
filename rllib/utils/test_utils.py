@@ -1242,15 +1242,19 @@ def run_rllib_example_script_experiment(
             env_runner_cls=(
                 None
                 if not args.enable_new_api_stack
-                else SingleAgentEnvRunner
-                if args.num_agents == 0
-                else MultiAgentEnvRunner
+                else (
+                    SingleAgentEnvRunner
+                    if args.num_agents == 0
+                    else MultiAgentEnvRunner
+                )
             ),
         )
         .resources(
-            num_gpus=args.num_gpus,  # old stack
-            num_learner_workers=args.num_gpus,  # new stack
-            num_gpus_per_learner_worker=1 if args.num_gpus else 0,
+            # Old stack.
+            num_gpus=0 if args.enable_new_api_stack else args.num_gpus,
+            # New stack.
+            num_learner_workers=args.num_gpus,
+            num_gpus_per_learner_worker=1 if torch.cuda.is_available() else 0,
             num_cpus_for_local_worker=1,
         )
     )
@@ -1355,7 +1359,7 @@ def check_same_batch(batch1, batch2) -> None:
     # Avoids circular import
     from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 
-    assert type(batch1) == type(
+    assert type(batch1) is type(
         batch2
     ), "Input batches are of different types {} and {}".format(
         str(type(batch1)), str(type(batch2))
@@ -1396,9 +1400,9 @@ def check_same_batch(batch1, batch2) -> None:
                 "".format(_difference)
             )
 
-    if type(batch1) == SampleBatch:
+    if type(batch1) is SampleBatch:
         check_sample_batches(batch1, batch2)
-    elif type(batch1) == MultiAgentBatch:
+    elif type(batch1) is MultiAgentBatch:
         assert batch1.count == batch2.count
         batch1_ids = set()
         for policy_id, policy_batch in batch1.policy_batches.items():
