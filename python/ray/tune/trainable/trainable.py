@@ -5,6 +5,7 @@ import logging
 import os
 from pathlib import Path
 import platform
+import shutil
 import sys
 import tempfile
 import time
@@ -493,24 +494,31 @@ class Trainable:
 
         Note the return value matches up with what is expected of `restore()`.
         """
-        with self._create_checkpoint_dir(
-            checkpoint_dir=checkpoint_dir
-        ) as checkpoint_staging_dir:
-            # User saves checkpoint
-            checkpoint_dict_or_path = self.save_checkpoint(checkpoint_staging_dir)
+        if not isinstance(self, ray.tune.trainable.FunctionTrainable):
+            use_temp_dir = not checkpoint_dir
 
-            if not isinstance(self, ray.tune.trainable.FunctionTrainable):
-                checkpoint_result = self._report_class_trainable_checkpoint(
-                    checkpoint_staging_dir, checkpoint_dict_or_path
-                )
-            else:
-                checkpoint_result: _TrainingResult = checkpoint_dict_or_path
-                assert self._last_result
-                # Update the checkpoint result to include auto-filled metrics.
-                checkpoint_result.metrics.update(self._last_result)
+            checkpoint_dir = checkpoint_dir or tempfile.mkdtemp()
+            os.makedirs(checkpoint_dir, exist_ok=True)
 
+            checkpoint_dict_or_path = self.save_checkpoint(checkpoint_dir)
+            checkpoint_result = self._report_class_trainable_checkpoint(
+                checkpoint_dir, checkpoint_dict_or_path
+            )
+
+            # Clean up the temporary directory, since it's already been
+            # reported + persisted to storage. If no storage is set, the user is
+            # running the Trainable locally and is responsible for cleaning
+            # up the checkpoint directory themselves.
+            if use_temp_dir and self._storage:
+                shutil.rmtree(checkpoint_dir, ignore_errors=True)
+        else:
+            checkpoint_result: _TrainingResult = self.save_checkpoint(None)
             assert isinstance(checkpoint_result, _TrainingResult)
-            return checkpoint_result
+            assert self._last_result
+            # Update the checkpoint result to include auto-filled metrics.
+            checkpoint_result.metrics.update(self._last_result)
+
+        return checkpoint_result
 
     @DeveloperAPI
     def restore(self, checkpoint_path: Union[str, Checkpoint, _TrainingResult]):
