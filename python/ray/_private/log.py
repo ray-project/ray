@@ -2,7 +2,6 @@ import logging
 from logging.config import dictConfig
 import threading
 from typing import Union
-import re
 
 
 def _print_loggers():
