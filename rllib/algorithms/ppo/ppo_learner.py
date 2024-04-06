@@ -6,7 +6,6 @@ from ray.rllib.algorithms.ppo.ppo import (
 )
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import Learner
-from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic

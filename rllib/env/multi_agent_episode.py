@@ -1527,7 +1527,6 @@ class MultiAgentEpisode:
         # Join all components into a final string
         return header + "\n".join(rows)
 
-
     def get_state(self) -> Dict[str, Any]:
         """Returns the state of a multi-agent episode.
 

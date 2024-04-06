@@ -152,7 +152,7 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
             # original multi-agent batch.
             minibatch = MultiAgentBatch(minibatch, len(self._batch))
             yield minibatch
-            
+
             self._mini_batch_count += 1
 
 

@@ -54,7 +54,8 @@ def _get_backend_config(learner_class: Type[Learner]) -> str:
     else:
         raise ValueError(
             "`learner_class.framework` must be either 'torch' or 'tf2' (but is "
-            f"{learner_class.framework}!")
+            f"{learner_class.framework}!"
+        )
 
     return backend_config
 
@@ -411,7 +412,8 @@ class LearnerGroup:
                         _learner_update,
                         episodes_shard=eps_shard,
                         min_total_mini_batches=min_total_mini_batches,
-                    ) for eps_shard in eps_shards
+                    )
+                    for eps_shard in eps_shards
                 ]
 
             if async_update:
