@@ -737,7 +737,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         num_output_blocks: int,
     ) -> _PushBasedShuffleStage:
         num_cpus_total = sum(v for v in num_cpus_per_node_map.values())
-        logger.debugs(
+        logger.debug(
             f"Found {num_cpus_total} CPUs available CPUs for push-based shuffle."
         )
         num_tasks_per_map_merge_group = merge_factor + 1
