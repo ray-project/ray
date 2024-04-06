@@ -23,6 +23,7 @@ def test_user_exception(caplog, ray_start_regular_shared):
 
     assert issubclass(exc_info.type, RayTaskError)
     assert issubclass(exc_info.type, UserCodeException)
+    assert ZeroDivisionError.__name__ in str(exc_info.value)
 
     assert any(
         record.levelno == logging.ERROR
@@ -65,6 +66,25 @@ def test_system_exception(caplog, ray_start_regular_shared):
 
     assert any(
         record.levelno == logging.DEBUG and "Full stack trace:" in record.message
+        for record in caplog.records
+    ), caplog.records
+
+
+@patch("ray.data.exceptions._is_ray_debugger_enabled", return_value=True)
+def test_full_traceback_logged_with_ray_debugger(caplog, ray_start_regular_shared):
+    def f(row):
+        1 / 0
+        return row
+
+    with pytest.raises(Exception) as exc_info:
+        ray.data.range(1).map(f).take_all()
+
+    assert issubclass(exc_info.type, RayTaskError)
+    assert issubclass(exc_info.type, UserCodeException)
+    assert ZeroDivisionError.__name__ in str(exc_info.value)
+
+    assert any(
+        record.levelno == logging.ERROR and "Full stack trace:" in record.message
         for record in caplog.records
     ), caplog.records
 
