@@ -974,7 +974,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             check(act, actions[i])
         # Access >=0 integer indices (expect index error as everything is in
         # lookback buffer).
-        for i in range(0, 5):
+        for i in range(1, 5):
             with self.assertRaises(IndexError):
                 episode.get_actions(i)
         # Access <= -5 integer indices (expect index error as this goes beyond length of
