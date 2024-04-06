@@ -57,7 +57,7 @@ class SessionFileHandler(logging.Handler):
         return self._path
 
 
-def configure_logging():
+def configure_logging() -> None:
     """Configure the Python logger named 'ray.data'.
 
     This function loads the configuration in `logging.yaml`. The configuration file
