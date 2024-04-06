@@ -170,13 +170,14 @@ TEST(MutableObjectProvider, RegisterWriterChannel) {
 
 TEST(MutableObjectProvider, HandlePushMutableObject) {
   ObjectID object_id = ObjectID::FromRandom();
+  ObjectID local_object_id = ObjectID::FromRandom();
   auto plasma = std::make_shared<TestPlasma>();
   auto interface = std::make_shared<TestInterface>();
 
   MutableObjectProvider provider(
       plasma,
       /*factory=*/absl::bind_front(GetTestInterface, interface));
-  provider.RegisterReaderChannel(object_id);
+  provider.HandleRegisterMutableObject(object_id, /*num_readers=*/1, local_object_id);
 
   ray::rpc::PushMutableObjectRequest request;
   request.set_object_id(object_id.Binary());

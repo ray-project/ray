@@ -50,10 +50,6 @@ class MutableObjectProvider {
   /// \param[in] node_id The ID of the node to write to.
   void RegisterWriterChannel(const ObjectID &object_id, const NodeID &node_id);
 
-  /// Registers a reader channel for `object_id` on this node.
-  /// \param[in] object_id The ID of the object.
-  void RegisterReaderChannel(const ObjectID &object_id);
-
   void HandleRegisterMutableObject(const ObjectID &object_id,
                                    int64_t num_readers,
                                    const ObjectID &local_object_id);
@@ -69,8 +65,11 @@ class MutableObjectProvider {
     ObjectID local_object_id;
   };
 
-  /// Listens for local changes to `object_id` and sends the changes to remote nodes via
-  /// the network.
+  // Registers a reader channel for `object_id` on this node.
+  void RegisterReaderChannel(const ObjectID &object_id);
+
+  // Listens for local changes to `object_id` and sends the changes to remote nodes via
+  // the network.
   void PollWriterClosure(const ObjectID &object_id,
                          std::shared_ptr<MutableObjectReaderInterface> reader);
 
