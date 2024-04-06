@@ -54,12 +54,21 @@ class MutableObjectProvider {
   /// \param[in] object_id The ID of the object.
   void RegisterReaderChannel(const ObjectID &object_id);
 
+  void HandleRegisterMutableObject(const ObjectID &object_id,
+                                   int64_t num_readers,
+                                   const ObjectID &local_object_id);
+
   /// RPC callback for when a writer pushes a mutable object over the network to a reader
   /// on this node.
   void HandlePushMutableObject(const rpc::PushMutableObjectRequest &request,
                                rpc::PushMutableObjectReply *reply);
 
  private:
+  struct LocalInfo {
+    int64_t num_readers;
+    ObjectID local_object_id;
+  };
+
   /// Listens for local changes to `object_id` and sends the changes to remote nodes via
   /// the network.
   void PollWriterClosure(const ObjectID &object_id,
@@ -73,6 +82,13 @@ class MutableObjectProvider {
 
   // Object manager for the mutable objects.
   ray::experimental::MutableObjectManager object_manager_;
+
+  // Protects `cross_node_map_`.
+  absl::Mutex cross_node_map_lock_;
+  // Maps the remote node object ID (i.e., the object ID that the remote node writes to)
+  // to the corresponding local object ID (i.e., the object ID that the local node reads
+  // from) and the number of readers.
+  std::unordered_map<ObjectID, LocalInfo> cross_node_map_;
 
   // Creates a function for each object. This object waits for changes on the object and
   // then sends those changes to a remote node via RPC.

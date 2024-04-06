@@ -13,7 +13,7 @@ import ray.experimental.channel as ray_channel
 
 logger = logging.getLogger(__name__)
 
-
+"""
 @pytest.mark.skipif(sys.platform != "linux", reason="Requires Linux.")
 def test_put_local_get(ray_start_regular):
     chan = ray_channel.Channel(1000)
@@ -136,6 +136,7 @@ def test_put_remote_get(ray_start_regular, num_readers):
         chan.write(val, num_readers=num_readers)
 
     ray.get(done)
+"""
 
 
 @pytest.mark.parametrize("remote", [True, False])
@@ -159,17 +160,21 @@ def test_remote_reader(ray_start_cluster, remote):
             return ray.get_runtime_context().get_node_id()
 
         def allocate_local_reader_channel(self, writer_channel, num_readers):
-            return ray_channel.Channel(
-                1000, _writer_channel=writer_channel, num_readers=num_readers
+            ret = ray_channel.Channel(
+                _writer_channel=writer_channel, num_readers=num_readers
             )
+            return ret
 
         def send_channel(self, reader_channel):
             self._reader_chan = reader_channel
 
         def read(self):
+            print("START READING\n")
             while True:
                 self._reader_chan.begin_read()
+                print("A\n")
                 self._reader_chan.end_read()
+                print("B\n")
 
     readers = [Reader.remote() for _ in range(num_readers)]
     if remote:

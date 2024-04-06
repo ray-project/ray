@@ -76,6 +76,14 @@ class Channel:
         Returns:
             Channel: A wrapper around ray.ObjectRef.
         """
+        if _writer_channel is not None:
+            if buffer_size_bytes is not None:
+                raise ValueError(
+                    "`buffer_size_bytes should not be specified if "
+                    "`_writer_channel` is given."
+                )
+            buffer_size_bytes = _writer_channel._buffer_size_bytes
+
         if buffer_size_bytes is None:
             if _base_ref is None:
                 raise ValueError(
@@ -90,6 +98,8 @@ class Channel:
         if not isinstance(num_readers, int):
             raise ValueError("num_readers must be an integer")
 
+        self._buffer_size_bytes = buffer_size_bytes
+
         self._reader_node_id = _reader_node_id
         self._writer_channel = _writer_channel
 
@@ -99,6 +109,11 @@ class Channel:
 
         self._writer_registered = False
         self._reader_registered = False
+
+        if self._writer_channel is not None:
+            self._worker.core_worker.experimental_channel_register_reader_network(
+                self._writer_channel._base_ref, self._num_readers, self._base_ref
+            )
 
     def ensure_registered_as_writer(self):
         if self._writer_registered:
@@ -113,7 +128,6 @@ class Channel:
             # Writing across the network.
             if not isinstance(self._reader_node_id, str):
                 raise ValueError("`self._reader_node_id` must be a str")
-            print(self._base_ref, self._reader_node_id)
             self._worker.core_worker.experimental_channel_register_writer_network(
                 self._base_ref, self._reader_node_id
             )
@@ -123,24 +137,25 @@ class Channel:
         if self._reader_registered:
             return
 
-        if self._writer_channel is None:
-            # Reading locally.
-            self._worker.core_worker.experimental_channel_register_reader_local(
-                self._base_ref
-            )
-        else:
-            # Reading across the network.
-            self._worker.core_worker.experimental_channel_register_reader_network(
-                self._writer_channel._base_ref, self._num_readers, self._base_ref
-            )
+        self._worker.core_worker.experimental_channel_register_reader_local(
+            self._base_ref
+        )
         self._reader_registered = True
 
     @staticmethod
-    def _from_base_ref(base_ref: "ray.ObjectRef", num_readers: int) -> "Channel":
-        return Channel(num_readers=num_readers, _base_ref=base_ref)
+    def _from_base_ref(
+        buffer_size_bytes: int, base_ref: "ray.ObjectRef", num_readers: int
+    ) -> "Channel":
+        chan = Channel(num_readers=num_readers, _base_ref=base_ref)
+        chan._buffer_size_bytes = buffer_size_bytes
+        return chan
 
     def __reduce__(self):
-        return self._from_base_ref, (self._base_ref, self._num_readers)
+        return self._from_base_ref, (
+            self._buffer_size_bytes,
+            self._base_ref,
+            self._num_readers,
+        )
 
     def write(self, value: Any, num_readers: Optional[int] = None):
         """

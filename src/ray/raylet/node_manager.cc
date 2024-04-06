@@ -783,12 +783,16 @@ void NodeManager::HandleRegisterMutableObject(
     rpc::RegisterMutableObjectReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
-  // int64_t num_readers = request.num_readers();
-  // ObjectID local_object_id = ObjectID::FromBinary(request.local_object_id());
+  int64_t num_readers = request.num_readers();
+  ObjectID local_object_id = ObjectID::FromBinary(request.local_object_id());
 
-  // TODO(jhumphri): Pass `num_readers` and `local_object_id` to this
-  // RegisterReaderChannel().
-  mutable_object_provider_->RegisterReaderChannel(object_id);
+  std::ofstream f;
+  f.open("/tmp/blah", std::ofstream::app);
+  f << "HandleRegisterMutableObject for object_id " << object_id
+    << ", local_object_id: " << local_object_id << std::endl;
+
+  mutable_object_provider_->HandleRegisterMutableObject(
+      object_id, num_readers, local_object_id);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

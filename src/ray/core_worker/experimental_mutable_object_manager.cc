@@ -14,6 +14,8 @@
 
 #include "ray/core_worker/experimental_mutable_object_manager.h"
 
+#include <fstream>
+
 #include "absl/strings/str_format.h"
 #include "ray/object_manager/common.h"
 
@@ -183,6 +185,10 @@ Status MutableObjectManager::WriteAcquire(const ObjectID &object_id,
                                           int64_t metadata_size,
                                           int64_t num_readers,
                                           std::shared_ptr<Buffer> &data) {
+  std::ofstream f;
+  f.open("/tmp/blah", std::ofstream::app);
+  // f << std::endl;
+
   Channel *channel = GetChannel(object_id);
   if (!channel) {
     return Status::ObjectNotFound("Channel has not been registered");
