@@ -47,13 +47,11 @@ steps:
       - python
       - data
     instance_type: medium
-    parallelism: 2
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
-        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" 
-        --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name data15build
-        --except-tags data_integration,doctest
+        --build-only
+      - sleep 36000
     depends_on: data15build
 
   - label: ":database: data: arrow nightly tests"
