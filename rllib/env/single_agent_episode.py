@@ -261,10 +261,9 @@ class SingleAgentEpisode:
 
         # Lookback buffer length is not provided. Interpret already given data as
         # lookback buffer lengths for all data types.
-        if len_lookback_buffer == "auto":
-            len_lookback_buffer = len(rewards or [])
-        elif len_lookback_buffer > len(rewards or []):
-            len_lookback_buffer = len(rewards or [])
+        len_rewards = len(rewards) if rewards is not None else 0
+        if len_lookback_buffer == "auto" or len_lookback_buffer > len_rewards:
+            len_lookback_buffer = len_rewards
 
         infos = infos or [{} for _ in range(len(observations or []))]
 
@@ -331,6 +330,11 @@ class SingleAgentEpisode:
                     data=v, lookback=len_lookback_buffer
                 )
 
+        # TODO (sven): Remove this in favor of logging render images from an env inside
+        #  custom callbacks and using a to-be-designed metrics logger. Render images
+        #  from the env should NOT be stored in an episode (b/c they have nothing to do
+        #  with the data to be learned from, which should be the only thing an episode
+        #  has to be concerned with).
         # RGB uint8 images from rendering the env; the images include the corresponding
         # rewards.
         assert render_images is None or observations is not None
@@ -1133,11 +1137,11 @@ class SingleAgentEpisode:
                 neg_indices_left_of_zero=neg_indices_left_of_zero,
                 fill=fill,
             )
-        assert False  # TODO(sven)
         # TODO (sven): This does not seem to be solid yet. Users should NOT be able
         #  to just write directly into our buffers. Instead, use:
         #  `self.set_extra_model_outputs(key, new_data, at_indices=...)` and if key
         #  is not known, add a new buffer to the `extra_model_outputs` dict.
+        assert False
         # It might be that the user has added new key/value pairs in their custom
         # postprocessing/connector logic. The values are then most likely numpy
         # arrays. We convert them automatically to buffers and get the requested
@@ -1398,6 +1402,31 @@ class SingleAgentEpisode:
         beginning in order for the returned SingleAgentEpisode to have such a
         lookback buffer.
 
+        .. testcode::
+
+            from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+            from ray.rllib.utils.test_utils import check
+
+            # Generate a simple multi-agent episode.
+            observations = [0, 1, 2, 3, 4, 5]
+            actions = [1, 2, 3, 4, 5]
+            rewards = [0.1, 0.2, 0.3, 0.4, 0.5]
+            episode = SingleAgentEpisode(
+                observations=observations,
+                actions=actions,
+                rewards=rewards,
+                len_lookback_buffer=0,  # all given data is part of the episode
+            )
+            slice_1 = episode[:1]
+            check(slice_1.observations, [0, 1])
+            check(slice_1.actions, [1])
+            check(slice_1.rewards, [0.1])
+
+            slice_2 = episode[-2:]
+            check(slice_2.observations, [3, 4, 5])
+            check(slice_2.actions, [4, 5])
+            check(slice_2.rewards, [0.4, 0.5])
+
         Args:
             slice_: The slice object to use for slicing. This should exclude the
                 lookback buffer, which will be prepended automatically to the returned
@@ -1406,40 +1435,55 @@ class SingleAgentEpisode:
         Returns:
             The new SingleAgentEpisode representing the requested slice.
         """
+        # Translate `slice_` into one that only contains 0-or-positive ints and will
+        # NOT contain any None.
+        start = slice_.start
+        stop = slice_.stop
+
+        # Start is None -> 0.
+        if start is None:
+            start = 0
+        # Start is negative -> Interpret index as counting "from end".
+        elif start < 0:
+            start = len(self) + start
+
+        # Stop is None -> Set stop to our len (one ts past last valid index).
+        if stop is None:
+            stop = len(self)
+        # Stop is negative -> Interpret index as counting "from end".
+        elif stop < 0:
+            stop = len(self) + stop
+
+        step = slice_.step if slice_.step is not None else 1
+
         # Figure out, whether slicing stops at the very end of this episode to know
         # whether `self.is_terminated/is_truncated` should be kept as-is.
-        keep_done = slice_.stop is None or slice_.stop == len(self)
-        start = slice_.start or 0
-        t_started = self.t_started + start + (0 if start >= 0 else len(self))
+        keep_done = stop == len(self)
+        # Provide correct timestep- and pre-buffer information.
+        t_started = self.t_started + start
 
-        neg_indices_left_of_zero = (slice_.start or 0) >= 0
-
-        start = slice_.start or 0
-        stop = slice_.stop
-        # Obs and infos need one more step at the end.
-        stop_obs_infos = ((stop if stop != -1 else (len(self) - 1)) or len(self)) + 1
-        step = slice_.step
         return SingleAgentEpisode(
             id_=self.id_,
+            # In the following, offset `start`s automatically by lookbacks.
             observations=InfiniteLookbackBuffer(
                 data=self.get_observations(
-                    slice(start - self.observations.lookback, stop_obs_infos, step),
-                    neg_indices_left_of_zero=neg_indices_left_of_zero,
+                    slice(start - self.observations.lookback, stop + 1, step),
+                    neg_indices_left_of_zero=True,
                 ),
                 lookback=self.observations.lookback,
                 space=self.observation_space,
             ),
             infos=InfiniteLookbackBuffer(
                 data=self.get_infos(
-                    slice(start - self.infos.lookback, stop_obs_infos, step),
-                    neg_indices_left_of_zero=neg_indices_left_of_zero,
+                    slice(start - self.infos.lookback, stop + 1, step),
+                    neg_indices_left_of_zero=True,
                 ),
                 lookback=self.infos.lookback,
             ),
             actions=InfiniteLookbackBuffer(
                 data=self.get_actions(
                     slice(start - self.actions.lookback, stop, step),
-                    neg_indices_left_of_zero=neg_indices_left_of_zero,
+                    neg_indices_left_of_zero=True,
                 ),
                 lookback=self.actions.lookback,
                 space=self.action_space,
@@ -1447,16 +1491,18 @@ class SingleAgentEpisode:
             rewards=InfiniteLookbackBuffer(
                 data=self.get_rewards(
                     slice(start - self.rewards.lookback, stop, step),
-                    neg_indices_left_of_zero=neg_indices_left_of_zero,
+                    neg_indices_left_of_zero=True,
                 ),
                 lookback=self.rewards.lookback,
             ),
             extra_model_outputs={
                 k: InfiniteLookbackBuffer(
                     data=self.get_extra_model_outputs(
-                        k,
-                        slice(start - v.lookback, stop, step),
-                        neg_indices_left_of_zero=neg_indices_left_of_zero,
+                        key=k,
+                        indices=slice(
+                            start - self.extra_model_outputs[k].lookback, stop, step
+                        ),
+                        neg_indices_left_of_zero=True,
                     ),
                     lookback=v.lookback,
                 )
@@ -1464,7 +1510,6 @@ class SingleAgentEpisode:
             },
             terminated=(self.is_terminated if keep_done else False),
             truncated=(self.is_truncated if keep_done else False),
-            # Provide correct timestep- and pre-buffer information.
             t_started=t_started,
         )
 
