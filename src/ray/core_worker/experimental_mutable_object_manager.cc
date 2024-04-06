@@ -370,6 +370,10 @@ Status MutableObjectManager::SetError(const ObjectID &object_id) {
   return Status::NotImplemented("Not supported on Windows.");
 }
 
+Status MutableObjectManager::SetError() {
+  return Status::NotImplemented("Not supported on Windows.");
+}
+
 #endif
 
 }  // namespace experimental
