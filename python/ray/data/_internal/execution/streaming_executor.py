@@ -106,9 +106,9 @@ class StreamingExecutor(Executor, threading.Thread):
             context = DataContext.get_current()
             if context.print_on_execution_start:
                 message = "Starting execution of Dataset."
-                log_path = get_log_path()
+                log_path = get_log_directory()
                 if log_path is not None:
-                    message += f" Full log is in {log_path}"
+                    message += f" Full logs are in {log_path}"
                 logger.info(message)
                 logger.info(f"Execution plan of Dataset: {dag}")
 

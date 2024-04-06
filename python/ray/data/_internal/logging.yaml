@@ -7,7 +7,7 @@ formatters:
 
 handlers:
     file:
-        class: ray.data._internal.logging.LogHandler
+        class: ray.data._internal.logging.SessionFileHandler
         level: INFO
         formatter: ray
         filename: ray-data.log

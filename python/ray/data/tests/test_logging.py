@@ -8,8 +8,7 @@ import pytest
 import ray
 from ray.data._internal.logging import (
     configure_logging,
-    get_log_path,
-    is_logging_configured,
+    get_log_directory,
     reset_logging,
 )
 from ray.tests.conftest import *  # noqa
@@ -17,8 +16,7 @@ from ray.tests.conftest import *  # noqa
 
 @pytest.fixture
 def setup_logging():
-    if not is_logging_configured():
-        configure_logging()
+    configure_logging()
     yield
     reset_logging()
 
@@ -29,7 +27,7 @@ def test_messages_logged_to_file(setup_logging, shutdown_only):
 
     logger.info("ham")
 
-    log_path = get_log_path()
+    log_path = os.path.join(get_log_directory(), "ray-data.log")
     with open(log_path) as file:
         log_contents = file.read()
     assert "ham" in log_contents
@@ -57,7 +55,7 @@ def test_message_format(setup_logging, shutdown_only):
 
     logger.info("ham")
 
-    log_path = get_log_path()
+    log_path = os.path.join(get_log_directory(), "ray-data.log")
     with open(log_path, "r") as f:
         log_contents = f.read()
     (
