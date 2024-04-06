@@ -1,8 +1,11 @@
-TODO: explain to user why (and how) frame stacking should be done in the
-connectors
 msg = """
-This 
-`ray.rllib.examples.rl_module.classes.frame_stacking_rlm.py`
+This script has been taken out of RLlib for the following reason: 
+- This script used `ViewRequirements` ("Trajectory View API") to set up the RLModule,
+however, this API will not be part of the new API stack.
+Instead, you can use RLlib's built-in ConnectorV2 for frame stacking (or write a custom
+ConnectorV2). Take a look at this example script here, which shows how you can do frame-
+stacking with RLlib.
+`ray.rllib.examples.connectors.connector_v2_frame_stacking.py`
 """
 
 raise NotImplementedError(msg)
