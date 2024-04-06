@@ -211,8 +211,6 @@ Status PlasmaObjectHeader::TryToAcquireSemaphore(sem_t *sem) const {
 
 void PlasmaObjectHeader::SetErrorUnlocked(Semaphores &sem) {}
 
-Status PlasmaObjectHeader::SetError() {}
-
 Status PlasmaObjectHeader::WriteAcquire(Semaphores &sem,
                                         uint64_t write_data_size,
                                         uint64_t write_metadata_size,
