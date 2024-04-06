@@ -551,7 +551,7 @@ frozenlist==1.4.0
     #   ray
 fs==2.4.16
     # via triad
-fsspec==2023.5.0
+fsspec==2023.6.0
     # via
     #   -r /home/ubuntu/ray/ci/../python/requirements.txt
     #   dask
@@ -1957,7 +1957,7 @@ ruamel-yaml==0.17.40
     # via semgrep
 ruamel-yaml-clib==0.2.8
     # via ruamel-yaml
-s3fs==2023.5.0
+s3fs==2023.6.0
     # via -r /home/ubuntu/ray/ci/../python/requirements/ml/core-requirements.txt
 s3transfer==0.6.2
     # via boto3
