@@ -113,12 +113,6 @@ class StreamingExecutor(Executor, threading.Thread):
                 logger.info(f"Execution plan of Dataset: {dag}")
 
             logger.debug("Execution config: %s", self._options)
-            if not self._options.verbose_progress:
-                logger.info(
-                    "Tip: For detailed progress reporting, run "
-                    "`ray.data.DataContext.get_current()."
-                    "execution_options.verbose_progress = True`"
-                )
 
         # Setup the streaming DAG topology and start the runner thread.
         self._topology, _ = build_streaming_topology(dag, self._options)

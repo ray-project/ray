@@ -81,6 +81,7 @@ def generate_logging_config():
                 ),
             },
         }
+
         handlers = {
             "default": {
                 "()": PlainRayHandler,
