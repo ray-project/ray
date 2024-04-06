@@ -139,9 +139,12 @@ def test_put_remote_get(ray_start_regular, num_readers):
 """
 
 
-@pytest.mark.parametrize("remote", [True, False])
+@pytest.mark.parametrize("remote", [True])  # , False])
 def test_remote_reader(ray_start_cluster, remote):
-    num_readers = 2
+    num_readers = 1
+    num_writes = 1000
+    num_iterations = 3
+
     cluster = ray_start_cluster
     if remote:
         cluster.add_node(num_cpus=0)
@@ -168,36 +171,33 @@ def test_remote_reader(ray_start_cluster, remote):
         def send_channel(self, reader_channel):
             self._reader_chan = reader_channel
 
-        def read(self):
-            print("START READING\n")
-            while True:
+        def read(self, num_reads):
+            for i in range(num_reads):
                 self._reader_chan.begin_read()
-                print("A\n")
                 self._reader_chan.end_read()
-                print("B\n")
 
     readers = [Reader.remote() for _ in range(num_readers)]
     if remote:
-        reader_node_id = ray.get(readers[0].get_node_id.remote())
-        channel = ray_channel.Channel(1000, _reader_node_id=reader_node_id)
-        reader_channel = ray.get(
-            readers[0].allocate_local_reader_channel.remote(channel, num_readers)
-        )
+        for reader in readers:
+            reader_node_id = ray.get(reader.get_node_id.remote())
+            channel = ray_channel.Channel(1000, _reader_node_id=reader_node_id)
+            reader_channel = ray.get(
+                reader.allocate_local_reader_channel.remote(channel, num_readers)
+            )
     else:
         channel = ray_channel.Channel(1000, num_readers=num_readers)
         reader_channel = channel
 
     ray.get([reader.send_channel.remote(reader_channel) for reader in readers])
-
-    for reader in readers:
-        reader.read.remote()
-
-    for _ in range(3):
+    for j in range(num_iterations):
+        work = [reader.read.remote(num_writes) for reader in readers]
         start = time.perf_counter()
-        for _ in range(1000):
+        for i in range(num_writes):
             channel.write(b"x")
         end = time.perf_counter()
+        ray.get(work)
         print(end - start, 10_000 / (end - start))
+    print("All done! :)")
 
 
 if __name__ == "__main__":

@@ -14,8 +14,6 @@
 
 #include "ray/core_worker/experimental_mutable_object_provider.h"
 
-#include <fstream>
-
 namespace ray {
 namespace core {
 namespace experimental {
@@ -30,6 +28,7 @@ MutableObjectProvider::MutableObjectProvider(
 
 MutableObjectProvider::~MutableObjectProvider() {
   io_service_.stop();
+  object_manager_.SetError();
 
   RAY_CHECK(io_thread_.joinable());
   io_thread_.join();
@@ -55,26 +54,11 @@ void MutableObjectProvider::RegisterWriterChannel(const ObjectID &object_id,
                    "experimental::MutableObjectProvider.PollWriter");
 }
 
-#if 0
-void MutableObjectProvider::RegisterCrossNodeReaderChannel(
-    const ObjectID &channel_id,
-    int64_t num_readers,
-    const ObjectID &local_reader_channel_id) {
-  RAY_CHECK_OK(plasma_client_->ExperimentalMutableObjectRegisterWriter(local_reader_channel_id));
-  auto inserted = read_channels_.insert(
-      {channel_id, ReaderChannelInfo(num_readers, local_reader_channel_id)});
-  RAY_CHECK(inserted.second);
-}
-#endif
-
 void MutableObjectProvider::RegisterReaderChannel(const ObjectID &object_id) {
   std::unique_ptr<plasma::MutableObject> object;
   RAY_CHECK_OK(plasma_->GetExperimentalMutableObject(object_id, &object));
   RAY_CHECK_OK(
       object_manager_.RegisterChannel(object_id, std::move(object), /*reader=*/true));
-  std::ofstream f;
-  f.open("/tmp/blah", std::ofstream::app);
-  f << "RegisterReaderChannel for object_id " << object_id << std::endl;
   // `object` is now a nullptr.
 }
 
@@ -90,9 +74,6 @@ void MutableObjectProvider::HandleRegisterMutableObject(const ObjectID &object_i
 
 void MutableObjectProvider::HandlePushMutableObject(
     const rpc::PushMutableObjectRequest &request, rpc::PushMutableObjectReply *reply) {
-  std::ofstream f;
-  f.open("/tmp/blah", std::ofstream::app);
-
   LocalInfo info;
   {
     const ObjectID object_id = ObjectID::FromBinary(request.object_id());
@@ -100,8 +81,6 @@ void MutableObjectProvider::HandlePushMutableObject(
     auto it = cross_node_map_.find(object_id);
     RAY_CHECK(it != cross_node_map_.end());
     info = it->second;
-    f << "HandlePushMutableObject A for object_id " << object_id << ", num_readers "
-      << info.num_readers << ", local_object_id " << info.local_object_id << std::endl;
   }
   size_t data_size = request.data_size();
   size_t metadata_size = request.metadata_size();
@@ -110,31 +89,32 @@ void MutableObjectProvider::HandlePushMutableObject(
   std::shared_ptr<Buffer> data;
   const uint8_t *metadata_ptr =
       reinterpret_cast<const uint8_t *>(request.data().data()) + request.data_size();
-  f << "HandlePushMutableObject B" << std::endl;
-  // TODO(jhumphri): Set `num_readers` correctly for this local node.
   RAY_CHECK_OK(object_manager_.WriteAcquire(info.local_object_id,
                                             data_size,
                                             metadata_ptr,
                                             metadata_size,
                                             info.num_readers,
                                             data));
-  f << "HandlePushMutableObject C" << std::endl;
   RAY_CHECK(data);
-  f << "HandlePushMutableObject D" << std::endl;
 
   size_t total_size = data_size + metadata_size;
   // The buffer has the data immediately followed by the metadata. `WriteAcquire()`
   // above checks that the buffer size is at least `total_size`.
   memcpy(data->Data(), request.data().data(), total_size);
-  f << "HandlePushMutableObject E" << std::endl;
   RAY_CHECK_OK(object_manager_.WriteRelease(info.local_object_id));
-  f << "HandlePushMutableObject F" << std::endl;
 }
 
 void MutableObjectProvider::PollWriterClosure(
     const ObjectID &object_id, std::shared_ptr<MutableObjectReaderInterface> reader) {
   std::shared_ptr<RayObject> object;
-  RAY_CHECK_OK(object_manager_.ReadAcquire(object_id, object));
+  Status status = object_manager_.ReadAcquire(object_id, object);
+  // Check if the thread returned from ReadAcquire() because the process is exiting, not
+  // because there is something to read.
+  if (status.code() == StatusCode::IOError) {
+    // The process is exiting.
+    return;
+  }
+  RAY_CHECK_EQ(static_cast<int>(status.code()), static_cast<int>(StatusCode::OK));
 
   RAY_CHECK(object->GetData());
   RAY_CHECK(object->GetMetadata());

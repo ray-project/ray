@@ -80,6 +80,11 @@ MutableObjectManager::Channel *MutableObjectManager::GetChannel(
 }
 
 MutableObjectManager::~MutableObjectManager() {
+  std::ofstream f;
+  f.open("/tmp/blah", std::ofstream::app);
+  f << "MutableObjectManager destructor" << std::endl;
+  f.close();
+
   // Copy `semaphores_` into `tmp` because `DestroySemaphores()` mutates `semaphores_`.
   absl::flat_hash_map<ObjectID, PlasmaObjectHeader::Semaphores> tmp = semaphores_;
   for (const auto &[object_id, _] : tmp) {
@@ -185,10 +190,6 @@ Status MutableObjectManager::WriteAcquire(const ObjectID &object_id,
                                           int64_t metadata_size,
                                           int64_t num_readers,
                                           std::shared_ptr<Buffer> &data) {
-  std::ofstream f;
-  f.open("/tmp/blah", std::ofstream::app);
-  // f << std::endl;
-
   Channel *channel = GetChannel(object_id);
   if (!channel) {
     return Status::ObjectNotFound("Channel has not been registered");
@@ -301,6 +302,17 @@ Status MutableObjectManager::SetError(const ObjectID &object_id) {
     return Status::ObjectNotFound("Channel has not been registered");
   }
   return Status::OK();
+}
+
+Status MutableObjectManager::SetError() {
+  Status ret = Status::OK();
+  for (const auto &[object_id, _] : channels_) {
+    ret = SetError(object_id);
+    if (ret.code() != StatusCode::OK) {
+      break;
+    }
+  }
+  return ret;
 }
 
 #else  // defined(__APPLE__) || defined(__linux__)

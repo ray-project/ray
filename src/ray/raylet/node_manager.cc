@@ -786,11 +786,6 @@ void NodeManager::HandleRegisterMutableObject(
   int64_t num_readers = request.num_readers();
   ObjectID local_object_id = ObjectID::FromBinary(request.local_object_id());
 
-  std::ofstream f;
-  f.open("/tmp/blah", std::ofstream::app);
-  f << "HandleRegisterMutableObject for object_id " << object_id
-    << ", local_object_id: " << local_object_id << std::endl;
-
   mutable_object_provider_->HandleRegisterMutableObject(
       object_id, num_readers, local_object_id);
   send_reply_callback(Status::OK(), nullptr, nullptr);

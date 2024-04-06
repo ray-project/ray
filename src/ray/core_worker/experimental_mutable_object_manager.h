@@ -142,6 +142,10 @@ class MutableObjectManager {
   /// \param[in] object_id The ID of the object.
   Status SetError(const ObjectID &object_id);
 
+  /// Sets the error bit on all channels, causing all future readers and writers to raise
+  /// an error on acquire.
+  Status SetError();
+
  private:
   Channel *GetChannel(const ObjectID &object_id);
 
