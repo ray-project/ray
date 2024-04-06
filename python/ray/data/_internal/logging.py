@@ -79,5 +79,22 @@ def configure_logging() -> None:
     _default_file_handler = file_handler
 
 
+def is_logging_configured() -> bool:
+    return _default_file_handler is not None
+
+
+def reset_logging() -> None:
+    """Reset the logger named 'ray.data' to its initial state.
+
+    Used for testing.
+    """
+    global _default_file_handler
+    _default_file_handler = None
+
+    logger = logging.getLogger("ray.data")
+    logger.handlers.clear()
+    logger.setLevel(logging.NOTSET)
+
+
 def get_log_path() -> Optional[str]:
     return _default_file_handler.path
