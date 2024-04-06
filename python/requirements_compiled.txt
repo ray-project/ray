@@ -1189,7 +1189,7 @@ netifaces==0.11.0
     # via
     #   hpbandster
     #   raydp
-networkx==3.2.1 ; python_version < "3.11"
+networkx==3.3 ; python_version < "3.11"
     # via
     #   cfn-lint
     #   hyperopt
