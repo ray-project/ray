@@ -1559,7 +1559,7 @@ void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
   object_info_publisher_->Publish(std::move(pub_message));
 }
 
-Status ReferenceCounter::FillObjectInformation(
+void ReferenceCounter::FillObjectInformation(
     const ObjectID &object_id, rpc::WorkerObjectLocationsPubMessage *object_info) {
   RAY_CHECK(object_info != nullptr);
   absl::MutexLock lock(&mutex_);

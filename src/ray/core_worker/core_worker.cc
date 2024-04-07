@@ -1809,41 +1809,59 @@ Status CoreWorker::GetLocationFromOwner(
   for (const auto &pair : objects_by_owner) {
     const auto &owner_address = pair.first;
     const auto &owner_object_ids = pair.second;
-    auto client = core_worker_client_pool_->GetOrConnect(owner_address);
-    rpc::GetObjectLocationsOwnerRequest request;
-    request.set_intended_worker_id(owner_address.worker_id());
-    // add multi object address and id into one request
-    for (const auto &object_id : owner_object_ids) {
-      request.add_object_id(object_id.Binary());  // Add each object ID to the request
-    }
 
-    client->GetObjectLocationsOwner(
-        request,
-        [owner_object_ids,
-         mutex,
-         num_remaining,
-         ready_promise,
-         location_by_id,
-         owner_address](const Status &status,
-                        const rpc::GetObjectLocationsOwnerReply &reply) {
-          absl::MutexLock lock(mutex.get());
-          if (status.ok()) {
-            auto locations = CreateObjectLocations(reply);
-            for (size_t i = 0; i < owner_object_ids.size(); ++i) {
-              // Assuming successful query, emplace the result
-              location_by_id->emplace(owner_object_ids[i],
-                                      std::make_shared<ObjectLocation>(locations[i]));
+    // Calculate the number of batches
+    // Use the same config from worker_fetch_request_size
+    int64_t batch_size = RayConfig::instance().worker_fetch_request_size();
+    size_t num_batches =
+        (owner_object_ids.size() + batch_size - 1) / batch_size;  // round up
+    *num_remaining += num_batches;
+
+    for (size_t batch_start = 0; batch_start < owner_object_ids.size();
+         batch_start += batch_size) {
+      size_t batch_end = std::min(batch_start + batch_size, owner_object_ids.size());
+      auto client = core_worker_client_pool_->GetOrConnect(owner_address);
+      rpc::GetObjectLocationsOwnerRequest request;
+      request.set_intended_worker_id(owner_address.worker_id());
+
+      // Add object IDs for the current batch to the request
+      for (size_t i = batch_start; i < batch_end; ++i) {
+        request.add_object_ids(owner_object_ids[i].Binary());
+      }
+
+      client->GetObjectLocationsOwner(
+          request,
+          [owner_object_ids,
+           batch_start,
+           batch_end,
+           mutex,
+           num_remaining,
+           ready_promise,
+           location_by_id,
+           owner_address](const Status &status,
+                          const rpc::GetObjectLocationsOwnerReply &reply) {
+            absl::MutexLock lock(mutex.get());
+            if (status.ok()) {
+              auto locations = CreateObjectLocations(reply);
+              for (size_t i = 0; i < locations.size(); ++i) {
+                // Map the object ID to its location, adjusting index by batch_start
+                location_by_id->emplace(
+                    owner_object_ids[batch_start + i],
+                    std::make_shared<ObjectLocation>(
+                        CreateObjectLocation(reply.object_location_infos(i))));
+              }
+            } else {
+              RAY_LOG(WARNING) << "Failed to query location information for objects "
+                               << debug_string(owner_object_ids) << " owned by "
+                               << owner_address.worker_id()
+                               << " with error: " << status.ToString();
             }
-          } else {
-            RAY_LOG(WARNING)
-                << "Failed to query location information for objects owned by "
-                << owner_address.worker_id() << " with error: " << status.ToString();
-          }
-          (*num_remaining)--;
-          if (*num_remaining == 0) {
-            ready_promise->set_value();
-          }
-        });
+            (*num_remaining)--;
+            if (*num_remaining == 0) {
+              ready_promise->set_value();
+            }
+          });
+    }
   }
   if (timeout_ms < 0) {
     ready_promise->get_future().wait();
@@ -3807,20 +3825,14 @@ void CoreWorker::HandleGetObjectLocationsOwner(
                            send_reply_callback)) {
     return;
   }
-  Status overall_status = Status::OK();  // Assume success initially
-  for (int i = 0; i < request.object_id_size(); ++i) {
-    auto object_id = ObjectID::FromBinary(request.object_id(i));
+  Status status = Status::OK();  // Success always
+  for (int i = 0; i < request.object_ids_size(); ++i) {
+    auto object_id = ObjectID::FromBinary(request.object_ids(i));
     auto object_info = reply->add_object_location_infos();
     // TODO(zhilong): Need to deal with fail query for each object?
-    auto current_status =
-        reference_counter_->FillObjectInformation(object_id, object_info);
-    if (!current_status.ok()) {
-      overall_status = current_status;
-      RAY_LOG(WARNING) << "Failed to query location information for " << object_id
-                       << " with error: " << current_status.ToString();
-    }
+    reference_counter_->FillObjectInformation(object_id, object_info);
   }
-  send_reply_callback(overall_status, nullptr, nullptr);
+  send_reply_callback(status, nullptr, nullptr);
 }
 
 void CoreWorker::ProcessSubscribeForRefRemoved(

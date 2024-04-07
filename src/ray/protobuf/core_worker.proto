@@ -227,7 +227,7 @@ message ObjectLocationUpdate {
 
 message GetObjectLocationsOwnerRequest {
   bytes intended_worker_id = 1;
-  repeated bytes object_id = 2;
+  repeated bytes object_ids = 2;
 }
 
 message GetObjectLocationsOwnerReply {
