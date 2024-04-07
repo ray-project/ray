@@ -319,9 +319,10 @@ class OpState:
                 f"average_task_duration: {op._metrics.average_task_duration}"
             )
             if not op._metrics.average_task_duration or not op._metrics.average_bytes_inputs_per_task:
+                cumulative_grow_rate += ray.data.DataContext.get_current().target_max_block_size * op.num_active_tasks()
                 continue
             
-            cumulative_grow_rate += op._metrics.average_bytes_inputs_per_task / op._metrics.average_task_duration
+            cumulative_grow_rate += op._metrics.average_bytes_inputs_per_task / op._metrics.average_task_duration * op.num_active_tasks()
         
         return cumulative_grow_rate
 
@@ -341,15 +342,14 @@ class OpState:
         if self.op.name != "ReadRange->MapBatches(produce)":
             return True
         
-        output_size = self._get_average_ouput_size()
+        output_size = (self._get_average_ouput_size()
+                       or ray.data.DataContext.get_current().user_hit_first_operator_size
+                       or 0)
         self.output_budget = self._get_output_budget(resource_manager)
 
         logger.get_logger().info(
             f"@lsf output_budget: {self.output_budget}, output_budget_used: {self.output_budget_used}, output_size: {output_size}"
         )
-        
-        if output_size is None:
-            return True
 
         if self.output_budget_used + output_size > self.output_budget:
             logger.get_logger().info("@lsf admission control: denied")
