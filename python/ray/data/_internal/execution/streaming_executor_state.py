@@ -307,28 +307,57 @@ class OpState:
         else:
             self._exception = exception
 
-    def lsf_admission_control(self) -> bool:
+    def _get_average_ouput_size(self) -> float:
+        return self.op._metrics.average_bytes_outputs_per_task
+
+    def _get_grow_rate(self) -> float:
+        cumulative_grow_rate = 0
+        
+        for op in self.op.output_dependencies:
+            logger.get_logger().info(
+                f"@mzm: average_bytes_inputs_per_task {op._metrics.average_bytes_inputs_per_task}, "
+                f"average_task_duration: {op._metrics.average_task_duration}"
+            )
+            if not op._metrics.average_task_duration or not op._metrics.average_bytes_inputs_per_task:
+                continue
+            
+            cumulative_grow_rate += op._metrics.average_bytes_inputs_per_task / op._metrics.average_task_duration
+        
+        return cumulative_grow_rate
+
+    def _get_output_budget(self, resource_manager: ResourceManager) -> float:
+        now = time.time()
+        grow_rate = self._get_grow_rate()
+        INITIAL_BUDGET = resource_manager.get_global_limits().object_store_memory
+
+        logger.get_logger().info(
+            f"@mzm INITIAL_BUDGET: {INITIAL_BUDGET}, time elapsed: {now - self.start_time} "
+            f"grow_rate: {grow_rate}"
+        )
+        
+        return (now - self.start_time) * grow_rate + INITIAL_BUDGET
+
+    def lsf_admission_control(self, resource_manager: ResourceManager) -> bool:
         if self.op.name != "ReadRange->MapBatches(produce)":
             return True
-        OUTPUT_SIZE = 10
-        self.output_budget = _get_output_budget(self)
+        
+        output_size = self._get_average_ouput_size()
+        self.output_budget = self._get_output_budget(resource_manager)
+
         logger.get_logger().info(
-            f"@lsf output_budget: {self.output_budget}, output_budget_used: {self.output_budget_used}, OUTPUT_SIZE: {OUTPUT_SIZE}"
+            f"@lsf output_budget: {self.output_budget}, output_budget_used: {self.output_budget_used}, output_size: {output_size}"
         )
-        if self.output_budget_used + OUTPUT_SIZE > self.output_budget:
+        
+        if output_size is None:
+            return True
+
+        if self.output_budget_used + output_size > self.output_budget:
             logger.get_logger().info("@lsf admission control: denied")
             return False
-        self.output_budget_used += OUTPUT_SIZE
+
+        self.output_budget_used += output_size
         logger.get_logger().info("@lsf admission control: allowed")
         return True
-
-
-def _get_output_budget(state: OpState) -> float:
-    now = time.time()
-    GROW_RATE = 4
-    INITIAL_BUDGET = 20
-    return (now - state.start_time) * GROW_RATE + INITIAL_BUDGET
-
 
 def build_streaming_topology(
     dag: PhysicalOperator, options: ExecutionOptions
@@ -549,7 +578,7 @@ def select_operator_to_run(
             and not op.completed()
             and state.num_queued() > 0
             and op.should_add_input()
-            and state.lsf_admission_control()
+            and state.lsf_admission_control(resource_manager)
         ):
             ops.append(op)
         # Signal whether op in backpressure for stats collections
@@ -691,9 +720,9 @@ def _execution_allowed(op: PhysicalOperator, resource_manager: ResourceManager) 
         # object_store_memory=inc.object_store_memory,
     )
 
-    logger.get_logger().info(
-        f"@lsf execution_allowed: global_floored: {global_floored}, inc_indicator: {inc_indicator}, global_limits: {global_limits}"
-    )
+    # logger.get_logger().info(
+    #     f"@lsf execution_allowed: global_floored: {global_floored}, inc_indicator: {inc_indicator}, global_limits: {global_limits}"
+    # )
 
     # Under global limits; always allow.
     new_usage = global_floored.add(inc_indicator)
