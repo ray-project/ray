@@ -283,7 +283,7 @@ class AutoscalingConfigTest(unittest.TestCase):
 
         not_enough_workers_config = copy.deepcopy(base_config)
 
-        # Max workers is less than than the three available ips.
+        # Max workers is less than the three available ips.
         # The user is probably has probably made an error. Make sure we log a warning.
         not_enough_workers_config["max_workers"] = 0
         not_enough_workers_config["min_workers"] = 0

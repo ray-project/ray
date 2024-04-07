@@ -393,7 +393,7 @@ TEST_F(SchedulingPolicyTest, AvoidSchedulingCPURequestsOnGPUNodes) {
     ASSERT_EQ(to_schedule, local_node);
   }
   {
-    // A CPU request can be be scheduled on a CPU node.
+    // A CPU request can be scheduled on a CPU node.
     const ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}}, false);
     const auto to_schedule =
         raylet_scheduling_policy::CompositeSchedulingPolicy(

@@ -109,7 +109,7 @@ class SchedulingPolicy {
   };
 
   /// \param resource_request: The resource request we are attempting to schedule.
-  /// \param node_filter: Defines the subset of nodes we are are allowed to schedule on.
+  /// \param node_filter: Defines the subset of nodes we are allowed to schedule on.
   /// Can be one of kAny (can schedule on all nodes), kGPU (can only schedule on kGPU
   /// nodes), kNonGpu (can only schedule on non-GPU nodes.
   ///
