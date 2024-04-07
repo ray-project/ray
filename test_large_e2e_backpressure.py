@@ -68,9 +68,9 @@ def test_large_e2e_backpressure():
     print(f"max_pending_block_bytes: {max_pending_block_bytes/1024/1024}MB")
     
     # Write the data to file.
-    array = np.zeros(BLOCK_SIZE, dtype=np.uint8)
-    file_path = 'zeros_block.bin'
-    array.tofile(file_path)
+    # array = np.zeros(BLOCK_SIZE, dtype=np.uint8)
+    # file_path = 'zeros_block.bin'
+    # array.tofile(file_path)
 
     def produce(batch):
         logger.log({"name": "producer_start", "id": [int(x) for x in batch["id"]]})
@@ -79,9 +79,9 @@ def test_large_e2e_backpressure():
             # logger.log({"name": "produce", "id": int(id)})
             yield {
                 "id": [id],
-                # "image": [np.zeros(BLOCK_SIZE, dtype=np.uint8)],
+                "image": [np.zeros(BLOCK_SIZE, dtype=np.uint8)],
                 # Read the data from file. 
-                "image": [np.fromfile(file_path, dtype=np.uint8)],
+                # "image": [np.fromfile(file_path, dtype=np.uint8)],
             }
 
     def consume(batch):
