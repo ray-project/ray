@@ -1833,7 +1833,6 @@ Status CoreWorker::GetLocationFromOwner(
           request,
           [owner_object_ids,
            batch_start,
-           batch_end,
            mutex,
            num_remaining,
            ready_promise,
