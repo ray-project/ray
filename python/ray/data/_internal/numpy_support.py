@@ -2,7 +2,7 @@ from typing import Any, List
 
 import numpy as np
 
-from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
+from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.util import _truncated_repr
 
@@ -86,7 +86,7 @@ def convert_udf_returns_to_numpy(udf_return_col: Any) -> Any:
                     has_object = True
             if has_object or len(shapes) > 1:
                 # This util works around some limitations of np.array(dtype=object).
-                udf_return_col = create_ragged_ndarray(udf_return_col)
+                udf_return_col = _create_possibly_ragged_ndarray(udf_return_col)
             else:
                 udf_return_col = np.array(udf_return_col)
         except Exception as e:
