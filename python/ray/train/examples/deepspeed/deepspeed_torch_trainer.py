@@ -161,8 +161,12 @@ if __name__ == "__main__":
     # Prepare Ray Datasets
     hf_datasets = load_dataset("glue", "mrpc")
     ray_datasets = {
-        "train": ray.data.from_huggingface(hf_datasets["train"]),
-        "validation": ray.data.from_huggingface(hf_datasets["validation"]),
+        "train": ray.data.from_huggingface(
+            hf_datasets["train"], concurrency=1, override_num_blocks=1
+        ),
+        "validation": ray.data.from_huggingface(
+            hf_datasets["validation"], concurrency=1, override_num_blocks=1
+        ),
     }
 
     trainer = TorchTrainer(
