@@ -343,7 +343,7 @@ class OpState:
             return True
         
         output_size = (self._get_average_ouput_size()
-                       or ray.data.DataContext.get_current().user_hit_first_operator_size
+                       or ray.data.DataContext.get_current().user_hint_first_operator_output_size
                        or 0)
         self.output_budget = self._get_output_budget(resource_manager)
 

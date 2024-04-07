@@ -92,7 +92,7 @@ def test_large_e2e_backpressure():
     data_context = ray.data.DataContext.get_current()
     data_context.execution_options.verbose_progress = True
     data_context.target_max_block_size = BLOCK_SIZE
-    data_context.user_hit_first_operator_size = BLOCK_SIZE * NUM_ROWS_PER_TASK
+    data_context.user_hint_first_operator_output_size = BLOCK_SIZE * NUM_ROWS_PER_TASK
 
     ray.init(num_cpus=NUM_CPUS, object_store_memory=25 * BLOCK_SIZE)
 
