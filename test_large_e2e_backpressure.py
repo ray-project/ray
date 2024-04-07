@@ -59,13 +59,18 @@ def test_large_e2e_backpressure():
     NUM_ROWS_PER_TASK = 10
     NUM_TASKS = 16
     NUM_ROWS_TOTAL = NUM_ROWS_PER_TASK * NUM_TASKS
-    BLOCK_SIZE = 10 * 1024 * 1024
+    BLOCK_SIZE = 10 * 1024 * 1024 * 10
     STREMING_GEN_BUFFER_SIZE = 1
     OP_OUTPUT_QUEUE_SIZE = 1
     max_pending_block_bytes = (
         NUM_ROWS_PER_TASK + (NUM_CPUS - 1) * STREMING_GEN_BUFFER_SIZE + OP_OUTPUT_QUEUE_SIZE
     ) * BLOCK_SIZE
     print(f"max_pending_block_bytes: {max_pending_block_bytes/1024/1024}MB")
+    
+    # Write the data to file.
+    array = np.zeros(BLOCK_SIZE, dtype=np.uint8)
+    file_path = 'zeros_block.bin'
+    array.tofile(file_path)
 
     def produce(batch):
         logger.log({"name": "producer_start", "id": [int(x) for x in batch["id"]]})
@@ -74,7 +79,9 @@ def test_large_e2e_backpressure():
             # logger.log({"name": "produce", "id": int(id)})
             yield {
                 "id": [id],
-                "image": [np.zeros(BLOCK_SIZE, dtype=np.uint8)],
+                # "image": [np.zeros(BLOCK_SIZE, dtype=np.uint8)],
+                # Read the data from file. 
+                "image": [np.fromfile(file_path, dtype=np.uint8)],
             }
 
     def consume(batch):
@@ -86,7 +93,7 @@ def test_large_e2e_backpressure():
     data_context.execution_options.verbose_progress = True
     data_context.target_max_block_size = BLOCK_SIZE
 
-    ray.init(num_cpus=NUM_CPUS, object_store_memory=250 * 1024 * 1024)
+    ray.init(num_cpus=NUM_CPUS, object_store_memory=25 * BLOCK_SIZE)
 
     ds = ray.data.range(NUM_ROWS_TOTAL, override_num_blocks=NUM_TASKS)
     ds = ds.map_batches(produce, batch_size=NUM_ROWS_PER_TASK)

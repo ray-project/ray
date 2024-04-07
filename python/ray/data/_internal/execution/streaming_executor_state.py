@@ -325,7 +325,7 @@ class OpState:
 
 def _get_output_budget(state: OpState) -> float:
     now = time.time()
-    GROW_RATE = 8
+    GROW_RATE = 4
     INITIAL_BUDGET = 20
     return (now - state.start_time) * GROW_RATE + INITIAL_BUDGET
 
