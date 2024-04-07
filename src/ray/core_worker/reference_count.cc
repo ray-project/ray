@@ -1572,7 +1572,6 @@ void ReferenceCounter::FillObjectInformation(
   } else {
     FillObjectInformationInternal(it, object_info);
   }
-  return Status::OK();
 }
 
 void ReferenceCounter::FillObjectInformationInternal(
