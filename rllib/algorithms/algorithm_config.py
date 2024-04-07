@@ -274,7 +274,9 @@ class AlgorithmConfig(_Config):
         self.num_gpus_per_learner_worker = 0
         self.num_cpus_per_learner_worker = 1
         self.local_gpu_idx = 0
+        self.custom_resources = {}
         self.custom_resources_per_worker = {}
+        self.custom_resources_per_learner_worker = {}
         self.placement_strategy = "PACK"
 
         # `self.framework()`
@@ -1216,7 +1218,9 @@ class AlgorithmConfig(_Config):
         num_cpus_per_learner_worker: Optional[Union[float, int]] = NotProvided,
         num_gpus_per_learner_worker: Optional[Union[float, int]] = NotProvided,
         local_gpu_idx: Optional[int] = NotProvided,
+        custom_resources: [Optional[dict]] = NotProvided,
         custom_resources_per_worker: Optional[dict] = NotProvided,
+        custom_resources_per_learner_worker: Optional[dict] = NotProvided,
         placement_strategy: Optional[str] = NotProvided,
     ) -> "AlgorithmConfig":
         """Specifies resources allocated for an Algorithm and its ray actors/workers.
@@ -1259,8 +1263,12 @@ class AlgorithmConfig(_Config):
                 training. This is an index into the available
                 CUDA devices. For example if `os.environ["CUDA_VISIBLE_DEVICES"] = "1"`
                 then a `local_gpu_idx` of 0 will use the GPU with ID=1 on the node.
+            custom_resources: Any custom Ray resources(especially accelerators) to
+                allocate for the algorithm process.
             custom_resources_per_worker: Any custom Ray resources to allocate per
                 worker.
+            custom_resources_per_learner_worker: Any custom Ray resources to allocate
+                per learner worker.
             placement_strategy: The strategy for the placement group factory returned by
                 `Algorithm.default_resource_request()`. A PlacementGroup defines, which
                 devices (resources) should always be co-located on the same node.
@@ -1283,6 +1291,8 @@ class AlgorithmConfig(_Config):
             self.num_gpus = num_gpus
         if _fake_gpus is not NotProvided:
             self._fake_gpus = _fake_gpus
+        if custom_resources is not NotProvided:
+            self.custom_resources = custom_resources
         if num_cpus_per_worker is not NotProvided:
             self.num_cpus_per_worker = num_cpus_per_worker
         if num_gpus_per_worker is not NotProvided:
@@ -1302,6 +1312,10 @@ class AlgorithmConfig(_Config):
             self.num_gpus_per_learner_worker = num_gpus_per_learner_worker
         if local_gpu_idx is not NotProvided:
             self.local_gpu_idx = local_gpu_idx
+        if custom_resources_per_learner_worker is not NotProvided:
+            self.custom_resources_per_learner_worker = (
+                custom_resources_per_learner_worker
+            )
 
         return self
 
@@ -3927,12 +3941,36 @@ class AlgorithmConfig(_Config):
                 "This is due to issues with placement group fragmentation. See "
                 "https://github.com/ray-project/ray/issues/35409 for more details."
             )
+        elif (
+            self.num_cpus_per_learner_worker > 1
+            and sum(self.custom_resources_per_learner_worker.values()) > 0
+        ):
+            raise ValueError(
+                "Cannot set both `num_cpus_per_learner_worker` >1 and"
+                "`self.custom_resources_per_learner_worker` not empty!"
+            )
 
         # Make sure the resource requirements for learner_group is valid.
         if self.num_learner_workers == 0 and self.num_gpus_per_worker > 1:
             raise ValueError(
                 "num_gpus_per_worker must be 0 (cpu) or 1 (gpu) when using local mode "
                 "(i.e. num_learner_workers = 0)"
+            )
+
+        # Don't set CPU or GPU resources in custom_resources api.
+        if "CPU" in self.custom_resources or "GPU" in self.custom_resources:
+            raise ValueError(
+                "Use the `num_cpus` and `num_gpus` keyword instead of `CPU` and `GPU` "
+                "in `custom_resources` keyword."
+            )
+        elif (
+            "CPU" in self.custom_resources_per_learner_worker
+            or "GPU" in self.custom_resources_per_learner_worker
+        ):
+            raise ValueError(
+                "Use the `num_cpus_per_learner_worker` and "
+                "`num_gpus_per_learner_worker` keyword instead of `CPU` and `GPU` in"
+                "`custom_resources_per_learner_worker` keyword"
             )
 
     def _validate_multi_agent_settings(self):
