@@ -470,7 +470,6 @@ class JobSupervisor:
                     runtime_env_expiration_s=1800,
                 )
                 runtime_env["py_modules"][i] = hashed_dir
-                # runtime_env["py_modules"][i] = hashed_dir + suf_path
                 hasChanged = True
             if hasChanged:
                 self._git_based_replace_runtime_env = runtime_env
