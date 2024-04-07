@@ -3817,8 +3817,8 @@ void CoreWorker::HandleGetObjectLocationsOwner(
     return;
   }
   Status overall_status = Status::OK();  // Assume success initially
-  for (int i = 0; i < request.object_id_size(); ++i) {
-    auto object_id = ObjectID::FromBinary(request.object_id(i));
+  for (int i = 0; i < request.object_ids_size(); ++i) {
+    auto object_id = ObjectID::FromBinary(request.object_ids(i));
     auto object_info = reply->add_object_location_infos();
     // TODO(zhilong): Need to deal with fail query for each object?
     auto current_status =
