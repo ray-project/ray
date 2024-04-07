@@ -105,17 +105,6 @@ ObjectLocation CreateObjectLocation(
                         object_info.spilled_url(),
                         NodeID::FromBinary(object_info.spilled_node_id()),
                         object_info.did_spill());
-}  // namespace
-
-// Updated function to handle vectorized ObjectLocation creation
-std::vector<ObjectLocation> CreateObjectLocations(
-    const rpc::GetObjectLocationsOwnerReply &reply) {
-  std::vector<ObjectLocation> locations;
-  locations.reserve(reply.object_location_infos_size());
-  for (const auto &object_info : reply.object_location_infos()) {
-    locations.push_back(CreateObjectLocation(object_info));
-  }
-  return locations;
 }
 }  // namespace
 
@@ -1801,7 +1790,7 @@ Status CoreWorker::GetLocationFromOwner(
   }
 
   auto mutex = std::make_shared<absl::Mutex>();
-  auto num_remaining = std::make_shared<size_t>(objects_by_owner.size());
+  auto num_remaining = std::make_shared<size_t>(0);  // Will be incremented per batch
   auto ready_promise = std::make_shared<std::promise<void>>();
   auto location_by_id =
       std::make_shared<absl::flat_hash_map<ObjectID, std::shared_ptr<ObjectLocation>>>();
@@ -1841,8 +1830,7 @@ Status CoreWorker::GetLocationFromOwner(
                           const rpc::GetObjectLocationsOwnerReply &reply) {
             absl::MutexLock lock(mutex.get());
             if (status.ok()) {
-              auto locations = CreateObjectLocations(reply);
-              for (size_t i = 0; i < locations.size(); ++i) {
+              for (int i = 0; i < reply.object_location_infos_size(); ++i) {
                 // Map the object ID to its location, adjusting index by batch_start
                 location_by_id->emplace(
                     owner_object_ids[batch_start + i],
@@ -1862,6 +1850,8 @@ Status CoreWorker::GetLocationFromOwner(
           });
     }
   }
+
+  // Wait for all batches to be processed or timeout
   if (timeout_ms < 0) {
     ready_promise->get_future().wait();
   } else if (ready_promise->get_future().wait_for(
@@ -1872,6 +1862,7 @@ Status CoreWorker::GetLocationFromOwner(
     return Status::TimedOut(stream.str());
   }
 
+  // Fill in the results vector
   for (size_t i = 0; i < object_ids.size(); i++) {
     auto pair = location_by_id->find(object_ids[i]);
     if (pair == location_by_id->end()) {
@@ -1879,6 +1870,7 @@ Status CoreWorker::GetLocationFromOwner(
     }
     (*results)[i] = pair->second;
   }
+
   return Status::OK();
 }
 
