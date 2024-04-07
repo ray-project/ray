@@ -3,6 +3,15 @@ import os
 import yaml
 from typing_extensions import TypedDict
 
+PR_PIPELINES = [
+    "0189942e-0876-4b8f-80a4-617f988ec59b",  # premerge
+]
+BRANCH_PIPELINES = [
+    "0189e759-8c96-4302-b6b5-b4274406bf89",  # postmerge
+    "018e0f94-ccb6-45c2-b072-1e624fe9a404",  # postmerge-macos
+    "018af6d3-58e1-463f-90ec-d9aa4a4f57f1",  # release
+]
+
 
 class GlobalConfig(TypedDict):
     byod_ray_ecr: str
@@ -12,6 +21,8 @@ class GlobalConfig(TypedDict):
     byod_aws_cr: str
     byod_gcp_cr: str
     state_machine_aws_bucket: str
+    state_machine_pr_aws_bucket: str
+    state_machine_branch_aws_bucket: str
     aws2gce_credentials: str
 
 
@@ -69,6 +80,16 @@ def _init_global_config(config_file: str):
             or config_content.get("release_byod", {}).get("aws2gce_credentials")
         ),
         state_machine_aws_bucket=config_content.get("state_machine", {}).get(
+            "aws_bucket",
+        ),
+        state_machine_pr_aws_bucket=config_content.get("state_machine", {})
+        .get("pr", {})
+        .get(
+            "aws_bucket",
+        ),
+        state_machine_branch_aws_bucket=config_content.get("state_machine", {})
+        .get("branch", {})
+        .get(
             "aws_bucket",
         ),
     )

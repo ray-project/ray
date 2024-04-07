@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import React from "react";
-import { MemoryRouter } from "react-router-dom";
+import { TEST_APP_WRAPPER } from "../../../util/test-utils";
 import { useJobList } from "../../job/hook/useJobList";
 import { RecentJobsCard } from "./RecentJobsCard";
 
@@ -52,7 +52,7 @@ describe("RecentJobsCard", () => {
   });
 
   it("renders", async () => {
-    render(<RecentJobsCard />, { wrapper: MemoryRouter });
+    render(<RecentJobsCard />, { wrapper: TEST_APP_WRAPPER });
 
     await screen.findByText("raysubmit_12345 (01000000)");
     expect(screen.getByText("02000000")).toBeVisible();
@@ -64,7 +64,7 @@ describe("RecentJobsCard", () => {
   });
 
   it("the link is active when job_id is not null", async () => {
-    render(<RecentJobsCard />, { wrapper: MemoryRouter });
+    render(<RecentJobsCard />, { wrapper: TEST_APP_WRAPPER });
 
     await screen.findByText(/raysubmit_12345/);
 
@@ -73,7 +73,7 @@ describe("RecentJobsCard", () => {
   });
 
   it("link is active for driverless job(only have submission_id)", async () => {
-    render(<RecentJobsCard />, { wrapper: MemoryRouter });
+    render(<RecentJobsCard />, { wrapper: TEST_APP_WRAPPER });
 
     await screen.findByText(/raysubmit_12345/);
 
