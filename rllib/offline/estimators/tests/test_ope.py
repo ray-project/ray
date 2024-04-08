@@ -14,7 +14,7 @@ import ray
 from ray.data import read_json
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.dqn import DQNConfig
-from ray.rllib.examples.envs.cliff_walking_wall_env import CliffWalkingWallEnv
+from ray.rllib.examples.envs.classes.cliff_walking_wall_env import CliffWalkingWallEnv
 from ray.rllib.examples._old_api_stack.policy.cliff_walking_wall_policy import (
     CliffWalkingWallPolicy,
 )
