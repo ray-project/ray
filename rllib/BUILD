@@ -2892,7 +2892,7 @@ py_test(
     name = "examples/action_masking_tf2",
     main = "examples/action_masking.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/action_masking.py"],
     args = ["--stop-iter=2", "--framework=tf2"]
 )
@@ -2901,7 +2901,7 @@ py_test(
     name = "examples/action_masking_torch",
     main = "examples/action_masking.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/action_masking.py"],
     args = ["--stop-iter=2", "--framework=torch"]
 )
