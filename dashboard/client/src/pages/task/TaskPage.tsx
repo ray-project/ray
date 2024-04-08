@@ -1,4 +1,6 @@
-import { Box, createStyles, makeStyles, Typography } from "@material-ui/core";
+import { Box, Typography } from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import React from "react";
 import { useParams } from "react-router-dom";
 import { CodeDialogButtonWithPreview } from "../../common/CodeDialogButton";

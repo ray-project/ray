@@ -499,6 +499,8 @@ class CompiledDAG:
                 self.in_teardown = True
                 for actor in outer.actor_refs:
                     logger.info(f"Cancelling compiled worker on actor: {actor}")
+                    # TODO(swang): Suppress exceptions from actors trying to
+                    # read closed channels when DAG is being torn down.
                     try:
                         ray.get(actor.__ray_call__.remote(do_cancel_compiled_task))
                     except Exception:

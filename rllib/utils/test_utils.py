@@ -12,6 +12,7 @@ import os
 import pprint
 import random
 import re
+import sys
 import time
 import tree  # pip install dm_tree
 from typing import (
@@ -599,7 +600,7 @@ def check_learning_achieved(
     tune_results: "tune.ResultGrid",
     min_value: float,
     evaluation: Optional[bool] = None,
-    metric: str = "episode_reward_mean",
+    metric: str = "sampler_results/episode_reward_mean",
 ):
     """Throws an error if `min_reward` is not reached within tune_results.
 
@@ -813,7 +814,13 @@ def framework_iterator(
     for fw in frameworks:
         # Skip tf if on new API stack.
         if fw == "tf" and config.get("_enable_new_api_stack", False):
-            logger.warning("framework_iterator skipping tf (new API stack configured)!")
+            logger.warning("Skipping `framework=tf` (new API stack configured)!")
+            continue
+        # Skip if tf/tf2 and py >= 3.11.
+        elif fw in ["tf", "tf2"] and (
+            sys.version_info.major == 3 and sys.version_info.minor >= 9
+        ):
+            logger.warning("Skipping `framework=tf/tf2` (python >= 3.9)!")
             continue
 
         # Skip non-installed frameworks.
@@ -1188,9 +1195,11 @@ def run_learning_tests_from_yaml_or_py(
 
 
 def run_rllib_example_script_experiment(
-    config: "AlgorithmConfig",
+    base_config: "AlgorithmConfig",
     args: argparse.Namespace,
+    *,
     stop: Optional[Dict] = None,
+    success_metric: str = "sampler_results/episode_reward_mean",
 ) -> Union[ResultDict, tune.result_grid.ResultGrid]:
     """Given an algorithm config and some command line args, runs an experiment.
 
@@ -1198,7 +1207,10 @@ def run_rllib_example_script_experiment(
     It should ideally be generated via the ``
 
     Args:
-        config: The AlgorithmConfig object to use for this experiment.
+        base_config: The AlgorithmConfig object to use for this experiment. This base
+            config will be automatically "extended" based on some of the provided
+            `args`. For example, `args.num_env_runners` is used to set
+            `config.num_rollout_workers`, etc..
         args: A argparse.Namespace object which must have the following properties
             defined: `stop_iters`, `stop_reward`, `stop_timesteps`, `no_tune`,
             `verbose`, `checkpoint_freq`, `as_test`. Optionally, for wandb logging:
@@ -1212,9 +1224,40 @@ def run_rllib_example_script_experiment(
 
     stop = stop or {
         "training_iteration": args.stop_iters,
-        "episode_reward_mean": args.stop_reward,
+        "sampler_results/episode_reward_mean": args.stop_reward,
         "timesteps_total": args.stop_timesteps,
     }
+
+    from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
+    from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
+
+    # Extend the `base_config` based on provided `args`.
+    config = (
+        base_config.framework(args.framework)
+        .experimental(_enable_new_api_stack=args.enable_new_api_stack)
+        .rollouts(
+            num_rollout_workers=args.num_env_runners,
+            # Set up the correct env-runner to use depending on
+            # old-stack/new-stack and multi-agent settings.
+            env_runner_cls=(
+                None
+                if not args.enable_new_api_stack
+                else (
+                    SingleAgentEnvRunner
+                    if args.num_agents == 0
+                    else MultiAgentEnvRunner
+                )
+            ),
+        )
+        .resources(
+            # Old stack.
+            num_gpus=0 if args.enable_new_api_stack else args.num_gpus,
+            # New stack.
+            num_learner_workers=args.num_gpus,
+            num_gpus_per_learner_worker=1 if torch.cuda.is_available() else 0,
+            num_cpus_for_local_worker=1,
+        )
+    )
 
     if args.no_tune:
         algo = config.build()
@@ -1252,23 +1295,50 @@ def run_rllib_example_script_experiment(
             )
         ]
 
+    progress_reporter = None
+    # Use better ProgressReporter for multi-agent cases: List individual policy rewards.
+    if args.num_agents > 0:
+        progress_reporter = CLIReporter(
+            metric_columns={
+                **{
+                    "training_iteration": "iter",
+                    "time_total_s": "total time (s)",
+                    "timesteps_total": "ts",
+                    "sampler_results/episode_reward_mean": "combined reward",
+                },
+                **{
+                    f"policy_reward_mean/{pid}": f"reward {pid}"
+                    for pid in config.policies
+                },
+            },
+        )
+
+    # Force Tuner to use old progress output as the new one silently ignores our custom
+    # `CLIReporter`.
+    os.environ["RAY_AIR_NEW_OUTPUT"] = "0"
+
     results = tune.Tuner(
         config.algo_class,
         param_space=config,
         run_config=air.RunConfig(
             stop=stop,
-            verbose=2 if args.verbose else 1,
+            verbose=args.verbose,
             callbacks=callbacks,
             checkpoint_config=air.CheckpointConfig(
                 checkpoint_frequency=args.checkpoint_freq,
                 checkpoint_at_end=args.checkpoint_at_end,
             ),
+            progress_reporter=progress_reporter,
         ),
         tune_config=tune.TuneConfig(num_samples=args.num_samples),
     ).fit()
 
     if args.as_test:
-        check_learning_achieved(results, args.stop_reward)
+        check_learning_achieved(
+            results,
+            args.stop_reward,
+            metric=success_metric,
+        )
 
     return results
 
@@ -1289,7 +1359,7 @@ def check_same_batch(batch1, batch2) -> None:
     # Avoids circular import
     from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 
-    assert type(batch1) == type(
+    assert type(batch1) is type(
         batch2
     ), "Input batches are of different types {} and {}".format(
         str(type(batch1)), str(type(batch2))
@@ -1330,9 +1400,9 @@ def check_same_batch(batch1, batch2) -> None:
                 "".format(_difference)
             )
 
-    if type(batch1) == SampleBatch:
+    if type(batch1) is SampleBatch:
         check_sample_batches(batch1, batch2)
-    elif type(batch1) == MultiAgentBatch:
+    elif type(batch1) is MultiAgentBatch:
         assert batch1.count == batch2.count
         batch1_ids = set()
         for policy_id, policy_batch in batch1.policy_batches.items():

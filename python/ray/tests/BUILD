@@ -493,13 +493,21 @@ py_test_module_list(
     "test_object_spilling_no_asan.py",
     "test_object_spilling_2.py",
     "test_object_spilling_3.py",
-    "test_plasma_unlimited.py",
     "test_placement_group_mini_integration.py",
     "test_scheduling_2.py",
     "test_multiprocessing.py",
     "test_reference_counting.py",
   ],
   size = "large",
+  tags = ["exclusive", "large_size_python_tests_shard_1", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
+    "test_plasma_unlimited.py",
+  ],
+  size = "enormous",
   tags = ["exclusive", "large_size_python_tests_shard_1", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
