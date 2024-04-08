@@ -508,9 +508,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   ///
   /// \param[in] object_id The object id
   /// \param[out] The object information that will be filled by a given object id.
-  /// \return OK status if object information is filled. Non OK status otherwise.
-  /// It can return non-OK status, for example, if the object for the object id
-  /// doesn't exist.
+  /// \return OK status if object information is filled.
   void FillObjectInformation(const ObjectID &object_id,
                              rpc::WorkerObjectLocationsPubMessage *object_info)
       ABSL_LOCKS_EXCLUDED(mutex_);
