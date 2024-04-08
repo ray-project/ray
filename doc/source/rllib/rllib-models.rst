@@ -237,7 +237,7 @@ Once implemented, your TF model can then be registered and used in place of a bu
         },
     })
 
-See the `keras model example <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_keras_model.py>`__ for a full example of a TF custom model.
+See the `keras model example <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/custom_keras_model.py>`__ for a full example of a TF custom model.
 
 More examples and explanations on how to implement custom Tuple/Dict processing models
 (also check out `this test case here <https://github.com/ray-project/ray/blob/master/rllib/tests/test_nested_observation_spaces.py>`__),

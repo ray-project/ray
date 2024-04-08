@@ -244,7 +244,7 @@ The following examples showcase such modifications:
         Note that, if you only want to inject your Encoder into a single :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, the recommended workflow is to inherit
         from an existing RL Module and place the Encoder there.
 
-        .. literalinclude:: ../../../rllib/examples/catalog/mobilenet_v2_encoder.py
+        .. literalinclude:: ../../../rllib/examples/catalogs/classes/mobilenet_v2_encoder.py
            :language: python
            :start-after: __sphinx_doc_begin__
            :end-before: __sphinx_doc_end__

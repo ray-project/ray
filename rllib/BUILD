@@ -2053,21 +2053,21 @@ py_test(
 
 #@OldAPIStack
 py_test(
-    name = "examples/algorithms/two_algorithm_workflow_torch_tf",
-    main = "examples/algorithms/two_algorithm_workflow_torch.py",
+    name = "examples/algorithms/custom_training_step_on_and_off_policy_combined_tf",
+    main = "examples/algorithms/custom_training_step_on_and_off_policy_combined.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/algorithms/two_algorithm_workflow_torch.py"],
+    srcs = ["examples/algorithms/custom_training_step_on_and_off_policy_combined.py"],
     args = ["--as-test", "--stop-reward=450.0"]
 )
 
 #@OldAPIStack
 py_test(
-    name = "examples/algorithms/two_algorithm_workflow_torch",
-    main = "examples/algorithms/two_algorithm_workflow_torch.py",
+    name = "examples/algorithms/custom_training_step_on_and_off_policy_combined_torch",
+    main = "examples/algorithms/custom_training_step_on_and_off_policy_combined.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/algorithms/two_algorithm_workflow_torch.py"],
+    srcs = ["examples/algorithms/custom_training_step_on_and_off_policy_combined.py"],
     args = ["--as-test", "--torch", "--stop-reward=450.0"]
 )
 
@@ -2769,6 +2769,26 @@ py_test(
     args = ["--enable-new-api-stack", "--framework=torch", "--env=connect_four", "--win-rate-threshold=0.8", "--num-episodes-human-play=0", "--min-league-size=8"]
 )
 
+# @OldAPIStack
+py_test(
+    name = "examples/multi_agent/two_algorithms_tf",
+    main = "examples/multi_agent/two_algorithms.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/multi_agent/two_algorithms.py"],
+    args = ["--as-test", "--framework=tf", "--stop-reward=70"]
+)
+
+# @OldAPIStack
+py_test(
+    name = "examples/multi_agent/two_algorithms_torch",
+    main = "examples/multi_agent/two_algorithms.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "small",
+    srcs = ["examples/multi_agent/two_algorithms.py"],
+    args = ["--as-test", "--framework=torch", "--stop-reward=70"]
+)
+
 py_test(
     name = "examples/multi_agent/two_step_game_with_grouped_agents",
     main = "examples/multi_agent/two_step_game_with_grouped_agents.py",
@@ -2806,7 +2826,34 @@ py_test(
 
 # subdirectory: ray_tune/
 # ....................................
+#@OldAPIStack
+py_test(
+    name = "examples/ray_tune/custom_experiment",
+    main = "examples/ray_tune/custom_experiment.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/ray_tune/custom_experiment.py"],
+    args = ["--train-iterations=10"]
+)
 
+#@OldAPIStack
+py_test(
+    name = "examples/ray_tune/custom_logger",
+    main = "examples/ray_tune/custom_logger.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/ray_tune/custom_logger.py"],
+    args = ["--stop-iters=3"]
+)
+
+#@OldAPIStack
+py_test(
+    name = "examples/custom_train_function",
+    main = "examples/custom_train_function.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/custom_train_function.py"],
+)
 
 # subdirectory: rl_modules/
 # ....................................
@@ -2946,15 +2993,6 @@ py_test(
 )
 
 py_test(
-    name = "examples/custom_experiment",
-    main = "examples/custom_experiment.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/custom_experiment.py"],
-    args = ["--train-iterations=10"]
-)
-
-py_test(
     name = "examples/custom_metrics_and_callbacks",
     main = "examples/custom_metrics_and_callbacks.py",
     tags = ["team:rllib", "exclusive", "examples"],
@@ -3041,37 +3079,6 @@ py_test(
     size = "medium",
     srcs = ["examples/custom_recurrent_rnn_tokenizer.py"],
     args = ["--as-test", "--framework=torch", "--stop-reward=10", "--stop-timesteps=300000", "--env=RepeatInitialObsEnv", "--num-cpus=4"]
-)
-
-py_test(
-    name = "examples/custom_train_fn",
-    main = "examples/custom_train_fn.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/custom_train_fn.py"],
-)
-
-
-
-
-
-
-py_test(
-    name = "examples/multi_agent_two_trainers_tf",
-    main = "examples/multi_agent_two_trainers.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/multi_agent_two_trainers.py"],
-    args = ["--as-test", "--framework=tf", "--stop-reward=70"]
-)
-
-py_test(
-    name = "examples/multi_agent_two_trainers_torch",
-    main = "examples/multi_agent_two_trainers.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
-    srcs = ["examples/multi_agent_two_trainers.py"],
-    args = ["--as-test", "--framework=torch", "--stop-reward=70"]
 )
 
 py_test(

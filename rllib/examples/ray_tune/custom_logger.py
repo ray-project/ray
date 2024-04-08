@@ -131,7 +131,7 @@ if __name__ == "__main__":
         run_config=air.RunConfig(
             stop=stop,
             verbose=2,
-            callbacks=[LegacyLoggerCallback(MyPrintLogger)],
+            callbacks=[LegacyLoggerCallback([MyPrintLogger])],
         ),
     )
     results = tuner.fit()
