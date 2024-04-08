@@ -353,12 +353,10 @@ def run(
         tune.run(my_trainable, config=space, stop={"training_iteration": 10})
 
         # Resumes training if a previous machine crashed
-        tune.run(my_trainable, config=space,
-                 local_dir=<path/to/dir>, resume=True)
-
-        # Rerun ONLY failed trials after an experiment is finished.
-        tune.run(my_trainable, config=space,
-                 local_dir=<path/to/dir>, resume="ERRORED_ONLY")
+        tune.run(
+            my_trainable, config=space,
+            storage_path=<path/to/dir>, name=<exp_name>, resume=True
+        )
 
     Args:
         run_or_experiment: If function|class|str, this is the algorithm or
@@ -490,6 +488,7 @@ def run(
         _remote: Whether to run the Tune driver in a remote function.
             This is disabled automatically if a custom trial executor is
             passed in. This is enabled by default in Ray client mode.
+        local_dir: Deprecated. Use `storage_path` instead.
         keep_checkpoints_num: Deprecated. use checkpoint_config instead.
         checkpoint_score_attr: Deprecated. use checkpoint_config instead.
         checkpoint_freq: Deprecated. use checkpoint_config instead.
@@ -577,16 +576,28 @@ def run(
 
     del remote_run_kwargs
 
+    # TODO(justinvyu): [Deprecated] Raise in 2.20
+    ENV_VAR_DEPRECATION_MESSAGE = (
+        "The environment variable "
+        "`{}` is deprecated and will be removed in the future. "
+        "They are no longer used and will not have any effect. "
+        "You should set the `storage_path` instead. "
+    )
     if os.environ.get("TUNE_RESULT_DIR"):
-        # Deprecate: Raise in 2.6, remove in 2.7
+        warnings.warn(ENV_VAR_DEPRECATION_MESSAGE.format("TUNE_RESULT_DIR"))
+
+    if os.environ.get("RAY_AIR_LOCAL_CACHE_DIR"):
+        warnings.warn(ENV_VAR_DEPRECATION_MESSAGE.format("RAY_AIR_LOCAL_CACHE_DIR"))
+
+    if local_dir is not None:
         warnings.warn(
-            "The TUNE_RESULT_DIR environment variable is deprecated and will be "
-            "removed in the future. If you want to set persistent storage to "
-            "a local directory, pass `storage_path` instead. If you are using "
-            "remote storage and want to control the local cache directory, "
-            "set the RAY_AIR_LOCAL_CACHE_DIR environment variable instead.",
-            DeprecationWarning,
+            "The `local_dir` argument is deprecated and will be removed. "
+            "This will pass-through to set the `storage_path` for now "
+            "but will raise an error in the future. "
+            "You should only set the `storage_path` from now on."
         )
+        # Have `storage_path` fall back to `local_dir` if only `local_dir` is set.
+        storage_path = storage_path or local_dir
 
     ray._private.usage.usage_lib.record_library_usage("tune")
 
@@ -643,12 +654,6 @@ def run(
         )
 
     sync_config = sync_config or SyncConfig()
-
-    # TODO(justinvyu): Finalize the local_dir vs. env var API in 2.8.
-    # For now, keep accepting both options.
-    if local_dir is not None:
-        os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = local_dir
-
     checkpoint_config = checkpoint_config or CheckpointConfig()
 
     # For backward compatibility

@@ -13,6 +13,7 @@ from ray._raylet import GcsClient
 from ray.actor import ActorHandle
 from ray.serve._private.application_state import ApplicationStateManager
 from ray.serve._private.common import (
+    DeploymentHandleSource,
     DeploymentID,
     MultiplexedReplicaInfo,
     NodeId,
@@ -153,11 +154,11 @@ class ServeController:
         self.cluster_node_info_cache.update()
 
         self.proxy_state_manager = ProxyStateManager(
-            http_config,
-            self._controller_node_id,
-            self.cluster_node_info_cache,
-            self.global_logging_config,
-            grpc_options,
+            config=http_config,
+            head_node_id=self._controller_node_id,
+            cluster_node_info_cache=self.cluster_node_info_cache,
+            logging_config=self.global_logging_config,
+            grpc_options=grpc_options,
         )
 
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)
@@ -260,6 +261,8 @@ class ServeController:
         self,
         deployment_id: str,
         handle_id: str,
+        actor_id: Optional[str],
+        handle_source: DeploymentHandleSource,
         queued_requests: float,
         running_requests: Dict[str, float],
         send_timestamp: float,
@@ -269,7 +272,13 @@ class ServeController:
             f"{queued_requests} queued requests and {running_requests} running requests"
         )
         self.deployment_state_manager.record_handle_metrics(
-            deployment_id, handle_id, queued_requests, running_requests, send_timestamp
+            deployment_id=deployment_id,
+            handle_id=handle_id,
+            actor_id=actor_id,
+            handle_source=handle_source,
+            queued_requests=queued_requests,
+            running_requests=running_requests,
+            send_timestamp=send_timestamp,
         )
 
     def _dump_autoscaling_metrics_for_testing(self):
@@ -430,6 +439,13 @@ class ServeController:
                     )
                 except Exception:
                     logger.exception("Exception updating proxy state.")
+
+            # When the controller is done recovering, drop invalid handle metrics
+            # that may be stale for autoscaling
+            if not any_recovering:
+                self.deployment_state_manager.drop_stale_handle_metrics(
+                    self.proxy_state_manager.get_alive_proxy_actor_ids()
+                )
 
             loop_duration = time.time() - loop_start_time
             if loop_duration > 10:

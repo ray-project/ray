@@ -1211,13 +1211,13 @@ class Impala(Algorithm):
             weights = local_worker.get_weights(policy_ids)
             if self.config.policy_states_are_swappable:
                 local_worker.unlock()
-            weights = ray.put(weights)
+            weights_ref = ray.put(weights)
 
             self._learner_thread.policy_ids_updated.clear()
             self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] = 0
             self._counters[NUM_SYNCH_WORKER_WEIGHTS] += 1
             self.workers.foreach_worker(
-                func=lambda w: w.set_weights(ray.get(weights), global_vars),
+                func=lambda w: w.set_weights(ray.get(weights_ref), global_vars),
                 local_worker=False,
                 remote_worker_ids=list(workers_that_need_updates),
                 timeout_seconds=0,  # Don't wait for the workers to finish.

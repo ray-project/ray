@@ -158,6 +158,7 @@ class TestSingelAgentEpisode(unittest.TestCase):
         self.assertTrue(episode.is_done == terminated or truncated)
 
     def test_getters(self):
+        """Tests whether the SingleAgentEpisode's getter methods work as expected."""
         # Create a simple episode.
         episode = SingleAgentEpisode(
             observations=[0, 1, 2, 3, 4, 5, 6],

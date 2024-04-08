@@ -1465,7 +1465,9 @@ class MultiAgentEpisode:
             terminateds=terminateds,
             truncateds=truncateds,
             len_lookback_buffer=ref_lookback,
-            agent_episode_ids={aid: eid for aid, eid in self.agent_episodes.items()},
+            agent_episode_ids={
+                aid: eid.id_ for aid, eid in self.agent_episodes.items()
+            },
             agent_module_ids=self._agent_to_module_mapping,
             agent_to_module_mapping_fn=self.agent_to_module_mapping_fn,
         )
@@ -1493,6 +1495,37 @@ class MultiAgentEpisode:
             "first (after which `len(MultiAgentEpisode)` will be 0)."
         )
         return self.env_t - self.env_t_started
+
+    def __repr__(self):
+        sa_eps_returns = {
+            aid: sa_eps.get_return() for aid, sa_eps in self.agent_episodes.items()
+        }
+        return (
+            f"MAEps(len={len(self)} done={self.is_done} "
+            f"Rs={sa_eps_returns} id_={self.id_})"
+        )
+
+    def print(self) -> None:
+        # Find the maximum timestep across all agents to determine the grid width.
+        max_ts = max(len(ts) for ts in self.env_t_to_agent_t.values())
+        # Construct the header.
+        header = "ts   " + " ".join(str(i) for i in range(max_ts)) + "\n"
+        # Construct each agent's row.
+        rows = []
+        for agent, timesteps in self.env_t_to_agent_t.items():
+            row = f"{agent}  "
+            for t in timesteps:
+                # Two spaces for alignment.
+                if t == "S":
+                    row += "  "
+                # Mark the step with an x.
+                else:
+                    row += "x "
+            # Remove trailing space for alignment.
+            rows.append(row.rstrip())
+
+        # Join all components into a final string
+        return header + "\n".join(rows)
 
     def get_state(self) -> Dict[str, Any]:
         """Returns the state of a multi-agent episode.
@@ -1653,15 +1686,6 @@ class MultiAgentEpisode:
         """
         return sum(len(eps) for eps in self.agent_episodes.values())
 
-    def __repr__(self):
-        sa_eps_returns = {
-            aid: sa_eps.get_return() for aid, sa_eps in self.agent_episodes.items()
-        }
-        return (
-            f"MAEps(len={len(self)} done={self.is_done} "
-            f"Rs={sa_eps_returns} id_={self.id_})"
-        )
-
     def __getitem__(self, item: slice) -> "MultiAgentEpisode":
         """Enable squared bracket indexing- and slicing syntax, e.g. episode[-4:]."""
         if isinstance(item, slice):
@@ -1816,6 +1840,14 @@ class MultiAgentEpisode:
 
         # Now create the individual episodes from the collected per-agent data.
         for agent_id, agent_obs in observations_per_agent.items():
+            # If agent only has a single obs AND is already done, remove all its traces
+            # from this MultiAgentEpisode.
+            if len(agent_obs) == 1 and done_per_agent.get(agent_id):
+                self._del_agent(agent_id)
+                continue
+
+            # Compute the correct lookback length to use for this agent's
+            # SingleAgentEpisode.
             lookback = sum(
                 s != self.SKIP_ENV_TS_TAG
                 for s in self.env_t_to_agent_t[agent_id].get(
@@ -1829,6 +1861,7 @@ class MultiAgentEpisode:
             module_id = agent_module_ids.get(
                 agent_id, self.agent_to_module_mapping_fn(agent_id, self)
             )
+            # Create this agent's SingleAgentEpisode.
             sa_episode = SingleAgentEpisode(
                 id_=(
                     agent_episode_ids.get(agent_id)
@@ -1857,6 +1890,7 @@ class MultiAgentEpisode:
                 t_started=self.agent_t_started[agent_id],
                 len_lookback_buffer=lookback,
             )
+            # .. and store it.
             self.agent_episodes[agent_id] = sa_episode
 
     def _get(
@@ -2374,6 +2408,15 @@ class MultiAgentEpisode:
         self._agent_buffered_actions.pop(agent_id, None)
         self._agent_buffered_extra_model_outputs.pop(agent_id, None)
         self._agent_buffered_rewards.pop(agent_id, None)
+
+    def _del_agent(self, agent_id: AgentID) -> None:
+        """Deletes all data of given agent from this episode."""
+        self._del_buffers(agent_id)
+        self.agent_episodes.pop(agent_id, None)
+        self.agent_ids.discard(agent_id)
+        self.env_t_to_agent_t.pop(agent_id, None)
+        self._agent_to_module_mapping.pop(agent_id, None)
+        self.agent_t_started.pop(agent_id, None)
 
     def _get_inf_lookback_buffer_or_dict(
         self,
