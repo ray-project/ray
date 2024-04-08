@@ -401,7 +401,7 @@ class Test(dict):
         )
         files = sorted(
             chain.from_iterable([page.get("Contents", []) for page in pages]),
-            key=lambda file: int(file["LastModified"].strftime("%s")),
+            key=lambda file: int(file["LastModified"].timestamp()),
             reverse=True,
         )[:limit]
         self.test_results = [

@@ -30,6 +30,7 @@ from ray.serve._private.constants import (
     SERVE_LOG_WORKER_ID,
     SERVE_LOGGER_NAME,
 )
+from ray.serve._private.utils import get_component_file_name
 from ray.serve.schema import EncodingType, LoggingConfig
 
 try:
@@ -38,7 +39,6 @@ except ImportError:
     pass
 
 
-LOG_FILE_FMT = "{component_name}_{component_id}{suffix}"
 buildin_print = builtins.print
 
 
@@ -333,7 +333,7 @@ def configure_component_logger(
     if backup_count is None:
         backup_count = ray._private.worker._global_node.backup_count
 
-    log_file_name = get_component_log_file_name(
+    log_file_name = get_component_file_name(
         component_name=component_name,
         component_id=component_id,
         component_type=component_type,
@@ -386,7 +386,7 @@ def configure_component_memory_profiler(
             import memray
 
             logs_dir = get_serve_logs_dir()
-            memray_file_name = get_component_log_file_name(
+            memray_file_name = get_component_file_name(
                 component_name=component_name,
                 component_id=component_id,
                 component_type=component_type,
@@ -398,7 +398,7 @@ def configure_component_memory_profiler(
             # tracking memory.
             restart_counter = 1
             while os.path.exists(memray_file_path):
-                memray_file_name = get_component_log_file_name(
+                memray_file_name = get_component_file_name(
                     component_name=component_name,
                     component_id=component_id,
                     component_type=component_type,
@@ -463,7 +463,7 @@ def configure_component_cpu_profiler(
             return None, None
 
         logs_dir = get_serve_logs_dir()
-        cpu_profiler_file_name = get_component_log_file_name(
+        cpu_profiler_file_name = get_component_file_name(
             component_name=component_name,
             component_id=component_id,
             component_type=component_type,
@@ -486,29 +486,6 @@ def get_serve_logs_dir() -> str:
     """Get the directory that stores Serve log files."""
 
     return os.path.join(ray._private.worker._global_node.get_logs_dir_path(), "serve")
-
-
-def get_component_log_file_name(
-    component_name: str,
-    component_id: str,
-    component_type: Optional[ServeComponentType],
-    suffix: str = "",
-) -> str:
-    """Get the component's log file name."""
-
-    # For DEPLOYMENT component type, we want to log the deployment name
-    # instead of adding the component type to the component name.
-    component_log_file_name = component_name
-    if component_type is not None:
-        component_log_file_name = f"{component_type.value}_{component_name}"
-        if component_type != ServeComponentType.REPLICA:
-            component_name = f"{component_type}_{component_name}"
-    log_file_name = LOG_FILE_FMT.format(
-        component_name=component_log_file_name,
-        component_id=component_id,
-        suffix=suffix,
-    )
-    return log_file_name
 
 
 class LoggingContext:

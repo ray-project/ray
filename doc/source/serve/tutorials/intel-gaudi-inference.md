@@ -2,9 +2,9 @@
 orphan: true
 ---
 
-# Serve Llama2-7b/70b on a single or multiple Intel Gaudi Habana
+# Serve Llama2-7b/70b on a single or multiple Intel Gaudi Accelerator
 
-[Habana Gaudi AI Processors (HPUs)](https://habana.ai) are AI hardware accelerators designed by Habana Labs. See [Gaudi Architecture](https://docs.habana.ai/en/latest/Gaudi_Overview/index.html) and [Gaudi Developer Docs](https://developer.habana.ai/) for more details.
+[Intel Gaudi AI Processors (HPUs)](https://habana.ai) are AI hardware accelerators designed by Intel Habana Labs. See [Gaudi Architecture](https://docs.habana.ai/en/latest/Gaudi_Overview/index.html) and [Gaudi Developer Docs](https://developer.habana.ai/) for more details.
 
 This tutorial has two examples:
 
@@ -32,7 +32,7 @@ This tutorial serves a large language model (LLM) on HPUs.
 
 Use a prebuilt container to run these examples. To run a container, you need Docker. See [Install Docker Engine](https://docs.docker.com/engine/install/) for installation instructions.
 
-Next, follow [Run Using Containers](https://docs.habana.ai/en/latest/Installation_Guide/Bare_Metal_Fresh_OS.html?highlight=installer#run-using-containers) to install the Habana drivers and container runtime. To verify your installation, start a shell and run `hl-smi`. It should print status information about the HPUs on the machine:
+Next, follow [Run Using Containers](https://docs.habana.ai/en/latest/Installation_Guide/Bare_Metal_Fresh_OS.html?highlight=installer#run-using-containers) to install the Gaudi drivers and container runtime. To verify your installation, start a shell and run `hl-smi`. It should print status information about the HPUs on the machine:
 
 ```text
 +-----------------------------------------------------------------------------+
@@ -80,7 +80,7 @@ Next, follow [Run Using Containers](https://docs.habana.ai/en/latest/Installatio
 +=============================================================================+
 ```
 
-Next, start the Habana container:
+Next, start the Gaudi container:
 ```bash
 docker pull vault.habana.ai/gaudi-docker/1.14.0/ubuntu22.04/habanalabs/pytorch-installer-2.1.1:latest
 docker run -it --runtime=habana -e HABANA_VISIBLE_DEVICES=all -e OMPI_MCA_btl_vader_single_copy_mechanism=none --cap-add=sys_nice --net=host --ipc=host vault.habana.ai/gaudi-docker/1.14.0/ubuntu22.04/habanalabs/pytorch-installer-2.1.1:latest
@@ -104,16 +104,16 @@ This example shows how to deploy a Llama2-7b model on an HPU for inference.
 
 First, define a deployment that serves a Llama2-7b model using an HPU. Note that we enable [HPU graph optimizations](https://docs.habana.ai/en/latest/Gaudi_Overview/SynapseAI_Software_Suite.html?highlight=graph#graph-compiler-and-runtime) for better performance.
 
-```{literalinclude} ../doc_code/hpu_inference_serve.py
+```{literalinclude} ../doc_code/intel_gaudi_inference_serve.py
 :language: python
 :start-after: __model_def_start__
 :end-before: __model_def_end__
 ```
 
-Copy the code above and save it as `hpu_inference_serve.py`. Start the deployment like this:
+Copy the code above and save it as `intel_gaudi_inference_serve.py`. Start the deployment like this:
 
 ```bash
-serve run hpu_inference_serve:entrypoint
+serve run intel_gaudi_inference_serve:entrypoint
 ```
 
 The terminal should print logs as the deployment starts up:
@@ -159,7 +159,7 @@ Loading checkpoint shards: 100%|██████████| 2/2 [00:24<00:00
 
 In another shell, use the following code to send requests to the deployment to perform generation tasks.
 
-```{literalinclude} ../doc_code/hpu_inference_client.py
+```{literalinclude} ../doc_code/intel_gaudi_inference_client.py
 :language: python
 :start-after: __main_code_start__
 :end-before: __main_code_end__
@@ -179,7 +179,7 @@ One day, a wicked sorcerer cast a spell on the kingdom, causing all
 
 This example deploys a Llama2-70b model using 8 HPUs orchestrated by DeepSpeed. 
 
-The example requires caching the Llama2-70b model. Run the following Python code in the Habana container to cache the model. 
+The example requires caching the Llama2-70b model. Run the following Python code in the Gaudi container to cache the model. 
 
 ```python
 from huggingface_hub import snapshot_download
@@ -194,7 +194,7 @@ snapshot_download(
 
 In this example, the deployment replica sends prompts to the DeepSpeed workers, which are running in Ray actors:
 
-```{literalinclude} ../doc_code/hpu_inference_serve_deepspeed.py
+```{literalinclude} ../doc_code/intel_gaudi_inference_serve_deepspeed.py
 :language: python
 :start-after: __worker_def_start__
 :end-before: __worker_def_end__
@@ -202,13 +202,13 @@ In this example, the deployment replica sends prompts to the DeepSpeed workers, 
 
 Next, define a deployment:
 
-```{literalinclude} ../doc_code/hpu_inference_serve_deepspeed.py
+```{literalinclude} ../doc_code/intel_gaudi_inference_serve_deepspeed.py
 :language: python
 :start-after: __deploy_def_start__
 :end-before: __deploy_def_end__
 ```
 
-Copy both blocks of the preceding code and save them into `hpu_inference_serve_deepspeed.py`. Run this example using `serve run hpu_inference_serve_deepspeed:entrypoint`.
+Copy both blocks of the preceding code and save them into `intel_gaudi_inference_serve_deepspeed.py`. Run this example using `serve run intel_gaudi_inference_serve_deepspeed:entrypoint`.
 
 The terminal should print logs as the deployment starts up:
 ```text
