@@ -376,7 +376,7 @@ class PPOConfig(AlgorithmConfig):
     @property
     @override(AlgorithmConfig)
     def _model_config_auto_includes(self) -> Dict[str, Any]:
-        return self.super()._model_config_auto_includes | {"vf_share_layers": False}
+        return super()._model_config_auto_includes | {"vf_share_layers": False}
 
 
 class PPO(Algorithm):
