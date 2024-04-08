@@ -1,3 +1,5 @@
+# TODO (sven): Move this example script into the new API stack.
+
 """
 Example of running a Unity3D (MLAgents) Policy server that can learn
 Policies via sampling inside many connected Unity game clients (possibly

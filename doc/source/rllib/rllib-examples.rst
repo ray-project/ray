@@ -36,15 +36,15 @@ Custom- and Complex Models
    Example of using a custom Keras model.
 - `Registering a custom model with supervised loss <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_model_loss_and_metrics.py>`__:
    Example of defining and registering a custom model with a supervised loss.
-- `Batch normalization <https://github.com/ray-project/ray/blob/master/rllib/examples/models/batch_norm_model.py>`__:
+- `Batch normalization <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/models/batch_norm_model.py>`__:
    Example of adding batch norm layers to a custom model.
 - `Custom model API example <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_model_api.py>`__:
    Shows how to define a custom Model API in RLlib, such that it can be used inside certain algorithms.
-- `Trajectory View API utilizing model <https://github.com/ray-project/ray/blob/master/rllib/examples/models/trajectory_view_utilizing_models.py>`__:
+- `Trajectory View API utilizing model <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/models/trajectory_view_utilizing_models.py>`__:
    An example on how a model can use the trajectory view API to specify its own input.
-- `MobileNetV2 wrapping example model <https://github.com/ray-project/ray/blob/master/rllib/examples/models/mobilenet_v2_with_lstm_models.py>`__:
+- `MobileNetV2 wrapping example model <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/models/mobilenet_v2_with_lstm_models.py>`__:
    Implementations of `tf.keras.applications.mobilenet_v2.MobileNetV2` and `torch.hub (mobilenet_v2)`-wrapping example models.
-- `Differentiable Neural Computer <https://github.com/ray-project/ray/blob/master/rllib/examples/models/neural_computer.py>`__:
+- `Differentiable Neural Computer <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/models/neural_computer.py>`__:
    Example of DeepMind's Differentiable Neural Computer for partially-observable environments.
 
 
@@ -78,7 +78,7 @@ Serving and Offline
 -------------------
 - `Offline RL with CQL <https://github.com/ray-project/ray/tree/master/rllib/examples/offline_rl.py>`__:
    Example showing how to run an offline RL training job using a historic-data json file.
-- `Another example for using RLlib with Ray Serve <https://github.com/ray-project/ray/tree/master/rllib/examples/inference_and_serving/serve_and_rllib.py>`__
+- `Another example for using RLlib with Ray Serve <https://github.com/ray-project/ray/tree/master/rllib/examples/ray_serve/ray_serve_with_rllib.py>`__
    This script offers a simple workflow for 1) training a policy with RLlib first, 2) creating a new policy 3) restoring its weights from the trained
    one and serving the new policy via Ray Serve.
 - `Unity3D client/server <https://github.com/ray-project/ray/tree/master/rllib/examples/serving/unity3d_server.py>`__:

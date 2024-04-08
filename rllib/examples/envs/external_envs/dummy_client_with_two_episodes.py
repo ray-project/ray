@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+
+# TODO (sven): Move this example script into the new API stack.
+
 """
 For testing purposes only.
 Runs a policy client that starts two episodes, uses one for calculating actions

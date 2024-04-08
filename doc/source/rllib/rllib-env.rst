@@ -148,7 +148,7 @@ When implementing your own :py:class:`~ray.rllib.env.multi_agent_env.MultiAgentE
 agent IDs in an observation dict, for which you expect to receive actions in the next call to `step()`.
 
 This API allows you to implement any type of multi-agent environment, from `turn-based games <https://github.com/ray-project/ray/blob/master/rllib/examples/self_play_with_open_spiel.py>`__
-over environments, in which `all agents always act simultaneously <https://github.com/ray-project/ray/blob/master/rllib/examples/env/multi_agent.py>`__, to anything in between.
+over environments, in which `all agents always act simultaneously <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/classes/multi_agent.py>`__, to anything in between.
 
 
 

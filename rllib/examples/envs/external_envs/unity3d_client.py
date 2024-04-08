@@ -1,3 +1,5 @@
+# TODO (sven): Move this example script into the new API stack.
+
 """
 Example of running a Unity3D client instance against an RLlib Policy server.
 Unity3D clients can be run in distributed fashion on n nodes in the cloud

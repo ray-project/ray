@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+
+# TODO (sven): Move this example script into the new API stack.
+
 """
 Example of running an external simulator (a simple CartPole env
 in this case) against an RLlib policy server listening on one or more

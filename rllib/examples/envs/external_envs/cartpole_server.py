@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+
+# TODO (sven): Move this example script into the new API stack.
+
 """
 Example of running an RLlib policy server, allowing connections from
 external environment running clients. The server listens on

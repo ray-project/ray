@@ -26,7 +26,7 @@
 
         .. image:: images/sigils/rllib-sigil-multi-agent.svg
             :width: 100
-            :target: https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_independent_learning.py
+            :target: https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/multi_agent_independent_learning.py
 
     .. container::
 

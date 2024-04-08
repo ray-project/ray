@@ -1,3 +1,5 @@
+# TODO (sven): Move this example script into the new API stack.
+
 """
 Dummy in-place replacement for the unity3d_client.py script
 in case you don't have an actual Unity3D engine installed or just want

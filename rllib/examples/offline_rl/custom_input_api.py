@@ -35,7 +35,8 @@ parser.add_argument(
     "--input-files",
     type=str,
     default=os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "../tests/data/pendulum/small.json"
+        os.path.dirname(os.path.abspath(__file__)),
+        "../../tests/data/pendulum/small.json",
     ),
 )
 
@@ -118,7 +119,7 @@ if __name__ == "__main__":
 
     stop = {
         "training_iteration": args.stop_iters,
-        "evaluation/episode_reward_mean": -600,
+        "evaluation/sampler_results/episode_reward_mean": -600,
     }
 
     tuner = tune.Tuner(
