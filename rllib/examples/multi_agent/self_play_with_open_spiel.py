@@ -28,7 +28,7 @@ from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 from ray.rllib.env.utils import try_import_pyspiel, try_import_open_spiel
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
 from ray.rllib.examples.rl_module.classes.random_rlm import RandomRLModule
-from ray.rllib.examples.multi_agent_and_self_play.utils import (
+from ray.rllib.examples.multi_agent.utils import (
     ask_user_for_action,
     SelfPlayCallback,
     SelfPlayCallbackOldAPIStack,

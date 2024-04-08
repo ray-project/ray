@@ -91,8 +91,8 @@ class MyAlgo(Algorithm):
                 # Update sampled counters.
                 self._counters[NUM_ENV_STEPS_SAMPLED] += ma_batch.count
                 self._counters[NUM_AGENT_STEPS_SAMPLED] += ma_batch.agent_steps()
-                ppo_batch = ma_batch.policy_batches.pop("ppo_policy")
                 # Add collected batches (only for DQN policy) to replay buffer.
+                ppo_batch = ma_batch.policy_batches.pop("ppo_policy")
                 self.local_replay_buffer.add(ma_batch)
 
                 ppo_batches.append(ppo_batch)

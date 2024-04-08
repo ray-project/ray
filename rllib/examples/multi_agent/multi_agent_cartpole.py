@@ -29,6 +29,7 @@ parser = add_rllib_example_script_args(
     default_timesteps=100000,
     default_reward=600.0,
 )
+# TODO (sven): This arg is currently ignored (hard-set to 2).
 parser.add_argument("--num-policies", type=int, default=2)
 
 

@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+# TODO (sven): Move this example script into the new API stack.
+
 import numpy as np
 import os
 import ray

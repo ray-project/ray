@@ -1,3 +1,5 @@
+# TODO (sven): Move this example script into the new API stack.
+
 """
 This example shows two modifications:
 - How to write a custom Encoder (using MobileNet v2)
@@ -12,12 +14,12 @@ import numpy as np
 
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.examples._old_api_stack.models.mobilenet_v2_encoder import (
     MobileNetV2EncoderConfig,
     MOBILENET_INPUT_SHAPE,
 )
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.examples.envs.random_env import RandomEnv
+from ray.rllib.examples.envs.classes.random_env import RandomEnv
 
 
 # Define a PPO Catalog that we can use to inject our MobileNetV2 Encoder into RLlib's
