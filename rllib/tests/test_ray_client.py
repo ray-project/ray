@@ -1,11 +1,8 @@
 import os
-import sys
 import unittest
 
-import pytest
 import ray
-from ray import air
-from ray import tune
+from ray import air, tune
 import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
 from ray.util.client.ray_client_helpers import ray_start_client_server
@@ -66,7 +63,7 @@ class TestRayClient(unittest.TestCase):
             config = config.to_dict()
             config["train-iterations"] = 2
 
-            from ray.rllib.examples.custom_experiment import experiment
+            from ray.rllib.examples.ray_tune.custom_experiment import experiment
 
             # Ray client does not seem to propagate the `fn._resources` property
             # correctly for imported functions. As a workaround, we can wrap the
@@ -83,4 +80,7 @@ class TestRayClient(unittest.TestCase):
 
 
 if __name__ == "__main__":
+    import pytest
+    import sys
+
     sys.exit(pytest.main(["-v", __file__]))

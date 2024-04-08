@@ -3,7 +3,6 @@
 Here, we serve an already trained PyTorch RLModule to provide action computations
 to a Ray Serve client.
 """
-
 import argparse
 import atexit
 import requests
@@ -12,6 +11,7 @@ import time
 
 import gymnasium as gym
 
+import ray
 from ray.rllib.algorithms.algorithm import AlgorithmConfig
 from ray.rllib.algorithms.ppo import PPOConfig
 
@@ -60,6 +60,8 @@ def kill_proc(proc):
 
 if __name__ == "__main__":
     args = parser.parse_args()
+
+    ray.init(num_cpus=8)
 
     # Config for the served RLlib RLModule/Algorithm.
     config = (

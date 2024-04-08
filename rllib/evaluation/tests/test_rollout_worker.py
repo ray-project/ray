@@ -12,7 +12,6 @@ import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from ray.rllib.env.tests.test_multi_agent_env import BasicMultiAgent
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.postprocessing import compute_advantages
@@ -942,6 +941,8 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertIsNotNone(ev)
 
     def test_wrap_multi_agent_env(self):
+        from ray.rllib.env.tests.test_multi_agent_env import BasicMultiAgent
+
         ev = RolloutWorker(
             env_creator=lambda _: BasicMultiAgent(10),
             default_policy_class=MockPolicy,

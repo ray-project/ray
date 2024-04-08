@@ -2877,11 +2877,11 @@ py_test(
 # ....................................
 #@OldAPIStack @HybridAPIStack
 py_test(
-    name = "examples/rl_modules/mobilenet_rlm",
-    main = "examples/rl_modules/mobilenet_rlm.py",
+    name = "examples/rl_modules/classes/mobilenet_rlm",
+    main = "examples/rl_modules/classes/mobilenet_rlm.py",
     tags = ["team:rllib", "examples", "no_main"],
     size = "small",
-    srcs = ["examples/rl_modules/mobilenet_rlm.py"],
+    srcs = ["examples/rl_modules/classes/mobilenet_rlm.py"],
 )
 
 

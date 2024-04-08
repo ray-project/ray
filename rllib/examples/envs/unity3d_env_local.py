@@ -4,7 +4,7 @@
 Example of running an RLlib Algorithm against a locally running Unity3D editor
 instance (available as Unity3DEnv inside RLlib).
 For a distributed cloud setup example with Unity,
-see `examples/serving/unity3d_[server|client].py`
+see `examples/envs/external_envs/unity3d_[server|client].py`
 
 To run this script against a local Unity3D engine:
 1) Install Unity3D and `pip install mlagents`.
