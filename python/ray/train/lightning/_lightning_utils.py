@@ -86,6 +86,11 @@ class RayFSDPStrategy(FSDPStrategy):  # noqa: F821
 
     For a full list of initialization arguments, please refer to:
     https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.strategies.FSDPStrategy.html
+
+    .. note::
+        It is recommended to upgrade Lightning to 2.1 or above for using FSDP
+        with Lightning, since Lightning starts to natively support `state_dict_type`,
+        `sharding_strategy`, `auto_wrap_policy` and other FSDP configurations from 2.1.
     """
 
     def __init__(self, *args, **kwargs):
@@ -104,12 +109,15 @@ class RayFSDPStrategy(FSDPStrategy):  # noqa: F821
         )
 
     def lightning_module_state_dict(self) -> Dict[str, Any]:
-        """Gathers the full state dict to rank 0 on CPU."""
+        """Gathers the full state dict to rank 0 on CPU.
+
+        Lightning doesn't support FSDP state_dict_type until 2.1.
+        (https://github.com/Lightning-AI/pytorch-lightning/pull/17623).
+        We need a patch logic to enable FSDP checkpointing for Lightning 2.0.x.
+        """
+
         assert self.model is not None, "Failed to get the state dict for a None model!"
 
-        # Lightning < 2.1 lacks FSDP state_dict_type support.
-        # (PR: https://github.com/Lightning-AI/pytorch-lightning/pull/17623).
-        # We need this patch logic to enable FSDP checkpointing between 2.0 and 2.1.
         if (
             _TORCH_FSDP_AVAILABLE
             and _LIGHTNING_GREATER_EQUAL_2_0
