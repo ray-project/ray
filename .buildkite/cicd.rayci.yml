@@ -3,12 +3,14 @@ depends_on:
   - forge
 steps:
   - label: "CI/CD: ray_ci tooling"
+    key: ray-ci-tooling-tests
     commands:
       # TODO(aslonnie): wrap this in a script, and upload test telemetry.
       - bazel test --test_tag_filters=ci_unit //ci/ray_ci/...
     instance_type: small
 
   - label: "CI/CD: release test infra"
+    key: ray-release-infra-tests
     commands:
       # TODO(aslonnie): wrap this in a script, and upload test telemetry.
       - bazel test --test_tag_filters=release_unit //release/...
