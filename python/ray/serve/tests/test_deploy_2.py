@@ -14,12 +14,10 @@ from ray import serve
 from ray._private.pydantic_compat import ValidationError
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.common import ApplicationStatus, DeploymentStatus
-from ray.serve._private.logging_utils import (
-    get_serve_logs_dir,
-)
+from ray.serve._private.logging_utils import get_serve_logs_dir
 from ray.serve._private.test_utils import check_deployment_status, check_num_replicas_eq
-from ray.util.state import list_actors
 from ray.serve._private.utils import get_component_file_name
+from ray.util.state import list_actors
 
 
 @pytest.mark.parametrize("prefixes", [[None, "/f", None], ["/f", None, "/f"]])
