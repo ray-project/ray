@@ -1524,6 +1524,13 @@ py_test(
     srcs = ["utils/replay_buffers/tests/test_episode_replay_buffer.py"]
 )
 
+oy_test(
+    name = "test_multi_agent_episode_replay_buffer",
+    tags = ["team:rllib", "utils"],
+    size = "small",
+    srcs = ["utils/replay_buffers/tests/test_multi_agent_episode_replay_buffer.py"]
+)
+
 py_test(
     name = "test_multi_agent_mixin_replay_buffer",
     tags = ["team:rllib", "utils"],

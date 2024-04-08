@@ -100,6 +100,9 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
         # important for indexing.
         self._num_module_episodes_evicted: Dict[ModuleID, int] = defaultdict(int)
 
+        # Stores hte number of module timesteps sampled.
+        self.sampled_timesteps_per_module: Dict[ModuleID, int] = defaultdict(int)
+
     @override(EpisodeReplayBuffer)
     def add(
         self,
@@ -326,6 +329,102 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
                 modules_to_sample=modules_to_sample,
             )
 
+    def get_added_agent_timesteps(self) -> int:
+        """Returns number of agent timesteps that have been added in buffer's lifetime.
+
+        Note, this could be more than the `get_added_timesteps` returns as an
+        environment timestep could contain multiple agent timesteps (for eaxch agent
+        one).
+        """
+        return self._num_agent_timesteps_added
+
+    def get_num_agent_timesteps(self) -> int:
+        """Returns number of agent timesteps stored in the buffer.
+
+        Note, this could be more than the `num_timesteps` as an environment timestep
+        could contain multiple agent timesteps (for eaxch agent one).
+        """
+        return self._num_agent_timesteps
+
+    def get_num_module_episodes(self, module_id: ModuleID) -> int:
+        """Returns number of episodes stored for a module in the buffer.
+
+        Note, episodes could be either complete or truncated.
+
+        Args:
+            module_id: The ID of the module to query.
+
+        Returns:
+            The number of episodes stored for the module.
+        """
+        return self._num_module_episodes[module_id]
+
+    def get_num_module_timesteps(self, module_id: ModuleID) -> int:
+        """Returns number of individual timesteps for a module stored in the buffer.
+
+        Args:
+            module_id: The ID of the module to query.
+
+        Returns:
+            The number of timesteps stored for the module.
+        """
+        return len(self._num_module_timesteps[module_id])
+
+    def get_sampled_timesteps_per_module(self, module_id: ModuleID) -> int:
+        """Returns number of timesteps that have been sampled for a module.
+
+        Args:
+            module_id: The ID of the module to query.
+
+        Returns:
+            The number of timesteps sampled for the module.
+        """
+        return self.sampled_timesteps_per_module[module_id]
+
+    def get_added_module_timesteps(self, module_id: ModuleID) -> int:
+        """Returns number of timesteps that have been added in buffer's lifetime for a module.
+
+        Args:
+            module_id: The ID of the module to query.
+
+        Returns:
+            The number of timesteps added for the module.
+        """
+        return self._num_module_timesteps_added[module_id]
+
+    @override(EpisodeReplayBuffer)
+    def get_state(self) -> Dict[str, Any]:
+        return super().get_state() | {
+            "_module_to_indices": list(self._module_to_indices.items()),
+            "_num_agent_timesteps": self._num_agent_timesteps,
+            "_num_agent_timesteps_added": self._num_agent_timesteps_added,
+            "_num_module_timesteps": list(self._num_module_timesteps.items()),
+            "_num_module_timesteps_added": list(
+                self._num_module_timesteps_added.items()
+            ),
+            "_num_module_episodes": list(self._num_module_episodes.items()),
+            "_num_module_episodes_evicted": list(
+                self._num_module_episodes_evicted.items()
+            ),
+            "sampled_timesteps_per_module": list(
+                self.sampled_timesteps_per_module.items()
+            ),
+        }
+
+    @override(EpisodeReplayBuffer)
+    def set_state(self, state) -> None:
+        # Set the super's state.
+        super().set_state(state)
+        # Now set the remaining attributes.
+        self._module_to_indices = dict(state["_module_to_indices"])
+        self._num_agent_timesteps = state["_num_agent_timesteps"]
+        self._num_agent_timesteps_added = state["_num_agent_timesteps_added"]
+        self._num_module_timesteps = dict(state["_num_module_timesteps"])
+        self._num_module_timesteps_added = dict(state["_num_module_timesteps_added"])
+        self._num_module_episodes = dict(state["_num_module_episodes"])
+        self._num_module_episodes_evicted = dict(state["_num_module_episodes_evicted"])
+        self.sampled_timesteps_per_module = dict(state["sampled_timesteps_per_module"])
+
     def _sample_independent(
         self,
         batch_size_B: Optional[int],
@@ -453,6 +552,8 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
                 # Increase counter.
                 B += 1
 
+            # Increase the per module timesteps counter.
+            self.sampled_timesteps_per_module[module_id] += batch_size_B
             ret[module_id] = {
                 # Note, observation and action spaces could be complex. `batch`
                 # takes care of these.
@@ -478,6 +579,9 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
                     # These could be complex, too.
                     batch(extra_model_outputs)
                 )
+        # Increase the counter for environment timesteps.
+        self.num_timesteps_sampled += batch_size_B
+        # Return multi-agent dictionary.
         return ret
 
     def _sample_synchonized(
@@ -652,9 +756,13 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
                 else:
                     is_terminated[module_id].append(False)
                     is_truncated[module_id].append(False)
+                # Increase the per module counter.
+                self.sampled_timesteps_per_module[module_id] += 1
 
             # Increase counter.
             B += 1
+        # Increase the counter for environment timesteps.
+        self.sampled_timesteps += batch_size_B
 
         # Should be convertible to MultiAgentBatch.
         ret = {
