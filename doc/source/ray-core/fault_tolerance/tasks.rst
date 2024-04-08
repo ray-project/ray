@@ -16,23 +16,25 @@ on a remote worker or actor fails due to a Python-level exception, Ray wraps
 the original exception in a ``RayTaskError`` and stores this as the task's
 return value. This wrapped exception will be thrown to any worker that tries
 to get the result, either by calling ``ray.get`` or if the worker is executing
-another task that depends on the object.
+another task that depends on the object. If the user's exception type can be subclassed,
+the raised exception is an instance of both ``RayTaskError`` and the user's exception type
+so user can try-catch either of them. Otherwise, the wrapped exception is just
+``RayTaskError`` and the actual user's exception type can be accessed via the ``cause``
+field of the ``RayTaskError``.
 
 .. literalinclude:: ../doc_code/task_exceptions.py
   :language: python
   :start-after: __task_exceptions_begin__
   :end-before: __task_exceptions_end__
 
-For developer ergonomics, Ray raises the exception as an instance of both `RayTaskError`
-and the user exception type, so that user can just catch by their own exception types.
+Example code of catching the user exception type when the exception type can be subclassed:
 
 .. literalinclude:: ../doc_code/task_exceptions.py
   :language: python
   :start-after: __catch_user_exceptions_begin__
   :end-before: __catch_user_exceptions_end__
 
-However, if a user exception can not be subclassed, Ray would raise
-only as `RayTaskError`. User can access the user exception via `ray_task_error.cause`.
+Example code of accessing the user exception type when the exception type can *not* be subclassed:
 
 .. literalinclude:: ../doc_code/task_exceptions.py
   :language: python

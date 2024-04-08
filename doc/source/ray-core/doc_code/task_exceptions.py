@@ -57,9 +57,9 @@ except MyException as e:
 
 from typing import final
 
-@final
 class MyFinalException(Exception):
-    ...
+    def __init_subclass__(cls, /, *args, **kwargs):
+        raise TypeError("Cannot subclass this little exception class.")
 
 @ray.remote
 def raises_my_final_exc():
@@ -69,8 +69,9 @@ try:
 except ray.exceptions.RayTaskError as e:
     assert isinstance(e.cause, MyFinalException)
     print(e)
-    # ray::raises_my_final_exc() (pid=26737, ip=127.0.0.1)
-    #   File "/Users/ruiyangwang/gits/ray/doc/source/ray-core/doc_code/task_exceptions.py", line 66, in raises_my_final_exc
+    # 2024-04-08 21:11:47,417 WARNING exceptions.py:177 -- User exception type <class '__main__.MyFinalException'> in RayTaskError can not be subclassed! This exception will be raised as RayTaskError only. User can use `ray_task_error.cause` to access the user exception. Failure in subclassing: Cannot subclass this little exception class.
+    # ray::raises_my_final_exc() (pid=88226, ip=127.0.0.1)
+    # File "/Users/ruiyangwang/gits/ray/doc/source/ray-core/doc_code/task_exceptions.py", line 66, in raises_my_final_exc
     #     raise MyFinalException("a *final* user exception")
     # MyFinalException: a *final* user exception
     print(type(e.cause))
