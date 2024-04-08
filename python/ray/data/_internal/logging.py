@@ -9,6 +9,16 @@ import ray
 
 CONFIG_FILENAME = "logging.yaml"
 
+# To facilitate debugging, Ray Data writes debug logs to a file. However, if Ray Data
+# logs every scheduler loop, logging might impact performance. So, we add a "TRACE"
+# level where logs aren't written by default.
+#
+# Use the following code to log a message at the "TRACE" level:
+# ```
+# logger.log(logging.getLevelName("TRACE"), "Your message here.")
+# ````
+logging.addLevelName(logging.DEBUG - 1, "TRACE")
+
 
 class SessionFileHandler(logging.Handler):
     """A handler that writes to a log file in the Ray session directory.
