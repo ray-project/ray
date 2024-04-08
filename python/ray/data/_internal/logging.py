@@ -9,6 +9,16 @@ _default_file_handler: logging.Handler = None
 
 DEFAULT_DATASET_LOG_FILENAME = "ray-data.log"
 
+# To facilitate debugging, Ray Data writes debug logs to a file. However, if Ray Data
+# logs every scheduler loop, logging might impact performance. So, we add a "TRACE"
+# level where logs aren't written by default.
+#
+# Use the following code to log a message at the "TRACE" level:
+# ```
+# logger.log(logging.getLevelName("TRACE"), "Your message here.")
+# ````
+logging.addLevelName(logging.DEBUG - 1, "TRACE")
+
 
 class SessionFileHandler(logging.Handler):
     """A handler that writes to a log file in the Ray session directory.
@@ -71,7 +81,7 @@ def configure_logging() -> None:
     assert _default_file_handler is None, "Logging already configured."
 
     logger = logging.getLogger("ray.data")
-    logger.setLevel(logging.INFO)
+    logger.setLevel(logging.DEBUG)
 
     formatter = logging.Formatter(fmt=LOGGER_FORMAT)
     file_handler = SessionFileHandler(DEFAULT_DATASET_LOG_FILENAME)
