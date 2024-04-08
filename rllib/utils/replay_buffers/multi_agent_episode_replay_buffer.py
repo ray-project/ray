@@ -548,6 +548,8 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
                 )[-1]
                 # Note, `SingleAgentEpisode` stores the action that followed
                 # `o_t` with `o_(t+1)`, therefore, we need the next one.
+                # TODO (simon): This gets the wrong action as long as the getters are
+                # not fixed.
                 actions[B] = sa_episode.get_actions(sa_episode_ts - actual_n_step)
                 if include_infos:
                     # If infos are included we include the ones from the last timestep
@@ -679,6 +681,8 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
             )
             # Note, `MultiAgentEpisode` stores the action that followed
             # `o_t` with `o_(t+1)`, therefore, we need the next one.
+            # TODO (simon): This gets the wrong action as long as the getters are not
+            # fixed.
             eps_actions = ma_episode.get_actions(ma_episode_ts - actual_n_step)
             # Make sure that at least a single agent should have full transition.
             # TODO (simon): Filter for the `modules_to_sample`.
