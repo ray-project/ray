@@ -4,7 +4,7 @@ import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.examples.env.mock_env import MockEnv3
+from ray.rllib.examples.envs.mock_env import MockEnv3
 from ray.rllib.policy import Policy
 from ray.rllib.utils import override
 

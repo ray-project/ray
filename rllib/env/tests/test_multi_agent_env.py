@@ -15,7 +15,7 @@ from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.rollout_worker import get_global_worker, RolloutWorker
 from ray.rllib.evaluation.tests.test_rollout_worker import MockPolicy
 from ray.rllib.examples.policy.random_policy import RandomPolicy
-from ray.rllib.examples.env.multi_agent import (
+from ray.rllib.examples.envs.multi_agent import (
     MultiAgentCartPole,
     BasicMultiAgent,
     EarlyDoneMultiAgent,

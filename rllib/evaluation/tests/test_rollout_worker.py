@@ -16,13 +16,13 @@ from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.examples.env.mock_env import (
+from ray.rllib.examples.envs.mock_env import (
     MockEnv,
     MockEnv2,
     MockVectorEnv,
     VectorizedMockEnv,
 )
-from ray.rllib.examples.env.multi_agent import BasicMultiAgent, MultiAgentCartPole
+from ray.rllib.examples.envs.multi_agent import BasicMultiAgent, MultiAgentCartPole
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.offline.dataset_reader import DatasetReader, get_dataset_and_shards
 from ray.rllib.offline.json_reader import JsonReader
@@ -232,7 +232,7 @@ class TestRolloutWorker(unittest.TestCase):
             algo.stop()
 
     def test_action_clipping(self):
-        from ray.rllib.examples.env.random_env import RandomEnv
+        from ray.rllib.examples.envs.random_env import RandomEnv
 
         action_space = gym.spaces.Box(-2.0, 1.0, (3,))
 
@@ -326,7 +326,7 @@ class TestRolloutWorker(unittest.TestCase):
         ev3.stop()
 
     def test_action_normalization(self):
-        from ray.rllib.examples.env.random_env import RandomEnv
+        from ray.rllib.examples.envs.random_env import RandomEnv
 
         action_space = gym.spaces.Box(0.0001, 0.0002, (5,))
 
@@ -444,7 +444,7 @@ class TestRolloutWorker(unittest.TestCase):
                     ev.stop()
 
     def test_action_immutability(self):
-        from ray.rllib.examples.env.random_env import RandomEnv
+        from ray.rllib.examples.envs.random_env import RandomEnv
 
         action_space = gym.spaces.Box(0.0001, 0.0002, (5,))
 
@@ -523,7 +523,7 @@ class TestRolloutWorker(unittest.TestCase):
             self.assertEqual(result["episode_reward_mean"], 1000)
         ev.stop()
 
-        from ray.rllib.examples.env.random_env import RandomEnv
+        from ray.rllib.examples.envs.random_env import RandomEnv
 
         # Clipping in certain range (-2.0, 2.0).
         ev2 = RolloutWorker(

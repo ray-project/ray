@@ -1,7 +1,7 @@
 """
 8 Environments from D4RL Environment.
 Use fully qualified class-path in your configs:
-e.g. "env": "ray.rllib.examples.env.d4rl_env.halfcheetah_random".
+e.g. "env": "ray.rllib.examples.envs.d4rl_env.halfcheetah_random".
 """
 
 import gymnasium as gym

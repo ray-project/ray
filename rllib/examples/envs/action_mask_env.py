@@ -1,7 +1,7 @@
 from gymnasium.spaces import Box, Dict, Discrete
 import numpy as np
 
-from ray.rllib.examples.env.random_env import RandomEnv
+from ray.rllib.examples.envs.random_env import RandomEnv
 
 
 class ActionMaskEnv(RandomEnv):

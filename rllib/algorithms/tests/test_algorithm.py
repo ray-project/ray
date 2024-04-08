@@ -10,7 +10,7 @@ import ray
 import ray.rllib.algorithms.dqn as dqn
 from ray.rllib.algorithms.bc import BCConfig
 import ray.rllib.algorithms.ppo as ppo
-from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+from ray.rllib.examples.envs.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.evaluation.evaluation_parallel_to_training import (
     AssertEvalCallback,
 )

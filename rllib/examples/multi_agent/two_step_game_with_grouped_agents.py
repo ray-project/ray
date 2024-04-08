@@ -47,7 +47,7 @@ from ray.rllib.connectors.env_to_module import (
 )
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.examples.env.two_step_game import TwoStepGameWithGroupedAgents
+from ray.rllib.examples.envs.two_step_game import TwoStepGameWithGroupedAgents
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,

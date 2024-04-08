@@ -13,8 +13,8 @@ import os
 import ray
 from ray import air, tune
 from ray.tune.registry import register_env
-from ray.rllib.examples.env.repeat_after_me_env import RepeatAfterMeEnv
-from ray.rllib.examples.env.repeat_initial_obs_env import RepeatInitialObsEnv
+from ray.rllib.examples.envs.repeat_after_me_env import RepeatAfterMeEnv
+from ray.rllib.examples.envs.repeat_initial_obs_env import RepeatInitialObsEnv
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.sample_batch import SampleBatch
 from dataclasses import dataclass

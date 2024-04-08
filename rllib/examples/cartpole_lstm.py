@@ -1,7 +1,7 @@
 import argparse
 import os
 
-from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
+from ray.rllib.examples.envs.stateless_cartpole import StatelessCartPole
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.registry import get_trainable_cls
 

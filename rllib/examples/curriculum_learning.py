@@ -18,7 +18,7 @@ import ray
 from ray import air, tune
 from ray.rllib.env.apis.task_settable_env import TaskSettableEnv, TaskType
 from ray.rllib.env.env_context import EnvContext
-from ray.rllib.examples.env.curriculum_capable_env import CurriculumCapableEnv
+from ray.rllib.examples.envs.curriculum_capable_env import CurriculumCapableEnv
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.registry import get_trainable_cls

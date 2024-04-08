@@ -3,14 +3,14 @@ import numpy as np
 import random
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv, make_multi_agent
-from ray.rllib.examples.env.cartpole_with_dict_observation_space import (
+from ray.rllib.examples.envs.cartpole_with_dict_observation_space import (
     CartPoleWithDictObservationSpace,
 )
-from ray.rllib.examples.env.mock_env import MockEnv, MockEnv2
-from ray.rllib.examples.env.nested_space_repeat_after_me_env import (
+from ray.rllib.examples.envs.mock_env import MockEnv, MockEnv2
+from ray.rllib.examples.envs.nested_space_repeat_after_me_env import (
     NestedSpaceRepeatAfterMeEnv,
 )
-from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
+from ray.rllib.examples.envs.stateless_cartpole import StatelessCartPole
 
 
 MultiAgentCartPole = make_multi_agent("CartPole-v1")

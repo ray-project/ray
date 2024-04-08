@@ -1,7 +1,7 @@
 import logging
 import uuid
 
-from ray.rllib.examples.env.random_env import RandomEnv
+from ray.rllib.examples.envs.random_env import RandomEnv
 from ray.rllib.utils.annotations import override
 
 logger = logging.getLogger(__name__)

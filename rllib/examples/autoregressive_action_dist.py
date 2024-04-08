@@ -38,7 +38,7 @@ import os
 
 import ray
 from ray import air, tune
-from ray.rllib.examples.env.correlated_actions_env import CorrelatedActionsEnv
+from ray.rllib.examples.envs.correlated_actions_env import CorrelatedActionsEnv
 from ray.rllib.examples.models.autoregressive_action_model import (
     AutoregressiveActionModel,
     TorchAutoregressiveActionModel,

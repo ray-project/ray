@@ -6,8 +6,8 @@ from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPO, PPOConfig
 from ray.rllib.connectors.connector import ActionConnector, ConnectorContext
 from ray.rllib.evaluation.metrics import RolloutMetrics
-from ray.rllib.examples.env.debug_counter_env import DebugCounterEnv
-from ray.rllib.examples.env.multi_agent import BasicMultiAgent, GuessTheNumberGame
+from ray.rllib.examples.envs.debug_counter_env import DebugCounterEnv
+from ray.rllib.examples.envs.multi_agent import BasicMultiAgent, GuessTheNumberGame
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.policy.policy import PolicySpec
 from ray.tune import register_env

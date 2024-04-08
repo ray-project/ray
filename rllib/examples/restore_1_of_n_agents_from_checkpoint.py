@@ -15,7 +15,7 @@ from ray import tune
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+from ray.rllib.examples.envs.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check_learning_achieved

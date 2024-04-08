@@ -18,7 +18,7 @@ import argparse
 
 from ray.rllib.env.policy_client import PolicyClient
 from ray.rllib.env.wrappers.unity3d_env import Unity3DEnv
-from ray.rllib.examples.env.random_env import RandomMultiAgentEnv
+from ray.rllib.examples.envs.random_env import RandomMultiAgentEnv
 
 SERVER_ADDRESS = "localhost"
 SERVER_PORT = 9900

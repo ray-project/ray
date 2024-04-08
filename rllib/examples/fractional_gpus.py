@@ -11,7 +11,7 @@ import argparse
 
 import ray
 from ray import air, tune
-from ray.rllib.examples.env.gpu_requiring_env import GPURequiringEnv
+from ray.rllib.examples.envs.gpu_requiring_env import GPURequiringEnv
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.registry import get_trainable_cls

@@ -6,7 +6,7 @@ import argparse
 
 import ray
 from ray import air, tune
-from ray.rllib.examples.env.env_using_remote_actor import (
+from ray.rllib.examples.envs.env_using_remote_actor import (
     CartPoleWithRemoteParamServer,
     ParameterStorage,
 )

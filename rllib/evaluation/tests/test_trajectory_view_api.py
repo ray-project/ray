@@ -7,8 +7,8 @@ import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 import ray.rllib.algorithms.dqn as dqn
 import ray.rllib.algorithms.ppo as ppo
-from ray.rllib.examples.env.debug_counter_env import MultiAgentDebugCounterEnv
-from ray.rllib.examples.env.multi_agent import MultiAgentPendulum
+from ray.rllib.examples.envs.debug_counter_env import MultiAgentDebugCounterEnv
+from ray.rllib.examples.envs.multi_agent import MultiAgentPendulum
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.examples.policy.episode_env_aware_policy import (
     EpisodeEnvAwareAttentionPolicy,
@@ -59,7 +59,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         config = (
             dqn.DQNConfig()
             .rollouts(num_envs_per_worker=10, rollout_fragment_length=4)
-            .environment("ray.rllib.examples.env.debug_counter_env.DebugCounterEnv")
+            .environment("ray.rllib.examples.envs.debug_counter_env.DebugCounterEnv")
         )
 
         for _ in framework_iterator(config):
@@ -186,7 +186,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             # Batch-norm models have not been migrated to the RL Module API yet.
             .experimental(_enable_new_api_stack=False)
             .environment(
-                "ray.rllib.examples.env.debug_counter_env.DebugCounterEnv",
+                "ray.rllib.examples.envs.debug_counter_env.DebugCounterEnv",
                 env_config={"config": {"start_at_t": 1}},  # first obs is [1.0]
             )
             .rollouts(num_rollout_workers=0)

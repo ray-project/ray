@@ -21,7 +21,7 @@ from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils import override
 from typing import Dict, Optional
 
-from ray.rllib.examples.env.utils.interfaces import InfoAccumulationInterface
+from ray.rllib.examples.envs.utils.interfaces import InfoAccumulationInterface
 
 logger = logging.getLogger(__name__)
 

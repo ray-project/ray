@@ -5,7 +5,7 @@ import ray
 
 from ray.tune import register_env
 import ray.rllib.algorithms.dqn as dqn
-from ray.rllib.examples.env.deterministic_envs import create_cartpole_deterministic
+from ray.rllib.examples.envs.deterministic_envs import create_cartpole_deterministic
 from ray.rllib.utils.test_utils import check_reproducibilty
 
 

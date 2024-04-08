@@ -2,8 +2,8 @@ import unittest
 
 import ray
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.examples.env.cartpole_crashing import CartPoleCrashing
-from ray.rllib.examples.env.multi_agent import make_multi_agent
+from ray.rllib.examples.envs.cartpole_crashing import CartPoleCrashing
+from ray.rllib.examples.envs.multi_agent import make_multi_agent
 from ray.rllib.utils.error import EnvError
 from ray.tune.registry import register_env
 

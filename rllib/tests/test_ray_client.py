@@ -7,7 +7,7 @@ import ray
 from ray import air
 from ray import tune
 import ray.rllib.algorithms.ppo as ppo
-from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
+from ray.rllib.examples.envs.stateless_cartpole import StatelessCartPole
 from ray.util.client.ray_client_helpers import ray_start_client_server
 
 

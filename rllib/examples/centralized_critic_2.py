@@ -27,7 +27,7 @@ from ray.rllib.examples.models.centralized_critic_models import (
     YetAnotherCentralizedCriticModel,
     YetAnotherTorchCentralizedCriticModel,
 )
-from ray.rllib.examples.env.two_step_game import TwoStepGame
+from ray.rllib.examples.envs.two_step_game import TwoStepGame
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.test_utils import check_learning_achieved

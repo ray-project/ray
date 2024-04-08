@@ -5,7 +5,7 @@
 from abc import ABC
 import numpy as np
 
-from ray.rllib.examples.env.utils.interfaces import InfoAccumulationInterface
+from ray.rllib.examples.envs.utils.interfaces import InfoAccumulationInterface
 
 
 class TwoPlayersTwoActionsInfoMixin(InfoAccumulationInterface, ABC):

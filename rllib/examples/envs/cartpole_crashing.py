@@ -3,7 +3,7 @@ from gymnasium.envs.classic_control import CartPoleEnv
 import numpy as np
 import time
 
-from ray.rllib.examples.env.multi_agent import make_multi_agent
+from ray.rllib.examples.envs.multi_agent import make_multi_agent
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import EnvError
 

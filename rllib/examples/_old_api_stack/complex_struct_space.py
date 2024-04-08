@@ -14,7 +14,7 @@ import ray
 from ray import air, tune
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.models import ModelCatalog
-from ray.rllib.examples.env.simple_rpg import SimpleRPG
+from ray.rllib.examples.envs.simple_rpg import SimpleRPG
 from ray.rllib.examples.models.simple_rpg_model import (
     CustomTorchRPGModel,
     CustomTFRPGModel,
