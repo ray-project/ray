@@ -30,6 +30,15 @@ class ActionMaskRLMBase(RLModule):
 
 
 class TorchActionMaskRLM(ActionMaskRLMBase, PPOTorchRLModule):
+    def _compute_values(self, batch, device=None):
+        _check_batch(batch)
+
+        # Modify the incoming batch so that the default models can compute logits and
+        # values as usual.
+        batch[SampleBatch.OBS] = batch[SampleBatch.OBS]["observations"]
+
+        return super()._compute_values(batch, device)
+
     def _forward_inference(self, batch, **kwargs):
         return mask_forward_fn_torch(super()._forward_inference, batch, **kwargs)
 
