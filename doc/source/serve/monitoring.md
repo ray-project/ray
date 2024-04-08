@@ -548,6 +548,8 @@ The following metrics are exposed by Ray Serve:
      - * deployment
        * route
        * application
+       * handle
+       * actor_id
      - The number of requests processed by the router.
    * - ``ray_serve_num_scheduling_tasks`` [*][†]
      - * deployment
@@ -565,8 +567,16 @@ The following metrics are exposed by Ray Serve:
      - The number of requests processed by this DeploymentHandle.
    * - ``ray_serve_deployment_queued_queries`` [*]
      - * deployment
-       * route
-     - The number of queries for this deployment waiting to be assigned to a replica.
+       * application
+       * handle
+       * actor_id
+     - The current number of requests to this deployment that have been submitted to a replica.
+   * - ``ray_serve_num_ongoing_requests_at_replicas`` [*]
+     - * deployment
+       * application
+       * handle
+       * actor_id
+     - The current number of requests to this deployment that's been assigned and sent to execute on a replica.
    * - ``ray_serve_num_deployment_http_error_requests_total`` [*]
      - * deployment
        * error_code
