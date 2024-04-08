@@ -1895,47 +1895,6 @@
       cluster:
         cluster_compute: tpl_cpu_1_gce.yaml
 
-- name: long_running_pbt
-  group: Long running tests
-  working_dir: long_running_tests
-
-  frequency: weekly
-  team: ml
-
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_rllib_test.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
-        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_compute: tpl_cpu_1.yaml
-
-  run:
-    timeout: 86400
-    script: python workloads/pbt.py
-    long_running: true
-
-  smoke_test:
-    frequency: nightly
-
-    run:
-      timeout: 3600
-
-  alert: long_running_tests
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      smoke_test:
-        frequency: manual
-        run:
-          timeout: 3600
-      cluster:
-        cluster_compute: tpl_cpu_1_gce.yaml
-
 - name: long_running_serve
   group: Long running tests
   working_dir: long_running_tests
@@ -2264,6 +2223,7 @@
       cluster:
         cluster_compute: rte_gce_small.yaml
 
+
 - name: runtime_env_wheel_urls
   group: Runtime env tests
   working_dir: runtime_env_tests
@@ -2370,6 +2330,28 @@
       frequency: manual
       cluster:
         cluster_compute: compute_tpl_32_cpu_gce.yaml
+
+- name: serve_autoscaling_load_test
+  group: Serve tests
+  working_dir: serve_tests
+
+  frequency: nightly
+  team: serve
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: compute_tpl_single_node_32_cpu.yaml
+
+  run:
+    timeout: 7200
+    long_running: false
+    script: python workloads/autoscaling_load_test.py
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
 
 - name: serve_autoscaling_single_deployment
   group: Serve tests

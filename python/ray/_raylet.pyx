@@ -1419,6 +1419,7 @@ async def execute_streaming_generator_async(
     """
     cdef:
         int64_t cur_generator_index = 0
+        CRayStatus return_status
 
     assert context.is_initialized()
     # Generator task should only have 1 return object ref,
@@ -1433,41 +1434,33 @@ async def execute_streaming_generator_async(
     executor = worker.core_worker.get_event_loop_executor()
     interrupt_signal_event = threading.Event()
 
-    futures = []
     try:
         try:
             async for output in gen:
-                # NOTE: Reporting generator output in a streaming fashion,
-                #       is done in a standalone thread-pool fully *asynchronously*
-                #       to avoid blocking the event-loop and allow it to *concurrently*
-                #       make progress, since serializing and actual RPC I/O is done
-                #       with "nogil".
-                futures.append(
-                    loop.run_in_executor(
-                        executor,
-                        report_streaming_generator_output,
-                        context,
-                        output,
-                        cur_generator_index,
-                        interrupt_signal_event,
-                    )
+                # NOTE: Report of streaming generator output is done in a
+                # standalone thread-pool to avoid blocking the event loop,
+                # since serializing and actual RPC I/O is done with "nogil". We
+                # still wait for the report to finish to ensure that the task
+                # does not modify the output before we serialize it.
+                #
+                # Note that the RPC is sent asynchronously, and we do not wait
+                # for the reply here. The exception is if the user specified a
+                # backpressure threshold for the streaming generator, and we
+                # are currently under backpressure. Then we need to wait for an
+                # ack from the caller (the reply for a possibly previous report
+                # RPC) that they have consumed more ObjectRefs.
+                await loop.run_in_executor(
+                    executor,
+                    report_streaming_generator_output,
+                    context,
+                    output,
+                    cur_generator_index,
+                    interrupt_signal_event,
                 )
                 cur_generator_index += 1
         except Exception as e:
             # Report the exception to the owner of the task.
-            futures.append(
-                loop.run_in_executor(
-                    executor,
-                    report_streaming_generator_exception,
-                    context,
-                    e,
-                    cur_generator_index,
-                    interrupt_signal_event,
-                )
-            )
-
-        # Make sure all RPC I/O completes before returning
-        await asyncio.gather(*futures)
+            report_streaming_generator_exception(context, e, cur_generator_index, None)
 
     except BaseException as be:
         # NOTE: PLEASE READ CAREFULLY BEFORE CHANGING
@@ -1488,6 +1481,15 @@ async def execute_streaming_generator_async(
         interrupt_signal_event.set()
 
         raise
+
+    # The caller gets object values through the reports. If we finish the task
+    # before sending the report is complete, then we may fail before the report
+    # is sent to the caller. Then, the caller would never be able to ray.get
+    # the yield'ed ObjectRef. Therefore, we must wait for all in-flight object
+    # reports to complete before finishing the task.
+    with nogil:
+        return_status = context.waiter.get().WaitAllObjectsReported()
+    check_status(return_status)
 
 
 cdef create_generator_return_obj(
@@ -2563,15 +2565,11 @@ def maybe_initialize_job_config():
                 sys.path.insert(0, p)
         ray._private.worker.global_worker.set_load_code_from_local(load_code_from_local)
 
-        # If this worker is on the same node with the driver, add driver's system path
-        # to sys.path.
-        this_node_id = ray._private.worker.global_worker.current_node_id
-        driver_node_id = ray.NodeID(core_worker.get_job_config().driver_node_id)
-        if this_node_id == driver_node_id:
-            py_driver_sys_path = core_worker.get_job_config().py_driver_sys_path
-            if py_driver_sys_path:
-                for p in py_driver_sys_path:
-                    sys.path.insert(0, p)
+        # Add driver's system path to sys.path
+        py_driver_sys_path = core_worker.get_job_config().py_driver_sys_path
+        if py_driver_sys_path:
+            for p in py_driver_sys_path:
+                sys.path.insert(0, p)
 
         # Cache and set the current job id.
         job_id = core_worker.get_current_job_id()
@@ -2879,7 +2877,7 @@ cdef class GcsClient:
         return result
 
     @_auto_reconnect
-    def get_all_job_info(self, timeout=None) -> Dict[str, JobTableData]:
+    def get_all_job_info(self, timeout=None):
         # Ideally we should use json_format.MessageToDict(job_info),
         # but `job_info` is a cpp pb message not a python one.
         # Manually converting each and every protobuf field is out of question,

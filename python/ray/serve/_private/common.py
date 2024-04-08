@@ -668,6 +668,12 @@ class RequestProtocol(str, Enum):
     GRPC = "gRPC"
 
 
+class DeploymentHandleSource(str, Enum):
+    UNKNOWN = "UNKNOWN"
+    PROXY = "PROXY"
+    REPLICA = "REPLICA"
+
+
 @dataclass
 class RequestMetadata:
     request_id: str

@@ -18,294 +18,590 @@
 #include "absl/strings/str_format.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "ray/core_worker/experimental_mutable_object_manager.h"
 #include "ray/object_manager/common.h"
 
-using namespace ray;
 using namespace testing;
+
+namespace ray {
+namespace experimental {
+
+#if defined(__APPLE__) || defined(__linux__)
 
 namespace {
 
-void Write(uint8_t *object_ptr, int num_writes, int num_readers) {
-  PlasmaObjectHeader *header = reinterpret_cast<ray::PlasmaObjectHeader *>(object_ptr);
-  for (int i = 0; i < num_writes; i++) {
-    std::string data = "hello" + std::to_string(i);
-    std::string metadata = std::to_string(data.length());
-    if (!header->WriteAcquire(data.length(), metadata.length(), num_readers).ok()) {
+constexpr size_t kNumReads = 10000;
+constexpr size_t kNumReadsSuccess = kNumReads / 2;
+constexpr size_t kNumReaders = 24;
+
+uint8_t *GetData(PlasmaObjectHeader *header) {
+  uint8_t *raw_header = reinterpret_cast<uint8_t *>(header);
+  return raw_header + sizeof(PlasmaObjectHeader);
+}
+
+uint8_t *GetMetadata(PlasmaObjectHeader *header) {
+  return GetData(header) + header->data_size;
+}
+
+// Writes `num_write` times to the mutable object.
+void Write(PlasmaObjectHeader *header,
+           PlasmaObjectHeader::Semaphores &sem,
+           size_t num_writes,
+           size_t num_readers) {
+  RAY_CHECK(header);
+  RAY_CHECK(sem.header_sem);
+  RAY_CHECK(sem.object_sem);
+
+  for (size_t i = 0; i < num_writes; i++) {
+    std::string data = absl::StrCat("hello", i);
+    std::string metadata = std::to_string(data.size());
+    if (!header->WriteAcquire(sem, data.size(), metadata.size(), num_readers).ok()) {
       return;
     }
-    auto data_ptr = object_ptr + sizeof(PlasmaObjectHeader);
-    std::memcpy(data_ptr, data.data(), data.length());
-    std::memcpy(data_ptr + data.length(), metadata.data(), metadata.length());
-    if (!header->WriteRelease().ok()) {
+    memcpy(GetData(header), data.data(), data.size());
+    memcpy(GetMetadata(header), metadata.data(), metadata.size());
+    if (!header->WriteRelease(sem).ok()) {
       return;
     }
   }
 }
 
-void Read(uint8_t *object_ptr,
-          int num_reads,
-          std::shared_ptr<std::vector<std::string>> data_results,
-          std::shared_ptr<std::vector<std::string>> metadata_results) {
-  PlasmaObjectHeader *header = reinterpret_cast<ray::PlasmaObjectHeader *>(object_ptr);
-  auto data_ptr = object_ptr + sizeof(PlasmaObjectHeader);
+// Reads `num_reads` times to the mutable object.
+void Read(PlasmaObjectHeader *header,
+          PlasmaObjectHeader::Semaphores &sem,
+          size_t num_reads,
+          std::vector<std::string> &data_results,
+          std::vector<std::string> &metadata_results) {
+  RAY_CHECK(header);
+  RAY_CHECK(sem.header_sem);
+  RAY_CHECK(sem.object_sem);
 
   int64_t version_to_read = 1;
-  for (int i = 0; i < num_reads; i++) {
+  for (size_t i = 0; i < num_reads; i++) {
     int64_t version_read = 0;
-    auto status = header->ReadAcquire(version_to_read, &version_read);
-    if (!status.ok()) {
-      data_results->push_back("error");
-      metadata_results->push_back("error");
+    if (!header->ReadAcquire(sem, version_to_read, &version_read).ok()) {
+      data_results.push_back("error");
+      metadata_results.push_back("error");
       return;
     }
+    RAY_CHECK_EQ(version_read, version_to_read);
 
-    RAY_CHECK(version_read == version_to_read);
+    const char *data_str = reinterpret_cast<const char *>(GetData(header));
+    data_results.push_back(std::string(data_str, header->data_size));
 
-    const char *data_str = reinterpret_cast<const char *>(data_ptr);
-    data_results->push_back(std::string(data_str, header->data_size));
+    const char *metadata_str = reinterpret_cast<const char *>(GetMetadata(header));
+    metadata_results.push_back(std::string(metadata_str, header->metadata_size));
 
-    uint8_t *metadata_ptr = data_ptr + header->data_size;
-    const char *metadata_str = reinterpret_cast<const char *>(metadata_ptr);
-    metadata_results->push_back(std::string(metadata_str, header->metadata_size));
-
-    if (!header->ReadRelease(version_read).ok()) {
-      data_results->push_back("error");
-      metadata_results->push_back("error");
+    if (!header->ReadRelease(sem, version_read).ok()) {
+      data_results.push_back("error");
+      metadata_results.push_back("error");
       return;
     }
     version_to_read++;
   }
 }
 
+// Creates a new mutable object. It is the caller's responsibility to free the backing
+// store.
+std::unique_ptr<plasma::MutableObject> MakeObject() {
+  constexpr size_t kPayloadSize = 128;
+  constexpr size_t kSize = sizeof(PlasmaObjectHeader) + kPayloadSize;
+
+  plasma::PlasmaObject info{};
+  info.header_offset = 0;
+  info.data_offset = sizeof(PlasmaObjectHeader);
+  info.allocated_size = kPayloadSize;
+
+  uint8_t *ptr = static_cast<uint8_t *>(malloc(kSize));
+  auto ret = std::make_unique<plasma::MutableObject>(ptr, info);
+  ret->header->Init();
+  return ret;
+}
+
 }  // namespace
 
+// Tests that a single reader can read from a single writer.
 TEST(MutableObjectTest, TestBasic) {
-  uint8_t *object_ptr =
-      reinterpret_cast<uint8_t *>(malloc(sizeof(PlasmaObjectHeader) + 100));
+  experimental::MutableObjectManager manager;
+  ObjectID object_id = ObjectID::FromRandom();
+  plasma::PlasmaObjectHeader *header;
+  {
+    std::unique_ptr<plasma::MutableObject> object = MakeObject();
+    header = object->header;
+    header->Init();
+    ASSERT_TRUE(manager.RegisterReaderChannel(object_id, std::move(object)).ok());
+  }
+  manager.OpenSemaphores(object_id);
+  PlasmaObjectHeader::Semaphores sem = manager.GetSemaphores(object_id);
 
-  PlasmaObjectHeader *header = reinterpret_cast<ray::PlasmaObjectHeader *>(object_ptr);
-  header->Init();
+  std::vector<std::string> data_results;
+  std::vector<std::string> metadata_results;
+  std::thread t(Read,
+                header,
+                std::ref(sem),
+                kNumReads,
+                std::ref(data_results),
+                std::ref(metadata_results));
 
-  auto data_results = std::make_shared<std::vector<std::string>>();
-  auto metadata_results = std::make_shared<std::vector<std::string>>();
-  int num_reads = 10000;
-  std::thread t(Read, object_ptr, num_reads, data_results, metadata_results);
+  for (size_t i = 0; i < kNumReads; i++) {
+    std::string data = absl::StrCat("hello", i);
+    std::string metadata = std::to_string(data.size());
 
-  for (int i = 0; i < num_reads; i++) {
-    std::string data = "hello" + std::to_string(i);
-    std::string metadata = std::to_string(data.length());
-    RAY_CHECK_OK(header->WriteAcquire(data.length(), metadata.length(), 1));
-    auto data_ptr = object_ptr + sizeof(PlasmaObjectHeader);
-    std::memcpy(data_ptr, data.data(), data.length());
-    std::memcpy(data_ptr + data.length(), metadata.data(), metadata.length());
-    RAY_CHECK_OK(header->WriteRelease());
+    ASSERT_TRUE(header->WriteAcquire(sem, data.size(), metadata.size(), 1).ok());
+    uint8_t *data_ptr = GetData(header);
+    std::memcpy(data_ptr, data.data(), data.size());
+    std::memcpy(data_ptr + data.size(), metadata.data(), metadata.size());
+    ASSERT_TRUE(header->WriteRelease(sem).ok());
   }
 
   t.join();
+  manager.DestroySemaphores(object_id);
+  free(header);
 
-  for (int i = 0; i < num_reads; i++) {
-    std::string data("hello" + std::to_string(i));
-    ASSERT_EQ((*data_results)[i], data);
-    ASSERT_EQ((*metadata_results)[i], std::to_string(data.length()));
+  for (size_t i = 0; i < kNumReads; i++) {
+    std::string data = absl::StrCat("hello", i);
+    ASSERT_EQ(data_results[i], data);
+    ASSERT_EQ(metadata_results[i], std::to_string(data.size()));
   }
 }
 
+// Tests that multiple readers can read from a single writer.
 TEST(MutableObjectTest, TestMultipleReaders) {
-  uint8_t *object_ptr =
-      reinterpret_cast<uint8_t *>(malloc(sizeof(PlasmaObjectHeader) + 100));
+  experimental::MutableObjectManager manager;
+  ObjectID object_id = ObjectID::FromRandom();
+  plasma::PlasmaObjectHeader *header;
+  {
+    std::unique_ptr<plasma::MutableObject> object = MakeObject();
+    header = object->header;
+    header->Init();
+    ASSERT_TRUE(manager.RegisterReaderChannel(object_id, std::move(object)).ok());
+  }
+  manager.OpenSemaphores(object_id);
+  PlasmaObjectHeader::Semaphores sem = manager.GetSemaphores(object_id);
 
-  PlasmaObjectHeader *header = reinterpret_cast<ray::PlasmaObjectHeader *>(object_ptr);
-  header->Init();
-
-  int num_reads = 10000;
-  int num_readers = 24;
-
-  std::vector<std::shared_ptr<std::vector<std::string>>> data_results;
-  std::vector<std::shared_ptr<std::vector<std::string>>> metadata_results;
+  std::vector<std::vector<std::string>> data_results(/*count=*/kNumReaders,
+                                                     std::vector<std::string>());
+  std::vector<std::vector<std::string>> metadata_results(/*count=*/kNumReaders,
+                                                         std::vector<std::string>());
   std::vector<std::thread> threads;
-  for (int i = 0; i < num_readers; i++) {
-    data_results.push_back(std::make_shared<std::vector<std::string>>());
-    metadata_results.push_back(std::make_shared<std::vector<std::string>>());
-    std::thread t(Read, object_ptr, num_reads, data_results[i], metadata_results[i]);
+  for (size_t i = 0; i < kNumReaders; i++) {
+    std::thread t(Read,
+                  header,
+                  std::ref(sem),
+                  kNumReads,
+                  std::ref(data_results[i]),
+                  std::ref(metadata_results[i]));
     threads.emplace_back(std::move(t));
   }
 
-  for (int i = 0; i < num_reads; i++) {
-    std::string data = "hello" + std::to_string(i);
-    std::string metadata = std::to_string(data.length());
-    RAY_CHECK_OK(header->WriteAcquire(data.length(), metadata.length(), num_readers));
-    auto data_ptr = object_ptr + sizeof(PlasmaObjectHeader);
-    std::memcpy(data_ptr, data.data(), data.length());
-    std::memcpy(data_ptr + data.length(), metadata.data(), metadata.length());
-    RAY_CHECK_OK(header->WriteRelease());
+  for (size_t i = 0; i < kNumReads; i++) {
+    std::string data = absl::StrCat("hello", i);
+    std::string metadata = std::to_string(data.size());
+    ASSERT_TRUE(
+        header->WriteAcquire(sem, data.size(), metadata.size(), kNumReaders).ok());
+    uint8_t *data_ptr = GetData(header);
+    std::memcpy(data_ptr, data.data(), data.size());
+    std::memcpy(data_ptr + data.size(), metadata.data(), metadata.size());
+    ASSERT_TRUE(header->WriteRelease(sem).ok());
   }
 
-  for (auto &t : threads) {
+  for (std::thread &t : threads) {
     t.join();
   }
+  manager.DestroySemaphores(object_id);
+  free(header);
 
-  for (int j = 0; j < num_reads; j++) {
-    std::string data("hello" + std::to_string(j));
-    for (int i = 0; i < num_readers; i++) {
-      ASSERT_EQ((*data_results[i])[j], data);
-      ASSERT_EQ((*metadata_results[i])[j], std::to_string(data.length()));
+  for (size_t j = 0; j < kNumReads; j++) {
+    std::string data = absl::StrCat("hello", j);
+    for (size_t i = 0; i < kNumReaders; i++) {
+      ASSERT_EQ(data_results[i][j], data);
+      ASSERT_EQ(metadata_results[i][j], std::to_string(data.size()));
     }
   }
 }
 
+// Tests that multiple readers can detect a failure initiated by the writer.
 TEST(MutableObjectTest, TestWriterFails) {
-  uint8_t *object_ptr =
-      reinterpret_cast<uint8_t *>(malloc(sizeof(PlasmaObjectHeader) + 100));
+  experimental::MutableObjectManager manager;
+  ObjectID object_id = ObjectID::FromRandom();
+  plasma::PlasmaObjectHeader *header;
+  {
+    std::unique_ptr<plasma::MutableObject> object = MakeObject();
+    header = object->header;
+    header->Init();
+    ASSERT_TRUE(manager.RegisterReaderChannel(object_id, std::move(object)).ok());
+  }
+  manager.OpenSemaphores(object_id);
+  PlasmaObjectHeader::Semaphores sem = manager.GetSemaphores(object_id);
 
-  PlasmaObjectHeader *header = reinterpret_cast<ray::PlasmaObjectHeader *>(object_ptr);
-  header->Init();
-
-  int num_reads = 10000;
-  int num_reads_success = num_reads / 2;
-  int num_readers = 24;
-
-  std::vector<std::shared_ptr<std::vector<std::string>>> data_results;
-  std::vector<std::shared_ptr<std::vector<std::string>>> metadata_results;
+  std::vector<std::vector<std::string>> data_results(/*count=*/kNumReaders,
+                                                     std::vector<std::string>());
+  std::vector<std::vector<std::string>> metadata_results(/*count=*/kNumReaders,
+                                                         std::vector<std::string>());
   std::vector<std::thread> threads;
-  for (int i = 0; i < num_readers; i++) {
-    data_results.push_back(std::make_shared<std::vector<std::string>>());
-    metadata_results.push_back(std::make_shared<std::vector<std::string>>());
-    std::thread t(Read, object_ptr, num_reads, data_results[i], metadata_results[i]);
+  for (size_t i = 0; i < kNumReaders; i++) {
+    std::thread t(Read,
+                  header,
+                  std::ref(sem),
+                  kNumReads,
+                  std::ref(data_results[i]),
+                  std::ref(metadata_results[i]));
     threads.emplace_back(std::move(t));
   }
 
-  std::thread writer_t(Write, object_ptr, num_reads_success, num_readers);
-  writer_t.join();
+  {
+    std::thread writer(
+        Write, header, std::ref(sem), /*num_writes=*/kNumReadsSuccess, kNumReaders);
+    writer.join();
+  }
 
-  RAY_CHECK_OK(header->WriteAcquire(10, 10, num_readers));
+  header->SetErrorUnlocked(sem);
 
-  header->SetErrorUnlocked();
-
-  for (auto &t : threads) {
+  for (std::thread &t : threads) {
     t.join();
   }
+  manager.DestroySemaphores(object_id);
+  free(header);
 
-  for (int i = 0; i < num_readers; i++) {
-    ASSERT_EQ(data_results[i]->size(), num_reads_success + 1);
+  for (size_t i = 0; i < kNumReaders; i++) {
+    ASSERT_GE(data_results[i].size(), kNumReadsSuccess);
+    ASSERT_LE(data_results[i].size(), kNumReadsSuccess + 1);
   }
-  for (int i = 1; i < num_readers; i++) {
-    for (int j = 0; j < static_cast<int>(data_results[i]->size()); j++) {
-      std::string data("hello" + std::to_string(j));
-      if (j == static_cast<int>(data_results[i]->size()) - 1) {
-        ASSERT_EQ((*data_results[i])[j], "error");
-        ASSERT_EQ((*metadata_results[i])[j], "error");
+  for (size_t i = 1; i < kNumReaders; i++) {
+    for (size_t j = 0; j < data_results[i].size(); j++) {
+      std::string data;
+      std::string metadata;
+      if (j + 1 == data_results[i].size()) {
+        data = "error";
+        metadata = "error";
       } else {
-        ASSERT_EQ((*data_results[i])[j], data);
-        ASSERT_EQ((*metadata_results[i])[j], std::to_string(data.size()));
+        data = absl::StrCat("hello", j);
+        metadata = std::to_string(data.size());
       }
+      ASSERT_EQ(data_results[i][j], data);
+      ASSERT_EQ(metadata_results[i][j], metadata);
     }
   }
 }
 
+// Tests that multiple readers can detect a failure initiated by the writer after
+// `WriteAcquire()` is called.
 TEST(MutableObjectTest, TestWriterFailsAfterAcquire) {
-  uint8_t *object_ptr =
-      reinterpret_cast<uint8_t *>(malloc(sizeof(PlasmaObjectHeader) + 100));
+  experimental::MutableObjectManager manager;
+  ObjectID object_id = ObjectID::FromRandom();
+  plasma::PlasmaObjectHeader *header;
+  {
+    std::unique_ptr<plasma::MutableObject> object = MakeObject();
+    header = object->header;
+    header->Init();
+    ASSERT_TRUE(manager.RegisterReaderChannel(object_id, std::move(object)).ok());
+  }
+  manager.OpenSemaphores(object_id);
+  PlasmaObjectHeader::Semaphores sem = manager.GetSemaphores(object_id);
 
-  PlasmaObjectHeader *header = reinterpret_cast<ray::PlasmaObjectHeader *>(object_ptr);
-  header->Init();
-
-  int num_reads = 10000;
-  int num_reads_success = num_reads / 2;
-  int num_readers = 24;
-
-  std::vector<std::shared_ptr<std::vector<std::string>>> data_results;
-  std::vector<std::shared_ptr<std::vector<std::string>>> metadata_results;
+  std::vector<std::vector<std::string>> data_results(/*count=*/kNumReaders,
+                                                     std::vector<std::string>());
+  std::vector<std::vector<std::string>> metadata_results(/*count=*/kNumReaders,
+                                                         std::vector<std::string>());
   std::vector<std::thread> threads;
-  for (int i = 0; i < num_readers; i++) {
-    data_results.push_back(std::make_shared<std::vector<std::string>>());
-    metadata_results.push_back(std::make_shared<std::vector<std::string>>());
-    std::thread t(Read, object_ptr, num_reads, data_results[i], metadata_results[i]);
+  for (size_t i = 0; i < kNumReaders; i++) {
+    std::thread t(Read,
+                  header,
+                  std::ref(sem),
+                  kNumReads,
+                  std::ref(data_results[i]),
+                  std::ref(metadata_results[i]));
     threads.emplace_back(std::move(t));
   }
 
-  std::thread writer_t(Write, object_ptr, num_reads_success, num_readers);
-  writer_t.join();
+  {
+    std::thread writer(Write, header, std::ref(sem), kNumReadsSuccess, kNumReaders);
+    writer.join();
+  }
 
-  RAY_CHECK_OK(header->WriteAcquire(10, 10, num_readers));
+  ASSERT_TRUE(
+      header
+          ->WriteAcquire(
+              sem, /*write_data_size=*/10, /*write_metadata_size=*/10, kNumReaders)
+          .ok());
+  header->SetErrorUnlocked(sem);
 
-  header->SetErrorUnlocked();
-
-  for (auto &t : threads) {
+  for (std::thread &t : threads) {
     t.join();
   }
+  manager.DestroySemaphores(object_id);
+  free(header);
 
-  for (int i = 0; i < num_readers; i++) {
-    ASSERT_EQ(data_results[i]->size(), num_reads_success + 1);
+  for (size_t i = 0; i < kNumReaders; i++) {
+    ASSERT_EQ(data_results[i].size(), kNumReadsSuccess + 1);
   }
-  for (int i = 1; i < num_readers; i++) {
-    for (int j = 0; j < static_cast<int>(data_results[i]->size()); j++) {
-      std::string data("hello" + std::to_string(j));
-      if (j == static_cast<int>(data_results[i]->size()) - 1) {
-        ASSERT_EQ((*data_results[i])[j], "error");
-        ASSERT_EQ((*metadata_results[i])[j], "error");
+  for (size_t i = 1; i < kNumReaders; i++) {
+    for (size_t j = 0; j < data_results[i].size(); j++) {
+      std::string data;
+      std::string metadata;
+      if (j + 1 == data_results[i].size()) {
+        data = "error";
+        metadata = "error";
       } else {
-        ASSERT_EQ((*data_results[i])[j], data);
-        ASSERT_EQ((*metadata_results[i])[j], std::to_string(data.size()));
+        data = absl::StrCat("hello", j);
+        metadata = std::to_string(data.size());
       }
+      ASSERT_EQ(data_results[i][j], data);
+      ASSERT_EQ(metadata_results[i][j], metadata);
     }
   }
 }
 
+// Tests that multiple readers can detect a failure initiated by another reader.
 TEST(MutableObjectTest, TestReaderFails) {
-  uint8_t *object_ptr =
-      reinterpret_cast<uint8_t *>(malloc(sizeof(PlasmaObjectHeader) + 100));
+  experimental::MutableObjectManager manager;
+  ObjectID object_id = ObjectID::FromRandom();
+  plasma::PlasmaObjectHeader *header;
+  {
+    std::unique_ptr<plasma::MutableObject> object = MakeObject();
+    header = object->header;
+    header->Init();
+    ASSERT_TRUE(manager.RegisterReaderChannel(object_id, std::move(object)).ok());
+  }
+  manager.OpenSemaphores(object_id);
+  PlasmaObjectHeader::Semaphores sem = manager.GetSemaphores(object_id);
 
-  PlasmaObjectHeader *header = reinterpret_cast<ray::PlasmaObjectHeader *>(object_ptr);
-  header->Init();
-
-  int num_reads = 10000;
-  int num_reads_success = num_reads / 2;
-  int num_readers = 24;
-
-  std::vector<std::shared_ptr<std::vector<std::string>>> data_results;
-  std::vector<std::shared_ptr<std::vector<std::string>>> metadata_results;
+  std::vector<std::vector<std::string>> data_results(/*count=*/kNumReaders,
+                                                     std::vector<std::string>());
+  std::vector<std::vector<std::string>> metadata_results(/*count=*/kNumReaders,
+                                                         std::vector<std::string>());
   std::vector<std::thread> threads;
 
-  data_results.push_back(std::make_shared<std::vector<std::string>>());
-  metadata_results.push_back(std::make_shared<std::vector<std::string>>());
-  std::thread failed_reader_t(
-      Read, object_ptr, num_reads_success, data_results[0], metadata_results[0]);
+  std::thread failed_reader(Read,
+                            header,
+                            std::ref(sem),
+                            kNumReadsSuccess,
+                            std::ref(data_results[0]),
+                            std::ref(metadata_results[0]));
 
-  for (int i = 1; i < num_readers; i++) {
-    data_results.push_back(std::make_shared<std::vector<std::string>>());
-    metadata_results.push_back(std::make_shared<std::vector<std::string>>());
-    std::thread t(Read, object_ptr, num_reads, data_results[i], metadata_results[i]);
+  for (size_t i = 1; i < kNumReaders; i++) {
+    std::thread t(Read,
+                  header,
+                  std::ref(sem),
+                  kNumReads,
+                  std::ref(data_results[i]),
+                  std::ref(metadata_results[i]));
     threads.emplace_back(std::move(t));
   }
 
-  std::thread writer_t(Write, object_ptr, num_reads, num_readers);
+  std::thread writer(Write, header, std::ref(sem), kNumReads, kNumReaders);
 
-  failed_reader_t.join();
-  header->SetErrorUnlocked();
+  failed_reader.join();
+  header->SetErrorUnlocked(sem);
 
-  writer_t.join();
-  for (auto &t : threads) {
+  writer.join();
+  for (std::thread &t : threads) {
     t.join();
   }
+  manager.DestroySemaphores(object_id);
+  free(header);
 
-  ASSERT_EQ(data_results[0]->size(), num_reads_success);
-  for (int i = 1; i < num_readers; i++) {
-    ASSERT_TRUE(static_cast<size_t>(num_reads_success) <= data_results[i]->size());
-    ASSERT_TRUE(data_results[i]->size() <= static_cast<size_t>(num_reads_success + 2));
+  ASSERT_EQ(data_results[0].size(), kNumReadsSuccess);
+  for (size_t i = 1; i < kNumReaders; i++) {
+    ASSERT_LE(kNumReadsSuccess, data_results[i].size());
+    ASSERT_LE(data_results[i].size(), kNumReadsSuccess * 2);
   }
-  for (int i = 1; i < num_readers; i++) {
-    for (int j = 0; j < static_cast<int>(data_results[i]->size()); j++) {
-      std::string data("hello" + std::to_string(j));
-      if (j == static_cast<int>(data_results[i]->size()) - 1) {
-        ASSERT_EQ((*data_results[i])[j], "error");
-        ASSERT_EQ((*metadata_results[i])[j], "error");
+  for (size_t i = 1; i < kNumReaders; i++) {
+    for (size_t j = 0; j < data_results[i].size(); j++) {
+      std::string data;
+      std::string metadata;
+      if (j + 1 == data_results[i].size()) {
+        data = "error";
+        metadata = "error";
       } else {
-        ASSERT_EQ((*data_results[i])[j], data);
-        ASSERT_EQ((*metadata_results[i])[j], std::to_string(data.size()));
+        data = absl::StrCat("hello", j);
+        metadata = std::to_string(data.size());
       }
+      ASSERT_EQ(data_results[i][j], data);
+      ASSERT_EQ(metadata_results[i][j], metadata);
     }
   }
 }
+
+// Tests that a writer can detect a failure while it is in `WriteAcquire()`.
+TEST(MutableObjectTest, TestWriteAcquireDuringFailure) {
+  experimental::MutableObjectManager manager;
+  ObjectID object_id = ObjectID::FromRandom();
+  plasma::PlasmaObjectHeader *header;
+  {
+    std::unique_ptr<plasma::MutableObject> object = MakeObject();
+    header = object->header;
+    header->Init();
+    ASSERT_TRUE(manager.RegisterReaderChannel(object_id, std::move(object)).ok());
+  }
+  manager.OpenSemaphores(object_id);
+  PlasmaObjectHeader::Semaphores sem = manager.GetSemaphores(object_id);
+
+  ASSERT_EQ(sem_wait(sem.object_sem), 0);
+  ASSERT_EQ(sem_wait(sem.header_sem), 0);
+  std::thread writer(Write, header, std::ref(sem), /*num_writes=*/kNumReads, kNumReaders);
+
+  // Writer thread is blocked on `sem.object_sem`.
+  header->SetErrorUnlocked(sem);
+  // Writer thread is now unblocked.
+
+  writer.join();
+  // Check that the writer never entered the critical section.
+  ASSERT_EQ(header->version, 0);
+
+  // Check that another writer that calls `WriteAcquire()` exits on its own without
+  // blocking on `sem.header_sem`.
+  writer =
+      std::thread(Write, header, std::ref(sem), /*num_writes=*/kNumReads, kNumReaders);
+  writer.join();
+  ASSERT_EQ(header->version, 0);
+}
+
+// Tests that a reader can detect a failure while it is in `ReadAcquire()`.
+TEST(MutableObjectTest, TestReadAcquireDuringFailure) {
+  experimental::MutableObjectManager manager;
+  ObjectID object_id = ObjectID::FromRandom();
+  plasma::PlasmaObjectHeader *header;
+  {
+    std::unique_ptr<plasma::MutableObject> object = MakeObject();
+    header = object->header;
+    header->Init();
+    ASSERT_TRUE(manager.RegisterReaderChannel(object_id, std::move(object)).ok());
+  }
+  manager.OpenSemaphores(object_id);
+  PlasmaObjectHeader::Semaphores sem = manager.GetSemaphores(object_id);
+
+  std::vector<std::string> data_results;
+  std::vector<std::string> metadata_results;
+  std::thread reader(Read,
+                     header,
+                     std::ref(sem),
+                     kNumReads,
+                     std::ref(data_results),
+                     std::ref(metadata_results));
+
+  {
+    std::string data = "hello";
+    std::string metadata = std::to_string(data.size());
+    ASSERT_TRUE(
+        header->WriteAcquire(sem, data.size(), metadata.size(), /*write_num_readers=*/1)
+            .ok());
+    ASSERT_TRUE(header->WriteRelease(sem).ok());
+  }
+
+  // Reader thread is blocked on `sem.header_sem`.
+  header->SetErrorUnlocked(sem);
+  // Reader thread is now unblocked.
+
+  reader.join();
+  // Check that the reader never entered the critical section.
+  ASSERT_EQ(data_results.size(), 1);
+  ASSERT_EQ(metadata_results.size(), 1);
+  ASSERT_EQ(data_results.front(), "error");
+  ASSERT_EQ(metadata_results.front(), "error");
+
+  // Check that another reader that calls `ReadAcquire()` exits on its own without
+  // blocking on `sem.header_sem`.
+  data_results.clear();
+  metadata_results.clear();
+  reader = std::thread(Read,
+                       header,
+                       std::ref(sem),
+                       kNumReads,
+                       std::ref(data_results),
+                       std::ref(metadata_results));
+  reader.join();
+  ASSERT_EQ(data_results.size(), 1);
+  ASSERT_EQ(metadata_results.size(), 1);
+  ASSERT_EQ(data_results.front(), "error");
+  ASSERT_EQ(metadata_results.front(), "error");
+}
+
+// Tests that multiple readers can detect a failure while they are in `ReadAcquire()`.
+TEST(MutableObjectTest, TestReadMultipleAcquireDuringFailure) {
+  experimental::MutableObjectManager manager;
+  ObjectID object_id = ObjectID::FromRandom();
+  plasma::PlasmaObjectHeader *header;
+  {
+    std::unique_ptr<plasma::MutableObject> object = MakeObject();
+    header = object->header;
+    header->Init();
+    ASSERT_TRUE(manager.RegisterReaderChannel(object_id, std::move(object)).ok());
+  }
+  manager.OpenSemaphores(object_id);
+  PlasmaObjectHeader::Semaphores sem = manager.GetSemaphores(object_id);
+
+  std::vector<std::vector<std::string>> data_results(/*count=*/kNumReaders,
+                                                     std::vector<std::string>());
+  std::vector<std::vector<std::string>> metadata_results(/*count=*/kNumReaders,
+                                                         std::vector<std::string>());
+  std::vector<std::thread> threads;
+  for (size_t i = 0; i < kNumReaders; i++) {
+    std::thread t(Read,
+                  header,
+                  std::ref(sem),
+                  kNumReads,
+                  std::ref(data_results[i]),
+                  std::ref(metadata_results[i]));
+    threads.emplace_back(std::move(t));
+  }
+
+  {
+    std::string data = "hello";
+    std::string metadata = std::to_string(data.size());
+    ASSERT_TRUE(
+        header->WriteAcquire(sem, data.size(), metadata.size(), kNumReaders).ok());
+    ASSERT_TRUE(header->WriteRelease(sem).ok());
+  }
+
+  // Reader threads are blocked on `sem.header_sem`.
+  header->SetErrorUnlocked(sem);
+  // Reader threads are now unblocked.
+
+  for (std::thread &t : threads) {
+    t.join();
+  }
+  // Check that the readers never entered the critical section.
+  for (size_t i = 0; i < kNumReaders; i++) {
+    ASSERT_EQ(data_results[i].size(), metadata_results[i].size());
+    size_t size = data_results[i].size();
+    ASSERT_GE(size, 1);
+    ASSERT_LE(size, 2);
+    ASSERT_EQ(data_results[i].back(), "error");
+    ASSERT_EQ(metadata_results[i].back(), "error");
+  }
+
+  // Check that more readers that call `ReadAcquire()` exit on their own without blocking
+  // on `sem.header_sem`.
+  std::fill(data_results.begin(), data_results.end(), std::vector<std::string>());
+  std::fill(metadata_results.begin(), metadata_results.end(), std::vector<std::string>());
+  threads.clear();
+  for (size_t i = 0; i < kNumReaders; i++) {
+    std::thread t(Read,
+                  header,
+                  std::ref(sem),
+                  kNumReads,
+                  std::ref(data_results[i]),
+                  std::ref(metadata_results[i]));
+    threads.emplace_back(std::move(t));
+  }
+  for (std::thread &t : threads) {
+    t.join();
+  }
+  for (size_t i = 0; i < kNumReaders; i++) {
+    ASSERT_EQ(data_results[i].size(), metadata_results[i].size());
+    size_t size = data_results[i].size();
+    ASSERT_GE(size, 1);
+    ASSERT_LE(size, 2);
+    ASSERT_EQ(data_results[i].back(), "error");
+    ASSERT_EQ(metadata_results[i].back(), "error");
+  }
+}
+
+#endif  // defined(__APPLE__) || defined(__linux__)
+
+}  // namespace experimental
+}  // namespace ray
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);

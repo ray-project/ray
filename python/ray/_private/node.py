@@ -248,18 +248,20 @@ class Node:
             self._plasma_store_socket_name = ray_params.plasma_store_socket_name
             self._raylet_socket_name = ray_params.raylet_socket_name
 
+            # Get the address info of the processes to connect to
+            # from Redis or GCS.
+            node_info = ray._private.services.get_node_to_connect_for_driver(
+                self.gcs_address,
+                self._raylet_ip_address,
+            )
+            self._node_id = node_info["node_id"]
+
             # If user does not provide the socket name, get it from Redis.
             if (
                 self._plasma_store_socket_name is None
                 or self._raylet_socket_name is None
                 or self._ray_params.node_manager_port is None
             ):
-                # Get the address info of the processes to connect to
-                # from Redis or GCS.
-                node_info = ray._private.services.get_node_to_connect_for_driver(
-                    self.gcs_address,
-                    self._raylet_ip_address,
-                )
                 self._plasma_store_socket_name = node_info["object_store_socket_name"]
                 self._raylet_socket_name = node_info["raylet_socket_name"]
                 self._ray_params.node_manager_port = node_info["node_manager_port"]
@@ -329,6 +331,7 @@ class Node:
                 self.gcs_address,
                 self._raylet_ip_address,
             )
+            self._node_id = node_info["node_id"]
             if self._ray_params.node_manager_port == 0:
                 self._ray_params.node_manager_port = node_info["node_manager_port"]
 
@@ -558,6 +561,11 @@ class Node:
                 self._ray_params.redis_max_memory,
             ).resolve(is_head=self.head, node_ip_address=self.node_ip_address)
         return self._resource_spec
+
+    @property
+    def node_id(self):
+        """Get the node ID."""
+        return self._node_id
 
     @property
     def session_name(self):
@@ -1010,7 +1018,7 @@ class Node:
                 logger.info(
                     f"Can't find a `{ray_constants.RAY_NODE_IP_FILENAME}` "
                     f"file from {self.get_session_dir_path()}. "
-                    "Have you started Ray instsance using "
+                    "Have you started Ray instance using "
                     "`ray start` or `ray.init`?"
                 )
 
@@ -1347,8 +1355,6 @@ class Node:
             f"Process STDOUT and STDERR is being " f"redirected to {self._logs_dir}."
         )
 
-        # Clean up external storage in case a previous Raylet instance crashed
-        # on this node and spilled objects remain on disk.
         if not self.head:
             # Get the system config from GCS first if this is a non-head node.
             gcs_options = ray._raylet.GcsClientOptions.from_gcs_address(
@@ -1365,7 +1371,6 @@ class Node:
                 f" GCS system config: {new_config}"
             )
             self._config = new_config
-        self.destroy_external_storage()
 
         # Make sure we don't call `determine_plasma_store_config` multiple
         # times to avoid printing multiple warnings.
@@ -1687,7 +1692,7 @@ class Node:
             from ray._private import external_storage
 
             storage = external_storage.setup_external_storage(
-                object_spilling_config, self._session_name
+                object_spilling_config, self._node_id, self._session_name
             )
             storage.destroy_external_storage()
 
@@ -1731,7 +1736,17 @@ class Node:
         # Validate external storage usage.
         from ray._private import external_storage
 
-        external_storage.setup_external_storage(deserialized_config, self._session_name)
+        # Node ID is available only after GCS is connected. However,
+        # validate_external_storage() needs to be called before it to
+        # be able to validate the configs early. Therefore, we use a
+        # dummy node ID here and make sure external storage can be set
+        # up based on the provided config. This storage is destroyed
+        # right after the validation.
+        dummy_node_id = ray.NodeID.from_random().hex()
+        storage = external_storage.setup_external_storage(
+            deserialized_config, dummy_node_id, self._session_name
+        )
+        storage.destroy_external_storage()
         external_storage.reset_external_storage()
 
     def _record_stats(self):
