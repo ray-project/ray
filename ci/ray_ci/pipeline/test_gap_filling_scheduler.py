@@ -5,6 +5,7 @@ import pytest
 
 from ci.ray_ci.pipeline.gap_filling_scheduler import GapFillingScheduler, BLOCK_STEP_KEY
 
+
 @mock.patch(
     "ci.ray_ci.pipeline.gap_filling_scheduler.GapFillingScheduler._get_latest_commits"
 )
