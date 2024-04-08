@@ -1,5 +1,5 @@
 import ray
-from ray.rllib.examples.envs.simple_corridor import SimpleCorridor
+from ray.rllib.examples.envs.classes.simple_corridor import SimpleCorridor
 
 
 class GPURequiringEnv(SimpleCorridor):

@@ -32,7 +32,7 @@ import os
 import ray
 from ray import air, tune
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.examples.envs.windy_maze_env import (
+from ray.rllib.examples.envs.classes.windy_maze_env import (
     WindyMazeEnv,
     HierarchicalWindyMazeEnv,
 )

@@ -3,7 +3,7 @@ import gymnasium as gym
 from gymnasium.spaces import Discrete, Tuple
 import numpy as np
 
-from ray.rllib.examples.envs.multi_agent import make_multi_agent
+from ray.rllib.examples.envs.classes.multi_agent import make_multi_agent
 
 
 class RandomEnv(gym.Env):

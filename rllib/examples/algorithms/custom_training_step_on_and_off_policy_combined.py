@@ -24,7 +24,7 @@ from ray.rllib.execution.train_ops import train_one_step
 from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import (
     MultiAgentReplayBuffer,
 )
-from ray.rllib.examples.envs.multi_agent import MultiAgentCartPole
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.sample_batch import MultiAgentBatch, concat_samples
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (

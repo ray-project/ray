@@ -14,8 +14,8 @@ import numpy as np
 from gymnasium.spaces import Discrete
 from gymnasium.utils import seeding
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from ray.rllib.examples.envs.utils.interfaces import InfoAccumulationInterface
-from ray.rllib.examples.envs.utils.mixins import (
+from ray.rllib.examples.envs.classes.utils.interfaces import InfoAccumulationInterface
+from ray.rllib.examples.envs.classes.utils.mixins import (
     TwoPlayersTwoActionsInfoMixin,
     NPlayersNDiscreteActionsInfoMixin,
 )
