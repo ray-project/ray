@@ -338,6 +338,10 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
         """
         return self._num_agent_timesteps_added
 
+    def get_module_ids(self) -> List[ModuleID]:
+        """Returns a list of module IDs stored in the buffer."""
+        return list(self._module_to_indices.keys())
+
     def get_num_agent_timesteps(self) -> int:
         """Returns number of agent timesteps stored in the buffer.
 
@@ -346,51 +350,72 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
         """
         return self._num_agent_timesteps
 
-    def get_num_module_episodes(self, module_id: ModuleID) -> int:
+    @override(EpisodeReplayBuffer)
+    def get_num_episodes(self, module_id: ModuleID = None) -> int:
         """Returns number of episodes stored for a module in the buffer.
 
         Note, episodes could be either complete or truncated.
 
         Args:
-            module_id: The ID of the module to query.
+            module_id: The ID of the module to query. If not provided, the number of
+                episodes for all modules is returned.
 
         Returns:
-            The number of episodes stored for the module.
+            The number of episodes stored for the module or all modules.
         """
-        return self._num_module_episodes[module_id]
+        return (
+            self._num_module_episodes[module_id]
+            if module_id
+            else super().get_num_episodes()
+        )
 
-    def get_num_module_timesteps(self, module_id: ModuleID) -> int:
+    def get_num_timesteps(self, module_id: ModuleID = None) -> int:
         """Returns number of individual timesteps for a module stored in the buffer.
 
         Args:
-            module_id: The ID of the module to query.
+            module_id: The ID of the module to query. If not provided, the number of
+                timesteps for all modules are returned.
 
         Returns:
-            The number of timesteps stored for the module.
+            The number of timesteps stored for the module or all modules.
         """
-        return len(self._num_module_timesteps[module_id])
+        return (
+            self._num_module_timesteps[module_id]
+            if module_id
+            else super().get_num_timesteps()
+        )
 
-    def get_sampled_timesteps_per_module(self, module_id: ModuleID) -> int:
+    def get_sampled_timesteps(self, module_id: ModuleID = None) -> int:
         """Returns number of timesteps that have been sampled for a module.
 
         Args:
-            module_id: The ID of the module to query.
+            module_id: The ID of the module to query. If not provided, the number of
+                sampled timesteps for all modules are returned.
 
         Returns:
-            The number of timesteps sampled for the module.
+            The number of timesteps sampled for the module or all modules.
         """
-        return self.sampled_timesteps_per_module[module_id]
+        return (
+            self.sampled_timesteps_per_module[module_id]
+            if module_id
+            else super().get_sampled_timesteps()
+        )
 
-    def get_added_module_timesteps(self, module_id: ModuleID) -> int:
+    def get_added_timesteps(self, module_id: ModuleID = None) -> int:
         """Returns number of timesteps that have been added in buffer's lifetime for a module.
 
         Args:
-            module_id: The ID of the module to query.
+            module_id: The ID of the module to query. If not provided, the number of
+
 
         Returns:
-            The number of timesteps added for the module.
+            The number of timesteps added for the module or all modules.
         """
-        return self._num_module_timesteps_added[module_id]
+        return (
+            self._num_module_timesteps_added[module_id]
+            if module_id
+            else super().get_added_timesteps()
+        )
 
     @override(EpisodeReplayBuffer)
     def get_state(self) -> Dict[str, Any]:
@@ -580,7 +605,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
                     batch(extra_model_outputs)
                 )
         # Increase the counter for environment timesteps.
-        self.num_timesteps_sampled += batch_size_B
+        self.sampled_timesteps += batch_size_B
         # Return multi-agent dictionary.
         return ret
 
@@ -818,7 +843,6 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
             module_eps = ma_episode.agent_episodes[agent_id]
             # Update all counters.
             self._num_module_timesteps[module_id] -= module_eps.env_steps()
-            self._num_module_timesteps_added[module_id] -= module_eps.env_steps()
             self._num_module_episodes[module_id] -= 1
             self._num_module_episodes_evicted[module_id] += 1
 

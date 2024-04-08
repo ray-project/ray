@@ -40,17 +40,35 @@ class TestMultiAgentEpisodeReplayBuffer(unittest.TestCase):
         buffer.add(episode)
         self.assertTrue(buffer.get_num_episodes() == 1)
         self.assertTrue(buffer.get_num_timesteps() == 50)
+        self.assertTrue(buffer.get_num_agent_timesteps() == 2 * 50)
+        self.assertTrue(buffer.get_added_agent_timesteps() == 2 * 50)
+        for module_id in buffer.get_module_ids():
+            self.assertTrue(buffer.get_num_episodes(module_id) == 1)
+            self.assertTrue(buffer.get_num_timesteps(module_id) == 50)
+            self.assertTrue(buffer.get_added_timesteps(module_id) == 50)
 
         episode = self._get_episode(id_="B", episode_len=25)
         buffer.add(episode)
         self.assertTrue(buffer.get_num_episodes() == 2)
         self.assertTrue(buffer.get_num_timesteps() == 75)
+        self.assertTrue(buffer.get_num_agent_timesteps() == 2 * 75)
+        self.assertTrue(buffer.get_added_agent_timesteps() == 2 * 75)
+        for module_id in buffer.get_module_ids():
+            self.assertTrue(buffer.get_num_episodes(module_id) == 2)
+            self.assertTrue(buffer.get_num_timesteps(module_id) == 75)
+            self.assertTrue(buffer.get_added_timesteps(module_id) == 75)
 
         # No eviction yet (but we are full).
         episode = self._get_episode(id_="C", episode_len=25)
         buffer.add(episode)
         self.assertTrue(buffer.get_num_episodes() == 3)
         self.assertTrue(buffer.get_num_timesteps() == 100)
+        self.assertTrue(buffer.get_num_agent_timesteps() == 2 * 100)
+        self.assertTrue(buffer.get_added_agent_timesteps() == 2 * 100)
+        for module_id in buffer.get_module_ids():
+            self.assertTrue(buffer.get_num_episodes(module_id) == 3)
+            self.assertTrue(buffer.get_num_timesteps(module_id) == 100)
+            self.assertTrue(buffer.get_added_timesteps(module_id) == 100)
 
         # Trigger eviction of first episode by adding a single timestep episode.
         episode = self._get_episode(id_="D", episode_len=1)
@@ -58,21 +76,39 @@ class TestMultiAgentEpisodeReplayBuffer(unittest.TestCase):
 
         self.assertTrue(buffer.get_num_episodes() == 3)
         self.assertTrue(buffer.get_num_timesteps() == 51)
+        self.assertTrue(buffer.get_num_agent_timesteps() == 2 * 51)
+        self.assertTrue(buffer.get_added_agent_timesteps() == 2 * 101)
         self.assertTrue({eps.id_ for eps in buffer.episodes} == {"B", "C", "D"})
+        for module_id in buffer.get_module_ids():
+            self.assertTrue(buffer.get_num_episodes(module_id) == 3)
+            self.assertTrue(buffer.get_num_timesteps(module_id) == 51)
+            self.assertTrue(buffer.get_added_timesteps(module_id) == 101)
 
         # Add another big episode and trigger another eviction.
         episode = self._get_episode(id_="E", episode_len=200)
         buffer.add(episode)
         self.assertTrue(buffer.get_num_episodes() == 1)
         self.assertTrue(buffer.get_num_timesteps() == 200)
+        self.assertTrue(buffer.get_num_agent_timesteps() == 2 * 200)
+        self.assertTrue(buffer.get_added_agent_timesteps() == 2 * 301)
         self.assertTrue({eps.id_ for eps in buffer.episodes} == {"E"})
+        for module_id in buffer.get_module_ids():
+            self.assertTrue(buffer.get_num_episodes(module_id) == 1)
+            self.assertTrue(buffer.get_num_timesteps(module_id) == 200)
+            self.assertTrue(buffer.get_added_timesteps(module_id) == 301)
 
         # Add another small episode and trigger another eviction.
         episode = self._get_episode(id_="F", episode_len=2)
         buffer.add(episode)
         self.assertTrue(buffer.get_num_episodes() == 1)
         self.assertTrue(buffer.get_num_timesteps() == 2)
+        self.assertTrue(buffer.get_num_agent_timesteps() == 2 * 2)
+        self.assertTrue(buffer.get_added_agent_timesteps() == 2 * 303)
         self.assertTrue({eps.id_ for eps in buffer.episodes} == {"F"})
+        for module_id in buffer.get_module_ids():
+            self.assertTrue(buffer.get_num_episodes(module_id) == 1)
+            self.assertTrue(buffer.get_num_timesteps(module_id) == 2)
+            self.assertTrue(buffer.get_added_timesteps(module_id) == 303)
 
         # Add N small episodes.
         for i in range(10):
@@ -80,16 +116,28 @@ class TestMultiAgentEpisodeReplayBuffer(unittest.TestCase):
             buffer.add(episode)
         self.assertTrue(buffer.get_num_episodes() == 10)
         self.assertTrue(buffer.get_num_timesteps() == 100)
+        self.assertTrue(buffer.get_num_agent_timesteps() == 2 * 100)
+        self.assertTrue(buffer.get_added_agent_timesteps() == 2 * 403)
+        for module_id in buffer.get_module_ids():
+            self.assertTrue(buffer.get_num_episodes(module_id) == 10)
+            self.assertTrue(buffer.get_num_timesteps(module_id) == 100)
+            self.assertTrue(buffer.get_added_timesteps(module_id) == 403)
 
         # Add a 20-ts episode and expect to have evicted 3 episodes.
         episode = self._get_episode(id_="G", episode_len=21)
         buffer.add(episode)
         self.assertTrue(buffer.get_num_episodes() == 8)
         self.assertTrue(buffer.get_num_timesteps() == 91)
+        self.assertTrue(buffer.get_num_agent_timesteps() == 2 * 91)
+        self.assertTrue(buffer.get_added_agent_timesteps() == 2 * 424)
         self.assertTrue(
             {eps.id_ for eps in buffer.episodes}
             == {"3", "4", "5", "6", "7", "8", "9", "G"}
         )
+        for module_id in buffer.get_module_ids():
+            self.assertTrue(buffer.get_num_episodes(module_id) == 8)
+            self.assertTrue(buffer.get_num_timesteps(module_id) == 91)
+            self.assertTrue(buffer.get_added_timesteps(module_id) == 424)
 
     def test_buffer_independent_sample_logic(self):
         """Samples independently from the multi-agent buffer."""
@@ -99,11 +147,13 @@ class TestMultiAgentEpisodeReplayBuffer(unittest.TestCase):
             episode = self._get_episode()
             buffer.add(episode)
 
-        for _ in range(1000):
+        for i in range(1000):
             sample = buffer.sample(batch_size_B=16, n_step=1)
+            self.assertTrue(buffer.get_sampled_timesteps() == 16 * (i + 1))
             self.assertTrue("module_1" in sample)
             self.assertTrue("module_2" in sample)
             for module_id in sample:
+                self.assertTrue(buffer.get_sampled_timesteps(module_id) == 16 * (i + 1))
                 (
                     obs,
                     actions,
@@ -162,13 +212,15 @@ class TestMultiAgentEpisodeReplayBuffer(unittest.TestCase):
             episode = self._get_episode()
             buffer.add(episode)
 
-        for _ in range(1000):
+        for i in range(1000):
             sample = buffer.sample(
                 batch_size_B=16, n_step=1, replay_mode="synchronized"
             )
+            self.assertTrue(buffer.get_sampled_timesteps() == 16 * (i + 1))
             self.assertTrue("module_1" in sample)
             self.assertTrue("module_2" in sample)
             for module_id in sample:
+                self.assertTrue(buffer.get_sampled_timesteps(module_id) == 16 * (i + 1))
                 (
                     obs,
                     actions,
@@ -227,16 +279,19 @@ class TestMultiAgentEpisodeReplayBuffer(unittest.TestCase):
             episode = self._get_episode()
             buffer.add(episode)
 
-        for _ in range(1000):
+        for i in range(1000):
             sample = buffer.sample(
                 batch_size_B=16,
                 n_step=1,
                 replay_mode="synchronized",
                 modules_to_sample=["module_1"],
             )
+            self.assertTrue(buffer.get_sampled_timesteps() == 16 * (i + 1))
+            self.assertTrue(buffer.get_sampled_timesteps("module_2") == 0)
             self.assertTrue("module_1" in sample)
             self.assertTrue("module_2" not in sample)
             for module_id in sample:
+                self.assertTrue(buffer.get_sampled_timesteps(module_id) == 16 * (i + 1))
                 (
                     obs,
                     actions,
