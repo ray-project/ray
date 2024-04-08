@@ -4,8 +4,8 @@ from gymnasium.spaces import Box
 
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModuleConfig
-from ray.rllib.examples.policy.random_policy import RandomPolicy
-from ray.rllib.examples.rl_module.random_rl_module import StatefulRandomRLModule
+from ray.rllib.examples._old_api_stack.policy.random_policy import RandomPolicy
+from ray.rllib.examples.rl_modules.random_rl_module import StatefulRandomRLModule
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement

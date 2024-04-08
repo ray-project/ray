@@ -27,13 +27,13 @@ from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 from ray.rllib.env.utils import try_import_pyspiel, try_import_open_spiel
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
-from ray.rllib.examples.rl_module.classes.random_rlm import RandomRLModule
+from ray.rllib.examples.rl_modules.classes.random_rlm import RandomRLModule
 from ray.rllib.examples.multi_agent.utils import (
     ask_user_for_action,
     SelfPlayCallback,
     SelfPlayCallbackOldAPIStack,
 )
-from ray.rllib.examples.policy.random_policy import RandomPolicy
+from ray.rllib.examples._old_api_stack.policy.random_policy import RandomPolicy
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,

@@ -59,7 +59,9 @@ class TestErrors(unittest.TestCase):
             )
 
         # Non-existing class in a full-class-path.
-        config.environment("ray.rllib.examples.envs.random_env.RandomEnvThatDoesntExist")
+        config.environment(
+            "ray.rllib.examples.envs.random_env.RandomEnvThatDoesntExist"
+        )
         for _ in framework_iterator(config):
             self.assertRaisesRegex(
                 EnvError,

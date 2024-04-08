@@ -1,4 +1,4 @@
-from ray.rllib.examples.rl_module.classes.rock_paper_scissors_heuristic_rlm import (
+from ray.rllib.examples.rl_modules.classes.rock_paper_scissors_heuristic_rlm import (
     AlwaysSameHeuristicRLM,
     BeatLastHeuristicRLM,
 )

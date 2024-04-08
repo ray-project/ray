@@ -1,6 +1,6 @@
 import gymnasium as gym
 
-from ray.rllib.examples.policy.random_policy import RandomPolicy
+from ray.rllib.examples._old_api_stack.policy.random_policy import RandomPolicy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import AlgorithmConfigDict
 

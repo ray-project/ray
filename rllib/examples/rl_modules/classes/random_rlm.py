@@ -84,9 +84,11 @@ class StatefulRandomRLModule(RandomRLModule):
     def _random_forward(self, batch, **kwargs):
         batch = super()._random_forward(batch, **kwargs)
         batch[Columns.STATE_OUT] = {
-            "state": batch_func([
-                self._internal_state_space.sample()
-                for _ in range(len(batch[Columns.ACTIONS]))
-            ]),
+            "state": batch_func(
+                [
+                    self._internal_state_space.sample()
+                    for _ in range(len(batch[Columns.ACTIONS]))
+                ]
+            ),
         }
         return batch

@@ -32,7 +32,10 @@ import os
 import ray
 from ray import air, tune
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.examples.envs.windy_maze_env import WindyMazeEnv, HierarchicalWindyMazeEnv
+from ray.rllib.examples.envs.windy_maze_env import (
+    WindyMazeEnv,
+    HierarchicalWindyMazeEnv,
+)
 from ray.rllib.utils.test_utils import check_learning_achieved
 
 parser = argparse.ArgumentParser()

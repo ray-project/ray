@@ -10,7 +10,7 @@ import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.examples.envs.debug_counter_env import MultiAgentDebugCounterEnv
 from ray.rllib.examples.envs.multi_agent import MultiAgentPendulum
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.examples.policy.episode_env_aware_policy import (
+from ray.rllib.examples._old_api_stack.policy.episode_env_aware_policy import (
     EpisodeEnvAwareAttentionPolicy,
     StatefulRandomPolicy,
 )

@@ -13,7 +13,7 @@ from ray.rllib.core.models.configs import MLPHeadConfig
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.examples.envs.random_env import RandomEnv
 from ray.rllib.models.torch.torch_distributions import TorchCategorical
-from ray.rllib.examples.models.mobilenet_v2_encoder import (
+from ray.rllib.examples._old_api_stack.models.mobilenet_v2_encoder import (
     MobileNetV2EncoderConfig,
     MOBILENET_INPUT_SHAPE,
 )

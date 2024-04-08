@@ -44,8 +44,8 @@ from ray.rllib.examples.multi_agent.utils import (
     SelfPlayLeagueBasedCallback,
     SelfPlayLeagueBasedCallbackOldAPIStack,
 )
-from ray.rllib.examples.policy.random_policy import RandomPolicy
-from ray.rllib.examples.rl_module.classes.random_rlm import RandomRLModule
+from ray.rllib.examples._old_api_stack.policy.random_policy import RandomPolicy
+from ray.rllib.examples.rl_modules.classes.random_rlm import RandomRLModule
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,

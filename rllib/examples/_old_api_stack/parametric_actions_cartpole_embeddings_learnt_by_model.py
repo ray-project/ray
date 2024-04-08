@@ -22,7 +22,7 @@ from ray import air, tune
 from ray.rllib.examples.envs.parametric_actions_cartpole import (
     ParametricActionsCartPoleNoEmbeddings,
 )
-from ray.rllib.examples.models.parametric_actions_model import (
+from ray.rllib.examples._old_api_stack.models.parametric_actions_model import (
     ParametricActionsModelThatLearnsEmbeddings,
 )
 from ray.rllib.models import ModelCatalog

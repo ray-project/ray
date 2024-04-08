@@ -1,5 +1,5 @@
 msg = """
-This script has been taken out of RLlib b/c: 
+This script has been taken out of RLlib b/c:
 - This script used `ViewRequirements` ("Trajectory View API") to set up the RLModule,
 however, this API will not be part of the new API stack.
 Instead, you can use RLlib's built-in ConnectorV2 for frame stacking (or write a custom

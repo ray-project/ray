@@ -43,7 +43,7 @@ from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
-from ray.rllib.examples.rl_module.classes import (
+from ray.rllib.examples.rl_modules.classes import (
     AlwaysSameHeuristicRLM,
     BeatLastHeuristicRLM,
 )
