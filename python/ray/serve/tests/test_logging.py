@@ -28,9 +28,9 @@ from ray.serve._private.logging_utils import (
     configure_component_logger,
     get_serve_logs_dir,
 )
+from ray.serve._private.utils import get_component_file_name
 from ray.serve.context import _get_global_client
 from ray.serve.schema import EncodingType, LoggingConfig
-from ray.serve._private.utils import get_component_file_name
 
 
 class FakeLogger:
