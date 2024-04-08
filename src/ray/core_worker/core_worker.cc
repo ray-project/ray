@@ -3816,20 +3816,14 @@ void CoreWorker::HandleGetObjectLocationsOwner(
                            send_reply_callback)) {
     return;
   }
-  Status overall_status = Status::OK();  // Assume success initially
+  Status status = Status::OK();  // Assume success initially
   for (int i = 0; i < request.object_ids_size(); ++i) {
     auto object_id = ObjectID::FromBinary(request.object_ids(i));
     auto object_info = reply->add_object_location_infos();
     // TODO(zhilong): Need to deal with fail query for each object?
-    auto current_status =
-        reference_counter_->FillObjectInformation(object_id, object_info);
-    if (!current_status.ok()) {
-      overall_status = current_status;
-      RAY_LOG(WARNING) << "Failed to query location information for " << object_id
-                       << " with error: " << current_status.ToString();
-    }
+    reference_counter_->FillObjectInformation(object_id, object_info);
   }
-  send_reply_callback(overall_status, nullptr, nullptr);
+  send_reply_callback(status, nullptr, nullptr);
 }
 
 void CoreWorker::ProcessSubscribeForRefRemoved(

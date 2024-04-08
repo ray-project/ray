@@ -511,8 +511,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \return OK status if object information is filled. Non OK status otherwise.
   /// It can return non-OK status, for example, if the object for the object id
   /// doesn't exist.
-  Status FillObjectInformation(const ObjectID &object_id,
-                               rpc::WorkerObjectLocationsPubMessage *object_info)
+  void FillObjectInformation(const ObjectID &object_id,
+                             rpc::WorkerObjectLocationsPubMessage *object_info)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Handle an object has been spilled to external storage.
