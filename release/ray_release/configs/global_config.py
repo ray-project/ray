@@ -4,6 +4,8 @@ import yaml
 from typing import List
 from typing_extensions import TypedDict
 
+AWS_SECRET_BUILDKITE = "ray_ci_buildkite_token"
+
 
 class GlobalConfig(TypedDict):
     byod_ray_ecr: str
