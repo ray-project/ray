@@ -29,6 +29,41 @@ class GapFillingScheduler:
         self.repo_checkout = repo_checkout
         self.days_ago = days_ago
 
+    def run(self) -> List[str]:
+        """
+        Create gap filling builds for the latest failing build. If dry_run is True,
+        print the commits for each build but no builds will actually be created.
+        """
+        commits = self.get_gap_commits()
+
+        return [self._trigger_build(commit) for commit in commits]
+
+    def get_gap_commits(self) -> List[str]:
+        """
+        Return the list of commits between the latest passing and failing builds.
+        """
+        failing_revision = self._get_latest_commit_for_build_state("failed")
+        passing_revision = self._get_latest_commit_for_build_state("passed")
+        return (
+            subprocess.check_output(
+                [
+                    "git",
+                    "rev-list",
+                    "--reverse",
+                    f"^{passing_revision}",
+                    f"{failing_revision}~",
+                ],
+                cwd=self.repo_checkout,
+            )
+            .decode("utf-8")
+            .strip()
+            .split("\n")
+        )
+
+    def _trigger_build(self, commit: str) -> Optional[str]:
+        # TODO(can): Implement this method
+        pass
+
     def _get_latest_commit_for_build_state(self, build_state: str) -> Optional[str]:
         latest_commits = self._get_latest_commits()
         commit_to_index = {commit: index for index, commit in enumerate(latest_commits)}
@@ -48,7 +83,7 @@ class GapFillingScheduler:
                 [
                     "git",
                     "log",
-                    "--pretty=tformat:'%H'",
+                    "--pretty=tformat:%H",
                     f"--since={self.days_ago}.days",
                 ],
                 cwd=self.repo_checkout,
@@ -58,7 +93,7 @@ class GapFillingScheduler:
             .split("\n")
         )
 
-    def _get_builds(self, days_ago: int = 1) -> List[Dict[str, Any]]:
+    def _get_builds(self) -> List[Dict[str, Any]]:
         return self.buildkite.builds().list_all_for_pipeline(
             self.buildkite_organization,
             self.buildkite_pipeline,
