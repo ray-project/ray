@@ -169,8 +169,10 @@ class RayTaskError(RayError):
 
         If the cause class can not be subclassed, issues a warning and returns `self`.
         """
-        if isinstance(self.cause, RayTaskError):
+        cause_cls = self.cause.__class__
+        if issubclass(RayTaskError, cause_cls):
             return self  # already satisfied
+
         try:
             dual_cls = self.make_dual_exception_type()
         except TypeError as e:
