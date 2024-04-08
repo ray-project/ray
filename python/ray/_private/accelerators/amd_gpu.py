@@ -2,9 +2,21 @@ import os
 import sys
 import logging
 import subprocess
-from typing import Optional, List, Tuple, Dict, Any
+from typing import Optional, List, Tuple
 
 from ray._private.accelerators.accelerator import AcceleratorManager
+
+try:
+    from amdsmi import (
+        amdsmi_init,
+        amdsmi_shut_down,
+        amdsmi_get_processor_handles,
+        amdsmi_get_gpu_asic_info,
+        AmdSmiException,
+    )
+except Exception:
+    pass
+
 
 logger = logging.getLogger(__name__)
 
@@ -55,8 +67,28 @@ class AMDGPUAcceleratorManager(AcceleratorManager):
     @staticmethod
     def get_current_node_num_accelerators() -> int:
         num_gpus = 0
+        major_version = 0
 
-        if sys.platform.startswith("linux"):
+        try:
+            major_version = AMDGPUAcceleratorManager._get_rocm_major_version()
+        except Exception:
+            return 0
+
+        if major_version >= 6:
+            try:
+                amdsmi_init()
+                try:
+                    num_gpus = len(amdsmi_get_processor_handles())
+                except AmdSmiException:
+                    return 0
+            except AmdSmiException:
+                return 0
+            finally:
+                try:
+                    amdsmi_shut_down()
+                except AmdSmiException:
+                    pass
+        else:
             try:
                 num_gpus = (
                     len(
@@ -75,11 +107,11 @@ class AMDGPUAcceleratorManager(AcceleratorManager):
     def get_current_node_accelerator_type() -> Optional[str]:
         try:
             if sys.platform.startswith("linux"):
-                amd_pci_ids = AMDGPUAcceleratorManager._get_amd_pci_ids()
-                if amd_pci_ids is None:
+                device_ids = AMDGPUAcceleratorManager._get_amd_device_ids()
+                if device_ids is None:
                     return None
                 return AMDGPUAcceleratorManager._gpu_name_to_accelerator_type(
-                    amd_pci_ids["card0"]["GPU ID"]
+                    device_ids[0]
                 )
         except Exception:
             return None
@@ -112,21 +144,85 @@ class AMDGPUAcceleratorManager(AcceleratorManager):
         ] = ",".join([str(i) for i in visible_amd_devices])
 
     @staticmethod
-    def _get_amd_pci_ids() -> Dict[str, Any]:
-        """Get the list of GPUs IDs in JSON format
+    def _get_amd_device_ids() -> List[str]:
+        """Get the list of GPUs IDs
         Example:
             On a node with 2x MI210 GPUs
-            return: {"card0": {"GPU ID": "0x740f"}, "card1": {"GPU ID": "0x740f"}}
+            For ROCm version < 6.0
+                Uses rocm-smi subprocess call
+            For ROCm version >= 6.0
+                Uses amismi library python binding
+            return: ['0x740f', '0x740f']
         Returns:
-            A json string contain a list of GPU IDs
+            A list of strings containing GPU IDs
         """
-
         try:
-            amd_pci_ids = subprocess.check_output(
-                ["rocm-smi", "--showid", "--json"]
-            ).decode("utf-8")
+            major_version = AMDGPUAcceleratorManager._get_rocm_major_version()
         except Exception:
-            logger.exception("Could not parse gpu information.")
             return None
 
-        return eval(amd_pci_ids)
+        device_ids = []
+        if major_version >= 6:
+            try:
+                amdsmi_init()
+                devices = amdsmi_get_processor_handles()
+                if len(devices) > 0:
+                    for device in devices:
+                        asic_info = amdsmi_get_gpu_asic_info(device)
+                        device_ids.append(hex(asic_info["device_id"]))
+            except AmdSmiException:
+                return None
+            finally:
+                try:
+                    amdsmi_shut_down()
+                except AmdSmiException:
+                    pass
+        else:
+            try:
+                amd_ids = eval(
+                    subprocess.check_output(["rocm-smi", "--showid", "--json"]).decode(
+                        "utf-8"
+                    )
+                )
+                keys = amd_ids.keys()
+                for k in keys:
+                    device_ids.append(amd_ids[k]["GPU ID"])
+            except Exception:
+                return None
+
+        return device_ids
+
+    @staticmethod
+    def _get_rocm_major_version() -> int:
+        """Get ROCm version from hipconfig
+        Example:
+        ['HIPversion:6.0.32830-d62f6a171', '', '==hipconfig',
+        'HIP_PATH:/opt/rocm-6.0.0', 'ROCM_PATH:/opt/rocm-6.0.0',
+        'HIP_COMPILER:clang', 'HIP_PLATFORM:amd', 'HIP_RUNTIME:rocclr',
+        'CPP_CONFIG:-D__HIP_PLATFORM_HCC__=-D__HIP_PLATFORM_AMD__=-I/opt/rocm-6.0.0/include',
+        '', '', '==hip-clang', 'HIP_CLANG_PATH:/opt/rocm-6.0.0/llvm/bin']
+        return: '6'
+
+        Returns:
+        ROCm major version string
+        """
+        major_version = 0
+
+        if sys.platform.startswith("linux"):
+            try:
+                hipconfig = (
+                    subprocess.check_output(["hipconfig"])
+                    .decode("utf-8")
+                    .replace(" ", "")
+                    .split("\n")
+                )
+                subs = "HIPversion"
+                res = [i for i in hipconfig if subs in i]
+
+                if len(res) > 0:
+                    version = res[0].split(":")[1]
+                    major_version = int(version.split(".")[0])
+            except Exception:
+                raise Exception("Unable to find ROCm version.")
+
+        return major_version
