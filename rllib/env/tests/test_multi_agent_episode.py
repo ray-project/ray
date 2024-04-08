@@ -135,7 +135,7 @@ class MultiAgentTestEnv(MultiAgentEnv):
 class TestMultiAgentEpisode(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        ray.init(local_mode=True)
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -2776,9 +2776,6 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check(a1.is_done, False)
 
     def test_concat_episode(self):
-        # TODO (sven): Revisit this test and the MultiAgentEpisode.episode_concat API.
-        return
-
         # Generate a multi-agent episode and environment and sample 100 steps.
         # Note, we do not want the test environment to truncate at step 200.
         episode_1, env = self._mock_multi_agent_records_from_env(
@@ -2790,8 +2787,8 @@ class TestMultiAgentEpisode(unittest.TestCase):
         episode_2, env = self._mock_multi_agent_records_from_env(
             size=100, episode=episode_2, env=env, init=False
         )
-        # Make sure that the successor is now at 200 timesteps.
-        self.assertTrue(episode_2.t, 200)
+        # Make sure that the successor is now at 100 timesteps.
+        self.assertTrue(episode_2.env_t, 100)
 
         # Now concatenate the two episodes.
         episode_1.concat_episode(episode_2)
@@ -3139,8 +3136,9 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Ensure that this batch is empty.
         check(len(batch), 0)
 
+    @staticmethod
     def _mock_multi_agent_records_from_env(
-        self,
+        # self,
         size: int = 100,
         episode: MultiAgentEpisode = None,
         env: gym.Env = None,
@@ -3149,27 +3147,26 @@ class TestMultiAgentEpisode(unittest.TestCase):
         seed: Optional[int] = 42,
     ) -> Tuple[MultiAgentEpisode, gym.Env]:
         # If the environment does not yet exist, create one.
-        env = env or MultiAgentTestEnv(truncate=truncate)
+        if env is None:
+            env = MultiAgentTestEnv(truncate=truncate)
 
         # If no episode is given, construct one.
         # We give it the `agent_ids` to make it create all objects.
-        episode = episode or MultiAgentEpisode()
+        if episode is None:
+            episode = MultiAgentEpisode()
 
         # We initialize the episode, if requested.
         if init:
             obs, info = env.reset(seed=seed)
             episode.add_env_reset(observations=obs, infos=info)
-        # In the other case wer need at least the last observations for the next
+            done_agents = set()
+        # In the other case we need at least the last observations for the next
         # actions.
         else:
-            obs = {
-                agent_id: agent_obs
-                for agent_id, agent_obs in episode.get_observations().items()
-                if episode._agent_buffered_actions[agent_id]
-            }
+            obs = episode.get_observations(-1)
+            done_agents = env._agent_ids - env._agents_alive
 
         # Sample `size` many records.
-        done_agents = set()
         for i in range(env.t, env.t + size):
             action = {
                 agent_id: i + 1 for agent_id in obs if agent_id not in done_agents
