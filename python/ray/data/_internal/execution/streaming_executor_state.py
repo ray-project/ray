@@ -319,7 +319,7 @@ class OpState:
                 f"average_task_duration: {op._metrics.average_task_duration}"
             )
             if not op._metrics.average_task_duration or not op._metrics.average_bytes_inputs_per_task:
-                cumulative_grow_rate += ray.data.DataContext.get_current().target_max_block_size * op.num_active_tasks()
+                cumulative_grow_rate += ray.data.DataContext.get_current().user_hint_first_operator_consume_rate
                 continue
             
             cumulative_grow_rate += op._metrics.average_bytes_inputs_per_task / op._metrics.average_task_duration * op.num_active_tasks()
