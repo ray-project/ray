@@ -2866,11 +2866,11 @@ py_test(
 
 #@OldAPIStack
 py_test(
-    name = "examples/custom_train_function",
-    main = "examples/custom_train_function.py",
+    name = "examples/ray_tune/custom_train_function",
+    main = "examples/ray_tune/custom_train_function.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/custom_train_function.py"],
+    srcs = ["examples/ray_tune/custom_train_function.py"],
 )
 
 # subdirectory: rl_modules/
