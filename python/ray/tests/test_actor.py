@@ -57,7 +57,7 @@ def test_caching_actors(shutdown_only, set_enable_auto_connect):
 def test_not_reusing_task_workers(shutdown_only):
     @ray.remote
     def create_ref():
-        ref = ray.put(np.zeros(100_000_000))
+        ref = ray.put(np.zeros(10_000_000))
         return ref
 
     @ray.remote
@@ -68,7 +68,7 @@ def test_not_reusing_task_workers(shutdown_only):
         def foo(self):
             return
 
-    ray.init(num_cpus=1, object_store_memory=1000_000_000)
+    ray.init(num_cpus=1, object_store_memory=100_000_000)
     wrapped_ref = create_ref.remote()
     print(ray.get(ray.get(wrapped_ref)))
 
@@ -80,7 +80,7 @@ def test_not_reusing_task_workers(shutdown_only):
 
     # Flush the object store.
     for _ in range(10):
-        ray.put(np.zeros(100_000_000))
+        ray.put(np.zeros(10_000_000))
 
     # Object has been evicted and owner has died. Throws OwnerDiedError.
     print(ray.get(ray.get(wrapped_ref)))
