@@ -52,7 +52,7 @@ b) To register your custom env, do `from ray import tune;
    tune.register('[name]', lambda cfg: [return env obj from here using cfg])`.
    Then in your config, do `config['env'] = [name]`.
 c) Make sure you provide a fully qualified classpath, e.g.:
-   `ray.rllib.examples.envs.repeat_after_me_env.RepeatAfterMeEnv`
+   `ray.rllib.examples.envs.classes.repeat_after_me_env.RepeatAfterMeEnv`
 """
 
 

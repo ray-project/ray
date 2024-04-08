@@ -17,7 +17,7 @@ class TestRayClient(unittest.TestCase):
             assert ray.util.client.ray.is_connected()
         assert ray.util.client.ray.is_connected() is False
 
-    def test_custom_train_fn(self):
+    def test_custom_train_function(self):
         with ray_start_client_server():
             assert ray.util.client.ray.is_connected()
 
@@ -31,7 +31,7 @@ class TestRayClient(unittest.TestCase):
                 "framework": "tf",
             }
             resources = ppo.PPO.default_resource_request(config)
-            from ray.rllib.examples.custom_train_fn import my_train_fn
+            from ray.rllib.examples.ray_tune.custom_train_function import my_train_fn
 
             tune.Tuner(
                 tune.with_resources(my_train_fn, resources),
