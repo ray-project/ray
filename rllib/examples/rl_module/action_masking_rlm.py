@@ -14,10 +14,8 @@ _, tf, _ = try_import_tf()
 class ActionMaskRLMBase(RLModule):
     def __init__(self, config: RLModuleConfig):
         if not isinstance(config.observation_space, gym.spaces.Dict):
-            raise ValueError(
-                "This model requires the environment to provide a "
-                "gym.spaces.Dict observation space."
-            )
+            super().__init__(config)
+            return
         # We need to adjust the observation space for this RL Module so that, when
         # building the default models, the RLModule does not "see" the action mask but
         # only the original observation space without the action mask. This tricks it
