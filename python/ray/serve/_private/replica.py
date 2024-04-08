@@ -55,6 +55,7 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
+from ray.serve._private.utils import get_component_file_name  # noqa: F401
 from ray.serve._private.utils import parse_import_path, wrap_to_ray_error
 from ray.serve._private.version import DeploymentVersion
 from ray.serve.config import AutoscalingConfig
@@ -252,6 +253,13 @@ class ReplicaActor:
         self._deployment_config = DeploymentConfig.from_proto_bytes(
             deployment_config_proto_bytes
         )
+        self._component_name = f"{self._deployment_id.name}"
+        if self._deployment_id.app_name:
+            self._component_name = (
+                f"{self._deployment_id.app_name}_" + self._component_name
+            )
+
+        self._component_id = self._replica_id.unique_id
         self._configure_logger_and_profilers(self._deployment_config.logging_config)
         self._event_loop = get_or_create_event_loop()
 
@@ -295,26 +303,21 @@ class ReplicaActor:
         if isinstance(logging_config, dict):
             logging_config = LoggingConfig(**logging_config)
 
-        component_name = f"{self._deployment_id.name}"
-        if self._deployment_id.app_name:
-            component_name = f"{self._deployment_id.app_name}_" + component_name
-
-        component_id = self._replica_id.unique_id
         configure_component_logger(
             component_type=ServeComponentType.REPLICA,
-            component_name=component_name,
-            component_id=component_id,
+            component_name=self._component_name,
+            component_id=self._component_id,
             logging_config=logging_config,
         )
         configure_component_memory_profiler(
             component_type=ServeComponentType.REPLICA,
-            component_name=component_name,
-            component_id=component_id,
+            component_name=self._component_name,
+            component_id=self._component_id,
         )
         self.cpu_profiler, self.cpu_profiler_log = configure_component_cpu_profiler(
             component_type=ServeComponentType.REPLICA,
-            component_name=component_name,
-            component_id=component_id,
+            component_name=self._component_name,
+            component_id=self._component_id,
         )
 
     def get_num_ongoing_requests(self) -> int:
