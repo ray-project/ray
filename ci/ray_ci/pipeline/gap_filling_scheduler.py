@@ -93,7 +93,7 @@ class GapFillingScheduler:
             .split("\n")
         )
 
-    def _get_builds(self) -> List[Dict[str, Any]]:
+    def _get_builds(self, days_ago: int = 1) -> List[Dict[str, Any]]:
         return self.buildkite.builds().list_all_for_pipeline(
             self.buildkite_organization,
             self.buildkite_pipeline,
