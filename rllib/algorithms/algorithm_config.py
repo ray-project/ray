@@ -180,7 +180,7 @@ class AlgorithmConfig(_Config):
             config_dict: The legacy formatted python config dict for some algorithm.
 
         Returns:
-             A new AlgorithmConfig object that matches the given python config dict.
+            A new AlgorithmConfig object that matches the given python config dict.
         """
         # Create a default config object of this class.
         config_obj = cls()

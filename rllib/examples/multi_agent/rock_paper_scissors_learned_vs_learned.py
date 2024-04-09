@@ -73,7 +73,10 @@ if __name__ == "__main__":
             policy_mapping_fn=lambda aid, episode: re.sub("^player_", "p", aid),
         )
         .training(
-            model={
+            vf_loss_coeff=0.005,
+        )
+        .rl_module(
+            model_config_dict={
                 "use_lstm": args.use_lstm,
                 # Use a simpler FCNet when we also have an LSTM.
                 "fcnet_hiddens": [32] if args.use_lstm else [256, 256],
@@ -81,15 +84,12 @@ if __name__ == "__main__":
                 "max_seq_len": 15,
                 "vf_share_layers": True,
             },
-            vf_loss_coeff=0.005,
-        )
-        .rl_module(
             rl_module_spec=MultiAgentRLModuleSpec(
                 module_specs={
                     "p0": SingleAgentRLModuleSpec(),
                     "p1": SingleAgentRLModuleSpec(),
                 }
-            )
+            ),
         )
     )
 

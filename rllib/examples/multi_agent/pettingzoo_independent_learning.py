@@ -93,12 +93,10 @@ if __name__ == "__main__":
             policy_mapping_fn=(lambda aid, *args, **kwargs: aid),
         )
         .training(
-            model={
-                "vf_share_layers": True,
-            },
             vf_loss_coeff=0.005,
         )
         .rl_module(
+            model_config_dict={"vf_share_layers": True},
             rl_module_spec=MultiAgentRLModuleSpec(
                 module_specs={p: SingleAgentRLModuleSpec() for p in policies},
             ),

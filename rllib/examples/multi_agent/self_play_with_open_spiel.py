@@ -134,7 +134,6 @@ if __name__ == "__main__":
             num_gpus_per_learner_worker=1 if args.num_gpus else 0,
             num_cpus_for_local_worker=1,
         )
-        .training(model={"fcnet_hiddens": [512, 512]})
         .multi_agent(
             # Initial policy map: Random and default algo one. This will be expanded
             # to more policy snapshots taken from "main" against which "main"
@@ -163,6 +162,10 @@ if __name__ == "__main__":
             policies_to_train=["main"],
         )
         .rl_module(
+            model_config_dict={
+                "fcnet_hiddens": [512, 512],
+                "_uses_new_env_runners": args.enable_new_api_stack,
+            },
             rl_module_spec=MultiAgentRLModuleSpec(
                 module_specs={
                     "main": SingleAgentRLModuleSpec(),
