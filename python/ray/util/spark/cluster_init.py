@@ -1297,7 +1297,7 @@ def _setup_ray_cluster_internal(
     return cluster.address, remote_connection_address
 
 
-@PublicAPI(stability="stable")
+@PublicAPI
 def setup_ray_cluster(
     *,
     max_worker_nodes: int,
@@ -1464,7 +1464,7 @@ def setup_ray_cluster(
     )
 
 
-@PublicAPI(stability="stable")
+@PublicAPI
 def setup_global_ray_cluster(
     *,
     max_worker_nodes: int,
@@ -1735,7 +1735,7 @@ def _start_ray_worker_nodes(
     job_rdd.mapPartitions(ray_cluster_job_mapper).collect()
 
 
-@PublicAPI(stability="stable")
+@PublicAPI
 def shutdown_ray_cluster() -> None:
     """
     Shut down the active ray cluster.
