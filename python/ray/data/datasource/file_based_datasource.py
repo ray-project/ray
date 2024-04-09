@@ -1,4 +1,5 @@
 import io
+import logging
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -15,7 +16,6 @@ from typing import (
 import numpy as np
 
 import ray
-from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.util import (
     _check_pyarrow_version,
     _is_local_scheme,
@@ -45,7 +45,7 @@ if TYPE_CHECKING:
     import pyarrow
 
 
-logger = DatasetLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 # We should parallelize file size fetch operations beyond this threshold.
@@ -251,7 +251,7 @@ class FileBasedDatasource(Datasource):
                     if len(read_paths) < num_threads:
                         num_threads = len(read_paths)
 
-                    logger.get_logger(log_to_stdout=False).debug(
+                    logger.debug(
                         f"Reading {len(read_paths)} files with {num_threads} threads."
                     )
 
@@ -261,9 +261,7 @@ class FileBasedDatasource(Datasource):
                         num_workers=num_threads,
                     )
                 else:
-                    logger.get_logger(log_to_stdout=False).debug(
-                        f"Reading {len(read_paths)} files."
-                    )
+                    logger.debug(f"Reading {len(read_paths)} files.")
                     yield from read_files(read_paths)
 
             return read_task_fn

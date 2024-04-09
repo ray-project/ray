@@ -2,7 +2,7 @@ import argparse
 from gymnasium.spaces import Box, Discrete
 import numpy as np
 
-from ray.rllib.examples.models.custom_model_api import (
+from ray.rllib.examples._old_api_stack.models.custom_model_api import (
     DuelingQModel,
     TorchDuelingQModel,
     ContActionQModel,

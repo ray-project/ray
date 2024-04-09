@@ -13,7 +13,6 @@ import pytest
 
 import ray
 from ray.data._internal.block_builder import BlockBuilder
-from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import BlockAccessor, BlockMetadata
@@ -148,6 +147,16 @@ def test_count(ray_start_regular):
     assert_core_execution_metrics_equals(
         CoreExecutionMetrics(task_count={"_get_datasource_or_legacy_reader": 1})
     )
+
+
+def test_count_edge_case(ray_start_regular):
+    # Test this edge case: https://github.com/ray-project/ray/issues/44509.
+    ds = ray.data.range(10)
+    ds.count()
+
+    actual_count = ds.filter(lambda row: row["id"] % 2 == 0).count()
+
+    assert actual_count == 5
 
 
 def test_limit_execution(ray_start_regular):
@@ -1816,7 +1825,7 @@ def test_nowarning_execute_with_cpu(ray_start_cluster):
     # Create one node with CPUs to avoid triggering the Dataset warning
     ray.init(ray_start_cluster.address)
 
-    logger = DatasetLogger("ray.data._internal.plan").get_logger()
+    logger = logging.getLogger("ray.data._internal.plan")
     with patch.object(
         logger,
         "warning",

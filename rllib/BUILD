@@ -831,7 +831,7 @@ sh_test(
     size = "medium",
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
     args = ["local", "cartpole", "8800"],
-    data = glob(["examples/serving/*.py"]),
+    data = glob(["examples/envs/external_envs/*.py"]),
 )
 
 sh_test(
@@ -840,7 +840,7 @@ sh_test(
     size = "medium",
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
     args = ["local", "cartpole-dummy-2-episodes", "8830"],
-    data = glob(["examples/serving/*.py"]),
+    data = glob(["examples/envs/external_envs/*.py"]),
 )
 
 # Tests with unity 3d and external envs currently don't work
@@ -851,7 +851,7 @@ sh_test(
 #     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
 #     srcs = ["env/tests/test_policy_client_server_setup.sh"],
 #     args = ["local", "unity3d", "8850"],
-#     data = glob(["examples/serving/*.py"]),
+#     data = glob(["examples/envs/external_envs/*.py"]),
 # )
 
 py_test(
@@ -881,7 +881,7 @@ sh_test(
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
     args = ["remote", "cartpole", "8810"],
-    data = glob(["examples/serving/*.py"]),
+    data = glob(["examples/envs/external_envs/*.py"]),
 )
 
 sh_test(
@@ -890,7 +890,7 @@ sh_test(
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
     args = ["remote", "cartpole_lstm", "8820"],
-    data = glob(["examples/serving/*.py"]),
+    data = glob(["examples/envs/external_envs/*.py"]),
 )
 
 sh_test(
@@ -899,7 +899,7 @@ sh_test(
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
     args = ["remote", "cartpole-dummy-2-episodes", "8840"],
-    data = glob(["examples/serving/*.py"]),
+    data = glob(["examples/envs/external_envs/*.py"]),
 )
 
 # Tests with unity 3d and external envs currently don't work
@@ -910,7 +910,7 @@ sh_test(
 #     size = "small",
 #     srcs = ["env/tests/test_policy_client_server_setup.sh"],
 #     args = ["remote", "unity3d", "8860"],
-#     data = glob(["examples/serving/*.py"]),
+#     data = glob(["examples/envs/external_envs/*.py"]),
 # )
 
 py_test(
@@ -1958,6 +1958,16 @@ py_test(
 # NOTE: Add tests alphabetically into this list.
 # --------------------------------------------------------------------
 
+# subdirectory: _docs/
+
+py_test(
+    name = "examples/_docs/rllib_on_rllib_readme",
+    main = "examples/_docs/rllib_on_rllib_readme.py",
+    tags = ["team:rllib", "documentation", "no_main"],
+    size = "medium",
+    srcs = ["examples/_docs/rllib_on_rllib_readme.py"],
+)
+
 # ----------------------
 # Old API stack examples
 # ----------------------
@@ -2016,24 +2026,6 @@ py_test(
     args = ["--as-test", "--stop-reward=80.0"]
 )
 
-py_test(
-    name = "examples/_old_api_stack/two_trainer_workflow_tf",
-    main = "examples/_old_api_stack/two_trainer_workflow.py",
-    tags = ["team:rllib", "exclusive", "examples", "old_api_stack"],
-    size = "medium",
-    srcs = ["examples/_old_api_stack/two_trainer_workflow.py"],
-    args = ["--as-test", "--stop-reward=450.0"]
-)
-
-py_test(
-    name = "examples/_old_api_stack/two_trainer_workflow_torch",
-    main = "examples/_old_api_stack/two_trainer_workflow.py",
-    tags = ["team:rllib", "exclusive", "examples", "old_api_stack"],
-    size = "medium",
-    srcs = ["examples/_old_api_stack/two_trainer_workflow.py"],
-    args = ["--as-test", "--torch", "--stop-reward=450.0"]
-)
-
 # subdirectory: _old_api_stack/connectors/
 py_test(
     name = "examples/_old_api_stack/connectors/run_connector_policy",
@@ -2064,24 +2056,98 @@ py_test(
 
 # ----------------------
 # New API stack
+# Note: This includes to-be-translated-to-new-API-stack examples
+# tagged by @OldAPIStack and/or @HybridAPIStack
 # ----------------------
 
-# subdirectory: catalog/
+# subdirectory: algorithms/
+
+#@OldAPIStack
+py_test(
+    name = "examples/algorithms/custom_training_step_on_and_off_policy_combined_tf",
+    main = "examples/algorithms/custom_training_step_on_and_off_policy_combined.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/algorithms/custom_training_step_on_and_off_policy_combined.py"],
+    args = ["--as-test", "--stop-reward=450.0"]
+)
+
+#@OldAPIStack
+py_test(
+    name = "examples/algorithms/custom_training_step_on_and_off_policy_combined_torch",
+    main = "examples/algorithms/custom_training_step_on_and_off_policy_combined.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/algorithms/custom_training_step_on_and_off_policy_combined.py"],
+    args = ["--as-test", "--torch", "--stop-reward=450.0"]
+)
+
+# subdirectory: catalogs/
 # ....................................
 py_test(
-    name = "examples/catalog/custom_action_distribution",
-    main = "examples/catalog/custom_action_distribution.py",
+    name = "examples/catalogs/custom_action_distribution",
+    main = "examples/catalogs/custom_action_distribution.py",
     tags = ["team:rllib", "examples", "no_main"],
     size = "small",
-    srcs = ["examples/catalog/custom_action_distribution.py"],
+    srcs = ["examples/catalogs/custom_action_distribution.py"],
 )
 
 py_test(
-    name = "examples/catalog/mobilenet_v2_encoder",
-    main = "examples/catalog/mobilenet_v2_encoder.py",
+    name = "examples/catalogs/mobilenet_v2_encoder",
+    main = "examples/catalogs/mobilenet_v2_encoder.py",
     tags = ["team:rllib", "examples", "no_main"],
     size = "small",
-    srcs = ["examples/catalog/mobilenet_v2_encoder.py"],
+    srcs = ["examples/catalogs/mobilenet_v2_encoder.py"],
+)
+
+# subdirectory: checkpoints/
+# ....................................
+
+#@OldAPIStack
+py_test(
+    name = "examples/checkpoints/cartpole_dqn_export",
+    main = "examples/checkpoints/cartpole_dqn_export.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "small",
+    srcs = ["examples/checkpoints/cartpole_dqn_export.py"],
+)
+
+#@OldAPIStack
+py_test(
+    name = "examples/checkpoints/checkpoint_by_custom_criteria",
+    main = "examples/checkpoints/checkpoint_by_custom_criteria.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/checkpoints/checkpoint_by_custom_criteria.py"],
+    args = ["--stop-iters=3 --num-cpus=3"]
+)
+
+#@OldAPIStack
+py_test(
+    name = "examples/checkpoints/onnx_tf2",
+    main = "examples/checkpoints/onnx_tf.py",
+    tags = ["team:rllib", "exclusive", "examples", "no_main"],
+    size = "small",
+    srcs = ["examples/checkpoints/onnx_tf.py"],
+    args = ["--framework=tf2"],
+)
+
+#@OldAPIStack
+py_test(
+    name = "examples/checkpoints/onnx_torch",
+    main = "examples/checkpoints/onnx_torch.py",
+    tags = ["team:rllib", "exclusive", "examples", "no_main"],
+    size = "small",
+    srcs = ["examples/checkpoints/onnx_torch.py"],
+)
+
+#@OldAPIStack
+py_test(
+    name = "examples/checkpoints/restore_1_of_n_agents_from_checkpoint",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/checkpoints/restore_1_of_n_agents_from_checkpoint.py"],
+    args = ["--pre-training-iters=1", "--stop-iters=1", "--num-cpus=4"]
 )
 
 # subdirectory: connectors/
@@ -2181,6 +2247,64 @@ py_test(
     args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=-600.0", "--framework=torch", "--algo=PPO", "--num-env-runners=5", "--num-cpus=6"]
 )
 
+# subdirectory: curriculum/
+# ....................................
+
+#@OldAPIStack
+py_test(
+    name = "examples/curriculum/curriculum_learning",
+    main = "examples/curriculum/curriculum_learning.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/curriculum/curriculum_learning.py"],
+    args = ["--as-test", "--stop-reward=800.0"]
+)
+
+# subdirectory: debugging/
+# ....................................
+
+#@OldAPIStack
+py_test(
+    name = "examples/debugging/deterministic_training_torch",
+    main = "examples/debugging/deterministic_training.py",
+    tags = ["team:rllib", "exclusive", "multi_gpu", "examples"],
+    size = "medium",
+    srcs = ["examples/debugging/deterministic_training.py"],
+    args = ["--as-test", "--stop-iters=1", "--framework=torch", "--num-gpus=1", "--num-gpus-per-worker=1"]
+)
+
+# subdirectory: envs/
+# ....................................
+
+#@OldAPIStack
+py_test(
+    name = "examples/envs/custom_gym_env_tf",
+    main = "examples/envs/custom_gym_env.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/envs/custom_gym_env.py"],
+    args = ["--as-test", "--framework=tf"]
+)
+
+#@OldAPIStack
+py_test(
+    name = "examples/envs/custom_gym_env_torch",
+    main = "examples/envs/custom_gym_env.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/envs/custom_gym_env.py"],
+    args = ["--as-test", "--framework=torch"]
+)
+
+#@OldAPIStack
+py_test(
+    name = "examples/envs/greyscale_env",
+    tags = ["team:rllib", "examples", "no_main"],
+    size = "medium",
+    srcs = ["examples/envs/greyscale_env.py"],
+    args = ["--stop-iters=1 --as-test --framework torch"]
+)
+
 # subdirectory: evaluation/
 # ....................................
 py_test(
@@ -2255,154 +2379,513 @@ py_test(
     args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=900.0", "--num-cpus=6", "--evaluation-duration=10", "--evaluation-duration-unit=episodes"]
 )
 
-# subdirectory: multi_agent_and_self_play/
-# ....................................
+# @OldAPIStack
 py_test(
-    name = "examples/multi_agent_and_self_play/custom_heuristic_policy",
-    main = "examples/multi_agent_and_self_play/custom_heuristic_policy.py",
+    name = "examples/evaluation/evaluation_parallel_to_training_13_episodes_tf",
+    main = "examples/evaluation/evaluation_parallel_to_training.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/multi_agent_and_self_play/custom_heuristic_policy.py"],
+    srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
+    args = ["--as-test", "--framework=tf", "--stop-reward=50.0", "--num-cpus=6", "--evaluation-duration=13"]
+)
+
+# @OldAPIStack
+py_test(
+    name = "examples/evaluation/evaluation_parallel_to_training_duration_auto_tf",
+    main = "examples/evaluation/evaluation_parallel_to_training.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
+    args = ["--as-test", "--stop-reward=50.0", "--framework=tf", "--num-cpus=6", "--evaluation-duration=auto"]
+)
+
+# @OldAPIStack
+py_test(
+    name = "examples/evaluation/evaluation_parallel_to_training_duration_auto_torch",
+    main = "examples/evaluation/evaluation_parallel_to_training.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
+    args = ["--as-test", "--stop-reward=50.0", "--num-cpus=6", "--evaluation-duration=auto"]
+)
+
+# @OldAPIStack
+py_test(
+    name = "examples/evaluation/evaluation_parallel_to_training_duration_auto_tf2",
+    main = "examples/evaluation/evaluation_parallel_to_training.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
+    args = ["--as-test", "--framework=tf2", "--stop-reward=30.0", "--num-cpus=6", "--evaluation-num-workers=3", "--evaluation-duration=auto"]
+)
+
+# @OldAPIStack
+py_test(
+    name = "examples/evaluation/evaluation_parallel_to_training_211_ts_tf2",
+    main = "examples/evaluation/evaluation_parallel_to_training.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
+    args = ["--as-test", "--framework=tf2", "--stop-reward=30.0", "--num-cpus=6", "--evaluation-num-workers=3", "--evaluation-duration=211", "--evaluation-duration-unit=timesteps"]
+)
+
+# subdirectory: gpus/
+# ....................................
+
+#@OldAPIStack
+py_test(
+    name = "examples/gpus/fractional_gpus",
+    main = "examples/gpus/fractional_gpus.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/gpus/fractional_gpus.py"],
+    args = ["--as-test", "--stop-reward=40.0", "--num-gpus=0", "--num-workers=0"]
+)
+
+# subdirectory: hierarchical/
+# ....................................
+
+#@OldAPIStack
+py_test(
+    name = "examples/hierarchical/hierarchical_training_tf",
+    main = "examples/hierarchical/hierarchical_training.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/hierarchical/hierarchical_training.py"],
+    args = [ "--framework=tf", "--stop-reward=0.0"]
+)
+
+#@OldAPIStack
+py_test(
+    name = "examples/hierarchical/hierarchical_training_torch",
+    main = "examples/hierarchical/hierarchical_training.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/hierarchical/hierarchical_training.py"],
+    args = ["--framework=torch", "--stop-reward=0.0"]
+)
+
+# subdirectory: inference/
+# ....................................
+
+#@OldAPIStack
+py_test(
+    name = "examples/inference/policy_inference_after_training_tf",
+    main = "examples/inference/policy_inference_after_training.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/inference/policy_inference_after_training.py"],
+    args = ["--stop-iters=3", "--framework=tf"]
+)
+
+#@OldAPIStack
+py_test(
+    name = "examples/inference/policy_inference_after_training_torch",
+    main = "examples/inference/policy_inference_after_training.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/inference/policy_inference_after_training.py"],
+    args = ["--stop-iters=3", "--framework=torch"]
+)
+
+#@OldAPIStack
+py_test(
+    name = "examples/inference/policy_inference_after_training_with_attention_tf",
+    main = "examples/inference/policy_inference_after_training_with_attention.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/inference/policy_inference_after_training_with_attention.py"],
+    args = ["--stop-iters=2", "--framework=tf"]
+)
+
+#@OldAPIStack
+py_test(
+    name = "examples/inference/policy_inference_after_training_with_attention_torch",
+    main = "examples/inference/policy_inference_after_training_with_attention.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/inference/policy_inference_after_training_with_attention.py"],
+    args = ["--stop-iters=2", "--framework=torch"]
+)
+
+#@OldAPIStack
+py_test(
+    name = "examples/inference/policy_inference_after_training_with_lstm_tf",
+    main = "examples/inference/policy_inference_after_training_with_lstm.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/inference/policy_inference_after_training_with_lstm.py"],
+    args = ["--stop-iters=1", "--framework=tf"]
+)
+
+#@OldAPIStack
+py_test(
+    name = "examples/inference/policy_inference_after_training_with_lstm_torch",
+    main = "examples/inference/policy_inference_after_training_with_lstm.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/inference/policy_inference_after_training_with_lstm.py"],
+    args = ["--stop-iters=1", "--framework=torch"]
+)
+
+# subdirectory: learners/
+# ....................................
+#@OldAPIStack @HybridAPIStack
+py_test(
+    name = "examples/learners/ppo_tuner_local_cpu_torch",
+    main = "examples/learners/ppo_tuner.py",
+    tags = ["team:rllib", "examples"],
+    size = "medium",
+    srcs = ["examples/learners/ppo_tuner.py"],
+    args = ["--framework=torch", "--config=local-cpu"]
+)
+
+#@OldAPIStack @HybridAPIStack
+py_test(
+    name = "examples/learners/ppo_tuner_local_cpu_tf2",
+    main = "examples/learners/ppo_tuner.py",
+    tags = ["team:rllib", "examples"],
+    size = "medium",
+    srcs = ["examples/learners/ppo_tuner.py"],
+    args = ["--framework=tf2", "--config=local-cpu"]
+)
+
+#@OldAPIStack @HybridAPIStack
+py_test(
+    name = "examples/learners/ppo_tuner_local_gpu_torch",
+    main = "examples/learners/ppo_tuner.py",
+    tags = ["team:rllib", "examples", "gpu"],
+    size = "medium",
+    srcs = ["examples/learners/ppo_tuner.py"],
+    args = ["--framework=torch", "--config=local-gpu"]
+)
+
+#@OldAPIStack @HybridAPIStack
+py_test(
+    name = "examples/learners/ppo_tuner_local_gpu_tf2",
+    main = "examples/learners/ppo_tuner.py",
+    tags = ["team:rllib", "examples", "gpu", "exclusive"],
+    size = "medium",
+    srcs = ["examples/learners/ppo_tuner.py"],
+    args = ["--framework=tf2", "--config=local-gpu"]
+)
+
+#@OldAPIStack @HybridAPIStack
+py_test(
+    name = "examples/learners/ppo_tuner_remote_cpu_torch",
+    main = "examples/learners/ppo_tuner.py",
+    tags = ["team:rllib", "examples"],
+    size = "medium",
+    srcs = ["examples/learners/ppo_tuner.py"],
+    args = ["--framework=torch", "--config=remote-cpu"]
+)
+
+#@OldAPIStack @HybridAPIStack
+py_test(
+    name = "examples/learners/ppo_tuner_remote_cpu_tf2",
+    main = "examples/learners/ppo_tuner.py",
+    tags = ["team:rllib", "examples"],
+    size = "medium",
+    srcs = ["examples/learners/ppo_tuner.py"],
+    args = ["--framework=tf2", "--config=remote-cpu"]
+)
+
+#@OldAPIStack @HybridAPIStack
+py_test(
+    name = "examples/learners/ppo_tuner_remote_gpu_torch",
+    main = "examples/learners/ppo_tuner.py",
+    tags = ["team:rllib", "examples", "gpu", "exclusive"],
+    size = "medium",
+    srcs = ["examples/learners/ppo_tuner.py"],
+    args = ["--framework=torch", "--config=remote-gpu"]
+)
+
+#@OldAPIStack @HybridAPIStack
+py_test(
+    name = "examples/learners/ppo_tuner_remote_gpu_tf2",
+    main = "examples/learners/ppo_tuner.py",
+    tags = ["team:rllib", "examples", "gpu", "exclusive"],
+    size = "medium",
+    srcs = ["examples/learners/ppo_tuner.py"],
+    args = ["--framework=tf2", "--config=remote-gpu"]
+)
+
+#@OldAPIStack @HybridAPIStack
+py_test(
+    name = "examples/learners/ppo_tuner_multi_gpu_torch",
+    main = "examples/learners/ppo_tuner.py",
+    tags = ["team:rllib", "examples", "multi_gpu", "exclusive"],
+    size = "medium",
+    srcs = ["examples/learners/ppo_tuner.py"],
+    args = ["--framework=torch", "--config=multi-gpu-ddp"]
+)
+
+#@OldAPIStack @HybridAPIStack
+py_test(
+    name = "examples/learners/ppo_tuner_multi_gpu_tf2",
+    main = "examples/learners/ppo_tuner.py",
+    tags = ["team:rllib", "examples", "multi_gpu", "exclusive"],
+    size = "medium",
+    srcs = ["examples/learners/ppo_tuner.py"],
+    args = ["--framework=tf2", "--config=multi-gpu-ddp"]
+)
+
+#@OldAPIStack @HybridAPIStack
+py_test(
+    name = "examples/learners/train_w_bc_finetune_w_ppo",
+    main = "examples/learners/train_w_bc_finetune_w_ppo.py",
+    tags = ["team:rllib", "examples", "exclusive"],
+    size = "medium",
+    srcs = ["examples/learners/train_w_bc_finetune_w_ppo.py"],
+)
+
+# subdirectory: multi_agent/
+# ....................................
+py_test(
+    name = "examples/multi_agent/custom_heuristic_policy",
+    main = "examples/multi_agent/custom_heuristic_policy.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/multi_agent/custom_heuristic_policy.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=450.0"]
 )
 
 py_test(
-    name = "examples/multi_agent_and_self_play/different_spaces_for_agents_ppo",
-    main = "examples/multi_agent_and_self_play/different_spaces_for_agents.py",
+    name = "examples/multi_agent/different_spaces_for_agents_ppo",
+    main = "examples/multi_agent/different_spaces_for_agents.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
-    srcs = ["examples/multi_agent_and_self_play/different_spaces_for_agents.py"],
+    srcs = ["examples/multi_agent/different_spaces_for_agents.py"],
     args = ["--enable-new-api-stack", "--algo=PPO", "--stop-iters=4", "--framework=torch"]
 )
 
 py_test(
-    name = "examples/multi_agent_and_self_play/pettingzoo_independent_learning",
-    main = "examples/multi_agent_and_self_play/pettingzoo_independent_learning.py",
-    tags = ["team:rllib", "examples"],
-    size = "large",
-    srcs = ["examples/multi_agent_and_self_play/pettingzoo_independent_learning.py"],
-    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=-200.0", "--num-cpus=4"]
-)
-
-py_test(
-    name = "examples/multi_agent_and_self_play/multi_agent_cartpole",
-    main = "examples/multi_agent_and_self_play/multi_agent_cartpole.py",
+    name = "examples/multi_agent/multi_agent_cartpole",
+    main = "examples/multi_agent/multi_agent_cartpole.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/multi_agent_and_self_play/multi_agent_cartpole.py"],
+    srcs = ["examples/multi_agent/multi_agent_cartpole.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=600.0", "--num-cpus=4"]
 )
 
 py_test(
-    name = "examples/multi_agent_and_self_play/multi_agent_cartpole_multi_gpu",
-    main = "examples/multi_agent_and_self_play/multi_agent_cartpole.py",
+    name = "examples/multi_agent/multi_agent_cartpole_multi_gpu",
+    main = "examples/multi_agent/multi_agent_cartpole.py",
     tags = ["team:rllib", "exclusive", "examples", "multi_gpu"],
     size = "large",
-    srcs = ["examples/multi_agent_and_self_play/multi_agent_cartpole.py"],
+    srcs = ["examples/multi_agent/multi_agent_cartpole.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=600.0", "--num-cpus=4", "--num-gpus=2"]
 )
 
 py_test(
-    name = "examples/multi_agent_and_self_play/multi_agent_pendulum_multi_gpu",
-    main = "examples/multi_agent_and_self_play/multi_agent_pendulum.py",
+    name = "examples/multi_agent/multi_agent_pendulum_multi_gpu",
+    main = "examples/multi_agent/multi_agent_pendulum.py",
     tags = ["team:rllib", "exclusive", "examples", "multi_gpu"],
     size = "large",
-    srcs = ["examples/multi_agent_and_self_play/multi_agent_pendulum.py"],
+    srcs = ["examples/multi_agent/multi_agent_pendulum.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=-500.0", "--num-cpus=4", "--num-gpus=2"]
 )
 
 py_test(
-    name = "examples/multi_agent_and_self_play/pettingzoo_parameter_sharing",
-    main = "examples/multi_agent_and_self_play/pettingzoo_parameter_sharing.py",
+    name = "examples/multi_agent/pettingzoo_independent_learning",
+    main = "examples/multi_agent/pettingzoo_independent_learning.py",
+    tags = ["team:rllib", "examples"],
+    size = "large",
+    srcs = ["examples/multi_agent/pettingzoo_independent_learning.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=-200.0", "--num-cpus=4"]
+)
+
+py_test(
+    name = "examples/multi_agent/pettingzoo_parameter_sharing",
+    main = "examples/multi_agent/pettingzoo_parameter_sharing.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "large",
-    srcs = ["examples/multi_agent_and_self_play/pettingzoo_parameter_sharing.py"],
+    srcs = ["examples/multi_agent/pettingzoo_parameter_sharing.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=-210.0", "--num-cpus=4"],
 )
 
 # TODO (sven): Activate this test once this script is ready.
 # py_test(
-#    name = "examples/multi_agent_and_self_play/pettingzoo_shared_value_function",
-#    main = "examples/multi_agent_and_self_play/pettingzoo_shared_value_function.py",
+#    name = "examples/multi_agent/pettingzoo_shared_value_function",
+#    main = "examples/multi_agent/pettingzoo_shared_value_function.py",
 #    tags = ["team:rllib", "exclusive", "examples"],
 #    size = "large",
-#    srcs = ["examples/multi_agent_and_self_play/pettingzoo_shared_value_function.py"],
+#    srcs = ["examples/multi_agent/pettingzoo_shared_value_function.py"],
 #    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=-100.0", "--num-cpus=4"],
 # )
 
 py_test(
-    name = "examples/multi_agent_and_self_play/rock_paper_scissors_heuristic_vs_learned",
-    main = "examples/multi_agent_and_self_play/rock_paper_scissors_heuristic_vs_learned.py",
+    name = "examples/multi_agent/rock_paper_scissors_heuristic_vs_learned",
+    main = "examples/multi_agent/rock_paper_scissors_heuristic_vs_learned.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/multi_agent_and_self_play/rock_paper_scissors_heuristic_vs_learned.py"],
+    srcs = ["examples/multi_agent/rock_paper_scissors_heuristic_vs_learned.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=6.5"],
 )
 
 py_test(
-    name = "examples/multi_agent_and_self_play/rock_paper_scissors_heuristic_vs_learned_w_lstm",
-    main = "examples/multi_agent_and_self_play/rock_paper_scissors_heuristic_vs_learned.py",
+    name = "examples/multi_agent/rock_paper_scissors_heuristic_vs_learned_w_lstm",
+    main = "examples/multi_agent/rock_paper_scissors_heuristic_vs_learned.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "large",
-    srcs = ["examples/multi_agent_and_self_play/rock_paper_scissors_heuristic_vs_learned.py"],
+    srcs = ["examples/multi_agent/rock_paper_scissors_heuristic_vs_learned.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=7.2", "--use-lstm", "--num-env-runners=4", "--num-cpus=6"],
 )
 
 py_test(
-    name = "examples/multi_agent_and_self_play/rock_paper_scissors_learned_vs_learned",
-    main = "examples/multi_agent_and_self_play/rock_paper_scissors_learned_vs_learned.py",
+    name = "examples/multi_agent/rock_paper_scissors_learned_vs_learned",
+    main = "examples/multi_agent/rock_paper_scissors_learned_vs_learned.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/multi_agent_and_self_play/rock_paper_scissors_learned_vs_learned.py"],
+    srcs = ["examples/multi_agent/rock_paper_scissors_learned_vs_learned.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--framework=torch", "--stop-iter=10"],
 )
 
 # @OldAPIStack
 py_test(
-    name = "examples/multi_agent_and_self_play/self_play_with_open_spiel_connect_4_ppo_tf_old_api_stack",
-    main = "examples/multi_agent_and_self_play/self_play_with_open_spiel.py",
+    name = "examples/multi_agent/self_play_with_open_spiel_connect_4_ppo_tf_old_api_stack",
+    main = "examples/multi_agent/self_play_with_open_spiel.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/multi_agent_and_self_play/self_play_with_open_spiel.py"],
+    srcs = ["examples/multi_agent/self_play_with_open_spiel.py"],
     args = ["--framework=tf", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--min-league-size=3"]
 )
 
 # @OldAPIStack
 py_test(
-    name = "examples/multi_agent_and_self_play/self_play_with_open_spiel_connect_4_ppo_torch_old_api_stack",
-    main = "examples/multi_agent_and_self_play/self_play_with_open_spiel.py",
+    name = "examples/multi_agent/self_play_with_open_spiel_connect_4_ppo_torch_old_api_stack",
+    main = "examples/multi_agent/self_play_with_open_spiel.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/multi_agent_and_self_play/self_play_with_open_spiel.py"],
+    srcs = ["examples/multi_agent/self_play_with_open_spiel.py"],
     args = ["--framework=torch", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--min-league-size=3"]
 )
 
 py_test(
-    name = "examples/multi_agent_and_self_play/self_play_with_open_spiel_connect_4_ppo_torch_envrunner",
-    main = "examples/multi_agent_and_self_play/self_play_with_open_spiel.py",
+    name = "examples/multi_agent/self_play_with_open_spiel_connect_4_ppo_torch_envrunner",
+    main = "examples/multi_agent/self_play_with_open_spiel.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/multi_agent_and_self_play/self_play_with_open_spiel.py"],
+    srcs = ["examples/multi_agent/self_play_with_open_spiel.py"],
     args = ["--enable-new-api-stack", "--framework=torch", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--min-league-size=4"]
 )
 
 py_test(
-    name = "examples/multi_agent_and_self_play/self_play_league_based_with_open_spiel_connect_4_ppo_torch_envrunner",
-    main = "examples/multi_agent_and_self_play/self_play_league_based_with_open_spiel.py",
+    name = "examples/multi_agent/self_play_league_based_with_open_spiel_connect_4_ppo_torch_envrunner",
+    main = "examples/multi_agent/self_play_league_based_with_open_spiel.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "large",
-    srcs = ["examples/multi_agent_and_self_play/self_play_league_based_with_open_spiel.py"],
+    srcs = ["examples/multi_agent/self_play_league_based_with_open_spiel.py"],
     args = ["--enable-new-api-stack", "--framework=torch", "--env=connect_four", "--win-rate-threshold=0.8", "--num-episodes-human-play=0", "--min-league-size=8"]
 )
 
+# @OldAPIStack
 py_test(
-    name = "examples/multi_agent_and_self_play/two_step_game_with_grouped_agents",
-    main = "examples/multi_agent_and_self_play/two_step_game_with_grouped_agents.py",
+    name = "examples/multi_agent/two_algorithms_tf",
+    main = "examples/multi_agent/two_algorithms.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/multi_agent_and_self_play/two_step_game_with_grouped_agents.py"],
+    srcs = ["examples/multi_agent/two_algorithms.py"],
+    args = ["--as-test", "--framework=tf", "--stop-reward=70"]
+)
+
+# @OldAPIStack
+py_test(
+    name = "examples/multi_agent/two_algorithms_torch",
+    main = "examples/multi_agent/two_algorithms.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "small",
+    srcs = ["examples/multi_agent/two_algorithms.py"],
+    args = ["--as-test", "--framework=torch", "--stop-reward=70"]
+)
+
+py_test(
+    name = "examples/multi_agent/two_step_game_with_grouped_agents",
+    main = "examples/multi_agent/two_step_game_with_grouped_agents.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/multi_agent/two_step_game_with_grouped_agents.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=7.0"]
 )
+
+# subdirectory: offline_rl/
+# ....................................
+#@OldAPIStack
+# TODO (sven): Doesn't seem to learn at the moment. Uncomment once fixed.
+# py_test(
+#    name = "examples/offline_rl/custom_input_api_cql_torch",
+#    main = "examples/offline_rl/custom_input_api.py",
+#    tags = ["team:rllib", "exclusive", "examples"],
+#    size = "medium",
+#    srcs = ["examples/offline_rl/custom_input_api.py"],
+#    args = ["--as-test", "--stop-reward=-300", "--stop-iters=1"]
+# )
+
+#@OldAPIStack
+py_test(
+    name = "examples/offline_rl/offline_rl_torch",
+    main = "examples/offline_rl/offline_rl.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/offline_rl/offline_rl.py"],
+    args = ["--as-test", "--stop-reward=-300", "--stop-iters=1"]
+)
+
+# subdirectory: ray_serve/
+# ....................................
+# TODO (sven): Uncomment once the problem with the path on BAZEL is solved.
+# py_test(
+#    name = "examples/ray_serve/ray_serve_with_rllib",
+#    main = "examples/ray_serve/ray_serve_with_rllib.py",
+#    tags = ["team:rllib", "exclusive", "examples"],
+#    size = "medium",
+#    srcs = ["examples/ray_serve/ray_serve_with_rllib.py"],
+#    args = ["--train-iters=2", "--serve-episodes=2", "--no-render"]
+# )
+
+# subdirectory: ray_tune/
+# ....................................
+#@OldAPIStack
+py_test(
+    name = "examples/ray_tune/custom_experiment",
+    main = "examples/ray_tune/custom_experiment.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/ray_tune/custom_experiment.py"],
+    args = ["--train-iterations=10"]
+)
+
+#@OldAPIStack
+py_test(
+    name = "examples/ray_tune/custom_logger",
+    main = "examples/ray_tune/custom_logger.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/ray_tune/custom_logger.py"],
+    args = ["--stop-iters=3"]
+)
+
+#@OldAPIStack
+py_test(
+    name = "examples/ray_tune/custom_train_function",
+    main = "examples/ray_tune/custom_train_function.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/ray_tune/custom_train_function.py"],
+)
+
+# subdirectory: rl_modules/
+# ....................................
+#@OldAPIStack @HybridAPIStack
+py_test(
+    name = "examples/rl_modules/classes/mobilenet_rlm",
+    main = "examples/rl_modules/classes/mobilenet_rlm.py",
+    tags = ["team:rllib", "examples", "no_main"],
+    size = "small",
+    srcs = ["examples/rl_modules/classes/mobilenet_rlm.py"],
+)
+
+
 
 
 # TODO (sven): Continue cleanup from here with adding more subdirectories.
@@ -2410,7 +2893,7 @@ py_test(
     name = "examples/action_masking_tf2",
     main = "examples/action_masking.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/action_masking.py"],
     args = ["--stop-iter=2", "--framework=tf2"]
 )
@@ -2419,7 +2902,7 @@ py_test(
     name = "examples/action_masking_torch",
     main = "examples/action_masking.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/action_masking.py"],
     args = ["--stop-iter=2", "--framework=torch"]
 )
@@ -2488,14 +2971,7 @@ py_test(
     args = ["--run=PPO", "--as-test", "--framework=torch", "--stop-reward=28", "--num-cpus=4", "--use-prev-action",  "--use-prev-reward"]
 )
 
-py_test(
-    name = "examples/rl_module/mobilenet_rlm",
-    main = "examples/rl_module/mobilenet_rlm.py",
-    tags = ["team:rllib", "examples", "no_main"],
-    size = "small",
-    srcs = ["examples/rl_module/mobilenet_rlm.py"],
-)
-
+#@OldAPIStack
 py_test(
     name = "examples/centralized_critic_tf",
     main = "examples/centralized_critic.py",
@@ -2505,6 +2981,7 @@ py_test(
     args = ["--as-test", "--framework=tf", "--stop-reward=7.2"]
 )
 
+#@OldAPIStack
 py_test(
     name = "examples/centralized_critic_torch",
     main = "examples/centralized_critic.py",
@@ -2514,6 +2991,7 @@ py_test(
     args = ["--as-test", "--framework=torch", "--stop-reward=7.2"]
 )
 
+#@OldAPIStack
 py_test(
     name = "examples/centralized_critic_2_tf",
     main = "examples/centralized_critic_2.py",
@@ -2523,6 +3001,7 @@ py_test(
     args = ["--as-test", "--framework=tf", "--stop-reward=6.0"]
 )
 
+#@OldAPIStack
 py_test(
     name = "examples/centralized_critic_2_torch",
     main = "examples/centralized_critic_2.py",
@@ -2530,51 +3009,6 @@ py_test(
     size = "medium",
     srcs = ["examples/centralized_critic_2.py"],
     args = ["--as-test", "--framework=torch", "--stop-reward=6.0"]
-)
-
-py_test(
-    name = "examples/checkpoint_by_custom_criteria",
-    main = "examples/checkpoint_by_custom_criteria.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/checkpoint_by_custom_criteria.py"],
-    args = ["--stop-iters=3 --num-cpus=3"]
-)
-
-py_test(
-    name = "examples/curriculum_learning",
-    main = "examples/curriculum_learning.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/curriculum_learning.py"],
-    args = ["--as-test", "--stop-reward=800.0"]
-)
-
-py_test(
-    name = "examples/custom_env_tf",
-    main = "examples/custom_env.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/custom_env.py"],
-    args = ["--as-test", "--framework=tf"]
-)
-
-py_test(
-    name = "examples/custom_env_torch",
-    main = "examples/custom_env.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/custom_env.py"],
-    args = ["--as-test", "--framework=torch"]
-)
-
-py_test(
-    name = "examples/custom_experiment",
-    main = "examples/custom_experiment.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/custom_experiment.py"],
-    args = ["--train-iterations=10"]
 )
 
 py_test(
@@ -2667,351 +3101,12 @@ py_test(
 )
 
 py_test(
-    name = "examples/custom_train_fn",
-    main = "examples/custom_train_fn.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/custom_train_fn.py"],
-)
-
-py_test(
-    name = "examples/deterministic_training_torch",
-    main = "examples/deterministic_training.py",
-    tags = ["team:rllib", "exclusive", "multi_gpu", "examples"],
-    size = "medium",
-    srcs = ["examples/deterministic_training.py"],
-    args = ["--as-test", "--stop-iters=1", "--framework=torch", "--num-gpus=1", "--num-gpus-per-worker=1"]
-)
-
-py_test(
-    name = "examples/env/greyscale_env",
-    tags = ["team:rllib", "examples", "no_main"],
-    size = "medium",
-    srcs = ["examples/env/greyscale_env.py"],
-    args = ["--stop-iters=1 --as-test --framework torch"]
-)
-
-
-
-
-
-py_test(
-    name = "examples/evaluation/evaluation_parallel_to_training_13_episodes_tf",
-    main = "examples/evaluation/evaluation_parallel_to_training.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
-    args = ["--as-test", "--framework=tf", "--stop-reward=50.0", "--num-cpus=6", "--evaluation-duration=13"]
-)
-
-py_test(
-    name = "examples/evaluation/evaluation_parallel_to_training_duration_auto_tf",
-    main = "examples/evaluation/evaluation_parallel_to_training.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
-    args = ["--as-test", "--stop-reward=50.0", "--framework=tf", "--num-cpus=6", "--evaluation-duration=auto"]
-)
-
-py_test(
-    name = "examples/evaluation/evaluation_parallel_to_training_duration_auto_torch",
-    main = "examples/evaluation/evaluation_parallel_to_training.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
-    args = ["--as-test", "--stop-reward=50.0", "--num-cpus=6", "--evaluation-duration=auto"]
-)
-
-py_test(
-    name = "examples/evaluation/evaluation_parallel_to_training_duration_auto_tf2",
-    main = "examples/evaluation/evaluation_parallel_to_training.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
-    args = ["--as-test", "--framework=tf2", "--stop-reward=30.0", "--num-cpus=6", "--evaluation-num-workers=3", "--evaluation-duration=auto"]
-)
-
-py_test(
-    name = "examples/evaluation/evaluation_parallel_to_training_211_ts_tf2",
-    main = "examples/evaluation/evaluation_parallel_to_training.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
-    args = ["--as-test", "--framework=tf2", "--stop-reward=30.0", "--num-cpus=6", "--evaluation-num-workers=3", "--evaluation-duration=211", "--evaluation-duration-unit=timesteps"]
-)
-
-py_test(
-    name = "examples/export/cartpole_dqn_export",
-    main = "examples/export/cartpole_dqn_export.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
-    srcs = ["examples/export/cartpole_dqn_export.py"],
-)
-
-py_test(
-    name = "examples/export/onnx_tf2",
-    main = "examples/export/onnx_tf.py",
-    tags = ["team:rllib", "exclusive", "examples", "no_main"],
-    size = "small",
-    srcs = ["examples/export/onnx_tf.py"],
-    args = ["--framework=tf2"],
-)
-
-py_test(
-    name = "examples/export/onnx_torch",
-    main = "examples/export/onnx_torch.py",
-    tags = ["team:rllib", "exclusive", "examples", "no_main"],
-    size = "small",
-    srcs = ["examples/export/onnx_torch.py"],
-)
-
-py_test(
-    name = "examples/fractional_gpus",
-    main = "examples/fractional_gpus.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/fractional_gpus.py"],
-    args = ["--as-test", "--stop-reward=40.0", "--num-gpus=0", "--num-workers=0"]
-)
-
-py_test(
-    name = "examples/hierarchical_training_tf",
-    main = "examples/hierarchical_training.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/hierarchical_training.py"],
-    args = [ "--framework=tf", "--stop-reward=0.0"]
-)
-
-py_test(
-    name = "examples/hierarchical_training_torch",
-    main = "examples/hierarchical_training.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/hierarchical_training.py"],
-    args = ["--framework=torch", "--stop-reward=0.0"]
-)
-
-py_test(
-    name = "examples/multi_agent_two_trainers_tf",
-    main = "examples/multi_agent_two_trainers.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/multi_agent_two_trainers.py"],
-    args = ["--as-test", "--framework=tf", "--stop-reward=70"]
-)
-
-py_test(
-    name = "examples/multi_agent_two_trainers_torch",
-    main = "examples/multi_agent_two_trainers.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
-    srcs = ["examples/multi_agent_two_trainers.py"],
-    args = ["--as-test", "--framework=torch", "--stop-reward=70"]
-)
-
-py_test(
-    name = "examples/offline_rl_torch",
-    main = "examples/offline_rl.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/offline_rl.py"],
-    args = ["--as-test", "--stop-reward=-300", "--stop-iters=1"]
-)
-
-
-py_test(
-    name = "examples/inference_and_serving/policy_inference_after_training_tf",
-    main = "examples/inference_and_serving/policy_inference_after_training.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/inference_and_serving/policy_inference_after_training.py"],
-    args = ["--stop-iters=3", "--framework=tf"]
-)
-
-py_test(
-    name = "examples/inference_and_serving/policy_inference_after_training_torch",
-    main = "examples/inference_and_serving/policy_inference_after_training.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/inference_and_serving/policy_inference_after_training.py"],
-    args = ["--stop-iters=3", "--framework=torch"]
-)
-
-py_test(
-    name = "examples/inference_and_serving/policy_inference_after_training_with_attention_tf",
-    main = "examples/inference_and_serving/policy_inference_after_training_with_attention.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/inference_and_serving/policy_inference_after_training_with_attention.py"],
-    args = ["--stop-iters=2", "--framework=tf"]
-)
-
-py_test(
-    name = "examples/inference_and_serving/policy_inference_after_training_with_attention_torch",
-    main = "examples/inference_and_serving/policy_inference_after_training_with_attention.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/inference_and_serving/policy_inference_after_training_with_attention.py"],
-    args = ["--stop-iters=2", "--framework=torch"]
-)
-
-py_test(
-    name = "examples/inference_and_serving/policy_inference_after_training_with_lstm_tf",
-    main = "examples/inference_and_serving/policy_inference_after_training_with_lstm.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/inference_and_serving/policy_inference_after_training_with_lstm.py"],
-    args = ["--stop-iters=1", "--framework=tf"]
-)
-
-py_test(
-    name = "examples/inference_and_serving/policy_inference_after_training_with_lstm_torch",
-    main = "examples/inference_and_serving/policy_inference_after_training_with_lstm.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/inference_and_serving/policy_inference_after_training_with_lstm.py"],
-    args = ["--stop-iters=1", "--framework=torch"]
-)
-
-py_test(
     name = "examples/replay_buffer_api",
     tags = ["team:rllib", "examples"],
     size = "large",
     srcs = ["examples/replay_buffer_api.py"],
 )
 
-py_test(
-    name = "examples/restore_1_of_n_agents_from_checkpoint",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/restore_1_of_n_agents_from_checkpoint.py"],
-    args = ["--pre-training-iters=1", "--stop-iters=1", "--num-cpus=4"]
-)
-
-# --------------------------------------------------------------------
-# examples/learner directory
-#
-#
-# Description: These are RLlib tests for the new multi-gpu enabled
-# training stack via Learners.
-#
-# NOTE: Add tests alphabetically to this list.
-# --------------------------------------------------------------------
-
-py_test(
-    name = "examples/learner/ppo_tuner_local_cpu_torch",
-    main = "examples/learner/ppo_tuner.py",
-    tags = ["team:rllib", "examples"],
-    size = "medium",
-    srcs = ["examples/learner/ppo_tuner.py"],
-    args = ["--framework=torch", "--config=local-cpu"]
-)
-
-py_test(
-    name = "examples/learner/ppo_tuner_local_cpu_tf2",
-    main = "examples/learner/ppo_tuner.py",
-    tags = ["team:rllib", "examples"],
-    size = "medium",
-    srcs = ["examples/learner/ppo_tuner.py"],
-    args = ["--framework=tf2", "--config=local-cpu"]
-)
-
-py_test(
-    name = "examples/learner/ppo_tuner_local_gpu_torch",
-    main = "examples/learner/ppo_tuner.py",
-    tags = ["team:rllib", "examples", "gpu"],
-    size = "medium",
-    srcs = ["examples/learner/ppo_tuner.py"],
-    args = ["--framework=torch", "--config=local-gpu"]
-)
-
-py_test(
-    name = "examples/learner/ppo_tuner_local_gpu_tf2",
-    main = "examples/learner/ppo_tuner.py",
-    tags = ["team:rllib", "examples", "gpu", "exclusive"],
-    size = "medium",
-    srcs = ["examples/learner/ppo_tuner.py"],
-    args = ["--framework=tf2", "--config=local-gpu"]
-)
-
-py_test(
-    name = "examples/learner/ppo_tuner_remote_cpu_torch",
-    main = "examples/learner/ppo_tuner.py",
-    tags = ["team:rllib", "examples"],
-    size = "medium",
-    srcs = ["examples/learner/ppo_tuner.py"],
-    args = ["--framework=torch", "--config=remote-cpu"]
-)
-
-py_test(
-    name = "examples/learner/ppo_tuner_remote_cpu_tf2",
-    main = "examples/learner/ppo_tuner.py",
-    tags = ["team:rllib", "examples"],
-    size = "medium",
-    srcs = ["examples/learner/ppo_tuner.py"],
-    args = ["--framework=tf2", "--config=remote-cpu"]
-)
-
-py_test(
-    name = "examples/learner/ppo_tuner_remote_gpu_torch",
-    main = "examples/learner/ppo_tuner.py",
-    tags = ["team:rllib", "examples", "gpu", "exclusive"],
-    size = "medium",
-    srcs = ["examples/learner/ppo_tuner.py"],
-    args = ["--framework=torch", "--config=remote-gpu"]
-)
-
-py_test(
-    name = "examples/learner/ppo_tuner_remote_gpu_tf2",
-    main = "examples/learner/ppo_tuner.py",
-    tags = ["team:rllib", "examples", "gpu", "exclusive"],
-    size = "medium",
-    srcs = ["examples/learner/ppo_tuner.py"],
-    args = ["--framework=tf2", "--config=remote-gpu"]
-)
-
-py_test(
-    name = "examples/learner/ppo_tuner_multi_gpu_torch",
-    main = "examples/learner/ppo_tuner.py",
-    tags = ["team:rllib", "examples", "multi_gpu", "exclusive"],
-    size = "medium",
-    srcs = ["examples/learner/ppo_tuner.py"],
-    args = ["--framework=torch", "--config=multi-gpu-ddp"]
-)
-
-py_test(
-    name = "examples/learner/ppo_tuner_multi_gpu_tf2",
-    main = "examples/learner/ppo_tuner.py",
-    tags = ["team:rllib", "examples", "multi_gpu", "exclusive"],
-    size = "medium",
-    srcs = ["examples/learner/ppo_tuner.py"],
-    args = ["--framework=tf2", "--config=multi-gpu-ddp"]
-)
-
-py_test(
-    name = "examples/learner/train_w_bc_finetune_w_ppo",
-    main = "examples/learner/train_w_bc_finetune_w_ppo.py",
-    tags = ["team:rllib", "examples", "exclusive"],
-    size = "medium",
-    srcs = ["examples/learner/train_w_bc_finetune_w_ppo.py"],
-)
-
-# --------------------------------------------------------------------
-# examples/documentation directory
-#
-# Tag: documentation
-#
-# NOTE: Add tests alphabetically to this list.
-# --------------------------------------------------------------------
-
-py_test(
-    name = "examples/documentation/rllib_on_rllib_readme",
-    main = "examples/documentation/rllib_on_rllib_readme.py",
-    tags = ["team:rllib", "documentation", "no_main"],
-    size = "medium",
-    srcs = ["examples/documentation/rllib_on_rllib_readme.py"],
-)
 
 # --------------------------------------------------------------------
 # Manual/disabled tests

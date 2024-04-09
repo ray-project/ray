@@ -8,4 +8,4 @@
     support the "new API stack" and continue to run by default with the old APIs.
     You can continue to use the existing custom (old stack) classes.
 
-    `See </rllib/package_ref/rllib-new-api-stack.html>`__ for more details on how to use the new API stack.
+    :doc:`See here </rllib/rllib-new-api-stack>` for more details on how to use the new API stack.
