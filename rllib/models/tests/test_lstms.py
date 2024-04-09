@@ -5,7 +5,7 @@ import ray
 from ray import air
 from ray import tune
 from ray.rllib.algorithms import ppo
-from ray.rllib.examples.env.random_env import RandomEnv
+from ray.rllib.examples.envs.classes.random_env import RandomEnv
 from ray.rllib.utils.test_utils import framework_iterator
 
 

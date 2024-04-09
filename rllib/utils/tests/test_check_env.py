@@ -9,8 +9,10 @@ from gymnasium.spaces import Box, Dict, Discrete
 
 from ray.rllib.env.base_env import convert_to_base_env
 from ray.rllib.env.multi_agent_env import MultiAgentEnvWrapper, make_multi_agent
-from ray.rllib.examples.env.parametric_actions_cartpole import ParametricActionsCartPole
-from ray.rllib.examples.env.random_env import RandomEnv
+from ray.rllib.examples.envs.classes.parametric_actions_cartpole import (
+    ParametricActionsCartPole,
+)
+from ray.rllib.examples.envs.classes.random_env import RandomEnv
 from ray.rllib.utils.pre_checks.env import (
     check_base_env,
     check_env,

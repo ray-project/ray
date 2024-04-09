@@ -255,8 +255,8 @@ thus parallelizing even the env stepping process.
 **External simulators**: Don't have your simulation running as a gym.Env in python?
 No problem! RLlib supports an external environment API and comes with a pluggable,
 off-the-shelve
-`client <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_client.py>`_/
-`server <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_server.py>`_
+`client <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/external_envs/cartpole_client.py>`_/
+`server <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/external_envs/cartpole_server.py>`_
 setup that allows you to run 100s of independent simulators on the "outside"
 (e.g. a Windows cloud) connecting to a central RLlib Policy-Server that learns
 and serves actions. Alternatively, actions can be computed on the client side

@@ -9,7 +9,7 @@ from ray.rllib.utils.replay_buffers import ReplayBuffer, StorageUnit
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import SampleBatchType
 from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
-from ray.rllib.examples.env.random_env import RandomEnv
+from ray.rllib.examples.envs.classes.random_env import RandomEnv
 from ray.rllib.policy.sample_batch import SampleBatch, concat_samples
 from ray.rllib.algorithms.dqn.dqn import DQNConfig
 

@@ -1,3 +1,4 @@
+import logging
 import os
 import time
 from abc import ABC, abstractmethod
@@ -5,7 +6,6 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Dict, Iterable, List, Optional
 
 import ray
-from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor_state import Topology
 
 
-logger = DatasetLogger(__name__)
+logger = logging.getLogger(__name__)
 DEBUG_RESOURCE_MANAGER = os.environ.get("RAY_DATA_DEBUG_RESOURCE_MANAGER", "0") == "1"
 
 
@@ -344,7 +344,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 " `DataContext.get_current().execution_options.exclude_resources`."
                 " This message will only print once."
             )
-            logger.get_logger(log_to_stdout=True).warning(msg)
+            logger.warning(msg)
 
     def __init__(self, resource_manager: ResourceManager, reservation_ratio: float):
         super().__init__(resource_manager)
