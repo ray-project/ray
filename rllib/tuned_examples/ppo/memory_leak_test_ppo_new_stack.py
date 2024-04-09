@@ -1,6 +1,6 @@
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
-from ray.rllib.examples.env.random_env import RandomLargeObsSpaceEnv
+from ray.rllib.examples.envs.classes.random_env import RandomLargeObsSpaceEnv
 
 
 config = (
