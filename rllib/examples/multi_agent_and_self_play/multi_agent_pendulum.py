@@ -17,7 +17,7 @@ For logging to your WandB account, use:
 --wandb-run-name=[optional: WandB run name (within the defined project)]`
 """
 
-from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+from ray.rllib.examples.env.multi_agent import MultiAgentPendulum
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
@@ -27,7 +27,7 @@ from ray.tune.registry import get_trainable_cls, register_env
 parser = add_rllib_example_script_args(
     default_iters=200,
     default_timesteps=100000,
-    default_reward=600.0,
+    default_reward=-400.0,
 )
 # TODO (sven): This arg is currently ignored (hard-set to 2).
 parser.add_argument("--num-policies", type=int, default=2)
@@ -40,20 +40,22 @@ if __name__ == "__main__":
     if args.num_agents > 0:
         register_env(
             "env",
-            lambda _: MultiAgentCartPole(config={"num_agents": args.num_agents}),
+            lambda _: MultiAgentPendulum(config={"num_agents": args.num_agents}),
         )
 
     base_config = (
         get_trainable_cls(args.algo)
         .get_default_config()
-        .environment("env" if args.num_agents > 0 else "CartPole-v1")
-        .rollouts(
-            # TODO (sven): MAEnvRunner does not support vectorized envs yet
-            #  due to gym's env checkers and non-compatability with RLlib's
-            #  MultiAgentEnv API.
-            num_envs_per_worker=1
-            if args.num_agents > 0
-            else 20,
+        .environment("env" if args.num_agents > 0 else "Pendulum-v1")
+        .rollouts(num_rollout_workers=4)
+        .training(
+            train_batch_size_per_learner=512,
+            mini_batch_size_per_learner=64,
+            lambda_=0.1,
+            gamma=0.95,
+            lr=0.0003,
+            model={"fcnet_activation": "relu"},
+            vf_clip_param=10.0,
         )
     )
 
@@ -64,4 +66,5 @@ if __name__ == "__main__":
             policy_mapping_fn=lambda aid, *a, **kw: f"p{aid}",
         )
 
+    # Augment
     run_rllib_example_script_experiment(base_config, args)

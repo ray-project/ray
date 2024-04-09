@@ -250,9 +250,9 @@ py_test(
 )
 
 py_test(
-    name = "test_logger",
+    name = "test_logging",
     size = "small",
-    srcs = ["tests/test_logger.py"],
+    srcs = ["tests/test_logging.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
@@ -352,6 +352,15 @@ py_test(
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
+
+py_test(
+    name = "test_exceptions",
+    size = "small",
+    srcs = ["tests/test_exceptions.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
 
 py_test(
     name = "test_execution_optimizer",
