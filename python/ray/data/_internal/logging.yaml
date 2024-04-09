@@ -10,8 +10,13 @@ handlers:
         class: ray.data._internal.logging.SessionFileHandler
         formatter: ray
         filename: ray-data.log
+    console:
+        class: ray._private.log.PlainRayHandler
+        formatter: ray
+        level: INFO
 
 loggers:
     ray.data:
         level: DEBUG
-        handlers: [file]
+        handlers: [file, console]
+        propagate: False
