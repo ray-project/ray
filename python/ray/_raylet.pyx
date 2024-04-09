@@ -2696,37 +2696,41 @@ cdef class GcsClient:
         shared_ptr[CPythonGcsClient] inner
         object address
         object _nums_reconnect_retry
-        ray.ClusterID cluster_id
+        ClusterID cluster_id
 
     def __cinit__(self, address,
-                  nums_reconnect_retry=RayConfig.instance().nums_py_gcs_reconnect_retry(
-                  ),
-                  cluster_id_hex: str=None):
+                  nums_reconnect_retry = RayConfig.instance().nums_py_gcs_reconnect_retry(),
+                  cluster_id: str = None):
         cdef GcsClientOptions gcs_options = GcsClientOptions.from_gcs_address(address)
         self.inner.reset(new CPythonGcsClient(dereference(gcs_options.native())))
         self.address = address
         self._nums_reconnect_retry = nums_reconnect_retry
-        if cluster_id_hex is None:
-            self.cluster_id = ray.ClusterID.nil()
+        if cluster_id is None:
+            self.cluster_id = ClusterID.nil()
         else:
-            self.cluster_id = CClusterID.from_hex(cluster_id)
+            self.cluster_id = ClusterID.from_hex(cluster_id)
         self._connect(RayConfig.instance().py_gcs_connect_timeout_s())
 
     def _connect(self, timeout_s=None):
         cdef:
             int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
             size_t num_retries = self._nums_reconnect_retry
+            CClusterID c_cluster_id = self.cluster_id.native()
         with nogil:
-            status = self.inner.get().Connect(self.cluster_id, timeout_ms, num_retries)
+            status = self.inner.get().Connect(c_cluster_id, timeout_ms, num_retries)
 
-        inner_c_cluster_id = self.inner.get().GetClusterId()
-        inner_cluster_id = ray.ClusterID(inner_c_cluster_id.Binary())
+        result_c_cluster_id = self.inner.get().GetClusterId()
+        result_cluster_id = ClusterID(result_c_cluster_id.Binary())
         if self.cluster_id.is_nil():
-            self.cluster_id = inner_cluster_id
+            self.cluster_id = result_cluster_id
         else:
-            assert self.cluster_id == inner_cluster_id
+            assert self.cluster_id == result_cluster_id
 
         check_status(status)
+
+    @property
+    def cluster_id(self):
+        return self.cluster_id
 
     @property
     def address(self):
