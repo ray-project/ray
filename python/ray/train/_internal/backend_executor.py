@@ -10,6 +10,7 @@ from ray._private.ray_constants import env_integer
 from ray.data import Dataset
 from ray.exceptions import RayActorError
 from ray.train import Checkpoint, DataConfig
+from ray.train._internal.schema import TrainRunInfo, TrainWorkerInfo
 from ray.train._internal.session import (
     TrialInfo,
     _TrainingResult,
@@ -424,6 +425,55 @@ class BackendExecutor:
 
         return local_rank_map, local_world_size_map, node_rank_map
 
+    def _register_train_run(self, trial_info) -> None:
+        # Collect Ray Train Worker Info
+        # enable_ray_train_dashboard = env_integer(ENABLE_RAY_TRAIN_DASHBOARD_ENV, 0)
+
+        # if not enable_ray_train_dashboard:
+        #     return
+
+        # TODO(woshiyyya): what about dataset_shard?
+        # Do we need dataset id or dataset shard id
+        def collect_train_worker_info():
+            train_context = ray.train.get_context()
+            runtime_context = ray.runtime_context.get_runtime_context()
+
+            return TrainWorkerInfo(
+                world_rank=train_context.get_world_rank(),
+                local_rank=train_context.get_local_rank(),
+                node_rank=train_context.get_node_rank(),
+                actor_id=runtime_context.get_actor_id(),
+                node_id=runtime_context.get_node_id(),
+                node_ip=runtime_context.get_node_ip_address(),
+                gpu_ids=runtime_context.get_accelerator_ids().get("GPU", []),
+                pid=os.getpid(),
+            )
+
+        futures = [
+            self.worker_group.execute_single_async(index, collect_train_worker_info)
+            for index in range(len(self.worker_group))
+        ]
+        success, exception = check_for_failure(futures)
+
+        if success:
+            # Report to StateActor
+            worker_info_list = ray.get(futures)
+            worker_info_list = sorted(worker_info_list, key=lambda x: x.world_rank)
+
+            runtime_context = ray.runtime_context.get_runtime_context()
+
+            train_run_info = TrainRunInfo(
+                id="TODO",
+                name=trial_info.experiment_name,
+                trial_name=trial_info.name,
+                trainer_actor_id=runtime_context.get_actor_id(),
+                workers=worker_info_list,
+                dataset_ids="TODO",
+            )
+            print(train_run_info)
+        else:
+            logger.warning("Failed to collect infomation for Ray Train Worker.")
+
     def start_training(
         self,
         train_func: Callable[[], T],
@@ -432,7 +482,6 @@ class BackendExecutor:
         data_config: DataConfig,
         storage: StorageContext,
         checkpoint: Optional[Checkpoint] = None,
-        on_session_init: Callable[[], None] = None,
     ) -> None:
         """Executes a training function on all workers in a separate thread.
 
@@ -528,8 +577,7 @@ class BackendExecutor:
 
         self.get_with_failure_handling(futures)
 
-        if on_session_init:
-            on_session_init()
+        self._register_train_run()
 
         # Run the training function asynchronously in its own thread.
         def train_async():
