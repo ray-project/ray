@@ -6,6 +6,7 @@ import pytest
 import ray
 from ray.data.exceptions import SystemException, UserCodeException
 from ray.exceptions import RayTaskError
+from ray.tests.conftest import *  # noqa
 
 
 def test_user_exception(caplog, propagate_logs, ray_start_regular_shared):
