@@ -25,18 +25,6 @@ from ray.tests.conftest import pytest_runtest_makereport  # noqa
 from ray.tests.conftest import _ray_start, wait_for_condition
 
 
-@pytest.fixture
-def propagate_logs():
-    # Ensure that logs are propagated to ancestor handles. This is required if using the
-    # caplog or capsys fixtures with Ray's logging.
-    # NOTE: This only enables log propagation in the driver process, not the workers!
-    logging.getLogger("ray").propagate = True
-    logging.getLogger("ray.data").propagate = True
-    yield
-    logging.getLogger("ray").propagate = False
-    logging.getLogger("ray.data").propagate = False
-
-
 @pytest.fixture(scope="module")
 def ray_start_2_cpus_shared(request):
     param = getattr(request, "param", {})
