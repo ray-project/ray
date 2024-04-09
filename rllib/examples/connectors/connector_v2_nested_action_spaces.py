@@ -6,8 +6,10 @@ from ray.rllib.connectors.env_to_module import (
     FlattenObservations,
     WriteObservationsToEpisodes,
 )
-from ray.rllib.examples.env.multi_agent import MultiAgentNestedSpaceRepeatAfterMeEnv
-from ray.rllib.examples.env.nested_space_repeat_after_me_env import (
+from ray.rllib.examples.envs.classes.multi_agent import (
+    MultiAgentNestedSpaceRepeatAfterMeEnv,
+)
+from ray.rllib.examples.envs.classes.nested_space_repeat_after_me_env import (
     NestedSpaceRepeatAfterMeEnv,
 )
 from ray.rllib.utils.test_utils import (

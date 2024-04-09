@@ -61,6 +61,14 @@ class BuildAppStatus(Enum):
     FAILED = 4
 
 
+class APIType(Enum):
+    """Tracks the type of API that an application originates from."""
+
+    UNKNOWN = 0
+    IMPERATIVE = 1
+    DECLARATIVE = 2
+
+
 @dataclass
 class BuildAppTaskInfo:
     """Stores info on the current in-progress build app task.
@@ -107,6 +115,7 @@ class ApplicationTargetState:
     target_capacity: Optional[float]
     target_capacity_direction: Optional[TargetCapacityDirection]
     deleting: bool
+    api_type: APIType
 
 
 class ApplicationState:
@@ -153,6 +162,7 @@ class ApplicationState:
             target_capacity=None,
             target_capacity_direction=None,
             deleting=False,
+            api_type=APIType.UNKNOWN,
         )
         self._save_checkpoint_func = save_checkpoint_func
 
@@ -194,6 +204,10 @@ class ApplicationState:
     def ingress_deployment(self) -> Optional[str]:
         return self._ingress_deployment_name
 
+    @property
+    def api_type(self) -> APIType:
+        return self._target_state.api_type
+
     def recover_target_state_from_checkpoint(
         self, checkpoint_data: ApplicationTargetState
     ):
@@ -202,16 +216,19 @@ class ApplicationState:
         )
         self._set_target_state(
             checkpoint_data.deployment_infos,
-            checkpoint_data.code_version,
-            checkpoint_data.config,
-            checkpoint_data.target_capacity,
-            checkpoint_data.target_capacity_direction,
-            checkpoint_data.deleting,
+            api_type=checkpoint_data.api_type,
+            code_version=checkpoint_data.code_version,
+            target_config=checkpoint_data.config,
+            target_capacity=checkpoint_data.target_capacity,
+            target_capacity_direction=checkpoint_data.target_capacity_direction,
+            deleting=checkpoint_data.deleting,
         )
 
     def _set_target_state(
         self,
         deployment_infos: Optional[Dict[str, DeploymentInfo]],
+        *,
+        api_type: APIType,
         code_version: str,
         target_config: Optional[ServeApplicationSchema],
         target_capacity: Optional[float] = None,
@@ -227,7 +244,6 @@ class ApplicationState:
         When a request to delete the application has been received, this should be
             ({}, True)
         """
-
         if deleting:
             self._update_status(ApplicationStatus.DELETING)
         else:
@@ -247,6 +263,7 @@ class ApplicationState:
             target_capacity,
             target_capacity_direction,
             deleting,
+            api_type=api_type,
         )
 
         # Checkpoint ahead, so that if the controller crashes before we
@@ -261,14 +278,30 @@ class ApplicationState:
 
         Wipes the target deployment infos, code version, and config.
         """
-        self._set_target_state(dict(), None, None, None, None, True)
+        self._set_target_state(
+            deployment_infos=dict(),
+            api_type=self._target_state.api_type,
+            code_version=None,
+            target_config=None,
+            deleting=True,
+        )
 
     def _clear_target_state_and_store_config(
-        self, target_config: Optional[ServeApplicationSchema]
+        self,
+        target_config: Optional[ServeApplicationSchema],
     ):
-        """Clears the target state and stores the config."""
+        """Clears the target state and stores the config.
 
-        self._set_target_state(None, None, target_config, None, None, False)
+        NOTE: this currently assumes that this method is *only* called when managing
+        apps deployed with the declarative API.
+        """
+        self._set_target_state(
+            deployment_infos=None,
+            api_type=APIType.DECLARATIVE,
+            code_version=None,
+            target_config=target_config,
+            deleting=False,
+        )
 
     def _delete_deployment(self, name):
         id = DeploymentID(name=name, app_name=self._name)
@@ -279,7 +312,7 @@ class ApplicationState:
         """Delete the application"""
         if self._status != ApplicationStatus.DELETING:
             logger.info(
-                f"Deleting application '{self._name}'",
+                f"Deleting app '{self._name}'.",
                 extra={"log_to_stderr": False},
             )
         self._set_target_state_deleting()
@@ -327,11 +360,11 @@ class ApplicationState:
         else:
             self._endpoint_state.delete_endpoint(deployment_id)
 
-    def deploy(self, deployment_infos: Dict[str, DeploymentInfo]):
-        """Deploy application from list of deployment infos.
+    def deploy_app(self, deployment_infos: Dict[str, DeploymentInfo]):
+        """(Re-)deploy the application from list of deployment infos.
 
-        This function should only be called if the app is being deployed
-        through serve.run instead of from a config.
+        This function should only be called to deploy an app from an
+        imperative API (i.e., `serve.run` or Java API).
 
         Raises: RayServeException if there is more than one route prefix
             or docs path.
@@ -342,25 +375,29 @@ class ApplicationState:
 
         self._set_target_state(
             deployment_infos=deployment_infos,
+            api_type=APIType.IMPERATIVE,
             code_version=None,
             target_config=None,
             target_capacity=None,
             target_capacity_direction=None,
         )
 
-    def deploy_config(
+    def apply_app_config(
         self,
         config: ServeApplicationSchema,
         target_capacity: Optional[float],
         target_capacity_direction: Optional[TargetCapacityDirection],
         deployment_time: int,
     ) -> None:
-        """Deploys an application config.
+        """Apply the config to the application.
 
         If the code version matches that of the current live deployments
         then it only applies the updated config to the deployment state
         manager. If the code version doesn't match, this will re-build
         the application.
+
+        This function should only be called to (re-)deploy an app from
+        the declarative API (i.e., through the REST API).
         """
 
         self._deployment_timestamp = deployment_time
@@ -377,6 +414,7 @@ class ApplicationState:
                 self._set_target_state(
                     # Code version doesn't change.
                     code_version=self._target_state.code_version,
+                    api_type=APIType.DECLARATIVE,
                     # Everything else must reflect the new config.
                     deployment_infos=overrided_infos,
                     target_config=config,
@@ -415,7 +453,7 @@ class ApplicationState:
                 ServeUsageTag.APP_CONTAINER_RUNTIME_ENV_USED.record("1")
 
             # Kick off new build app task
-            logger.info(f"Building application '{self._name}'.")
+            logger.info(f"Importing and building app '{self._name}'.")
             build_app_obj_ref = build_serve_application.options(
                 runtime_env=config.runtime_env,
                 enable_task_events=RAY_SERVE_ENABLE_TASK_EVENTS,
@@ -517,7 +555,7 @@ class ApplicationState:
         try:
             args, err = ray.get(self._build_app_task_info.obj_ref)
             if err is None:
-                logger.info(f"Built application '{self._name}' successfully.")
+                logger.info(f"Imported and built app '{self._name}' successfully.")
             else:
                 return (
                     None,
@@ -658,6 +696,7 @@ class ApplicationState:
             self._set_target_state(
                 deployment_infos=infos,
                 code_version=self._build_app_task_info.code_version,
+                api_type=self._target_state.api_type,
                 target_config=self._build_app_task_info.config,
                 target_capacity=self._build_app_task_info.target_capacity,
                 target_capacity_direction=(
@@ -762,14 +801,14 @@ class ApplicationStateManager:
                 app_state.recover_target_state_from_checkpoint(checkpoint_data)
                 self._application_states[app_name] = app_state
 
-    def delete_application(self, name: str) -> None:
+    def delete_app(self, name: str) -> None:
         """Delete application by name"""
         if name not in self._application_states:
             return
         self._application_states[name].delete()
 
-    def apply_deployment_args(self, name: str, deployment_args: List[Dict]) -> None:
-        """Apply list of deployment arguments to application target state.
+    def deploy_app(self, name: str, deployment_args: List[Dict]) -> None:
+        """Deploy the specified app to the list of deployment arguments.
 
         This function should only be called if the app is being deployed
         through serve.run instead of from a config.
@@ -816,32 +855,52 @@ class ApplicationStateManager:
             )
             for params in deployment_args
         }
-        self._application_states[name].deploy(deployment_infos)
+        self._application_states[name].deploy_app(deployment_infos)
 
-    def deploy_config(
+    def apply_app_configs(
         self,
-        name: str,
-        app_config: ServeApplicationSchema,
+        app_configs: List[ServeApplicationSchema],
+        *,
         deployment_time: float = 0,
         target_capacity: Optional[float] = None,
         target_capacity_direction: Optional[TargetCapacityDirection] = None,
-    ) -> None:
-        """Deploy application from config."""
+    ):
+        """Declaratively apply the list of application configs.
 
-        if name not in self._application_states:
-            self._application_states[name] = ApplicationState(
-                name,
-                self._deployment_state_manager,
-                endpoint_state=self._endpoint_state,
-                save_checkpoint_func=self._save_checkpoint_func,
+        The applications will be reconciled to match the target state of the config.
+
+        Any applications previously deployed declaratively that are *not* present in
+        the list will be deleted.
+        """
+        for app_config in app_configs:
+            if app_config.name not in self._application_states:
+                logger.info(f"Deploying new app '{app_config.name}'.")
+                self._application_states[app_config.name] = ApplicationState(
+                    app_config.name,
+                    self._deployment_state_manager,
+                    endpoint_state=self._endpoint_state,
+                    save_checkpoint_func=self._save_checkpoint_func,
+                )
+
+            self._application_states[app_config.name].apply_app_config(
+                app_config,
+                target_capacity,
+                target_capacity_direction,
+                deployment_time=deployment_time,
             )
+
+        # Delete all apps that were previously deployed via the declarative API
+        # but are not in the config being applied.
+        existing_apps = {
+            name
+            for name, app_state in self._application_states.items()
+            if app_state.api_type == APIType.DECLARATIVE
+        }
+        apps_in_config = {app_config.name for app_config in app_configs}
+        for app_to_delete in existing_apps - apps_in_config:
+            self.delete_app(app_to_delete)
+
         ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
-        self._application_states[name].deploy_config(
-            app_config,
-            target_capacity,
-            target_capacity_direction,
-            deployment_time=deployment_time,
-        )
 
     def get_deployments(self, app_name: str) -> List[str]:
         """Return all deployment names by app name"""

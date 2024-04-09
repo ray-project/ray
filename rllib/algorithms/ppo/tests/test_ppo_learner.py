@@ -12,7 +12,7 @@ import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.algorithms.ppo.ppo import LEARNER_RESULTS_CURR_KL_COEFF_KEY
 from ray.rllib.core.columns import Columns
 from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch
-from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.test_utils import check, framework_iterator
