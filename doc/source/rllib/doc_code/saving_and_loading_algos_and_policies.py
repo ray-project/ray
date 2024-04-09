@@ -57,7 +57,7 @@ my_new_ppo.stop()
 import os
 
 # Use our example multi-agent CartPole environment to train in.
-from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 
 # Set up a multi-agent Algorithm, training two policies independently.
 my_ma_config = PPOConfig().multi_agent(
@@ -163,7 +163,7 @@ print(f"Computed action {action} from given CartPole observation.")
 
 # __restore-algorithm-from-checkpoint-with-fewer-policies-begin__
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 
 # Set up an Algorithm with 5 Policies.
 algo_w_5_policies = (

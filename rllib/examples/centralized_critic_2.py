@@ -1,6 +1,8 @@
+# TODO (sven): Move this example script into the new API stack.
+
 # ***********************************************************************************
 # IMPORTANT NOTE: This script is using the old API stack and will soon be replaced by
-# `ray.rllib.examples.multi_agent_and_self_play.pettingzoo_shared_value_function.py`!
+# `ray.rllib.examples.multi_agent.pettingzoo_shared_value_function.py`!
 # ***********************************************************************************
 
 
@@ -23,11 +25,11 @@ import os
 from ray import air, tune
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.examples.models.centralized_critic_models import (
+from ray.rllib.examples._old_api_stack.models.centralized_critic_models import (
     YetAnotherCentralizedCriticModel,
     YetAnotherTorchCentralizedCriticModel,
 )
-from ray.rllib.examples.env.two_step_game import TwoStepGame
+from ray.rllib.examples.envs.classes.two_step_game import TwoStepGame
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.test_utils import check_learning_achieved
@@ -123,8 +125,6 @@ if __name__ == "__main__":
 
     config = (
         PPOConfig()
-        # TODO (Kourosh): Lift this example to the new RLModule stack, and enable it.
-        .experimental(_enable_new_api_stack=False)
         .environment(TwoStepGame)
         .framework(args.framework)
         .rollouts(

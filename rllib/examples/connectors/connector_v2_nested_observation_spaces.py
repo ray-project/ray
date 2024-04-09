@@ -4,10 +4,10 @@ from ray.rllib.connectors.env_to_module import (
     FlattenObservations,
     WriteObservationsToEpisodes,
 )
-from ray.rllib.examples.env.cartpole_with_dict_observation_space import (
+from ray.rllib.examples.envs.classes.cartpole_with_dict_observation_space import (
     CartPoleWithDictObservationSpace,
 )
-from ray.rllib.examples.env.multi_agent import (
+from ray.rllib.examples.envs.classes.multi_agent import (
     MultiAgentCartPoleWithDictObservationSpace,
 )
 from ray.rllib.utils.test_utils import (
