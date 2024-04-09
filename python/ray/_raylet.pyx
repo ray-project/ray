@@ -2719,14 +2719,14 @@ cdef class GcsClient:
         with nogil:
             status = self.inner.get().Connect(c_cluster_id, timeout_ms, num_retries)
 
+        check_status(status)
+
         result_c_cluster_id = self.inner.get().GetClusterId()
         result_cluster_id = ClusterID(result_c_cluster_id.Binary())
         if self.cluster_id.is_nil():
             self.cluster_id = result_cluster_id
         else:
             assert self.cluster_id == result_cluster_id
-
-        check_status(status)
 
     @property
     def cluster_id(self):
