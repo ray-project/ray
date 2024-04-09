@@ -2727,26 +2727,37 @@ def from_huggingface(
         A :class:`~ray.data.Dataset` holding rows from the `Hugging Face Datasets Dataset`_.
     """  # noqa: E501
     import datasets
+    from aiohttp.client_exceptions import ClientResponseError
 
     from ray.data.datasource.huggingface_datasource import HuggingFaceDatasource
 
     if isinstance(dataset, (datasets.IterableDataset, datasets.Dataset)):
-        # Attempt to read data via Hugging Face Hub parquet files. If the
-        # returned list of files is empty, attempt read via other methods.
-        file_urls = HuggingFaceDatasource.list_parquet_urls_from_dataset(dataset)
-        if len(file_urls) > 0:
-            # If file urls are returned, the parquet files are available via API
-            # TODO: Add support for reading from http filesystem in FileBasedDatasource
-            # GH Issue: https://github.com/ray-project/ray/issues/42706
-            import fsspec.implementations.http
+        try:
+            # Attempt to read data via Hugging Face Hub parquet files. If the
+            # returned list of files is empty, attempt read via other methods.
+            file_urls = HuggingFaceDatasource.list_parquet_urls_from_dataset(dataset)
+            if len(file_urls) > 0:
+                # If file urls are returned, the parquet files are available via API
+                # TODO: Add support for reading from http filesystem in
+                # FileBasedDatasource. GH Issue:
+                # https://github.com/ray-project/ray/issues/42706
+                import fsspec.implementations.http
 
-            http = fsspec.implementations.http.HTTPFileSystem()
-            return read_parquet(
-                file_urls,
-                parallelism=parallelism,
-                filesystem=http,
-                concurrency=concurrency,
-                override_num_blocks=override_num_blocks,
+                http = fsspec.implementations.http.HTTPFileSystem()
+                return read_parquet(
+                    file_urls,
+                    parallelism=parallelism,
+                    filesystem=http,
+                    concurrency=concurrency,
+                    override_num_blocks=override_num_blocks,
+                    ray_remote_args={
+                        "retry_exceptions": [FileNotFoundError, ClientResponseError]
+                    },
+                )
+        except (FileNotFoundError, ClientResponseError):
+            logger.warning(
+                "Distrubuted read via Hugging Face Hub parquet files failed, "
+                "falling back on single node read."
             )
 
     if isinstance(dataset, datasets.IterableDataset):
