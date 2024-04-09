@@ -348,11 +348,11 @@ cdef class ClusterID(UniqueID):
 
     def __init__(self, id):
         check_id(id)
-        self.data = CNodeID.FromBinary(<c_string>id)
+        self.data = CClusterID.FromBinary(<c_string>id)
 
     @classmethod
     def from_hex(cls, hex_id):
-        binary_id = CNodeID.FromHex(<c_string>hex_id).Binary()
+        binary_id = CClusterID.FromHex(<c_string>hex_id).Binary()
         return cls(binary_id)
 
     cdef CClusterID native(self):

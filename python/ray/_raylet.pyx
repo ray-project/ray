@@ -2696,20 +2696,20 @@ cdef class GcsClient:
         shared_ptr[CPythonGcsClient] inner
         object address
         object _nums_reconnect_retry
-        CClusterID init_cluster_id
+        ray.ClusterID cluster_id
 
     def __cinit__(self, address,
                   nums_reconnect_retry=RayConfig.instance().nums_py_gcs_reconnect_retry(
                   ),
-                  cluster_id: str=None):
+                  cluster_id_hex: str=None):
         cdef GcsClientOptions gcs_options = GcsClientOptions.from_gcs_address(address)
         self.inner.reset(new CPythonGcsClient(dereference(gcs_options.native())))
         self.address = address
         self._nums_reconnect_retry = nums_reconnect_retry
-        if cluster_id is None:
-            self.init_cluster_id = CClusterID.Nil()
+        if cluster_id_hex is None:
+            self.cluster_id = ray.ClusterID.nil()
         else:
-            self.init_cluster_id = CClusterID.FromHex(cluster_id)
+            self.cluster_id = CClusterID.from_hex(cluster_id)
         self._connect(RayConfig.instance().py_gcs_connect_timeout_s())
 
     def _connect(self, timeout_s=None):
@@ -2717,14 +2717,16 @@ cdef class GcsClient:
             int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
             size_t num_retries = self._nums_reconnect_retry
         with nogil:
-            status = self.inner.get().Connect(self.init_cluster_id, timeout_ms, num_retries)
+            status = self.inner.get().Connect(self.cluster_id, timeout_ms, num_retries)
+
+        inner_c_cluster_id = self.inner.get().GetClusterId()
+        inner_cluster_id = ray.ClusterID(inner_c_cluster_id.Binary())
+        if self.cluster_id.is_nil():
+            self.cluster_id = inner_cluster_id
+        else:
+            assert self.cluster_id == inner_cluster_id
 
         check_status(status)
-        assert not self.cluster_id.is_nil()
-
-    @property
-    def cluster_id(self) -> ray.ClusterID:
-        return ClusterID(self.inner.get().GetClusterId().Binary())
 
     @property
     def address(self):
