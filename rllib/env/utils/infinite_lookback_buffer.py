@@ -185,6 +185,11 @@ class InfiniteLookbackBuffer:
         else:
             if isinstance(other, InfiniteLookbackBuffer):
                 data = self.data + other.data
+            elif isinstance(other, (int, float, complex)):
+                data = [
+                    item + other if isinstance(item, (int, float, complex)) else item
+                    for item in self.data
+                ]
             else:
                 data = self.data + other
             return InfiniteLookbackBuffer(

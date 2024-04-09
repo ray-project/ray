@@ -2782,7 +2782,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             size=100, truncate=False
         )
         # Now, create a successor episode.
-        episode_2 = episode_1.cut()
+        episode_2 = episode_1.cut(len_lookback_buffer=1)
         # Generate 100 more samples from the environment and store it in the episode.
         episode_2, env = self._mock_multi_agent_records_from_env(
             size=100, episode=episode_2, env=env, init=False
@@ -2793,7 +2793,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Now concatenate the two episodes.
         episode_1.concat_episode(episode_2)
         # Assert that episode 1 has now 200 timesteps.
-        self.assertTrue(episode_1.t, 200)
+        self.assertTrue(episode_1.env_t, 200)
         # Ensure that `episode_1` is done if `episode_2` is.
         check(episode_1.is_terminated, episode_2.is_terminated)
         check(episode_1.is_truncated, episode_2.is_truncated)
@@ -2804,9 +2804,14 @@ class TestMultiAgentEpisode(unittest.TestCase):
             # Note, for done agents there was only an empty timestep mapping in
             # `episode_2`.
             if not agent_eps.is_done:
+                last_agent_timestep = next(
+                    item
+                    for item in reversed(episode_1.env_t_to_agent_t[agent_id])
+                    if item != episode_1.SKIP_ENV_TS_TAG
+                )
                 check(
-                    episode_1.global_t_to_local_t[agent_id][-1],
-                    episode_2.global_t_to_local_t[agent_id][-1],
+                    last_agent_timestep,
+                    len(agent_eps),
                 )
                 check(
                     agent_eps.observations[-1],
@@ -2829,82 +2834,17 @@ class TestMultiAgentEpisode(unittest.TestCase):
 
         # Ensure that all global timestep mappings have no duplicates after
         # concatenation and matches the observation lengths.
-        for agent_id, agent_map in episode_1.global_t_to_local_t.items():
+        for agent_id, agent_map in episode_1.env_t_to_agent_t.items():
             check(len(agent_map), len(set(agent_map)))
             check(len(agent_map), len(episode_1.agent_episodes[agent_id].observations))
 
         # Now assert that all buffers remained the same.
-        for agent_id, agent_buffer in episode_1.agent_buffers.items():
-            # Make sure the actions buffers are either both full or both empty.
-            check(
-                agent_buffer["actions"].full(),
-                episode_2.agent_buffers[agent_id]["actions"].full(),
-            )
-
-            # If the buffer is full ensure `episode_2`'s buffer is identical in value.
-            if agent_buffer["actions"].full():
-                check(
-                    agent_buffer["actions"].queue[0],
-                    episode_2.agent_buffers[agent_id]["actions"].queue[0],
-                )
-            # If the agent is not done, the buffers should be equal in value.
-            if not episode_1.agent_episodes[agent_id].is_done:
-                check(
-                    agent_buffer["rewards"].queue[0],
-                    episode_2.agent_buffers[agent_id]["rewards"].queue[0],
-                )
-                check(
-                    agent_buffer["extra_model_outputs"].queue[0],
-                    episode_2.agent_buffers[agent_id]["extra_model_outputs"].queue[0],
-                )
-            # If the agent is done, then all buffers should be empty in both episodes.
-            else:
-                self.assertTrue(agent_buffer["actions"].empty())
-                self.assertTrue(agent_buffer["rewards"].empty())
-                self.assertTrue(agent_buffer["extra_model_outputs"].empty())
-                self.assertTrue(episode_2.agent_buffers[agent_id]["actions"].empty())
-                self.assertTrue(episode_2.agent_buffers[agent_id]["rewards"].empty())
-                self.assertTrue(
-                    episode_2.agent_buffers[agent_id]["extra_model_outputs"].empty()
-                )
-
-        # Ensure that all global action timestep mappings do not contain duplicates.
-        for agent_id, agent_action_ts_map in episode_1.global_actions_t.items():
-            check(len(agent_action_ts_map), len(set(agent_action_ts_map)))
-            # Also ensure that the timestep mapping are at least as long as action
-            # history.
-            self.assertGreaterEqual(
-                len(agent_action_ts_map),
-                len(episode_1.agent_episodes[agent_id].actions),
-            )
-            # Done agents might not have these lists in `episode_2`.
-            if not episode_1.agent_episodes[agent_id].is_done:
-                # Ensure for agents that are not done that the last entry matches.
-                check(
-                    agent_action_ts_map[-1],
-                    episode_2.global_actions_t[agent_id][-1],
-                )
-
-        # Ensure that partial reward timestep mapping have no duplicates and that
-        # partial rewards match.
-        for agent_id, agent_partial_rewards_t in episode_1.partial_rewards_t.items():
-            check(len(agent_partial_rewards_t), len(set(agent_partial_rewards_t)))
-            # Done agents might not have these lists in `episode_2`.
-            if not episode_1.agent_episodes[agent_id].is_done:
-                # Ensure for agents that are not done that the last entries match.
-                check(
-                    agent_partial_rewards_t[-1],
-                    episode_2.partial_rewards_t[agent_id][-1],
-                )
-                check(
-                    episode_1.partial_rewards[agent_id][-1],
-                    episode_2.partial_rewards[agent_id][-1],
-                )
-            # Partial reward timestep mappings and partial reward list should have
-            # identical length.
-            check(
-                len(agent_partial_rewards_t), len(episode_1.partial_rewards[agent_id])
-            )
+        check(episode_1._agent_buffered_actions, episode_2._agent_buffered_actions)
+        check(
+            episode_1._agent_buffered_extra_model_outputs,
+            episode_2._agent_buffered_extra_model_outputs,
+        )
+        check(episode_1._agent_buffered_rewards, episode_2._agent_buffered_rewards)
 
         # Assert that the getters work.
         last_observation = episode_1.get_observations()

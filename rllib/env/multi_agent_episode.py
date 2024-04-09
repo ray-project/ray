@@ -892,9 +892,21 @@ class MultiAgentEpisode:
                     episode_chunk.agent_episodes[agent_id]
                 )
                 # Concatenate the env- to agent-timestep mappings.
-                self.env_t_to_agent_t[agent_id].extend(
-                    episode_chunk.env_t_to_agent_t[agent_id]
+                last_agent_step = next(
+                    item
+                    for item in reversed(self.env_t_to_agent_t[agent_id])
+                    if item != self.SKIP_ENV_TS_TAG
                 )
+                first_agent_step = next(
+                    item
+                    for item in episode_chunk.env_t_to_agent_t[agent_id]
+                    if item != episode_chunk.SKIP_ENV_TS_TAG
+                )
+                self.env_t_to_agent_t[agent_id] += (
+                    episode_chunk.env_t_to_agent_t[agent_id]
+                    + (last_agent_step - first_agent_step)
+                )[1:]
+
             # Or, if agent is only in the new episode chunk.
             elif agent_id not in self.agent_episode_ids:
                 # Then store all agent data from the new episode chunk in self.
