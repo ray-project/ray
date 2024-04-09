@@ -17,10 +17,10 @@ steps:
       - ./ci/ci.sh compile_pip_dependencies
       - cp -f ./python/requirements_compiled.txt /artifact-mount/
     soft_fail: true
-    job_env: oss-ci-base_build
+    job_env: oss-ci-base_build-py3.11
     depends_on:
       - forge
-      - oss-ci-base_build
+      - oss-ci-base_build-multipy
 
   # test
   - label: doc tests
@@ -51,13 +51,6 @@ steps:
     depends_on: [ "corebuild", "forge" ]
 
   # bot
-  - label: ":robot_face: CI state machine bot"
-    tags: skip-on-premerge
-    if: build.branch == "master" && build.env("RAYCI_CONTINUOUS_BUILD") == "1"
-    instance_type: small
-    commands:
-      - bazel run //ci/ray_ci/automation:state_machine_bot -- --production
-
   - label: ":robot_face: CI weekly green metric"
     tags: skip-on-premerge
     if: build.branch == "master" && build.env("RAYCI_CONTINUOUS_BUILD") == "1"

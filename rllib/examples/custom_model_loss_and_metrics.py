@@ -1,3 +1,7 @@
+# TODO (sven): Move this example script into the new API stack.
+#  Users should just inherit the Learner and extend the loss_fn.
+# TODO (sven): Move this example script to `examples/learners/...`
+
 """Example of using custom_loss() with an imitation learning loss under the Policy
 and ModelV2 API.
 
@@ -17,7 +21,7 @@ import os
 
 import ray
 from ray import air, tune
-from ray.rllib.examples.models.custom_loss_model import (
+from ray.rllib.examples._old_api_stack.models.custom_loss_model import (
     CustomLossModel,
     TorchCustomLossModel,
 )
@@ -68,9 +72,6 @@ if __name__ == "__main__":
     config = (
         get_trainable_cls(args.run)
         .get_default_config()
-        # TODO (Kourosh): This example needs to be migrated to the new RLModule/Learner
-        #  API. Users should just inherit the Learner and extend the loss_fn.
-        .experimental(_enable_new_api_stack=False)
         .environment("CartPole-v1")
         .framework(args.framework)
         .rollouts(num_rollout_workers=0)

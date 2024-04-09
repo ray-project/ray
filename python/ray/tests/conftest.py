@@ -274,12 +274,18 @@ def kill_all_redis_server():
     # Find Redis server processes
     redis_procs = []
     for proc in psutil.process_iter(["name", "cmdline"]):
-        if proc.name() == "redis-server":
-            redis_procs.append(proc)
+        try:
+            if proc.name() == "redis-server":
+                redis_procs.append(proc)
+        except psutil.NoSuchProcess:
+            pass
 
     # Kill Redis server processes
     for proc in redis_procs:
-        proc.kill()
+        try:
+            proc.kill()
+        except psutil.NoSuchProcess:
+            pass
 
 
 @contextmanager
