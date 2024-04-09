@@ -348,9 +348,7 @@ class FakeDeploymentReplica:
 
 
 def replica(version: Optional[DeploymentVersion] = None) -> FakeDeploymentReplica:
-    if version is None:
-        version = DeploymentVersion(get_random_string(), DeploymentConfig(), {})
-
+    version = version or DeploymentVersion(get_random_string(), DeploymentConfig(), {})
     return FakeDeploymentReplica(version)
 
 
