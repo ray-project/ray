@@ -14,10 +14,8 @@ _, tf, _ = try_import_tf()
 class ActionMaskRLMBase(RLModule):
     def __init__(self, config: RLModuleConfig):
         if not isinstance(config.observation_space, gym.spaces.Dict):
-            raise ValueError(
-                "This model requires the environment to provide a "
-                "gym.spaces.Dict observation space."
-            )
+            super().__init__(config)
+            return
         # We need to adjust the observation space for this RL Module so that, when
         # building the default models, the RLModule does not "see" the action mask but
         # only the original observation space without the action mask. This tricks it
@@ -30,6 +28,15 @@ class ActionMaskRLMBase(RLModule):
 
 
 class TorchActionMaskRLM(ActionMaskRLMBase, PPOTorchRLModule):
+    def _compute_values(self, batch, device=None):
+        _check_batch(batch)
+
+        # Modify the incoming batch so that the default models can compute logits and
+        # values as usual.
+        batch[SampleBatch.OBS] = batch[SampleBatch.OBS]["observations"]
+
+        return super()._compute_values(batch, device)
+
     def _forward_inference(self, batch, **kwargs):
         return mask_forward_fn_torch(super()._forward_inference, batch, **kwargs)
 
