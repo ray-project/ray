@@ -755,98 +755,6 @@ class MultiAgentEpisode:
 
         return self
 
-    def concat_episode(self, other: "MultiAgentEpisode") -> None:
-        """Adds the given `other` MultiAgentEpisode to the right side of self.
-
-        In order for this to work, both chunks (`self` and `other`) must fit
-        together. This is checked by the IDs (must be identical), the time step counters
-        (`self.t` must be the same as `episode_chunk.t_started`), as well as the
-        observations/infos at the concatenation boundaries (`self.observations[-1]`
-        must match `episode_chunk.observations[0]`). Also, `self.is_done` must
-        not be True, meaning `self.is_terminated` and `self.is_truncated` are both
-        False.
-
-        Args:
-            other: The other `MultiAgentEpisode` to be concatenated to this one.
-
-        Returns: A `MultiAgentEpisode` instance containing the concatenated data
-            from both episodes (`self` and `other`).
-        """
-        # Make sure the IDs match.
-        assert other.id_ == self.id_
-        # NOTE (sven): This is what we agreed on. As the replay buffers must be
-        # able to concatenate.
-        assert not self.is_done
-        # Make sure the timesteps match.
-        assert self.env_t == other.env_t_started
-        # Validate `other`.
-        other.validate()
-
-        # Concatenate the individual SingleAgentEpisodes from both chunks.
-        all_agent_ids = set(self.agent_ids) | set(other.agent_ids)
-        for agent_id in all_agent_ids:
-            # If the agent was done in the first episode chunk, continue.
-            if self.agent_episodes[agent_id].is_done:
-                continue
-
-            # If the agent has data in both chunks, simply concatenate on the
-            # single-agent level.
-            if agent_id in self.agent_episodes and agent_id in other.agent_episodes:
-                self.agent_episodes[agent_id].concat_episode(
-                    other.agent_episodes[agent_id]
-                )
-                # Concatenate the env- to agent-timestep mappings.
-                last_agent_step = next(
-                    item
-                    for item in reversed(self.env_t_to_agent_t[agent_id])
-                    if item != self.SKIP_ENV_TS_TAG
-                )
-                first_agent_step = next(
-                    item
-                    for item in other.env_t_to_agent_t[agent_id]
-                    if item != other.SKIP_ENV_TS_TAG
-                )
-                self.env_t_to_agent_t[agent_id] += (
-                                                           other.env_t_to_agent_t[
-                                                               agent_id]
-                                                           + (
-                                                                       last_agent_step - first_agent_step)
-                                                   )[1:]
-
-            # Or, if agent is only in the new episode chunk.
-            elif agent_id not in self.agent_episode_ids:
-                # Then store all agent data from the new episode chunk in self.
-                self.agent_episodes[agent_id] = other.agent_episodes[agent_id]
-                # Do not forget the env to agent timestep mapping.
-                self.env_t_to_agent_t[agent_id] = other.env_t_to_agent_t[
-                    agent_id
-                ]
-                # Add the agent's starting timestep.
-                self.agent_t_started[agent_id] = other.agent_t_started[agent_id]
-
-            # Otherwise, the agent is only in `self` and all data is stored already.
-            # else: pass
-
-        # Update all timestep counters.
-        self.env_t = other.env_t
-        # Check, if the episode is terminated or truncated.
-        if other.is_terminated:
-            self.is_terminated = True
-        elif other.is_truncated:
-            self.is_truncated = True
-
-        # Copy over the current buffer values from the new episode chunk.
-        self._agent_buffered_actions = copy.deepcopy(
-            other._agent_buffered_actions
-        )
-        self._agent_buffered_rewards = other._agent_buffered_rewards.copy()
-        self._agent_buffered_extra_model_outputs = copy.deepcopy(
-            other._agent_buffered_extra_model_outputs
-        )
-
-        # Validate.
-        self.validate()
-
     def cut(self, len_lookback_buffer: int = 0) -> "MultiAgentEpisode":
         """Returns a successor episode chunk (of len=0) continuing from this Episode.
 
@@ -1912,13 +1820,10 @@ class MultiAgentEpisode:
                     len(observations_per_agent[agent_id]) - 1
                 )
 
-            # Those agents that did NOT step get self.SKIP_ENV_TS_TAG added to their mapping.
+            # Those agents that did NOT step get self.SKIP_ENV_TS_TAG added to their
+            # mapping.
             for agent_id in all_agent_ids:
                 if agent_id not in obs and agent_id not in done_per_agent:
-                    #TEST
-                    # when not using self._create_simple_episode
-                    # we do NOT seem to go into this line v for a0 (to add the 'S', even though we should)
-                    #END:TEST
                     self.env_t_to_agent_t[agent_id].append(self.SKIP_ENV_TS_TAG)
 
             # Update per-agent lookback buffer sizes to be used when creating the
