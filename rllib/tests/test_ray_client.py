@@ -1,13 +1,10 @@
 import os
-import sys
 import unittest
 
-import pytest
 import ray
-from ray import air
-from ray import tune
+from ray import air, tune
 import ray.rllib.algorithms.ppo as ppo
-from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
+from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
 from ray.util.client.ray_client_helpers import ray_start_client_server
 
 
@@ -17,7 +14,7 @@ class TestRayClient(unittest.TestCase):
             assert ray.util.client.ray.is_connected()
         assert ray.util.client.ray.is_connected() is False
 
-    def test_custom_train_fn(self):
+    def test_custom_train_function(self):
         with ray_start_client_server():
             assert ray.util.client.ray.is_connected()
 
@@ -31,7 +28,7 @@ class TestRayClient(unittest.TestCase):
                 "framework": "tf",
             }
             resources = ppo.PPO.default_resource_request(config)
-            from ray.rllib.examples.custom_train_fn import my_train_fn
+            from ray.rllib.examples.ray_tune.custom_train_function import my_train_fn
 
             tune.Tuner(
                 tune.with_resources(my_train_fn, resources),
@@ -66,7 +63,7 @@ class TestRayClient(unittest.TestCase):
             config = config.to_dict()
             config["train-iterations"] = 2
 
-            from ray.rllib.examples.custom_experiment import experiment
+            from ray.rllib.examples.ray_tune.custom_experiment import experiment
 
             # Ray client does not seem to propagate the `fn._resources` property
             # correctly for imported functions. As a workaround, we can wrap the
@@ -83,4 +80,7 @@ class TestRayClient(unittest.TestCase):
 
 
 if __name__ == "__main__":
+    import pytest
+    import sys
+
     sys.exit(pytest.main(["-v", __file__]))

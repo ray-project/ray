@@ -42,7 +42,7 @@ class TestPreprocessors(unittest.TestCase):
             .experimental(_enable_new_api_stack=True)
             .framework("tf2")
             .environment(
-                env="ray.rllib.examples.env.random_env.RandomEnv",
+                env="ray.rllib.examples.envs.classes.random_env.RandomEnv",
                 env_config={
                     "config": {
                         "observation_space": Box(-1.0, 1.0, (1,), dtype=np.int32),
@@ -71,7 +71,7 @@ class TestPreprocessors(unittest.TestCase):
         config = (
             ppo.PPOConfig()
             .environment(
-                "ray.rllib.examples.env.random_env.RandomEnv",
+                "ray.rllib.examples.envs.classes.random_env.RandomEnv",
                 env_config={
                     "config": {
                         "observation_space": Dict(

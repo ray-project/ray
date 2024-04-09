@@ -1,6 +1,8 @@
+# TODO (sven): Move this example script into the new API stack.
+
 # ***********************************************************************************
 # IMPORTANT NOTE: This script is using the old API stack and will soon be replaced by
-# `ray.rllib.examples.multi_agent_and_self_play.pettingzoo_shared_value_function.py`!
+# `ray.rllib.examples.multi_agent.pettingzoo_shared_value_function.py`!
 # ***********************************************************************************
 
 """An example of customizing PPO to leverage a centralized critic.
@@ -32,8 +34,8 @@ from ray.rllib.algorithms.ppo.ppo_tf_policy import (
 )
 from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
 from ray.rllib.evaluation.postprocessing import compute_advantages, Postprocessing
-from ray.rllib.examples.env.two_step_game import TwoStepGame
-from ray.rllib.examples.models.centralized_critic_models import (
+from ray.rllib.examples.envs.classes.two_step_game import TwoStepGame
+from ray.rllib.examples._old_api_stack.models.centralized_critic_models import (
     CentralizedCriticModel,
     TorchCentralizedCriticModel,
 )
@@ -264,8 +266,6 @@ if __name__ == "__main__":
 
     config = (
         PPOConfig()
-        # TODO (Kourosh): Lift this example to the new RLModule stack, and enable it.
-        .experimental(_enable_new_api_stack=False)
         .environment(TwoStepGame)
         .framework(args.framework)
         .rollouts(batch_mode="complete_episodes", num_rollout_workers=0)
