@@ -32,9 +32,7 @@ from ray.data.datasource.path_util import (
     _resolve_paths_and_filesystem,
     _unwrap_protocol,
 )
-from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_partitioning import PathPartitionEncoder
-from ray.tests.conftest import *  # noqa
 
 
 def df_to_csv(dataframe, path, **kwargs):
