@@ -22,10 +22,6 @@ from ray._private.test_utils import (
     wait_until_server_available,
 )
 
-from ray._private.ray_constants import (
-    LOG_PREFIX_TASK_ATTEMPT_START,
-    LOG_PREFIX_TASK_ATTEMPT_END,
-)
 from ray._raylet import ActorID, NodeID, TaskID, WorkerID
 from ray.core.generated.common_pb2 import Address
 from ray.core.generated.gcs_service_pb2 import GetTaskEventsReply
@@ -365,48 +361,6 @@ async def test_log_tails_with_appends(lines_to_tail, total_lines, temp_file):
     assert (
         all_lines.count("\n") == lines_to_tail + num_new_lines
     ), "Non-matching number of lines tailed after append"
-
-
-@pytest.mark.asyncio
-async def test_log_agent_find_task_log_offsets(temp_file):
-    log_file_content = ""
-    task_id = "taskid1234"
-    attempt_number = 0
-    # Previous data
-    for i in range(3):
-        log_file_content += TEST_LINE_TEMPLATE.format(i) + "\n"
-    # Task's logs
-    log_file_content += f"{LOG_PREFIX_TASK_ATTEMPT_START}{task_id}-{attempt_number}\n"
-    expected_start = len(log_file_content)
-    for i in range(10):
-        log_file_content += TEST_LINE_TEMPLATE.format(i) + "\n"
-    expected_end = len(log_file_content)
-    log_file_content += f"{LOG_PREFIX_TASK_ATTEMPT_END}{task_id}-{attempt_number}\n"
-
-    # Next data
-    for i in range(3):
-        log_file_content += TEST_LINE_TEMPLATE.format(i) + "\n"
-
-    # Write to files
-    temp_file.write(log_file_content.encode("utf-8"))
-
-    # Test all task logs
-    start_offset, end_offset = await LogAgentV1Grpc._find_task_log_offsets(
-        task_id, attempt_number, -1, temp_file
-    )
-    assert start_offset == expected_start
-    assert end_offset == expected_end
-
-    # Test tailing last X lines
-    num_tail = 3
-    start_offset, end_offset = await LogAgentV1Grpc._find_task_log_offsets(
-        task_id, attempt_number, num_tail, temp_file
-    )
-    assert end_offset == expected_end
-    exclude_tail_content = ""
-    for i in range(10 - num_tail):
-        exclude_tail_content += TEST_LINE_TEMPLATE.format(i) + "\n"
-    assert start_offset == expected_start + len(exclude_tail_content)
 
 
 def test_log_agent_resolve_filename(temp_dir):

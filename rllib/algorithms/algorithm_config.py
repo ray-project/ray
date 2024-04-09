@@ -819,7 +819,7 @@ class AlgorithmConfig(_Config):
         Args:
             env: Name of the environment to use (e.g. a gym-registered str),
                 a full class path (e.g.
-                "ray.rllib.examples.env.random_env.RandomEnv"), or an Env
+                "ray.rllib.examples.envs.classes.random_env.RandomEnv"), or an Env
                 class directly. Note that this arg can also be specified via
                 the "env" key in `config`.
             logger_creator: Callable that creates a ray.tune.Logger
@@ -897,7 +897,11 @@ class AlgorithmConfig(_Config):
             if self.is_multi_agent():
                 pipeline.append(
                     AgentToModuleMapping(
-                        modules=set(self.policies),
+                        module_specs=(
+                            self.rl_module_spec.module_specs
+                            if isinstance(self.rl_module_spec, MultiAgentRLModuleSpec)
+                            else set(self.policies)
+                        ),
                         agent_to_module_mapping_fn=self.policy_mapping_fn,
                     )
                 )
@@ -1039,7 +1043,11 @@ class AlgorithmConfig(_Config):
             if self.is_multi_agent():
                 pipeline.append(
                     AgentToModuleMapping(
-                        modules=set(self.policies),
+                        module_specs=(
+                            self.rl_module_spec.module_specs
+                            if isinstance(self.rl_module_spec, MultiAgentRLModuleSpec)
+                            else set(self.policies)
+                        ),
                         agent_to_module_mapping_fn=self.policy_mapping_fn,
                     )
                 )
@@ -1409,7 +1417,7 @@ class AlgorithmConfig(_Config):
                 or a string specifier of an RLlib supported type. In the latter case,
                 RLlib will try to interpret the specifier as either an Farama-Foundation
                 gymnasium env, a PyBullet env, or a fully qualified classpath to an Env
-                class, e.g. "ray.rllib.examples.env.random_env.RandomEnv".
+                class, e.g. "ray.rllib.examples.envs.classes.random_env.RandomEnv".
             env_config: Arguments dict passed to the env creator as an EnvContext
                 object (which is a dict plus the properties: num_rollout_workers,
                 worker_index, vector_index, and remote).
@@ -2852,8 +2860,8 @@ class AlgorithmConfig(_Config):
         if self._rl_module_spec is not None:
             # Merge provided RL Module spec class with defaults
             _check_rl_module_spec(self._rl_module_spec)
-            # We can only merge if we have SingleAgentRLModuleSpecs.
-            # TODO (sven): Support merging for MultiAgentRLModuleSpecs.
+            # Merge given spec with default one (in case items are missing, such as
+            # spaces, module class, etc.)
             if isinstance(self._rl_module_spec, SingleAgentRLModuleSpec):
                 if isinstance(default_rl_module_spec, SingleAgentRLModuleSpec):
                     default_rl_module_spec.update(self._rl_module_spec)
@@ -2863,6 +2871,11 @@ class AlgorithmConfig(_Config):
                         "Cannot merge MultiAgentRLModuleSpec with "
                         "SingleAgentRLModuleSpec!"
                     )
+            else:
+                marl_module_spec = copy.deepcopy(self._rl_module_spec)
+                marl_module_spec.update(default_rl_module_spec)
+                return marl_module_spec
+
         # `self._rl_module_spec` has not been user defined -> return default one.
         else:
             return default_rl_module_spec

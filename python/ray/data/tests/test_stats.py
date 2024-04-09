@@ -1,3 +1,4 @@
+import logging
 import re
 import threading
 import time
@@ -11,7 +12,6 @@ import pytest
 
 import ray
 from ray._private.test_utils import wait_for_condition
-from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.backpressure_policy import (
     ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,
 )
@@ -364,11 +364,7 @@ def test_dataset_stats_basic(
 ):
     context = DataContext.get_current()
     context.verbose_stats_logs = verbose_stats_logs
-    logger = DatasetLogger(
-        "ray.data._internal.execution.streaming_executor"
-    ).get_logger(
-        log_to_stdout=enable_auto_log_stats,
-    )
+    logger = logging.getLogger("ray.data._internal.execution.streaming_executor")
 
     with patch.object(logger, "info") as mock_logger:
         ds = ray.data.range(1000, override_num_blocks=10)
@@ -1475,10 +1471,8 @@ def test_dataset_name():
 
 
 def test_op_metrics_logging():
-    logger = DatasetLogger(
-        "ray.data._internal.execution.streaming_executor"
-    ).get_logger()
-    with patch.object(logger, "info") as mock_logger:
+    logger = logging.getLogger("ray.data._internal.execution.streaming_executor")
+    with patch.object(logger, "debug") as mock_logger:
         ray.data.range(100).map_batches(lambda x: x).materialize()
         logs = [canonicalize(call.args[0]) for call in mock_logger.call_args_list]
         input_str = (
@@ -1497,10 +1491,8 @@ def test_op_metrics_logging():
 
 
 def test_op_state_logging():
-    logger = DatasetLogger(
-        "ray.data._internal.execution.streaming_executor"
-    ).get_logger()
-    with patch.object(logger, "info") as mock_logger:
+    logger = logging.getLogger("ray.data._internal.execution.streaming_executor")
+    with patch.object(logger, "debug") as mock_logger:
         ray.data.range(100).map_batches(lambda x: x).materialize()
         logs = [canonicalize(call.args[0]) for call in mock_logger.call_args_list]
 

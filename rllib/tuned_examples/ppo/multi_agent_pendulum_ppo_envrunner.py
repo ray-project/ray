@@ -1,6 +1,6 @@
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
-from ray.rllib.examples.env.multi_agent import MultiAgentPendulum
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentPendulum
 from ray.tune.registry import register_env
 
 

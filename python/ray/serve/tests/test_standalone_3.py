@@ -669,7 +669,7 @@ def test_serve_shut_down_without_duplicated_logs(
         with open(os.path.join(get_serve_logs_dir(), filename), "r") as f:
             all_serve_logs += f.read()
     assert all_serve_logs.count("Controller shutdown started") == 1
-    assert all_serve_logs.count("Deleting application 'default'") == 1
+    assert all_serve_logs.count("Deleting app 'default'") == 1
 
 
 if __name__ == "__main__":

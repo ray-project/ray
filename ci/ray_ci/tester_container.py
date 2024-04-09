@@ -12,7 +12,8 @@ from ci.ray_ci.utils import shard_tests, chunk_into_n
 from ci.ray_ci.utils import logger
 from ci.ray_ci.container import Container
 from ray_release.test import TestResult, Test
-from release.ray_release.configs.global_config import BRANCH_PIPELINES
+from ray_release.test_automation.ci_state_machine import CITestStateMachine
+from ray_release.configs.global_config import get_global_config
 
 
 class TesterContainer(Container):
@@ -105,16 +106,25 @@ class TesterContainer(Container):
         return all(exit == 0 for exit in exits)
 
     def _persist_test_results(self, team: str, bazel_log_dir: str) -> None:
-        if os.environ.get("BUILDKITE_BRANCH") != "master":
-            logger.info("Skip upload test results. We only upload on master branch.")
-            return
-        if os.environ.get("BUILDKITE_PIPELINE_ID") not in BRANCH_PIPELINES:
+        pipeline_id = os.environ.get("BUILDKITE_PIPELINE_ID")
+        branch = os.environ.get("BUILDKITE_BRANCH")
+        branch_pipelines = get_global_config()["ci_pipeline_postmerge"]
+        pr_pipelines = get_global_config()["ci_pipeline_premerge"]
+        if pipeline_id not in branch_pipelines + pr_pipelines:
             logger.info(
-                "Skip upload test results. We only upload on postmerge pipeline."
+                "Skip upload test results. "
+                "We only upload results on branch and PR pipelines",
+            )
+            return
+        if pipeline_id in branch_pipelines and branch != "master":
+            logger.info(
+                "Skip upload test results. "
+                "We only upload the master branch results on a branch pipeline",
             )
             return
         self._upload_build_info(bazel_log_dir)
         TesterContainer.upload_test_results(team, bazel_log_dir)
+        TesterContainer.move_test_state(team, bazel_log_dir)
 
     def _upload_build_info(self, bazel_log_dir) -> None:
         logger.info("Uploading bazel test logs")
@@ -133,6 +143,24 @@ class TesterContainer(Container):
             test.update_from_s3()
             test.persist_to_s3()
             test.persist_test_result_to_s3(result)
+
+    @classmethod
+    def move_test_state(cls, team: str, bazel_log_dir: str) -> None:
+        pipeline_id = os.environ.get("BUILDKITE_PIPELINE_ID")
+        branch = os.environ.get("BUILDKITE_BRANCH")
+        if (
+            pipeline_id not in get_global_config()["ci_pipeline_postmerge"]
+            or branch != "master"
+        ):
+            logger.info("Skip updating test state. We only update on master branch.")
+            return
+        for test, _ in cls.get_test_and_results(team, bazel_log_dir):
+            logger.info(f"Updating test state for {test.get_name()}")
+            test.update_from_s3()
+            logger.info(f"\tOld state: {test.get_state()}")
+            CITestStateMachine(test).move()
+            test.persist_to_s3()
+            logger.info(f"\tNew state: {test.get_state()}")
 
     @classmethod
     def get_test_and_results(

@@ -264,10 +264,16 @@ class TestAutoscalingMetrics:
 
         wait_for_condition(check_handle_metrics, handle=handle)
 
-    def test_handle_deleted(self, serve_instance):
-        """If handles are deleted while requests are still inflight, the
-        metrics should be invalidated after a certain time so the info
-        doesn't become stale.
+    @pytest.mark.skipif(
+        not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+        reason="Needs metric collection at handle.",
+    )
+    @pytest.mark.parametrize("use_get_handle_api", [True, False])
+    def test_handle_deleted_on_crashed_replica(
+        self, serve_instance, use_get_handle_api
+    ):
+        """If a Serve replica crashes, the metrics from handles living on that replica
+        should be dropped.
         """
 
         client = serve_instance
@@ -285,6 +291,7 @@ class TestAutoscalingMetrics:
                 "look_back_period_s": 10,
             },
             graceful_shutdown_timeout_s=0.1,
+            health_check_period_s=1,
             max_ongoing_requests=10,
         )
         class A:
@@ -295,35 +302,91 @@ class TestAutoscalingMetrics:
         @serve.deployment(graceful_shutdown_timeout_s=1)
         class Router:
             def __init__(self, handle: DeploymentHandle):
-                self._handle = handle
-                self.x = list()
+                if use_get_handle_api:
+                    self._handle = serve.get_deployment_handle("A")
+                else:
+                    self._handle = handle
 
             async def __call__(self):
                 return await self._handle.remote()
 
         app = Router.bind(A.bind())
         handle = serve.run(app)
-        refs = [handle.remote() for _ in range(20)]
+        [handle.remote() for _ in range(20)]
 
         # Wait for deployment A to scale up
         wait_for_condition(check_num_requests_eq, client=client, id=dep_id, expected=20)
         wait_for_condition(check_num_replicas_eq, name="A", target=5)
         print("Confirmed deployment scaled to 5 replicas.")
 
-        router_name = [
+        router_info = [
             actor
             for actor in list_actors(filters=[("state", "=", "ALIVE")])
             if actor["class_name"] == "ServeReplica:default:Router"
-        ][0]["name"]
-        router = ray.get_actor(router_name, namespace=SERVE_NAMESPACE)
-
-        print("Releasing signal at", time.time())
-        signal.send.remote()
-        print("Request results:", [ref.result() for ref in refs])
+        ][0]
+        router = ray.get_actor(router_info["name"], namespace=SERVE_NAMESPACE)
 
         # Kill Router replica
-        print("Killing Router at", time.time())
+        print(f"Killing Router ({router_info['actor_id']}) at", time.time())
         ray.kill(router)
+
+        wait_for_condition(check_num_replicas_eq, name="A", target=0)
+        wait_for_condition(check_num_requests_eq, client=client, id=dep_id, expected=0)
+
+    @pytest.mark.skipif(
+        not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+        reason="Needs metric collection at handle.",
+    )
+    def test_handle_deleted_on_non_serve_actor(self, serve_instance):
+        """If handles are deleted while requests are still inflight, the
+        metrics should be invalidated after a certain time so the info
+        doesn't become stale. This is the fallback for handles that don't
+        live on serve actors.
+        """
+
+        client = serve_instance
+        dep_id = DeploymentID(name="A")
+        signal = SignalActor.remote()
+
+        @serve.deployment(
+            autoscaling_config={
+                "target_ongoing_requests": 4,
+                "metrics_interval_s": 0.1,
+                "min_replicas": 0,
+                "max_replicas": 10,
+                "upscale_delay_s": 1,
+                "downscale_delay_s": 1,
+                "look_back_period_s": 10,
+            },
+            graceful_shutdown_timeout_s=0.1,
+            health_check_period_s=1,
+            max_ongoing_requests=10,
+        )
+        class A:
+            async def __call__(self):
+                await signal.wait.remote()
+                return "sup"
+
+        @ray.remote
+        class CallActor:
+            def __init__(self):
+                self._handle = DeploymentHandle("A", "default")
+
+            async def call(self):
+                return await self._handle.remote()
+
+        serve.run(A.bind())
+        caller = CallActor.options(name="caller", namespace="abc").remote()
+        [caller.call.remote() for _ in range(20)]
+
+        # Wait for deployment A to scale up
+        wait_for_condition(check_num_requests_eq, client=client, id=dep_id, expected=20)
+        wait_for_condition(check_num_replicas_eq, name="A", target=5)
+        print("Confirmed deployment scaled to 5 replicas.")
+
+        # Kill CallerActor
+        print("Killing CallerActor at", time.time())
+        ray.kill(ray.get_actor("caller", namespace="abc"))
 
         wait_for_condition(check_num_replicas_eq, name="A", target=0, timeout=20)
         wait_for_condition(

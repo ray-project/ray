@@ -125,7 +125,6 @@ def test_get_throws_quickly_when_found_exception(ray_start_regular):
 
 
 def test_failed_actor_init(ray_start_regular, error_pubsub):
-    p = error_pubsub
     error_message1 = "actor constructor failed"
     error_message2 = "actor method failed"
 
@@ -139,38 +138,10 @@ def test_failed_actor_init(ray_start_regular, error_pubsub):
 
     a = FailedActor.remote()
 
-    # Make sure that we get errors from a failed constructor.
-    errors = get_error_message(p, 1, ray_constants.TASK_PUSH_ERROR)
-    assert len(errors) == 1
-    assert errors[0]["type"] == ray_constants.TASK_PUSH_ERROR
-    assert error_message1 in errors[0]["error_message"]
-
     # Incoming methods will get the exception in creation task
     with pytest.raises(ray.exceptions.RayActorError) as e:
         ray.get(a.fail_method.remote())
     assert error_message1 in str(e.value)
-
-
-def test_failed_actor_method(ray_start_regular, error_pubsub):
-    p = error_pubsub
-    error_message2 = "actor method failed"
-
-    @ray.remote
-    class FailedActor:
-        def __init__(self):
-            pass
-
-        def fail_method(self):
-            raise Exception(error_message2)
-
-    a = FailedActor.remote()
-
-    # Make sure that we get errors from a failed method.
-    a.fail_method.remote()
-    errors = get_error_message(p, 1, ray_constants.TASK_PUSH_ERROR)
-    assert len(errors) == 1
-    assert errors[0]["type"] == ray_constants.TASK_PUSH_ERROR
-    assert error_message2 in errors[0]["error_message"]
 
 
 def test_incorrect_method_calls(ray_start_regular):
