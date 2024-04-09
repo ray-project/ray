@@ -61,11 +61,6 @@ class SessionFileHandler(logging.Handler):
         if self._formatter is not None:
             self._handler.setFormatter(self._formatter)
 
-    @property
-    def path(self) -> Optional[str]:
-        """Path to the log file or ``None`` if the file hasn't been created yet."""
-        return self._path
-
 
 def configure_logging() -> None:
     """Configure the Python logger named 'ray.data'.
