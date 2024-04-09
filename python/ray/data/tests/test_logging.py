@@ -26,17 +26,12 @@ def test_messages_logged_to_file(setup_logging, shutdown_only):
     ray.init()
     logger = logging.getLogger("ray.data.spam")
 
-    logger.info("ham")
+    logger.debug("ham")
 
     log_path = os.path.join(get_log_directory(), "ray-data.log")
     with open(log_path) as file:
         log_contents = file.read()
     assert "ham" in log_contents
-
-
-def test_effective_level_is_info(setup_logging):
-    logger = logging.getLogger("ray.data")
-    assert logger.getEffectiveLevel() == logging.INFO
 
 
 def test_messages_are_propagated(setup_logging):

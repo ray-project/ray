@@ -149,6 +149,16 @@ def test_count(ray_start_regular):
     )
 
 
+def test_count_edge_case(ray_start_regular):
+    # Test this edge case: https://github.com/ray-project/ray/issues/44509.
+    ds = ray.data.range(10)
+    ds.count()
+
+    actual_count = ds.filter(lambda row: row["id"] % 2 == 0).count()
+
+    assert actual_count == 5
+
+
 def test_limit_execution(ray_start_regular):
     last_snapshot = get_initial_core_execution_metrics_snapshot()
     override_num_blocks = 20

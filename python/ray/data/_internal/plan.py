@@ -454,8 +454,11 @@ class ExecutionPlan:
             # This applies to newly created dataset. For example, initial dataset
             # from read, and output datasets of Dataset.split().
             self.execute()
-        # Snapshot is now guaranteed to be the final block or None.
-        return self._get_num_rows_from_blocks_metadata(self._snapshot_blocks)
+
+        if self._logical_plan.dag is self._snapshot_operator:
+            return self._get_num_rows_from_blocks_metadata(self._snapshot_blocks)
+        else:
+            return None
 
     def _get_num_rows_from_blocks_metadata(self, blocks: BlockList) -> Optional[int]:
         metadata = blocks.get_metadata() if blocks else None

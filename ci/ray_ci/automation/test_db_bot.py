@@ -22,6 +22,7 @@ def main(team: str, bazel_log_dir: str) -> None:
         return
 
     TesterContainer.upload_test_results(team, bazel_log_dir)
+    TesterContainer.move_test_state(team, bazel_log_dir)
 
 
 if __name__ == "__main__":
