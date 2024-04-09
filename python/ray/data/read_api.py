@@ -142,7 +142,7 @@ def from_items(
     if parallelism == 0:
         raise ValueError(f"parallelism must be -1 or > 0, got: {parallelism}")
 
-    detected_parallelism, _, _, _ = _autodetect_parallelism(
+    detected_parallelism, _, _ = _autodetect_parallelism(
         parallelism,
         ray.util.get_current_placement_group(),
         DataContext.get_current(),
@@ -385,7 +385,7 @@ def read_datasource(
         )
 
     cur_pg = ray.util.get_current_placement_group()
-    requested_parallelism, _, _, inmemory_size = _autodetect_parallelism(
+    requested_parallelism, _, inmemory_size = _autodetect_parallelism(
         parallelism,
         ctx.target_max_block_size,
         DataContext.get_current(),
