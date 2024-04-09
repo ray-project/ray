@@ -25,6 +25,14 @@ from ray_release.result import Result
 @click.command()
 @click.argument("test_name", required=True, type=str)
 @click.option(
+    "--test-definition-root",
+    type=str,
+    help=(
+        "The root where the test definition is located. "
+        "Default is the root of the repo.",
+    ),
+)
+@click.option(
     "--test-collection-file",
     multiple=True,
     type=str,
@@ -85,6 +93,7 @@ from ray_release.result import Result
 )
 def main(
     test_name: str,
+    test_definition_root: str,
     test_collection_file: Tuple[str],
     smoke_test: bool = False,
     report: bool = False,
@@ -99,7 +108,8 @@ def main(
     )
     init_global_config(global_config_file)
     test_collection = read_and_validate_release_test_collection(
-        test_collection_file or ["release/release_tests.yaml"]
+        test_collection_file or ["release/release_tests.yaml"],
+        test_definition_root,
     )
     test = find_test(test_collection, test_name)
 
@@ -148,6 +158,7 @@ def main(
             cluster_id=cluster_id,
             cluster_env_id=cluster_env_id,
             no_terminate=no_terminate,
+            test_definition_root=test_definition_root,
         )
         return_code = result.return_code
     except ReleaseTestError as e:
