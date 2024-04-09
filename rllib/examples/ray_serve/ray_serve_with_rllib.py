@@ -5,11 +5,14 @@ to a Ray Serve client.
 """
 import argparse
 import atexit
+import os
+
 import requests
 import subprocess
 import time
 
 import gymnasium as gym
+from pathlib import Path
 
 import ray
 from ray.rllib.algorithms.algorithm import AlgorithmConfig
@@ -71,6 +74,8 @@ if __name__ == "__main__":
     # Train the Algorithm for some time, then save it and get the checkpoint path.
     checkpoint = train_rllib_rl_module(config, train_iters=args.train_iters)
 
+    path_of_this_file = Path(__file__).parent
+    os.chdir(path_of_this_file)
     # Start the serve app with the trained checkpoint.
     serve_proc = subprocess.Popen(
         [
