@@ -3780,8 +3780,7 @@ void CoreWorker::HandleGetObjectLocationsOwner(
   }
   auto object_id = ObjectID::FromBinary(object_location_request.object_id());
   auto object_info = reply->mutable_object_location_info();
-  auto status = Status::OK(); 
-  reference_counter_->FillObjectInformation(object_id, object_info);
+  auto status = reference_counter_->FillObjectInformation(object_id, object_info);
   send_reply_callback(status, nullptr, nullptr);
 }
 
