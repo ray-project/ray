@@ -342,8 +342,8 @@ This `test case <https://github.com/ray-project/ray/blob/master/rllib/models/tes
 Batch Normalization
 ```````````````````
 
-You can use ``tf.layers.batch_normalization(x, training=input_dict["is_training"])`` to add batch norm layers to your custom model
-(see a `code example here <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/models/batch_norm_model.py>`__).
+You can use ``tf.layers.batch_normalization(x, training=input_dict["is_training"])`` to add batch norm layers to your custom model.
+See this `code example <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/models/batch_norm_model.py>`__).
 RLlib will automatically run the update ops for the batch norm layers during optimization
 (see `tf_policy.py <https://github.com/ray-project/ray/blob/master/rllib/policy/tf_policy.py>`__ and
 `multi_gpu_learner_thread.py <https://github.com/ray-project/ray/blob/master/rllib/execution/multi_gpu_learner_thread.py>`__ for the exact handling of these updates).
