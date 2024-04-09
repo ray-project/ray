@@ -6,7 +6,8 @@ ARG WHEEL_PATH
 ARG FIND_LINKS_PATH=".whl"
 COPY $WHEEL_PATH .
 COPY $FIND_LINKS_PATH $FIND_LINKS_PATH
-RUN $HOME/anaconda3/bin/pip --no-cache-dir install --find-links $FIND_LINKS_PATH \
+RUN pip install --upgrade pip
+RUN pip --no-cache-dir install --find-links $FIND_LINKS_PATH \
     $(basename $WHEEL_PATH)[all] \
     $(if [ "$AUTOSCALER" = "autoscaler" ]; then echo \
         "redis>=3.5.0,<4.0.0" \
@@ -22,4 +23,4 @@ RUN $HOME/anaconda3/bin/pip --no-cache-dir install --find-links $FIND_LINKS_PATH
         "azure-mgmt-network==19.0.0" \
         "azure-mgmt-resource==20.0.0" \
         "msrestazure==0.6.4"; fi) \
-    && $HOME/anaconda3/bin/pip uninstall ray -y && sudo rm $(basename $WHEEL_PATH)
+    && pip uninstall ray -y && sudo rm $(basename $WHEEL_PATH)

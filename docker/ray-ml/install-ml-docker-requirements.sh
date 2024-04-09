@@ -2,9 +2,6 @@
 
 set -e
 
-# shellcheck disable=SC2139
-alias pip="$HOME/anaconda3/bin/pip"
-
 sudo apt-get update \
     && sudo apt-get install -y gcc \
         cmake \

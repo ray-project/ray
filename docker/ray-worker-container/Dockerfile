@@ -1,4 +1,4 @@
-ARG BASE_IMAGE="ubuntu:21.04"
+ARG BASE_IMAGE="ubuntu:22.04"
 FROM ${BASE_IMAGE}
 # FROM directive resets ARG
 ARG BASE_IMAGE
@@ -31,24 +31,24 @@ RUN apt-get update -y && sudo apt-get upgrade -y \
         openssh-client \
         gnupg; fi) \
         unzip \
-    && wget \
-        --quiet "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-${HOSTTYPE}.sh" \
-        -O /tmp/miniconda.sh \
-    && /bin/bash /tmp/miniconda.sh -b -u -p $HOME/anaconda3 \
-    && $HOME/anaconda3/bin/conda init \
-    && echo 'export PATH=$HOME/anaconda3/bin:$PATH' >> /root/.bashrc \
-    && rm /tmp/miniconda.sh \
-    && $HOME/anaconda3/bin/conda install -y \
-        libgcc python=$PYTHON_VERSION \
-    && $HOME/anaconda3/bin/conda clean -y --all \
-    && $HOME/anaconda3/bin/pip install --no-cache-dir \
+    && sudo apt install python3 pip -y \
+    && sudo ln -s /usr/bin/python3 /usr/bin/python \
+    && wget -O /tmp/Miniforge3.sh "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh" \
+    && bash /tmp/Miniforge3.sh -b -p "${HOME}/conda" \
+    && source "${HOME}/conda/etc/profile.d/conda.sh" \
+    && echo "export PATH=$HOME/.local/bin:$PATH" >> /home/ray/.bashrc \
+    && rm /tmp/Miniforge3.sh  \
+    && $HOME/conda/condabin/conda install -y libgcc-ng python=$PYTHON_VERSION \
+    && $HOME/conda/condabin/conda install -y -c conda-forge libffi=3.4.2 \
+    && $HOME/conda/condabin/conda clean -y --all \
+    && pip install --no-cache-dir \
         flatbuffers \
         cython==0.29.32 \
         numpy==1.15.4 \
         psutil \
     # To avoid the following error on Jenkins:
     # AttributeError: 'numpy.ufunc' object has no attribute '__module__'
-    && $HOME/anaconda3/bin/pip uninstall -y dask \
+    && pip uninstall -y dask \
     # We install cmake temporarily to get psutil
     && sudo apt-get autoremove -y cmake zlib1g-dev \
         # We keep g++ on GPU images, because uninstalling removes CUDA Devel tooling
