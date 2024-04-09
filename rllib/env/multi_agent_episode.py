@@ -1825,7 +1825,7 @@ class MultiAgentEpisode:
             rewards = []
             extra_model_outputs = []
 
-        # Infos and extra_model_outputs are allowed to be None -> Fill them with
+        # Infos and `extra_model_outputs` are allowed to be None -> Fill them with
         # proper dummy values, if so.
         if infos is None:
             infos = [{} for _ in range(len(observations))]
