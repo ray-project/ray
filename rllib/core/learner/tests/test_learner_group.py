@@ -17,7 +17,7 @@ from ray.rllib.core.testing.utils import (
     add_module_to_learner_or_learner_group,
 )
 from ray.rllib.core.testing.testing_learner import BaseTestingAlgorithmConfig
-from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.sample_batch import (
     DEFAULT_POLICY_ID,
     SampleBatch,

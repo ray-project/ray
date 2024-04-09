@@ -10,7 +10,7 @@ with a configured probability on each `step()` call for a certain amount of time
 from gymnasium.wrappers import TimeLimit
 
 from ray.rllib.algorithms.appo import APPOConfig
-from ray.rllib.examples.env.cartpole_crashing import CartPoleCrashing
+from ray.rllib.examples.envs.classes.cartpole_crashing import CartPoleCrashing
 from ray import tune
 
 

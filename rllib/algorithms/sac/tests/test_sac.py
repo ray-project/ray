@@ -6,8 +6,8 @@ import unittest
 
 import ray
 from ray.rllib.algorithms import sac
-from ray.rllib.examples.env.random_env import RandomEnv
-from ray.rllib.examples.models.batch_norm_model import (
+from ray.rllib.examples.envs.classes.random_env import RandomEnv
+from ray.rllib.examples._old_api_stack.models.batch_norm_model import (
     KerasBatchNormModel,
     TorchBatchNormModel,
 )

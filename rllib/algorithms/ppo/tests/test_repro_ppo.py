@@ -4,7 +4,7 @@ import pytest
 import ray
 from ray.tune import register_env
 import ray.rllib.algorithms.ppo as ppo
-from ray.rllib.examples.env.deterministic_envs import (
+from ray.rllib.examples.envs.classes.deterministic_envs import (
     create_cartpole_deterministic,
     create_pendulum_deterministic,
 )
