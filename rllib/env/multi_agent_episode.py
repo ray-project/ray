@@ -785,16 +785,40 @@ class MultiAgentEpisode:
         # Concatenate the individual SingleAgentEpisodes from both chunks.
         all_agent_ids = set(self.agent_ids) | set(other.agent_ids)
         for agent_id in all_agent_ids:
+            sa_episode = self.agent_episodes.get(agent_id)
+
+            # If agent is only in the new episode chunk.
+            if sa_episode is None:
+                # Then store all agent data from the new episode chunk in self.
+                self.agent_episodes[agent_id] = other.agent_episodes[agent_id]
+                # Do not forget the env to agent timestep mapping.
+                self.env_t_to_agent_t[agent_id] = other.env_t_to_agent_t[agent_id]
+                # Add the agent's starting timestep.
+                self.agent_t_started[agent_id] = other.agent_t_started[agent_id]
+
             # If the agent was done in the first episode chunk, continue.
-            if self.agent_episodes[agent_id].is_done:
+            elif sa_episode.is_done:
                 continue
 
             # If the agent has data in both chunks, simply concatenate on the
             # single-agent level.
-            if agent_id in self.agent_episodes and agent_id in other.agent_episodes:
-                self.agent_episodes[agent_id].concat_episode(
-                    other.agent_episodes[agent_id]
-                )
+            elif agent_id in other.agent_episodes:
+                # If `self` has hanging agent values -> Add these to `other`'s agent
+                # SingleAgentEpisode (as a new timestep) and only then concatenate.
+                # Otherwise, the concatentaion would fail b/c of missing data.
+                if agent_id in self._agent_buffered_actions:
+                    assert agent_id in self._agent_buffered_extra_model_outputs
+                    sa_episode.add_env_step(
+                        observation=other.agent_episodes[agent_id].get_observations(0),
+                        infos=other.agent_episodes[agent_id].get_infos(0),
+                        action=self._agent_buffered_actions[agent_id],
+                        reward=self._agent_buffered_rewards[agent_id],
+                        extra_model_outputs=(
+                            self._agent_buffered_extra_model_outputs[agent_id]
+                        ),
+                    )
+
+                sa_episode.concat_episode(other.agent_episodes[agent_id])
                 # Concatenate the env- to agent-timestep mappings.
                 last_agent_step = next(
                     item
@@ -811,16 +835,8 @@ class MultiAgentEpisode:
                     + (last_agent_step - first_agent_step)
                 )[1:]
 
-            # Or, if agent is only in the new episode chunk.
-            elif agent_id not in self.agent_episode_ids:
-                # Then store all agent data from the new episode chunk in self.
-                self.agent_episodes[agent_id] = other.agent_episodes[agent_id]
-                # Do not forget the env to agent timestep mapping.
-                self.env_t_to_agent_t[agent_id] = other.env_t_to_agent_t[agent_id]
-                # Add the agent's starting timestep.
-                self.agent_t_started[agent_id] = other.agent_t_started[agent_id]
-
-            # Otherwise, the agent is only in `self` and all data is stored already.
+            # Otherwise, the agent is only in `self` and not done. All data is stored
+            # already -> skip
             # else: pass
 
         # Update all timestep counters.
@@ -1906,7 +1922,8 @@ class MultiAgentEpisode:
                     len(observations_per_agent[agent_id]) - 1
                 )
 
-            # Those agents that did NOT step get self.SKIP_ENV_TS_TAG added to their mapping.
+            # Those agents that did NOT step get self.SKIP_ENV_TS_TAG added to their
+            # mapping.
             for agent_id in all_agent_ids:
                 if agent_id not in obs and agent_id not in done_per_agent:
                     self.env_t_to_agent_t[agent_id].append(self.SKIP_ENV_TS_TAG)
