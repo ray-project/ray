@@ -83,9 +83,9 @@ config = (
     .experimental(_enable_new_api_stack=True)
     .environment("CartPole-v1")
     .rl_module(
+        model_config_dict={"fcnet_hiddens": [32, 32]},
         rl_module_spec=SingleAgentRLModuleSpec(module_class=DiscreteBCTorchModule),
     )
-    .training(model={"fcnet_hiddens": [32, 32]})
 )
 
 algo = config.build()
@@ -106,11 +106,11 @@ config = (
     .experimental(_enable_new_api_stack=True)
     .environment(MultiAgentCartPole, env_config={"num_agents": 2})
     .rl_module(
+        model_config_dict={"fcnet_hiddens": [32, 32]},
         rl_module_spec=MultiAgentRLModuleSpec(
             module_specs=SingleAgentRLModuleSpec(module_class=DiscreteBCTorchModule)
         ),
     )
-    .training(model={"fcnet_hiddens": [32, 32]})
 )
 # __pass-specs-to-configs-ma-end__
 
