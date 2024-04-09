@@ -113,6 +113,7 @@ def test_put_remote_get(ray_start_regular, num_readers):
                 assert chan.begin_read() == val
                 chan.end_read()
 
+    chan.ensure_registered_as_writer()
     num_writes = 1000
     readers = [Reader.remote() for _ in range(num_readers)]
     done = [reader.read.remote(chan, num_writes) for reader in readers]

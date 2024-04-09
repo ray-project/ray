@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import React from "react";
+import { TEST_APP_WRAPPER } from "../../util/test-utils";
 import { ProgressBar } from "./ProgressBar";
 
 describe("ProgressBar", () => {
@@ -24,6 +25,7 @@ describe("ProgressBar", () => {
           },
         ]}
       />,
+      { wrapper: TEST_APP_WRAPPER },
     );
 
     await screen.findByText(/error/);

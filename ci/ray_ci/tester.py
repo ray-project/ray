@@ -16,9 +16,7 @@ from ci.ray_ci.builder_container import (
 from ci.ray_ci.linux_tester_container import LinuxTesterContainer
 from ci.ray_ci.windows_tester_container import WindowsTesterContainer
 from ci.ray_ci.tester_container import TesterContainer
-from ci.ray_ci.utils import docker_login
-from ray_release.configs.global_config import init_global_config
-from ray_release.bazel import bazel_runfile
+from ci.ray_ci.utils import docker_login, ci_init
 from ray_release.test import Test, TestState
 
 CUDA_COPYRIGHT = """
@@ -185,7 +183,7 @@ def main(
     if not bazel_workspace_dir:
         raise Exception("Please use `bazelisk run //ci/ray_ci`")
     os.chdir(bazel_workspace_dir)
-    init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
+    ci_init()
     docker_login(_DOCKER_ECR_REPO.split("/")[0])
 
     if build_type == "wheel" or build_type == "wheel-aarch64":

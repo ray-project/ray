@@ -8,7 +8,7 @@ The environment we use here is configured to crash with a certain probability on
 `step()` and/or `reset()` call.
 """
 from ray.rllib.algorithms.appo import APPOConfig
-from ray.rllib.examples.env.cartpole_crashing import MultiAgentCartPoleCrashing
+from ray.rllib.examples.envs.classes.cartpole_crashing import MultiAgentCartPoleCrashing
 from ray import tune
 
 tune.register_env("ma_env", lambda cfg: MultiAgentCartPoleCrashing(cfg))

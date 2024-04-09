@@ -1,8 +1,9 @@
 group: Pre-release checks
+depends_on:
+  - forge
 steps:
   - label: "Check release blockers"
     key: check-release-blockers
-    depends_on: forge
     job_env: forge
     instance_type: small_branch
     commands:
@@ -18,6 +19,7 @@ steps:
 
   - label: "Trigger Postmerge test"
     trigger: "postmerge"
+    key: trigger-postmerge
     depends_on: check-commit-hash
     build:
       commit: "${BUILDKITE_COMMIT}"
@@ -25,6 +27,7 @@ steps:
       message: "Triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
       env:
         RAYCI_CONTINUOUS_BUILD: 1
+        RAYCI_WEEKLY_RELEASE: 1
         RAYCI_SCHEDULE: "nightly"
 
   - label: "Trigger Postmerge MacOS test"
@@ -35,10 +38,15 @@ steps:
       branch: "${BUILDKITE_BRANCH}"
       message: "Triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
 
+  - block: "Trigger Release nightly test"
+    if: build.env("RAYCI_WEEKLY_RELEASE_NIGHTLY") != "1"
+    key: block-release-nightly-test
+    depends_on: check-commit-hash
+
   - label: "Trigger Release nightly test"
     key: trigger-release-nightly
     trigger: "release"
-    depends_on: check-commit-hash
+    depends_on: block-release-nightly-test
     build:
       commit: "${BUILDKITE_COMMIT}"
       branch: "${BUILDKITE_BRANCH}"
@@ -48,6 +56,7 @@ steps:
         RELEASE_FREQUENCY: "nightly"
 
   - block: "Trigger Release nightly-3x test"
+    if: build.env("RAYCI_WEEKLY_RELEASE_NIGHLTY_3X") != "1"
     key: block-release-nightly-3x-test
     depends_on: check-commit-hash
 
@@ -64,6 +73,7 @@ steps:
         RELEASE_FREQUENCY: "nightly-3x"
 
   - block: "Trigger Release weekly test"
+    if: build.env("RAYCI_WEEKLY_RELEASE_WEEKLY") != "1"
     key: block-release-weekly-test
     depends_on: check-commit-hash
 
@@ -77,3 +87,13 @@ steps:
       env:
         AUTOMATIC: 1
         RELEASE_FREQUENCY: "weekly"
+
+  - label: "Check Ray commit in {{matrix}} nightly images"
+    depends_on: trigger-postmerge
+    allow_dependency_failure: true
+    job_env: forge
+    commands:
+      - bazel run //ci/ray_ci/automation:check_nightly_ray_commit -- --ray_type={{matrix}} --expected_commit="${BUILDKITE_COMMIT}"
+    matrix:
+      - ray
+      - ray-ml
