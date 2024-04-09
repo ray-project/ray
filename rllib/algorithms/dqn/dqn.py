@@ -475,7 +475,7 @@ class DQNConfig(AlgorithmConfig):
             return SingleAgentRLModuleSpec(
                 module_class=DQNRainbowTorchRLModule,
                 catalog_class=DQNRainbowCatalog,
-                model_config_dict=self.model_config_dict,
+                model_config_dict=self.model_config,
                 # model_config_dict=self.model,
             )
         else:
