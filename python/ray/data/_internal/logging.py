@@ -86,6 +86,10 @@ def reset_logging() -> None:
 
 
 def get_log_directory() -> Optional[str]:
+    """Return the directory where Ray Data writes log files.
+
+    If Ray isn't initialized, this function returns ``None``.
+    """
     global_node = ray._private.worker._global_node
     if global_node is None:
         return None
