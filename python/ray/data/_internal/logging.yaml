@@ -8,11 +8,10 @@ formatters:
 handlers:
     file:
         class: ray.data._internal.logging.SessionFileHandler
-        level: INFO
         formatter: ray
         filename: ray-data.log
 
 loggers:
     ray.data:
-        level: INFO
+        level: DEBUG
         handlers: [file]
