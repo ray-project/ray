@@ -82,7 +82,6 @@ config = (
     # Enable new API stack and use EnvRunner.
     .experimental(_enable_new_api_stack=True)
     .rollouts(
-        rollout_fragment_length=1,
         env_runner_cls=SingleAgentEnvRunner,
         # Following the paper.
         num_rollout_workers=32,
