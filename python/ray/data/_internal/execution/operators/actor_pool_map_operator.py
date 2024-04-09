@@ -1,10 +1,10 @@
 import collections
+import logging
 from dataclasses import dataclass
 from typing import Any, Dict, Iterator, List, Optional, Union
 
 import ray
 from ray.data._internal.compute import ActorPoolStrategy
-from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
@@ -20,7 +20,7 @@ from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 
-logger = DatasetLogger(__name__)
+logger = logging.getLogger(__name__)
 
 # Higher values here are better for prefetching and locality. It's ok for this to be
 # fairly high since streaming backpressure prevents us from overloading actors.
@@ -123,9 +123,7 @@ class ActorPoolMapOperator(MapOperator):
         # situations where the scheduler is unable to schedule downstream operators
         # due to lack of available actors, causing an initial "pileup" of objects on
         # upstream operators, leading to a spike in memory usage prior to steady state.
-        logger.get_logger(log_to_stdout=False).info(
-            f"{self._name}: Waiting for {len(refs)} pool actors to start..."
-        )
+        logger.debug(f"{self._name}: Waiting for {len(refs)} pool actors to start...")
         try:
             ray.get(refs, timeout=DEFAULT_WAIT_FOR_MIN_ACTORS_SEC)
         except ray.exceptions.GetTimeoutError:
@@ -291,7 +289,7 @@ class ActorPoolMapOperator(MapOperator):
         min_workers = self._autoscaling_policy.min_workers
         if len(self._output_metadata) < min_workers:
             # The user created a stream that has too few blocks to begin with.
-            logger.get_logger().warning(
+            logger.warning(
                 "To ensure full parallelization across an actor pool of size "
                 f"{min_workers}, the Dataset should consist of at least "
                 f"{min_workers} distinct blocks. Consider increasing "
