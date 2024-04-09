@@ -56,7 +56,6 @@ def do_exec_tasks(self, tasks: List["ExecutableTask"]) -> None:
         self._method_to_output_writer = {}
         for task in tasks:
             method = getattr(self, task.method_name)
-            logger.info(f"Executing compiled task {task.method_name}")
 
             task.resolved_inputs = []
             task.input_channels = []
@@ -91,7 +90,6 @@ def do_exec_tasks(self, tasks: List["ExecutableTask"]) -> None:
 
                 try:
                     output_val = method(*task.resolved_inputs)
-                    logger.info(f"Got output: {output_val}")
                 except Exception as exc:
                     backtrace = ray._private.utils.format_error_message(
                         "".join(
@@ -415,6 +413,8 @@ class CompiledDAG:
             assert task.output_channel is None
             if isinstance(task.dag_node, ClassMethodNode):
                 fn = task.dag_node._get_remote_method("__ray_call__")
+                method_name = task.dag_node.get_method_name()
+                logger.info("Creating output channel for method %s", method_name)
                 task.output_channel = ray.get(
                     fn.remote(
                         do_allocate_channel,
@@ -435,6 +435,23 @@ class CompiledDAG:
 
             for idx in task.downstream_node_idxs:
                 frontier.append(idx)
+
+        # Validate input channels for tasks that have not be visited
+        for node_idx, task in self.idx_to_task.items():
+            if node_idx == self.input_task_idx:
+                continue
+            if node_idx == self.output_task_idx:
+                continue
+            if node_idx not in visited:
+                has_at_least_one_channel_input = False
+                for arg in task.args:
+                    if isinstance(arg, DAGNode):
+                        has_at_least_one_channel_input = True
+                if not has_at_least_one_channel_input:
+                    raise ValueError(
+                        "Compiled DAGs require each task to take a "
+                        "ray.dag.InputNode or at least one other DAGNode as an "
+                        "input")
 
         # Create executable tasks for each actor
         for actor_id, tasks in self.actor_to_tasks.items():

@@ -80,7 +80,7 @@ def test_basic(ray_start_regular):
     compiled_dag.teardown()
 
 
-def test_actor_used_multiple_times(ray_start_regular):
+def test_actor_multi_methods(ray_start_regular):
     a = Actor.remote(0)
     with InputNode() as inp:
         dag = a.inc.bind(inp)
@@ -92,8 +92,21 @@ def test_actor_used_multiple_times(ray_start_regular):
     assert result == 1
     output_channel.end_read()
 
-    logger.info("Explicit teardown")
     compiled_dag.teardown()
+
+# def test_actor_method_multi_binds(ray_start_regular):
+#     a = Actor.remote(0)
+#     with InputNode() as inp:
+#         dag = a.inc.bind(inp)
+#         dag = a.inc.bind(dag)
+
+#     compiled_dag = dag.experimental_compile()
+#     output_channel = compiled_dag.execute(1)
+#     result = output_channel.begin_read()
+#     assert result == 2
+#     output_channel.end_read()
+
+#     compiled_dag.teardown()
 
 
 def test_regular_args(ray_start_regular):
@@ -200,15 +213,6 @@ def test_dag_errors(ray_start_regular):
     with pytest.raises(
         NotImplementedError,
         match="Compiled DAGs currently only support actor method nodes",
-    ):
-        dag.experimental_compile()
-
-    with InputNode() as inp:
-        dag = a.inc.bind(inp)
-        dag = a.inc.bind(dag)
-    with pytest.raises(
-        NotImplementedError,
-        match="Compiled DAGs can contain at most one task per actor handle.",
     ):
         dag.experimental_compile()
 
