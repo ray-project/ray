@@ -1795,19 +1795,17 @@ Status CoreWorker::GetLocationFromOwner(
   auto location_by_id =
       std::make_shared<absl::flat_hash_map<ObjectID, std::shared_ptr<ObjectLocation>>>();
 
-  for (const auto &pair : objects_by_owner) {
-    const auto &owner_address = pair.first;
-    const auto &owner_object_ids = pair.second;
+  for (const auto &owner_and_objects : objects_by_owner) {
+    const auto &owner_address = owner_and_objects.first;
+    const auto &owner_object_ids = owner_and_objects.second;
 
     // Calculate the number of batches
     // Use the same config from worker_fetch_request_size
     int64_t batch_size = RayConfig::instance().worker_fetch_request_size();
-    size_t num_batches =
-        (owner_object_ids.size() + batch_size - 1) / batch_size;  // round up
-    *num_remaining += num_batches;
 
     for (size_t batch_start = 0; batch_start < owner_object_ids.size();
          batch_start += batch_size) {
+      *num_remaining += 1;
       size_t batch_end = std::min(batch_start + batch_size, owner_object_ids.size());
       auto client = core_worker_client_pool_->GetOrConnect(owner_address);
       rpc::GetObjectLocationsOwnerRequest request;
@@ -3816,14 +3814,12 @@ void CoreWorker::HandleGetObjectLocationsOwner(
                            send_reply_callback)) {
     return;
   }
-  Status status = Status::OK();  // Assume success initially
   for (int i = 0; i < request.object_ids_size(); ++i) {
     auto object_id = ObjectID::FromBinary(request.object_ids(i));
     auto object_info = reply->add_object_location_infos();
-    // TODO(zhilong): Need to deal with fail query for each object?
     reference_counter_->FillObjectInformation(object_id, object_info);
   }
-  send_reply_callback(status, nullptr, nullptr);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void CoreWorker::ProcessSubscribeForRefRemoved(
