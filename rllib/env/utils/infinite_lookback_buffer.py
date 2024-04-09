@@ -197,7 +197,7 @@ class InfiniteLookbackBuffer:
             # lookback buffer anymore. We assume that `other`'s lookback buffer i
             # already at the end of `self`.
             elif isinstance(other, InfiniteLookbackBuffer):
-                data = self.data + other.data[other.lookback:]
+                data = self.data + other.data[other.lookback :]
             # `other` is a list, simply concat the two lists and use the result as
             # the underlying data for the returned buffer.
             else:

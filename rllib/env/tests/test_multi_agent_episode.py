@@ -2565,18 +2565,20 @@ class TestMultiAgentEpisode(unittest.TestCase):
 
     def test_slice(self):
         # Generate a simple multi-agent episode.
-        episode = self._create_simple_episode([
-            {"a0": 0, "a1": 0},
-            {"a1": 1},
-            {"a1": 2},
-            {"a0": 3, "a1": 3},
-            {"a0": 4},
-            {"a0": 5, "a1": 5},
-            {"a0": 6, "a1": 6},
-            {"a1": 7},
-            {"a1": 8},
-            {"a0": 9},
-        ])
+        episode = self._create_simple_episode(
+            [
+                {"a0": 0, "a1": 0},
+                {"a1": 1},
+                {"a1": 2},
+                {"a0": 3, "a1": 3},
+                {"a0": 4},
+                {"a0": 5, "a1": 5},
+                {"a0": 6, "a1": 6},
+                {"a1": 7},
+                {"a1": 8},
+                {"a0": 9},
+            ]
+        )
         check(len(episode), 9)
 
         # Slice the episode in different ways and check results.
@@ -2800,14 +2802,14 @@ class TestMultiAgentEpisode(unittest.TestCase):
         observations = [
             {"a0": 0, "a1": 0},  # lookback -2
             {"a0": 1, "a1": 1},  # lookback -1
-            {         "a1": 2},  # 0
-            {         "a1": 3},  # 1
-            {         "a1": 4},  # 2
+            {"a1": 2},  # 0
+            {"a1": 3},  # 1
+            {"a1": 4},  # 2
             {"a0": 5, "a1": 5},  # 3
-            {"a0": 6},           # 4
+            {"a0": 6},  # 4
             {"a0": 7, "a1": 7},  # 5
-            {"a0": 8},           # 6
-            {         "a1": 9},  # 7
+            {"a0": 8},  # 6
+            {"a1": 9},  # 7
         ]
         episode = self._create_simple_episode(observations, len_lookback_buffer=2)
         # ---
@@ -2869,17 +2871,73 @@ class TestMultiAgentEpisode(unittest.TestCase):
 
     def test_concat_episode(self):
         # Generate a simple multi-agent episode.
-        base_episode = self._create_simple_episode([
-            {"a0": 0, "a1": 0},
-            {"a0": 1, "a1": 1},
-            {"a0": 2, "a1": 2},
-        ])
+        base_episode = self._create_simple_episode(
+            [
+                {"a0": 0, "a1": 0},
+                {"a0": 1, "a1": 1},
+                {"a0": 2, "a1": 2},
+            ]
+        )
         check(len(base_episode), 2)
+        # Split it into two slices.
         episode_1, episode_2 = base_episode[:1], base_episode[1:]
         check(len(episode_1), 1)
         check(len(episode_2), 1)
+        # Re-concat these slices.
         episode_1.concat_episode(episode_2)
-        check(len(test_episode), 2)
+        check(len(episode_1), 2)
+        check(episode_1.env_t_started, 0)
+        check(episode_1.env_t, 2)
+        a0 = episode_1.agent_episodes["a0"]
+        a1 = episode_1.agent_episodes["a1"]
+        check((len(a0), len(a1)), (2, 2))
+        check((a0.t_started, a1.t_started), (0, 0))
+        check((a0.t, a1.t), (2, 2))
+        check((a0.observations, a1.observations), ([0, 1, 2], [0, 1, 2]))
+        check((a0.actions, a1.actions), ([0, 1], [0, 1]))
+        check((a0.rewards, a1.rewards), ([0.0, 0.1], [0.0, 0.1]))
+        check((a0.is_done, a1.is_done), (False, False))
+
+        # Generate a simple multi-agent episode.
+        base_episode = self._create_simple_episode(
+            [
+                {"a0": 0, "a1": 0},
+                {"a0": 1, "a1": 1},
+                {         "a1": 2},
+                {         "a1": 3},
+                {         "a1": 4},  # <- split here
+                {"a0": 5, "a1": 5},
+                {"a0": 6},
+                {"a0": 7, "a1": 7},
+                {"a0": 8},
+                {         "a1": 9},
+            ]
+        )
+        check(len(base_episode), 9)
+        # Split it into two slices.
+        episode_1, episode_2 = base_episode[:4], base_episode[4:]
+        check(len(episode_1), 4)
+        check(len(episode_2), 5)
+        # Re-concat these slices.
+        episode_1.concat_episode(episode_2)
+        check(len(episode_1), 9)
+        check(episode_1.env_t_started, 0)
+        check(episode_1.env_t, 9)
+        a0 = episode_1.agent_episodes["a0"]
+        a1 = episode_1.agent_episodes["a1"]
+        check((len(a0), len(a1)), (5, 7))
+        check((a0.t_started, a1.t_started), (0, 0))
+        check((a0.t, a1.t), (5, 7))
+        check(
+            (a0.observations, a1.observations),
+            ([0, 1, 5, 6, 7, 8], [0, 1, 2, 3, 4, 5, 7, 9]),
+        )
+        check((a0.actions, a1.actions), ([0, 1, 5, 6, 7], [0, 1, 2, 3, 4, 5, 7]))
+        check(
+            (a0.rewards, a1.rewards),
+            ([0, .1, .5, .6, .7, .8], [0, .1, .2, .3, .4, .5, .7, .9]),
+        )
+        check((a0.is_done, a1.is_done), (False, False))
 
         # Generate a multi-agent episode and environment and sample 100 steps.
         # Note, we do not want the test environment to truncate at step 200.

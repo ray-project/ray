@@ -807,20 +807,16 @@ class MultiAgentEpisode:
                     if item != other.SKIP_ENV_TS_TAG
                 )
                 self.env_t_to_agent_t[agent_id] += (
-                                                           other.env_t_to_agent_t[
-                                                               agent_id]
-                                                           + (
-                                                                       last_agent_step - first_agent_step)
-                                                   )[1:]
+                    other.env_t_to_agent_t[agent_id]
+                    + (last_agent_step - first_agent_step)
+                )[1:]
 
             # Or, if agent is only in the new episode chunk.
             elif agent_id not in self.agent_episode_ids:
                 # Then store all agent data from the new episode chunk in self.
                 self.agent_episodes[agent_id] = other.agent_episodes[agent_id]
                 # Do not forget the env to agent timestep mapping.
-                self.env_t_to_agent_t[agent_id] = other.env_t_to_agent_t[
-                    agent_id
-                ]
+                self.env_t_to_agent_t[agent_id] = other.env_t_to_agent_t[agent_id]
                 # Add the agent's starting timestep.
                 self.agent_t_started[agent_id] = other.agent_t_started[agent_id]
 
@@ -836,9 +832,7 @@ class MultiAgentEpisode:
             self.is_truncated = True
 
         # Copy over the current buffer values from the new episode chunk.
-        self._agent_buffered_actions = copy.deepcopy(
-            other._agent_buffered_actions
-        )
+        self._agent_buffered_actions = copy.deepcopy(other._agent_buffered_actions)
         self._agent_buffered_rewards = other._agent_buffered_rewards.copy()
         self._agent_buffered_extra_model_outputs = copy.deepcopy(
             other._agent_buffered_extra_model_outputs
@@ -1915,10 +1909,6 @@ class MultiAgentEpisode:
             # Those agents that did NOT step get self.SKIP_ENV_TS_TAG added to their mapping.
             for agent_id in all_agent_ids:
                 if agent_id not in obs and agent_id not in done_per_agent:
-                    #TEST
-                    # when not using self._create_simple_episode
-                    # we do NOT seem to go into this line v for a0 (to add the 'S', even though we should)
-                    #END:TEST
                     self.env_t_to_agent_t[agent_id].append(self.SKIP_ENV_TS_TAG)
 
             # Update per-agent lookback buffer sizes to be used when creating the
