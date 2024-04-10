@@ -228,7 +228,14 @@ class ASGIReceiveProxy:
         self._disconnect_message = None
 
     def _get_default_disconnect_message(self) -> Message:
-        """Return the appropriate disconnect message based on the connection type."""
+        """Return the appropriate disconnect message based on the connection type.
+
+        HTTP ASGI spec:
+            https://asgi.readthedocs.io/en/latest/specs/www.html#disconnect-receive-event
+
+        WS ASGI spec:
+            https://asgi.readthedocs.io/en/latest/specs/www.html#disconnect-receive-event-ws
+        """
         if self._type == "websocket":
             return {
                 "type": "websocket.disconnect",
