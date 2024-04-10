@@ -747,7 +747,9 @@ class BaseTrainer(abc.ABC):
                 # run_config is not a tunable hyperparameter so it does not need to be
                 # merged.
                 run_config = base_config.pop("run_config", None)
-                self._merged_config = deep_update(base_config, self.config)
+                self._merged_config = deep_update(
+                    base_config, self.config, new_keys_allowed=True
+                )
                 self._merged_config["run_config"] = run_config
                 merged_scaling_config = self._merged_config.get(
                     "scaling_config", ScalingConfig()
