@@ -2212,13 +2212,12 @@ class TestMultiAgentEpisode(unittest.TestCase):
     def test_cut(self):
         # Generate a simple multi-agent episode and check all internals after
         # construction.
-        observations = [{"a0": 0, "a1": 0}, {"a1": 1}, {"a1": 2}, {"a1": 3}]
-        actions = [{"a0": 0, "a1": 0}, {"a1": 1}, {"a1": 2}]
-        rewards = [{"a0": 0.1, "a1": 0.1}, {"a1": 0.2}, {"a1": 0.3}]
-        episode_1 = MultiAgentEpisode(
-            observations=observations, actions=actions, rewards=rewards
-        )
-
+        episode_1 = self._create_simple_episode([
+            {"a0": 0, "a1": 0},
+            {"a1": 1},
+            {"a1": 2},
+            {"a1": 3},
+        ], len_lookback_buffer="auto")
         episode_2 = episode_1.cut()
         check(episode_1.id_, episode_2.id_)
         check(len(episode_1), 0)
@@ -2297,6 +2296,30 @@ class TestMultiAgentEpisode(unittest.TestCase):
             episode_2.get_actions([-5])
         # Don't expect index error if slice is given.
         check(episode_2.get_actions(slice(-5, -4)), {})
+
+        # Cut into an ongoing hanging reward sequence.
+        observations = [
+            {"a0": 0, "a1": 0},
+            {"a1": 1},
+            {"a1": 2},
+            {"a1": 3},
+        ]
+        episode_1 = MultiAgentEpisode(
+            observations=observations,
+            actions=observations[:-1],
+            rewards=[
+                {"a0": 0, "a1": 0},
+                {"a0": 1, "a1": 1},
+                {"a0": 2, "a1": 2},
+            ],
+            len_lookback_buffer=0,
+        )
+        check(len(episode_1), 3)
+        episode_2 = episode_1.cut()
+        check(episode_1.id_, episode_2.id_)
+        check(len(episode_2), 0)
+
+        TODO continue here defining, how cut should behave with hanging rewards.
 
         # Create an environment.
         episode_1, _ = self._mock_multi_agent_records_from_env(size=100)
