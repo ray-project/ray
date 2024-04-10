@@ -463,7 +463,7 @@ class BackendExecutor:
             runtime_context = ray.runtime_context.get_runtime_context()
 
             train_run_info = TrainRunInfo(
-                id="TODO",
+                id=trial_info.run_id,
                 name=trial_info.experiment_name,
                 trial_name=trial_info.name,
                 trainer_actor_id=runtime_context.get_actor_id(),

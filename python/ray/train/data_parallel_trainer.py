@@ -431,6 +431,7 @@ class DataParallelTrainer(BaseTrainer):
         trial_info = TrialInfo(
             name=session.get_trial_name(),
             id=session.get_trial_id(),
+            run_id=session.get_run_id(),
             resources=session.get_trial_resources(),
             logdir=session.get_trial_dir(),
             driver_ip=ray.util.get_node_ip_address(),
