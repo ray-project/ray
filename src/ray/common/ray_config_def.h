@@ -773,8 +773,12 @@ RAY_CONFIG(int64_t, grpc_keepalive_timeout_ms, 20000)
 /// and this configuration break that assumption. We should apply to every other component
 /// after we change this failure assumption from code.
 /// grpc keepalive timeout for client.
+/// TODO this should be lowered to 30s after
+/// https://github.com/ray-project/ray/issues/29656
 RAY_CONFIG(int64_t, grpc_client_keepalive_time_ms, 300000)
 /// gRPC keep-alive timeout for client.
+/// TODO this should be lowered to 15s after
+/// https://github.com/ray-project/ray/issues/29656
 RAY_CONFIG(int64_t, grpc_client_keepalive_timeout_ms, 120000)
 /// Number of keep-alive pings client can send before needing to send a data/header frame
 /// (0 indicates that an infinite number of pings can be sent without sending a data frame or header frame)
