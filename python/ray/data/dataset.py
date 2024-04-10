@@ -1895,7 +1895,7 @@ class Dataset:
                 aggregation = AggregateFn(
                     init=lambda column: 1,
                     accumulate_row=lambda a, row: a * row["number"],
-                    merge = lambda a1, a2: a1 + a2,
+                    merge=lambda a1, a2: a1 * a2,
                     name="prod"
                 )
                 print(ds.aggregate(aggregation))
