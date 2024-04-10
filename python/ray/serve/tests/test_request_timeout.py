@@ -1,7 +1,6 @@
 import asyncio
 import os
 import sys
-import time
 from typing import Generator, Set
 
 import pytest
@@ -206,22 +205,20 @@ def test_streaming_request_already_sent_and_timed_out(ray_instance, shutdown_ser
     Verify that streaming requests are timed out even if some chunks have already
     been sent.
     """
+    signal_actor = SignalActor.remote()
 
     @serve.deployment(graceful_shutdown_timeout_s=0, max_ongoing_requests=1)
-    class SleepForNSeconds:
-        def __init__(self, sleep_s: int):
-            self.sleep_s = sleep_s
-
-        def generate_numbers(self) -> Generator[str, None, None]:
+    class BlockOnSecondChunk:
+        async def generate_numbers(self) -> Generator[str, None, None]:
             for i in range(2):
                 yield f"generated {i}"
-                time.sleep(self.sleep_s)
+                await signal_actor.wait.remote()
 
         def __call__(self, request: Request) -> StreamingResponse:
             gen = self.generate_numbers()
             return StreamingResponse(gen, status_code=200, media_type="text/plain")
 
-    serve.run(SleepForNSeconds.bind(0.11))  # 0.11s > 0.1s timeout
+    serve.run(BlockOnSecondChunk.bind())
 
     r = requests.get("http://localhost:8000", stream=True)
     iterator = r.iter_content(chunk_size=None, decode_unicode=True)
