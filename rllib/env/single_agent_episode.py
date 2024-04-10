@@ -349,59 +349,6 @@ class SingleAgentEpisode:
         # Validate the episode data thus far.
         self.validate()
 
-    def concat_episode(self, episode_chunk: "SingleAgentEpisode") -> None:
-        """Adds the given `episode_chunk` to the right side of self.
-
-        In order for this to work, both chunks (`self` and `episode_chunk`) must fit
-        together. This is checked by the IDs (must be identical), the time step counters
-        (`self.t` must be the same as `episode_chunk.t_started`), as well as the
-        observations/infos at the concatenation boundaries (`self.observations[-1]`
-        must match `episode_chunk.observations[0]`). Also, `self.is_done` must not be
-        True, meaning `self.is_terminated` and `self.is_truncated` are both False.
-
-        Args:
-            episode_chunk: Another `SingleAgentEpisode` to be concatenated.
-
-        Returns: A `SingleAegntEpisode` instance containing the concatenated
-            from both episodes.
-        """
-        assert episode_chunk.id_ == self.id_
-        # NOTE (sven): This is what we agreed on. As the replay buffers must be
-        # able to concatenate.
-        assert not self.is_done
-        # Make sure the timesteps match.
-        assert self.t == episode_chunk.t_started
-
-        episode_chunk.validate()
-
-        # Make sure, end matches other episode chunk's beginning.
-        assert np.all(episode_chunk.observations[0] == self.observations[-1])
-        # Pop out our last observations and infos (as these are identical
-        # to the first obs and infos in the next episode).
-        self.observations.pop()
-        self.infos.pop()
-
-        # Extend ourselves. In case, episode_chunk is already terminated (and numpyfied)
-        # we need to convert to lists (as we are ourselves still filling up lists).
-        self.observations.extend(episode_chunk.get_observations())
-        self.actions.extend(episode_chunk.get_actions())
-        self.rewards.extend(episode_chunk.get_rewards())
-        self.infos.extend(episode_chunk.get_infos())
-        self.t = episode_chunk.t
-
-        if episode_chunk.is_terminated:
-            self.is_terminated = True
-        elif episode_chunk.is_truncated:
-            self.is_truncated = True
-
-        for model_out_key in episode_chunk.extra_model_outputs.keys():
-            self.extra_model_outputs[model_out_key].extend(
-                episode_chunk.get_extra_model_outputs(model_out_key)
-            )
-
-        # Validate.
-        self.validate()
-
     def add_env_reset(
         self,
         observation: ObsType,
@@ -636,6 +583,59 @@ class SingleAgentEpisode:
                 self.extra_model_outputs[k].finalize()
 
         return self
+
+    def concat_episode(self, other: "SingleAgentEpisode") -> None:
+        """Adds the given `other` SingleAgentEpisode to the right side of self.
+
+        In order for this to work, both chunks (`self` and `other`) must fit
+        together. This is checked by the IDs (must be identical), the time step counters
+        (`self.env_t` must be the same as `episode_chunk.env_t_started`), as well as the
+        observations/infos at the concatenation boundaries. Also, `self.is_done` must
+        not be True, meaning `self.is_terminated` and `self.is_truncated` are both
+        False.
+
+        Args:
+            other: The other `SingleAgentEpisode` to be concatenated to this one.
+
+        Returns: A `SingleAgentEpisode` instance containing the concatenated data
+            from both episodes (`self` and `other`).
+        """
+        assert other.id_ == self.id_
+        # NOTE (sven): This is what we agreed on. As the replay buffers must be
+        # able to concatenate.
+        assert not self.is_done
+        # Make sure the timesteps match.
+        assert self.t == other.t_started
+        # Validate `other`.
+        other.validate()
+
+        # Make sure, end matches other episode chunk's beginning.
+        assert np.all(other.observations[0] == self.observations[-1])
+        # Pop out our last observations and infos (as these are identical
+        # to the first obs and infos in the next episode).
+        self.observations.pop()
+        self.infos.pop()
+
+        # Extend ourselves. In case, episode_chunk is already terminated (and finalized)
+        # we need to convert to lists (as we are ourselves still filling up lists).
+        self.observations.extend(other.get_observations())
+        self.actions.extend(other.get_actions())
+        self.rewards.extend(other.get_rewards())
+        self.infos.extend(other.get_infos())
+        self.t = other.t
+
+        if other.is_terminated:
+            self.is_terminated = True
+        elif other.is_truncated:
+            self.is_truncated = True
+
+        for model_out_key in other.extra_model_outputs.keys():
+            self.extra_model_outputs[model_out_key].extend(
+                other.get_extra_model_outputs(model_out_key)
+            )
+
+        # Validate.
+        self.validate()
 
     def cut(self, len_lookback_buffer: int = 0) -> "SingleAgentEpisode":
         """Returns a successor episode chunk (of len=0) continuing from this Episode.

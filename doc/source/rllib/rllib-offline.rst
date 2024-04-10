@@ -176,9 +176,9 @@ Example: Converting external experiences to batch format
 --------------------------------------------------------
 
 When the env does not support simulation (e.g., it is a web application), it is necessary to generate the ``*.json`` experience batch files outside of RLlib. This can be done by using the `JsonWriter <https://github.com/ray-project/ray/blob/master/rllib/offline/json_writer.py>`__ class to write out batches.
-This `runnable example <https://github.com/ray-project/ray/blob/master/rllib/examples/saving_experiences.py>`__ shows how to generate and save experience batches for CartPole-v1 to disk:
+This `runnable example <https://github.com/ray-project/ray/blob/master/rllib/examples/offline_rl/saving_experiences.py>`__ shows how to generate and save experience batches for CartPole-v1 to disk:
 
-.. literalinclude:: ../../../rllib/examples/saving_experiences.py
+.. literalinclude:: ../../../rllib/examples/offline_rl/saving_experiences.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -406,7 +406,7 @@ The interface for the ``IOContext`` is the following:
     :members:
     :noindex:
 
-See `custom_input_api.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_input_api.py>`__ for a runnable example.
+See `custom_input_api.py <https://github.com/ray-project/ray/blob/master/rllib/examples/offline_rl/custom_input_api.py>`__ for a runnable example.
 
 Output API
 ----------

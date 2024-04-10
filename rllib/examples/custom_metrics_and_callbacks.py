@@ -1,3 +1,5 @@
+# TODO (sven): Move this example script into the new API stack.
+
 """Example of using RLlib's debug callbacks.
 
 Here we use callbacks to track the average CartPole pole angle magnitude as a
