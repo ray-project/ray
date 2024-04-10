@@ -38,7 +38,6 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
         wget \
         cmake \
         g++ \ 
-        build-essential \
         zlib1g-dev \
         $(if [ "$AUTOSCALER" = "autoscaler" ]; then echo \
         tmux \
@@ -47,14 +46,6 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
         netbase \
         openssh-client \
         gnupg; fi) \
-    && cd $HOME \
-    && git clone https://github.com/facebook/zstd.git \
-    && cd zstd \
-    && git checkout v1.5.6 \
-    && make \
-    && sudo make install \
-    && cd .. \
-    && rm -rf zstd \
     && wget --quiet \
         "https://repo.anaconda.com/miniconda/Miniconda3-py311_23.10.0-1-Linux-${HOSTTYPE}.sh" \
         -O /tmp/miniconda.sh \
