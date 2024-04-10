@@ -751,7 +751,7 @@ class Node:
 
     @property
     def cluster_id(self) -> ray.ClusterID:
-        return self._gcs_client.cluster_id
+        return self.get_gcs_client().cluster_id
 
     def get_temp_dir_path(self):
         """Get the path of the temporary directory."""
