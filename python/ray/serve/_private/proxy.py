@@ -107,11 +107,6 @@ RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S = (
 # of the performance optimizations to make troubleshooting easier
 RAY_SERVE_DEBUG_MODE = bool(os.environ.get("RAY_SERVE_DEBUG_MODE", 0))
 
-RAY_SERVE_ASGI_RECEIVE_QUEUE_GRACE_PERIOD_S = float(
-    os.environ.get("RAY_SERVE_ASGI_RECEIVE_QUEUE_GRACE_PERIOD_S", "10.0")
-)
-
-
 if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
     logger.warning(
         "The `SERVE_REQUEST_PROCESSING_TIMEOUT_S` environment variable has "
@@ -156,7 +151,6 @@ class GenericProxy(ABC):
             self.request_timeout_s = None
 
         self._node_id = node_id
-        self._event_loop = get_or_create_event_loop()
 
         # Flipped to `True` once the route table has been updated at least once.
         # Health checks will not pass until the route table is populated.
@@ -950,7 +944,7 @@ class HTTPProxy(GenericProxy):
         # actor to receive the messages.
         receive_queue = MessageQueue()
         self.asgi_receive_queues[request_id] = receive_queue
-        proxy_asgi_receive_task = self._event_loop.create_task(
+        proxy_asgi_receive_task = get_or_create_event_loop().create_task(
             self.proxy_asgi_receive(proxy_request.receive, receive_queue)
         )
 
@@ -1081,15 +1075,7 @@ class HTTPProxy(GenericProxy):
                         is_error=True,
                     )
 
-            # Clean up the created ASGI receive queue after a grace period.
-            # The grace period is provided because the replica code may still be running
-            # in the case of a disconnect.
-            # TODO(edoakes): move to a push-based model to avoid these edge cases.
-            self._event_loop.call_later(
-                RAY_SERVE_ASGI_RECEIVE_QUEUE_GRACE_PERIOD_S,
-                self.asgi_receive_queues.pop,
-                request_id,
-            )
+            del self.asgi_receive_queues[request_id]
 
         # The status code should always be set.
         assert status is not None
