@@ -87,13 +87,13 @@ if __name__ == "__main__":
         default_config.environment("Pendulum-v1", clip_actions=True)
         .framework(args.framework)
         .offline_data(
-            # we can either use the tune registry, class path, or direct function
-            # to connect our input api.
+            # We can either use the tune registry ...
             input_="custom_input",
-            # "input": "ray.rllib.examples.custom_input_api.CustomJsonReader",
-            # "input": input_creator,
-            # this gets passed to the IOContext
-            input_config={"input_files": args.input_files},
+            # ... full classpath
+            # input_: "ray.rllib.examples.offline_rl.custom_input_api.CustomJsonReader"
+            # ... or a direct function to connect our input api.
+            # input_: input_creator
+            input_config={"input_files": args.input_files},  # <- passed to IOContext
             actions_in_input_normalized=True,
         )
         .training(train_batch_size=2000)
