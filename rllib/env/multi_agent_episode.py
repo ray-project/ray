@@ -1407,24 +1407,33 @@ class MultiAgentEpisode:
                 "episode have the exact same size!"
             )
 
-        # Determine terminateds/truncateds.
+        # Determine terminateds/truncateds and when (in agent timesteps) the
+        # single-agent episode slices start.
         terminateds = {}
         truncateds = {}
+        agent_t_started = {}
         for aid, sa_episode in self.agent_episodes.items():
+            mapping = self.env_t_to_agent_t[aid]
             # If the (agent) timestep directly at the slice stop boundary is equal to
             # the length of the single-agent episode of this agent -> Use the
             # single-agent episode's terminated/truncated flags.
-            # If `stop` is already beyond this agents single-agent episode, then we
+            # If `stop` is already beyond this agent's single-agent episode, then we
             # don't have to keep track of this: The MultiAgentEpisode initializer will
-            # automatically determine that this agent must be done (b/c has no action
+            # automatically determine that this agent must be done (b/c it has no action
             # following its final observation).
             if (
-                stop < len(self.env_t_to_agent_t[aid])
-                and self.env_t_to_agent_t[aid][stop] != self.SKIP_ENV_TS_TAG
-                and len(sa_episode) == self.env_t_to_agent_t[aid][stop]
+                stop < len(mapping)
+                and mapping[stop] != self.SKIP_ENV_TS_TAG
+                and len(sa_episode) == mapping[stop]
             ):
                 terminateds[aid] = sa_episode.is_terminated
                 truncateds[aid] = sa_episode.is_truncated
+            # Determine this agent's t_started.
+            if start < len(mapping):
+                for i in range(start, len(mapping)):
+                    if mapping[i] != self.SKIP_ENV_TS_TAG:
+                        agent_t_started[aid] = sa_episode.t_started + mapping[i]
+                        break
         terminateds["__all__"] = all(
             terminateds.get(aid) for aid in self.agent_episodes
         )
@@ -1465,14 +1474,16 @@ class MultiAgentEpisode:
             terminateds=terminateds,
             truncateds=truncateds,
             len_lookback_buffer=ref_lookback,
+            env_t_started=self.env_t_started + start,
             agent_episode_ids={
                 aid: eid.id_ for aid, eid in self.agent_episodes.items()
             },
+            agent_t_started=agent_t_started,
             agent_module_ids=self._agent_to_module_mapping,
             agent_to_module_mapping_fn=self.agent_to_module_mapping_fn,
         )
 
-        # Finalize slice if `self` is finalized.
+        # Finalize slice if `self` is also finalized.
         if self.is_finalized:
             ma_episode.finalize()
 
@@ -1525,7 +1536,7 @@ class MultiAgentEpisode:
             rows.append(row.rstrip())
 
         # Join all components into a final string
-        return header + "\n".join(rows)
+        print(header + "\n".join(rows))
 
     def get_state(self) -> Dict[str, Any]:
         """Returns the state of a multi-agent episode.
@@ -1722,7 +1733,7 @@ class MultiAgentEpisode:
             rewards = []
             extra_model_outputs = []
 
-        # Infos and extra_model_outputs are allowed to be None -> Fill them with
+        # Infos and `extra_model_outputs` are allowed to be None -> Fill them with
         # proper dummy values, if so.
         if infos is None:
             infos = [{} for _ in range(len(observations))]
@@ -1743,7 +1754,7 @@ class MultiAgentEpisode:
         agent_module_ids = agent_module_ids or {}
 
         # Step through all observations and interpret these as the (global) env steps.
-        env_t = self.env_t - len_lookback_buffer
+        env_t = self.env_t_started - len_lookback_buffer
         for data_idx, (obs, inf) in enumerate(zip(observations, infos)):
             # If we do have actions/extra outs/rewards for this timestep, use the data.
             # It may be that these lists have the same length as the observations list,
@@ -1800,7 +1811,7 @@ class MultiAgentEpisode:
                 elif terminateds.get(agent_id) or truncateds.get(agent_id):
                     done_per_agent[agent_id] = True
                 # There is more (global) action/reward data. This agent must therefore
-                # be done. Auto-add it to terminateds.
+                # be done. Automatically add it to `done_per_agent` and `terminateds`.
                 elif data_idx < len(observations) - 1:
                     done_per_agent[agent_id] = terminateds[agent_id] = True
 
@@ -1809,12 +1820,14 @@ class MultiAgentEpisode:
                     len(observations_per_agent[agent_id]) - 1
                 )
 
-            # Those agents that did NOT step get None added to their mapping.
+            # Those agents that did NOT step get self.SKIP_ENV_TS_TAG added to their
+            # mapping.
             for agent_id in all_agent_ids:
                 if agent_id not in obs and agent_id not in done_per_agent:
                     self.env_t_to_agent_t[agent_id].append(self.SKIP_ENV_TS_TAG)
 
-            # Update per-agent lookback buffer and t_started counters.
+            # Update per-agent lookback buffer sizes to be used when creating the
+            # indiviual `SingleAgentEpisode` objects below.
             for agent_id in all_agent_ids:
                 if env_t < self.env_t_started:
                     if agent_id not in done_per_agent:

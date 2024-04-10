@@ -1,6 +1,6 @@
 """
 This example shows how to pretrain an RLModule using behavioral cloning from offline
-data and, thereafter training it online with PPO.
+data and, thereafter, continue training it online with PPO (fine-tuning).
 """
 
 import gymnasium as gym
@@ -30,7 +30,6 @@ class BCActor(torch.nn.Module):
         policy_network: The policy network of the PPORLModule.
         distribution_cls: The distribution class to construct with the logits outputed
             by the policy network.
-
     """
 
     def __init__(
@@ -105,29 +104,32 @@ def train_ppo_module_with_bc_finetune(
 def train_ppo_agent_from_checkpointed_module(
     module_spec_from_ckpt: SingleAgentRLModuleSpec,
 ) -> float:
-    """Train a checkpointed RLModule using PPO.
+    """Trains a checkpointed RLModule using PPO.
 
     Args:
         module_spec_from_ckpt: The module spec of the checkpointed RLModule.
 
     Returns:
         The best reward mean achieved by the PPO agent.
-
     """
-
     config = (
         PPOConfig()
         .experimental(_enable_new_api_stack=True)
         .rl_module(rl_module_spec=module_spec_from_ckpt)
         .environment(GYM_ENV_NAME)
-        .debugging(seed=0)
+        .training(
+            lr=0.0001,
+            gamma=0.99,
+            num_sgd_iter=6,
+            vf_loss_coeff=0.01,
+        )
     )
 
     tuner = tune.Tuner(
         "PPO",
         param_space=config.to_dict(),
         run_config=RunConfig(
-            stop={"training_iteration": 10},
+            stop={"training_iteration": 20},
             failure_config=FailureConfig(fail_fast="raise"),
             verbose=2,
         ),
@@ -151,7 +153,9 @@ if __name__ == "__main__":
         module_class=PPOTorchRLModule,
         observation_space=GYM_ENV.observation_space,
         action_space=GYM_ENV.action_space,
-        model_config_dict={"fcnet_hiddens": [64, 64]},
+        model_config_dict={
+            "vf_share_layers": True,
+        },
         catalog_class=PPOCatalog,
     )
 
@@ -165,7 +169,7 @@ if __name__ == "__main__":
 
     best_reward = train_ppo_agent_from_checkpointed_module(module_spec)
     assert (
-        best_reward > 300
-    ), "The PPO agent with pretraining should achieve a reward of at least 300."
+        best_reward > 400.0
+    ), "The PPO agent with pretraining should achieve a reward of at least 400.0."
     # clean up the checkpoint directory
     shutil.rmtree(module_checkpoint_path)

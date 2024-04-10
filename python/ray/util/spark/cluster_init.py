@@ -144,11 +144,11 @@ class RayClusterOnSpark:
             else:
                 try:
                     __import__("ray.dashboard.optional_deps")
-                except ModuleNotFoundError:
+                except ModuleNotFoundError as e:
                     _logger.warning(
                         "Dependencies to launch the optional dashboard API "
                         "server cannot be found. They can be installed with "
-                        "pip install ray[default]."
+                        f"pip install ray[default], root cause: ({repr(e)})"
                     )
 
             if self.autoscale:
@@ -1297,7 +1297,7 @@ def _setup_ray_cluster_internal(
     return cluster.address, remote_connection_address
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI
 def setup_ray_cluster(
     *,
     max_worker_nodes: int,
@@ -1464,6 +1464,7 @@ def setup_ray_cluster(
     )
 
 
+@PublicAPI
 def setup_global_ray_cluster(
     *,
     max_worker_nodes: int,
@@ -1734,7 +1735,7 @@ def _start_ray_worker_nodes(
     job_rdd.mapPartitions(ray_cluster_job_mapper).collect()
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI
 def shutdown_ray_cluster() -> None:
     """
     Shut down the active ray cluster.

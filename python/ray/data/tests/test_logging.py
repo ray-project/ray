@@ -1,4 +1,3 @@
-import io
 import logging
 import re
 from datetime import datetime
@@ -35,15 +34,12 @@ def test_messages_logged_to_file(setup_logging, shutdown_only):
     assert "ham" in log_contents
 
 
-def test_messages_are_propagated(setup_logging):
-    base_logger = logging.getLogger("ray")
-    stream = io.StringIO()
-    base_logger.addHandler(logging.StreamHandler(stream))
+def test_messages_printed_to_console(propagate_logs, capsys, setup_logging):
     logger = logging.getLogger("ray.data.spam")
 
     logger.info("ham")
 
-    assert "ham" in stream.getvalue()
+    assert "ham" in capsys.readouterr().err
 
 
 def test_message_format(setup_logging, shutdown_only):
