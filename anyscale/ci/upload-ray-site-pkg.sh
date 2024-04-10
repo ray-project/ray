@@ -12,7 +12,7 @@ fi
 
 DEPLOY_ENVIRONMENT="${1:-development}"
 
-PY_VERSION_CODES=(py38 py39 py310 py311)
+PY_VERSION_CODES=(py39 py310 py311)
 
 TMP="$(mktemp -d)"
 
