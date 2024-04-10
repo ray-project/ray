@@ -12,6 +12,7 @@ sudo apt-get update \
         libosmesa6-dev \
         libglfw3 \
         patchelf \
+        python3-dev \
         unzip \
         unrar \
         zlib1g-dev

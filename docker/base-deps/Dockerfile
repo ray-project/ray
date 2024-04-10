@@ -46,7 +46,7 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
         netbase \
         openssh-client \
         gnupg; fi) \
-    && sudo apt install python3 pip -y \
+    && sudo apt install python3 python3-dev pip -y \
     && sudo ln -s /usr/bin/python3 /usr/bin/python \
     && wget -O /tmp/Miniforge3.sh "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh" \
     && bash /tmp/Miniforge3.sh -b -p "${HOME}/conda" \
