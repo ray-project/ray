@@ -123,6 +123,7 @@ class AgentIOTest(unittest.TestCase):
         config = (
             PPOConfig()
             .environment("CartPole-v1")
+            .training(train_batch_size=250)
             .offline_data(
                 postprocess_inputs=True,  # adds back 'advantages'
             )

@@ -6,7 +6,7 @@ from ray.rllib.algorithms.callbacks import DefaultCallbacks, make_multi_callback
 import ray.rllib.algorithms.dqn as dqn
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.evaluation.episode import Episode
-from ray.rllib.examples.env.random_env import RandomEnv
+from ray.rllib.examples.envs.classes.random_env import RandomEnv
 from ray.rllib.utils.test_utils import framework_iterator
 
 

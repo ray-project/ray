@@ -458,7 +458,7 @@ Similarly, the resource allocation to remote workers can be controlled via ``num
 
 The number of GPUs can be fractional quantities (e.g. 0.5) to allocate only a fraction
 of a GPU. For example, with DQN you can pack five algorithms onto one GPU by setting
-``num_gpus: 0.2``. Check out `this fractional GPU example here <https://github.com/ray-project/ray/blob/master/rllib/examples/fractional_gpus.py>`__
+``num_gpus: 0.2``. Check out `this fractional GPU example here <https://github.com/ray-project/ray/blob/master/rllib/examples/gpus/fractional_gpus.py>`__
 as well that also demonstrates how environments (running on the remote workers) that
 require a GPU can benefit from the ``num_gpus_per_worker`` setting.
 

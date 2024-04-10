@@ -1,14 +1,14 @@
+import logging
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import ray._private.worker
-from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.util import convert_bytes_to_human_readable_str
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 
-logger = DatasetLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class ExchangeTaskSpec:
@@ -125,6 +125,6 @@ class ExchangeTaskScheduler:
             return
 
         if memory_usage_bytes > self.warn_on_driver_memory_usage_bytes:
-            logger.get_logger().warn(log_str)
+            logger.warning(log_str)
             # Double the threshold to avoid verbose warnings.
             self.warn_on_driver_memory_usage_bytes = memory_usage_bytes * 2

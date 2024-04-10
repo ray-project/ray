@@ -1091,11 +1091,6 @@ cdef store_task_errors(
         caller_address,
         returns)
 
-    ray._private.utils.push_error_to_driver(
-        worker,
-        ray_constants.TASK_PUSH_ERROR,
-        str(failure_object),
-        job_id=worker.current_job_id)
     if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
         raise RayActorError.from_task_error(failure_object)
     return num_errors_stored
