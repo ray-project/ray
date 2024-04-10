@@ -1,5 +1,7 @@
 group: windows tests
 sort_key: "~windows"
+tags:
+  - oss
 steps:
   # block on premerge and weekly release
   - block: "run windows tests"
