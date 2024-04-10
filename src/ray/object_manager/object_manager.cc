@@ -15,12 +15,39 @@
 #include "ray/object_manager/object_manager.h"
 
 #include <chrono>
+#include <zstd.h>
 
 #include "ray/common/common_protocol.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/util.h"
 
 namespace asio = boost::asio;
+
+namespace {
+std::string CompressZstd(const std::string& data) {
+  // Compress the data.
+  const size_t compressed_size = ZSTD_compressBound(data.size());
+  std::string compressed_data(compressed_size, '\0');
+  const size_t actual_compressed_size = ZSTD_compress(
+      compressed_data.data(), compressed_size, data.data(), data.size(), 1);
+  compressed_data.resize(actual_compressed_size);
+  return compressed_data;
+}
+
+std::string DecompressZstd(const std::string& data) {
+  // Get the decompressed size.
+  const size_t decompressed_size = ZSTD_getFrameContentSize(data.data(), data.size());
+  // Decompress the data.
+  std::string decompressed_data(decompressed_size, '\0');
+  const size_t actual_decompressed_size = ZSTD_decompress(
+      decompressed_data.data(), decompressed_size, data.data(), data.size());
+  if (actual_decompressed_size != decompressed_size) {
+    RAY_LOG(ERROR) << "ZSTD_decompress failed";
+    return "";
+  }
+  return decompressed_data;
+}
+}  // namespace
 
 namespace ray {
 
@@ -533,7 +560,7 @@ void ObjectManager::SendObjectChunk(const UniqueID &push_id,
     on_complete(Status::IOError("Failed to read spilled object"));
     return;
   }
-  push_request.set_data(std::move(optional_chunk.value()));
+  push_request.set_data(CompressZstd(std::move(optional_chunk.value())));
   if (from_disk) {
     num_bytes_pushed_from_disk_ += push_request.data().length();
   } else {
@@ -570,7 +597,7 @@ void ObjectManager::HandlePush(rpc::PushRequest request,
   uint64_t metadata_size = request.metadata_size();
   uint64_t data_size = request.data_size();
   const rpc::Address &owner_address = request.owner_address();
-  const std::string &data = request.data();
+  const std::string data = DecompressZstd(request.data());
 
   bool success = ReceiveObjectChunk(
       node_id, object_id, owner_address, data_size, metadata_size, chunk_index, data);
