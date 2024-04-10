@@ -2146,18 +2146,13 @@ def listen_error_messages(worker, threads_stopped):
                 continue
 
             error_message = error_data["error_message"]
-            if error_data["type"] == ray_constants.TASK_PUSH_ERROR:
-                # TODO(ekl) remove task push errors entirely now that we have
-                # the separate unhandled exception handler.
-                pass
-            else:
-                print_to_stdstream(
-                    {
-                        "lines": [error_message],
-                        "pid": "raylet",
-                        "is_err": False,
-                    }
-                )
+            print_to_stdstream(
+                {
+                    "lines": [error_message],
+                    "pid": "raylet",
+                    "is_err": False,
+                }
+            )
     except (OSError, ConnectionError) as e:
         logger.error(f"listen_error_messages: {e}")
 

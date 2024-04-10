@@ -706,11 +706,11 @@ class Dataset:
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """  # noqa: E501
 
-        def fn(batch):
+        def drop_columns(batch):
             return batch.drop(columns=cols)
 
         return self.map_batches(
-            fn,
+            drop_columns,
             batch_format="pandas",
             zero_copy_batch=True,
             compute=compute,
