@@ -7,7 +7,7 @@ import subprocess
 import sys
 import time
 
-from ray_release.config import RELEASE_PACKAGE_DIR
+from ray_release.bazel import bazel_runfile
 from ray_release.configs.global_config import get_global_config
 from ray_release.logger import logger
 from ray_release.test import (
@@ -21,7 +21,7 @@ DATAPLANE_FILENAME = "dataplane_20240311.tar.gz"
 DATAPLANE_DIGEST = "7b92d447f9da352cf55a92ec865224a212b07a6e86949da4025a826aba4bb3a3"
 BASE_IMAGE_WAIT_TIMEOUT = 7200
 BASE_IMAGE_WAIT_DURATION = 30
-RELEASE_BYOD_DIR = os.path.join(RELEASE_PACKAGE_DIR, "ray_release/byod")
+RELEASE_BYOD_DIR = bazel_runfile("ray_release/byod")
 REQUIREMENTS_BYOD = "requirements_byod"
 REQUIREMENTS_ML_BYOD = "requirements_ml_byod"
 

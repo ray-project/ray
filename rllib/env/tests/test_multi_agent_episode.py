@@ -2565,25 +2565,19 @@ class TestMultiAgentEpisode(unittest.TestCase):
 
     def test_slice(self):
         # Generate a simple multi-agent episode.
-        observations = [
-            {"a0": 0, "a1": 0},
-            {"a1": 1},
-            {"a1": 2},
-            {"a0": 3, "a1": 3},
-            {"a0": 4},
-            {"a0": 5, "a1": 5},
-            {"a0": 6, "a1": 6},
-            {"a1": 7},
-            {"a1": 8},
-            {"a0": 9},
-        ]
-        actions = observations[:-1]
-        rewards = [{aid: r / 10 + 0.1 for aid, r in a.items()} for a in actions]
-        episode = MultiAgentEpisode(
-            observations=observations,
-            actions=actions,
-            rewards=rewards,
-            len_lookback_buffer=0,
+        episode = self._create_simple_episode(
+            [
+                {"a0": 0, "a1": 0},
+                {"a1": 1},
+                {"a1": 2},
+                {"a0": 3, "a1": 3},
+                {"a0": 4},
+                {"a0": 5, "a1": 5},
+                {"a0": 6, "a1": 6},
+                {"a1": 7},
+                {"a1": 8},
+                {"a0": 9},
+            ]
         )
         check(len(episode), 9)
 
@@ -2591,6 +2585,8 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Empty slice.
         slice_ = episode[100:100]
         check(len(slice_), 0)
+        check(slice_.env_t_started, 9)
+        check(slice_.env_t, 9)
         # All-include slices.
         for s in [
             slice(None, None, None),
@@ -2600,9 +2596,13 @@ class TestMultiAgentEpisode(unittest.TestCase):
         ]:
             slice_ = episode[s]
             check(len(slice_), len(episode))
+            check(slice_.env_t_started, 0)
+            check(slice_.env_t, 9)
             a0 = slice_.agent_episodes["a0"]
             a1 = slice_.agent_episodes["a1"]
             check((len(a0), len(a1)), (5, 7))
+            check((a0.t_started, a1.t_started), (0, 0))
+            check((a0.t, a1.t), (5, 7))
             check(
                 (a0.observations, a1.observations),
                 ([0, 3, 4, 5, 6, 9], [0, 1, 2, 3, 5, 6, 7, 8]),
@@ -2610,15 +2610,19 @@ class TestMultiAgentEpisode(unittest.TestCase):
             check((a0.actions, a1.actions), ([0, 3, 4, 5, 6], [0, 1, 2, 3, 5, 6, 7]))
             check(
                 (a0.rewards, a1.rewards),
-                ([0.1, 0.4, 0.5, 0.6, 0.7], [0.1, 0.2, 0.3, 0.4, 0.6, 0.7, 0.8]),
+                ([0.0, 0.3, 0.4, 0.5, 0.6], [0.0, 0.1, 0.2, 0.3, 0.5, 0.6, 0.7]),
             )
             check((a0.is_done, a1.is_done), (False, False))
         # From pos start.
         slice_ = episode[2:]
         check(len(slice_), 7)
+        check(slice_.env_t_started, 2)
+        check(slice_.env_t, 9)
         a0 = slice_.agent_episodes["a0"]
         a1 = slice_.agent_episodes["a1"]
         check((len(a0), len(a1)), (4, 5))
+        check((a0.t_started, a1.t_started), (1, 2))
+        check((a0.t, a1.t), (5, 7))
         check(
             (a0.observations, a1.observations),
             ([3, 4, 5, 6, 9], [2, 3, 5, 6, 7, 8]),
@@ -2626,31 +2630,39 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check((a0.actions, a1.actions), ([3, 4, 5, 6], [2, 3, 5, 6, 7]))
         check(
             (a0.rewards, a1.rewards),
-            ([0.4, 0.5, 0.6, 0.7], [0.3, 0.4, 0.6, 0.7, 0.8]),
+            ([0.3, 0.4, 0.5, 0.6], [0.2, 0.3, 0.5, 0.6, 0.7]),
         )
         check((a0.is_done, a1.is_done), (False, False))
         # If a slice ends in a "gap" for an agent, expect actions and rewards to be
         # cached in the agent's buffer.
         slice_ = episode[:1]
         check(len(slice_), 1)
+        check(slice_.env_t_started, 0)
+        check(slice_.env_t, 1)
         a0 = slice_.agent_episodes["a0"]
         a1 = slice_.agent_episodes["a1"]
         check((len(a0), len(a1)), (0, 1))
+        check((a0.t_started, a1.t_started), (0, 0))
+        check((a0.t, a1.t), (0, 1))
         check((a0.observations, a1.observations), ([0], [0, 1]))
         check((a0.actions, a1.actions), ([], [0]))
-        check((a0.rewards, a1.rewards), ([], [0.1]))
+        check((a0.rewards, a1.rewards), ([], [0.0]))
         check((a0.is_done, a1.is_done), (False, False))
         check(slice_._agent_buffered_actions["a0"], 0)
-        check(slice_._agent_buffered_rewards["a0"], 0.1)
+        check(slice_._agent_buffered_rewards["a0"], 0.0)
         # To pos stop.
         slice_ = episode[:3]
         check(len(slice_), 3)
+        check(slice_.env_t_started, 0)
+        check(slice_.env_t, 3)
         a0 = slice_.agent_episodes["a0"]
         a1 = slice_.agent_episodes["a1"]
         check((len(a0), len(a1)), (1, 3))
+        check((a0.t_started, a1.t_started), (0, 0))
+        check((a0.t, a1.t), (1, 3))
         check((a0.observations, a1.observations), ([0, 3], [0, 1, 2, 3]))
         check((a0.actions, a1.actions), ([0], [0, 1, 2]))
-        check((a0.rewards, a1.rewards), ([0.1], [0.1, 0.2, 0.3]))
+        check((a0.rewards, a1.rewards), ([0.0], [0.0, 0.1, 0.2]))
         check((a0.is_done, a1.is_done), (False, False))
         # To neg stop.
         slice_ = episode[:-1]
@@ -2658,6 +2670,8 @@ class TestMultiAgentEpisode(unittest.TestCase):
         a0 = slice_.agent_episodes["a0"]
         a1 = slice_.agent_episodes["a1"]
         check((len(a0), len(a1)), (4, 7))
+        check((a0.t_started, a1.t_started), (0, 0))
+        check((a0.t, a1.t), (4, 7))
         check(
             (a0.observations, a1.observations),
             ([0, 3, 4, 5, 6], [0, 1, 2, 3, 5, 6, 7, 8]),
@@ -2665,7 +2679,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check((a0.actions, a1.actions), ([0, 3, 4, 5], [0, 1, 2, 3, 5, 6, 7]))
         check(
             (a0.rewards, a1.rewards),
-            ([0.1, 0.4, 0.5, 0.6], [0.1, 0.2, 0.3, 0.4, 0.6, 0.7, 0.8]),
+            ([0.0, 0.3, 0.4, 0.5], [0.0, 0.1, 0.2, 0.3, 0.5, 0.6, 0.7]),
         )
         check((a0.is_done, a1.is_done), (False, False))
         # Expect the hanging action to be found in the buffer.
@@ -2673,55 +2687,75 @@ class TestMultiAgentEpisode(unittest.TestCase):
 
         slice_ = episode[:-4]
         check(len(slice_), 5)
+        check(slice_.env_t_started, 0)
+        check(slice_.env_t, 5)
         a0 = slice_.agent_episodes["a0"]
         a1 = slice_.agent_episodes["a1"]
         check((len(a0), len(a1)), (3, 4))
+        check((a0.t_started, a1.t_started), (0, 0))
+        check((a0.t, a1.t), (3, 4))
         check((a0.observations, a1.observations), ([0, 3, 4, 5], [0, 1, 2, 3, 5]))
         check((a0.actions, a1.actions), ([0, 3, 4], [0, 1, 2, 3]))
         check(
             (a0.rewards, a1.rewards),
-            ([0.1, 0.4, 0.5], [0.1, 0.2, 0.3, 0.4]),
+            ([0.0, 0.3, 0.4], [0.0, 0.1, 0.2, 0.3]),
         )
         check((a0.is_done, a1.is_done), (False, False))
         # From neg start.
         slice_ = episode[-2:]
         check(len(slice_), 2)
+        check(slice_.env_t_started, 7)
+        check(slice_.env_t, 9)
         a0 = slice_.agent_episodes["a0"]
         a1 = slice_.agent_episodes["a1"]
         check((len(a0), len(a1)), (0, 1))
+        check((a0.t_started, a1.t_started), (5, 6))
+        check((a0.t, a1.t), (5, 7))
         check((a0.observations, a1.observations), ([9], [7, 8]))
         check((a0.actions, a1.actions), ([], [7]))
-        check((a0.rewards, a1.rewards), ([], [0.8]))
+        check((a0.rewards, a1.rewards), ([], [0.7]))
         check((a0.is_done, a1.is_done), (False, False))
         # From neg start.
         slice_ = episode[-3:]
         check(len(slice_), 3)
+        check(slice_.env_t_started, 6)
+        check(slice_.env_t, 9)
         a0 = slice_.agent_episodes["a0"]
         a1 = slice_.agent_episodes["a1"]
         check((len(a0), len(a1)), (1, 2))
+        check((a0.t_started, a1.t_started), (4, 5))
+        check((a0.t, a1.t), (5, 7))
         check((a0.observations, a1.observations), ([6, 9], [6, 7, 8]))
         check((a0.actions, a1.actions), ([6], [6, 7]))
-        check((a0.rewards, a1.rewards), ([0.7], [0.7, 0.8]))
+        check((a0.rewards, a1.rewards), ([0.6], [0.6, 0.7]))
         check((a0.is_done, a1.is_done), (False, False))
         # From neg start.
         slice_ = episode[-5:]
         check(len(slice_), 5)
+        check(slice_.env_t_started, 4)
+        check(slice_.env_t, 9)
         a0 = slice_.agent_episodes["a0"]
         a1 = slice_.agent_episodes["a1"]
         check((len(a0), len(a1)), (3, 3))
+        check((a0.t_started, a1.t_started), (2, 4))
+        check((a0.t, a1.t), (5, 7))
         check((a0.observations, a1.observations), ([4, 5, 6, 9], [5, 6, 7, 8]))
         check((a0.actions, a1.actions), ([4, 5, 6], [5, 6, 7]))
-        check((a0.rewards, a1.rewards), ([0.5, 0.6, 0.7], [0.6, 0.7, 0.8]))
+        check((a0.rewards, a1.rewards), ([0.4, 0.5, 0.6], [0.5, 0.6, 0.7]))
         check((a0.is_done, a1.is_done), (False, False))
         # From neg start to neg stop.
         slice_ = episode[-4:-2]
         check(len(slice_), 2)
+        check(slice_.env_t_started, 5)
+        check(slice_.env_t, 7)
         a0 = slice_.agent_episodes["a0"]
         a1 = slice_.agent_episodes["a1"]
         check((len(a0), len(a1)), (1, 2))
+        check((a0.t_started, a1.t_started), (3, 4))
+        check((a0.t, a1.t), (4, 6))
         check((a0.observations, a1.observations), ([5, 6], [5, 6, 7]))
         check((a0.actions, a1.actions), ([5], [5, 6]))
-        check((a0.rewards, a1.rewards), ([0.6], [0.6, 0.7]))
+        check((a0.rewards, a1.rewards), ([0.5], [0.5, 0.6]))
         check((a0.is_done, a1.is_done), (False, False))
 
         # Test what happens if one single-agent episode terminates earlier than the
@@ -2738,6 +2772,8 @@ class TestMultiAgentEpisode(unittest.TestCase):
             {"a1": 2},
         ]
         rewards = [{aid: a / 10 for aid, a in a.items()} for a in actions]
+        # TODO (sven): Do NOT use self._create_simple_episode here b/c this util does
+        #  not handle terminateds (should not create actions after final observations).
         episode = MultiAgentEpisode(
             observations=observations,
             actions=actions,
@@ -2745,35 +2781,119 @@ class TestMultiAgentEpisode(unittest.TestCase):
             terminateds={"a0": True},
             len_lookback_buffer=0,
         )
+        # ---
         slice_ = episode[:1]
         a0 = slice_.agent_episodes["a0"]
         a1 = slice_.agent_episodes["a1"]
         check(len(slice_), 1)
+        check(slice_.env_t_started, 0)
+        check(slice_.env_t, 1)
         check((len(a0), len(a1)), (1, 1))
+        check((a0.t_started, a1.t_started), (0, 0))
+        check((a0.t, a1.t), (1, 1))
         check((a0.observations, a1.observations), ([0, 1], [0, 1]))
         check((a0.actions, a1.actions), ([0], [0]))
         check((a0.rewards, a1.rewards), ([0.0], [0.0]))
         check((a0.is_done, a1.is_done), (True, False))
-
+        # ---
         slice_ = episode[:2]
         a0 = slice_.agent_episodes["a0"]
         a1 = slice_.agent_episodes["a1"]
         check(len(slice_), 2)
+        check(slice_.env_t_started, 0)
+        check(slice_.env_t, 2)
         check((len(a0), len(a1)), (1, 2))
+        check((a0.t_started, a1.t_started), (0, 0))
+        check((a0.t, a1.t), (1, 2))
         check((a0.observations, a1.observations), ([0, 1], [0, 1, 2]))
         check((a0.actions, a1.actions), ([0], [0, 1]))
         check((a0.rewards, a1.rewards), ([0.0], [0.0, 0.1]))
         check((a0.is_done, a1.is_done), (True, False))
-
+        # ---
         slice_ = episode[2:]
         self.assertTrue("a0" not in slice_.agent_episodes)
         a1 = slice_.agent_episodes["a1"]
         check(len(slice_), 1)
+        check(slice_.env_t_started, 2)
+        check(slice_.env_t, 3)
         check(len(a1), 1)
+        check(a1.t_started, 2)
+        check(a1.t, 3)
         check(a1.observations, [2, 3])
         check(a1.actions, [2])
         check(a1.rewards, [0.2])
         check(a1.is_done, False)
+
+        # Test what happens if we have lookback buffers.
+        observations = [
+            {"a0": 0, "a1": 0},  # lookback -2
+            {"a0": 1, "a1": 1},  # lookback -1
+            {"a1": 2},  # 0
+            {"a1": 3},  # 1
+            {"a1": 4},  # 2
+            {"a0": 5, "a1": 5},  # 3
+            {"a0": 6},  # 4
+            {"a0": 7, "a1": 7},  # 5
+            {"a0": 8},  # 6
+            {"a1": 9},  # 7
+        ]
+        episode = self._create_simple_episode(observations, len_lookback_buffer=2)
+        # ---
+        slice_ = episode[1:3]
+        check(len(slice_), 2)
+        check(slice_.env_t_started, 1)
+        check(slice_.env_t, 3)
+        a0 = slice_.agent_episodes["a0"]
+        a1 = slice_.agent_episodes["a1"]
+        check((len(a0), len(a1)), (0, 2))
+        check((a0.t_started, a1.t_started), (2, 3))
+        check((a0.t, a1.t), (2, 5))
+        check((a0.observations, a1.observations), ([5], [3, 4, 5]))
+        check((a0.actions, a1.actions), ([], [3, 4]))
+        check((a0.rewards, a1.rewards), ([], [0.3, 0.4]))
+        check((a0.is_done, a1.is_done), (False, False))
+        # ---
+        slice_ = episode[None:4]
+        check(len(slice_), 4)
+        check(slice_.env_t_started, 0)
+        check(slice_.env_t, 4)
+        a0 = slice_.agent_episodes["a0"]
+        a1 = slice_.agent_episodes["a1"]
+        check((len(a0), len(a1)), (1, 3))
+        check((a0.t_started, a1.t_started), (2, 2))
+        check((a0.t, a1.t), (3, 5))
+        check((a0.observations, a1.observations), ([5, 6], [2, 3, 4, 5]))
+        check((a0.actions, a1.actions), ([5], [2, 3, 4]))
+        check((a0.rewards, a1.rewards), ([0.5], [0.2, 0.3, 0.4]))
+        check((a0.is_done, a1.is_done), (False, False))
+        # ---
+        slice_ = episode[-3:-1]
+        check(len(slice_), 2)
+        check(slice_.env_t_started, 4)
+        check(slice_.env_t, 6)
+        a0 = slice_.agent_episodes["a0"]
+        a1 = slice_.agent_episodes["a1"]
+        check((len(a0), len(a1)), (2, 0))
+        check((a0.t_started, a1.t_started), (3, 6))
+        check((a0.t, a1.t), (5, 6))
+        check((a0.observations, a1.observations), ([6, 7, 8], [7]))
+        check((a0.actions, a1.actions), ([6, 7], []))
+        check((a0.rewards, a1.rewards), ([0.6, 0.7], []))
+        check((a0.is_done, a1.is_done), (False, False))
+        # ---
+        slice_ = episode[-1:None]
+        check(len(slice_), 1)
+        check(slice_.env_t_started, 6)
+        check(slice_.env_t, 7)
+        a0 = slice_.agent_episodes["a0"]
+        a1 = slice_.agent_episodes["a1"]
+        check((len(a0), len(a1)), (0, 0))
+        check((a0.t_started, a1.t_started), (5, 7))
+        check((a0.t, a1.t), (5, 7))
+        check((a0.observations, a1.observations), ([8], [9]))
+        check((a0.actions, a1.actions), ([], []))
+        check((a0.rewards, a1.rewards), ([], []))
+        check((a0.is_done, a1.is_done), (False, False))
 
     def test_concat_episode(self):
         # TODO (sven): Revisit this test and the MultiAgentEpisode.episode_concat API.
@@ -3138,6 +3258,14 @@ class TestMultiAgentEpisode(unittest.TestCase):
         batch = episode.get_sample_batch()
         # Ensure that this batch is empty.
         check(len(batch), 0)
+
+    def _create_simple_episode(self, obs, len_lookback_buffer=0):
+        return MultiAgentEpisode(
+            observations=obs,
+            actions=obs[:-1],
+            rewards=[{aid: o / 10 for aid, o in o_dict.items()} for o_dict in obs[:-1]],
+            len_lookback_buffer=len_lookback_buffer,
+        )
 
     def _mock_multi_agent_records_from_env(
         self,
