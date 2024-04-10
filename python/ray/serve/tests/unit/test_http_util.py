@@ -1,5 +1,6 @@
 import asyncio
 import pickle
+import sys
 from typing import Generator, Tuple
 
 import pytest
@@ -65,9 +66,12 @@ async def test_message_queue():
 
 @pytest.fixture
 @pytest.mark.asyncio
-def setup_receive_proxy() -> Generator[
-    Tuple[ASGIReceiveProxy, MessageQueue], None, None
-]:
+def setup_receive_proxy(
+    request,
+) -> Generator[Tuple[ASGIReceiveProxy, MessageQueue], None, None]:
+    # Param can be 'http' (default) or 'websocket' (ASGI scope type).
+    type = getattr(request, "param", "http")
+
     queue = MessageQueue()
 
     async def receive_asgi_messages(request_id: str) -> bytes:
@@ -80,7 +84,7 @@ def setup_receive_proxy() -> Generator[
         return pickle.dumps(messages)
 
     loop = get_or_create_event_loop()
-    asgi_receive_proxy = ASGIReceiveProxy({"type": "http"}, "", receive_asgi_messages)
+    asgi_receive_proxy = ASGIReceiveProxy({"type": type}, "", receive_asgi_messages)
     receiver_task = loop.create_task(asgi_receive_proxy.fetch_until_disconnect())
     try:
         yield asgi_receive_proxy, queue
@@ -125,6 +129,11 @@ class TestASGIReceiveProxy:
         with pytest.raises(RuntimeError, match="oopsies"):
             await asgi_receive_proxy()
 
+    @pytest.mark.parametrize(
+        "setup_receive_proxy",
+        ["http", "websocket"],
+        indirect=True,
+    )
     async def test_return_disconnect_on_key_error(
         self, setup_receive_proxy: Tuple[ASGIReceiveProxy, MessageQueue]
     ):
@@ -143,7 +152,13 @@ class TestASGIReceiveProxy:
 
         queue.put_nowait(KeyError("not found"))
         for _ in range(100):
-            assert await asgi_receive_proxy() == {"type": "http.disconnect"}
+            if asgi_receive_proxy._type == "http":
+                assert await asgi_receive_proxy() == {"type": "http.disconnect"}
+            else:
+                assert await asgi_receive_proxy() == {
+                    "type": "websocket.disconnect",
+                    "code": 1005,
+                }
 
     async def test_receive_asgi_messages_raises(self):
         async def receive_asgi_messages(request_id: str) -> bytes:
@@ -163,6 +178,4 @@ class TestASGIReceiveProxy:
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-v", "-s", __file__]))
