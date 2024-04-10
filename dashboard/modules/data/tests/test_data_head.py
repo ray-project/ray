@@ -10,7 +10,6 @@ TEST_ON_DARWIN = os.environ.get("TEST_ON_DARWIN", "0") == "1"
 DATA_HEAD_URLS = {"GET": "http://localhost:8265/api/data/datasets"}
 
 DATA_SCHEMA = [
-    "job_id",
     "state",
     "progress",
     "total",
@@ -23,6 +22,7 @@ DATA_SCHEMA = [
 
 RESPONSE_SCHEMA = [
     "dataset",
+    "job_id",
     "start_time",
     "end_time",
     "operators",
