@@ -3,6 +3,7 @@ import os
 from typing import Optional
 
 import ray
+from ray._private.log import PlainRayHandler
 from ray._private.ray_constants import LOGGER_FORMAT
 
 _default_file_handler: logging.Handler = None
@@ -82,11 +83,20 @@ def configure_logging() -> None:
 
     logger = logging.getLogger("ray.data")
     logger.setLevel(logging.DEBUG)
+    # We don't want to print debug logs to the console, so don't propagate logs to the
+    # 'ray' parent logger.
+    logger.propagate = False
 
     formatter = logging.Formatter(fmt=LOGGER_FORMAT)
+
     file_handler = SessionFileHandler(DEFAULT_DATASET_LOG_FILENAME)
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
+
+    console_handler = PlainRayHandler()
+    console_handler.setFormatter(formatter)
+    console_handler.setLevel(logging.INFO)
+    logger.addHandler(console_handler)
 
     _default_file_handler = file_handler
 
