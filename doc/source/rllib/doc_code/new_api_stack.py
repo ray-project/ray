@@ -44,7 +44,7 @@ print(config.build().train())
 
 from ray.rllib.algorithms.ppo import PPOConfig  # noqa
 from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner  # noqa
-from ray.rllib.examples.env.multi_agent import MultiAgentCartPole  # noqa
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole  # noqa
 
 
 # A typical multi-agent setup (otherwise using the exact same parameters as before)

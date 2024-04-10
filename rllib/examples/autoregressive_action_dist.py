@@ -1,3 +1,5 @@
+# TODO (sven): Move this example script into the new API stack.
+
 """
 Example of specifying an autoregressive action distribution.
 
@@ -38,12 +40,12 @@ import os
 
 import ray
 from ray import air, tune
-from ray.rllib.examples.env.correlated_actions_env import CorrelatedActionsEnv
-from ray.rllib.examples.models.autoregressive_action_model import (
+from ray.rllib.examples.envs.classes.correlated_actions_env import CorrelatedActionsEnv
+from ray.rllib.examples._old_api_stack.models.autoregressive_action_model import (
     AutoregressiveActionModel,
     TorchAutoregressiveActionModel,
 )
-from ray.rllib.examples.models.autoregressive_action_dist import (
+from ray.rllib.examples._old_api_stack.models.autoregressive_action_dist import (
     BinaryAutoregressiveDistribution,
     TorchBinaryAutoregressiveDistribution,
 )

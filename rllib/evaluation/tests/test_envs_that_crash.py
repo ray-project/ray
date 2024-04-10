@@ -2,8 +2,8 @@ import unittest
 
 import ray
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.examples.env.cartpole_crashing import CartPoleCrashing
-from ray.rllib.examples.env.multi_agent import make_multi_agent
+from ray.rllib.examples.envs.classes.cartpole_crashing import CartPoleCrashing
+from ray.rllib.examples.envs.classes.multi_agent import make_multi_agent
 from ray.rllib.utils.error import EnvError
 from ray.tune.registry import register_env
 
@@ -76,7 +76,7 @@ class TestEnvsThatCrash(unittest.TestCase):
             # just be bubbled up by RLlib Algorithm and tune.Trainable during the
             # `step()` call).
             self.assertRaisesRegex(
-                EnvError, "Simulated env crash", lambda: algo.train()
+                EnvError, "Simulated env crash", lambda algo=algo: algo.train()
             )
             algo.stop()
 

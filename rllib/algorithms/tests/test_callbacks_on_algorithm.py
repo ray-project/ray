@@ -6,7 +6,7 @@ import ray
 from ray.rllib.algorithms.appo import APPOConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.examples.env.cartpole_crashing import CartPoleCrashing
+from ray.rllib.examples.envs.classes.cartpole_crashing import CartPoleCrashing
 from ray.rllib.utils.test_utils import framework_iterator
 from ray import tune
 

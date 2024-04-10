@@ -2714,8 +2714,6 @@ void NodeManager::PublishInfeasibleTaskError(const RayTask &task) const {
 
   // Push a warning to the task's driver that this task is currently infeasible.
   if (!suppress_warning) {
-    // TODO(rkn): Define this constant somewhere else.
-    std::string type = "infeasible_task";
     std::ostringstream error_message;
     error_message
         << "The actor or task with ID " << task.GetTaskSpecification().TaskId()
