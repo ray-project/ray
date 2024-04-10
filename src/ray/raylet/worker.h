@@ -112,6 +112,12 @@ class WorkerInterface {
 
   virtual void SetJobId(const JobID &job_id) = 0;
 
+  /// Sets the job table data for the driver job. Invalid if this worker is not a driver.
+  virtual void SetDriverJobTableData(
+      std::shared_ptr<rpc::JobTableData> job_table_data) = 0;
+  /// Gets the job table data for the driver job. Invalid if this worker is not a driver.
+  virtual std::shared_ptr<rpc::JobTableData> GetDriverJobTableData() = 0;
+
  protected:
   virtual void SetStartupToken(StartupToken startup_token) = 0;
 
@@ -236,6 +242,17 @@ class Worker : public WorkerInterface {
 
   void SetJobId(const JobID &job_id);
 
+  void SetDriverJobTableData(std::shared_ptr<rpc::JobTableData> job_table_data) {
+    RAY_CHECK_EQ(worker_type_, rpc::WorkerType::DRIVER)
+        << "Job table data can only be set for driver workers.";
+    driver_job_table_data_ = job_table_data;
+  }
+  std::shared_ptr<rpc::JobTableData> GetDriverJobTableData() {
+    RAY_CHECK_EQ(worker_type_, rpc::WorkerType::DRIVER)
+        << "Job table data can only be accessed for driver workers.";
+    return driver_job_table_data_;
+  }
+
  protected:
   void SetStartupToken(StartupToken startup_token);
 
@@ -302,6 +319,8 @@ class Worker : public WorkerInterface {
   absl::Time task_assign_time_;
   /// If true, a RPC need to be sent to notify the worker about GCS restarting.
   bool notify_gcs_restarted_ = false;
+  /// The job table data for the driver job. Only valid if this worker is a driver.
+  std::shared_ptr<rpc::JobTableData> driver_job_table_data_;
 };
 
 }  // namespace raylet

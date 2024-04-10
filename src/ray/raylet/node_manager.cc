@@ -1292,33 +1292,20 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     rpc::JobConfig job_config;
     job_config.ParseFromString(message->serialized_job_config()->str());
 
-    // Send the reply callback only after registration fully completes at the GCS.
-    auto cb = [this,
-               worker_ip_address,
-               worker_id,
-               pid,
-               job_id,
-               job_config,
-               entrypoint,
-               send_reply_callback = std::move(send_reply_callback)](const Status &status,
-                                                                     int assigned_port) {
-      if (status.ok()) {
-        rpc::Address driver_address;
-        // Assume raylet ID is the same as the node ID.
-        driver_address.set_raylet_id(self_node_id_.Binary());
-        driver_address.set_ip_address(worker_ip_address);
-        driver_address.set_port(assigned_port);
-        driver_address.set_worker_id(worker_id.Binary());
-        auto job_data_ptr = gcs::CreateJobTableData(
-            job_id, /*is_dead*/ false, driver_address, pid, entrypoint, job_config);
+    // Prepare the JobTableData for the GCS. However we will not send it to GCS yet,
+    // because we need to wait for the worker to announce its port first. Sending in
+    // `ProcessAnnounceWorkerPortMessage`.
+    rpc::Address driver_address;
+    // Assume raylet ID is the same as the node ID.
+    driver_address.set_raylet_id(self_node_id_.Binary());
+    driver_address.set_ip_address(worker_ip_address);
+    // driver_address.port is not set! It will be set in ProcessAnnounceWorkerPortMessage
+    driver_address.set_worker_id(worker_id.Binary());
+    auto job_data_ptr = gcs::CreateJobTableData(
+        job_id, /*is_dead=*/false, driver_address, pid, entrypoint, job_config);
+    worker->SetDriverJobTableData(job_data_ptr);
 
-        RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(
-            job_data_ptr,
-            [send_reply_callback = std::move(send_reply_callback), assigned_port](
-                Status status) { send_reply_callback(status, assigned_port); }));
-      }
-    };
-    RAY_UNUSED(worker_pool_.RegisterDriver(worker, job_config, std::move(cb)));
+    RAY_UNUSED(worker_pool_.RegisterDriver(worker, job_config, send_reply_callback));
   }
 }
 
@@ -1335,10 +1322,34 @@ void NodeManager::ProcessAnnounceWorkerPortMessage(
 
   auto message = flatbuffers::GetRoot<protocol::AnnounceWorkerPort>(message_data);
   int port = message->port();
+  RAY_LOG(ERROR) << "NodeManager::ProcessAnnounceWorkerPortMessage " << port
+                 << ", assigned " << worker->AssignedPort() << ", is worker" << is_worker;
   worker->Connect(port);
   if (is_worker) {
     worker_pool_.OnWorkerStarted(worker);
     HandleWorkerAvailable(worker);
+  } else {
+    auto job_data_ptr = worker->GetDriverJobTableData();
+    job_data_ptr->mutable_driver_address()->set_port(port);
+    RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(job_data_ptr, [client](Status status) {
+      if (!status.ok()) {
+        RAY_LOG(ERROR) << "Failed to add job to GCS: " << status.ToString();
+        return;
+      }
+      // Write the reply back.
+      flatbuffers::FlatBufferBuilder fbb;
+      auto message = protocol::CreateAnnounceWorkerPortReply(fbb);
+      fbb.Finish(message);
+
+      auto reply_status = client->WriteMessage(
+          static_cast<int64_t>(protocol::MessageType::AnnounceWorkerPortReply),
+          fbb.GetSize(),
+          fbb.GetBufferPointer());
+      if (!reply_status.ok()) {
+        RAY_LOG(ERROR) << "Failed to send AnnounceWorkerPortReply to client: "
+                       << reply_status.ToString();
+      }
+    }));
   }
 }
 

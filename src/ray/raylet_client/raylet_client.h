@@ -298,9 +298,10 @@ class RayletClient : public RayletClientInterface {
 
   /// Tell the raylet which port this worker's gRPC server is listening on.
   ///
-  /// \param The port.
+  /// \param port The port.
+  /// \param wait_for_reply Whether to wait for the reply before returning.
   /// \return ray::Status.
-  Status AnnounceWorkerPort(int port);
+  Status AnnounceWorkerPort(int port, bool wait_for_reply);
 
   /// Tell the raylet that the client has finished executing a task.
   ///

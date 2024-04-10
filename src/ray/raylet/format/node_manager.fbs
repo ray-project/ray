@@ -35,6 +35,8 @@ enum MessageType:int {
   RegisterClientReply,
   // Send the worker's gRPC port to the raylet.
   AnnounceWorkerPort,
+  // Ack that the raylet has finished handling AnnounceWorkerPort.
+  AnnounceWorkerPortReply,
   // Notify the raylet that this client is disconnecting.
   // This is sent from a worker to a raylet.
   DisconnectClient,
@@ -147,6 +149,9 @@ table RegisterClientReply {
 table AnnounceWorkerPort {
   // Port that this worker is listening on.
   port: int;
+}
+
+table AnnounceWorkerPortReply {
 }
 
 table RegisterNodeManagerRequest {
