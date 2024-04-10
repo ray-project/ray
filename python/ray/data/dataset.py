@@ -1894,7 +1894,9 @@ class Dataset:
                 ds = ray.data.from_items([{"number": i} for i in range(1, 10)])
                 aggregation = AggregateFn(
                     init=lambda column: 1,
+                    # Apply this to each row to produce a partial aggregate result
                     accumulate_row=lambda a, row: a * row["number"],
+                    # Apply this to reduce partial aggregate results into a final result
                     merge=lambda a1, a2: a1 * a2,
                     name="prod"
                 )
@@ -1902,7 +1904,7 @@ class Dataset:
 
             .. testoutput::
 
-                {'prod': 45}
+                {'prod': 3628800}
 
         Time complexity: O(dataset size / parallelism)
 
