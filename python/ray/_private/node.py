@@ -711,6 +711,7 @@ class Node:
                     address=gcs_address,
                     cluster_id=self._ray_params.cluster_id,  # Hex string
                 )
+                self.cluster_id = client.cluster_id
                 if self.head:
                     # Send a simple request to make sure GCS is alive
                     # if it's a head node.
@@ -748,10 +749,6 @@ class Node:
                 )
 
         ray.experimental.internal_kv._initialize_internal_kv(self._gcs_client)
-
-    @property
-    def cluster_id(self) -> ray.ClusterID:
-        return self.get_gcs_client().cluster_id
 
     def get_temp_dir_path(self):
         """Get the path of the temporary directory."""
