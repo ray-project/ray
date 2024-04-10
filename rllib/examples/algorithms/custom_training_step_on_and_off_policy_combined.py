@@ -1,31 +1,57 @@
-"""Example of using a custom training workflow.
+"""Example of using a custom training workflow via overriding `Algorithm.training_step`.
 
-This example creates a number of CartPole agents, some of which are trained with
-DQN, and some of which are trained with PPO. Both are executed concurrently
-with a custom training workflow.
+This example:
+- defines a new Algorithm subclass and implements its `setup` (to add a DQN replay
+buffer) and `training_step` (to define a custom workflow using both on-policy and off-
+policy learning).
+- uses a multi-agent CartPole environment, in which N agents map to N RLModules,
+some of which are trained using PPO (on-policy) and some are trained by DQN
+(off-policy).
+- training all RLModules (policies) is performed concurrently using the above mentioned
+custom training workflow (defined in `training_step()`).
+
+
+How to run this script
+----------------------
+`python [script file name].py --enable-new-api-stack --num-agents=2`
+
+For debugging, use the following additional command line options
+`--no-tune --num-env-runners=0`
+which should allow you to set breakpoints anywhere in the RLlib code and
+have the execution stop there for inspection and debugging.
+
+For logging to your WandB account, use:
+`--wandb-key=[your WandB API key] --wandb-project=[some project name]
+--wandb-run-name=[optional: WandB run name (within the defined project)]`
+
+
+Results to expect
+-----------------
+In the console output, you can see the PPO policy ("learnable_policy") does much
+better than "random":
+
++-------------------+------------+----------+------+----------------+
+| Trial name        | status     | loc      | iter | total time (s) |
+|                   |            |          |      |                |
+|-------------------+------------+----------+------+----------------+
+| PPO_multi_agen... | TERMINATED | 127. ... |   20 |         58.646 |
++-------------------+------------+----------+------+----------------+
+
++--------+-------------------+-----------------+--------------------+
+|     ts |   combined reward |   reward random |             reward |
+|        |                   |                 |   learnable_policy |
++--------+-------------------+-----------------+--------------------|
+|  80000 |            481.26 |           78.41 |             464.41 |
++--------+-------------------+-----------------+--------------------+
 """
 
-import argparse
-import os
-
-import ray
-from ray import air, tune
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.dqn.dqn import DQNConfig
-from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
-from ray.rllib.algorithms.dqn.dqn_torch_policy import DQNTorchPolicy
-from ray.rllib.algorithms.ppo.ppo import PPOConfig
-from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
-from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
-from ray.rllib.evaluation.postprocessing import Postprocessing
-from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
-from ray.rllib.execution.train_ops import train_one_step
-from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import (
-    MultiAgentReplayBuffer,
-)
+from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
-from ray.rllib.policy.sample_batch import MultiAgentBatch, concat_samples
+from ray.rllib.examples.rl_modules.classes.random_rlm import RandomRLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
@@ -33,45 +59,33 @@ from ray.rllib.utils.metrics import (
     NUM_TARGET_UPDATES,
     LAST_TARGET_UPDATE_TS,
 )
-from ray.rllib.utils.sgd import standardized
-from ray.rllib.utils.test_utils import check_learning_achieved
+from ray.rllib.utils.test_utils import (
+    add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
+)
 from ray.rllib.utils.typing import ResultDict
 from ray.tune.registry import register_env
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--torch", action="store_true")
-parser.add_argument("--mixed-torch-tf", action="store_true")
-parser.add_argument(
-    "--local-mode",
-    action="store_true",
-    help="Init Ray in local mode for easier debugging.",
-)
-parser.add_argument(
-    "--as-test",
-    action="store_true",
-    help="Whether this script should be run as a test: --stop-reward must "
-    "be achieved within --stop-timesteps AND --stop-iters.",
-)
-parser.add_argument(
-    "--stop-iters", type=int, default=600, help="Number of iterations to train."
-)
-parser.add_argument(
-    "--stop-timesteps", type=int, default=200000, help="Number of timesteps to train."
-)
-# 600.0 = 4 (num_agents) x 150.0
-parser.add_argument(
-    "--stop-reward", type=float, default=600.0, help="Reward at which we stop training."
+
+parser = add_rllib_example_script_args(
+    default_iters=600, default_reward=600.0, default_timesteps=200000
 )
 
 
 # Define new Algorithm with custom `training_step()` method (training workflow).
-class MyAlgo(Algorithm):
+class MyOnPolicyOffPolicyAlgo(Algorithm):
     @override(Algorithm)
     def setup(self, config):
         # Call super's `setup` to create rollout workers.
         super().setup(config)
-        # Create local replay buffer.
-        self.local_replay_buffer = MultiAgentReplayBuffer(num_shards=1, capacity=50000)
+        # TODO (sven): Once we have a multi-agent capable replay buffer, use it here.
+        #  For now, we are ok with a separate buffer per DQN agent (as we are doing
+        #  independent learning anyways).
+        # Create N local replay buffers (one for each DQN agent).
+        self.local_replay_buffers = [
+            EpisodeMultiAgentReplayBuffer(num_shards=1, capacity=50000)
+            for n in range(0, args.num_agents, 2)
+        ]
 
     @override(Algorithm)
     def training_step(self) -> ResultDict:
@@ -152,19 +166,14 @@ class MyAlgo(Algorithm):
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    assert not (
-        args.torch and args.mixed_torch_tf
-    ), "Use either --torch or --mixed-torch-tf, not both!"
-
-    ray.init(local_mode=args.local_mode)
 
     # Simple environment with 4 independent cartpole entities
     register_env(
-        "multi_agent_cartpole", lambda _: MultiAgentCartPole({"num_agents": 4})
+        "env", lambda cfg: MultiAgentCartPole({"num_agents": 4, **cfg})
     )
 
     # Note that since the algorithm below does not include a default policy or
-    # policy configs, we have to explicitly set it in the multiagent config:
+    # policy configs, we have to explicitly set it in the multi_agent config:
     policies = {
         "ppo_policy": (
             PPOTorchPolicy if args.torch or args.mixed_torch_tf else PPOTF1Policy,
@@ -184,36 +193,48 @@ if __name__ == "__main__":
         ),
     }
 
-    def policy_mapping_fn(agent_id, episode, worker, **kwargs):
+    def agent_to_module_mapping_fn(agent_id, episode, **kwargs):
         if agent_id % 2 == 0:
-            return "ppo_policy"
+            return "ppo_module"
         else:
-            return "dqn_policy"
+            return "dqn_module"
 
-    config = (
+    base_config = (
         AlgorithmConfig()
-        # TODO (Kourosh):  Migrate this to the new RLModule / Learner API.
-        .experimental(_enable_new_api_stack=False)
         .environment("multi_agent_cartpole")
-        .framework("torch" if args.torch else "tf")
         .multi_agent(policies=policies, policy_mapping_fn=policy_mapping_fn)
-        .rollouts(num_rollout_workers=0, rollout_fragment_length=50)
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .rollouts(rollout_fragment_length=50)
         .reporting(metrics_num_episodes_for_smoothing=30)
     )
 
-    stop = {
-        "training_iteration": args.stop_iters,
-        "timesteps_total": args.stop_timesteps,
-        "episode_reward_mean": args.stop_reward,
-    }
+    run_rllib_example_script_experiment(base_config, args)
 
-    results = tune.Tuner(
-        MyAlgo, param_space=config.to_dict(), run_config=air.RunConfig(stop=stop)
-    ).fit()
 
-    if args.as_test:
-        check_learning_achieved(results, args.stop_reward)
 
-    ray.shutdown()
+
+    base_config = (
+        PPOConfig()
+        .environment("multi_agent_cartpole")
+        .multi_agent(
+            policies={"learnable_policy", "random"},
+            # Map to either random behavior or PPO learning behavior based on
+            # the agent's ID.
+            policy_mapping_fn=lambda agent_id, *args, **kwargs: [
+                "learnable_policy",
+                "random",
+            ][agent_id % 2],
+            # We need to specify this here, b/c the `forward_train` method of
+            # `RandomRLModule` (ModuleID="random") throws a not-implemented error.
+            policies_to_train=["learnable_policy"],
+        )
+        .rl_module(
+            rl_module_spec=MultiAgentRLModuleSpec(
+                module_specs={
+                    "learnable_policy": SingleAgentRLModuleSpec(),
+                    "random": SingleAgentRLModuleSpec(module_class=RandomRLModule),
+                }
+            ),
+        )
+    )
+
+    run_rllib_example_script_experiment(base_config, args)

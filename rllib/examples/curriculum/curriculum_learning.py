@@ -30,21 +30,6 @@ torch, nn = try_import_torch()
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--run", type=str, default="PPO", help="The RLlib-registered algorithm to use."
-)
-parser.add_argument(
-    "--framework",
-    choices=["tf", "tf2", "torch"],
-    default="torch",
-    help="The DL framework specifier.",
-)
-parser.add_argument(
-    "--as-test",
-    action="store_true",
-    help="Whether this script should be run as a test: --stop-reward must "
-    "be achieved within --stop-timesteps AND --stop-iters.",
-)
-parser.add_argument(
     "--stop-iters", type=int, default=50, help="Number of iterations to train."
 )
 parser.add_argument(
@@ -55,11 +40,6 @@ parser.add_argument(
     type=float,
     default=10000.0,
     help="Reward at which we stop training.",
-)
-parser.add_argument(
-    "--local-mode",
-    action="store_true",
-    help="Init Ray in local mode for easier debugging.",
 )
 
 
@@ -99,7 +79,6 @@ def curriculum_fn(
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    ray.init(local_mode=args.local_mode)
 
     # Can also register the env creator function explicitly with:
     # register_env(
@@ -113,29 +92,9 @@ if __name__ == "__main__":
             CurriculumCapableEnv,
             env_config={"start_level": 1},
             # TODO (sven): Replace this API with a simple custom callback
-            #  (override `on_train_results` in which we simply set each EnvRunners'
-            #  env to the new stage).
+            #  (override `on_train_results` in which we set each EnvRunners' env to
+            #  the new stage).
             env_task_fn=curriculum_fn,
         )
-        .framework(args.framework)
         .rollouts(num_rollout_workers=2, num_envs_per_worker=5)
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
     )
-
-    stop = {
-        "training_iteration": args.stop_iters,
-        "timesteps_total": args.stop_timesteps,
-        "episode_reward_mean": args.stop_reward,
-    }
-
-    tuner = tune.Tuner(
-        args.run,
-        param_space=config.to_dict(),
-        run_config=air.RunConfig(stop=stop, verbose=2),
-    )
-    results = tuner.fit()
-
-    if args.as_test:
-        check_learning_achieved(results, args.stop_reward)
-    ray.shutdown()

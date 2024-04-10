@@ -2112,14 +2112,13 @@ py_test(
     srcs = ["examples/checkpoints/cartpole_dqn_export.py"],
 )
 
-#@OldAPIStack
 py_test(
     name = "examples/checkpoints/checkpoint_by_custom_criteria",
     main = "examples/checkpoints/checkpoint_by_custom_criteria.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/checkpoints/checkpoint_by_custom_criteria.py"],
-    args = ["--stop-iters=3 --num-cpus=3"]
+    args = ["--enable-new-api-stack", "--stop-reward=150.0", "--num-cpus=9"]
 )
 
 #@OldAPIStack
