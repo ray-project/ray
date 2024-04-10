@@ -25,14 +25,6 @@ from ray_release.result import Result
 @click.command()
 @click.argument("test_name", required=True, type=str)
 @click.option(
-    "--test-definition-root",
-    type=str,
-    help=(
-        "The root where the test definition is located. "
-        "Default is the root of the repo.",
-    ),
-)
-@click.option(
     "--test-collection-file",
     multiple=True,
     type=str,
@@ -91,9 +83,14 @@ from ray_release.result import Result
         "Will switch `anyscale_job` run type to `job` (Ray Job)."
     ),
 )
+@click.option(
+    "--test-definition-root",
+    default=None,
+    type=str,
+    help="Root of the test definition files. Default is the root of the repo.",
+)
 def main(
     test_name: str,
-    test_definition_root: str,
     test_collection_file: Tuple[str],
     smoke_test: bool = False,
     report: bool = False,
@@ -102,6 +99,7 @@ def main(
     env: Optional[str] = None,
     global_config: str = "oss_config.yaml",
     no_terminate: bool = False,
+    test_definition_root: Optional[str] = None,
 ):
     global_config_file = os.path.join(
         os.path.dirname(__file__), "..", "configs", global_config
