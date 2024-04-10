@@ -7,7 +7,9 @@ import yaml
 
 import ray
 
-CONFIG_FILENAME = "logging.yaml"
+DEFAULT_CONFIG_PATH = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "logging.yaml")
+)
 
 # To facilitate debugging, Ray Data writes debug logs to a file. However, if Ray Data
 # logs every scheduler loop, logging might impact performance. So, we add a "TRACE"
@@ -65,12 +67,12 @@ class SessionFileHandler(logging.Handler):
 def configure_logging() -> None:
     """Configure the Python logger named 'ray.data'.
 
-    This function loads the configuration in `logging.yaml`. The configuration file
-    should be placed in the same directory as this module.
+    This function loads the configration YAML specified by the "RAY_DATA_LOGGING_CONFIG"
+    environment variable. If the variable isn't set, this function loads the
+    "logging.yaml" file that is adjacent to this module.
     """
-    with open(
-        os.path.abspath(os.path.join(os.path.dirname(__file__), CONFIG_FILENAME))
-    ) as file:
+    config_path = os.environ.get("RAY_DATA_LOGGING_CONFIG", DEFAULT_CONFIG_PATH)
+    with open(config_path) as file:
         config = yaml.safe_load(file)
     logging.config.dictConfig(config)
 
