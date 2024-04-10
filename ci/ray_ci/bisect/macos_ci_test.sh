@@ -1,0 +1,1 @@
+../macos/macos_ci_test.sh
