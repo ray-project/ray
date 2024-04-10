@@ -228,7 +228,7 @@ class MultiAgentEpisode:
         # received.
         self._agent_buffered_actions = {}
         self._agent_buffered_extra_model_outputs = defaultdict(dict)
-        self._agent_buffered_rewards = {}
+        self._agent_buffered_rewards = defaultdict(float)
 
         # If this is an ongoing episode than the last `__all__` should be `False`
         self.is_terminated: bool = (
@@ -577,9 +577,7 @@ class MultiAgentEpisode:
                     _reward = self._agent_buffered_rewards.pop(agent_id, 0.0) + _reward
                 # The agent is still alive, just add current reward to buffer.
                 else:
-                    self._agent_buffered_rewards[agent_id] = (
-                        self._agent_buffered_rewards.get(agent_id, 0.0) + _reward
-                    )
+                    self._agent_buffered_rewards[agent_id] += _reward
 
             # If agent is stepping, add timestep to `SingleAgentEpisode`.
             if _observation is not None:
@@ -1904,11 +1902,7 @@ class MultiAgentEpisode:
                     self._agent_buffered_extra_model_outputs[agent_id] = extra_outs.get(
                         agent_id, {}
                     )
-                    self._agent_buffered_rewards[
-                        agent_id
-                    ] = self._agent_buffered_rewards.get(agent_id, 0.0) + rew.get(
-                        agent_id, 0.0
-                    )
+                    self._agent_buffered_rewards[agent_id] = rew.get(agent_id, 0.0)
                 # Agent is done (has no action for the next step).
                 elif terminateds.get(agent_id) or truncateds.get(agent_id):
                     done_per_agent[agent_id] = True
@@ -1922,11 +1916,13 @@ class MultiAgentEpisode:
                     len(observations_per_agent[agent_id]) - 1
                 )
 
-            # Those agents that did NOT step get self.SKIP_ENV_TS_TAG added to their
-            # mapping.
+            # Those agents that did NOT step:
+            # - Get self.SKIP_ENV_TS_TAG added to their env_t_to_agent_t mapping.
+            # - Get their reward (if any) added up.
             for agent_id in all_agent_ids:
                 if agent_id not in obs and agent_id not in done_per_agent:
                     self.env_t_to_agent_t[agent_id].append(self.SKIP_ENV_TS_TAG)
+                    self._agent_buffered_rewards[agent_id] += rew.get(agent_id, 0.0)
 
             # Update per-agent lookback buffer sizes to be used when creating the
             # indiviual `SingleAgentEpisode` objects below.

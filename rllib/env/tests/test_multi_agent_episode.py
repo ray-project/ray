@@ -2874,7 +2874,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         base_episode = self._create_simple_episode(
             [
                 {"a0": 0, "a1": 0},
-                {"a0": 1, "a1": 1},
+                {"a0": 1, "a1": 1},  # <- split here, then concat
                 {"a0": 2, "a1": 2},
             ]
         )
@@ -2898,45 +2898,98 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check((a0.rewards, a1.rewards), ([0.0, 0.1], [0.0, 0.1]))
         check((a0.is_done, a1.is_done), (False, False))
 
-        # Generate a simple multi-agent episode.
+        # Generate a more complex multi-agent episode.
         base_episode = self._create_simple_episode(
             [
                 {"a0": 0, "a1": 0},
                 {"a0": 1, "a1": 1},
                 {"a1": 2},
                 {"a1": 3},
-                {"a1": 4},  # <- split here
+                {"a1": 4},  # <- split here, then concat
                 {"a0": 5, "a1": 5},
                 {"a0": 6},
-                {"a0": 7, "a1": 7},
-                {"a0": 8},
+                {"a0": 7, "a1": 7},  # <- split here, then concat
+                {"a0": 8},  # <- split here, then concat
                 {"a1": 9},
             ]
         )
         check(len(base_episode), 9)
+
         # Split it into two slices.
-        episode_1, episode_2 = base_episode[:4], base_episode[4:]
-        check(len(episode_1), 4)
-        check(len(episode_2), 5)
+        for split_ in [(4, (4, 5)), (7, (7, 2)), (8, (8, 1))]:
+            episode_1, episode_2 = base_episode[:split_[0]], base_episode[split_[0]:]
+            check(len(episode_1), split_[1][0])
+            check(len(episode_2), split_[1][1])
+            # Re-concat these slices.
+            episode_1.concat_episode(episode_2)
+            check(len(episode_1), 9)
+            check(episode_1.env_t_started, 0)
+            check(episode_1.env_t, 9)
+            a0 = episode_1.agent_episodes["a0"]
+            a1 = episode_1.agent_episodes["a1"]
+            check((len(a0), len(a1)), (5, 7))
+            check((a0.t_started, a1.t_started), (0, 0))
+            check((a0.t, a1.t), (5, 7))
+            check(
+                (a0.observations, a1.observations),
+                ([0, 1, 5, 6, 7, 8], [0, 1, 2, 3, 4, 5, 7, 9]),
+            )
+            check((a0.actions, a1.actions), ([0, 1, 5, 6, 7], [0, 1, 2, 3, 4, 5, 7]))
+            check(
+                (a0.rewards, a1.rewards),
+                ([0, 0.1, 0.5, 0.6, 0.7], [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.7]),
+            )
+            check((a0.is_done, a1.is_done), (False, False))
+
+        # Test hanging rewards.
+        observations = [
+            {"a0": 0, "a1": 0},  # 0
+            {"a0": 1},  # 1
+            {"a0": 2},  # 2
+            {"a0": 3},  # 3
+            {"a0": 4},  # 4
+        ]
+        actions = observations[:-1]
+        # a1 continues receiving rewards (along with a0's actions).
+        rewards = [
+            {"a0": 0.0, "a1": 0.0},  # 0
+            {"a0": 0.1, "a1": 1.0},  # 1
+            {"a0": 0.2, "a1": 2.0},  # 2
+            {"a0": 0.3, "a1": 3.0},  # 3
+        ]
+        base_episode = MultiAgentEpisode(
+            observations=observations,
+            actions=actions,
+            rewards=rewards,
+            len_lookback_buffer=0,
+        )
+        check(len(base_episode), 4)
+        check(base_episode._agent_buffered_rewards, {"a1": 6.0})
+        episode_1, episode_2 = base_episode[:2], base_episode[2:]
+        check(len(episode_1), 2)
+        check(len(episode_2), 2)
+        check(episode_1._agent_buffered_rewards, {})
+        check(episode_2._agent_buffered_rewards, {"a1": 6.0})
         # Re-concat these slices.
         episode_1.concat_episode(episode_2)
-        check(len(episode_1), 9)
+        check(len(episode_1), 4)
         check(episode_1.env_t_started, 0)
-        check(episode_1.env_t, 9)
+        check(episode_1.env_t, 4)
         a0 = episode_1.agent_episodes["a0"]
         a1 = episode_1.agent_episodes["a1"]
-        check((len(a0), len(a1)), (5, 7))
+        check((len(a0), len(a1)), (4, 0))
         check((a0.t_started, a1.t_started), (0, 0))
-        check((a0.t, a1.t), (5, 7))
+        check((a0.t, a1.t), (4, 0))
         check(
             (a0.observations, a1.observations),
-            ([0, 1, 5, 6, 7, 8], [0, 1, 2, 3, 4, 5, 7, 9]),
+            ([0, 1, 2, 3, 4], [0]),
         )
-        check((a0.actions, a1.actions), ([0, 1, 5, 6, 7], [0, 1, 2, 3, 4, 5, 7]))
+        check((a0.actions, a1.actions), ([0, 1, 2, 3], []))
         check(
             (a0.rewards, a1.rewards),
-            ([0, 0.1, 0.5, 0.6, 0.7], [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.7]),
+            ([0, 0.1, 0.2, 0.3], []),
         )
+        check(episode_1._agent_buffered_rewards, {"a1": 6.0})
         check((a0.is_done, a1.is_done), (False, False))
 
     def test_get_return(self):
