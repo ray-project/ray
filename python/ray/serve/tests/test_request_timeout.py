@@ -1,7 +1,6 @@
 import asyncio
 import os
 import sys
-import time
 from typing import Generator, Set
 
 import pytest
