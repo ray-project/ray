@@ -10,6 +10,7 @@ TEST_ON_DARWIN = os.environ.get("TEST_ON_DARWIN", "0") == "1"
 DATA_HEAD_URLS = {"GET": "http://localhost:8265/api/data/datasets"}
 
 DATA_SCHEMA = [
+    "job_id",
     "state",
     "progress",
     "total",
@@ -47,6 +48,8 @@ def test_get_datasets():
     assert sorted(data["datasets"][0].keys()) == sorted(RESPONSE_SCHEMA)
 
     dataset = data["datasets"][0]
+    job_id = dataset["job_id"]
+    assert isinstance(job_id, str)
     assert dataset["dataset"].startswith("data_head_test")
     assert dataset["state"] == "FINISHED"
     assert dataset["end_time"] is not None
@@ -66,6 +69,7 @@ def test_get_datasets():
 
     assert len(data["datasets"]) == 2
     dataset = data["datasets"][1]
+    assert dataset["job_id"] == job_id
     assert dataset["dataset"].startswith("data_head_test")
     assert dataset["state"] == "FINISHED"
     assert dataset["end_time"] is not None
