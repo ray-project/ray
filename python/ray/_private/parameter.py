@@ -129,7 +129,7 @@ class RayParams:
         env_vars: Override environment variables for the raylet.
         session_name: The name of the session of the ray cluster.
         webui: The url of the UI.
-        cluster_id: The cluster ID.
+        cluster_id: The cluster ID in hex string.
     """
 
     def __init__(
