@@ -1904,7 +1904,7 @@ class Dataset:
 
             .. testoutput::
 
-                {'prod': 3628800}
+                {'prod': 362880}
 
         Time complexity: O(dataset size / parallelism)
 
