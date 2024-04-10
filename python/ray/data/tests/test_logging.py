@@ -40,7 +40,10 @@ def test_messages_logged_to_file(configure_logging, reset_logging, shutdown_only
 
 
 def test_messages_printed_to_console(
-    configure_logging, reset_logging, propagate_logs, capsys
+    capsys,
+    configure_logging,
+    reset_logging,
+    propagate_logs,
 ):
     logger = logging.getLogger("ray.data.spam")
 
