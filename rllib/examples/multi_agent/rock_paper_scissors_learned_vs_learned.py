@@ -10,6 +10,7 @@ policy can exploit a "stochastic weakness" of the opponent policy. For example a
 `A` learns that its opponent `B` has learnt to choose "paper" more often, which in
 return makes `A` choose "scissors" more often as a countermeasure.
 """
+
 import re
 
 from pettingzoo.classic import rps_v2

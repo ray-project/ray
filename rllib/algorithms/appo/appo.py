@@ -9,6 +9,7 @@ See `appo_[tf|torch]_policy.py` for the definition of the policy loss.
 Detailed documentation:
 https://docs.ray.io/en/master/rllib-algorithms.html#appo
 """
+
 from typing import Optional, Type
 import logging
 
@@ -298,9 +299,11 @@ class APPO(Impala):
         else:
             last_update = self._counters[LAST_TARGET_UPDATE_TS]
             cur_ts = self._counters[
-                NUM_AGENT_STEPS_SAMPLED
-                if self.config.count_steps_by == "agent_steps"
-                else NUM_ENV_STEPS_SAMPLED
+                (
+                    NUM_AGENT_STEPS_SAMPLED
+                    if self.config.count_steps_by == "agent_steps"
+                    else NUM_ENV_STEPS_SAMPLED
+                )
             ]
             target_update_freq = (
                 self.config.num_sgd_iter * self.config.minibatch_buffer_size

@@ -518,9 +518,11 @@ class SingleAgentEnvRunner(EnvRunner):
                     episodes[env_index] = SingleAgentEpisode(
                         observations=[obs[env_index]],
                         infos=[infos[env_index]],
-                        render_images=None
-                        if render_images[env_index] is None
-                        else [render_images[env_index]],
+                        render_images=(
+                            None
+                            if render_images[env_index] is None
+                            else [render_images[env_index]]
+                        ),
                         observation_space=self.env.single_observation_space,
                         action_space=self.env.single_action_space,
                     )

@@ -48,6 +48,7 @@ Note that the two agents (`pursuer_0` and `pursuer_1`) are optimized on the exac
 objective and thus differences in the rewards can be attributed to weight initialization
 (and sampling randomness) only.
 """
+
 from pettingzoo.sisl import waterworld_v4
 
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec

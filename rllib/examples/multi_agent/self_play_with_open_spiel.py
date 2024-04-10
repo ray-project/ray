@@ -114,9 +114,11 @@ if __name__ == "__main__":
         # properly matching the different policies in the league with each other.
         .callbacks(
             functools.partial(
-                SelfPlayCallback
-                if args.enable_new_api_stack
-                else SelfPlayCallbackOldAPIStack,
+                (
+                    SelfPlayCallback
+                    if args.enable_new_api_stack
+                    else SelfPlayCallbackOldAPIStack
+                ),
                 win_rate_threshold=args.win_rate_threshold,
             )
         )

@@ -11,6 +11,7 @@ https://arxiv.org/pdf/2010.02193.pdf
 D. Hafner's (author) original code repo (for JAX):
 https://github.com/danijar/dreamerv3
 """
+
 import unittest
 
 import gymnasium as gym
