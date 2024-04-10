@@ -7,7 +7,7 @@ import pytest
 import yaml
 
 import ray
-from ray.data._internal.logging import configure_logging, get_log_directory
+from ray.data._internal.logging import get_log_directory
 from ray.tests.conftest import *  # noqa
 
 
