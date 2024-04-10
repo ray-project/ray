@@ -344,12 +344,13 @@ def shutdown_only(maybe_external_redis):
 @pytest.fixture
 def propagate_logs():
     # Ensure that logs are propagated to ancestor handles. This is required if using the
-    # caplog fixture with Ray's logging.
+    # caplog or capsys fixtures with Ray's logging.
     # NOTE: This only enables log propagation in the driver process, not the workers!
-    logger = logging.getLogger("ray")
-    logger.propagate = True
+    logging.getLogger("ray").propagate = True
+    logging.getLogger("ray.data").propagate = True
     yield
-    logger.propagate = False
+    logging.getLogger("ray").propagate = False
+    logging.getLogger("ray.data").propagate = False
 
 
 # Provide a shared Ray instance for a test class
