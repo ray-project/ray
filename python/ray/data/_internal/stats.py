@@ -408,8 +408,9 @@ class _StatsActor:
         self.iter_user_s.set(0, tags)
         self.iter_initialize_s.set(0, tags)
 
-    def register_dataset(self, dataset_tag: str, operator_tags: List[str]):
+    def register_dataset(self, job_id: str, dataset_tag: str, operator_tags: List[str]):
         self.datasets[dataset_tag] = {
+            "job_id": job_id,
             "state": "RUNNING",
             "progress": 0,
             "total": 0,
@@ -629,7 +630,11 @@ class _StatsManager:
     # Other methods
 
     def register_dataset_to_stats_actor(self, dataset_tag, operator_tags):
-        self._stats_actor().register_dataset.remote(dataset_tag, operator_tags)
+        self._stats_actor().register_dataset.remote(
+            ray.get_runtime_context().get_job_id(),
+            dataset_tag,
+            operator_tags,
+        )
 
     def get_dataset_id_from_stats_actor(self) -> str:
         try:

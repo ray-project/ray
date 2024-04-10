@@ -116,17 +116,22 @@ export const JobDetailChartsPage = () => {
     setActorListFilter(undefined);
   };
 
+  // Only display details for Ray Datasets that belong to this job.
+  const jobDatasets = data?.datasets.filter(
+    (dataset) => dataset.job_id === job.job_id,
+  );
+
   return (
     <div className={classes.root}>
       <JobMetadataSection job={job} />
 
-      {data?.datasets && data.datasets.length > 0 && (
+      {jobDatasets && jobDatasets.length > 0 && (
         <CollapsibleSection
           title="Ray Data Overview"
           className={classes.section}
         >
           <Section>
-            <DataOverview datasets={data.datasets} />
+            <DataOverview datasets={jobDatasets} />
           </Section>
         </CollapsibleSection>
       )}

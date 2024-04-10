@@ -9,6 +9,7 @@ describe("DataOverview", () => {
     const datasets = [
       {
         dataset: "test_ds1",
+        job_id: "test_job_id1",
         state: "RUNNING",
         progress: 50,
         total: 100,
@@ -61,6 +62,7 @@ describe("DataOverview", () => {
       },
       {
         dataset: "test_ds2",
+        job_id: "test_job_id2",
         state: "FINISHED",
         progress: 200,
         total: 200,
