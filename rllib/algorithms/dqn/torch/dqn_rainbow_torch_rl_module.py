@@ -220,9 +220,11 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         return self._qf_forward_helper(
             batch,
             self.target_encoder,
-            {"af": self.af_target, "vf": self.vf_target}
-            if self.uses_dueling
-            else self.af_target,
+            (
+                {"af": self.af_target, "vf": self.vf_target}
+                if self.uses_dueling
+                else self.af_target
+            ),
         )
 
     @override(DQNRainbowRLModule)
