@@ -7,6 +7,8 @@ TRAVIS_COMMIT="${TRAVIS_COMMIT:-$BUILDKITE_COMMIT}"
 
 mkdir -p .whl
 cd python
+/opt/python/"${PYTHON}"/bin/pip install -q pip install setuptools==65.5.0 pip==21
+/opt/python/"${PYTHON}"/bin/pip install -q pip install wheel==0.38.0
 # Fix the numpy version because this will be the oldest numpy version we can
 # support.
 /opt/python/"${PYTHON}"/bin/pip install -q numpy=="${NUMPY_VERSION}" cython==0.29.32
