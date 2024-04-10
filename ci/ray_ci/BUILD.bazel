@@ -48,6 +48,39 @@ py_binary(
     deps = [":ray_ci_lib"],
 )
 
+py_binary(
+    name = "bisect_test",
+    srcs = ["bisect_test.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    deps = [":ray_ci_lib"],
+    data = [":macos_bisect_script"],
+)
+
+genrule(
+    name = "macos_bisect_script",
+    srcs = ["macos/macos_ci_test.sh"],
+    outs = ["macos_ci_test.sh"],
+    cmd = """
+        cat $(location macos/macos_ci_test.sh) > $@
+    """,
+)
+
+py_test(
+    name = "test_bisector",
+    size = "small",
+    srcs = ["test_bisector.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_ci_lib",
+        ":ray_ci_lib_test",
+        ci_require("pytest"),
+    ],
+)
+
 py_test(
     name = "test_linux_container",
     size = "small",
