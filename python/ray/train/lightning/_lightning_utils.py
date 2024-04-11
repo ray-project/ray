@@ -111,9 +111,12 @@ class RayFSDPStrategy(FSDPStrategy):  # noqa: F821
     def lightning_module_state_dict(self) -> Dict[str, Any]:
         """Gathers the full state dict to rank 0 on CPU.
 
-        Lightning doesn't support FSDP state_dict_type until 2.1.
-        (https://github.com/Lightning-AI/pytorch-lightning/pull/17623).
-        We need a patch logic to enable FSDP checkpointing for Lightning 2.0.x.
+        FSDP checkpointing is broken in Lightning 2.0.x. This subclass patches the
+        behavior to perform a full state dict checkpointing, gathering the checkpoint
+        shards on rank 0 CPU. Upgrade to `lightning>=2.1` to do sharded state dict
+        checkpointing.
+
+        See the note in the class docstring for more details.
         """
 
         assert self.model is not None, "Failed to get the state dict for a None model!"
