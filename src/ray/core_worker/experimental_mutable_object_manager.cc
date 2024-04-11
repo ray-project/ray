@@ -351,9 +351,9 @@ std::string MutableObjectManager::GetSemaphoreName(const ObjectID &object_id) {
   return "";
 }
 
-PlasmaObjectHeader::Semaphores MutableObjectManager::GetSemaphores(
-    const ObjectID &object_id) {
-  return {};
+bool MutableObjectManager::GetSemaphores(const ObjectID &object_id,
+                                         PlasmaObjectHeader::Semaphores &sem) {
+  return false;
 }
 
 void MutableObjectManager::OpenSemaphores(const ObjectID &object_id,
