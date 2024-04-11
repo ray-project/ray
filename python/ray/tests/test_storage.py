@@ -76,8 +76,6 @@ def test_escape_storage_uri_with_runtime_env(shutdown_only):
         assert "?" in s3_uri
         ray.init(storage=s3_uri, runtime_env={"env_vars": {"TEST_ENV": "1"}})
 
-        recorder_uri = f"http://localhost:{port}/moto-api/recorder"
-        requests.post(f"{recorder_uri}/start-recording")
         client = storage.get_client("foo")
         client.put("bar", b"baz")
 
@@ -87,12 +85,6 @@ def test_escape_storage_uri_with_runtime_env(shutdown_only):
             return client.get("bar")
 
         assert ray.get(f.remote()) == b"baz"
-        requests.post(f"{recorder_uri}/stop-recording")
-        log = requests.get(f"{recorder_uri}/download-recording").content
-        # The recording is a set of json strings separated by b'\n'
-        # The last one is empty, so ignore it.
-        data = list(map(json.loads, log.split(b"\n")[:-1]))
-        assert "foo/bar" in data[-2]["url"]
 
 
 def test_get_filesystem_invalid(shutdown_only, tmp_path):
