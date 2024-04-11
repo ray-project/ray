@@ -235,10 +235,10 @@ def test_validation_error(
 
     @ray.remote
     def func():
-        # This should also error. The problem is that Pydantic v2 ValidationError is marked
-        # @final so we can't subclass it. This means Ray can't raise an exception that
-        # can be caught as both `RayTaskError` and `pydantic.ValidationError`. So we
-        # issue a warning and just raise it as `RayTaskError`. The user needs to use
+        # This should also error. The problem is that Pydantic v2 ValidationError is
+        # marked @final so we can't subclass it. This means Ray can't raise an exception
+        # that can be caught as both `RayTaskError` and `pydantic.ValidationError`. So
+        # we issue a warning and just raise it as `RayTaskError`. The user needs to use
         # `e.cause` to get the ValidationError.
         class B(BaseModel):
             s: str
