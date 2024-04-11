@@ -26,7 +26,6 @@ def import_lightning():  # noqa: F402
 pl = import_lightning()
 
 _LIGHTNING_GREATER_EQUAL_2_0 = Version(pl.__version__) >= Version("2.0.0")
-_LIGHTNING_LESS_THAN_2_1 = Version(pl.__version__) < Version("2.1.0")
 _TORCH_GREATER_EQUAL_1_12 = Version(torch.__version__) >= Version("1.12.0")
 _TORCH_FSDP_AVAILABLE = _TORCH_GREATER_EQUAL_1_12 and torch.distributed.is_available()
 
@@ -107,14 +106,7 @@ class RayFSDPStrategy(FSDPStrategy):  # noqa: F821
         """Gathers the full state dict to rank 0 on CPU."""
         assert self.model is not None, "Failed to get the state dict for a None model!"
 
-        # Lightning < 2.1 lacks FSDP sharding_strategy support.
-        # (PR: https://github.com/Lightning-AI/pytorch-lightning/pull/18087).
-        # We need this patch logic to enable FSDP checkpointing between 2.0 and 2.1.
-        if (
-            _TORCH_FSDP_AVAILABLE
-            and _LIGHTNING_GREATER_EQUAL_2_0
-            and _LIGHTNING_LESS_THAN_2_1
-        ):
+        if _LIGHTNING_GREATER_EQUAL_2_0 and _TORCH_FSDP_AVAILABLE:
             with FullyShardedDataParallel.state_dict_type(
                 module=self.model,
                 state_dict_type=StateDictType.FULL_STATE_DICT,
