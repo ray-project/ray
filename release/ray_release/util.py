@@ -10,11 +10,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import requests
 from ray_release.logger import logger
-from ray_release.configs.global_config import (
-    get_global_config,
-    PR_PIPELINES,
-    BRANCH_PIPELINES,
-)
+from ray_release.configs.global_config import get_global_config
 
 if TYPE_CHECKING:
     from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
@@ -60,11 +56,13 @@ def get_write_state_machine_aws_bucket() -> str:
         return bucket_v1
 
     pipeline_id = os.environ.get("BUILDKITE_PIPELINE_ID")
-    assert pipeline_id in BRANCH_PIPELINES + PR_PIPELINES, (
+    pr_pipelines = get_global_config()["ci_pipeline_premerge"]
+    branch_pipelines = get_global_config()["ci_pipeline_postmerge"]
+    assert pipeline_id in pr_pipelines + branch_pipelines, (
         "Test state machine is only supported for branch or pr pipeline, "
         f"{pipeline_id} is given"
     )
-    if pipeline_id in PR_PIPELINES:
+    if pipeline_id in pr_pipelines:
         return get_global_config()["state_machine_pr_aws_bucket"]
     return get_global_config()["state_machine_branch_aws_bucket"]
 

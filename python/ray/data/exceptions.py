@@ -1,7 +1,7 @@
 import logging
 from typing import Callable
 
-from ray.data._internal.logging import get_log_path
+from ray.data._internal.logging import get_log_directory
 from ray.data.context import DataContext
 from ray.exceptions import UserCodeException
 from ray.util import log_once
@@ -64,7 +64,7 @@ def omit_traceback_stdout(fn: Callable) -> Callable:
                         "Exception occurred in user code, with the abbreviated stack "
                         "trace below. By default, the Ray Data internal stack trace "
                         "is omitted from stdout, and only written to the Ray Data log "
-                        f"file at {get_log_path()}. To "
+                        f"files at {get_log_directory()}. To "
                         "output the full stack trace to stdout, set "
                         "`DataContext.log_internal_stack_trace_to_stdout` to True."
                     )
