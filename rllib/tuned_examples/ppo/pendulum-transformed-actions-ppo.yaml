@@ -1,6 +1,6 @@
 # Can expect improvement to -140 reward in ~300-500k timesteps.
 pendulum-ppo:
-    env: ray.rllib.examples.env.transformed_action_space_env.TransformedActionPendulum
+    env: ray.rllib.examples.envs.classes.transformed_action_space_env.TransformedActionPendulum
     run: PPO
     stop:
         sampler_results/episode_reward_mean: -500

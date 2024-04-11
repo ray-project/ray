@@ -244,7 +244,7 @@ The following examples showcase such modifications:
         Note that, if you only want to inject your Encoder into a single :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, the recommended workflow is to inherit
         from an existing RL Module and place the Encoder there.
 
-        .. literalinclude:: ../../../rllib/examples/catalog/mobilenet_v2_encoder.py
+        .. literalinclude:: ../../../rllib/examples/catalogs/mobilenet_v2_encoder.py
            :language: python
            :start-after: __sphinx_doc_begin__
            :end-before: __sphinx_doc_end__
@@ -257,7 +257,7 @@ The following examples showcase such modifications:
         - How to write a custom :py:class:`~ray.rllib.models.distributions.Distribution`
         - How to inject the custom action distribution into a :py:class:`~ray.rllib.core.models.catalog.Catalog`
 
-        .. literalinclude:: ../../../rllib/examples/catalog/custom_action_distribution.py
+        .. literalinclude:: ../../../rllib/examples/catalogs/custom_action_distribution.py
            :language: python
            :start-after: __sphinx_doc_begin__
            :end-before: __sphinx_doc_end__
