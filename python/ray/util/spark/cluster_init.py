@@ -1025,6 +1025,25 @@ def _setup_ray_cluster_internal(
     num_spark_task_gpus = int(
         spark.sparkContext.getConf().get("spark.task.resource.gpu.amount", "0")
     )
+    if num_spark_task_gpus > 0:
+        warn_msg = (
+            "You configured 'spark.task.resource.gpu.amount' to "
+            f"{num_spark_task_gpus},"
+            "we recommend setting this value to 0 so that Spark jobs do not "
+            "reserve GPU resources, preventing Ray-on-Spark workloads from having the "
+            "maximum number of GPUs available."
+        )
+
+        if is_in_databricks_runtime():
+            from ray.util.spark.databricks_hook import (
+                get_databricks_display_html_function,
+            )
+
+            get_databricks_display_html_function()(
+                f"<b style='color:red;'>{warn_msg}</b>"
+            )
+        else:
+            _logger.warning(warn_msg)
 
     if num_gpus_worker_node is not None and num_gpus_worker_node < 0:
         raise ValueError("Argument `num_gpus_worker_node` value must be >= 0.")
