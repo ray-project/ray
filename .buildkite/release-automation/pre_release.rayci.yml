@@ -89,6 +89,7 @@ steps:
         RELEASE_FREQUENCY: "weekly"
 
   - label: "Check Ray commit in {{matrix}} nightly images"
+    if: build.branch !~ /^releases\//
     depends_on: trigger-postmerge
     allow_dependency_failure: true
     job_env: forge

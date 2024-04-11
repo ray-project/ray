@@ -95,6 +95,8 @@ enum TagKey {
   // Whether the container runtime env feature was used at the
   // individual deployment level ("1" if used)
   SERVE_DEPLOYMENT_CONTAINER_RUNTIME_ENV_USED = 29;
+  // The number of nodes actively compacted by Serve
+  SERVE_NUM_NODE_COMPACTIONS = 30;
 
   // Ray Core State API
   // NOTE(rickyxx): Currently only setting "1" for tracking existence of
