@@ -52,6 +52,19 @@ def test_messages_printed_to_console(
     assert "ham" in capsys.readouterr().err
 
 
+def test_hidden_messages_not_printed_to_console(
+    capsys,
+    configure_logging,
+    reset_logging,
+    propagate_logs,
+):
+    logger = logging.getLogger("ray.data.spam")
+
+    logger.info("ham", extra={"hide": True})
+
+    assert "ham" not in capsys.readouterr().err
+
+
 def test_message_format(configure_logging, reset_logging, shutdown_only):
     ray.init()
     logger = logging.getLogger("ray.data.spam")
