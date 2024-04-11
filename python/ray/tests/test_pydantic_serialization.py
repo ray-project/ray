@@ -217,7 +217,7 @@ def test_serialize_nested_field(start_ray, BaseModel: Type):
 @pytest.mark.skipif(
     version.parse(pydantic.__version__) < version.parse("2.6.0"),
     reason="pydantic version < 2.6.0 has a bug that ValidationError "
-    "is not unpicklable: See "
+    "is picklable: See "
     "https://github.com/pydantic/pydantic-core/pull/1119",
 )
 @pytest.mark.parametrize("base_model_and_error", BASE_MODEL_AND_ERRORS)
@@ -235,10 +235,10 @@ def test_validation_error(
 
     @ray.remote
     def func():
-        # This should also error. Problem is, Pydantic v2 ValidationError is marked
-        # @final so we can't subclass it. This means Ray cannot raise an exception that
+        # This should also error. The problem is that Pydantic v2 ValidationError is marked
+        # @final so we can't subclass it. This means Ray can't raise an exception that
         # can be caught as both `RayTaskError` and `pydantic.ValidationError`. So we
-        # issue a warning and just raise it as `RayTaskError`. User needs to use
+        # issue a warning and just raise it as `RayTaskError`. The user needs to use
         # `e.cause` to get the ValidationError.
         class B(BaseModel):
             s: str
@@ -256,7 +256,7 @@ def test_validation_error(
     else:
         # Pydantic v2 validation errors are final, can't be subclassed.
         assert (
-            "This exception will be raised as RayTaskError only. User can use "
+            "This exception is raised as RayTaskError only. The user can use "
             "`ray_task_error.cause` to access the user exception."
         ) in caplog.text
         assert isinstance(exc_info.value, ray.exceptions.RayTaskError)
