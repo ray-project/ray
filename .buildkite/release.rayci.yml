@@ -8,7 +8,8 @@ steps:
       - skip-on-premerge
       - oss
     commands:
-      - ./release/run_release_test.sh microbenchmark.aws --report
+      - ./release/run_release_test.sh microbenchmark.aws --report 
+        --test-definition-root /ray/release --test-collection-file release_tests.yaml
     instance_type: release
     job_env: oss-ci-base_build
     depends_on:
