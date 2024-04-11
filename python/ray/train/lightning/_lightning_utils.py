@@ -88,7 +88,7 @@ class RayFSDPStrategy(FSDPStrategy):  # noqa: F821
     https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.strategies.FSDPStrategy.html
 
     .. note::
-        It is recommended to upgrade Lightning to 2.1 or above for using FSDP
+        It is recommended to upgrade `lightning>=2.1` or above when using FSDP
         with Lightning, since Lightning starts to natively support `state_dict_type`,
         `sharding_strategy`, `auto_wrap_policy` and other FSDP configurations from 2.1.
     """
