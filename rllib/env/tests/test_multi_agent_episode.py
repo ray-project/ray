@@ -2211,11 +2211,13 @@ class TestMultiAgentEpisode(unittest.TestCase):
 
     def test_cut(self):
         # Simple multi-agent episode, in which all agents always step.
-        episode = self._create_simple_episode([
-            {"a0": 0, "a1": 0},
-            {"a0": 1, "a1": 1},
-            {"a0": 2, "a1": 2},
-        ])
+        episode = self._create_simple_episode(
+            [
+                {"a0": 0, "a1": 0},
+                {"a0": 1, "a1": 1},
+                {"a0": 2, "a1": 2},
+            ]
+        )
         successor = episode.cut()
         check(len(successor), 0)
         check(successor.env_t_started, 2)
@@ -2234,12 +2236,15 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check(successor._hanging_extra_model_outputs_end, {})
 
         # Multi-agent episode with lookback buffer, in which all agents always step.
-        episode = self._create_simple_episode([
-            {"a0": 0, "a1": 0},
-            {"a0": 1, "a1": 1},
-            {"a0": 2, "a1": 2},
-            {"a0": 3, "a1": 3},
-        ], len_lookback_buffer=2)
+        episode = self._create_simple_episode(
+            [
+                {"a0": 0, "a1": 0},
+                {"a0": 1, "a1": 1},
+                {"a0": 2, "a1": 2},
+                {"a0": 3, "a1": 3},
+            ],
+            len_lookback_buffer=2,
+        )
         # Cut with lookback=0 argument (default).
         successor = episode.cut()
         check(len(successor), 0)
@@ -2278,19 +2283,30 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check(successor._hanging_rewards_end, {})
         check(successor._hanging_extra_model_outputs_end, {})
 
-        # Multi-agent episode, in which one agent has a long sequence of not acting.
-        episode = self._create_simple_episode([
+        # Multi-agent episode, in which one agent has a long sequence of not acting,
+        # but does receive (intermittend/hanging) rewards during this time.
+        observations = [
             {"a0": 0, "a1": 0},  # 0
             {"a0": 1},  # 1
             {"a0": 2},  # 2
             {"a0": 3},  # 3
-        ])
+        ]
+        episode = MultiAgentEpisode(
+            observations=observations,
+            actions=observations[:-1],
+            rewards=[
+                {"a0": 0.0, "a1": 0.0},  # 0
+                {"a0": 0.1, "a1": 0.1},  # 1
+                {"a0": 0.2, "a1": 0.2},  # 2
+            ],
+            len_lookback_buffer=0,
+        )
         successor = episode.cut()
         check(len(successor), 0)
         check(successor.env_t_started, 3)
         check(successor.env_t, 3)
         a0 = successor.agent_episodes["a0"]
-        self.assertTrue("a1" not in  successor.agent_episodes)
+        self.assertTrue("a1" not in successor.agent_episodes)
         check(len(a0), 0)
         check(a0.t_started, 3)
         check(a0.t, 3)
@@ -2298,20 +2314,48 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check(a0.actions, [])
         check(a0.rewards, [])
         check(successor._hanging_actions_begin, {"a1": 0})
-        check(successor._hanging_rewards_begin, {"a1": 0.0})
+        check(successor._hanging_rewards_begin, {"a1": 0.3})
         check(successor._hanging_extra_model_outputs_begin, {"a1": {}})
         check(successor._hanging_actions_end, {})
-        check(successor._hanging_rewards_end, {})
+        check(successor._hanging_rewards_end, {"a1": 0.0})
+        check(successor._hanging_extra_model_outputs_end, {})
+        # Add a few timesteps to successor and test the resulting episode.
+        successor.add_env_step(
+            observations={"a0": 4},
+            actions={"a0": 3},
+            rewards={"a0": 0.3, "a1": 0.3},
+        )
+        check(len(successor), 1)
+        check(successor.env_t_started, 3)
+        check(successor.env_t, 4)
+        # Just b/c we added an intermittend reward for a1 does not mean it should
+        # already have a SAEps in `successor`. It still hasn't received its first obs
+        # yet after the cut.
+        self.assertTrue("a1" not in successor.agent_episodes)
+        check(len(a0), 1)
+        check(a0.t_started, 3)
+        check(a0.t, 4)
+        check(a0.observations, [3, 4])
+        check(a0.actions, [3])
+        check(a0.rewards, [0.3])
+        check(successor._hanging_actions_begin, {"a1": 0})
+        check(successor._hanging_rewards_begin, {"a1": 0.3})
+        check(successor._hanging_extra_model_outputs_begin, {"a1": {}})
+        check(successor._hanging_actions_end, {})
+        check(successor._hanging_rewards_end, {"a1": 0.3})
         check(successor._hanging_extra_model_outputs_end, {})
 
         # Generate a simple multi-agent episode and check all internals after
         # construction.
-        episode_1 = self._create_simple_episode([
-            {"a0": 0, "a1": 0},
-            {"a1": 1},
-            {"a1": 2},
-            {"a1": 3},
-        ], len_lookback_buffer="auto")
+        episode_1 = self._create_simple_episode(
+            [
+                {"a0": 0, "a1": 0},
+                {"a1": 1},
+                {"a1": 2},
+                {"a1": 3},
+            ],
+            len_lookback_buffer="auto",
+        )
         episode_2 = episode_1.cut()
         check(episode_1.id_, episode_2.id_)
         check(len(episode_1), 0)
@@ -3219,7 +3263,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # `get_return()`.
         buffered_rewards = sum(episode._hanging_rewards_end.values())
         self.assertTrue(
-            episode.get_return(consider_hanging_rewards=True),
+            episode.get_return(include_hanging_rewards=True),
             agent_returns + buffered_rewards,
         )
 

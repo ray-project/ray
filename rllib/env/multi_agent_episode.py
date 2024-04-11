@@ -584,9 +584,7 @@ class MultiAgentEpisode:
                     _reward = self._hanging_rewards_end.pop(agent_id, 0.0) + _reward
                 # The agent is still alive, just add current reward to cache.
                 else:
-                    self._hanging_rewards_end[agent_id] = (
-                        self._hanging_rewards_end.get(agent_id, 0.0) + _reward
-                    )
+                    self._hanging_rewards_end[agent_id] += _reward
 
             # If agent is stepping, add timestep to `SingleAgentEpisode`.
             if _observation is not None:
@@ -850,7 +848,8 @@ class MultiAgentEpisode:
             env_t_started=self.env_t,
             agent_t_started={
                 aid: self.agent_episodes[aid].t
-                for aid in self.agent_ids if not self.agent_episodes[aid].is_done
+                for aid in self.agent_ids
+                if not self.agent_episodes[aid].is_done
             },
             # Same AgentIDs and SingleAgentEpisode IDs.
             agent_episode_ids=self.agent_episode_ids,
@@ -858,7 +857,6 @@ class MultiAgentEpisode:
                 aid: self.agent_episodes[aid].module_id for aid in self.agent_ids
             },
             agent_to_module_mapping_fn=self.agent_to_module_mapping_fn,
-
             # All data we provided to the c'tor goes into the lookback buffer.
             len_lookback_buffer="auto",
         )
@@ -1833,11 +1831,13 @@ class MultiAgentEpisode:
                     len(observations_per_agent[agent_id]) - 1
                 )
 
-            # Those agents that did NOT step get self.SKIP_ENV_TS_TAG added to their
-            # mapping.
+            # Those agents that did NOT step:
+            # - Get self.SKIP_ENV_TS_TAG added to their env_t_to_agent_t mapping.
+            # - Get their reward (if any) added up.
             for agent_id in all_agent_ids:
                 if agent_id not in obs and agent_id not in done_per_agent:
                     self.env_t_to_agent_t[agent_id].append(self.SKIP_ENV_TS_TAG)
+                    self._hanging_rewards_end[agent_id] += rew.get(agent_id, 0.0)
 
             # Update per-agent lookback buffer sizes to be used when creating the
             # indiviual `SingleAgentEpisode` objects below.
@@ -2431,6 +2431,10 @@ class MultiAgentEpisode:
 
     def _del_hanging(self, agent_id: AgentID) -> None:
         """Deletes all hanging action, reward, extra_model_outputs of given agent."""
+        self._hanging_actions_begin.pop(agent_id, None)
+        self._hanging_extra_model_outputs_begin.pop(agent_id, None)
+        self._hanging_rewards_begin.pop(agent_id, None)
+
         self._hanging_actions_end.pop(agent_id, None)
         self._hanging_extra_model_outputs_end.pop(agent_id, None)
         self._hanging_rewards_end.pop(agent_id, None)
