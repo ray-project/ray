@@ -60,7 +60,8 @@ export const JobDetailChartsPage = () => {
   const { data } = useSWR(
     "useDataDatasets",
     async () => {
-      const rsp = await getDataDatasets();
+      // Only display details for Ray Datasets that belong to this job.
+      const rsp = await getDataDatasets(job?.job_id ?? null);
 
       if (rsp) {
         return rsp.data;
@@ -116,22 +117,18 @@ export const JobDetailChartsPage = () => {
     setActorListFilter(undefined);
   };
 
-  // Only display details for Ray Datasets that belong to this job.
-  const jobDatasets = data?.datasets.filter(
-    (dataset) => dataset.job_id === job.job_id,
-  );
 
   return (
     <div className={classes.root}>
       <JobMetadataSection job={job} />
 
-      {jobDatasets && jobDatasets.length > 0 && (
+      {data?.datasets && data.datasets.length > 0 && (
         <CollapsibleSection
           title="Ray Data Overview"
           className={classes.section}
         >
           <Section>
-            <DataOverview datasets={jobDatasets} />
+            <DataOverview datasets={data.datasets} />
           </Section>
         </CollapsibleSection>
       )}

@@ -429,8 +429,12 @@ class _StatsActor:
     def update_dataset(self, dataset_tag, state):
         self.datasets[dataset_tag].update(state)
 
-    def get_datasets(self):
-        return self.datasets
+    def get_datasets(self, job_id: Optional[str]):
+        if not job_id:
+            return self.datasets
+        return {
+            k: v for k, v in self.datasets.items() if v["job_id"] == job_id
+        }
 
     def _create_tags(self, dataset_tag: str, operator_tag: Optional[str] = None):
         tags = {"dataset": dataset_tag}
