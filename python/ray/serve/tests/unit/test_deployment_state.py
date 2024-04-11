@@ -350,8 +350,6 @@ class FakeDeploymentReplica:
 
     def __init__(self, version: DeploymentVersion):
         self._version = version
-        self._replica_id = ReplicaID("fake", DeploymentID("fake", "fake"))
-        super().__init__(self._replica_id, self._version)
 
     @property
     def version(self):
