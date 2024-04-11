@@ -49,8 +49,7 @@ Status MutableObjectManager::RegisterChannel(
   RAY_CHECK(channel.mutable_object);
 
   if (!success) {
-    if ((reader && channel.reader_registered) ||
-        (!reader && channel.writer_registered)) {
+    if ((reader && channel.reader_registered) || (!reader && channel.writer_registered)) {
       return Status::Invalid("Channel already registered");
     }
   }

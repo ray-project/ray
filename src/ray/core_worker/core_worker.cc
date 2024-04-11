@@ -1513,7 +1513,8 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
   // Check whether these are experimental.Channel objects.
   bool is_experimental_channel = false;
   for (const ObjectID &id : ids) {
-    if (experimental_mutable_object_provider_->object_manager().ReaderChannelRegistered(id)) {
+    if (experimental_mutable_object_provider_->object_manager().ReaderChannelRegistered(
+            id)) {
       is_experimental_channel = true;
     } else if (is_experimental_channel) {
       return Status::NotImplemented(
