@@ -1635,16 +1635,17 @@ class MultiAgentEpisode:
 
     def get_return(
         self,
-        consider_hanging_rewards: bool = False,
+        include_hanging_rewards: bool = False,
     ) -> float:
         """Returns all-agent return.
 
         Args:
-            consider_hanging_rewards: Whether we should also consider
+            include_hanging_rewards: Whether we should also consider
                 hanging rewards wehn calculating the overall return. Agents might
                 have received partial rewards, i.e. rewards without an
-                observation. These are stored to the cache for each agent and added up
-                until the next observation is received by that agent.
+                observation. These are stored in the "hanging" caches (begin and end)
+                for each agent and added up until the next observation is received by
+                that agent.
 
         Returns:
             The sum of all single-agents' returns (maybe including the hanging
@@ -1653,7 +1654,9 @@ class MultiAgentEpisode:
         env_return = sum(
             agent_eps.get_return() for agent_eps in self.agent_episodes.values()
         )
-        if consider_hanging_rewards:
+        if include_hanging_rewards:
+            for hanging_r in self._hanging_rewards_begin.values():
+                env_return += hanging_r
             for hanging_r in self._hanging_rewards_end.values():
                 env_return += hanging_r
 
