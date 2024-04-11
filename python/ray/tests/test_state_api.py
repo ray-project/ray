@@ -3569,7 +3569,8 @@ def test_job_info_is_running_task(shutdown_only):
         while True:
             time.sleep(10000)
 
-    tasks = [f.remote() for i in range(4)]
+    # Create some long running tasks, no need to wait.
+    tasks = [f.remote() for i in range(4)]  # noqa: F841
 
     client = ray.worker.global_worker.gcs_client
     job_id = ray.worker.global_worker.current_job_id.binary()
@@ -3577,7 +3578,6 @@ def test_job_info_is_running_task(shutdown_only):
     assert len(all_job_info) == 1
     assert job_id in all_job_info
     assert client.get_all_job_info()[job_id].is_running_tasks is True
-    # print(tasks)
 
 
 if __name__ == "__main__":
