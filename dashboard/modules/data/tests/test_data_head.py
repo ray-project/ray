@@ -48,7 +48,7 @@ def test_get_datasets():
     assert len(jobs) == 1, jobs
     job_id = jobs[0].job_id
 
-    data = requests.get(DATA_HEAD_URLS["GET"], params={"job_id": job_id}).json()
+    data = requests.get(DATA_HEAD_URLS["GET"].format(job_id=job_id)).json()
 
     assert len(data["datasets"]) == 1
     assert sorted(data["datasets"][0].keys()) == sorted(RESPONSE_SCHEMA)
@@ -70,7 +70,7 @@ def test_get_datasets():
     assert operators[1]["operator"] == "ReadRange->MapBatches(<lambda>)1"
 
     ds.map_batches(lambda x: x).materialize()
-    data = requests.get(DATA_HEAD_URLS["GET"]).json()
+    data = requests.get(DATA_HEAD_URLS["GET"].format(job_id=job_id)).json()
 
     assert len(data["datasets"]) == 2
     dataset = data["datasets"][1]
