@@ -85,7 +85,7 @@ if __name__ == "__main__":
     else:
         tune.register_env("env", _env_creator)
 
-    config = (
+    base_config = (
         get_trainable_cls(args.algo)
         .get_default_config()
         .environment(
@@ -122,33 +122,24 @@ if __name__ == "__main__":
             lr=0.00015 * (args.num_gpus or 1),
             grad_clip=100.0,
             grad_clip_by="global_norm",
+            model=dict(
+                {
+                    "vf_share_layers": True,
+                    "conv_filters": [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
+                    "conv_activation": "relu",
+                    "post_fcnet_hiddens": [256],
+                },
+                **({"uses_new_env_runners": True} if args.enable_new_api_stack else {}),
+            ),
         )
     )
-    if args.enable_new_api_stack:
-        config = config.rl_module(
-            model_config_dict={
-                "vf_share_layers": True,
-                # "conv_filters": [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
-                "conv_activation": "relu",
-                "post_fcnet_hiddens": [256],
-                "uses_new_env_runners": True,
-            }
-        )
-    else:
-        config = config.training(
-            model={
-                "vf_share_layers": True,
-                # "conv_filters": [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
-                "conv_activation": "relu",
-                "post_fcnet_hiddens": [256],
-            }
-        )
+
     # Add a simple multi-agent setup.
     if args.num_agents > 0:
-        config = config.multi_agent(
+        base_config.multi_agent(
             policies={f"p{i}" for i in range(args.num_agents)},
             policy_mapping_fn=lambda aid, *a, **kw: f"p{aid}",
         )
 
     # Run everything as configured.
-    run_rllib_example_script_experiment(config, args)
+    run_rllib_example_script_experiment(base_config, args)
