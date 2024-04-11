@@ -167,7 +167,7 @@ class RayTaskError(RayError):
         cause class and contains all of the attributes of the cause
         exception.
 
-        If the cause class can not be subclassed, issues a warning and returns `self`.
+        If the cause class can't be subclassed, issues a warning and returns `self`.
         """
         cause_cls = self.cause.__class__
         if issubclass(RayTaskError, cause_cls):
