@@ -79,7 +79,13 @@ def do_exec_compiled_task(
         self._output_writer.start()
 
         while True:
-            res = self._input_reader.begin_read()
+            res = None
+            try:
+                res = self._input_reader.begin_read()
+            except ValueError:
+                pass
+            if res is None:
+                break
 
             for idx, output in zip(input_channel_idxs, res):
                 resolved_inputs[idx] = output
@@ -101,8 +107,11 @@ def do_exec_compiled_task(
                 self._output_writer.write(wrapped)
             else:
                 self._output_writer.write(output_val)
-            finally:
+
+            try:
                 self._input_reader.end_read()
+            except ValueError:
+                pass
 
     except Exception:
         logging.exception("Compiled DAG task exited with exception")

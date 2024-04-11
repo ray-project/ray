@@ -162,7 +162,7 @@ class MutableObjectManager {
 
   // Returns the named semaphores for the object. `OpenSemaphores()` must be called
   // before this method.
-  PlasmaObjectHeader::Semaphores GetSemaphores(const ObjectID &object_id);
+  bool GetSemaphores(const ObjectID &object_id, PlasmaObjectHeader::Semaphores &sem);
 
   // Closes, unlinks, and destroys the named semaphores for the object. Note that the
   // destructor calls this method for all remaining objects.

@@ -558,9 +558,6 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
 
     with gil:
         message = status.message().decode()
-        f = open("/tmp/blah", "a")
-        f.write(message + "\n")
-        f.close()
 
     if status.IsObjectStoreFull():
         raise ObjectStoreFullError(message)

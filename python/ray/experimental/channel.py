@@ -189,11 +189,14 @@ class Channel:
             )
             raise TypeError(msg) from e
 
-        self._worker.core_worker.experimental_channel_put_serialized(
-            serialized_value,
-            self._base_ref,
-            num_readers,
-        )
+        try:
+            self._worker.core_worker.experimental_channel_put_serialized(
+                serialized_value,
+                self._base_ref,
+                num_readers,
+            )
+        except ValueError:
+            pass
 
     def begin_read(self) -> Any:
         """
@@ -227,7 +230,10 @@ class Channel:
         channel is closed.
         """
         logger.debug(f"Setting error bit on channel: {self._base_ref}")
-        self._worker.core_worker.experimental_channel_set_error(self._base_ref)
+        try:
+            self._worker.core_worker.experimental_channel_set_error(self._base_ref)
+        except ValueError:
+            logger.info("Could not close channel")
 
 
 # Interfaces for channel I/O.
