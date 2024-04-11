@@ -136,7 +136,7 @@ class RayTaskError(RayError):
 
     def make_dual_exception_type(self) -> Type:
         """Makes a Type that inherits from both RayTaskError and the type of
-        `self.cause`. Raises TypeError if the cause class cannot be subclassed"""
+        `self.cause`. Raises TypeError if the cause class can't be subclassed"""
         cause_cls = self.cause.__class__
         error_msg = str(self)
 
