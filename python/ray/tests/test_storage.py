@@ -71,9 +71,9 @@ def test_escape_storage_uri_with_runtime_env(shutdown_only):
     # Test to make sure we can successfully start worker process
     # when storage uri contains ?,& and we use runtime env and that the
     # moto mocking actually works with the escaped uri
-    port = 5002
-    with simulate_storage("s3", port=port) as s3_uri:
+    with simulate_storage("s3") as s3_uri:
         assert "?" in s3_uri
+        assert "&" in s3_uri
         ray.init(storage=s3_uri, runtime_env={"env_vars": {"TEST_ENV": "1"}})
 
         client = storage.get_client("foo")
