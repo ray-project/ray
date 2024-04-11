@@ -2,7 +2,7 @@ import json
 from time import sleep
 import pytest
 from ray._private.test_utils import wait_for_condition
-from ray.tests.conftest_docker import gen_head_node, gen_worker_node, gcs_network
+from ray.tests.conftest_docker import *
 
 
 sleep_task_scripts = """
@@ -15,7 +15,7 @@ def f():
 ray.get([f.remote() for _ in range(2)])
 """
 
-head_node = gen_head_node({
+head = gen_head_node({
     "RAY_grpc_keepalive_time_ms": "1000",
     "RAY_grpc_client_keepalive_time_ms": "1000",
     "RAY_health_check_initial_delay_ms": "1000",
@@ -24,7 +24,7 @@ head_node = gen_head_node({
     "RAY_health_check_failure_threshold": "2",
 })
 
-worker_node = gen_worker_node({
+worker = gen_worker_node({
     "RAY_grpc_keepalive_time_ms": "1000",
     "RAY_grpc_client_keepalive_time_ms": "1000",
     "RAY_health_check_initial_delay_ms": "1000",
@@ -34,21 +34,23 @@ worker_node = gen_worker_node({
 })
 
 
-def test_network_task_submit(head_node, worker_node, gcs_network):
-    head, worker, network = head_node, worker_node, gcs_network
-
+def test_network_task_submit(head, worker, gcs_network):
+    network = gcs_network
     # https://docker-py.readthedocs.io/en/stable/containers.html#docker.models.containers.Container.exec_run
     head.exec_run(cmd=f"python -c '{sleep_task_scripts}'", detach=True)
-
-    time.sleep(5)
+    time.sleep(3)
+    def check_task_running(n=None):
+        output = head.exec_run(cmd=f"ray list tasks --format json")
+        if output.exit_code == 0:
+            tasks_json = json.loads(output.output)
+            print("tasks_json:", json.dumps(tasks_json, indent=2))
+            if n is not None and n != len(tasks_json):
+                return False
+            return all([task["state"] == "RUNNING" for task in tasks_json])
+        return False
 
     # list_task make sure all tasks are running
-    output = head.exec_run(cmd=f"ray list tasks --format json")
-    assert output.exit_code == 0
-    tasks_json = json.loads(output.output)
-    print("tasks_json:", json.dumps(tasks_json, indent=2))
-    num_running_tasks = sum([1 for task in tasks_json if task["state"] == "RUNNING"])
-    assert num_running_tasks == 2
+    wait_for_condition(lambda: check_task_running(2))
 
     # partition the network between head and worker
     # https://docker-py.readthedocs.io/en/stable/networks.html#docker.models.networks.Network.disconnect
@@ -84,13 +86,6 @@ def test_network_task_submit(head_node, worker_node, gcs_network):
     wait_for_condition(check_task_not_running)
 
     network.connect(worker.name)
-    worker.restart()
 
-    def check_task_running():
-        output = head.exec_run(cmd=f"ray list tasks --format json")
-        if output.exit_code == 0:
-            tasks_json = json.loads(output.output)
-            print("tasks_json:", json.dumps(tasks_json, indent=2))
-            return all([task["state"] == "RUNNING" for task in tasks_json])
-        return False
-    wait_for_condition(check_task_running)
+    worker.restart()
+    wait_for_condition(check_task_running, timeout=1000)
