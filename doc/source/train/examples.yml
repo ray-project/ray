@@ -59,7 +59,7 @@ examples:
     frameworks:
       - accelerate
       - transformers
-      - optimum-habana
+      - optimum habana
     skill_level: beginner
     use_cases:
       - natural language processing
