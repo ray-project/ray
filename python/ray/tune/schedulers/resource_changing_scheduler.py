@@ -1,16 +1,16 @@
-from copy import deepcopy
-import numpy as np
 import logging
-from typing import Dict, Any, List, Optional, Set, Tuple, Union, Callable, TYPE_CHECKING
-
 import pickle
 import warnings
+from copy import deepcopy
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple, Union
+
+import numpy as np
 
 from ray.air.execution.resources.request import _sum_bundles
-from ray.util.annotations import PublicAPI
-from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
-from ray.tune.experiment import Trial
 from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.tune.experiment import Trial
+from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.tune.execution.tune_controller import TuneController
@@ -345,14 +345,14 @@ class DistributeResources:
         ):
             idx = i % len(upper_limit_all_trials_bundles)
             old_bundles = deepcopy(upper_limit_all_trials_bundles[idx])
-            upper_limit_all_trials_bundles[
-                idx
-            ] = self._modify_bundles_with_free_resources(
-                upper_limit_all_trials_bundles[idx],
-                increase_by,
-                upper_limit_cpus_to_distribute,
-                upper_limit_gpus_to_distribute,
-                max_multiplier=1,
+            upper_limit_all_trials_bundles[idx] = (
+                self._modify_bundles_with_free_resources(
+                    upper_limit_all_trials_bundles[idx],
+                    increase_by,
+                    upper_limit_cpus_to_distribute,
+                    upper_limit_gpus_to_distribute,
+                    max_multiplier=1,
+                )
             )
             added_resources = self._get_resources_from_bundles(
                 self._get_added_bundles(

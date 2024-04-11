@@ -1,34 +1,32 @@
-import tempfile
-from functools import partial
-from typing import List
-
 import json
-import numpy as np
 import os
 import pickle
-import pytest
 import random
-import unittest
 import sys
+import tempfile
 import time
+import unittest
+from functools import partial
+from typing import List
 from unittest.mock import MagicMock
 
+import numpy as np
+import pytest
 
 import ray
 from ray import cloudpickle, train, tune
-from ray.air.config import FailureConfig, RunConfig, CheckpointConfig
+from ray._private.test_utils import object_memory_usage
+from ray.air.config import CheckpointConfig, FailureConfig, RunConfig
 from ray.train import Checkpoint
-from ray.tune import Trainable, Callback
+from ray.tune import Callback, Trainable
 from ray.tune.experiment import Trial
 from ray.tune.schedulers import PopulationBasedTraining
-from ray.tune.schedulers.pbt import _filter_mutated_params_from_config
 from ray.tune.schedulers.pb2 import PB2
 from ray.tune.schedulers.pb2_utils import UCB
+from ray.tune.schedulers.pbt import _filter_mutated_params_from_config
 from ray.tune.tests.execution.utils import create_execution_test_objects
 from ray.tune.tune_config import TuneConfig
-from ray._private.test_utils import object_memory_usage
 from ray.tune.utils.util import flatten_dict
-
 
 # Import psutil after ray so the packaged version is used.
 import psutil
