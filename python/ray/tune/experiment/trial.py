@@ -469,7 +469,7 @@ class Trial:
             except (
                 RayActorError,
                 ActorUnavailableError,
-            ):  # error during initialization
+            ):  # Error during initialization.
                 self._default_result_or_future = None
         if self._default_result_or_future and self.temporary_state.ray_actor:
             self.set_location(

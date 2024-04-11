@@ -757,9 +757,9 @@ class ActorUnavailableError(RayError):
 
     def __str__(self):
         return (
-            f"The task could not be completed because the actor "
+            f"The task couldn't be completed because the actor "
             f"{self.actor_id.hex()} is "
-            f"unavailable: {self.error_message}.\n\nThis task will be automatically "
+            f"unavailable: {self.error_message}.\n\nThis task is automatically "
             "retried if `max_retries` is set and there are retries remaining."
         )
 

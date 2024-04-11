@@ -300,7 +300,7 @@ class CoreWorkerDirectActorTaskSubmitter
     /// If it timed out, it's possible that the Actor is not dead yet, so we use
     /// `timeout_error_info`. One special case is when the actor is preempted, where
     /// the actor may not be dead *just yet* but we want to treat it as dead. In this
-    /// case we will hard code an error info.
+    /// case we hard code an error info.
     struct PendingTaskWaitingForDeathInfo {
       int64_t deadline_ms;
       TaskSpecification task_spec;

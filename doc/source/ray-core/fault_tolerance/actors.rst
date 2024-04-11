@@ -135,18 +135,18 @@ original handle to the actor.
 
 If ``max_restarts`` is set, you can also allow Ray to automatically restart the actor by passing ``no_restart=False`` to ``ray.kill``.
 
-Unavailable Actors
+Unavailable actors
 ----------------------
 
 When an actor can't accept method calls, a `ray.get` on the method's returned return object reference may raise
-`ActorUnavailableError`. This exception indicates the actor isn't accessible for the
-moment, but may recover after some wait and retry. Typical cases include:
+`ActorUnavailableError`. This exception indicates the actor isn't accessible at the
+moment, but may recover after waiting and retrying. Typical cases include:
 
-- The actor is restarting, for example it's waiting for resources, or running the class constructor in the restarting.
-- The actor is experiencing transient network issues, for example connection breaks.
+- The actor is restarting. For example, it's waiting for resources or running the class constructor in the restarting.
+- The actor is experiencing transient network issues, like connection breaks.
 - The actor is dead but the death hasn't yet been reported to the system.
 
-Actor method calls are at-most-once execution. This means that when a `ray.get()` call raises the `ActorUnavailableError` exception, there is no guarantee on
+Actor method calls are at-most-once execution. When a `ray.get()` call raises the `ActorUnavailableError` exception, there's no guarantee on
 whether the actor executed the task or not. If the method has side effects, they may or may not
 be observable. Ray does guarantee that the method won't be executed twice, unless the actor or the method is configured with retries, as described in the next section.
 
@@ -154,8 +154,8 @@ The actor may or may not recover in the next calls. Those subsequent calls
 may raise `RayActorError` if the actor is confirmed dead, `ActorUnavailableError` if it's
 still unreachable, or return values normally if the actor recovered.
 
-Best practice on `ActorUnavailableError`: upon such error the caller
-can "quarantine" the actor and stop sending it traffics. It can then periodically ping
+As a best practice, if the caller gets the `ActorUnavailableError`, error it should
+"quarantine" the actor and stop sending traffic to the actor. It can then periodically ping
 the actor until it raises `RayActorError` or returns OK.
 
 

@@ -120,14 +120,14 @@ def test_actor_unavailable_restarting(ray_start_regular, caller):
             print(ray.get(a.slow_increment.remote(2, 0.1)))
         time.sleep(6)
 
-        # After actor started, next calls are OK. However the previous actor instance's
-        # state is lost.
+        # After the actor starts, the next calls are OK. However the previous actor instance's
+        # State is lost.
         total = 0
         for i in range(10):
             total += i
             assert ray.get(a.slow_increment.remote(i, 0.1)) == total
 
-        # Kill the actor again. This time it's not gonna restart so RayActorError.
+        # Kill the actor again. This time it's not going to restart so RayActorError.
         sigkill_actor(a)
         with pytest.raises(RayActorError):
             print(ray.get(a.slow_increment.remote(1, 0.1)))
@@ -233,12 +233,12 @@ def test_unavailable_then_actor_error(ray_start_regular):
     with pytest.raises(ActorUnavailableError, match="The actor is in RESTARTING state"):
         print(ray.get(a.ping.remote("unavailable")))
 
-    # waits for the actor to restart
+    # Waits for the actor to restart.
     time.sleep(3)
     assert ray.get(a.ping.remote("ok")) == "hello ok!"
 
     # Kill the actor again. First ActorUnavailableError in the init sleep; then the init
-    # raised exception so RayActorError.
+    # raised an exception so RayActorError.
     sigkill_actor(a)
     with pytest.raises(ActorUnavailableError):
         print(ray.get(a.ping.remote("unavailable")))
@@ -287,7 +287,7 @@ def test_task_retries(ray_start_regular):
     # Actor is restarting, any method call raises ActorUnavailableError.
     with pytest.raises((ActorUnavailableError)):
         ray.get(a.ping.remote("unavailable"))
-    # But if the task has retries, it will retry until the actor is available.
+    # But if the task has retries, it retries until the actor is available.
     # Each retry happens after RAY_task_retry_delay_ms (default 0) wait.
     # On my laptop, it took 8 retries for the 2s actor init time.
     assert (

@@ -380,7 +380,7 @@ void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
     if (!task->actor_preempted) {
       error_info = task->timeout_error_info;
     } else {
-      // special error for preempted actor. The task "timed out" because the actor may
+      // Special error for preempted actor. The task "timed out" because the actor may
       // not have sent a notification to the gcs; regardless we already know it's
       // preempted and it's dead.
       rpc::ActorDeathCause &actor_death_cause = *error_info.mutable_actor_died_error();
@@ -596,7 +596,7 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
                            error_info.actor_died_error().has_oom_context() &&
                            error_info.actor_died_error().oom_context().fail_immediately();
       } else {
-        // actor may or may not be dead, but the request failed. Consider the failure
+        // The actor may or may not be dead, but the request failed. Consider the failure
         // temporary. May recognize retry, so fail_immediately = false.
         error_info.set_error_message("The actor is temporarily unavailable: " +
                                      status.ToString());
