@@ -77,6 +77,14 @@ for env, stop_criteria in benchmark_envs.items():
             num_rollout_workers=num_rollout_workers,
             # TODO (sven, simon): Add resources.
         )
+        .resources(
+            # Let's start with a small number of learner workers and
+            # add later a tune grid search for these resources.
+            # TODO (simon): Either add tune grid search here or make
+            # an extra script to only test scalability.
+            num_learner_workers=1,
+            num_gpus_per_learner_worker=1,
+        )
         # TODO (simon): Adjust to new model_config_dict.
         .training(
             lr=tune.uniform(1e-5, 1e-3),

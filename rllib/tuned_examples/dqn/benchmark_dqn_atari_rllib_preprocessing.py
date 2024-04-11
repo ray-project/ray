@@ -1,10 +1,8 @@
 import gymnasium as gym
-from gymnasium.wrappers import AtariPreprocessing
 
 from ray.rllib.algorithms.dqn.dqn import DQNConfig
-from ray.rllib.connectors.env_to_module.frame_stacking import FrameStackingEnvToModule
-from ray.rllib.connectors.learner.frame_stacking import FrameStackingLearner
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
+from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
 from ray.tune import Stopper
 from ray import train, tune
 
@@ -234,24 +232,12 @@ benchmark_envs = {
     },
 }
 
-for env in benchmark_envs.keys():
+for env in benchmark_envs:
     tune.register_env(
         env,
-        lambda ctx: AtariPreprocessing(
-            gym.make(env, **ctx), grayscale_newaxis=True, screen_size=84, noop_max=0
-        ),
-    )
-
-
-def _make_env_to_module_connector(env):
-    return FrameStackingEnvToModule(
-        num_frames=4,
-    )
-
-
-def _make_learner_connector(input_observation_space, input_action_space):
-    return FrameStackingLearner(
-        num_frames=4,
+        # Use the RLlib atari wrapper to squeeze images to 84x84.
+        # Note, the default of this wrapper is `framestack=4`.
+        lambda ctx: wrap_atari_for_new_api_stack(gym.make(env, **ctx), dim=84),
     )
 
 
@@ -289,10 +275,17 @@ config = (
     .environment(
         env=tune.grid_search(list(benchmark_envs.keys())),
         env_config={
-            "max_episode_steps": 108000,
-            "obs_type": "grayscale",
-            # The authors actually use an action repetition of 4.
-            "repeat_action_probability": 0.25,
+            # "sticky actions" but not according to Danijar's 100k configs.
+            "repeat_action_probability": 0.0,
+            # "full action space" but not according to Danijar's 100k configs.
+            "full_action_space": False,
+            # Already done by MaxAndSkip wrapper: "action repeat" == 4.
+            "frameskip": 1,
+            # NOTE, because we use the atari wrapper of RLlib, we also have
+            # framestack: 4,
+            # dim: 84,
+            # NOTE, we do not use grayscale here, so this run will need
+            # more memory on GPU and CPU (buffer).
         },
         clip_rewards=True,
     )
@@ -303,17 +296,23 @@ config = (
         rollout_fragment_length=4,
         env_runner_cls=SingleAgentEnvRunner,
         num_rollout_workers=1,
-        env_to_module_connector=_make_env_to_module_connector,
+    )
+    .resources(
+        # We have a train/sample ratio of 1:1 and a batch of 32.
+        num_learner_workers=1,
+        num_gpus_per_learner_worker=1,
     )
     # TODO (simon): Adjust to new model_config_dict.
     .training(
         # Note, the paper uses also an Adam epsilon of 0.00015.
         lr=0.0000625,
-        n_step=3,
+        n_step=1,
         gamma=0.99,
         tau=1.0,
+        # TODO (simon): Activate when new model_config_dict is available.
+        # epsilon=0.01,
         train_batch_size=32,
-        target_network_update_freq=32000,
+        target_network_update_freq=8000,
         replay_buffer_config={
             "type": "PrioritizedEpisodeReplayBuffer",
             "capacity": 1000000,
@@ -322,7 +321,7 @@ config = (
             "beta": 0.4,
         },
         # Note, these are frames.
-        num_steps_sampled_before_learning_starts=80000,
+        num_steps_sampled_before_learning_starts=20000,
         noisy=True,
         num_atoms=51,
         v_min=-10.0,
@@ -337,7 +336,6 @@ config = (
             "post_fcnet_weights_initializer": "orthogonal_",
             "post_fcnet_weights_initializer_config": {"gain": 0.01},
         },
-        learner_connector=_make_learner_connector,
     )
     .reporting(
         metrics_num_episodes_for_smoothing=10,
@@ -359,7 +357,7 @@ tuner = tune.Tuner(
     param_space=config,
     run_config=train.RunConfig(
         stop=BenchmarkStopper(benchmark_envs=benchmark_envs),
-        name="benchmark_dqn_atari",
+        name="benchmark_dqn_atari_rllib_preprocessing",
     ),
 )
 

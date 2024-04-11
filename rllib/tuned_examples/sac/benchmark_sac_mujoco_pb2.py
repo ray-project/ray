@@ -65,6 +65,12 @@ for env, stop_criteria in benchmark_envs.items():
             num_rollout_workers=1,
             # TODO (sven, simon): Add resources.
         )
+        .resources(
+            # Note, we have a small batch and a sample/train ratio
+            # of 1:1, so a single GPU should be enough.
+            num_learner_workers=1,
+            num_gpus_per_learner_worker=1,
+        )
         # TODO (simon): Adjust to new model_config_dict.
         .training(
             initial_alpha=tune.choice([1.0, 1.5]),

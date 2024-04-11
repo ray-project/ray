@@ -45,7 +45,7 @@ class BenchmarkStopper(Stopper):
     def __call__(self, trial_id, result):
         # Stop training if the mean reward is reached.
         if (
-            result["sampler_results/episode_reward_mean"]
+            result["sampler_results"]["episode_reward_mean"]
             >= self.benchmark_envs[result["env"]]["sampler_results/episode_reward_mean"]
         ):
             return True
@@ -73,6 +73,12 @@ config = (
         rollout_fragment_length=1,
         env_runner_cls=SingleAgentEnvRunner,
         num_rollout_workers=0,
+    )
+    .resources(
+        # Note, we have a sample/train ratio of 1:1 and a small train
+        # batch, so 1 learner with a single GPU should suffice.
+        num_learner_workers=1,
+        num_gpus_per_learner_worker=1,
     )
     # TODO (simon): Adjust to new model_config_dict.
     .training(
