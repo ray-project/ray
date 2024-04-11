@@ -347,7 +347,7 @@ PlasmaObjectHeader *MutableObjectManager::GetHeader(const ObjectID &object_id) {
   return nullptr;
 }
 
-std::string MutableObjectManager::GetSemaphoreName(const ObjectID &object_id) {
+std::string MutableObjectManager::GetSemaphoreName(PlasmaObjectHeader *header) {
   return "";
 }
 
