@@ -538,7 +538,9 @@ class MultiAgentEpisode:
                     assert agent_id not in self._hanging_actions_end
                     self._hanging_actions_end[agent_id] = _action
                     self._hanging_rewards_end[agent_id] = _reward
-                    self._hanging_extra_model_outputs_end[agent_id] = _extra_model_outputs
+                    self._hanging_extra_model_outputs_end[
+                        agent_id
+                    ] = _extra_model_outputs
 
             # CASE 4: Step has started in the past and is still ongoing (no observation,
             # no action).
