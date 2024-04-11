@@ -3,11 +3,9 @@ import subprocess
 import urllib
 from pathlib import Path
 
-import json
 from packaging.version import parse as parse_version
 import pyarrow.fs
 import pytest
-import requests
 
 import ray
 import ray._private.storage as storage
