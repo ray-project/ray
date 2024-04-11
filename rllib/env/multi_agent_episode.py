@@ -422,14 +422,15 @@ class MultiAgentEpisode:
         ) - {"__all__"}
         for agent_id in agent_ids_with_data:
             if agent_id not in self.agent_episodes:
-                self.agent_episodes[agent_id] = SingleAgentEpisode(
+                sa_episode = SingleAgentEpisode(
                     agent_id=agent_id,
                     module_id=self.module_for(agent_id),
                     multi_agent_episode_id=self.id_,
                     observation_space=self.observation_space.get(agent_id),
                     action_space=self.action_space.get(agent_id),
                 )
-            sa_episode: SingleAgentEpisode = self.agent_episodes[agent_id]
+            else:
+                sa_episode = self.agent_episodes.get(agent_id)
 
             # Collect value to be passed (at end of for-loop) into `add_env_step()`
             # call.
@@ -489,7 +490,6 @@ class MultiAgentEpisode:
                         agent_id, None
                     )
                     _reward = self._hanging_rewards_end.pop(agent_id, 0.0) + _reward
-                    # _agent_step = len(sa_episode)
                 # First observation for this agent, we have no hanging action.
                 # ... [done]? ... -> [1st obs for agent ID]
                 else:
@@ -506,6 +506,10 @@ class MultiAgentEpisode:
                         )
                         # Make `add_env_reset` call and continue with next agent.
                         sa_episode.add_env_reset(observation=_observation, infos=_infos)
+                        # Add possible reward to begin cache.
+                        self._hanging_rewards_begin[agent_id] += _reward
+                        # Now that the SAEps is valid, add it to our dict.
+                        self.agent_episodes[agent_id] = sa_episode
                         continue
 
             # CASE 3: Step is started (by an action), but not completed (no next obs).
@@ -584,7 +588,12 @@ class MultiAgentEpisode:
                     _reward = self._hanging_rewards_end.pop(agent_id, 0.0) + _reward
                 # The agent is still alive, just add current reward to cache.
                 else:
-                    self._hanging_rewards_end[agent_id] += _reward
+                    # But has never stepped in this episode -> add to begin cache.
+                    if agent_id not in self.agent_episodes:
+                        self._hanging_rewards_begin[agent_id] += _reward
+                    # Otherwise, add to end cache.
+                    else:
+                        self._hanging_rewards_end[agent_id] += _reward
 
             # If agent is stepping, add timestep to `SingleAgentEpisode`.
             if _observation is not None:
@@ -929,13 +938,6 @@ class MultiAgentEpisode:
         successor = MultiAgentEpisode(
             # Same ID.
             id_=self.id_,
-            # Same agent IDs.
-            # Same single agents' episode IDs.
-            agent_episode_ids=self.agent_episode_ids,
-            agent_module_ids={
-                aid: self.agent_episodes[aid].module_id for aid in self.agent_ids
-            },
-            agent_to_module_mapping_fn=self.agent_to_module_mapping_fn,
             observations=self.get_observations(
                 indices=indices_obs_and_infos, return_list=True
             ),
@@ -953,17 +955,28 @@ class MultiAgentEpisode:
             ),
             terminateds=self.get_terminateds(),
             truncateds=self.get_truncateds(),
-            # Continue with `self`'s current timestep.
+            # Continue with `self`'s current timesteps.
             env_t_started=self.env_t,
+            agent_t_started={
+                aid: self.agent_episodes[aid].t
+                for aid in self.agent_ids
+                if not self.agent_episodes[aid].is_done
+            },
+            # Same AgentIDs and SingleAgentEpisode IDs.
+            agent_episode_ids=self.agent_episode_ids,
+            agent_module_ids={
+                aid: self.agent_episodes[aid].module_id for aid in self.agent_ids
+            },
+            agent_to_module_mapping_fn=self.agent_to_module_mapping_fn,
+            # All data we provided to the c'tor goes into the lookback buffer.
             len_lookback_buffer="auto",
         )
 
-        # Copy over the current hanging values.
-        # TODO (sven): These should go into `_begin` instead (follow up PR, in which
-        #  we'll fix the behavior of `cut()`).
-        successor._hanging_actions_end = copy.deepcopy(self._hanging_actions_end)
-        successor._hanging_rewards_end = self._hanging_rewards_end.copy()
-        successor._hanging_extra_model_outputs_end = copy.deepcopy(
+        # Copy over the hanging (end) values into the hanging (begin) chaches of the
+        # successor.
+        successor._hanging_actions_begin = copy.deepcopy(self._hanging_actions_end)
+        successor._hanging_rewards_begin = self._hanging_rewards_end.copy()
+        successor._hanging_extra_model_outputs_begin = copy.deepcopy(
             self._hanging_extra_model_outputs_end
         )
 
@@ -1731,12 +1744,12 @@ class MultiAgentEpisode:
 
     def get_return(
         self,
-        consider_hanging_rewards: bool = False,
+        include_hanging_rewards: bool = False,
     ) -> float:
         """Returns all-agent return.
 
         Args:
-            consider_hanging_rewards: Whether we should also consider
+            include_hanging_rewards: Whether we should also consider
                 hanging rewards wehn calculating the overall return. Agents might
                 have received partial rewards, i.e. rewards without an
                 observation. These are stored in the "hanging" caches (begin and end)
@@ -1750,7 +1763,7 @@ class MultiAgentEpisode:
         env_return = sum(
             agent_eps.get_return() for agent_eps in self.agent_episodes.values()
         )
-        if consider_hanging_rewards:
+        if include_hanging_rewards:
             for hanging_r in self._hanging_rewards_begin.values():
                 env_return += hanging_r
             for hanging_r in self._hanging_rewards_end.values():
@@ -2529,6 +2542,10 @@ class MultiAgentEpisode:
 
     def _del_hanging(self, agent_id: AgentID) -> None:
         """Deletes all hanging action, reward, extra_model_outputs of given agent."""
+        self._hanging_actions_begin.pop(agent_id, None)
+        self._hanging_extra_model_outputs_begin.pop(agent_id, None)
+        self._hanging_rewards_begin.pop(agent_id, None)
+
         self._hanging_actions_end.pop(agent_id, None)
         self._hanging_extra_model_outputs_end.pop(agent_id, None)
         self._hanging_rewards_end.pop(agent_id, None)
