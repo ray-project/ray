@@ -1,14 +1,15 @@
 import logging
+import logging.config
 import os
 from typing import Optional
 
+import yaml
+
 import ray
-from ray._private.log import PlainRayHandler
-from ray._private.ray_constants import LOGGER_FORMAT
 
-_default_file_handler: logging.Handler = None
-
-DEFAULT_DATASET_LOG_FILENAME = "ray-data.log"
+DEFAULT_CONFIG_PATH = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "logging.yaml")
+)
 
 # To facilitate debugging, Ray Data writes debug logs to a file. However, if Ray Data
 # logs every scheduler loop, logging might impact performance. So, we add a "TRACE"
@@ -53,56 +54,27 @@ class SessionFileHandler(logging.Handler):
     def _try_create_handler(self):
         assert self._handler is None
 
-        global_node = ray._private.worker._global_node
-        if global_node is None:
+        log_directory = get_log_directory()
+        if log_directory is None:
             return
 
-        session_dir = global_node.get_session_dir_path()
-        self._path = os.path.join(session_dir, "logs", self._filename)
+        self._path = os.path.join(log_directory, self._filename)
         self._handler = logging.FileHandler(self._path)
         if self._formatter is not None:
             self._handler.setFormatter(self._formatter)
-
-    @property
-    def path(self) -> Optional[str]:
-        """Path to the log file or ``None`` if the file hasn't been created yet."""
-        return self._path
 
 
 def configure_logging() -> None:
     """Configure the Python logger named 'ray.data'.
 
-    This function configures the logger to write Ray Data logs to a file in the Ray
-    session directory.
-
-    Only call this function once. It'll fail if you call it twice.
+    This function loads the configration YAML specified by the "RAY_DATA_LOGGING_CONFIG"
+    environment variable. If the variable isn't set, this function loads the
+    "logging.yaml" file that is adjacent to this module.
     """
-    # Save the file handler in a global variable so that we can get the log path later.
-    global _default_file_handler
-    assert _default_file_handler is None, "Logging already configured."
-
-    logger = logging.getLogger("ray.data")
-    logger.setLevel(logging.DEBUG)
-    # We don't want to print debug logs to the console, so don't propagate logs to the
-    # 'ray' parent logger.
-    logger.propagate = False
-
-    formatter = logging.Formatter(fmt=LOGGER_FORMAT)
-
-    file_handler = SessionFileHandler(DEFAULT_DATASET_LOG_FILENAME)
-    file_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)
-
-    console_handler = PlainRayHandler()
-    console_handler.setFormatter(formatter)
-    console_handler.setLevel(logging.INFO)
-    logger.addHandler(console_handler)
-
-    _default_file_handler = file_handler
-
-
-def is_logging_configured() -> bool:
-    return _default_file_handler is not None
+    config_path = os.environ.get("RAY_DATA_LOGGING_CONFIG", DEFAULT_CONFIG_PATH)
+    with open(config_path) as file:
+        config = yaml.safe_load(file)
+    logging.config.dictConfig(config)
 
 
 def reset_logging() -> None:
@@ -110,13 +82,19 @@ def reset_logging() -> None:
 
     Used for testing.
     """
-    global _default_file_handler
-    _default_file_handler = None
-
     logger = logging.getLogger("ray.data")
     logger.handlers.clear()
     logger.setLevel(logging.NOTSET)
 
 
-def get_log_path() -> Optional[str]:
-    return _default_file_handler.path
+def get_log_directory() -> Optional[str]:
+    """Return the directory where Ray Data writes log files.
+
+    If Ray isn't initialized, this function returns ``None``.
+    """
+    global_node = ray._private.worker._global_node
+    if global_node is None:
+        return None
+
+    session_dir = global_node.get_session_dir_path()
+    return os.path.join(session_dir, "logs")
