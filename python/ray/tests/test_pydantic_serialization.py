@@ -217,7 +217,7 @@ def test_serialize_nested_field(start_ray, BaseModel: Type):
 @pytest.mark.skipif(
     version.parse(pydantic.__version__) < version.parse("2.6.0"),
     reason="pydantic version < 2.6.0 has a bug that ValidationError "
-    "is picklable: See "
+    "is not picklable: See "
     "https://github.com/pydantic/pydantic-core/pull/1119",
 )
 @pytest.mark.parametrize("base_model_and_error", BASE_MODEL_AND_ERRORS)
