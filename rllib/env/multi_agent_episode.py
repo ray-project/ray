@@ -477,7 +477,7 @@ class MultiAgentEpisode:
             # collected hanging rewards.
             # b) The observation is the first observation for this agent ID.
             elif _observation is not None and _action is None:
-                _action = self._hanging_actions.pop(agent_id, None)
+                _action = self._hanging_actions_end.pop(agent_id, None)
 
                 # We have a hanging action (the agent had acted after the previous
                 # observation, but the env had not responded - until now - with another
@@ -485,10 +485,10 @@ class MultiAgentEpisode:
                 # ...[hanging action] ... ... -> next obs + (reward)? ...
                 if _action is not None:
                     # Get the extra model output if available.
-                    _extra_model_outputs = self._hanging_extra_model_outputs.pop(
+                    _extra_model_outputs = self._hanging_extra_model_outputs_end.pop(
                         agent_id, None
                     )
-                    _reward = self._hanging_rewards.pop(agent_id, 0.0) + _reward
+                    _reward = self._hanging_rewards_end.pop(agent_id, 0.0) + _reward
                     # _agent_step = len(sa_episode)
                 # First observation for this agent, we have no hanging action.
                 # ... [done]? ... -> [1st obs for agent ID]
@@ -535,17 +535,17 @@ class MultiAgentEpisode:
                 # [previous obs] [action] (hanging) ...
                 else:
                     # Hanging action, reward, and extra_model_outputs.
-                    assert agent_id not in self._hanging_actions
-                    self._hanging_actions[agent_id] = _action
-                    self._hanging_rewards[agent_id] = _reward
-                    self._hanging_extra_model_outputs[agent_id] = _extra_model_outputs
+                    assert agent_id not in self._hanging_actions_end
+                    self._hanging_actions_end[agent_id] = _action
+                    self._hanging_rewards_end[agent_id] = _reward
+                    self._hanging_extra_model_outputs_end[agent_id] = _extra_model_outputs
 
             # CASE 4: Step has started in the past and is still ongoing (no observation,
             # no action).
             # --------------------------------------------------------------------------
             # Record reward and terminated/truncated flags.
             else:
-                _action = self._hanging_actions.get(agent_id)
+                _action = self._hanging_actions_end.get(agent_id)
 
                 # Agent is done.
                 if _terminated or _truncated:
@@ -576,14 +576,14 @@ class MultiAgentEpisode:
                     # `_action` is already `get` above. We don't need to pop out from
                     # the cache as it gets wiped out anyway below b/c the agent is
                     # done.
-                    _extra_model_outputs = self._hanging_extra_model_outputs.pop(
+                    _extra_model_outputs = self._hanging_extra_model_outputs_end.pop(
                         agent_id, None
                     )
-                    _reward = self._hanging_rewards.pop(agent_id, 0.0) + _reward
+                    _reward = self._hanging_rewards_end.pop(agent_id, 0.0) + _reward
                 # The agent is still alive, just add current reward to cache.
                 else:
-                    self._hanging_rewards[agent_id] = (
-                        self._hanging_rewards.get(agent_id, 0.0) + _reward
+                    self._hanging_rewards_end[agent_id] = (
+                        self._hanging_rewards_end.get(agent_id, 0.0) + _reward
                     )
 
             # If agent is stepping, add timestep to `SingleAgentEpisode`.
@@ -804,7 +804,7 @@ class MultiAgentEpisode:
         # If there is hanging data (e.g. actions) in the agents' caches, we might have
         # to re-adjust the lookback len further into the past to make sure that these
         # agents have at least one observation to look back to.
-        for agent_id, agent_actions in self._hanging_actions.items():
+        for agent_id, agent_actions in self._hanging_actions_end.items():
             assert self.env_t_to_agent_t[agent_id].get(-1) == self.SKIP_ENV_TS_TAG
             for i in range(1, self.env_t_to_agent_t[agent_id].lookback + 1):
                 if (
@@ -857,10 +857,10 @@ class MultiAgentEpisode:
         )
 
         # Copy over the current hanging values.
-        successor._hanging_actions = copy.deepcopy(self._hanging_actions)
-        successor._hanging_rewards = self._hanging_rewards.copy()
-        successor._hanging_extra_model_outputs = copy.deepcopy(
-            self._hanging_extra_model_outputs
+        successor._hanging_actions_end = copy.deepcopy(self._hanging_actions_end)
+        successor._hanging_rewards_end = self._hanging_rewards_end.copy()
+        successor._hanging_extra_model_outputs_end = copy.deepcopy(
+            self._hanging_extra_model_outputs_end
         )
 
         return successor
@@ -1353,8 +1353,8 @@ class MultiAgentEpisode:
             check(a0.observations, [0])
             check(a0.actions, [])
             check(a0.rewards, [])
-            check(slice._hanging_actions["a0"], 0)
-            check(slice._hanging_rewards["a0"], 0.1)
+            check(slice._hanging_actions_end["a0"], 0)
+            check(slice._hanging_rewards_end["a0"], 0.1)
 
         Args:
             slice_: The slice object to use for slicing. This should exclude the
@@ -1646,7 +1646,7 @@ class MultiAgentEpisode:
             agent_eps.get_return() for agent_eps in self.agent_episodes.values()
         )
         if consider_hanging_rewards:
-            for hanging_r in self._hanging_rewards.values():
+            for hanging_r in self._hanging_rewards_end.values():
                 env_return += hanging_r
 
         return env_return
@@ -1784,13 +1784,13 @@ class MultiAgentEpisode:
                 # complete step for agent.
                 if len(observations_per_agent[agent_id]) > 1:
                     actions_per_agent[agent_id].append(
-                        self._hanging_actions.pop(agent_id)
+                        self._hanging_actions_end.pop(agent_id)
                     )
                     extra_model_outputs_per_agent[agent_id].append(
-                        self._hanging_extra_model_outputs.pop(agent_id)
+                        self._hanging_extra_model_outputs_end.pop(agent_id)
                     )
                     rewards_per_agent[agent_id].append(
-                        self._hanging_rewards.pop(agent_id)
+                        self._hanging_rewards_end.pop(agent_id)
                     )
                 # First obs for this agent. Make sure the agent's mapping is
                 # appropriately prepended with self.SKIP_ENV_TS_TAG tags.
@@ -1804,13 +1804,11 @@ class MultiAgentEpisode:
                 if agent_id in act:
                     # Always push actions/extra outputs into cache, then remove them
                     # from there, once the next observation comes in. Same for rewards.
-                    self._hanging_actions[agent_id] = act[agent_id]
-                    self._hanging_extra_model_outputs[agent_id] = extra_outs.get(
+                    self._hanging_actions_end[agent_id] = act[agent_id]
+                    self._hanging_extra_model_outputs_end[agent_id] = extra_outs.get(
                         agent_id, {}
                     )
-                    self._hanging_rewards[agent_id] = self._hanging_rewards.get(
-                        agent_id, 0.0
-                    ) + rew.get(agent_id, 0.0)
+                    self._hanging_rewards_end[agent_id] += rew.get(agent_id, 0.0)
                 # Agent is done (has no action for the next step).
                 elif terminateds.get(agent_id) or truncateds.get(agent_id):
                     done_per_agent[agent_id] = True
@@ -2414,17 +2412,17 @@ class MultiAgentEpisode:
     def _get_hanging_value(self, what: str, agent_id: AgentID) -> Any:
         """Returns the hanging action/reward/extra_model_outputs for given agent."""
         if what == "actions":
-            return self._hanging_actions.get(agent_id)
+            return self._hanging_actions_end.get(agent_id)
         elif what == "extra_model_outputs":
-            return self._hanging_extra_model_outputs.get(agent_id)
+            return self._hanging_extra_model_outputs_end.get(agent_id)
         elif what == "rewards":
-            return self._hanging_rewards.get(agent_id)
+            return self._hanging_rewards_end.get(agent_id)
 
     def _del_hanging(self, agent_id: AgentID) -> None:
         """Deletes all hanging action, reward, extra_model_outputs of given agent."""
-        self._hanging_actions.pop(agent_id, None)
-        self._hanging_extra_model_outputs.pop(agent_id, None)
-        self._hanging_rewards.pop(agent_id, None)
+        self._hanging_actions_end.pop(agent_id, None)
+        self._hanging_extra_model_outputs_end.pop(agent_id, None)
+        self._hanging_rewards_end.pop(agent_id, None)
 
     def _del_agent(self, agent_id: AgentID) -> None:
         """Deletes all data of given agent from this episode."""
