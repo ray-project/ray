@@ -439,9 +439,6 @@ class Worker:
         # This event is checked regularly by all of the threads so that they
         # know when to exit.
         self.threads_stopped = threading.Event()
-        # Index of the current session. This number will
-        # increment every time when `ray.shutdown` is called.
-        self._session_index = 0
         # If this is set, the next .remote call should drop into the
         # debugger, at the specified breakpoint ID.
         self.debugger_breakpoint = b""
@@ -537,11 +534,11 @@ class Worker:
         return self.core_worker.should_capture_child_tasks_in_placement_group()
 
     @property
-    def current_session_and_job(self):
+    def current_cluster_and_job(self):
         """Get the current session index and job id as pair."""
-        assert isinstance(self._session_index, int)
+        assert isinstance(self.node.cluster_id, ray.ClusterID)
         assert isinstance(self.current_job_id, ray.JobID)
-        return self._session_index, self.current_job_id
+        return self.node.cluster_id, self.current_job_id
 
     @property
     def runtime_env(self):
@@ -2381,7 +2378,7 @@ def connect(
         runtime_env_hash,
         startup_token,
         session_name,
-        node.cluster_id,
+        node.cluster_id.hex(),
         "" if mode != SCRIPT_MODE else entrypoint,
         worker_launch_time_ms,
         worker_launched_time_ms,
@@ -2462,8 +2459,6 @@ def disconnect(exiting_interpreter=False):
         if hasattr(worker, "logger_thread"):
             worker.logger_thread.join()
         worker.threads_stopped.clear()
-
-        worker._session_index += 1
 
         for leftover in stdout_deduplicator.flush():
             print_worker_logs(leftover, sys.stdout)

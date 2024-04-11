@@ -226,13 +226,15 @@ message ObjectLocationUpdate {
 }
 
 message GetObjectLocationsOwnerRequest {
-  WorkerObjectLocationsSubMessage object_location_request = 1;
+  bytes intended_worker_id = 1;
+  repeated bytes object_ids = 2;
 }
 
 message GetObjectLocationsOwnerReply {
-  WorkerObjectLocationsPubMessage object_location_info = 1;
+  // List of object location information, one for each object ID in the request,
+  // using the already defined WorkerObjectLocationsPubMessage.
+  repeated WorkerObjectLocationsPubMessage object_location_infos = 1;
 }
-
 message KillActorRequest {
   // ID of the actor that is intended to be killed.
   bytes intended_actor_id = 1;

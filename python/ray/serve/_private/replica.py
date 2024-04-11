@@ -351,6 +351,8 @@ class ReplicaActor:
         try:
             self._metrics_manager.inc_num_ongoing_requests()
             yield
+        except asyncio.CancelledError as e:
+            user_exception = e
         except Exception as e:
             user_exception = e
             logger.error(f"Request failed:\n{e}")
@@ -942,7 +944,9 @@ class UserCallableWrapper:
 
         The returned `receive_task` should be cancelled when the user method exits.
         """
+        scope = pickle.loads(request.pickled_asgi_scope)
         receive = ASGIReceiveProxy(
+            scope,
             request_metadata.request_id,
             request.receive_asgi_messages,
         )
@@ -950,7 +954,7 @@ class UserCallableWrapper:
             receive.fetch_until_disconnect()
         )
         asgi_args = ASGIArgs(
-            scope=pickle.loads(request.pickled_asgi_scope),
+            scope=scope,
             receive=receive,
             send=generator_result_callback,
         )
