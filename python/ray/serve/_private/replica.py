@@ -17,6 +17,11 @@ import ray
 from ray import cloudpickle
 from ray._private.utils import get_or_create_event_loop
 from ray.actor import ActorClass
+
+# ===== Begin Anyscale proprietary code ======
+from ray.anyscale.serve._private.tracing_utils import setup_tracing
+
+# ===== End Anyscale proprietary code ======
 from ray.remote_function import RemoteFunction
 from ray.serve import metrics
 from ray.serve._private.common import (
@@ -287,6 +292,24 @@ class ReplicaActor:
             self._event_loop,
             self._deployment_config.autoscaling_config,
         )
+
+        # ===== Begin Anyscale proprietary code ======
+        try:
+            tracing_file_name = get_component_file_name(
+                component_type=ServeComponentType.REPLICA,
+                component_name=self._component_name,
+                component_id=self._component_id,
+                suffix="_tracing.json",
+            )
+            setup_tracing(
+                tracing_file_name=tracing_file_name,
+            )
+        except Exception as e:
+            logger.warning(
+                f"Failed to set up tracing: {e}. "
+                "The replica will continue running, but traces will not be exported."
+            )
+        # ===== End Anyscale proprietary code ======
 
     def _set_internal_replica_context(self, *, servable_object: Callable = None):
         ray.serve.context._set_internal_replica_context(
