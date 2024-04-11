@@ -351,6 +351,8 @@ class ReplicaActor:
         try:
             self._metrics_manager.inc_num_ongoing_requests()
             yield
+        except asyncio.CancelledError as e:
+            user_exception = e
         except Exception as e:
             user_exception = e
             logger.error(f"Request failed:\n{e}")

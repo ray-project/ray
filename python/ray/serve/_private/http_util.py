@@ -269,6 +269,7 @@ class ASGIReceiveProxy:
                 message = self._get_default_disconnect_message()
                 self._queue.put_nowait(message)
                 self._disconnect_message = message
+                return
             except Exception as e:
                 # Raise unexpected exceptions in the next `__call__`.
                 self._queue.put_nowait(e)
