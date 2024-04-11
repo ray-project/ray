@@ -632,7 +632,7 @@ def test_actor_failover_with_bad_network(ray_start_cluster_head):
 def test_final_user_exception(ray_start_regular, propagate_logs, caplog):
     class MyFinalException(Exception):
         def __init_subclass__(cls, /, *args, **kwargs):
-            raise TypeError("Cannot subclass special typing classes")
+            raise TypeError("Can't subclass special typing classes")
 
     # This should error.
     with pytest.raises(MyFinalException):
