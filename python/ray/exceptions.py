@@ -163,7 +163,7 @@ class RayTaskError(RayError):
     def as_instanceof_cause(self):
         """Returns an exception that's an instance of the cause's class.
 
-        The returned exception will inherit from both RayTaskError and the
+        The returned exception inherits from both RayTaskError and the
         cause class and will contain all of the attributes of the cause
         exception.
 
