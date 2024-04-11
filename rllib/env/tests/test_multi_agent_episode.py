@@ -2339,10 +2339,34 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check(a0.actions, [3])
         check(a0.rewards, [0.3])
         check(successor._hanging_actions_begin, {"a1": 0})
-        check(successor._hanging_rewards_begin, {"a1": 0.3})
+        check(successor._hanging_rewards_begin, {"a1": 0.6})
         check(successor._hanging_extra_model_outputs_begin, {"a1": {}})
         check(successor._hanging_actions_end, {})
-        check(successor._hanging_rewards_end, {"a1": 0.3})
+        check(successor._hanging_rewards_end, {"a1": 0.0})
+        check(successor._hanging_extra_model_outputs_end, {})
+        # Now a1 actually does receive its next obs.
+        successor.add_env_step(
+            observations={"a0": 5, "a1": 5},  # <- this is a1's 1st obs in this chunk
+            actions={"a0": 4},
+            rewards={"a0": 0.4, "a1": 0.4},
+        )
+        check(len(successor), 2)
+        check(successor.env_t_started, 3)
+        check(successor.env_t, 5)
+        a1 = successor.agent_episodes["a1"]
+        check((len(a0), len(a1)), (2, 0))
+        check((a0.t_started, a1.t_started), (3, 0))
+        check((a0.t, a1.t), (5, 0))
+        check((a0.observations, a1.observations), ([3, 4, 5], [5]))
+        check((a0.actions, a1.actions), ([3, 4], []))
+        check((a0.rewards, a1.rewards), ([0.3, 0.4], []))
+        # Begin caches keep accumulating a1's rewards.
+        check(successor._hanging_actions_begin, {"a1": 0})
+        check(successor._hanging_rewards_begin, {"a1": 1.0})
+        check(successor._hanging_extra_model_outputs_begin, {"a1": {}})
+        # But end caches are now empty (due to a1's observation/finished step).
+        check(successor._hanging_actions_end, {})
+        check(successor._hanging_rewards_end, {"a1": 0.0})
         check(successor._hanging_extra_model_outputs_end, {})
 
         # Generate a simple multi-agent episode and check all internals after

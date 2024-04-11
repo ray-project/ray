@@ -422,14 +422,15 @@ class MultiAgentEpisode:
         ) - {"__all__"}
         for agent_id in agent_ids_with_data:
             if agent_id not in self.agent_episodes:
-                self.agent_episodes[agent_id] = SingleAgentEpisode(
+                sa_episode = SingleAgentEpisode(
                     agent_id=agent_id,
                     module_id=self.module_for(agent_id),
                     multi_agent_episode_id=self.id_,
                     observation_space=self.observation_space.get(agent_id),
                     action_space=self.action_space.get(agent_id),
                 )
-            sa_episode: SingleAgentEpisode = self.agent_episodes[agent_id]
+            else:
+                sa_episode = self.agent_episodes.get(agent_id)
 
             # Collect value to be passed (at end of for-loop) into `add_env_step()`
             # call.
@@ -489,7 +490,6 @@ class MultiAgentEpisode:
                         agent_id, None
                     )
                     _reward = self._hanging_rewards_end.pop(agent_id, 0.0) + _reward
-                    # _agent_step = len(sa_episode)
                 # First observation for this agent, we have no hanging action.
                 # ... [done]? ... -> [1st obs for agent ID]
                 else:
@@ -506,6 +506,10 @@ class MultiAgentEpisode:
                         )
                         # Make `add_env_reset` call and continue with next agent.
                         sa_episode.add_env_reset(observation=_observation, infos=_infos)
+                        # Add possible reward to begin cache.
+                        self._hanging_rewards_begin[agent_id] += _reward
+                        # Now that the SAEps is valid, add it to our dict.
+                        self.agent_episodes[agent_id] = sa_episode
                         continue
 
             # CASE 3: Step is started (by an action), but not completed (no next obs).
@@ -584,7 +588,12 @@ class MultiAgentEpisode:
                     _reward = self._hanging_rewards_end.pop(agent_id, 0.0) + _reward
                 # The agent is still alive, just add current reward to cache.
                 else:
-                    self._hanging_rewards_end[agent_id] += _reward
+                    # But has never stepped in this episode -> add to begin cache.
+                    if agent_id not in self.agent_episodes:
+                        self._hanging_rewards_begin[agent_id] += _reward
+                    # Otherwise, add to end cache.
+                    else:
+                        self._hanging_rewards_end[agent_id] += _reward
 
             # If agent is stepping, add timestep to `SingleAgentEpisode`.
             if _observation is not None:
