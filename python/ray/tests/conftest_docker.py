@@ -68,8 +68,6 @@ class Container(wrappers.Container):
 gcs_network = network(driver="bridge")
 
 redis_image = fetch(repository="redis:latest")
-# ray_image = "rayproject/ray:latest-py310"
-ray_image = "rayproject/ray:test"
 
 redis = container(
     image="{redis_image.id}",
@@ -81,108 +79,83 @@ head_node_vol = volume()
 worker_node_vol = volume()
 head_node_container_name = "gcs" + str(int(time.time()))
 
-# head_node = container(
-#     image=ray_image,
-#     name=head_node_container_name,
-#     network="{gcs_network.name}",
-#     command=[
-#         "ray",
-#         "start",
-#         "--head",
-#         "--block",
-#         "--num-cpus",
-#         "0",
-#         # Fix the port of raylet to make sure raylet restarts at the same
-#         # ip:port is treated as a different raylet.
-#         "--node-manager-port",
-#         "9379",
-#     ],
-#     volumes={"{head_node_vol.name}": {"bind": "/tmp", "mode": "rw"}},
-#     environment={
-#         "RAY_REDIS_ADDRESS": "{redis.ips.primary}:6379",
-#         "RAY_raylet_client_num_connect_attempts": "10",
-#         "RAY_raylet_client_connect_timeout_milliseconds": "100",
-#     },
-#     wrapper_class=Container,
-#     ports={
-#         "8000/tcp": None,
-#     },
-#     # volumes={
-#     #     "/tmp/ray/": {"bind": "/tmp/ray/", "mode": "rw"}
-#     # },
-# )
 
-head_node = container(
-    image=ray_image,
-    name=head_node_container_name,
-    network="{gcs_network.name}",
-    command=[
-        "ray",
-        "start",
-        "--head",
-        "--block",
-        "--num-cpus",
-        "0",
-        # Fix the port of raylet to make sure raylet restarts at the same
-        # ip:port is treated as a different raylet.
-        "--node-manager-port",
-        "9379",
-    ],
-    volumes={"{head_node_vol.name}": {"bind": "/tmp", "mode": "rw"}},
-    environment={
-        "RAY_grpc_keepalive_time_ms": "1000",
-        "RAY_grpc_client_keepalive_time_ms": "1000",
-        "RAY_health_check_initial_delay_ms": "1000",
-        "RAY_health_check_period_ms": "1000",
-        "RAY_health_check_timeout_ms": "1000",
-        "RAY_health_check_failure_threshold": "2",
-    },
-    wrapper_class=Container,
-    ports={
-        "8000/tcp": None,
-    },
-    # volumes={
-    #     "/tmp/ray/": {"bind": "/tmp/ray/", "mode": "rw"}
-    # },
-)
+def gen_head_node(envs):
+    return container(
+        image="rayproject/ray:ha_integration",
+        name=head_node_container_name,
+        network="{gcs_network.name}",
+        command=[
+            "ray",
+            "start",
+            "--head",
+            "--block",
+            "--num-cpus",
+            "0",
+            # Fix the port of raylet to make sure raylet restarts at the same
+            # ip:port is treated as a different raylet.
+            "--node-manager-port",
+            "9379",
+        ],
+        volumes={"{head_node_vol.name}": {"bind": "/tmp", "mode": "rw"}},
+        environment=envs,
+        wrapper_class=Container,
+        ports={
+            "8000/tcp": None,
+        },
+        # volumes={
+        #     "/tmp/ray/": {"bind": "/tmp/ray/", "mode": "rw"}
+        # },
+    )
 
-worker_node = container(
-    image=ray_image,
-    network="{gcs_network.name}",
-    command=[
-        "ray",
-        "start",
-        "--address",
-        f"{head_node_container_name}:6379",
-        "--block",
-        # Fix the port of raylet to make sure raylet restarts at the same
-        # ip:port is treated as a different raylet.
-        "--node-manager-port",
-        "9379",
-    ],
-    volumes={"{worker_node_vol.name}": {"bind": "/tmp", "mode": "rw"}},
-    environment={
+def gen_worker_node(envs):
+    return container(
+        image="rayproject/ray:ha_integration",
+        network="{gcs_network.name}",
+        command=[
+            "ray",
+            "start",
+            "--address",
+            f"{head_node_container_name}:6379",
+            "--block",
+            # Fix the port of raylet to make sure raylet restarts at the same
+            # ip:port is treated as a different raylet.
+            "--node-manager-port",
+            "9379",
+        ],
+        volumes={"{worker_node_vol.name}": {"bind": "/tmp", "mode": "rw"}},
+        environment=envs,
+        wrapper_class=Container,
+        ports={
+            "8000/tcp": None,
+        },
+        # volumes={
+        #     "/tmp/ray/": {"bind": "/tmp/ray/", "mode": "rw"}
+        # },
+    )
+
+
+
+head_node = gen_head_node(
+    {
         "RAY_REDIS_ADDRESS": "{redis.ips.primary}:6379",
         "RAY_raylet_client_num_connect_attempts": "10",
         "RAY_raylet_client_connect_timeout_milliseconds": "100",
-    },
-    wrapper_class=Container,
-    ports={
-        "8000/tcp": None,
-    },
-    # volumes={
-    #     "/tmp/ray/": {"bind": "/tmp/ray/", "mode": "rw"}
-    # },
+    }
 )
 
+worker_node = gen_worker_node(
+    {
+        "RAY_REDIS_ADDRESS": "{redis.ips.primary}:6379",
+        "RAY_raylet_client_num_connect_attempts": "10",
+        "RAY_raylet_client_connect_timeout_milliseconds": "100",
+    }
+)
 
 @pytest.fixture
 def docker_cluster(head_node, worker_node):
     yield (head_node, worker_node)
 
-@pytest.fixture
-def docker_cluster_with_network(head_node, worker_node, gcs_network):
-    yield (head_node, worker_node, gcs_network)
 
 def run_in_container(cmds: List[List[str]], container_id: str):
     outputs = []
