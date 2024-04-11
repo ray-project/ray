@@ -79,11 +79,6 @@ def file_tail_iterator(path: str) -> Iterator[Optional[List[str]]]:
         curr_line = None
 
         while True:
-            if curr_line is None:
-                # Only read the next line in the file
-                # if there's no remaining "curr_line" to process
-                curr_line = f.readline()
-
             # We want to flush current chunk in following cases:
             #   - We accumulated 10 lines
             #   - We accumulated at least MAX_CHUNK_CHAR_LENGTH total chars
@@ -99,7 +94,9 @@ def file_tail_iterator(path: str) -> Iterator[Optional[List[str]]]:
 
                 lines = []
                 chunk_char_count = 0
-                curr_line = None
+
+            # Read next line
+            curr_line = f.readline()
 
             # `readline` will return
             #   - '' for EOF
@@ -108,11 +105,9 @@ def file_tail_iterator(path: str) -> Iterator[Optional[List[str]]]:
                 # Add line to current chunk
                 lines.append(curr_line)
                 chunk_char_count += len(curr_line)
-                curr_line = None
             else:
                 # If EOF is reached sleep for 1s before continuing
                 time.sleep(1)
-                curr_line = None
 
 
 async def parse_and_validate_request(
