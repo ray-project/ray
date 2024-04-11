@@ -117,7 +117,6 @@ export const JobDetailChartsPage = () => {
     setActorListFilter(undefined);
   };
 
-
   return (
     <div className={classes.root}>
       <JobMetadataSection job={job} />

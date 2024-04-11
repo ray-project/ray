@@ -13,7 +13,6 @@ from ray.dashboard.modules.metrics.metrics_head import (
 from urllib.parse import quote
 import ray
 import logging
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
