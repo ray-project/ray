@@ -345,14 +345,14 @@ class DistributeResources:
         ):
             idx = i % len(upper_limit_all_trials_bundles)
             old_bundles = deepcopy(upper_limit_all_trials_bundles[idx])
-            upper_limit_all_trials_bundles[idx] = (
-                self._modify_bundles_with_free_resources(
-                    upper_limit_all_trials_bundles[idx],
-                    increase_by,
-                    upper_limit_cpus_to_distribute,
-                    upper_limit_gpus_to_distribute,
-                    max_multiplier=1,
-                )
+            upper_limit_all_trials_bundles[
+                idx
+            ] = self._modify_bundles_with_free_resources(
+                upper_limit_all_trials_bundles[idx],
+                increase_by,
+                upper_limit_cpus_to_distribute,
+                upper_limit_gpus_to_distribute,
+                max_multiplier=1,
             )
             added_resources = self._get_resources_from_bundles(
                 self._get_added_bundles(
