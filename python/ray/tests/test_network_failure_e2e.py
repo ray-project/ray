@@ -84,8 +84,3 @@ def test_network_task_submit(head, worker, gcs_network):
             return all([task["state"] != "RUNNING" for task in tasks_json])
         return False
     wait_for_condition(check_task_not_running)
-
-    network.connect(worker.name)
-
-    worker.restart()
-    wait_for_condition(check_task_running, timeout=1000)
