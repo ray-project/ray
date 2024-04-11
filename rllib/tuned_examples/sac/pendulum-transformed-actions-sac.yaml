@@ -1,7 +1,7 @@
 # TransformedActionPendulum SAC can attain -150+ reward in 6-7k
 # Configurations are the similar to original softlearning/sac codebase
 transformed-actions-pendulum-sac-dummy-torch:
-    env: ray.rllib.examples.env.transformed_action_space_env.TransformedActionPendulum
+    env: ray.rllib.examples.envs.classes.transformed_action_space_env.TransformedActionPendulum
     run: SAC
     stop:
         sampler_results/episode_reward_mean: -200

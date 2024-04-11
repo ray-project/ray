@@ -1790,7 +1790,7 @@ def check_supported_spaces(
 
     """
     # do these imports here because otherwise we have circular imports
-    from ray.rllib.examples.env.random_env import RandomEnv
+    from ray.rllib.examples.envs.classes.random_env import RandomEnv
     from ray.rllib.models.tf.complex_input_net import ComplexInputNetwork as ComplexNet
     from ray.rllib.models.tf.fcnet import FullyConnectedNetwork as FCNet
     from ray.rllib.models.tf.visionnet import VisionNetwork as VisionNet
