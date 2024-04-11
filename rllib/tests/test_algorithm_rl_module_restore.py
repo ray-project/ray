@@ -132,7 +132,9 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
                 module_class=module_class,
                 observation_space=env.observation_space[0],
                 action_space=env.action_space[0],
-                model_config_dict={"fcnet_hiddens": [64]},
+                # Note, we need to pass in the default model config for the algorithm
+                # to be able to use this module later.
+                model_config_dict=config.model_config | {"fcnet_hiddens": [64]},
                 catalog_class=PPOCatalog,
             ).build()
 
@@ -256,6 +258,8 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
                     module_class=module_class,
                     observation_space=env.observation_space[0],
                     action_space=env.action_space[0],
+                    # Note, we need to pass in the default model config for the
+                    # algorithm to be able to use this module later.
                     model_config_dict=config.model_config
                     | {"fcnet_hiddens": [32 * (i + 1)]},
                     catalog_class=PPOCatalog,
@@ -270,7 +274,9 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
                 module_class=module_class,
                 observation_space=env.observation_space[0],
                 action_space=env.action_space[0],
-                model_config_dict={"fcnet_hiddens": [64]},
+                # Note, we need to pass in the default model config for the algorithm
+                # to be able to use this module later.
+                model_config_dict=config.model_config | {"fcnet_hiddens": [64]},
                 catalog_class=PPOCatalog,
             ).build()
 
