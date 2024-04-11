@@ -3577,8 +3577,7 @@ def test_job_info_is_running_task(shutdown_only):
     assert len(all_job_info) == 1
     assert job_id in all_job_info
     assert client.get_all_job_info()[job_id].is_running_tasks is True
-    for o in tasks:
-        ray.cancel(o)
+    print(tasks)
 
 
 if __name__ == "__main__":

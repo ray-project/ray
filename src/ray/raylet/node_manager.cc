@@ -1322,8 +1322,6 @@ void NodeManager::ProcessAnnounceWorkerPortMessage(
 
   auto message = flatbuffers::GetRoot<protocol::AnnounceWorkerPort>(message_data);
   int port = message->port();
-  RAY_LOG(ERROR) << "NodeManager::ProcessAnnounceWorkerPortMessage " << port
-                 << ", assigned " << worker->AssignedPort() << ", is worker" << is_worker;
   worker->Connect(port);
   if (is_worker) {
     worker_pool_.OnWorkerStarted(worker);
@@ -1334,7 +1332,6 @@ void NodeManager::ProcessAnnounceWorkerPortMessage(
     RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(job_data_ptr, [client](Status status) {
       if (!status.ok()) {
         RAY_LOG(ERROR) << "Failed to add job to GCS: " << status.ToString();
-        return;
       }
       // Write the reply back.
       flatbuffers::FlatBufferBuilder fbb;

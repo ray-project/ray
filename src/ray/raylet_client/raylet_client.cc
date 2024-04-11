@@ -193,11 +193,11 @@ Status raylet::RayletClient::Disconnect(
   return Status::OK();
 }
 
-Status raylet::RayletClient::AnnounceWorkerPort(int port, bool wait_for_reply) {
+Status raylet::RayletClient::AnnounceWorkerPort(int port, bool has_reply) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateAnnounceWorkerPort(fbb, port);
   fbb.Finish(message);
-  if (!wait_for_reply) {
+  if (!has_reply) {
     return conn_->WriteMessage(MessageType::AnnounceWorkerPort, &fbb);
   }
   std::vector<uint8_t> reply;
