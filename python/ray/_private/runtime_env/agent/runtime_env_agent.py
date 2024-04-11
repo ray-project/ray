@@ -275,11 +275,11 @@ class RuntimeEnvAgent:
             else:
                 delete_runtime_env()
 
-    def get_or_create_logger(self, job_id: bytes):
+    def get_or_create_logger(self, job_id: bytes, log_files: List[str]):
         job_id = job_id.decode()
         if job_id not in self._per_job_logger_cache:
             params = self._logging_params.copy()
-            params["filename"] = f"runtime_env_setup-{job_id}.log"
+            params["filename"] = [f"runtime_env_setup-{job_id}.log", *log_files]
             params["logger_name"] = f"runtime_env_{job_id}"
             params["propagate"] = False
             per_job_logger = setup_component_logger(**params)
@@ -301,8 +301,10 @@ class RuntimeEnvAgent:
             allocated_resource: dict = json.loads(
                 serialized_allocated_resource_instances or "{}"
             )
+            runtime_env_config = RuntimeEnvConfig.from_proto(request.runtime_env_config)
+            log_files = runtime_env_config.get("log_files", [])
             # Use a separate logger for each job.
-            per_job_logger = self.get_or_create_logger(request.job_id)
+            per_job_logger = self.get_or_create_logger(request.job_id, log_files)
             # TODO(chenk008): Add log about allocated_resource to
             # avoid lint error. That will be moved to cgroup plugin.
             per_job_logger.debug(f"Worker has resource :" f"{allocated_resource}")
