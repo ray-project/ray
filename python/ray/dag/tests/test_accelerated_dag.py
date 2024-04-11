@@ -24,7 +24,7 @@ if sys.platform != "linux" and sys.platform != "darwin":
     pytest.skip("Skipping, requires Linux or Mac.", allow_module_level=True)
 
 
-@ray.remote(num_cpus=1)
+@ray.remote
 class Actor:
     def __init__(self, init_value, fail_after=None, sys_exit=False):
         print("__init__ PID", os.getpid())

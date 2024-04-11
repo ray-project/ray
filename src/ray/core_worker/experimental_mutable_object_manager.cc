@@ -60,8 +60,6 @@ Status MutableObjectManager::RegisterChannel(
   } else {
     channel.writer_registered = true;
   }
-  const Channel &channel = channel_pair->second;
-  RAY_CHECK(channel.mutable_object);
 
   OpenSemaphores(object_id, channel.mutable_object->header);
   return Status::OK();
