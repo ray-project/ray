@@ -164,7 +164,7 @@ class RayTaskError(RayError):
         """Returns an exception that's an instance of the cause's class.
 
         The returned exception inherits from both RayTaskError and the
-        cause class and will contain all of the attributes of the cause
+        cause class and contains all of the attributes of the cause
         exception.
 
         If the cause class can not be subclassed, issues a warning and returns `self`.
