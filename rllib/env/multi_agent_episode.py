@@ -221,14 +221,21 @@ class MultiAgentEpisode:
             AgentID, InfiniteLookbackBuffer
         ] = defaultdict(InfiniteLookbackBuffer)
 
-        # In the `MultiAgentEpisode` we need these caches to keep track of actions,
-        # that happen when an agent got observations and acted, but did not receive
-        # a next observation, yet. In this case we store the action, add the rewards,
-        # and record `is_terminated/is_truncated` until the next observation is
-        # received.
-        self._hanging_actions = {}
-        self._hanging_extra_model_outputs = defaultdict(dict)
-        self._hanging_rewards = {}
+        # Create caches for hanging actions/rewards/extra_model_outputs.
+        # When an agent gets an observation (and then sends an action), but does not
+        # receive immediately a next observation, we store the "hanging" action (and
+        # related rewards and extra model outputs) in the caches postfixed w/ `_end`
+        # until the next observation is received.
+        self._hanging_actions_end = {}
+        self._hanging_extra_model_outputs_end = defaultdict(dict)
+        self._hanging_rewards_end = defaultdict(float)
+
+        # In case of a `cut()` or `slice()`, we also need to store the hanging actions,
+        # rewards, and extra model outputs that were already "hanging" in preceeding
+        # episode slice.
+        self._hanging_actions_begin = {}
+        self._hanging_extra_model_outputs_begin = defaultdict(dict)
+        self._hanging_rewards_begin = defaultdict(float)
 
         # If this is an ongoing episode than the last `__all__` should be `False`
         self.is_terminated: bool = (
