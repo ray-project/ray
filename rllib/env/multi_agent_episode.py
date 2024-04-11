@@ -829,13 +829,6 @@ class MultiAgentEpisode:
         successor = MultiAgentEpisode(
             # Same ID.
             id_=self.id_,
-            # Same agent IDs.
-            # Same single agents' episode IDs.
-            agent_episode_ids=self.agent_episode_ids,
-            agent_module_ids={
-                aid: self.agent_episodes[aid].module_id for aid in self.agent_ids
-            },
-            agent_to_module_mapping_fn=self.agent_to_module_mapping_fn,
             observations=self.get_observations(
                 indices=indices_obs_and_infos, return_list=True
             ),
@@ -853,15 +846,28 @@ class MultiAgentEpisode:
             ),
             terminateds=self.get_terminateds(),
             truncateds=self.get_truncateds(),
-            # Continue with `self`'s current timestep.
+            # Continue with `self`'s current timesteps.
             env_t_started=self.env_t,
+            agent_t_started={
+                aid: self.agent_episodes[aid].t
+                for aid in self.agent_ids if not self.agent_episodes[aid].is_done
+            },
+            # Same AgentIDs and SingleAgentEpisode IDs.
+            agent_episode_ids=self.agent_episode_ids,
+            agent_module_ids={
+                aid: self.agent_episodes[aid].module_id for aid in self.agent_ids
+            },
+            agent_to_module_mapping_fn=self.agent_to_module_mapping_fn,
+
+            # All data we provided to the c'tor goes into the lookback buffer.
             len_lookback_buffer="auto",
         )
 
-        # Copy over the current hanging values.
-        successor._hanging_actions_end = copy.deepcopy(self._hanging_actions_end)
-        successor._hanging_rewards_end = self._hanging_rewards_end.copy()
-        successor._hanging_extra_model_outputs_end = copy.deepcopy(
+        # Copy over the hanging (end) values into the hanging (begin) chaches of the
+        # successor.
+        successor._hanging_actions_begin = copy.deepcopy(self._hanging_actions_end)
+        successor._hanging_rewards_begin = self._hanging_rewards_end.copy()
+        successor._hanging_extra_model_outputs_begin = copy.deepcopy(
             self._hanging_extra_model_outputs_end
         )
 
