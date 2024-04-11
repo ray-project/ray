@@ -414,7 +414,10 @@ module_spec = SingleAgentRLModuleSpec(
     module_class=PPOTorchRLModule,
     observation_space=env.observation_space,
     action_space=env.action_space,
-    model_config_dict={"fcnet_hiddens": [32]},
+    # If we want to use this externally created module in the algorithm,
+    # we need to provide the same config as the algorithm. Any changes to
+    # the defaults can be given via the right side of the `|` operator.
+    model_config_dict=config.module_config | {"fcnet_hiddens": [32]},
     catalog_class=PPOCatalog,
 )
 module = module_spec.build()

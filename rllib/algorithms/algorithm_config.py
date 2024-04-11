@@ -3170,10 +3170,10 @@ class AlgorithmConfig(_Config):
             # In case - somehow - an old gym Space made it to here, convert it
             # to the corresponding gymnasium space.
             if old_gym and isinstance(policy_spec.observation_space, old_gym.Space):
-                policies[pid].observation_space = (
-                    convert_old_gym_space_to_gymnasium_space(
-                        policy_spec.observation_space
-                    )
+                policies[
+                    pid
+                ].observation_space = convert_old_gym_space_to_gymnasium_space(
+                    policy_spec.observation_space
                 )
             # Infer observation space.
             elif policy_spec.observation_space is None:

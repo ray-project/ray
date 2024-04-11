@@ -1279,6 +1279,7 @@ def run_rllib_example_script_experiment(
                 if val is not None and val >= value:
                     print(f"Stop criterium ({key}={value}) fulfilled!")
                     return results
+        ray.shutdown()
         return results
 
     callbacks = None
@@ -1339,7 +1340,7 @@ def run_rllib_example_script_experiment(
             args.stop_reward,
             metric=success_metric,
         )
-
+    ray.shutdown()
     return results
 
 
