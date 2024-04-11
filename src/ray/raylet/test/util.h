@@ -155,6 +155,13 @@ class MockWorker : public WorkerInterface {
 
   void SetJobId(const JobID &job_id) override { job_id_ = job_id; }
 
+  void SetDriverJobTableData(std::shared_ptr<rpc::JobTableData> job_table_data) override {
+    driver_job_table_data_ = job_table_data;
+  }
+  std::shared_ptr<rpc::JobTableData> GetDriverJobTableData() override {
+    return driver_job_table_data_;
+  }
+
  protected:
   void SetStartupToken(StartupToken startup_token) override {
     RAY_CHECK(false) << "Method unused";
@@ -175,6 +182,7 @@ class MockWorker : public WorkerInterface {
   int runtime_env_hash_;
   TaskID task_id_;
   JobID job_id_;
+  std::shared_ptr<rpc::JobTableData> driver_job_table_data_;
 };
 
 }  // namespace raylet
