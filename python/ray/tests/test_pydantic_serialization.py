@@ -256,7 +256,7 @@ def test_validation_error(
     else:
         # Pydantic v2 validation errors are final, can't be subclassed.
         assert (
-            "This exception is raised as RayTaskError only. The user can use "
+            "This exception is raised as RayTaskError only. You can use "
             "`ray_task_error.cause` to access the user exception."
         ) in caplog.text
         assert isinstance(exc_info.value, ray.exceptions.RayTaskError)
