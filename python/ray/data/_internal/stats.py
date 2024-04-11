@@ -429,7 +429,7 @@ class _StatsActor:
     def update_dataset(self, dataset_tag, state):
         self.datasets[dataset_tag].update(state)
 
-    def get_datasets(self, job_id: Optional[str]):
+    def get_datasets(self, job_id: Optional[str] = None):
         if not job_id:
             return self.datasets
         return {k: v for k, v in self.datasets.items() if v["job_id"] == job_id}
