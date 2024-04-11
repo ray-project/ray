@@ -172,9 +172,13 @@ class TestIterLine:
         # First line will come in a batch of its own
         assert next(it) == [f"{'1234567890' * 6000}\n"]
         # Other 4 lines will be batched together
-        assert next(it) == [
-            f"{'1234567890' * 500}\n",
-        ] * 4
+        assert (
+            next(it)
+            == [
+                f"{'1234567890' * 500}\n",
+            ]
+            * 4
+        )
         assert next(it) is None
 
     def test_delete_file(self):
