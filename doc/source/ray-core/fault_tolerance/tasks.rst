@@ -18,7 +18,7 @@ return value. This wrapped exception will be thrown to any worker that tries
 to get the result, either by calling ``ray.get`` or if the worker is executing
 another task that depends on the object. If the user's exception type can be subclassed,
 the raised exception is an instance of both ``RayTaskError`` and the user's exception type
-so user can try-catch either of them. Otherwise, the wrapped exception is just
+so the user can try-catch either of them. Otherwise, the wrapped exception is just
 ``RayTaskError`` and the actual user's exception type can be accessed via the ``cause``
 field of the ``RayTaskError``.
 
