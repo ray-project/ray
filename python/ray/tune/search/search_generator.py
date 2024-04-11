@@ -5,8 +5,8 @@ from typing import Dict, List, Optional, Union
 from ray.tune.error import TuneError
 from ray.tune.experiment import Experiment, Trial, _convert_to_experiment_list
 from ray.tune.experiment.config_parser import _create_trial_from_spec, _make_parser
-from ray.tune.search import Searcher
 from ray.tune.search.search_algorithm import SearchAlgorithm
+from ray.tune.search.searcher import Searcher
 from ray.tune.search.util import _set_search_properties_backwards_compatible
 from ray.tune.search.variant_generator import _resolve_nested_dict, format_vars
 from ray.tune.utils.util import (

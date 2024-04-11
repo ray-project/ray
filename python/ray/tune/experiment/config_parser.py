@@ -2,7 +2,7 @@ import argparse
 import json
 
 from ray.train import CheckpointConfig
-from ray.tune import TuneError
+from ray.tune.error import TuneError
 from ray.tune.experiment import Trial
 from ray.tune.resources import json_to_resources
 

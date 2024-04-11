@@ -15,7 +15,7 @@ from ray.train._internal.session import _FutureTrainingResult, _TrainingResult
 from ray.tune.error import TuneError
 from ray.tune.experiment import Trial
 from ray.tune.result import DEFAULT_METRIC
-from ray.tune.schedulers import FIFOScheduler, TrialScheduler
+from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.search import SearchGenerator
 from ray.tune.search.sample import Domain, Function
 from ray.tune.search.variant_generator import format_vars

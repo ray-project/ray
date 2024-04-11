@@ -26,7 +26,6 @@ from ray.air._internal.usage import AirEntrypoint
 from ray.air.util.node import _force_on_current_node
 from ray.train import CheckpointConfig, SyncConfig
 from ray.train.constants import _DEPRECATED_VALUE, RAY_CHDIR_TO_TRIAL_DIR
-from ray.tune import ResumeConfig
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
@@ -69,6 +68,7 @@ from ray.tune.search.util import (
 from ray.tune.search.variant_generator import _has_unresolved_values
 from ray.tune.stopper import Stopper
 from ray.tune.trainable import Trainable
+from ray.tune.tune_config import ResumeConfig
 from ray.tune.utils.callback import _create_default_callbacks
 from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
 from ray.util.annotations import PublicAPI

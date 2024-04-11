@@ -8,10 +8,13 @@ from ray.tune.logger.logger import (
 )
 from ray.tune.logger.noop import NoopLogger
 from ray.tune.logger.tensorboardx import TBXLogger, TBXLoggerCallback
-from ray.tune.logger.unified import UnifiedLogger  # noqa: E402
 
 DEFAULT_LOGGERS = (JsonLogger, CSVLogger, TBXLogger)
 
+# isort: off
+from ray.tune.logger.unified import UnifiedLogger  # noqa: E402
+
+# isort: on
 
 __all__ = [
     "Logger",

@@ -20,9 +20,8 @@ from ray.exceptions import RayActorError, RayTaskError
 from ray.train import CheckpointConfig
 from ray.train._internal.session import _FutureTrainingResult, _TrainingResult
 from ray.train._internal.storage import StorageContext
-from ray.tune import ResumeConfig, TuneError
 from ray.tune.callback import Callback, CallbackList
-from ray.tune.error import _AbortTrialExecution, _TuneStopTrialError
+from ray.tune.error import TuneError, _AbortTrialExecution, _TuneStopTrialError
 from ray.tune.execution.class_cache import _ActorClassCache
 from ray.tune.execution.experiment_state import (
     _ExperimentCheckpointManager,
@@ -53,6 +52,7 @@ from ray.tune.result import (
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.search import BasicVariantGenerator, SearchAlgorithm
 from ray.tune.stopper import NoopStopper, Stopper
+from ray.tune.tune_config import ResumeConfig
 from ray.tune.utils import flatten_dict, warn_if_slow
 from ray.tune.utils.log import Verbosity, _dedup_logs, has_verbosity
 from ray.tune.utils.object_cache import _ObjectCache

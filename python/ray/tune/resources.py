@@ -5,7 +5,7 @@ from collections import namedtuple
 # For compatibility under py2 to consider unicode as str
 from typing import Optional
 
-from ray.tune import TuneError
+from ray.tune.error import TuneError
 from ray.tune.execution.placement_groups import (
     PlacementGroupFactory,
     resource_dict_to_pg_factory,

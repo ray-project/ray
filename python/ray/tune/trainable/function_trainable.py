@@ -19,7 +19,7 @@ from ray.train._internal.session import (
 )
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.result import DEFAULT_METRIC, RESULT_DUPLICATE, SHOULD_CHECKPOINT
-from ray.tune.trainable import Trainable
+from ray.tune.trainable.trainable import Trainable
 from ray.tune.utils import _detect_config_single
 from ray.util.annotations import DeveloperAPI
 
