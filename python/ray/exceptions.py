@@ -179,7 +179,7 @@ class RayTaskError(RayError):
             logger.warning(
                 f"User exception type {type(self.cause)} in RayTaskError can't"
                 " be subclassed! This exception is raised as"
-                " RayTaskError only. The user can use `ray_task_error.cause` to"
+                " RayTaskError only. You can use `ray_task_error.cause` to"
                 f" access the user exception. Failure in subclassing: {e}"
             )
             return self
