@@ -70,7 +70,7 @@ def file_tail_iterator(path: str) -> Iterator[Optional[List[str]]]:
         logger.debug(f"Path {path} doesn't exist yet.")
         yield None
 
-    EOF = ''
+    EOF = ""
 
     with open(path, "r") as f:
         lines = []
@@ -88,7 +88,11 @@ def file_tail_iterator(path: str) -> Iterator[Optional[List[str]]]:
             #   - We accumulated 10 lines
             #   - We accumulated at least MAX_CHUNK_CHAR_LENGTH total chars
             #   - We reached EOF
-            if len(lines) >= 10 or chunk_char_count > MAX_CHUNK_CHAR_LENGTH or curr_line == EOF:
+            if (
+                len(lines) >= 10
+                or chunk_char_count > MAX_CHUNK_CHAR_LENGTH
+                or curr_line == EOF
+            ):
                 # Too many lines, return 10 lines in this chunk, and then
                 # continue reading the file.
                 yield lines or None
