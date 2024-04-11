@@ -65,6 +65,8 @@ doctest(
             "**/examples/**",
             "**/tests/**",
             "**/test_*.py",
+            # Exclude benchmark runs.
+            "tuned_examples/**/benchmark_*.py",
             # Deprecated modules
             "utils/window_stat.py",
             "utils/timer.py",

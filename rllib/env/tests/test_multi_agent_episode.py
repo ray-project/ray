@@ -165,9 +165,9 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check(episode.agent_episodes["a1"].actions.data, [0, 1, 2])
         check(episode.agent_episodes["a0"].rewards.data, [])
         check(episode.agent_episodes["a1"].rewards.data, [0.1, 0.2, 0.3])
-        check(episode._agent_buffered_actions, {"a0": 0})
-        check(episode._agent_buffered_rewards, {"a0": 0.1})
-        check(episode._agent_buffered_extra_model_outputs, {"a0": {}})
+        check(episode._hanging_actions_end, {"a0": 0})
+        check(episode._hanging_rewards_end, {"a0": 0.1})
+        check(episode._hanging_extra_model_outputs_end, {"a0": {}})
         check(episode.env_t_to_agent_t["a0"].data, [0, "S", "S", "S"])
         check(episode.env_t_to_agent_t["a1"].data, [0, 1, 2, 3])
         check(episode.env_t_to_agent_t["a0"].lookback, 3)
@@ -186,9 +186,9 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check(episode.agent_episodes["a1"].actions.data, [1, 2, 3])
         check(episode.agent_episodes["a0"].rewards.data, [0.1])
         check(episode.agent_episodes["a1"].rewards.data, [0.2, 0.3, 0.4])
-        check(episode._agent_buffered_actions, {"a0": 2})
-        check(episode._agent_buffered_rewards, {"a0": 0.3})
-        check(episode._agent_buffered_extra_model_outputs, {"a0": {}})
+        check(episode._hanging_actions_end, {"a0": 2})
+        check(episode._hanging_rewards_end, {"a0": 0.3})
+        check(episode._hanging_extra_model_outputs_end, {"a0": {}})
         check(episode.env_t_to_agent_t["a0"].data, [0, "S", 1, "S", "S"])
         check(episode.env_t_to_agent_t["a1"].data, ["S", 0, 1, 2, 3])
         check(episode.env_t_to_agent_t["a0"].lookback, 4)
@@ -433,9 +433,9 @@ class TestMultiAgentEpisode(unittest.TestCase):
         self.assertTrue(episode.agent_episodes["agent_5"].is_done)
         # Also ensure that their buffers are all empty:
         for agent_id in ["agent_1", "agent_5"]:
-            self.assertTrue(agent_id not in episode._agent_buffered_actions)
-            self.assertTrue(agent_id not in episode._agent_buffered_rewards)
-            self.assertTrue(agent_id not in episode._agent_buffered_extra_model_outputs)
+            self.assertTrue(agent_id not in episode._hanging_actions_end)
+            self.assertTrue(agent_id not in episode._hanging_rewards_end)
+            self.assertTrue(agent_id not in episode._hanging_extra_model_outputs_end)
 
         # Check validity of agent_0's env_t_to_agent_t mapping.
         check(episode.env_t_to_agent_t["agent_0"].data, agent_0_steps)
@@ -511,10 +511,10 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Assert that the action buffer for agent 4 is full.
         # Note, agent 4 acts, but receives no observation.
         # Note also, all other buffers are always full, due to their defaults.
-        self.assertTrue(episode._agent_buffered_actions["agent_4"] is not None)
+        self.assertTrue(episode._hanging_actions_end["agent_4"] is not None)
         # Assert that the reward buffers of agents 3 and 5 are at 1.0.
-        check(episode._agent_buffered_rewards["agent_3"], 2.2)
-        check(episode._agent_buffered_rewards["agent_5"], 1.0)
+        check(episode._hanging_rewards_end["agent_3"], 2.2)
+        check(episode._hanging_rewards_end["agent_5"], 1.0)
 
     def test_get_observations(self):
         # Generate simple records for a multi agent environment.
@@ -2277,7 +2277,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check(episode_2.agent_episodes["a0"].observations.lookback, 0)
         # Action was "logged" -> Buffer should now be completely empty.
         check(episode_2.agent_episodes["a0"].actions.data, [0])
-        check(episode_2._agent_buffered_actions, {})
+        check(episode_2._hanging_actions_end, {})
         check(episode_2.agent_episodes["a0"].actions.lookback, 0)
         check(episode_2.get_observations(-1), {"a0": 1, "a1": 4})
         check(episode_2.get_observations(-1, env_steps=False), {"a0": 1, "a1": 4})
@@ -2648,8 +2648,8 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check((a0.actions, a1.actions), ([], [0]))
         check((a0.rewards, a1.rewards), ([], [0.0]))
         check((a0.is_done, a1.is_done), (False, False))
-        check(slice_._agent_buffered_actions["a0"], 0)
-        check(slice_._agent_buffered_rewards["a0"], 0.0)
+        check(slice_._hanging_actions_end["a0"], 0)
+        check(slice_._hanging_rewards_end["a0"], 0.0)
         # To pos stop.
         slice_ = episode[:3]
         check(len(slice_), 3)
@@ -2683,7 +2683,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         )
         check((a0.is_done, a1.is_done), (False, False))
         # Expect the hanging action to be found in the buffer.
-        check(slice_._agent_buffered_actions["a0"], 6)
+        check(slice_._hanging_actions_end["a0"], 6)
 
         slice_ = episode[:-4]
         check(len(slice_), 5)
@@ -3124,9 +3124,10 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Assert that adding the buffered rewards to the agent returns
         # gives the expected result when considering the buffer in
         # `get_return()`.
-        buffered_rewards = sum(episode._agent_buffered_rewards.values())
+        buffered_rewards = sum(episode._hanging_rewards_end.values())
         self.assertTrue(
-            episode.get_return(consider_buffer=True), agent_returns + buffered_rewards
+            episode.get_return(consider_hanging_rewards=True),
+            agent_returns + buffered_rewards,
         )
 
     def test_len(self):
@@ -3293,7 +3294,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             obs = {
                 agent_id: agent_obs
                 for agent_id, agent_obs in episode.get_observations().items()
-                if episode._agent_buffered_actions[agent_id]
+                if episode._hanging_actions_end[agent_id]
             }
 
         # Sample `size` many records.
