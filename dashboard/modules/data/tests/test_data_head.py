@@ -1,4 +1,5 @@
 import ray
+from ray.job_submission import JobSubmissionClient
 import os
 import requests
 import sys
@@ -42,15 +43,19 @@ def test_get_datasets():
     ds._set_name("data_head_test")
     ds.materialize()
 
+    client = JobSubmissionClient()
+    jobs = client.list_jobs()
+    assert len(jobs) == 1, jobs
+    job_id = jobs[0].job_id
+
     data = requests.get(DATA_HEAD_URLS["GET"], params={"job_id": "01000000"}).json()
 
     assert len(data["datasets"]) == 1
     assert sorted(data["datasets"][0].keys()) == sorted(RESPONSE_SCHEMA)
 
     dataset = data["datasets"][0]
-    job_id = dataset["job_id"]
-    assert isinstance(job_id, str)
     assert dataset["dataset"].startswith("data_head_test")
+    assert dataset["job_id"] == job_id
     assert dataset["state"] == "FINISHED"
     assert dataset["end_time"] is not None
 
@@ -69,8 +74,8 @@ def test_get_datasets():
 
     assert len(data["datasets"]) == 2
     dataset = data["datasets"][1]
-    assert dataset["job_id"] == job_id
     assert dataset["dataset"].startswith("data_head_test")
+    assert dataset["job_id"] == job_id
     assert dataset["state"] == "FINISHED"
     assert dataset["end_time"] is not None
 
