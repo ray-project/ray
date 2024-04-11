@@ -1,7 +1,7 @@
-import argparse
-
 # Original Code here:
 # https://github.com/pytorch/examples/blob/master/mnist/main.py
+
+import argparse
 import os
 import tempfile
 

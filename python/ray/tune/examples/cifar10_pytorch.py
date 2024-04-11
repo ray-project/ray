@@ -1,11 +1,11 @@
 # flake8: noqa
 # fmt: off
 
+# __import_begin__
 import os
 import tempfile
 from typing import Dict
 
-# __import_begin__
 import numpy as np
 import torch
 import torch.nn as nn

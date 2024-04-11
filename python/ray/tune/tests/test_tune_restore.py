@@ -1,8 +1,7 @@
+# coding: utf-8
 import multiprocessing
 import os
 import shutil
-
-# coding: utf-8
 import signal
 import subprocess
 import tempfile
