@@ -508,13 +508,14 @@ class TestMultiAgentEpisode(unittest.TestCase):
             terminateds=terminated,
             truncateds=truncated,
         )
-        # Assert that the action buffer for agent 4 is full.
+        # Assert that the action cache for agent 4 is used.
         # Note, agent 4 acts, but receives no observation.
-        # Note also, all other buffers are always full, due to their defaults.
+        # Note also, all other caches are always used, due to their defaults.
         self.assertTrue(episode._hanging_actions_end["agent_4"] is not None)
-        # Assert that the reward buffers of agents 3 and 5 are at 1.0.
+        # Assert that the reward caches of agents 3 and 5 are there.
+        # For agent_5 (b/c it has never done anything), we add to the begin cache.
         check(episode._hanging_rewards_end["agent_3"], 2.2)
-        check(episode._hanging_rewards_end["agent_5"], 1.0)
+        check(episode._hanging_rewards_begin["agent_5"], 1.0)
 
     def test_get_observations(self):
         # Generate simple records for a multi agent environment.
