@@ -248,10 +248,11 @@ class ImpalaTorchPolicy(
             # TorchPolicyV2.__init__.
             lr_schedule_additional_args = []
             if config.get("_separate_vf_optimizer"):
-                lr_schedule_additional_args = [
-                    config["_lr_vf"][0][1],
-                    config["_lr_vf"]
-                ] if isinstance(config["_lr_vf"], list) else [config["_lr_vf"], None]
+                lr_schedule_additional_args = (
+                    [config["_lr_vf"][0][1], config["_lr_vf"]]
+                    if isinstance(config["_lr_vf"], (list, tuple))
+                    else [config["_lr_vf"], None]
+                )
             LearningRateSchedule.__init__(
                 self, config["lr"], config["lr_schedule"], *lr_schedule_additional_args
             )
