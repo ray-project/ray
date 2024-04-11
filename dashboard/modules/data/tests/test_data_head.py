@@ -7,7 +7,7 @@ import pytest
 # For local testing on a Macbook, set `export TEST_ON_DARWIN=1`.
 TEST_ON_DARWIN = os.environ.get("TEST_ON_DARWIN", "0") == "1"
 
-DATA_HEAD_URLS = {"GET": "http://localhost:8265/api/data/datasets"}
+DATA_HEAD_URLS = {"GET": "http://localhost:8265/api/data/datasets/{job_id}"}
 
 DATA_SCHEMA = [
     "state",
@@ -42,7 +42,7 @@ def test_get_datasets():
     ds._set_name("data_head_test")
     ds.materialize()
 
-    data = requests.get(DATA_HEAD_URLS["GET"]).json()
+    data = requests.get(DATA_HEAD_URLS["GET"], params={"job_id": "01000000"}).json()
 
     assert len(data["datasets"]) == 1
     assert sorted(data["datasets"][0].keys()) == sorted(RESPONSE_SCHEMA)
