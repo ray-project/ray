@@ -308,7 +308,10 @@ class ActorDiedError(RayActorError):
         actor_init_failed = False
         preempted = False
 
-        if isinstance(cause, RayTaskError):
+        if not cause:
+            # Use the base error message.
+            pass
+        elif isinstance(cause, RayTaskError):
             actor_init_failed = True
             actor_id = cause._actor_id
             error_msg = (
