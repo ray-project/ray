@@ -960,9 +960,6 @@ def test_random_sample(ray_start_regular_shared):
     ds = ray.data.range(10, override_num_blocks=2)
     ensure_sample_size_close(ds)
 
-    ds = ray.data.range(10, override_num_blocks=2)
-    ensure_sample_size_close(ds)
-
     ds = ray.data.range_tensor(5, override_num_blocks=2, shape=(2, 2))
     ensure_sample_size_close(ds)
 
