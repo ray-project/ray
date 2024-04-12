@@ -138,13 +138,13 @@ If ``max_restarts`` is set, you can also allow Ray to automatically restart the 
 Unavailable actors
 ----------------------
 
-When an actor can't accept method calls, a ``ray.get`` on the method's returned return object reference may raise
+When an actor can't accept method calls, a ``ray.get`` on the method's returned object reference may raise
 ``ActorUnavailableError``. This exception indicates the actor isn't accessible at the
 moment, but may recover after waiting and retrying. Typical cases include:
 
-- The actor is restarting. For example, it's waiting for resources or running the class constructor in the restarting.
-- The actor is experiencing transient network issues, like connection breaks.
-- The actor is dead but the death hasn't yet been reported to the system.
+- The actor is restarting. For example, it's waiting for resources or running the class constructor during the restart.
+- The actor is experiencing transient network issues, like connection outages.
+- The actor is dead, but the death hasn't yet been reported to the system.
 
 Actor method calls are at-most-once execution. When a ``ray.get()`` call raises the ``ActorUnavailableError`` exception, there's no guarantee on
 whether the actor executed the task or not. If the method has side effects, they may or may not
