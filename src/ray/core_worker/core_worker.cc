@@ -1801,7 +1801,8 @@ Status CoreWorker::GetLocationFromOwner(
 
     // Calculate the number of batches
     // Use the same config from worker_fetch_request_size
-    int64_t batch_size = RayConfig::instance().worker_fetch_request_size();
+    size_t batch_size =
+        static_cast<size_t>(RayConfig::instance().worker_fetch_request_size());
 
     for (size_t batch_start = 0; batch_start < owner_object_ids.size();
          batch_start += batch_size) {

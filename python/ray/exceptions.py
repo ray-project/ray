@@ -1,6 +1,7 @@
+import logging
 import os
 from traceback import format_exception
-from typing import Optional, Union
+from typing import Optional, Type, Union
 
 import colorama
 
@@ -17,6 +18,8 @@ from ray.core.generated.common_pb2 import (
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 import setproctitle
+
+logger = logging.getLogger(__name__)
 
 
 @PublicAPI
@@ -131,18 +134,10 @@ class RayTaskError(RayError):
         self.cause = cause
         assert traceback_str is not None
 
-    def as_instanceof_cause(self):
-        """Returns an exception that is an instance of the cause's class.
-
-        The returned exception will inherit from both RayTaskError and the
-        cause class and will contain all of the attributes of the cause
-        exception.
-        """
-
+    def make_dual_exception_type(self) -> Type:
+        """Makes a Type that inherits from both RayTaskError and the type of
+        `self.cause`. Raises TypeError if the cause class can't be subclassed"""
         cause_cls = self.cause.__class__
-        if issubclass(RayTaskError, cause_cls):
-            return self  # already satisfied
-
         error_msg = str(self)
 
         class cls(RayTaskError, cause_cls):
@@ -163,7 +158,33 @@ class RayTaskError(RayError):
         cls.__name__ = name
         cls.__qualname__ = name
 
-        return cls(self.cause)
+        return cls
+
+    def as_instanceof_cause(self):
+        """Returns an exception that's an instance of the cause's class.
+
+        The returned exception inherits from both RayTaskError and the
+        cause class and contains all of the attributes of the cause
+        exception.
+
+        If the cause class can't be subclassed, issues a warning and returns `self`.
+        """
+        cause_cls = self.cause.__class__
+        if issubclass(RayTaskError, cause_cls):
+            return self  # already satisfied
+
+        try:
+            dual_cls = self.make_dual_exception_type()
+        except TypeError as e:
+            logger.warning(
+                f"User exception type {type(self.cause)} in RayTaskError can't"
+                " be subclassed! This exception is raised as"
+                " RayTaskError only. You can use `ray_task_error.cause` to"
+                f" access the user exception. Failure in subclassing: {e}"
+            )
+            return self
+
+        return dual_cls(self.cause)
 
     def __str__(self):
         """Format a RayTaskError as a string."""
