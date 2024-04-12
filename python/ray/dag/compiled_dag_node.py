@@ -82,7 +82,7 @@ def do_exec_compiled_task(
             res = None
             try:
                 res = self._input_reader.begin_read()
-            except ValueError:
+            except BlockingIOError:
                 pass
             if res is None:
                 break
@@ -110,7 +110,7 @@ def do_exec_compiled_task(
 
             try:
                 self._input_reader.end_read()
-            except ValueError:
+            except BlockingIOError:
                 pass
 
     except Exception:

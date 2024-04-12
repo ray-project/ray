@@ -188,7 +188,7 @@ Status MutableObjectManager::WriteAcquire(const ObjectID &object_id,
                                           std::shared_ptr<Buffer> &data) {
   Channel *channel = GetChannel(object_id);
   if (!channel) {
-    return Status::ObjectNotFound("Channel has not been registered");
+    return Status::IOError("Channel has not been registered");
   }
   RAY_CHECK(!channel->written) << "You must call WriteAcquire() before WriteRelease()";
 
@@ -205,8 +205,7 @@ Status MutableObjectManager::WriteAcquire(const ObjectID &object_id,
 
   PlasmaObjectHeader::Semaphores sem;
   if (!GetSemaphores(object_id, sem)) {
-    return Status::ObjectNotFound(
-        "Channel has not been registered (cannot get semaphores)");
+    return Status::IOError("Channel has not been registered (cannot get semaphores)");
   }
   RAY_RETURN_NOT_OK(
       object->header->WriteAcquire(sem, data_size, metadata_size, num_readers));
@@ -222,14 +221,13 @@ Status MutableObjectManager::WriteAcquire(const ObjectID &object_id,
 Status MutableObjectManager::WriteRelease(const ObjectID &object_id) {
   Channel *channel = GetChannel(object_id);
   if (!channel) {
-    return Status::ObjectNotFound("Channel has not been registered");
+    return Status::IOError("Channel has not been registered");
   }
   RAY_CHECK(channel->written) << "You must call WriteAcquire() before WriteRelease()";
 
   PlasmaObjectHeader::Semaphores sem;
   if (!GetSemaphores(object_id, sem)) {
-    return Status::ObjectNotFound(
-        "Channel has not been registered (cannot get semaphores)");
+    return Status::IOError("Channel has not been registered (cannot get semaphores)");
   }
   std::unique_ptr<plasma::MutableObject> &object = channel->mutable_object;
   RAY_RETURN_NOT_OK(object->header->WriteRelease(sem));
@@ -242,7 +240,7 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
     ABSL_NO_THREAD_SAFETY_ANALYSIS {
   Channel *channel = GetChannel(object_id);
   if (!channel) {
-    return Status::ObjectNotFound("Channel has not been registered");
+    return Status::IOError("Channel has not been registered");
   }
   // This lock ensures that there is only one reader at a time. The lock is released in
   // `ReadRelease()`.
@@ -250,8 +248,7 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
 
   PlasmaObjectHeader::Semaphores sem;
   if (!GetSemaphores(object_id, sem)) {
-    return Status::ObjectNotFound(
-        "Channel has not been registered (cannot get semaphores)");
+    return Status::IOError("Channel has not been registered (cannot get semaphores)");
   }
   int64_t version_read = 0;
   RAY_RETURN_NOT_OK(channel->mutable_object->header->ReadAcquire(
@@ -280,13 +277,12 @@ Status MutableObjectManager::ReadRelease(const ObjectID &object_id)
     ABSL_NO_THREAD_SAFETY_ANALYSIS {
   Channel *channel = GetChannel(object_id);
   if (!channel) {
-    return Status::ObjectNotFound("Channel has not been registered");
+    return Status::IOError("Channel has not been registered");
   }
 
   PlasmaObjectHeader::Semaphores sem;
   if (!GetSemaphores(object_id, sem)) {
-    return Status::ObjectNotFound(
-        "Channel has not been registered (cannot get semaphores)");
+    return Status::IOError("Channel has not been registered (cannot get semaphores)");
   }
   RAY_RETURN_NOT_OK(
       channel->mutable_object->header->ReadRelease(sem, channel->next_version_to_read));
@@ -304,14 +300,13 @@ Status MutableObjectManager::SetError(const ObjectID &object_id) {
   if (channel) {
     PlasmaObjectHeader::Semaphores sem;
     if (!GetSemaphores(object_id, sem)) {
-      return Status::ObjectNotFound(
-          "Channel has not been registered (cannot get semaphores)");
+      return Status::IOError("Channel has not been registered (cannot get semaphores)");
     }
     channel->mutable_object->header->SetErrorUnlocked(sem);
     channel->reader_registered = false;
     channel->writer_registered = false;
   } else {
-    return Status::ObjectNotFound("Channel has not been registered");
+    return Status::IOError("Channel has not been registered");
   }
   return Status::OK();
 }

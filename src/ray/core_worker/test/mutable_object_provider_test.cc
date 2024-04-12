@@ -35,6 +35,8 @@ namespace {
 
 class TestPlasma : public plasma::PlasmaClientInterface {
  public:
+  ~TestPlasma() {}
+
   Status Release(const ObjectID &object_id) override { return Status::OK(); }
 
   Status Disconnect() override { return Status::OK(); }
