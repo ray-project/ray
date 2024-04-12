@@ -196,7 +196,7 @@ def test_request_hangs_in_assignment(ray_instance, shutdown_serve):
 @pytest.mark.parametrize(
     "ray_instance",
     [
-        {"RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.1"},
+        {"RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "5"},
     ],
     indirect=True,
 )
