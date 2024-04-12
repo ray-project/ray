@@ -28,7 +28,9 @@ def test_user_exception(caplog, propagate_logs, ray_start_regular_shared):
     ), caplog.records
 
     assert any(
-        record.levelno == logging.DEBUG and "Full stack trace:" in record.message
+        record.levelno == logging.ERROR
+        and "Full stack trace:" in record.message
+        and record.hide
         for record in caplog.records
     ), caplog.records
 
@@ -57,7 +59,9 @@ def test_system_exception(caplog, propagate_logs, ray_start_regular_shared):
     ), caplog.records
 
     assert any(
-        record.levelno == logging.DEBUG and "Full stack trace:" in record.message
+        record.levelno == logging.ERROR
+        and "Full stack trace:" in record.message
+        and record.hide
         for record in caplog.records
     ), caplog.records
 

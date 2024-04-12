@@ -10,6 +10,19 @@ from ray.rllib.utils.test_utils import (
 )
 from ray.tune.registry import get_trainable_cls
 
+""" Example using connectors (V2) for frame-stacking in Atari environments.
+
+How to run this script
+----------------------
+`python [script file name].py --enable-new-api-stack`
+For debugging, use the following additional command line options
+`--no-tune --num-env-runners=0`
+which should allow you to set breakpoints anywhere in the RLlib code and
+have the execution stop there for inspection and debugging.
+For logging to your WandB account, use:
+`--wandb-key=[your WandB API key] --wandb-project=[some project name]
+--wandb-run-name=[optional: WandB run name (within the defined project)]`
+"""
 
 # Read in common example script command line arguments.
 parser = add_rllib_example_script_args(
@@ -85,7 +98,7 @@ if __name__ == "__main__":
     else:
         tune.register_env("env", _env_creator)
 
-    config = (
+    base_config = (
         get_trainable_cls(args.algo)
         .get_default_config()
         .environment(
@@ -125,30 +138,34 @@ if __name__ == "__main__":
         )
     )
     if args.enable_new_api_stack:
-        config = config.rl_module(
-            model_config_dict={
-                "vf_share_layers": True,
-                # "conv_filters": [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
-                "conv_activation": "relu",
-                "post_fcnet_hiddens": [256],
-                "uses_new_env_runners": True,
-            }
+        base_config = base_config.rl_module(
+            model_config_dict=dict(
+                {
+                    "vf_share_layers": True,
+                    "conv_filters": [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
+                    "conv_activation": "relu",
+                    "post_fcnet_hiddens": [256],
+                    "uses_new_env_runners": True,
+                },
+            ),
         )
     else:
-        config = config.training(
-            model={
+        base_config = base_config.training(
+            {
                 "vf_share_layers": True,
-                # "conv_filters": [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
+                "conv_filters": [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
                 "conv_activation": "relu",
                 "post_fcnet_hiddens": [256],
+                "uses_new_env_runners": False,
             }
         )
+
     # Add a simple multi-agent setup.
     if args.num_agents > 0:
-        config = config.multi_agent(
+        base_config.multi_agent(
             policies={f"p{i}" for i in range(args.num_agents)},
             policy_mapping_fn=lambda aid, *a, **kw: f"p{aid}",
         )
 
     # Run everything as configured.
-    run_rllib_example_script_experiment(config, args)
+    run_rllib_example_script_experiment(base_config, args)

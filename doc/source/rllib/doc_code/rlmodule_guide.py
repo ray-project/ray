@@ -417,7 +417,7 @@ module_spec = SingleAgentRLModuleSpec(
     # If we want to use this externally created module in the algorithm,
     # we need to provide the same config as the algorithm. Any changes to
     # the defaults can be given via the right side of the `|` operator.
-    model_config_dict=config.module_config | {"fcnet_hiddens": [32]},
+    model_config_dict=config.model_config | {"fcnet_hiddens": [32]},
     catalog_class=PPOCatalog,
 )
 module = module_spec.build()
