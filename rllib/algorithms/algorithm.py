@@ -132,12 +132,12 @@ from ray.rllib.utils.typing import (
     TensorStructType,
     TensorType,
 )
+from ray.train.constants import DEFAULT_STORAGE_PATH
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.experiment.trial import ExportFormat
 from ray.tune.logger import Logger, UnifiedLogger
 from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.tune.resources import Resources
-from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.trainable import Trainable
 from ray.util import log_once
 from ray.util.timer import _Timer
@@ -466,11 +466,11 @@ class Algorithm(Trainable, AlgorithmBase):
             timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
             env_descr_for_dir = re.sub("[/\\\\]", "-", str(env_descr))
             logdir_prefix = f"{str(self)}_{env_descr_for_dir}_{timestr}"
-            if not os.path.exists(DEFAULT_RESULTS_DIR):
+            if not os.path.exists(DEFAULT_STORAGE_PATH):
                 # Possible race condition if dir is created several times on
                 # rollout workers
-                os.makedirs(DEFAULT_RESULTS_DIR, exist_ok=True)
-            logdir = tempfile.mkdtemp(prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
+                os.makedirs(DEFAULT_STORAGE_PATH, exist_ok=True)
+            logdir = tempfile.mkdtemp(prefix=logdir_prefix, dir=DEFAULT_STORAGE_PATH)
 
             # Allow users to more precisely configure the created logger
             # via "logger_config.type".
@@ -955,40 +955,38 @@ class Algorithm(Trainable, AlgorithmBase):
                 agent_steps,
                 batches,
             ) = self._evaluate_on_local_env_runner(self.workers.local_worker())
-        else:
-            # self.evaluation_workers.probe_unhealthy_workers()
-            # There is only a local eval EnvRunner -> Run on that.
-            if self.evaluation_workers.num_healthy_remote_workers() == 0:
+        # There is only a local eval EnvRunner -> Run on that.
+        elif self.evaluation_workers.num_healthy_remote_workers() == 0:
+            (
+                eval_results,
+                env_steps,
+                agent_steps,
+                batches,
+            ) = self._evaluate_on_local_env_runner(
+                self.evaluation_workers.local_worker()
+            )
+        # There are healthy remote evaluation workers -> Run on these.
+        elif self.evaluation_workers.num_healthy_remote_workers() > 0:
+            # Running in automatic duration mode (parallel with training step).
+            if self.config.evaluation_duration == "auto":
+                assert parallel_train_future is not None
                 (
                     eval_results,
                     env_steps,
                     agent_steps,
                     batches,
-                ) = self._evaluate_on_local_env_runner(
-                    self.evaluation_workers.local_worker()
-                )
-            # There are healthy remote evaluation workers -> Run on these.
-            elif self.evaluation_workers.num_healthy_remote_workers() > 0:
-                # Running in automatic duration mode (parallel with training step).
-                if self.config.evaluation_duration == "auto":
-                    assert parallel_train_future is not None
-                    (
-                        eval_results,
-                        env_steps,
-                        agent_steps,
-                        batches,
-                    ) = self._evaluate_with_auto_duration(parallel_train_future)
-                # Running with a fixed amount of data to sample.
-                else:
-                    (
-                        eval_results,
-                        env_steps,
-                        agent_steps,
-                        batches,
-                    ) = self._evaluate_with_fixed_duration()
-            # Can't find a good way to run this evaluation -> Wait for next iteration.
+                ) = self._evaluate_with_auto_duration(parallel_train_future)
+            # Running with a fixed amount of data to sample.
             else:
-                pass
+                (
+                    eval_results,
+                    env_steps,
+                    agent_steps,
+                    batches,
+                ) = self._evaluate_with_fixed_duration()
+        # Can't find a good way to run this evaluation -> Wait for next iteration.
+        else:
+            pass
 
         # TODO: Don't dump sampler results into top-level.
         eval_results = dict({"sampler_results": eval_results}, **eval_results)
@@ -1140,6 +1138,7 @@ class Algorithm(Trainable, AlgorithmBase):
         env_steps = agent_steps = 0
         train_mean_time = self._timers[TRAINING_ITERATION_TIMER].mean
         t0 = time.time()
+        algo_iteration = self.iteration
 
         _round = -1
         while (
@@ -1175,7 +1174,7 @@ class Algorithm(Trainable, AlgorithmBase):
 
                 self.evaluation_workers.foreach_worker_async(
                     func=functools.partial(
-                        _env_runner_remote, num=_num, round=_round, iter=self.iteration
+                        _env_runner_remote, num=_num, round=_round, iter=algo_iteration
                     ),
                     healthy_only=True,
                 )
@@ -1190,9 +1189,8 @@ class Algorithm(Trainable, AlgorithmBase):
                     all_metrics.extend(metrics)
             # Old API Stack -> RolloutWorkers return batches.
             else:
-                iter = self.iteration
                 self.evaluation_workers.foreach_worker_async(
-                    func=lambda w: (w.sample(), w.get_metrics(), iter),
+                    func=lambda w: (w.sample(), w.get_metrics(), algo_iteration),
                     healthy_only=True,
                 )
                 results = self.evaluation_workers.fetch_ready_async_reqs(
@@ -1287,6 +1285,8 @@ class Algorithm(Trainable, AlgorithmBase):
 
         t_last_result = time.time()
         _round = -1
+        algo_iteration = self.iteration
+
         # In case all the remote evaluation workers die during a round of
         # evaluation, we need to stop.
         while num_healthy_workers > 0:
@@ -1304,7 +1304,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 ]
                 self.evaluation_workers.foreach_worker_async(
                     func=functools.partial(
-                        _env_runner_remote, num=_num, round=_round, iter=self.iteration
+                        _env_runner_remote, num=_num, round=_round, iter=algo_iteration
                     ),
                     healthy_only=True,
                 )
@@ -1345,9 +1345,8 @@ class Algorithm(Trainable, AlgorithmBase):
                     )
                     if i * units_per_healthy_remote_worker < units_left_to_do
                 ]
-                iter = self.iteration
                 self.evaluation_workers.foreach_worker_async(
-                    func=lambda w: (w.sample(), w.get_metrics(), iter),
+                    func=lambda w: (w.sample(), w.get_metrics(), algo_iteration),
                     remote_worker_ids=selected_eval_worker_ids,
                 )
                 results = self.evaluation_workers.fetch_ready_async_reqs(
@@ -2239,23 +2238,6 @@ class Algorithm(Trainable, AlgorithmBase):
             raise KeyError(f"Policy with ID {policy_id} not found in Algorithm!")
         policy.export_checkpoint(export_dir)
 
-    @DeveloperAPI
-    def import_policy_model_from_h5(
-        self,
-        import_file: str,
-        policy_id: PolicyID = DEFAULT_POLICY_ID,
-    ) -> None:
-        """Imports a policy's model with given policy_id from a local h5 file.
-
-        Args:
-            import_file: The h5 file to import from.
-            policy_id: Optional policy id to import into.
-
-        """
-        self.get_policy(policy_id).import_model_from_h5(import_file)
-        # Sync new weights to remote workers.
-        self._sync_weights_to_workers(worker_set=self.workers)
-
     @override(Trainable)
     def save_checkpoint(self, checkpoint_dir: str) -> None:
         """Exports checkpoint to a local directory.
@@ -2585,17 +2567,6 @@ class Algorithm(Trainable, AlgorithmBase):
                 use_remote_data_for_update=config.use_worker_filter_stats,
             )
 
-    @DeveloperAPI
-    def _sync_weights_to_workers(
-        self,
-        *,
-        worker_set: WorkerSet,
-    ) -> None:
-        """Sync "main" weights to given WorkerSet or list of workers."""
-        # Broadcast the new policy weights to all remote workers in worker_set.
-        logger.info("Synchronizing weights to workers.")
-        worker_set.sync_weights()
-
     @classmethod
     @override(Trainable)
     def resource_help(cls, config: Union[AlgorithmConfig, AlgorithmConfigDict]) -> str:
@@ -2796,19 +2767,21 @@ class Algorithm(Trainable, AlgorithmBase):
 
         if hasattr(self, "workers") and "worker" in state and state["worker"]:
             self.workers.local_worker().set_state(state["worker"])
-            remote_state = ray.put(state["worker"])
+            remote_state_ref = ray.put(state["worker"])
             self.workers.foreach_worker(
-                lambda w: w.set_state(ray.get(remote_state)),
+                lambda w: w.set_state(ray.get(remote_state_ref)),
                 local_worker=False,
                 healthy_only=False,
             )
             if self.evaluation_workers:
+                # Avoid `state` being pickled into the remote function below.
+                _eval_policy_mapping_fn = state.get("eval_policy_mapping_fn")
 
                 def _setup_eval_worker(w):
-                    w.set_state(ray.get(remote_state))
+                    w.set_state(ray.get(remote_state_ref))
                     # Override `policy_mapping_fn` as it might be different for eval
                     # workers.
-                    w.set_policy_mapping_fn(state.get("eval_policy_mapping_fn"))
+                    w.set_policy_mapping_fn(_eval_policy_mapping_fn)
 
                 # If evaluation workers are used, also restore the policies
                 # there in case they are used for evaluation purpose.
@@ -3295,14 +3268,22 @@ class Algorithm(Trainable, AlgorithmBase):
             alg = "USER_DEFINED"
         record_extra_usage_tag(TagKey.RLLIB_ALGORITHM, alg)
 
-    @Deprecated(new="AlgorithmConfig.validate()", error=True)
-    def validate_config(self, config):
-        pass
+    @Deprecated(error=False)
+    def import_policy_model_from_h5(
+        self,
+        import_file: str,
+        policy_id: PolicyID = DEFAULT_POLICY_ID,
+    ) -> None:
+        """Imports a policy's model with given policy_id from a local h5 file.
 
+        Args:
+            import_file: The h5 file to import from.
+            policy_id: Optional policy id to import into.
 
-# TODO: Create a dict that throw a deprecation warning once we have fully moved
-#  to AlgorithmConfig() objects (some algos still missing).
-COMMON_CONFIG: AlgorithmConfigDict = AlgorithmConfig(Algorithm).to_dict()
+        """
+        self.get_policy(policy_id).import_model_from_h5(import_file)
+        # Sync new weights to remote workers.
+        self.workers.sync_weights()
 
 
 class TrainIterCtx:
@@ -3369,9 +3350,9 @@ class TrainIterCtx:
                 self.algo._counters[NUM_ENV_STEPS_TRAINED] - self.init_env_steps_trained
             )
 
-        min_t = self.algo.config["min_time_s_per_iteration"]
-        min_sample_ts = self.algo.config["min_sample_timesteps_per_iteration"]
-        min_train_ts = self.algo.config["min_train_timesteps_per_iteration"]
+        min_t = self.algo.config.min_time_s_per_iteration
+        min_sample_ts = self.algo.config.min_sample_timesteps_per_iteration
+        min_train_ts = self.algo.config.min_train_timesteps_per_iteration
         # Repeat if not enough time has passed or if not enough
         # env|train timesteps have been processed (or these min
         # values are not provided by the user).

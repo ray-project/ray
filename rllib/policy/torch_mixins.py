@@ -12,8 +12,9 @@ torch, nn = try_import_torch()
 class LearningRateSchedule:
     """Mixin for TorchPolicy that adds a learning rate schedule."""
 
-    def __init__(self, lr, lr_schedule):
+    def __init__(self, lr, lr_schedule, lr2=None, lr2_schedule=None):
         self._lr_schedule = None
+        self._lr2_schedule = None
         # Disable any scheduling behavior related to learning if Learner API is active.
         # Schedules are handled by Learner class.
         if lr_schedule is None:
@@ -23,15 +24,29 @@ class LearningRateSchedule:
                 lr_schedule, outside_value=lr_schedule[-1][-1], framework=None
             )
             self.cur_lr = self._lr_schedule.value(0)
+        if lr2_schedule is None:
+            self.cur_lr2 = lr2
+        else:
+            self._lr2_schedule = PiecewiseSchedule(
+                lr2_schedule, outside_value=lr2_schedule[-1][-1], framework=None
+            )
+            self.cur_lr2 = self._lr2_schedule.value(0)
 
     @override(Policy)
     def on_global_var_update(self, global_vars):
         super().on_global_var_update(global_vars)
-        if self._lr_schedule and not self.config.get("_enable_new_api_stack", False):
-            self.cur_lr = self._lr_schedule.value(global_vars["timestep"])
-            for opt in self._optimizers:
+        if not self.config.get("_enable_new_api_stack", False):
+            if self._lr_schedule:
+                self.cur_lr = self._lr_schedule.value(global_vars["timestep"])
+                for opt in self._optimizers:
+                    for p in opt.param_groups:
+                        p["lr"] = self.cur_lr
+            if self._lr2_schedule:
+                assert len(self._optimizers) == 2
+                self.cur_lr2 = self._lr2_schedule.value(global_vars["timestep"])
+                opt = self._optimizers[1]
                 for p in opt.param_groups:
-                    p["lr"] = self.cur_lr
+                    p["lr"] = self.cur_lr2
 
 
 @OldAPIStack
