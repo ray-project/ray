@@ -55,7 +55,7 @@ class InfiniteLookbackBuffer:
 
     def concat(self, other: "InfiniteLookbackBuffer") -> None:
         """Concatenates the data of `other` (w/o its lookback) to `self`.
-        
+
         Args:
             other: The other InfiniteLookbackBuffer to be concatenated to self.
         """

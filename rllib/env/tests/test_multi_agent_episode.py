@@ -3095,7 +3095,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
                 {"a1": 3},
                 {"a1": 4},  # <- split here, then concat
                 {"a0": 5, "a1": 5},
-                {"a0": 6},
+                {"a0": 6},  # <- split here, then concat
                 {"a0": 7, "a1": 7},  # <- split here, then concat
                 {"a0": 8},  # <- split here, then concat
                 {"a1": 9},
@@ -3104,8 +3104,8 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check(len(base_episode), 9)
 
         # Split it into two slices.
-        for split_ in [(4, (4, 5)), (7, (7, 2)), (8, (8, 1))]:
-            episode_1, episode_2 = base_episode[:split_[0]], base_episode[split_[0]:]
+        for split_ in [(4, (4, 5)), (6, (6, 3)), (7, (7, 2)), (8, (8, 1))]:
+            episode_1, episode_2 = base_episode[: split_[0]], base_episode[split_[0] :]
             check(len(episode_1), split_[1][0])
             check(len(episode_2), split_[1][1])
             # Re-concat these slices.
@@ -3133,7 +3133,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         observations = [
             {"a0": 0, "a1": 0},  # 0
             {"a0": 1},  # 1
-            {"a0": 2},  # 2
+            {"a0": 2},  # 2  <- split here, then concat
             {"a0": 3},  # 3
             {"a0": 4},  # 4
         ]
@@ -3152,12 +3152,10 @@ class TestMultiAgentEpisode(unittest.TestCase):
             len_lookback_buffer=0,
         )
         check(len(base_episode), 4)
-        check(base_episode._agent_buffered_rewards, {"a1": 6.0})
+        check(base_episode._hanging_rewards_end, {"a1": 6.0})
         episode_1, episode_2 = base_episode[:2], base_episode[2:]
         check(len(episode_1), 2)
         check(len(episode_2), 2)
-        check(episode_1._agent_buffered_rewards, {})
-        check(episode_2._agent_buffered_rewards, {"a1": 6.0})
         # Re-concat these slices.
         episode_1.concat_episode(episode_2)
         check(len(episode_1), 4)
@@ -3177,7 +3175,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             (a0.rewards, a1.rewards),
             ([0, 0.1, 0.2, 0.3], []),
         )
-        check(episode_1._agent_buffered_rewards, {"a1": 6.0})
+        check(episode_1._hanging_rewards_end, {"a1": 6.0})
         check((a0.is_done, a1.is_done), (False, False))
 
     def test_get_return(self):

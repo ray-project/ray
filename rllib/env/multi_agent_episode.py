@@ -774,11 +774,10 @@ class MultiAgentEpisode:
 
         In order for this to work, both chunks (`self` and `other`) must fit
         together. This is checked by the IDs (must be identical), the time step counters
-        (`self.t` must be the same as `episode_chunk.t_started`), as well as the
-        observations/infos at the concatenation boundaries (`self.observations[-1]`
-        must match `episode_chunk.observations[0]`). Also, `self.is_done` must
-        not be True, meaning `self.is_terminated` and `self.is_truncated` are both
-        False.
+        (`self.env_t` must be the same as `episode_chunk.env_t_started`), as well as the
+        observations/infos of the individual agents at the concatenation boundaries.
+        Also, `self.is_done` must not be True, meaning `self.is_terminated` and
+        `self.is_truncated` are both False.
 
         Args:
             other: The other `MultiAgentEpisode` to be concatenated to this one.
@@ -840,9 +839,9 @@ class MultiAgentEpisode:
                     self._hanging_actions_end[agent_id] = copy.deepcopy(
                         other._hanging_actions_end[agent_id]
                     )
-                    self._hanging_rewards_end[agent_id] = (
-                        other._hanging_rewards_end[agent_id]
-                    )
+                    self._hanging_rewards_end[agent_id] = other._hanging_rewards_end[
+                        agent_id
+                    ]
                     self._hanging_extra_model_outputs_end[agent_id] = copy.deepcopy(
                         other._hanging_extra_model_outputs_end[agent_id]
                     )
@@ -2540,9 +2539,9 @@ class MultiAgentEpisode:
             self._hanging_actions_begin[agent_id] = copy.deepcopy(
                 other._hanging_actions_begin[agent_id]
             )
-            self._hanging_rewards_begin[agent_id] = (
-                other._hanging_rewards_begin[agent_id]
-            )
+            self._hanging_rewards_begin[agent_id] = other._hanging_rewards_begin[
+                agent_id
+            ]
             self._hanging_extra_model_outputs_begin[agent_id] = copy.deepcopy(
                 other._hanging_extra_model_outputs_begin[agent_id]
             )
@@ -2550,9 +2549,7 @@ class MultiAgentEpisode:
             self._hanging_actions_end[agent_id] = copy.deepcopy(
                 other._hanging_actions_end[agent_id]
             )
-            self._hanging_rewards_end[agent_id] = (
-                other._hanging_rewards_end[agent_id]
-            )
+            self._hanging_rewards_end[agent_id] = other._hanging_rewards_end[agent_id]
             self._hanging_extra_model_outputs_end[agent_id] = copy.deepcopy(
                 other._hanging_extra_model_outputs_end[agent_id]
             )
