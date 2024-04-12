@@ -254,8 +254,19 @@ assert ray.get_runtime_context().get_job_id() == '02000000'
     run_string_as_driver(script.format(address=call_ray_start_2, val=2))
 
 
-@pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
+def op_or_print(lhs, rhs, op):
+    """Returns op(lhs, rhs), and if not, prints the difference."""
+    op_result = op(len(lhs), len(rhs))
+    if not op_result:
+        print(f"want: {len(lhs)=} {op} {len(rhs)=}, got diff:  {(rhs-lhs)=}")
+        # print(rhs - lhs)
+    return op_result
+
+
+# @pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
 def test_gcs_connection_no_leak(ray_start_cluster):
+    from operator import lt, ge
+
     cluster = ray_start_cluster
     head_node = cluster.add_node()
 
@@ -264,17 +275,17 @@ def test_gcs_connection_no_leak(ray_start_cluster):
 
     ray.init(cluster.address)
 
-    def get_gcs_num_of_connections():
+    def get_gcs_connections():
         p = psutil.Process(gcs_server_pid)
         print(">>", len(p.connections()))
-        return len(p.connections())
+        return set(p.connections())
 
     # Wait for everything to be ready.
     import time
 
     time.sleep(10)
 
-    fds_without_workers = get_gcs_num_of_connections()
+    conns_without_workers = get_gcs_connections()
 
     @ray.remote
     class A:
@@ -289,21 +300,27 @@ def test_gcs_connection_no_leak(ray_start_cluster):
     # Kill the actors
     del actors
 
-    # Make sure the # of fds opened by the GCS dropped.
+    # Make sure the # of conns opened by the GCS dropped.
     # This assumes worker processes are not created after the actor worker
     # processes die.
-    wait_for_condition(lambda: get_gcs_num_of_connections() <= fds_without_workers)
-    num_fds_after_workers_die = get_gcs_num_of_connections()
+    wait_for_condition(
+        lambda: op_or_print(conns_without_workers, get_gcs_connections(), ge)
+    )
+    conns_after_workers_die = get_gcs_connections()
 
     n = cluster.add_node(wait=True)
 
-    # Make sure the # of fds opened by the GCS increased.
-    wait_for_condition(lambda: get_gcs_num_of_connections() > num_fds_after_workers_die)
+    # Make sure the # of conns opened by the GCS increased.
+    wait_for_condition(
+        lambda: op_or_print(conns_after_workers_die, get_gcs_connections(), lt)
+    )
 
     cluster.remove_node(n)
 
-    # Make sure the # of fds opened by the GCS dropped.
-    wait_for_condition(lambda: get_gcs_num_of_connections() <= fds_without_workers)
+    # Make sure the # of conns opened by the GCS dropped.
+    wait_for_condition(
+        lambda: op_or_print(conns_without_workers, get_gcs_connections(), ge)
+    )
 
 
 @pytest.mark.parametrize(

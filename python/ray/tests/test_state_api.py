@@ -3559,6 +3559,7 @@ def test_core_state_api_usage_tags(shutdown_only):
     )
 
 
+# Tests fix for https://github.com/ray-project/ray/issues/44459
 def test_job_info_is_running_task(shutdown_only):
     ray.init()
 
