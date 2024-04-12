@@ -215,7 +215,7 @@ class TestPPO(unittest.TestCase):
             assert len(matching) == 1, matching
             log_std_var = matching[0]
 
-            def get_value():
+            def get_value(fw=fw, log_std_var=log_std_var):
                 if fw == "torch":
                     return log_std_var.detach().cpu().numpy()[0]
                 else:

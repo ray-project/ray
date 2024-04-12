@@ -54,14 +54,14 @@ if __name__ == "__main__":
             vf_clip_param=10.0,
             vf_loss_coeff=0.01,
         )
-        .evaluation(
-            evaluation_num_workers=1,
-            evaluation_parallel_to_training=True,
-            evaluation_interval=1,
-            evaluation_duration=10,
-            evaluation_duration_unit="episodes",
-            evaluation_config={"explore": False},
-        )
+        # .evaluation(
+        #    evaluation_num_workers=1,
+        #    evaluation_parallel_to_training=True,
+        #    evaluation_interval=1,
+        #    evaluation_duration=10,
+        #    evaluation_duration_unit="episodes",
+        #    evaluation_config={"explore": False},
+        # )
     )
     if args.enable_new_api_stack:
         config = config.rl_module(
