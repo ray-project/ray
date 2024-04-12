@@ -260,8 +260,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
 
   absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
       inflight_task_callbacks;
-  std::deque<std::shared_ptr<ClientQueue::PendingTaskWaitingForDeathInfo>>
-      wait_for_death_info_tasks;
+  std::deque<std::shared_ptr<PendingTaskWaitingForDeathInfo>> wait_for_death_info_tasks;
   std::vector<TaskID> task_ids_to_fail;
   ray::rpc::ActorTableData::ActorState new_state;
   {
@@ -299,7 +298,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
       wait_for_death_info_tasks = std::move(queue->second.wait_for_death_info_tasks);
       // Reset the queue
       queue->second.wait_for_death_info_tasks =
-          std::deque<std::shared_ptr<ClientQueue::PendingTaskWaitingForDeathInfo>>();
+          std::deque<std::shared_ptr<PendingTaskWaitingForDeathInfo>>();
     } else if (queue->second.state != rpc::ActorTableData::DEAD) {
       // Only update the actor's state if it is not permanently dead. The actor
       // will eventually get restarted or marked as permanently dead.
@@ -323,7 +322,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
       // This task may have been waiting for dependency resolution, so cancel
       // this first.
       resolver_.CancelDependencyResolution(task_id);
-      bool fail_immediately =
+      bool fail_immediatedly =
           error_info.has_actor_died_error() &&
           error_info.actor_died_error().has_oom_context() &&
           error_info.actor_died_error().oom_context().fail_immediately();
@@ -332,7 +331,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
                                                         &status,
                                                         &error_info,
                                                         /*mark_task_object_failed*/ true,
-                                                        fail_immediately);
+                                                        fail_immediatedly);
     }
     if (!wait_for_death_info_tasks.empty()) {
       RAY_LOG(DEBUG) << "Failing tasks waiting for death info, size="
@@ -348,7 +347,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
       inflight_task_callbacks,
       Status::IOError("Fail all inflight tasks due to actor state change to " +
                       rpc::ActorTableData::ActorState_Name(new_state) +
-                      "from disconnecting actor."));
+                      " from disconnecting actor."));
 }
 
 void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
@@ -356,21 +355,16 @@ void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
   // timeout_error_info. But operating on the queue requires the mu_ lock; while calling
   // FailPendingTask requires the opposite. So we copy the tasks out from the queue within
   // the lock. This requires putting the data into shared_ptr.
-  std::vector<std::shared_ptr<ClientQueue::PendingTaskWaitingForDeathInfo>> timeout_tasks;
+  std::vector<std::shared_ptr<PendingTaskWaitingForDeathInfo>> timeout_tasks;
   int64_t now = current_time_ms();
   {
     absl::MutexLock lock(&mu_);
     for (auto &[actor_id, client_queue] : client_queues_) {
       auto &deque = client_queue.wait_for_death_info_tasks;
-      auto it = deque.begin();
-      while (it != deque.end()) {
-        if ((*it)->deadline_ms < now) {
-          (*it)->actor_preempted = client_queue.preempted;
-          timeout_tasks.push_back(*it);
-          it = deque.erase(it);
-        } else {
-          ++it;  // Only increment if not erasing
-        }
+      auto deque_itr = deque.begin();
+      while (deque_itr != deque.end() && (*deque_itr)->deadline_ms < now) {
+        timeout_tasks.push_back(*deque_itr);
+        deque_itr = deque.erase(deque_itr);
       }
     }
   }
@@ -636,7 +630,7 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
         RAY_CHECK(queue_pair != client_queues_.end());
         auto &queue = queue_pair->second;
         queue.wait_for_death_info_tasks.push_back(
-            std::make_shared<ClientQueue::PendingTaskWaitingForDeathInfo>(
+            std::make_shared<PendingTaskWaitingForDeathInfo>(
                 death_info_grace_period_ms, task_spec, status, error_info));
         RAY_LOG(INFO)
             << "PushActorTask failed because of network error, this task "

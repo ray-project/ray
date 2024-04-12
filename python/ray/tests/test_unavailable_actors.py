@@ -6,7 +6,7 @@ import signal
 
 import ray
 from ray._private.test_utils import close_common_connections
-from ray.exceptions import ActorUnavailableError, RayActorError
+from ray.exceptions import ActorUnavailableError, ActorDiedError
 from typing import Tuple
 
 
@@ -127,9 +127,9 @@ def test_actor_unavailable_restarting(ray_start_regular, caller):
             total += i
             assert ray.get(a.slow_increment.remote(i, 0.1)) == total
 
-        # Kill the actor again. This time it's not going to restart so RayActorError.
+        # Kill the actor again. This time it's not going to restart so ActorDiedError.
         sigkill_actor(a)
-        with pytest.raises(RayActorError):
+        with pytest.raises(ActorDiedError):
             print(ray.get(a.slow_increment.remote(1, 0.1)))
 
     call_from(body, caller)
@@ -144,9 +144,9 @@ def test_actor_unavailable_norestart(ray_start_regular, caller):
         a = Counter.remote()
         assert ray.get(a.read.remote()) == 0
 
-        # Kill the actor process. The actor died permanently so RayActorError.
+        # Kill the actor process. The actor died permanently so ActorDiedError.
         sigkill_actor(a)
-        with pytest.raises(RayActorError):
+        with pytest.raises(ActorDiedError):
             print(ray.get(a.read.remote()))
 
     call_from(body, caller)
@@ -189,42 +189,52 @@ def test_generators_early_stop_unavailable(ray_start_regular, caller):
     call_from(body, caller)
 
 
+@ray.remote(max_restarts=-1, max_task_retries=0)
+class SlowCtor:
+    """
+    An actor that has a slow init. It performs:
+
+    1. sleeps for `init_sleep_s`,
+    2. increments the counter in the init,
+    3. if the counter value before increment is within the `die_range`, raises error.
+
+    To precisely control test behavior, sets infinite restarts, no task retries.
+    """
+
+    def __init__(self, counter: Counter, init_sleep_s, die_range: Tuple[int, int]):
+        count = ray.get(counter.slow_increment.remote(1, 0.1))
+        count -= 1  # we want the count before increment
+        print(f"SlowCtor init! count = {count}, sleeping {init_sleep_s}s...")
+        time.sleep(init_sleep_s)
+        if die_range[0] <= count and count < die_range[1]:
+            msg = (
+                f"die at count {count} because it's in range"
+                f" [{die_range[0]}, {die_range[1]})!"
+            )
+            print(msg)
+            raise ValueError(msg)
+
+    def ping(self, name):
+        print(f"ping from {name}")
+        return f"hello {name}!"
+
+    def getpid(self):
+        return os.getpid()
+
+
 def test_unavailable_then_actor_error(ray_start_regular):
-    @ray.remote(max_restarts=-1, max_task_retries=0)
-    class SlowCtor:
-        """
-        An actor that has a slow init. It increments the counter in the
-        init, and if the counter reaches `die_at_count` after this time's
-        increment, it dies.
-
-        To precisely control test behavior, sets infinite restarts, no task retries.
-        """
-
-        def __init__(self, start_time_s, counter: Counter, die_at_count):
-            count = ray.get(counter.read.remote())
-            print(f"SlowCtor init! count = {count}, sleeping {start_time_s}s...")
-            time.sleep(start_time_s)
-            if count >= die_at_count:
-                raise ValueError(f"die at count {die_at_count}!")
-            else:
-                ray.get(counter.slow_increment.remote(1, 0.1))
-
-        def ping(self, name):
-            print(f"ping from {name}")
-            return f"hello {name}!"
-
-        def getpid(self):
-            return os.getpid()
-
     c = Counter.remote()
-    CTOR_SLEEP_TIME_S = 2
-    DIE_AT_COUNT = 2
-    # The actor spends 2s in the init; it fails after 1 initial start + 1 restart.
-    a = SlowCtor.remote(CTOR_SLEEP_TIME_S, c, DIE_AT_COUNT)
+    # Restart config:
+    # Initial run, Restart #1: ok.
+    # Restart #2, #3: fails, can retry.
+    # Afterwards: no more restarts, any new method call raises ActorDiedError.
+    a = SlowCtor.options(max_restarts=3).remote(
+        counter=c, init_sleep_s=2, die_range=[2, 10000]
+    )
     assert ray.get(a.ping.remote("lemon")) == "hello lemon!"
 
-    # Kill the actor process. The actor will restart so we get a temporal unavailable
-    # actor for 2s.
+    # Kill the actor process. Triggers restart #1. During its __init__, all incoming
+    # calls get ActorUnavailableError.
     sigkill_actor(a)
 
     with pytest.raises(ActorUnavailableError, match="GrpcUnavailable"):
@@ -237,52 +247,27 @@ def test_unavailable_then_actor_error(ray_start_regular):
     time.sleep(3)
     assert ray.get(a.ping.remote("ok")) == "hello ok!"
 
-    # Kill the actor again. First ActorUnavailableError in the init sleep; then the init
-    # raised an exception so RayActorError.
+    # Kill the actor again. Triggers restart #2. However it raises ValueError in init
+    # so it consequently triggers restart #3 and also fails. Afterwards, ActorDiedError
+    # is raised.
     sigkill_actor(a)
     with pytest.raises(ActorUnavailableError):
         print(ray.get(a.ping.remote("unavailable")))
-    time.sleep(3)
-    with pytest.raises(RayActorError, match="an error raised in its creation task"):
+    time.sleep(4)
+    with pytest.raises(ActorDiedError, match="an error raised in its creation task"):
         print(ray.get(a.ping.remote("actor error")))
 
 
-def test_task_retries(ray_start_regular):
-    @ray.remote(max_restarts=-1, max_task_retries=0)
-    class SlowCtor:
-        """
-        An actor that has a slow init. It increments the counter in the init,
-        and if the counter is within the `die_range` it dies.
-
-        To precisely control test behavior, sets infinite restarts, no task retries.
-        """
-
-        def __init__(self, start_time_s, counter: Counter, die_range: Tuple[int, int]):
-            count = ray.get(counter.slow_increment.remote(1, 0.1))
-            print(f"SlowCtor init! count = {count}, sleeping {start_time_s}s...")
-            time.sleep(start_time_s)
-            if die_range[0] <= count and count < die_range[1]:
-                print(
-                    f"die at count {count} because it's in range"
-                    f" [{die_range[0]}, {die_range[1]})!"
-                )
-                sys.exit(1)
-
-        def ping(self, name):
-            print(f"ping from {name}")
-            return f"hello {name}!"
-
-        def getpid(self):
-            return os.getpid()
-
+def test_inf_task_retries(ray_start_regular):
     c = Counter.remote()
-    CTOR_SLEEP_TIME_S = 2
-    # The actor spends 2s in the init; it fails after 1 initial start + 1 restart.
-    a = SlowCtor.remote(CTOR_SLEEP_TIME_S, c, [2, 5])
+    # The actor spends 2s in the init.
+    # Initial start and restart #1 succeeds, but restarts #2, #3, #4 fails. Then all
+    # later restarts succeeds.
+    a = SlowCtor.remote(counter=c, init_sleep_s=2, die_range=[2, 5])
     assert ray.get(a.ping.remote("lemon")) == "hello lemon!"
 
-    # Kill the actor process. The actor will restart so we get a temporal unavailable
-    # actor for 2s.
+    # Kill the actor process. Triggers restart #1. During the init a remote call gets
+    # ActorUnavailableError, and after the init, the actor can receive tasks.
     sigkill_actor(a)
     # Actor is restarting, any method call raises ActorUnavailableError.
     with pytest.raises((ActorUnavailableError)):

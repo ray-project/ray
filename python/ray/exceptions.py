@@ -258,10 +258,11 @@ class RayActorError(RayError):
     the moment. Ray raises subclasses `ActorDiedError` and `ActorUnavailableError`
     respectively.
     """
+
     BASE_ERROR_MSG = "The actor experienced errors before finishing this task."
 
     def __init__(
-        self, 
+        self,
         actor_id: str = None,
         error_msg: str = BASE_ERROR_MSG,
         actor_init_failed: bool = False,
@@ -287,6 +288,7 @@ class RayActorError(RayError):
     def actor_init_failed(self) -> bool:
         return self._actor_init_failed
 
+
 class ActorDiedError(RayActorError):
     """Indicates that the actor died unexpectedly before finishing a task.
 
@@ -301,6 +303,7 @@ class ActorDiedError(RayActorError):
             Theoretically, this should not happen,
             but it is there as a safety check.
     """
+
     BASE_ERROR_MSG = "The actor died unexpectedly before finishing this task."
 
     def __init__(self, cause: Union[RayTaskError, ActorDiedErrorContext] = None):
@@ -355,7 +358,7 @@ class ActorDiedError(RayActorError):
 
     @staticmethod
     def from_task_error(task_error: RayTaskError):
-        return RayActorError(task_error)
+        return ActorDiedError(task_error)
 
 
 @DeveloperAPI
