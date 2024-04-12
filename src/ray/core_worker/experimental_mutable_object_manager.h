@@ -41,6 +41,7 @@ class MutableObjectManager {
 
     // WriteAcquire() sets this to true. WriteRelease() sets this to false.
     bool written = false;
+    bool read = false;
 
     // This mutex protects `next_version_to_read`.
     std::unique_ptr<absl::Mutex> lock;
@@ -141,6 +142,7 @@ class MutableObjectManager {
   ///
   /// \param[in] object_id The ID of the object.
   Status SetError(const ObjectID &object_id);
+  Status SetErrorInternal(const ObjectID &object_id);
 
   /// Sets the error bit on all channels, causing all future readers and writers to raise
   /// an error on acquire.
@@ -187,6 +189,8 @@ class MutableObjectManager {
   // (1) synchronize accesses to the object header and (2) synchronize readers and writers
   // of the mutable object.
   absl::flat_hash_map<ObjectID, PlasmaObjectHeader::Semaphores> semaphores_;
+
+  absl::Mutex destructor_lock_;
 };
 
 }  // namespace experimental

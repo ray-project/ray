@@ -75,12 +75,21 @@ MutableObjectManager::Channel *MutableObjectManager::GetChannel(
 }
 
 MutableObjectManager::~MutableObjectManager() {
+  destructor_lock_.Lock();
+
   // Copy `semaphores_` into `tmp` because `DestroySemaphores()` mutates `semaphores_`.
   absl::flat_hash_map<ObjectID, PlasmaObjectHeader::Semaphores> tmp = semaphores_;
   for (const auto &[object_id, _] : tmp) {
-    (void)SetError(object_id);
+    (void)SetErrorInternal(object_id);
     DestroySemaphores(object_id);
   }
+  for (const auto &[_, channel] : channels_) {
+    if (channel.read) {
+      channel.lock->Unlock();
+    }
+  }
+  channels_.clear();
+  destructor_lock_.Unlock();
 }
 
 PlasmaObjectHeader *MutableObjectManager::GetHeader(const ObjectID &object_id) {
@@ -186,6 +195,8 @@ Status MutableObjectManager::WriteAcquire(const ObjectID &object_id,
                                           int64_t metadata_size,
                                           int64_t num_readers,
                                           std::shared_ptr<Buffer> &data) {
+  absl::ReaderMutexLock guard(&destructor_lock_);
+
   Channel *channel = GetChannel(object_id);
   if (!channel) {
     return Status::IOError("Channel has not been registered");
@@ -219,6 +230,8 @@ Status MutableObjectManager::WriteAcquire(const ObjectID &object_id,
 }
 
 Status MutableObjectManager::WriteRelease(const ObjectID &object_id) {
+  absl::ReaderMutexLock guard(&destructor_lock_);
+
   Channel *channel = GetChannel(object_id);
   if (!channel) {
     return Status::IOError("Channel has not been registered");
@@ -238,6 +251,8 @@ Status MutableObjectManager::WriteRelease(const ObjectID &object_id) {
 Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
                                          std::shared_ptr<RayObject> &result)
     ABSL_NO_THREAD_SAFETY_ANALYSIS {
+  absl::ReaderMutexLock guard(&destructor_lock_);
+
   Channel *channel = GetChannel(object_id);
   if (!channel) {
     return Status::IOError("Channel has not been registered");
@@ -245,9 +260,11 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
   // This lock ensures that there is only one reader at a time. The lock is released in
   // `ReadRelease()`.
   channel->lock->Lock();
+  channel->read = true;
 
   PlasmaObjectHeader::Semaphores sem;
   if (!GetSemaphores(object_id, sem)) {
+    channel->read = false;
     return Status::IOError("Channel has not been registered (cannot get semaphores)");
   }
   int64_t version_read = 0;
@@ -275,6 +292,8 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
 
 Status MutableObjectManager::ReadRelease(const ObjectID &object_id)
     ABSL_NO_THREAD_SAFETY_ANALYSIS {
+  absl::ReaderMutexLock guard(&destructor_lock_);
+
   Channel *channel = GetChannel(object_id);
   if (!channel) {
     return Status::IOError("Channel has not been registered");
@@ -291,11 +310,17 @@ Status MutableObjectManager::ReadRelease(const ObjectID &object_id)
 
   // This lock ensures that there is only one reader at a time. The lock is acquired in
   // `ReadAcquire()`.
+  channel->read = false;
   channel->lock->Unlock();
   return Status::OK();
 }
 
 Status MutableObjectManager::SetError(const ObjectID &object_id) {
+  absl::ReaderMutexLock guard(&destructor_lock_);
+  return SetErrorInternal(object_id);
+}
+
+Status MutableObjectManager::SetErrorInternal(const ObjectID &object_id) {
   Channel *channel = GetChannel(object_id);
   if (channel) {
     PlasmaObjectHeader::Semaphores sem;
@@ -312,9 +337,11 @@ Status MutableObjectManager::SetError(const ObjectID &object_id) {
 }
 
 Status MutableObjectManager::SetError() {
+  absl::ReaderMutexLock guard(&destructor_lock_);
+
   Status ret = Status::OK();
   for (const auto &[object_id, _] : channels_) {
-    ret = SetError(object_id);
+    ret = SetErrorInternal(object_id);
     if (ret.code() != StatusCode::OK) {
       break;
     }
