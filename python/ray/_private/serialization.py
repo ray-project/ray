@@ -35,7 +35,6 @@ from ray.exceptions import (
     OutOfDiskError,
     OwnerDiedError,
     PlasmaObjectNotAvailable,
-    RayActorError,
     RayError,
     RaySystemError,
     RayTaskError,
