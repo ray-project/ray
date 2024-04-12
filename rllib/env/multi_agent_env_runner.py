@@ -734,7 +734,9 @@ class MultiAgentEnvRunner(EnvRunner):
                 },
             )
             ma_rlm_spec: MultiAgentRLModuleSpec = self.config.get_marl_module_spec(
-                policy_dict=policy_dict
+                policy_dict=policy_dict,
+                # Built only a light version of the module in sampling and inference.
+                is_learner_module=False,
             )
 
             # Build the module from its spec.

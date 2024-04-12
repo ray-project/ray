@@ -77,6 +77,12 @@ class SingleAgentEnvRunner(EnvRunner):
             #  shape=(1,) is expected.
             module_spec.action_space = self.env.envs[0].action_space
             module_spec.model_config_dict = self.config.model
+            # Only load a light version of the module, if available. This is useful
+            # if the the module has target or critic networks not needed in sampling
+            # or inference.
+            # TODO (simon): Once we use `get_marl_module_spec` here, we can remove
+            # this line here as the function takes care of this flag.
+            module_spec.model_config_dict["is_learner_module"] = False
             self.module: RLModule = module_spec.build()
         except NotImplementedError:
             self.module = None
