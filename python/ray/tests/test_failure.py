@@ -2,6 +2,7 @@ import os
 import signal
 import sys
 import time
+import logging
 
 import numpy as np
 import pytest
@@ -597,6 +598,39 @@ def test_actor_failover_with_bad_network(ray_start_cluster_head):
 
     # We should be able to get the return value of task 2 without any issue
     ray.get(obj2)
+
+
+def test_final_user_exception(ray_start_regular, propagate_logs, caplog):
+    class MyFinalException(Exception):
+        def __init_subclass__(cls, /, *args, **kwargs):
+            raise TypeError("Can't subclass special typing classes")
+
+    # This should error.
+    with pytest.raises(MyFinalException):
+        raise MyFinalException("MyFinalException from driver")
+
+    @ray.remote
+    def func():
+        # This should also error. Problem is, the user exception is final so we can't
+        # subclass it (raises exception if so). This means Ray cannot raise an exception
+        # that can be caught as both `RayTaskError` and the user exception. So we
+        # issue a warning and just raise it as `RayTaskError`. User needs to use
+        # `e.cause` to get the user exception.
+        raise MyFinalException("MyFinalException from task")
+
+    with caplog.at_level(logging.WARNING, logger="ray.exceptions"):
+        with pytest.raises(ray.exceptions.RayTaskError) as exc_info:
+            ray.get(func.remote())
+
+    assert (
+        "This exception is raised as RayTaskError only. You can use "
+        "`ray_task_error.cause` to access the user exception."
+    ) in caplog.text
+    assert isinstance(exc_info.value, ray.exceptions.RayTaskError)
+    assert isinstance(exc_info.value.cause, MyFinalException)
+    assert str(exc_info.value.cause) == "MyFinalException from task"
+
+    caplog.clear()
 
 
 if __name__ == "__main__":
