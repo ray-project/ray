@@ -350,6 +350,9 @@ class CoreWorkerDirectActorTaskSubmitter
     }
   };
 
+  /// Fail the task with the timeout error, or the preempted error.
+  void FailTaskWithError(const PendingTaskWaitingForDeathInfo &task);
+
   /// Push a task to a remote actor via the given client.
   /// Note, this function doesn't return any error status code. If an error occurs while
   /// sending the request, this task will be treated as failed.
