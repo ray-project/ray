@@ -5,6 +5,10 @@ formatters:
     ray:
         format: "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s"
 
+filters:
+    console_filter:
+        (): ray.data._internal.logging.HiddenRecordFilter
+
 handlers:
     file:
         class: ray.data._internal.logging.SessionFileHandler
@@ -14,6 +18,7 @@ handlers:
         class: ray._private.log.PlainRayHandler
         formatter: ray
         level: INFO
+        filters: [console_filter]
 
 loggers:
     ray.data:

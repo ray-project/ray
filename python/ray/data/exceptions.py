@@ -77,11 +77,9 @@ def omit_traceback_stdout(fn: Callable) -> Callable:
                     "https://github.com/ray-project/ray/issues/new/choose"
                 )
 
-            if log_to_stdout:
-                logger.exception("Full stack trace:")
-            else:
-                logger.debug("Full stack trace:", exc_info=True)
-
+            logger.exception(
+                "Full stack trace:", exc_info=True, extra={"hide": not log_to_stdout}
+            )
             if is_user_code_exception:
                 raise e.with_traceback(None)
             else:
