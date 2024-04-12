@@ -192,6 +192,7 @@ class RayParams:
         session_name: Optional[str] = None,
         webui: Optional[str] = None,
         cluster_id: Optional[str] = None,
+        node_id: Optional[str] = None,
     ):
         self.redis_address = redis_address
         self.gcs_address = gcs_address
@@ -254,6 +255,7 @@ class RayParams:
         self.labels = labels
         self._check_usage()
         self.cluster_id = cluster_id
+        self.node_id = node_id
 
         # Set the internal config options for object reconstruction.
         if enable_object_reconstruction:
