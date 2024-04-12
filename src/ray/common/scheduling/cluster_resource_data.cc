@@ -62,9 +62,12 @@ NodeResources ResourceMapToNodeResources(
 
 float NodeResources::CalculateCriticalResourceUtilization() const {
   float highest = 0;
-  for (const auto &i : {CPU, MEM, OBJECT_STORE_MEM}) {
+  std::size_t zero_count = 0;
+  auto resource_types = {CPU, MEM, OBJECT_STORE_MEM};
+  for (const auto &i : resource_types) {
     const auto &total = this->total.Get(ResourceID(i));
     if (total == 0) {
+      zero_count++;
       continue;
     }
     auto available = this->available.Get(ResourceID(i)).Double();
@@ -82,7 +85,7 @@ float NodeResources::CalculateCriticalResourceUtilization() const {
       highest = utilization;
     }
   }
-  return highest;
+  return resource_types.size() == zero_count ? 1.0 :  highest;
 }
 
 bool NodeResources::IsAvailable(const ResourceRequest &resource_request,

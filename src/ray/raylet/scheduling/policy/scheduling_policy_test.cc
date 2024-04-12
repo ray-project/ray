@@ -263,6 +263,18 @@ TEST_F(SchedulingPolicyTest, CriticalResourceUtilizationDefinitionTest) {
         .Set(ResourceID::ObjectStoreMemory(), 100);
     ASSERT_EQ(resources.CalculateCriticalResourceUtilization(), 0.75);
   }
+  
+  {
+    //  0 total resource
+    NodeResources resources;
+    resources.available.Set(ResourceID::CPU(), 0)
+        .Set(ResourceID::Memory(), 0)
+        .Set(ResourceID::ObjectStoreMemory(), 0);
+    resources.total.Set(ResourceID::CPU(), 0)
+        .Set(ResourceID::Memory(), 0)
+        .Set(ResourceID::ObjectStoreMemory(), 0);
+    ASSERT_EQ(resources.CalculateCriticalResourceUtilization(), 1.0);
+  }
 }
 
 TEST_F(SchedulingPolicyTest, AvailableTruncationTest) {
