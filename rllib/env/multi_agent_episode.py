@@ -801,53 +801,54 @@ class MultiAgentEpisode:
         for agent_id in all_agent_ids:
             sa_episode = self.agent_episodes.get(agent_id)
 
-            # If agent is only in the new episode chunk.
+            # If agent is only in the new episode chunk -> Store all the data of `other`
+            # wrt agent in `self`.
             if sa_episode is None:
-                # Then store all agent data from the new episode chunk in self.
                 self.agent_episodes[agent_id] = other.agent_episodes[agent_id]
-                # Do not forget the env to agent timestep mapping.
                 self.env_t_to_agent_t[agent_id] = other.env_t_to_agent_t[agent_id]
-                # Add the agent's starting timestep.
                 self.agent_t_started[agent_id] = other.agent_t_started[agent_id]
+                self._copy_hanging(agent_id, other)
 
-            # If the agent was done in the first episode chunk, continue.
+            # If the agent was done in `self`, ignore and continue. There should not be
+            # any data of that agent in `other`.
             elif sa_episode.is_done:
                 continue
 
-            # If the agent has data in both chunks, simply concatenate on the
-            # single-agent level.
+            # If the agent has data in both chunks, concatenate on the single-agent
+            # level, thereby making sure the hanging values (begin and end) match.
             elif agent_id in other.agent_episodes:
-                # If `self` has hanging agent values -> Add these to `other`'s agent
+                # If `other` has hanging (end) values -> Add these to `self`'s agent
                 # SingleAgentEpisode (as a new timestep) and only then concatenate.
                 # Otherwise, the concatentaion would fail b/c of missing data.
-                if agent_id in self._agent_buffered_actions:
-                    assert agent_id in self._agent_buffered_extra_model_outputs
+                if agent_id in self._hanging_actions_end:
+                    assert agent_id in self._hanging_extra_model_outputs_end
                     sa_episode.add_env_step(
                         observation=other.agent_episodes[agent_id].get_observations(0),
                         infos=other.agent_episodes[agent_id].get_infos(0),
-                        action=self._agent_buffered_actions[agent_id],
-                        reward=self._agent_buffered_rewards[agent_id],
+                        action=self._hanging_actions_end[agent_id],
+                        reward=(
+                            self._hanging_rewards_end[agent_id]
+                            + other._hanging_rewards_begin[agent_id]
+                        ),
                         extra_model_outputs=(
-                            self._agent_buffered_extra_model_outputs[agent_id]
+                            self._hanging_extra_model_outputs_end[agent_id]
                         ),
                     )
-
                 sa_episode.concat_episode(other.agent_episodes[agent_id])
+                # Override `self`'s hanging (end) values with `other`'s hanging (end).
+                if agent_id in other._hanging_actions_end:
+                    self._hanging_actions_end[agent_id] = copy.deepcopy(
+                        other._hanging_actions_end[agent_id]
+                    )
+                    self._hanging_rewards_end[agent_id] = (
+                        other._hanging_rewards_end[agent_id]
+                    )
+                    self._hanging_extra_model_outputs_end[agent_id] = copy.deepcopy(
+                        other._hanging_extra_model_outputs_end[agent_id]
+                    )
+
                 # Concatenate the env- to agent-timestep mappings.
-                last_agent_step = next(
-                    item
-                    for item in reversed(self.env_t_to_agent_t[agent_id])
-                    if item != self.SKIP_ENV_TS_TAG
-                )
-                first_agent_step = next(
-                    item
-                    for item in other.env_t_to_agent_t[agent_id]
-                    if item != other.SKIP_ENV_TS_TAG
-                )
-                self.env_t_to_agent_t[agent_id] += (
-                    other.env_t_to_agent_t[agent_id]
-                    + (last_agent_step - first_agent_step)
-                )[1:]
+                self.env_t_to_agent_t[agent_id].extend(other.env_t_to_agent_t[agent_id])
 
             # Otherwise, the agent is only in `self` and not done. All data is stored
             # already -> skip
@@ -860,13 +861,6 @@ class MultiAgentEpisode:
             self.is_terminated = True
         elif other.is_truncated:
             self.is_truncated = True
-
-        # Copy over the current buffer values from the new episode chunk.
-        self._agent_buffered_actions = copy.deepcopy(other._agent_buffered_actions)
-        self._agent_buffered_rewards = other._agent_buffered_rewards.copy()
-        self._agent_buffered_extra_model_outputs = copy.deepcopy(
-            other._agent_buffered_extra_model_outputs
-        )
 
         # Validate.
         self.validate()
@@ -2539,6 +2533,29 @@ class MultiAgentEpisode:
             return self._hanging_extra_model_outputs_end.get(agent_id)
         elif what == "rewards":
             return self._hanging_rewards_end.get(agent_id)
+
+    def _copy_hanging(self, agent_id: AgentID, other: "MultiAgentEpisode") -> None:
+        """Copies hanging action, reward, extra_model_outputs from `other` to `self."""
+        if agent_id in other._hanging_actions_begin:
+            self._hanging_actions_begin[agent_id] = copy.deepcopy(
+                other._hanging_actions_begin[agent_id]
+            )
+            self._hanging_rewards_begin[agent_id] = (
+                other._hanging_rewards_begin[agent_id]
+            )
+            self._hanging_extra_model_outputs_begin[agent_id] = copy.deepcopy(
+                other._hanging_extra_model_outputs_begin[agent_id]
+            )
+        if agent_id in other._hanging_actions_end:
+            self._hanging_actions_end[agent_id] = copy.deepcopy(
+                other._hanging_actions_end[agent_id]
+            )
+            self._hanging_rewards_end[agent_id] = (
+                other._hanging_rewards_end[agent_id]
+            )
+            self._hanging_extra_model_outputs_end[agent_id] = copy.deepcopy(
+                other._hanging_extra_model_outputs_end[agent_id]
+            )
 
     def _del_hanging(self, agent_id: AgentID) -> None:
         """Deletes all hanging action, reward, extra_model_outputs of given agent."""
