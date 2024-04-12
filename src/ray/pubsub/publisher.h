@@ -40,16 +40,23 @@ using PublisherID = UniqueID;
 
 namespace pub_internal {
 
+// Protobuf messages fail to serialize if 2GB or larger. Cap published messages
+// to 1GiB to ensure that we can publish the message. Individual messages
+// larger than this limit will be dropped.
+// TODO(swang): Pubsub clients should also ensure that they don't try to
+// publish messages larger than this.
+constexpr int64_t kMaxPubMessageSizeBytes = 1 << 30;
+
 class SubscriberState;
 
 /// State for an entity / topic in a pub/sub channel.
 class EntityState {
  public:
-  virtual ~EntityState() = default;
+  EntityState(int64_t max_buffered_bytes) : max_buffered_bytes_(max_buffered_bytes) {}
 
   /// Publishes the message to subscribers of the entity.
   /// Returns true if there are subscribers, returns false otherwise.
-  virtual bool Publish(std::shared_ptr<rpc::PubMessage> pub_message) = 0;
+  bool Publish(std::shared_ptr<rpc::PubMessage> pub_message);
 
   /// Manages the set of subscribers of this entity.
   bool AddSubscriber(SubscriberState *subscriber);
@@ -58,35 +65,12 @@ class EntityState {
   /// Gets the current set of subscribers, keyed by subscriber IDs.
   const absl::flat_hash_map<SubscriberID, SubscriberState *> &Subscribers() const;
 
+  int64_t GetNumBufferedBytes() const { return total_size_; }
+
  protected:
   // Subscribers of this entity.
   // The underlying SubscriberState is owned by Publisher.
   absl::flat_hash_map<SubscriberID, SubscriberState *> subscribers_;
-};
-
-/// The two implementations of EntityState are BasicEntityState and CappedEntityState.
-///
-/// BasicEntityState is the simplest. It is used by default.
-///
-/// CappedEntityState implements a total size cap on the buffered messages. It helps
-/// protect certain channels from using too much memory, e.g. channels for logs and
-/// error infos. However each CappedEntityState takes up more space than the
-/// BasicEntityState, so it is unsuitable when there can be a large number of entities.
-/// i.e. CappedEntityState is not suitable for the WORKER_OBJECT_* channels. It is
-/// not very benefitial for actor and node info channels either, since only GCS publishes
-/// to these channels with small, bounded-size messages.
-
-/// Publishes the message to all subscribers, without size cap on buffered messages.
-class BasicEntityState : public EntityState {
- public:
-  bool Publish(std::shared_ptr<rpc::PubMessage> pub_message) override;
-};
-
-/// Publishes the message to all subscribers, and enforce a total size cap on buffered
-/// messages.
-class CappedEntityState : public EntityState {
- public:
-  bool Publish(std::shared_ptr<rpc::PubMessage> pub_message) override;
 
  private:
   // Tracks inflight messages. The messages have shared ownership by
@@ -95,6 +79,8 @@ class CappedEntityState : public EntityState {
   std::queue<std::weak_ptr<rpc::PubMessage>> pending_messages_;
   // Size of each inflight message.
   std::queue<int64_t> message_sizes_;
+  // Set to -1 to disable buffering.
+  int64_t max_buffered_bytes_;
   // Total size of inflight messages.
   int64_t total_size_ = 0;
 };
@@ -140,6 +126,8 @@ class SubscriptionIndex {
   /// Returns a vector of subscriber ids that are subscribing to the given object ids.
   /// Test only.
   std::vector<SubscriberID> GetSubscriberIdsByKeyId(const std::string &key_id) const;
+
+  int64_t GetNumBufferedBytes() const;
 
   /// Returns true if there's no metadata remained in the private attribute.
   bool CheckNoLeaks() const;
@@ -469,6 +457,9 @@ class Publisher : public PublisherInterface {
   int publish_batch_size_;
 
   absl::flat_hash_map<rpc::ChannelType, uint64_t> cum_pub_message_cnt_
+      ABSL_GUARDED_BY(mutex_);
+
+  absl::flat_hash_map<rpc::ChannelType, uint64_t> cum_pub_message_bytes_cnt_
       ABSL_GUARDED_BY(mutex_);
 
   /// The monotonically increasing sequence_id for this publisher.
