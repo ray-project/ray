@@ -450,8 +450,6 @@ class RayActorManager:
             ray_actor,
             acquired_resources,
         ) = self._live_actors_to_ray_actors_resources.pop(tracked_actor)
-        # Always kill the actor to be safe in case it's left running.
-        ray.kill(ray_actor)
         self._live_resource_cache = None
 
         # Return resources

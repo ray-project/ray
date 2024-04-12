@@ -135,7 +135,7 @@ class RemoteCallResults:
 
         Similar to ignore_errors, but only skips Errors raised because of
         remote actor problems (often get restored automatcially).
-        This is useful for callers that want to handle application errors differently.
+        This is useful for callers that wants to handle application errors differently.
         """
         return self._Iterator(
             [r for r in self.result_or_errors if not isinstance(r.get(), RayActorError)]
