@@ -35,7 +35,7 @@ namespace {
 
 class TestPlasma : public plasma::PlasmaClientInterface {
  public:
-  ~TestPlasma() {}
+  virtual ~TestPlasma() {}
 
   Status Release(const ObjectID &object_id) override { return Status::OK(); }
 
@@ -107,7 +107,7 @@ class TestPlasma : public plasma::PlasmaClientInterface {
 
 class TestInterface : public MutableObjectReaderInterface {
  public:
-  ~TestInterface() {}
+  virtual ~TestInterface() {}
 
   void RegisterMutableObjectReader(
       const ObjectID &object_id,
