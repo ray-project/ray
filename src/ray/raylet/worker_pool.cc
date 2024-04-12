@@ -1648,6 +1648,8 @@ const std::vector<std::string> &WorkerPool::LookupWorkerDynamicOptions(
   return kNoDynamicOptions;
 }
 
+const NodeID WorkerPool::GetNodeID() const { return node_id_; }
+
 }  // namespace raylet
 
 }  // namespace ray

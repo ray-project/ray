@@ -479,6 +479,32 @@ class WorkerPoolTest : public ::testing::Test {
     ASSERT_EQ(worker_pool_->NumWorkersStarting(), expected_worker_process_count);
   }
 
+  void TestNodeIDArgInWorkerCommand() {
+    WorkerPool::State state;
+    auto [worker_command_args, env] =
+        worker_pool_->BuildProcessCommandArgs(Language::PYTHON,
+                                              nullptr,
+                                              rpc::WorkerType::WORKER,
+                                              JOB_ID,
+                                              {},
+                                              0,
+                                              "{}",
+                                              state);
+
+    std::ostringstream stringStream;
+    stringStream << "--node-id=" << worker_pool_->GetNodeID();
+    std::string expected_node_id_arg = stringStream.str();
+
+    bool node_id_arg_found = false;
+    for (const auto &arg : worker_command_args) {
+      if (arg.find(expected_node_id_arg) != std::string::npos) {
+        node_id_arg_found = true;
+        break;
+      }
+    }
+    ASSERT_TRUE(node_id_arg_found);
+  }
+
   absl::flat_hash_map<WorkerID, std::shared_ptr<MockWorkerClient>>
       mock_worker_rpc_clients_;
 
@@ -2009,6 +2035,8 @@ TEST_F(WorkerPoolTest, RegisterFirstJavaDriverCallbackImmediately) {
   RAY_CHECK_OK(worker_pool_->RegisterDriver(driver, rpc::JobConfig(), callback));
   ASSERT_TRUE(callback_called);
 }
+
+TEST_F(WorkerPoolTest, NodeIDArgInWorkerCommand) { TestNodeIDArgInWorkerCommand(); }
 
 }  // namespace raylet
 
