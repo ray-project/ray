@@ -9,12 +9,12 @@ Advanced Python APIs
 Custom Training Workflows
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-In the `basic training example <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__,
+In the `basic training example <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/custom_gym_env.py>`__,
 Tune will call ``train()`` on your algorithm once per training iteration and report
 the new training results.
 Sometimes, it is desirable to have full control over training, but still run inside Tune.
 Tune supports :ref:`custom trainable functions <trainable-docs>` that can be used to
-implement `custom training workflows (example) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_train_fn.py>`__.
+implement `custom training workflows (example) <https://github.com/ray-project/ray/blob/master/rllib/examples/ray_tune/custom_train_function.py>`__.
 
 Curriculum Learning
 ~~~~~~~~~~~~~~~~~~~
@@ -441,7 +441,7 @@ See `algorithm.py <https://github.com/ray-project/ray/blob/master/rllib/algorith
 for further documentation.
 
 There is also an end-to-end example of how to set up a custom online evaluation in
-`custom_eval.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_eval.py>`__.
+`custom_evaluation.py <https://github.com/ray-project/ray/blob/master/rllib/examples/evaluation/custom_evaluation.py>`__.
 Note that if you only want to evaluate your policy at the end of training,
 you can set ``evaluation_interval: [int]``, where ``[int]`` should be the number
 of training iterations before stopping.
@@ -453,7 +453,7 @@ the ``evaluation`` key of normal training results:
 .. code-block:: bash
 
     ------------------------------------------------------------------------
-    Sample output for `python custom_eval.py`
+    Sample output for `python custom_evaluation.py --no-custom-eval`
     ------------------------------------------------------------------------
 
     INFO algorithm.py:623 -- Evaluating current policy for 10 episodes.
@@ -476,7 +476,7 @@ the ``evaluation`` key of normal training results:
 .. code-block:: bash
 
     ------------------------------------------------------------------------
-    Sample output for `python custom_eval.py --custom-eval`
+    Sample output for `python custom_evaluation.py`
     ------------------------------------------------------------------------
 
     INFO algorithm.py:631 -- Running custom eval function <function ...>

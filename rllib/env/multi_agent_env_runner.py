@@ -725,7 +725,7 @@ class MultiAgentEnvRunner(EnvRunner):
         # Create our own instance of the (single-agent) `RLModule` (which
         # the needs to be weight-synched) each iteration.
         # TODO (sven, simon): We have to rebuild the `AlgorithmConfig` to work on
-        # `RLModule`s and not `Policy`s. Like here `policies`->`modules`
+        #  `RLModule`s and not `Policy`s. Like here `policies`->`modules`.
         try:
             policy_dict, _ = self.config.get_multi_agent_setup(
                 spaces={

@@ -27,14 +27,14 @@ examples:
   - title: Serve an Inference with Stable Diffusion Model on AWS NeuronCores Using FastAPI
     skill_level: intermediate
     link: tutorials/aws-neuron-core-inference-stable-diffusion
-  - title: Serve a model on Intel Habana Gaudi
+  - title: Serve a model on Intel Gaudi Accelerator
     skill_level: intermediate
     frameworks:
       - pytorch
     use_cases:
       - generative ai
       - large language models
-    link: tutorials/intel-habana-gaudi-inference
+    link: tutorials/intel-gaudi-inference
   - title: Scale a Gradio App with Ray Serve
     skill_level: intermediate
     link: tutorials/gradio-integration

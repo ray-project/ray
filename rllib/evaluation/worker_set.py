@@ -4,6 +4,7 @@ import logging
 import importlib.util
 import os
 from typing import (
+    Any,
     Callable,
     Container,
     Dict,
@@ -413,20 +414,23 @@ class WorkerSet:
         if env_steps_sampled:
             env_runner_states["env_steps_sampled"] = env_steps_sampled
 
-        # Put the state dicitonary into Ray's object store.
+        # Put the state dictionary into Ray's object store to avoid having to make n
+        # pickled copies of the state dict.
         ref_env_runner_states = ray.put(env_runner_states)
 
-        def _update(w):
+        def _update(_env_runner: EnvRunner) -> Any:
             env_runner_states = ray.get(ref_env_runner_states)
-            w._env_to_module.set_state(
+            _env_runner._env_to_module.set_state(
                 env_runner_states["connector_states"]["env_to_module_states"]
             )
-            w._module_to_env.set_state(
+            _env_runner._module_to_env.set_state(
                 env_runner_states["connector_states"]["module_to_env_states"]
             )
             # Update the global number of environment steps for each worker.
             if "env_steps_sampled" in env_runner_states:
-                w.global_num_env_steps_sampled = env_runner_states["env_steps_sampled"]
+                _env_runner.global_num_env_steps_sampled = env_runner_states[
+                    "env_steps_sampled"
+                ]
 
         # Broadcast updated states back to all workers (including the local one).
         self.foreach_worker(
@@ -482,13 +486,17 @@ class WorkerSet:
                     "should have local_worker. But local_worker is also None."
                 )
             weights = weights_src.get_weights(policies)
+            # Move weights to the object store to avoid having to make n pickled copies
+            # of the weights dict for each worker.
+            weights_ref = ray.put(weights)
 
-            def set_weight(w):
-                w.set_weights(weights, global_vars)
+            def _set_weights(env_runner):
+                _weights = ray.get(weights_ref)
+                env_runner.set_weights(_weights, global_vars)
 
             # Sync to specified remote workers in this WorkerSet.
             self.foreach_worker(
-                func=set_weight,
+                func=_set_weights,
                 local_worker=False,  # Do not sync back to local worker.
                 remote_worker_ids=to_worker_indices,
                 # We can only sync to healthy remote workers.

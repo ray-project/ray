@@ -29,7 +29,7 @@ scipy
 tblib
 terminado
 tensorboardx==2.6
-tensorflow==2.11.0  # This must be pinned for compatibiliy with pydantic 2 and Python 3.8
+tensorflow
 trueskill
 tqdm
 typer

@@ -166,27 +166,43 @@ class InfiniteLookbackBuffer:
 
         return data
 
-    def __add__(self, other):
-        """Adds another buffer or list to the end of this one.
+    def __add__(
+        self, other: Union[List, "InfiniteLookbackBuffer", int, float, complex]
+    ) -> "InfiniteLookbackBuffer":
+        """Adds another InfiniteLookbackBuffer object or list to the end of this one.
 
         Args:
-            other: Either `InfiniteLookbackBuffer` or `list`.
-                If a `InfiniteLookbackBuffer` the data gets
-                concatenated. If a `list` the list is concatenated to the
-                `self.data`.
+            other: Another `InfiniteLookbackBuffer` or a `list` or a number.
+                If a `InfiniteLookbackBuffer` its data (w/o its lookback buffer) gets
+                concatenated to self's data. If a `list`, we concat it to self's data.
+                If a number, we add this number to each element of self (if possible).
 
         Returns:
-            A new `InfiniteLookbackBuffer` instance `self.data` cotnaining
-            concatenated data from `self.` and `other`.
+            A new `InfiniteLookbackBuffer` instance `self.data` containing
+            concatenated data from `self` and `other` (or adding `other` to each element
+            in self's data).
         """
 
         if self.finalized:
             raise RuntimeError(f"Cannot `add` to a finalized {type(self).__name__}.")
         else:
-            if isinstance(other, InfiniteLookbackBuffer):
-                data = self.data + other.data
+            # If `other` is an int, simply add it to all our values (if possible) and
+            # use the result as the underlying data for the returned buffer.
+            if isinstance(other, (int, float, complex)):
+                data = [
+                    (d + other) if isinstance(d, (int, float, complex)) else d
+                    for d in self.data
+                ]
+            # If `other` is a InfiniteLookbackBuffer itself, do NOT include its
+            # lookback buffer anymore. We assume that `other`'s lookback buffer i
+            # already at the end of `self`.
+            elif isinstance(other, InfiniteLookbackBuffer):
+                data = self.data + other.data[other.lookback :]
+            # `other` is a list, simply concat the two lists and use the result as
+            # the underlying data for the returned buffer.
             else:
                 data = self.data + other
+
             return InfiniteLookbackBuffer(
                 data=data,
                 lookback=self.lookback,
@@ -578,10 +594,6 @@ class InfiniteLookbackBuffer:
             stop = -LARGE_INTEGER
 
         assert start >= 0 and (stop >= 0 or stop == -LARGE_INTEGER), (start, stop)
-        # assert start <= len_self_plus_lookback and stop <= len_self_plus_lookback, (
-        #    start,
-        #    stop,
-        # )
 
         step = slice_.step if slice_.step is not None else 1
         slice_ = slice(start, stop, step)

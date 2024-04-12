@@ -33,6 +33,8 @@ message RuntimeEnvConfig {
   int32 setup_timeout_seconds = 1;
   /// Indicates whether to install runtime env eagerly before the workers are leased.
   bool eager_install = 2;
+  /// A list of files to stream the runtime env setup logs to.
+  repeated string log_files = 3;
 }
 
 /// The runtime env information which is transferred between ray core processes.

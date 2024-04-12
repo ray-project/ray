@@ -1200,6 +1200,7 @@ class Learner:
         #  algos that actually need (and know how) to do minibatching.
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
+        min_total_mini_batches: int = 0,
     ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
         """Do `num_iters` minibatch updates given a list of episodes.
 
@@ -1219,6 +1220,13 @@ class Learner:
             minibatch_size: The size of the minibatch to use for each update.
             num_iters: The number of complete passes over all the sub-batches
                 in the input multi-agent batch.
+            min_total_mini_batches: The minimum number of mini-batches to loop through
+                (across all `num_sgd_iter` SGD iterations). It's required to set this
+                for multi-agent + multi-GPU situations in which the MultiAgentEpisodes
+                themselves are roughly sharded equally, however, they might contain
+                SingleAgentEpisodes with very lopsided length distributions. Thus,
+                without this limit it can happen that one Learner goes through a
+                different number of mini-batches than other Learners, causing deadlocks.
 
         Returns:
             A dictionary of results, in numpy format or a list of such dictionaries in
@@ -1230,6 +1238,7 @@ class Learner:
             reduce_fn=reduce_fn,
             minibatch_size=minibatch_size,
             num_iters=num_iters,
+            min_total_mini_batches=min_total_mini_batches,
         )
 
     @OverrideToImplementCustomLogic
@@ -1335,6 +1344,7 @@ class Learner:
         #  algos that actually need (and know how) to do minibatching.
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
+        min_total_mini_batches: int = 0,
     ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
         self._check_is_built()
 
@@ -1352,7 +1362,10 @@ class Learner:
             )
             # TODO (sven): Try to not require MultiAgentBatch anymore.
             batch = MultiAgentBatch(
-                {mid: SampleBatch(v) for mid, v in batch.items()},
+                {
+                    module_id: SampleBatch(module_data)
+                    for module_id, module_data in batch.items()
+                },
                 env_steps=sum(len(e) for e in episodes),
             )
 
@@ -1361,8 +1374,8 @@ class Learner:
         unknown_module_ids = set(batch.policy_batches.keys()) - set(self.module.keys())
         if len(unknown_module_ids) > 0:
             raise ValueError(
-                "Batch contains module ids that are not in the learner: "
-                f"{unknown_module_ids}"
+                "Batch contains one or more ModuleIDs that are not in this Learner! "
+                f"Found IDs: {unknown_module_ids}"
             )
 
         # Filter out those RLModules from the final train batch that should not be
@@ -1372,7 +1385,11 @@ class Learner:
                 del batch.policy_batches[module_id]
 
         if minibatch_size and self._learner_connector is not None:
-            batch_iter = partial(MiniBatchCyclicIterator, uses_new_env_runners=True)
+            batch_iter = partial(
+                MiniBatchCyclicIterator,
+                uses_new_env_runners=True,
+                min_total_mini_batches=min_total_mini_batches,
+            )
         elif minibatch_size:
             batch_iter = MiniBatchCyclicIterator
         elif num_iters > 1:
@@ -1401,7 +1418,6 @@ class Learner:
             (fwd_out, loss_per_module, metrics_per_module) = self._update(
                 nested_tensor_minibatch
             )
-
             result = self.compile_results(
                 batch=tensor_minibatch,
                 fwd_out=fwd_out,
@@ -1409,9 +1425,6 @@ class Learner:
                 metrics_per_module=defaultdict(dict, **metrics_per_module),
             )
             self._check_result(result)
-            # TODO (sven): Figure out whether `compile_results` should be forced
-            #  to return all numpy/python data, then we can skip this conversion
-            #  step here.
             results.append(result)
 
         self._set_slicing_by_batch_id(batch, value=False)
