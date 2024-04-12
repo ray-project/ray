@@ -407,7 +407,7 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
             [this, task_spec = std::move(task.value().first)] {
               rpc::PushTaskReply reply;
               rpc::Address addr;
-              HandlePushTaskReply(Status::IOError("The actor is in RESTARTING state."),
+              HandlePushTaskReply(Status::IOError("The actor is restarting."),
                                   reply,
                                   addr,
                                   task_spec);
