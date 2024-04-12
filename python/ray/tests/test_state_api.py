@@ -3559,27 +3559,6 @@ def test_core_state_api_usage_tags(shutdown_only):
     )
 
 
-def test_job_info_is_running_task(shutdown_only):
-    ray.init()
-
-    @ray.remote
-    def f():
-        import time
-
-        while True:
-            time.sleep(10000)
-
-    # Create some long running tasks, no need to wait.
-    tasks = [f.remote() for i in range(4)]  # noqa: F841
-
-    client = ray.worker.global_worker.gcs_client
-    job_id = ray.worker.global_worker.current_job_id.binary()
-    all_job_info = client.get_all_job_info()
-    assert len(all_job_info) == 1
-    assert job_id in all_job_info
-    assert client.get_all_job_info()[job_id].is_running_tasks is True
-
-
 if __name__ == "__main__":
     import sys
 

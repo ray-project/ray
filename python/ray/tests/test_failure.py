@@ -623,7 +623,7 @@ def test_final_user_exception(ray_start_regular, propagate_logs, caplog):
             ray.get(func.remote())
 
     assert (
-        "This exception will be raised as RayTaskError only. You can use "
+        "This exception is raised as RayTaskError only. You can use "
         "`ray_task_error.cause` to access the user exception."
     ) in caplog.text
     assert isinstance(exc_info.value, ray.exceptions.RayTaskError)
