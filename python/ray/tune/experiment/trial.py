@@ -20,7 +20,7 @@ from ray.air.constants import (
 )
 
 import ray.cloudpickle as cloudpickle
-from ray.exceptions import RayActorError, RayTaskError, ActorUnavailableError
+from ray.exceptions import RayActorError, RayTaskError
 from ray.train import Checkpoint, CheckpointConfig
 from ray.train.constants import (
     RAY_CHDIR_TO_TRIAL_DIR,
@@ -466,10 +466,7 @@ class Trial:
         ):
             try:
                 self._default_result_or_future = ray.get(self._default_result_or_future)
-            except (
-                RayActorError,
-                ActorUnavailableError,
-            ):  # Error during initialization.
+            except RayActorError:  # error during initialization
                 self._default_result_or_future = None
         if self._default_result_or_future and self.temporary_state.ray_actor:
             self.set_location(
@@ -824,10 +821,7 @@ class Trial:
         self.run_metadata.num_failures += 1
 
     def handle_error(
-        self,
-        exc: Optional[
-            Union[TuneError, RayTaskError, RayActorError, ActorUnavailableError]
-        ] = None,
+        self, exc: Optional[Union[TuneError, RayTaskError, RayActorError]] = None
     ):
         if self.is_restoring:
             self._handle_restore_error(exc)

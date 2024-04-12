@@ -15,7 +15,7 @@ from ray.air.execution.resources import (
 
 from ray.air.execution._internal.tracked_actor import TrackedActor
 from ray.air.execution._internal.tracked_actor_task import TrackedActorTask
-from ray.exceptions import RayTaskError, RayActorError, ActorUnavailableError
+from ray.exceptions import RayTaskError, RayActorError
 
 logger = logging.getLogger(__name__)
 
@@ -269,7 +269,7 @@ class RayActorManager:
         """
         tracked_actor = tracked_actor_task._tracked_actor
 
-        if isinstance(exception, (RayActorError, ActorUnavailableError)):
+        if isinstance(exception, RayActorError):
             self._failed_actor_ids.add(tracked_actor.actor_id)
 
             # Clean up any references to the actor and its futures
