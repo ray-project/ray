@@ -261,22 +261,34 @@ class RayActorError(RayError):
     RayActorError will contain the creation_task_error, which is used to
     reconstruct the exception on the caller side.
     """
+    BASE_ERROR_MSG = "The actor died unexpectedly before finishing this task."
 
     def __init__(
-        self, actor_id: str, error_msg: str, actor_init_failed: bool, preempted: bool
+        self, 
+        actor_id: str = None,
+        error_msg: str = BASE_ERROR_MSG,
+        actor_init_failed: bool = False,
+        preempted: bool = False,
     ):
         #: The actor ID in hex string.
         self.actor_id = actor_id
         #: Whether the actor failed in the middle of __init__.
         self.error_msg = error_msg
         #: The full error message.
-        self.actor_init_failed = actor_init_failed
+        self._actor_init_failed = actor_init_failed
         #: Whether the actor died because the node was preempted.
-        self.preempted = preempted
+        self._preempted = preempted
 
     def __str__(self) -> str:
         return self.error_msg
 
+    @property
+    def preempted(self) -> bool:
+        return self._preempted
+
+    @property
+    def actor_init_failed(self) -> bool:
+        return self._actor_init_failed
 
 class ActorDiedError(RayActorError):
     """Indicates that the actor died unexpectedly before finishing a task.
@@ -299,12 +311,11 @@ class ActorDiedError(RayActorError):
 
     def __init__(self, cause: Union[RayTaskError, ActorDiedErrorContext] = None):
         """
-        Construct a RayActorError by building arguments.
+        Construct a RayActorError by building the arguments.
         """
 
-        # -- The base actor error message. --
-        base_error_msg = "The actor died unexpectedly before finishing this task."
-        error_msg = base_error_msg
+        actor_id = None
+        error_msg = RayActorError.BASE_ERROR_MSG
         actor_init_failed = False
         preempted = False
 
@@ -322,7 +333,7 @@ class ActorDiedError(RayActorError):
         else:
             # Inidicating system-level actor failures.
             assert isinstance(cause, ActorDiedErrorContext)
-            error_msg_lines = [base_error_msg]
+            error_msg_lines = [RayActorError.BASE_ERROR_MSG]
             error_msg_lines.append(f"\tclass_name: {cause.class_name}")
             error_msg_lines.append(f"\tactor_id: {ActorID(cause.actor_id).hex()}")
             # Below items are optional fields.

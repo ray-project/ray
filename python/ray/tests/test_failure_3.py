@@ -347,7 +347,7 @@ def test_actor_failure_no_wait(ray_start_regular, tmp_path):
     pid = ray.get(a.pid.remote())
     t = a.p.remote()
     os.kill(int(pid), SIGKILL)
-    with pytest.raises(ray.exceptions.ActorUnavailableError):
+    with pytest.raises(ray.exceptions.RayActorError):
         # Make sure it'll return within 1s
         ray.get(t)
 

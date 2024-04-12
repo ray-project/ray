@@ -105,13 +105,13 @@ def test_actor_restart(ray_init_with_task_retry_delay):
                 break
             results.pop(0)
             i += 1
-        except ray.exceptions.ActorUnavailableError:
+        except ray.exceptions.RayActorError:
             break
     # Skip any tasks that errored.
     while results:
         try:
             ray.get(results[0])
-        except ray.exceptions.ActorUnavailableError:
+        except ray.exceptions.RayActorError:
             results.pop(0)
         else:
             break
@@ -133,7 +133,7 @@ def test_actor_restart(ray_init_with_task_retry_delay):
             try:
                 ray.get(actor.increase.remote())
                 return True
-            except ray.exceptions.ActorUnavailableError:
+            except ray.exceptions.RayActorError:
                 return False
 
         wait_for_condition(ping)
@@ -702,7 +702,7 @@ def test_actor_failure_per_type(ray_start_cluster):
             return self.a
 
     # Test actor is dead because its reference is gone.
-    # Q(sang): Should we raise RayActorError in this case?
+    # Q(sang): Should we raise RayACtorError in this case?
     with pytest.raises(RuntimeError, match="Lost reference to actor") as exc_info:
         ray.get(Actor.remote().check_alive.remote())
     print(exc_info._excinfo[1])

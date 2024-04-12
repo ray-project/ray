@@ -265,7 +265,7 @@ def test_async_actor_cancel_after_task_finishes(shutdown_only):
 
 def test_async_actor_cancel_restart(ray_start_cluster, monkeypatch):
     """
-    Verify a cancellation works if the actor is restarted.
+    Verify a cancelation works if actor is restarted.
     """
     with monkeypatch.context() as m:
         # This will slow down the cancelation RPC so that
@@ -292,16 +292,16 @@ def test_async_actor_cancel_restart(ray_start_cluster, monkeypatch):
         cluster.remove_node(node)
         r, ur = ray.wait([ref])
         # When cancel is called, the task won't be retried anymore.
-        # Since an actor is dead and retryable, in this case, it will be in RESTARTING
-        # and raise ActorUnavailableError.
-        with pytest.raises(ray.exceptions.ActorUnavailableError):
+        # Since an actor is dead, in this case, it will raise
+        # RayActorError.
+        with pytest.raises(ray.exceptions.RayActorError):
             ray.get(ref)
 
         # This will restart actor, but task won't be retried.
         cluster.add_node(num_cpus=1)
-        # Verify the actor is restarted. It shouldn't be retried
+        # Verify actor is restarted. f should be retried
         ray.get(a.__ray_ready__.remote())
-        with pytest.raises(ray.exceptions.ActorUnavailableError):
+        with pytest.raises(ray.exceptions.RayActorError):
             ray.get(ref)
 
 

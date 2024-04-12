@@ -312,7 +312,7 @@ def test_method_raise_and_exit(
         # Last try is exit, the actor restarted.
         (["raise", "raise", "exit"], ray.exceptions.ActorUnavailableError),
         # Last try is exit, the actor is dead (exceeded max_restarts).
-        (["raise", "exit", "exit"], ray.exceptions.RayActorError),
+        (["raise", "exit", "exit"], ray.exceptions.ActorDiedError),
     ],
     ids=lambda p: ",".join(p[0]),  # test case show name
 )
