@@ -701,7 +701,6 @@ TEST_F(WorkerPoolDriverRegisteredTest, StartWorkerWithNodeIdArg) {
 
   bool node_id_arg_found = false;
   for (const auto &arg : real_command) {
-    std::cout << arg << std::endl;
     if (arg.find(expected_node_id_arg) != std::string::npos) {
       node_id_arg_found = true;
       break;
