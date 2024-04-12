@@ -52,8 +52,7 @@ Policy using the curriculum:
 +------------------+--------+----------+--------------------+
 
 Policy NOT using the curriculum (trying to solve the hardest task right away):
-
-
+[DOES NOT LEARN AT ALL]
 """
 from functools import partial
 
