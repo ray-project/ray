@@ -1251,7 +1251,11 @@ ray_cc_test(
     srcs = [
         "src/ray/core_worker/test/mutable_object_provider_test.cc",
     ],
-    tags = ["team:core", "no_windows"],
+    tags = [
+      "no_tsan",
+      "team:core",
+      "no_windows"
+    ],
     deps = [
         ":core_worker_lib",
         ":plasma_store_server_lib",
