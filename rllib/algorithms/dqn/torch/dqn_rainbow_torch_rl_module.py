@@ -37,17 +37,18 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         # If we use a noisy encoder. Note, only if the observation
         # space is a flat space we can use a noisy encoder.
         self.uses_noisy_encoder = isinstance(self.encoder, TorchNoisyMLPEncoder)
-        # We do not want to train the target networks.
-        # AND sync all target nets with the actual (trained) ones.
-        self.target_encoder.requires_grad_(False)
-        self.target_encoder.load_state_dict(self.encoder.state_dict())
+        if self.is_learner_module:
+            # We do not want to train the target networks.
+            # AND sync all target nets with the actual (trained) ones.
+            self.target_encoder.requires_grad_(False)
+            self.target_encoder.load_state_dict(self.encoder.state_dict())
 
-        self.af_target.requires_grad_(False)
-        self.af_target.load_state_dict(self.af.state_dict())
+            self.af_target.requires_grad_(False)
+            self.af_target.load_state_dict(self.af.state_dict())
 
-        if self.uses_dueling:
-            self.vf_target.requires_grad_(False)
-            self.vf_target.load_state_dict(self.vf.state_dict())
+            if self.uses_dueling:
+                self.vf_target.requires_grad_(False)
+                self.vf_target.load_state_dict(self.vf.state_dict())
 
     @override(RLModule)
     def _forward_inference(self, batch: Dict[str, TensorType]) -> Dict[str, TensorType]:
@@ -131,6 +132,11 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
     def _forward_train(
         self, batch: Dict[str, TensorType]
     ) -> Dict[str, TensorStructType]:
+        if not self.is_learner_module:
+            raise RuntimeError(
+                "Trying to train a module that is not a learner module. Set the "
+                "flag `is_learner_module=True` when building the module."
+            )
         output = {}
 
         # Set module into training mode.

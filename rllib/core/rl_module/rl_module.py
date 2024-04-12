@@ -374,9 +374,15 @@ class RLModule(abc.ABC):
     """
 
     framework: str = None
+    is_learner_module: bool = None
 
     def __init__(self, config: RLModuleConfig):
         self.config = config
+        # By default, each module is a learner module and contains all building blocks,
+        # such as target networks or critic networks used in the training process.
+        self.is_learner_module = self.config.model_config_dict.get(
+            "is_learner_module", True
+        )
         # Make sure, `setup()` is only called once, no matter what. In some cases
         # of multiple inheritance (and with our __post_init__ functionality in place,
         # this might get called twice.

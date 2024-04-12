@@ -43,6 +43,11 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
 
     @override(RLModule)
     def _forward_train(self, batch: NestedDict) -> Dict[str, Any]:
+        if not self.is_learner_module:
+            raise RuntimeError(
+                "Trying to train a module that is not a learner module. Set the "
+                "flag `is_learner_module=True` when building the module."
+            )
         output = {}
 
         # SAC needs also Q function values and action logits for next observations.

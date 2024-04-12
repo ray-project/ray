@@ -61,19 +61,21 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         # Note further, by using the base encoder the correct encoder
         # is chosen for the observation space used.
         self.encoder = catalog.build_encoder(framework=self.framework)
-        # Build the same encoder for the target network(s).
-        self.target_encoder = catalog.build_encoder(framework=self.framework)
+        if self.is_learner_module:
+            # Build the same encoder for the target network(s).
+            self.target_encoder = catalog.build_encoder(framework=self.framework)
 
         # Build heads.
         self.af = catalog.build_af_head(framework=self.framework)
         if self.uses_dueling:
             # If in a dueling setting setup the value function head.
             self.vf = catalog.build_vf_head(framework=self.framework)
-        # Implement the same heads for the target network(s).
-        self.af_target = catalog.build_af_head(framework=self.framework)
-        if self.uses_dueling:
-            # If in a dueling setting setup the target value function head.
-            self.vf_target = catalog.build_vf_head(framework=self.framework)
+        if self.is_learner_module:
+            # Implement the same heads for the target network(s).
+            self.af_target = catalog.build_af_head(framework=self.framework)
+            if self.uses_dueling:
+                # If in a dueling setting setup the target value function head.
+                self.vf_target = catalog.build_vf_head(framework=self.framework)
 
         # Define the action distribution for sampling the exploit action
         # during exploration.
