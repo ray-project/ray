@@ -481,15 +481,8 @@ class WorkerPoolTest : public ::testing::Test {
 
   void TestNodeIDArgInWorkerCommand() {
     WorkerPool::State state;
-    auto [worker_command_args, env] =
-        worker_pool_->BuildProcessCommandArgs(Language::PYTHON,
-                                              nullptr,
-                                              rpc::WorkerType::WORKER,
-                                              JOB_ID,
-                                              {},
-                                              0,
-                                              "{}",
-                                              state);
+    auto [worker_command_args, env] = worker_pool_->BuildProcessCommandArgs(
+        Language::PYTHON, nullptr, rpc::WorkerType::WORKER, JOB_ID, {}, 0, "{}", state);
 
     std::ostringstream stringStream;
     stringStream << "--node-id=" << worker_pool_->GetNodeID();

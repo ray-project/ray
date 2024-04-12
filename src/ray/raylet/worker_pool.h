@@ -392,9 +392,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// reasonable size.
   void TryKillingIdleWorkers();
 
-  /// Get the NodeID of this worker pool.
-  const NodeID GetNodeID() const;
-
  protected:
   void update_worker_startup_token_counter();
 
@@ -763,6 +760,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   int64_t process_failed_rate_limited_ = 0;
   int64_t process_failed_pending_registration_ = 0;
   int64_t process_failed_runtime_env_setup_failed_ = 0;
+
+  /// Get the NodeID of this worker pool.
+  const NodeID &GetNodeID() const;
 
   friend class WorkerPoolTest;
   friend class WorkerPoolDriverRegisteredTest;
