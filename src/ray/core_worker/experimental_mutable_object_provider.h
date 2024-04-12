@@ -50,6 +50,14 @@ class MutableObjectProvider {
   /// \param[in] node_id The ID of the node to write to.
   void RegisterWriterChannel(const ObjectID &object_id, const NodeID &node_id);
 
+  /// Handles an RPC request from another note to register a mutable object on this node.
+  /// The remote node writes the object and this node reads the object. This node is
+  /// notified of writes to the object via HandlePushMutableObject().
+  /// \param[in] object_id The ID of the object on the remote note.
+  /// \param[in] num_readers The number of readers on this node.
+  /// \param[in] local_object_id The ID of the corresponding object on this node. When
+  /// this node is notified of a write via HandlePushMutableObject(), the
+  /// `local_object_id` object is updated with the write.
   void HandleRegisterMutableObject(const ObjectID &object_id,
                                    int64_t num_readers,
                                    const ObjectID &local_object_id);
@@ -89,7 +97,7 @@ class MutableObjectProvider {
   // from) and the number of readers.
   std::unordered_map<ObjectID, LocalInfo> cross_node_map_;
 
-  // Creates a function for each object. This object waits for changes on the object and
+  // Creates a function for each object. This function waits for changes on the object and
   // then sends those changes to a remote node via RPC.
   std::function<std::shared_ptr<MutableObjectReaderInterface>(const NodeID &node_id)>
       raylet_client_factory_;
