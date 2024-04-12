@@ -1014,6 +1014,7 @@ class EagerTFPolicyV2(Policy):
                     self.model,
                     obs_batch=input_dict[SampleBatch.OBS],
                     state_batches=state_batches,
+                    seq_lens=seq_lens,
                     explore=explore,
                     timestep=timestep,
                     episodes=episodes,
