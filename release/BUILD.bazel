@@ -384,6 +384,22 @@ py_test(
 # RELEASE TEST INFRA unit tests
 ####
 
+sh_binary(
+    name = "run",
+    srcs = ["run_release_test.sh"],
+    data = ["run_release_test"],
+    env = {
+        "NO_INSTALL": "1",
+        "RAY_TEST_SCRIPT": "./run_release_test",
+    }
+)
+
+py_binary(
+    name = "run_release_test",
+    srcs = ["ray_release/scripts/run_release_test.py"],
+    deps = [":ray_release"],
+)
+
 py_library(
     name = "ray_release",
     srcs = glob(
@@ -393,8 +409,7 @@ py_library(
     data = glob(["ray_release/environments/*.env"]) + [
         "ray_release/buildkite/aws_instance_types.csv",
         "ray_release/schema.json",
-        "ray_release/configs/oss_config.yaml",
-    ],
+    ] + glob(["ray_release/configs/*.yaml"]),
     imports = ["."],
     visibility = ["//visibility:public"],
     deps = [
