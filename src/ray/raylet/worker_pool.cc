@@ -337,6 +337,7 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
                                   std::to_string(worker_startup_token_counter_));
     worker_command_args.push_back("--worker-launch-time-ms=" +
                                   std::to_string(current_sys_time_ms()));
+    worker_command_args.push_back("--node-id=" + node_id_.Hex());
   } else if (language == Language::CPP) {
     worker_command_args.push_back("--startup_token=" +
                                   std::to_string(worker_startup_token_counter_));
@@ -1646,6 +1647,8 @@ const std::vector<std::string> &WorkerPool::LookupWorkerDynamicOptions(
   static std::vector<std::string> kNoDynamicOptions;
   return kNoDynamicOptions;
 }
+
+const NodeID &WorkerPool::GetNodeID() const { return node_id_; }
 
 }  // namespace raylet
 
