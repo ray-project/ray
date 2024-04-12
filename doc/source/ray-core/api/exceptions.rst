@@ -12,6 +12,7 @@ Exceptions
     ray.exceptions.RayActorError
     ray.exceptions.TaskCancelledError
     ray.exceptions.TaskUnschedulableError
+    ray.exceptions.ActorDiedError
     ray.exceptions.ActorUnschedulableError
     ray.exceptions.ActorUnavailableError
     ray.exceptions.AsyncioActorExit

@@ -138,25 +138,25 @@ If ``max_restarts`` is set, you can also allow Ray to automatically restart the 
 Unavailable actors
 ----------------------
 
-When an actor can't accept method calls, a `ray.get` on the method's returned return object reference may raise
-`ActorUnavailableError`. This exception indicates the actor isn't accessible at the
+When an actor can't accept method calls, a ``ray.get`` on the method's returned return object reference may raise
+``ActorUnavailableError``. This exception indicates the actor isn't accessible at the
 moment, but may recover after waiting and retrying. Typical cases include:
 
 - The actor is restarting. For example, it's waiting for resources or running the class constructor in the restarting.
 - The actor is experiencing transient network issues, like connection breaks.
 - The actor is dead but the death hasn't yet been reported to the system.
 
-Actor method calls are at-most-once execution. When a `ray.get()` call raises the `ActorUnavailableError` exception, there's no guarantee on
+Actor method calls are at-most-once execution. When a ``ray.get()`` call raises the ``ActorUnavailableError`` exception, there's no guarantee on
 whether the actor executed the task or not. If the method has side effects, they may or may not
 be observable. Ray does guarantee that the method won't be executed twice, unless the actor or the method is configured with retries, as described in the next section.
 
 The actor may or may not recover in the next calls. Those subsequent calls
-may raise `RayActorError` if the actor is confirmed dead, `ActorUnavailableError` if it's
+may raise ``ActorDiedError`` if the actor is confirmed dead, ``ActorUnavailableError`` if it's
 still unreachable, or return values normally if the actor recovered.
 
-As a best practice, if the caller gets the `ActorUnavailableError`, error it should
+As a best practice, if the caller gets the ``ActorUnavailableError`` error, it should
 "quarantine" the actor and stop sending traffic to the actor. It can then periodically ping
-the actor until it raises `RayActorError` or returns OK.
+the actor until it raises ``ActorDiedError`` or returns OK.
 
 
 Actor method exceptions

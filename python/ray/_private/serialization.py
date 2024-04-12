@@ -21,7 +21,9 @@ from ray._raylet import (
 )
 from ray.core.generated.common_pb2 import ErrorType, RayErrorInfo
 from ray.exceptions import (
+    ActorDiedError,
     ActorPlacementGroupRemoved,
+    ActorUnavailableError,
     ActorUnschedulableError,
     LocalRayletDiedError,
     NodeDiedError,
@@ -46,7 +48,6 @@ from ray.exceptions import (
     WorkerCrashedError,
     OutOfMemoryError,
     ObjectRefStreamEndOfStreamError,
-    ActorUnavailableError,
 )
 from ray.util import serialization_addons
 from ray.util import inspect_serializability
@@ -248,7 +249,7 @@ class SerializationContext:
 
     def _deserialize_actor_died_error(self, data, metadata_fields):
         if not data:
-            return RayActorError()
+            return ActorDiedError()
         ray_error_info = self._deserialize_error_info(data, metadata_fields)
         assert ray_error_info.HasField("actor_died_error")
         if ray_error_info.actor_died_error.HasField("creation_task_failure_context"):
@@ -257,7 +258,7 @@ class SerializationContext:
             )
         else:
             assert ray_error_info.actor_died_error.HasField("actor_died_error_context")
-            return RayActorError(
+            return ActorDiedError(
                 cause=ray_error_info.actor_died_error.actor_died_error_context
             )
 

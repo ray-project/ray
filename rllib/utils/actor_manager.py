@@ -8,7 +8,7 @@ from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Tuple
 
 import ray
 from ray.actor import ActorHandle
-from ray.exceptions import RayActorError, RayError, RayTaskError, ActorUnavailableError
+from ray.exceptions import RayActorError, RayError, RayTaskError
 from ray.rllib.utils.typing import T
 from ray.util.annotations import DeveloperAPI
 
@@ -138,11 +138,7 @@ class RemoteCallResults:
         This is useful for callers that want to handle application errors differently.
         """
         return self._Iterator(
-            [
-                r
-                for r in self.result_or_errors
-                if not isinstance(r.get(), (RayActorError, ActorUnavailableError))
-            ]
+            [r for r in self.result_or_errors if not isinstance(r.get(), RayActorError)]
         )
 
 

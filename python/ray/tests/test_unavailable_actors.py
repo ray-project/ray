@@ -120,8 +120,8 @@ def test_actor_unavailable_restarting(ray_start_regular, caller):
             print(ray.get(a.slow_increment.remote(2, 0.1)))
         time.sleep(6)
 
-        # After the actor starts, the next calls are OK. However the previous actor instance's
-        # State is lost.
+        # After the actor starts, the next calls are OK. However the previous actor
+        # instance's state is lost.
         total = 0
         for i in range(10):
             total += i

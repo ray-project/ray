@@ -1,7 +1,7 @@
 import sys
 import pytest
 
-from ray.exceptions import RayActorError, RayTaskError
+from ray.exceptions import ActorDiedError, RayTaskError
 from ray.train import Checkpoint
 from ray.train.constants import RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE
 from ray.train._internal.session import _TrainingResult
@@ -28,16 +28,16 @@ def test_handle_preemption_error(
     if count_preemption_errors:
         monkeypatch.setenv(RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE, "1")
 
-    # Case 1: Directly raised (preemption) RayActorError
-    class PreemptionRayActorError(RayActorError):
+    # Case 1: Directly raised (preemption) ActorDiedError
+    class PreemptionActorDiedError(ActorDiedError):
         def preempted(self) -> bool:
             return True
 
-    err = PreemptionRayActorError()
+    err = PreemptionActorDiedError()
     trial.handle_error(err)
     assert trial.num_failures == (1 if count_preemption_errors else 0)
 
-    # Case 2: RayTaskError, where the cause is a (preemption) RayActorError
+    # Case 2: RayTaskError, where the cause is a (preemption) ActorDiedError
     wrapped_err = RayTaskError(
         function_name="test", traceback_str="traceback_str", cause=err
     )
@@ -45,7 +45,7 @@ def test_handle_preemption_error(
     assert trial.num_failures == (2 if count_preemption_errors else 0)
 
     # Case 3: Non-preemption error
-    non_preempted_err = RayActorError()
+    non_preempted_err = ActorDiedError()
     trial.handle_error(non_preempted_err)
     assert trial.num_failures == (3 if count_preemption_errors else 1)
 

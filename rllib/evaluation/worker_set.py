@@ -18,7 +18,7 @@ from typing import (
 
 import ray
 from ray.actor import ActorHandle
-from ray.exceptions import RayActorError
+from ray.exceptions import ActorDiedError
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.utils.actor_manager import RemoteCallResults
@@ -165,7 +165,7 @@ class WorkerSet:
             # WorkerSet creation possibly fails, if some (remote) workers cannot
             # be initialized properly (due to some errors in the EnvRunners's
             # constructor).
-            except RayActorError as e:
+            except ActorDiedError as e:
                 # In case of an actor (remote worker) init failure, the remote worker
                 # may still exist and will be accessible, however, e.g. calling
                 # its `sample.remote()` would result in strange "property not found"
@@ -175,11 +175,11 @@ class WorkerSet:
                     # during its construction process. This is to enforce transparency
                     # for the user (better to understand the real reason behind the
                     # failure).
-                    # - e.args[0]: The RayTaskError (inside the caught RayActorError).
+                    # - e.args[0]: The RayTaskError (inside the caught ActorDiedError).
                     # - e.args[0].args[2]: The original Exception (e.g. a ValueError due
                     # to a config mismatch) thrown inside the actor.
                     raise e.args[0].args[2]
-                # In any other case, raise the RayActorError as-is.
+                # In any other case, raise the ActorDiedError as-is.
                 else:
                     raise e
 
