@@ -181,10 +181,12 @@ except ImportError:
                         {"GPU": cf.num_learner_workers * cf.num_gpus_per_learner_worker}
                     ]
                 elif cf.custom_resources_per_learner_worker:
-                    learner_bundles = {
-                        key: cf.num_learner_workers * value
-                        for key, value in cf.custom_resources_per_learner_worker.items()
-                    }
+                    learner_bundles = [
+                        {
+                            k: cf.num_learner_workers * v
+                            for k, v in cf.custom_resources_per_learner_worker.items()
+                        }
+                    ]
                 elif cf.num_cpus_per_learner_worker:
                     learner_bundles = [
                         {
