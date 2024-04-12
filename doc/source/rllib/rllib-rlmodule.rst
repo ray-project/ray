@@ -369,7 +369,7 @@ There are two possible ways to extend existing RL Modules:
         :py:meth:`~ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module.PPOTorchRLModule.__init__` to create your custom
         encoder instead of the default one. We do this in the following example.
 
-        .. literalinclude:: ../../../rllib/examples/rl_module/mobilenet_rlm.py
+        .. literalinclude:: ../../../rllib/examples/rl_modules/classes/mobilenet_rlm.py
                 :language: python
                 :start-after: __sphinx_doc_begin__
                 :end-before: __sphinx_doc_end__

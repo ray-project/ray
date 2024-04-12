@@ -8,9 +8,12 @@ from unittest import mock
 from typing import List, Optional
 
 from ci.ray_ci.linux_tester_container import LinuxTesterContainer
-from ci.ray_ci.utils import chunk_into_n
+from ci.ray_ci.utils import chunk_into_n, ci_init
 from ci.ray_ci.container import _DOCKER_ECR_REPO, _RAYCI_BUILD_ID
-from ray_release.configs.global_config import BRANCH_PIPELINES, PR_PIPELINES
+from ray_release.configs.global_config import get_global_config
+
+
+ci_init()
 
 
 class MockPopen:
@@ -47,7 +50,7 @@ def test_persist_test_results(
         os.environ,
         {
             "BUILDKITE_BRANCH": "non-master",
-            "BUILDKITE_PIPELINE_ID": BRANCH_PIPELINES[0],
+            "BUILDKITE_PIPELINE_ID": get_global_config()["ci_pipeline_postmerge"][0],
         },
     ):
         container._persist_test_results("team", "log_dir")
@@ -57,7 +60,7 @@ def test_persist_test_results(
         os.environ,
         {
             "BUILDKITE_BRANCH": "non-master",
-            "BUILDKITE_PIPELINE_ID": PR_PIPELINES[0],
+            "BUILDKITE_PIPELINE_ID": get_global_config()["ci_pipeline_premerge"][0],
         },
     ):
         container._persist_test_results("team", "log_dir")
@@ -67,7 +70,7 @@ def test_persist_test_results(
         os.environ,
         {
             "BUILDKITE_BRANCH": "master",
-            "BUILDKITE_PIPELINE_ID": BRANCH_PIPELINES[0],
+            "BUILDKITE_PIPELINE_ID": get_global_config()["ci_pipeline_postmerge"][0],
         },
     ):
         container._persist_test_results("team", "log_dir")

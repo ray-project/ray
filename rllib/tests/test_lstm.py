@@ -4,8 +4,8 @@ import unittest
 
 import ray
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.examples.env.debug_counter_env import DebugCounterEnv
-from ray.rllib.examples.models.rnn_spy_model import RNNSpyModel
+from ray.rllib.examples.envs.classes.debug_counter_env import DebugCounterEnv
+from ray.rllib.examples._old_api_stack.models.rnn_spy_model import RNNSpyModel
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.rnn_sequencing import chop_into_sequences
 from ray.rllib.policy.sample_batch import SampleBatch

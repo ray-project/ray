@@ -237,7 +237,7 @@ Once implemented, your TF model can then be registered and used in place of a bu
         },
     })
 
-See the `keras model example <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_keras_model.py>`__ for a full example of a TF custom model.
+See the `keras model example <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/custom_keras_model.py>`__ for a full example of a TF custom model.
 
 More examples and explanations on how to implement custom Tuple/Dict processing models
 (also check out `this test case here <https://github.com/ray-project/ray/blob/master/rllib/tests/test_nested_observation_spaces.py>`__),
@@ -293,7 +293,7 @@ Once implemented, your PyTorch model can then be registered and used in place of
         },
     })
 
-See the `torch model examples <https://github.com/ray-project/ray/blob/master/rllib/examples/models/>`__ for various examples on how to build a custom
+See the `torch model examples <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/models/>`__ for various examples on how to build a custom
 PyTorch model (including recurrent ones).
 
 More examples and explanations on how to implement custom Tuple/Dict processing models (also check out `this test case here <https://github.com/ray-project/ray/blob/master/rllib/tests/test_nested_observation_spaces.py>`__),
@@ -320,7 +320,7 @@ If you further want to customize and need more direct access to the complete (no
 your Model's ``forward`` method directly (as you would do with a non-RNN ModelV2). In that case, though, you are responsible for changing your inputs
 and add the time rank to the incoming data (usually you just have to reshape).
 
-You can check out the `rnn_model.py <https://github.com/ray-project/ray/blob/master/rllib/examples/models/rnn_model.py>`__ models as examples to implement
+You can check out the `rnn_model.py <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/models/rnn_model.py>`__ models as examples to implement
 your own (either TF or Torch).
 
 
@@ -342,8 +342,8 @@ This `test case <https://github.com/ray-project/ray/blob/master/rllib/models/tes
 Batch Normalization
 ```````````````````
 
-You can use ``tf.layers.batch_normalization(x, training=input_dict["is_training"])`` to add batch norm layers to your custom model
-(see a `code example here <https://github.com/ray-project/ray/blob/master/rllib/examples/models/batch_norm_model.py>`__).
+You can use ``tf.layers.batch_normalization(x, training=input_dict["is_training"])`` to add batch norm layers to your custom model.
+See this `code example <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/models/batch_norm_model.py>`__).
 RLlib will automatically run the update ops for the batch norm layers during optimization
 (see `tf_policy.py <https://github.com/ray-project/ray/blob/master/rllib/policy/tf_policy.py>`__ and
 `multi_gpu_learner_thread.py <https://github.com/ray-project/ray/blob/master/rllib/execution/multi_gpu_learner_thread.py>`__ for the exact handling of these updates).
@@ -372,7 +372,7 @@ The following code adds a ``get_q_values()`` method to the automatically chosen
 default Model (e.g. a ``FullyConnectedNetwork`` if the observation space is a 1D Box
 or Discrete):
 
-.. literalinclude:: ../../../rllib/examples/models/custom_model_api.py
+.. literalinclude:: ../../../rllib/examples/_old_api_stack/models/custom_model_api.py
    :language: python
    :start-after: __sphinx_doc_model_api_1_begin__
    :end-before: __sphinx_doc_model_api_1_end__
@@ -399,7 +399,7 @@ for a single (**continuous**) action, given an observation and that particular a
 
 Let's take a look at how we would construct this API and wrap it around a custom model:
 
-.. literalinclude:: ../../../rllib/examples/models/custom_model_api.py
+.. literalinclude:: ../../../rllib/examples/_old_api_stack/models/custom_model_api.py
    :language: python
    :start-after: __sphinx_doc_model_api_2_begin__
    :end-before: __sphinx_doc_model_api_2_end__
@@ -459,12 +459,12 @@ Here is a simple (non-RNN/Attention) example of a Model that takes as input
 the last 3 observations (very similar to the recommended "framestacking" for
 learning in Atari environments):
 
-.. literalinclude:: ../../../rllib/examples/models/trajectory_view_utilizing_models.py
+.. literalinclude:: ../../../rllib/examples/_old_api_stack/models/trajectory_view_utilizing_models.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
 
-A PyTorch version of the above model is also `given in the same file <https://github.com/ray-project/ray/blob/master/rllib/examples/models/trajectory_view_utilizing_models.py>`__.
+A PyTorch version of the above model is also `given in the same file <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/models/trajectory_view_utilizing_models.py>`__.
 
 
 Custom Action Distributions
@@ -591,11 +591,11 @@ Depending on your use case it may make sense to use |just the masking|_, |just a
 check out `examples/parametric_actions_cartpole.py <https://github.com/ray-project/ray/blob/master/rllib/examples/parametric_actions_cartpole.py>`__.
 
 .. |just the masking| replace:: just the **masking**
-.. _just the masking: https://github.com/ray-project/ray/blob/master/rllib/examples/models/action_mask_model.py
+.. _just the masking: https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/models/action_mask_model.py
 .. |just action embeddings| replace:: just action **embeddings**
 .. _just action embeddings: https://github.com/ray-project/ray/blob/master/rllib/examples/parametric_actions_cartpole.py
 .. |both| replace:: **both**
-.. _both: https://github.com/ray-project/ray/blob/master/rllib/examples/models/parametric_actions_model.py
+.. _both: https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/models/parametric_actions_model.py
 
 Note that since masking introduces ``tf.float32.min`` values into the model output, this technique might not work with all algorithm options. For example, algorithms might crash if they incorrectly process the ``tf.float32.min`` values. The cartpole example has working configurations for DQN (must set ``hiddens=[]``), PPO (must disable running mean and set ``model.vf_share_layers=True``), and several other algorithms. Not all algorithms support parametric actions; see the `algorithm overview <rllib-algorithms.html#available-algorithms-overview>`__.
 
