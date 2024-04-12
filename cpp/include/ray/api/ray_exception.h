@@ -64,10 +64,5 @@ class RayTimeoutException : public RayException {
   RayTimeoutException(const std::string &msg) : RayException(msg){};
 };
 
-class ActorUnavailableException : public RayException {
- public:
-  ActorUnavailableException(const std::string &msg) : RayException(msg){};
-};
-
 }  // namespace internal
 }  // namespace ray

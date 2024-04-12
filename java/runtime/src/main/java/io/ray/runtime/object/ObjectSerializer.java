@@ -1,8 +1,8 @@
 package io.ray.runtime.object;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.primitives.Bytes;
 import com.google.protobuf.InvalidProtocolBufferException;
-import io.ray.api.exception.ActorUnavailableException;
 import io.ray.api.exception.RayActorException;
 import io.ray.api.exception.RayException;
 import io.ray.api.exception.RayTaskException;
@@ -44,14 +44,10 @@ public class ObjectSerializer {
       String.valueOf(ErrorType.OBJECT_LOST.getNumber()).getBytes();
   private static final byte[] OWNER_DIED_META =
       String.valueOf(ErrorType.OWNER_DIED.getNumber()).getBytes();
-  private static final byte[] OBJECT_FREED_META =
-      String.valueOf(ErrorType.OBJECT_FREED.getNumber()).getBytes();
   private static final byte[] OBJECT_DELETED_META =
       String.valueOf(ErrorType.OBJECT_DELETED.getNumber()).getBytes();
   private static final byte[] TASK_EXECUTION_EXCEPTION_META =
       String.valueOf(ErrorType.TASK_EXECUTION_EXCEPTION.getNumber()).getBytes();
-  private static final byte[] ACTOR_UNAVAILABLE_EXCEPTION_META =
-      String.valueOf(ErrorType.ACTOR_UNAVAILABLE.getNumber()).getBytes();
 
   public static final byte[] OBJECT_METADATA_TYPE_CROSS_LANGUAGE = "XLANG".getBytes();
   public static final byte[] OBJECT_METADATA_TYPE_JAVA = "JAVA".getBytes();
@@ -84,26 +80,25 @@ public class ObjectSerializer {
 
     if (meta != null && meta.length > 0) {
       // If meta is not null, deserialize the object from meta.
-      if (Arrays.equals(meta, OBJECT_METADATA_TYPE_RAW)) {
+      if (Bytes.indexOf(meta, OBJECT_METADATA_TYPE_RAW) == 0) {
         if (objectType == ByteBuffer.class) {
           return ByteBuffer.wrap(data);
         }
         return data;
-      } else if (Arrays.equals(meta, OBJECT_METADATA_TYPE_CROSS_LANGUAGE)
-          || Arrays.equals(meta, OBJECT_METADATA_TYPE_JAVA)) {
+      } else if (Bytes.indexOf(meta, OBJECT_METADATA_TYPE_CROSS_LANGUAGE) == 0
+          || Bytes.indexOf(meta, OBJECT_METADATA_TYPE_JAVA) == 0) {
         return Serializer.decode(data, objectType);
-      } else if (Arrays.equals(meta, WORKER_EXCEPTION_META)) {
+      } else if (Bytes.indexOf(meta, WORKER_EXCEPTION_META) == 0) {
         return new RayWorkerException();
-      } else if (Arrays.equals(meta, UNRECONSTRUCTABLE_EXCEPTION_META)
-          || Arrays.equals(meta, UNRECONSTRUCTABLE_LINEAGE_EVICTED_EXCEPTION_META)
-          || Arrays.equals(meta, UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED_EXCEPTION_META)
-          || Arrays.equals(meta, OBJECT_LOST_META)
-          || Arrays.equals(meta, OWNER_DIED_META)
-          || Arrays.equals(meta, OBJECT_FREED_META)
-          || Arrays.equals(meta, OBJECT_DELETED_META)) {
+      } else if (Bytes.indexOf(meta, UNRECONSTRUCTABLE_EXCEPTION_META) == 0
+          || Bytes.indexOf(meta, UNRECONSTRUCTABLE_LINEAGE_EVICTED_EXCEPTION_META) == 0
+          || Bytes.indexOf(meta, UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED_EXCEPTION_META) == 0
+          || Bytes.indexOf(meta, OBJECT_LOST_META) == 0
+          || Bytes.indexOf(meta, OWNER_DIED_META) == 0
+          || Bytes.indexOf(meta, OBJECT_DELETED_META) == 0) {
         // TODO: Differentiate object errors.
         return new UnreconstructableException(objectId);
-      } else if (Arrays.equals(meta, ACTOR_EXCEPTION_META)) {
+      } else if (Bytes.indexOf(meta, ACTOR_EXCEPTION_META) == 0) {
         ActorId actorId = IdUtil.getActorIdFromObjectId(objectId);
         if (data != null && data.length > 0) {
           RayException exception = deserializeActorException(data, actorId, objectId);
@@ -112,16 +107,14 @@ public class ObjectSerializer {
           }
         }
         return new RayActorException(actorId);
-      } else if (Arrays.equals(meta, TASK_EXECUTION_EXCEPTION_META)) {
+      } else if (Bytes.indexOf(meta, TASK_EXECUTION_EXCEPTION_META) == 0) {
         return deserializeRayException(data, objectId);
-      } else if (Arrays.equals(meta, OBJECT_METADATA_TYPE_ACTOR_HANDLE)) {
+      } else if (Bytes.indexOf(meta, OBJECT_METADATA_TYPE_ACTOR_HANDLE) == 0) {
         byte[] serialized = Serializer.decode(data, byte[].class);
         return NativeActorHandle.fromBytes(serialized);
-      } else if (Arrays.equals(meta, OBJECT_METADATA_TYPE_PYTHON)) {
+      } else if (Bytes.indexOf(meta, OBJECT_METADATA_TYPE_PYTHON) == 0) {
         throw new IllegalArgumentException(
             "Can't deserialize Python object: " + objectId.toString());
-      } else if (Arrays.equals(meta, ACTOR_UNAVAILABLE_EXCEPTION_META)) {
-        throw new ActorUnavailableException("Actor is unavailable for now");
       }
       throw new IllegalArgumentException("Unrecognized metadata " + Arrays.toString(meta));
     } else {
