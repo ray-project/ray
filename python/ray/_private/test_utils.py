@@ -2160,17 +2160,6 @@ def get_ray_default_worker_file_path():
     )
 
 
-@contextmanager
-def pause_process(pid):
-    try:
-        # Send SIGSTOP to pause the process.
-        subprocess.check_call(["kill", "-STOP", str(pid)])
-        yield
-    finally:
-        # Send SIGCONT to continue the process.
-        subprocess.check_call(["kill", "-CONT", str(pid)])
-
-
 def close_common_connections(pid):
     """
     Closes ipv4 connections between the current process and another process specified by
