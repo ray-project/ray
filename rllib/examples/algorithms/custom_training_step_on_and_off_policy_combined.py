@@ -168,9 +168,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Simple environment with 4 independent cartpole entities
-    register_env(
-        "env", lambda cfg: MultiAgentCartPole({"num_agents": 4, **cfg})
-    )
+    register_env("env", lambda cfg: MultiAgentCartPole({"num_agents": 4, **cfg}))
 
     # Note that since the algorithm below does not include a default policy or
     # policy configs, we have to explicitly set it in the multi_agent config:
@@ -208,9 +206,6 @@ if __name__ == "__main__":
     )
 
     run_rllib_example_script_experiment(base_config, args)
-
-
-
 
     base_config = (
         PPOConfig()

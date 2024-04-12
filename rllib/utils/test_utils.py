@@ -1199,7 +1199,7 @@ def run_rllib_example_script_experiment(
     args: argparse.Namespace,
     *,
     stop: Optional[Dict] = None,
-    success_metric: str = "sampler_results/episode_reward_mean",
+    success_metric: Optional[Dict] = None,
 ) -> Union[ResultDict, tune.result_grid.ResultGrid]:
     """Given an algorithm config and some command line args, runs an experiment.
 
@@ -1261,7 +1261,7 @@ def run_rllib_example_script_experiment(
 
     if args.no_tune:
         algo = config.build()
-        for iter in range(args.stop_iters):
+        for _ in range(args.stop_iters):
             results = algo.train()
             print(f"R={results['sampler_results']['episode_reward_mean']}", end="")
             if "evaluation" in results:
@@ -1334,10 +1334,14 @@ def run_rllib_example_script_experiment(
     ).fit()
 
     if args.as_test:
+        if success_metric is None:
+            success_metric = {"sampler_results/episode_reward_mean": args.stop_reward}
+        # TODO (sven): Make this work for more than one metric (AND-logic?).
+        metric = next(iter(success_metric.keys()))
         check_learning_achieved(
-            results,
-            args.stop_reward,
-            metric=success_metric,
+            tune_results=results,
+            min_value=success_metric[metric],
+            metric=metric,
         )
 
     return results

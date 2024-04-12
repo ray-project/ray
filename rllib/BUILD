@@ -2251,14 +2251,13 @@ py_test(
 # subdirectory: curriculum/
 # ....................................
 
-#@OldAPIStack
 py_test(
     name = "examples/curriculum/curriculum_learning",
     main = "examples/curriculum/curriculum_learning.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/curriculum/curriculum_learning.py"],
-    args = ["--as-test", "--stop-reward=800.0"]
+    args = ["--enable-new-api-stack", "--as-test"]
 )
 
 # subdirectory: debugging/

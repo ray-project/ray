@@ -81,9 +81,7 @@ if __name__ == "__main__":
         .get_default_config()
         .environment("CartPole-v1")
         # Run 3 trials.
-        .training(
-            lr=tune.grid_search([0.01, 0.001, 0.0001]), train_batch_size=2341
-        )
+        .training(lr=tune.grid_search([0.01, 0.001, 0.0001]), train_batch_size=2341)
     )
     # Run tune for some iterations and generate checkpoints.
     results = run_rllib_example_script_experiment(base_config, args)
