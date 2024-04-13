@@ -286,6 +286,7 @@ def test_gcs_connection_no_leak(ray_start_cluster):
     time.sleep(10)
 
     conns_without_workers = get_gcs_connections()
+    print(f"{conns_without_workers=}")
 
     @ray.remote
     class A:
