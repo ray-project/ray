@@ -168,7 +168,6 @@ from ray.includes.optional cimport (
 import ray
 from ray.exceptions import (
     RayActorError,
-    ActorDiedError,
     RayError,
     RaySystemError,
     RayTaskError,
@@ -1093,7 +1092,7 @@ cdef store_task_errors(
         returns)
 
     if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
-        raise ActorDiedError.from_task_error(failure_object)
+        raise RayActorError.from_task_error(failure_object)
     return num_errors_stored
 
 
@@ -1799,7 +1798,7 @@ cdef void execute_task(
                         "Failed to create actor. You set the async flag, "
                         "but the actor does not "
                         "have any coroutine functions.")
-                    raise ActorDiedError(
+                    raise RayActorError(
                         ActorDiedErrorContext(
                             error_message=error_message,
                             actor_id=core_worker.get_actor_id().binary(),

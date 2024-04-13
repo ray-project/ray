@@ -106,7 +106,7 @@ def test_get_throws_quickly_when_found_exception(ray_start_regular):
     def expect_exception(objects, exception):
         with pytest.raises(ray.exceptions.RayError) as err:
             ray.get(objects)
-        assert issubclass(err.type, exception)
+        assert err.type is exception
 
     signal1 = SignalActor.remote()
     actor = Actor.options(max_concurrency=2).remote()

@@ -273,49 +273,14 @@ class WorkerCrashedError(RayError):
 
 @PublicAPI
 class RayActorError(RayError):
-    """Indicates that the actor has outages unexpectedly before finishing a task.
-
-    This exception could happen because the actor process is dead, or is unavailable for
-    the moment. Ray raises subclasses `ActorDiedError` and `ActorUnavailableError`
-    respectively.
-    """
-
-    BASE_ERROR_MSG = "The actor experienced an error before finishing this task."
-
-    def __init__(
-        self,
-        actor_id: str = None,
-        error_msg: str = BASE_ERROR_MSG,
-        actor_init_failed: bool = False,
-        preempted: bool = False,
-    ):
-        #: The actor ID in hex string.
-        self.actor_id = actor_id
-        #: Whether the actor failed in the middle of __init__.
-        self.error_msg = error_msg
-        #: The full error message.
-        self._actor_init_failed = actor_init_failed
-        #: Whether the actor died because the node was preempted.
-        self._preempted = preempted
-
-    def __str__(self) -> str:
-        return self.error_msg
-
-    @property
-    def preempted(self) -> bool:
-        return self._preempted
-
-    @property
-    def actor_init_failed(self) -> bool:
-        return self._actor_init_failed
-
-
-@DeveloperAPI
-class ActorDiedError(RayActorError):
     """Indicates that the actor died unexpectedly before finishing a task.
 
     This exception could happen either because the actor process dies while
     executing a task, or because a task is submitted to a dead actor.
+
+    If the actor is dead because of an exception thrown in its creation tasks,
+    RayActorError will contain the creation_task_error, which is used to
+    reconstruct the exception on the caller side.
 
     Args:
         cause: The cause of the actor error. `RayTaskError` type means
@@ -326,25 +291,20 @@ class ActorDiedError(RayActorError):
             but it is there as a safety check.
     """
 
-    BASE_ERROR_MSG = "The actor died unexpectedly before finishing this task."
-
     def __init__(self, cause: Union[RayTaskError, ActorDiedErrorContext] = None):
-        """
-        Construct a RayActorError by building the arguments.
-        """
-
-        actor_id = None
-        error_msg = ActorDiedError.BASE_ERROR_MSG
-        actor_init_failed = False
-        preempted = False
+        # -- If the actor has failed in the middle of __init__, this is set. --
+        self._actor_init_failed = False
+        # -- The base actor error message. --
+        self.base_error_msg = "The actor died unexpectedly before finishing this task."
+        # Whether the node was preempted
+        self._preempted = False
 
         if not cause:
-            # Use the defaults above.
-            pass
+            self.error_msg = self.base_error_msg
         elif isinstance(cause, RayTaskError):
-            actor_init_failed = True
-            actor_id = cause._actor_id
-            error_msg = (
+            self._actor_init_failed = True
+            self.actor_id = cause._actor_id
+            self.error_msg = (
                 "The actor died because of an error"
                 " raised in its creation task, "
                 f"{cause.__str__()}"
@@ -352,7 +312,7 @@ class ActorDiedError(RayActorError):
         else:
             # Inidicating system-level actor failures.
             assert isinstance(cause, ActorDiedErrorContext)
-            error_msg_lines = [ActorDiedError.BASE_ERROR_MSG]
+            error_msg_lines = [self.base_error_msg]
             error_msg_lines.append(f"\tclass_name: {cause.class_name}")
             error_msg_lines.append(f"\tactor_id: {ActorID(cause.actor_id).hex()}")
             # Below items are optional fields.
@@ -370,33 +330,27 @@ class ActorDiedError(RayActorError):
                     "The actor never ran - it was cancelled before it started running."
                 )
             if cause.preempted:
-                preempted = True
+                self._preempted = True
                 error_msg_lines.append(
                     "\tThe actor's node was killed by a spot preemption."
                 )
-            error_msg = "\n".join(error_msg_lines)
-            actor_id = ActorID(cause.actor_id).hex()
-        super().__init__(actor_id, error_msg, actor_init_failed, preempted)
+            self.error_msg = "\n".join(error_msg_lines)
+            self.actor_id = ActorID(cause.actor_id).hex()
+
+    @property
+    def actor_init_failed(self) -> bool:
+        return self._actor_init_failed
+
+    def __str__(self) -> str:
+        return self.error_msg
+
+    @property
+    def preempted(self) -> bool:
+        return self._preempted
 
     @staticmethod
     def from_task_error(task_error: RayTaskError):
-        return ActorDiedError(task_error)
-
-
-@DeveloperAPI
-class ActorUnavailableError(RayActorError):
-    """Raised when the actor is temporarily unavailable but may be available later."""
-
-    def __init__(self, error_message: str, actor_id: Optional[bytes]):
-        actor_id = ActorID(actor_id).hex() if actor_id is not None else None
-        error_msg = (
-            f"The actor {actor_id} is unavailable: {error_message}. The task may or may"
-            "not have been executed on the actor."
-        )
-        actor_init_failed = False
-        preempted = False
-
-        super().__init__(actor_id, error_msg, actor_init_failed, preempted)
+        return RayActorError(task_error)
 
 
 @PublicAPI
@@ -836,7 +790,5 @@ RAY_EXCEPTION_TYPES = [
     PendingCallsLimitExceeded,
     LocalRayletDiedError,
     TaskUnschedulableError,
-    ActorDiedError,
     ActorUnschedulableError,
-    ActorUnavailableError,
 ]
