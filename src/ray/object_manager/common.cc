@@ -15,6 +15,7 @@
 #include "ray/object_manager/common.h"
 
 #include "absl/strings/str_format.h"
+#include "ray/util/sync.h"
 
 namespace ray {
 
@@ -32,7 +33,7 @@ void PlasmaObjectHeader::Init() {
 #endif  // defined(__APPLE__) || defined(__linux__)
 
   version = 0;
-  is_sealed = false;
+  is_sealed = 0;
   has_error = false;
   num_readers = 0;
   num_read_acquires_remaining = 0;
@@ -51,7 +52,12 @@ void PrintPlasmaObjectHeader(const PlasmaObjectHeader *header) {
                   "\n");
   absl::StrAppend(&print, "unique_name: ", header->unique_name, "\n");
 #endif  // defined(__APPLE__) || defined(__linux__)
-  absl::StrAppend(&print, "version: ", header->version, "\n");
+  absl::StrAppend(
+      &print, "version: ", header->version.load(std::memory_order_relaxed), "\n");
+  absl::StrAppend(
+      &print, "is_sealed: ", header->is_sealed.load(std::memory_order_relaxed), "\n");
+  absl::StrAppend(
+      &print, "has_error: ", header->has_error.load(std::memory_order_relaxed), "\n");
   absl::StrAppend(&print, "num_readers: ", header->num_readers, "\n");
   absl::StrAppend(
       &print, "num_read_acquires_remaining: ", header->num_read_acquires_remaining, "\n");
@@ -93,6 +99,15 @@ void PlasmaObjectHeader::SetErrorUnlocked(Semaphores &sem) {
   // We do a store release so that no loads/stores are reordered after the store to
   // `has_error`. This store release pairs with the acquire load in `CheckHasError()`.
   has_error.store(true, std::memory_order_release);
+
+  // Wake up any threads sleeping on the `is_sealed` futex.
+  is_sealed.store(-1, std::memory_order_relaxed);
+  Futex::Wake(&is_sealed, std::numeric_limits<int>::max());
+
+  // Wake up any threads sleeping on the `version` futex.
+  version.store(-1, std::memory_order_relaxed);
+  Futex::Wake(&version, std::numeric_limits<int>::max());
+
   // Increment `sem.object_sem` once to potentially unblock the writer. There will never
   // be more than one writer.
   RAY_CHECK_EQ(sem_post(sem.object_sem), 0);
@@ -106,6 +121,7 @@ void PlasmaObjectHeader::SetErrorUnlocked(Semaphores &sem) {
 
 Status PlasmaObjectHeader::WriteAcquire(Semaphores &sem,
                                         uint64_t write_data_size,
+
                                         uint64_t write_metadata_size,
                                         int64_t write_num_readers) {
   RAY_CHECK(sem.object_sem);
@@ -117,8 +133,7 @@ Status PlasmaObjectHeader::WriteAcquire(Semaphores &sem,
   RAY_CHECK_EQ(num_read_acquires_remaining, 0);
   RAY_CHECK_EQ(num_read_releases_remaining, 0);
 
-  version++;
-  is_sealed = false;
+  is_sealed.store(0, std::memory_order_relaxed);
   data_size = write_data_size;
   metadata_size = write_metadata_size;
   num_readers = write_num_readers;
@@ -130,7 +145,12 @@ Status PlasmaObjectHeader::WriteAcquire(Semaphores &sem,
 Status PlasmaObjectHeader::WriteRelease(Semaphores &sem) {
   RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem));
 
-  is_sealed = true;
+  is_sealed.store(1, std::memory_order_relaxed);
+  Futex::Wake(&is_sealed, /*count=*/num_readers);
+
+  version.fetch_add(1, std::memory_order_relaxed);
+  Futex::Wake(&version, /*count=*/num_readers);
+
   RAY_CHECK(num_readers) << num_readers;
   num_read_acquires_remaining = num_readers;
   num_read_releases_remaining = num_readers;
@@ -140,15 +160,30 @@ Status PlasmaObjectHeader::WriteRelease(Semaphores &sem) {
 }
 
 Status PlasmaObjectHeader::ReadAcquire(Semaphores &sem,
-                                       int64_t version_to_read,
-                                       int64_t *version_read) {
+                                       int32_t version_to_read,
+                                       int32_t *version_read) {
   RAY_CHECK(sem.header_sem);
 
   RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem));
 
-  // Wait for the requested version (or a more recent one) to be sealed.
-  while (version < version_to_read || !is_sealed) {
+  if (!is_sealed.load(std::memory_order_relaxed)) {
     RAY_CHECK_EQ(sem_post(sem.header_sem), 0);
+
+    Futex::Wait(&is_sealed, 0);
+    // Check if the futex was woken up because the application is exiting.
+    RAY_RETURN_NOT_OK(CheckHasError());
+
+    RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem));
+  }
+  // Wait for the requested version (or a more recent one) to be sealed.
+  int32_t current_version;
+  while ((current_version = version.load(std::memory_order_relaxed)) < version_to_read) {
+    RAY_CHECK_EQ(sem_post(sem.header_sem), 0);
+
+    Futex::Wait(&version, current_version);
+    // Check if the futex was woken up because the application is exiting.
+    RAY_RETURN_NOT_OK(CheckHasError());
+
     RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem));
   }
 
@@ -158,8 +193,8 @@ Status PlasmaObjectHeader::ReadAcquire(Semaphores &sem,
     *version_read = 0;
     success = true;
   } else {
-    *version_read = version;
-    if (version == version_to_read && num_read_acquires_remaining > 0) {
+    *version_read = current_version;
+    if (current_version == version_to_read && num_read_acquires_remaining > 0) {
       // This object is at the right version and still has reads remaining. Read
       // succeeds.
       num_read_acquires_remaining--;
@@ -175,15 +210,16 @@ Status PlasmaObjectHeader::ReadAcquire(Semaphores &sem,
   return Status::OK();
 }
 
-Status PlasmaObjectHeader::ReadRelease(Semaphores &sem, int64_t read_version) {
+Status PlasmaObjectHeader::ReadRelease(Semaphores &sem, int32_t read_version) {
   RAY_CHECK(sem.object_sem);
   RAY_CHECK(sem.header_sem);
 
   bool all_readers_done = false;
   RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem));
 
-  RAY_CHECK_EQ(version, read_version)
-      << "Version " << version << " modified from version " << read_version
+  int32_t current_version = version.load(std::memory_order_relaxed);
+  RAY_CHECK_EQ(current_version, read_version)
+      << "Version " << current_version << " modified from version " << read_version
       << " at read start";
 
   if (num_readers != -1) {
@@ -219,8 +255,8 @@ Status PlasmaObjectHeader::WriteRelease(Semaphores &sem) {
 }
 
 Status PlasmaObjectHeader::ReadAcquire(Semaphores &sem,
-                                       int64_t version_to_read,
-                                       int64_t *version_read) {
+                                       int32_t version_to_read,
+                                       int32_t *version_read) {
   return Status::NotImplemented("Not supported on Windows.");
 }
 

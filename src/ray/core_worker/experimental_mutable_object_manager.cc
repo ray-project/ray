@@ -69,6 +69,7 @@ MutableObjectManager::~MutableObjectManager() {
   // Copy `semaphores_` into `tmp` because `DestroySemaphores()` mutates `semaphores_`.
   absl::flat_hash_map<ObjectID, PlasmaObjectHeader::Semaphores> tmp = semaphores_;
   for (const auto &[object_id, _] : tmp) {
+    SetError(object_id);
     DestroySemaphores(object_id);
   }
 }
@@ -233,7 +234,7 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
   channel->lock->Lock();
 
   PlasmaObjectHeader::Semaphores sem = GetSemaphores(object_id);
-  int64_t version_read = 0;
+  int32_t version_read = 0;
   RAY_RETURN_NOT_OK(channel->mutable_object->header->ReadAcquire(
       sem, channel->next_version_to_read, &version_read));
   RAY_CHECK_GT(version_read, 0);
