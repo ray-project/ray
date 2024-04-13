@@ -1,6 +1,18 @@
-# TODO (sven): Move this example script into the new API stack.
+"""Example of a custom Ray Tune experiment wrapping an RLlib Algorithm.
 
-"""Example of a custom experiment wrapped around an RLlib Algorithm."""
+You should only use such a customized workflow if the following conditions apply:
+- You know exactly what you are doing :)
+- Simply configuring an existing RLlib Algorithm (e.g. PPO) via its AlgorithmConfig
+is not enough and doesn't allow you to shape the Algorithm into behaving the way you'd
+like.
+-- Note that for complex and custom evaluation procedures there is a RLlib Algorithm
+config option (see examples/evaluation/custom_evaluation.py for more details).
+- Subclassing
+
+"""
+
+TODO: Continue docstring above
+
 import argparse
 
 import ray
@@ -48,11 +60,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     ray.init(num_cpus=3)
-    config = ppo.PPOConfig().environment("CartPole-v1")
-    config = config.to_dict()
-    config["train-iterations"] = args.train_iterations
+    base_config = (
+    )
+    base_config = base_config.to_dict()
+    base_config["train-iterations"] = args.train_iterations
 
     tune.Tuner(
-        tune.with_resources(experiment, ppo.PPO.default_resource_request(config)),
+        tune.with_resources(experiment, ppo.PPO.default_resource_request(base_config)),
         param_space=config,
     ).fit()
