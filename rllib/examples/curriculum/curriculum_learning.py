@@ -72,12 +72,6 @@ from ray.tune.registry import get_trainable_cls
 
 parser = add_rllib_example_script_args(default_iters=100, default_timesteps=600000)
 parser.add_argument(
-    "--recreate-entire-gym-env",
-    action="store_true",
-    help="Whether to recreate the entire gym.vector.Env on each EnvRunner whenever a "
-    "new task/map should be loaded.",
-)
-parser.add_argument(
     "--upgrade-task-threshold",
     type=float,
     default=0.99,
@@ -142,20 +136,13 @@ ENV_MAPS = [
 # representing one row in the map. Each character in the strings represent a single
 # field (S=starting position, H=hole (bad), F=frozen/free field (ok), G=goal (great!)).
 def _remote_fn(env_runner, new_task: int):
-    # We recreate the entire env object and re-assign it to the EnvRunner.
-    if True:  # args.recreate_entire_gym_env:
-        # A SingleAgentEnvRunner holds a gym.vector.Env under `self.env`.
-        env_runner.config.environment(env_config={"desc": ENV_MAPS[new_task]})
-        env_runner._make_env()
-        # Set the EnvRunners `_needs_initial_reset` property (to make sure we reset the
-        # next time we call `sample()` on the EnvRunner.
-        env_runner._needs_initial_reset = True
-    # We change each vectorized Env's map to the provided one.
-    else:
-        raise NotImplementedError
+    # We recreate the entire env object by changing the env_config on the worker,
+    # then calling its `make_env()` method.
+    env_runner.config.environment(env_config={"desc": ENV_MAPS[new_task]})
+    env_runner.make_env()
 
 
-class CallbackThatSetsNewEnvTask(DefaultCallbacks):
+class EnvTaskCallback(DefaultCallbacks):
     """Custom callback implementing `on_train_result()` for changing the envs' maps."""
 
     def on_train_result(
@@ -171,9 +158,9 @@ class CallbackThatSetsNewEnvTask(DefaultCallbacks):
             algorithm._counters["current_env_task"] = 2
         current_task = algorithm._counters["current_env_task"]
 
-        # If episode return is consistently 1.0, we switch to a more difficult task
-        # (if possible). If we already mastered the most difficult task, we publish
-        # our victory in the result dict.
+        # If episode return is consistently `args.upgrade_task_threshold`, we switch
+        # to a more difficult task (if possible). If we already mastered the most
+        # difficult task, we publish our victory in the result dict.
         result["task_solved"] = 0.0
         current_return = result["sampler_results"]["episode_reward_mean"]
         if current_return > args.upgrade_task_threshold:
@@ -191,6 +178,15 @@ class CallbackThatSetsNewEnvTask(DefaultCallbacks):
             # Hardest task was solved (1.0) -> report this in the results dict.
             elif current_return == 1.0:
                 result["task_solved"] = 1.0
+        # Emergency brake: If return is 0.0 AND we are already at a harder task (1 or
+        # 2), we go back to task=0.
+        elif current_return == 0.0 and current_task > 0:
+            print(
+                "Emergency brake: Our policy seemed to have collapsed -> Setting task "
+                "back to 0."
+            )
+            algorithm.workers.foreach_worker(func=partial(_remote_fn, new_task=0))
+            algorithm._counters["current_env_task"] = 0
 
 
 if __name__ == "__main__":
@@ -201,7 +197,7 @@ if __name__ == "__main__":
         .get_default_config()
         # Plug in our curriculum callbacks that controls when we should upgrade the env
         # task based on the received return for the current task.
-        .callbacks(CallbackThatSetsNewEnvTask)
+        .callbacks(EnvTaskCallback)
         .environment(
             "FrozenLake-v1",
             env_config={
@@ -210,6 +206,12 @@ if __name__ == "__main__":
                 "desc": ENV_MAPS[2 if args.no_curriculum else 0],
                 **ENV_OPTIONS,
             },
+        )
+        .training(
+            num_sgd_iter=6,
+            vf_loss_coeff=0.01,
+            lr=0.0002,
+            model={"vf_share_layers": True},
         )
         .rollouts(
             num_envs_per_worker=5,
@@ -224,9 +226,9 @@ if __name__ == "__main__":
     stop = {
         "training_iteration": args.stop_iters,
         # Reward directly does not matter to us as we would like to continue
-        # after the 0-task (easiest) reaches a return of 1.0. But we DO want to
-        # stop, once the entire task is done (reaches return of 1.0 in the most
-        # difficult task=2).
+        # after the policy reaches a return of ~1.0 on the 0-task (easiest).
+        # But we DO want to stop, once the entire task is done (reaches return of
+        # 1.0 on the most difficult task=2).
         "task_solved": 1.0,
         "timesteps_total": args.stop_timesteps,
     }
