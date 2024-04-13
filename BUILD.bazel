@@ -1234,9 +1234,6 @@ ray_cc_test(
         "no_windows",
         "team:core",
     ],
-    target_compatible_with = [
-        "@platforms//os:linux",
-    ],
     deps = [
         ":core_worker_lib",
         ":plasma_store_server_lib",
