@@ -259,7 +259,7 @@ class RayActorError(RayError):
     respectively.
     """
 
-    BASE_ERROR_MSG = "The actor experienced errors before finishing this task."
+    BASE_ERROR_MSG = "The actor experienced an error before finishing this task."
 
     def __init__(
         self,
@@ -369,7 +369,7 @@ class ActorUnavailableError(RayActorError):
         actor_id = ActorID(actor_id).hex() if actor_id is not None else None
         error_msg = (
             f"The actor {actor_id} is unavailable: {error_message}. The task may or may"
-            "not be executed on the actor."
+            "not have been executed on the actor."
         )
         actor_init_failed = False
         preempted = False

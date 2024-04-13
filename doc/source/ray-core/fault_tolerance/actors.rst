@@ -146,7 +146,7 @@ moment, but may recover after waiting and retrying. Typical cases include:
 - The actor is experiencing transient network issues, like connection outages.
 - The actor is dead, but the death hasn't yet been reported to the system.
 
-Actor method calls are at-most-once execution. When a ``ray.get()`` call raises the ``ActorUnavailableError`` exception, there's no guarantee on
+Actor method calls are executed at-most-once. When a ``ray.get()`` call raises the ``ActorUnavailableError`` exception, there's no guarantee on
 whether the actor executed the task or not. If the method has side effects, they may or may not
 be observable. Ray does guarantee that the method won't be executed twice, unless the actor or the method is configured with retries, as described in the next section.
 
@@ -158,7 +158,7 @@ As a best practice, if the caller gets the ``ActorUnavailableError`` error, it s
 "quarantine" the actor and stop sending traffic to the actor. It can then periodically ping
 the actor until it raises ``ActorDiedError`` or returns OK.
 
-If a task has ``max_task_retries > 0`` and it received ``ActorUnavailableError``, Ray will retry the task up to ``max_task_retries`` times. If the actor is restarting in its constructor, Ray would fast-fail the task and retry it after ``RAY_task_retry_delay_ms``, consuming the retry counts, until the actor is ready to accept tasks. If the constructor take a long time to run, consider increasing ``max_task_retries`` or increase ``RAY_task_retry_delay_ms``.
+If a task has ``max_task_retries > 0`` and it received ``ActorUnavailableError``, Ray will retry the task up to ``max_task_retries`` times. If the actor is restarting in its constructor, the task retry will fail, consuming one retry count. If there are still retries remaining, Ray will retry again after ``RAY_task_retry_delay_ms``, until all retries are consumed or the actor is ready to accept tasks. If the constructor takes a long time to run, consider increasing ``max_task_retries`` or increase ``RAY_task_retry_delay_ms``.
 
 Actor method exceptions
 -----------------------
