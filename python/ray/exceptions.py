@@ -289,6 +289,7 @@ class RayActorError(RayError):
         return self._actor_init_failed
 
 
+@DeveloperAPI
 class ActorDiedError(RayActorError):
     """Indicates that the actor died unexpectedly before finishing a task.
 
