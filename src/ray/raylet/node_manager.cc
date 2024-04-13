@@ -1224,7 +1224,6 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   const int runtime_env_hash = static_cast<int>(message->runtime_env_hash());
   WorkerID worker_id = from_flatbuf<WorkerID>(*message->worker_id());
   pid_t pid = message->worker_pid();
-  std::string entrypoint = string_from_flatbuf(*message->entrypoint());
   StartupToken worker_startup_token = message->startup_token();
   std::string worker_ip_address = string_from_flatbuf(*message->ip_address());
   // TODO(suquark): Use `WorkerType` in `common.proto` without type converting.
@@ -1291,20 +1290,6 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     worker->AssignTaskId(driver_task_id);
     rpc::JobConfig job_config;
     job_config.ParseFromString(message->serialized_job_config()->str());
-
-    // Prepare the JobTableData for the GCS. However we will not send it to GCS yet,
-    // because we need to wait for the worker to announce its port first. Sending in
-    // `ProcessAnnounceWorkerPortMessage`.
-    rpc::Address driver_address;
-    // Assume raylet ID is the same as the node ID.
-    driver_address.set_raylet_id(self_node_id_.Binary());
-    driver_address.set_ip_address(worker_ip_address);
-    // driver_address.port is not set! It will be set in ProcessAnnounceWorkerPortMessage
-    driver_address.set_worker_id(worker_id.Binary());
-    auto job_data_ptr = gcs::CreateJobTableData(
-        job_id, /*is_dead=*/false, driver_address, pid, entrypoint, job_config);
-    worker->SetDriverJobTableData(job_data_ptr);
-
     RAY_UNUSED(worker_pool_.RegisterDriver(worker, job_config, send_reply_callback));
   }
 }
@@ -1327,8 +1312,26 @@ void NodeManager::ProcessAnnounceWorkerPortMessage(
     worker_pool_.OnWorkerStarted(worker);
     HandleWorkerAvailable(worker);
   } else {
-    auto job_data_ptr = worker->GetDriverJobTableData();
-    job_data_ptr->mutable_driver_address()->set_port(port);
+    // Driver is ready. Add the job to GCS.
+    JobID job_id = worker->GetAssignedJobId();
+    boost::optional<const rpc::JobConfig &> job_config =
+        worker_pool_.GetJobConfig(job_id);
+    RAY_CHECK(job_config.has_value());
+
+    rpc::Address driver_address;
+    // Assume raylet ID is the same as the node ID.
+    driver_address.set_raylet_id(self_node_id_.Binary());
+    driver_address.set_ip_address(worker->IpAddress());
+    driver_address.set_port(port);
+    driver_address.set_worker_id(worker->WorkerId().Binary());
+    auto job_data_ptr =
+        gcs::CreateJobTableData(job_id,
+                                /*is_dead=*/false,
+                                driver_address,
+                                worker->GetProcess().GetId(),
+                                string_from_flatbuf(*message->entrypoint()),
+                                *job_config);
+
     RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(job_data_ptr, [client](Status status) {
       if (!status.ok()) {
         RAY_LOG(ERROR) << "Failed to add job to GCS: " << status.ToString();
