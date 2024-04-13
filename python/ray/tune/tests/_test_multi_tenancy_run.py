@@ -1,6 +1,7 @@
 from pathlib import Path
 import os
 import time
+import pytest
 
 from ray import train, tune
 from ray.train.data_parallel_trainer import DataParallelTrainer
@@ -86,3 +87,8 @@ while HANG_END_MARKER and Path(HANG_END_MARKER).exists():
 # Put assertions last, so we don't finish early because of failures
 assert sorted([result.metrics["param"] for result in results]) == VALS
 assert [result.metrics["fixed"] for result in results] == [FIXED_VAL, FIXED_VAL]
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
