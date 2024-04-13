@@ -87,13 +87,16 @@ struct PlasmaObjectHeader {
   // The object version. For immutable objects, this gets incremented to 1 on
   // the first write and then should never be modified. For mutable objects,
   // each new write must increment the version before releasing to readers.
-  int64_t version = 0;
+  std::atomic<int32_t> version = 0;
   // Indicates whether the current version has been written. is_sealed=false
   // means that there is a writer who has WriteAcquire'd but not yet
   // WriteRelease'd the current version. is_sealed=true means that `version`
   // has been WriteRelease'd. A reader may read the actual object value if
   // is_sealed=true and num_read_acquires_remaining != 0.
-  bool is_sealed = false;
+  //
+  // This variable is an int32_t rather than a bool because the futex syscall expects a
+  // value of size 4 bytes.
+  std::atomic<int32_t> is_sealed = false;
   // Set to indicate an error was encountered computing the next version of
   // the mutable object. Lockless access allowed.
   std::atomic<bool> has_error = false;
@@ -151,7 +154,7 @@ struct PlasmaObjectHeader {
   /// 0. Otherwise, the current version.
   /// \return Whether the correct version was read and there were still
   /// reads remaining.
-  Status ReadAcquire(Semaphores &sem, int64_t version_to_read, int64_t *version_read);
+  Status ReadAcquire(Semaphores &sem, int32_t version_to_read, int32_t *version_read);
 
   // Finishes the read. If all reads are done, signals to the writer. This is
   // not necessary to call for objects that have num_readers=-1.
@@ -159,7 +162,7 @@ struct PlasmaObjectHeader {
   /// \param sem The semaphores for this channel.
   /// \param read_version This must match the version previously passed in
   /// ReadAcquire.
-  Status ReadRelease(Semaphores &sem, int64_t read_version);
+  Status ReadRelease(Semaphores &sem, int32_t read_version);
 
   /// Set up synchronization primitives.
   void Init();

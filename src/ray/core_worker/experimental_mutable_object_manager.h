@@ -58,7 +58,7 @@ class MutableObjectManager {
     std::unique_ptr<absl::Mutex> lock;
     /// The last version that we read. To read again, we must pass a newer
     /// version than this.
-    int64_t next_version_to_read = 1;
+    int32_t next_version_to_read = 1;
   };
 
   MutableObjectManager() = default;

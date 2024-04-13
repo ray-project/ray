@@ -76,9 +76,9 @@ void Read(PlasmaObjectHeader *header,
   RAY_CHECK(sem.header_sem);
   RAY_CHECK(sem.object_sem);
 
-  int64_t version_to_read = 1;
+  int32_t version_to_read = 1;
   for (size_t i = 0; i < num_reads; i++) {
-    int64_t version_read = 0;
+    int32_t version_read = 0;
     if (!header->ReadAcquire(sem, version_to_read, &version_read).ok()) {
       data_results.push_back("error");
       metadata_results.push_back("error");
