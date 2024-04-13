@@ -41,6 +41,7 @@ DEFINE_int32(node_manager_port, -1, "The port of node manager.");
 DEFINE_int32(metrics_agent_port, -1, "The port of metrics agent.");
 DEFINE_int32(metrics_export_port, 1, "The port at which metrics are exposed.");
 DEFINE_int32(runtime_env_agent_port, 1, "The port of runtime env agent.");
+DEFINE_string(node_id, "", "The id of this node.");
 DEFINE_string(node_ip_address, "", "The ip address of this node.");
 DEFINE_string(gcs_address, "", "The address of the GCS server, including IP and port.");
 DEFINE_int32(min_worker_port,
@@ -143,6 +144,8 @@ int main(int argc, char *argv[]) {
   const int node_manager_port = static_cast<int>(FLAGS_node_manager_port);
   const int metrics_agent_port = static_cast<int>(FLAGS_metrics_agent_port);
   const int runtime_env_agent_port = static_cast<int>(FLAGS_runtime_env_agent_port);
+  RAY_CHECK_NE(FLAGS_node_id, "") << "Expected node ID.";
+  const std::string node_id = FLAGS_node_id;
   const std::string node_ip_address = FLAGS_node_ip_address;
   const int min_worker_port = static_cast<int>(FLAGS_min_worker_port);
   const int max_worker_port = static_cast<int>(FLAGS_max_worker_port);
@@ -174,6 +177,7 @@ int main(int argc, char *argv[]) {
   RAY_CHECK_NE(FLAGS_cluster_id, "") << "Expected cluster ID.";
   ray::ClusterID cluster_id = ray::ClusterID::FromHex(FLAGS_cluster_id);
   RAY_LOG(INFO) << "Setting cluster ID to: " << cluster_id;
+
   gflags::ShutDownCommandLineFlags();
 
   // Configuration for the node manager.
@@ -365,11 +369,17 @@ int main(int argc, char *argv[]) {
             {ray::stats::SessionNameKey, session_name}};
         ray::stats::Init(global_tags, metrics_agent_port, WorkerID::Nil());
 
-        ray::NodeID raylet_node_id{
-            (!RayConfig::instance().OVERRIDE_NODE_ID_FOR_TESTING().empty())
-                ? ray::NodeID::FromHex(
-                      RayConfig::instance().OVERRIDE_NODE_ID_FOR_TESTING())
-                : ray::NodeID::FromRandom()};
+        ray::NodeID raylet_node_id;
+        if (!RayConfig::instance().OVERRIDE_NODE_ID_FOR_TESTING().empty()) {
+          RAY_LOG(INFO) << "Overriding node ID for testing to "
+                        << RayConfig::instance().OVERRIDE_NODE_ID_FOR_TESTING();
+          raylet_node_id =
+              ray::NodeID::FromHex(RayConfig::instance().OVERRIDE_NODE_ID_FOR_TESTING());
+        } else {
+          RAY_LOG(INFO) << "Setting node ID to: " << FLAGS_node_id;
+          raylet_node_id = ray::NodeID::FromHex(FLAGS_node_id);
+        }
+
         node_manager_config.AddDefaultLabels(raylet_node_id.Hex());
         // Initialize the node manager.
         raylet = std::make_unique<ray::raylet::Raylet>(main_service,

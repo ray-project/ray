@@ -315,6 +315,8 @@ class Node:
             self.start_head_processes()
 
         if not connect_only:
+            self._node_id = ray.NodeID.from_random().hex()
+            logger.debug(f"Set node ID to {self._node_id}")
             self.start_ray_processes()
             # we should update the address info after the node has been started
             try:
@@ -332,7 +334,6 @@ class Node:
                 self.gcs_address,
                 self._raylet_ip_address,
             )
-            self._node_id = node_info["node_id"]
             if self._ray_params.node_manager_port == 0:
                 self._ray_params.node_manager_port = node_info["node_manager_port"]
 
@@ -1169,6 +1170,7 @@ class Node:
         process_info = ray._private.services.start_raylet(
             self.redis_address,
             self.gcs_address,
+            self._node_id,
             self._node_ip_address,
             self._ray_params.node_manager_port,
             self._raylet_socket_name,

@@ -1486,6 +1486,7 @@ def start_gcs_server(
 def start_raylet(
     redis_address: str,
     gcs_address: str,
+    node_id: str,
     node_ip_address: str,
     node_manager_port: int,
     raylet_name: str,
@@ -1533,6 +1534,7 @@ def start_raylet(
     Args:
         redis_address: The address of the primary Redis server.
         gcs_address: The address of GCS server.
+        node_id: The ID of this node.
         node_ip_address: The IP address of this node.
         node_manager_port: The port to use for the node manager. If it's
             0, a random port will be used.
@@ -1657,6 +1659,7 @@ def start_raylet(
         + _site_flags()  # Inherit "-S" and "-s" flags from current Python interpreter.
         + [
             worker_path,
+            f"--node-id={node_id}",
             f"--node-ip-address={node_ip_address}",
             "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
             f"--object-store-name={plasma_store_name}",
@@ -1757,6 +1760,7 @@ def start_raylet(
         f"--min_worker_port={min_worker_port}",
         f"--max_worker_port={max_worker_port}",
         f"--node_manager_port={node_manager_port}",
+        f"--node_id={node_id}",
         f"--node_ip_address={node_ip_address}",
         f"--maximum_startup_concurrency={maximum_startup_concurrency}",
         f"--static_resource_list={resource_argument}",
