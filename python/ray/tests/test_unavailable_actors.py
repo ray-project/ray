@@ -114,9 +114,7 @@ def test_actor_unavailable_restarting(ray_start_regular, caller):
             print(ray.get(a.slow_increment.remote(2, 0.1)))
 
         # Actor restarting for 5s. In this period, we get a RESTARTING issue.
-        with pytest.raises(
-            ActorUnavailableError, match="The actor is in RESTARTING state"
-        ):
+        with pytest.raises(ActorUnavailableError, match="The actor is restarting"):
             print(ray.get(a.slow_increment.remote(2, 0.1)))
         time.sleep(6)
 
@@ -203,7 +201,7 @@ def test_unavailable_then_actor_error(ray_start_regular):
     with pytest.raises(ActorUnavailableError, match="GrpcUnavailable"):
         print(ray.get(a.ping.remote("unavailable")))
     # When the actor is restarting, any method call raises ActorUnavailableError.
-    with pytest.raises(ActorUnavailableError, match="The actor is in RESTARTING state"):
+    with pytest.raises(ActorUnavailableError, match="The actor is restarting"):
         print(ray.get(a.ping.remote("unavailable")))
 
     # Waits for the actor to restart.
