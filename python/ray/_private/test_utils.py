@@ -2158,3 +2158,29 @@ def get_ray_default_worker_file_path():
         f"/home/ray/anaconda3/lib/python{py_version}/"
         "site-packages/ray/_private/workers/default_worker.py"
     )
+
+
+def close_common_connections(pid):
+    """
+    Closes ipv4 connections between the current process and another process specified by
+    its PID.
+    """
+    current_process = psutil.Process()
+    current_connections = current_process.connections(kind="inet")
+    try:
+        other_process = psutil.Process(pid)
+        other_connections = other_process.connections(kind="inet")
+    except psutil.NoSuchProcess:
+        print(f"No process with PID {pid} found.")
+        return
+    # Finding common connections based on matching addresses and ports.
+    common_connections = []
+    for conn1 in current_connections:
+        for conn2 in other_connections:
+            if conn1.laddr == conn2.raddr and conn1.raddr == conn2.laddr:
+                common_connections.append((conn1.fd, conn1.laddr, conn1.raddr))
+    # Closing the FDs.
+    for fd, laddr, raddr in common_connections:
+        if fd != -1:  # FD is -1 if it's not accessible or if it's a pseudo FD.
+            os.close(fd)
+            print(f"Closed FD: {fd}, laddr: {laddr}, raddr: {raddr}")
