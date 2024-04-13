@@ -15,7 +15,7 @@ def test_spill_fusion(fs_only_object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, temp_folder = fs_only_object_spilling_config
     min_spilling_size = 10 * 1024 * 1024
-    ray.init(
+    ray_context = ray.init(
         num_cpus=1,
         object_store_memory=75 * 1024 * 1024,
         _system_config={
@@ -36,7 +36,8 @@ def test_spill_fusion(fs_only_object_spilling_config, shutdown_only):
     xs = [ray.put(np.zeros(object_size // 8)) for _ in range(300)]  # noqa: F841
 
     spill_dir = os.path.join(
-        temp_folder, ray._private.ray_constants.DEFAULT_OBJECT_PREFIX
+        temp_folder,
+        f"{ray._private.ray_constants.DEFAULT_OBJECT_PREFIX}_{ray_context['node_id']}",
     )
     under_min, over_min = 0, 0
     for filename in os.listdir(spill_dir):

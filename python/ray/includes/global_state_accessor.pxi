@@ -256,4 +256,5 @@ cdef class GlobalStateAccessor:
             "object_store_socket_name": c_node_info.object_store_socket_name().decode(),
             "raylet_socket_name": c_node_info.raylet_socket_name().decode(),
             "node_manager_port": c_node_info.node_manager_port(),
+            "node_id": c_node_info.node_id().hex(),
         }

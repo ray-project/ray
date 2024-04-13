@@ -26,7 +26,7 @@ def test_delete_objects(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, temp_folder = object_spilling_config
 
-    address = ray.init(
+    ray_context = ray.init(
         object_store_memory=75 * 1024 * 1024,
         _system_config={
             "max_io_workers": 1,
@@ -49,15 +49,15 @@ def test_delete_objects(object_spilling_config, shutdown_only):
 
     del replay_buffer
     del ref
-    wait_for_condition(lambda: is_dir_empty(temp_folder))
-    assert_no_thrashing(address["address"])
+    wait_for_condition(lambda: is_dir_empty(temp_folder, ray_context["node_id"]))
+    assert_no_thrashing(ray_context["address"])
 
 
 def test_delete_objects_delete_while_creating(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, temp_folder = object_spilling_config
 
-    address = ray.init(
+    ray_context = ray.init(
         object_store_memory=75 * 1024 * 1024,
         _system_config={
             "max_io_workers": 4,
@@ -88,8 +88,8 @@ def test_delete_objects_delete_while_creating(object_spilling_config, shutdown_o
     # After all, make sure all objects are killed without race condition.
     del replay_buffer
     del ref
-    wait_for_condition(lambda: is_dir_empty(temp_folder))
-    assert_no_thrashing(address["address"])
+    wait_for_condition(lambda: is_dir_empty(temp_folder, ray_context["node_id"]))
+    assert_no_thrashing(ray_context["address"])
 
 
 @pytest.mark.skipif(platform.system() in ["Windows"], reason="Failing on Windows.")
@@ -97,7 +97,7 @@ def test_delete_objects_on_worker_failure(object_spilling_config, shutdown_only)
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, temp_folder = object_spilling_config
 
-    address = ray.init(
+    ray_context = ray.init(
         object_store_memory=75 * 1024 * 1024,
         _system_config={
             "max_io_workers": 4,
@@ -149,13 +149,13 @@ def test_delete_objects_on_worker_failure(object_spilling_config, shutdown_only)
     wait_for_condition(wait_until_actor_dead)
 
     # After all, make sure all objects are deleted upon worker failures.
-    wait_for_condition(lambda: is_dir_empty(temp_folder))
-    assert_no_thrashing(address["address"])
+    wait_for_condition(lambda: is_dir_empty(temp_folder, ray_context["node_id"]))
+    assert_no_thrashing(ray_context["address"])
 
 
 @pytest.mark.skipif(platform.system() in ["Windows"], reason="Failing on Windows.")
 def test_delete_file_non_exists(shutdown_only, tmp_path):
-    ray.init(storage=str(tmp_path))
+    ray_context = ray.init(storage=str(tmp_path))
 
     def create_spilled_files(num_files):
         spilled_files = []
@@ -169,8 +169,8 @@ def test_delete_file_non_exists(shutdown_only, tmp_path):
         return spilled_files, uris
 
     for storage in [
-        ExternalStorageRayStorageImpl("session"),
-        FileSystemStorage("/tmp"),
+        ExternalStorageRayStorageImpl(ray_context["node_id"], "session"),
+        FileSystemStorage(ray_context["node_id"], "/tmp"),
     ]:
         spilled_files, uris = create_spilled_files(3)
         storage.delete_spilled_objects(uris)
@@ -210,8 +210,8 @@ def test_delete_objects_multi_node(
     )
     ray.init(address=cluster.address)
     # Add 2 worker nodes.
-    for _ in range(2):
-        cluster.add_node(num_cpus=1, object_store_memory=75 * 1024 * 1024)
+    worker_node1 = cluster.add_node(num_cpus=1, object_store_memory=75 * 1024 * 1024)
+    worker_node2 = cluster.add_node(num_cpus=1, object_store_memory=75 * 1024 * 1024)
     cluster.wait_for_nodes()
 
     arr = np.random.rand(1024 * 1024)  # 8 MB data
@@ -255,7 +255,8 @@ def test_delete_objects_multi_node(
         ray.kill(actor)
         wait_for_condition(lambda: wait_until_actor_dead(actor))
     # The multi node deletion should work.
-    wait_for_condition(lambda: is_dir_empty(temp_folder))
+    wait_for_condition(lambda: is_dir_empty(temp_folder, worker_node1.node_id))
+    wait_for_condition(lambda: is_dir_empty(temp_folder, worker_node2.node_id))
     assert_no_thrashing(cluster.address)
 
 
@@ -297,16 +298,17 @@ def test_fusion_objects(fs_only_object_spilling_config, shutdown_only):
         assert np.array_equal(sample, solution)
 
     is_test_passing = False
-    # Since we'd like to see the temp directory that stores the files,
-    # we need to append this directory.
-    temp_folder = temp_folder / ray._private.ray_constants.DEFAULT_OBJECT_PREFIX
     for path in temp_folder.iterdir():
-        file_size = path.stat().st_size
-        # Make sure there are at least one
-        # file_size that exceeds the min_spilling_size.
-        # If we don't fusion correctly, this cannot happen.
-        if file_size >= min_spilling_size:
-            is_test_passing = True
+        # Under the temp_folder, there should be a folder called
+        # "ray_spilled_objects[_<node_id>]", which contains the
+        # spilled objects.
+        for spilled_objects_path in path.iterdir():
+            file_size = spilled_objects_path.stat().st_size
+            # Make sure there are at least one
+            # file_size that exceeds the min_spilling_size.
+            # If we don't fusion correctly, this cannot happen.
+            if file_size >= min_spilling_size:
+                is_test_passing = True
     assert is_test_passing
     assert_no_thrashing(address["address"])
 
@@ -452,7 +454,10 @@ os.kill(os.getpid(), sig)
     print("Sending sigint...")
     with pytest.raises(subprocess.CalledProcessError):
         print(run_string_as_driver(driver.format(temp_dir=str(temp_folder), signum=2)))
-    wait_for_condition(lambda: is_dir_empty(temp_folder, append_path=""))
+    # node_id is not actually used in the following check, so we pass in a dummy one
+    wait_for_condition(
+        lambda: is_dir_empty(temp_folder, "dummy_node_id", append_path=False)
+    )
 
 
 if __name__ == "__main__":
