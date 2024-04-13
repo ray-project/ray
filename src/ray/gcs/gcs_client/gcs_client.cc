@@ -685,7 +685,7 @@ Status PythonCheckGcsHealth(const std::string &gcs_address,
       is_healthy = false;
       std::ostringstream ss;
       ss << "Ray cluster at " << gcs_address << ":" << gcs_port << " has version "
-         << reply.ray_version() << ", but this process"
+         << reply.ray_version() << ", but this process "
          << "is running Ray version " << ray_version << ".";
       return Status::Invalid(ss.str());
     }

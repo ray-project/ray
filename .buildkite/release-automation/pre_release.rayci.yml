@@ -18,6 +18,20 @@ steps:
       - bash .buildkite/release-automation/check-commit-hash.sh
 
   - label: "Trigger Postmerge test"
+    if: build.env("RAYCI_WEEKLY_RELEASE_NIGHTLY") != "1"
+    trigger: "postmerge"
+    key: trigger-postmerge
+    depends_on: check-commit-hash
+    build:
+      commit: "${BUILDKITE_COMMIT}"
+      branch: "${BUILDKITE_BRANCH}"
+      message: "Triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
+      env:
+        RAYCI_CONTINUOUS_BUILD: 1
+        RAYCI_WEEKLY_RELEASE: 1
+  
+  - label: "Trigger Postmerge nightly build & test"
+    if: build.env("RAYCI_WEEKLY_RELEASE_NIGHTLY") == "1"
     trigger: "postmerge"
     key: trigger-postmerge
     depends_on: check-commit-hash
