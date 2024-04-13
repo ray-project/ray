@@ -10,6 +10,8 @@
 
 #pragma once
 
+#if defined(__linux__)
+
 #include <linux/futex.h>
 #include <stdint.h>
 #include <syscall.h>
@@ -95,3 +97,5 @@ class Futex {
 };
 
 }  // namespace ray
+
+#endif  // defined(__linux__)

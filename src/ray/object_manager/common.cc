@@ -100,6 +100,7 @@ void PlasmaObjectHeader::SetErrorUnlocked(Semaphores &sem) {
   // `has_error`. This store release pairs with the acquire load in `CheckHasError()`.
   has_error.store(true, std::memory_order_release);
 
+#if defined(__linux__)
   // Wake up any threads sleeping on the `is_sealed` futex.
   is_sealed.store(-1, std::memory_order_relaxed);
   Futex::Wake(&is_sealed, std::numeric_limits<int>::max());
@@ -107,6 +108,7 @@ void PlasmaObjectHeader::SetErrorUnlocked(Semaphores &sem) {
   // Wake up any threads sleeping on the `version` futex.
   version.store(-1, std::memory_order_relaxed);
   Futex::Wake(&version, std::numeric_limits<int>::max());
+#endif  // defined(__linux__)
 
   // Increment `sem.object_sem` once to potentially unblock the writer. There will never
   // be more than one writer.
@@ -146,10 +148,11 @@ Status PlasmaObjectHeader::WriteRelease(Semaphores &sem) {
   RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem));
 
   is_sealed.store(1, std::memory_order_relaxed);
-  Futex::Wake(&is_sealed, /*count=*/num_readers);
-
   version.fetch_add(1, std::memory_order_relaxed);
+#if defined(__linux__)
+  Futex::Wake(&is_sealed, /*count=*/num_readers);
   Futex::Wake(&version, /*count=*/num_readers);
+#endif  // defined(__linux__)
 
   RAY_CHECK(num_readers) << num_readers;
   num_read_acquires_remaining = num_readers;
@@ -166,12 +169,16 @@ Status PlasmaObjectHeader::ReadAcquire(Semaphores &sem,
 
   RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem));
 
-  if (!is_sealed.load(std::memory_order_relaxed)) {
+  while (!is_sealed.load(std::memory_order_relaxed)) {
     RAY_CHECK_EQ(sem_post(sem.header_sem), 0);
 
+#if defined(__linux__)
     Futex::Wait(&is_sealed, 0);
     // Check if the futex was woken up because the application is exiting.
     RAY_RETURN_NOT_OK(CheckHasError());
+#else
+    sched_yield();
+#endif
 
     RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem));
   }
@@ -180,9 +187,13 @@ Status PlasmaObjectHeader::ReadAcquire(Semaphores &sem,
   while ((current_version = version.load(std::memory_order_relaxed)) < version_to_read) {
     RAY_CHECK_EQ(sem_post(sem.header_sem), 0);
 
+#if defined(__linux__)
     Futex::Wait(&version, current_version);
     // Check if the futex was woken up because the application is exiting.
     RAY_RETURN_NOT_OK(CheckHasError());
+#else
+    sched_yield();
+#endif
 
     RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem));
   }

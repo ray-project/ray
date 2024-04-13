@@ -69,7 +69,7 @@ MutableObjectManager::~MutableObjectManager() {
   // Copy `semaphores_` into `tmp` because `DestroySemaphores()` mutates `semaphores_`.
   absl::flat_hash_map<ObjectID, PlasmaObjectHeader::Semaphores> tmp = semaphores_;
   for (const auto &[object_id, _] : tmp) {
-    SetError(object_id);
+    (void)SetError(object_id);
     DestroySemaphores(object_id);
   }
 }
