@@ -96,7 +96,6 @@ public class ObjectSerializer {
         // TODO(ryw): Add a new exception type ActorUnavailableException.
         // Also clean up the indexOf usage, should use equals.
         return new RayActorException();
-      }
       } else if (Bytes.indexOf(meta, UNRECONSTRUCTABLE_EXCEPTION_META) == 0
           || Bytes.indexOf(meta, UNRECONSTRUCTABLE_LINEAGE_EVICTED_EXCEPTION_META) == 0
           || Bytes.indexOf(meta, UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED_EXCEPTION_META) == 0
