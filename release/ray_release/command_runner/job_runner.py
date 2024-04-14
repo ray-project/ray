@@ -58,6 +58,8 @@ class JobRunner(CommandRunner):
         script = os.path.join(os.path.dirname(__file__), f"_{script_name}")
         if os.path.exists(script_name):
             os.unlink(script_name)
+        if os.path.islink(script):
+            script = os.readlink(script)
         os.link(script, script_name)
 
     def prepare_remote_env(self):
