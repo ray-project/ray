@@ -55,7 +55,7 @@ class MultiAgentEnvRunner(EnvRunner):
         # Create the vectorized gymnasium env.
         self.env: Optional[gym.Wrapper] = None
         self.num_envs: int = 0
-        self._make_env()
+        self.make_env()
 
         # Global counter for environment steps from all workers. This is
         # needed for schedulers used by `RLModule`s.
