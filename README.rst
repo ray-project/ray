@@ -39,7 +39,7 @@ Ray runs on any machine, cluster, cloud provider, and Kubernetes, and features a
 `ecosystem of community integrations`_.
 
 Install Ray with: ``pip install ray``. For nightly wheels, see the
-`Installation page <https://docs.ray.io/en/latest/installation.html>`__.
+`Installation page <https://docs.ray.io/en/latest/ray-overview/installation.html>`__.
 
 .. _`Serve`: https://docs.ray.io/en/latest/serve/index.html
 .. _`Data`: https://docs.ray.io/en/latest/data/dataset.html
