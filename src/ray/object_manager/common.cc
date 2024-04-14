@@ -87,14 +87,20 @@ Status PlasmaObjectHeader::TryToAcquireSemaphore(sem_t *sem) const {
   // section after `SetErrorUnlocked()` has been called. One thread could be in the
   // critical section when that is called, but no additional thread will enter the
   // critical section.
-  RAY_RETURN_NOT_OK(CheckHasError());
-
-  return Status::OK();
+  Status s = CheckHasError();
+  if (!s.ok()) {
+    RAY_CHECK_EQ(sem_post(sem), 0);
+  }
+  return s;
 }
 
 void PlasmaObjectHeader::SetErrorUnlocked(Semaphores &sem) {
   RAY_CHECK(sem.header_sem);
   RAY_CHECK(sem.object_sem);
+
+  // Decrement `header_sem` to ensure that this method does not race with readers and/or
+  // the writer.
+  TryToAcquireSemaphore(sem.header_sem);
 
   // We do a store release so that no loads/stores are reordered after the store to
   // `has_error`. This store release pairs with the acquire load in `CheckHasError()`.
@@ -110,15 +116,12 @@ void PlasmaObjectHeader::SetErrorUnlocked(Semaphores &sem) {
   Futex::Wake(&version, std::numeric_limits<int>::max());
 #endif  // defined(__linux__)
 
-  // Increment `sem.object_sem` once to potentially unblock the writer. There will never
-  // be more than one writer.
+  // Increment `sem.object_sem` to potentially unblock the writer. There will never be
+  // more than one writer.
   RAY_CHECK_EQ(sem_post(sem.object_sem), 0);
 
-  // Increment `sem.header_sem` by `num_readers` since there could potentially be that
-  // many readers blocked on `sem_wait()`.
-  for (int64_t i = 0; i < num_readers; i++) {
-    RAY_CHECK_EQ(sem_post(sem.header_sem), 0);
-  }
+  // Increment `header_sem` to unblock any readers and/or the writer.
+  RAY_CHECK_EQ(sem_post(sem.header_sem), 0);
 }
 
 Status PlasmaObjectHeader::WriteAcquire(Semaphores &sem,
@@ -175,7 +178,11 @@ Status PlasmaObjectHeader::ReadAcquire(Semaphores &sem,
 #if defined(__linux__)
     Futex::Wait(&is_sealed, 0);
     // Check if the futex was woken up because the application is exiting.
-    RAY_RETURN_NOT_OK(CheckHasError());
+    Status s = CheckHasError();
+    if (!s.ok()) {
+      RAY_CHECK_EQ(sem_post(sem.header_sem), 0);
+      return s;
+    }
 #else
     sched_yield();
 #endif
@@ -190,7 +197,11 @@ Status PlasmaObjectHeader::ReadAcquire(Semaphores &sem,
 #if defined(__linux__)
     Futex::Wait(&version, current_version);
     // Check if the futex was woken up because the application is exiting.
-    RAY_RETURN_NOT_OK(CheckHasError());
+    Status s = CheckHasError();
+    if (!s.ok()) {
+      RAY_CHECK_EQ(sem_post(sem.header_sem), 0);
+      return s;
+    }
 #else
     sched_yield();
 #endif

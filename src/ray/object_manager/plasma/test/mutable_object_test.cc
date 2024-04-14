@@ -443,7 +443,6 @@ TEST(MutableObjectTest, WriteAcquireDuringFailure) {
   memset(data, 0, allocated_size);
 
   ASSERT_EQ(sem_wait(sem.object_sem), 0);
-  ASSERT_EQ(sem_wait(sem.header_sem), 0);
   std::thread writer(Write, header, std::ref(sem), /*num_writes=*/kNumReads, kNumReaders);
 
   // Writer thread is blocked on `sem.object_sem`.
@@ -625,6 +624,8 @@ void ReadVersionZero(PlasmaObjectHeader *header, PlasmaObjectHeader::Semaphores 
 
 }  // namespace
 
+// Tests that a reader blocked on the `is_sealed` futex exits when
+// `header->SetErrorUnlocked()` is called.
 TEST(MutableObjectTest, IsSealedFutexExit) {
   experimental::MutableObjectManager manager;
   ObjectID object_id = ObjectID::FromRandom();
@@ -658,6 +659,8 @@ TEST(MutableObjectTest, IsSealedFutexExit) {
   EXPECT_EQ(header->version, -1);
 }
 
+// Tests that a reader blocked on the `version` futex exits when
+// `header->SetErrorUnlocked()` is called.
 TEST(MutableObjectTest, VersionFutexExit) {
   experimental::MutableObjectManager manager;
   ObjectID object_id = ObjectID::FromRandom();
