@@ -197,14 +197,16 @@ class MutableObjectManager {
   // destructor calls this method for all remaining objects.
   void DestroySemaphores(const ObjectID &object_id);
 
-  FRIEND_TEST(MutableObjectTest, TestBasic);
-  FRIEND_TEST(MutableObjectTest, TestMultipleReaders);
-  FRIEND_TEST(MutableObjectTest, TestWriterFails);
-  FRIEND_TEST(MutableObjectTest, TestWriterFailsAfterAcquire);
-  FRIEND_TEST(MutableObjectTest, TestReaderFails);
-  FRIEND_TEST(MutableObjectTest, TestWriteAcquireDuringFailure);
-  FRIEND_TEST(MutableObjectTest, TestReadAcquireDuringFailure);
-  FRIEND_TEST(MutableObjectTest, TestReadMultipleAcquireDuringFailure);
+  FRIEND_TEST(MutableObjectTest, Basic);
+  FRIEND_TEST(MutableObjectTest, MultipleReaders);
+  FRIEND_TEST(MutableObjectTest, WriterFails);
+  FRIEND_TEST(MutableObjectTest, WriterFailsAfterAcquire);
+  FRIEND_TEST(MutableObjectTest, ReaderFails);
+  FRIEND_TEST(MutableObjectTest, WriteAcquireDuringFailure);
+  FRIEND_TEST(MutableObjectTest, ReadAcquireDuringFailure);
+  FRIEND_TEST(MutableObjectTest, ReadMultipleAcquireDuringFailure);
+  FRIEND_TEST(MutableObjectTest, IsSealedFutexExit);
+  FRIEND_TEST(MutableObjectTest, VersionFutexExit);
 
   // TODO(swang): Access to these maps is not threadsafe. This is fine in the
   // case that all channels are initialized before any reads and writes are

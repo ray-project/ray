@@ -121,7 +121,7 @@ std::unique_ptr<plasma::MutableObject> MakeObject() {
 }  // namespace
 
 // Tests that a single reader can read from a single writer.
-TEST(MutableObjectTest, TestBasic) {
+TEST(MutableObjectTest, Basic) {
   experimental::MutableObjectManager manager;
   ObjectID object_id = ObjectID::FromRandom();
   plasma::PlasmaObjectHeader *header;
@@ -166,7 +166,7 @@ TEST(MutableObjectTest, TestBasic) {
 }
 
 // Tests that multiple readers can read from a single writer.
-TEST(MutableObjectTest, TestMultipleReaders) {
+TEST(MutableObjectTest, MultipleReaders) {
   experimental::MutableObjectManager manager;
   ObjectID object_id = ObjectID::FromRandom();
   plasma::PlasmaObjectHeader *header;
@@ -221,7 +221,7 @@ TEST(MutableObjectTest, TestMultipleReaders) {
 }
 
 // Tests that multiple readers can detect a failure initiated by the writer.
-TEST(MutableObjectTest, TestWriterFails) {
+TEST(MutableObjectTest, WriterFails) {
   experimental::MutableObjectManager manager;
   ObjectID object_id = ObjectID::FromRandom();
   plasma::PlasmaObjectHeader *header;
@@ -286,7 +286,7 @@ TEST(MutableObjectTest, TestWriterFails) {
 
 // Tests that multiple readers can detect a failure initiated by the writer after
 // `WriteAcquire()` is called.
-TEST(MutableObjectTest, TestWriterFailsAfterAcquire) {
+TEST(MutableObjectTest, WriterFailsAfterAcquire) {
   experimental::MutableObjectManager manager;
   ObjectID object_id = ObjectID::FromRandom();
   plasma::PlasmaObjectHeader *header;
@@ -353,7 +353,7 @@ TEST(MutableObjectTest, TestWriterFailsAfterAcquire) {
 }
 
 // Tests that multiple readers can detect a failure initiated by another reader.
-TEST(MutableObjectTest, TestReaderFails) {
+TEST(MutableObjectTest, ReaderFails) {
   experimental::MutableObjectManager manager;
   ObjectID object_id = ObjectID::FromRandom();
   plasma::PlasmaObjectHeader *header;
@@ -424,18 +424,23 @@ TEST(MutableObjectTest, TestReaderFails) {
 }
 
 // Tests that a writer can detect a failure while it is in `WriteAcquire()`.
-TEST(MutableObjectTest, TestWriteAcquireDuringFailure) {
+TEST(MutableObjectTest, WriteAcquireDuringFailure) {
   experimental::MutableObjectManager manager;
   ObjectID object_id = ObjectID::FromRandom();
   plasma::PlasmaObjectHeader *header;
+  int64_t allocated_size = 0;
   {
     std::unique_ptr<plasma::MutableObject> object = MakeObject();
+    allocated_size = object->allocated_size;
     header = object->header;
     header->Init();
     ASSERT_TRUE(manager.RegisterReaderChannel(object_id, std::move(object)).ok());
   }
   manager.OpenSemaphores(object_id);
   PlasmaObjectHeader::Semaphores sem = manager.GetSemaphores(object_id);
+
+  uint8_t *data = GetData(header);
+  memset(data, 0, allocated_size);
 
   ASSERT_EQ(sem_wait(sem.object_sem), 0);
   ASSERT_EQ(sem_wait(sem.header_sem), 0);
@@ -446,19 +451,24 @@ TEST(MutableObjectTest, TestWriteAcquireDuringFailure) {
   // Writer thread is now unblocked.
 
   writer.join();
+
   // Check that the writer never entered the critical section.
-  ASSERT_EQ(header->version, 0);
+  for (int64_t i = 0; i < allocated_size; i++) {
+    EXPECT_EQ(data[i], 0);
+  }
 
   // Check that another writer that calls `WriteAcquire()` exits on its own without
   // blocking on `sem.header_sem`.
   writer =
       std::thread(Write, header, std::ref(sem), /*num_writes=*/kNumReads, kNumReaders);
   writer.join();
-  ASSERT_EQ(header->version, 0);
+  for (int64_t i = 0; i < allocated_size; i++) {
+    EXPECT_EQ(data[i], 0);
+  }
 }
 
 // Tests that a reader can detect a failure while it is in `ReadAcquire()`.
-TEST(MutableObjectTest, TestReadAcquireDuringFailure) {
+TEST(MutableObjectTest, ReadAcquireDuringFailure) {
   experimental::MutableObjectManager manager;
   ObjectID object_id = ObjectID::FromRandom();
   plasma::PlasmaObjectHeader *header;
@@ -518,7 +528,7 @@ TEST(MutableObjectTest, TestReadAcquireDuringFailure) {
 }
 
 // Tests that multiple readers can detect a failure while they are in `ReadAcquire()`.
-TEST(MutableObjectTest, TestReadMultipleAcquireDuringFailure) {
+TEST(MutableObjectTest, ReadMultipleAcquireDuringFailure) {
   experimental::MutableObjectManager manager;
   ObjectID object_id = ObjectID::FromRandom();
   plasma::PlasmaObjectHeader *header;
@@ -596,6 +606,98 @@ TEST(MutableObjectTest, TestReadMultipleAcquireDuringFailure) {
     ASSERT_EQ(data_results[i].back(), "error");
     ASSERT_EQ(metadata_results[i].back(), "error");
   }
+}
+
+namespace {
+
+void ReadVersionZero(PlasmaObjectHeader *header, PlasmaObjectHeader::Semaphores &sem) {
+  RAY_CHECK(header);
+  RAY_CHECK(sem.header_sem);
+  RAY_CHECK(sem.object_sem);
+
+  int32_t version_to_read = 0;
+  int32_t version_read = 0;
+  if (!header->ReadAcquire(sem, version_to_read, &version_read).ok()) {
+    return;
+  }
+  EXPECT_TRUE(false);
+}
+
+}  // namespace
+
+TEST(MutableObjectTest, IsSealedFutexExit) {
+  experimental::MutableObjectManager manager;
+  ObjectID object_id = ObjectID::FromRandom();
+  plasma::PlasmaObjectHeader *header;
+  {
+    std::unique_ptr<plasma::MutableObject> object = MakeObject();
+    header = object->header;
+    header->Init();
+    ASSERT_TRUE(manager.RegisterReaderChannel(object_id, std::move(object)).ok());
+  }
+  manager.OpenSemaphores(object_id);
+  PlasmaObjectHeader::Semaphores sem = manager.GetSemaphores(object_id);
+
+  // Read the mutable object. These readers will block on the is_sealed futex until they
+  // are woken up.
+  std::vector<std::thread> threads;
+  for (size_t i = 0; i < kNumReaders; i++) {
+    std::thread t(ReadVersionZero, header, std::ref(sem));
+    threads.emplace_back(std::move(t));
+  }
+  header->SetErrorUnlocked(sem);
+
+  for (std::thread &t : threads) {
+    t.join();
+  }
+  manager.DestroySemaphores(object_id);
+  free(header);
+
+  // The futex values are set to -1.
+  EXPECT_EQ(header->is_sealed, -1);
+  EXPECT_EQ(header->version, -1);
+}
+
+TEST(MutableObjectTest, VersionFutexExit) {
+  experimental::MutableObjectManager manager;
+  ObjectID object_id = ObjectID::FromRandom();
+  plasma::PlasmaObjectHeader *header;
+  {
+    std::unique_ptr<plasma::MutableObject> object = MakeObject();
+    header = object->header;
+    header->Init();
+    ASSERT_TRUE(manager.RegisterReaderChannel(object_id, std::move(object)).ok());
+  }
+  manager.OpenSemaphores(object_id);
+  PlasmaObjectHeader::Semaphores sem = manager.GetSemaphores(object_id);
+
+  // Write once to the mutable object.
+  std::string data = "hello0";
+  std::string metadata = std::to_string(data.size());
+  ASSERT_TRUE(header->WriteAcquire(sem, data.size(), metadata.size(), kNumReaders).ok());
+  uint8_t *data_ptr = GetData(header);
+  std::memcpy(data_ptr, data.data(), data.size());
+  std::memcpy(data_ptr + data.size(), metadata.data(), metadata.size());
+  ASSERT_TRUE(header->WriteRelease(sem).ok());
+
+  // Read the mutable object. These readers will block on the version futex until they are
+  // woken up.
+  std::vector<std::thread> threads;
+  for (size_t i = 0; i < kNumReaders; i++) {
+    std::thread t(ReadVersionZero, header, std::ref(sem));
+    threads.emplace_back(std::move(t));
+  }
+  header->SetErrorUnlocked(sem);
+
+  for (std::thread &t : threads) {
+    t.join();
+  }
+  manager.DestroySemaphores(object_id);
+  free(header);
+
+  // The futex values are set to -1.
+  EXPECT_EQ(header->is_sealed, -1);
+  EXPECT_EQ(header->version, -1);
 }
 
 #endif  // defined(__APPLE__) || defined(__linux__)
