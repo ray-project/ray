@@ -100,7 +100,7 @@ void PlasmaObjectHeader::SetErrorUnlocked(Semaphores &sem) {
 
   // Decrement `header_sem` to ensure that this method does not race with readers and/or
   // the writer.
-  TryToAcquireSemaphore(sem.header_sem);
+  (void)TryToAcquireSemaphore(sem.header_sem);
 
   // We do a store release so that no loads/stores are reordered after the store to
   // `has_error`. This store release pairs with the acquire load in `CheckHasError()`.
