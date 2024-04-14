@@ -607,6 +607,10 @@ TEST(MutableObjectTest, ReadMultipleAcquireDuringFailure) {
   }
 }
 
+#endif  // defined(__APPLE__) || defined(__linux__)
+
+#if defined(__linux__)
+
 namespace {
 
 void ReadVersionZero(PlasmaObjectHeader *header, PlasmaObjectHeader::Semaphores &sem) {
@@ -703,7 +707,7 @@ TEST(MutableObjectTest, VersionFutexExit) {
   EXPECT_EQ(header->version, -1);
 }
 
-#endif  // defined(__APPLE__) || defined(__linux__)
+#endif  // defined(__linux__)
 
 }  // namespace experimental
 }  // namespace ray
