@@ -143,5 +143,5 @@ if __name__ == "__main__":
         base_config,
         args,
         stop=stop,
-        success_metric="sampler_results/policy_reward_mean/learned",
+        success_metric={"sampler_results/policy_reward_mean/learned": args.stop_reward},
     )
