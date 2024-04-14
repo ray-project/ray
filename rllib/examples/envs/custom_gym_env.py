@@ -1,167 +1,154 @@
-# TODO (sven): Move this example script into the new API stack.
+"""Example of defining a custom gymnasium Env to be learned by an RLlib Algorithm.
 
+This example:
+    - demonstrates how to write your own (single-agent) gymnasium Env class, define its
+    physics and mechanics, the reward function used, the allowed actions (action space),
+    and the type of observations (observation space), etc..
+    - shows how to configure and setup this environment class within an RLlib
+    Algorithm config.
+    - runs the experiment with the configured algo, trying to solve the environment.
+
+To see more details on which env we are building for this example, take a look at the
+`SimpleCorridor` class defined below.
+
+
+How to run this script
+----------------------
+`python [script file name].py --enable-new-api-stack`
+
+Use the `--corridor-length` option to set a custom length for the corridor. Note that
+for extremely long corridors, the algorithm should take longer to learn.
+
+For debugging, use the following additional command line options
+`--no-tune --num-env-runners=0`
+which should allow you to set breakpoints anywhere in the RLlib code and
+have the execution stop there for inspection and debugging.
+
+For logging to your WandB account, use:
+`--wandb-key=[your WandB API key] --wandb-project=[some project name]
+--wandb-run-name=[optional: WandB run name (within the defined project)]`
+
+
+Results to expect
+-----------------
+You should see results similar to the following in your console output:
+
++--------------------------------+------------+-----------------+--------+
+| Trial name                     | status     | loc             |   iter |
+|--------------------------------+------------+-----------------+--------+
+| PPO_SimpleCorridor_78714_00000 | TERMINATED | 127.0.0.1:85794 |      7 |
++--------------------------------+------------+-----------------+--------+
+
++------------------+-------+----------+--------------------+
+|   total time (s) |    ts |   reward |   episode_len_mean |
+|------------------+-------+----------+--------------------|
+|          18.3034 | 28000 | 0.908918 |            12.9676 |
++------------------+-------+----------+--------------------+
 """
-Example of a custom gym environment. Run this example for a demo.
-
-This example shows the usage of:
-  - a custom environment
-  - Ray Tune for grid search to try different learning rates
-
-You can visualize experiment results in ~/ray_results using TensorBoard.
-
-Run example with defaults:
-$ python custom_env.py
-For CLI options:
-$ python custom_env.py --help
-"""
-import argparse
 import gymnasium as gym
 from gymnasium.spaces import Discrete, Box
 import numpy as np
-import os
 import random
 
-import ray
-from ray import air, tune
-from ray.rllib.env.env_context import EnvContext
-from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.test_utils import check_learning_achieved
-from ray.tune.logger import pretty_print
-from ray.tune.registry import get_trainable_cls
+from typing import Optional
 
-tf1, tf, tfv = try_import_tf()
-torch, nn = try_import_torch()
+from ray.rllib.utils.test_utils import (
+    add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
+)
+from ray.tune.registry import get_trainable_cls, register_env  # noqa
 
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    "--run", type=str, default="PPO", help="The RLlib-registered algorithm to use."
+
+parser = add_rllib_example_script_args(
+    default_reward=0.9, default_iters=50, default_timesteps=100000
 )
 parser.add_argument(
-    "--framework",
-    choices=["tf", "tf2", "torch"],
-    default="torch",
-    help="The DL framework specifier.",
-)
-parser.add_argument(
-    "--as-test",
-    action="store_true",
-    help="Whether this script should be run as a test: --stop-reward must "
-    "be achieved within --stop-timesteps AND --stop-iters.",
-)
-parser.add_argument(
-    "--stop-iters", type=int, default=50, help="Number of iterations to train."
-)
-parser.add_argument(
-    "--stop-timesteps", type=int, default=100000, help="Number of timesteps to train."
-)
-parser.add_argument(
-    "--stop-reward", type=float, default=0.1, help="Reward at which we stop training."
-)
-parser.add_argument(
-    "--no-tune",
-    action="store_true",
-    help="Run without Tune using a manual train loop instead. In this case,"
-    "use PPO without grid search and no TensorBoard.",
-)
-parser.add_argument(
-    "--local-mode",
-    action="store_true",
-    help="Init Ray in local mode for easier debugging.",
+    "--corridor-length",
+    type=int,
+    default=10,
+    help="The length of the corridor in fields. Note that this number includes the "
+    "starting- and goal states.",
 )
 
 
 class SimpleCorridor(gym.Env):
-    """Example of a custom env in which you have to walk down a corridor.
+    """Example of a custom env in which the agent has to walk down a corridor.
 
-    You can configure the length of the corridor via the env config."""
+    ------------
+    |S........G|
+    ------------
+    , where S is the starting position, G is the goal position, and fields with '.'
+    mark free spaces, over which the agent may step. The length of the above example
+    corridor is 10.
+    Allowed actions are left (0) and right (1).
+    The reward function is -0.01 per step taken and a uniform random value between
+    0.5 and 1.5 when reaching the goal state.
 
-    def __init__(self, config: EnvContext):
-        self.end_pos = config["corridor_length"]
+    You can configure the length of the corridor via the env's config. Thus, in your
+    AlgorithmConfig, you can do:
+    `config.environment(env_config={"corridor_length": ..})`.
+    """
+
+    def __init__(self, config: Optional[dict] = None):
+        config = config or {}
+        self.end_pos = config.get("corridor_length", 7)
         self.cur_pos = 0
         self.action_space = Discrete(2)
         self.observation_space = Box(0.0, self.end_pos, shape=(1,), dtype=np.float32)
-        # Set the seed. This is only used for the final (reach goal) reward.
-        self.reset(seed=config.worker_index * config.num_workers)
 
     def reset(self, *, seed=None, options=None):
         random.seed(seed)
         self.cur_pos = 0
-        return [self.cur_pos], {}
+        # Return obs and (empty) info dict.
+        return np.array([self.cur_pos], np.float32), {}
 
     def step(self, action):
         assert action in [0, 1], action
+        # Move left.
         if action == 0 and self.cur_pos > 0:
             self.cur_pos -= 1
+        # Move right.
         elif action == 1:
             self.cur_pos += 1
-        done = truncated = self.cur_pos >= self.end_pos
-        # Produce a random reward when we reach the goal.
+
+        # The environment only ever terminates when we reach the goal state.
+        terminated = self.cur_pos >= self.end_pos
+        truncated = False
+        # Produce a random reward from [0.5, 1.5] when we reach the goal.
+        reward = random.uniform(0.5, 1.5) if terminated else -0.01
+        infos = {}
         return (
-            [self.cur_pos],
-            random.random() * 2 if done else -0.1,
-            done,
+            np.array([self.cur_pos], np.float32),
+            reward,
+            terminated,
             truncated,
-            {},
+            infos,
         )
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    print(f"Running with following CLI options: {args}")
-
-    ray.init(local_mode=args.local_mode)
 
     # Can also register the env creator function explicitly with:
-    # register_env("corridor", lambda config: SimpleCorridor(config))
+    # register_env("corridor-env", lambda config: SimpleCorridor())
 
-    config = (
-        get_trainable_cls(args.run)
+    # Or you can hard code certain settings into the Env's constructor (`config`).
+    # register_env(
+    #    "corridor-env-w-len-100",
+    #    lambda config: SimpleCorridor({**config, **{"corridor_length": 100}}),
+    # )
+
+    # Or allow the RLlib user to set more c'tor options via their algo config:
+    # config.environment(env_config={[c'tor arg name]: [value]})
+    # register_env("corridor-env", lambda config: SimpleCorridor(config))
+
+    base_config = (
+        get_trainable_cls(args.algo)
         .get_default_config()
-        # or "corridor" if registered above
-        .environment(SimpleCorridor, env_config={"corridor_length": 5})
-        .framework(args.framework)
-        .rollouts(num_rollout_workers=1)
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .environment(
+            SimpleCorridor,  # or provide the registered string: "corridor-env"
+            env_config={"corridor_length": args.corridor_length},
+        )
     )
 
-    stop = {
-        "training_iteration": args.stop_iters,
-        "timesteps_total": args.stop_timesteps,
-        "episode_reward_mean": args.stop_reward,
-    }
-
-    if args.no_tune:
-        # manual training with train loop using PPO and fixed learning rate
-        if args.run != "PPO":
-            raise ValueError("Only support --run PPO with --no-tune.")
-        print("Running manual train loop without Ray Tune.")
-        # use fixed learning rate instead of grid search (needs tune)
-        config.lr = 1e-3
-        algo = config.build()
-        # run manual training loop and print results after each iteration
-        for _ in range(args.stop_iters):
-            result = algo.train()
-            print(pretty_print(result))
-            # stop training of the target train steps or reward are reached
-            if (
-                result["timesteps_total"] >= args.stop_timesteps
-                or result["episode_reward_mean"] >= args.stop_reward
-            ):
-                break
-        algo.stop()
-    else:
-        # automated run with Tune and grid search and TensorBoard
-        print("Training automatically with Ray Tune")
-        tuner = tune.Tuner(
-            args.run,
-            param_space=config.to_dict(),
-            run_config=air.RunConfig(stop=stop),
-        )
-        results = tuner.fit()
-
-        if args.as_test:
-            print("Checking if learning goals were achieved")
-            check_learning_achieved(results, args.stop_reward)
-
-    ray.shutdown()
+    run_rllib_example_script_experiment(base_config, args)

@@ -52,8 +52,7 @@ Policy using the curriculum:
 +------------------+--------+----------+--------------------+
 
 Policy NOT using the curriculum (trying to solve the hardest task right away):
-
-
+[DOES NOT LEARN AT ALL]
 """
 from functools import partial
 
@@ -227,8 +226,8 @@ if __name__ == "__main__":
         "training_iteration": args.stop_iters,
         # Reward directly does not matter to us as we would like to continue
         # after the policy reaches a return of ~1.0 on the 0-task (easiest).
-        # But we DO want to stop, once the entire task is done (reaches return of
-        # 1.0 on the most difficult task=2).
+        # But we DO want to stop, once the entire task is learned (policy achieves
+        # return of 1.0 on the most difficult task=2).
         "task_solved": 1.0,
         "timesteps_total": args.stop_timesteps,
     }

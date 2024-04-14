@@ -2276,24 +2276,13 @@ py_test(
 # subdirectory: envs/
 # ....................................
 
-#@OldAPIStack
 py_test(
-    name = "examples/envs/custom_gym_env_tf",
+    name = "examples/envs/custom_gym_env",
     main = "examples/envs/custom_gym_env.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/envs/custom_gym_env.py"],
-    args = ["--as-test", "--framework=tf"]
-)
-
-#@OldAPIStack
-py_test(
-    name = "examples/envs/custom_gym_env_torch",
-    main = "examples/envs/custom_gym_env.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/envs/custom_gym_env.py"],
-    args = ["--as-test", "--framework=torch"]
+    args = ["--enable-new-api-stack", "--as-test"]
 )
 
 #@OldAPIStack

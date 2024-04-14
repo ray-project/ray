@@ -80,7 +80,7 @@ if __name__ == "__main__":
         get_trainable_cls(args.algo)
         .get_default_config()
         .environment("CartPole-v1")
-        # Run 3 trials.
+        # Run 3 trials, each w/ a different learning rate.
         .training(lr=tune.grid_search([0.01, 0.001, 0.0001]), train_batch_size=2341)
     )
     # Run tune for some iterations and generate checkpoints.
@@ -101,13 +101,17 @@ if __name__ == "__main__":
     # all results (not just the last one) will be examined.
     best_result = results.get_best_result(metric=metric, mode="min", scope="all")
     value_best_metric = best_result.metrics_dataframe[metric].min()
+    best_return_best = best_result.metrics_dataframe[
+        "sampler_results/episode_reward_mean"
+    ].max()
     print(
         f"Best trial was the one with lr={best_result.metrics['config']['lr']}. "
-        "Reached lowest episode count ({value_best_metric}) in a single iteration."
+        f"Reached lowest episode count ({value_best_metric}) in a single iteration and "
+        f"an average return of {best_return_best}."
     )
 
     # Confirm, we picked the right trial.
-    assert value_best_metric <= results.get_dataframe()[metric].min()
+    assert value_best_metric == results.get_dataframe()[metric].min()
 
     # Get the best checkpoints from the trial, based on different metrics.
     # Checkpoint with the lowest policy loss value:
@@ -118,8 +122,7 @@ if __name__ == "__main__":
     best_result = results.get_best_result(metric=policy_loss_key, mode="min")
     ckpt = best_result.checkpoint
     lowest_policy_loss = best_result.metrics_dataframe[policy_loss_key].min()
-    print(f"Checkpoint w/ lowest policy loss: {ckpt}")
-    print(f"Lowest policy loss: {lowest_policy_loss}")
+    print(f"Checkpoint w/ lowest policy loss ({lowest_policy_loss}): {ckpt}")
 
     # Checkpoint with the highest value-function loss:
     if args.enable_new_api_stack:
