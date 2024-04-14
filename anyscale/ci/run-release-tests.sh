@@ -49,7 +49,7 @@ export RELEASE_AWS_BUCKET="runtime-release-test-artifacts"
 RAY_WANT_COMMIT_IN_IMAGE="$(cat .UPSTREAM)"
 export RAY_WANT_COMMIT_IN_IMAGE
 cd release
-if [[ "${BUILDKITE_BRANCH}" != "releases/"* && "${RAYCI_RUN_ALL_RELEASE_TEST}" != "1" ]]; then
+if [[ "${BUILDKITE_BRANCH}" != "releases/"* && "${RAYCI_RUN_ALL_RELEASE_TEST:-0}" != "1" ]]; then
     python3 ray_release/scripts/build_pipeline.py \
         --test-collection-file release/release_runtime_tests.yaml \
         --run-jailed-tests \
