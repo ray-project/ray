@@ -43,7 +43,7 @@ class InfiniteLookbackBuffer:
         else:
             self.data.append(item)
 
-    def extend(self, items):
+    def extend(self, items) -> None:
         """Appends all items in `items` to the end of this buffer."""
         if self.finalized:
             self.data = tree.map_structure(
@@ -52,6 +52,14 @@ class InfiniteLookbackBuffer:
         else:
             for item in items:
                 self.append(item)
+
+    def concat(self, other: "InfiniteLookbackBuffer") -> None:
+        """Concatenates the data of `other` (w/o its lookback) to `self`.
+
+        Args:
+            other: The other InfiniteLookbackBuffer to be concatenated to self.
+        """
+        self.data.extend(other.get())
 
     def pop(self, index: int = -1) -> None:
         """Removes the item at `index` from this buffer, but does NOT return it.
@@ -67,7 +75,7 @@ class InfiniteLookbackBuffer:
         else:
             self.data.pop(index)
 
-    def finalize(self):
+    def finalize(self) -> None:
         """Finalizes this buffer by converting internal data lists into numpy arrays.
 
         Thereby, if the individual items in the list are nested structures, the
@@ -86,7 +94,7 @@ class InfiniteLookbackBuffer:
         one_hot_discrete: bool = False,
         _ignore_last_ts: bool = False,
         _add_last_ts_value: Optional[Any] = None,
-    ):
+    ) -> Any:
         """Returns data, based on the given args, from this buffer.
 
         Args:

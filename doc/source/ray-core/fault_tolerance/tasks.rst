@@ -16,12 +16,30 @@ on a remote worker or actor fails due to a Python-level exception, Ray wraps
 the original exception in a ``RayTaskError`` and stores this as the task's
 return value. This wrapped exception will be thrown to any worker that tries
 to get the result, either by calling ``ray.get`` or if the worker is executing
-another task that depends on the object.
+another task that depends on the object. If the user's exception type can be subclassed,
+the raised exception is an instance of both ``RayTaskError`` and the user's exception type
+so the user can try-catch either of them. Otherwise, the wrapped exception is just
+``RayTaskError`` and the actual user's exception type can be accessed via the ``cause``
+field of the ``RayTaskError``.
 
 .. literalinclude:: ../doc_code/task_exceptions.py
   :language: python
   :start-after: __task_exceptions_begin__
   :end-before: __task_exceptions_end__
+
+Example code of catching the user exception type when the exception type can be subclassed:
+
+.. literalinclude:: ../doc_code/task_exceptions.py
+  :language: python
+  :start-after: __catch_user_exceptions_begin__
+  :end-before: __catch_user_exceptions_end__
+
+Example code of accessing the user exception type when the exception type can *not* be subclassed:
+
+.. literalinclude:: ../doc_code/task_exceptions.py
+  :language: python
+  :start-after: __catch_user_final_exceptions_begin__
+  :end-before: __catch_user_final_exceptions_end__
 
 Use `ray list tasks` from :ref:`State API CLI <state-api-overview-ref>` to query task exit details:
 
