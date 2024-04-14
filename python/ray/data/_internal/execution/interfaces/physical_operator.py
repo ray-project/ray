@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, Iterator, List, Optional, Union
 
 import ray
+import time
 from .ref_bundle import RefBundle
 from ray._raylet import ObjectRefGenerator
 from ray.data._internal.dataset_logger import DatasetLogger
@@ -363,11 +364,19 @@ class PhysicalOperator(Operator):
         return len(self.get_active_tasks())
 
     def get_moving_average_num_active_tasks(self) -> int:
-        self._num_active_tasks_window.append(self.num_active_tasks())
+        
+        # TODO(MaoZiming): periodically update the window.
+        self._num_active_tasks_window.append(
+            (time.time(), self.num_active_tasks())
+        )
+        
+        self._num_active_tasks_in_last_10_seconds = [
+            n for t, n in self._num_active_tasks_window if time.time() - t < 5
+        ]
 
         moving_average = int(
-            sum(self._num_active_tasks_window[-50:])
-            / len(self._num_active_tasks_window[-50:])
+            sum(self._num_active_tasks_in_last_10_seconds)
+            / len(self._num_active_tasks_in_last_10_seconds)
         )
 
         logger.get_logger().info(

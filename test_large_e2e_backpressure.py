@@ -1,10 +1,11 @@
+import datetime
 import json
 import os
 import time
 
 import numpy as np
+
 import ray
-import datetime
 
 LOG_FILE = "test_large_e2e_backpressure.log"
 
@@ -57,16 +58,10 @@ def test_large_e2e_backpressure():
 
     NUM_CPUS = 8
     NUM_ROWS_PER_TASK = 10
-    NUM_TASKS = 16
+    NUM_TASKS = 16 * 5
     NUM_ROWS_TOTAL = NUM_ROWS_PER_TASK * NUM_TASKS
     BLOCK_SIZE = 10 * 1024 * 1024 * 10
-    STREMING_GEN_BUFFER_SIZE = 1
-    OP_OUTPUT_QUEUE_SIZE = 1
-    max_pending_block_bytes = (
-        NUM_ROWS_PER_TASK + (NUM_CPUS - 1) * STREMING_GEN_BUFFER_SIZE + OP_OUTPUT_QUEUE_SIZE
-    ) * BLOCK_SIZE
-    print(f"max_pending_block_bytes: {max_pending_block_bytes/1024/1024}MB")
-    
+
     # Write the data to file.
     # array = np.zeros(BLOCK_SIZE, dtype=np.uint8)
     # file_path = 'zeros_block.bin'
@@ -80,7 +75,7 @@ def test_large_e2e_backpressure():
             yield {
                 "id": [id],
                 "image": [np.zeros(BLOCK_SIZE, dtype=np.uint8)],
-                # Read the data from file. 
+                # Read the data from file.
                 # "image": [np.fromfile(file_path, dtype=np.uint8)],
             }
 
@@ -93,7 +88,7 @@ def test_large_e2e_backpressure():
     data_context.execution_options.verbose_progress = True
     data_context.target_max_block_size = BLOCK_SIZE
     data_context.user_hint_first_operator_output_size = BLOCK_SIZE * NUM_ROWS_PER_TASK
-    data_context.user_hint_first_operator_consume_rate = BLOCK_SIZE * 4
+    data_context.user_hint_first_operator_consume_rate = BLOCK_SIZE * 3
 
     ray.init(num_cpus=NUM_CPUS, object_store_memory=25 * BLOCK_SIZE)
 

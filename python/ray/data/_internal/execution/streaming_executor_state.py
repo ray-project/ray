@@ -612,9 +612,9 @@ def select_operator_to_run(
                 )
                 or len(op.get_active_tasks())
                 # Default values: num cores divided by num stages.
-                < math.floor(resource_manager.get_global_limits().cpu / len(topology))
+                < math.floor(resource_manager.get_global_limits().cpu / (len(topology) - 1))
                 
-                # Start from 1 and gradually ranmp up. 
+                # Start from 1 and gradually ramp up. 
                 # < 1
                 or 0
             )
