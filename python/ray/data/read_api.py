@@ -913,7 +913,7 @@ def read_images(
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
         file_extensions=file_extensions,
-        transform=transform
+        transform=transform,
     )
     return read_datasource(
         datasource,

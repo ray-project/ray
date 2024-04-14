@@ -192,9 +192,8 @@ class FileBasedDatasource(Datasource):
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         import numpy as np
-        from ray.data._internal.delegating_block_builder import (
-            DelegatingBlockBuilder,
-        )
+
+        from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 
         ctx = DataContext.get_current()
         open_stream_args = self._open_stream_args

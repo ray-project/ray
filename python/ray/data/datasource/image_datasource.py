@@ -1,7 +1,7 @@
 import io
 import logging
 import time
-from typing import TYPE_CHECKING, Iterator, List, Optional, Tuple, Union, Callable
+from typing import TYPE_CHECKING, Callable, Iterator, List, Optional, Tuple, Union
 
 import numpy as np
 

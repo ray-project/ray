@@ -3,9 +3,9 @@ from dataclasses import dataclass, field, fields
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 import ray
+from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.memory_tracing import trace_allocation
-from ray.data._internal.dataset_logger import DatasetLogger
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces.physical_operator import (
@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     )
 
 logger = DatasetLogger(__name__)
+
 
 @dataclass
 class RunningTaskInfo:
@@ -413,14 +414,14 @@ class OpRuntimeMetrics:
 
     @property
     def average_task_duration(self) -> Optional[float]:
-        
+
         if len(self._running_tasks_end_time) == 0:
             return None
-        
+
         total_taks_duration = 0
         for task_idx, end_time in self._running_tasks_end_time.items():
             total_taks_duration += end_time - self._running_tasks_start_time[task_idx]
-        
+
         return total_taks_duration / len(self._running_tasks_end_time)
 
     def on_input_received(self, input: RefBundle):
