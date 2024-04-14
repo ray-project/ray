@@ -655,12 +655,12 @@ TEST(MutableObjectTest, IsSealedFutexExit) {
   for (std::thread &t : threads) {
     t.join();
   }
-  manager.DestroySemaphores(object_id);
-  free(header);
-
   // The futex values are set to -1.
   EXPECT_EQ(header->is_sealed, -1);
   EXPECT_EQ(header->version, -1);
+
+  manager.DestroySemaphores(object_id);
+  free(header);
 }
 
 // Tests that a reader blocked on the `version` futex exits when
@@ -699,12 +699,12 @@ TEST(MutableObjectTest, VersionFutexExit) {
   for (std::thread &t : threads) {
     t.join();
   }
-  manager.DestroySemaphores(object_id);
-  free(header);
-
   // The futex values are set to -1.
   EXPECT_EQ(header->is_sealed, -1);
   EXPECT_EQ(header->version, -1);
+
+  manager.DestroySemaphores(object_id);
+  free(header);
 }
 
 #endif  // defined(__linux__)
