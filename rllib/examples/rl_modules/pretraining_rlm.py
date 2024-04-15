@@ -23,13 +23,13 @@ parser.add_argument(
     "--stop-iters-pretraining",
     type=int,
     default=200,
-    help="The number of iterations to train.",
+    help="The number of iterations to pre-train.",
 )
 parser.add_argument(
     "--stop-timesteps-pretraining",
     type=int,
     default=5000000,
-    help="The number of (environment sampling) timesteps to train.",
+    help="The number of (environment sampling) timesteps to pre-train.",
 )
 
 
@@ -45,7 +45,7 @@ if __name__ == "__main__":
             "number of agents you want to use."
         )
 
-    # Store the user's stopping criteria for the löater training run.
+    # Store the user's stopping criteria for the later training run.
     stop_iters = args.stop_iters
     stop_timesteps = args.stop_timesteps
     checkpoint_at_end = args.checkpoint_at_end
@@ -58,8 +58,6 @@ if __name__ == "__main__":
     # configuration for the pre-training and the training.
     config = (
         PPOConfig()
-        # Enable the new API stack (RLModule and Learner APIs).
-        .experimental(_enable_new_api_stack=True)
         .environment("CartPole-v1")
         .rl_module(
             # Use a different number of hidden units for the pre-trained module.
@@ -107,8 +105,6 @@ if __name__ == "__main__":
     # Configure the main (multi-agent) training run.
     config = (
         PPOConfig()
-        # Enable the new API stack (RLModule and Learner APIs).
-        .experimental(_enable_new_api_stack=True)
         .environment(
             "multi-agent-carpole-env" if args.num_agents > 0 else "CartPole-v1"
         )
