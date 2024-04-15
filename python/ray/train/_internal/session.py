@@ -10,7 +10,7 @@ import uuid
 import warnings
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Set, Type
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Type
 
 import ray
 from ray.air._internal.session import _get_session
@@ -61,8 +61,9 @@ class TrialInfo:
     resources: Dict[str, float]
     logdir: str
     driver_ip: str
+    run_id: Optional[str] = None
+    dataset_ids: Optional[List[str]] = None
     experiment_name: Optional[str] = None
-    run_id: str
 
 
 class _FutureTrainingResult:
@@ -486,7 +487,8 @@ class _TrainSession:
             warnings.warn(
                 "No dataset passed in. Returning None. Make sure to "
                 "pass in a Dataset to Trainer.run to use this "
-                "function."
+                "function.",
+                stacklevel=2,
             )
         elif isinstance(shard, dict):
             if not dataset_name:
@@ -654,7 +656,7 @@ def _warn_session_misuse(default_value: Any = None):
                     warnings.warn(
                         f"`{fn_name}` is meant to only be "
                         "called inside a function that is executed by a Tuner"
-                        f" or Trainer. Returning `{default_value}`."
+                        f" or Trainer. Returning `{default_value}`.",
                     )
                 return default_value
             return fn(*args, **kwargs)
@@ -824,6 +826,13 @@ def get_trial_name() -> str:
 def get_trial_id() -> str:
     """Trial id for the corresponding trial."""
     return _get_session().trial_id
+
+
+@PublicAPI(stability="alpha")
+@_warn_session_misuse()
+def get_run_id() -> str:
+    """Run id for the corresponding Train Run."""
+    return _get_session().run_id
 
 
 @PublicAPI(stability="beta")

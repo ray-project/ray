@@ -18,12 +18,14 @@ from ray.train._internal.session import (
     init_session,
     shutdown_session,
 )
+from ray.train._internal.stats_actor import get_or_create_stats_actor
 from ray.train._internal.storage import StorageContext
 from ray.train._internal.utils import check_for_failure
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import BackendConfig
 from ray.train.constants import (
     ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
+    ENABLE_RAY_TRAIN_DASHBOARD_ENV,
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
     ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV,
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
@@ -427,25 +429,18 @@ class BackendExecutor:
 
     def _register_train_run(self, trial_info) -> None:
         # Collect Ray Train Worker Info
-        # enable_ray_train_dashboard = env_integer(ENABLE_RAY_TRAIN_DASHBOARD_ENV, 0)
-
-        # if not enable_ray_train_dashboard:
-        #     return
-
-        # TODO(woshiyyya): what about dataset_shard?
-        # Do we need dataset id or dataset shard id
         def collect_train_worker_info():
             train_context = ray.train.get_context()
-            runtime_context = ray.runtime_context.get_runtime_context()
+            core_context = ray.runtime_context.get_runtime_context()
 
             return TrainWorkerInfo(
                 world_rank=train_context.get_world_rank(),
                 local_rank=train_context.get_local_rank(),
                 node_rank=train_context.get_node_rank(),
-                actor_id=runtime_context.get_actor_id(),
-                node_id=runtime_context.get_node_id(),
-                node_ip=runtime_context.get_node_ip_address(),
-                gpu_ids=runtime_context.get_accelerator_ids().get("GPU", []),
+                actor_id=core_context.get_actor_id(),
+                node_id=core_context.get_node_id(),
+                node_ip=core_context.get_node_ip_address(),
+                gpu_ids=core_context.get_accelerator_ids().get("GPU", []),
                 pid=os.getpid(),
             )
 
@@ -455,7 +450,10 @@ class BackendExecutor:
         ]
         success, exception = check_for_failure(futures)
 
-        if success:
+        if not success:
+            logger.warning("Failed to collect infomation for Ray Train Worker.")
+            return
+        else:
             # Report to StateActor
             worker_info_list = ray.get(futures)
             worker_info_list = sorted(worker_info_list, key=lambda x: x.world_rank)
@@ -468,11 +466,11 @@ class BackendExecutor:
                 trial_name=trial_info.name,
                 trainer_actor_id=runtime_context.get_actor_id(),
                 workers=worker_info_list,
-                dataset_ids="TODO",
+                dataset_ids=trial_info.dataset_ids,
             )
-            print(train_run_info)
-        else:
-            logger.warning("Failed to collect infomation for Ray Train Worker.")
+
+            stats_actor = get_or_create_stats_actor()
+            stats_actor.register_train_run.remote(train_run_info)
 
     def start_training(
         self,
@@ -499,6 +497,7 @@ class BackendExecutor:
         use_detailed_autofilled_metrics = env_integer(
             ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, 0
         )
+        ray_train_dashboard_enabled = env_integer(ENABLE_RAY_TRAIN_DASHBOARD_ENV, 0)
 
         # First initialize the session.
         def initialize_session(
@@ -577,7 +576,8 @@ class BackendExecutor:
 
         self.get_with_failure_handling(futures)
 
-        self._register_train_run()
+        if ray_train_dashboard_enabled:
+            self._register_train_run()
 
         # Run the training function asynchronously in its own thread.
         def train_async():

@@ -235,6 +235,9 @@ class BaseTrainer(abc.ABC):
         )
         self.metadata = metadata
         self.datasets = datasets if datasets is not None else {}
+        self.dataset_ids = [
+            f"{ds._plan._dataset_name}_{ds._plan_dataset_uuid}" for ds in self.datasets
+        ]
         self.starting_checkpoint = resume_from_checkpoint
 
         # These attributes should only be set through `BaseTrainer.restore`
@@ -361,7 +364,8 @@ class BaseTrainer(abc.ABC):
                 f"Invalid trainer type. You are attempting to restore a trainer of type"
                 f" {trainer_cls} with `{cls.__name__}.restore`, "
                 "which will most likely fail. "
-                f"Use `{trainer_cls.__name__}.restore` instead."
+                f"Use `{trainer_cls.__name__}.restore` instead.",
+                stacklevel=2,
             )
 
         original_datasets = param_dict.pop("datasets", {})
