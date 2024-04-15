@@ -112,7 +112,7 @@ block references. Some physical operators launch Ray Tasks and Actors to transfo
 the blocks, and others only manipulate the references
 
 ``MapOperator`` is the most common operator. All read, transform, and write operations 
-are implemented with it. To process data, MapOperator implementations use either Ray 
+are implemented with it. To process data, ``MapOperator`` implementations use either Ray 
 Tasks or Ray Actors.
 
 Non-map operators include ``OutputSplitter`` and ``LimitOperator``. These two operators 
@@ -127,7 +127,7 @@ The executor
 The *executor* schedules tasks and moves data between physical operators.
 
 The executor and operators are located on the driver process, except for training jobs 
-where they're located on a special actor called SplitCoordinator. Tasks and actors 
+where they're located on a special actor called ``SplitCoordinator``. Tasks and actors 
 launched by operators are scheduled across the cluster, and outputs are stored in Ray’s 
 distributed object store. The executor manipulates references to objects, and doesn’t 
 fetch the underlying data itself to the executor.
