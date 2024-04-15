@@ -22,7 +22,7 @@ class Unity3DEnv(MultiAgentEnv):
     `rllib/examples/unity3d_env_local.py`
     For an example on how to use it inside a Unity game client, which
     connects to an RLlib Policy server, see:
-    `rllib/examples/serving/unity3d_[client|server].py`
+    `rllib/examples/envs/external_envs/unity3d_[client|server].py`
 
     Supports all Unity3D (MLAgents) examples, multi- or single-agent and
     gets converted automatically into an ExternalMultiAgentEnv, when used

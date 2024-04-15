@@ -4,7 +4,7 @@ import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.examples.env.mock_env import MockEnv3
+from ray.rllib.examples.envs.classes.mock_env import MockEnv3
 from ray.rllib.policy import Policy
 from ray.rllib.utils import override
 
@@ -83,12 +83,12 @@ class TestEpisodeV2(unittest.TestCase):
                 num_rollout_workers=0,
             ),
         )
-        sample_batch = ev.sample()
-        self.assertEqual(sample_batch.count, 200)
+        ma_batch = ev.sample()
+        self.assertEqual(ma_batch.count, 200)
         # EnvRunnerV2 always returns MultiAgentBatch, even for single-agent envs.
-        for agent_id, sample_batch in sample_batch.policy_batches.items():
+        for agent_id, sa_batch in ma_batch.policy_batches.items():
             # A batch of 100. 4 episodes, each 25.
-            self.assertEqual(len(set(sample_batch["eps_id"])), 8)
+            self.assertEqual(len(set(sa_batch["eps_id"])), 8)
 
     def test_multi_agent_env(self):
         temp_env = EpisodeEnv(NUM_STEPS, NUM_AGENTS)

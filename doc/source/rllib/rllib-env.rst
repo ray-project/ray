@@ -148,7 +148,7 @@ When implementing your own :py:class:`~ray.rllib.env.multi_agent_env.MultiAgentE
 agent IDs in an observation dict, for which you expect to receive actions in the next call to `step()`.
 
 This API allows you to implement any type of multi-agent environment, from `turn-based games <https://github.com/ray-project/ray/blob/master/rllib/examples/self_play_with_open_spiel.py>`__
-over environments, in which `all agents always act simultaneously <https://github.com/ray-project/ray/blob/master/rllib/examples/env/multi_agent.py>`__, to anything in between.
+over environments, in which `all agents always act simultaneously <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/classes/multi_agent.py>`__, to anything in between.
 
 
 
@@ -316,7 +316,7 @@ RLlib reports separate training statistics for each policy in the return from ``
 Here is a simple `example training script <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_cartpole.py>`__
 in which you can vary the number of agents and policies in the environment.
 For how to use multiple training methods at once (here DQN and PPO),
-see the `two-trainer example <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_two_trainers.py>`__.
+see the `two-algorithm example <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/two_algorithms.py>`__.
 Metrics are reported for each policy separately, for example:
 
 .. code-block:: bash
@@ -377,7 +377,8 @@ A more complete example is here: `rllib_pistonball.py <https://github.com/Farama
 Rock Paper Scissors Example
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The `rock_paper_scissors_multiagent.py <https://github.com/ray-project/ray/blob/master/rllib/examples/rock_paper_scissors_multiagent.py>`__ example demonstrates several types of policies competing against each other: heuristic policies of repeating the same move, beating the last opponent move, and learned LSTM and feedforward policies.
+The `rock_paper_scissors_heuristic_vs_learned.py <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/rock_paper_scissors_heuristic_vs_learned.py>`__
+and `rock_paper_scissors_learned_vs_learned.py <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/rock_paper_scissors_learned_vs_learned.py>`__ examples demonstrate several types of policies competing against each other: heuristic policies of repeating the same move, beating the last opponent move, and learned LSTM and feedforward policies.
 
 .. figure:: images/rock-paper-scissors.png
 
@@ -477,7 +478,7 @@ In this setup, the appropriate rewards for training lower-level agents must be p
 The environment class is also responsible for routing between the agents, e.g., conveying `goals <https://arxiv.org/pdf/1703.01161.pdf>`__ from higher-level
 agents to lower-level agents as part of the lower-level agent observation.
 
-See this file for a runnable example: `hierarchical_training.py <https://github.com/ray-project/ray/blob/master/rllib/examples/hierarchical_training.py>`__.
+See this file for a runnable example: `hierarchical_training.py <https://github.com/ray-project/ray/blob/master/rllib/examples/hierarchical/hierarchical_training.py>`__.
 
 External Agents and Applications
 --------------------------------
@@ -493,12 +494,12 @@ RLlib provides the `ExternalEnv <https://github.com/ray-project/ray/blob/master/
 Unlike other envs, ExternalEnv has its own thread of control. At any point, agents on that thread can query the current policy for decisions via ``self.get_action()`` and reports rewards, done-dicts, and infos via ``self.log_returns()``.
 This can be done for multiple concurrent episodes as well.
 
-Take a look at the examples here for a `simple "CartPole-v1" server <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_server.py>`__
-and `n client(s) <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_client.py>`__
+See these examples for a `simple "CartPole-v1" server <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/external_envs/cartpole_server.py>`__
+and `n client(s) <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/external_envs/cartpole_client.py>`__
 scripts, in which we setup an RLlib policy server that listens on one or more ports for client connections
 and connect several clients to this server to learn the env.
 
-Another `example <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/unity3d_server.py>`__ shows,
+Another `example <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/external_envs/unity3d_server.py>`__ shows,
 how to run a similar setup against a Unity3D external game engine.
 
 
@@ -523,7 +524,7 @@ You can configure any Algorithm to launch a policy server with the following con
     config = {
         # An environment class is still required, but it doesn't need to be runnable.
         # You only need to define its action and observation space attributes.
-        # See examples/serving/unity3d_server.py for an example using a RandomMultiAgentEnv stub.
+        # See examples/envs/external_envs/unity3d_server.py for an example using a RandomMultiAgentEnv stub.
         "env": YOUR_ENV_STUB,
         # Use the policy server to generate experiences.
         "input": (
@@ -555,9 +556,9 @@ To understand the difference between standard envs, external envs, and connectin
 .. image:: images/rllib-external.svg
 
 Try it yourself by launching either a
-`simple CartPole server <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_server.py>`__ (see below), and connecting it to any number of clients
-(`cartpole_client.py <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_client.py>`__) or
-run a `Unity3D learning sever <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/unity3d_server.py>`__
+`simple CartPole server <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/external_envs/cartpole_server.py>`__ (see below), and connecting it to any number of clients
+(`cartpole_client.py <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/external_envs/cartpole_client.py>`__) or
+run a `Unity3D learning sever <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/external_envs/unity3d_server.py>`__
 against distributed Unity game engines in the cloud.
 
 CartPole Example:
@@ -565,13 +566,13 @@ CartPole Example:
 .. code-block:: bash
 
     # Start the server by running:
-    >>> python rllib/examples/serving/cartpole_server.py --run=PPO
+    >>> python rllib/examples/envs/external_envs/cartpole_server.py --run=PPO
     --
     -- Starting policy server at localhost:9900
     --
 
     # To connect from a client with inference_mode="remote".
-    >>> python rllib/examples/serving/cartpole_client.py --inference-mode=remote
+    >>> python rllib/examples/envs/external_envs/cartpole_client.py --inference-mode=remote
     Total reward: 10.0
     Total reward: 58.0
     ...
@@ -579,7 +580,7 @@ CartPole Example:
     ...
 
     # To connect from a client with inference_mode="local" (faster).
-    >>> python rllib/examples/serving/cartpole_client.py --inference-mode=local
+    >>> python rllib/examples/envs/external_envs/cartpole_client.py --inference-mode=local
     Querying server for new policy weights.
     Generating new batch of experiences.
     Total reward: 13.0

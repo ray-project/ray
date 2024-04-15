@@ -4,7 +4,7 @@ import unittest
 
 import ray
 import ray.rllib.algorithms.ppo as ppo
-from ray.rllib.examples.models.modelv3 import RNNModel
+from ray.rllib.examples._old_api_stack.models.modelv3 import RNNModel
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.fcnet import FullyConnectedNetwork
 from ray.rllib.utils.framework import try_import_tf

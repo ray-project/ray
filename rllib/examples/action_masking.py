@@ -42,8 +42,8 @@ import os
 from gymnasium.spaces import Box, Discrete
 import ray
 from ray.rllib.algorithms import ppo
-from ray.rllib.examples.env.action_mask_env import ActionMaskEnv
-from ray.rllib.examples.rl_module.action_masking_rlm import (
+from ray.rllib.examples.envs.classes.action_mask_env import ActionMaskEnv
+from ray.rllib.examples.rl_modules.classes.action_masking_rlm import (
     TorchActionMaskRLM,
     TFActionMaskRLM,
 )
