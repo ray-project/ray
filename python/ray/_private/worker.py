@@ -998,7 +998,7 @@ def get_gpu_ids() -> Union[List[int], List[str]]:
     gpu_ids = worker.get_accelerator_ids_for_accelerator_resource(
         ray_constants.GPU, f"^{ray_constants.GPU}_group_[0-9]+_[0-9A-Za-z]+$"
     )
-    if not gpu_ids:
+    if gpu_ids:
         return gpu_ids
 
     return worker.get_accelerator_ids_for_accelerator_resource(
