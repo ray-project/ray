@@ -97,4 +97,4 @@ def get_log_directory() -> Optional[str]:
         return None
 
     session_dir = global_node.get_session_dir_path()
-    return os.path.join(session_dir, "logs")
+    return os.path.join(session_dir, "logs", "ray-data")
