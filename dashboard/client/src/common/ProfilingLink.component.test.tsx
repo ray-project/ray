@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
 import "@testing-library/jest-dom";
+import { TEST_APP_WRAPPER } from "../util/test-utils";
 import { ProfilerButton } from "./ProfilingLink";
 
 describe("ProfilerButton", () => {
@@ -9,14 +10,14 @@ describe("ProfilerButton", () => {
     profilerUrl: "http://localhost:3000/worker/memory_profile",
   };
   it("renders button correctly", () => {
-    render(<ProfilerButton {...mockProps} />);
+    render(<ProfilerButton {...mockProps} />, { wrapper: TEST_APP_WRAPPER });
     const button = screen.getByLabelText(/Memory Profiling/);
     expect(button).toBeInTheDocument();
   });
 
   it("opens the dialog when the button is clicked", async () => {
     const user = userEvent.setup();
-    render(<ProfilerButton {...mockProps} />);
+    render(<ProfilerButton {...mockProps} />, { wrapper: TEST_APP_WRAPPER });
     const button = screen.getByLabelText(/Memory Profiling/);
 
     user.click(button);
@@ -27,7 +28,7 @@ describe("ProfilerButton", () => {
       expect(dialogTitle).toBeInTheDocument();
       const reportButton = screen.getByText(/Generate report/);
       expect(reportButton).toBeInTheDocument();
-      const durationInput = screen.getByText(/Duration/);
+      const durationInput = screen.getByLabelText(/Duration/);
       expect(durationInput).toBeInTheDocument();
       const leaksCheckbox = screen.getByText(/Leaks/);
       expect(leaksCheckbox).toBeInTheDocument();
@@ -40,7 +41,7 @@ describe("ProfilerButton", () => {
 
   it("closes the dialog when the cancel button is clicked", async () => {
     const user = userEvent.setup();
-    render(<ProfilerButton {...mockProps} />);
+    render(<ProfilerButton {...mockProps} />, { wrapper: TEST_APP_WRAPPER });
     const button = screen.getByLabelText(/Memory Profiling/);
 
     await user.click(button);
@@ -56,7 +57,7 @@ describe("ProfilerButton", () => {
 
   it('selects "flamegraph" as the default format', async () => {
     const user = userEvent.setup();
-    render(<ProfilerButton {...mockProps} />);
+    render(<ProfilerButton {...mockProps} />, { wrapper: TEST_APP_WRAPPER });
     const button = screen.getByLabelText(/Memory Profiling/);
     await user.click(button);
 

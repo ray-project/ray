@@ -105,7 +105,7 @@ class TestPPO(unittest.TestCase):
                 print("Env={}".format(env))
                 for lstm in [False]:
                     print("LSTM={}".format(lstm))
-                    config.training(model=get_model_config(fw, lstm=lstm))
+                    config.rl_module(model_config_dict=get_model_config(fw, lstm=lstm))
 
                     algo = config.build(env=env)
                     # TODO: Maybe add an API to get the Learner(s) instances within
@@ -186,14 +186,16 @@ class TestPPO(unittest.TestCase):
             .rollouts(
                 num_rollout_workers=1,
             )
+            .rl_module(
+                model_config_dict={
+                    "fcnet_hiddens": [10],
+                    "fcnet_activation": "linear",
+                    "free_log_std": True,
+                    "vf_share_layers": True,
+                }
+            )
             .training(
                 gamma=0.99,
-                model=dict(
-                    fcnet_hiddens=[10],
-                    fcnet_activation="linear",
-                    free_log_std=True,
-                    vf_share_layers=True,
-                ),
             )
         )
 
@@ -213,7 +215,7 @@ class TestPPO(unittest.TestCase):
             assert len(matching) == 1, matching
             log_std_var = matching[0]
 
-            def get_value():
+            def get_value(fw=fw, log_std_var=log_std_var):
                 if fw == "torch":
                     return log_std_var.detach().cpu().numpy()[0]
                 else:

@@ -3,7 +3,7 @@ import unittest
 
 import ray
 import ray.rllib.algorithms.ppo as ppo
-from ray.rllib.examples.env.random_env import RandomEnv
+from ray.rllib.examples.envs.classes.random_env import RandomEnv
 from ray.rllib.utils.test_utils import check, framework_iterator
 
 

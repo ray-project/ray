@@ -90,11 +90,11 @@ class ScopedTaskMetricSetter {
 using ActorLifetime = ray::rpc::JobConfig_ActorLifetime;
 
 // Helper function converts GetObjectLocationsOwnerReply to ObjectLocation
-ObjectLocation CreateObjectLocation(const rpc::GetObjectLocationsOwnerReply &reply) {
+ObjectLocation CreateObjectLocation(
+    const rpc::WorkerObjectLocationsPubMessage &object_info) {
   std::vector<NodeID> node_ids;
-  const auto &object_info = reply.object_location_info();
   node_ids.reserve(object_info.node_ids_size());
-  for (auto i = 0; i < object_info.node_ids_size(); i++) {
+  for (int i = 0; i < object_info.node_ids_size(); ++i) {
     node_ids.push_back(NodeID::FromBinary(object_info.node_ids(i)));
   }
   bool is_spilled = !object_info.spilled_url().empty();
@@ -204,7 +204,14 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   NodeID local_raylet_id;
   int assigned_port;
 
-  JobID job_id = worker_context_.GetCurrentJobID();
+  if (options_.worker_type == WorkerType::DRIVER &&
+      !options_.serialized_job_config.empty()) {
+    // Driver populates the job config via initialization.
+    // Workers populates it when the first task is received.
+    rpc::JobConfig job_config;
+    job_config.ParseFromString(options_.serialized_job_config);
+    worker_context_.MaybeInitializeJobInfo(worker_context_.GetCurrentJobID(), job_config);
+  }
 
   local_raylet_client_ =
       std::make_shared<raylet::RayletClient>(io_service_,
@@ -212,7 +219,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                              options_.raylet_socket,
                                              GetWorkerID(),
                                              options_.worker_type,
-                                             job_id,
+                                             worker_context_.GetCurrentJobID(),
                                              options_.runtime_env_hash,
                                              options_.language,
                                              options_.node_ip_address,
@@ -252,17 +259,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   RAY_LOG(INFO) << "Initializing worker at address: " << rpc_address_.ip_address() << ":"
                 << rpc_address_.port() << ", worker ID " << worker_context_.GetWorkerID()
                 << ", raylet " << local_raylet_id;
-
-  if (options_.worker_type == WorkerType::DRIVER &&
-      !options_.serialized_job_config.empty()) {
-    // Driver populates the job config via initialization.
-    // Workers populates it when the first task is received.
-    rpc::JobConfig job_config;
-    job_config.ParseFromString(options_.serialized_job_config);
-    // Reads rpc_address_, have to happen after it's set.
-    *job_config.mutable_driver_node_id() = GetCurrentNodeId().Binary();
-    worker_context_.MaybeInitializeJobInfo(worker_context_.GetCurrentJobID(), job_config);
-  }
 
   gcs_client_ = std::make_shared<gcs::GcsClient>(options_.gcs_options, GetWorkerID());
 
@@ -386,7 +382,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
 #if defined(__APPLE__) || defined(__linux__)
   experimental_mutable_object_manager_ =
-      std::make_shared<ExperimentalMutableObjectManager>();
+      std::make_shared<experimental::MutableObjectManager>();
 #endif
 
   auto push_error_callback = [this](const JobID &job_id,
@@ -1377,7 +1373,7 @@ Status CoreWorker::ExperimentalChannelWriteAcquire(
     int64_t num_readers,
     std::shared_ptr<Buffer> *data) {
   return experimental_mutable_object_manager_->WriteAcquire(
-      object_id, data_size, metadata->Data(), metadata->Size(), num_readers, data);
+      object_id, data_size, metadata->Data(), metadata->Size(), num_readers, *data);
 }
 
 Status CoreWorker::ExperimentalChannelWriteRelease(const ObjectID &object_id) {
@@ -1502,7 +1498,7 @@ Status CoreWorker::GetExperimentalMutableObjects(
     const std::vector<ObjectID> &ids, std::vector<std::shared_ptr<RayObject>> *results) {
   for (size_t i = 0; i < ids.size(); i++) {
     RAY_RETURN_NOT_OK(
-        experimental_mutable_object_manager_->ReadAcquire(ids[i], &(*results)[i]));
+        experimental_mutable_object_manager_->ReadAcquire(ids[i], (*results)[i]));
   }
   return Status::OK();
 }
@@ -1786,38 +1782,75 @@ Status CoreWorker::GetLocationFromOwner(
     return Status::OK();
   }
 
+  absl::flat_hash_map<rpc::Address, std::vector<ObjectID>> objects_by_owner;
+  for (const auto &object_id : object_ids) {
+    rpc::Address owner_address;
+    RAY_RETURN_NOT_OK(GetOwnerAddress(object_id, &owner_address));
+    objects_by_owner[owner_address].push_back(object_id);
+  }
+
   auto mutex = std::make_shared<absl::Mutex>();
-  auto num_remaining = std::make_shared<size_t>(object_ids.size());
+  auto num_remaining = std::make_shared<size_t>(0);  // Will be incremented per batch
   auto ready_promise = std::make_shared<std::promise<void>>();
   auto location_by_id =
       std::make_shared<absl::flat_hash_map<ObjectID, std::shared_ptr<ObjectLocation>>>();
 
-  for (const auto &object_id : object_ids) {
-    rpc::Address owner_address;
-    RAY_RETURN_NOT_OK(GetOwnerAddress(object_id, &owner_address));
-    auto client = core_worker_client_pool_->GetOrConnect(owner_address);
-    rpc::GetObjectLocationsOwnerRequest request;
-    auto object_location_request = request.mutable_object_location_request();
-    object_location_request->set_intended_worker_id(owner_address.worker_id());
-    object_location_request->set_object_id(object_id.Binary());
-    client->GetObjectLocationsOwner(
-        request,
-        [object_id, mutex, num_remaining, ready_promise, location_by_id](
-            const Status &status, const rpc::GetObjectLocationsOwnerReply &reply) {
-          absl::MutexLock lock(mutex.get());
-          if (status.ok()) {
-            location_by_id->emplace(
-                object_id, std::make_shared<ObjectLocation>(CreateObjectLocation(reply)));
-          } else {
-            RAY_LOG(WARNING) << "Failed to query location information for " << object_id
-                             << " with error: " << status.ToString();
-          }
-          (*num_remaining)--;
-          if (*num_remaining == 0) {
-            ready_promise->set_value();
-          }
-        });
+  for (const auto &owner_and_objects : objects_by_owner) {
+    const auto &owner_address = owner_and_objects.first;
+    const auto &owner_object_ids = owner_and_objects.second;
+
+    // Calculate the number of batches
+    // Use the same config from worker_fetch_request_size
+    size_t batch_size =
+        static_cast<size_t>(RayConfig::instance().worker_fetch_request_size());
+
+    for (size_t batch_start = 0; batch_start < owner_object_ids.size();
+         batch_start += batch_size) {
+      *num_remaining += 1;
+      size_t batch_end = std::min(batch_start + batch_size, owner_object_ids.size());
+      auto client = core_worker_client_pool_->GetOrConnect(owner_address);
+      rpc::GetObjectLocationsOwnerRequest request;
+      request.set_intended_worker_id(owner_address.worker_id());
+
+      // Add object IDs for the current batch to the request
+      for (size_t i = batch_start; i < batch_end; ++i) {
+        request.add_object_ids(owner_object_ids[i].Binary());
+      }
+
+      client->GetObjectLocationsOwner(
+          request,
+          [owner_object_ids,
+           batch_start,
+           mutex,
+           num_remaining,
+           ready_promise,
+           location_by_id,
+           owner_address](const Status &status,
+                          const rpc::GetObjectLocationsOwnerReply &reply) {
+            absl::MutexLock lock(mutex.get());
+            if (status.ok()) {
+              for (int i = 0; i < reply.object_location_infos_size(); ++i) {
+                // Map the object ID to its location, adjusting index by batch_start
+                location_by_id->emplace(
+                    owner_object_ids[batch_start + i],
+                    std::make_shared<ObjectLocation>(
+                        CreateObjectLocation(reply.object_location_infos(i))));
+              }
+            } else {
+              RAY_LOG(WARNING) << "Failed to query location information for objects "
+                               << debug_string(owner_object_ids) << " owned by "
+                               << owner_address.worker_id()
+                               << " with error: " << status.ToString();
+            }
+            (*num_remaining)--;
+            if (*num_remaining == 0) {
+              ready_promise->set_value();
+            }
+          });
+    }
   }
+
+  // Wait for all batches to be processed or timeout
   if (timeout_ms < 0) {
     ready_promise->get_future().wait();
   } else if (ready_promise->get_future().wait_for(
@@ -1828,6 +1861,7 @@ Status CoreWorker::GetLocationFromOwner(
     return Status::TimedOut(stream.str());
   }
 
+  // Fill in the results vector
   for (size_t i = 0; i < object_ids.size(); i++) {
     auto pair = location_by_id->find(object_ids[i]);
     if (pair == location_by_id->end()) {
@@ -1835,6 +1869,7 @@ Status CoreWorker::GetLocationFromOwner(
     }
     (*results)[i] = pair->second;
   }
+
   return Status::OK();
 }
 
@@ -3776,16 +3811,16 @@ void CoreWorker::HandleGetObjectLocationsOwner(
     rpc::GetObjectLocationsOwnerRequest request,
     rpc::GetObjectLocationsOwnerReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  auto &object_location_request = request.object_location_request();
-  if (HandleWrongRecipient(
-          WorkerID::FromBinary(object_location_request.intended_worker_id()),
-          send_reply_callback)) {
+  if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
+                           send_reply_callback)) {
     return;
   }
-  auto object_id = ObjectID::FromBinary(object_location_request.object_id());
-  auto object_info = reply->mutable_object_location_info();
-  auto status = reference_counter_->FillObjectInformation(object_id, object_info);
-  send_reply_callback(status, nullptr, nullptr);
+  for (int i = 0; i < request.object_ids_size(); ++i) {
+    auto object_id = ObjectID::FromBinary(request.object_ids(i));
+    auto object_info = reply->add_object_location_infos();
+    reference_counter_->FillObjectInformation(object_id, object_info);
+  }
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void CoreWorker::ProcessSubscribeForRefRemoved(

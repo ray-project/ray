@@ -1,7 +1,5 @@
 from ray.rllib.connectors.env_to_module.mean_std_filter import MeanStdFilter
-from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
-from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
-from ray.rllib.examples.env.multi_agent import MultiAgentPendulum
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentPendulum
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
@@ -31,20 +29,8 @@ if __name__ == "__main__":
     config = (
         get_trainable_cls(args.algo)
         .get_default_config()
-        .framework(args.framework)
         .environment("env" if args.num_agents > 0 else "Pendulum-v1")
-        .experimental(_enable_new_api_stack=args.enable_new_api_stack)
         .rollouts(
-            # Set up the correct env-runner to use depending on
-            # old-stack/new-stack and multi-agent settings.
-            env_runner_cls=(
-                None
-                if not args.enable_new_api_stack
-                else SingleAgentEnvRunner
-                if args.num_agents == 0
-                else MultiAgentEnvRunner
-            ),
-            num_rollout_workers=args.num_env_runners,
             # TODO (sven): MAEnvRunner does not support vectorized envs yet
             #  due to gym's env checkers and non-compatability with RLlib's
             #  MultiAgentEnv API.
@@ -58,11 +44,6 @@ if __name__ == "__main__":
                 lambda env: MeanStdFilter(multi_agent=args.num_agents > 0)
             ),
         )
-        .resources(
-            num_learner_workers=args.num_gpus,
-            num_gpus_per_learner_worker=1 if args.num_gpus else 0,
-            num_cpus_for_local_worker=1,
-        )
         .training(
             train_batch_size_per_learner=512,
             mini_batch_size_per_learner=64,
@@ -72,15 +53,6 @@ if __name__ == "__main__":
             lambda_=0.1,
             vf_clip_param=10.0,
             vf_loss_coeff=0.01,
-            model=dict(
-                {
-                    "fcnet_activation": "relu",
-                    "fcnet_weights_initializer": torch.nn.init.xavier_uniform_,
-                    "fcnet_bias_initializer": torch.nn.init.constant_,
-                    "fcnet_bias_initializer_config": {"val": 0.0},
-                },
-                **({"uses_new_env_runners": True} if args.enable_new_api_stack else {}),
-            ),
         )
         # .evaluation(
         #    evaluation_num_workers=1,
@@ -91,10 +63,31 @@ if __name__ == "__main__":
         #    evaluation_config={"explore": False},
         # )
     )
+    if args.enable_new_api_stack:
+        config = config.rl_module(
+            model_config_dict={
+                "fcnet_activation": "relu",
+                "fcnet_weights_initializer": torch.nn.init.xavier_uniform_,
+                "fcnet_bias_initializer": torch.nn.init.constant_,
+                "fcnet_bias_initializer_config": {"val": 0.0},
+                "uses_new_env_runners": True,
+            }
+        )
+    else:
+        config = config.training(
+            model=dict(
+                {
+                    "fcnet_activation": "relu",
+                    "fcnet_weights_initializer": torch.nn.init.xavier_uniform_,
+                    "fcnet_bias_initializer": torch.nn.init.constant_,
+                    "fcnet_bias_initializer_config": {"val": 0.0},
+                }
+            )
+        )
 
     # Add a simple multi-agent setup.
     if args.num_agents > 0:
-        config.multi_agent(
+        config = config.multi_agent(
             policies={f"p{i}" for i in range(args.num_agents)},
             policy_mapping_fn=lambda aid, *a, **kw: f"p{aid}",
         )

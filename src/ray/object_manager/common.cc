@@ -149,6 +149,7 @@ Status PlasmaObjectHeader::ReadAcquire(Semaphores &sem,
   // Wait for the requested version (or a more recent one) to be sealed.
   while (version < version_to_read || !is_sealed) {
     RAY_CHECK_EQ(sem_post(sem.header_sem), 0);
+    sched_yield();
     RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem));
   }
 

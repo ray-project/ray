@@ -28,6 +28,7 @@ from ray.dashboard.consts import (
     RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR,
     DEFAULT_JOB_START_TIMEOUT_SECONDS,
     RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR,
+    RAY_STREAM_RUNTIME_ENV_LOG_TO_JOB_DRIVER_LOG_ENV_VAR,
 )
 from ray.dashboard.modules.job.common import (
     JOB_ID_METADATA_KEY,
@@ -43,6 +44,7 @@ from ray.exceptions import ActorUnschedulableError, RuntimeEnvSetupError
 from ray.job_submission import JobStatus
 from ray._private.event.event_logger import get_event_logger
 from ray.core.generated.event_pb2 import Event
+from ray.runtime_env import RuntimeEnvConfig
 
 logger = logging.getLogger(__name__)
 
@@ -225,7 +227,9 @@ class JobSupervisor:
             child_process: Child process that runs the driver command. Can be
                 terminated or killed upon user calling stop().
         """
-        with open(logs_path, "w") as logs_file:
+        # Open in append mode to avoid overwriting runtime_env setup logs for the
+        # supervisor actor, which are also written to the same file.
+        with open(logs_path, "a") as logs_file:
             child_process = subprocess.Popen(
                 self._entrypoint,
                 shell=True,
@@ -771,7 +775,10 @@ class JobManager:
             return
 
     def _get_supervisor_runtime_env(
-        self, user_runtime_env: Dict[str, Any], resources_specified: bool = False
+        self,
+        user_runtime_env: Dict[str, Any],
+        submission_id: str,
+        resources_specified: bool = False,
     ) -> Dict[str, Any]:
         """Configure and return the runtime_env for the supervisor actor.
 
@@ -805,6 +812,11 @@ class JobManager:
             # the driver's runtime_env so it isn't inherited by tasks & actors.
             env_vars[ray_constants.NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR] = "1"
         runtime_env["env_vars"] = env_vars
+
+        if os.getenv(RAY_STREAM_RUNTIME_ENV_LOG_TO_JOB_DRIVER_LOG_ENV_VAR, "0") == "1":
+            config = runtime_env.get("config", RuntimeEnvConfig())
+            config["log_files"] = [self._log_client.get_log_file_path(submission_id)]
+            runtime_env["config"] = config
         return runtime_env
 
     async def _get_scheduling_strategy(
@@ -975,7 +987,7 @@ class JobManager:
                 resources=entrypoint_resources,
                 scheduling_strategy=scheduling_strategy,
                 runtime_env=self._get_supervisor_runtime_env(
-                    runtime_env, resources_specified
+                    runtime_env, submission_id, resources_specified
                 ),
                 namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
             ).remote(submission_id, entrypoint, metadata or {}, self._gcs_address)

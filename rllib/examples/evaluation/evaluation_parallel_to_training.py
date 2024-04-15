@@ -1,7 +1,7 @@
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
-from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
@@ -180,4 +180,4 @@ if __name__ == "__main__":
         "timesteps_total": args.stop_timesteps,
     }
 
-    run_rllib_example_script_experiment(config, args, stop)
+    run_rllib_example_script_experiment(config, args, stop=stop)
