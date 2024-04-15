@@ -152,6 +152,8 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
 
   // Map to record did_spill status for each scheduling class.
   std::unordered_map<SchedulingClass, bool> sched_class_did_spill_map;
+  // Map to record capacity for each scheduling class.
+  std::unordered_map<SchedulingClass, bool> sched_class_cap_map;
 
   for (auto &shapes_it : tasks_to_dispatch_) {
     auto &scheduling_class = shapes_it.first;
@@ -165,16 +167,19 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
           sched_class_did_spill_map.end()) {
         sched_class_did_spill_map[scheduling_class] = false;
       }
+      if (sched_class_cap_map.find(scheduling_class) == sched_class_cap_map.end()) {
+        sched_class_cap_map[scheduling_class] = false;
+      }
     }
   }
 
   // Step 2: Sort the tasks based on their argument sizes in descending order.
-  std::sort(all_tasks_with_sizes.begin(),
-            all_tasks_with_sizes.end(),
-            [](const std::pair<std::shared_ptr<internal::Work>, size_t> &a,
-               const std::pair<std::shared_ptr<internal::Work>, size_t> &b) {
-              return a.second > b.second;
-            });
+  std::stable_sort(all_tasks_with_sizes.begin(),
+                   all_tasks_with_sizes.end(),
+                   [](const std::pair<std::shared_ptr<internal::Work>, size_t> &a,
+                      const std::pair<std::shared_ptr<internal::Work>, size_t> &b) {
+                     return a.second > b.second;
+                   });
 
   // Record some status of SchedulingClass
   // Map to record is_infeasible status for each scheduling class.
@@ -187,7 +192,8 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
     SchedulingClass scheduling_class = work_to_sched_class_map[work_it];
 
     // Skip this iteration if the scheduling class has already spilled
-    if (sched_class_did_spill_map[scheduling_class]) {
+    if (sched_class_did_spill_map[scheduling_class] ||
+        sched_class_cap_map[scheduling_class]) {
       ++task_it;
       continue;
     }
@@ -248,8 +254,8 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
           task_it = all_tasks_with_sizes.erase(task_it);
           continue;
         }
-
-        break;
+        sched_class_cap_map[scheduling_class] = true;
+        continue;
       }
     }
     bool args_missing = false;
