@@ -15,13 +15,3 @@ ANYSCALE_RAY_SERVE_DEFAULT_DRAINING_TIMEOUT_S = float(
 ANYSCALE_RAY_SERVE_COMPACTION_TIMEOUT_S = float(
     os.environ.get("ANYSCALE_RAY_SERVE_COMPACTION_TIMEOUT_S", 1800.0)
 )
-
-DEFAULT_TRACING_EXPORTER_IMPORT_PATH = (
-    "ray.anyscale.serve._private.tracing_utils:default_tracing_exporter"
-)
-# Path to tracing exporter function
-# If None, then use default tracing exporter
-# If empty string, then tracing is disabled
-ANYSCALE_TRACING_EXPORTER_IMPORT_PATH = os.environ.get(
-    "ANYSCALE_TRACING_EXPORTER_IMPORT_PATH", DEFAULT_TRACING_EXPORTER_IMPORT_PATH
-)
