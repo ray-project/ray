@@ -386,12 +386,21 @@ py_test(
 
 sh_binary(
     name = "run",
-    srcs = ["run_release_test.sh"],
+    srcs = ["run_release_test_sh"],
     data = ["run_release_test"],
     env = {
         "NO_INSTALL": "1",
         "RAY_TEST_SCRIPT": "./run_release_test",
     }
+)
+
+genrule(
+    name = "run_release_test_sh",
+    srcs = ["run_release_test.sh"],
+    outs = ["run.sh"],
+    cmd = """
+        cat $(location run_release_test.sh) > $@
+    """,
 )
 
 py_binary(
