@@ -235,9 +235,10 @@ class BaseTrainer(abc.ABC):
         )
         self.metadata = metadata
         self.datasets = datasets if datasets is not None else {}
-        self.dataset_ids = [
-            f"{ds._plan._dataset_name}_{ds._plan_dataset_uuid}" for ds in self.datasets
-        ]
+        self.dataset_ids = {
+            ds_name: f"{ds._plan._dataset_name}_{ds._plan._dataset_uuid}"
+            for ds_name, ds in self.datasets.items()
+        }
         self.starting_checkpoint = resume_from_checkpoint
 
         # These attributes should only be set through `BaseTrainer.restore`

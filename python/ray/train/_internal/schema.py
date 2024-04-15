@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from ray._private.pydantic_compat import BaseModel, Field
 from ray.util.annotations import DeveloperAPI
@@ -41,6 +41,6 @@ class TrainRunInfo(BaseModel):
     workers: List[TrainWorkerInfo] = Field(
         description="A List of Train workers sorted by global ranks."
     )
-    dataset_ids: Optional[List[str]] = Field(
-        description="A List of dataset ids for this Train run."
+    dataset_ids: Optional[Dict[str, str]] = Field(
+        description="A List of dataset <name, id> pairs for this Train run."
     )

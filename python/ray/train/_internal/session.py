@@ -657,6 +657,7 @@ def _warn_session_misuse(default_value: Any = None):
                         f"`{fn_name}` is meant to only be "
                         "called inside a function that is executed by a Tuner"
                         f" or Trainer. Returning `{default_value}`.",
+                        stacklevel=2,
                     )
                 return default_value
             return fn(*args, **kwargs)
@@ -831,7 +832,7 @@ def get_trial_id() -> str:
 @PublicAPI(stability="alpha")
 @_warn_session_misuse()
 def get_run_id() -> str:
-    """Run id for the corresponding Train Run."""
+    """Unique Train Run id for the corresponding trial."""
     return _get_session().run_id
 
 
