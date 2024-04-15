@@ -205,10 +205,16 @@ Status raylet::RayletClient::AnnounceWorkerPortForDriver(int port,
       protocol::CreateAnnounceWorkerPort(fbb, port, fbb.CreateString(entrypoint));
   fbb.Finish(message);
   std::vector<uint8_t> reply;
-  return conn_->AtomicRequestReply(MessageType::AnnounceWorkerPort,
-                                   MessageType::AnnounceWorkerPortReply,
-                                   &reply,
-                                   &fbb);
+  RAY_RETURN_NOT_OK(conn_->AtomicRequestReply(MessageType::AnnounceWorkerPort,
+                                              MessageType::AnnounceWorkerPortReply,
+                                              &reply,
+                                              &fbb));
+  auto reply_message =
+      flatbuffers::GetRoot<protocol::AnnounceWorkerPortReply>(reply.data());
+  if (reply_message->success()) {
+    return Status::OK();
+  }
+  return Status::Invalid(string_from_flatbuf(*reply_message->failure_reason()));
 }
 
 Status raylet::RayletClient::ActorCreationTaskDone() {

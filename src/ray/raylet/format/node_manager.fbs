@@ -152,6 +152,10 @@ table AnnounceWorkerPort {
 }
 
 table AnnounceWorkerPortReply {
+  // Whether the announcement and job registration succeeded.
+  success: bool;
+  // The reason of registration failure.
+  failure_reason: string;
 }
 
 table RegisterNodeManagerRequest {

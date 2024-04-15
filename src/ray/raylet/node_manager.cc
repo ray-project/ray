@@ -1263,7 +1263,8 @@ void NodeManager::ProcessRegisterClientRequestMessage(
             DisconnectClient(client,
                              rpc::WorkerExitType::SYSTEM_ERROR,
                              "Worker is failed because the raylet couldn't reply the "
-                             "registration request.");
+                             "registration request: " +
+                                 status.ToString());
           }
         });
   };
@@ -1332,24 +1333,30 @@ void NodeManager::ProcessAnnounceWorkerPortMessage(
                                 string_from_flatbuf(*message->entrypoint()),
                                 *job_config);
 
-    RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(job_data_ptr, [client](Status status) {
-      if (!status.ok()) {
-        RAY_LOG(ERROR) << "Failed to add job to GCS: " << status.ToString();
-      }
-      // Write the reply back.
-      flatbuffers::FlatBufferBuilder fbb;
-      auto message = protocol::CreateAnnounceWorkerPortReply(fbb);
-      fbb.Finish(message);
+    RAY_CHECK_OK(
+        gcs_client_->Jobs().AsyncAdd(job_data_ptr, [this, client](Status status) {
+          if (!status.ok()) {
+            RAY_LOG(ERROR) << "Failed to add job to GCS: " << status.ToString();
+          }
+          // Write the reply back.
+          flatbuffers::FlatBufferBuilder fbb;
+          auto message = protocol::CreateAnnounceWorkerPortReply(
+              fbb, status.ok(), fbb.CreateString(status.ToString()));
+          fbb.Finish(message);
 
-      auto reply_status = client->WriteMessage(
-          static_cast<int64_t>(protocol::MessageType::AnnounceWorkerPortReply),
-          fbb.GetSize(),
-          fbb.GetBufferPointer());
-      if (!reply_status.ok()) {
-        RAY_LOG(ERROR) << "Failed to send AnnounceWorkerPortReply to client: "
-                       << reply_status.ToString();
-      }
-    }));
+          client->WriteMessageAsync(
+              static_cast<int64_t>(protocol::MessageType::AnnounceWorkerPortReply),
+              fbb.GetSize(),
+              fbb.GetBufferPointer(),
+              [this, client](const ray::Status &status) {
+                if (!status.ok()) {
+                  DisconnectClient(client,
+                                   rpc::WorkerExitType::SYSTEM_ERROR,
+                                   "Failed to send AnnounceWorkerPortReply to client: " +
+                                       status.ToString());
+                }
+              });
+        }));
   }
 }
 
