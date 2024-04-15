@@ -21,6 +21,7 @@ import setproctitle
 
 import ray
 from ray._private import ray_constants
+from ray._private.utils import is_ipv6_address
 from ray.experimental.internal_kv import _internal_kv_del, _internal_kv_put
 from ray.util.annotations import DeveloperAPI
 
@@ -225,7 +226,9 @@ def _connect_ray_pdb(
     """
     Opens a remote PDB on first available port.
     """
-    if debugger_external:
+    if is_ipv6_address(os.environ.get("BYTED_RAY_POD_IP")):
+        host = "::"
+    elif debugger_external:
         assert not host, "Cannot specify both host and debugger_external"
         host = "0.0.0.0"
     elif host is None:

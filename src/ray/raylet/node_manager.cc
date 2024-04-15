@@ -375,8 +375,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
   runtime_env_agent_manager_ = CreateRuntimeEnvAgentManager(self_node_id, config);
 
   std::string runtime_env_agent_ip = std::string(config.node_manager_address);
-  bool is_ipv6 = std::getenv("BYTED_RAY_POD_IP") != nullptr;
-  if (is_ipv6) {
+  // strip the ipv6 brackets
+  if (runtime_env_agent_ip.length() >= 2 && runtime_env_agent_ip[0] == '[') {
     runtime_env_agent_ip =
         runtime_env_agent_ip.substr(1, runtime_env_agent_ip.length() - 2);
   }

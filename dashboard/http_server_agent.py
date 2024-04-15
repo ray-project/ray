@@ -1,5 +1,6 @@
 import logging
 from ray._private.utils import get_or_create_event_loop
+from ray._private.utils import is_ipv6_address
 
 from packaging.version import Version
 
@@ -57,7 +58,7 @@ class HttpServerAgent:
             http_address = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
             import os
 
-            if os.environ.get("BYTED_RAY_POD_IP") is not None:
+            if is_ipv6_address(os.environ.get("BYTED_RAY_POD_IP")):
                 if http_address == "0.0.0.0":
                     http_address = "::"
             site = aiohttp.web.TCPSite(

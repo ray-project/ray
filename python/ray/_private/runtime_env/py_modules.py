@@ -201,7 +201,11 @@ class PyModulesPlugin(RuntimeEnvPlugin):
                 uri = uri[:python_path_index]
 
         module_dir = await download_and_unpack_package(
-            uri, self._resources_dir, self._gcs_aio_client, logger=logger, runtime_env=runtime_env
+            uri,
+            self._resources_dir,
+            self._gcs_aio_client,
+            logger=logger,
+            runtime_env=runtime_env,
         )
 
         if is_whl_uri(uri):
@@ -230,14 +234,14 @@ class PyModulesPlugin(RuntimeEnvPlugin):
                 if len(git_path_list) >= 2:
                     if uri.find("$") != -1:
                         python_path_index = uri.find("$")
-                        added_python_path = "/" + uri[python_path_index + 1:]
+                        added_python_path = "/" + uri[python_path_index + 1 :]
                         uri = uri[:python_path_index]
                     module_dir = self._get_local_dir_from_uri(uri)
                     module_dirs.append(str(module_dir) + added_python_path)
                 continue
             if uri.startswith("gcs://") and uri.find("$") != -1:
                 python_path_index = uri.find("$")
-                added_python_path = "/" + uri[python_path_index + 1:]
+                added_python_path = "/" + uri[python_path_index + 1 :]
                 uri = uri[:python_path_index]
                 module_dir = self._get_local_dir_from_uri(uri)
                 if not module_dir.exists():

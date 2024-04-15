@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
+from ray._private.utils import is_ipv6_address
 from ray.autoscaler._private.constants import (
     WORKER_LIVENESS_CHECK_KEY,
     WORKER_RPC_DRAIN_KEY,
@@ -97,7 +98,22 @@ def kind_and_type(pod: Dict[str, Any]) -> Tuple[NodeKind, NodeType]:
 
 
 def pod_ip(pod: Dict[str, Any]) -> NodeIP:
-    return pod["status"].get("podIP", "IP not yet assigned")
+    if os.getenv("BYTED_RAY_POD_IP") is not None:
+        if os.getenv("BYTED_RAY_HOSTNETWORK_HYBIRD_MODE") is not None:
+            ip = pod["status"].get("podIP", "")
+            if ip == "":
+                return "IP not yet assigned"
+            elif is_ipv6_address(ip):
+                return "[" + ip + "]"
+            else:
+                return ip
+        elif os.getenv("BYTED_RAY_UNDERLAY_NETWORK") is not None:
+            ip = pod["metadata"]["annotations"].get("pod.tce.kubernetes.io/pod.ipv6")
+        else:
+            ip = pod["metadata"]["annotations"].get("pod.tce.kubernetes.io/host.ipv6")
+        return "[" + ip + "]" if ip is not None else "IP not yet assigned"
+    else:
+        return pod["status"].get("podIP", "IP not yet assigned")
 
 
 def status_tag(pod: Dict[str, Any]) -> NodeStatus:

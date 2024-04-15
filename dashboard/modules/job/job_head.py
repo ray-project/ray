@@ -216,12 +216,16 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             raw_agent_infos = await DataOrganizer.get_all_agent_infos()
             if choose_head_node:
                 for key, value in raw_agent_infos.items():
-                    if value.get("httpPort", -1) > 0 and (
-                        value.get("ipAddress", "[]")[1:-1] == self._byted_ray_pod_ip
-                        and str(value.get("httpPort", "0")) == self._byted_port3
-                    ):
-                        head_node_id = key
-                        break
+                    if value.get("httpPort", -1) > 0:
+                        node_ip = value.get("ipAddress", "[]")
+                        if len(node_ip) >= 2 and node_ip[0] == "[":
+                            node_ip = node_ip[1:-1]
+                        if (
+                            node_ip == self._byted_ray_pod_ip
+                            and str(value.get("httpPort", "0")) == self._byted_port3
+                        ):
+                            head_node_id = key
+                            break
             agent_infos = {
                 key: value
                 for key, value in raw_agent_infos.items()

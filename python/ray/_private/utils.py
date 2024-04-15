@@ -7,6 +7,7 @@ import functools
 import importlib
 import inspect
 import json
+import ipaddress
 import logging
 import multiprocessing
 import os
@@ -1146,9 +1147,11 @@ def deprecated(
                     + (
                         f"in version {removal_release}."
                         if removal_release is not None
-                        else f"after {removal_date}"
-                        if removal_date is not None
-                        else "in a future version"
+                        else (
+                            f"after {removal_date}"
+                            if removal_date is not None
+                            else "in a future version"
+                        )
                     )
                     + (f" {instructions}" if instructions is not None else "")
                 )
@@ -2092,3 +2095,22 @@ def get_current_node_cpu_model_name() -> Optional[str]:
     except Exception:
         logger.debug("Failed to get CPU model name", exc_info=True)
         return None
+
+
+def is_worker_node():
+    return (
+        os.environ.get("BYTED_RAY_POD_IP") is not None
+        and os.environ.get("RAY_IP") != "127.0.0.1"
+    )
+
+
+def is_ipv6_address(ip):
+    if ip is None:
+        return False
+    if len(ip) >= 2 and ip[0] == "[":
+        ip = ip[1:-1]
+    try:
+        ip_obj = ipaddress.ip_address(ip)
+        return ip_obj.version == 6
+    except ValueError:
+        return False

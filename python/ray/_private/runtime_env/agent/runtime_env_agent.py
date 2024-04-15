@@ -321,11 +321,11 @@ class RuntimeEnvAgent:
                         "fields in the runtime_env will raise an exception."
                     )
 
-            # Creates each runtime env URI by their priority. `working_dir` is special
-            # because it needs to be created before other plugins. All other plugins are
-            # created in the priority order (smaller priority value -> earlier to
-            # create), with a special environment variable being set to the working dir.
-            # ${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}
+                # Creates each runtime env URI by their priority. `working_dir` is special
+                # because it needs to be created before other plugins. All other plugins are
+                # created in the priority order (smaller priority value -> earlier to
+                # create), with a special environment variable being set to the working dir.
+                # ${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}
                 """Run setup for each plugin unless it has already been cached."""
 
             # First create working dir...
