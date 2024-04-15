@@ -140,5 +140,7 @@ if __name__ == "__main__":
         base_config,
         args,
         stop=stop,
-        success_metric="evaluation/sampler_results/episode_reward_mean",
+        success_metric={
+            "evaluation/sampler_results/episode_reward_mean": args.stop_reward,
+        },
     )

@@ -54,7 +54,7 @@ if __name__ == "__main__":
     else:
         register_env("env", lambda _: StatelessCartPole())
 
-    base_config = (
+    config = (
         PPOConfig()
         .environment("env")
         .rollouts(env_to_module_connector=_env_to_module)
@@ -63,6 +63,24 @@ if __name__ == "__main__":
             lr=0.0003,
             train_batch_size=4000,
             vf_loss_coeff=0.01,
+        )
+    )
+
+    if args.enable_new_api_stack:
+        config = config.rl_module(
+            model_config_dict={
+                "use_lstm": True,
+                "max_seq_len": 50,
+                "fcnet_hiddens": [32],
+                "fcnet_activation": "linear",
+                "vf_share_layers": True,
+                "fcnet_weights_initializer": nn.init.xavier_uniform_,
+                "fcnet_bias_initializer": functools.partial(nn.init.constant_, 0.0),
+                "uses_new_env_runners": True,
+            }
+        )
+    else:
+        config = config.training(
             model=dict(
                 {
                     "use_lstm": True,
@@ -72,21 +90,15 @@ if __name__ == "__main__":
                     "vf_share_layers": True,
                     "fcnet_weights_initializer": nn.init.xavier_uniform_,
                     "fcnet_bias_initializer": functools.partial(nn.init.constant_, 0.0),
-                },
-                **(
-                    {}
-                    if not args.enable_new_api_stack
-                    else {"uses_new_env_runners": True}
-                ),
-            ),
+                }
+            )
         )
-    )
 
     # Add a simple multi-agent setup.
     if args.num_agents > 0:
-        base_config.multi_agent(
+        config = config.multi_agent(
             policies={f"p{i}" for i in range(args.num_agents)},
             policy_mapping_fn=lambda aid, *a, **kw: f"p{aid}",
         )
 
-    run_rllib_example_script_experiment(base_config, args)
+    run_rllib_example_script_experiment(config, args)

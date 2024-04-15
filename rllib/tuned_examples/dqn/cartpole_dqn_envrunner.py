@@ -13,9 +13,9 @@ config = (
     .resources(
         num_learner_workers=0,
     )
-    .training(
+    .rl_module(
         # Settings identical to old stack.
-        model={
+        model_config_dict={
             "fcnet_hiddens": [256],
             "fcnet_activation": "relu",
             "epsilon": [(0, 1.0), (10000, 0.05)],
@@ -23,6 +23,9 @@ config = (
             "post_fcnet_bias_initializer": "zeros_",
             "post_fcnet_hiddens": [256],
         },
+    )
+    .training(
+        # Settings identical to old stack.
         replay_buffer_config={
             "type": "PrioritizedEpisodeReplayBuffer",
             "capacity": 100000,
