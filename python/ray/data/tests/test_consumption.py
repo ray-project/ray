@@ -13,7 +13,6 @@ import pytest
 
 import ray
 from ray.data._internal.block_builder import BlockBuilder
-from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import BlockAccessor, BlockMetadata
@@ -1826,7 +1825,7 @@ def test_nowarning_execute_with_cpu(ray_start_cluster):
     # Create one node with CPUs to avoid triggering the Dataset warning
     ray.init(ray_start_cluster.address)
 
-    logger = DatasetLogger("ray.data._internal.plan").get_logger()
+    logger = logging.getLogger("ray.data._internal.plan")
     with patch.object(
         logger,
         "warning",

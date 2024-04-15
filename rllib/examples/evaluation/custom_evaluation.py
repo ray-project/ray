@@ -21,7 +21,7 @@ from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.evaluation.metrics import summarize_episodes
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.examples.env.simple_corridor import SimpleCorridor
+from ray.rllib.examples.envs.classes.simple_corridor import SimpleCorridor
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
@@ -140,5 +140,7 @@ if __name__ == "__main__":
         base_config,
         args,
         stop=stop,
-        success_metric="evaluation/sampler_results/episode_reward_mean",
+        success_metric={
+            "evaluation/sampler_results/episode_reward_mean": args.stop_reward,
+        },
     )

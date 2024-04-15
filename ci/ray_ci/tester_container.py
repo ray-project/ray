@@ -13,7 +13,7 @@ from ci.ray_ci.utils import logger
 from ci.ray_ci.container import Container
 from ray_release.test import TestResult, Test
 from ray_release.test_automation.ci_state_machine import CITestStateMachine
-from ray_release.configs.global_config import BRANCH_PIPELINES, PR_PIPELINES
+from ray_release.configs.global_config import get_global_config
 
 
 class TesterContainer(Container):
@@ -108,13 +108,15 @@ class TesterContainer(Container):
     def _persist_test_results(self, team: str, bazel_log_dir: str) -> None:
         pipeline_id = os.environ.get("BUILDKITE_PIPELINE_ID")
         branch = os.environ.get("BUILDKITE_BRANCH")
-        if pipeline_id not in BRANCH_PIPELINES + PR_PIPELINES:
+        branch_pipelines = get_global_config()["ci_pipeline_postmerge"]
+        pr_pipelines = get_global_config()["ci_pipeline_premerge"]
+        if pipeline_id not in branch_pipelines + pr_pipelines:
             logger.info(
                 "Skip upload test results. "
                 "We only upload results on branch and PR pipelines",
             )
             return
-        if pipeline_id in BRANCH_PIPELINES and branch != "master":
+        if pipeline_id in branch_pipelines and branch != "master":
             logger.info(
                 "Skip upload test results. "
                 "We only upload the master branch results on a branch pipeline",
@@ -146,7 +148,10 @@ class TesterContainer(Container):
     def move_test_state(cls, team: str, bazel_log_dir: str) -> None:
         pipeline_id = os.environ.get("BUILDKITE_PIPELINE_ID")
         branch = os.environ.get("BUILDKITE_BRANCH")
-        if pipeline_id not in BRANCH_PIPELINES or branch != "master":
+        if (
+            pipeline_id not in get_global_config()["ci_pipeline_postmerge"]
+            or branch != "master"
+        ):
             logger.info("Skip updating test state. We only update on master branch.")
             return
         for test, _ in cls.get_test_and_results(team, bazel_log_dir):

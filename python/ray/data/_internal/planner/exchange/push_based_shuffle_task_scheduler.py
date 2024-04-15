@@ -1,9 +1,9 @@
+import logging
 import math
 from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union
 
 import ray
 from ray._private.ray_constants import CALLER_MEMORY_USAGE_PER_OBJECT_REF
-from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import RefBundle, TaskContext
 from ray.data._internal.planner.exchange.interfaces import (
     ExchangeTaskScheduler,
@@ -18,7 +18,7 @@ from ray.data.context import DataContext
 from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
-logger = DatasetLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 T = TypeVar("T")
@@ -358,7 +358,7 @@ class _ReduceStageIterator:
             self._reduce_arg_blocks = self._reduce_arg_blocks[
                 :_debug_limit_execution_to_num_blocks
             ]
-            logger.get_logger(log_to_stdout=False).info(
+            logger.debug(
                 f"Limiting execution to {len(self._reduce_arg_blocks)} reduce tasks"
             )
 
@@ -442,9 +442,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         merge_factor: float = 2,
         _debug_limit_execution_to_num_blocks: int = None,
     ) -> Tuple[List[RefBundle], StatsDict]:
-        logger.get_logger(log_to_stdout=False).info(
-            "Using experimental push-based shuffle."
-        )
+        logger.debug("Using experimental push-based shuffle.")
         # TODO: Preemptively clear the blocks list since we will incrementally delete
         # the last remaining references as we submit the dependent map tasks during the
         # map-merge stage.
@@ -497,9 +495,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         # the logging level to DEBUG from a driver script, so just print
         # verbosely for now.
         # See https://github.com/ray-project/ray/issues/42002.
-        logger.get_logger(log_to_stdout=False).info(
-            f"Push-based shuffle schedule:\n{stage}"
-        )
+        logger.debug(f"Push-based shuffle schedule:\n{stage}")
 
         map_fn = self._map_partition
         merge_fn = self._merge
@@ -518,9 +514,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
 
         if _debug_limit_execution_to_num_blocks is not None:
             input_blocks_list = input_blocks_list[:_debug_limit_execution_to_num_blocks]
-            logger.get_logger(log_to_stdout=False).info(
-                f"Limiting execution to {len(input_blocks_list)} map tasks"
-            )
+            logger.debug(f"Limiting execution to {len(input_blocks_list)} map tasks")
         map_stage_iter = _MapStageIterator(
             input_blocks_list,
             shuffle_map,
@@ -743,7 +737,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         num_output_blocks: int,
     ) -> _PushBasedShuffleStage:
         num_cpus_total = sum(v for v in num_cpus_per_node_map.values())
-        logger.get_logger(log_to_stdout=False).info(
+        logger.debug(
             f"Found {num_cpus_total} CPUs available CPUs for push-based shuffle."
         )
         num_tasks_per_map_merge_group = merge_factor + 1

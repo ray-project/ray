@@ -4,10 +4,10 @@ from ray.rllib.connectors.env_to_module import (
     FlattenObservations,
     WriteObservationsToEpisodes,
 )
-from ray.rllib.examples.env.cartpole_with_dict_observation_space import (
+from ray.rllib.examples.envs.classes.cartpole_with_dict_observation_space import (
     CartPoleWithDictObservationSpace,
 )
-from ray.rllib.examples.env.multi_agent import (
+from ray.rllib.examples.envs.classes.multi_agent import (
     MultiAgentCartPoleWithDictObservationSpace,
 )
 from ray.rllib.utils.test_utils import (
@@ -44,7 +44,7 @@ if __name__ == "__main__":
         register_env("env", lambda _: CartPoleWithDictObservationSpace())
 
     # Define the AlgorithmConfig used.
-    base_config = (
+    config = (
         get_trainable_cls(args.algo)
         .get_default_config()
         .environment("env")
@@ -52,34 +52,37 @@ if __name__ == "__main__":
         .training(
             gamma=0.99,
             lr=0.0003,
-            model=dict(
-                {
-                    "fcnet_hiddens": [32],
-                    "fcnet_activation": "linear",
-                    "vf_share_layers": True,
-                },
-                **(
-                    {}
-                    if not args.enable_new_api_stack
-                    else {"uses_new_env_runners": True}
-                ),
-            ),
         )
     )
+    if args.enable_new_api_stack:
+        config = config.rl_module(
+            model_config_dict={
+                "fcnet_hiddens": [32],
+                "fcnet_activation": "linear",
+                "vf_share_layers": True,
+                "uses_new_env_runners": True,
+            },
+        )
+    else:
+        config = config.training(
+            model=dict(
+                fcnet_hiddens=[32], fcnet_activation="linear", vf_share_layers=True
+            )
+        )
 
     # Add a simple multi-agent setup.
     if args.num_agents > 0:
-        base_config.multi_agent(
+        config = config.multi_agent(
             policies={f"p{i}" for i in range(args.num_agents)},
             policy_mapping_fn=lambda aid, *a, **kw: f"p{aid}",
         )
 
     # Fix some PPO-specific settings.
     if args.algo == "PPO":
-        base_config.training(
+        config = config.training(
             num_sgd_iter=6,
             vf_loss_coeff=0.01,
         )
 
     # Run everything as configured.
-    run_rllib_example_script_experiment(base_config, args)
+    run_rllib_example_script_experiment(config, args)

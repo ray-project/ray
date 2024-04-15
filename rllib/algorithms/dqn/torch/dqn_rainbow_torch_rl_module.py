@@ -5,11 +5,14 @@ from ray.rllib.algorithms.dqn.dqn_rainbow_rl_module import (
     ATOMS,
     QF_LOGITS,
     QF_NEXT_PREDS,
+    QF_PREDS,
     QF_PROBS,
     QF_TARGET_NEXT_PREDS,
     QF_TARGET_NEXT_PROBS,
 )
-from ray.rllib.algorithms.sac.sac_rl_module import QF_PREDS
+from ray.rllib.algorithms.dqn.torch.dqn_rainbow_torch_noisy_net import (
+    TorchNoisyMLPEncoder,
+)
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import Encoder, ENCODER_OUT, Model
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
@@ -31,6 +34,9 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
     def setup(self):
         super().setup()
 
+        # If we use a noisy encoder. Note, only if the observation
+        # space is a flat space we can use a noisy encoder.
+        self.uses_noisy_encoder = isinstance(self.encoder, TorchNoisyMLPEncoder)
         # We do not want to train the target networks.
         # AND sync all target nets with the actual (trained) ones.
         self.target_encoder.requires_grad_(False)
@@ -76,7 +82,7 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         # Resample the noise for the noisy layers, if needed.
         if self.uses_noisy:
             # We want to resample the noise everytime we step.
-            self.reset_noise(target=False)
+            self._reset_noise(target=False)
             if not self.training:
                 # Set the module into training mode. This sets
                 # the weigths and bias to their noisy version.
@@ -214,9 +220,11 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         return self._qf_forward_helper(
             batch,
             self.target_encoder,
-            {"af": self.af_target, "vf": self.vf_target}
-            if self.uses_dueling
-            else self.af_target,
+            (
+                {"af": self.af_target, "vf": self.vf_target}
+                if self.uses_dueling
+                else self.af_target
+            ),
         )
 
     @override(DQNRainbowRLModule)
@@ -383,7 +391,8 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
             target: Whether to reset the noise of the target networks.
         """
         if self.uses_noisy:
-            self.encoder._reset_noise()
+            if self.uses_noisy_encoder:
+                self.encoder._reset_noise()
             self.af._reset_noise()
             # If we have a dueling architecture we need to reset the noise
             # of the value stream, too.
@@ -391,7 +400,8 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
                 self.vf._reset_noise()
             # Reset the noise of the target networks, if requested.
             if target:
-                self.target_encoder._reset_noise()
+                if self.uses_noisy_encoder:
+                    self.target_encoder._reset_noise()
                 self.af_target._reset_noise()
                 # If we have a dueling architecture we need to reset the noise
                 # of the value stream, too.
