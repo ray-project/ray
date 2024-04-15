@@ -88,23 +88,30 @@ class PublisherTest : public ::testing::Test {
            subscribers.end();
   }
 
-  SubscriberState *CreateSubscriber() {
+  SubscriberState *CreateSubscriber(
+      int64_t max_message_size_bytes = kMaxPubMessageSizeBytes) {
     subscribers_.push_back(std::make_unique<SubscriberState>(
         NodeID::FromRandom(),
         /*get_time_ms=*/[]() { return 1.0; },
         /*subscriber_timeout_ms=*/1000,
         /*publish_batch_size=*/1000,
+        max_message_size_bytes,
         kDefaultPublisherId));
     return subscribers_.back().get();
   }
 
-  rpc::PubsubLongPollingReply FlushSubscriber(SubscriberState *subscriber) {
+  std::shared_ptr<rpc::PubsubLongPollingReply> FlushSubscriber(
+      SubscriberState *subscriber, int64_t max_processed_sequence_id = -1) {
     rpc::PubsubLongPollingRequest request;
-    rpc::PubsubLongPollingReply reply;
+    auto reply = std::make_shared<rpc::PubsubLongPollingReply>();
+    request.set_publisher_id(kDefaultPublisherId.Binary());
+    if (max_processed_sequence_id >= 0) {
+      request.set_max_processed_sequence_id(max_processed_sequence_id);
+    }
     rpc::SendReplyCallback send_reply_callback = [](Status status,
                                                     std::function<void()> success,
                                                     std::function<void()> failure) {};
-    subscriber->ConnectToSubscriber(request, &reply, send_reply_callback);
+    subscriber->ConnectToSubscriber(request, reply.get(), send_reply_callback);
     subscriber->PublishIfPossible();
     return reply;
   }
@@ -131,7 +138,8 @@ TEST_F(PublisherTest, TestSubscriptionIndexSingeNodeSingleObject) {
   /// Test single node id & object id
   ///
   /// oid1 -> [nid1]
-  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
+  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
+                                       kMaxPubMessageSizeBytes);
   subscription_index.AddEntry(oid.Binary(), subscriber);
   const auto &subscribers_from_index =
       subscription_index.GetSubscriberIdsByKeyId(oid.Binary());
@@ -143,7 +151,8 @@ TEST_F(PublisherTest, TestSubscriptionIndexMultiNodeSingleObject) {
   /// Test single object id & multi nodes
   ///
   /// oid1 -> [nid1~nid5]
-  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
+  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
+                                       kMaxPubMessageSizeBytes);
   const auto oid = ObjectID::FromRandom();
   absl::flat_hash_set<NodeID> empty_set;
   subscribers_map_.emplace(oid, empty_set);
@@ -193,7 +202,8 @@ TEST_F(PublisherTest, TestSubscriptionIndexErase) {
   ///
   /// oid1 -> [nid1~nid5]
   /// oid2 -> [nid1~nid5]
-  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
+  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
+                                       kMaxPubMessageSizeBytes);
   int total_entries = 6;
   int entries_to_delete_at_each_time = 3;
   auto oid = ObjectID::FromRandom();
@@ -242,7 +252,8 @@ TEST_F(PublisherTest, TestSubscriptionIndexEraseMultiSubscribers) {
   ///
   /// Test erase the duplicated entries with multi subscribers.
   ///
-  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
+  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
+                                       kMaxPubMessageSizeBytes);
   auto oid = ObjectID::FromRandom();
   auto oid2 = ObjectID::FromRandom();
   absl::flat_hash_set<NodeID> empty_set;
@@ -266,7 +277,8 @@ TEST_F(PublisherTest, TestSubscriptionIndexEraseSubscriber) {
   ///
   /// Test erase subscriber.
   ///
-  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
+  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
+                                       kMaxPubMessageSizeBytes);
   auto oid = ObjectID::FromRandom();
   auto &subscribers = subscribers_map_[oid];
   std::vector<SubscriberID> subscriber_ids;
@@ -298,7 +310,8 @@ TEST_F(PublisherTest, TestSubscriptionIndexIdempotency) {
   auto *subscriber = CreateSubscriber();
   auto subscriber_id = subscriber->id();
   auto oid = ObjectID::FromRandom();
-  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
+  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
+                                       kMaxPubMessageSizeBytes);
 
   // Add the same entry many times.
   for (int i = 0; i < 5; i++) {
@@ -345,6 +358,7 @@ TEST_F(PublisherTest, TestSubscriber) {
       [this]() { return current_time_; },
       subscriber_timeout_ms_,
       10,
+      kMaxPubMessageSizeBytes,
       kDefaultPublisherId);
   // If there's no connection, it will return false.
   ASSERT_FALSE(subscriber->PublishIfPossible());
@@ -427,6 +441,7 @@ TEST_F(PublisherTest, TestSubscriberBatchSize) {
       [this]() { return current_time_; },
       subscriber_timeout_ms_,
       max_publish_size,
+      kMaxPubMessageSizeBytes,
       kDefaultPublisherId);
   subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback);
 
@@ -475,6 +490,7 @@ TEST_F(PublisherTest, TestSubscriberActiveTimeout) {
       [this]() { return current_time_; },
       subscriber_timeout_ms_,
       10,
+      kMaxPubMessageSizeBytes,
       kDefaultPublisherId);
 
   subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback);
@@ -547,6 +563,7 @@ TEST_F(PublisherTest, TestSubscriberDisconnected) {
       [this]() { return current_time_; },
       subscriber_timeout_ms_,
       10,
+      kMaxPubMessageSizeBytes,
       kDefaultPublisherId);
 
   // Suppose the new connection is removed.
@@ -609,6 +626,7 @@ TEST_F(PublisherTest, TestSubscriberTimeoutComplicated) {
       [this]() { return current_time_; },
       subscriber_timeout_ms_,
       10,
+      kMaxPubMessageSizeBytes,
       kDefaultPublisherId);
 
   // Suppose the new connection is removed.
@@ -1096,7 +1114,8 @@ class ScopedEntityBufferMaxBytes {
 TEST_F(PublisherTest, TestMaxBufferSizePerEntity) {
   ScopedEntityBufferMaxBytes max_bytes(10000);
 
-  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
+  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
+                                       kMaxPubMessageSizeBytes);
   auto job_id = JobID::FromInt(1234);
   auto *subscriber = CreateSubscriber();
   // Subscribe to job_id.
@@ -1123,10 +1142,10 @@ TEST_F(PublisherTest, TestMaxBufferSizePerEntity) {
 
   // Subscriber receives the last two messages. 1st message is dropped.
   auto reply = FlushSubscriber(subscriber);
-  ASSERT_EQ(reply.pub_messages().size(), 2);
-  EXPECT_EQ(reply.pub_messages(0).error_info_message().error_message(),
+  ASSERT_EQ(reply->pub_messages().size(), 2);
+  EXPECT_EQ(reply->pub_messages(0).error_info_message().error_message(),
             std::string(4000, 'b'));
-  EXPECT_EQ(reply.pub_messages(1).error_info_message().error_message(),
+  EXPECT_EQ(reply->pub_messages(1).error_info_message().error_message(),
             std::string(4000, 'c'));
 
   // A message larger than the buffer limit can still be published.
@@ -1134,15 +1153,17 @@ TEST_F(PublisherTest, TestMaxBufferSizePerEntity) {
   pub_message.set_sequence_id(GetNextSequenceId());
   EXPECT_TRUE(subscription_index.Publish(std::make_shared<rpc::PubMessage>(pub_message)));
   reply = FlushSubscriber(subscriber);
-  ASSERT_EQ(reply.pub_messages().size(), 1);
-  EXPECT_EQ(reply.pub_messages(0).error_info_message().error_message(),
+  ASSERT_EQ(reply->pub_messages().size(), 1);
+  EXPECT_EQ(reply->pub_messages(0).error_info_message().error_message(),
             std::string(14000, 'd'));
 }
 
 TEST_F(PublisherTest, TestMaxBufferSizeAllEntities) {
-  ScopedEntityBufferMaxBytes max_bytes(10000);
+  int64_t max_bytes = 10000;
+  ScopedEntityBufferMaxBytes max_bytes_config(max_bytes);
 
-  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
+  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
+                                       max_bytes);
   auto *subscriber = CreateSubscriber();
   // Subscribe to all entities.
   subscription_index.AddEntry("", subscriber);
@@ -1168,12 +1189,89 @@ TEST_F(PublisherTest, TestMaxBufferSizeAllEntities) {
   pub_message.set_sequence_id(GetNextSequenceId());
   EXPECT_TRUE(subscription_index.Publish(std::make_shared<rpc::PubMessage>(pub_message)));
 
+  {
+    // Publishing individual messages that are too large fails.
+    rpc::PubMessage pub_message;
+    pub_message.set_key_id("ddd");
+    pub_message.set_channel_type(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
+    pub_message.mutable_error_info_message()->set_error_message(std::string(12000, 'a'));
+    pub_message.set_sequence_id(GetNextSequenceId());
+
+    EXPECT_FALSE(
+        subscription_index.Publish(std::make_shared<rpc::PubMessage>(pub_message)));
+  }
+
   auto reply = FlushSubscriber(subscriber);
-  ASSERT_EQ(reply.pub_messages().size(), 2);
-  EXPECT_EQ(reply.pub_messages(0).error_info_message().error_message(),
+  ASSERT_EQ(reply->pub_messages().size(), 2);
+  EXPECT_EQ(reply->pub_messages(0).error_info_message().error_message(),
             std::string(4000, 'b'));
-  EXPECT_EQ(reply.pub_messages(1).error_info_message().error_message(),
+  EXPECT_EQ(reply->pub_messages(1).error_info_message().error_message(),
             std::string(4000, 'c'));
+
+  reply = FlushSubscriber(subscriber, reply->pub_messages(1).sequence_id());
+  ASSERT_EQ(reply->pub_messages().size(), 0);
+}
+
+TEST_F(PublisherTest, TestMaxMessageSize) {
+  int64_t max_message_size_bytes = 1000;
+  int64_t max_messages = 2;
+  ScopedEntityBufferMaxBytes max_buffer_bytes_config(max_message_size_bytes *
+                                                     max_messages);
+
+  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
+                                       max_message_size_bytes);
+  auto *subscriber = CreateSubscriber(max_message_size_bytes);
+  // Subscribe to all entities.
+  subscription_index.AddEntry("", subscriber);
+
+  {
+    // Publishing individual messages that are too large fails.
+    rpc::PubMessage pub_message;
+    pub_message.set_key_id("a");
+    pub_message.set_channel_type(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
+    pub_message.mutable_error_info_message()->set_error_message(
+        std::string(max_message_size_bytes * 2, 'x'));
+    pub_message.set_sequence_id(GetNextSequenceId());
+
+    EXPECT_FALSE(
+        subscription_index.Publish(std::make_shared<rpc::PubMessage>(pub_message)));
+  }
+
+  // Fill the buffer and force one message to get evicted.
+  for (int64_t i = 0; i < 2 * (max_messages + 1); i++) {
+    rpc::PubMessage pub_message;
+    pub_message.set_key_id(std::to_string(i));
+    pub_message.set_channel_type(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
+    pub_message.mutable_error_info_message()->set_error_message(
+        std::string(max_message_size_bytes / 3, 'x'));
+    pub_message.set_sequence_id(GetNextSequenceId());
+    EXPECT_TRUE(
+        subscription_index.Publish(std::make_shared<rpc::PubMessage>(pub_message)));
+  }
+
+  // We should only get back two notifications at a time because of the max
+  // message size limit.
+  int64_t max_processed_seq_id = 0;
+  for (int64_t i = 0; i < max_messages; i++) {
+    auto reply = FlushSubscriber(subscriber, max_processed_seq_id);
+    ASSERT_EQ(reply->pub_messages().size(), 2);
+    // Messages are offset by 1 because the first message should have gotten
+    // dropped to avoid exceeding the buffer size.
+    ASSERT_EQ(reply->pub_messages(0).key_id(), std::to_string(2 * i + 1));
+    ASSERT_EQ(reply->pub_messages(1).key_id(), std::to_string(2 * i + 2));
+    max_processed_seq_id = reply->pub_messages(1).sequence_id();
+  }
+
+  {
+    auto reply = FlushSubscriber(subscriber, max_processed_seq_id);
+    ASSERT_EQ(reply->pub_messages().size(), 1);
+    max_processed_seq_id = reply->pub_messages(0).sequence_id();
+  }
+
+  {
+    auto reply = FlushSubscriber(subscriber, max_processed_seq_id);
+    ASSERT_EQ(reply->pub_messages().size(), 0);
+  }
 }
 
 }  // namespace pubsub

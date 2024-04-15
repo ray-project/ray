@@ -52,7 +52,9 @@ class SubscriberState;
 /// State for an entity / topic in a pub/sub channel.
 class EntityState {
  public:
-  EntityState(int64_t max_buffered_bytes) : max_buffered_bytes_(max_buffered_bytes) {}
+  EntityState(int64_t max_message_size_bytes, int64_t max_buffered_bytes)
+      : max_message_size_bytes_(max_message_size_bytes),
+        max_buffered_bytes_(max_buffered_bytes) {}
 
   /// Publishes the message to subscribers of the entity.
   /// Returns true if there are subscribers, returns false otherwise.
@@ -79,8 +81,11 @@ class EntityState {
   std::queue<std::weak_ptr<rpc::PubMessage>> pending_messages_;
   // Size of each inflight message.
   std::queue<int64_t> message_sizes_;
+  // Maximum size in bytes of a single message published to
+  // subscribers.
+  const int64_t max_message_size_bytes_;
   // Set to -1 to disable buffering.
-  int64_t max_buffered_bytes_;
+  const int64_t max_buffered_bytes_;
   // Total size of inflight messages.
   int64_t total_size_ = 0;
 };
@@ -89,7 +94,7 @@ class EntityState {
 /// Also supports subscribers to all keys in the channel.
 class SubscriptionIndex {
  public:
-  SubscriptionIndex(rpc::ChannelType channel_type);
+  SubscriptionIndex(rpc::ChannelType channel_type, int64_t max_message_size_bytes);
   ~SubscriptionIndex() = default;
 
   SubscriptionIndex(SubscriptionIndex &&) noexcept = default;
@@ -135,6 +140,9 @@ class SubscriptionIndex {
  private:
   std::unique_ptr<EntityState> CreateEntityState();
 
+  // Maximum size in bytes of a single message published to
+  // subscribers.
+  const int64_t max_message_size_bytes_;
   // Type of channel this index is for.
   rpc::ChannelType channel_type_;
   // Collection of subscribers that subscribe to all entities of the channel.
@@ -162,12 +170,14 @@ class SubscriberState {
   SubscriberState(SubscriberID subscriber_id,
                   std::function<double()> get_time_ms,
                   uint64_t connection_timeout_ms,
-                  const int publish_batch_size,
+                  int64_t publish_batch_size,
+                  int64_t max_message_size_bytes,
                   PublisherID publisher_id)
       : subscriber_id_(subscriber_id),
         get_time_ms_(std::move(get_time_ms)),
         connection_timeout_ms_(connection_timeout_ms),
         publish_batch_size_(publish_batch_size),
+        max_message_size_bytes_(max_message_size_bytes),
         last_connection_update_time_ms_(get_time_ms_()),
         publisher_id_(publisher_id) {}
 
@@ -227,7 +237,10 @@ class SubscriberState {
   /// The time in which the connection is considered as timed out.
   uint64_t connection_timeout_ms_;
   /// The maximum number of objects to publish for each publish calls.
-  const int publish_batch_size_;
+  const int64_t publish_batch_size_;
+  // Maximum size in bytes of a single message published to
+  // subscribers.
+  const int64_t max_message_size_bytes_;
   /// The last time long polling was connected in milliseconds.
   double last_connection_update_time_ms_;
   PublisherID publisher_id_;
@@ -308,16 +321,18 @@ class Publisher : public PublisherInterface {
             PeriodicalRunner *const periodical_runner,
             std::function<double()> get_time_ms,
             const uint64_t subscriber_timeout_ms,
-            const int publish_batch_size,
+            int64_t publish_batch_size,
             PublisherID publisher_id = NodeID::FromRandom())
       : periodical_runner_(periodical_runner),
         get_time_ms_(std::move(get_time_ms)),
         subscriber_timeout_ms_(subscriber_timeout_ms),
         publish_batch_size_(publish_batch_size),
+        max_message_size_bytes_(pub_internal::kMaxPubMessageSizeBytes),
         publisher_id_(publisher_id) {
     // Insert index map for each channel.
     for (auto type : channels) {
-      subscription_index_map_.emplace(type, type);
+      subscription_index_map_.emplace(
+          type, pub_internal::SubscriptionIndex(type, max_message_size_bytes_));
     }
 
     periodical_runner_->RunFnPeriodically([this] { CheckDeadSubscribers(); },
@@ -420,7 +435,6 @@ class Publisher : public PublisherInterface {
   FRIEND_TEST(PublisherTest, TestUnregisterSubscriber);
   FRIEND_TEST(PublisherTest, TestRegistrationIdempotency);
   friend class MockPublisher;
-  Publisher() {}
 
   /// Testing only. Return true if there's no metadata remained in the private attribute.
   bool CheckNoLeaks() const;
@@ -454,7 +468,11 @@ class Publisher : public PublisherInterface {
       subscription_index_map_ ABSL_GUARDED_BY(mutex_);
 
   /// The maximum number of objects to publish for each publish calls.
-  int publish_batch_size_;
+  const int64_t publish_batch_size_;
+
+  // Maximum size in bytes of a single message published to
+  // subscribers.
+  const int64_t max_message_size_bytes_;
 
   absl::flat_hash_map<rpc::ChannelType, uint64_t> cum_pub_message_cnt_
       ABSL_GUARDED_BY(mutex_);

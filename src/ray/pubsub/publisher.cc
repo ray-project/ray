@@ -29,11 +29,11 @@ bool EntityState::Publish(std::shared_ptr<rpc::PubMessage> msg) {
 
   const int64_t message_size = msg->ByteSizeLong();
 
-  if (message_size >= kMaxPubMessageSizeBytes) {
+  if (message_size > max_message_size_bytes_) {
     RAY_LOG_EVERY_N_OR_DEBUG(WARNING, 10000)
         << "Pub/sub message exceeds max individual message "
            "size="
-        << absl::StrCat(kMaxPubMessageSizeBytes, "B, ")
+        << absl::StrCat(max_message_size_bytes_, "B, ")
         << absl::StrCat("incoming msg size=", message_size, "B")
         << ". Dropping this message:\n"
         << msg->DebugString();
@@ -103,8 +103,11 @@ const absl::flat_hash_map<SubscriberID, SubscriberState *> &EntityState::Subscri
   return subscribers_;
 }
 
-SubscriptionIndex::SubscriptionIndex(rpc::ChannelType channel_type)
-    : channel_type_(channel_type), subscribers_to_all_(CreateEntityState()) {}
+SubscriptionIndex::SubscriptionIndex(rpc::ChannelType channel_type,
+                                     int64_t max_message_size_bytes)
+    : max_message_size_bytes_(max_message_size_bytes),
+      channel_type_(channel_type),
+      subscribers_to_all_(CreateEntityState()) {}
 
 int64_t SubscriptionIndex::GetNumBufferedBytes() const {
   // TODO(swang): Some messages may get published to both subscribers listening
@@ -251,17 +254,19 @@ std::unique_ptr<EntityState> SubscriptionIndex::CreateEntityState() {
   case rpc::ChannelType::RAY_ERROR_INFO_CHANNEL:
   case rpc::ChannelType::RAY_LOG_CHANNEL: {
     return std::make_unique<EntityState>(
+        max_message_size_bytes_,
         RayConfig::instance().publisher_entity_buffer_max_bytes());
   }
   default:
-    return std::make_unique<EntityState>(-1);
+    return std::make_unique<EntityState>(max_message_size_bytes_,
+                                         /*max_buffered_bytes=*/-1);
   }
 }
 
 void SubscriberState::ConnectToSubscriber(const rpc::PubsubLongPollingRequest &request,
                                           rpc::PubsubLongPollingReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
-  auto max_processed_sequence_id = request.max_processed_sequence_id();
+  int64_t max_processed_sequence_id = request.max_processed_sequence_id();
   if (request.publisher_id().empty() ||
       publisher_id_ != PublisherID::FromBinary(request.publisher_id())) {
     // in case the publisher_id mismatches, we should ignore the
@@ -272,8 +277,6 @@ void SubscriberState::ConnectToSubscriber(const rpc::PubsubLongPollingRequest &r
   // clean up messages that have already been processed.
   while (!mailbox_.empty() &&
          mailbox_.front()->sequence_id() <= max_processed_sequence_id) {
-    RAY_LOG(DEBUG) << "removing " << max_processed_sequence_id << " : "
-                   << mailbox_.front()->sequence_id();
     mailbox_.pop_front();
   }
 
@@ -322,7 +325,7 @@ bool SubscriberState::PublishIfPossible(bool force_noop) {
 
       int64_t msg_size_bytes = msg.ByteSizeLong();
       if (num_total_bytes > 0 &&
-          num_total_bytes + msg_size_bytes >= kMaxPubMessageSizeBytes) {
+          num_total_bytes + msg_size_bytes > max_message_size_bytes_) {
         // Adding this message to the batch would put us over the serialization
         // size threshold.
         break;
@@ -382,6 +385,7 @@ void Publisher::ConnectToSubscriber(const rpc::PubsubLongPollingRequest &request
                                                                  get_time_ms_,
                                                                  subscriber_timeout_ms_,
                                                                  publish_batch_size_,
+                                                                 max_message_size_bytes_,
                                                                  publisher_id_))
              .first;
   }
@@ -404,6 +408,7 @@ bool Publisher::RegisterSubscription(const rpc::ChannelType channel_type,
                                                                  get_time_ms_,
                                                                  subscriber_timeout_ms_,
                                                                  publish_batch_size_,
+                                                                 max_message_size_bytes_,
                                                                  publisher_id_))
              .first;
   }
