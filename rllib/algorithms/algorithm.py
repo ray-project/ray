@@ -817,12 +817,8 @@ class Algorithm(Trainable, AlgorithmBase):
         eval_results: ResultDict = {}
 
         # Parallel eval + training: Kick off evaluation-loop and parallel train() call.
-        if (
-            self.config._run_training_always_in_thread
-            or (
-                evaluate_this_iter
-                and self.config.evaluation_parallel_to_training
-            )
+        if self.config._run_training_always_in_thread or (
+            evaluate_this_iter and self.config.evaluation_parallel_to_training
         ):
             (
                 train_results,
