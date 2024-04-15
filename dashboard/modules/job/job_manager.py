@@ -1008,7 +1008,7 @@ class JobManager:
 
             logger.warning(
                 f"Failed to start supervisor actor for job {submission_id}: '{e}'"
-                ". Full traceback:\n{tb_str}"
+                f". Full traceback:\n{tb_str}"
             )
             await self._job_info_client.put_status(
                 submission_id,
