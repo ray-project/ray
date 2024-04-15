@@ -2144,7 +2144,7 @@ sqlalchemy==1.4.17
     #   pymars
 sqlglot==20.4.0
     # via fugue
-sqlparse==0.4.4
+sqlparse==0.5.0
     # via mlflow
 sshpubkeys==3.3.1
     # via moto
