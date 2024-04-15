@@ -425,7 +425,7 @@ class RuntimeContext(object):
                 accelerator_resource_name,
                 f"^{accelerator_resource_name}_group_[0-9]+_[0-9A-Za-z]+$",
             )
-            if len(accelerator_ids) == 0:
+            if not accelerator_ids:
                 accelerator_ids = worker.get_accelerator_ids_for_accelerator_resource(
                     accelerator_resource_name,
                     f"^{accelerator_resource_name}_group_[0-9A-Za-z]+$",
