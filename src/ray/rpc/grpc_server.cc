@@ -72,6 +72,7 @@ void GrpcServer::Run() {
   builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIME_MS, keepalive_time_ms_);
   builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIMEOUT_MS,
                              RayConfig::instance().grpc_keepalive_timeout_ms());
+  builder.AddChannelArgument(GRPC_ARG_HTTP2_MAX_PINGS_WITHOUT_DATA, 0);
   builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 0);
   builder.AddChannelArgument(GRPC_ARG_HTTP2_WRITE_BUFFER_SIZE,
                              RayConfig::instance().grpc_stream_buffer_size());
@@ -81,8 +82,9 @@ void GrpcServer::Run() {
   // https://github.com/ray-project/ray/blob/releases/2.0.0/python/ray/_private/gcs_utils.py#L72
   // Setting this value larger will trigger GOAWAY from the gRPC server to be sent to the
   // client to back-off keepalive pings. (https://github.com/ray-project/ray/issues/25367)
-  builder.AddChannelArgument(GRPC_ARG_HTTP2_MIN_RECV_PING_INTERVAL_WITHOUT_DATA_MS,
-                             60000);
+  builder.AddChannelArgument(
+      GRPC_ARG_HTTP2_MIN_RECV_PING_INTERVAL_WITHOUT_DATA_MS,
+      std::min(60000L, RayConfig::instance().grpc_client_keepalive_time_ms()));
   if (RayConfig::instance().USE_TLS()) {
     // Create credentials from locations specified in config
     std::string rootcert = ReadCert(RayConfig::instance().TLS_CA_CERT());
