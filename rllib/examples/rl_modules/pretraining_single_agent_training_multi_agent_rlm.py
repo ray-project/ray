@@ -1,3 +1,29 @@
+"""Example of running a single-agent pre-training followed with a multi-agent training.
+
+This examples `num_agents` agents each of them with its own `RLModule` that defines its
+policy. The first agent is pre-trained using a single-agent PPO algorithm. All agents
+are trained together in the main training run using a multi-agent PPO algorithm where
+the pre-trained module is used for the first agent.
+
+The environment is MultiAgentCartPole, in which there are n agents both policies.
+
+How to run this script
+----------------------
+`python [script file name].py --enable-new-api-stack --num-agents=2`
+
+For debugging, use the following additional command line options
+`--no-tune --num-env-runners=0`
+which should allow you to set breakpoints anywhere in the RLlib code and
+have the execution stop there for inspection and debugging.
+
+For logging to your WandB account, use:
+`--wandb-key=[your WandB API key] --wandb-project=[some project name]
+--wandb-run-name=[optional: WandB run name (within the defined project)]`
+
+
+
+"""
+
 import gymnasium as gym
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
@@ -37,6 +63,7 @@ if __name__ == "__main__":
 
     # Parse the command line arguments.
     args = parser.parse_args()
+
     # Ensure that the user has set the number of agents.
     if args.num_agents == 0:
         raise ValueError(
@@ -49,10 +76,12 @@ if __name__ == "__main__":
     stop_iters = args.stop_iters
     stop_timesteps = args.stop_timesteps
     checkpoint_at_end = args.checkpoint_at_end
+    num_agents = args.num_agents
     # Override these criteria for the pre-training run.
     setattr(args, "stop_iters", args.stop_iters_pretraining)
     setattr(args, "stop_timesteps", args.stop_timesteps_pretraining)
     setattr(args, "checkpoint_at_end", True)
+    setattr(args, "num_agents", 0)
 
     # Define out pre-training single-agent algorithm. We will use the same module
     # configuration for the pre-training and the training.
@@ -96,11 +125,10 @@ if __name__ == "__main__":
     marl_module_spec = MultiAgentRLModuleSpec(module_specs=module_specs)
 
     # Register our environment with tune if we use multiple agents.
-    if args.num_agents > 0:
-        register_env(
-            "multi-agent-carpole-env",
-            lambda _: MultiAgentCartPole(config={"num_agents": args.num_agents}),
-        )
+    register_env(
+        "multi-agent-carpole-env",
+        lambda _: MultiAgentCartPole(config={"num_agents": args.num_agents}),
+    )
 
     # Configure the main (multi-agent) training run.
     config = (
@@ -115,6 +143,7 @@ if __name__ == "__main__":
     setattr(args, "stop_iters", stop_iters)
     setattr(args, "stop_timesteps", stop_timesteps)
     setattr(args, "checkpoint_at_end", checkpoint_at_end)
+    setattr(args, "num_agents", num_agents)
 
     # Run the main training run.
     run_rllib_example_script_experiment(config, args)
