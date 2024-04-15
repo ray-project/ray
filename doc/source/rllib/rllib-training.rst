@@ -443,7 +443,7 @@ Specifying Resources
 You can control the degree of parallelism used by setting the ``num_workers``
 hyperparameter for most algorithms. The Algorithm will construct that many
 "remote worker" instances (`see RolloutWorker class <https://github.com/ray-project/ray/blob/master/rllib/evaluation/rollout_worker.py>`__)
-that are constructed as ray.remote actors, plus exactly one "local worker", a ``RolloutWorker`` object that is not a
+that are constructed as ray.remote actors, plus exactly one "local worker", a ``RolloutWorker`` object that isn't a
 ray actor, but lives directly inside the Algorithm.
 For most algorithms, learning updates are performed on the local worker and sample collection from
 one or more environments is performed by the remote workers (in parallel).
@@ -562,7 +562,7 @@ Using PyTorch
 
 Algorithms that have an implemented TorchPolicy, will allow you to run
 `rllib train` using the command line ``--framework=torch`` flag.
-Algorithms that do not have a torch version yet will complain with an error in
+Algorithms that don't have a torch version yet will complain with an error in
 this case.
 
 
