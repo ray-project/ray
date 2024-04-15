@@ -19,7 +19,9 @@ cc_library(
         "@bazel_tools//src/conditions:windows": [
         ],
         "//conditions:default": [
+            "-L/usr/local/lib/",
             "-lpthread",
+            "-lzstd",
         ],
     }),
     strip_include_prefix = "//src",
