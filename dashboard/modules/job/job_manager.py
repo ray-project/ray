@@ -1002,8 +1002,13 @@ class JobManager:
                 self._monitor_job(submission_id, job_supervisor=supervisor)
             )
         except Exception as e:
+            import traceback
+
+            tb_str = traceback.format_exc()
+
             logger.warning(
                 f"Failed to start supervisor actor for job {submission_id}: '{e}'"
+                ". Full traceback:\n{tb_str}"
             )
             await self._job_info_client.put_status(
                 submission_id,
