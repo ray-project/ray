@@ -570,9 +570,7 @@ class TestRuntimeEnv:
             check_job_succeeded, job_manager=job_manager, job_id=job_id_1
         )
         logs = job_manager.get_job_logs(job_id_1)
-        assert (
-            "{'env_vars': {'TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR': 'JOB_1_VAR'}}" in logs
-        )  # noqa: E501
+        assert "'TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR': 'JOB_1_VAR'" in logs
 
         job_id_2 = await job_manager.submit_job(
             entrypoint=f"python {_driver_script_path('print_runtime_env.py')}",
@@ -585,9 +583,7 @@ class TestRuntimeEnv:
             check_job_succeeded, job_manager=job_manager, job_id=job_id_2
         )
         logs = job_manager.get_job_logs(job_id_2)
-        assert (
-            "{'env_vars': {'TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR': 'JOB_2_VAR'}}" in logs
-        )  # noqa: E501
+        assert "'TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR': 'JOB_2_VAR'" in logs
 
     async def test_failed_runtime_env_validation(self, job_manager):
         """Ensure job status is correctly set as failed if job has an invalid

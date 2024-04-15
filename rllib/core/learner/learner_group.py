@@ -383,7 +383,7 @@ class LearnerGroup:
                 # In the multi-agent case AND `minibatch_size` AND num_workers > 1, we
                 # compute a max iteration counter such that the different Learners will
                 # not go through a different number of iterations.
-                min_total_mini_batches = None
+                min_total_mini_batches = 0
                 if (
                     isinstance(episodes[0], MultiAgentEpisode)
                     and minibatch_size
