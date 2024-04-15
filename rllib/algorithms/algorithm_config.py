@@ -180,7 +180,7 @@ class AlgorithmConfig(_Config):
             config_dict: The legacy formatted python config dict for some algorithm.
 
         Returns:
-             A new AlgorithmConfig object that matches the given python config dict.
+            A new AlgorithmConfig object that matches the given python config dict.
         """
         # Create a default config object of this class.
         config_obj = cls()
@@ -502,6 +502,7 @@ class AlgorithmConfig(_Config):
         self.worker_restore_timeout_s = 1800
 
         # `self.rl_module()`
+        self._model_config_dict = {}
         self._rl_module_spec = None
         # Helper to keep track of the original exploration config when dis-/enabling
         # rl modules.
@@ -536,6 +537,7 @@ class AlgorithmConfig(_Config):
         self.synchronize_filters = DEPRECATED_VALUE
         self.enable_async_evaluation = DEPRECATED_VALUE
         self.custom_async_evaluation_function = DEPRECATED_VALUE
+        self._enable_rl_module_api = DEPRECATED_VALUE
 
         # The following values have moved because of the new ReplayBuffer API
         self.buffer_size = DEPRECATED_VALUE
@@ -819,7 +821,7 @@ class AlgorithmConfig(_Config):
         Args:
             env: Name of the environment to use (e.g. a gym-registered str),
                 a full class path (e.g.
-                "ray.rllib.examples.env.random_env.RandomEnv"), or an Env
+                "ray.rllib.examples.envs.classes.random_env.RandomEnv"), or an Env
                 class directly. Note that this arg can also be specified via
                 the "env" key in `config`.
             logger_creator: Callable that creates a ray.tune.Logger
@@ -897,7 +899,11 @@ class AlgorithmConfig(_Config):
             if self.is_multi_agent():
                 pipeline.append(
                     AgentToModuleMapping(
-                        modules=set(self.policies),
+                        module_specs=(
+                            self.rl_module_spec.module_specs
+                            if isinstance(self.rl_module_spec, MultiAgentRLModuleSpec)
+                            else set(self.policies)
+                        ),
                         agent_to_module_mapping_fn=self.policy_mapping_fn,
                     )
                 )
@@ -1039,7 +1045,11 @@ class AlgorithmConfig(_Config):
             if self.is_multi_agent():
                 pipeline.append(
                     AgentToModuleMapping(
-                        modules=set(self.policies),
+                        module_specs=(
+                            self.rl_module_spec.module_specs
+                            if isinstance(self.rl_module_spec, MultiAgentRLModuleSpec)
+                            else set(self.policies)
+                        ),
                         agent_to_module_mapping_fn=self.policy_mapping_fn,
                     )
                 )
@@ -1409,7 +1419,7 @@ class AlgorithmConfig(_Config):
                 or a string specifier of an RLlib supported type. In the latter case,
                 RLlib will try to interpret the specifier as either an Farama-Foundation
                 gymnasium env, a PyBullet env, or a fully qualified classpath to an Env
-                class, e.g. "ray.rllib.examples.env.random_env.RandomEnv".
+                class, e.g. "ray.rllib.examples.envs.classes.random_env.RandomEnv".
             env_config: Arguments dict passed to the env creator as an EnvContext
                 object (which is a dict plus the properties: num_rollout_workers,
                 worker_index, vector_index, and remote).
@@ -1460,11 +1470,7 @@ class AlgorithmConfig(_Config):
         if env is not NotProvided:
             self.env = env
         if env_config is not NotProvided:
-            deep_update(
-                self.env_config,
-                env_config,
-                True,
-            )
+            deep_update(self.env_config, env_config, True)
         if observation_space is not NotProvided:
             self.observation_space = observation_space
         if action_space is not NotProvided:
@@ -2737,13 +2743,17 @@ class AlgorithmConfig(_Config):
     def rl_module(
         self,
         *,
+        model_config_dict: Optional[Dict[str, Any]] = NotProvided,
         rl_module_spec: Optional[RLModuleSpec] = NotProvided,
         # Deprecated arg.
-        _enable_rl_module_api: Optional[bool] = NotProvided,
+        _enable_rl_module_api=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the config's RLModule settings.
 
         Args:
+            model_config_dict: The default model config dictionary for `RLModule`s. This
+                will be used for any `RLModule` if not otherwise specified in the
+                `rl_module_spec`.
             rl_module_spec: The RLModule spec to use for this config. It can be either
                 a SingleAgentRLModuleSpec or a MultiAgentRLModuleSpec. If the
                 observation_space, action_space, catalog_class, or the model config is
@@ -2753,6 +2763,8 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
+        if model_config_dict is not NotProvided:
+            self._model_config_dict = model_config_dict
         if rl_module_spec is not NotProvided:
             self._rl_module_spec = rl_module_spec
 
@@ -2760,7 +2772,7 @@ class AlgorithmConfig(_Config):
             deprecation_warning(
                 old="AlgorithmConfig.rl_module(_enable_rl_module_api=True|False)",
                 new="AlgorithmConfig.experimental(_enable_new_api_stack=True|False)",
-                error=True,
+                error=False,
             )
         return self
 
@@ -2852,8 +2864,8 @@ class AlgorithmConfig(_Config):
         if self._rl_module_spec is not None:
             # Merge provided RL Module spec class with defaults
             _check_rl_module_spec(self._rl_module_spec)
-            # We can only merge if we have SingleAgentRLModuleSpecs.
-            # TODO (sven): Support merging for MultiAgentRLModuleSpecs.
+            # Merge given spec with default one (in case items are missing, such as
+            # spaces, module class, etc.)
             if isinstance(self._rl_module_spec, SingleAgentRLModuleSpec):
                 if isinstance(default_rl_module_spec, SingleAgentRLModuleSpec):
                     default_rl_module_spec.update(self._rl_module_spec)
@@ -2863,6 +2875,11 @@ class AlgorithmConfig(_Config):
                         "Cannot merge MultiAgentRLModuleSpec with "
                         "SingleAgentRLModuleSpec!"
                     )
+            else:
+                marl_module_spec = copy.deepcopy(self._rl_module_spec)
+                marl_module_spec.update(default_rl_module_spec)
+                return marl_module_spec
+
         # `self._rl_module_spec` has not been user defined -> return default one.
         else:
             return default_rl_module_spec
@@ -3608,8 +3625,17 @@ class AlgorithmConfig(_Config):
                 module_spec.observation_space = policy_spec.observation_space
             if module_spec.action_space is None:
                 module_spec.action_space = policy_spec.action_space
+            # In case the `RLModuleSpec` does not have a model config dict, we use the
+            # the one defined by the auto keys and the `model_config_dict` arguments in
+            # `self.rl_module()`.
             if module_spec.model_config_dict is None:
-                module_spec.model_config_dict = policy_spec.config.get("model", {})
+                module_spec.model_config_dict = self.model_config
+            # Otherwise we combine the two dictionaries where settings from the
+            # `RLModuleSpec` have higher priority.
+            else:
+                module_spec.model_config_dict = (
+                    self.model_config | module_spec.model_config_dict
+                )
 
         return marl_module_spec
 
@@ -3704,6 +3730,36 @@ class AlgorithmConfig(_Config):
     def items(self):
         """Shim method to help pretend we are a dict."""
         return self.to_dict().items()
+
+    @property
+    def model_config(self):
+        """Defines the model configuration used.
+
+        This method combines the auto configuration `self _model_config_auto_includes`
+        defined by an algorithm with the user-defined configuration in
+        `self._model_config_dict`.This configuration dictionary will be used to
+        configure the `RLModule` in the new stack and the `ModelV2` in the old
+        stack.
+
+        Returns:
+            A dictionary with the model configuration.
+        """
+        return self._model_config_auto_includes | self._model_config_dict
+
+    @property
+    def _model_config_auto_includes(self) -> Dict[str, Any]:
+        """Defines which `AlgorithmConfig` settings/properties should be
+        auto-included into `self.model_config`.
+
+        The dictionary in this property contains the default configuration of an
+        algorithm. Together with the `self._model`, this method will be used to
+        define the configuration sent to the `RLModule`.
+
+        Returns:
+            A dictionary with the automatically included properties/settings of this
+            `AlgorithmConfig` object into `self.model_config`.
+        """
+        return MODEL_DEFAULTS
 
     # -----------------------------------------------------------
     # Various validation methods for different types of settings.

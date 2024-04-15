@@ -74,6 +74,7 @@ def _load_test_configuration(
     result: Result,
     smoke_test: bool = False,
     no_terminate: bool = False,
+    test_definition_root: Optional[str] = None,
 ) -> Tuple[ClusterManager, CommandRunner, str]:
     logger.info(f"Test config: {test}")
 
@@ -89,7 +90,7 @@ def _load_test_configuration(
 
     # Setting up working directory
     working_dir = test["working_dir"]
-    new_wd = os.path.join(RELEASE_PACKAGE_DIR, working_dir)
+    new_wd = os.path.join(test_definition_root or RELEASE_PACKAGE_DIR, working_dir)
     os.chdir(new_wd)
 
     run_type = test["run"].get("type", DEFAULT_RUN_TYPE)
@@ -146,10 +147,11 @@ def _setup_cluster_environment(
     result: Result,
     cluster_manager: ClusterManager,
     cluster_env_id: Optional[str],
+    test_definition_root: Optional[str] = None,
 ) -> Tuple[str, int, int, int, int]:
     setup_signal_handling()
     # Load configs
-    cluster_compute = load_test_cluster_compute(test)
+    cluster_compute = load_test_cluster_compute(test, test_definition_root)
 
     if cluster_env_id:
         try:
@@ -387,6 +389,7 @@ def run_release_test(
     cluster_id: Optional[str] = None,
     cluster_env_id: Optional[str] = None,
     no_terminate: bool = False,
+    test_definition_root: Optional[str] = None,
 ) -> Result:
     old_wd = os.getcwd()
     start_time = time.monotonic()
@@ -403,6 +406,7 @@ def run_release_test(
             result,
             smoke_test,
             no_terminate,
+            test_definition_root,
         )
         buildkite_group(":nut_and_bolt: Setting up cluster environment")
         (
@@ -416,6 +420,7 @@ def run_release_test(
             result,
             cluster_manager,
             cluster_env_id,
+            test_definition_root,
         )
 
         buildkite_group(":bulb: Local environment information")

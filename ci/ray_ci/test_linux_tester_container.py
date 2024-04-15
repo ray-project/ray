@@ -8,9 +8,12 @@ from unittest import mock
 from typing import List, Optional
 
 from ci.ray_ci.linux_tester_container import LinuxTesterContainer
-from ci.ray_ci.utils import chunk_into_n
+from ci.ray_ci.utils import chunk_into_n, ci_init
 from ci.ray_ci.container import _DOCKER_ECR_REPO, _RAYCI_BUILD_ID
-from release.ray_release.configs.global_config import BRANCH_PIPELINES, PR_PIPELINES
+from ray_release.configs.global_config import get_global_config
+
+
+ci_init()
 
 
 class MockPopen:
@@ -28,7 +31,10 @@ class MockPopen:
 
 @mock.patch("ci.ray_ci.tester_container.TesterContainer._upload_build_info")
 @mock.patch("ci.ray_ci.tester_container.TesterContainer.upload_test_results")
-def test_persist_test_results(mock_upload_build_info, mock_upload_test_result) -> None:
+@mock.patch("ci.ray_ci.tester_container.TesterContainer.move_test_state")
+def test_persist_test_results(
+    mock_upload_build_info, mock_upload_test_result, mock_move_test_state
+) -> None:
     container = LinuxTesterContainer("team", skip_ray_installation=True)
     with mock.patch.dict(
         os.environ,
@@ -39,33 +45,37 @@ def test_persist_test_results(mock_upload_build_info, mock_upload_test_result) -
     ):
         container._persist_test_results("team", "log_dir")
         assert not mock_upload_build_info.called
+        assert not mock_move_test_state.called
     with mock.patch.dict(
         os.environ,
         {
             "BUILDKITE_BRANCH": "non-master",
-            "BUILDKITE_PIPELINE_ID": BRANCH_PIPELINES[0],
+            "BUILDKITE_PIPELINE_ID": get_global_config()["ci_pipeline_postmerge"][0],
         },
     ):
         container._persist_test_results("team", "log_dir")
         assert not mock_upload_build_info.called
+        assert not mock_move_test_state.called
     with mock.patch.dict(
         os.environ,
         {
             "BUILDKITE_BRANCH": "non-master",
-            "BUILDKITE_PIPELINE_ID": PR_PIPELINES[0],
+            "BUILDKITE_PIPELINE_ID": get_global_config()["ci_pipeline_premerge"][0],
         },
     ):
         container._persist_test_results("team", "log_dir")
         assert mock_upload_build_info.called
+        assert mock_move_test_state.called
     with mock.patch.dict(
         os.environ,
         {
             "BUILDKITE_BRANCH": "master",
-            "BUILDKITE_PIPELINE_ID": BRANCH_PIPELINES[0],
+            "BUILDKITE_PIPELINE_ID": get_global_config()["ci_pipeline_postmerge"][0],
         },
     ):
         container._persist_test_results("team", "log_dir")
         assert mock_upload_build_info.called
+        assert mock_move_test_state.called
 
 
 def test_enough_gpus() -> None:

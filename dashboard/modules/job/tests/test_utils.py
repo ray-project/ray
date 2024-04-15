@@ -162,31 +162,23 @@ class TestIterLine:
 
         f = open(tmp, "w")
 
-        # Write a single line that is over 60000 characters,
-        # check we get it in batches of 20000
+        # Write a single line that is 60k characters
         f.write(f"{'1234567890' * 6000}\n")
+        # Write a 4 lines that are 10k characters each
+        for _ in range(4):
+            f.write(f"{'1234567890' * 500}\n")
         f.flush()
 
-        assert next(it) == ["1234567890" * 2000]
-        assert next(it) == ["1234567890" * 2000]
-        assert next(it) == ["1234567890" * 2000]
-        assert next(it) == ["\n"]
-        assert next(it) is None
-
-        # Write a 10 lines where last line is over 20000 characters,
-        # check we get it in batches of 20000
-        for i in range(9):
-            f.write(f"{i}\n")
-        f.write(f"{'1234567890' * 2000}\n")
-        f.flush()
-
-        first_nine_lines = [f"{i}\n" for i in range(9)]
-        first_nine_lines_length = sum(len(line) for line in first_nine_lines)
-        assert next(it) == first_nine_lines + [
-            f"{'1234567890' * 2000}"[0:-first_nine_lines_length]
-        ]
-        # Remainder of last line
-        assert next(it) == [f"{'1234567890' * 2000}"[-first_nine_lines_length:] + "\n"]
+        # First line will come in a batch of its own
+        assert next(it) == [f"{'1234567890' * 6000}\n"]
+        # Other 4 lines will be batched together
+        assert (
+            next(it)
+            == [
+                f"{'1234567890' * 500}\n",
+            ]
+            * 4
+        )
         assert next(it) is None
 
     def test_delete_file(self):

@@ -310,7 +310,8 @@ class MultiAgentEnv(gym.Env):
         self,
         groups: Dict[str, List[AgentID]],
         obs_space: gym.Space = None,
-            act_space: gym.Space = None) -> "MultiAgentEnv":
+        act_space: gym.Space = None,
+    ) -> "MultiAgentEnv":
         """Convenience method for grouping together agents in this env.
 
         An agent group is a list of agent IDs that are mapped to a single
@@ -473,7 +474,7 @@ def make_multi_agent(
         print(obs)
 
         # By env-maker callable:
-        from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
+        from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
         ma_stateless_cartpole_cls = make_multi_agent(
            lambda config: StatelessCartPole(config))
         # Create a 3 agent multi-agent stateless cartpole.

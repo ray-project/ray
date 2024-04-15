@@ -4,7 +4,7 @@ import click
 
 from ci.ray_ci.utils import logger, ci_init
 from ci.ray_ci.tester_container import TesterContainer
-from release.ray_release.configs.global_config import BRANCH_PIPELINES
+from ray_release.configs.global_config import get_global_config
 
 
 @click.command()
@@ -17,11 +17,15 @@ def main(team: str, bazel_log_dir: str) -> None:
         logger.info("Skip upload test results. We only upload on master branch.")
         return
 
-    if os.environ.get("BUILDKITE_PIPELINE_ID") not in BRANCH_PIPELINES:
+    if (
+        os.environ.get("BUILDKITE_PIPELINE_ID")
+        not in get_global_config()["ci_pipeline_postmerge"]
+    ):
         logger.info("Skip upload test results. We only upload on postmerge pipeline.")
         return
 
     TesterContainer.upload_test_results(team, bazel_log_dir)
+    TesterContainer.move_test_state(team, bazel_log_dir)
 
 
 if __name__ == "__main__":
