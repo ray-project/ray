@@ -18,6 +18,7 @@ from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.spaces.space_utils import unbatch
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import EpisodeID, ModelWeights, TensorType
@@ -83,6 +84,9 @@ class SingleAgentEnvRunner(EnvRunner):
         except NotImplementedError:
             self.module = None
 
+        # Create a MetricsLogger object for logging custom stats.
+        self.metrics = MetricsLogger()
+
         # Create the two connector pipelines: env-to-module and module-to-env.
         self._module_to_env = self.config.build_module_to_env_connector(self.env)
 
@@ -108,7 +112,6 @@ class SingleAgentEnvRunner(EnvRunner):
         explore: bool = None,
         random_actions: bool = False,
         force_reset: bool = False,
-        with_render_data: bool = False,
     ) -> List[SingleAgentEpisode]:
         """Runs and returns a sample (n timesteps or m episodes) on the env(s).
 
@@ -130,8 +133,6 @@ class SingleAgentEnvRunner(EnvRunner):
                 sampling. Useful if you would like to collect a clean slate of new
                 episodes via this call. Note that when sampling n episodes
                 (`num_episodes != None`), this is fixed to True.
-            with_render_data: If True, will call `render()` on the environment and
-                collect returned images.
 
         Returns:
             A list of `SingleAgentEpisode` instances, carrying the sampled data.
@@ -166,7 +167,6 @@ class SingleAgentEnvRunner(EnvRunner):
                 num_episodes=num_episodes,
                 explore=explore,
                 random_actions=random_actions,
-                with_render_data=with_render_data,
             )
         # For complete episodes mode, sample as long as the number of timesteps
         # done is smaller than the `train_batch_size`.
@@ -178,7 +178,6 @@ class SingleAgentEnvRunner(EnvRunner):
                     num_episodes=self.num_envs,
                     explore=explore,
                     random_actions=random_actions,
-                    with_render_data=with_render_data,
                 )
                 total += sum(len(e) for e in episodes)
                 samples.extend(episodes)
@@ -322,14 +321,13 @@ class SingleAgentEnvRunner(EnvRunner):
                             rl_module=self.module,
                             shared_data=self._shared_data,
                         )
-                    # Make the `on_episode_step` callback (before finalizing the
-                    # episode object).
+                    # Make the `on_episode_step` and `on_episode_end` callbacks (before
+                    # finalizing the episode object).
                     self._make_on_episode_callback("on_episode_step", env_index)
-                    done_episodes_to_return.append(self._episodes[env_index].finalize())
-
-                    # Make the `on_episode_end` callback (after having finalized the
-                    # episode object).
                     self._make_on_episode_callback("on_episode_end", env_index)
+
+                    # Then finalize (numpy'ize) the episode.
+                    done_episodes_to_return.append(self._episodes[env_index].finalize())
 
                     # Create a new episode object with already the reset data in it.
                     self._episodes[env_index] = SingleAgentEpisode(
@@ -398,7 +396,6 @@ class SingleAgentEnvRunner(EnvRunner):
         num_episodes: int,
         explore: bool,
         random_actions: bool = False,
-        with_render_data: bool = False,
     ) -> List[SingleAgentEpisode]:
         """Helper method to run n episodes.
 
@@ -419,16 +416,10 @@ class SingleAgentEnvRunner(EnvRunner):
             self._make_on_episode_callback("on_episode_created", env_index, episodes)
         _shared_data = {}
 
-        # Initialize image rendering if needed.
-        render_images = [None] * self.num_envs
-        if with_render_data:
-            render_images = [e.render() for e in self.env.envs]
-
         for env_index in range(self.num_envs):
             episodes[env_index].add_env_reset(
                 observation=obs[env_index],
                 infos=infos[env_index],
-                render_image=render_images[env_index],
             )
             self._make_on_episode_callback("on_episode_start", env_index, episodes)
 
@@ -481,10 +472,6 @@ class SingleAgentEnvRunner(EnvRunner):
             )
             obs, actions = unbatch(obs), unbatch(actions)
 
-            # Add render data if needed.
-            if with_render_data:
-                render_images = [e.render() for e in self.env.envs]
-
             for env_index in range(self.num_envs):
                 extra_model_output = {k: v[env_index] for k, v in to_env.items()}
 
@@ -500,16 +487,17 @@ class SingleAgentEnvRunner(EnvRunner):
                         truncated=truncateds[env_index],
                         extra_model_outputs=extra_model_output,
                     )
-                    # Make `on_episode_step` callback before finalizing the episode.
+                    # Make `on_episode_step` and `on_episode_end` callbacks before
+                    # finalizing the episode.
                     self._make_on_episode_callback(
                         "on_episode_step", env_index, episodes
                     )
-                    done_episodes_to_return.append(episodes[env_index].finalize())
-
-                    # Make `on_episode_end` callback after finalizing the episode.
                     self._make_on_episode_callback(
                         "on_episode_end", env_index, episodes
                     )
+
+                    # Finalize (numpy'ize) the episode.
+                    done_episodes_to_return.append(episodes[env_index].finalize())
 
                     # Also early-out if we reach the number of episodes within this
                     # for-loop.
@@ -520,11 +508,6 @@ class SingleAgentEnvRunner(EnvRunner):
                     episodes[env_index] = SingleAgentEpisode(
                         observations=[obs[env_index]],
                         infos=[infos[env_index]],
-                        render_images=(
-                            None
-                            if render_images[env_index] is None
-                            else [render_images[env_index]]
-                        ),
                         observation_space=self.env.single_observation_space,
                         action_space=self.env.single_action_space,
                     )
@@ -538,7 +521,6 @@ class SingleAgentEnvRunner(EnvRunner):
                         actions[env_index],
                         rewards[env_index],
                         infos=infos[env_index],
-                        render_image=render_images[env_index],
                         extra_model_outputs=extra_model_output,
                     )
                     # Make `on_episode_step` callback.

@@ -1,6 +1,7 @@
 """TODO (sven)
 """
 import gymnasium as gym
+import numpy as np
 
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
@@ -16,7 +17,7 @@ class EnvRenderCallback(DefaultCallbacks):
 
     This can be used to create videos of the episodes for some or all EnvRunners
     and some or all env indices (in a vectorized env). These videos can then
-    be sent to e.g. WandB as shown in this example here.
+    be sent to e.g. WandB as shown in this example script here.
 
     We override the `on_episode_step` method to create a single ts render image
     and temporarily store it in the Episode object.
@@ -33,11 +34,11 @@ class EnvRenderCallback(DefaultCallbacks):
     ) -> None:
         """Adds render image to episode."""
         # If we have a vector env, only render the sub-env at index 0.
-        if isinstance(env, gym.vector.VectorEnv):
+        if isinstance(env.unwrapped, gym.vector.VectorEnv):
             image = env.envs[0].render()
         else:
             image = env.render()
-        episode.add_temporary_timestep_data("render_image", image)
+        episode.add_temporary_timestep_data("render_images", image)
 
     def on_episode_end(
         self,
@@ -49,10 +50,13 @@ class EnvRenderCallback(DefaultCallbacks):
         env_index,
         **kwargs,
     ) -> None:
-        env_runner.metrics_logger.log_per_episode_value(
-            "",
-            episode_id
-        )
+        # Get all images of the episode.
+        images = episode.get_temporary_timestep_data("render_images")
+
+        # Create a video from the images by simply stacking them.
+        video = np.stack(images, axis=0)
+        # Log video to MetricsLogger.
+        env_runner.metrics.log_video("episode_videos", video)
 
 
 parser = add_rllib_example_script_args(
@@ -62,7 +66,7 @@ parser = add_rllib_example_script_args(
 )
 
 
-if __name__ == "__main_"
+if __name__ == "__main__":
     args = parser.parse_args()
 
     # Register our environment with tune.
@@ -77,14 +81,16 @@ if __name__ == "__main_"
     base_config = (
         get_trainable_cls(args.algo)
         .get_default_config()
-        .environment("env", env_config={
-            # Make analogous to old v4 + NoFrameskip.
-            "frameskip": 1,
-            "full_action_space": False,
-            "repeat_action_probability": 0.0,
-        })
+        #.environment("env", env_config={
+        #    # Make analogous to old v4 + NoFrameskip.
+        #    "frameskip": 1,
+        #    "full_action_space": False,
+        #    "repeat_action_probability": 0.0,
+        #})
+        .environment("CartPole-v1", env_config={"render_mode": "rgb_array"})
         .callbacks(EnvRenderCallback)
         .training(
+            # TODO: Atari.
             model=dict(
                 {
                 },

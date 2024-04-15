@@ -32,13 +32,17 @@ class Stats:
 
     def reduce(self):
         # Reduce everything to a single (init) value.
-        self.values = [self._reduced_values()]
+        if self._reduce_method is not None:
+            self.values = [self._reduced_values()]
         # Return self.
         return self
 
     def _reduced_values(self):
+        # No reduction. Return list as-is.
+        if self._reduce_method is None:
+            return self.values
         # Do EMA.
-        if self._ema_coeff is not None:
+        elif self._ema_coeff is not None:
             mean_value = self.values[0]
             for v in self.values[1:]:
                 mean_value = self._ema_coeff * v + (1.0 - self._ema_coeff) * mean_value
