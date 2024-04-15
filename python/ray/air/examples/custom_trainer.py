@@ -5,6 +5,9 @@
 # __custom_trainer_begin__
 import torch
 
+# fmt: off
+# __custom_trainer_usage_begin__
+import ray
 from ray import train
 from ray.train.trainer import BaseTrainer
 
@@ -48,10 +51,6 @@ class MyPytorchTrainer(BaseTrainer):
 # __custom_trainer_end__
 # fmt: on
 
-
-# fmt: off
-# __custom_trainer_usage_begin__
-import ray
 
 train_dataset = ray.data.from_items([{"x": i, "y": i} for i in range(3)])
 my_trainer = MyPytorchTrainer(datasets={"train": train_dataset})
