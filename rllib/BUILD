@@ -65,6 +65,8 @@ doctest(
             "**/examples/**",
             "**/tests/**",
             "**/test_*.py",
+            # Exclude benchmark runs.
+            "tuned_examples/**/benchmark_*.py",
             # Deprecated modules
             "utils/window_stat.py",
             "utils/timer.py",
@@ -163,7 +165,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_separate_losses_appo",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    tags = ["team:rllib", "torch_only", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = [
@@ -2112,14 +2114,13 @@ py_test(
     srcs = ["examples/checkpoints/cartpole_dqn_export.py"],
 )
 
-#@OldAPIStack
 py_test(
     name = "examples/checkpoints/checkpoint_by_custom_criteria",
     main = "examples/checkpoints/checkpoint_by_custom_criteria.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/checkpoints/checkpoint_by_custom_criteria.py"],
-    args = ["--stop-iters=3 --num-cpus=3"]
+    args = ["--enable-new-api-stack", "--stop-reward=150.0", "--num-cpus=9"]
 )
 
 #@OldAPIStack
@@ -2250,14 +2251,13 @@ py_test(
 # subdirectory: curriculum/
 # ....................................
 
-#@OldAPIStack
 py_test(
     name = "examples/curriculum/curriculum_learning",
     main = "examples/curriculum/curriculum_learning.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/curriculum/curriculum_learning.py"],
-    args = ["--as-test", "--stop-reward=800.0"]
+    args = ["--enable-new-api-stack", "--as-test"]
 )
 
 # subdirectory: debugging/
@@ -2276,24 +2276,13 @@ py_test(
 # subdirectory: envs/
 # ....................................
 
-#@OldAPIStack
 py_test(
-    name = "examples/envs/custom_gym_env_tf",
+    name = "examples/envs/custom_gym_env",
     main = "examples/envs/custom_gym_env.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/envs/custom_gym_env.py"],
-    args = ["--as-test", "--framework=tf"]
-)
-
-#@OldAPIStack
-py_test(
-    name = "examples/envs/custom_gym_env_torch",
-    main = "examples/envs/custom_gym_env.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/envs/custom_gym_env.py"],
-    args = ["--as-test", "--framework=torch"]
+    args = ["--enable-new-api-stack", "--as-test"]
 )
 
 #@OldAPIStack

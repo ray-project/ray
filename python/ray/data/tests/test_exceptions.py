@@ -9,11 +9,7 @@ from ray.exceptions import RayTaskError
 from ray.tests.conftest import *  # noqa
 
 
-def test_user_exception(caplog, ray_start_regular_shared):
-    # `caplog` doesn't work if messages aren't propagated.
-    logging.getLogger("ray").propagate = True
-    logging.getLogger("ray.data").setLevel(logging.DEBUG)
-
+def test_user_exception(caplog, propagate_logs, ray_start_regular_shared):
     def f(row):
         1 / 0
         return row
@@ -32,16 +28,14 @@ def test_user_exception(caplog, ray_start_regular_shared):
     ), caplog.records
 
     assert any(
-        record.levelno == logging.DEBUG and "Full stack trace:" in record.message
+        record.levelno == logging.ERROR
+        and "Full stack trace:" in record.message
+        and record.hide
         for record in caplog.records
     ), caplog.records
 
 
-def test_system_exception(caplog, ray_start_regular_shared):
-    # `caplog` doesn't work if messages aren't propagated.
-    logging.getLogger("ray").propagate = True
-    logging.getLogger("ray.data").setLevel(logging.DEBUG)
-
+def test_system_exception(caplog, propagate_logs, ray_start_regular_shared):
     class FakeException(Exception):
         pass
 
@@ -65,13 +59,15 @@ def test_system_exception(caplog, ray_start_regular_shared):
     ), caplog.records
 
     assert any(
-        record.levelno == logging.DEBUG and "Full stack trace:" in record.message
+        record.levelno == logging.ERROR
+        and "Full stack trace:" in record.message
+        and record.hide
         for record in caplog.records
     ), caplog.records
 
 
 def test_full_traceback_logged_with_ray_debugger(
-    caplog, ray_start_regular_shared, monkeypatch
+    caplog, propagate_logs, ray_start_regular_shared, monkeypatch
 ):
     monkeypatch.setenv("RAY_PDB", 1)
 

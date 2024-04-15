@@ -11,6 +11,16 @@ config = (
         num_rollout_workers=0,
     )
     .environment(env="Pendulum-v1")
+    .rl_module(
+        model_config_dict={
+            "fcnet_hiddens": [256, 256],
+            "fcnet_activation": "relu",
+            "post_fcnet_hiddens": [],
+            "post_fcnet_activation": None,
+            "post_fcnet_weights_initializer": "orthogonal_",
+            "post_fcnet_weights_initializer_config": {"gain": 0.01},
+        }
+    )
     .training(
         initial_alpha=1.001,
         lr=3e-4,
@@ -23,14 +33,6 @@ config = (
             "type": "PrioritizedEpisodeReplayBuffer",
         },
         num_steps_sampled_before_learning_starts=256,
-        model={
-            "fcnet_hiddens": [256, 256],
-            "fcnet_activation": "relu",
-            "post_fcnet_hiddens": [],
-            "post_fcnet_activation": None,
-            "post_fcnet_weights_initializer": "orthogonal_",
-            "post_fcnet_weights_initializer_config": {"gain": 0.01},
-        },
     )
     .reporting(
         metrics_num_episodes_for_smoothing=5,
@@ -42,6 +44,3 @@ stop = {
     "sampler_results/episode_reward_mean": -250,
     "timesteps_total": 20000,
 }
-
-
-print(config.build().train())
