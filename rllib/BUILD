@@ -2854,7 +2854,7 @@ py_test(
     name = "examples/ray_tune/custom_progress_reporter",
     main = "examples/ray_tune/custom_progress_reporter.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/ray_tune/custom_progress_reporter.py"],
 )
 
