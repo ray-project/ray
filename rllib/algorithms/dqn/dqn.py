@@ -10,7 +10,7 @@ https://docs.ray.io/en/master/rllib-algorithms.html#deep-q-networks-dqn-rainbow-
 """  # noqa: E501
 
 import logging
-from typing import Callable, List, Optional, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Type, Union
 import numpy as np
 import tree
 
@@ -127,6 +127,10 @@ class DQNConfig(AlgorithmConfig):
             "final_epsilon": 0.02,
             "epsilon_timesteps": 10000,
         }
+        # New stack uses `epsilon` as either a constant value or a scheduler
+        # defined like this.
+        # TODO (simon): Ensure that users can understand how to provide epsilon.
+        self.epsilon = [(0, 1.0), (10000, 0.05)]
 
         # `evaluation()`
         self.evaluation(evaluation_config=AlgorithmConfig.overrides(explore=False))
@@ -381,24 +385,6 @@ class DQNConfig(AlgorithmConfig):
                 categorical_distribution_temperature
             )
 
-        if self._enable_new_api_stack:
-            # Include the architecture hyperparameters into the model config.
-            # TODO (simon, sven): Find a general way to update the model_config.
-            if "double_q" not in self.model:
-                self.model.update({"double_q": self.double_q})
-            if "dueling" not in self.model:
-                self.model.update({"dueling": self.dueling})
-            if "noisy" not in self.model:
-                self.model.update({"noisy": self.noisy})
-            if "simga0" not in self.model:
-                self.model.update({"sigma0": self.sigma0})
-            if "num_atoms" not in self.model:
-                self.model.update({"num_atoms": self.num_atoms})
-            if "v_max" not in self.model:
-                self.model.update({"v_max": self.v_max})
-            if "v_min" not in self.model:
-                self.model.update({"v_min": self.v_min})
-
         return self
 
     @override(AlgorithmConfig)
@@ -489,6 +475,7 @@ class DQNConfig(AlgorithmConfig):
             return SingleAgentRLModuleSpec(
                 module_class=DQNRainbowTorchRLModule,
                 catalog_class=DQNRainbowCatalog,
+                model_config_dict=self.model_config,
                 # model_config_dict=self.model,
             )
         else:
@@ -496,6 +483,20 @@ class DQNConfig(AlgorithmConfig):
                 f"The framework {self.framework_str} is not supported! "
                 "Use `config.framework('torch')` instead."
             )
+
+    @property
+    @override(AlgorithmConfig)
+    def _model_config_auto_includes(self) -> Dict[str, Any]:
+        return super()._model_config_auto_includes | {
+            "double_q": self.double_q,
+            "dueling": self.dueling,
+            "epsilon": self.epsilon,
+            "noisy": self.noisy,
+            "num_atoms": self.num_atoms,
+            "std_init": self.sigma0,
+            "v_max": self.v_max,
+            "v_min": self.v_min,
+        }
 
     @override(AlgorithmConfig)
     def get_default_learner_class(self) -> Union[Type["Learner"], str]:
@@ -606,9 +607,11 @@ class DQN(Algorithm):
 
         # Update the target network each `target_network_update_freq` steps.
         current_ts = self._counters[
-            NUM_AGENT_STEPS_SAMPLED
-            if self.config.count_steps_by == "agent_steps"
-            else NUM_ENV_STEPS_SAMPLED
+            (
+                NUM_AGENT_STEPS_SAMPLED
+                if self.config.count_steps_by == "agent_steps"
+                else NUM_ENV_STEPS_SAMPLED
+            )
         ]
 
         # If enough experiences have been sampled start training.
@@ -617,7 +620,7 @@ class DQN(Algorithm):
             # is proposed in the "Noisy Networks for Exploration" paper
             # (https://arxiv.org/abs/1706.10295) in Algorithm 1. The noise
             # gets sampled once for each training loop.
-            self.learner_group.foreach_learner(lambda l: l._reset_noise())
+            self.learner_group.foreach_learner(lambda lrnr: lrnr._reset_noise())
             # Run multiple sample-from-buffer and update iterations.
             for _ in range(sample_and_train_weight):
                 # Sample training batch from replay_buffer.
@@ -719,9 +722,11 @@ class DQN(Algorithm):
 
         # Update target network every `target_network_update_freq` sample steps.
         cur_ts = self._counters[
-            NUM_AGENT_STEPS_SAMPLED
-            if self.config.count_steps_by == "agent_steps"
-            else NUM_ENV_STEPS_SAMPLED
+            (
+                NUM_AGENT_STEPS_SAMPLED
+                if self.config.count_steps_by == "agent_steps"
+                else NUM_ENV_STEPS_SAMPLED
+            )
         ]
 
         if cur_ts > self.config.num_steps_sampled_before_learning_starts:
@@ -757,7 +762,9 @@ class DQN(Algorithm):
                 if cur_ts - last_update >= self.config.target_network_update_freq:
                     to_update = self.workers.local_worker().get_policies_to_train()
                     self.workers.local_worker().foreach_policy_to_train(
-                        lambda p, pid: pid in to_update and p.update_target()
+                        lambda p, pid, to_update=to_update: (
+                            pid in to_update and p.update_target()
+                        )
                     )
                     self._counters[NUM_TARGET_UPDATES] += 1
                     self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
