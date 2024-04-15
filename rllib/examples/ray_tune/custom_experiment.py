@@ -14,7 +14,29 @@ logic the way you'd like. See an example here on how to customize the algorithm'
 https://github.com/ray-project/ray/blob/master/rllib/examples/algorithm/custom_training_step_on_and_off_policy_combined.py  # noqa
 
 
+How to run this script
+----------------------
+`python [script file name].py`
 
+
+Results to expect
+-----------------
+You should see the following output (at the end of the experiment) in your console:
+
+╭───────────────────────────────────────────────────────────────────────────────────────
+│ Trial name                              status         iter     total time (s)      ts
+├───────────────────────────────────────────────────────────────────────────────────────
+│ my_experiment_CartPole-v1_77083_00000   TERMINATED       10            36.7799   60000
+╰───────────────────────────────────────────────────────────────────────────────────────
+╭───────────────────────────────────────────────────────╮
+│     reward    episode_len_mean     episodes_this_iter │
+├───────────────────────────────────────────────────────┤
+│    254.821             254.821                     12 │
+╰───────────────────────────────────────────────────────╯
+evaluation episode returns=[500.0, 500.0, 500.0]
+
+Note that evaluation results (on the CartPole-v1 env) should be close to perfect
+(episode return of ~500.0) as we are acting greedily inside the evaluation procedure.
 """
 from typing import Dict
 
@@ -65,10 +87,6 @@ def my_experiment(config: Dict):
         train_results["timesteps_total"] += phase_high_lr_time
         train.report(train_results)
 
-    print(
-        f"after low lr training: episode return={train_results['episode_reward_mean']}"
-    )
-    print(f"model weights={algo_low_lr.workers.local_worker().module.get_state()}")
     checkpoint_training_low_lr = algo_low_lr.save()
     algo_low_lr.stop()
 
@@ -91,8 +109,6 @@ def my_experiment(config: Dict):
 
     # The local worker (SingleAgentEnvRunner)
     rl_module = local_env_runner.module
-
-    print(f"LOADED eval model weights={rl_module.get_state()}")
 
     # Run a very simple env loop and add up rewards over a single episode.
     obs, infos = env.reset()
