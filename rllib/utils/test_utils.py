@@ -1329,6 +1329,7 @@ def run_rllib_example_script_experiment(
                 if val is not None and val >= value:
                     print(f"Stop criterium ({key}={value}) fulfilled!")
                     return results
+        ray.shutdown()
         return results
 
     # Run the experiment using Ray Tune.
@@ -1398,7 +1399,7 @@ def run_rllib_example_script_experiment(
             min_value=success_metric[metric],
             metric=metric,
         )
-
+    ray.shutdown()
     return results
 
 

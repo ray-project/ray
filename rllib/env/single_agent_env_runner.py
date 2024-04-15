@@ -78,7 +78,7 @@ class SingleAgentEnvRunner(EnvRunner):
             #  shape is (1, 1) which brings a problem with the action dists.
             #  shape=(1,) is expected.
             module_spec.action_space = self.env.envs[0].action_space
-            module_spec.model_config_dict = self.config.model
+            module_spec.model_config_dict = self.config.model_config
             self.module: RLModule = module_spec.build()
         except NotImplementedError:
             self.module = None
@@ -520,9 +520,11 @@ class SingleAgentEnvRunner(EnvRunner):
                     episodes[env_index] = SingleAgentEpisode(
                         observations=[obs[env_index]],
                         infos=[infos[env_index]],
-                        render_images=None
-                        if render_images[env_index] is None
-                        else [render_images[env_index]],
+                        render_images=(
+                            None
+                            if render_images[env_index] is None
+                            else [render_images[env_index]]
+                        ),
                         observation_space=self.env.single_observation_space,
                         action_space=self.env.single_action_space,
                     )

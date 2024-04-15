@@ -26,7 +26,7 @@ if __name__ == "__main__":
             lambda _: MultiAgentPendulum(config={"num_agents": args.num_agents}),
         )
 
-    base_config = (
+    config = (
         get_trainable_cls(args.algo)
         .get_default_config()
         .environment("env" if args.num_agents > 0 else "Pendulum-v1")
@@ -53,15 +53,6 @@ if __name__ == "__main__":
             lambda_=0.1,
             vf_clip_param=10.0,
             vf_loss_coeff=0.01,
-            model=dict(
-                {
-                    "fcnet_activation": "relu",
-                    "fcnet_weights_initializer": torch.nn.init.xavier_uniform_,
-                    "fcnet_bias_initializer": torch.nn.init.constant_,
-                    "fcnet_bias_initializer_config": {"val": 0.0},
-                },
-                **({"uses_new_env_runners": True} if args.enable_new_api_stack else {}),
-            ),
         )
         # .evaluation(
         #    evaluation_num_workers=1,
@@ -72,12 +63,33 @@ if __name__ == "__main__":
         #    evaluation_config={"explore": False},
         # )
     )
+    if args.enable_new_api_stack:
+        config = config.rl_module(
+            model_config_dict={
+                "fcnet_activation": "relu",
+                "fcnet_weights_initializer": torch.nn.init.xavier_uniform_,
+                "fcnet_bias_initializer": torch.nn.init.constant_,
+                "fcnet_bias_initializer_config": {"val": 0.0},
+                "uses_new_env_runners": True,
+            }
+        )
+    else:
+        config = config.training(
+            model=dict(
+                {
+                    "fcnet_activation": "relu",
+                    "fcnet_weights_initializer": torch.nn.init.xavier_uniform_,
+                    "fcnet_bias_initializer": torch.nn.init.constant_,
+                    "fcnet_bias_initializer_config": {"val": 0.0},
+                }
+            )
+        )
 
     # Add a simple multi-agent setup.
     if args.num_agents > 0:
-        base_config.multi_agent(
+        config = config.multi_agent(
             policies={f"p{i}" for i in range(args.num_agents)},
             policy_mapping_fn=lambda aid, *a, **kw: f"p{aid}",
         )
 
-    run_rllib_example_script_experiment(base_config, args)
+    run_rllib_example_script_experiment(config, args)
