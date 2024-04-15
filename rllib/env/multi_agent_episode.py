@@ -181,7 +181,7 @@ class MultiAgentEpisode:
         # via the `module_for()` API even before the agent has entered the episode
         # (and has its SingleAgentEpisode created), we store all aldeary done mappings
         # in this dict here.
-        self._agent_to_module_mapping: Dict[AgentID, ModuleID] = agent_module_ids or {}
+        self._agent_to_module_mapping: Dict[AgentID, ModuleID] = {}
 
         # Lookback buffer length is not provided. Interpret all provided data as
         # lookback buffer.
@@ -769,101 +769,6 @@ class MultiAgentEpisode:
 
         return self
 
-    def concat_episode(self, other: "MultiAgentEpisode") -> None:
-        """Adds the given `other` MultiAgentEpisode to the right side of self.
-
-        In order for this to work, both chunks (`self` and `other`) must fit
-        together. This is checked by the IDs (must be identical), the time step counters
-        (`self.env_t` must be the same as `episode_chunk.env_t_started`), as well as the
-        observations/infos of the individual agents at the concatenation boundaries.
-        Also, `self.is_done` must not be True, meaning `self.is_terminated` and
-        `self.is_truncated` are both False.
-
-        Args:
-            other: The other `MultiAgentEpisode` to be concatenated to this one.
-
-        Returns: A `MultiAgentEpisode` instance containing the concatenated data
-            from both episodes (`self` and `other`).
-        """
-        # Make sure the IDs match.
-        assert other.id_ == self.id_
-        # NOTE (sven): This is what we agreed on. As the replay buffers must be
-        # able to concatenate.
-        assert not self.is_done
-        # Make sure the timesteps match.
-        assert self.env_t == other.env_t_started
-        # Validate `other`.
-        other.validate()
-
-        # Concatenate the individual SingleAgentEpisodes from both chunks.
-        all_agent_ids = set(self.agent_ids) | set(other.agent_ids)
-        for agent_id in all_agent_ids:
-            sa_episode = self.agent_episodes.get(agent_id)
-
-            # If agent is only in the new episode chunk -> Store all the data of `other`
-            # wrt agent in `self`.
-            if sa_episode is None:
-                self.agent_episodes[agent_id] = other.agent_episodes[agent_id]
-                self.env_t_to_agent_t[agent_id] = other.env_t_to_agent_t[agent_id]
-                self.agent_t_started[agent_id] = other.agent_t_started[agent_id]
-                self._copy_hanging(agent_id, other)
-
-            # If the agent was done in `self`, ignore and continue. There should not be
-            # any data of that agent in `other`.
-            elif sa_episode.is_done:
-                continue
-
-            # If the agent has data in both chunks, concatenate on the single-agent
-            # level, thereby making sure the hanging values (begin and end) match.
-            elif agent_id in other.agent_episodes:
-                # If `other` has hanging (end) values -> Add these to `self`'s agent
-                # SingleAgentEpisode (as a new timestep) and only then concatenate.
-                # Otherwise, the concatentaion would fail b/c of missing data.
-                if agent_id in self._hanging_actions_end:
-                    assert agent_id in self._hanging_extra_model_outputs_end
-                    sa_episode.add_env_step(
-                        observation=other.agent_episodes[agent_id].get_observations(0),
-                        infos=other.agent_episodes[agent_id].get_infos(0),
-                        action=self._hanging_actions_end[agent_id],
-                        reward=(
-                            self._hanging_rewards_end[agent_id]
-                            + other._hanging_rewards_begin[agent_id]
-                        ),
-                        extra_model_outputs=(
-                            self._hanging_extra_model_outputs_end[agent_id]
-                        ),
-                    )
-                sa_episode.concat_episode(other.agent_episodes[agent_id])
-                # Override `self`'s hanging (end) values with `other`'s hanging (end).
-                if agent_id in other._hanging_actions_end:
-                    self._hanging_actions_end[agent_id] = copy.deepcopy(
-                        other._hanging_actions_end[agent_id]
-                    )
-                    self._hanging_rewards_end[agent_id] = other._hanging_rewards_end[
-                        agent_id
-                    ]
-                    self._hanging_extra_model_outputs_end[agent_id] = copy.deepcopy(
-                        other._hanging_extra_model_outputs_end[agent_id]
-                    )
-
-                # Concatenate the env- to agent-timestep mappings.
-                self.env_t_to_agent_t[agent_id].extend(other.env_t_to_agent_t[agent_id])
-
-            # Otherwise, the agent is only in `self` and not done. All data is stored
-            # already -> skip
-            # else: pass
-
-        # Update all timestep counters.
-        self.env_t = other.env_t
-        # Check, if the episode is terminated or truncated.
-        if other.is_terminated:
-            self.is_terminated = True
-        elif other.is_truncated:
-            self.is_truncated = True
-
-        # Validate.
-        self.validate()
-
     def cut(self, len_lookback_buffer: int = 0) -> "MultiAgentEpisode":
         """Returns a successor episode chunk (of len=0) continuing from this Episode.
 
@@ -974,84 +879,6 @@ class MultiAgentEpisode:
         )
 
         return successor
-
-    def concat_episode(self, episode_chunk: "MultiAgentEpisode") -> None:
-
-        # Make sure the IDs match.
-        assert episode_chunk.id_ == self.id_
-        # NOTE (sven): This is what we agreed on. As the replay buffers must be
-        # able to concatenate.
-        assert not self.is_done
-        # Make sure the timesteps match.
-        assert self.env_t == episode_chunk.env_t_started
-
-        episode_chunk.validate()
-
-        # Concatenate the single-agent episodes from both episode chunks.
-        all_agent_ids = set(self.agent_ids) | set(episode_chunk.agent_ids)
-        for agent_id in all_agent_ids:
-            # If the agent was done in the first episode chunk, continue.
-            if self.agent_episodes[agent_id].is_done:
-                continue
-            # If the agent has data in both chunks, simply concatenate on
-            # single-agent level.
-            if (
-                agent_id in self.agent_episodes
-                and agent_id in episode_chunk.agent_episodes
-            ):
-                self.agent_episodes[agent_id].concat_episode(
-                    episode_chunk.agent_episodes[agent_id]
-                )
-                # Concatenate the env- to agent-timestep mappings.
-                last_agent_step = next(
-                    item
-                    for item in reversed(self.env_t_to_agent_t[agent_id])
-                    if item != self.SKIP_ENV_TS_TAG
-                )
-                first_agent_step = next(
-                    item
-                    for item in episode_chunk.env_t_to_agent_t[agent_id]
-                    if item != episode_chunk.SKIP_ENV_TS_TAG
-                )
-                self.env_t_to_agent_t[agent_id] += (
-                    episode_chunk.env_t_to_agent_t[agent_id]
-                    + (last_agent_step - first_agent_step)
-                )[1:]
-
-            # Or, if agent is only in the new episode chunk.
-            elif agent_id not in self.agent_episode_ids:
-                # Then store all agent data from the new episode chunk in self.
-                self.agent_episodes[agent_id] = episode_chunk.agent_episodes[agent_id]
-                # Do not forget the env to agent timestep mapping.
-                self.env_t_to_agent_t[agent_id] = episode_chunk.env_t_to_agent_t[
-                    agent_id
-                ]
-                # Add the agent's starting timestep.
-                self.agent_t_started[agent_id] = episode_chunk.agent_t_started[agent_id]
-            # Otherwise, the agent is only in `self` and all data is stored already.
-            else:
-                # Than simply continue to the next agent.
-                continue
-
-        # Update all timestep counters.
-        self.env_t = episode_chunk.env_t
-        # Check, if the episode is terminated or truncated.
-        if episode_chunk.is_terminated:
-            self.is_terminated = True
-        elif episode_chunk.is_truncated:
-            self.is_truncated = True
-
-        # Copy over the current buffer values from the new episode chunk.
-        self._agent_buffered_actions = copy.deepcopy(
-            episode_chunk._agent_buffered_actions
-        )
-        self._agent_buffered_rewards = episode_chunk._agent_buffered_rewards.copy()
-        self._agent_buffered_extra_model_outputs = copy.deepcopy(
-            episode_chunk._agent_buffered_extra_model_outputs
-        )
-
-        # Validate.
-        self.validate()
 
     @property
     def agent_ids(self) -> Set[AgentID]:
@@ -2610,27 +2437,6 @@ class MultiAgentEpisode:
             return self._hanging_extra_model_outputs_end.get(agent_id)
         elif what == "rewards":
             return self._hanging_rewards_end.get(agent_id)
-
-    def _copy_hanging(self, agent_id: AgentID, other: "MultiAgentEpisode") -> None:
-        """Copies hanging action, reward, extra_model_outputs from `other` to `self."""
-        if agent_id in other._hanging_actions_begin:
-            self._hanging_actions_begin[agent_id] = copy.deepcopy(
-                other._hanging_actions_begin[agent_id]
-            )
-            self._hanging_rewards_begin[agent_id] = other._hanging_rewards_begin[
-                agent_id
-            ]
-            self._hanging_extra_model_outputs_begin[agent_id] = copy.deepcopy(
-                other._hanging_extra_model_outputs_begin[agent_id]
-            )
-        if agent_id in other._hanging_actions_end:
-            self._hanging_actions_end[agent_id] = copy.deepcopy(
-                other._hanging_actions_end[agent_id]
-            )
-            self._hanging_rewards_end[agent_id] = other._hanging_rewards_end[agent_id]
-            self._hanging_extra_model_outputs_end[agent_id] = copy.deepcopy(
-                other._hanging_extra_model_outputs_end[agent_id]
-            )
 
     def _del_hanging(self, agent_id: AgentID) -> None:
         """Deletes all hanging action, reward, extra_model_outputs of given agent."""
