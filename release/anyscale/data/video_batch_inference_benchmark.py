@@ -14,9 +14,8 @@ from ray.anyscale.data import VideoDatasource
 
 from benchmark import Benchmark
 
-DATA_URI = "s3://anonymous@antoni-test/sewer-videos"
-# ceil(10GB / 56.2 MB/file) = 178 files
-NUM_FILES = 178
+DATA_URI = "s3://anonymous@ray-example-data/static-videos"
+NUM_FILES = 91  # 50GiB / 562.4 MiB/file ~= 91 files
 
 
 def main():
@@ -26,13 +25,9 @@ def main():
     Reports the time taken and throughput (# frames/second)."""
     ray.init()
     actor_pool_size = int(ray.cluster_resources().get("GPU"))
-    paths = [f"{DATA_URI}/sewer_example_{i}.mp4" for i in range(NUM_FILES)]
-
+    paths = [f"{DATA_URI}/000.mp4" for _ in range(NUM_FILES)]
     dataset = (
-        ray.data.read_datasource(
-            VideoDatasource(paths=paths, include_paths=True),
-            ray_remote_args={"num_cpus": 5},
-        )
+        ray.data.read_datasource(VideoDatasource(paths=paths, include_paths=True))
         # The videos are long, so we're filtering out frames like SewerAI.
         .filter(lambda row: row["frame_index"] % 5 == 0)
         .map(transform_frame)
