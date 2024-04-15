@@ -177,7 +177,6 @@ int main(int argc, char *argv[]) {
   RAY_CHECK_NE(FLAGS_cluster_id, "") << "Expected cluster ID.";
   ray::ClusterID cluster_id = ray::ClusterID::FromHex(FLAGS_cluster_id);
   RAY_LOG(INFO) << "Setting cluster ID to: " << cluster_id;
-
   gflags::ShutDownCommandLineFlags();
 
   // Configuration for the node manager.
@@ -371,7 +370,7 @@ int main(int argc, char *argv[]) {
 
         ray::NodeID raylet_node_id;
         if (!RayConfig::instance().OVERRIDE_NODE_ID_FOR_TESTING().empty()) {
-          RAY_LOG(INFO) << "Overriding node ID for testing to "
+          RAY_LOG(INFO) << "For testing, overriding node ID to "
                         << RayConfig::instance().OVERRIDE_NODE_ID_FOR_TESTING();
           raylet_node_id =
               ray::NodeID::FromHex(RayConfig::instance().OVERRIDE_NODE_ID_FOR_TESTING());

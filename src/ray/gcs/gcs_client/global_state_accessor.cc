@@ -401,7 +401,6 @@ ray::Status GlobalStateAccessor::GetAliveNodes(std::vector<rpc::GcsNodeInfo> &no
 
 ray::Status GlobalStateAccessor::GetNode(const std::string &node_id,
                                          std::string *node_info) {
-  std::promise<Status> promise;
   auto start_ms = current_time_ms();
   while (true) {
     std::vector<rpc::GcsNodeInfo> nodes;
@@ -413,17 +412,16 @@ ray::Status GlobalStateAccessor::GetNode(const std::string &node_id,
     if (nodes.empty()) {
       status = Status::NotFound("GCS has started but no raylets have registered yet.");
     } else {
-      int relevant_client_index = -1;
       std::pair<std::string, int> gcs_address;
       {
         absl::WriterMutexLock lock(&mutex_);
         gcs_address = gcs_client_->GetGcsServerAddress();
       }
 
+      int relevant_client_index = -1;
       for (int i = 0; i < static_cast<int>(nodes.size()); i++) {
         const auto &node = nodes[i];
-        std::string cur_node_id = node.node_id();
-        if (node_id == cur_node_id) {
+        if (node_id == node.node_id()) {
           relevant_client_index = i;
           break;
         }

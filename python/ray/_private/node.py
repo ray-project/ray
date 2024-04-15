@@ -274,6 +274,8 @@ class Node:
             self._raylet_socket_name = self._prepare_socket_file(
                 self._ray_params.raylet_socket_name, default_prefix="raylet"
             )
+            self._node_id = ray.NodeID.from_random().hex()
+            logger.debug(f"Set node ID to {self._node_id}")
 
         self.metrics_agent_port = self._get_cached_port(
             "metrics_agent_port", default_port=ray_params.metrics_agent_port
@@ -315,8 +317,6 @@ class Node:
             self.start_head_processes()
 
         if not connect_only:
-            self._node_id = ray.NodeID.from_random().hex()
-            logger.debug(f"Set node ID to {self._node_id}")
             self.start_ray_processes()
             # we should update the address info after the node has been started
             try:
