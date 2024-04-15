@@ -2874,11 +2874,11 @@ py_test(
     srcs = ["examples/rl_modules/classes/mobilenet_rlm.py"],
 )
 py_test(
-    name = "examples/rl_modules/classes/pretraining_single_agent_training_multi_agent_rlm",
-    main = "examples/rl_modules/classes/pretraining_single_agent_training_multi_agent_rlm.py",
+    name = "examples/rl_modules/pretraining_single_agent_training_multi_agent_rlm",
+    main = "examples/rl_modules/pretraining_single_agent_training_multi_agent_rlm.py",
     tags = ["team:rllib", "examples", "no_main"],
     size = "medium",
-    srcs = ["examples/rl_modules/classes/pretraining_single_agent_training_multi_agent_rlm.py"],
+    srcs = ["examples/rl_modules/pretraining_single_agent_training_multi_agent_rlm.py"],
 )
 
 
