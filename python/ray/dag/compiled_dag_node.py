@@ -52,8 +52,8 @@ def do_exec_tasks(self, tasks: List["ExecutableTask"]) -> None:
         tasks: the executable tasks corresponding to the actor methods.
     """
     try:
-        self._method_to_input_reader = {}
-        self._method_to_output_writer = {}
+        self._uuid_to_input_reader = {}
+        self._uuid_to_output_writer = {}
         for task in tasks:
             method = getattr(self, task.method_name)
 
@@ -73,16 +73,16 @@ def do_exec_tasks(self, tasks: List["ExecutableTask"]) -> None:
             output_writer: WriterInterface = SynchronousWriter(
                 task.output_channel
             )
-            self._method_to_input_reader[task.method_name] = input_reader
-            self._method_to_output_writer[task.method_name] = output_writer
+            self._uuid_to_input_reader[task.uuid] = input_reader
+            self._uuid_to_output_writer[task.uuid] = output_writer
 
             input_reader.start()
             output_writer.start()
 
         while True:
             for task in tasks:
-                input_reader = self._method_to_input_reader[task.method_name]
-                output_writer = self._method_to_output_writer[task.method_name]
+                input_reader = self._uuid_to_input_reader[task.uuid]
+                output_writer = self._uuid_to_output_writer[task.uuid]
                 res = input_reader.begin_read()
 
                 for idx, output in zip(task.input_channel_idxs, res):
@@ -118,8 +118,8 @@ def do_exec_tasks(self, tasks: List["ExecutableTask"]) -> None:
 @DeveloperAPI
 def do_cancel_executable_tasks(self, tasks: List["ExecutableTask"]) -> None:
     for task in tasks:
-        self._method_to_input_reader[task.method_name].close()
-        self._method_to_output_writer[task.method_name].close()
+        self._uuid_to_input_reader[task.uuid].close()
+        self._uuid_to_output_writer[task.uuid].close()
 
 
 @PublicAPI(stability="alpha")
@@ -183,7 +183,11 @@ class ExecutableTask:
     corresponds to an actor method.
     """
 
-    def __init__(self, method_name: str, resolved_args: List[Any], output_channel: Channel):
+    def __init__(
+            self, method_name: str,
+            resolved_args: List[Any],
+            output_channel: Channel,
+            uuid: str):
         """
         Args:
             method_name: The name of the method to execute.
@@ -192,10 +196,12 @@ class ExecutableTask:
                 If the argument is a channel, it will be replaced by the
                 value read from the channel before the method executes.
             output_channel: The channel to write the output to.
+            uuid: The unique identifier for the task.
         """
         self.method_name = method_name
         self.resolved_args = resolved_args
         self.output_channel = output_channel
+        self.uuid = uuid
 
 
 @DeveloperAPI
@@ -479,7 +485,8 @@ class CompiledDAG:
                 executable_task = ExecutableTask(
                     task.dag_node.get_method_name(),
                     resolved_args,
-                    task.output_channel
+                    task.output_channel,
+                    task.dag_node.get_stable_uuid()
                 )
                 executable_tasks.append(executable_task)
                 if worker_fn is None:
