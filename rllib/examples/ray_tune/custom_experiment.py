@@ -16,58 +16,127 @@ https://github.com/ray-project/ray/blob/master/rllib/examples/algorithm/custom_t
 
 
 """
+from typing import Dict
+
+import numpy as np
 from ray import train, tune
-from ray.rllib.algorithms.ppo import PPO, PPOConfig
+from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
+from ray.rllib.utils.framework import try_import_torch
+
+torch, _ = try_import_torch()
 
 
-def my_experiment(config):
-    iterations = config.pop("train-iterations", 10)
+def my_experiment(config: Dict):
 
-    config = PPOConfig().update_from_dict(config).environment("CartPole-v1")
+    # Extract the number of iterations to run from the config.
+    train_iterations = config.pop("train-iterations", 2)
+    eval_episodes_to_do = config.pop("eval-episodes", 1)
+
+    config = (
+        PPOConfig()
+        .update_from_dict(config)
+        .experimental(_enable_new_api_stack=True)
+        .environment("CartPole-v1")
+    )
 
     # Train for n iterations with high LR.
-    config.lr = 0.01
-    agent1 = config.build()
-    for _ in range(iterations):
-        result = agent1.train()
-        result["phase"] = 1
-        train.report(result)
-        phase1_time = result["timesteps_total"]
-    state = agent1.save()
-    agent1.stop()
+    config.training(lr=0.001)
+    algo_high_lr = config.build()
+    for _ in range(train_iterations):
+        train_results = algo_high_lr.train()
+        # Add the phase to the result dict.
+        train_results["phase"] = 1
+        train.report(train_results)
+        phase_high_lr_time = train_results["timesteps_total"]
+    checkpoint_training_high_lr = algo_high_lr.save()
+    algo_high_lr.stop()
 
-    # Train for n iterations with low LR
-    config.lr = 0.0001
-    agent2 = config.build()
-    agent2.restore(state)
-    for _ in range(iterations):
-        result = agent2.train()
-        result["phase"] = 2
-        result["timesteps_total"] += phase1_time  # keep time moving forward
-        train.report(result)
-    agent2.stop()
+    # Train for n iterations with low LR.
+    config.training(lr=0.00001)
+    algo_low_lr = config.build()
+    # Load state from the high-lr algo into this one.
+    algo_low_lr.restore(checkpoint_training_high_lr)
+    for _ in range(train_iterations):
+        train_results = algo_low_lr.train()
+        # Add the phase to the result dict.
+        train_results["phase"] = 2
+        # keep time moving forward
+        train_results["timesteps_total"] += phase_high_lr_time
+        train.report(train_results)
 
-    # Manual Eval
-    config["num_workers"] = 0
-    eval_algo = ppo.PPO(config=config)
-    eval_algo.restore(checkpoint)
-    env = eval_algo.workers.local_worker().env
+    print(
+        f"after low lr training: episode return={train_results['episode_reward_mean']}"
+    )
+    print(f"model weights={algo_low_lr.workers.local_worker().module.get_state()}")
+    checkpoint_training_low_lr = algo_low_lr.save()
+    algo_low_lr.stop()
 
-    obs, info = env.reset()
-    done = False
-    eval_results = {"eval_reward": 0, "eval_eps_length": 0}
-    while not done:
-        action = eval_algo.compute_single_action(obs)
-        next_obs, reward, done, truncated, info = env.step(action)
-        eval_results["eval_reward"] += reward
-        eval_results["eval_eps_length"] += 1
+    # After training, run a manual evaluation procedure.
+
+    # Set the number of EnvRunners for collecting training data to 0 (local
+    # worker only).
+    config.rollouts(num_rollout_workers=0)
+
+    eval_algo = config.build()
+    # Load state from the low-lr algo into this one.
+    eval_algo.restore(checkpoint_training_low_lr)
+    # The algo's local worker (SingleAgentEnvRunner) that holds a
+    # gym.vector.Env object and an RLModule for computing actions.
+    local_env_runner = eval_algo.workers.local_worker()
+    # Extract the gymnasium env object from the created algo (its local
+    # SingleAgentEnvRunner worker). Note that the env in this single-agent
+    # case is a gymnasium vector env and that we get its first sub-env here.
+    env = local_env_runner.env.envs[0]
+
+    # The local worker (SingleAgentEnvRunner)
+    rl_module = local_env_runner.module
+
+    print(f"LOADED eval model weights={rl_module.get_state()}")
+
+    # Run a very simple env loop and add up rewards over a single episode.
+    obs, infos = env.reset()
+    episode_returns = []
+    episode_lengths = []
+    sum_rewards = length = 0
+    num_episodes = 0
+    while num_episodes < eval_episodes_to_do:
+        # Call the RLModule's `forward_inference()` method to compute an
+        # action.
+        rl_module_out = rl_module.forward_inference(
+            {
+                "obs": torch.from_numpy(np.expand_dims(obs, 0)),  # <- add B=1
+            }
+        )
+        action_logits = rl_module_out["action_dist_inputs"][0]  # <- remove B=1
+        action = np.argmax(action_logits.detach().cpu().numpy())  # act greedily
+
+        # Step the env.
+        obs, reward, terminated, truncated, info = env.step(action)
+
+        # Acculumate stats and reset the env, if necessary.
+        sum_rewards += reward
+        length += 1
+        if terminated or truncated:
+            num_episodes += 1
+            episode_returns.append(sum_rewards)
+            episode_lengths.append(length)
+            sum_rewards = length = 0
+            obs, infos = env.reset()
+
+    # Compile evaluation results.
+    eval_results = {
+        "eval_returns": episode_returns,
+        "eval_episode_lengths": episode_lengths,
+    }
+    # Combine the most recent training results with the just collected
+    # evaluation results.
     results = {**train_results, **eval_results}
+    # Report everything.
     train.report(results)
 
 
 if __name__ == "__main__":
-
     base_config = (
         PPOConfig()
         .experimental(_enable_new_api_stack=True)
@@ -84,8 +153,11 @@ if __name__ == "__main__":
     # function.
     config_dict = base_config.to_dict()
 
-    # Set a Special flag signalling `my_train_fn` how many iters to do.
-    config_dict["train-iterations"] = 2
+    # Set a Special flag signalling `my_experiment` how many training steps to
+    # perform on each: the high learning rate and low learning rate.
+    config_dict["train-iterations"] = 5
+    # Set a Special flag signalling `my_experiment` how many episodes to evaluate for.
+    config_dict["eval-episodes"] = 3
 
     training_function = tune.with_resources(
         my_experiment,
@@ -97,4 +169,7 @@ if __name__ == "__main__":
         # Pass in your config dict.
         param_space=config_dict,
     )
-    tuner.fit()
+    results = tuner.fit()
+    best_results = results.get_best_result()
+
+    print(f"evaluation episode returns={best_results.metrics['eval_returns']}")

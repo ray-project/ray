@@ -2840,7 +2840,6 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/ray_tune/custom_experiment.py"],
-    args = ["--train-iterations=10"]
 )
 
 py_test(

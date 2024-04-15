@@ -80,6 +80,7 @@ if __name__ == "__main__":
     # `CLIReporter`.
     # TODO (sven): Find out why we require this hack.
     import os
+
     os.environ["RAY_AIR_NEW_OUTPUT"] = "0"
 
     # Register our multi-agent env with a fixed number of agents.
