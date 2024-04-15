@@ -330,9 +330,9 @@ class Node:
                     "could happen because some of the Ray processes "
                     "failed to startup."
                 ) from te
-            node_info = ray._private.services.get_node_to_connect_for_driver(
+            node_info = ray._private.services.get_node(
                 self.gcs_address,
-                self._raylet_ip_address,
+                self._node_id,
             )
             if self._ray_params.node_manager_port == 0:
                 self._ray_params.node_manager_port = node_info["node_manager_port"]

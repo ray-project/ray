@@ -402,6 +402,7 @@ ray::Status GlobalStateAccessor::GetAliveNodes(std::vector<rpc::GcsNodeInfo> &no
 ray::Status GlobalStateAccessor::GetNode(const std::string &node_id,
                                          std::string *node_info) {
   auto start_ms = current_time_ms();
+  auto node_id_binary = NodeID::FromHex(node_id).Binary();
   while (true) {
     std::vector<rpc::GcsNodeInfo> nodes;
     auto status = GetAliveNodes(nodes);
@@ -421,7 +422,7 @@ ray::Status GlobalStateAccessor::GetNode(const std::string &node_id,
       int relevant_client_index = -1;
       for (int i = 0; i < static_cast<int>(nodes.size()); i++) {
         const auto &node = nodes[i];
-        if (node_id == node.node_id()) {
+        if (node_id_binary == node.node_id()) {
           relevant_client_index = i;
           break;
         }

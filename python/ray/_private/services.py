@@ -476,6 +476,16 @@ def get_node_to_connect_for_driver(gcs_address, node_ip_address):
     return global_state.get_node_to_connect_for_driver(node_ip_address)
 
 
+def get_node(gcs_address, node_id):
+    """
+    Get the node information from the global state accessor.
+    """
+    global_state = ray._private.state.GlobalState()
+    gcs_options = _get_gcs_client_options(gcs_address)
+    global_state._initialize_global_state(gcs_options)
+    return global_state.get_node(node_id)
+
+
 def get_webui_url_from_internal_kv():
     assert ray.experimental.internal_kv._internal_kv_initialized()
     webui_url = ray.experimental.internal_kv._internal_kv_get(
