@@ -817,7 +817,13 @@ class Algorithm(Trainable, AlgorithmBase):
         eval_results: ResultDict = {}
 
         # Parallel eval + training: Kick off evaluation-loop and parallel train() call.
-        if evaluate_this_iter and self.config.evaluation_parallel_to_training:
+        if (
+            self.config._run_training_always_in_thread
+            or (
+                evaluate_this_iter
+                and self.config.evaluation_parallel_to_training
+            )
+        ):
             (
                 train_results,
                 eval_results,
@@ -3091,12 +3097,16 @@ class Algorithm(Trainable, AlgorithmBase):
             parallel_train_future = executor.submit(
                 lambda: self._run_one_training_iteration()
             )
-            # Pass the train_future into `self._run_one_evaluation()` to allow it
-            # to run exactly as long as the training iteration takes in case
-            # evaluation_duration=auto.
-            evaluation_results = self._run_one_evaluation(
-                parallel_train_future=parallel_train_future
-            )
+            evaluation_results = {}
+            # If the debug setting _run_training_always_in_thread is used, do NOT
+            # evaluate, no matter what the settings are,
+            if not self.config._run_training_always_in_thread:
+                # Pass the train_future into `self._run_one_evaluation()` to allow it
+                # to run exactly as long as the training iteration takes in case
+                # evaluation_duration=auto.
+                evaluation_results = self._run_one_evaluation(
+                    parallel_train_future=parallel_train_future
+                )
             # Collect the training results from the future.
             train_results, train_iter_ctx = parallel_train_future.result()
 
