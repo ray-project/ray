@@ -2834,6 +2834,7 @@ py_test(
 
 # subdirectory: ray_tune/
 # ....................................
+#@OldAPIStack
 py_test(
     name = "examples/ray_tune/custom_experiment",
     main = "examples/ray_tune/custom_experiment.py",
@@ -2843,20 +2844,23 @@ py_test(
     args = ["--train-iterations=10"]
 )
 
+#@OldAPIStack
 py_test(
     name = "examples/ray_tune/custom_logger",
     main = "examples/ray_tune/custom_logger.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/ray_tune/custom_logger.py"],
+    args = ["--stop-iters=3"]
 )
 
+#@OldAPIStack
 py_test(
-    name = "examples/ray_tune/custom_progres_reporter",
-    main = "examples/ray_tune/custom_progres_reporter.py",
+    name = "examples/ray_tune/custom_train_function",
+    main = "examples/ray_tune/custom_train_function.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
-    srcs = ["examples/ray_tune/custom_progres_reporter.py"],
+    size = "medium",
+    srcs = ["examples/ray_tune/custom_train_function.py"],
 )
 
 # subdirectory: rl_modules/

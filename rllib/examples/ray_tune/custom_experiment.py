@@ -1,54 +1,30 @@
-"""Example of a custom Ray Tune experiment wrapping an RLlib Algorithm.
+# TODO (sven): Move this example script into the new API stack.
 
-You should only use such a customized workflow if the following conditions apply:
-- You know exactly what you are doing :)
-- Simply configuring an existing RLlib Algorithm (e.g. PPO) via its AlgorithmConfig
-is not enough and doesn't allow you to shape the Algorithm into behaving the way you'd
-like.
--- Note that for complex and custom evaluation procedures there is a RLlib Algorithm
-config option (see examples/evaluation/custom_evaluation.py for more details).
-- Subclassing
+"""Example of a custom experiment wrapped around an RLlib Algorithm."""
+import argparse
 
-"""
-
-"""Example of a custom training workflow. Run this for a demo.
-
-This example shows:
-  - using Tune trainable functions to implement custom training workflows
-
-You can visualize experiment results in ~/ray_results using TensorBoard.
-"""
+import ray
 from ray import train, tune
-from ray.rllib.algorithms.ppo import PPO, PPOConfig
-from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
+import ray.rllib.algorithms.ppo as ppo
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--train-iterations", type=int, default=10)
 
 
-def my_experiment(config):
-    iterations = config.pop("train-iterations", 10)
+def experiment(config):
+    iterations = config.pop("train-iterations")
 
-    config = PPOConfig().update_from_dict(config).environment("CartPole-v1")
+    algo = ppo.PPO(config=config)
+    checkpoint = None
+    train_results = {}
 
-    # Train for n iterations with high LR.
-    config.lr = 0.01
-    agent1 = config.build()
-    for _ in range(iterations):
-        result = agent1.train()
-        result["phase"] = 1
-        train.report(result)
-        phase1_time = result["timesteps_total"]
-    state = agent1.save()
-    agent1.stop()
-
-    # Train for n iterations with low LR
-    config.lr = 0.0001
-    agent2 = config.build()
-    agent2.restore(state)
-    for _ in range(iterations):
-        result = agent2.train()
-        result["phase"] = 2
-        result["timesteps_total"] += phase1_time  # keep time moving forward
-        train.report(result)
-    agent2.stop()
+    # Train
+    for i in range(iterations):
+        train_results = algo.train()
+        if i % 2 == 0 or i == iterations - 1:
+            checkpoint = algo.save(train.get_context().get_trial_dir())
+        train.report(train_results)
+    algo.stop()
 
     # Manual Eval
     config["num_workers"] = 0
@@ -69,34 +45,14 @@ def my_experiment(config):
 
 
 if __name__ == "__main__":
+    args = parser.parse_args()
 
-    base_config = (
-        PPOConfig()
-        .experimental(_enable_new_api_stack=True)
-        .environment("CartPole-v1")
-        .rollouts(
-            num_rollout_workers=0,
-            env_runner_cls=SingleAgentEnvRunner,
-        )
-    )
-    # Convert to a plain dict for Tune. Note that this is usually not needed, you can
-    # pass into the below Tune Tuner any instantiated RLlib AlgorithmConfig object.
-    # However, for demonstration purposes, we show here how you can add other, arbitrary
-    # keys to the plain config dict and then pass these keys to your custom experiment
-    # function.
-    config_dict = base_config.to_dict()
+    ray.init(num_cpus=3)
+    config = ppo.PPOConfig().environment("CartPole-v1")
+    config = config.to_dict()
+    config["train-iterations"] = args.train_iterations
 
-    # Set a Special flag signalling `my_train_fn` how many iters to do.
-    config_dict["train-iterations"] = 2
-
-    training_function = tune.with_resources(
-        my_experiment,
-        resources=base_config.algo_class.default_resource_request(base_config),
-    )
-
-    tuner = tune.Tuner(
-        training_function,
-        # Pass in your config dict.
-        param_space=config_dict,
-    )
-    tuner.fit()
+    tune.Tuner(
+        tune.with_resources(experiment, ppo.PPO.default_resource_request(config)),
+        param_space=config,
+    ).fit()
