@@ -2840,6 +2840,7 @@ def from_tf(
 @PublicAPI
 def from_torch(
     dataset: "torch.utils.data.Dataset",
+    local_read: bool = False,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from a
     `Torch Dataset <https://pytorch.org/docs/stable/data.html#torch.utils.data.Dataset/>`_.
@@ -2866,12 +2867,14 @@ def from_torch(
     """  # noqa: E501
 
     # Files may not be accessible from all nodes, run the read task on current node.
-    ray_remote_args = {
-        "scheduling_strategy": NodeAffinitySchedulingStrategy(
-            ray.get_runtime_context().get_node_id(),
-            soft=False,
-        )
-    }
+    if local_read:
+        ray_remote_args = {
+            "scheduling_strategy": NodeAffinitySchedulingStrategy(
+                ray.get_runtime_context().get_node_id(),
+                soft=False,
+            ),
+            "num_cpus": 0,
+        }
     return read_datasource(
         TorchDatasource(dataset=dataset),
         ray_remote_args=ray_remote_args,
