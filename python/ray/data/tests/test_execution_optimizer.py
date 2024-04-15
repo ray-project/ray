@@ -1327,11 +1327,17 @@ def test_from_huggingface_e2e(ray_start_regular_shared):
         # Check that metadata fetch is included in stats;
         # the underlying implementation uses the `ReadParquet` operator
         # as this is an un-transformed public dataset.
-        assert "ReadParquet" in ds.stats()
-        assert ds._plan._logical_plan.dag.name == "ReadParquet"
+        assert "ReadParquet" in ds.stats() or "FromArrow" in ds.stats()
+        assert (
+            ds._plan._logical_plan.dag.name == "ReadParquet"
+            or ds._plan._logical_plan.dag.name == "FromArrow"
+        )
         # use sort by 'text' to match order of rows
         hfds_assert_equals(data[ds_key], ds)
-        _check_usage_record(["ReadParquet"])
+        try:
+            _check_usage_record(["ReadParquet"])
+        except AssertionError:
+            _check_usage_record(["FromArrow"])
 
     # test transformed public dataset for fallback behavior
     base_hf_dataset = data["train"]

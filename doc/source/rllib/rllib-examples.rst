@@ -20,9 +20,9 @@ Tuned Examples
 Environments and Adapters
 -------------------------
 
-- `Registering a custom env and model <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__:
+- `Registering a custom env and model <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/custom_gym_env.py>`__:
    Example of defining and registering a gym env and model for use with RLlib.
-- `Local Unity3D multi-agent environment example <https://github.com/ray-project/ray/tree/master/rllib/examples/unity3d_env_local.py>`__:
+- `Local Unity3D multi-agent environment example <https://github.com/ray-project/ray/tree/master/rllib/examples/envs/external_envs/unity3d_env_local.py>`__:
    Example of how to setup an RLlib Algorithm against a locally running Unity3D editor instance to
    learn any Unity3D game (including support for multi-agent).
    Use this example to try things out and watch the game and the learning progress live in the editor.
@@ -36,33 +36,33 @@ Custom- and Complex Models
    Example of using a custom Keras model.
 - `Registering a custom model with supervised loss <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_model_loss_and_metrics.py>`__:
    Example of defining and registering a custom model with a supervised loss.
-- `Batch normalization <https://github.com/ray-project/ray/blob/master/rllib/examples/models/batch_norm_model.py>`__:
+- `Batch normalization <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/models/batch_norm_model.py>`__:
    Example of adding batch norm layers to a custom model.
 - `Custom model API example <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_model_api.py>`__:
    Shows how to define a custom Model API in RLlib, such that it can be used inside certain algorithms.
-- `Trajectory View API utilizing model <https://github.com/ray-project/ray/blob/master/rllib/examples/models/trajectory_view_utilizing_models.py>`__:
+- `Trajectory View API utilizing model <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/models/trajectory_view_utilizing_models.py>`__:
    An example on how a model can use the trajectory view API to specify its own input.
-- `MobileNetV2 wrapping example model <https://github.com/ray-project/ray/blob/master/rllib/examples/models/mobilenet_v2_with_lstm_models.py>`__:
+- `MobileNetV2 wrapping example model <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/models/mobilenet_v2_with_lstm_models.py>`__:
    Implementations of `tf.keras.applications.mobilenet_v2.MobileNetV2` and `torch.hub (mobilenet_v2)`-wrapping example models.
-- `Differentiable Neural Computer <https://github.com/ray-project/ray/blob/master/rllib/examples/models/neural_computer.py>`__:
+- `Differentiable Neural Computer <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/models/neural_computer.py>`__:
    Example of DeepMind's Differentiable Neural Computer for partially-observable environments.
 
 
 Training Workflows
 ------------------
 
-- `Custom training workflows <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_train_fn.py>`__:
+- `Custom training workflows <https://github.com/ray-project/ray/blob/master/rllib/examples/ray_tune/custom_train_function.py>`__:
    Example of how to use Tune's support for custom training functions to implement custom training workflows.
-- `Curriculum learning with the TaskSettableEnv API <https://github.com/ray-project/ray/blob/master/rllib/examples/curriculum_learning.py>`__:
+- `Curriculum learning with the TaskSettableEnv API <https://github.com/ray-project/ray/blob/master/rllib/examples/curriculum/curriculum_learning.py>`__:
    Example of how to advance the environment through different phases (tasks) over time.
    Also see the `curriculum learning how-to <rllib-training.html#example-curriculum-learning>`__ from the documentation here.
-- `Custom logger <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_logger.py>`__:
+- `Custom logger <https://github.com/ray-project/ray/blob/master/rllib/examples/ray_tune/custom_logger.py>`__:
    How to setup a custom Logger object in RLlib.
 - `Custom metrics <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_metrics_and_callbacks.py>`__:
    Example of how to output custom training metrics to TensorBoard.
-- `Custom execution plan function handling two different Policies (DQN and PPO) at the same time <https://github.com/ray-project/ray/blob/master/rllib/examples/two_trainer_workflow.py>`__:
+- `Custom Algorith.training_step() method combining on- and off-policy learning <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/custom_training_step_on_and_off_policy_combined.py>`__:
    Example of how to use the exec. plan of an Algorithm to trin two different policies in parallel (also using multi-agent API).
-- `Custom tune experiment <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_experiment.py>`__:
+- `Custom tune experiment <https://github.com/ray-project/ray/blob/master/rllib/examples/ray_tune/custom_experiment.py>`__:
    How to run a custom Ray Tune experiment with RLlib with custom training- and evaluation phases.
 
 
@@ -76,35 +76,35 @@ Evaluation:
 
 Serving and Offline
 -------------------
-- `Offline RL with CQL <https://github.com/ray-project/ray/tree/master/rllib/examples/offline_rl.py>`__:
+- `Offline RL with CQL <https://github.com/ray-project/ray/tree/master/rllib/examples/offline_rl/offline_rl.py>`__:
    Example showing how to run an offline RL training job using a historic-data json file.
-- `Another example for using RLlib with Ray Serve <https://github.com/ray-project/ray/tree/master/rllib/examples/inference_and_serving/serve_and_rllib.py>`__
+- `Another example for using RLlib with Ray Serve <https://github.com/ray-project/ray/tree/master/rllib/examples/ray_serve/ray_serve_with_rllib.py>`__
    This script offers a simple workflow for 1) training a policy with RLlib first, 2) creating a new policy 3) restoring its weights from the trained
    one and serving the new policy via Ray Serve.
-- `Unity3D client/server <https://github.com/ray-project/ray/tree/master/rllib/examples/serving/unity3d_server.py>`__:
+- `Unity3D client/server <https://github.com/ray-project/ray/tree/master/rllib/examples/envs/external_envs/unity3d_server.py>`__:
    Example of how to setup n distributed Unity3D (compiled) games in the cloud that function as data collecting
    clients against a central RLlib Policy server learning how to play the game.
    The n distributed clients could themselves be servers for external/human players and allow for control
    being fully in the hands of the Unity entities instead of RLlib.
    Note: Uses Unity's MLAgents SDK (>=1.0) and supports all provided MLAgents example games and multi-agent setups.
-- `CartPole client/server <https://github.com/ray-project/ray/tree/master/rllib/examples/serving/cartpole_server.py>`__:
+- `CartPole client/server <https://github.com/ray-project/ray/tree/master/rllib/examples/envs/external_envs/cartpole_server.py>`__:
    Example of online serving of predictions for a simple CartPole policy.
-- `Saving experiences <https://github.com/ray-project/ray/blob/master/rllib/examples/saving_experiences.py>`__:
+- `Saving experiences <https://github.com/ray-project/ray/blob/master/rllib/examples/offline_rl/saving_experiences.py>`__:
    Example of how to externally generate experience batches in RLlib-compatible format.
-- `Finding a checkpoint using custom criteria <https://github.com/ray-project/ray/blob/master/rllib/examples/checkpoint_by_custom_criteria.py>`__:
+- `Finding a checkpoint using custom criteria <https://github.com/ray-project/ray/blob/master/rllib/examples/checkpoints/checkpoint_by_custom_criteria.py>`__:
    Example of how to find a :ref:`checkpoint <rllib-saving-and-loading-algos-and-policies-docs>` after a `Tuner.fit()` via some custom defined criteria.
 
 
 Multi-Agent and Hierarchical
 ----------------------------
 
-- `Simple independent multi-agent setup vs a PettingZoo env <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_and_self_play/pettingzoo_independent_learning.py>`__:
+- `Simple independent multi-agent setup vs a PettingZoo env <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/pettingzoo_independent_learning.py>`__:
    Setup RLlib to run any algorithm in (independent) multi-agent mode against a multi-agent environment.
-- `More complex (shared-parameter) multi-agent setup vs a PettingZoo env <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_and_self_play/pettingzoo_parameter_sharing.py>`__:
+- `More complex (shared-parameter) multi-agent setup vs a PettingZoo env <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/pettingzoo_parameter_sharing.py>`__:
    Setup RLlib to run any algorithm in (shared-parameter) multi-agent mode against a multi-agent environment.
-- `Rock-paper-scissors heuristic vs learned <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_and_self_play/rock_paper_scissors_heuristic_vs_learned.py>`__ and `Rock-paper-scissors learned vs learned <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_and_self_play/rock_paper_scissors_learned_vs_learned.py>`__:
+- `Rock-paper-scissors heuristic vs learned <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/rock_paper_scissors_heuristic_vs_learned.py>`__ and `Rock-paper-scissors learned vs learned <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/rock_paper_scissors_learned_vs_learned.py>`__:
    Two examples of different heuristic and learned policies competing against each other in the rock-paper-scissors environment.
-- `Two-step game <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_and_self_play/two_step_game_with_grouped_agents.py>`__:
+- `Two-step game <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/two_step_game_with_grouped_agents.py>`__:
    Example on how to use agent grouping in a multi-agent environment (the two-step game from the `QMIX paper <https://arxiv.org/pdf/1803.11485.pdf>`__).
 - `PettingZoo multi-agent example <https://github.com/Farama-Foundation/PettingZoo/blob/master/tutorials/Ray/rllib_pistonball.py>`__:
    Example on how to use RLlib to learn in `PettingZoo <https://www.pettingzoo.ml>`__ multi-agent environments.
@@ -112,13 +112,13 @@ Multi-Agent and Hierarchical
    Example of customizing PPO to leverage a centralized value function.
 - `Centralized critic in the env <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic_2.py>`__:
    A simpler method of implementing a centralized critic by augmentating agent observations with global information.
-- `Hand-coded policy <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_and_self_play/custom_heuristic_policy.py>`__:
+- `Hand-coded policy <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/custom_heuristic_policy.py>`__:
    Example of running a custom hand-coded policy alongside trainable policies.
-- `Weight sharing between policies <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_and_self_play/multi_agent_cartpole.py>`__:
+- `Weight sharing between policies <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/multi_agent_cartpole.py>`__:
    Example of how to define weight-sharing layers between two different policies.
-- `Multiple algorithms <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_two_trainers.py>`__:
+- `Multiple algorithms <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/two_algorithms.py>`__:
    Example of alternating training between DQN and PPO.
-- `Hierarchical training <https://github.com/ray-project/ray/blob/master/rllib/examples/hierarchical_training.py>`__:
+- `Hierarchical training <https://github.com/ray-project/ray/blob/master/rllib/examples/hierarchical/hierarchical_training.py>`__:
    Example of hierarchical training using the multi-agent API.
 
 

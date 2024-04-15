@@ -959,7 +959,11 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
   int32_t num_retries_left = 0;
   int32_t num_oom_retries_left = 0;
   bool task_failed_due_to_oom = error_info.error_type() == rpc::ErrorType::OUT_OF_MEMORY;
-  bool actor_died = error_info.error_type() == rpc::ErrorType::ACTOR_DIED;
+  // If the actor isn't dead and it's a user exception, we should update the seq no. If an
+  // actor is dead and restarted, the seqno is reset, and we don't need to update it when
+  // resubmitting a task.
+  bool update_seqno = error_info.error_type() != rpc::ErrorType::ACTOR_DIED &&
+                      error_info.error_type() != rpc::ErrorType::ACTOR_UNAVAILABLE;
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -1012,11 +1016,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
                                  spec.AttemptNumber(),
                                  RayConfig::instance().task_oom_retry_delay_base_ms())
                            : RayConfig::instance().task_retry_delay_ms();
-    // If actor is not dead, we should update the seq no. If an actor is dead and
-    // restarted, the seqno is reset, and we don't need to update it when resubmitting a
-    // task.
-    retry_task_callback_(
-        spec, /*object_recovery*/ false, /*update_seqno=*/!actor_died, delay_ms);
+    retry_task_callback_(spec, /*object_recovery*/ false, update_seqno, delay_ms);
     return true;
   } else {
     RAY_LOG(INFO) << "No retries left for task " << spec.TaskId()

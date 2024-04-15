@@ -494,7 +494,7 @@ class _ActorClassMetadata:
             See :ref:`accelerator types <accelerator_types>`.
         runtime_env: The runtime environment for this actor.
         scheduling_strategy: Strategy about how to schedule this actor.
-        last_export_session_and_job: A pair of the last exported session
+        last_export_cluster_and_job: A pair of the last exported cluster
             and job to help us to know whether this function was exported.
             This is an imperfect mechanism used to determine if we need to
             export the remote function again. It is imperfect in the sense that
@@ -538,16 +538,10 @@ class _ActorClassMetadata:
         self.runtime_env = runtime_env
         self.concurrency_groups = concurrency_groups
         self.scheduling_strategy = scheduling_strategy
-        self.last_export_session_and_job = None
+        self.last_export_cluster_and_job = None
         self.method_meta = _ActorClassMethodMetadata.create(
             modified_class, actor_creation_function_descriptor
         )
-
-    def __getstate__(self):
-        # `last_export_session_and_job` is worker-local. Reset it when pickling.
-        state = dict(self.__dict__)
-        state["last_export_session_and_job"] = None
-        return state
 
 
 @PublicAPI
@@ -1031,9 +1025,9 @@ class ActorClass:
 
         # Export the actor.
         if not meta.is_cross_language and (
-            meta.last_export_session_and_job != worker.current_session_and_job
+            meta.last_export_cluster_and_job != worker.current_cluster_and_job
         ):
-            # If this actor class was not exported in this session and job,
+            # If this actor class was not exported in this cluster and job,
             # we need to export this function again, because current GCS
             # doesn't have it.
 
@@ -1046,7 +1040,7 @@ class ActorClass:
                 meta.actor_creation_function_descriptor,
                 meta.method_meta.methods.keys(),
             )
-            meta.last_export_session_and_job = worker.current_session_and_job
+            meta.last_export_cluster_and_job = worker.current_cluster_and_job
 
         resources = ray._private.utils.resources_from_ray_options(actor_options)
         # Set the actor's default resources if not already set. First three
@@ -1206,7 +1200,7 @@ class ActorClass:
             meta.method_meta.enable_task_events,
             actor_method_cpu,
             meta.actor_creation_function_descriptor,
-            worker.current_session_and_job,
+            worker.current_cluster_and_job,
             original_handle=True,
         )
 
@@ -1286,7 +1280,7 @@ class ActorHandle:
         method_enable_task_events: Dict[str, bool],
         actor_method_cpus: int,
         actor_creation_function_descriptor,
-        session_and_job,
+        cluster_and_job,
         original_handle=False,
     ):
         self._ray_actor_language = language
@@ -1306,7 +1300,7 @@ class ActorHandle:
         )
         self._ray_method_enable_task_events = method_enable_task_events
         self._ray_actor_method_cpus = actor_method_cpus
-        self._ray_session_and_job = session_and_job
+        self._ray_cluster_and_job = cluster_and_job
         self._ray_is_cross_language = language != Language.PYTHON
         self._ray_actor_creation_function_descriptor = (
             actor_creation_function_descriptor
@@ -1589,6 +1583,7 @@ class ActorHandle:
             )
         else:
             # Local mode
+            assert worker.current_cluster_and_job == state["current_cluster_and_job"]
             return cls(
                 # TODO(swang): Accessing the worker's current task ID is not
                 # thread-safe.
@@ -1606,7 +1601,7 @@ class ActorHandle:
                 state["method_enable_task_events"],
                 state["actor_method_cpus"],
                 state["actor_creation_function_descriptor"],
-                worker.current_session_and_job,
+                state["current_cluster_and_job"],
             )
 
     def __reduce__(self):

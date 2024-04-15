@@ -99,6 +99,7 @@ from ray._raylet import (  # noqa: E402,F401
     UniqueID,
     Language,
     PlacementGroupID,
+    ClusterID,
 )
 
 _config = _Config()

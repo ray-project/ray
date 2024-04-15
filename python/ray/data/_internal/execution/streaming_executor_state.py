@@ -3,6 +3,7 @@
 This is split out from streaming_executor.py to facilitate better unit testing.
 """
 
+import logging
 import math
 import threading
 import time
@@ -11,7 +12,6 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 import ray
-from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
 )
@@ -35,7 +35,7 @@ from ray.data._internal.execution.operators.input_data_buffer import InputDataBu
 from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.progress_bar import ProgressBar
 
-logger = DatasetLogger(__name__)
+logger = logging.getLogger(__name__)
 
 # Holds the full execution state of the streaming topology. It's a dict mapping each
 # operator to tracked streaming exec state.
@@ -436,14 +436,14 @@ def process_completed_tasks(
                                 " Ignoring this exception with remaining"
                                 f" max_errored_blocks={remaining}."
                             )
-                            logger.get_logger().error(error_message, exc_info=e)
+                            logger.error(error_message, exc_info=e)
                         else:
                             error_message += (
                                 " Dataset execution will now abort."
                                 " To ignore this exception and continue, set"
                                 " DataContext.max_errored_blocks."
                             )
-                            logger.get_logger().error(error_message)
+                            logger.error(error_message)
                             raise e from None
                 else:
                     assert isinstance(task, MetadataOpTask)
