@@ -1,7 +1,15 @@
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 from ray._private.pydantic_compat import BaseModel, Field
 from ray.util.annotations import DeveloperAPI
+
+try:
+    import pydantic  # noqa: F401
+except ImportError:
+    raise ModuleNotFoundError(
+        "pydantic isn't installed. "
+        "To install pydantic, please run 'pip install pydantic'"
+    )
 
 
 @DeveloperAPI
@@ -25,6 +33,15 @@ class TrainWorkerInfo(BaseModel):
 
 
 @DeveloperAPI
+class TrainDatasetInfo(BaseModel):
+    name: str = Field(
+        description="The key of the dataset dict specified in Ray Train Trainer."
+    )
+    plan_name: str = Field(description="The name of the internal dataset plan.")
+    plan_uuid: str = Field(description="The uuid of the internal dataset plan.")
+
+
+@DeveloperAPI
 class TrainRunInfo(BaseModel):
     """Metadata for a Ray Train run and information about its workers."""
 
@@ -41,6 +58,6 @@ class TrainRunInfo(BaseModel):
     workers: List[TrainWorkerInfo] = Field(
         description="A List of Train workers sorted by global ranks."
     )
-    dataset_ids: Optional[Dict[str, str]] = Field(
-        description="A List of dataset <name, id> pairs for this Train run."
+    datasets: List[TrainDatasetInfo] = Field(
+        description="A List of dataset info for this Train run."
     )

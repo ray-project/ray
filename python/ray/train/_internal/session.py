@@ -61,9 +61,9 @@ class TrialInfo:
     resources: Dict[str, float]
     logdir: str
     driver_ip: str
-    run_id: Optional[str] = None
-    dataset_ids: Optional[List[str]] = None
     experiment_name: Optional[str] = None
+    run_id: Optional[str] = None
+    datasets_info: Optional[List[Dict[str, Any]]] = None
 
 
 class _FutureTrainingResult:
@@ -175,9 +175,6 @@ class _TrainSession:
 
         # The unique ID for a Train Run
         self.run_id = uuid.uuid4().hex
-
-    def get_run_id(self) -> str:
-        return self.run_id
 
     def get_state(self, key: str) -> Any:
         return self._state.get(key)

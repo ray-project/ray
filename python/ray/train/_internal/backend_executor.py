@@ -10,7 +10,7 @@ from ray._private.ray_constants import env_integer
 from ray.data import Dataset
 from ray.exceptions import RayActorError
 from ray.train import Checkpoint, DataConfig
-from ray.train._internal.schema import TrainRunInfo, TrainWorkerInfo
+from ray.train._internal.schema import TrainDatasetInfo, TrainRunInfo, TrainWorkerInfo
 from ray.train._internal.session import (
     TrialInfo,
     _TrainingResult,
@@ -428,7 +428,8 @@ class BackendExecutor:
         return local_rank_map, local_world_size_map, node_rank_map
 
     def _register_train_run(self, trial_info) -> None:
-        # Collect Ray Train Worker Info
+        """Collect Train Run Info and report to StatsActor."""
+
         def collect_train_worker_info():
             train_context = ray.train.get_context()
             core_context = ray.runtime_context.get_runtime_context()
@@ -454,9 +455,12 @@ class BackendExecutor:
             logger.warning("Failed to collect infomation for Ray Train Worker.")
             return
         else:
-            # Report to StateActor
             worker_info_list = ray.get(futures)
             worker_info_list = sorted(worker_info_list, key=lambda x: x.world_rank)
+
+            dataset_info_list = [
+                TrainDatasetInfo(**kwargs) for kwargs in trial_info.datasets_info
+            ]
 
             runtime_context = ray.runtime_context.get_runtime_context()
 
@@ -466,7 +470,7 @@ class BackendExecutor:
                 trial_name=trial_info.name,
                 trainer_actor_id=runtime_context.get_actor_id(),
                 workers=worker_info_list,
-                dataset_ids=trial_info.dataset_ids,
+                datasets=dataset_info_list,
             )
 
             stats_actor = get_or_create_stats_actor()

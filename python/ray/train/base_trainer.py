@@ -235,10 +235,6 @@ class BaseTrainer(abc.ABC):
         )
         self.metadata = metadata
         self.datasets = datasets if datasets is not None else {}
-        self.dataset_ids = {
-            ds_name: f"{ds._plan._dataset_name}_{ds._plan._dataset_uuid}"
-            for ds_name, ds in self.datasets.items()
-        }
         self.starting_checkpoint = resume_from_checkpoint
 
         # These attributes should only be set through `BaseTrainer.restore`
@@ -248,6 +244,17 @@ class BaseTrainer(abc.ABC):
         self._validate_attributes()
 
         air_usage.tag_air_trainer(self)
+
+    @property
+    def datasets_info(self) -> List[Dict[str, Any]]:
+        return [
+            {
+                "name": ds_name,
+                "plan_name": ds._plan._dataset_name,
+                "plan_uuid": ds._plan._dataset_uuid,
+            }
+            for ds_name, ds in self.datasets.items()
+        ]
 
     @PublicAPI(stability="alpha")
     @classmethod
