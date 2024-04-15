@@ -58,6 +58,8 @@ class SessionFileHandler(logging.Handler):
         if log_directory is None:
             return
 
+        os.makedirs(log_directory, exist_ok=True)
+
         self._path = os.path.join(log_directory, self._filename)
         self._handler = logging.FileHandler(self._path)
         if self._formatter is not None:
