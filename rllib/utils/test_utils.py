@@ -1245,14 +1245,13 @@ def run_rllib_example_script_experiment(
             "training_iteration": args.stop_iters,
             "timesteps_total": args.stop_timesteps,
             }
-        success_metric: Only relevent if `args.as_test` is True.
+        success_metric: Only relevant if `args.as_test` is True.
             A dict mapping a single(!) ResultDict key string (using "/" in
             case of nesting, e.g. "sampler_results/episode_reward_mean" for referring
-            to `result_dict['sampler_results']['episode_reward_mean']` to minimum
-            values, reaching of which will stop the experiment) to a single(!) minimum
-            value to be reached in order for the experiment to count as successful.
-            If `args.as_test` is True AND this `success_metric` is not reached with the
-            bounds defined by `stop`, will raise an Exception.
+            to `result_dict['sampler_results']['episode_reward_mean']` to a single(!)
+            minimum value to be reached in order for the experiment to count as
+            successful. If `args.as_test` is True AND this `success_metric` is not
+            reached with the bounds defined by `stop`, will raise an Exception.
         trainable: The Trainable sub-class to run in the tune.Tuner. If None (default),
             use the registered RLlib Algorithm class specified by args.algo.
         tune_callbacks: A list of Tune callbacks to configure with the tune.Tuner.

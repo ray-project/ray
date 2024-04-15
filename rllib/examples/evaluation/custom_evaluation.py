@@ -16,6 +16,51 @@ We define a custom evaluation method that does the following:
 - It runs a defined number of episodes for evaluation purposes.
 - It collects the metrics from those runs, summarizes these metrics and returns them.
 
+
+How to run this script
+----------------------
+`python [script file name].py --enable-new-api-stack
+
+You can switch off custom evaluation (and use RLlib's default evaluation procedure)
+with the `--no-custom-eval` flag.
+
+You can switch on parallel evaluation to training using the
+`--evaluation-parallel-to-training` flag. See this example script here:
+https://github.com/ray-project/ray/blob/master/rllib/examples/evaluation/evaluation_parallel_to_training.py  # noqa
+for more details on running evaluation parallel to training.
+
+For debugging, use the following additional command line options
+`--no-tune --num-env-runners=0`
+which should allow you to set breakpoints anywhere in the RLlib code and
+have the execution stop there for inspection and debugging.
+
+For logging to your WandB account, use:
+`--wandb-key=[your WandB API key] --wandb-project=[some project name]
+--wandb-run-name=[optional: WandB run name (within the defined project)]`
+
+
+Results to expect
+-----------------
+You should see the following (or very similar) console output when running this script.
+Note that for each iteration, due to the definition of our custom evaluation function,
+we run 3 evaluation rounds per single training round.
+
+...
+Training iteration 1 -> evaluation round 0
+Training iteration 1 -> evaluation round 1
+Training iteration 1 -> evaluation round 2
+...
+...
++--------------------------------+------------+-----------------+--------+
+| Trial name                     | status     | loc             |   iter |
+|--------------------------------+------------+-----------------+--------+
+| PPO_SimpleCorridor_06582_00000 | TERMINATED | 127.0.0.1:69905 |      4 |
++--------------------------------+------------+-----------------+--------+
++------------------+-------+----------+--------------------+
+|   total time (s) |    ts |   reward |   episode_len_mean |
+|------------------+-------+----------+--------------------|
+|          26.1973 | 16000 | 0.872034 |            13.7966 |
++------------------+-------+----------+--------------------+
 """
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -69,10 +114,10 @@ def custom_eval_function(algorithm: Algorithm, eval_workers: WorkerSet) -> Resul
     # processing.
     rollout_metrics = []
 
-    # For demonstration purposes, run through some arbitrary number of evaluation
-    # round within this one call. Note that this function is called once per
+    # For demonstration purposes, run through some number of evaluation
+    # rounds within this one call. Note that this function is called once per
     # training iteration (`Algorithm.train()` call) OR once per `Algorithm.evaluate()`
-    # (which may be called manually by the user).
+    # (which can be called manually by the user).
     for i in range(3):
         print(f"Training iteration {algorithm.iteration} -> evaluation round {i}")
         # Sample episodes from the EnvRunners AND have them return only the thus

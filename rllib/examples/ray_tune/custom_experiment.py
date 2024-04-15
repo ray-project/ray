@@ -2,21 +2,19 @@
 
 You should only use such a customized workflow if the following conditions apply:
 - You know exactly what you are doing :)
-- Simply configuring an existing RLlib Algorithm (e.g. PPO) via its AlgorithmConfig
-is not enough and doesn't allow you to shape the Algorithm into behaving the way you'd
-like.
--- Note that for complex and custom evaluation procedures there is a RLlib Algorithm
-config option (see examples/evaluation/custom_evaluation.py for more details).
-- Subclassing
+- Configuring an existing RLlib Algorithm (e.g. PPO) via its AlgorithmConfig
+is not sufficient and doesn't allow you to shape the Algorithm into behaving the way
+you'd like. Note that for complex, custom evaluation procedures there are many
+AlgorithmConfig options one can use (for more details, see:
+https://github.com/ray-project/ray/blob/master/rllib/examples/evaluation/custom_evaluation.py).  # noqa
+- Subclassing an RLlib Algorithm class and overriding the new class' `training_step`
+method is not sufficient and doesn't allow you to define the algorithm's execution
+logic the way you'd like. See an example here on how to customize the algorithm's
+`training_step()` method:
+https://github.com/ray-project/ray/blob/master/rllib/examples/algorithm/custom_training_step_on_and_off_policy_combined.py  # noqa
 
-"""
 
-"""Example of a custom training workflow. Run this for a demo.
 
-This example shows:
-  - using Tune trainable functions to implement custom training workflows
-
-You can visualize experiment results in ~/ray_results using TensorBoard.
 """
 from ray import train, tune
 from ray.rllib.algorithms.ppo import PPO, PPOConfig

@@ -28,7 +28,7 @@ Below examples include:
 
 How to run this script
 ----------------------
-`python [script file name].py
+`python [script file name].py`
 
 
 Results to expect
