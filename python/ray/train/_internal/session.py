@@ -6,7 +6,6 @@ import queue
 import sys
 import threading
 import time
-import uuid
 import warnings
 from dataclasses import dataclass
 from datetime import datetime
@@ -61,8 +60,8 @@ class TrialInfo:
     resources: Dict[str, float]
     logdir: str
     driver_ip: str
+    run_id: str
     experiment_name: Optional[str] = None
-    run_id: Optional[str] = None
     datasets_info: Optional[List[Dict[str, Any]]] = None
 
 
@@ -172,9 +171,6 @@ class _TrainSession:
 
         self.accelerator = None
         self._state = {}
-
-        # The unique ID for a Train Run
-        self.run_id = uuid.uuid4().hex
 
     def get_state(self, key: str) -> Any:
         return self._state.get(key)
