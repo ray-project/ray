@@ -49,6 +49,7 @@ class DataSource:
 
 class DataOrganizer:
     head_node_ip = None
+    bytedance_ip = ""
     bytedance_cpu_metric = ""
     bytedance_gpu_metric = ""
     bytedance_head_webshell = ""

@@ -613,7 +613,7 @@ async def download_and_unpack_package(
     base_directory: str,
     gcs_aio_client: Optional["GcsAioClient"] = None,  # noqa: F821
     logger: Optional[logging.Logger] = default_logger,
-    runtime_env : Optional[dict] = None,
+    runtime_env: Optional[dict] = None,
 ) -> str:
     """Download the package corresponding to this URI and unpack it if zipped.
 
@@ -764,7 +764,9 @@ async def download_and_unpack_package(
                 if protocol == Protocol.HDFS:
                     subprocess.check_call(["hdfs", "dfs", "-get", pkg_uri, pkg_file])
                 elif protocol == Protocol.GIT:
-                    await download_package_from_git(runtime_env, str(pkg_file), logger, pkg_uri)
+                    await download_package_from_git(
+                        runtime_env, str(pkg_file), logger, pkg_uri
+                    )
                 else:
                     with open_file(pkg_uri, "rb", transport_params=tp) as package_zip:
                         with open_file(pkg_file, "wb") as fin:
@@ -833,7 +835,9 @@ async def download_package_from_git(
 
         if len(git_path_list) < 2 or len(git_path_list) > 3:
             if py_modules_mode:
-                logger.info(f"failed to find git path in pymodules mode, url: {working_dir}")
+                logger.info(
+                    f"failed to find git path in pymodules mode, url: {working_dir}"
+                )
                 return
             raise RuntimeError(
                 "must have project, branch, commit in working_dir, split by @"
@@ -875,10 +879,17 @@ async def download_package_from_git(
                 platform_key = os.environ.get("BYTED_RAY_PLATFORM_GIT_QUERY_KEY")
                 platform_link = os.environ.get("BYTED_RAY_PLATFORM_GIT_QUERY_LINK")
                 if platform_key is None or platform_link is None:
-                    raise RuntimeError("platform query information should be provideded in platform clone mode")
+                    raise RuntimeError(
+                        "platform query information should be provideded in platform clone mode"
+                    )
 
                 import requests
-                result = requests.post(platform_link, headers={"mlx-zti-token": get_sec_token_string()}, timeout=10)
+
+                result = requests.post(
+                    platform_link,
+                    headers={"mlx-zti-token": get_sec_token_string()},
+                    timeout=10,
+                )
                 if result.status_code == 200 and "encrypt_token" in result.json():
                     encrypt_git_private_key = result.json()["encrypt_token"]
                     new_encrypted = base64.b64decode(encrypt_git_private_key)
@@ -889,9 +900,7 @@ async def download_package_from_git(
                 else:
                     raise RuntimeError("failed to get tmp key from platform server")
         else:
-            raise RuntimeError(
-                "git_private_key error from kuberay"
-            )
+            raise RuntimeError("git_private_key error from kuberay")
 
         if "git_post_commands" in runtime_env:
             git_post_download_command = runtime_env["git_post_commands"]
@@ -918,9 +927,12 @@ def merge_runtime_env_from_git(
     runtime_env: dict,
     logger: Optional[logging.Logger] = default_logger,
 ) -> dict:
-    git_overwrite_by_outer = os.environ.get("BYTED_RAY_RUNTIME_GIT_OVERWITE_BY_OUTER") is not None
+    git_overwrite_by_outer = (
+        os.environ.get("BYTED_RAY_RUNTIME_GIT_OVERWITE_BY_OUTER") is not None
+    )
     # ganrantee not modify the origin runtime_env
     import copy
+
     runtime_env = copy.deepcopy(runtime_env)
     protocal, uri = parse_uri(runtime_env["working_dir"])
     if protocal != Protocol.GIT:
@@ -928,18 +940,25 @@ def merge_runtime_env_from_git(
 
     base_runtime_env_directory = os.path.join(base_directory, "working_dir_files")
     git_dir = os.path.join(base_runtime_env_directory, uri)
-    job_runtime_path = os.environ.get("BYTED_RAY_JOB_RUNTIME_PATH", "ray_runtime_env_config.json")
+    job_runtime_path = os.environ.get(
+        "BYTED_RAY_JOB_RUNTIME_PATH", "ray_runtime_env_config.json"
+    )
     job_runtime_sub_json_key = None
     if job_runtime_path.find(":") != -1:
         split_index = job_runtime_path.find(":")
-        job_runtime_sub_json_key = job_runtime_path[split_index + 1:]
+        job_runtime_sub_json_key = job_runtime_path[split_index + 1 :]
         job_runtime_path = job_runtime_path[:split_index]
     git_runtime_env_path = os.path.join(git_dir, job_runtime_path)
     # if json is not existed, try to find the yaml file
-    if not os.path.exists(git_runtime_env_path) and git_runtime_env_path.endswith(".json") \
-            and os.path.exists(git_runtime_env_path[:-5] + ".yaml"):
+    if (
+        not os.path.exists(git_runtime_env_path)
+        and git_runtime_env_path.endswith(".json")
+        and os.path.exists(git_runtime_env_path[:-5] + ".yaml")
+    ):
         git_runtime_env_path = git_runtime_env_path[:-5] + ".yaml"
-    logger.info(f"read runtime env from path: {git_runtime_env_path}, json subkey {job_runtime_sub_json_key}")
+    logger.info(
+        f"read runtime env from path: {git_runtime_env_path}, json subkey {job_runtime_sub_json_key}"
+    )
 
     if os.path.exists(git_runtime_env_path):
         # read ray_runtime_env_config.json from git repo
@@ -952,18 +971,23 @@ def merge_runtime_env_from_git(
                 skip_fields = set("working_dir")
                 if git_runtime_env_path.endswith(".yaml"):
                     import yaml
+
                     runtime_env_config = yaml.safe_load(config_json_file)
                 else:
                     runtime_env_config = json.load(config_json_file)
-                if job_runtime_sub_json_key is not None and \
-                        job_runtime_sub_json_key in runtime_env_config:
+                if (
+                    job_runtime_sub_json_key is not None
+                    and job_runtime_sub_json_key in runtime_env_config
+                ):
                     runtime_env_config = runtime_env_config[job_runtime_sub_json_key]
                 for field in runtime_env_config:
                     if field in skip_fields:
                         continue
                     if field not in combined_fields:
                         if field == "py_modules" and field in runtime_env:
-                            logger.info("not allow to overwrite py_modules depends on git repo")
+                            logger.info(
+                                "not allow to overwrite py_modules depends on git repo"
+                            )
                             continue
                         if git_overwrite_by_outer or field not in runtime_env:
                             runtime_env[field] = runtime_env_config[field]

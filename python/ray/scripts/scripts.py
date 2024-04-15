@@ -28,6 +28,7 @@ from ray._private.utils import (
     parse_resources_json,
     parse_node_labels_json,
 )
+from ray._private.utils import is_ipv6_address
 from ray._private.internal_api import memory_summary
 from ray._private.storage import _load_class
 from ray._private.usage import usage_lib
@@ -611,6 +612,18 @@ def start(
 ):
     """Start Ray processes manually on the local machine."""
 
+    if node_ip_address == "[]":
+        raise Exception(
+            "address is None, Maybe failed to get ipv6 address from pod in bytedance mode"
+        )
+
+    if (
+        not is_ipv6_address(node_ip_address)
+        and isinstance(node_ip_address, str)
+        and node_ip_address[0] == "["
+    ):
+        node_ip_address = node_ip_address[1:-1]
+
     if gcs_server_port is not None:
         cli_logger.error(
             "`{}` is deprecated and ignored. Use {} to specify "
@@ -815,9 +828,11 @@ def start(
                 # of the cluster. Please be careful when updating this line.
                 cli_logger.print(
                     cf.bold(" {} ray start --address='{}'"),
-                    f" {ray_constants.ENABLE_RAY_CLUSTERS_ENV_VAR}=1"
-                    if ray_constants.IS_WINDOWS_OR_OSX
-                    else "",
+                    (
+                        f" {ray_constants.ENABLE_RAY_CLUSTERS_ENV_VAR}=1"
+                        if ray_constants.IS_WINDOWS_OR_OSX
+                        else ""
+                    ),
                     bootstrap_address,
                 )
 
@@ -828,11 +843,13 @@ def start(
                 cli_logger.print(
                     "ray{}init({})",
                     cf.magenta("."),
-                    "_node_ip_address{}{}".format(
-                        cf.magenta("="), cf.yellow("'" + node_ip_address + "'")
-                    )
-                    if include_node_ip_address
-                    else "",
+                    (
+                        "_node_ip_address{}{}".format(
+                            cf.magenta("="), cf.yellow("'" + node_ip_address + "'")
+                        )
+                        if include_node_ip_address
+                        else ""
+                    ),
                 )
 
             if dashboard_url:

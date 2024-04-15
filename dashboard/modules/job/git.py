@@ -101,8 +101,8 @@ async def download_from_git(
         if commit_id:
             try:
                 cmd = "cd {} && git init && git remote add origin git@code.byted.org:{}.git".format(
-                        target_dir, pipes.quote(gitlab_repo_name)
-                    )
+                    target_dir, pipes.quote(gitlab_repo_name)
+                )
                 if use_platform_git:
                     cmd = "cd {} && git init && git remote add origin gitlab@git.byted.org:{}.git".format(
                         target_dir, pipes.quote(gitlab_repo_name)
@@ -124,8 +124,8 @@ async def download_from_git(
                 logger.info(f"get branch name, {branch_name}")
                 try:
                     cmd = "cd {} && export GIT_SSH_COMMAND=\"ssh -i {} -o 'StrictHostKeyChecking=no' -F /dev/null\" && git checkout FETCH_HEAD && git checkout -b {}".format(
-                            target_dir, tmp_file, pipes.quote(branch_name)
-                        )
+                        target_dir, tmp_file, pipes.quote(branch_name)
+                    )
                     if use_platform_git:
                         cmd = "cd {} && export GIT_SSH_COMMAND=\"sshpass -f {} ssh -o 'StrictHostKeyChecking=no' -F /dev/null\" && git checkout FETCH_HEAD && git checkout -b {}".format(
                             target_dir, tmp_file, pipes.quote(branch_name)
@@ -139,8 +139,8 @@ async def download_from_git(
             else:
                 try:
                     cmd = "cd {} && export GIT_SSH_COMMAND=\"ssh -i {} -o 'StrictHostKeyChecking=no' -F /dev/null\" && git checkout {}".format(
-                            target_dir, tmp_file, commit_id
-                        )
+                        target_dir, tmp_file, commit_id
+                    )
                     if use_platform_git:
                         cmd = "cd {} && export GIT_SSH_COMMAND=\"sshpass -f {} ssh -o 'StrictHostKeyChecking=no' -F /dev/null\" && git checkout {}".format(
                             target_dir, tmp_file, commit_id

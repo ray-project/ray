@@ -475,13 +475,19 @@ class JobSupervisor:
             if hasChanged:
                 self._git_based_replace_runtime_env = runtime_env
 
-        if "working_dir" in runtime_env and runtime_env["working_dir"].startswith("git://"):
+        if "working_dir" in runtime_env and runtime_env["working_dir"].startswith(
+            "git://"
+        ):
             _, uri = parse_uri(runtime_env["working_dir"])
-            base_runtime_env_directory = os.path.join(base_directory, "working_dir_files")
+            base_runtime_env_directory = os.path.join(
+                base_directory, "working_dir_files"
+            )
             git_dir = os.path.join(base_runtime_env_directory, uri)
             hashed_dir = get_uri_for_directory(git_dir)
 
-            runtime_env = merge_runtime_env_from_git(base_directory, runtime_env, logger)
+            runtime_env = merge_runtime_env_from_git(
+                base_directory, runtime_env, logger
+            )
 
             excludes = []
             if "excludes" in runtime_env:

@@ -75,22 +75,19 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             os.environ.get("BYTED_RAY_POD_IP") is not None
             and os.environ.get("BYTED_RAY_UNDERLAY_NETWORK") is None
         ):
-            self._bytedance_client_mode = (
-                "ray://["
-                + os.environ.get("BYTED_RAY_POD_IP")
-                + "]:"
-                + os.environ.get("PORT2")
+            ray_ip = os.environ.get("BYTED_RAY_POD_IP")
+            if ray._private.utils.is_ipv6_address(ray_ip):
+                ray_ip = "[" + ray_ip + "]"
+            self._bytedance_client_endpoint = (
+                "ray://" + ray_ip + ":" + os.environ.get("PORT2")
             )
-            self._bytedance_dashboard_mode = (
-                "http://["
-                + os.environ.get("BYTED_RAY_POD_IP")
-                + "]:"
-                + os.environ.get("PORT1")
+            self._bytedance_dashboard_endpoint = (
+                "http://" + ray_ip + ":" + os.environ.get("PORT1")
             )
             self._bytedance_cluster_name = os.environ.get("BYTED_RAY_CLUSTER", "")
         else:
-            self._bytedance_client_mode = ""
-            self._bytedance_dashboard_mode = ""
+            self._bytedance_client_endpoint = ""
+            self._bytedance_dashboard_endpoint = ""
             self._bytedance_cluster_name = ""
 
     async def _update_stubs(self, change):
@@ -325,12 +322,14 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         task_ids_in_a_worker = await self.get_task_ids_running_in_a_worker(worker_id)
         return aiohttp.web.Response(
-            text=WARNING_FOR_MULTI_TASK_IN_A_WORKER
-            + str(task_ids_in_a_worker)
-            + "\n"
-            + reply.output
-            if len(task_ids_in_a_worker) > 1
-            else reply.output
+            text=(
+                WARNING_FOR_MULTI_TASK_IN_A_WORKER
+                + str(task_ids_in_a_worker)
+                + "\n"
+                + reply.output
+                if len(task_ids_in_a_worker) > 1
+                else reply.output
+            )
         )
 
     @routes.get("/task/cpu_profile")
@@ -423,14 +422,16 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         task_ids_in_a_worker = await self.get_task_ids_running_in_a_worker(worker_id)
         return aiohttp.web.Response(
-            body='<p style="color: #E37400;">{} {} </br> </p> </br>'.format(
-                EMOJI_WARNING,
-                WARNING_FOR_MULTI_TASK_IN_A_WORKER + str(task_ids_in_a_worker),
-            )
-            + SVG_STYLE
-            + (reply.output)
-            if len(task_ids_in_a_worker) > 1
-            else SVG_STYLE + reply.output,
+            body=(
+                '<p style="color: #E37400;">{} {} </br> </p> </br>'.format(
+                    EMOJI_WARNING,
+                    WARNING_FOR_MULTI_TASK_IN_A_WORKER + str(task_ids_in_a_worker),
+                )
+                + SVG_STYLE
+                + (reply.output)
+                if len(task_ids_in_a_worker) > 1
+                else SVG_STYLE + reply.output
+            ),
             headers={"Content-Type": "text/html"},
         )
 
@@ -488,9 +489,9 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             return aiohttp.web.Response(
                 body=reply.output,
                 headers={
-                    "Content-Type": "image/svg+xml"
-                    if format == "flamegraph"
-                    else "text/plain"
+                    "Content-Type": (
+                        "image/svg+xml" if format == "flamegraph" else "text/plain"
+                    )
                 },
             )
         else:
@@ -624,12 +625,14 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         logger.info("Returning profiling response, size {}".format(len(reply.output)))
 
         return aiohttp.web.Response(
-            body='<p style="color: #E37400;">{} {} </br> </p> </br>'.format(
-                EMOJI_WARNING, warning
-            )
-            + (reply.output)
-            if warning != ""
-            else reply.output,
+            body=(
+                '<p style="color: #E37400;">{} {} </br> </p> </br>'.format(
+                    EMOJI_WARNING, warning
+                )
+                + (reply.output)
+                if warning != ""
+                else reply.output
+            ),
             headers={"Content-Type": "text/html"},
         )
 
@@ -652,8 +655,8 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             namespace=KV_NAMESPACE_CLUSTER,
         )
         self.cluster_metadata = json.loads(cluster_metadata.decode("utf-8"))
-        self.cluster_metadata["clientPort"] = self._bytedance_client_mode
-        self.cluster_metadata["dashboardPort"] = self._bytedance_dashboard_mode
+        self.cluster_metadata["clientPort"] = self._bytedance_client_endpoint
+        self.cluster_metadata["dashboardPort"] = self._bytedance_dashboard_endpoint
         self.cluster_metadata["clusterName"] = self._bytedance_cluster_name
 
         while True:

@@ -28,7 +28,7 @@ def validate_uri(uri: str):
 
     if protocol is Protocol.GIT:
         pass
-    elif(
+    elif (
         protocol in Protocol.remote_protocols()
         and not path.endswith(".zip")
         and not path.endswith(".whl")

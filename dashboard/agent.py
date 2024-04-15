@@ -122,7 +122,7 @@ class DashboardAgent:
             )  # noqa
         )
         grpc_ip = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
-        if os.environ.get("BYTED_RAY_POD_IP") is not None:
+        if ray._private.utils.is_ipv6_address(os.environ.get("BYTED_RAY_POD_IP")):
             if grpc_ip == "0.0.0.0":
                 grpc_ip = "[::]"
         try:
