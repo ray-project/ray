@@ -202,7 +202,6 @@ class LocalTaskManager : public ILocalTaskManager {
                            bool is_detached_actor,
                            const rpc::Address &owner_address,
                            const std::string &runtime_env_setup_error_message);
-  
 
   size_t GetTaskArgsSize(const TaskSpecification &spec);
   /// Attempts to dispatch all tasks which are ready to run. A task
