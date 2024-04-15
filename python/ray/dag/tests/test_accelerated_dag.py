@@ -44,6 +44,11 @@ class Actor:
                     raise ValueError("injected fault")
         return self.i
 
+    def double_and_inc(self, x):
+        self.i *= 2
+        self.i += x
+        return self.i
+
     def echo(self, x):
         return x
 
@@ -94,19 +99,36 @@ def test_actor_multi_methods(ray_start_regular):
 
     compiled_dag.teardown()
 
-# def test_actor_method_multi_binds(ray_start_regular):
-#     a = Actor.remote(0)
-#     with InputNode() as inp:
-#         dag = a.inc.bind(inp)
-#         dag = a.inc.bind(dag)
 
-#     compiled_dag = dag.experimental_compile()
-#     output_channel = compiled_dag.execute(1)
-#     result = output_channel.begin_read()
-#     assert result == 2
-#     output_channel.end_read()
+def test_actor_multi_methods_order(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as inp:
+        dag = a.inc.bind(inp)
+        dag2 = a.double_and_inc.bind(inp)
+        dag3 = a.inc_two.bind(dag, dag2)
 
-#     compiled_dag.teardown()
+    compiled_dag = dag3.experimental_compile()
+    output_channel = compiled_dag.execute(1)
+    result = output_channel.begin_read()
+    assert result == 7
+    output_channel.end_read()
+
+    compiled_dag.teardown()
+
+
+def test_actor_method_multi_binds(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as inp:
+        dag = a.inc.bind(inp)
+        dag = a.inc.bind(dag)
+
+    compiled_dag = dag.experimental_compile()
+    output_channel = compiled_dag.execute(1)
+    result = output_channel.begin_read()
+    assert result == 2
+    output_channel.end_read()
+
+    compiled_dag.teardown()
 
 
 def test_regular_args(ray_start_regular):
