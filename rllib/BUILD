@@ -2851,11 +2851,11 @@ py_test(
 )
 
 py_test(
-    name = "examples/ray_tune/custom_progres_reporter",
-    main = "examples/ray_tune/custom_progres_reporter.py",
+    name = "examples/ray_tune/custom_progress_reporter",
+    main = "examples/ray_tune/custom_progress_reporter.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
-    srcs = ["examples/ray_tune/custom_progres_reporter.py"],
+    srcs = ["examples/ray_tune/custom_progress_reporter.py"],
 )
 
 # subdirectory: rl_modules/
