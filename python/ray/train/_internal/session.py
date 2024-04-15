@@ -464,6 +464,10 @@ class _TrainSession:
         return self.trial_info.id
 
     @property
+    def run_id(self) -> str:
+        return self.trial_info.run_id
+
+    @property
     def trial_resources(self) -> "PlacementGroupFactory":
         return self.trial_info.resources
 
