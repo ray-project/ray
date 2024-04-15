@@ -245,17 +245,6 @@ class BaseTrainer(abc.ABC):
 
         air_usage.tag_air_trainer(self)
 
-    @property
-    def datasets_info(self) -> List[Dict[str, Any]]:
-        return [
-            {
-                "name": ds_name,
-                "plan_name": ds._plan._dataset_name,
-                "plan_uuid": ds._plan._dataset_uuid,
-            }
-            for ds_name, ds in self.datasets.items()
-        ]
-
     @PublicAPI(stability="alpha")
     @classmethod
     def restore(

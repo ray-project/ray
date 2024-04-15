@@ -4,13 +4,14 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar
 
+from python.ray.train._internal.stats import TrainRunStatsManager
+
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.ray_constants import env_integer
 from ray.data import Dataset
 from ray.exceptions import RayActorError
 from ray.train import Checkpoint, DataConfig
-from ray.train._internal.schema import TrainDatasetInfo, TrainRunInfo, TrainWorkerInfo
 from ray.train._internal.session import (
     TrialInfo,
     _TrainingResult,
@@ -18,14 +19,12 @@ from ray.train._internal.session import (
     init_session,
     shutdown_session,
 )
-from ray.train._internal.stats_actor import get_or_create_stats_actor
 from ray.train._internal.storage import StorageContext
 from ray.train._internal.utils import check_for_failure
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import BackendConfig
 from ray.train.constants import (
     ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
-    ENABLE_RAY_TRAIN_DASHBOARD_ENV,
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
     ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV,
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
@@ -121,6 +120,8 @@ class BackendExecutor:
             )
         ]
 
+        self.stats_manager = TrainRunStatsManager()
+
     def start(
         self,
         initialization_hook: Optional[Callable[[], None]] = None,
@@ -196,6 +197,8 @@ class BackendExecutor:
             )
             self._increment_failures()
             self._restart()
+
+        self.stats_manager.set_worker_group(self.worker_group)
 
     def _create_placement_group(self):
         """Creates a placement group if it does not exist.
@@ -427,55 +430,6 @@ class BackendExecutor:
 
         return local_rank_map, local_world_size_map, node_rank_map
 
-    def _register_train_run(self, trial_info) -> None:
-        """Collect Train Run Info and report to StatsActor."""
-
-        def collect_train_worker_info():
-            train_context = ray.train.get_context()
-            core_context = ray.runtime_context.get_runtime_context()
-
-            return TrainWorkerInfo(
-                world_rank=train_context.get_world_rank(),
-                local_rank=train_context.get_local_rank(),
-                node_rank=train_context.get_node_rank(),
-                actor_id=core_context.get_actor_id(),
-                node_id=core_context.get_node_id(),
-                node_ip=core_context.get_node_ip_address(),
-                gpu_ids=core_context.get_accelerator_ids().get("GPU", []),
-                pid=os.getpid(),
-            )
-
-        futures = [
-            self.worker_group.execute_single_async(index, collect_train_worker_info)
-            for index in range(len(self.worker_group))
-        ]
-        success, exception = check_for_failure(futures)
-
-        if not success:
-            logger.warning("Failed to collect infomation for Ray Train Worker.")
-            return
-        else:
-            worker_info_list = ray.get(futures)
-            worker_info_list = sorted(worker_info_list, key=lambda x: x.world_rank)
-
-            dataset_info_list = [
-                TrainDatasetInfo(**kwargs) for kwargs in trial_info.datasets_info
-            ]
-
-            runtime_context = ray.runtime_context.get_runtime_context()
-
-            train_run_info = TrainRunInfo(
-                id=trial_info.run_id,
-                name=trial_info.experiment_name,
-                trial_name=trial_info.name,
-                trainer_actor_id=runtime_context.get_actor_id(),
-                workers=worker_info_list,
-                datasets=dataset_info_list,
-            )
-
-            stats_actor = get_or_create_stats_actor()
-            stats_actor.register_train_run.remote(train_run_info)
-
     def start_training(
         self,
         train_func: Callable[[], T],
@@ -501,7 +455,6 @@ class BackendExecutor:
         use_detailed_autofilled_metrics = env_integer(
             ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, 0
         )
-        ray_train_dashboard_enabled = env_integer(ENABLE_RAY_TRAIN_DASHBOARD_ENV, 0)
 
         # First initialize the session.
         def initialize_session(
@@ -580,8 +533,17 @@ class BackendExecutor:
 
         self.get_with_failure_handling(futures)
 
-        if ray_train_dashboard_enabled:
-            self._register_train_run()
+        # Get controller's TrainSession
+        runtime_context = ray.runtime_context.get_runtime_context()
+
+        session = get_session()
+        self.stats_manager.register_train_run(
+            run_id=session.run_id,
+            run_name=session.experiment_name,
+            trial_name=session.trial_name,
+            trainer_actor_id=runtime_context.get_actor_id(),
+            datasets=datasets,
+        )
 
         # Run the training function asynchronously in its own thread.
         def train_async():
