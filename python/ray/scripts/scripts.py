@@ -719,6 +719,11 @@ def start(
         assert ray_params.gcs_server_port is None
         ray_params.gcs_server_port = port
 
+        if os.environ.get("RAY_FAKE_CLUSTER"):
+            ray_params.env_vars = {
+                "RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID
+            }
+
         num_redis_shards = None
         # Start Ray on the head node.
         if redis_shard_ports is not None and address is None:
