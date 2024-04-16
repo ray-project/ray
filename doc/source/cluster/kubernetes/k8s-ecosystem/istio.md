@@ -20,12 +20,33 @@ kind create cluster
 ## Step 1: Install Istio
 
 ```bash
-export ISTIO_VERSION=1.20.5
+# download istioctl and manifests
+export ISTIO_VERSION=1.21.1
 curl -L https://istio.io/downloadIstio | sh -
-cd istio-1.20.5
+cd istio-1.21.1
 export PATH=$PWD/bin:$PATH
-istioctl install --set profile=minimal -y
+
+# install Istio with:
+#   1. 100% trace sampling for demo purpose
+#   2. "sanitize_te" disabled for proper grpc interception
+#   3. TLS 1.3
+istioctl install -y -f - <<EOF
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+spec:
+  meshConfig:
+    defaultConfig:
+      tracing:
+        sampling: 100
+      runtimeValues:
+        envoy.reloadable_features.sanitize_te: "false"
+    meshMTLS:
+      minProtocolVersion: TLSV1_3
+EOF
+
+# install Istio addmons, including kiali dashboard and jaeger dashboard
 kubectl apply -f samples/addons
+# enable istio sidecar auto injection
 kubectl label namespace default istio-injection=enabled
 ```
 
@@ -45,18 +66,15 @@ apiVersion: v1
 kind: Service
 metadata:
   labels:
-    ray.io/headless-worker-svc: raycluster-mini
-  name: raycluster-mini-headless-svc
+    ray.io/headless-worker-svc: raycluster-istio
+  name: raycluster-istio-headless-svc
   namespace: default
 spec:
   clusterIP: None
   selector:
-    ray.io/cluster: raycluster-mini
+    ray.io/cluster: raycluster-istio
   publishNotReadyAddresses: true
   ports:
-  - name: node-gcs-port
-    port: 6379
-    appProtocol: grpc
   - name: node-manager-port
     port: 6380
     appProtocol: grpc
@@ -75,15 +93,6 @@ spec:
   - name: metrics-export-port
     port: 8080
     appProtocol: http
-  - name: dashboard-port
-    port: 8265
-    appProtocol: http
-  - name: dashboard-grpc-port
-    port: 8266
-    appProtocol: grpc
-  - name: client-port
-    port: 10001
-    appProtocol: grpc
   - name: p10002
     port: 10002
     appProtocol: grpc
@@ -117,31 +126,22 @@ spec:
   - name: p10012
     port: 10012
     appProtocol: grpc
-  - name: p10013
-    port: 10013
-    appProtocol: grpc
-  - name: p10014
-    port: 10014
-    appProtocol: grpc
-  - name: p10015
-    port: 10015
-    appProtocol: grpc
-  - name: p10016
-    port: 10016
-    appProtocol: grpc
 EOF
 ```
 
-Note that this YAML manifest should list ALL the ports used by Ray explicitly. See [Configuring Ray](https://docs.ray.io/en/latest/ray-core/configure.html#all-nodes) for more details on ports required by Ray.
+Note that this Headless Service manifest MUST list ALL the ports, used by Ray explicitly, including ALL worker ports. See [Configuring Ray](https://docs.ray.io/en/latest/ray-core/configure.html#all-nodes) for more details on ports required by Ray.
 
 ## Step 4: Create the RayCluster
+
+The upcoming RayCluster MUST use exactly the same ports listed in the previous Headless Service, including the `max-worker-port`.
+In addition, the `node-ip-address` MUST be set to the Pod FQDN of the Headless Service to enable Istio L7 observability.
 
 ```bash
 kubectl apply -f - <<EOF
 apiVersion: ray.io/v1
 kind: RayCluster
 metadata:
-  name: raycluster-mini
+  name: raycluster-istio
 spec:
   rayVersion: '2.10.0-aarch64'
   headGroupSpec:
@@ -151,21 +151,15 @@ spec:
       object-manager-port: '6381'
       runtime-env-agent-port: '6382'
       dashboard-agent-grpc-port: '6383'
-      dashboard-grpc-port: '8266'
-      max-worker-port: '10016'
-      node-ip-address: '\$(hostname -I | sed "s/\./-/g").raycluster-mini-headless-svc.default.svc.cluster.local'
+      dashboard-agent-listen-port: '52365'
+      metrics-export-port: '8080'
+      max-worker-port: '10012'
+      node-ip-address: \$(hostname -I | tr -d ' ' | sed 's/\./-/g').raycluster-istio-headless-svc.default.svc.cluster.local
     template:
       spec:
         containers:
         - name: ray-head
           image: rayproject/ray:2.10.0-aarch64
-          ports:
-          - containerPort: 6379
-            name: redis
-          - containerPort: 8265
-            name: dashboard
-          - containerPort: 10001
-            name: client
   workerGroupSpecs:
     - replicas: 1
       minReplicas: 1
@@ -177,8 +171,10 @@ spec:
         object-manager-port: '6381'
         runtime-env-agent-port: '6382'
         dashboard-agent-grpc-port: '6383'
-        max-worker-port: '10016'
-        node-ip-address: '\$(hostname -I | sed "s/\./-/g").raycluster-mini-headless-svc.default.svc.cluster.local'
+        dashboard-agent-listen-port: '52365'
+        metrics-export-port: '8080'
+        max-worker-port: '10012'
+        node-ip-address: \$(hostname -I | tr -d ' ' | sed 's/\./-/g').raycluster-istio-headless-svc.default.svc.cluster.local
       template:
         spec:
           containers:
@@ -186,3 +182,26 @@ spec:
             image: rayproject/ray:2.10.0-aarch64
 EOF
 ```
+
+## Step 5: Run Ray application to generate traffic
+
+After the RayCluster is ready, use the following script to generate internal traffic.
+
+```bash
+export HEAD_POD=$(kubectl get pods --selector=ray.io/node-type=head -o custom-columns=POD:metadata.name --no-headers)
+kubectl exec -it $HEAD_POD -- python -c "import ray; ray.get([ray.remote(lambda x: print(x)).remote(i) for i in range(10000)])"
+```
+
+## Step 6: Verify the auto mTLS and L7 observability
+
+```bash
+istioctl dashboard kiali
+```
+
+Go to http://localhost:20001/kiali/console/namespaces/default/workloads/raycluster-istio?duration=60&refresh=60000&tab=info
+
+```bash
+istioctl dashboard kiali
+```
+
+Go to http://localhost:16686/jaeger/search?limit=1000&lookback=1h&maxDuration&minDuration&service=raycluster-istio.default
