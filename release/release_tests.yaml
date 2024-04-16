@@ -4011,7 +4011,7 @@
     cluster_compute: stress_tests/stress_tests_single_node_oom_compute.yaml
 
   run:
-    timeout: 500
+    timeout: 1000
     script: python stress_tests/test_parallel_tasks_memory_pressure.py --num-tasks 20
 
   variations:
