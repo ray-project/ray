@@ -40,13 +40,6 @@ using PublisherID = UniqueID;
 
 namespace pub_internal {
 
-// Protobuf messages fail to serialize if 2GB or larger. Cap published messages
-// to 1GiB to ensure that we can publish the message. Individual messages
-// larger than this limit will be dropped.
-// TODO(swang): Pubsub clients should also ensure that they don't try to
-// publish messages larger than this.
-constexpr int64_t kMaxPubMessageSizeBytes = 1 << 30;
-
 class SubscriberState;
 
 /// State for an entity / topic in a pub/sub channel.
@@ -81,8 +74,11 @@ class EntityState {
   std::queue<std::weak_ptr<rpc::PubMessage>> pending_messages_;
   // Size of each inflight message.
   std::queue<int64_t> message_sizes_;
-  // Maximum size in bytes of a single message published to
-  // subscribers.
+  // Protobuf messages fail to serialize if 2GB or larger. Cap published
+  // message batches to this size to ensure that we can publish each message
+  // batch. Individual messages larger than this limit will also be dropped.
+  // TODO(swang): Pubsub clients should also ensure that they don't try to
+  // publish messages larger than this.
   const int64_t max_message_size_bytes_;
   // Set to -1 to disable buffering.
   const int64_t max_buffered_bytes_;
@@ -94,7 +90,7 @@ class EntityState {
 /// Also supports subscribers to all keys in the channel.
 class SubscriptionIndex {
  public:
-  SubscriptionIndex(rpc::ChannelType channel_type, int64_t max_message_size_bytes);
+  SubscriptionIndex(rpc::ChannelType channel_type);
   ~SubscriptionIndex() = default;
 
   SubscriptionIndex(SubscriptionIndex &&) noexcept = default;
@@ -138,11 +134,8 @@ class SubscriptionIndex {
   bool CheckNoLeaks() const;
 
  private:
-  std::unique_ptr<EntityState> CreateEntityState();
+  static std::unique_ptr<EntityState> CreateEntityState(rpc::ChannelType channel_type);
 
-  // Maximum size in bytes of a single message published to
-  // subscribers.
-  const int64_t max_message_size_bytes_;
   // Type of channel this index is for.
   rpc::ChannelType channel_type_;
   // Collection of subscribers that subscribe to all entities of the channel.
@@ -171,13 +164,11 @@ class SubscriberState {
                   std::function<double()> get_time_ms,
                   uint64_t connection_timeout_ms,
                   int64_t publish_batch_size,
-                  int64_t max_message_size_bytes,
                   PublisherID publisher_id)
       : subscriber_id_(subscriber_id),
         get_time_ms_(std::move(get_time_ms)),
         connection_timeout_ms_(connection_timeout_ms),
         publish_batch_size_(publish_batch_size),
-        max_message_size_bytes_(max_message_size_bytes),
         last_connection_update_time_ms_(get_time_ms_()),
         publisher_id_(publisher_id) {}
 
@@ -238,9 +229,6 @@ class SubscriberState {
   uint64_t connection_timeout_ms_;
   /// The maximum number of objects to publish for each publish calls.
   const int64_t publish_batch_size_;
-  // Maximum size in bytes of a single message published to
-  // subscribers.
-  const int64_t max_message_size_bytes_;
   /// The last time long polling was connected in milliseconds.
   double last_connection_update_time_ms_;
   PublisherID publisher_id_;
@@ -327,12 +315,10 @@ class Publisher : public PublisherInterface {
         get_time_ms_(std::move(get_time_ms)),
         subscriber_timeout_ms_(subscriber_timeout_ms),
         publish_batch_size_(publish_batch_size),
-        max_message_size_bytes_(pub_internal::kMaxPubMessageSizeBytes),
         publisher_id_(publisher_id) {
     // Insert index map for each channel.
     for (auto type : channels) {
-      subscription_index_map_.emplace(
-          type, pub_internal::SubscriptionIndex(type, max_message_size_bytes_));
+      subscription_index_map_.emplace(type, pub_internal::SubscriptionIndex(type));
     }
 
     periodical_runner_->RunFnPeriodically([this] { CheckDeadSubscribers(); },
@@ -469,10 +455,6 @@ class Publisher : public PublisherInterface {
 
   /// The maximum number of objects to publish for each publish calls.
   const int64_t publish_batch_size_;
-
-  // Maximum size in bytes of a single message published to
-  // subscribers.
-  const int64_t max_message_size_bytes_;
 
   absl::flat_hash_map<rpc::ChannelType, uint64_t> cum_pub_message_cnt_
       ABSL_GUARDED_BY(mutex_);

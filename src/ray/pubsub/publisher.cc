@@ -103,11 +103,9 @@ const absl::flat_hash_map<SubscriberID, SubscriberState *> &EntityState::Subscri
   return subscribers_;
 }
 
-SubscriptionIndex::SubscriptionIndex(rpc::ChannelType channel_type,
-                                     int64_t max_message_size_bytes)
-    : max_message_size_bytes_(max_message_size_bytes),
-      channel_type_(channel_type),
-      subscribers_to_all_(CreateEntityState()) {}
+SubscriptionIndex::SubscriptionIndex(rpc::ChannelType channel_type)
+    : channel_type_(channel_type),
+      subscribers_to_all_(CreateEntityState(channel_type_)) {}
 
 int64_t SubscriptionIndex::GetNumBufferedBytes() const {
   // TODO(swang): Some messages may get published to both subscribers listening
@@ -141,7 +139,7 @@ bool SubscriptionIndex::AddEntry(const std::string &key_id, SubscriberState *sub
 
   auto sub_it = entities_.find(key_id);
   if (sub_it == entities_.end()) {
-    sub_it = entities_.emplace(key_id, CreateEntityState()).first;
+    sub_it = entities_.emplace(key_id, CreateEntityState(channel_type_)).first;
   }
   const bool subscriber_added = sub_it->second->AddSubscriber(subscriber);
 
@@ -249,16 +247,17 @@ bool SubscriptionIndex::CheckNoLeaks() const {
   return entities_.empty() && subscribers_to_key_id_.empty();
 }
 
-std::unique_ptr<EntityState> SubscriptionIndex::CreateEntityState() {
-  switch (channel_type_) {
+std::unique_ptr<EntityState> SubscriptionIndex::CreateEntityState(
+    rpc::ChannelType channel_type) {
+  switch (channel_type) {
   case rpc::ChannelType::RAY_ERROR_INFO_CHANNEL:
   case rpc::ChannelType::RAY_LOG_CHANNEL: {
     return std::make_unique<EntityState>(
-        max_message_size_bytes_,
+        RayConfig::instance().max_grpc_message_size(),
         RayConfig::instance().publisher_entity_buffer_max_bytes());
   }
   default:
-    return std::make_unique<EntityState>(max_message_size_bytes_,
+    return std::make_unique<EntityState>(RayConfig::instance().max_grpc_message_size(),
                                          /*max_buffered_bytes=*/-1);
   }
 }
@@ -324,8 +323,8 @@ bool SubscriberState::PublishIfPossible(bool force_noop) {
       const rpc::PubMessage &msg = **it;
 
       int64_t msg_size_bytes = msg.ByteSizeLong();
-      if (num_total_bytes > 0 &&
-          num_total_bytes + msg_size_bytes > max_message_size_bytes_) {
+      if (num_total_bytes > 0 && num_total_bytes + msg_size_bytes >
+                                     RayConfig::instance().max_grpc_message_size()) {
         // Adding this message to the batch would put us over the serialization
         // size threshold.
         break;
@@ -385,7 +384,6 @@ void Publisher::ConnectToSubscriber(const rpc::PubsubLongPollingRequest &request
                                                                  get_time_ms_,
                                                                  subscriber_timeout_ms_,
                                                                  publish_batch_size_,
-                                                                 max_message_size_bytes_,
                                                                  publisher_id_))
              .first;
   }
@@ -408,7 +406,6 @@ bool Publisher::RegisterSubscription(const rpc::ChannelType channel_type,
                                                                  get_time_ms_,
                                                                  subscriber_timeout_ms_,
                                                                  publish_batch_size_,
-                                                                 max_message_size_bytes_,
                                                                  publisher_id_))
              .first;
   }

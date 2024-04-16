@@ -88,14 +88,12 @@ class PublisherTest : public ::testing::Test {
            subscribers.end();
   }
 
-  SubscriberState *CreateSubscriber(
-      int64_t max_message_size_bytes = kMaxPubMessageSizeBytes) {
+  SubscriberState *CreateSubscriber() {
     subscribers_.push_back(std::make_unique<SubscriberState>(
         NodeID::FromRandom(),
         /*get_time_ms=*/[]() { return 1.0; },
         /*subscriber_timeout_ms=*/1000,
         /*publish_batch_size=*/1000,
-        max_message_size_bytes,
         kDefaultPublisherId));
     return subscribers_.back().get();
   }
@@ -138,8 +136,7 @@ TEST_F(PublisherTest, TestSubscriptionIndexSingeNodeSingleObject) {
   /// Test single node id & object id
   ///
   /// oid1 -> [nid1]
-  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
-                                       kMaxPubMessageSizeBytes);
+  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
   subscription_index.AddEntry(oid.Binary(), subscriber);
   const auto &subscribers_from_index =
       subscription_index.GetSubscriberIdsByKeyId(oid.Binary());
@@ -151,8 +148,7 @@ TEST_F(PublisherTest, TestSubscriptionIndexMultiNodeSingleObject) {
   /// Test single object id & multi nodes
   ///
   /// oid1 -> [nid1~nid5]
-  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
-                                       kMaxPubMessageSizeBytes);
+  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
   const auto oid = ObjectID::FromRandom();
   absl::flat_hash_set<NodeID> empty_set;
   subscribers_map_.emplace(oid, empty_set);
@@ -202,8 +198,7 @@ TEST_F(PublisherTest, TestSubscriptionIndexErase) {
   ///
   /// oid1 -> [nid1~nid5]
   /// oid2 -> [nid1~nid5]
-  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
-                                       kMaxPubMessageSizeBytes);
+  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
   int total_entries = 6;
   int entries_to_delete_at_each_time = 3;
   auto oid = ObjectID::FromRandom();
@@ -252,8 +247,7 @@ TEST_F(PublisherTest, TestSubscriptionIndexEraseMultiSubscribers) {
   ///
   /// Test erase the duplicated entries with multi subscribers.
   ///
-  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
-                                       kMaxPubMessageSizeBytes);
+  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
   auto oid = ObjectID::FromRandom();
   auto oid2 = ObjectID::FromRandom();
   absl::flat_hash_set<NodeID> empty_set;
@@ -277,8 +271,7 @@ TEST_F(PublisherTest, TestSubscriptionIndexEraseSubscriber) {
   ///
   /// Test erase subscriber.
   ///
-  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
-                                       kMaxPubMessageSizeBytes);
+  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
   auto oid = ObjectID::FromRandom();
   auto &subscribers = subscribers_map_[oid];
   std::vector<SubscriberID> subscriber_ids;
@@ -310,8 +303,7 @@ TEST_F(PublisherTest, TestSubscriptionIndexIdempotency) {
   auto *subscriber = CreateSubscriber();
   auto subscriber_id = subscriber->id();
   auto oid = ObjectID::FromRandom();
-  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
-                                       kMaxPubMessageSizeBytes);
+  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
 
   // Add the same entry many times.
   for (int i = 0; i < 5; i++) {
@@ -358,7 +350,6 @@ TEST_F(PublisherTest, TestSubscriber) {
       [this]() { return current_time_; },
       subscriber_timeout_ms_,
       10,
-      kMaxPubMessageSizeBytes,
       kDefaultPublisherId);
   // If there's no connection, it will return false.
   ASSERT_FALSE(subscriber->PublishIfPossible());
@@ -441,7 +432,6 @@ TEST_F(PublisherTest, TestSubscriberBatchSize) {
       [this]() { return current_time_; },
       subscriber_timeout_ms_,
       max_publish_size,
-      kMaxPubMessageSizeBytes,
       kDefaultPublisherId);
   subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback);
 
@@ -490,7 +480,6 @@ TEST_F(PublisherTest, TestSubscriberActiveTimeout) {
       [this]() { return current_time_; },
       subscriber_timeout_ms_,
       10,
-      kMaxPubMessageSizeBytes,
       kDefaultPublisherId);
 
   subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback);
@@ -563,7 +552,6 @@ TEST_F(PublisherTest, TestSubscriberDisconnected) {
       [this]() { return current_time_; },
       subscriber_timeout_ms_,
       10,
-      kMaxPubMessageSizeBytes,
       kDefaultPublisherId);
 
   // Suppose the new connection is removed.
@@ -626,7 +614,6 @@ TEST_F(PublisherTest, TestSubscriberTimeoutComplicated) {
       [this]() { return current_time_; },
       subscriber_timeout_ms_,
       10,
-      kMaxPubMessageSizeBytes,
       kDefaultPublisherId);
 
   // Suppose the new connection is removed.
@@ -1098,24 +1085,29 @@ TEST_F(PublisherTest, TestPublishFailure) {
 
 class ScopedEntityBufferMaxBytes {
  public:
-  ScopedEntityBufferMaxBytes(int64_t max_bytes)
-      : prev_max_bytes_(RayConfig::instance().publisher_entity_buffer_max_bytes()) {
-    RayConfig::instance().publisher_entity_buffer_max_bytes() = max_bytes;
+  ScopedEntityBufferMaxBytes(
+      int64_t max_buffer_bytes,
+      int64_t max_message_size_bytes = RayConfig::instance().max_grpc_message_size())
+      : prev_max_buffer_bytes_(RayConfig::instance().publisher_entity_buffer_max_bytes()),
+        prev_max_message_size_bytes_(RayConfig::instance().max_grpc_message_size()) {
+    RayConfig::instance().publisher_entity_buffer_max_bytes() = max_buffer_bytes;
+    RayConfig::instance().max_grpc_message_size() = max_message_size_bytes;
   }
 
   ~ScopedEntityBufferMaxBytes() {
-    RayConfig::instance().publisher_entity_buffer_max_bytes() = prev_max_bytes_;
+    RayConfig::instance().publisher_entity_buffer_max_bytes() = prev_max_buffer_bytes_;
+    RayConfig::instance().max_grpc_message_size() = prev_max_message_size_bytes_;
   }
 
  private:
-  const int64_t prev_max_bytes_;
+  const int64_t prev_max_buffer_bytes_;
+  const int64_t prev_max_message_size_bytes_;
 };
 
 TEST_F(PublisherTest, TestMaxBufferSizePerEntity) {
   ScopedEntityBufferMaxBytes max_bytes(10000);
 
-  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
-                                       kMaxPubMessageSizeBytes);
+  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
   auto job_id = JobID::FromInt(1234);
   auto *subscriber = CreateSubscriber();
   // Subscribe to job_id.
@@ -1160,10 +1152,10 @@ TEST_F(PublisherTest, TestMaxBufferSizePerEntity) {
 
 TEST_F(PublisherTest, TestMaxBufferSizeAllEntities) {
   int64_t max_bytes = 10000;
-  ScopedEntityBufferMaxBytes max_bytes_config(max_bytes);
+  ScopedEntityBufferMaxBytes max_bytes_config(/*max_buffer_bytes=*/max_bytes,
+                                              /*max_message_size_bytes=*/max_bytes);
 
-  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
-                                       max_bytes);
+  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
   auto *subscriber = CreateSubscriber();
   // Subscribe to all entities.
   subscription_index.AddEntry("", subscriber);
@@ -1215,12 +1207,12 @@ TEST_F(PublisherTest, TestMaxBufferSizeAllEntities) {
 TEST_F(PublisherTest, TestMaxMessageSize) {
   int64_t max_message_size_bytes = 1000;
   int64_t max_messages = 2;
-  ScopedEntityBufferMaxBytes max_buffer_bytes_config(max_message_size_bytes *
-                                                     max_messages);
+  ScopedEntityBufferMaxBytes max_bytes_config(
+      /*max_buffer_bytes=*/max_message_size_bytes * max_messages,
+      /*max_message_size_bytes=*/max_message_size_bytes);
 
-  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
-                                       max_message_size_bytes);
-  auto *subscriber = CreateSubscriber(max_message_size_bytes);
+  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
+  auto *subscriber = CreateSubscriber();
   // Subscribe to all entities.
   subscription_index.AddEntry("", subscriber);
 
