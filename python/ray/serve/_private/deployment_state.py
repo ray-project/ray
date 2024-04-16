@@ -33,7 +33,6 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
-    DEFAULT_LATENCY_BUCKET_MS,
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS,
@@ -1269,22 +1268,6 @@ class DeploymentState:
             tag_keys=("deployment", "replica", "application"),
         )
 
-        self.replica_scheduling_latency_histogram = metrics.Histogram(
-            "serve_replica_scheduling_latency_s",
-            boundaries=DEFAULT_LATENCY_BUCKET_MS,
-            description="Tracks how long replicas take to be scheduled.",
-            tag_keys=("application", "deployment"),
-        ).set_default_tags({"application": id.app_name, "deployment": id.name})
-
-        self.replica_initialization_latency_histogram = metrics.Histogram(
-            "serve_replica_initialization_latency_s",
-            boundaries=DEFAULT_LATENCY_BUCKET_MS,
-            description=(
-                "Tracks how long replicas take to start after being scheduled."
-            ),
-            tag_keys=("application", "deployment"),
-        ).set_default_tags({"application": id.app_name, "deployment": id.name})
-
         # Whether the multiplexed model ids have been updated since the last
         # time we checked.
         self._multiplexed_model_ids_updated = False
@@ -2085,10 +2068,6 @@ class DeploymentState:
                     "Initialization duration: "
                     f"{replica.initialization_duration_s:.1f}s.",
                     extra={"log_to_stderr": False},
-                )
-                self.replica_scheduling_latency_histogram.observe(scheduling_duration_s)
-                self.replica_initialization_latency_histogram.observe(
-                    replica.initialization_duration_s
                 )
             elif start_status == ReplicaStartupStatus.FAILED:
                 # Replica reconfigure (deploy / upgrade) failed
