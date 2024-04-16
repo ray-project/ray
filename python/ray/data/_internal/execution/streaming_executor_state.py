@@ -310,8 +310,7 @@ class OpState:
     def _get_average_ouput_size(self) -> float:
         return self.op._metrics.average_bytes_outputs_per_task
 
-    def _get_grow_rate(self) -> float:
-        return 10 * 1024 * 1024 * 10 * 6
+    def _get_grow_rate(self, resource_manager: ResourceManager) -> float:
         cumulative_grow_rate = 0
 
         for op in self.op.output_dependencies:
@@ -323,16 +322,19 @@ class OpState:
                 not op._metrics.average_task_duration
                 or not op._metrics.average_bytes_inputs_per_task
             ):
-                cumulative_grow_rate += (
-                    ray.data.DataContext.get_current().user_hint_first_operator_consume_rate
-                )
+                # cumulative_grow_rate += (
+                #     ray.data.DataContext.get_current().user_hint_first_operator_consume_rate
+                # )
                 continue
 
             cumulative_grow_rate += (
                 op._metrics.average_bytes_inputs_per_task
                 / op._metrics.average_task_duration
+                *
                 # * op.num_active_tasks()
-                * op.get_moving_average_num_active_tasks()
+                # * op.get_moving_average_num_active_tasks()
+                (resource_manager.get_global_limits().cpu
+                - self.op.num_active_tasks())
             )
 
         return cumulative_grow_rate
@@ -346,7 +348,7 @@ class OpState:
             self.last_update_time = time.time()
             return
 
-        grow_rate = self._get_grow_rate()
+        grow_rate = self._get_grow_rate(resource_manager)
         now = time.time()
         time_elapsed = now - self.last_update_time
 
@@ -359,16 +361,19 @@ class OpState:
         self.last_update_time = now
 
     def lsf_admission_control(self, resource_manager: ResourceManager) -> bool:
+        
         if self.op.name != "ReadRange->MapBatches(produce)":
             return True
 
+        INITIAL_BUDGET = resource_manager.get_global_limits().object_store_memory
+        
+        self._replenish_output_budget(resource_manager)
         output_size = (
             self._get_average_ouput_size()
-            or ray.data.DataContext.get_current().user_hint_first_operator_output_size
-            or 0
+            # or ray.data.DataContext.get_current().user_hint_first_operator_output_size
+            or INITIAL_BUDGET
         )
-        self._replenish_output_budget(resource_manager)
-
+        
         logger.get_logger().info(
             f"@mzm output_budget: {self.output_budget}, output_size: {output_size}"
         )
@@ -616,8 +621,7 @@ def select_operator_to_run(
             #     or len(op.get_active_tasks())
             #     # Default values: num cores divided by num stages.
             #     < math.floor(resource_manager.get_global_limits().cpu / (len(topology) - 1))
-                
-            #     # Start from 1 and gradually ramp up. 
+            #     # Start from 1 and gradually ramp up.
             #     # < 1
             #     or 0
             # )
@@ -669,8 +673,8 @@ def select_operator_to_run(
     print([op.name for op in ops])
     op = ops[0]  # @lsf prefer the producer
     # if op is not None:
-        # wall_time = time.time() - topology[op].start_time
-        # logger.get_logger().info(f"@lsf Selected: {op.name} @ {wall_time:.3f}")
+    # wall_time = time.time() - topology[op].start_time
+    # logger.get_logger().info(f"@lsf Selected: {op.name} @ {wall_time:.3f}")
     return op
 
 
