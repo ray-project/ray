@@ -283,6 +283,10 @@ class Router:
         self._event_loop = event_loop
         self.deployment_id = deployment_id
 
+        logger.info(
+            f"Created DeploymentHandle '{handle_id}' for {deployment_id}.",
+            extra={"log_to_stderr": False},
+        )
         if inside_ray_client_context():
             # Streaming ObjectRefGenerators are not supported in Ray Client, so we need
             # to override the behavior.
@@ -370,7 +374,9 @@ class Router:
             _DeploymentResponseBase,
         )
 
-        scanner = _PyObjScanner(source_type=_DeploymentResponseBase)
+        scanner = _PyObjScanner(
+            source_type=(_DeploymentResponseBase, ray.ObjectRef, ray.ObjectRefGenerator)
+        )
 
         try:
             responses = []
@@ -385,6 +391,13 @@ class Router:
                     )
                 elif isinstance(obj, DeploymentResponse):
                     responses.append(obj)
+
+                # This is no-op replacing the object with itself. The purpose is to make
+                # sure both object refs and object ref generator are not getting pinned
+                # to memory by the scanner and cause memory leak.
+                # See: https://github.com/ray-project/ray/issues/43248
+                elif isinstance(obj, (ray.ObjectRef, ray.ObjectRefGenerator)):
+                    replacement_table[obj] = obj
 
             # Gather `DeploymentResponse` object refs concurrently.
             if len(responses) > 0:

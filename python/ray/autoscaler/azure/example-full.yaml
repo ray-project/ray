@@ -47,6 +47,14 @@ provider:
     # set unique id for resources in this cluster
     # if not set a default id will be generated based on the resource group and cluster name
     # unique_id: RAY1
+    # set managed identity name and resource group
+    # if not set, a default user-assigned identity will be generated in the resource group specified above
+    # msi_name: ray-cluster-msi
+    # msi_resource_group: other-rg
+    # Set provisioning and use of public/private IPs for head and worker nodes. If both options below are true,
+    # only the head node will have a public IP address provisioned.
+    # use_internal_ips: True
+    # use_external_head_ip: True
 
 # How Ray will authenticate with newly launched nodes.
 auth:

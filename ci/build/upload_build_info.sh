@@ -31,6 +31,6 @@ mkdir -p "$BAZEL_LOG_DIR"
 
 ./ci/build/get_build_info.py > "$BAZEL_LOG_DIR"/metadata.json
 
-# Keep cryptography/openssl in sync with `requirements/test-requirements.txt`
-pip install -q -c "${RAY_DIR}/python/requirements.txt" docker aws_requests_auth boto3 cryptography==38.0.1 PyOpenSSL==23.0.0
+pip install -U --ignore-installed -c "${RAY_DIR}/python/requirements_compiled.txt" \
+  docker aws_requests_auth boto3 urllib3 cryptography pyopenssl
 python .buildkite/copy_files.py --destination logs --path "$BAZEL_LOG_DIR"

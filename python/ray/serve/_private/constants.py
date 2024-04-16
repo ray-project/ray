@@ -291,9 +291,13 @@ RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S = float(
 DEFAULT_AUTOSCALING_POLICY = "ray.serve.autoscaling_policy:default_autoscaling_policy"
 
 # Feature flag to enable collecting all queued and ongoing request
-# metrics at handles instead of replicas. OFF by default.
+# metrics at handles instead of replicas. ON by default.
 RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE = (
     os.environ.get("RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE", "1") == "1"
+)
+
+RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S = float(
+    os.environ.get("RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S", 10.0)
 )
 
 # Feature flag to always run a proxy on the head node even if it has no replicas.

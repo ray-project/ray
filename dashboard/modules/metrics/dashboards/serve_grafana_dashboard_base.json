@@ -87,7 +87,7 @@
           ]
         },
         "datasource": "${datasource}",
-        "definition": "label_values(ray_serve_num_http_requests{{{global_filters}}}, route)",
+        "definition": "label_values(ray_serve_num_http_requests_total{{{global_filters}}}, route)",
         "description": null,
         "error": null,
         "hide": 0,
@@ -97,7 +97,7 @@
         "name": "HTTP_Route",
         "options": [],
         "query": {
-          "query": "label_values(ray_serve_num_http_requests{{{global_filters}}}, route)",
+          "query": "label_values(ray_serve_num_http_requests_total{{{global_filters}}}, route)",
           "refId": "Prometheus-Instance-Variable-Query"
         },
         "refresh": 2,

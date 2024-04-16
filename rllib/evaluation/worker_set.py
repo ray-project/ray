@@ -367,6 +367,7 @@ class WorkerSet:
         self,
         from_worker: Optional[EnvRunner] = None,
         env_steps_sampled: Optional[int] = None,
+        timeout_s: Optional[float] = None,
     ) -> None:
         """Synchronizes the connectors of this WorkerSet's EnvRunners.
 
@@ -384,6 +385,8 @@ class WorkerSet:
         # local worker is the only operating worker and thus of course always holds
         # the reference connector state.
         if self.num_healthy_remote_workers() == 0:
+            if env_steps_sampled:
+                self.local_worker().global_num_env_steps_sampled = env_steps_sampled
             return
 
         from_worker = from_worker or self.local_worker()
@@ -393,6 +396,7 @@ class WorkerSet:
             lambda w: (w._env_to_module.get_state(), w._module_to_env.get_state()),
             healthy_only=True,
             local_worker=False,
+            timeout_seconds=timeout_s,
         )
         env_to_module_states = [s[0] for s in connector_states]
         module_to_env_states = [s[1] for s in connector_states]
@@ -425,7 +429,12 @@ class WorkerSet:
                 w.global_num_env_steps_sampled = env_runner_states["env_steps_sampled"]
 
         # Broadcast updated states back to all workers (including the local one).
-        self.foreach_worker(_update, local_worker=True, healthy_only=True)
+        self.foreach_worker(
+            _update,
+            local_worker=True,
+            healthy_only=True,
+            timeout_seconds=timeout_s,
+        )
 
     @DeveloperAPI
     def sync_weights(
@@ -984,7 +993,8 @@ class WorkerSet:
             List of IDs of the workers that were restored.
         """
         return self.__worker_manager.probe_unhealthy_actors(
-            timeout_seconds=self._remote_config.worker_health_probe_timeout_s
+            timeout_seconds=self._remote_config.worker_health_probe_timeout_s,
+            mark_healthy=True,
         )
 
     # TODO (sven): Deprecate once ARS/ES have been moved to `rllib_contrib`.

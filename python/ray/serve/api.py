@@ -16,12 +16,7 @@ from ray.serve._private.config import (
     ReplicaConfig,
     handle_num_replicas_auto,
 )
-from ray.serve._private.constants import (
-    DEFAULT_MAX_ONGOING_REQUESTS,
-    NEW_DEFAULT_MAX_ONGOING_REQUESTS,
-    SERVE_DEFAULT_APP_NAME,
-    SERVE_LOGGER_NAME,
-)
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_LOGGER_NAME
 from ray.serve._private.deployment_graph_build import build as pipeline_build
 from ray.serve._private.deployment_graph_build import (
     get_and_validate_ingress_deployment,
@@ -347,25 +342,9 @@ def deployment(
             logger.warning(
                 "DeprecationWarning: `target_num_ongoing_requests_per_replica` in "
                 "`autoscaling_config` has been deprecated and replaced by "
-                "`target_ongoing_requests`. Note that "
+                "`target_ongoing_requests`. "
                 "`target_num_ongoing_requests_per_replica` will be removed in a future "
                 "version."
-            )
-
-        if (
-            isinstance(autoscaling_config, dict)
-            and "target_num_ongoing_requests_per_replica" not in autoscaling_config
-            and "target_ongoing_requests" not in autoscaling_config
-        ) or (
-            isinstance(autoscaling_config, AutoscalingConfig)
-            and "target_num_ongoing_requests_per_replica"
-            not in autoscaling_config.dict(exclude_unset=True)
-            and "target_ongoing_requests"
-            not in autoscaling_config.dict(exclude_unset=True)
-        ):
-            logger.warning(
-                "The default value for `target_ongoing_requests` is currently 1.0, "
-                "but will change to 2.0 in an upcoming release."
             )
 
     max_ongoing_requests = (
@@ -420,13 +399,6 @@ def deployment(
         logger.warning(
             "DeprecationWarning: `max_concurrent_queries` in `@serve.deployment` has "
             "been deprecated and replaced by `max_ongoing_requests`."
-        )
-
-    if max_concurrent_queries is DEFAULT.VALUE:
-        logger.warning(
-            "The default value for `max_ongoing_requests` is currently "
-            f"{DEFAULT_MAX_ONGOING_REQUESTS}, but will change to "
-            f"{NEW_DEFAULT_MAX_ONGOING_REQUESTS} in the next upcoming release."
         )
 
     if isinstance(logging_config, LoggingConfig):

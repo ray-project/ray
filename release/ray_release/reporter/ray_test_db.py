@@ -1,5 +1,7 @@
 import json
+import os
 
+from ray_release.configs.global_config import BRANCH_PIPELINES
 from ray_release.reporter.reporter import Reporter
 from ray_release.result import Result, ResultStatus
 from ray_release.test import Test
@@ -17,6 +19,12 @@ class RayTestDBReporter(Reporter):
     """
 
     def report_result(self, test: Test, result: Result) -> None:
+        if os.environ.get("BUILDKITE_BRANCH") != "master":
+            logger.info("Skip upload test results. We only upload on master branch.")
+            return
+        if os.environ.get("BUILDKITE_PIPELINE_ID") not in BRANCH_PIPELINES:
+            logger.info("Skip upload test results. We only upload on branch pipeline.")
+            return
         if result.status == ResultStatus.TRANSIENT_INFRA_ERROR.value:
             logger.info(
                 f"Skip recording result for test {test.get_name()} due to transient "

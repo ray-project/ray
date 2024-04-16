@@ -4630,6 +4630,7 @@ class Dataset:
         self._synchronize_progress_bar()
         return blocks
 
+    @DeveloperAPI
     def has_serializable_lineage(self) -> bool:
         """Whether this dataset's lineage is able to be serialized for storage and
         later deserialized, possibly on a different cluster.

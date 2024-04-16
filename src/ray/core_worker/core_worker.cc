@@ -204,7 +204,14 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   NodeID local_raylet_id;
   int assigned_port;
 
-  JobID job_id = worker_context_.GetCurrentJobID();
+  if (options_.worker_type == WorkerType::DRIVER &&
+      !options_.serialized_job_config.empty()) {
+    // Driver populates the job config via initialization.
+    // Workers populates it when the first task is received.
+    rpc::JobConfig job_config;
+    job_config.ParseFromString(options_.serialized_job_config);
+    worker_context_.MaybeInitializeJobInfo(worker_context_.GetCurrentJobID(), job_config);
+  }
 
   local_raylet_client_ =
       std::make_shared<raylet::RayletClient>(io_service_,
@@ -212,7 +219,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                              options_.raylet_socket,
                                              GetWorkerID(),
                                              options_.worker_type,
-                                             job_id,
+                                             worker_context_.GetCurrentJobID(),
                                              options_.runtime_env_hash,
                                              options_.language,
                                              options_.node_ip_address,
@@ -252,17 +259,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   RAY_LOG(INFO) << "Initializing worker at address: " << rpc_address_.ip_address() << ":"
                 << rpc_address_.port() << ", worker ID " << worker_context_.GetWorkerID()
                 << ", raylet " << local_raylet_id;
-
-  if (options_.worker_type == WorkerType::DRIVER &&
-      !options_.serialized_job_config.empty()) {
-    // Driver populates the job config via initialization.
-    // Workers populates it when the first task is received.
-    rpc::JobConfig job_config;
-    job_config.ParseFromString(options_.serialized_job_config);
-    // Reads rpc_address_, have to happen after it's set.
-    *job_config.mutable_driver_node_id() = GetCurrentNodeId().Binary();
-    worker_context_.MaybeInitializeJobInfo(worker_context_.GetCurrentJobID(), job_config);
-  }
 
   gcs_client_ = std::make_shared<gcs::GcsClient>(options_.gcs_options, GetWorkerID());
 
@@ -384,7 +380,10 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
             "CoreWorker.HandleException");
       }));
 
-  experimental_mutable_object_manager_.reset(new ExperimentalMutableObjectManager());
+#if defined(__APPLE__) || defined(__linux__)
+  experimental_mutable_object_manager_ =
+      std::make_shared<experimental::MutableObjectManager>();
+#endif
 
   auto push_error_callback = [this](const JobID &job_id,
                                     const std::string &type,
@@ -1374,7 +1373,7 @@ Status CoreWorker::ExperimentalChannelWriteAcquire(
     int64_t num_readers,
     std::shared_ptr<Buffer> *data) {
   return experimental_mutable_object_manager_->WriteAcquire(
-      object_id, data_size, metadata->Data(), metadata->Size(), num_readers, data);
+      object_id, data_size, metadata->Data(), metadata->Size(), num_readers, *data);
 }
 
 Status CoreWorker::ExperimentalChannelWriteRelease(const ObjectID &object_id) {
@@ -1499,7 +1498,7 @@ Status CoreWorker::GetExperimentalMutableObjects(
     const std::vector<ObjectID> &ids, std::vector<std::shared_ptr<RayObject>> *results) {
   for (size_t i = 0; i < ids.size(); i++) {
     RAY_RETURN_NOT_OK(
-        experimental_mutable_object_manager_->ReadAcquire(ids[i], &(*results)[i]));
+        experimental_mutable_object_manager_->ReadAcquire(ids[i], (*results)[i]));
   }
   return Status::OK();
 }
@@ -3124,55 +3123,38 @@ Status CoreWorker::ReportGeneratorItemReturns(
         {dynamic_return_object.first}, &borrowed_refs, &deleted);
     memory_store_->Delete(deleted);
   }
+  const auto return_id = dynamic_return_object.first;
   RAY_LOG(DEBUG) << "Write the object ref stream, index: " << item_index
-                 << ", id: " << dynamic_return_object.first;
+                 << ", id: " << return_id;
 
-  if (waiter) {
-    waiter->IncrementObjectGenerated();
-  }
+  waiter->IncrementObjectGenerated();
 
   client->ReportGeneratorItemReturns(
       request,
-      [waiter, generator_id, item_index](
+      [waiter, generator_id, return_id, item_index](
           const Status &status, const rpc::ReportGeneratorItemReturnsReply &reply) {
         RAY_LOG(DEBUG) << "ReportGeneratorItemReturns replied. " << generator_id
                        << "index: " << item_index << ". total_consumed_reported: "
                        << reply.total_num_object_consumed();
-        if (waiter) {
-          RAY_LOG(DEBUG) << "Total object consumed: " << waiter->TotalObjectConsumed()
-                         << ". Total object generated: "
-                         << waiter->TotalObjectGenerated();
-          if (status.ok()) {
-            /// Since unary gRPC requests are not ordered, it is possible the stale
-            /// total value can be replied. Since total object consumed only can
-            /// increment, we always choose the larger value here.
-            waiter->UpdateTotalObjectConsumed(std::max(
-                waiter->TotalObjectConsumed(), reply.total_num_object_consumed()));
-          } else {
-            // TODO(sang): Handle network error more gracefully.
-            // If the request fails, we should just resume until task finishes without
-            // backpressure.
-            waiter->UpdateTotalObjectConsumed(waiter->TotalObjectGenerated());
-            RAY_LOG(WARNING) << "Failed to send the object ref.";
-          }
+        RAY_LOG(DEBUG) << "Total object consumed: " << waiter->TotalObjectConsumed()
+                       << ". Total object generated: " << waiter->TotalObjectGenerated();
+        int64_t num_objects_consumed;
+        if (status.ok()) {
+          num_objects_consumed = reply.total_num_object_consumed();
+        } else {
+          // TODO(sang): Handle network error more gracefully.
+          // If the request fails, we should just resume until task finishes without
+          // backpressure.
+          num_objects_consumed = waiter->TotalObjectGenerated();
+          RAY_LOG(WARNING) << "Failed to report streaming generator return " << return_id
+                           << " to the caller. The yield'ed ObjectRef may not be usable.";
         }
+        waiter->HandleObjectReported(num_objects_consumed);
       });
 
-  auto check_signals_callback = [this]() {
-    if (options_.check_signals) {
-      return options_.check_signals();
-    } else {
-      return Status::OK();
-    }
-  };
-
-  if (waiter) {
-    // Backpressure if needed. See task_manager.h and search "backpressure" for protocol
-    // details.
-    return waiter->WaitUntilObjectConsumed(check_signals_callback);
-  } else {
-    return check_signals_callback();
-  }
+  // Backpressure if needed. See task_manager.h and search "backpressure" for protocol
+  // details.
+  return waiter->WaitUntilObjectConsumed();
 }
 
 void CoreWorker::HandleReportGeneratorItemReturns(

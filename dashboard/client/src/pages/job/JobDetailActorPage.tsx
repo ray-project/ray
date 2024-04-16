@@ -1,4 +1,4 @@
-import { makeStyles } from "@material-ui/core";
+import makeStyles from "@mui/styles/makeStyles";
 import React, { PropsWithChildren } from "react";
 
 import { Section } from "../../common/Section";

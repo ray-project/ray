@@ -284,6 +284,7 @@ class ReplicaActor:
         ray.serve.context._set_internal_replica_context(
             replica_id=self._replica_id,
             servable_object=servable_object,
+            _deployment_config=self._deployment_config,
         )
 
     def _configure_logger_and_profilers(
@@ -635,6 +636,12 @@ class ReplicaActor:
                 await self._user_callable_wrapper.call_reconfigure(
                     deployment_config.user_config
                 )
+
+            # We need to update internal replica context to reflect the new
+            # deployment_config.
+            self._set_internal_replica_context(
+                servable_object=self._user_callable_wrapper.user_callable
+            )
 
             return self._get_metadata()
         except Exception:

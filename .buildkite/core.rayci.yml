@@ -41,7 +41,10 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual
+        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,use_all_core
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
+        --only-tags use_all_core --skip-ray-installation
 
   - label: ":ray: core: redis tests"
     tags: python
@@ -51,7 +54,10 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --test-env=TEST_EXTERNAL_REDIS=1
-        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual
+        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,use_all_core
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
+        --only-tags use_all_core --skip-ray-installation
 
   - label: ":ray: core: memory pressure tests"
     tags:
@@ -177,22 +183,6 @@ steps:
       - corebuild
       - forge
 
-  - label: ":ray: core: wheel-aarch64 tests"
-    tags: linux_wheels
-    instance_type: medium-arm64
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //doc/... core 
-        --build-type wheel-aarch64
-        --build-name oss-ci-base_build-aarch64
-        --parallelism-per-worker 3
-        --only-tags post_wheel_build
-        --test-env=RAY_CI_POST_WHEEL_TESTS=True
-    depends_on: 
-      - manylinux-aarch64
-      - oss-ci-base_build-aarch64
-      - forge-aarch64
-    job_env: forge-aarch64
-
   - label: ":ray: core: minimal tests {{matrix}}"
     tags:
       - python
@@ -281,14 +271,6 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //... core 
         --run-flaky-tests  --build-type clang
-      - bazel run //ci/ray_ci:test_in_docker -- 
-        //python/ray/tests:test_placement_group
-        //python/ray/tests:test_runtime_env_working_dir_3 
-        //python/ray/tests:test_state_api_log
-        //python/ray/tests:test_client_builder
-        //python/ray/tests:test_object_assign_owner_client_mode core 
-        --test-env CI_SKIP_FLAKY_TEST=0
-        --skip-ray-installation
 
   - label: ":ray: core: cpp worker tests"
     tags: core_cpp

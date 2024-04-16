@@ -68,7 +68,7 @@ message ActorHandle {
   // The max number of pending actor calls.
   int32 max_pending_calls = 13;
 
-  // Wheter task events will be reported from this actor.
+  // Whether task events will be reported from this actor.
   bool enable_task_events = 14;
 }
 
@@ -458,7 +458,7 @@ service CoreWorkerService {
   rpc KillActor(KillActorRequest) returns (KillActorReply);
   // Request that a worker cancels a task.
   rpc CancelTask(CancelTaskRequest) returns (CancelTaskReply);
-  // Request for a worker to issue a cancelation.
+  // Request for a worker to issue a cancellation.
   rpc RemoteCancelTask(RemoteCancelTaskRequest) returns (RemoteCancelTaskReply);
   // Get metrics from core workers.
   rpc GetCoreWorkerStats(GetCoreWorkerStatsRequest) returns (GetCoreWorkerStatsReply);

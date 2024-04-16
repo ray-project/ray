@@ -12,10 +12,7 @@ from ci.ray_ci.utils import shard_tests, chunk_into_n
 from ci.ray_ci.utils import logger
 from ci.ray_ci.container import Container
 from ray_release.test import TestResult, Test
-
-
-PIPELINE_POSTMERGE = "0189e759-8c96-4302-b6b5-b4274406bf89"
-PIPELINE_MACOS_POSTMERGE = "018e0f94-ccb6-45c2-b072-1e624fe9a404"
+from ray_release.configs.global_config import BRANCH_PIPELINES, PR_PIPELINES
 
 
 class TesterContainer(Container):
@@ -108,12 +105,18 @@ class TesterContainer(Container):
         return all(exit == 0 for exit in exits)
 
     def _persist_test_results(self, team: str, bazel_log_dir: str) -> None:
-        if os.environ.get("BUILDKITE_BRANCH") != "master":
-            logger.info("Skip upload test results. We only upload on master branch.")
-            return
-        if os.environ.get("BUILDKITE_PIPELINE_ID") != PIPELINE_POSTMERGE:
+        pipeline_id = os.environ.get("BUILDKITE_PIPELINE_ID")
+        branch = os.environ.get("BUILDKITE_BRANCH")
+        if pipeline_id not in BRANCH_PIPELINES + PR_PIPELINES:
             logger.info(
-                "Skip upload test results. We only upload on postmerge pipeline."
+                "Skip upload test results. "
+                "We only upload results on branch and PR pipelines",
+            )
+            return
+        if pipeline_id in BRANCH_PIPELINES and branch != "master":
+            logger.info(
+                "Skip upload test results. "
+                "We only upload the master branch results on a branch pipeline",
             )
             return
         self._upload_build_info(bazel_log_dir)

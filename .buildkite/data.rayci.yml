@@ -16,7 +16,7 @@ steps:
     matrix: ["3.10"]
     env:
       PYTHON: "{{matrix}}"
-    depends_on: oss-ci-base_build-multipy
+    depends_on: oss-ci-base_ml-multipy
 
   - name: datanbuild
     wanda: ci/docker/datan.build.wanda.yaml
