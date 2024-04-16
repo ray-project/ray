@@ -1,0 +1,10 @@
+group: runtime rayci release
+depends_on:
+  - ray-ci-tooling-tests
+  - ray-release-infra-tests
+steps:
+  - label: release run_release_test
+    if: build.branch == "master"
+    commands:
+      - ./anyscale/ci/release_run_release_test.sh
+    instance_type: small
