@@ -3,7 +3,7 @@ from unittest import mock
 
 import pytest
 
-from ci.ray_ci.pipeline.gap_filling_scheduler import GapFillingScheduler
+from ci.ray_ci.pipeline.gap_filling_scheduler import GapFillingScheduler, BLOCK_STEP_KEY
 
 
 @mock.patch(
@@ -89,6 +89,47 @@ def test_run(mock_get_gap_commits, mock_trigger_build):
             mock.call("333"),
         ],
     )
+
+
+@mock.patch("ci.ray_ci.pipeline.gap_filling_scheduler.GapFillingScheduler._get_builds")
+def test_find_blocked_build_and_job(mock_get_builds):
+    scheduler = GapFillingScheduler("org", "pipeline", "token", "/ray")
+
+    mock_get_builds.return_value = [
+        # build 100 is blocked on job 3
+        {
+            "state": "blocked",
+            "number": "100",
+            "commit": "hi",
+            "jobs": [
+                {"id": "1"},
+                {"id": "2", "step_key": "not_block"},
+                {"id": "3", "step_key": BLOCK_STEP_KEY},
+            ],
+        },
+        # step is blocked but build is not blocked
+        {
+            "state": "passed",
+            "number": "200",
+            "commit": "w00t",
+            "jobs": [
+                {"id": "1"},
+                {"id": "3", "step_key": BLOCK_STEP_KEY},
+            ],
+        },
+        # build is blocked but step is not blocked
+        {
+            "state": "blocked",
+            "number": "200",
+            "commit": "bar",
+            "jobs": [
+                {"id": "1"},
+            ],
+        },
+    ]
+    scheduler._find_blocked_build_and_job("hi") == (100, 3)
+    scheduler._find_blocked_build_and_job("w00t") == (None, None)
+    scheduler._find_blocked_build_and_job("bar") == (None, None)
 
 
 if __name__ == "__main__":
