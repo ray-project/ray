@@ -57,6 +57,7 @@ class FakeReplicaWrapper(ReplicaWrapper):
 
         self.get_queue_len_was_cancelled = False
         self.queue_len_deadline_history = list()
+        self.num_get_queue_len_calls = 0
 
     @property
     def replica_id(self) -> ReplicaID:
@@ -1635,7 +1636,6 @@ async def test_replicas_actor_died_error(
 ):
     """
     If replicas return an ActorDiedError, they should be removed from the
-    local list. If they an ActorUnavailableError, they should remain in the
     local list.
     """
     s = pow_2_scheduler
@@ -1651,11 +1651,16 @@ async def test_replicas_actor_died_error(
 
     s.update_replicas([r1, r2])
 
+    # After detecting that the first replica died, the scheduler should
+    # stop scheduling it.
+    await s.choose_replica_for_request(fake_pending_request())
+    assert set(pow_2_scheduler.curr_replicas.values()) == {r2}
+
+    # Check that get_queue_len is never called on r1 and always called on r2.
+    r1.num_get_queue_len_calls = 0
     for _ in range(10):
         assert (await s.choose_replica_for_request(fake_pending_request())) == r2
-
-    # The scheduler should remove r1 since it died.
-    assert set(pow_2_scheduler.curr_replicas.values()) == {r2}
+    assert r1.num_get_queue_len_calls == 0
 
 
 @pytest.mark.asyncio
@@ -1664,7 +1669,8 @@ async def test_replicas_actor_unavailable_error(
     pow_2_scheduler: PowerOfTwoChoicesReplicaScheduler,
 ):
     """
-    If they an ActorUnavailableError, they should remain in the local list.
+    If replicas return an ActorUnavailableError, they should remain in the
+    local list.
     """
     s = pow_2_scheduler
 
@@ -1679,7 +1685,7 @@ async def test_replicas_actor_unavailable_error(
     )
 
     r2 = FakeReplicaWrapper("r2")
-    r2.set_queue_len_response(0)
+    r2.set_queue_len_response(5)
 
     s.update_replicas([r1, r2])
 
@@ -1688,6 +1694,13 @@ async def test_replicas_actor_unavailable_error(
 
     # The scheduler should keep r1 since it may recover.
     assert set(pow_2_scheduler.curr_replicas.values()) == {r1, r2}
+
+    # Restore r1.
+    r1.set_queue_len_response(queue_len=0, exception=None)
+
+    # The scheduler should keep picking r1 since it has a smaller queue length.
+    for _ in range(10):
+        assert (await s.choose_replica_for_request(fake_pending_request())) == r1
 
 
 if __name__ == "__main__":
