@@ -18,11 +18,19 @@ class PPORLModule(RLModule, abc.ABC):
     def setup(self):
         # __sphinx_doc_begin__
         catalog = self.config.get_catalog()
+        # If this is not a learner module, we use only a single value network. This
+        # network is then either the share encoder network from the learner module
+        # or the actor encoder network from the learner module (if the value network
+        # is not shared with the actor network).
+        if not self.is_learner_module:
+            catalog._model_config_dict.vf_share_layers = True
 
         # Build models from catalog
         self.encoder = catalog.build_actor_critic_encoder(framework=self.framework)
         self.pi = catalog.build_pi_head(framework=self.framework)
-        self.vf = catalog.build_vf_head(framework=self.framework)
+        # Only build the critic network when this is a learner module.
+        if self.is_learner_module:
+            self.vf = catalog.build_vf_head(framework=self.framework)
 
         self.action_dist_cls = catalog.get_action_dist_cls(framework=self.framework)
         # __sphinx_doc_end__

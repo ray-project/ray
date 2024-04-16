@@ -52,8 +52,9 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
             output[Columns.STATE_OUT] = encoder_outs[Columns.STATE_OUT]
 
         # Value head
-        vf_out = self.vf(encoder_outs[ENCODER_OUT][CRITIC])
-        output[Columns.VF_PREDS] = vf_out.squeeze(-1)
+        if self.is_learner_module:
+            vf_out = self.vf(encoder_outs[ENCODER_OUT][CRITIC])
+            output[Columns.VF_PREDS] = vf_out.squeeze(-1)
 
         # Policy head
         action_logits = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
