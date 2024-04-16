@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from itertools import chain
 import json
 import logging
@@ -7,6 +7,7 @@ from tqdm import tqdm
 from typing import Any, Dict, List
 
 import ray
+from ray.serve._private.utils import generate_request_id
 
 
 logger = logging.getLogger(__file__)
@@ -72,14 +73,16 @@ class LocustClient:
 
             @task
             def test(self):
-                headers = {"Authorization": f"Bearer {token}"} if token else None
+                request_id = generate_request_id()
+                headers = (
+                    {"Authorization": f"Bearer {token}", "X-Request-ID": request_id}
+                    if token
+                    else None
+                )
                 with self.client.get(
                     "", headers=headers, json=data, catch_response=True
                 ) as r:
-                    if r.status_code == 200:
-                        r.request_meta["context"]["request_id"] = r.headers[
-                            "x-request-id"
-                        ]
+                    r.request_meta["context"]["request_id"] = request_id
 
             @events.request.add_listener
             def on_request(
@@ -92,6 +95,7 @@ class LocustClient:
             ):
                 if exception:
                     request_id = context["request_id"]
+                    response.encoding = "utf-8"
                     err = FailedRequest(
                         request_id=request_id,
                         status_code=response.status_code,
@@ -267,12 +271,13 @@ def run_locust_load_test(config: LocustLoadTestConfig) -> LocustTestResults:
 
     # Collect results and metrics
     stats: LocustTestResults = ray.get(master_ref)
-    errors = sorted(chain(*ray.get(worker_refs)), key=lambda e: e.start_time)
+    errors = sorted(chain(*ray.get(worker_refs)), key=lambda e: e.start_time_s)
 
     # If there were any requests that failed, raise error.
     if stats.num_failures > 0:
+        errors_json = [asdict(err) for err in errors]
         raise RuntimeError(
-            f"There were failed requests: {json.dumps(errors, indent=4)}"
+            f"There were failed requests: {json.dumps(errors_json, indent=4)}"
         )
 
     return stats
