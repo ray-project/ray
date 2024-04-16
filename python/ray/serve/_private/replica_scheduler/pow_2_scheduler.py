@@ -17,7 +17,7 @@ from typing import (
     Tuple,
 )
 
-from ray.exceptions import RayActorError
+from ray.exceptions import ActorDiedError
 from ray.serve._private.common import (
     DeploymentID,
     ReplicaID,
@@ -517,7 +517,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 # If we get a RayActorError, it means the replica actor has died. This
                 # is not recoverable (the controller will start a new replica in its
                 # place), so we should no longer consider it for requests.
-                if isinstance(t.exception(), RayActorError):
+                if isinstance(t.exception(), ActorDiedError):
                     self._replicas.pop(replica.replica_id, None)
                     self._replica_id_set.discard(replica.replica_id)
                     for id_set in self._colocated_replica_ids.values():
