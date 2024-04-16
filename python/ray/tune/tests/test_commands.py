@@ -1,25 +1,25 @@
-import click
 import os
-import pytest
 import random
 import subprocess
 import sys
 import time
 from unittest import mock
 
-try:
-    from cStringIO import StringIO
-except ImportError:
-    from io import StringIO
+import click
+import pytest
 
 import ray
 import ray.train
 from ray import tune
 from ray.rllib import _register_all
+from ray.train.tests.util import create_dict_checkpoint
 from ray.tune.cli import commands
 from ray.tune.result import CONFIG_PREFIX
 
-from ray.train.tests.util import create_dict_checkpoint
+try:
+    from cStringIO import StringIO
+except ImportError:
+    from io import StringIO
 
 
 class Capturing:

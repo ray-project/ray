@@ -14,6 +14,8 @@
 
 #include "ray/util/logging.h"
 
+#include <string.h>
+
 #include <cstdlib>
 #ifdef _WIN32
 #include <process.h>
@@ -34,8 +36,10 @@
 #include "absl/debugging/failure_signal_handler.h"
 #include "absl/debugging/stacktrace.h"
 #include "absl/debugging/symbolize.h"
+#include "absl/strings/str_format.h"
 #include "ray/util/event_label.h"
 #include "ray/util/filesystem.h"
+#include "ray/util/util.h"
 #include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/sinks/rotating_file_sink.h"
 #include "spdlog/sinks/stdout_color_sinks.h"
@@ -383,7 +387,13 @@ void RayLog::InstallFailureSignalHandler(const char *argv0, bool call_previous_h
   if (is_failure_signal_handler_installed_) {
     return;
   }
+#ifndef _WIN32
+  // InitializeSymbolizer cannot be called twice on windows, (causes a
+  // crash)and is called in other libraries like pytorchaudio. It does not seem
+  // there is a API to determine if it has already been called, and is only
+  // needed to provide better stack traces on crashes. So do not call it here.
   absl::InitializeSymbolizer(argv0);
+#endif
   absl::FailureSignalHandlerOptions options;
   options.call_previous_handler = call_previous_handler;
   options.writerfn = WriteFailureMessage;
@@ -415,7 +425,19 @@ RayLog::RayLog(const char *file_name, int line_number, RayLogLevel severity)
       is_fatal_(severity == RayLogLevel::FATAL) {
   if (is_fatal_) {
     expose_osstream_ = std::make_shared<std::ostringstream>();
-    *expose_osstream_ << file_name << ":" << line_number << ":";
+
+#ifdef _WIN32
+    int pid = _getpid();
+#else
+    pid_t pid = getpid();
+#endif
+    *expose_osstream_ << absl::StrFormat("%s:%d (PID: %d, TID: %s, errno: %d (%s)):",
+                                         file_name,
+                                         line_number,
+                                         pid,
+                                         std::to_string(GetTid()),
+                                         errno,
+                                         strerror(errno));
   }
   if (is_enabled_) {
     logging_provider_ = new LoggingProvider(

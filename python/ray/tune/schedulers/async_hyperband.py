@@ -1,12 +1,12 @@
 import logging
-from typing import Dict, Optional, Union, TYPE_CHECKING
+import pickle
+from typing import TYPE_CHECKING, Dict, Optional, Union
 
 import numpy as np
-import pickle
 
+from ray.tune.experiment import Trial
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
-from ray.tune.experiment import Trial
 from ray.util import PublicAPI
 
 if TYPE_CHECKING:

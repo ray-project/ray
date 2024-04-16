@@ -97,6 +97,43 @@ def _configure_resource_group(config):
         subnet_mask = "10.{}.0.0/16".format(random.randint(1, 254))
     logger.info("Using subnet mask: %s", subnet_mask)
 
+    # Copy over properties from existing subnet.
+    # Addresses issue (https://github.com/Azure/azure-quickstart-templates/issues/2786)
+    # where existing subnet properties will get overwritten unless explicitly specified
+    # during multiple deployments even if vnet/subnet do not change.
+    # May eventually be fixed by passing empty subnet list if they already exist:
+    # https://techcommunity.microsoft.com/t5/azure-networking-blog/azure-virtual-network-now-supports-updates-without-subnet/ba-p/4067952
+    list_by_rg = get_azure_sdk_function(
+        client=resource_client.resources, function_name="list_by_resource_group"
+    )
+    existing_vnets = list(
+        list_by_rg(
+            resource_group,
+            f"substringof('{unique_id}', name) and "
+            "resourceType eq 'Microsoft.Network/virtualNetworks'",
+        )
+    )
+    if len(existing_vnets) > 0:
+        vnid = existing_vnets[0].id
+        get_by_id = get_azure_sdk_function(
+            client=resource_client.resources, function_name="get_by_id"
+        )
+        subnet = get_by_id(vnid, resource_client.DEFAULT_API_VERSION).properties[
+            "subnets"
+        ][0]
+        template_vnet = next(
+            (
+                rs
+                for rs in template["resources"]
+                if rs["type"] == "Microsoft.Network/virtualNetworks"
+            ),
+            None,
+        )
+        if template_vnet is not None:
+            template_subnets = template_vnet["properties"].get("subnets")
+            if template_subnets is not None:
+                template_subnets[0]["properties"].update(subnet["properties"])
+
     # Get or create an MSI name and resource group.
     # Defaults to current resource group if not provided.
     use_existing_msi = (

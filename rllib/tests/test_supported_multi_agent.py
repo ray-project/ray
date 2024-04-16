@@ -6,7 +6,10 @@ from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.algorithms.impala import ImpalaConfig
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.algorithms.sac import SACConfig
-from ray.rllib.examples.env.multi_agent import MultiAgentCartPole, MultiAgentMountainCar
+from ray.rllib.examples.envs.classes.multi_agent import (
+    MultiAgentCartPole,
+    MultiAgentMountainCar,
+)
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.test_utils import check_train_results, framework_iterator
 from ray.tune.registry import register_env

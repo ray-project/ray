@@ -133,7 +133,7 @@ class TorchLearner(Learner):
 
     @override(Learner)
     def compute_gradients(
-        self, loss_per_module: Dict[str, TensorType], **kwargs
+        self, loss_per_module: Dict[ModuleID, TensorType], **kwargs
     ) -> ParamDict:
         for optim in self._optimizer_parameters:
             # set_to_none is a faster way to zero out the gradients

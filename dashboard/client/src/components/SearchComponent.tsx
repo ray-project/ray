@@ -1,18 +1,6 @@
-import {
-  InputAdornment,
-  makeStyles,
-  MenuItem,
-  TextField,
-} from "@material-ui/core";
-import { SearchOutlined } from "@material-ui/icons";
+import { SearchOutlined } from "@mui/icons-material";
+import { InputAdornment, MenuItem, TextField } from "@mui/material";
 import React from "react";
-
-const useStyles = makeStyles((theme) => ({
-  search: {
-    margin: theme.spacing(1),
-    marginTop: 0,
-  },
-}));
 
 export const SearchInput = ({
   label,
@@ -23,11 +11,8 @@ export const SearchInput = ({
   defaultValue?: string;
   onChange?: (value: string) => void;
 }) => {
-  const classes = useStyles();
-
   return (
     <TextField
-      className={classes.search}
       size="small"
       label={label}
       InputProps={{
@@ -60,10 +45,8 @@ export const SearchSelect = ({
   showAllOption: boolean;
   defaultValue?: string;
 }) => {
-  const classes = useStyles();
   return (
     <TextField
-      className={classes.search}
       size="small"
       label={label}
       select
@@ -82,9 +65,13 @@ export const SearchSelect = ({
       {showAllOption ?? <MenuItem value="">All</MenuItem>}
       {options.map((e) =>
         typeof e === "string" ? (
-          <MenuItem value={e}>{e}</MenuItem>
+          <MenuItem key={e} value={e}>
+            {e}
+          </MenuItem>
         ) : (
-          <MenuItem value={e[0]}>{e[1]}</MenuItem>
+          <MenuItem key={e[0]} value={e[0]}>
+            {e[1]}
+          </MenuItem>
         ),
       )}
     </TextField>
