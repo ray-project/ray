@@ -2107,15 +2107,25 @@ class DeploymentState:
                 self._deployment_scheduler.on_replica_running(
                     replica.replica_id, replica.actor_node_id
                 )
+
+                # Log the startup latency.
                 e2e_replica_start_latency = time.time() - replica._start_time
-                logger.info(
+                replica_startup_message = (
                     f"{replica.replica_id} started successfully "
                     f"on node '{replica.actor_node_id}' after "
-                    f"{e2e_replica_start_latency:.1f}s. Replica constructor, "
-                    "reconfigure method, and initial health check took "
-                    f"{replica.initialization_latency_s:.1f}s.",
-                    extra={"log_to_stderr": False},
+                    f"{e2e_replica_start_latency:.1f}s."
                 )
+                if replica.initialization_latency_s is not None:
+                    # This condition is almost always True. It's only
+                    # False if the controller died after the replica
+                    # initialized but before this statement was logged.
+                    replica_startup_message += (
+                        " Replica constructor, "
+                        "reconfigure method, and initial health check took "
+                        f"{replica.initialization_latency_s:.1f}s."
+                    )
+                logger.info(replica_startup_message, extra={"log_to_stderr": False})
+
             elif start_status == ReplicaStartupStatus.FAILED:
                 # Replica reconfigure (deploy / upgrade) failed
                 replicas_failed = True
