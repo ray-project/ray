@@ -4,7 +4,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar
 
-from python.ray.train._internal.stats import TrainRunStatsManager
+from ray.train._internal.stats import TrainRunStatsManager
 
 import ray
 import ray._private.ray_constants as ray_constants
