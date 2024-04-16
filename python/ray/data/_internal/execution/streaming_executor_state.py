@@ -352,7 +352,7 @@ class OpState:
         time_elapsed = now - self.last_update_time
 
         self.output_budget += time_elapsed * grow_rate
-        # Recap output_budget to object_store_memory
+        # Cap output_budget to object_store_memory
         self.output_budget = min(INITIAL_BUDGET, self.output_budget)
         logger.get_logger().info(
             f"@mzm INITIAL_BUDGET: {INITIAL_BUDGET}, "
