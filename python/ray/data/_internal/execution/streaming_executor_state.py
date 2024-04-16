@@ -254,7 +254,6 @@ class OpState:
 
     def dispatch_next_task(self) -> None:
         """Move a bundle from the operator inqueue to the operator itself."""
-        # logger.get_logger().info(f"@lsf Dispatch: {self.op.name}")
         for i, inqueue in enumerate(self.inqueues):
             ref = inqueue.pop()
             if ref is not None:
@@ -313,38 +312,36 @@ class OpState:
     def _get_grow_rate(self, resource_manager: ResourceManager) -> float:
         cumulative_grow_rate = 0
 
-        # Assume no more than one output. 
-        assert(len(self.op.output_dependencies) <= 1)
+        # Assume no more than one output.
+        assert len(self.op.output_dependencies) <= 1
         for op in self.op.output_dependencies:
             logger.get_logger().info(
-                f"@mzm: average_bytes_inputs_per_task {op._metrics.average_bytes_inputs_per_task}, "
+                "@mzm: average_bytes_inputs_per_task "
+                f"{op._metrics.average_bytes_inputs_per_task}, "
                 f"average_task_duration: {op._metrics.average_task_duration}"
             )
+            # Initialize grow rate to be 0.
             if (
                 not op._metrics.average_task_duration
                 or not op._metrics.average_bytes_inputs_per_task
             ):
-                # cumulative_grow_rate += (
-                #     ray.data.DataContext.get_current().user_hint_first_operator_consume_rate
-                # )
                 continue
 
             cumulative_grow_rate += (
                 op._metrics.average_bytes_inputs_per_task
                 / op._metrics.average_task_duration
-                *
-                # * op.num_active_tasks()
-                # * op.get_moving_average_num_active_tasks()
-                (resource_manager.get_global_limits().cpu
-                - self.op.num_active_tasks())
+                * (
+                    resource_manager.get_global_limits().cpu
+                    - self.op.num_active_tasks()
+                )
             )
 
         return cumulative_grow_rate
 
     def _replenish_output_budget(self, resource_manager: ResourceManager) -> float:
 
+        # Initialize output_budget to object_store_memory.
         INITIAL_BUDGET = resource_manager.get_global_limits().object_store_memory
-
         if self.output_budget == -1:
             self.output_budget = INITIAL_BUDGET
             self.last_update_time = time.time()
@@ -355,37 +352,34 @@ class OpState:
         time_elapsed = now - self.last_update_time
 
         self.output_budget += time_elapsed * grow_rate
+        # Recap output_budget to object_store_memory
         self.output_budget = min(INITIAL_BUDGET, self.output_budget)
         logger.get_logger().info(
-            f"@mzm INITIAL_BUDGET: {INITIAL_BUDGET}, self.output_budget: {self.output_budget}, time elapsed: {time_elapsed} "
+            f"@mzm INITIAL_BUDGET: {INITIAL_BUDGET}, "
+            f"self.output_budget: {self.output_budget}, "
+            f"time elapsed: {time_elapsed} "
             f"grow_rate: {grow_rate}"
         )
         self.last_update_time = now
 
     def lsf_admission_control(self, resource_manager: ResourceManager) -> bool:
-        
+
+        # TODO(MaoZiming)
         if self.op.name != "ReadRange->MapBatches(produce)":
             return True
 
         INITIAL_BUDGET = resource_manager.get_global_limits().object_store_memory
-        
+
         self._replenish_output_budget(resource_manager)
-        output_size = (
-            self._get_average_ouput_size()
-            # or ray.data.DataContext.get_current().user_hint_first_operator_output_size
-            or INITIAL_BUDGET
-        )
-        
+        output_size = self._get_average_ouput_size() or INITIAL_BUDGET
+
         logger.get_logger().info(
             f"@mzm output_budget: {self.output_budget}, output_size: {output_size}"
         )
 
         if output_size > self.output_budget:
-            # logger.get_logger().info("@lsf admission control: denied")
             return False
-
         self.output_budget -= output_size
-        # logger.get_logger().info("@lsf admission control: allowed")
         return True
 
 
@@ -615,18 +609,6 @@ def select_operator_to_run(
             and state.num_queued() > 0
             and op.should_add_input()
             and state.lsf_admission_control(resource_manager)
-            # and (
-            #     (
-            #         op._metrics.average_bytes_outputs_per_task is not None
-            #         and state.lsf_admission_control(resource_manager)
-            #     )
-            #     or len(op.get_active_tasks())
-            #     # Default values: num cores divided by num stages.
-            #     < math.floor(resource_manager.get_global_limits().cpu / (len(topology) - 1))
-            #     # Start from 1 and gradually ramp up.
-            #     # < 1
-            #     or 0
-            # )
         ):
             ops.append(op)
         # Signal whether op in backpressure for stats collections
@@ -672,7 +654,6 @@ def select_operator_to_run(
     #         resource_manager.get_op_usage(op).object_store_memory,
     #     ),
     # )
-    print([op.name for op in ops])
     op = ops[0]  # @lsf prefer the producer
     # if op is not None:
     # wall_time = time.time() - topology[op].start_time
@@ -771,12 +752,7 @@ def _execution_allowed(op: PhysicalOperator, resource_manager: ResourceManager) 
         cpu=1 if inc.cpu else 0,
         gpu=1 if inc.gpu else 0,
         object_store_memory=0,
-        # object_store_memory=inc.object_store_memory,
     )
-
-    # logger.get_logger().info(
-    #     f"@lsf execution_allowed: global_floored: {global_floored}, inc_indicator: {inc_indicator}, global_limits: {global_limits}"
-    # )
 
     # Under global limits; always allow.
     new_usage = global_floored.add(inc_indicator)

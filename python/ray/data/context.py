@@ -260,8 +260,6 @@ class DataContext:
     log_internal_stack_trace_to_stdout: bool = (
         DEFAULT_LOG_INTERNAL_STACK_TRACE_TO_STDOUT
     )
-    user_hint_first_operator_output_size: int = DEFAULT_TARGET_MAX_BLOCK_SIZE
-    user_hint_first_operator_consume_rate: int = DEFAULT_TARGET_MAX_BLOCK_SIZE
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to

@@ -1,11 +1,9 @@
-import time
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, Iterator, List, Optional, Union
 
 import ray
 from .ref_bundle import RefBundle
 from ray._raylet import ObjectRefGenerator
-from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
@@ -17,8 +15,6 @@ from ray.data.context import DataContext
 
 # TODO(hchen): Ray Core should have a common interface for these two types.
 Waitable = Union[ray.ObjectRef, ObjectRefGenerator]
-
-logger = DatasetLogger(__name__)
 
 
 class OpTask(ABC):
@@ -362,30 +358,6 @@ class PhysicalOperator(Operator):
         Subclasses can override this as a performance optimization.
         """
         return len(self.get_active_tasks())
-
-    def get_moving_average_num_active_tasks(self) -> int:
-
-        # TODO(MaoZiming): periodically update the window.
-        self._num_active_tasks_window.append((time.time(), self.num_active_tasks()))
-
-        self._num_active_tasks_in_last_10_seconds = [
-            n for t, n in self._num_active_tasks_window if time.time() - t < 5
-        ]
-
-        moving_average = int(
-            sum(self._num_active_tasks_in_last_10_seconds)
-            / len(self._num_active_tasks_in_last_10_seconds)
-        )
-
-        # moving_average = int(
-        #     max(self._num_active_tasks_in_last_10_seconds)
-        # )
-
-        logger.get_logger().info(
-            f"moving average active tasks: {moving_average} "
-            f"current active tasks: {self.num_active_tasks()}"
-        )
-        return moving_average
 
     def throttling_disabled(self) -> bool:
         """Whether to disable resource throttling for this operator.
