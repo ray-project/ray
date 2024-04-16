@@ -368,8 +368,7 @@ class FakeMultiNodeProvider(NodeProvider):
                 if not self._gcs_address
                 else self._gcs_address,
                 env_vars={
-                    "RAY_OVERRIDE_NODE_ID_FOR_TESTING": next_id,
-                    "RAY_CLOUD_INSTANCE_ID": next_id,
+                    "RAY_ACLOUD_INSTNCE_ID": next_id,
                     "RAY_NODE_TYPE_NAME": node_type,
                     ray_constants.RESOURCES_ENVIRONMENT_VARIABLE: json.dumps(resources),
                     ray_constants.LABELS_ENVIRONMENT_VARIABLE: json.dumps(labels),
@@ -385,7 +384,7 @@ class FakeMultiNodeProvider(NodeProvider):
                 TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             }
             all_tags.update(tags)
-            self._nodes[next_id] = {
+            self._nodes[node.node_id] = {
                 "tags": all_tags,
                 "node": node,
             }
@@ -538,7 +537,6 @@ class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
             host_client_port=self._host_client_port,
             resources=resources,
             env_vars={
-                "RAY_OVERRIDE_NODE_ID_FOR_TESTING": node_id,
                 ray_constants.RESOURCES_ENVIRONMENT_VARIABLE: resource_str,
                 **self.provider_config.get("env_vars", {}),
             },
