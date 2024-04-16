@@ -4,8 +4,6 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar
 
-from ray.train._internal.stats import TrainRunStatsManager
-
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.ray_constants import env_integer
@@ -199,8 +197,10 @@ class BackendExecutor:
             self._increment_failures()
             self._restart()
 
-        # Setup StatsActorManager for Ray Train Dashboard
+        # Setup TrainRunStatsManager only when Ray Train Dashboard is enabled
         if self.dashboard_enabled:
+            from ray.train._internal.stats import TrainRunStatsManager
+
             self.stats_manager = TrainRunStatsManager()
 
     def _create_placement_group(self):

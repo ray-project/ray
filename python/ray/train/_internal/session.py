@@ -9,7 +9,7 @@ import time
 import warnings
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Type
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Set, Type
 
 import ray
 from ray.air._internal.session import _get_session
@@ -62,7 +62,6 @@ class TrialInfo:
     driver_ip: str
     run_id: str
     experiment_name: Optional[str] = None
-    datasets_info: Optional[List[Dict[str, Any]]] = None
 
 
 class _FutureTrainingResult:
