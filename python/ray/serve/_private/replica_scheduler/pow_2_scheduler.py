@@ -514,9 +514,12 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                     "Failed to fetch queue length for "
                     f"{replica.replica_id}: '{t.exception()}'"
                 )
-                # If we get a RayActorError, it means the replica actor has died. This
+                # If we get an ActorDiedError, the replica actor has died. This
                 # is not recoverable (the controller will start a new replica in its
                 # place), so we should no longer consider it for requests.
+                # We do not catch RayActorError here because that error can be
+                # raised even when a replica is temporarily unavailable.
+                # See https://github.com/ray-project/ray/issues/44185 for details.
                 if isinstance(t.exception(), ActorDiedError):
                     self._replicas.pop(replica.replica_id, None)
                     self._replica_id_set.discard(replica.replica_id)
