@@ -143,6 +143,8 @@ To build Ray on Ubuntu, run the following commands:
   nvm install 14
   nvm use 14
 
+.. note::
+  We recommend using `bazelisk` for building. If you prefer to use `bazel`, ensure it is version `5.4.1`.
 
 For RHELv8 (Redhat EL 8.0-64 Minimal), run the following commands:
 
