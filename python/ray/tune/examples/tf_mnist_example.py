@@ -13,9 +13,9 @@ import argparse
 import os
 
 from filelock import FileLock
-from tensorflow.keras.layers import Dense, Flatten, Conv2D
 from tensorflow.keras import Model
 from tensorflow.keras.datasets.mnist import load_data
+from tensorflow.keras.layers import Conv2D, Dense, Flatten
 
 from ray import train, tune
 

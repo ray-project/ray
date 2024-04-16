@@ -2,9 +2,9 @@
 
 import os
 from typing import Callable, Dict
+
 import numpy as np
-from transformers import EvalPrediction
-from transformers import glue_compute_metrics, glue_output_modes
+from transformers import EvalPrediction, glue_compute_metrics, glue_output_modes
 
 
 def build_compute_metrics_fn(task_name: str) -> Callable[[EvalPrediction], Dict]:

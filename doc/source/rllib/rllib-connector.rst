@@ -247,7 +247,7 @@ See `Notable TODOs`_.
 Adapting a Policy for Different Environments
 --------------------------------------------
 
-It is not uncommon for user environments to go through active development iterations.
+It's common for user environments to go through active development iterations.
 Policies trained with an older version of an environment may be rendered useless for updated environments.
 While env wrapper helps with this problem in many cases, connectors allow policies trained with
 different environments to work together at the same time.
