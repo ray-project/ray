@@ -18,6 +18,33 @@ if TYPE_CHECKING:
 
 @PublicAPI
 class AggregateFn:
+    """Defines an aggregate function in the accumulator style.
+
+    Aggregates a collection of inputs of type T into
+    a single output value of type U.
+    See https://www.sigops.org/s/conferences/sosp/2009/papers/yu-sosp09.pdf
+    for more details about accumulator-based aggregation.
+
+    Args:
+        init: This is called once for each group to return the empty accumulator.
+            For example, an empty accumulator for a sum would be 0.
+        merge: This may be called multiple times, each time to merge
+            two accumulators into one.
+        accumulate_row: This is called once per row of the same group.
+            This combines the accumulator and the row, returns the updated
+            accumulator. Exactly one of accumulate_row and accumulate_block must
+            be provided.
+        accumulate_block: This is used to calculate the aggregation for a
+            single block, and is vectorized alternative to accumulate_row. This will
+            be given a base accumulator and the entire block, allowing for
+            vectorized accumulation of the block. Exactly one of accumulate_row and
+            accumulate_block must be provided.
+        finalize: This is called once to compute the final aggregation
+            result from the fully merged accumulator.
+        name: The name of the aggregation. This will be used as the output
+            column name in the case of Arrow dataset.
+    """
+
     def __init__(
         self,
         init: Callable[[KeyType], AggType],
@@ -27,32 +54,6 @@ class AggregateFn:
         finalize: Callable[[AggType], U] = lambda a: a,
         name: Optional[str] = None,
     ):
-        """Defines an aggregate function in the accumulator style.
-
-        Aggregates a collection of inputs of type T into
-        a single output value of type U.
-        See https://www.sigops.org/s/conferences/sosp/2009/papers/yu-sosp09.pdf
-        for more details about accumulator-based aggregation.
-
-        Args:
-            init: This is called once for each group to return the empty accumulator.
-                For example, an empty accumulator for a sum would be 0.
-            merge: This may be called multiple times, each time to merge
-                two accumulators into one.
-            accumulate_row: This is called once per row of the same group.
-                This combines the accumulator and the row, returns the updated
-                accumulator. Exactly one of accumulate_row and accumulate_block must
-                be provided.
-            accumulate_block: This is used to calculate the aggregation for a
-                single block, and is vectorized alternative to accumulate_row. This will
-                be given a base accumulator and the entire block, allowing for
-                vectorized accumulation of the block. Exactly one of accumulate_row and
-                accumulate_block must be provided.
-            finalize: This is called once to compute the final aggregation
-                result from the fully merged accumulator.
-            name: The name of the aggregation. This will be used as the output
-                column name in the case of Arrow dataset.
-        """
         if (accumulate_row is None and accumulate_block is None) or (
             accumulate_row is not None and accumulate_block is not None
         ):

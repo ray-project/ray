@@ -49,6 +49,10 @@ if __name__ == "__main__":
 
         temp_dir = _get_default_ray_tmp_dir()
 
+    # Multiple Ray nodes might be launched in the same machine,
+    # so set `exist_ok` to True
+    os.makedirs(temp_dir, exist_ok=True)
+
     ray_cli_cmd = "ray"
     lock_file = temp_dir + ".lock"
 

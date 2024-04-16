@@ -1,29 +1,26 @@
 import json
 import logging
 import os
+import sys
 import tempfile
+import time
 from unittest import mock
 
 import pytest
-import sys
-import time
-
 
 import ray
-from ray.train import CheckpointConfig
-from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
 from ray.air.constants import TRAINING_ITERATION
-from ray.train import Checkpoint
+from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
+from ray.train import Checkpoint, CheckpointConfig
 from ray.train._internal.session import _TrainingResult
 from ray.train._internal.storage import StorageContext
+from ray.train.tests.util import mock_storage_context
 from ray.tune import PlacementGroupFactory, ResumeConfig
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
 from ray.tune.result import DONE
 from ray.tune.schedulers import FIFOScheduler
 from ray.tune.search import BasicVariantGenerator
-
-from ray.train.tests.util import mock_storage_context
 from ray.tune.tests.tune_test_util import TrialResultObserver
 
 STORAGE = mock_storage_context()

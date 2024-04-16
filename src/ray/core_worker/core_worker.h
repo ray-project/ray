@@ -1696,6 +1696,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status GetExperimentalMutableObjects(const std::vector<ObjectID> &ids,
                                        std::vector<std::shared_ptr<RayObject>> *results);
 
+  /// Sends AnnounceWorkerPort to the GCS. Called in ctor and also in ConnectToRaylet.
+  void ConnectToRayletInternal();
+
   /// Shared state of the worker. Includes process-level and thread-level state.
   /// TODO(edoakes): we should move process-level state into this class and make
   /// this a ThreadContext.
@@ -1763,7 +1766,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider_;
 
   /// Used to read and write experimental channels.
-  std::shared_ptr<ExperimentalMutableObjectManager> experimental_mutable_object_manager_;
+  std::shared_ptr<experimental::MutableObjectManager>
+      experimental_mutable_object_manager_;
 
   std::unique_ptr<FutureResolver> future_resolver_;
 

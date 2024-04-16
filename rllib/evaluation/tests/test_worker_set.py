@@ -4,7 +4,7 @@ import unittest
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.examples.policy.random_policy import RandomPolicy
+from ray.rllib.examples._old_api_stack.policy.random_policy import RandomPolicy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 
 

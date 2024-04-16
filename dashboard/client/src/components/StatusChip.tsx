@@ -1,8 +1,9 @@
-import { Color, createStyles, makeStyles } from "@material-ui/core";
-import { blue, blueGrey, cyan, green, red } from "@material-ui/core/colors";
-import { CSSProperties } from "@material-ui/core/styles/withStyles";
+import { Box, Color } from "@mui/material";
+import { blue, blueGrey, cyan, green, red } from "@mui/material/colors";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import classNames from "classnames";
-import React, { ReactNode } from "react";
+import React, { CSSProperties, ReactNode } from "react";
 import { TaskStatus } from "../pages/job/hook/useJobProgress";
 import { ActorEnum } from "../type/actor";
 import { JobStatus } from "../type/job";
@@ -152,7 +153,7 @@ export const StatusChip = ({ type, status, suffix, icon }: StatusChipProps) => {
       <span className={classNames({ [classes.afterIcon]: icon !== undefined })}>
         {status}
       </span>
-      {suffix}
+      <Box sx={{ marginLeft: 0.5 }}>{suffix}</Box>
     </span>
   );
 };

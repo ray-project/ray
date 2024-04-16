@@ -15,6 +15,7 @@ import shutil
 from datetime import datetime
 from typing import Optional, Set, List, Tuple
 from ray.dashboard.modules.metrics import install_and_start_prometheus
+from ray.util.check_open_ports import check_open_ports
 
 import click
 import psutil
@@ -2573,6 +2574,7 @@ cli.add_command(disable_usage_stats)
 cli.add_command(enable_usage_stats)
 cli.add_command(metrics_group)
 cli.add_command(drain_node)
+cli.add_command(check_open_ports)
 
 try:
     from ray.util.state.state_cli import (

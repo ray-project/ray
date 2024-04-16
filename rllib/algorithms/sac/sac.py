@@ -317,11 +317,6 @@ class SACConfig(AlgorithmConfig):
                 num_steps_sampled_before_learning_starts
             )
 
-        # Include the `twin_q` hyperparameter into the model config.
-        # TODO (simon, sven): Find a general way to update the model_config.
-        if self._enable_new_api_stack:
-            self.model.update({"twin_q": self.twin_q})
-
         return self
 
     @override(AlgorithmConfig)
@@ -415,6 +410,10 @@ class SACConfig(AlgorithmConfig):
                 f"The framework {self.framework_str} is not supported. " "Use `torch`."
             )
 
+    @property
+    def _model_config_auto_includes(self):
+        return super()._model_config_auto_includes | {"twin_q": self.twin_q}
+
 
 class SAC(DQN):
     """Soft Actor Critic (SAC) Algorithm class.
@@ -478,9 +477,11 @@ class SAC(DQN):
 
         # Update the target network each `target_network_update_freq` steps.
         current_ts = self._counters[
-            NUM_AGENT_STEPS_SAMPLED
-            if self.config.count_steps_by == "agent_steps"
-            else NUM_ENV_STEPS_SAMPLED
+            (
+                NUM_AGENT_STEPS_SAMPLED
+                if self.config.count_steps_by == "agent_steps"
+                else NUM_ENV_STEPS_SAMPLED
+            )
         ]
 
         # If enough experiences have been sampled start training.
