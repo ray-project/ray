@@ -227,8 +227,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                              &local_raylet_id,
                                              &assigned_port,
                                              options_.serialized_job_config,
-                                             options_.startup_token,
-                                             options_.entrypoint);
+                                             options_.startup_token);
 
   if (!raylet_client_status.ok()) {
     // Avoid using FATAL log or RAY_CHECK here because they may create a core dump file.
@@ -598,8 +597,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   // NOTE: This also marks the worker as available in Raylet. We do this at the
   // very end in case there is a problem during construction.
   if (options.connect_on_start) {
-    RAY_CHECK_OK(
-        local_raylet_client_->AnnounceWorkerPort(core_worker_server_->GetPort()));
+    ConnectToRayletInternal();
   }
   // Used to detect if the object is in the plasma store.
   max_direct_call_object_size_ = RayConfig::instance().max_direct_call_object_size();
@@ -736,12 +734,26 @@ void CoreWorker::Shutdown() {
   RAY_LOG(INFO) << "Core worker ready to be deallocated.";
 }
 
-void CoreWorker::ConnectToRaylet() {
-  RAY_CHECK(!options_.connect_on_start);
+void CoreWorker::ConnectToRayletInternal() {
   // Tell the raylet the port that we are listening on.
   // NOTE: This also marks the worker as available in Raylet. We do this at the
   // very end in case there is a problem during construction.
-  RAY_CHECK_OK(local_raylet_client_->AnnounceWorkerPort(core_worker_server_->GetPort()));
+  if (options_.worker_type == WorkerType::DRIVER) {
+    Status status = local_raylet_client_->AnnounceWorkerPortForDriver(
+        core_worker_server_->GetPort(), options_.entrypoint);
+    RAY_CHECK(status.ok()) << "Failed to announce driver's port to raylet and GCS: "
+                           << status;
+  } else {
+    Status status =
+        local_raylet_client_->AnnounceWorkerPortForWorker(core_worker_server_->GetPort());
+    RAY_CHECK(status.ok()) << "Failed to announce worker's port to raylet and GCS: "
+                           << status;
+  }
+}
+
+void CoreWorker::ConnectToRaylet() {
+  RAY_CHECK(!options_.connect_on_start);
+  ConnectToRayletInternal();
 }
 
 void CoreWorker::Disconnect(
