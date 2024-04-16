@@ -288,3 +288,25 @@ def __getattr__(name: str):
 del os
 del logging
 del sys
+
+time_list = []
+
+
+def __tick__(event) -> None:
+    import time
+
+    time_list.append((event, time.time()))
+
+
+def __sum__() -> None:
+    n = len(time_list)
+    if n > 1:
+        total = time_list[-1][1] - time_list[0][1]
+        print(f"======= Total time: {total}s =======")
+    for i in range(n - 1):
+        e1, ts1 = time_list[i]
+        e2, ts2 = time_list[i + 1]
+        if total is not None:
+            print(f"{e1} -> {e2}: {ts2 - ts1}s , {(ts2-ts1)/total*100:.2f}%")
+        else:
+            print(f"{e1} -> {e2}: {ts2 - ts1}s")

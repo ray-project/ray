@@ -72,6 +72,9 @@ class Node:
             default_worker: Whether it's running from a ray worker or not
             ray_init_cluster: Whether it's a cluster created by ray.init()
         """
+        ray.__tick__("node:__init__")
+        ray.__sum__()
+
         if shutdown_at_exit:
             if connect_only:
                 raise ValueError(
@@ -312,9 +315,11 @@ class Node:
 
         # Start processes.
         if head:
+            ray.__tick__("before_start_head_processes")
             self.start_head_processes()
 
         if not connect_only:
+            ray.__tick__("before_start_ray_processes")
             self.start_ray_processes()
             # we should update the address info after the node has been started
             try:
@@ -336,12 +341,15 @@ class Node:
             if self._ray_params.node_manager_port == 0:
                 self._ray_params.node_manager_port = node_info["node_manager_port"]
 
+        ray.__tick__("after_start_ray_processes")
         # Makes sure the Node object has valid addresses after setup.
         self.validate_ip_port(self.address)
         self.validate_ip_port(self.gcs_address)
 
         if not connect_only:
             self._record_stats()
+        ray.__tick__("node_init_done")
+        ray.__sum__()
 
     def check_persisted_session_name(self):
         if self._ray_params.external_addresses is None:

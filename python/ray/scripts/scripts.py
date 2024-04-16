@@ -611,7 +611,7 @@ def start(
     labels,
 ):
     """Start Ray processes manually on the local machine."""
-
+    ray.__tick__("ray_start")
     if gcs_server_port is not None:
         cli_logger.error(
             "`{}` is deprecated and ignored. Use {} to specify "
@@ -876,6 +876,8 @@ def start(
                     )
                 )
         ray_params.gcs_address = bootstrap_address
+        ray.__tick__("ray_start_head_done")
+        ray.__sum__()
     else:
         # Start worker node.
         if not ray_constants.ENABLE_RAY_CLUSTER:
