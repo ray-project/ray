@@ -1,0 +1,7 @@
+group: bisect
+depends_on: 
+  - forge
+steps:
+  - name: release test
+    commands:
+      - ./ci/ray_ci/bisect/release_test_bisect.sh

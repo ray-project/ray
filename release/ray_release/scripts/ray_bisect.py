@@ -239,7 +239,10 @@ def _obtain_test_result(
     return outcomes
 
 
-def _get_test(test_name: str, test_collection_file: Tuple[str]) -> Test:
+def _get_test(
+    test_name: str,
+    test_collection_file: Tuple[str],
+) -> Test:
     test_collection = read_and_validate_release_test_collection(
         test_collection_file or ["release/release_tests.yaml"],
     )
