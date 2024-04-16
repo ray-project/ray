@@ -27,6 +27,7 @@ from ray._private.test_utils import (
     wait_for_condition,
     async_wait_for_condition_async_predicate,
     find_free_port,
+    SignalActor,
 )
 from ray.cluster_utils import cluster_not_supported
 from ray._raylet import NodeID
@@ -3563,15 +3564,20 @@ def test_core_state_api_usage_tags(shutdown_only):
 def test_job_info_is_running_task(shutdown_only):
     ray.init()
 
+    # To reliably know a job has a long running task, we need to wait a SignalActor
+    # to know the task has started.
+    signal = SignalActor.remote()
+
     @ray.remote
-    def f():
+    def f(signal):
+        ray.get(signal.send.remote())
         import time
 
         while True:
             time.sleep(10000)
 
-    # Create some long running tasks, no need to wait.
-    tasks = [f.remote() for i in range(4)]  # noqa: F841
+    long_running = f.remote(signal)  # noqa: F841
+    ray.get(signal.wait.remote())
 
     client = ray.worker.global_worker.gcs_client
     job_id = ray.worker.global_worker.current_job_id.binary()

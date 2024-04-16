@@ -740,10 +740,12 @@ void CoreWorker::ConnectToRayletInternal() {
   // very end in case there is a problem during construction.
   if (options_.worker_type == WorkerType::DRIVER) {
     RAY_CHECK_OK(local_raylet_client_->AnnounceWorkerPortForDriver(
-        core_worker_server_->GetPort(), options_.entrypoint));
+        core_worker_server_->GetPort(), options_.entrypoint))
+        << "Failed to announce driver's port to raylet and GCS.";
   } else {
-    RAY_CHECK_OK(local_raylet_client_->AnnounceWorkerPortForWorker(
-        core_worker_server_->GetPort()));
+    RAY_CHECK_OK(
+        local_raylet_client_->AnnounceWorkerPortForWorker(core_worker_server_->GetPort()))
+        << "Failed to announce worker's port to raylet and GCS.";
   }
 }
 

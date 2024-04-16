@@ -262,13 +262,6 @@ def test_gcs_connection_no_leak(ray_start_cluster):
     gcs_server_process = head_node.all_processes["gcs_server"][0].process
     gcs_server_pid = gcs_server_process.pid
 
-    ray.init(cluster.address)
-
-    # When we create a new node, the new raylet invokes RegisterGcs -> AsyncSubscribeAll
-    # -> AsyncGetAll -> GetAllJobInfo which makes the GCS to make a connection to each
-    # drivers. To make the connections consistent, pre-create the connection here.
-    ray._private.worker.global_worker.gcs_client.get_all_job_info()
-
     def get_gcs_num_of_connections():
         p = psutil.Process(gcs_server_pid)
         print(">>", len(p.connections()))
@@ -287,12 +280,13 @@ def test_gcs_connection_no_leak(ray_start_cluster):
             print("HELLO")
             return "WORLD"
 
-    num_of_actors = 10
-    actors = [A.remote() for _ in range(num_of_actors)]
-    print(ray.get([t.ready.remote() for t in actors]))
+    with ray.init(cluster.address):
+        num_of_actors = 10
+        actors = [A.remote() for _ in range(num_of_actors)]
+        print(ray.get([t.ready.remote() for t in actors]))
 
-    # Kill the actors
-    del actors
+        # Kill the actors
+        del actors
 
     # Make sure the # of fds opened by the GCS dropped.
     # This assumes worker processes are not created after the actor worker
