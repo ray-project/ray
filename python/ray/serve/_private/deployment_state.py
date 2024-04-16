@@ -2116,9 +2116,8 @@ class DeploymentState:
                     f"{e2e_replica_start_latency:.1f}s."
                 )
                 if replica.initialization_latency_s is not None:
-                    # This condition is almost always True. It's only
-                    # False if the controller died after the replica
-                    # initialized but before this statement was logged.
+                    # This condition should always be True. The initialization
+                    # latency is only None before the replica has initialized.
                     replica_startup_message += (
                         " Replica constructor, "
                         "reconfigure method, and initial health check took "

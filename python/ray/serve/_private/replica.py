@@ -277,6 +277,7 @@ class ReplicaActor:
         # Guards against calling the user's callable constructor multiple times.
         self._user_callable_initialized = False
         self._user_callable_initialized_lock = asyncio.Lock()
+        self.initialization_latency: Optional[float] = None
 
         # Set metadata for logs and metrics.
         # servable_object will be populated in `initialize_and_get_metadata`.
@@ -618,7 +619,13 @@ class ReplicaActor:
             # an initial health check. If an initial health check fails,
             # consider it an initialization failure.
             await self.check_health()
-            return (*self._get_metadata(), time.time() - initialization_start_time)
+
+            # Save the initialization latency if the replica is initializing
+            # for the first time.
+            if self.initialization_latency is None:
+                self.initialization_latency = time.time() - initialization_start_time
+
+            return (*self._get_metadata(), self.initialization_latency)
         except Exception:
             raise RuntimeError(traceback.format_exc()) from None
 
