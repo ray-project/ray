@@ -234,7 +234,7 @@ object and what each of these properties controls.
   True by default. If False, the column will not be available inside the train batch (arriving in the
   Policy's loss function).
   RLlib will automatically switch this to False for a given column, if it detects during
-  Policy initialization that that column is not accessed inside the loss function (see below).
+  Policy initialization that that column isn't accessed inside the loss function (see below).
 
 How does RLlib determine, which Views are required?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

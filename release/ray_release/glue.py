@@ -147,10 +147,11 @@ def _setup_cluster_environment(
     result: Result,
     cluster_manager: ClusterManager,
     cluster_env_id: Optional[str],
+    test_definition_root: Optional[str] = None,
 ) -> Tuple[str, int, int, int, int]:
     setup_signal_handling()
     # Load configs
-    cluster_compute = load_test_cluster_compute(test)
+    cluster_compute = load_test_cluster_compute(test, test_definition_root)
 
     if cluster_env_id:
         try:
@@ -419,6 +420,7 @@ def run_release_test(
             result,
             cluster_manager,
             cluster_env_id,
+            test_definition_root,
         )
 
         buildkite_group(":bulb: Local environment information")

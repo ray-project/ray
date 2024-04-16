@@ -70,7 +70,7 @@ my_ma_config = PPOConfig().multi_agent(
             "pol1" if agent_id == "agent1" else "pol2"
         )
     ),
-    # Setting these is not necessary. All policies will always be trained by default.
+    # Setting these isn't necessary. All policies will always be trained by default.
     # However, since we do provide a list of IDs here, we need to remain in charge of
     # changing this `policies_to_train` list, should we ever alter the Algorithm
     # (e.g. remove one of the policies or add a new one).
@@ -123,7 +123,7 @@ my_ma_algo_only_pol1 = Algorithm.from_checkpoint(
     policies_to_train=["pol1"],
 )
 
-# Make sure, pol2 is NOT in this Algorithm anymore.
+# Make sure, pol2 isn't in this Algorithm anymore.
 assert my_ma_algo_only_pol1.get_policy("pol2") is None
 
 # Continue training (only with pol1).

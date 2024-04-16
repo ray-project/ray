@@ -10,6 +10,19 @@ from ray.rllib.utils.test_utils import (
 )
 from ray.tune.registry import get_trainable_cls
 
+""" Example using connectors (V2) for frame-stacking in Atari environments.
+
+How to run this script
+----------------------
+`python [script file name].py --enable-new-api-stack`
+For debugging, use the following additional command line options
+`--no-tune --num-env-runners=0`
+which should allow you to set breakpoints anywhere in the RLlib code and
+have the execution stop there for inspection and debugging.
+For logging to your WandB account, use:
+`--wandb-key=[your WandB API key] --wandb-project=[some project name]
+--wandb-run-name=[optional: WandB run name (within the defined project)]`
+"""
 
 # Read in common example script command line arguments.
 parser = add_rllib_example_script_args(
@@ -122,17 +135,30 @@ if __name__ == "__main__":
             lr=0.00015 * (args.num_gpus or 1),
             grad_clip=100.0,
             grad_clip_by="global_norm",
-            model=dict(
+        )
+    )
+    if args.enable_new_api_stack:
+        base_config = base_config.rl_module(
+            model_config_dict=dict(
                 {
                     "vf_share_layers": True,
                     "conv_filters": [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
                     "conv_activation": "relu",
                     "post_fcnet_hiddens": [256],
+                    "uses_new_env_runners": True,
                 },
-                **({"uses_new_env_runners": True} if args.enable_new_api_stack else {}),
             ),
         )
-    )
+    else:
+        base_config = base_config.training(
+            {
+                "vf_share_layers": True,
+                "conv_filters": [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
+                "conv_activation": "relu",
+                "post_fcnet_hiddens": [256],
+                "uses_new_env_runners": False,
+            }
+        )
 
     # Add a simple multi-agent setup.
     if args.num_agents > 0:

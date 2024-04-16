@@ -1,4 +1,5 @@
 import gymnasium as gym
+import logging
 import tree
 
 from collections import defaultdict
@@ -24,6 +25,7 @@ from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.util.annotations import PublicAPI
 
 _, tf, _ = try_import_tf()
+logger = logging.getLogger("ray.rllib")
 
 
 @PublicAPI(stability="alpha")
@@ -48,7 +50,7 @@ class SingleAgentEnvRunner(EnvRunner):
         # Create the vectorized gymnasium env.
         self.env: Optional[gym.Wrapper] = None
         self.num_envs: int = 0
-        self._make_env()
+        self.make_env()
 
         # Global counter for environment steps from all workers. This is
         # needed for schedulers used by `RLModule`s.
@@ -76,7 +78,7 @@ class SingleAgentEnvRunner(EnvRunner):
             #  shape is (1, 1) which brings a problem with the action dists.
             #  shape=(1,) is expected.
             module_spec.action_space = self.env.envs[0].action_space
-            module_spec.model_config_dict = self.config.model
+            module_spec.model_config_dict = self.config.model_config
             self.module: RLModule = module_spec.build()
         except NotImplementedError:
             self.module = None
@@ -518,9 +520,11 @@ class SingleAgentEnvRunner(EnvRunner):
                     episodes[env_index] = SingleAgentEpisode(
                         observations=[obs[env_index]],
                         infos=[infos[env_index]],
-                        render_images=None
-                        if render_images[env_index] is None
-                        else [render_images[env_index]],
+                        render_images=(
+                            None
+                            if render_images[env_index] is None
+                            else [render_images[env_index]]
+                        ),
                         observation_space=self.env.single_observation_space,
                         action_space=self.env.single_action_space,
                     )
@@ -627,13 +631,24 @@ class SingleAgentEnvRunner(EnvRunner):
         # Make sure, we have built our gym.vector.Env and RLModule properly.
         assert self.env and self.module
 
-    @override(EnvRunner)
-    def stop(self):
-        # Close our env object via gymnasium's API.
-        self.env.close()
+    def make_env(self) -> None:
+        """Creates a vectorized gymnasium env and stores it in `self.env`.
 
-    def _make_env(self):
-        """Creates a vectorized gymnasium env."""
+        Note that users can change the EnvRunner's config (e.g. change
+        `self.config.env_config`) and then call this method to create new environments
+        with the updated configuration.
+        """
+        # If an env already exists, try closing it first (to allow it to properly
+        # cleanup).
+        if self.env is not None:
+            try:
+                self.env.close()
+            except Exception as e:
+                logger.warning(
+                    "Tried closing the existing env, but failed with error: "
+                    f"{e.args[0]}"
+                )
+
         env_ctx = self.config.env_config
         if not isinstance(env_ctx, EnvContext):
             env_ctx = EnvContext(
@@ -672,12 +687,20 @@ class SingleAgentEnvRunner(EnvRunner):
         self.num_envs: int = self.env.num_envs
         assert self.num_envs == self.config.num_envs_per_worker
 
+        # Set the flag to reset all envs upon the next `sample()` call.
+        self._needs_initial_reset = True
+
         # Call the `on_environment_created` callback.
         self._callbacks.on_environment_created(
             env_runner=self,
             env=self.env,
             env_context=env_ctx,
         )
+
+    @override(EnvRunner)
+    def stop(self):
+        # Close our env object via gymnasium's API.
+        self.env.close()
 
     def _new_episode(self):
         return SingleAgentEpisode(
