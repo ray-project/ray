@@ -379,6 +379,10 @@ class PhysicalOperator(Operator):
             / len(self._num_active_tasks_in_last_10_seconds)
         )
 
+        # moving_average = int(
+        #     max(self._num_active_tasks_in_last_10_seconds)
+        # )
+        
         logger.get_logger().info(
             f"moving average active tasks: {moving_average} "
             f"current active tasks: {self.num_active_tasks()}"

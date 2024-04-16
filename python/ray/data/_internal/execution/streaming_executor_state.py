@@ -311,6 +311,7 @@ class OpState:
         return self.op._metrics.average_bytes_outputs_per_task
 
     def _get_grow_rate(self) -> float:
+        return 10 * 1024 * 1024 * 10 * 6
         cumulative_grow_rate = 0
 
         for op in self.op.output_dependencies:
@@ -330,6 +331,7 @@ class OpState:
             cumulative_grow_rate += (
                 op._metrics.average_bytes_inputs_per_task
                 / op._metrics.average_task_duration
+                # * op.num_active_tasks()
                 * op.get_moving_average_num_active_tasks()
             )
 
@@ -605,19 +607,20 @@ def select_operator_to_run(
             and not op.completed()
             and state.num_queued() > 0
             and op.should_add_input()
-            and (
-                (
-                    op._metrics.average_bytes_outputs_per_task is not None
-                    and state.lsf_admission_control(resource_manager)
-                )
-                or len(op.get_active_tasks())
-                # Default values: num cores divided by num stages.
-                < math.floor(resource_manager.get_global_limits().cpu / (len(topology) - 1))
+            and state.lsf_admission_control(resource_manager)
+            # and (
+            #     (
+            #         op._metrics.average_bytes_outputs_per_task is not None
+            #         and state.lsf_admission_control(resource_manager)
+            #     )
+            #     or len(op.get_active_tasks())
+            #     # Default values: num cores divided by num stages.
+            #     < math.floor(resource_manager.get_global_limits().cpu / (len(topology) - 1))
                 
-                # Start from 1 and gradually ramp up. 
-                # < 1
-                or 0
-            )
+            #     # Start from 1 and gradually ramp up. 
+            #     # < 1
+            #     or 0
+            # )
         ):
             ops.append(op)
         # Signal whether op in backpressure for stats collections
