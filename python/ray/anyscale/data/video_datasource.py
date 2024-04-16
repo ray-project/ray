@@ -13,10 +13,6 @@ if TYPE_CHECKING:
 
 @PublicAPI(stability="alpha")
 class VideoDatasource(FileBasedDatasource):
-    # The compression ratio for a SewerAI video is 5.82GB (in-memory size) to 58.91 MB
-    # (on-disk file size) = 98.81 ~= 100.
-    COMPRESSION_RATIO = 100
-
     def __init__(
         self,
         paths: Union[str, List[str]],
@@ -44,8 +40,6 @@ class VideoDatasource(FileBasedDatasource):
             yield builder.build()
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
-        total_size = 0
-        for sz in self._file_sizes():
-            if sz is not None:
-                total_size += sz
-        return total_size * self.COMPRESSION_RATIO
+        # TODO: The compression ratio varies widely depending on the video, so we can't
+        # provide a good estimate without sampling.
+        return None

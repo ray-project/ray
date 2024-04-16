@@ -23,19 +23,6 @@ def test_video_datasource():
     assert frame_index_type == pa.int64()
 
 
-def test_in_memory_size_estimation():
-    uri = "s3://anonymous@antoni-test/sewer-videos/sewer_example_0.mp4"
-    datasource = VideoDatasource(uri)
-
-    estimated_size = datasource.estimate_inmemory_data_size()
-
-    ds = ray.data.read_datasource(datasource).materialize()
-    actual_size = ds.size_bytes()
-
-    percent_error = (abs(estimated_size - actual_size) / actual_size) * 100
-    assert percent_error < 5  # This threshold is completely arbitrary.
-
-
 if __name__ == "__main__":
     import sys
 
