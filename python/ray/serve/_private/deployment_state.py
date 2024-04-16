@@ -2112,7 +2112,7 @@ class DeploymentState:
                     f"{replica.replica_id} started successfully "
                     f"on node '{replica.actor_node_id}' after "
                     f"{e2e_replica_start_latency:.1f}s. Replica constructor, "
-                    ", reconfigure method, and initial health check took "
+                    "reconfigure method, and initial health check took "
                     f"{replica.initialization_latency_s:.1f}s.",
                     extra={"log_to_stderr": False},
                 )
