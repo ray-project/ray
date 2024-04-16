@@ -157,6 +157,7 @@ inline std::string GenerateUUIDV4() {
   return ss.str();
 }
 
+/// Compress the input data using zstd compression
 inline std::string CompressZstd(const std::string &data) {
   // Compress the data.
   const size_t compressed_size = ZSTD_compressBound(data.size());
@@ -167,6 +168,7 @@ inline std::string CompressZstd(const std::string &data) {
   return compressed_data;
 }
 
+/// Decompress the input data compressed by zstd compression
 inline std::string DecompressZstd(const std::string &data) {
   // Get the decompressed size.
   const size_t decompressed_size = ZSTD_getFrameContentSize(data.data(), data.size());
