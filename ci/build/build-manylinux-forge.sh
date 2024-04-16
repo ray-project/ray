@@ -23,7 +23,7 @@ cd /tmp \
 && make \
 && sudo make install \
 && cd .. \
-&& rm -rf zstd \
+&& rm -rf zstd
 
 # Install ray java dependencies.
 if [[ "${RAY_INSTALL_JAVA}" == "1" ]]; then
