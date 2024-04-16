@@ -90,8 +90,13 @@ from ray.rllib.utils.error import ERR_MSG_INVALID_ENV_DESCRIPTOR, EnvError
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.metrics import (
+    ALGORITHM_RESULTS,
     ALL_MODULES,
+    ENV_RUNNER_RESULTS,
     EVALUATION_ITERATION_TIMER,
+    EVALUATION_RESULTS,
+    FAULT_TOLERANCE_RESULTS,
+    LEARNER_RESULTS,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_SAMPLED_THIS_ITER,
     NUM_AGENT_STEPS_TRAINED,
@@ -857,7 +862,7 @@ class Algorithm(Trainable, AlgorithmBase):
         #  inside the `training_step` as well. See the new IMPALA for an example.
         if self.config.uses_new_env_runners:
             # Synchronize EnvToModule and ModuleToEnv connector states and broadcast new
-            # states back to all workers.
+            # states back to all EnvRunners.
             with self._timers[SYNCH_ENV_CONNECTOR_STATES_TIMER]:
                 # Merge connector states from all EnvRunners and broadcast updated
                 # states back to all EnvRunners.
@@ -1508,60 +1513,66 @@ class Algorithm(Trainable, AlgorithmBase):
         Returns:
             The results dict from executing the training iteration.
         """
+        if not self.config.uses_new_env_runners:
+            raise NotImplementedError(
+                "The `Algorithm.training_step()` default implementation no longer "
+                "supports the old or hybrid API stacks! If you would like to continue "
+                "using these "
+                "old APIs with this default `training_step`, simply subclass "
+                "`Algorithm` and override its `training_step` method (copy/paste the "
+                "code and delete this error message)."
+            )
+
+        train_results: ResultDict = {}
+
         # Collect SampleBatches from sample workers until we have a full batch.
         with self._timers[SAMPLE_TIMER]:
             if self.config.count_steps_by == "agent_steps":
-                train_batch = synchronous_parallel_sample(
+                train_batch, env_runner_metrics = synchronous_parallel_sample(
                     worker_set=self.workers,
                     max_agent_steps=self.config.train_batch_size,
+                    sample_timeout_s=self.config.sample_timeout_s,
+                    _uses_new_env_runners=self.config.uses_new_env_runners,
+                    _return_metrics=True,
                 )
             else:
-                train_batch = synchronous_parallel_sample(
-                    worker_set=self.workers, max_env_steps=self.config.train_batch_size
+                train_batch, env_runner_metrics = synchronous_parallel_sample(
+                    worker_set=self.workers,
+                    max_env_steps=self.config.train_batch_size,
+                    sample_timeout_s=self.config.sample_timeout_s,
+                    _uses_new_env_runners=self.config.uses_new_env_runners,
+                    _return_metrics=True,
                 )
 
+        # Reduce EnvRunner metrics over the n EnvRunners.
+        self.metrics.log_n_dicts(ENV_RUNNER_RESULTS, env_runner_metrics)
+
         train_batch = train_batch.as_multi_agent()
-        self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
-        self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
+        #self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
+        #self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
 
         # Only train if train_batch is not empty.
         # In an extreme situation, all rollout workers die during the
         # synchronous_parallel_sample() call above.
         # In which case, we should skip training, wait a little bit, then probe again.
-        train_results = {}
         if train_batch.agent_steps() > 0:
-            # Use simple optimizer (only for multi-agent or tf-eager; all other
-            # cases should use the multi-GPU optimizer, even if only using 1 GPU).
-            # TODO: (sven) rename MultiGPUOptimizer into something more
-            #  meaningful.
-            if self.config._enable_new_api_stack:
-                train_results = self.learner_group.update_from_batch(batch=train_batch)
-            elif self.config.get("simple_optimizer") is True:
-                train_results = train_one_step(self, train_batch)
-            else:
-                train_results = multi_gpu_train_one_step(self, train_batch)
+            self.metrics.log_dict(
+                LEARNER_RESULTS,
+                self.learner_group.update_from_batch(batch=train_batch)
+            )
         else:
             # Wait 1 sec before probing again via weight syncing.
             time.sleep(1.0)
 
-        # Update weights and global_vars - after learning on the local worker - on all
-        # remote workers (only those policies that were actually trained).
-        global_vars = {
-            "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
-        }
+        # Update weights - after learning on the local worker - on all
+        # remote workers (only those RLModules that were actually trained).
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-            # TODO (Avnish): Implement this on learner_group.get_weights().
-            from_worker_or_trainer = None
-            if self.config._enable_new_api_stack:
-                from_worker_or_trainer = self.learner_group
-
             self.workers.sync_weights(
-                from_worker_or_learner_group=from_worker_or_trainer,
+                from_worker_or_learner_group=self.learner_group,
                 policies=set(train_results.keys()) - {ALL_MODULES},
-                global_vars=global_vars,
             )
 
-        return train_results
+        return self.metrics.reduce()
 
     # TODO (sven): Deprecate this API in favor of extracting the correct RLModule
     #  and simply calling `forward_inference()` on it (see DreamerV3 for an example).
@@ -3149,12 +3160,102 @@ class Algorithm(Trainable, AlgorithmBase):
             eval_config.evaluation_num_workers > 0 or eval_config.evaluation_interval
         )
 
-    def _compile_iteration_results_old_and_hybrid_api_stacks(
-        self, *, episodes_this_iter, step_ctx, iteration_results=None
+    def _compile_iteration_results(
+        self, *, train_results, eval_results, step_ctx
     ):
         # Return dict.
         results: ResultDict = {}
-        iteration_results = iteration_results or {}
+        # Evaluation results.
+        if eval_results:
+            results[EVALUATION_RESULTS] = eval_results
+        # EnvRunner results.
+        results[ENV_RUNNER_RESULTS] = train_results[ENV_RUNNER_RESULTS]
+        # Learner results.
+        results[LEARNER_RESULTS] = train_results[LEARNER_RESULTS]
+        # Fault tolerance stats.
+        results[FAULT_TOLERANCE_STATS] = {
+            "num_healthy_workers": self.workers.num_healthy_remote_workers(),
+            "num_in_flight_async_reqs": self.workers.num_in_flight_async_reqs(),
+            "num_remote_worker_restarts": self.workers.num_remote_worker_restarts(),
+        }
+
+        ## Train-steps- and env/agent-steps this iteration.
+        #for c in [
+        #    NUM_AGENT_STEPS_SAMPLED,
+        #    NUM_AGENT_STEPS_TRAINED,
+        #    NUM_ENV_STEPS_SAMPLED,
+        #    NUM_ENV_STEPS_TRAINED,
+        #]:
+        #    results[c] = self._counters[c]
+        #time_taken_sec = step_ctx.get_time_taken_sec()
+        #if self.config.count_steps_by == "agent_steps":
+        #    results[NUM_AGENT_STEPS_SAMPLED + "_this_iter"] = step_ctx.sampled
+        #    results[NUM_AGENT_STEPS_TRAINED + "_this_iter"] = step_ctx.trained
+        #    results[NUM_AGENT_STEPS_SAMPLED + "_throughput_per_sec"] = (
+        #        step_ctx.sampled / time_taken_sec
+        #    )
+        #    results[NUM_AGENT_STEPS_TRAINED + "_throughput_per_sec"] = (
+        #        step_ctx.trained / time_taken_sec
+        #    )
+        #    # TODO: For CQL and other algos, count by trained steps.
+        #    results["timesteps_total"] = self._counters[NUM_AGENT_STEPS_SAMPLED]
+        #else:
+        #    results[NUM_ENV_STEPS_SAMPLED + "_this_iter"] = step_ctx.sampled
+        #    results[NUM_ENV_STEPS_TRAINED + "_this_iter"] = step_ctx.trained
+        #    results[NUM_ENV_STEPS_SAMPLED + "_throughput_per_sec"] = (
+        #        step_ctx.sampled / time_taken_sec
+        #    )
+        #    results[NUM_ENV_STEPS_TRAINED + "_throughput_per_sec"] = (
+        #        step_ctx.trained / time_taken_sec
+        #    )
+        #    # TODO: For CQL and other algos, count by trained steps.
+        #    results["timesteps_total"] = self._counters[NUM_ENV_STEPS_SAMPLED]
+
+        # TODO: Backward compatibility.
+        #results[STEPS_TRAINED_THIS_ITER_COUNTER] = step_ctx.trained
+        #results["agent_timesteps_total"] = self._counters[NUM_AGENT_STEPS_SAMPLED]
+
+        # Algorithm stats.
+        results[ALGORITHM_RESULTS] = self.metrics.reduce()
+        ## Process timer results.
+        #timers = {}
+        #for k, timer in self._timers.items():
+        #    timers["{}_time_ms".format(k)] = round(timer.mean * 1000, 3)
+        #    if timer.has_units_processed():
+        #        timers["{}_throughput".format(k)] = round(timer.mean_throughput, 3)
+        #results["timers"] = timers
+
+        ## Process counter results.
+        #counters = {}
+        #for k, counter in self._counters.items():
+        #    counters[k] = counter
+        #results["counters"] = counters
+
+        return results
+
+    def __repr__(self):
+        return type(self).__name__
+
+    def _record_usage(self, config):
+        """Record the framework and algorithm used.
+
+        Args:
+            config: Algorithm config dict.
+        """
+        record_extra_usage_tag(TagKey.RLLIB_FRAMEWORK, config["framework"])
+        record_extra_usage_tag(TagKey.RLLIB_NUM_WORKERS, str(config["num_workers"]))
+        alg = self.__class__.__name__
+        # We do not want to collect user defined algorithm names.
+        if alg not in ALL_ALGORITHMS:
+            alg = "USER_DEFINED"
+        record_extra_usage_tag(TagKey.RLLIB_ALGORITHM, alg)
+
+    @OldAPIStack
+    def _compile_iteration_results_old_and_hybrid_api_stacks(
+        self, *, episodes_this_iter, step_ctx, iteration_results
+    ):
+        # Results to be returned.
+        results: ResultDict = {}
 
         # Evaluation results.
         if "evaluation" in iteration_results:
@@ -3257,23 +3358,6 @@ class Algorithm(Trainable, AlgorithmBase):
         results["info"].update(counters)
 
         return results
-
-    def __repr__(self):
-        return type(self).__name__
-
-    def _record_usage(self, config):
-        """Record the framework and algorithm used.
-
-        Args:
-            config: Algorithm config dict.
-        """
-        record_extra_usage_tag(TagKey.RLLIB_FRAMEWORK, config["framework"])
-        record_extra_usage_tag(TagKey.RLLIB_NUM_WORKERS, str(config["num_workers"]))
-        alg = self.__class__.__name__
-        # We do not want to collect user defined algorithm names.
-        if alg not in ALL_ALGORITHMS:
-            alg = "USER_DEFINED"
-        record_extra_usage_tag(TagKey.RLLIB_ALGORITHM, alg)
 
     @Deprecated(error=False)
     def import_policy_model_from_h5(

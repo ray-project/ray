@@ -1,3 +1,12 @@
+# Algorithm ResultDict keys.
+# TODO (sven): Change the actual strings into more fitting ones (e.g. `sampler_results`
+#  -> `env_runners` and `learner_stats` -> `learners`).
+EVALUATION_RESULTS = "evaluation"
+ENV_RUNNER_RESULTS = "sampler_results"
+LEARNER_RESULTS = "learner_stats"
+FAULT_TOLERANCE_RESULTS = "fault_tolerance"
+ALGORITHM_RESULTS = "algo_results"
+
 # Counters for sampling, sampling (on eval workers) and
 # training steps (env- and agent steps).
 NUM_ENV_STEPS_SAMPLED = "num_env_steps_sampled"
