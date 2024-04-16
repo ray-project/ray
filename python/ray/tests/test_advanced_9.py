@@ -276,7 +276,7 @@ def test_gcs_connection_no_leak(ray_start_cluster):
     with ray.init(cluster.address):
         # Wait for everything to be ready.
         time.sleep(10)
-        # Note: `fds_without_workers` need to be recorded *after* a ray start, because
+        # Note: `fds_without_workers` need to be recorded *after* `ray.init`, because
         # a prestarted worker is started on the first driver init. This worker keeps 1
         # connection to the GCS, and it stays alive even after the driver exits. If
         # we move this line before `ray.init`, we will find 1 extra connection after
