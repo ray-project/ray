@@ -2876,10 +2876,10 @@ py_test(
 py_test(
     name = "examples/rl_modules/pretraining_single_agent_training_multi_agent_rlm",
     main = "examples/rl_modules/pretraining_single_agent_training_multi_agent_rlm.py",
-    tags = ["team:rllib", "examples", "no_main"],
+    tags = ["team:rllib", "examples"],
     size = "medium",
     srcs = ["examples/rl_modules/pretraining_single_agent_training_multi_agent_rlm.py"],
-    args = ["--enable-new-api-stack", "--num-agents=2" "--stop-iters-pretraining=5", "--stop-reward=150.0"]
+    args = ["--enable-new-api-stack", "--num-agents=2", "--stop-iters-pretraining=5", "--stop-iters=20", "--stop-reward=150.0"],
 )
 
 

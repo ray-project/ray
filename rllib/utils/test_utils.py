@@ -76,7 +76,7 @@ def add_rllib_example_script_args(
     """Adds RLlib-typical (and common) examples scripts command line args to a parser.
 
     TODO (sven): This function should be used by most of our examples scripts, which
-     already mostly have this logic in them (but written out).
+    already mostly have this logic in them (but written out).
 
     Args:
         parser: The parser to add the arguments to. If None, create a new one.
