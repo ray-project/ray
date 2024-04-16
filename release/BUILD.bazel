@@ -67,24 +67,6 @@ py_test(
 )
 
 py_test(
-    name = "single_deployment_1k_noop_replica_smoke_test",
-    size = "medium",
-    srcs = test_srcs,
-    env = {
-        "IS_SMOKE_TEST": "1",
-    },
-    main = "single_deployment_1k_noop_replica.py",
-    tags = [
-        "exclusive",
-        "team:serve",
-    ],
-    deps = [
-        "//:ray_lib",
-        "//python/ray/serve:serve_lib",
-    ],
-)
-
-py_test(
     name = "multi_deployment_1k_noop_replica_smoke_test",
     size = "medium",
     srcs = test_srcs,

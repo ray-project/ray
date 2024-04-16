@@ -2277,7 +2277,7 @@
 # Serve tests
 ########################
 
-- name: serve_single_deployment_1k_noop_replica
+- name: serve_scale_replicas
   group: Serve tests
   working_dir: serve_tests
 
@@ -2286,22 +2286,17 @@
 
   cluster:
     byod: {}
-    cluster_compute: compute_tpl_32_cpu.yaml
+    cluster_compute: compute_tpl_single_node_32_cpu.yaml
 
   run:
     timeout: 7200
     long_running: false
-    script: python workloads/single_deployment_1k_noop_replica.py
+    script: python workloads/replica_scalability.py
 
   alert: default
 
   variations:
     - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: compute_tpl_32_cpu_gce.yaml
 
 - name: serve_multi_deployment_1k_noop_replica
   group: Serve tests
