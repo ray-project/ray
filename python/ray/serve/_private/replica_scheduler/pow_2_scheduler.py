@@ -17,7 +17,7 @@ from typing import (
     Tuple,
 )
 
-from ray.exceptions import ActorDiedError
+from ray.exceptions import ActorDiedError, ActorUnavailableError
 from ray.serve._private.common import (
     DeploymentID,
     ReplicaID,
@@ -526,6 +526,12 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                     for id_set in self._colocated_replica_ids.values():
                         id_set.discard(replica.replica_id)
                     msg += " This replica will no longer be considered for requests."
+                elif isinstance(t.exception(), ActorUnavailableError):
+                    msg = (
+                        "Failed to fetch queue length for "
+                        f"{replica.replica_id}. Replica is temporarily "
+                        "unavailable."
+                    )
 
                 logger.warning(msg)
             else:
