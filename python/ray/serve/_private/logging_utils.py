@@ -210,10 +210,15 @@ class StreamToLogger(object):
     This comes from https://stackoverflow.com/a/36296215 directly.
     """
 
-    def __init__(self, logger, log_level):
+    def __init__(self, logger, log_level, original_object):
         self.logger = logger
         self.log_level = log_level
+        self.original_object = original_object
         self.linebuf = ""
+
+    def __getattr__(self, attr):
+        # getting attributes from the original object
+        return getattr(self.original_object, attr)
 
     @staticmethod
     def get_stacklevel():
@@ -363,8 +368,8 @@ def configure_component_logger(
     # Redirect print, stdout, and stderr to Serve logger.
     if not RAY_SERVE_LOG_TO_STDERR:
         builtins.print = redirected_print
-        sys.stdout = StreamToLogger(logger, logging.INFO)
-        sys.stderr = StreamToLogger(logger, logging.INFO)
+        sys.stdout = StreamToLogger(logger, logging.INFO, sys.stdout)
+        sys.stderr = StreamToLogger(logger, logging.INFO, sys.stderr)
 
     logger.addHandler(file_handler)
 
