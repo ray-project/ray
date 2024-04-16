@@ -368,16 +368,8 @@ int main(int argc, char *argv[]) {
             {ray::stats::SessionNameKey, session_name}};
         ray::stats::Init(global_tags, metrics_agent_port, WorkerID::Nil());
 
-        ray::NodeID raylet_node_id;
-        if (!RayConfig::instance().OVERRIDE_NODE_ID_FOR_TESTING().empty()) {
-          RAY_LOG(INFO) << "For testing, overriding node ID to "
-                        << RayConfig::instance().OVERRIDE_NODE_ID_FOR_TESTING();
-          raylet_node_id =
-              ray::NodeID::FromHex(RayConfig::instance().OVERRIDE_NODE_ID_FOR_TESTING());
-        } else {
-          RAY_LOG(INFO) << "Setting node ID to: " << FLAGS_node_id;
-          raylet_node_id = ray::NodeID::FromHex(FLAGS_node_id);
-        }
+        RAY_LOG(INFO) << "Setting node ID to: " << node_id;
+        ray::NodeID raylet_node_id = ray::NodeID::FromHex(node_id);
 
         node_manager_config.AddDefaultLabels(raylet_node_id.Hex());
         // Initialize the node manager.
