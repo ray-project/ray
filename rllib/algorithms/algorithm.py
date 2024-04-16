@@ -2328,6 +2328,10 @@ class Algorithm(Trainable, AlgorithmBase):
         if self.config._enable_new_api_stack:
             learner_state_dir = os.path.join(checkpoint_dir, "learner")
             self.learner_group.load_state(learner_state_dir)
+            # Make also sure, all training EnvRunners get the just loaded weights.
+            weights = self.learner_group.get_weights()
+            self.workers.local_worker().set_weights(weights)
+            self.workers.sync_weights()
 
         # Call the `on_checkpoint_loaded` callback.
         self.callbacks.on_checkpoint_loaded(algorithm=self)
