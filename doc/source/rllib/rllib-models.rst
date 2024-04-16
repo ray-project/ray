@@ -115,7 +115,7 @@ Available settings are `listed above <#default-model-config-settings>`__ and als
 Note that for the vision network case, you'll probably have to configure ``conv_filters``, if your environment observations
 have custom sizes. For example, ``"model": {"dim": 42, "conv_filters": [[16, [4, 4], 2], [32, [4, 4], 2], [512, [11, 11], 1]]}`` for 42x42 observations.
 Thereby, always make sure that the last Conv2D output has an output shape of ``[B, 1, 1, X]`` (``[B, X, 1, 1]`` for PyTorch), where B=batch and
-X=last Conv2D layer's number of filters, so that RLlib can flatten it. An informative error will be thrown if this is not the case.
+X=last Conv2D layer's number of filters, so that RLlib can flatten it. An informative error will be thrown if this isn't the case.
 
 
 .. _auto_lstm_and_attention:
@@ -140,7 +140,7 @@ For fully customized RNN/LSTM/Attention-Net setups see the `Recurrent Models <#r
 `Attention Networks/Transformers <#attention>`_ sections below.
 
 .. note::
-    It is not possible to use both auto-wrappers (lstm and attention) at the same time. Doing so will create an error.
+    It isn't possible to use both auto-wrappers (lstm and attention) at the same time. Doing so will create an error.
 
 
 Customizing Preprocessors and Models

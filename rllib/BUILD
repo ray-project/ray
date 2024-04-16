@@ -2834,33 +2834,28 @@ py_test(
 
 # subdirectory: ray_tune/
 # ....................................
-#@OldAPIStack
 py_test(
     name = "examples/ray_tune/custom_experiment",
     main = "examples/ray_tune/custom_experiment.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/ray_tune/custom_experiment.py"],
-    args = ["--train-iterations=10"]
 )
 
-#@OldAPIStack
 py_test(
     name = "examples/ray_tune/custom_logger",
     main = "examples/ray_tune/custom_logger.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/ray_tune/custom_logger.py"],
-    args = ["--stop-iters=3"]
 )
 
-#@OldAPIStack
 py_test(
-    name = "examples/ray_tune/custom_train_function",
-    main = "examples/ray_tune/custom_train_function.py",
+    name = "examples/ray_tune/custom_progress_reporter",
+    main = "examples/ray_tune/custom_progress_reporter.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/ray_tune/custom_train_function.py"],
+    srcs = ["examples/ray_tune/custom_progress_reporter.py"],
 )
 
 # subdirectory: rl_modules/
@@ -2873,7 +2868,14 @@ py_test(
     size = "small",
     srcs = ["examples/rl_modules/classes/mobilenet_rlm.py"],
 )
-
+py_test(
+    name = "examples/rl_modules/pretraining_single_agent_training_multi_agent_rlm",
+    main = "examples/rl_modules/pretraining_single_agent_training_multi_agent_rlm.py",
+    tags = ["team:rllib", "examples"],
+    size = "medium",
+    srcs = ["examples/rl_modules/pretraining_single_agent_training_multi_agent_rlm.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--stop-iters-pretraining=5", "--stop-iters=20", "--stop-reward=150.0"],
+)
 
 
 
