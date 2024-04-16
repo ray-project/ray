@@ -108,31 +108,6 @@ Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
   return Status::OK();
 }
 
-Status CoreWorkerPlasmaStoreProvider::ExperimentalMutableObjectWriteAcquire(
-    const ObjectID &object_id,
-    const std::shared_ptr<Buffer> &metadata,
-    uint64_t data_size,
-    int64_t num_readers,
-    std::shared_ptr<Buffer> *data) {
-  return store_client_.ExperimentalMutableObjectWriteAcquire(
-      object_id,
-      data_size,
-      metadata ? metadata->Data() : nullptr,
-      metadata ? metadata->Size() : 0,
-      num_readers,
-      data);
-}
-
-Status CoreWorkerPlasmaStoreProvider::ExperimentalMutableObjectWriteRelease(
-    const ObjectID &object_id) {
-  return store_client_.ExperimentalMutableObjectWriteRelease(object_id);
-}
-
-Status CoreWorkerPlasmaStoreProvider::ExperimentalMutableObjectSetError(
-    const ObjectID &object_id) {
-  return store_client_.ExperimentalMutableObjectSetError(object_id);
-}
-
 Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &metadata,
                                              const size_t data_size,
                                              const ObjectID &object_id,
@@ -192,16 +167,13 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
     absl::flat_hash_set<ObjectID> &remaining,
     const std::vector<ObjectID> &batch_ids,
     int64_t timeout_ms,
-    bool send_fetch_or_reconstruct_ipc,
     bool fetch_only,
     const TaskID &task_id,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
     bool *got_exception) {
-  if (send_fetch_or_reconstruct_ipc) {
-    const auto owner_addresses = reference_counter_->GetOwnerAddresses(batch_ids);
-    RAY_RETURN_NOT_OK(raylet_client_->FetchOrReconstruct(
-        batch_ids, owner_addresses, fetch_only, task_id));
-  }
+  const auto owner_addresses = reference_counter_->GetOwnerAddresses(batch_ids);
+  RAY_RETURN_NOT_OK(raylet_client_->FetchOrReconstruct(
+      batch_ids, owner_addresses, fetch_only, task_id));
 
   std::vector<plasma::ObjectBuffer> plasma_results;
   RAY_RETURN_NOT_OK(store_client_.Get(batch_ids,
@@ -240,11 +212,6 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
   return Status::OK();
 }
 
-Status CoreWorkerPlasmaStoreProvider::ExperimentalMutableObjectReadRelease(
-    const ObjectID &object_id) {
-  return store_client_.ExperimentalMutableObjectReadRelease(object_id);
-}
-
 Status CoreWorkerPlasmaStoreProvider::GetIfLocal(
     const std::vector<ObjectID> &object_ids,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results) {
@@ -278,6 +245,11 @@ Status CoreWorkerPlasmaStoreProvider::GetIfLocal(
   return Status::OK();
 }
 
+Status CoreWorkerPlasmaStoreProvider::GetExperimentalMutableObject(
+    const ObjectID &object_id, std::unique_ptr<plasma::MutableObject> *mutable_object) {
+  return store_client_.GetExperimentalMutableObject(object_id, mutable_object);
+}
+
 Status UnblockIfNeeded(const std::shared_ptr<raylet::RayletClient> &client,
                        const WorkerContext &ctx) {
   if (ctx.CurrentTaskIsDirectCall()) {
@@ -296,7 +268,6 @@ Status UnblockIfNeeded(const std::shared_ptr<raylet::RayletClient> &client,
 Status CoreWorkerPlasmaStoreProvider::Get(
     const absl::flat_hash_set<ObjectID> &object_ids,
     int64_t timeout_ms,
-    bool is_experimental_mutable_object,
     const WorkerContext &ctx,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
     bool *got_exception) {
@@ -312,16 +283,15 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     for (int64_t i = start; i < batch_size && i < total_size; i++) {
       batch_ids.push_back(id_vector[start + i]);
     }
-    RAY_RETURN_NOT_OK(FetchAndGetFromPlasmaStore(
-        remaining,
-        batch_ids,
-        /*timeout_ms=*/0,
-        // Mutable objects must be local before ray.get.
-        /*send_fetch_or_reconstruct_ipc=*/!is_experimental_mutable_object,
-        /*fetch_only=*/true,
-        ctx.GetCurrentTaskID(),
-        results,
-        got_exception));
+    RAY_RETURN_NOT_OK(
+        FetchAndGetFromPlasmaStore(remaining,
+                                   batch_ids,
+                                   /*timeout_ms=*/0,
+                                   // Mutable objects must be local before ray.get.
+                                   /*fetch_only=*/true,
+                                   ctx.GetCurrentTaskID(),
+                                   results,
+                                   got_exception));
   }
 
   // If all objects were fetched already, return. Note that we always need to
@@ -329,8 +299,6 @@ Status CoreWorkerPlasmaStoreProvider::Get(
   if (remaining.empty() || *got_exception) {
     return UnblockIfNeeded(raylet_client_, ctx);
   }
-
-  RAY_CHECK(!is_experimental_mutable_object) << "Mutable objects must always be local";
 
   // If not all objects were successfully fetched, repeatedly call FetchOrReconstruct
   // and Get from the local object store in batches. This loop will run indefinitely
@@ -360,7 +328,6 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     RAY_RETURN_NOT_OK(FetchAndGetFromPlasmaStore(remaining,
                                                  batch_ids,
                                                  batch_timeout,
-                                                 /*send_fetch_or_reconstruct_ipc=*/true,
                                                  /*fetch_only=*/false,
                                                  ctx.GetCurrentTaskID(),
                                                  results,

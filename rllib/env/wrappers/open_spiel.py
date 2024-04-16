@@ -1,7 +1,7 @@
 from typing import Optional
 
 import numpy as np
-from gymnasium.spaces import Box, Discrete
+import gymnasium as gym
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.utils import try_import_pyspiel
@@ -22,10 +22,26 @@ class OpenSpielEnv(MultiAgentEnv):
         self.state = None
 
         # Extract observation- and action spaces from game.
-        self.observation_space = Box(
-            float("-inf"), float("inf"), (self.env.observation_tensor_size(),)
+        self._obs_space_in_preferred_format = True
+        self._action_space_in_preferred_format = True
+
+        self.observation_space = gym.spaces.Dict(
+            {
+                aid: gym.spaces.Box(
+                    float("-inf"),
+                    float("inf"),
+                    (self.env.observation_tensor_size(),),
+                    dtype=np.float32,
+                )
+                for aid in range(self.num_agents)
+            }
         )
-        self.action_space = Discrete(self.env.num_distinct_actions())
+        self.action_space = gym.spaces.Dict(
+            {
+                aid: gym.spaces.Discrete(self.env.num_distinct_actions())
+                for aid in range(self.num_agents)
+            }
+        )
 
     def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
         self.state = self.env.new_initial_state()
@@ -96,12 +112,18 @@ class OpenSpielEnv(MultiAgentEnv):
         # Sequential game:
         if str(self.type.dynamics) == "Dynamics.SEQUENTIAL":
             curr_player = self.state.current_player()
-            return {curr_player: np.reshape(self.state.observation_tensor(), [-1])}
+            return {
+                curr_player: np.reshape(self.state.observation_tensor(), [-1]).astype(
+                    np.float32
+                )
+            }
         # Simultaneous game.
         else:
             assert self.state.current_player() == -2
             return {
-                ag: np.reshape(self.state.observation_tensor(ag), [-1])
+                ag: np.reshape(self.state.observation_tensor(ag), [-1]).astype(
+                    np.float32
+                )
                 for ag in range(self.num_agents)
             }
 

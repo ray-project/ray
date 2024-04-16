@@ -1,5 +1,5 @@
 from ray.rllib.algorithms.appo.appo import APPOConfig
-from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
+from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
 
 
 config = (

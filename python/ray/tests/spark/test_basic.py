@@ -70,7 +70,9 @@ _logger = logging.getLogger(__name__)
 class RayOnSparkCPUClusterTestBase(ABC):
     spark = None
     num_total_cpus = None
+    num_total_gpus = None
     num_cpus_per_spark_task = None
+    num_gpus_per_spark_task = None
     max_spark_tasks = None
 
     @classmethod
@@ -118,11 +120,13 @@ class RayOnSparkCPUClusterTestBase(ABC):
                 num_task_slots=num_ray_task_slots,
                 physical_mem_bytes=_RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES,
                 shared_mem_bytes=_RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES,
+                configured_heap_memory_bytes=None,
                 configured_object_store_bytes=None,
             )
             with _setup_ray_cluster(
                 max_worker_nodes=max_worker_nodes_arg,
                 num_cpus_worker_node=num_cpus_worker_node,
+                num_gpus_worker_node=0,
                 head_node_options={"include_dashboard": False},
             ):
                 ray.init()
@@ -144,6 +148,8 @@ class RayOnSparkCPUClusterTestBase(ABC):
             shutil.rmtree(collect_log_to_path, ignore_errors=True)
             setup_ray_cluster(
                 max_worker_nodes=MAX_NUM_WORKER_NODES,
+                num_cpus_worker_node=1,
+                num_gpus_worker_node=0,
                 collect_log_to_path=collect_log_to_path,
                 ray_temp_root_dir=ray_temp_root_dir,
                 head_node_options={"include_dashboard": True},
@@ -191,7 +197,11 @@ class RayOnSparkCPUClusterTestBase(ABC):
             shutil.rmtree(collect_log_to_path, ignore_errors=True)
 
     def test_ray_cluster_shutdown(self):
-        with _setup_ray_cluster(max_worker_nodes=self.max_spark_tasks) as cluster:
+        with _setup_ray_cluster(
+            max_worker_nodes=self.max_spark_tasks,
+            num_cpus_worker_node=1,
+            num_gpus_worker_node=0,
+        ) as cluster:
             ray.init()
             assert len(self.get_ray_worker_resources_list()) == self.max_spark_tasks
 
@@ -207,7 +217,11 @@ class RayOnSparkCPUClusterTestBase(ABC):
         assert not is_port_in_use(hostname, int(port))
 
     def test_background_spark_job_exit_trigger_ray_head_exit(self):
-        with _setup_ray_cluster(max_worker_nodes=self.max_spark_tasks) as cluster:
+        with _setup_ray_cluster(
+            max_worker_nodes=self.max_spark_tasks,
+            num_cpus_worker_node=1,
+            num_gpus_worker_node=0,
+        ) as cluster:
             ray.init()
             # Mimic the case the job failed unexpectedly.
             cluster._cancel_background_spark_job()
@@ -235,6 +249,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
                 num_task_slots=num_ray_task_slots,
                 physical_mem_bytes=_RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES,
                 shared_mem_bytes=_RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES,
+                configured_heap_memory_bytes=None,
                 configured_object_store_bytes=None,
             )
 
@@ -242,6 +257,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
                 max_worker_nodes=max_worker_nodes,
                 min_worker_nodes=min_worker_nodes,
                 num_cpus_worker_node=num_cpus_worker_node,
+                num_gpus_worker_node=0,
                 head_node_options={"include_dashboard": False},
                 autoscale_idle_timeout_minutes=0.1,
             ):

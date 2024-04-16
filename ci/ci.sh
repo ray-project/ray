@@ -144,11 +144,11 @@ compile_pip_dependencies() {
   # pip install will complain about irresolvable constraints.
   sed -i -E 's/==([\.0-9]+)\+[^\b]*cpu/==\1/g' "${WORKSPACE_DIR}/python/$TARGET"
 
-  # Add python_version < 3.11 to scikit-image, scikit-optimize, scipy, networkx
+  # Add python_version < 3.11 to scikit-image, scipy, networkx
   # as they need more recent versions in python 3.11.
   # These will be automatically resolved. Remove as
   # soon as we resolve to versions of scikit-image that are built for py311.
-  sed -i -E 's/((scikit-image|scikit-optimize|scipy|networkx)==[\.0-9]+\b)/\1 ; python_version < "3.11"/g' "${WORKSPACE_DIR}/python/$TARGET"
+  sed -i -E 's/((scikit-image|scipy|networkx)==[\.0-9]+\b)/\1 ; python_version < "3.11"/g' "${WORKSPACE_DIR}/python/$TARGET"
 
   cat "${WORKSPACE_DIR}/python/$TARGET"
 
@@ -164,7 +164,6 @@ test_core() {
   case "${OSTYPE}" in
     msys)
       args+=(
-        -//:core_worker_test
         -//src/ray/util/tests:event_test
         -//:gcs_server_rpc_test
         -//src/ray/common/test:ray_syncer_test # TODO (iycheng): it's flaky on windows. Add it back once we figure out the cause

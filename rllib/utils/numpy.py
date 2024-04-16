@@ -207,6 +207,7 @@ def flatten_inputs_to_1d_tensor(
     inputs: TensorStructType,
     spaces_struct: Optional[SpaceStruct] = None,
     time_axis: bool = False,
+    batch_axis: bool = True,
 ) -> TensorType:
     """Flattens arbitrary input structs according to the given spaces struct.
 
@@ -230,6 +231,9 @@ def flatten_inputs_to_1d_tensor(
         time_axis: Whether all inputs have a time-axis (after the batch axis).
             If True, will keep not only the batch axis (0th), but the time axis
             (1st) as-is and flatten everything from the 2nd axis up.
+        batch_axis: Whether all inputs have a batch axis.
+            If True, will keep that batch axis as-is and flatten everything from the
+            other dims up.
 
     Returns:
         A single 1D tensor resulting from concatenating all
@@ -263,6 +267,8 @@ def flatten_inputs_to_1d_tensor(
         [[[0.0, 1.0, 0.0, 0.1], [1.0, 0.0, 1.0, 1.1]],
         [[1.0, 0.0, 2.0, 2.1], [0.0, 1.0, 3.0, 3.1]]]  # B=2 T=2 n=4
     """
+    # `time_axis` must not be True if `batch_axis` is False.
+    assert not (time_axis and not batch_axis)
 
     flat_inputs = tree.flatten(inputs)
     flat_spaces = (
@@ -275,10 +281,8 @@ def flatten_inputs_to_1d_tensor(
     T = None
     out = []
     for input_, space in zip(flat_inputs, flat_spaces):
-        assert isinstance(input_, np.ndarray)
-
         # Store batch and (if applicable) time dimension.
-        if B is None:
+        if B is None and batch_axis:
             B = input_.shape[0]
             if time_axis:
                 T = input_.shape[1]
@@ -292,28 +296,44 @@ def flatten_inputs_to_1d_tensor(
         elif isinstance(space, MultiDiscrete):
             if time_axis:
                 input_ = np.reshape(input_, [B * T, -1])
-            out.append(
-                np.concatenate(
-                    [
-                        one_hot(input_[:, i], depth=n).astype(np.float32)
-                        for i, n in enumerate(space.nvec)
-                    ],
-                    axis=-1,
+            if batch_axis:
+                out.append(
+                    np.concatenate(
+                        [
+                            one_hot(input_[:, i], depth=n).astype(np.float32)
+                            for i, n in enumerate(space.nvec)
+                        ],
+                        axis=-1,
+                    )
                 )
-            )
+            else:
+                out.append(
+                    np.concatenate(
+                        [
+                            one_hot(input_[i], depth=n).astype(np.float32)
+                            for i, n in enumerate(space.nvec)
+                        ],
+                        axis=-1,
+                    )
+                )
         # Box: Flatten.
         else:
+            # Special case for spaces: Box(.., shape=(), ..)
+            if isinstance(input_, float):
+                input_ = np.array([input_])
+
             if time_axis:
                 input_ = np.reshape(input_, [B * T, -1])
-            else:
+            elif batch_axis:
                 input_ = np.reshape(input_, [B, -1])
+            else:
+                input_ = np.reshape(input_, [-1])
             out.append(input_.astype(np.float32))
 
     merged = np.concatenate(out, axis=-1)
     # Restore the time-dimension, if applicable.
     if time_axis:
         merged = np.reshape(merged, [B, T, -1])
-
     return merged
 
 

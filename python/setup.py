@@ -250,6 +250,7 @@ if setup_spec.type == SetupType.RAY:
             "prometheus_client >= 0.7.1",
             "smart_open",
             "virtualenv >=20.0.24, !=20.21.1",  # For pip runtime env.
+            "memray; sys_platform != 'win32'",
         ],
         "client": [
             # The Ray client needs a specific range of gRPC to work:
@@ -262,8 +263,7 @@ if setup_spec.type == SetupType.RAY:
             "uvicorn[standard]",
             "requests",
             "starlette",
-            # Tracking issue: https://github.com/tiangolo/fastapi/discussions/10948
-            "fastapi <= 0.108.0",
+            "fastapi",
             "watchfiles",
         ],
         "tune": ["pandas", "tensorboardX>=1.9", "requests", pyarrow_dep, "fsspec"],
@@ -789,7 +789,7 @@ setuptools.setup(
         ]
     },
     package_data={
-        "ray": ["includes/*.pxd", "*.pxd"],
+        "ray": ["includes/*.pxd", "*.pxd", "data/_internal/logging.yaml"],
     },
     include_package_data=True,
     exclude_package_data={

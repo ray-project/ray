@@ -74,6 +74,7 @@ class MultiAgentRLModule(RLModule):
         """
         super().__init__(config or MultiAgentRLModuleConfig())
 
+    @override(RLModule)
     def setup(self):
         """Sets up the underlying RLModules."""
         self._rl_modules = {}
@@ -87,6 +88,26 @@ class MultiAgentRLModule(RLModule):
             else:
                 assert self._rl_modules[module_id].framework in [None, framework]
         self.framework = framework
+
+    @OverrideToImplementCustomLogic
+    @override(RLModule)
+    def get_initial_state(self) -> Any:
+        # TODO (sven): Replace by call to `self.foreach_module`, but only if this method
+        #  supports returning dicts.
+        ret = {}
+        for module_id, module in self._rl_modules.items():
+            ret[module_id] = module.get_initial_state()
+        return ret
+
+    @OverrideToImplementCustomLogic
+    @override(RLModule)
+    def is_stateful(self) -> bool:
+        initial_state = self.get_initial_state()
+        assert isinstance(initial_state, dict), (
+            "The initial state of an RLModule must be a dict, but is "
+            f"{type(initial_state)} instead."
+        )
+        return bool(any(sa_init_state for sa_init_state in initial_state.values()))
 
     @classmethod
     def __check_module_configs(cls, module_configs: Dict[ModuleID, Any]):
@@ -184,6 +205,10 @@ class MultiAgentRLModule(RLModule):
             func(module_id, module, **kwargs)
             for module_id, module in self._rl_modules.items()
         ]
+
+    def __contains__(self, item) -> bool:
+        """Returns whether the given `item` (ModuleID) is present in self."""
+        return item in self._rl_modules
 
     def __getitem__(self, module_id: ModuleID) -> RLModule:
         """Returns the module with the given module ID.
@@ -373,7 +398,10 @@ class MultiAgentRLModule(RLModule):
 
     @classmethod
     @override(RLModule)
-    def from_checkpoint(cls, checkpoint_dir_path: Union[str, pathlib.Path]) -> None:
+    def from_checkpoint(
+        cls,
+        checkpoint_dir_path: Union[str, pathlib.Path],
+    ) -> None:
         path = pathlib.Path(checkpoint_dir_path)
         metadata_path = path / RLMODULE_METADATA_FILE_NAME
         marl_module = cls._from_metadata_file(metadata_path)
@@ -509,20 +537,20 @@ class MultiAgentRLModuleSpec:
     def add_modules(
         self,
         module_specs: Dict[ModuleID, SingleAgentRLModuleSpec],
-        overwrite: bool = True,
+        override: bool = True,
     ) -> None:
         """Add new module specs to the spec or updates existing ones.
 
         Args:
             module_specs: The mapping for the module_id to the single-agent module
                 specs to be added to this multi-agent module spec.
-            overwrite: Whether to overwrite the existing module specs if they already
-                exist. If False, they will be updated only.
+            override: Whether to override the existing module specs if they already
+                exist. If False, they are only updated.
         """
         if self.module_specs is None:
             self.module_specs = {}
         for module_id, module_spec in module_specs.items():
-            if overwrite or module_id not in self.module_specs:
+            if override or module_id not in self.module_specs:
                 self.module_specs[module_id] = module_spec
             else:
                 self.module_specs[module_id].update(module_spec)
@@ -579,7 +607,11 @@ class MultiAgentRLModuleSpec:
             },
         )
 
-    def update(self, other: "MultiAgentRLModuleSpec", overwrite=False) -> None:
+    def update(
+        self,
+        other: Union["MultiAgentRLModuleSpec", SingleAgentRLModuleSpec],
+        override=False,
+    ) -> None:
         """Updates this spec with the other spec.
 
         Traverses this MultiAgentRLModuleSpec's module_specs and updates them with
@@ -587,13 +619,14 @@ class MultiAgentRLModuleSpec:
 
         Args:
             other: The other spec to update this spec with.
-            overwrite: Whether to overwrite the existing module specs if they already
-                exist. If False, they will be updated only.
+            override: Whether to override the existing module specs if they already
+                exist. If False, they are only updated.
         """
-        assert type(other) is MultiAgentRLModuleSpec
-
-        if isinstance(other.module_specs, dict):
-            self.add_modules(other.module_specs, overwrite=overwrite)
+        if isinstance(other, SingleAgentRLModuleSpec):
+            for mid, spec in self.module_specs.items():
+                self.module_specs[mid].update(other, override=False)
+        elif isinstance(other.module_specs, dict):
+            self.add_modules(other.module_specs, override=override)
         else:
             if not self.module_specs:
                 self.module_specs = other.module_specs

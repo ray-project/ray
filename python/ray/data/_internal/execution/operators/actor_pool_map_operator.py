@@ -1,10 +1,10 @@
 import collections
+import logging
 from dataclasses import dataclass
 from typing import Any, Dict, Iterator, List, Optional, Union
 
 import ray
 from ray.data._internal.compute import ActorPoolStrategy
-from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
@@ -20,7 +20,7 @@ from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 
-logger = DatasetLogger(__name__)
+logger = logging.getLogger(__name__)
 
 # Higher values here are better for prefetching and locality. It's ok for this to be
 # fairly high since streaming backpressure prevents us from overloading actors.
@@ -85,6 +85,14 @@ class ActorPoolMapOperator(MapOperator):
         actor_task_errors = DataContext.get_current().actor_task_retry_on_errors
         if actor_task_errors:
             self._ray_actor_task_remote_args["retry_exceptions"] = actor_task_errors
+        data_context = DataContext.get_current()
+        if data_context._max_num_blocks_in_streaming_gen_buffer is not None:
+            # The `_generator_backpressure_num_objects` parameter should be
+            # `2 * _max_num_blocks_in_streaming_gen_buffer` because we yield
+            # 2 objects for each block: the block and the block metadata.
+            self._ray_actor_task_remote_args["_generator_backpressure_num_objects"] = (
+                2 * data_context._max_num_blocks_in_streaming_gen_buffer
+            )
         self._min_rows_per_bundle = min_rows_per_bundle
 
         # Create autoscaling policy from compute strategy.
@@ -115,9 +123,7 @@ class ActorPoolMapOperator(MapOperator):
         # situations where the scheduler is unable to schedule downstream operators
         # due to lack of available actors, causing an initial "pileup" of objects on
         # upstream operators, leading to a spike in memory usage prior to steady state.
-        logger.get_logger().info(
-            f"{self._name}: Waiting for {len(refs)} pool actors to start..."
-        )
+        logger.debug(f"{self._name}: Waiting for {len(refs)} pool actors to start...")
         try:
             ray.get(refs, timeout=DEFAULT_WAIT_FOR_MIN_ACTORS_SEC)
         except ray.exceptions.GetTimeoutError:
@@ -171,6 +177,7 @@ class ActorPoolMapOperator(MapOperator):
 
     def _add_bundled_input(self, bundle: RefBundle):
         self._bundle_queue.append(bundle)
+        self._metrics.on_input_queued(bundle)
         # Try to dispatch all bundles in the queue, including this new bundle.
         self._dispatch_tasks()
 
@@ -193,6 +200,7 @@ class ActorPoolMapOperator(MapOperator):
                 break
             # Submit the map task.
             bundle = self._bundle_queue.popleft()
+            self._metrics.on_input_dequeued(bundle)
             input_blocks = [block for block, _ in bundle.blocks]
             ctx = TaskContext(
                 task_idx=self._next_data_task_idx,
@@ -281,7 +289,7 @@ class ActorPoolMapOperator(MapOperator):
         min_workers = self._autoscaling_policy.min_workers
         if len(self._output_metadata) < min_workers:
             # The user created a stream that has too few blocks to begin with.
-            logger.get_logger().warning(
+            logger.warning(
                 "To ensure full parallelization across an actor pool of size "
                 f"{min_workers}, the Dataset should consist of at least "
                 f"{min_workers} distinct blocks. Consider increasing "
@@ -308,22 +316,20 @@ class ActorPoolMapOperator(MapOperator):
             gpu=self._ray_remote_args.get("num_gpus", 0) * min_workers,
         )
 
-    def current_resource_usage(self) -> ExecutionResources:
+    def current_processor_usage(self) -> ExecutionResources:
         # Both pending and running actors count towards our current resource usage.
         num_active_workers = self._actor_pool.num_total_actors()
-        object_store_memory = self.metrics.obj_store_mem_cur
-        if self.metrics.obj_store_mem_pending_tasks is not None:
-            object_store_memory += self.metrics.obj_store_mem_pending_tasks
         return ExecutionResources(
             cpu=self._ray_remote_args.get("num_cpus", 0) * num_active_workers,
             gpu=self._ray_remote_args.get("num_gpus", 0) * num_active_workers,
-            object_store_memory=object_store_memory,
         )
 
-    def incremental_resource_usage(self) -> ExecutionResources:
+    def incremental_resource_usage(
+        self, consider_autoscaling=True
+    ) -> ExecutionResources:
         # We would only have nonzero incremental CPU/GPU resources if a new task would
         # require scale-up to run.
-        if self._autoscaling_policy.should_scale_up(
+        if consider_autoscaling and self._autoscaling_policy.should_scale_up(
             num_total_workers=self._actor_pool.num_total_actors(),
             num_running_workers=self._actor_pool.num_running_actors(),
         ):
@@ -339,7 +345,8 @@ class ActorPoolMapOperator(MapOperator):
         return ExecutionResources(
             cpu=num_cpus,
             gpu=num_gpus,
-            object_store_memory=self._metrics.average_bytes_outputs_per_task,
+            object_store_memory=self._metrics.obj_store_mem_max_pending_output_per_task
+            or 0,
         )
 
     def _extra_metrics(self) -> Dict[str, Any]:

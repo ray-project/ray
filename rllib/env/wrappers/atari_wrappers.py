@@ -2,7 +2,7 @@ from collections import deque
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
-from typing import Union
+from typing import Optional, Union
 
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.images import rgb2gray, resize
@@ -318,6 +318,57 @@ class WarpFrame(gym.ObservationWrapper):
         frame = rgb2gray(frame)
         frame = resize(frame, height=self.height, width=self.width)
         return frame[:, :, None]
+
+
+@PublicAPI
+def wrap_atari_for_new_api_stack(
+    env: gym.Env,
+    dim: int = 64,
+    frameskip: int = 4,
+    framestack: Optional[int] = None,
+) -> gym.Env:
+    """Wraps `env` for new-API-stack-friendly RLlib Atari experiments.
+
+    Note that we assume reward clipping is done outside the wrapper.
+
+    Args:
+        env: The env object to wrap.
+        dim: Dimension to resize observations to (dim x dim).
+        frameskip: Whether to skip n frames and max over them.
+        framestack: Whether to stack the last n (grayscaled) frames. Note that this
+            step happens after(!) a possible frameskip step, meaning that if
+            frameskip=4 and framestack=2, we would perform the following over this
+            trajectory:
+            actual env timesteps: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 -> ...
+            frameskip:            ( max ) ( max ) ( max   ) ( max     )
+            framestack:           ( stack       ) (stack              )
+
+    Returns:
+        The wrapped gym.Env.
+    """
+    # Time limit.
+    env = gym.wrappers.TimeLimit(env, max_episode_steps=108000)
+    # Grayscale + resize
+    env = WarpFrame(env, dim=dim)
+    # Normalize the image.
+    env = NormalizedImageEnv(env)
+    # Frameskip: Take max over these n frames.
+    if frameskip > 1:
+        assert env.spec is not None
+        env = MaxAndSkipEnv(env, skip=frameskip)
+    # Send n noop actions into env after reset to increase variance in the
+    # "start states" of the trajectories. These dummy steps are NOT included in the
+    # sampled data used for learning.
+    env = NoopResetEnv(env, noop_max=30)
+    # Each life is one episode.
+    env = EpisodicLifeEnv(env)
+    # Some envs only start playing after pressing fire. Unblock those.
+    if "FIRE" in env.unwrapped.get_action_meanings():
+        env = FireResetEnv(env)
+    # Framestack.
+    if framestack:
+        env = FrameStack(env, k=framestack)
+    return env
 
 
 @PublicAPI

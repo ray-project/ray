@@ -2,12 +2,21 @@ import re
 import threading
 
 from subprocess import CalledProcessError
-from typing import Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 from ray.autoscaler.node_provider import NodeProvider
 
 
 class MockNode:
-    def __init__(self, node_id, tags, node_config, node_type, unique_ips=False):
+    def __init__(
+        self,
+        node_id,
+        tags,
+        node_config,
+        node_type,
+        unique_ips=False,
+        resources=None,
+        labels=None,
+    ):
         self.node_id = str(node_id)
         self.state = "pending"
         self.tags = tags
@@ -21,6 +30,8 @@ class MockNode:
         self.created_in_main_thread = (
             threading.current_thread() is threading.main_thread()
         )
+        self.resources = resources or {}
+        self.labels = labels or {}
 
     def matches(self, tags):
         for k, v in tags.items():
@@ -151,7 +162,8 @@ class MockProvider(NodeProvider):
         self.mock_nodes = {}
         self.next_id = 0
         self.throw = False
-        self.error_creates = None
+        self.creation_error = None
+        self.termination_errors = None
         self.fail_creates = False
         self.ready_to_create = threading.Event()
         self.ready_to_create.set()
@@ -223,11 +235,24 @@ class MockProvider(NodeProvider):
         with self.lock:
             return self.mock_nodes[node_id].external_ip
 
-    def create_node(self, node_config, tags, count, _skip_wait=False):
+    def create_node(
+        self,
+        node_config: Dict[str, Any],
+        tags: Dict[str, str],
+        count: int,
+        _skip_wait=False,
+    ) -> Dict[str, Any]:
+        return self.create_node_with_resources_and_labels(
+            node_config, tags, count, {}, {}, _skip_wait=_skip_wait
+        )
+
+    def create_node_with_resources_and_labels(
+        self, node_config, tags, count, resources, labels, _skip_wait=False
+    ):
         from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE
 
-        if self.error_creates is not None:
-            raise self.error_creates
+        if self.creation_error is not None:
+            raise self.creation_error
         if not _skip_wait:
             self.ready_to_create.wait()
         if self.fail_creates:
@@ -250,6 +275,8 @@ class MockProvider(NodeProvider):
                     tags.copy(),
                     node_config,
                     tags.get(TAG_RAY_USER_NODE_TYPE),
+                    resources=resources,
+                    labels=labels,
                     unique_ips=self.unique_ips,
                 )
                 self.mock_nodes[new_node.node_id] = new_node
@@ -263,6 +290,9 @@ class MockProvider(NodeProvider):
 
     def terminate_node(self, node_id):
         with self.lock:
+            if self.termination_errors is not None:
+                raise self.termination_errors
+
             if self.cache_stopped:
                 self.mock_nodes[node_id].state = "stopped"
             else:

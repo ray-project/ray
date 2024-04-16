@@ -4,7 +4,6 @@ import os
 import re
 import sys
 import time
-from collections import defaultdict
 
 import pytest
 import requests
@@ -15,12 +14,13 @@ from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.exceptions import RayTaskError
 from ray.serve._private.common import DeploymentID, ReplicaState
 from ray.serve._private.constants import (
+    RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS,
     SERVE_CONTROLLER_NAME,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
     SERVE_PROXY_NAME,
 )
-from ray.serve._private.utils import get_random_string
+from ray.serve._private.test_utils import check_replica_counts
 from ray.serve.schema import LoggingConfig
 from ray.serve.tests.test_failure import request_with_retries
 from ray.util.state import list_actors
@@ -50,7 +50,7 @@ def test_recover_start_from_replica_actor_names(serve_instance):
     # Assert 2 replicas are running in deployment deployment after partially
     # successful deploy() call with transient error
     deployment_dict = ray.get(serve_instance._controller._all_running_replicas.remote())
-    id = DeploymentID("recover_start_from_replica_actor_names", "app")
+    id = DeploymentID(name="recover_start_from_replica_actor_names", app_name="app")
     assert len(deployment_dict[id]) == 2
 
     replica_version_hash = None
@@ -115,99 +115,99 @@ def test_recover_start_from_replica_actor_names(serve_instance):
 
 
 def test_recover_rolling_update_from_replica_actor_names(serve_instance):
-    """Test controller is able to recover starting -> updating -> running
+    """Test controller can recover replicas during rolling update.
+
+    Replicas starting -> updating -> running
     replicas from actor names, with right replica versions during rolling
     update.
     """
-    client = serve_instance
 
-    name = "test"
+    signal = SignalActor.remote()
 
-    @ray.remote(num_cpus=0)
-    def call(block=False):
-        handle = serve.get_deployment_handle(name, "app")
-        ret = handle.handler.remote(block).result()
-
-        return ret.split("|")[0], ret.split("|")[1]
-
-    signal_name = f"signal#{get_random_string()}"
-    signal = SignalActor.options(name=signal_name).remote()
-
-    @serve.deployment(name=name, version="1", num_replicas=2)
+    @serve.deployment(name="test", num_replicas=2)
     class V1:
-        async def handler(self, block: bool):
-            if block:
-                signal = ray.get_actor(signal_name)
-                await signal.wait.remote()
+        async def __call__(self):
+            await signal.wait.remote()
+            return "1", os.getpid()
 
-            return f"1|{os.getpid()}"
-
-        async def __call__(self, request):
-            return await self.handler(request.query_params["block"] == "True")
-
+    @serve.deployment(name="test", num_replicas=2)
     class V2:
-        async def handler(self, *args):
-            return f"2|{os.getpid()}"
+        async def __call__(self):
+            return "2", os.getpid()
 
-        async def __call__(self, request):
-            return await self.handler()
+    h = serve.run(V1.bind(), name="app")
 
-    def make_nonblocking_calls(expected, expect_blocking=False, num_returns=1):
-        # Returns dict[val, set(pid)].
-        blocking = []
-        responses = defaultdict(set)
-        start = time.time()
-        timeout_value = 60 if sys.platform == "win32" else 30
-        while time.time() - start < timeout_value:
-            refs = [call.remote(block=False) for _ in range(10)]
-            ready, not_ready = ray.wait(refs, timeout=5, num_returns=num_returns)
-            for ref in ready:
-                val, pid = ray.get(ref)
-                responses[val].add(pid)
-            for ref in not_ready:
-                blocking.extend(not_ready)
+    # Send requests to get pids of initial 2 replicas
+    signal.send.remote()
+    refs = [h.remote() for _ in range(10)]
+    versions, pids = zip(*[ref.result() for ref in refs])
+    assert versions.count("1") == 10
+    initial_pids = set(pids)
+    assert len(initial_pids) == 2
 
-            if all(len(responses[val]) >= num for val, num in expected.items()) and (
-                expect_blocking is False or len(blocking) > 0
-            ):
-                break
-        else:
-            assert False, f"Timed out, responses: {responses}."
+    # blocked_ref will block a single replica until the signal is sent.
+    signal.send.remote(clear=True)
+    blocked_ref = h.remote()
 
-        return responses, blocking
-
-    serve.run(V1.bind(), name="app")
-    responses1, _ = make_nonblocking_calls({"1": 2}, num_returns=2)
-    pids1 = responses1["1"]
-
-    # ref2 will block a single replica until the signal is sent. Check that
-    # some requests are now blocking.
-    ref2 = call.remote(block=True)
-    responses2, blocking2 = make_nonblocking_calls({"1": 1}, expect_blocking=True)
-    assert list(responses2["1"])[0] in pids1
-
+    # Kill the controller
     ray.kill(serve.context._global_client._controller, no_restart=False)
 
-    # Redeploy new version. Since there is one replica blocking, only one new
-    # replica should be started up.
-    V2 = V1.options(func_or_class=V2, version="2")
-    serve.run(V2.bind(), _blocking=False, name="app")
-    with pytest.raises(TimeoutError):
-        client._wait_for_application_running("app", timeout_s=0.1)
-    responses3, blocking3 = make_nonblocking_calls({"1": 1}, expect_blocking=True)
+    # Redeploy new version.
+    serve._run(V2.bind(), _blocking=False, name="app")
 
+    # One replica of the old version should be stuck in stopping because
+    # of the blocked request.
+    if RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS:
+        # Two replicas of the new version should be brought up without
+        # waiting for the old replica to stop.
+        wait_for_condition(
+            check_replica_counts,
+            controller=serve_instance._controller,
+            deployment_id=DeploymentID(name="test", app_name="app"),
+            total=3,
+            by_state=[
+                (ReplicaState.STOPPING, 1, lambda r: r._actor.pid in initial_pids),
+                (ReplicaState.RUNNING, 2, lambda r: r._actor.pid not in initial_pids),
+            ],
+        )
+
+        # All new requests should be sent to the new running replicas
+        refs = [h.remote() for _ in range(10)]
+        versions, pids = zip(*[ref.result(timeout_s=5) for ref in refs])
+        assert versions.count("2") == 10
+        pids2 = set(pids)
+        assert len(pids2 & initial_pids) == 0
+    else:
+        with pytest.raises(TimeoutError):
+            serve_instance._wait_for_application_running("app", timeout_s=0.1)
+
+        refs = [h.remote() for _ in range(10)]
+
+    # Kill the controller
     ray.kill(serve.context._global_client._controller, no_restart=False)
 
-    # Signal the original call to exit.
+    # Release the signal so that the old replica can shutdown
     ray.get(signal.send.remote())
-    val, pid = ray.get(ref2)
+    val, pid = blocked_ref.result()
     assert val == "1"
-    assert pid in responses1["1"]
+    assert pid in initial_pids
+
+    if not RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS:
+        versions, pids = zip(*[ref.result(timeout_s=5) for ref in refs])
+        assert versions.count("1") == 10
+        assert len(set(pids) & initial_pids)
 
     # Now the goal and requests to the new version should complete.
     # We should have two running replicas of the new version.
-    client._wait_for_application_running("app")
-    make_nonblocking_calls({"2": 2}, num_returns=2)
+    serve_instance._wait_for_application_running("app")
+    check_replica_counts(
+        controller=serve_instance._controller,
+        deployment_id=DeploymentID(name="test", app_name="app"),
+        total=2,
+        by_state=(
+            [(ReplicaState.RUNNING, 2, lambda r: r._actor.pid not in initial_pids)]
+        ),
+    )
 
 
 def test_controller_recover_initializing_actor(serve_instance):
@@ -231,7 +231,7 @@ def test_controller_recover_initializing_actor(serve_instance):
         def __call__(self, request):
             return f"1|{os.getpid()}"
 
-    serve.run(V1.bind(), _blocking=False, name="app")
+    serve._run(V1.bind(), _blocking=False, name="app")
     ray.get(pending_init_indicator.remote())
 
     def get_actor_info(name: str):
@@ -273,7 +273,7 @@ def test_replica_deletion_after_controller_recover(serve_instance):
     serve.delete("app", _blocking=False)
 
     def check_replica(replica_state=None):
-        id = DeploymentID("V1", "app")
+        id = DeploymentID(name="V1", app_name="app")
         try:
             replicas = ray.get(controller._dump_replica_states_for_testing.remote(id))
         except RayTaskError as ex:
@@ -315,7 +315,7 @@ def test_recover_deleting_application(serve_instance):
         async def __del__(self):
             await signal.wait.remote()
 
-    id = DeploymentID("A", SERVE_DEFAULT_APP_NAME)
+    id = DeploymentID(name="A")
     serve.run(A.bind())
 
     @ray.remote

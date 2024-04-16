@@ -17,6 +17,7 @@ PyTorch Ecosystem
 
     ~train.torch.TorchTrainer
     ~train.torch.TorchConfig
+    ~train.torch.xla.TorchXLAConfig
 
 .. _train-pytorch-integration:
 
@@ -96,6 +97,7 @@ XGBoost
     :toctree: doc/
 
     ~train.xgboost.XGBoostTrainer
+    ~train.xgboost.RayTrainReportCallback
 
 
 LightGBM
@@ -106,6 +108,7 @@ LightGBM
     :toctree: doc/
 
     ~train.lightgbm.LightGBMTrainer
+    ~train.lightgbm.RayTrainReportCallback
 
 
 .. _ray-train-configs-api:
@@ -143,7 +146,7 @@ Ray Train Utilities
 .. autosummary::
     :nosignatures:
     :toctree: doc/
-    
+
     ~train.get_checkpoint
     ~train.get_context
     ~train.get_dataset_shard
@@ -175,7 +178,6 @@ Trainer Base Classes
 
     ~train.trainer.BaseTrainer
     ~train.data_parallel_trainer.DataParallelTrainer
-    ~train.gbdt_trainer.GBDTTrainer
 
 
 Train Backend Base Classes

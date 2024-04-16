@@ -43,7 +43,7 @@ routes = dashboard_optional_utils.DashboardHeadRouteTable
 
 def gcs_node_info_to_dict(message):
     return dashboard_utils.message_to_dict(
-        message, {"nodeId"}, including_default_value_fields=True
+        message, {"nodeId"}, always_print_fields_with_no_presence=True
     )
 
 
@@ -80,7 +80,7 @@ def node_stats_to_dict(message):
         result = dashboard_utils.message_to_dict(message, decode_keys)
         result["coreWorkersStats"] = [
             dashboard_utils.message_to_dict(
-                m, decode_keys, including_default_value_fields=True
+                m, decode_keys, always_print_fields_with_no_presence=True
             )
             for m in core_workers_stats
         ]

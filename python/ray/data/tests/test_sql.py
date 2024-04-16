@@ -37,7 +37,7 @@ def test_read_sql(temp_database: str, parallelism: int):
     dataset = ray.data.read_sql(
         "SELECT * FROM movie",
         lambda: sqlite3.connect(temp_database),
-        parallelism=parallelism,
+        override_num_blocks=parallelism,
     )
     actual_values = [tuple(record.values()) for record in dataset.take_all()]
 
@@ -267,7 +267,7 @@ def test_databricks_uc_datasource():
             table="table1",
             catalog="catalog1",
             schema="db1",
-            parallelism=5,
+            override_num_blocks=5,
         ).to_pandas()
 
         pd.testing.assert_frame_equal(result, expected_result_df)
@@ -278,7 +278,7 @@ def test_databricks_uc_datasource():
             query="select * from table1",
             catalog="catalog1",
             schema="db1",
-            parallelism=5,
+            override_num_blocks=5,
         ).to_pandas()
 
         pd.testing.assert_frame_equal(result, expected_result_df)
@@ -289,7 +289,7 @@ def test_databricks_uc_datasource():
             query="select * from table1",
             catalog="catalog1",
             schema="db1",
-            parallelism=100,
+            override_num_blocks=100,
         ).to_pandas()
 
         pd.testing.assert_frame_equal(result, expected_result_df)

@@ -7,7 +7,7 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 D. Hafner, T. Lillicrap, M. Norouzi, J. Ba
 https://arxiv.org/pdf/2010.02193.pdf
 """
-import copy
+
 import gc
 import logging
 import tree  # pip install dm_tree
@@ -25,8 +25,8 @@ from ray.rllib.algorithms.dreamerv3.utils.summaries import (
     report_predicted_vs_sampled_obs,
     report_sampling_and_replay_buffer,
 )
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.models.catalog import MODEL_DEFAULTS
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils import deep_update
 from ray.rllib.utils.annotations import override, PublicAPI
@@ -159,21 +159,6 @@ class DreamerV3Config(AlgorithmConfig):
 
         Needed by some of the DreamerV3 loss math."""
         return self.batch_size_B // (self.num_learner_workers or 1)
-
-    @property
-    def model(self):
-        model = copy.deepcopy(MODEL_DEFAULTS)
-        model.update(
-            {
-                "batch_length_T": self.batch_length_T,
-                "gamma": self.gamma,
-                "horizon_H": self.horizon_H,
-                "model_size": self.model_size,
-                "symlog_obs": self.symlog_obs,
-                "use_float16": self.use_float16,
-            }
-        )
-        return model
 
     @override(AlgorithmConfig)
     def training(
@@ -465,6 +450,18 @@ class DreamerV3Config(AlgorithmConfig):
         # between these two to avoid having to sync weights, ever.
         return self.num_learner_workers == 0 and self.num_rollout_workers == 0
 
+    @property
+    @override(AlgorithmConfig)
+    def _model_config_auto_includes(self) -> Dict[str, Any]:
+        return super()._model_config_auto_includes | {
+            "gamma": self.gamma,
+            "horizon_H": self.horizon_H,
+            "model_size": self.model_size,
+            "symlog_obs": self.symlog_obs,
+            "use_float16": self.use_float16,
+            "batch_length_T": self.batch_length_T,
+        }
+
 
 class DreamerV3(Algorithm):
     """Implementation of the model-based DreamerV3 RL algorithm described in [1]."""
@@ -599,8 +596,8 @@ class DreamerV3(Algorithm):
                 replayed_steps_this_iter += replayed_steps
 
                 if isinstance(env_runner.env.single_action_space, gym.spaces.Discrete):
-                    sample["actions_ints"] = sample[SampleBatch.ACTIONS]
-                    sample[SampleBatch.ACTIONS] = one_hot(
+                    sample["actions_ints"] = sample[Columns.ACTIONS]
+                    sample[Columns.ACTIONS] = one_hot(
                         sample["actions_ints"],
                         depth=env_runner.env.single_action_space.n,
                     )

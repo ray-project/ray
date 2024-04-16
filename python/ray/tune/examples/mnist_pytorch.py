@@ -1,13 +1,15 @@
 # Original Code here:
 # https://github.com/pytorch/examples/blob/master/mnist/main.py
-import os
+
 import argparse
-from filelock import FileLock
+import os
 import tempfile
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from filelock import FileLock
 from torchvision import datasets, transforms
 
 import ray

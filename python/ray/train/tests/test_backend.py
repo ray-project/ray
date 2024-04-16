@@ -326,7 +326,7 @@ def test_cuda_visible_devices(ray_2_node_2_gpu, worker_results):
 
     os.environ[ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV] = "1"
     e = BackendExecutor(
-        config, num_workers=num_workers, num_cpus_per_worker=0, num_gpus_per_worker=1
+        config, num_workers=num_workers, resources_per_worker={"GPU": 1}
     )
     e.start()
     _start_training(e, get_resources)
@@ -372,7 +372,7 @@ def test_cuda_visible_devices_fractional(ray_2_node_2_gpu, worker_results):
 
     os.environ[ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV] = "1"
     e = BackendExecutor(
-        config, num_workers=num_workers, num_cpus_per_worker=0, num_gpus_per_worker=0.5
+        config, num_workers=num_workers, resources_per_worker={"GPU": 0.5}
     )
     e.start()
     _start_training(e, get_resources)
@@ -411,7 +411,7 @@ def test_cuda_visible_devices_multiple(ray_2_node_4_gpu, worker_results):
 
     os.environ[ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV] = "1"
     e = BackendExecutor(
-        config, num_workers=num_workers, num_cpus_per_worker=0, num_gpus_per_worker=2
+        config, num_workers=num_workers, resources_per_worker={"GPU": 2}
     )
     e.start()
     _start_training(e, get_resources)
@@ -446,8 +446,7 @@ def test_neuron_core_accelerator_ids(ray_2_node_2_neuron_cores, worker_results):
     e = BackendExecutor(
         config,
         num_workers=num_workers,
-        num_cpus_per_worker=0,
-        additional_resources_per_worker={"neuron_cores": 1},
+        resources_per_worker={"neuron_cores": 1},
     )
     e.start()
     _start_training(e, get_resources)
@@ -484,8 +483,7 @@ def test_neuron_core_accelerator_ids_sharing_disabled(
     e = BackendExecutor(
         config,
         num_workers=num_workers,
-        num_cpus_per_worker=0,
-        additional_resources_per_worker={"neuron_cores": 1},
+        resources_per_worker={"neuron_cores": 1},
     )
     e.start()
     _start_training(e, get_resources)

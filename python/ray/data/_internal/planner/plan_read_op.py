@@ -90,8 +90,8 @@ def plan_read_op(op: Read) -> PhysicalOperator:
 
             yield from call_with_retry(
                 f=read_task,
-                match=READ_FILE_RETRY_ON_ERRORS,
                 description=f"read file {read_fn_name}",
+                match=READ_FILE_RETRY_ON_ERRORS,
                 max_attempts=READ_FILE_MAX_ATTEMPTS,
                 max_backoff_s=READ_FILE_RETRY_MAX_BACKOFF_SECONDS,
             )

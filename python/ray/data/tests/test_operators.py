@@ -192,7 +192,6 @@ def test_map_operator_bulk(ray_start_regular_shared, use_actors):
 
     # Check memory stats.
     metrics = op.metrics.as_dict()
-    assert metrics["obj_store_mem_peak"] == pytest.approx(1688000, 0.5), metrics
     assert metrics["obj_store_mem_freed"] == pytest.approx(832200, 0.5), metrics
 
 
@@ -212,7 +211,7 @@ def test_map_operator_streamed(ray_start_regular_shared, use_actors):
 
     # Feed data and implement streaming exec.
     output = []
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(actor_locality_enabled=True))
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
         while not op.has_next():
@@ -225,7 +224,6 @@ def test_map_operator_streamed(ray_start_regular_shared, use_actors):
     # Check equivalent to bulk execution in order.
     assert np.array_equal(output, [[np.ones(1024) * i * 2] for i in range(100)])
     metrics = op.metrics.as_dict()
-    assert metrics["obj_store_mem_peak"] == pytest.approx(16880, 0.5), metrics
     assert metrics["obj_store_mem_freed"] == pytest.approx(832200, 0.5), metrics
     if use_actors:
         assert "locality_hits" in metrics, metrics
@@ -329,7 +327,7 @@ def test_split_operator_locality_hints(ray_start_regular_shared):
 
     # Feed data and implement streaming exec.
     output_splits = collections.defaultdict(list)
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(actor_locality_enabled=True))
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
     op.all_inputs_done()
@@ -385,7 +383,6 @@ def test_map_operator_actor_locality_stats(ray_start_regular_shared):
     # Check equivalent to bulk execution in order.
     assert np.array_equal(output, [[np.ones(100) * i * 2] for i in range(100)])
     metrics = op.metrics.as_dict()
-    assert metrics["obj_store_mem_peak"] == pytest.approx(2096, 0.5), metrics
     assert metrics["obj_store_mem_freed"] == pytest.approx(92900, 0.5), metrics
     # Check e2e locality manager working.
     assert metrics["locality_hits"] == 100, metrics
@@ -880,15 +877,6 @@ def test_operator_metrics():
 
         # Check object store metrics
         assert metrics.obj_store_mem_freed == metrics.bytes_task_inputs_processed, i
-        assert (
-            metrics.obj_store_mem_cur
-            == metrics.bytes_inputs_received
-            - metrics.bytes_task_inputs_processed
-            + metrics.bytes_task_outputs_generated
-            - metrics.bytes_outputs_taken
-        ), i
-
-        assert metrics.obj_store_mem_peak >= metrics.obj_store_mem_cur, i
 
 
 def test_map_estimated_output_blocks():

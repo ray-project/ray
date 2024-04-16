@@ -10,10 +10,9 @@ Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#ppo
 """
 
 import logging
-from typing import List, Optional, Type, Union, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Type, Union, TYPE_CHECKING
 
 import numpy as np
-import tree
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
@@ -37,7 +36,6 @@ from ray.rllib.utils.metrics import (
     SAMPLE_TIMER,
     ALL_MODULES,
 )
-from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.typing import ResultDict
 from ray.util.debug import log_once
@@ -375,6 +373,11 @@ class PPOConfig(AlgorithmConfig):
         if isinstance(self.entropy_coeff, float) and self.entropy_coeff < 0.0:
             raise ValueError("`entropy_coeff` must be >= 0.0")
 
+    @property
+    @override(AlgorithmConfig)
+    def _model_config_auto_includes(self) -> Dict[str, Any]:
+        return super()._model_config_auto_includes | {"vf_share_layers": False}
+
 
 class PPO(Algorithm):
     @classmethod
@@ -412,24 +415,32 @@ class PPO(Algorithm):
             return self._training_step_old_and_hybrid_api_stacks()
 
     def _training_step_new_api_stack(self) -> ResultDict:
-        # Collect SampleBatches from sample workers until we have a full batch.
+        # Collect batches from sample workers until we have a full batch.
         with self._timers[SAMPLE_TIMER]:
-            # TODO (sven): Make this also use `synchronous_parallel_sample`.
-            #  Which needs to be enhanced to be able to handle episodes as well.
-            #  Also, this would make this sampling with the EnvRunners fault
-            #  tolerant, which it is NOT right now.
-            if self.workers.num_remote_workers() == 0:
-                episodes: List[SingleAgentEpisode] = [
-                    self.workers.local_worker().sample()
-                ]
-            else:
-                episodes: List[SingleAgentEpisode] = self.workers.foreach_worker(
-                    lambda w: w.sample(), local_worker=False
+            # Sample in parallel from the workers.
+            if self.config.count_steps_by == "agent_steps":
+                episodes = synchronous_parallel_sample(
+                    worker_set=self.workers,
+                    max_agent_steps=self.config.total_train_batch_size,
+                    sample_timeout_s=self.config.sample_timeout_s,
+                    _uses_new_env_runners=self.config.uses_new_env_runners,
                 )
-            episodes = tree.flatten(episodes)
-            # TODO (sven): single- vs multi-agent.
-            self._counters[NUM_AGENT_STEPS_SAMPLED] += sum(len(e) for e in episodes)
-            self._counters[NUM_ENV_STEPS_SAMPLED] += sum(len(e) for e in episodes)
+            else:
+                episodes = synchronous_parallel_sample(
+                    worker_set=self.workers,
+                    max_env_steps=self.config.total_train_batch_size,
+                    sample_timeout_s=self.config.sample_timeout_s,
+                    _uses_new_env_runners=self.config.uses_new_env_runners,
+                )
+            # Return early if all our workers failed.
+            if not episodes:
+                return {}
+            self._counters[NUM_AGENT_STEPS_SAMPLED] += sum(
+                e.agent_steps() for e in episodes
+            )
+            self._counters[NUM_ENV_STEPS_SAMPLED] += sum(
+                e.env_steps() for e in episodes
+            )
 
         # Perform a train step on the collected batch.
         train_results = self.learner_group.update_from_episodes(
@@ -491,7 +502,7 @@ class PPO(Algorithm):
         return train_results
 
     def _training_step_old_and_hybrid_api_stacks(self) -> ResultDict:
-        # Collect SampleBatches from sample workers until we have a full batch.
+        # Collect batches from sample workers until we have a full batch.
         with self._timers[SAMPLE_TIMER]:
             if self.config.count_steps_by == "agent_steps":
                 train_batch = synchronous_parallel_sample(

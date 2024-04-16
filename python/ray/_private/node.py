@@ -54,6 +54,7 @@ class Node:
         spawn_reaper: bool = True,
         connect_only: bool = False,
         default_worker: bool = False,
+        ray_init_cluster: bool = False,
     ):
         """Start a node.
 
@@ -69,6 +70,7 @@ class Node:
             connect_only: If true, connect to the node without starting
                 new processes.
             default_worker: Whether it's running from a ray worker or not
+            ray_init_cluster: Whether it's a cluster created by ray.init()
         """
         if shutdown_at_exit:
             if connect_only:
@@ -83,6 +85,10 @@ class Node:
         )
         self.all_processes: dict = {}
         self.removal_lock = threading.Lock()
+
+        self.ray_init_cluster = ray_init_cluster
+        if ray_init_cluster:
+            assert head, "ray.init() created cluster only has the head node"
 
         # Set up external Redis when `RAY_REDIS_ADDRESS` is specified.
         redis_address_env = os.environ.get("RAY_REDIS_ADDRESS")
@@ -241,12 +247,14 @@ class Node:
             # Get socket names from the configuration.
             self._plasma_store_socket_name = ray_params.plasma_store_socket_name
             self._raylet_socket_name = ray_params.raylet_socket_name
+            self._node_id = ray_params.node_id
 
             # If user does not provide the socket name, get it from Redis.
             if (
                 self._plasma_store_socket_name is None
                 or self._raylet_socket_name is None
                 or self._ray_params.node_manager_port is None
+                or self._node_id is None
             ):
                 # Get the address info of the processes to connect to
                 # from Redis or GCS.
@@ -257,6 +265,7 @@ class Node:
                 self._plasma_store_socket_name = node_info["object_store_socket_name"]
                 self._raylet_socket_name = node_info["raylet_socket_name"]
                 self._ray_params.node_manager_port = node_info["node_manager_port"]
+                self._node_id = node_info["node_id"]
         else:
             # If the user specified a socket name, use it.
             self._plasma_store_socket_name = self._prepare_socket_file(
@@ -323,6 +332,7 @@ class Node:
                 self.gcs_address,
                 self._raylet_ip_address,
             )
+            self._node_id = node_info["node_id"]
             if self._ray_params.node_manager_port == 0:
                 self._ray_params.node_manager_port = node_info["node_manager_port"]
 
@@ -554,6 +564,11 @@ class Node:
         return self._resource_spec
 
     @property
+    def node_id(self):
+        """Get the node ID."""
+        return self._node_id
+
+    @property
     def session_name(self):
         """Get the session name (cluster ID)."""
         return self._session_name
@@ -695,9 +710,9 @@ class Node:
                 gcs_address = self.gcs_address
                 client = GcsClient(
                     address=gcs_address,
-                    cluster_id=self._ray_params.cluster_id,
+                    cluster_id=self._ray_params.cluster_id,  # Hex string
                 )
-                self.cluster_id = client.get_cluster_id()
+                self.cluster_id = client.cluster_id
                 if self.head:
                     # Send a simple request to make sure GCS is alive
                     # if it's a head node.
@@ -1004,7 +1019,7 @@ class Node:
                 logger.info(
                     f"Can't find a `{ray_constants.RAY_NODE_IP_FILENAME}` "
                     f"file from {self.get_session_dir_path()}. "
-                    "Have you started Ray instsance using "
+                    "Have you started Ray instance using "
                     "`ray start` or `ray.init`?"
                 )
 
@@ -1158,7 +1173,7 @@ class Node:
             self._ray_params.node_manager_port,
             self._raylet_socket_name,
             self._plasma_store_socket_name,
-            self.cluster_id,
+            self.cluster_id.hex(),
             self._ray_params.worker_path,
             self._ray_params.setup_worker_path,
             self._ray_params.storage,
@@ -1210,6 +1225,8 @@ class Node:
         any modification to these files may break existing
         cluster launching commands.
         """
+        from ray.autoscaler.v2.utils import is_autoscaler_v2
+
         stdout_file, stderr_file = self.get_log_file_handles("monitor", unique=True)
         process_info = ray._private.services.start_monitor(
             self.gcs_address,
@@ -1221,6 +1238,7 @@ class Node:
             max_bytes=self.max_bytes,
             backup_count=self.backup_count,
             monitor_ip=self._node_ip_address,
+            autoscaler_v2=is_autoscaler_v2(fetch_from_server=True),
         )
         assert ray_constants.PROCESS_TYPE_MONITOR not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_MONITOR] = [process_info]
@@ -1254,7 +1272,9 @@ class Node:
         # Make sure the cluster metadata wasn't reported before.
         import ray._private.usage.usage_lib as ray_usage_lib
 
-        ray_usage_lib.put_cluster_metadata(self.get_gcs_client())
+        ray_usage_lib.put_cluster_metadata(
+            self.get_gcs_client(), ray_init_cluster=self.ray_init_cluster
+        )
         # Make sure GCS is up.
         added = self.get_gcs_client().internal_kv_put(
             b"session_name",
@@ -1336,8 +1356,6 @@ class Node:
             f"Process STDOUT and STDERR is being " f"redirected to {self._logs_dir}."
         )
 
-        # Clean up external storage in case a previous Raylet instance crashed
-        # on this node and spilled objects remain on disk.
         if not self.head:
             # Get the system config from GCS first if this is a non-head node.
             gcs_options = ray._raylet.GcsClientOptions.from_gcs_address(
@@ -1354,7 +1372,6 @@ class Node:
                 f" GCS system config: {new_config}"
             )
             self._config = new_config
-        self.destroy_external_storage()
 
         # Make sure we don't call `determine_plasma_store_config` multiple
         # times to avoid printing multiple warnings.
@@ -1676,7 +1693,7 @@ class Node:
             from ray._private import external_storage
 
             storage = external_storage.setup_external_storage(
-                object_spilling_config, self._session_name
+                object_spilling_config, self._node_id, self._session_name
             )
             storage.destroy_external_storage()
 
@@ -1720,7 +1737,17 @@ class Node:
         # Validate external storage usage.
         from ray._private import external_storage
 
-        external_storage.setup_external_storage(deserialized_config, self._session_name)
+        # Node ID is available only after GCS is connected. However,
+        # validate_external_storage() needs to be called before it to
+        # be able to validate the configs early. Therefore, we use a
+        # dummy node ID here and make sure external storage can be set
+        # up based on the provided config. This storage is destroyed
+        # right after the validation.
+        dummy_node_id = ray.NodeID.from_random().hex()
+        storage = external_storage.setup_external_storage(
+            deserialized_config, dummy_node_id, self._session_name
+        )
+        storage.destroy_external_storage()
         external_storage.reset_external_storage()
 
     def _record_stats(self):

@@ -3,13 +3,13 @@ from enum import Enum
 import inspect
 import logging
 import math
-import os
 import sys
 from typing import (
     Any,
     Callable,
     Container,
     Dict,
+    List,
     Optional,
     Tuple,
     Type,
@@ -21,7 +21,10 @@ from packaging import version
 
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+from ray.rllib.core.rl_module.marl_module import (
+    DEFAULT_MODULE_ID,
+    MultiAgentRLModuleSpec,
+)
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -148,12 +151,12 @@ class AlgorithmConfig(_Config):
         tune.Tuner("PPO", param_space=config.to_dict())
     """
 
-    # @staticmethod
-    # def DEFAULT_AGENT_TO_MODULE_MAPPING_FN(agent_id, episode):
-    #    # The default agent ID to module ID mapping function to use in the multi-agent
-    #    # case if None is provided.
-    #    # Map any agent ID to "default_policy".
-    #    return DEFAULT_MODULE_ID
+    @staticmethod
+    def DEFAULT_AGENT_TO_MODULE_MAPPING_FN(agent_id, episode):
+        # The default agent ID to module ID mapping function to use in the multi-agent
+        # case if None is provided.
+        # Map any agent ID to "default_policy".
+        return DEFAULT_MODULE_ID
 
     # TODO (sven): Deprecate in new API stack.
     @staticmethod
@@ -177,7 +180,7 @@ class AlgorithmConfig(_Config):
             config_dict: The legacy formatted python config dict for some algorithm.
 
         Returns:
-             A new AlgorithmConfig object that matches the given python config dict.
+            A new AlgorithmConfig object that matches the given python config dict.
         """
         # Create a default config object of this class.
         config_obj = cls()
@@ -336,10 +339,12 @@ class AlgorithmConfig(_Config):
         # TODO (sven): Rename into `num_env_runner_workers`.
         self.num_rollout_workers = 0
         self.num_envs_per_worker = 1
+        self.sample_timeout_s = 60.0
         self.create_env_on_local_worker = False
-        self.enable_connectors = True
         self._env_to_module_connector = None
+        self.add_default_connectors_to_env_to_module_pipeline = True
         self._module_to_env_connector = None
+        self.add_default_connectors_to_module_to_env_pipeline = True
         self.episode_lookback_horizon = 1
         # TODO (sven): Rename into `sample_timesteps` (or `sample_duration`
         #  and `sample_duration_unit` (replacing batch_mode), like we do it
@@ -352,9 +357,11 @@ class AlgorithmConfig(_Config):
         self.compress_observations = False
         # TODO (sven): Rename into `env_runner_perf_stats_ema_coef`.
         self.sampler_perf_stats_ema_coef = None
+        # TODO (sven): Deprecate this setting. Connectors should always be enabled
+        #  on new stack.
+        self.enable_connectors = True
 
         # TODO (sven): Deprecate together with old API stack.
-        self.sample_async = False
         self.remote_worker_envs = False
         self.remote_env_batch_wait_ms = 0
         self.enable_tf1_exec_eagerly = False
@@ -391,6 +398,7 @@ class AlgorithmConfig(_Config):
             pass
 
         self._learner_connector = None
+        self.add_default_connectors_to_learner_pipeline = True
         self.optimizer = {}
         self.max_requests_in_flight_per_sampler_worker = 2
         self._learner_class = None
@@ -436,19 +444,22 @@ class AlgorithmConfig(_Config):
         self.evaluation_interval = None
         self.evaluation_duration = 10
         self.evaluation_duration_unit = "episodes"
-        self.evaluation_sample_timeout_s = 180.0
+        self.evaluation_sample_timeout_s = 120.0
         self.evaluation_parallel_to_training = False
+        self.evaluation_force_reset_envs_before_iteration = True
         self.evaluation_config = None
         self.off_policy_estimation_methods = {}
         self.ope_split_batch_by_episode = True
         self.evaluation_num_workers = 0
         self.custom_evaluation_function = None
-        self.always_attach_evaluation_results = False
-        self.enable_async_evaluation = False
+        self.always_attach_evaluation_results = True
         # TODO: Set this flag still in the config or - much better - in the
         #  RolloutWorker as a property.
         self.in_evaluation = False
-        self.sync_filters_on_rollout_workers_timeout_s = 60.0
+        # TODO (sven): Deprecate this setting (it's not user-accessible right now any
+        #  way). Replace by logic within `training_step` to merge and broadcast the
+        #  EnvRunner (connector) states.
+        self.sync_filters_on_rollout_workers_timeout_s = 10.0
 
         # `self.reporting()`
         self.keep_per_episode_custom_metrics = False
@@ -469,6 +480,12 @@ class AlgorithmConfig(_Config):
         self.log_sys_usage = True
         self.fake_sampler = False
         self.seed = None
+        # TODO (sven): Remove this setting again in the future. We only need this
+        #  to debug a quite complex, production memory leak, possibly related to
+        #  evaluation in parallel (when `training_step` is getting called inside a
+        #  thread). It's also possible that the leak is not caused by RLlib itself,
+        #  but by Ray core, but we need more data to narrow this down.
+        self._run_training_always_in_thread = False
 
         # `self.fault_tolerance()`
         self.ignore_worker_failures = False
@@ -491,6 +508,7 @@ class AlgorithmConfig(_Config):
         self.worker_restore_timeout_s = 1800
 
         # `self.rl_module()`
+        self._model_config_dict = {}
         self._rl_module_spec = None
         # Helper to keep track of the original exploration config when dis-/enabling
         # rl modules.
@@ -523,7 +541,9 @@ class AlgorithmConfig(_Config):
         self.policy_map_cache = DEPRECATED_VALUE
         self.worker_cls = DEPRECATED_VALUE
         self.synchronize_filters = DEPRECATED_VALUE
-        self.sample_async = DEPRECATED_VALUE
+        self.enable_async_evaluation = DEPRECATED_VALUE
+        self.custom_async_evaluation_function = DEPRECATED_VALUE
+        self._enable_rl_module_api = DEPRECATED_VALUE
 
         # The following values have moved because of the new ReplayBuffer API
         self.buffer_size = DEPRECATED_VALUE
@@ -779,14 +799,6 @@ class AlgorithmConfig(_Config):
     def validate(self) -> None:
         """Validates all values in this config."""
 
-        # TODO (sven): Remove this hack. We should not have env-var dependent logic
-        #  this deep in the codebase (should only be used in example/testing scripts).
-        #  We should also never set attributes automatically for the user ->
-        #  AlgorithmConfig should always be read-only.
-        if bool(os.environ.get("RLLIB_ENABLE_RL_MODULE", False)):
-            self.experimental(_enable_new_api_stack=True)
-            self.enable_connectors = True
-
         # Check framework specific settings.
         self._validate_framework_settings()
         # Check resources specific settings.
@@ -815,7 +827,7 @@ class AlgorithmConfig(_Config):
         Args:
             env: Name of the environment to use (e.g. a gym-registered str),
                 a full class path (e.g.
-                "ray.rllib.examples.env.random_env.RandomEnv"), or an Env
+                "ray.rllib.examples.envs.classes.random_env.RandomEnv"), or an Env
                 class directly. Note that this arg can also be specified via
                 the "env" key in `config`.
             logger_creator: Callable that creates a ray.tune.Logger
@@ -846,8 +858,12 @@ class AlgorithmConfig(_Config):
 
     def build_env_to_module_connector(self, env):
         from ray.rllib.connectors.env_to_module import (
+            AddObservationsFromEpisodesToBatch,
+            AddStatesFromEpisodesToBatch,
+            AgentToModuleMapping,
+            BatchIndividualItems,
             EnvToModulePipeline,
-            DefaultEnvToModule,
+            NumpyToTensor,
         )
 
         custom_connectors = []
@@ -858,14 +874,19 @@ class AlgorithmConfig(_Config):
 
             from ray.rllib.connectors.connector_v2 import ConnectorV2
 
-            if isinstance(val_, ConnectorV2) and not isinstance(
-                val_, EnvToModulePipeline
-            ):
+            # ConnectorV2 (piece or pipeline).
+            if isinstance(val_, ConnectorV2):
                 custom_connectors = [val_]
+            # Sequence of individual ConnectorV2 pieces.
             elif isinstance(val_, (list, tuple)):
                 custom_connectors = list(val_)
+            # Unsupported return value.
             else:
-                return val_
+                raise ValueError(
+                    "`AlgorithmConfig.rollouts(env_to_module_connector=..)` must return"
+                    " a ConnectorV2 object or a list thereof (to be added to a "
+                    f"pipeline)! Your function returned {val_}."
+                )
 
         pipeline = EnvToModulePipeline(
             connectors=custom_connectors,
@@ -873,22 +894,42 @@ class AlgorithmConfig(_Config):
                 env, "single_observation_space", env.observation_space
             ),
             input_action_space=getattr(env, "single_action_space", env.action_space),
-            env=env,
         )
-        pipeline.append(
-            DefaultEnvToModule(
-                input_observation_space=pipeline.observation_space,
-                input_action_space=pipeline.action_space,
-                env=env,
-            )
-        )
+
+        if self.add_default_connectors_to_env_to_module_pipeline:
+            # Append OBS handling.
+            pipeline.append(AddObservationsFromEpisodesToBatch())
+            # Append STATE_IN/STATE_OUT (and time-rank) handler.
+            pipeline.append(AddStatesFromEpisodesToBatch())
+            # If multi-agent -> Map from AgentID-based data to ModuleID based data.
+            if self.is_multi_agent():
+                pipeline.append(
+                    AgentToModuleMapping(
+                        module_specs=(
+                            self.rl_module_spec.module_specs
+                            if isinstance(self.rl_module_spec, MultiAgentRLModuleSpec)
+                            else set(self.policies)
+                        ),
+                        agent_to_module_mapping_fn=self.policy_mapping_fn,
+                    )
+                )
+            # Batch all data.
+            pipeline.append(BatchIndividualItems())
+            # Convert to Tensors.
+            pipeline.append(NumpyToTensor())
+
         return pipeline
 
     def build_module_to_env_connector(self, env):
-
         from ray.rllib.connectors.module_to_env import (
-            DefaultModuleToEnv,
+            GetActions,
+            ListifyDataForVectorEnv,
+            ModuleToAgentUnmapping,
             ModuleToEnvPipeline,
+            NormalizeAndClipActions,
+            RemoveSingleTsTimeRankFromBatch,
+            TensorToNumpy,
+            UnBatchToIndividualItems,
         )
 
         custom_connectors = []
@@ -899,14 +940,19 @@ class AlgorithmConfig(_Config):
 
             from ray.rllib.connectors.connector_v2 import ConnectorV2
 
-            if isinstance(val_, ConnectorV2) and not isinstance(
-                val_, ModuleToEnvPipeline
-            ):
+            # ConnectorV2 (piece or pipeline).
+            if isinstance(val_, ConnectorV2):
                 custom_connectors = [val_]
+            # Sequence of individual ConnectorV2 pieces.
             elif isinstance(val_, (list, tuple)):
                 custom_connectors = list(val_)
+            # Unsupported return value.
             else:
-                return val_
+                raise ValueError(
+                    "`AlgorithmConfig.rollouts(module_to_env_connector=..)` must return"
+                    " a ConnectorV2 object or a list thereof (to be added to a "
+                    f"pipeline)! Your function returned {val_}."
+                )
 
         pipeline = ModuleToEnvPipeline(
             connectors=custom_connectors,
@@ -914,22 +960,50 @@ class AlgorithmConfig(_Config):
                 env, "single_observation_space", env.observation_space
             ),
             input_action_space=getattr(env, "single_action_space", env.action_space),
-            env=env,
         )
-        pipeline.append(
-            DefaultModuleToEnv(
-                input_observation_space=pipeline.observation_space,
-                input_action_space=pipeline.action_space,
-                env=env,
-                normalize_actions=self.normalize_actions,
-                clip_actions=self.clip_actions,
+
+        if self.add_default_connectors_to_module_to_env_pipeline:
+            # Prepend: Anything that has to do with plain data processing (not
+            # particularly with the actions).
+
+            # Remove extra time-rank, if applicable.
+            pipeline.prepend(RemoveSingleTsTimeRankFromBatch())
+
+            # If multi-agent -> Map from ModuleID-based data to AgentID based data.
+            if self.is_multi_agent():
+                pipeline.prepend(ModuleToAgentUnmapping())
+
+            # Unbatch all data.
+            pipeline.prepend(UnBatchToIndividualItems())
+
+            # Convert to numpy.
+            pipeline.prepend(TensorToNumpy())
+
+            # Sample actions from ACTION_DIST_INPUTS (if ACTIONS not present).
+            pipeline.prepend(GetActions())
+
+            # Append: Anything that has to do with action sampling.
+            # Unsquash/clip actions based on config and action space.
+            pipeline.append(
+                NormalizeAndClipActions(
+                    normalize_actions=self.normalize_actions,
+                    clip_actions=self.clip_actions,
+                )
             )
-        )
+            # Listify data from ConnectorV2-data format to normal lists that we can
+            # index into by env vector index. These lists contain individual items
+            # for single-agent and multi-agent dicts for multi-agent.
+            pipeline.append(ListifyDataForVectorEnv())
+
         return pipeline
 
     def build_learner_connector(self, input_observation_space, input_action_space):
         from ray.rllib.connectors.learner import (
-            DefaultLearnerConnector,
+            AddColumnsFromEpisodesToTrainBatch,
+            AddObservationsFromEpisodesToBatch,
+            AddStatesFromEpisodesToBatch,
+            AgentToModuleMapping,
+            BatchIndividualItems,
             LearnerConnectorPipeline,
         )
 
@@ -941,26 +1015,52 @@ class AlgorithmConfig(_Config):
 
             from ray.rllib.connectors.connector_v2 import ConnectorV2
 
-            if isinstance(val_, ConnectorV2) and not isinstance(
-                val_, LearnerConnectorPipeline
-            ):
+            # ConnectorV2 (piece or pipeline).
+            if isinstance(val_, ConnectorV2):
                 custom_connectors = [val_]
+            # Sequence of individual ConnectorV2 pieces.
             elif isinstance(val_, (list, tuple)):
                 custom_connectors = list(val_)
+            # Unsupported return value.
             else:
-                return val_
+                raise ValueError(
+                    "`AlgorithmConfig.training(learner_connector=..)` must return "
+                    "a ConnectorV2 object or a list thereof (to be added to a "
+                    f"pipeline)! Your function returned {val_}."
+                )
 
         pipeline = LearnerConnectorPipeline(
             connectors=custom_connectors,
             input_observation_space=input_observation_space,
             input_action_space=input_action_space,
         )
-        pipeline.append(
-            DefaultLearnerConnector(
-                input_observation_space=pipeline.observation_space,
-                input_action_space=pipeline.action_space,
+        if self.add_default_connectors_to_learner_pipeline:
+            # Append OBS handling.
+            pipeline.append(
+                AddObservationsFromEpisodesToBatch(as_learner_connector=True)
             )
-        )
+            # Append all other columns handling.
+            pipeline.append(AddColumnsFromEpisodesToTrainBatch())
+            # Append STATE_IN/STATE_OUT (and time-rank) handler.
+            pipeline.append(
+                AddStatesFromEpisodesToBatch(
+                    as_learner_connector=True, max_seq_len=self.model.get("max_seq_len")
+                )
+            )
+            # If multi-agent -> Map from AgentID-based data to ModuleID based data.
+            if self.is_multi_agent():
+                pipeline.append(
+                    AgentToModuleMapping(
+                        module_specs=(
+                            self.rl_module_spec.module_specs
+                            if isinstance(self.rl_module_spec, MultiAgentRLModuleSpec)
+                            else set(self.policies)
+                        ),
+                        agent_to_module_mapping_fn=self.policy_mapping_fn,
+                    )
+                )
+            # Batch all data.
+            pipeline.append(BatchIndividualItems())
         return pipeline
 
     def build_learner_group(
@@ -1325,7 +1425,7 @@ class AlgorithmConfig(_Config):
                 or a string specifier of an RLlib supported type. In the latter case,
                 RLlib will try to interpret the specifier as either an Farama-Foundation
                 gymnasium env, a PyBullet env, or a fully qualified classpath to an Env
-                class, e.g. "ray.rllib.examples.env.random_env.RandomEnv".
+                class, e.g. "ray.rllib.examples.envs.classes.random_env.RandomEnv".
             env_config: Arguments dict passed to the env creator as an EnvContext
                 object (which is a dict plus the properties: num_rollout_workers,
                 worker_index, vector_index, and remote).
@@ -1376,11 +1476,7 @@ class AlgorithmConfig(_Config):
         if env is not NotProvided:
             self.env = env
         if env_config is not NotProvided:
-            deep_update(
-                self.env_config,
-                env_config,
-                True,
-            )
+            deep_update(self.env_config, env_config, True)
         if observation_space is not NotProvided:
             self.observation_space = observation_space
         if action_space is not NotProvided:
@@ -1412,15 +1508,18 @@ class AlgorithmConfig(_Config):
         env_runner_cls: Optional[type] = NotProvided,
         num_rollout_workers: Optional[int] = NotProvided,
         num_envs_per_worker: Optional[int] = NotProvided,
+        sample_timeout_s: Optional[float] = NotProvided,
         create_env_on_local_worker: Optional[bool] = NotProvided,
         sample_collector: Optional[Type[SampleCollector]] = NotProvided,
         enable_connectors: Optional[bool] = NotProvided,
         env_to_module_connector: Optional[
-            Callable[[EnvType], "ConnectorV2"]
+            Callable[[EnvType], Union["ConnectorV2", List["ConnectorV2"]]]
         ] = NotProvided,
         module_to_env_connector: Optional[
-            Callable[[EnvType, "RLModule"], "ConnectorV2"]
+            Callable[[EnvType, "RLModule"], Union["ConnectorV2", List["ConnectorV2"]]]
         ] = NotProvided,
+        add_default_connectors_to_env_to_module_pipeline: Optional[bool] = NotProvided,
+        add_default_connectors_to_module_to_env_pipeline: Optional[bool] = NotProvided,
         episode_lookback_horizon: Optional[int] = NotProvided,
         use_worker_filter_stats: Optional[bool] = NotProvided,
         update_worker_filter_stats: Optional[bool] = NotProvided,
@@ -1441,7 +1540,6 @@ class AlgorithmConfig(_Config):
         worker_health_probe_timeout_s=DEPRECATED_VALUE,
         worker_restore_timeout_s=DEPRECATED_VALUE,
         synchronize_filter=DEPRECATED_VALUE,
-        sample_async=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the rollout worker configuration.
 
@@ -1455,9 +1553,15 @@ class AlgorithmConfig(_Config):
             num_envs_per_worker: Number of environments to evaluate vector-wise per
                 worker. This enables model inference batching, which can improve
                 performance for inference bottlenecked workloads.
-            sample_collector: The SampleCollector class to be used to collect and
-                retrieve environment-, model-, and sampler data. Override the
-                SampleCollector base class to implement your own
+            sample_timeout_s: The timeout in seconds for calling `sample()` on remote
+                EnvRunner workers. Results (episode list) from workers that take longer
+                than this time are discarded. Only used by algorithms that sample
+                synchronously in turn with their update step (e.g. PPO or DQN). Not
+                relevant for any algos that sample asynchronously, such as APPO or
+                IMPALA.
+            sample_collector: For the old API stack only. The SampleCollector class to
+                be used to collect and retrieve environment-, model-, and sampler data.
+                Override the SampleCollector base class to implement your own
                 collection/buffering/retrieval logic.
             create_env_on_local_worker: When `num_rollout_workers` > 0, the driver
                 (local_worker; worker-idx=0) does not need an environment. This is
@@ -1472,6 +1576,23 @@ class AlgorithmConfig(_Config):
             module_to_env_connector: A callable taking an Env and an RLModule as input
                 args and returning a module-to-env ConnectorV2 (might be a pipeline)
                 object.
+            add_default_connectors_to_env_to_module_pipeline: If True (default), RLlib's
+                EnvRunners will automatically add the default env-to-module ConnectorV2
+                pieces to the EnvToModulePipeline. These automatically perform adding
+                observations and states (in case of stateful Module(s)), agent-to-module
+                mapping, batching, and conversion to tensor data. Only if you know
+                exactly what you are doing, you should set this setting to False.
+                Note that this setting is only relevant if the new API stack is used
+                (including the new EnvRunner classes).
+            add_default_connectors_to_module_to_env_pipeline: If True (default), RLlib's
+                EnvRunners will automatically add the default module-to-env ConnectorV2
+                pieces to the ModuleToEnvPipeline. These automatically perform removing
+                the additional time-rank (if applicable, in case of stateful
+                Module(s)), module-to-agent unmapping, un-batching (to lists), and
+                conversion from tensor data to numpy. Only if you know exactly what you
+                are doing, you should set this setting to False.
+                Note that this setting is only relevant if the new API stack is used
+                (including the new EnvRunner classes).
             episode_lookback_horizon: The amount of data (in timesteps) to keep from the
                 preceeding episode chunk when a new chunk (for the same episode) is
                 generated to continue sampling at a later time. The larger this value,
@@ -1564,6 +1685,8 @@ class AlgorithmConfig(_Config):
                     f"`num_envs_per_worker` ({num_envs_per_worker}) must be larger 0!"
                 )
             self.num_envs_per_worker = num_envs_per_worker
+        if sample_timeout_s is not NotProvided:
+            self.sample_timeout_s = sample_timeout_s
         if sample_collector is not NotProvided:
             self.sample_collector = sample_collector
         if create_env_on_local_worker is not NotProvided:
@@ -1574,6 +1697,14 @@ class AlgorithmConfig(_Config):
             self._env_to_module_connector = env_to_module_connector
         if module_to_env_connector is not NotProvided:
             self._module_to_env_connector = module_to_env_connector
+        if add_default_connectors_to_env_to_module_pipeline is not NotProvided:
+            self.add_default_connectors_to_env_to_module_pipeline = (
+                add_default_connectors_to_env_to_module_pipeline
+            )
+        if add_default_connectors_to_module_to_env_pipeline is not NotProvided:
+            self.add_default_connectors_to_module_to_env_pipeline = (
+                add_default_connectors_to_module_to_env_pipeline
+            )
         if episode_lookback_horizon is not NotProvided:
             self.episode_lookback_horizon = episode_lookback_horizon
         if use_worker_filter_stats is not NotProvided:
@@ -1619,12 +1750,6 @@ class AlgorithmConfig(_Config):
             self.sampler_perf_stats_ema_coef = sampler_perf_stats_ema_coef
 
         # Deprecated settings.
-        if sample_async is True:
-            deprecation_warning(
-                old="AlgorithmConfig.rollouts(sample_async=True)",
-                help="AsyncSampler is not supported anymore.",
-                error=True,
-            )
         if synchronize_filter != DEPRECATED_VALUE:
             deprecation_warning(
                 old="AlgorithmConfig.rollouts(synchronize_filter=..)",
@@ -1701,8 +1826,9 @@ class AlgorithmConfig(_Config):
         max_requests_in_flight_per_sampler_worker: Optional[int] = NotProvided,
         learner_class: Optional[Type["Learner"]] = NotProvided,
         learner_connector: Optional[
-            Callable[["RLModule"], "ConnectorV2"]
+            Callable[["RLModule"], Union["ConnectorV2", List["ConnectorV2"]]]
         ] = NotProvided,
+        add_default_connectors_to_learner_pipeline: Optional[bool] = NotProvided,
         # Deprecated arg.
         _enable_learner_api: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
@@ -1776,6 +1902,21 @@ class AlgorithmConfig(_Config):
             learner_connector: A callable taking an env observation space and an env
                 action space as inputs and returning a learner ConnectorV2 (might be
                 a pipeline) object.
+            add_default_connectors_to_learner_pipeline: If True (default), RLlib's
+                Learners will automatically add the default Learner ConnectorV2
+                pieces to the LearnerPipeline. These automatically perform:
+                a) adding observations from episodes to the train batch, if this has not
+                already been done by a user-provided connector piece
+                b) if RLModule is stateful, add a time rank to the train batch, zero-pad
+                the data, and add the correct state inputs, if this has not already been
+                done by a user-provided connector piece.
+                c) add all other information (actions, rewards, terminateds, etc..) to
+                the train batch, if this has not already been done by a user-provided
+                connector piece.
+                Only if you know exactly what you are doing, you
+                should set this setting to False.
+                Note that this setting is only relevant if the new API stack is used
+                (including the new EnvRunner classes).
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1829,6 +1970,10 @@ class AlgorithmConfig(_Config):
             self._learner_class = learner_class
         if learner_connector is not NotProvided:
             self._learner_connector = learner_connector
+        if add_default_connectors_to_learner_pipeline is not NotProvided:
+            self.add_default_connectors_to_learner_pipeline = (
+                add_default_connectors_to_learner_pipeline
+            )
 
         return self
 
@@ -1857,6 +2002,8 @@ class AlgorithmConfig(_Config):
 
         return self
 
+    # TODO (sven): Deprecate this method. Move `explore` setting into `rollouts()`.
+    #  `exploration_config` should no longer be used on the new API stack.
     def exploration(
         self,
         *,
@@ -1898,6 +2045,7 @@ class AlgorithmConfig(_Config):
         evaluation_duration_unit: Optional[str] = NotProvided,
         evaluation_sample_timeout_s: Optional[float] = NotProvided,
         evaluation_parallel_to_training: Optional[bool] = NotProvided,
+        evaluation_force_reset_envs_before_iteration: Optional[bool] = NotProvided,
         evaluation_config: Optional[
             Union["AlgorithmConfig", PartialAlgorithmConfigDict]
         ] = NotProvided,
@@ -1906,41 +2054,59 @@ class AlgorithmConfig(_Config):
         evaluation_num_workers: Optional[int] = NotProvided,
         custom_evaluation_function: Optional[Callable] = NotProvided,
         always_attach_evaluation_results: Optional[bool] = NotProvided,
-        enable_async_evaluation: Optional[bool] = NotProvided,
         # Deprecated args.
         evaluation_num_episodes=DEPRECATED_VALUE,
+        enable_async_evaluation=DEPRECATED_VALUE,
+        custom_async_evaluation_function=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the config's evaluation settings.
 
         Args:
             evaluation_interval: Evaluate with every `evaluation_interval` training
                 iterations. The evaluation stats will be reported under the "evaluation"
-                metric key. Note that for Ape-X metrics are already only reported for
-                the lowest epsilon workers (least random workers).
-                Set to None (or 0) for no evaluation.
+                metric key. Set to None (or 0) for no evaluation.
             evaluation_duration: Duration for which to run evaluation each
                 `evaluation_interval`. The unit for the duration can be set via
                 `evaluation_duration_unit` to either "episodes" (default) or
-                "timesteps". If using multiple evaluation workers
-                (evaluation_num_workers > 1), the load to run will be split amongst
-                these.
-                If the value is "auto":
-                - For `evaluation_parallel_to_training=True`: Will run as many
-                episodes/timesteps that fit into the (parallel) training step.
-                - For `evaluation_parallel_to_training=False`: Error.
+                "timesteps". If using multiple evaluation workers (EnvRunners) in the
+                `evaluation_num_workers > 1` setting, the amount of episodes/timesteps
+                to run will be split amongst these.
+                A special value of "auto" can be used in case
+                `evaluation_parallel_to_training=True`. This is the recommended way when
+                trying to save as much time on evaluation as possible. The Algorithm
+                will then run as many timesteps via the evaluation workers as possible,
+                while not taking longer than the parallely running training step and
+                thus, never wasting any idle time on either training- or evaluation
+                workers. When using this setting (`evaluation_duration="auto"`), it is
+                strongly advised to set `evaluation_interval=1` and
+                `evaluation_force_reset_envs_before_iteration=True` at the same time.
             evaluation_duration_unit: The unit, with which to count the evaluation
-                duration. Either "episodes" (default) or "timesteps".
-            evaluation_sample_timeout_s: The timeout (in seconds) for the ray.get call
-                to the remote evaluation worker(s) `sample()` method. After this time,
-                the user will receive a warning and instructions on how to fix the
-                issue. This could be either to make sure the episode ends, increasing
-                the timeout, or switching to `evaluation_duration_unit=timesteps`.
+                duration. Either "episodes" (default) or "timesteps". Note that this
+                setting is ignored if `evaluation_duration="auto"`.
+            evaluation_sample_timeout_s: The timeout (in seconds) for evaluation workers
+                to sample a complete episode in the case your config settings are:
+                `evaluation_duration != auto` and `evaluation_duration_unit=episode`.
+                After this time, the user will receive a warning and instructions on how
+                to fix the issue.
             evaluation_parallel_to_training: Whether to run evaluation in parallel to
-                a Algorithm.train() call using threading. Default=False.
-                E.g. evaluation_interval=2 -> For every other training iteration,
-                the Algorithm.train() and Algorithm.evaluate() calls run in parallel.
-                Note: This is experimental. Possible pitfalls could be race conditions
-                for weight synching at the beginning of the evaluation loop.
+                the `Algorithm.training_step()` call, using threading. Default=False.
+                E.g. for evaluation_interval=1 -> In every call to `Algorithm.train()`,
+                the `Algorithm.training_step()` and `Algorithm.evaluate()` calls will
+                run in parallel. Note that this setting - albeit extremely efficient b/c
+                it wastes no extra time for evaluation - causes the evaluation results
+                to lag one iteration behind the rest of the training results. This is
+                important when picking a good checkpoint. For example, if iteration 42
+                reports a good evaluation `episode_reward_mean`, be aware that these
+                results were achieved on the weights trained in iteration 41, so you
+                should probably pick the iteration 41 checkpoint instead.
+            evaluation_force_reset_envs_before_iteration: Whether all environments
+                should be force-reset (even if they are not done yet) right before
+                the evaluation step of the iteration begins. Setting this to True
+                (default) will make sure that the evaluation results will not be
+                polluted with episode statistics that were actually (at least partially)
+                achieved with an earlier set of weights. Note that this setting is only
+                supported on the new API stack (`config._enable_new_api_stack=True`
+                and `config.env_runner_cls=[SingleAgentEnvRunner|MultiAgentEnvrunner]`).
             evaluation_config: Typical usage is to pass extra args to evaluation env
                 creator and to disable exploration by computing deterministic actions.
                 IMPORTANT NOTE: Policy gradient algorithms are able to find the optimal
@@ -1965,7 +2131,7 @@ class AlgorithmConfig(_Config):
                 since each record is one timestep already. The default is True.
             evaluation_num_workers: Number of parallel workers to use for evaluation.
                 Note that this is set to zero by default, which means evaluation will
-                be run in the algorithm process (only if evaluation_interval is not
+                be run in the algorithm process (only if evaluation_interval is not 0 or
                 None). If you increase this, it will increase the Ray resource usage of
                 the algorithm since evaluation workers are created separately from
                 rollout workers (used to sample data for training).
@@ -1978,10 +2144,6 @@ class AlgorithmConfig(_Config):
                 results are always attached to a step result dict. This may be useful
                 if Tune or some other meta controller needs access to evaluation metrics
                 all the time.
-            enable_async_evaluation: If True, use an AsyncRequestsManager for
-                the evaluation workers and use this manager to send `sample()` requests
-                to the evaluation workers. This way, the Algorithm becomes more robust
-                against long running episodes and/or failing (and restarting) workers.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1994,6 +2156,19 @@ class AlgorithmConfig(_Config):
                 error=False,
             )
             evaluation_duration = evaluation_num_episodes
+        elif enable_async_evaluation != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.evaluation(enable_async_evaluation=...)",
+                new="AlgorithmConfig.evaluation(evaluation_parallel_to_training=...)",
+                error=True,
+            )
+        elif custom_async_evaluation_function != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.evaluation(custom_async_evaluation_function=...)",
+                new="AlgorithmConfig.evaluation(evaluation_parallel_to_training=True,"
+                " custom_evaluation_function=...)",
+                error=True,
+            )
 
         if evaluation_interval is not NotProvided:
             self.evaluation_interval = evaluation_interval
@@ -2005,6 +2180,10 @@ class AlgorithmConfig(_Config):
             self.evaluation_sample_timeout_s = evaluation_sample_timeout_s
         if evaluation_parallel_to_training is not NotProvided:
             self.evaluation_parallel_to_training = evaluation_parallel_to_training
+        if evaluation_force_reset_envs_before_iteration is not NotProvided:
+            self.evaluation_force_reset_envs_before_iteration = (
+                evaluation_force_reset_envs_before_iteration
+            )
         if evaluation_config is not NotProvided:
             # If user really wants to set this to None, we should allow this here,
             # instead of creating an empty dict.
@@ -2030,8 +2209,6 @@ class AlgorithmConfig(_Config):
             self.custom_evaluation_function = custom_evaluation_function
         if always_attach_evaluation_results is not NotProvided:
             self.always_attach_evaluation_results = always_attach_evaluation_results
-        if enable_async_evaluation is not NotProvided:
-            self.enable_async_evaluation = enable_async_evaluation
         if ope_split_batch_by_episode is not NotProvided:
             self.ope_split_batch_by_episode = ope_split_batch_by_episode
 
@@ -2292,7 +2469,7 @@ class AlgorithmConfig(_Config):
 
         if policy_mapping_fn is not NotProvided:
             # Create `policy_mapping_fn` from a config dict.
-            # Helpful is users would like to specify custom callable classes in
+            # Helpful if users would like to specify custom callable classes in
             # yaml files.
             if isinstance(policy_mapping_fn, dict):
                 policy_mapping_fn = from_config(policy_mapping_fn)
@@ -2466,6 +2643,7 @@ class AlgorithmConfig(_Config):
         log_sys_usage: Optional[bool] = NotProvided,
         fake_sampler: Optional[bool] = NotProvided,
         seed: Optional[int] = NotProvided,
+        _run_training_always_in_thread: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's debugging settings.
 
@@ -2486,6 +2664,11 @@ class AlgorithmConfig(_Config):
             seed: This argument, in conjunction with worker_index, sets the random
                 seed of each worker, so that identically configured trials will have
                 identical results. This makes experiments reproducible.
+            _run_training_always_in_thread: Runs the n `training_step()` calls per
+                iteration always in a separate thread (just as we would do with
+                `evaluation_parallel_to_training=True`, but even without evaluation
+                going on and even without evaluation workers being created in the
+                Algorithm).
 
         Returns:
             This updated AlgorithmConfig object.
@@ -2502,6 +2685,8 @@ class AlgorithmConfig(_Config):
             self.fake_sampler = fake_sampler
         if seed is not NotProvided:
             self.seed = seed
+        if _run_training_always_in_thread is not NotProvided:
+            self._run_training_always_in_thread = _run_training_always_in_thread
 
         return self
 
@@ -2572,13 +2757,17 @@ class AlgorithmConfig(_Config):
     def rl_module(
         self,
         *,
+        model_config_dict: Optional[Dict[str, Any]] = NotProvided,
         rl_module_spec: Optional[RLModuleSpec] = NotProvided,
         # Deprecated arg.
-        _enable_rl_module_api: Optional[bool] = NotProvided,
+        _enable_rl_module_api=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the config's RLModule settings.
 
         Args:
+            model_config_dict: The default model config dictionary for `RLModule`s. This
+                will be used for any `RLModule` if not otherwise specified in the
+                `rl_module_spec`.
             rl_module_spec: The RLModule spec to use for this config. It can be either
                 a SingleAgentRLModuleSpec or a MultiAgentRLModuleSpec. If the
                 observation_space, action_space, catalog_class, or the model config is
@@ -2588,6 +2777,8 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
+        if model_config_dict is not NotProvided:
+            self._model_config_dict = model_config_dict
         if rl_module_spec is not NotProvided:
             self._rl_module_spec = rl_module_spec
 
@@ -2595,7 +2786,7 @@ class AlgorithmConfig(_Config):
             deprecation_warning(
                 old="AlgorithmConfig.rl_module(_enable_rl_module_api=True|False)",
                 new="AlgorithmConfig.experimental(_enable_new_api_stack=True|False)",
-                error=True,
+                error=False,
             )
         return self
 
@@ -2687,8 +2878,8 @@ class AlgorithmConfig(_Config):
         if self._rl_module_spec is not None:
             # Merge provided RL Module spec class with defaults
             _check_rl_module_spec(self._rl_module_spec)
-            # We can only merge if we have SingleAgentRLModuleSpecs.
-            # TODO (sven): Support merging for MultiAgentRLModuleSpecs.
+            # Merge given spec with default one (in case items are missing, such as
+            # spaces, module class, etc.)
             if isinstance(self._rl_module_spec, SingleAgentRLModuleSpec):
                 if isinstance(default_rl_module_spec, SingleAgentRLModuleSpec):
                     default_rl_module_spec.update(self._rl_module_spec)
@@ -2698,6 +2889,11 @@ class AlgorithmConfig(_Config):
                         "Cannot merge MultiAgentRLModuleSpec with "
                         "SingleAgentRLModuleSpec!"
                     )
+            else:
+                marl_module_spec = copy.deepcopy(self._rl_module_spec)
+                marl_module_spec.update(default_rl_module_spec)
+                return marl_module_spec
+
         # `self._rl_module_spec` has not been user defined -> return default one.
         else:
             return default_rl_module_spec
@@ -2776,7 +2972,10 @@ class AlgorithmConfig(_Config):
             # -> 2000 / 4 -> 500
             # 4 workers, 3 envs per worker, 2500 train batch size:
             # -> 2500 / 12 -> 208.333 -> diff=4 (208 * 12 = 2496)
-            # -> worker 1: 209, workers 2-4: 208
+            # -> worker 1, 2: 209, workers 3, 4: 208
+            # 2 workers, 20 envs per worker, 512 train batch size:
+            # -> 512 / 40 -> 12.8 -> diff=32 (12 * 40 = 480)
+            # -> worker 1: 13, workers 2: 12
             rollout_fragment_length = self.total_train_batch_size / (
                 self.num_envs_per_worker * (self.num_rollout_workers or 1)
             )
@@ -2784,7 +2983,9 @@ class AlgorithmConfig(_Config):
                 diff = self.total_train_batch_size - int(
                     rollout_fragment_length
                 ) * self.num_envs_per_worker * (self.num_rollout_workers or 1)
-                if (worker_index * self.num_envs_per_worker) <= diff:
+                if ((worker_index - 1) * self.num_envs_per_worker) >= diff:
+                    return int(rollout_fragment_length)
+                else:
                     return int(rollout_fragment_length) + 1
             return int(rollout_fragment_length)
         else:
@@ -2821,6 +3022,10 @@ class AlgorithmConfig(_Config):
         eval_config_obj.in_evaluation = True
         eval_config_obj.evaluation_config = None
 
+        # NOTE: The following if-block is only relevant for the old API stack.
+        # For the new API stack (EnvRunners), the evaluation methods of Algorithm
+        # explicitly tell each EnvRunner on each sample call, how many timesteps
+        # of episodes to collect.
         # Evaluation duration unit: episodes.
         # Switch on `complete_episode` rollouts. Also, make sure
         # rollout fragments are short so we never have more than one
@@ -2839,7 +3044,11 @@ class AlgorithmConfig(_Config):
         else:
             eval_config_obj.batch_mode = "truncate_episodes"
             eval_config_obj.rollout_fragment_length = (
-                10
+                # Set to a moderately small (but not too small) value in order
+                # to a) not overshoot too much the parallelly running `training_step`
+                # but also to b) avoid too many `sample()` remote calls.
+                # 100 seems like a good middle ground.
+                100
                 if self.evaluation_duration == "auto"
                 else int(
                     math.ceil(
@@ -2894,9 +3103,8 @@ class AlgorithmConfig(_Config):
             spaces: Optional dict mapping policy IDs to tuples of 1) observation space
                 and 2) action space that should be used for the respective policy.
                 These spaces were usually provided by an already instantiated remote
-                EnvRunner. If not provided, will try to infer from `env`. Otherwise
-                from `self.observation_space` and `self.action_space`. If no
-                information on spaces can be inferred, will raise an error.
+                EnvRunner. Note that if the `env` argument is provided, will try to
+                infer spaces from `env` first.
             default_policy_class: The Policy class to use should a PolicySpec have its
                 policy_class property set to None.
 
@@ -2998,8 +3206,8 @@ class AlgorithmConfig(_Config):
                         # single-agent space.
                         if all(s == one_obs_space for s in env_obs_space.values()):
                             obs_space = one_obs_space
-                        # Otherwise, we have to match the policy ID with all possible
-                        # agent IDs and find the agent ID that matches.
+                        # Otherwise, we have to compare the ModuleID with all possible
+                        # AgentIDs and find the agent ID that matches.
                         elif mapping_fn:
                             for aid in env_unwrapped.get_agent_ids():
                                 # Match: Assign spaces for this agentID to the PolicyID.
@@ -3060,8 +3268,8 @@ class AlgorithmConfig(_Config):
                         # single-agent space.
                         if all(s == one_act_space for s in env_act_space.values()):
                             act_space = one_act_space
-                        # Otherwise, we have to match the policy ID with all possible
-                        # agent IDs and find the agent ID that matches.
+                        # Otherwise, we have to compare the ModuleID with all possible
+                        # AgentIDs and find the agent ID that matches.
                         elif mapping_fn:
                             for aid in env_unwrapped.get_agent_ids():
                                 # Match: Assign spaces for this AgentID to the PolicyID.
@@ -3431,8 +3639,17 @@ class AlgorithmConfig(_Config):
                 module_spec.observation_space = policy_spec.observation_space
             if module_spec.action_space is None:
                 module_spec.action_space = policy_spec.action_space
+            # In case the `RLModuleSpec` does not have a model config dict, we use the
+            # the one defined by the auto keys and the `model_config_dict` arguments in
+            # `self.rl_module()`.
             if module_spec.model_config_dict is None:
-                module_spec.model_config_dict = policy_spec.config.get("model", {})
+                module_spec.model_config_dict = self.model_config
+            # Otherwise we combine the two dictionaries where settings from the
+            # `RLModuleSpec` have higher priority.
+            else:
+                module_spec.model_config_dict = (
+                    self.model_config | module_spec.model_config_dict
+                )
 
         return marl_module_spec
 
@@ -3527,6 +3744,36 @@ class AlgorithmConfig(_Config):
     def items(self):
         """Shim method to help pretend we are a dict."""
         return self.to_dict().items()
+
+    @property
+    def model_config(self):
+        """Defines the model configuration used.
+
+        This method combines the auto configuration `self _model_config_auto_includes`
+        defined by an algorithm with the user-defined configuration in
+        `self._model_config_dict`.This configuration dictionary will be used to
+        configure the `RLModule` in the new stack and the `ModelV2` in the old
+        stack.
+
+        Returns:
+            A dictionary with the model configuration.
+        """
+        return self._model_config_auto_includes | self._model_config_dict
+
+    @property
+    def _model_config_auto_includes(self) -> Dict[str, Any]:
+        """Defines which `AlgorithmConfig` settings/properties should be
+        auto-included into `self.model_config`.
+
+        The dictionary in this property contains the default configuration of an
+        algorithm. Together with the `self._model`, this method will be used to
+        define the configuration sent to the `RLModule`.
+
+        Returns:
+            A dictionary with the automatically included properties/settings of this
+            `AlgorithmConfig` object into `self.model_config`.
+        """
+        return MODEL_DEFAULTS
 
     # -----------------------------------------------------------
     # Various validation methods for different types of settings.
@@ -3634,32 +3881,23 @@ class AlgorithmConfig(_Config):
 
     def _validate_evaluation_settings(self):
         """Checks, whether evaluation related settings make sense."""
-        if (
-            self.evaluation_interval
-            and self.uses_new_env_runners
-            and not self.enable_async_evaluation
-        ):
+
+        # Async evaluation has been deprecated. Use "simple" parallel mode instead
+        # (which is also async):
+        # `config.evaluation(evaluation_parallel_to_training=True)`.
+        if self.enable_async_evaluation is True:
             raise ValueError(
-                "When using an EnvRunner class that's not a subclass of `RolloutWorker`"
-                f"(yours is {self.env_runner_cls.__name__}), "
-                "`config.enable_async_evaluation` must be set to True! Call "
-                "`config.evaluation(enable_async_evaluation=True) on your config "
-                "object to fix this problem."
+                "`enable_async_evaluation` has been deprecated (you should set this to "
+                "False)! Use `config.evaluation(evaluation_parallel_to_training=True)` "
+                "instead."
             )
 
-        # If async evaluation is enabled, custom_eval_functions are not allowed.
-        if self.enable_async_evaluation and self.custom_evaluation_function:
-            raise ValueError(
-                "`config.custom_evaluation_function` not supported in combination "
-                "with `enable_async_evaluation=True` config setting!"
-            )
-
-        # If `evaluation_num_workers` > 0, warn if `evaluation_interval` is
+        # If `evaluation_num_workers` > 0, warn if `evaluation_interval` is 0 or
         # None.
         if self.evaluation_num_workers > 0 and not self.evaluation_interval:
             logger.warning(
                 f"You have specified {self.evaluation_num_workers} "
-                "evaluation workers, but your `evaluation_interval` is None! "
+                "evaluation workers, but your `evaluation_interval` is 0 or None! "
                 "Therefore, evaluation will not occur automatically with each"
                 " call to `Algorithm.train()`. Instead, you will have to call "
                 "`Algorithm.evaluate()` manually in order to trigger an "
@@ -3669,7 +3907,7 @@ class AlgorithmConfig(_Config):
         # `evaluation_parallel_to_training=True`, warn that you need
         # at least one remote eval worker for parallel training and
         # evaluation, and set `evaluation_parallel_to_training` to False.
-        elif self.evaluation_num_workers == 0 and self.evaluation_parallel_to_training:
+        if self.evaluation_num_workers == 0 and self.evaluation_parallel_to_training:
             raise ValueError(
                 "`evaluation_parallel_to_training` can only be done if "
                 "`evaluation_num_workers` > 0! Try setting "
@@ -3684,7 +3922,15 @@ class AlgorithmConfig(_Config):
                     "`evaluation_duration=auto` not supported for "
                     "`evaluation_parallel_to_training=False`!"
                 )
-        # Make sure, it's an int otherwise.
+            elif self.evaluation_duration_unit == "episodes":
+                logger.warning(
+                    "When using `config.evaluation_duration='auto'`, the sampling unit "
+                    "used is always 'timesteps'! You have set "
+                    "`config.evaluation_duration_unit='episodes'`, which will be "
+                    "ignored."
+                )
+
+        # Make sure, `evaluation_duration` is an int otherwise.
         elif (
             not isinstance(self.evaluation_duration, int)
             or self.evaluation_duration <= 0
@@ -3742,6 +3988,15 @@ class AlgorithmConfig(_Config):
                     f"but have the new API stack disabled. You need to enable it via "
                     "`AlgorithmConfig.experimental(_enable_new_api_stack=True)`."
                 )
+            # User is using the new EnvRunners, but forgot to switch on
+            # `_enable_new_api_stack`.
+            if self.uses_new_env_runners:
+                raise ValueError(
+                    "You are using the new API stack EnvRunners (SingleAgentEnvRunner "
+                    "or MultiAgentEnvRunner), but have forgotten to switch on the new "
+                    "API stack! Try setting "
+                    "`config.experimental(_enable_new_api_stack=True)`."
+                )
             # Early out. The rest of this method is only for _enable_new_api_stack=True.
             return
 
@@ -3761,19 +4016,29 @@ class AlgorithmConfig(_Config):
         )
 
         # Check and error if `on_episode_created` callback has been overridden on the
-        # new API stack.
-        if self.uses_new_env_runners and self.callbacks_class is not DefaultCallbacks:
+        # new API stack AND this is a single-agent setup (multi-agent does not use
+        # gym.vector.Env yet and therefore the reset call is still made manually,
+        # allowing for the callback to be fired).
+        if (
+            self.uses_new_env_runners
+            and not self.is_multi_agent()
+            and self.callbacks_class is not DefaultCallbacks
+        ):
             default_src = inspect.getsource(DefaultCallbacks.on_episode_created)
-            user_src = inspect.getsource(self.callbacks_class.on_episode_created)
+            try:
+                user_src = inspect.getsource(self.callbacks_class.on_episode_created)
+            # In case user has setup a `partial` instead of an actual Callbacks class.
+            except AttributeError:
+                user_src = default_src
             if default_src != user_src:
                 raise ValueError(
-                    "When using the new API stack with EnvRunners, you cannot override "
-                    "the `DefaultCallbacks.on_episode_created()` method anymore! "
-                    "This particular callback is no longer supported as we are now "
-                    "using gym.vector.Env, which automatically resets individual "
-                    "sub-environments when they are terminated. Override the "
-                    "`on_episode_start` method instead, which gets fired right after "
-                    "the `env.reset()` call."
+                    "When using the new API stack in single-agent and with EnvRunners, "
+                    "you cannot override the `DefaultCallbacks.on_episode_created()` "
+                    "method anymore! This particular callback is no longer supported "
+                    "b/c we are using `gym.vector.Env`, which automatically resets "
+                    "individual sub-environments when they are terminated. Instead, "
+                    "override the `on_episode_start` method, which gets fired right "
+                    "after the `env.reset()` call."
                 )
 
         # This is not compatible with RLModules, which all have a method
@@ -3813,6 +4078,17 @@ class AlgorithmConfig(_Config):
     # TODO (sven): Once everything is on the new API stack, we won't need this method
     #  anymore.
     def _validate_to_be_deprecated_settings(self):
+        # Env task fn will be deprecated.
+        if self._enable_new_api_stack and self.env_task_fn is not None:
+            deprecation_warning(
+                old="AlgorithmConfig.env_task_fn",
+                help="The `env_task_fn` API is not supported on the new API stack! "
+                "Curriculum learning should instead be implemented solely via "
+                "custom callbacks. Check out our curriculum learning example "
+                "script for more information: "
+                "https://github.com/ray-project/ray/blob/master/rllib/examples/curriculum/curriculum_learning.py",  # noqa
+            )
+
         if self.preprocessor_pref not in ["rllib", "deepmind", None]:
             raise ValueError(
                 "`config.preprocessor_pref` must be either 'rllib', 'deepmind' or None!"

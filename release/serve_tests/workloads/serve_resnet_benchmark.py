@@ -169,12 +169,12 @@ def main(gpu_env: Optional[bool], smoke_run: Optional[bool]):
     if gpu_env:
         test_name = "resnet50_gpu"
         device = "cuda"
-        ImageObjectioner.set_options(ray_actor_options={"num_gpus": 1})
+        io = ImageObjectioner.options(ray_actor_options={"num_gpus": 1}).bind(
+            DataDownloader.bind(), device=device
+        )
+    else:
+        io = ImageObjectioner.bind(DataDownloader.bind(), device=device)
 
-    # batch size
-    batch_sizes = [16, 32, 64]
-
-    io = ImageObjectioner.bind(DataDownloader.bind(), device=device)
     handle = serve.run(io)
 
     if smoke_run:
@@ -188,6 +188,7 @@ def main(gpu_env: Optional[bool], smoke_run: Optional[bool]):
             handle.predict.remote([input_uris[0]]).result()
 
         print("start load testing...")
+        batch_sizes = [16, 32, 64]
         for batch_size in batch_sizes:
             throughput_mean_tps, model_inference_latency_mean = asyncio.run(
                 trial(measure_http_throughput_tps, batch_size)

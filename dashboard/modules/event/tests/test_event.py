@@ -294,7 +294,8 @@ async def test_monitor_events():
         assert len(os.listdir(temp_dir)) > 1, "Event log should have rollovers."
 
 
-def test_autoscaler_cluster_events(shutdown_only):
+@pytest.mark.parametrize("autoscaler_v2", [False, True], ids=["v1", "v2"])
+def test_autoscaler_cluster_events(autoscaler_v2, shutdown_only):
     cluster = AutoscalingCluster(
         head_resources={"CPU": 2},
         worker_node_types={
@@ -316,6 +317,7 @@ def test_autoscaler_cluster_events(shutdown_only):
                 "max_workers": 1,
             },
         },
+        autoscaler_v2=autoscaler_v2,
         idle_timeout_minutes=1,
     )
 
@@ -346,9 +348,12 @@ def test_autoscaler_cluster_events(shutdown_only):
 
         def verify():
             cluster_events = list_cluster_events()
+            print(cluster_events)
             messages = {(e["message"], e["source_type"]) for e in cluster_events}
-
-            assert ("Resized to 2 CPUs.", "AUTOSCALER") in messages, cluster_events
+            if not autoscaler_v2:
+                # With head node resources, we don't actually resized. So this event is
+                # not really accurate.
+                assert ("Resized to 2 CPUs.", "AUTOSCALER") in messages, cluster_events
             assert (
                 "Adding 1 node(s) of type gpu_node.",
                 "AUTOSCALER",
@@ -365,14 +370,9 @@ def test_autoscaler_cluster_events(shutdown_only):
                 "Resized to 8 CPUs, 1 GPUs.",
                 "AUTOSCALER",
             ) in messages, cluster_events
-            assert (
-                (
-                    "Error: No available node types can fulfill resource "
-                    "request {'GPU': 5.0}. Add suitable node "
-                    "types to this cluster to resolve this issue."
-                ),
-                "AUTOSCALER",
-            ) in messages
+            assert "No available node types can fulfill resource request" in "".join(
+                [t[0] for t in messages]
+            )
 
             return True
 

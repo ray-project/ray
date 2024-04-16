@@ -1,6 +1,6 @@
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
-from ray.rllib.examples.env.multi_agent import MultiAgentPendulum
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentPendulum
 from ray.tune.registry import register_env
 
 
@@ -35,7 +35,7 @@ config = (
 
 stop = {
     "timesteps_total": 500000,
-    "episode_reward_mean": -1000.0,  # agents required to reach -500 on average
+    "episode_reward_mean": -800.0,  # divide by num_agents for actual reward per agent
 }
 
 

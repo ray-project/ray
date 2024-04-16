@@ -164,20 +164,11 @@ documentation, sorted alphabetically.
         the number of “replicas” of the deployment, each of which will map to a Ray
         actor at runtime. Requests to a deployment are load balanced across its replicas.
 
-    .. TODO: Deployment pipeline
-
-    Deployment graph
-        A deployment graph is a group of Ray Serve deployments that are bound together
-        into a directed acyclic graph (DAG) to handle requests. This enables model
-        composition. Each request will be passed through the graph, allowing multiple
-        stages of processing. For example, there might be a different deployment for
-        preprocessing, inference, and postprocessing.
-
     Ingress Deployment
-        The “ingress” deployment is the one that receives and responds to inbound user
-        traffic. It handles HTTP parsing and response formatting. In the case of a
-        deployment graph, it would also fan out requests to other deployments to do
-        things like a forward pass of an ML model.
+        In Ray Serve, the “ingress” deployment is the one that receives and responds to
+        inbound user traffic. It handles HTTP parsing and response formatting. In the case
+        of model composition, it would also fan out requests to other deployments to do
+        things like preprocessing and a forward pass of an ML model.
 
     Driver
         "Driver" is the name of the process running the main script that starts all
@@ -520,11 +511,11 @@ documentation, sorted alphabetically.
 
         Applications can be called via HTTP at their configured ``route_prefix``.
 
-    ServeHandle
-        ServeHandle is the Python API for making requests to Serve deployments. A
+    DeploymentHandle
+        DeploymentHandle is the Python API for making requests to Serve deployments. A
         handle is defined by passing one bound Serve deployment to the constructor of
         another. Then at runtime that reference can be used to make requests. This is
-        used to combine multiple deployments into “deployment graphs.”
+        used to combine multiple deployments for model composition.
 
     Session
         - A Ray Train/Tune session: Tune session at the experiment execution layer

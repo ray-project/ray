@@ -63,6 +63,25 @@ def parse_args():
         "Set to True if file_type == 'parquet'.",
     )
     parser.add_argument(
+        "--skip-ray-trainer",
+        default=False,
+        action="store_true",
+        help=(
+            "Whether to skip using Ray Train TorchTrainer to consume the data, and "
+            "instead iterate over the dataset with the Ray Data "
+            "iter_torch_batches() method."
+        ),
+    )
+    parser.add_argument(
+        "--disable-locality-with-output",
+        default=False,
+        action="store_true",
+        help=(
+            "When used, set `DataConfig.default_ingest_options()."
+            "locality_with_output` to False (otherwise defaults to True)."
+        ),
+    )
+    parser.add_argument(
         "--repeat-ds",
         default=1,
         type=int,
@@ -81,7 +100,28 @@ def parse_args():
         "--batch-size",
         default=32,
         type=int,
-        help="Batch size to use.",
+        help=(
+            "Batch size to use. Set to -1 to use batch_size=None "
+            "(Ray Data will use the entire block as a batch)."
+        ),
+    )
+    parser.add_argument(
+        "--prefetch-batches",
+        default=1,
+        type=int,
+        help="prefetch_batches for iter_torch_batches()",
+    )
+    parser.add_argument(
+        "--local-shuffle-buffer-size",
+        default=None,
+        type=int,
+        help="local_shuffle_buffer_size for iter_torch_batches()",
+    )
+    parser.add_argument(
+        "--target-max-block-size-mb",
+        default=None,
+        type=int,
+        help="DataContext.target_max_block_size in MB. Default is 128MB.",
     )
     parser.add_argument(
         "--num-epochs",
@@ -95,7 +135,7 @@ def parse_args():
         "--num-retries",
         default=3,
         type=int,
-        help="Number of retries for the Traine before exiting the benchmark.",
+        help="Number of retries for the Trainer before exiting the benchmark.",
     )
     parser.add_argument(
         "--num-workers",
@@ -191,6 +231,9 @@ def parse_args():
         # Training model is only supported for images currently.
         # Parquet files do not have labels.
         args.skip_train_model = True
+    if args.batch_size == -1:
+        args.batch_size = None
+
     return args
 
 
@@ -203,9 +246,10 @@ def _get_ray_data_batch_iterator(args, worker_rank):
         it = train.get_dataset_shard(f"train_{worker_rank}")
     else:
         it = train.get_dataset_shard("train")
-    return it.iter_torch_batches(
+    return it, it.iter_torch_batches(
         batch_size=args.batch_size,
-        local_shuffle_buffer_size=args.batch_size / 2,
+        prefetch_batches=args.prefetch_batches,
+        local_shuffle_buffer_size=args.local_shuffle_buffer_size,
     )
 
 
@@ -262,16 +306,22 @@ def train_loop_per_worker():
     validation_accuracy_per_epoch = []
     # Validation loop with non-random cropped dataset
     # is only supported for image dataset.
-    run_validation_set = args.use_ray_data and args.file_type == "image"
+    run_validation_set = (
+        args.use_ray_data and not args.skip_train_model and args.file_type == "image"
+    )
 
     # Begin training over the configured number of epochs.
     for epoch in range(args.num_epochs):
         # Ray Data needs to call iter_torch_batches on each epoch.
         if args.use_ray_data:
-            batch_iter = _get_ray_data_batch_iterator(args, worker_rank)
+            ds_shard, batch_iter = _get_ray_data_batch_iterator(args, worker_rank)
             if run_validation_set:
                 val_ds = train.get_dataset_shard("val")
-                batch_iter_val = val_ds.iter_torch_batches(batch_size=args.batch_size)
+                batch_iter_val = val_ds.iter_torch_batches(
+                    batch_size=args.batch_size,
+                    prefetch_batches=args.prefetch_batches,
+                    local_shuffle_buffer_size=args.local_shuffle_buffer_size,
+                )
         # For synthetic data, we need to create the iterator each epoch.
         elif args.use_synthetic_data:
             # Generate a random batch, and continuously yield the same batch 1000 times.
@@ -327,7 +377,7 @@ def train_loop_per_worker():
         end_t = time.time()
 
         epoch_accuracy_val = None
-        if run_validation_set and not args.skip_train_model:
+        if run_validation_set:
             print(f"Starting validation set for epoch {epoch+1}")
             num_correct_val = 0
             num_rows_val = 0
@@ -379,6 +429,10 @@ def train_loop_per_worker():
             f"validation accuracy: "
             f"{epoch_accuracy_val * 100 if epoch_accuracy_val else 0:.3f}%"
         )
+        if args.use_ray_data:
+            print(f"iter stats: {ds_shard.stats()}")
+            if run_validation_set:
+                print(f"val iter stats: {val_ds.stats()}")
     # Similar reporting for aggregating number of rows across workers
     all_num_rows = [
         torch.zeros((1), dtype=torch.int32, device=device) for _ in range(world_size)
@@ -517,6 +571,10 @@ def get_torch_data_loader(worker_rank, batch_size, num_workers, transform=None):
 def benchmark_code(
     args,
 ):
+    if args.target_max_block_size_mb is not None:
+        ctx = ray.data.DataContext.get_current()
+        ctx.target_max_block_size = args.target_max_block_size_mb * 1024 * 1024
+
     cache_input_ds = args.cache_input_ds
     cache_output_ds = args.cache_output_ds
     assert (
@@ -593,7 +651,23 @@ def benchmark_code(
 
     # 3) Train TorchTrainer on processed data
     options = DataConfig.default_ingest_options()
+    if args.disable_locality_with_output:
+        options.locality_with_output = False
     options.preserve_order = args.preserve_order
+
+    if args.skip_ray_trainer:
+        start_t = time.time()
+        num_rows = 0
+        for batch in ray_datasets_dict["train"].iter_torch_batches(
+            batch_size=args.batch_size,
+            prefetch_batches=args.prefetch_batches,
+            local_shuffle_buffer_size=args.local_shuffle_buffer_size,
+        ):
+            num_rows += len(batch["label"])
+        end_t = time.time()
+        tput = num_rows / (end_t - start_t)
+        data_benchmark_metrics = {BenchmarkMetric.THROUGHPUT: tput}
+        return data_benchmark_metrics
 
     torch_trainer = TorchTrainer(
         train_loop_per_worker,

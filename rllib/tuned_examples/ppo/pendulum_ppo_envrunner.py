@@ -13,7 +13,7 @@ config = (
     )
     .environment("Pendulum-v1")
     .training(
-        train_batch_size=512,
+        train_batch_size_per_learner=512,
         gamma=0.95,
         lr=0.0003,
         lambda_=0.1,
@@ -27,11 +27,11 @@ config = (
     .evaluation(
         evaluation_num_workers=1,
         evaluation_interval=1,
-        enable_async_evaluation=True,
+        evaluation_parallel_to_training=True,
     )
 )
 
 stop = {
     "timesteps_total": 400000,
-    "sampler_results/episode_reward_mean": -400.0,
+    "evaluation/sampler_results/episode_reward_mean": -400.0,
 }

@@ -36,11 +36,11 @@ def test_cancel_on_http_client_disconnect_during_execution(
         @serve.ingress(app)
         class Ingress:
             def __init__(self, handle):
-                self._handle = handle.options(use_new_handle_api=True)
+                self._handle = handle
 
             @app.get("/")
             async def wait_for_cancellation(self):
-                await self._handle.remote()._to_object_ref()
+                _ = self._handle.remote()
                 await send_signal_on_cancellation(outer_signal_actor)
 
     else:
@@ -48,10 +48,10 @@ def test_cancel_on_http_client_disconnect_during_execution(
         @serve.deployment
         class Ingress:
             def __init__(self, handle):
-                self._handle = handle.options(use_new_handle_api=True)
+                self._handle = handle
 
             async def __call__(self, request: Request):
-                await self._handle.remote()._to_object_ref()
+                _ = self._handle.remote()
                 await send_signal_on_cancellation(outer_signal_actor)
 
     serve.run(Ingress.bind(inner.bind()))
@@ -69,7 +69,7 @@ def test_cancel_on_http_client_disconnect_during_assignment(serve_instance):
     """Test the client disconnecting while the proxy is assigning the request."""
     signal_actor = SignalActor.remote()
 
-    @serve.deployment(max_concurrent_queries=1)
+    @serve.deployment(max_ongoing_requests=1)
     class Ingress:
         def __init__(self):
             self._num_requests = 0
@@ -80,7 +80,7 @@ def test_cancel_on_http_client_disconnect_during_assignment(serve_instance):
 
             return self._num_requests
 
-    h = serve.run(Ingress.bind()).options(use_new_handle_api=True)
+    h = serve.run(Ingress.bind())
 
     # Send a request and wait for it to be ongoing so we know that further requests
     # will block trying to assign a replica.
@@ -110,7 +110,7 @@ def test_cancel_sync_handle_call_during_execution(serve_instance):
             await running_signal_actor.send.remote()
             await send_signal_on_cancellation(cancelled_signal_actor)
 
-    h = serve.run(Ingress.bind()).options(use_new_handle_api=True)
+    h = serve.run(Ingress.bind())
 
     # Send a request and wait for it to start executing.
     r = h.remote()
@@ -128,7 +128,7 @@ def test_cancel_sync_handle_call_during_assignment(serve_instance):
     """Test cancelling handle request during assignment (sync context)."""
     signal_actor = SignalActor.remote()
 
-    @serve.deployment(max_concurrent_queries=1)
+    @serve.deployment(max_ongoing_requests=1)
     class Ingress:
         def __init__(self):
             self._num_requests = 0
@@ -139,7 +139,7 @@ def test_cancel_sync_handle_call_during_assignment(serve_instance):
 
             return self._num_requests
 
-    h = serve.run(Ingress.bind()).options(use_new_handle_api=True)
+    h = serve.run(Ingress.bind())
 
     # Send a request and wait for it to be ongoing so we know that further requests
     # will block trying to assign a replica.
@@ -174,7 +174,7 @@ def test_cancel_async_handle_call_during_execution(serve_instance):
     @serve.deployment
     class Ingress:
         def __init__(self, handle):
-            self._h = handle.options(use_new_handle_api=True)
+            self._h = handle
 
         async def __call__(self, *args):
             # Send a request and wait for it to start executing.
@@ -188,7 +188,7 @@ def test_cancel_async_handle_call_during_execution(serve_instance):
             with pytest.raises(ray.exceptions.TaskCancelledError):
                 await r
 
-    h = serve.run(Ingress.bind(Downstream.bind())).options(use_new_handle_api=True)
+    h = serve.run(Ingress.bind(Downstream.bind()))
     h.remote().result()  # Would raise if test failed.
 
 
@@ -196,7 +196,7 @@ def test_cancel_async_handle_call_during_assignment(serve_instance):
     """Test cancelling handle request during assignment (async context)."""
     signal_actor = SignalActor.remote()
 
-    @serve.deployment(max_concurrent_queries=1)
+    @serve.deployment(max_ongoing_requests=1)
     class Downstream:
         def __init__(self):
             self._num_requests = 0
@@ -210,7 +210,7 @@ def test_cancel_async_handle_call_during_assignment(serve_instance):
     @serve.deployment
     class Ingress:
         def __init__(self, handle):
-            self._h = handle.options(use_new_handle_api=True)
+            self._h = handle
 
         async def __call__(self, *args):
             # Send a request and wait for it to be ongoing so we know that further
@@ -235,7 +235,7 @@ def test_cancel_async_handle_call_during_assignment(serve_instance):
             for i in range(2, 12):
                 assert await self._h.remote() == i
 
-    h = serve.run(Ingress.bind(Downstream.bind())).options(use_new_handle_api=True)
+    h = serve.run(Ingress.bind(Downstream.bind()))
     h.remote().result()  # Would raise if test failed.
 
 
@@ -249,7 +249,7 @@ def test_cancel_generator_sync(serve_instance):
             yield "hi"
             await send_signal_on_cancellation(signal_actor)
 
-    h = serve.run(Ingress.bind()).options(use_new_handle_api=True, stream=True)
+    h = serve.run(Ingress.bind()).options(stream=True)
 
     # Send a request and wait for it to start executing.
     g = h.remote()
@@ -278,7 +278,7 @@ def test_cancel_generator_async(serve_instance):
     @serve.deployment
     class Ingress:
         def __init__(self, handle):
-            self._h = handle.options(use_new_handle_api=True, stream=True)
+            self._h = handle.options(stream=True)
 
         async def __call__(self, *args):
             # Send a request and wait for it to start executing.
@@ -293,7 +293,7 @@ def test_cancel_generator_async(serve_instance):
 
             await signal_actor.wait.remote()
 
-    h = serve.run(Ingress.bind(Downstream.bind())).options(use_new_handle_api=True)
+    h = serve.run(Ingress.bind(Downstream.bind()))
     h.remote().result()  # Would raise if test failed.
 
 
@@ -307,7 +307,7 @@ def test_only_relevant_task_is_cancelled(serve_instance):
             await signal_actor.wait.remote()
             return "ok"
 
-    h = serve.run(Ingress.bind()).options(use_new_handle_api=True)
+    h = serve.run(Ingress.bind())
 
     r1 = h.remote()
     r2 = h.remote()
@@ -340,7 +340,7 @@ def test_out_of_band_task_is_not_cancelled(serve_instance):
     @serve.deployment
     class Ingress:
         def __init__(self, handle):
-            self._h = handle.options(use_new_handle_api=True)
+            self._h = handle
             self._out_of_band_req = self._h.hi.remote()
 
         async def __call__(self, *args):
@@ -349,7 +349,7 @@ def test_out_of_band_task_is_not_cancelled(serve_instance):
         async def get_out_of_band_response(self):
             return await self._out_of_band_req
 
-    h = serve.run(Ingress.bind(Downstream.bind())).options(use_new_handle_api=True)
+    h = serve.run(Ingress.bind(Downstream.bind()))
 
     # Send a request, wait for downstream request to start, and cancel it.
     r1 = h.remote()

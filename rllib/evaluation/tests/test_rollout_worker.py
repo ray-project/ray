@@ -16,14 +16,15 @@ from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.examples.env.mock_env import (
+from ray.rllib.examples.envs.classes.mock_env import (
     MockEnv,
     MockEnv2,
     MockVectorEnv,
     VectorizedMockEnv,
 )
-from ray.rllib.examples.env.multi_agent import BasicMultiAgent, MultiAgentCartPole
-from ray.rllib.examples.policy.random_policy import RandomPolicy
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
+from ray.rllib.examples.envs.classes.random_env import RandomEnv
+from ray.rllib.examples._old_api_stack.policy.random_policy import RandomPolicy
 from ray.rllib.offline.dataset_reader import DatasetReader, get_dataset_and_shards
 from ray.rllib.offline.json_reader import JsonReader
 from ray.rllib.policy.policy import Policy, PolicySpec
@@ -232,8 +233,6 @@ class TestRolloutWorker(unittest.TestCase):
             algo.stop()
 
     def test_action_clipping(self):
-        from ray.rllib.examples.env.random_env import RandomEnv
-
         action_space = gym.spaces.Box(-2.0, 1.0, (3,))
 
         # Clipping: True (clip between Policy's action_space.low/high).
@@ -326,8 +325,6 @@ class TestRolloutWorker(unittest.TestCase):
         ev3.stop()
 
     def test_action_normalization(self):
-        from ray.rllib.examples.env.random_env import RandomEnv
-
         action_space = gym.spaces.Box(0.0001, 0.0002, (5,))
 
         # Normalize: True (unsquash between Policy's action_space.low/high).
@@ -444,8 +441,6 @@ class TestRolloutWorker(unittest.TestCase):
                     ev.stop()
 
     def test_action_immutability(self):
-        from ray.rllib.examples.env.random_env import RandomEnv
-
         action_space = gym.spaces.Box(0.0001, 0.0002, (5,))
 
         class ActionMutationEnv(RandomEnv):
@@ -522,8 +517,6 @@ class TestRolloutWorker(unittest.TestCase):
             # when connector is off, and old env_runner v1 is used.
             self.assertEqual(result["episode_reward_mean"], 1000)
         ev.stop()
-
-        from ray.rllib.examples.env.random_env import RandomEnv
 
         # Clipping in certain range (-2.0, 2.0).
         ev2 = RolloutWorker(
@@ -813,7 +806,6 @@ class TestRolloutWorker(unittest.TestCase):
             env_creator=lambda _: gym.make("CartPole-v1"),
             default_policy_class=MockPolicy,
             config=AlgorithmConfig().rollouts(
-                sample_async=False,
                 num_rollout_workers=0,
                 observation_filter="ConcurrentMeanStdFilter",
             ),
@@ -833,7 +825,6 @@ class TestRolloutWorker(unittest.TestCase):
             config=AlgorithmConfig().rollouts(
                 observation_filter="ConcurrentMeanStdFilter",
                 num_rollout_workers=0,
-                sample_async=False,
             ),
         )
         self.sample_and_flush(ev)
@@ -853,7 +844,6 @@ class TestRolloutWorker(unittest.TestCase):
             config=AlgorithmConfig().rollouts(
                 observation_filter="ConcurrentMeanStdFilter",
                 num_rollout_workers=0,
-                sample_async=False,
             ),
         )
         obs_f = self.sample_and_flush(ev)
@@ -951,6 +941,8 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertIsNotNone(ev)
 
     def test_wrap_multi_agent_env(self):
+        from ray.rllib.env.tests.test_multi_agent_env import BasicMultiAgent
+
         ev = RolloutWorker(
             env_creator=lambda _: BasicMultiAgent(10),
             default_policy_class=MockPolicy,

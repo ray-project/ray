@@ -43,7 +43,6 @@ namespace rpc {
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PrepareBundleResources) \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CommitBundleResources)  \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CancelResourceReserve)  \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(RequestObjectSpillage)  \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReleaseUnusedBundles)   \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetSystemConfig)        \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ShutdownRaylet)         \
@@ -132,10 +131,6 @@ class NodeManagerServiceHandler {
   virtual void HandleFormatGlobalMemoryInfo(FormatGlobalMemoryInfoRequest request,
                                             FormatGlobalMemoryInfoReply *reply,
                                             SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleRequestObjectSpillage(RequestObjectSpillageRequest request,
-                                           RequestObjectSpillageReply *reply,
-                                           SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleReleaseUnusedBundles(ReleaseUnusedBundlesRequest request,
                                           ReleaseUnusedBundlesReply *reply,

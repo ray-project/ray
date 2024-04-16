@@ -95,8 +95,7 @@ class TestPPO(unittest.TestCase):
                 evaluation_num_workers=2,
                 evaluation_duration=3,
                 evaluation_duration_unit="episodes",
-                # Has to be used if `env_runner_cls` is not RolloutWorker.
-                enable_async_evaluation=True,
+                evaluation_parallel_to_training=True,
             )
         )
 
@@ -112,9 +111,9 @@ class TestPPO(unittest.TestCase):
                 print("Env={}".format(env))
                 for lstm in [False]:
                     print("LSTM={}".format(lstm))
-                    config.training(model=get_model_config(fw, lstm=lstm)).framework(
-                        eager_tracing=False
-                    )
+                    config.rl_module(
+                        model_config_dict=get_model_config(fw, lstm=lstm)
+                    ).framework(eager_tracing=False)
 
                     algo = config.build(env=env)
                     # TODO: Maybe add an API to get the Learner(s) instances within

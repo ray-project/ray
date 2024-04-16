@@ -8,7 +8,7 @@ from ray.rllib.algorithms.dqn.dqn import calculate_rr_weights, DQN
 from ray.rllib.algorithms.sac.sac_tf_policy import SACTFPolicy
 from ray.rllib.core.learner import Learner
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import deep_update
@@ -187,7 +187,10 @@ class SACConfig(AlgorithmConfig):
                 This is the inverse of reward scale, and will be optimized
                 automatically.
             n_step: N-step target updates. If >1, sars' tuples in trajectories will be
-                postprocessed to become sa[discounted sum of R][s t+n] tuples.
+                postprocessed to become sa[discounted sum of R][s t+n] tuples. An
+                integer will be interpreted as a fixed n-step value. In case of a tuple
+                the n-step value will be drawn for each sample in the train batch from
+                a uniform distribution over the  interval defined by the 'n-step'-tuple.
             store_buffer_in_checkpoints: Set this to True, if you want the contents of
                 your buffer(s) to be stored in any saved checkpoints as well.
                 Warnings will be created if:
@@ -314,11 +317,6 @@ class SACConfig(AlgorithmConfig):
                 num_steps_sampled_before_learning_starts
             )
 
-        # Include the `twin_q` hyperparameter into the model config.
-        # TODO (simon, sven): Find a general way to update the model_config.
-        if self._enable_new_api_stack:
-            self.model.update({"twin_q": self.twin_q})
-
         return self
 
     @override(AlgorithmConfig)
@@ -327,15 +325,23 @@ class SACConfig(AlgorithmConfig):
         super().validate()
 
         # Check rollout_fragment_length to be compatible with n_step.
+        if isinstance(self.n_step, tuple):
+            min_rollout_fragment_length = self.n_step[1]
+        else:
+            min_rollout_fragment_length = self.n_step
+
         if (
             not self.in_evaluation
             and self.rollout_fragment_length != "auto"
-            and self.rollout_fragment_length < self.n_step
+            and self.rollout_fragment_length
+            < min_rollout_fragment_length  # (self.n_step or 1)
         ):
             raise ValueError(
                 f"Your `rollout_fragment_length` ({self.rollout_fragment_length}) is "
-                f"smaller than `n_step` ({self.n_step})! "
-                f"Try setting config.rollouts(rollout_fragment_length={self.n_step})."
+                f"smaller than needed for `n_step` ({self.n_step})! If `n_step` is "
+                f"an integer try setting `rollout_fragment_length={self.n_step}`. If "
+                "`n_step` is a tuple, try setting "
+                f"`rollout_fragment_length={self.n_step[1]}`."
             )
 
         if self.use_state_preprocessor != DEPRECATED_VALUE:
@@ -359,6 +365,7 @@ class SACConfig(AlgorithmConfig):
 
         # Validate that we use the corresponding `EpisodeReplayBuffer` when using
         # episodes.
+        # TODO (sven, simon): Implement the multi-agent case for replay buffers.
         if self.uses_new_env_runners and self.replay_buffer_config["type"] not in [
             "EpisodeReplayBuffer",
             "PrioritizedEpisodeReplayBuffer",
@@ -371,7 +378,7 @@ class SACConfig(AlgorithmConfig):
     @override(AlgorithmConfig)
     def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
         if self.rollout_fragment_length == "auto":
-            return self.n_step
+            return self.n_step[1] if isinstance(self.n_step, tuple) else self.n_step
         else:
             return self.rollout_fragment_length
 
@@ -402,6 +409,10 @@ class SACConfig(AlgorithmConfig):
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. " "Use `torch`."
             )
+
+    @property
+    def _model_config_auto_includes(self):
+        return super()._model_config_auto_includes | {"twin_q": self.twin_q}
 
 
 class SAC(DQN):
@@ -447,21 +458,16 @@ class SAC(DQN):
         store_weight, sample_and_train_weight = calculate_rr_weights(self.config)
         train_results = {}
 
-        # Run multiple sampling iterations.
+        # Run multiple sampling + storing to buffer iterations.
         for _ in range(store_weight):
+            # Time sampling.
             with self._timers[SAMPLE_TIMER]:
-                # TODO (simon): Use `sychnronous_parallel_sample()` here.
-                if self.workers.num_remote_workers() <= 0:
-                    episodes: List[SingleAgentEpisode] = [
-                        self.workers.local_worker().sample()
-                    ]
-                else:
-                    episodes: List[SingleAgentEpisode] = self.workers.foreach_worker(
-                        lambda w: w.sample(),
-                        local_worker=False,
-                    )
-
-            episodes = tree.flatten(episodes)
+                # Sample in parallel from workers.
+                episodes = synchronous_parallel_sample(
+                    worker_set=self.workers,
+                    sample_timeout_s=self.config.sample_timeout_s,
+                    _uses_new_env_runners=self.config.uses_new_env_runners,
+                )
             # TODO (sven): single- vs multi-agent.
             self._counters[NUM_AGENT_STEPS_SAMPLED] += sum(len(e) for e in episodes)
             self._counters[NUM_ENV_STEPS_SAMPLED] += sum(len(e) for e in episodes)
@@ -471,14 +477,16 @@ class SAC(DQN):
 
         # Update the target network each `target_network_update_freq` steps.
         current_ts = self._counters[
-            NUM_AGENT_STEPS_SAMPLED
-            if self.config.count_steps_by == "agent_steps"
-            else NUM_ENV_STEPS_SAMPLED
+            (
+                NUM_AGENT_STEPS_SAMPLED
+                if self.config.count_steps_by == "agent_steps"
+                else NUM_ENV_STEPS_SAMPLED
+            )
         ]
 
         # If enough experiences have been sampled start training.
         if current_ts >= self.config.num_steps_sampled_before_learning_starts:
-            # Run multiple training iterations.
+            # Run multiple sample-from-buffer and update iterations.
             for _ in range(sample_and_train_weight):
                 # Sample training batch from replay_buffer.
                 train_dict = self.local_replay_buffer.sample(
@@ -517,7 +525,7 @@ class SAC(DQN):
                         )
                     }
 
-                # Training on batch.
+                # Perform an update on the buffer-sampled train batch.
                 train_results = self.learner_group.update_from_batch(
                     train_batch,
                     reduce_fn=reduce_fn,
@@ -542,10 +550,12 @@ class SAC(DQN):
                     last_update=self._counters[LAST_TARGET_UPDATE_TS],
                 )
                 for pid, res in additional_results.items():
+                    if LAST_TARGET_UPDATE_TS in res:
+                        self._counters[LAST_TARGET_UPDATE_TS] = res[
+                            LAST_TARGET_UPDATE_TS
+                        ]
                     train_results[pid].update(res)
 
-            # TODO (simon): Check, if this is better - as we are not sampling at the
-            # same time, updating weights after all training iteration should be faster.
             # Update weights and global_vars - after learning on the local worker -
             # on all remote workers.
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:

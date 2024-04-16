@@ -173,7 +173,7 @@ def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
                 "sourceActorId",
                 "placementGroupId",
             },
-            including_default_value_fields=False,
+            always_print_fields_with_no_presence=False,
         )
 
     non_state_keys = ("actorId", "jobId")
