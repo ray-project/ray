@@ -313,6 +313,8 @@ class OpState:
     def _get_grow_rate(self, resource_manager: ResourceManager) -> float:
         cumulative_grow_rate = 0
 
+        # Assume no more than one output. 
+        assert(len(self.op.output_dependencies) <= 1)
         for op in self.op.output_dependencies:
             logger.get_logger().info(
                 f"@mzm: average_bytes_inputs_per_task {op._metrics.average_bytes_inputs_per_task}, "
