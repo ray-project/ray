@@ -264,7 +264,7 @@ class ActorReplicaWrapper:
         self._health_check_ref: Optional[ObjectRef] = None
         self._last_health_check_time: float = 0.0
         self._consecutive_health_check_failures = 0
-        self._initialization_latency_s = -1
+        self._initialization_latency_s: Optional[float] = None
 
         # Populated in `on_scheduled` or `recover`.
         self._actor_handle: ActorHandle = None
@@ -397,8 +397,14 @@ class ActorReplicaWrapper:
         return self._log_file_path
 
     @property
-    def initialization_latency_s(self) -> float:
-        """Returns the initialization latency for the replica actor."""
+    def initialization_latency_s(self) -> Optional[float]:
+        """Returns the initialization latency for the replica actor.
+
+        Returns None if the replica hasn't started yet.
+
+        Note: this value isn't checkpointed, so if the controller restarts,
+        this value goes back to None.
+        """
 
         return self._initialization_latency_s
 
@@ -970,7 +976,7 @@ class DeploymentReplica:
         return self._actor.node_id
 
     @property
-    def initialization_latency_s(self) -> float:
+    def initialization_latency_s(self) -> Optional[float]:
         """Returns how long the replica took to initialize."""
 
         return self._actor.initialization_latency_s
@@ -2102,15 +2108,11 @@ class DeploymentState:
                     replica.replica_id, replica.actor_node_id
                 )
                 e2e_replica_start_latency = time.time() - replica._start_time
-                scheduling_latency_s = (
-                    e2e_replica_start_latency - replica.initialization_latency_s
-                )
                 logger.info(
                     f"{replica.replica_id} started successfully "
                     f"on node '{replica.actor_node_id}' after "
-                    f"{e2e_replica_start_latency:.1f}s. "
-                    f"Scheduling latency: {scheduling_latency_s:.1f}s.",
-                    "Initialization latency: "
+                    f"{e2e_replica_start_latency:.1f}s. Replica constructor "
+                    "and reconfigure methods took "
                     f"{replica.initialization_latency_s:.1f}s.",
                     extra={"log_to_stderr": False},
                 )
