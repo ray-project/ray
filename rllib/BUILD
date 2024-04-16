@@ -2879,6 +2879,7 @@ py_test(
     tags = ["team:rllib", "examples", "no_main"],
     size = "medium",
     srcs = ["examples/rl_modules/pretraining_single_agent_training_multi_agent_rlm.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2" "--stop-iters-pretraining=5", "--stop-reward=150.0"]
 )
 
 

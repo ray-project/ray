@@ -41,7 +41,7 @@ from ray.tune import register_env
 parser = add_rllib_example_script_args(
     # Use less training steps for the main training run.
     default_timesteps=50000,
-    default_reward=500.0,
+    default_reward=200.0,
     default_iters=20,
 )
 # Instead use mroe for the pre-training run.
