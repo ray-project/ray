@@ -89,6 +89,7 @@ class FakeReplicaWrapper(ReplicaWrapper):
         self._has_queue_len_response.set()
 
     async def get_queue_len(self, *, deadline_s: float) -> int:
+        self.num_get_queue_len_calls += 1
         self.queue_len_deadline_history.append(deadline_s)
         try:
             while not self._has_queue_len_response.is_set():
