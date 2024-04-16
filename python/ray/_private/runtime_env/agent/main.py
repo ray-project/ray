@@ -13,6 +13,7 @@ from ray._private.ray_logging import (
 )
 from ray._private.utils import (
     get_or_create_event_loop,
+    is_ipv6_address,
 )
 from ray._private.process_watcher import create_check_raylet_task
 
@@ -217,7 +218,7 @@ if __name__ == "__main__":
         "127.0.0.1" if args.node_ip_address == "127.0.0.1" else "0.0.0.0"
     )
 
-    if os.environ.get("BYTED_RAY_POD_IP") is not None:
+    if is_ipv6_address(os.environ.get("BYTED_RAY_POD_IP")):
         runtime_env_agent_ip = "::"
     try:
         web.run_app(
