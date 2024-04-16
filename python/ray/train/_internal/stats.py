@@ -1,17 +1,16 @@
 import logging
 import os
 import threading
-from typing import Dict, Optional, List, Any
+from typing import Dict, Optional
 
 import ray
 from ray.data import Dataset
-from ray.train.constants import ENABLE_RAY_TRAIN_DASHBOARD_ENV
-from ray.train._internal.schema import TrainRunInfo, TrainDatasetInfo, TrainWorkerInfo
+from ray.train._internal.schema import TrainDatasetInfo, TrainRunInfo, TrainWorkerInfo
 from ray.train._internal.utils import check_for_failure
-from ray._private.ray_constants import env_integer
-
+from ray.train._internal.worker_group import WorkerGroup
 
 logger = logging.getLogger(__name__)
+
 
 @ray.remote(num_cpus=0)
 class TrainStatsActor:
@@ -37,7 +36,8 @@ TRAIN_STATS_ACTOR_NAMESPACE = "_train_stats_actor"
 _stats_actor_lock: threading.RLock = threading.RLock()
 
 
-def get_or_create_stats_actor():
+def get_or_launch_stats_actor():
+    """Create or launch a `TrainStatsActor` on the head node."""
     with _stats_actor_lock:
         return TrainStatsActor.options(
             name=TRAIN_STATS_ACTOR_NAME,
@@ -46,32 +46,27 @@ def get_or_create_stats_actor():
             lifetime="detached",
             resources={"node:__internal_head__": 0.001},
         ).remote()
-    
+
 
 class TrainRunStatsManager:
-    """A class that collects and reports metadata and metrics of a Train Run to TrainStatsActor.
+    """A class that aggregates and reports train run info to TrainStatsActor.
 
-    It is created on the train controller layer for each Train run.
+    This manager class is created on the train controller layer for each run.
     """
-    def __init__(self) -> None:
-        self.worker_group = None
-        self.dashboard_enabled = env_integer(ENABLE_RAY_TRAIN_DASHBOARD_ENV, 0)
-    
-    def set_worker_group(self, worker_group) -> None:
-        self.worker_group = worker_group
-    
-    def register_train_run(
-            self, 
-            run_id: str, 
-            run_name: str, 
-            trial_name:str, 
-            trainer_actor_id :str, 
-            datasets: Dict[str, Dataset]
-        ) -> None:
-        """Collect Train Run Info and report to StatsActor."""
 
-        if not self.dashboard_enabled or not self.worker_group:
-            return
+    def __init__(self) -> None:
+        self.stats_actor = get_or_launch_stats_actor()
+
+    def register_train_run(
+        self,
+        run_id: str,
+        run_name: str,
+        trial_name: str,
+        trainer_actor_id: str,
+        datasets: Dict[str, Dataset],
+        worker_group: WorkerGroup,
+    ) -> None:
+        """Collect Train Run Info and report to StatsActor."""
 
         def collect_train_worker_info():
             train_context = ray.train.get_context()
@@ -89,35 +84,34 @@ class TrainRunStatsManager:
             )
 
         futures = [
-            self.worker_group.execute_single_async(index, collect_train_worker_info)
-            for index in range(len(self.worker_group))
+            worker_group.execute_single_async(index, collect_train_worker_info)
+            for index in range(len(worker_group))
         ]
         success, exception = check_for_failure(futures)
 
         if not success:
             logger.warning("Failed to collect infomation for Ray Train Worker.")
             return
-        else:
-            worker_info_list = ray.get(futures)
-            worker_info_list = sorted(worker_info_list, key=lambda info: info.world_rank)
 
-            dataset_info_list = [
-                TrainDatasetInfo(
-                    name=ds_name,
-                    plan_name=ds._plan._dataset_name,
-                    plan_uuid=ds._plan._dataset_uuid,
-                )
-                for ds_name, ds in datasets.items()
-            ]
+        worker_info_list = ray.get(futures)
+        worker_info_list = sorted(worker_info_list, key=lambda info: info.world_rank)
 
-            train_run_info = TrainRunInfo(
-                id=run_id,
-                name=run_name,
-                trial_name=trial_name,
-                trainer_actor_id=trainer_actor_id,
-                workers=worker_info_list,
-                datasets=dataset_info_list,
+        dataset_info_list = [
+            TrainDatasetInfo(
+                name=ds_name,
+                plan_name=ds._plan._dataset_name,
+                plan_uuid=ds._plan._dataset_uuid,
             )
+            for ds_name, ds in datasets.items()
+        ]
 
-            stats_actor = get_or_create_stats_actor()
-            stats_actor.register_train_run.remote(train_run_info)
+        train_run_info = TrainRunInfo(
+            id=run_id,
+            name=run_name,
+            trial_name=trial_name,
+            trainer_actor_id=trainer_actor_id,
+            workers=worker_info_list,
+            datasets=dataset_info_list,
+        )
+
+        self.stats_actor.register_train_run.remote(train_run_info)

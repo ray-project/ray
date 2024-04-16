@@ -25,6 +25,7 @@ from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import BackendConfig
 from ray.train.constants import (
     ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
+    ENABLE_RAY_TRAIN_DASHBOARD_ENV,
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
     ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV,
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
@@ -120,7 +121,7 @@ class BackendExecutor:
             )
         ]
 
-        self.stats_manager = TrainRunStatsManager()
+        self.dashboard_enabled = env_integer(ENABLE_RAY_TRAIN_DASHBOARD_ENV, 0)
 
     def start(
         self,
@@ -198,7 +199,9 @@ class BackendExecutor:
             self._increment_failures()
             self._restart()
 
-        self.stats_manager.set_worker_group(self.worker_group)
+        # Setup StatsActorManager for Ray Train Dashboard
+        if self.dashboard_enabled:
+            self.stats_manager = TrainRunStatsManager()
 
     def _create_placement_group(self):
         """Creates a placement group if it does not exist.
@@ -533,17 +536,19 @@ class BackendExecutor:
 
         self.get_with_failure_handling(futures)
 
-        # Get controller's TrainSession
-        runtime_context = ray.runtime_context.get_runtime_context()
+        # Register Train Run before training starts
+        if self.dashboard_enabled:
+            session = get_session()
+            trainer_actor_id = ray.runtime_context.get_runtime_context().get_actor_id()
 
-        session = get_session()
-        self.stats_manager.register_train_run(
-            run_id=session.run_id,
-            run_name=session.experiment_name,
-            trial_name=session.trial_name,
-            trainer_actor_id=runtime_context.get_actor_id(),
-            datasets=datasets,
-        )
+            self.stats_manager.register_train_run(
+                run_id=session.run_id,
+                run_name=session.experiment_name,
+                trial_name=session.trial_name,
+                trainer_actor_id=trainer_actor_id,
+                datasets=datasets,
+                worker_group=self.worker_group,
+            )
 
         # Run the training function asynchronously in its own thread.
         def train_async():
