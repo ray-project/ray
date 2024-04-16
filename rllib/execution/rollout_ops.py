@@ -86,13 +86,13 @@ def synchronous_parallel_sample(
         max_agent_or_env_steps is not None
         and agent_or_env_steps < max_agent_or_env_steps
     ):
-        metrics = []
+        all_stats_dicts = []
         # No remote workers in the set -> Use local worker for collecting
         # samples.
         if worker_set.num_remote_workers() <= 0:
             sampled_data = [worker_set.local_worker().sample()]
             if _return_metrics:
-                metrics = [worker_set.local_worker().get_metrics()]
+                stats_dicts = [worker_set.local_worker().get_metrics()]
         # Loop over remote workers' `sample()` method in parallel.
         else:
             sampled_data = worker_set.foreach_worker(
@@ -125,13 +125,21 @@ def synchronous_parallel_sample(
 
             if _return_metrics:
                 sampled_data = [s[0] for s in sampled_data]
-                metrics = [s[1] for s in sampled_data]
+                stats_dicts = [s[1] for s in sampled_data]
 
         # Update our counters for the stopping criterion of the while loop.
         if _return_metrics:
-            agent_or_env_steps += sum(int(
-                m[NUM_AGENT_STEPS_SAMPLED if max_agent_steps else NUM_ENV_STEPS_SAMPLED]
-            ) for m in metrics)
+            if max_agent_steps:
+                agent_or_env_steps += sum(
+                    int(agent_stat)
+                    for stat_dict in stats_dicts
+                    for agent_stat in stat_dict[NUM_AGENT_STEPS_SAMPLED].values()
+                )
+            else:
+                agent_or_env_steps += sum(
+                    int(stat_dict[NUM_ENV_STEPS_SAMPLED])
+                    for stat_dict in stats_dicts
+                )
         else:
             for batch_or_episode in sampled_data:
                 if max_agent_steps:
@@ -147,7 +155,7 @@ def synchronous_parallel_sample(
                         else batch_or_episode.env_steps()
                     )
         sample_batches_or_episodes.extend(sampled_data)
-        all_metrics.extend(metrics)
+        all_stats_dicts.extend(stats_dicts)
 
     if concat is True:
         # If we have episodes flatten the episode list.
@@ -158,7 +166,7 @@ def synchronous_parallel_sample(
             sample_batches_or_episodes = concat_samples(sample_batches_or_episodes)
 
     if _return_metrics:
-        return sample_batches_or_episodes, all_metrics
+        return sample_batches_or_episodes, all_stats_dicts
     return sample_batches_or_episodes
 
 

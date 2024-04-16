@@ -1,6 +1,7 @@
 import functools
 from collections import defaultdict
 import numpy as np
+import time
 import uuid
 
 import gymnasium as gym
@@ -160,7 +161,9 @@ class SingleAgentEpisode:
         "t",
         "t_started",
         "_action_space",
+        "_last_step_time",
         "_observation_space",
+        "_start_time",
         "_temporary_timestep_data",
     )
 
@@ -337,6 +340,10 @@ class SingleAgentEpisode:
         # from within a callback for the ongoing episode (e.g. render images).
         self._temporary_timestep_data = defaultdict(list)
 
+        # Keep timer stats on deltas between steps.
+        self._start_time = None
+        self._last_step_time = None
+
         # Validate the episode data thus far.
         self.validate()
 
@@ -372,6 +379,9 @@ class SingleAgentEpisode:
 
         # Validate our data.
         self.validate()
+
+        # Start the timer for this episode.
+        self._start_time = time.time()
 
     def add_env_step(
         self,
@@ -437,10 +447,12 @@ class SingleAgentEpisode:
                 )
 
         # Validate our data.
-        try:  # TODO
-            self.validate()
-        except Exception as e:
-            raise e
+        self.validate()
+
+        # Step time stats.
+        self._last_step_time = time.time()
+        if self._start_time is None:
+            self._start_time = self._last_step_time
 
     def validate(self) -> None:
         """Validates the episode's data.
@@ -1602,6 +1614,12 @@ class SingleAgentEpisode:
         """
         return sum(self.get_rewards())
 
+    def get_duration_s(self) -> float:
+        """Returns the duration of this Episode (chunk) in seconds."""
+        if self._last_step_time is None:
+            return 0.0
+        return self._last_step_time - self._start_time
+
     def env_steps(self) -> int:
         """Returns the number of environment steps.
 
@@ -1614,7 +1632,7 @@ class SingleAgentEpisode:
         return len(self)
 
     def agent_steps(self) -> int:
-        """Number of agent steps.
+        """Returns the number of agent steps.
 
         Note, these are identical to the environment steps for a single-agent episode.
 

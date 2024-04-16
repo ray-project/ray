@@ -9,13 +9,16 @@ ALGORITHM_RESULTS = "algo_results"
 
 # Counters for sampling, sampling (on eval workers) and
 # training steps (env- and agent steps).
-NUM_ENV_STEPS_SAMPLED = "num_env_steps_sampled"
 NUM_AGENT_STEPS_SAMPLED = "num_agent_steps_sampled"
-NUM_ENV_STEPS_SAMPLED_THIS_ITER = "num_env_steps_sampled_this_iter"
 NUM_AGENT_STEPS_SAMPLED_THIS_ITER = "num_agent_steps_sampled_this_iter"
+NUM_ENV_STEPS_SAMPLED = "num_env_steps_sampled"
+NUM_ENV_STEPS_SAMPLED_THIS_ITER = "num_env_steps_sampled_this_iter"
 NUM_ENV_STEPS_SAMPLED_FOR_EVALUATION_THIS_ITER = (
     "num_env_steps_sampled_for_evaluation_this_iter"
 )
+NUM_EPISODES = "num_episodes"
+NUM_EPISODES_THIS_ITER = "num_episodes_this_iter"
+
 NUM_ENV_STEPS_TRAINED = "num_env_steps_trained"
 NUM_AGENT_STEPS_TRAINED = "num_agent_steps_trained"
 NUM_ENV_STEPS_TRAINED_THIS_ITER = "num_env_steps_trained_this_iter"
@@ -60,7 +63,9 @@ SYNCH_WORKER_WEIGHTS_TIMER = "synch_weights"
 SYNCH_ENV_CONNECTOR_STATES_TIMER = "synch_env_connectors"
 GRAD_WAIT_TIMER = "grad_wait"
 SAMPLE_TIMER = "sample"
-LEARN_ON_BATCH_TIMER = "learn"
+LEARNER_UPDATE_TIMER = "learner_update_timer"
+LEARNER_ADDITIONAL_UPDATE_TIMER = "learner_additional_update_timer"
+LEARN_ON_BATCH_TIMER = "learn"  # TODO (sven): Deprecate.
 LOAD_BATCH_TIMER = "load"
 TARGET_NET_UPDATE_TIMER = "target_net_update"
 

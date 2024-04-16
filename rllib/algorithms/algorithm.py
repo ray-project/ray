@@ -69,6 +69,7 @@ from ray.rllib.utils import deep_update, FilterManager
 from ray.rllib.utils.annotations import (
     DeveloperAPI,
     ExperimentalAPI,
+    OldAPIStack,
     override,
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
@@ -97,6 +98,7 @@ from ray.rllib.utils.metrics import (
     EVALUATION_RESULTS,
     FAULT_TOLERANCE_RESULTS,
     LEARNER_RESULTS,
+    LEARNER_UPDATE_TIMER,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_SAMPLED_THIS_ITER,
     NUM_AGENT_STEPS_TRAINED,
@@ -114,6 +116,7 @@ from ray.rllib.utils.metrics import (
     STEPS_TRAINED_THIS_ITER_COUNTER,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
+from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer, ReplayBuffer
 from ray.rllib.utils.serialization import deserialize_type, NOT_SERIALIZABLE
@@ -463,6 +466,11 @@ class Algorithm(Trainable, AlgorithmBase):
 
         # Placeholder for our LearnerGroup responsible for updating the RLModule(s).
         self.learner_group: Optional["LearnerGroup"] = None
+
+        # The Algorithm's `MetricsLogger` object to collect stats from all its
+        # components (including timers, counters and other stats in its own
+        # `training_step()` and other methods) as well as custom callbacks.
+        self.metrics = MetricsLogger()
 
         # Create a default logger creator if no logger_creator is specified
         if logger_creator is None:
@@ -1525,8 +1533,6 @@ class Algorithm(Trainable, AlgorithmBase):
                 "code and delete this error message)."
             )
 
-        train_results: ResultDict = {}
-
         # Collect SampleBatches from sample workers until we have a full batch.
         with self._timers[SAMPLE_TIMER]:
             if self.config.count_steps_by == "agent_steps":
@@ -1545,11 +1551,12 @@ class Algorithm(Trainable, AlgorithmBase):
                     _uses_new_env_runners=self.config.uses_new_env_runners,
                     _return_metrics=True,
                 )
+        train_batch = train_batch.as_multi_agent()
 
         # Reduce EnvRunner metrics over the n EnvRunners.
-        self.metrics.log_n_dicts(ENV_RUNNER_RESULTS, env_runner_metrics)
-
-        train_batch = train_batch.as_multi_agent()
+        self.metrics.log_n_stats_dicts(
+            key=ENV_RUNNER_RESULTS, stats_dicts=env_runner_metrics
+        )
         #self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
         #self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
 
@@ -1557,23 +1564,30 @@ class Algorithm(Trainable, AlgorithmBase):
         # In an extreme situation, all rollout workers die during the
         # synchronous_parallel_sample() call above.
         # In which case, we should skip training, wait a little bit, then probe again.
-        if train_batch.agent_steps() > 0:
-            self.metrics.log_dict(
-                LEARNER_RESULTS,
-                self.learner_group.update_from_batch(batch=train_batch)
-            )
-        else:
-            # Wait 1 sec before probing again via weight syncing.
-            time.sleep(1.0)
+        with self.metrics.log_time(LEARNER_UPDATE_TIMER):
+            if train_batch.agent_steps() > 0:
+                learner_results = (
+                    self.learner_group.update_from_batch(batch=train_batch)
+                )
+                self.metrics.log_stats_dict(
+                    key=LEARNER_RESULTS, stats_dict=learner_results
+                )
+            else:
+                # Wait 1 sec before probing again via weight syncing.
+                time.sleep(1.0)
 
         # Update weights - after learning on the local worker - on all
         # remote workers (only those RLModules that were actually trained).
-        with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+        with self.metrics.log_time(SYNCH_WORKER_WEIGHTS_TIMER):
             self.workers.sync_weights(
                 from_worker_or_learner_group=self.learner_group,
                 policies=set(train_results.keys()) - {ALL_MODULES},
             )
 
+        # Return reduced metrics (NestedDict).
+        # Note that these training results will further be processed (e.g.
+        # merged with evaluation results) before eventually being returned from the
+        # encapsulating `Algorithm.step()` call as a plain nested ResultDict.
         return self.metrics.reduce()
 
     # TODO (sven): Deprecate this API in favor of extracting the correct RLModule
@@ -2200,7 +2214,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 healthy_only=True,
             )
 
-    @DeveloperAPI
+    @OldAPIStack
     def export_policy_model(
         self,
         export_dir: str,
@@ -2227,7 +2241,7 @@ class Algorithm(Trainable, AlgorithmBase):
         """
         self.get_policy(policy_id).export_model(export_dir, onnx)
 
-    @DeveloperAPI
+    @OldAPIStack
     def export_policy_checkpoint(
         self,
         export_dir: str,
