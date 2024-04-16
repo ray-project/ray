@@ -1205,6 +1205,8 @@ def run_rllib_example_script_experiment(
     *,
     stop: Optional[Dict] = None,
     success_metric: Optional[Dict] = None,
+    trainable: Optional[Type] = None,
+    tune_callbacks: Optional[List] = None,
 ) -> Union[ResultDict, tune.result_grid.ResultGrid]:
     """Given an algorithm config and some command line args, runs an experiment.
 
@@ -1243,14 +1245,18 @@ def run_rllib_example_script_experiment(
             "training_iteration": args.stop_iters,
             "timesteps_total": args.stop_timesteps,
             }
-        success_metric: Only relevent if `args.as_test` is True.
+        success_metric: Only relevant if `args.as_test` is True.
             A dict mapping a single(!) ResultDict key string (using "/" in
             case of nesting, e.g. "sampler_results/episode_reward_mean" for referring
-            to `result_dict['sampler_results']['episode_reward_mean']` to minimum
-            values, reaching of which will stop the experiment) to a single(!) minimum
-            value to be reached in order for the experiment to count as successful.
-            If `args.as_test` is True AND this `success_metric` is not reached with the
-            bounds defined by `stop`, will raise an Exception.
+            to `result_dict['sampler_results']['episode_reward_mean']` to a single(!)
+            minimum value to be reached in order for the experiment to count as
+            successful. If `args.as_test` is True AND this `success_metric` is not
+            reached with the bounds defined by `stop`, will raise an Exception.
+        trainable: The Trainable sub-class to run in the tune.Tuner. If None (default),
+            use the registered RLlib Algorithm class specified by args.algo.
+        tune_callbacks: A list of Tune callbacks to configure with the tune.Tuner.
+            In case `args.wandb_key` is provided, will append a WandB logger to this
+            list.
 
     Returns:
         The last ResultDict from a --no-tune run OR the tune.Tuner.fit()
@@ -1328,19 +1334,18 @@ def run_rllib_example_script_experiment(
     # Run the experiment using Ray Tune.
 
     # Log results using WandB.
-    callbacks = None
     if hasattr(args, "wandb_key") and args.wandb_key is not None:
         project = args.wandb_project or (
             args.algo.lower() + "-" + re.sub("\\W+", "-", str(config.env).lower())
         )
-        callbacks = [
+        tune_callbacks.append(
             WandbLoggerCallback(
                 api_key=args.wandb_key,
                 project=project,
                 upload_checkpoints=True,
                 **({"name": args.wandb_run_name} if args.wandb_run_name else {}),
             )
-        ]
+        )
 
     # Auto-configure a CLIReporter (to log the results to the console).
     # Use better ProgressReporter for multi-agent cases: List individual policy rewards.
@@ -1352,10 +1357,10 @@ def run_rllib_example_script_experiment(
                     "training_iteration": "iter",
                     "time_total_s": "total time (s)",
                     "timesteps_total": "ts",
-                    "sampler_results/episode_reward_mean": "combined reward",
+                    "sampler_results/episode_reward_mean": "combined return",
                 },
                 **{
-                    f"policy_reward_mean/{pid}": f"reward {pid}"
+                    f"policy_reward_mean/{pid}": f"return {pid}"
                     for pid in config.policies
                 },
             },
@@ -1367,12 +1372,12 @@ def run_rllib_example_script_experiment(
 
     # Run the actual experiment (using Tune).
     results = tune.Tuner(
-        config.algo_class,
+        trainable or config.algo_class,
         param_space=config,
         run_config=air.RunConfig(
             stop=stop,
             verbose=args.verbose,
-            callbacks=callbacks,
+            callbacks=tune_callbacks,
             checkpoint_config=air.CheckpointConfig(
                 checkpoint_frequency=args.checkpoint_freq,
                 checkpoint_at_end=args.checkpoint_at_end,
