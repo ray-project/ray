@@ -895,7 +895,7 @@ class Worker:
                 if self.threads_stopped.is_set():
                     return
 
-                data = subscriber.poll()
+                data = subscriber.poll(timeout=1)
                 # GCS subscriber only returns None on unavailability.
                 if data is None:
                     last_polling_batch_size = 0
@@ -2133,7 +2133,7 @@ def listen_error_messages(worker, threads_stopped):
             if threads_stopped.is_set():
                 return
 
-            _, error_data = worker.gcs_error_subscriber.poll()
+            _, error_data = worker.gcs_error_subscriber.poll(timeout=1)
             if error_data is None:
                 continue
             if error_data["job_id"] not in [
