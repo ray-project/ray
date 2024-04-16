@@ -9,6 +9,7 @@ import threading
 import time
 import warnings
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
@@ -17,7 +18,6 @@ from typing import (
     Sequence,
     Type,
     Union,
-    TYPE_CHECKING,
 )
 
 import ray
@@ -25,25 +25,20 @@ from ray.air._internal import usage as air_usage
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.util.node import _force_on_current_node
 from ray.train import CheckpointConfig, SyncConfig
-from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR, _DEPRECATED_VALUE
-from ray.tune import ResumeConfig
+from ray.train.constants import _DEPRECATED_VALUE, RAY_CHDIR_TO_TRIAL_DIR
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.execution.tune_controller import TuneController
-from ray.tune.experiment import Experiment, _convert_to_experiment_list
-from ray.tune.experimental.output import (
-    get_air_verbosity,
-    IS_NOTEBOOK,
-    AirVerbosity,
-)
-
+from ray.tune.experiment import Experiment, Trial, _convert_to_experiment_list
+from ray.tune.experimental.output import IS_NOTEBOOK, AirVerbosity, get_air_verbosity
 from ray.tune.impl.placeholder import create_resolvers_map, inject_placeholders
 from ray.tune.logger import TBXLoggerCallback
 from ray.tune.progress_reporter import (
     ProgressReporter,
-    _detect_reporter,
     _detect_progress_metrics,
+    _detect_reporter,
     _prepare_progress_reporter_for_ray_client,
     _stream_client_output,
 )
@@ -59,28 +54,23 @@ from ray.tune.schedulers import (
 from ray.tune.schedulers.util import (
     _set_search_properties_backwards_compatible as scheduler_set_search_props,
 )
-from ray.tune.stopper import Stopper
 from ray.tune.search import (
     BasicVariantGenerator,
-    SearchAlgorithm,
-    SearchGenerator,
     ConcurrencyLimiter,
+    SearchAlgorithm,
     Searcher,
+    SearchGenerator,
     create_searcher,
 )
 from ray.tune.search.util import (
     _set_search_properties_backwards_compatible as searcher_set_search_props,
 )
 from ray.tune.search.variant_generator import _has_unresolved_values
+from ray.tune.stopper import Stopper
 from ray.tune.trainable import Trainable
-from ray.tune.experiment import Trial
+from ray.tune.tune_config import ResumeConfig
 from ray.tune.utils.callback import _create_default_callbacks
-from ray.tune.utils.log import (
-    Verbosity,
-    has_verbosity,
-    set_verbosity,
-)
-from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
 from ray.util.annotations import PublicAPI
 from ray.util.queue import Queue
 
