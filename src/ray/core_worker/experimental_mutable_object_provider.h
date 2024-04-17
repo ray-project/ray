@@ -44,11 +44,15 @@ class MutableObjectProvider {
 
   ray::experimental::MutableObjectManager &object_manager() { return object_manager_; }
 
+  /// Registers a reader channel for `object_id` on this node.
+  /// \param[in] object_id The ID of the object.
+  void RegisterReaderChannel(const ObjectID &object_id);
+
   /// Registers a writer channel for `object_id` on this node. On each write to this
   /// channel, the write will be sent via RPC to node `node_id`.
   /// \param[in] object_id The ID of the object.
   /// \param[in] node_id The ID of the node to write to.
-  void RegisterWriterChannel(const ObjectID &object_id, const NodeID &node_id);
+  void RegisterWriterChannel(const ObjectID &object_id, const NodeID *node_id);
 
   /// Handles an RPC request from another note to register a mutable object on this node.
   /// The remote node writes the object and this node reads the object. This node is
@@ -72,9 +76,6 @@ class MutableObjectProvider {
     int64_t num_readers;
     ObjectID local_object_id;
   };
-
-  // Registers a reader channel for `object_id` on this node.
-  void RegisterReaderChannel(const ObjectID &object_id);
 
   // Listens for local changes to `object_id` and sends the changes to remote nodes via
   // the network.

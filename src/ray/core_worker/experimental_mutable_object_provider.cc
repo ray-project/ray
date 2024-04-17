@@ -35,7 +35,7 @@ MutableObjectProvider::~MutableObjectProvider() {
 }
 
 void MutableObjectProvider::RegisterWriterChannel(const ObjectID &object_id,
-                                                  const NodeID &node_id) {
+                                                  const NodeID *node_id) {
   {
     std::unique_ptr<plasma::MutableObject> object;
     RAY_CHECK_OK(plasma_->GetExperimentalMutableObject(object_id, &object));
@@ -44,14 +44,18 @@ void MutableObjectProvider::RegisterWriterChannel(const ObjectID &object_id,
     // `object` is now a nullptr.
   }
 
-  // Start a thread that repeatedly listens for values on this object and then sends them
-  // via RPC to the remote reader.
-  std::shared_ptr<MutableObjectReaderInterface> reader = raylet_client_factory_(node_id);
-  RAY_CHECK(reader);
-  // TODO(jhumphri): Extend this to support multiple channels. Currently, we must have
-  // one thread per channel because the thread blocks on the channel semaphore.
-  io_service_.post([this, object_id, reader]() { PollWriterClosure(object_id, reader); },
-                   "experimental::MutableObjectProvider.PollWriter");
+  if (node_id) {
+    // Start a thread that repeatedly listens for values on this object and then sends
+    // them via RPC to the remote reader.
+    std::shared_ptr<MutableObjectReaderInterface> reader =
+        raylet_client_factory_(*node_id);
+    RAY_CHECK(reader);
+    // TODO(jhumphri): Extend this to support multiple channels. Currently, we must have
+    // one thread per channel because the thread blocks on the channel semaphore.
+    io_service_.post(
+        [this, object_id, reader]() { PollWriterClosure(object_id, reader); },
+        "experimental::MutableObjectProvider.PollWriter");
+  }
 }
 
 void MutableObjectProvider::RegisterReaderChannel(const ObjectID &object_id) {

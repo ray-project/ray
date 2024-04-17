@@ -1457,45 +1457,42 @@ Status CoreWorker::ExperimentalChannelReadRelease(
       object_ids[0]);
 }
 
-Status CoreWorker::ExperimentalRegisterMutableObjectWriter(const ObjectID &object_id) {
-  std::unique_ptr<plasma::MutableObject> object;
-  RAY_RETURN_NOT_OK(
-      plasma_store_provider_->GetExperimentalMutableObject(object_id, &object));
-  RAY_CHECK(object) << "Mutable object must be local to be registered";
-  return experimental_mutable_object_provider_->object_manager().RegisterChannel(
-      object_id, std::move(object), /*reader=*/false);
-}
-
-Status CoreWorker::ExperimentalRegisterMutableObjectWriterNetwork(
-    const ObjectID &object_id, const NodeID &node_id) {
+Status CoreWorker::ExperimentalRegisterMutableObjectWriter(const ObjectID &object_id,
+                                                           const NodeID *node_id) {
   experimental_mutable_object_provider_->RegisterWriterChannel(object_id, node_id);
   return Status::OK();
 }
 
-Status CoreWorker::ExperimentalRegisterMutableObjectReader(const ObjectID &object_id) {
-  std::unique_ptr<plasma::MutableObject> object;
-  RAY_RETURN_NOT_OK(
-      plasma_store_provider_->GetExperimentalMutableObject(object_id, &object));
-  RAY_CHECK(object) << "Mutable object must be local to be registered";
-  return experimental_mutable_object_provider_->object_manager().RegisterChannel(
-      object_id, std::move(object), /*reader=*/true);
-}
-
-Status CoreWorker::ExperimentalRegisterMutableObjectReaderNetwork(
+Status CoreWorker::ExperimentalRegisterMutableObjectReader(
     const ObjectID &object_id,
-    int64_t num_readers,
-    const ObjectID &local_reader_object_id) {
-  std::promise<void> promise;
-  std::future<void> future = promise.get_future();
+    int64_t *num_readers,
+    const ObjectID *local_reader_object_id) {
+  if (num_readers) {
+    if (!local_reader_object_id) {
+      return Status::Invalid(
+          "Both `num_readers` and `local_reader_object_id` must be a nullptr or they "
+          "both must not be a nullptr.");
+    }
 
-  local_raylet_client_->RegisterMutableObjectReader(
-      object_id,
-      num_readers,
-      local_reader_object_id,
-      [&promise](const Status &status, const rpc::RegisterMutableObjectReply &reply) {
-        promise.set_value();
-      });
-  future.wait();
+    experimental_mutable_object_provider_->RegisterReaderChannel(object_id);
+  } else {
+    if (local_reader_object_id) {
+      return Status::Invalid(
+          "Both `num_readers` and `local_reader_object_id` must be a nullptr or they "
+          "both must not be a nullptr.");
+    }
+
+    std::promise<void> promise;
+    std::future<void> future = promise.get_future();
+    local_raylet_client_->RegisterMutableObjectReader(
+        object_id,
+        *num_readers,
+        *local_reader_object_id,
+        [&promise](const Status &status, const rpc::RegisterMutableObjectReply &reply) {
+          promise.set_value();
+        });
+    future.wait();
+  }
   return Status::OK();
 }
 

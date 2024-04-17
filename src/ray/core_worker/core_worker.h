@@ -726,14 +726,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] object_ids The IDs of the objects.
   Status ExperimentalChannelReadRelease(const std::vector<ObjectID> &object_ids);
 
-  Status ExperimentalRegisterMutableObjectWriter(const ObjectID &object_id);
-  Status ExperimentalRegisterMutableObjectWriterNetwork(const ObjectID &object_id,
-                                                        const NodeID &node_id);
-  Status ExperimentalRegisterMutableObjectReader(const ObjectID &object_id);
-  Status ExperimentalRegisterMutableObjectReaderNetwork(
-      const ObjectID &object_id,
-      int64_t num_readers,
-      const ObjectID &local_reader_object_id);
+  Status ExperimentalRegisterMutableObjectWriter(const ObjectID &object_id,
+                                                 const NodeID *node_id);
+  Status ExperimentalRegisterMutableObjectReader(const ObjectID &object_id,
+                                                 int64_t *num_readers,
+                                                 const ObjectID *local_reader_object_id);
 
   /// Get a list of objects from the object store. Objects that failed to be retrieved
   /// will be returned as nullptrs.
