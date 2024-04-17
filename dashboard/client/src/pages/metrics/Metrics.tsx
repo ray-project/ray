@@ -481,7 +481,7 @@ export const Metrics = () => {
               className={classes.timeRangeButton}
               select
               size="small"
-              style={{ width: 80 }}
+              style={{ width: 100 }}
               value={refreshOption}
               onChange={({ target: { value } }) => {
                 setRefreshOption(value as RefreshOptions);
