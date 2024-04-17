@@ -29,6 +29,8 @@ from typing import (
     Union,
 )
 
+import tree  # pip install dm_tree
+
 import ray
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.actor import ActorHandle
@@ -95,7 +97,7 @@ from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EVALUATION_ITERATION_TIMER,
     EVALUATION_RESULTS,
-    FAULT_TOLERANCE_RESULTS,
+    FAULT_TOLERANCE_STATS,
     LEARNER_RESULTS,
     LEARNER_UPDATE_TIMER,
     NUM_AGENT_STEPS_SAMPLED,
@@ -116,6 +118,7 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
+from ray.rllib.utils.metrics.stats import Stats
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer, ReplayBuffer
 from ray.rllib.utils.serialization import deserialize_type, NOT_SERIALIZABLE
@@ -3212,7 +3215,10 @@ class Algorithm(Trainable, AlgorithmBase):
         #results[STEPS_TRAINED_THIS_ITER_COUNTER] = step_ctx.trained
         #results["agent_timesteps_total"] = self._counters[NUM_AGENT_STEPS_SAMPLED]
 
-        return results
+        return tree.map_structure(
+            lambda s: s.peek() if isinstance(s, Stats) else s,
+            results,
+        )
 
     def __repr__(self):
         return type(self).__name__

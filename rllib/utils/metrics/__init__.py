@@ -1,10 +1,11 @@
 # Algorithm ResultDict keys.
 # TODO (sven): Change the actual strings into more fitting ones (e.g. `sampler_results`
 #  -> `env_runners` and `learner_stats` -> `learners`).
-EVALUATION_RESULTS = "evaluation"
-ENV_RUNNER_RESULTS = "env_runners"
-LEARNER_RESULTS = "learners"
-FAULT_TOLERANCE_RESULTS = "fault_tolerance"
+EVALUATION_RESULTS = "evaluation_results"
+ENV_RUNNER_RESULTS = "env_runner_results"
+LEARNER_RESULTS = "learner_results"
+FAULT_TOLERANCE_STATS = "fault_tolerance_stats"
+TIMERS = "timers"
 #ALGORITHM_RESULTS = "algorithm"
 
 # Counters for sampling, sampling (on eval workers) and
@@ -72,6 +73,6 @@ LEARN_ON_BATCH_TIMER = "learn"  # @OldAPIStack
 LOAD_BATCH_TIMER = "load"
 TARGET_NET_UPDATE_TIMER = "target_net_update"
 
-# learner
+# Learner.
 LEARNER_STATS_KEY = "learner_stats"
-ALL_MODULES = "__all__"
+ALL_MODULES = "__all_modules__"

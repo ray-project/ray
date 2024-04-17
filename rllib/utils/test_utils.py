@@ -1268,8 +1268,10 @@ def run_rllib_example_script_experiment(
     # Define one or more stopping criteria.
     stop = stop or {
         "training_iteration": args.stop_iters,
-        "sampler_results/episode_reward_mean": args.stop_reward,
+        "env_runner_results/episode_return_mean": args.stop_reward,
         "timesteps_total": args.stop_timesteps,
+        # TODO (sven): Deprecate (old API stack).
+        "sampler_results/episode_reward_mean": args.stop_reward,
     }
 
     from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
@@ -1312,9 +1314,11 @@ def run_rllib_example_script_experiment(
         algo = config.build()
         for _ in range(args.stop_iters):
             results = algo.train()
-            print(f"R={results['sampler_results']['episode_reward_mean']}", end="")
+            print(f"R={results['env_runner_results']['episode_return_mean']}", end="")
             if "evaluation" in results:
-                Reval = results["evaluation"]["sampler_results"]["episode_reward_mean"]
+                Reval = (
+                    results["evaluation_results"]["env_runner_results"]["episode_return_mean"]
+                )
                 print(f" R(eval)={Reval}", end="")
             print()
             for key, value in stop.items():
@@ -1334,6 +1338,7 @@ def run_rllib_example_script_experiment(
     # Run the experiment using Ray Tune.
 
     # Log results using WandB.
+    tune_callbacks = tune_callbacks or []
     if hasattr(args, "wandb_key") and args.wandb_key is not None:
         project = args.wandb_project or (
             args.algo.lower() + "-" + re.sub("\\W+", "-", str(config.env).lower())

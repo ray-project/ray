@@ -56,15 +56,10 @@ class Stats:
         self._start_time = None
 
     def peek(self):
-        if len(self.values) == 1:
-            return self.values[0]
-        else:
-            return self._reduced_values()[0]
+        return self._reduced_values()[0]
 
     def reduce(self):
         # Reduce everything to a single (init) value.
-        #if self._reduce_method is not None:
-        #    self.values = [self._reduced_values()]
         ret, self.values = self._reduced_values()
         return ret
 
@@ -115,11 +110,26 @@ class Stats:
             f"reduce={self._reduce_method}{win_or_ema})"
         )
 
+    def __int__(self):
+        return int(self.peek())
+
     def __float__(self):
         return float(self.peek())
 
-    def __int__(self):
-        return int(self.peek())
+    def __eq__(self, other):
+        return float(self) == float(other)
+
+    def __le__(self, other):
+        return float(self) <= float(other)
+
+    def __ge__(self, other):
+        return float(self) >= float(other)
+
+    def __lt__(self, other):
+        return float(self) < float(other)
+
+    def __gt__(self, other):
+        return float(self) > float(other)
 
     def get_state(self) -> Dict[str, Any]:
         return {
@@ -144,6 +154,9 @@ class Stats:
             return self.values, self.values
         # Do EMA (always a "mean" reduction).
         elif self._ema_coeff is not None:
+            if len(self.values) == 0:
+                return float("nan"), []
+
             mean_value = self.values[0]
             for v in self.values[1:]:
                 mean_value = self._ema_coeff * v + (1.0 - self._ema_coeff) * mean_value
@@ -153,6 +166,11 @@ class Stats:
             reduce_meth = getattr(np, self._reduce_method)
             values = self.values if self._window is None else self.values[-self._window:]
             reduced = reduce_meth(values)
+            if reduced.shape == ():
+                if reduced.dtype in [np.int32, np.int64, np.int8, np.int16]:
+                    reduced = int(reduced)
+                else:
+                    reduced = float(reduced)
 
             # For window=None (infinite window) and reduce != mean, we don't have to
             # keep any values, except the last (reduced) one.

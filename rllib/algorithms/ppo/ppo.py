@@ -42,6 +42,7 @@ from ray.rllib.utils.metrics import (
     NUM_EPISODES_LIFETIME,
     SYNCH_WORKER_WEIGHTS_TIMER,
     SAMPLE_TIMER,
+    TIMERS,
     ALL_MODULES,
 )
 from ray.rllib.utils.schedules.scheduler import Scheduler
@@ -424,7 +425,7 @@ class PPO(Algorithm):
 
     def _training_step_new_api_stack(self) -> ResultDict:
         # Collect batches from sample workers until we have a full batch.
-        with self.metrics.log_time(("timers", ENV_RUNNER_SAMPLING_TIMER)):
+        with self.metrics.log_time((TIMERS, ENV_RUNNER_SAMPLING_TIMER)):
             # Sample in parallel from the workers.
             if self.config.count_steps_by == "agent_steps":
                 episodes, env_runner_metrics = synchronous_parallel_sample(
@@ -459,7 +460,7 @@ class PPO(Algorithm):
             )
 
         # Perform a train step on the collected batch.
-        with self.metrics.log_time(("timers", LEARNER_UPDATE_TIMER)):
+        with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
             learner_results = self.learner_group.update_from_episodes(
                 episodes=episodes,
                 minibatch_size=(
@@ -480,7 +481,7 @@ class PPO(Algorithm):
 
         # Update weights - after learning on the local worker - on all remote
         # workers.
-        with self.metrics.log_time(("timers", SYNCH_WORKER_WEIGHTS_TIMER)):
+        with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
             if self.workers.num_remote_workers() > 0:
                 self.workers.sync_weights(
                     # Sync weights from learner_group to all rollout workers.
