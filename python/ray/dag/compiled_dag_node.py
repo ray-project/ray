@@ -1,9 +1,10 @@
 import asyncio
 from collections import defaultdict
-from typing import Any, Dict, List, Tuple, Union, Optional
+from typing import Any, Callable, Dict, List, Tuple, Union, Optional
 import logging
 import traceback
 import threading
+import numpy as np
 
 import ray
 from ray.exceptions import RayTaskError
@@ -18,10 +19,24 @@ from ray.experimental.channel import (
 )
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
+from ray.experimental.torch_serializer import TorchTensor, _TorchTensorWrapper
 
 MAX_BUFFER_SIZE = int(100 * 1e6)  # 100MB
 
 logger = logging.getLogger(__name__)
+
+
+CUSTOM_SERIALIZERS = (
+        (_TorchTensorWrapper, _TorchTensorWrapper.serialize, _TorchTensorWrapper.deserialize),
+        )
+
+
+@DeveloperAPI
+def register_custom_dag_serializers():
+    for cls, serializer, deserializer in CUSTOM_SERIALIZERS:
+        ray.util.serialization.register_serializer(cls,
+                serializer=serializer,
+                deserializer=deserializer)
 
 
 @DeveloperAPI
@@ -39,11 +54,13 @@ def do_allocate_channel(self, buffer_size_bytes: int, num_readers: int = 1) -> C
     return self._output_channel
 
 
+
 @DeveloperAPI
 def do_exec_compiled_task(
     self,
     inputs: List[Union[Any, Channel]],
     actor_method_name: str,
+    output_wrapper_fn: Optional[Callable[[Any], Any]],
 ) -> None:
     """Generic actor method to begin executing a compiled DAG. This runs an
     infinite loop to repeatedly read input channel(s), execute the given
@@ -59,6 +76,8 @@ def do_exec_compiled_task(
             the loop.
     """
     try:
+        register_custom_dag_serializers()
+
         method = getattr(self, actor_method_name)
 
         resolved_inputs = []
@@ -86,6 +105,8 @@ def do_exec_compiled_task(
 
             try:
                 output_val = method(*resolved_inputs)
+                if output_wrapper_fn is not None:
+                    output_val = output_wrapper_fn(output_val)
             except Exception as exc:
                 backtrace = ray._private.utils.format_error_message(
                     "".join(
@@ -150,9 +171,37 @@ class CompiledTask:
         """
         self.idx = idx
         self.dag_node = dag_node
+        self.arg_idx_to_tensor_meta : Dict[int, Dict[str, Any]] = {}
 
         self.downstream_node_idxs = set()
         self.output_channel = None
+        self.output_tensor_meta = None
+        self.output_wrapper_fn = None
+
+        self.process_gpu_tensors()
+
+    def set_tensor_output(self, output_tensor_meta):
+        self.output_tensor_meta = output_tensor_meta
+        self.output_wrapper_fn = lambda t: _TorchTensorWrapper(t, **output_tensor_meta)
+
+    def process_gpu_tensors(self):
+        processed_args = []
+
+        # Replace GPU tensor placeholders with the DAG node that they wrap.
+        for i, arg in enumerate(self.dag_node.get_args()):
+            if isinstance(arg, TorchTensor):
+                # Overwrite the wrapped args with the actual DAG node.
+                processed_args.append(arg.get_dag_node())
+                self.arg_idx_to_tensor_meta[i] = arg.get_tensor_meta()
+            else:
+                processed_args.append(arg)
+
+        self.dag_node._bound_args = tuple(processed_args)
+
+    def arg_tensor_meta(self, arg_idx) -> Dict[str, Any]:
+        if arg_idx not in self.arg_idx_to_tensor_meta:
+            return None
+        return self.arg_idx_to_tensor_meta[arg_idx]
 
     @property
     def args(self) -> Tuple[Any]:
@@ -234,6 +283,7 @@ class CompiledDAG:
         # Attributes that are set during preprocessing.
         # Preprocessing identifies the input node and output node.
         self.input_task_idx: Optional[int] = None
+        self.input_wrapper_fn: Optional[Callable[[Any], Any]] = None
         self.output_task_idx: Optional[int] = None
         self.has_single_output: bool = False
         self.actor_task_count: Dict["ray._raylet.ActorID", int] = defaultdict(int)
@@ -276,7 +326,8 @@ class CompiledDAG:
         self.actor_task_count.clear()
 
         # For each task node, set its upstream and downstream task nodes.
-        for idx, task in self.idx_to_task.items():
+        # Also collect the set of tasks that produce torch.tensors.
+        for node_idx, task in self.idx_to_task.items():
             dag_node = task.dag_node
             if not (
                 isinstance(dag_node, InputNode)
@@ -308,10 +359,21 @@ class CompiledDAG:
                     )
                 self.actor_task_count[actor_handle._actor_id] += 1
 
-            for arg in task.args:
+            for arg_idx, arg in enumerate(task.args):
                 if isinstance(arg, DAGNode):
-                    arg_idx = self.dag_node_to_idx[arg]
-                    self.idx_to_task[arg_idx].downstream_node_idxs.add(idx)
+                    arg_node_idx = self.dag_node_to_idx[arg]
+                    self.idx_to_task[arg_node_idx].downstream_node_idxs.add(node_idx)
+
+                maybe_tensor_meta = task.arg_tensor_meta(arg_idx)
+                if maybe_tensor_meta is not None:
+                    arg_node_idx = self.dag_node_to_idx[arg]
+                    node = self.idx_to_task[arg_node_idx]
+                    if node.output_tensor_meta is not None:
+                        assert maybe_tensor_meta == node.output_tensor_meta
+                    else:
+                        # Wrap outputs produced by this task to indicate that
+                        # it should be specially serialized.
+                        node.set_tensor_output(maybe_tensor_meta)
 
         for actor_id, task_count in self.actor_task_count.items():
             if task_count > 1:
@@ -380,6 +442,10 @@ class CompiledDAG:
                 continue
             visited.add(cur_idx)
 
+            # TODO: Check for GPU arguments. Find the actor upstream to that
+            # GPU argument. If both writer and reader actors are on GPUs, then
+            # add them.
+
             task = self.idx_to_task[cur_idx]
             # Create an output buffer on the actor.
             assert task.output_channel is None
@@ -439,10 +505,15 @@ class CompiledDAG:
                     do_exec_compiled_task,
                     resolved_args,
                     task.dag_node.get_method_name(),
+                    output_wrapper_fn=task.output_wrapper_fn,
                 )
             )
 
-        self.dag_input_channel = self.idx_to_task[self.input_task_idx].output_channel
+        # Wrapper function for inputs provided to dag.execute().
+        input_task = self.idx_to_task[self.input_task_idx]
+        self.input_wrapper_fn = input_task.output_wrapper_fn
+        self.dag_input_channel = input_task.output_channel
+        register_custom_dag_serializers()
 
         self.dag_output_channels = []
         for output in self.idx_to_task[self.output_task_idx].args:
@@ -554,7 +625,12 @@ class CompiledDAG:
             raise ValueError("Use execute_async if enable_asyncio=True")
 
         self._get_or_compile()
-        self._dag_submitter.write(args[0])
+
+        inp = args[0]
+        if self.input_wrapper_fn is not None:
+            inp = self.input_wrapper_fn(inp)
+
+        self._dag_submitter.write(inp)
 
         return self._dag_output_fetcher
 
@@ -586,7 +662,11 @@ class CompiledDAG:
 
         self._get_or_compile()
         async with self._dag_submission_lock:
-            await self._dag_submitter.write(args[0])
+            inp = args[0]
+            if self.input_wrapper_fn is not None:
+                inp = self.input_wrapper_fn(inp)
+
+            await self._dag_submitter.write(inp)
             # Allocate a future that the caller can use to get the result.
             fut = asyncio.Future()
             await self._fut_queue.put(fut)
