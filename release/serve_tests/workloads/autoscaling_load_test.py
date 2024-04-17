@@ -68,8 +68,8 @@ def main():
                 data={"uri": URI},
                 stages=[
                     LocustStage(duration_s=1200, users=10, spawn_rate=1),
-                    LocustStage(duration_s=2400, users=50, spawn_rate=10),
-                    LocustStage(duration_s=3600, users=100, spawn_rate=10),
+                    LocustStage(duration_s=1200, users=50, spawn_rate=10),
+                    LocustStage(duration_s=1200, users=100, spawn_rate=10),
                 ],
             )
         )

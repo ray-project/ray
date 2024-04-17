@@ -15,61 +15,56 @@ import pytest
 
 import ray
 from ray import train, tune
-from ray.train import CheckpointConfig
 from ray.air.constants import TIME_THIS_ITER_S, TRAINING_ITERATION
 from ray.rllib import _register_all
+from ray.train import CheckpointConfig
 from ray.train._internal.session import shutdown_session
 from ray.train._internal.storage import (
     StorageContext,
-    get_fs_and_path,
     _create_directory,
+    get_fs_and_path,
 )
 from ray.train.constants import CHECKPOINT_DIR_NAME
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.tune import (
+    Stopper,
+    Trainable,
+    TuneError,
     register_env,
     register_trainable,
     run,
     run_experiments,
-    Trainable,
-    TuneError,
-    Stopper,
 )
 from ray.tune.callback import Callback
-from ray.tune.experiment import Experiment
-from ray.tune.trainable import wrap_function
-from ray.tune.logger import Logger, LegacyLoggerCallback
+from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.tune.execution.tune_controller import TuneController
+from ray.tune.experiment import Experiment, Trial
+from ray.tune.logger import LegacyLoggerCallback, Logger
 from ray.tune.result import (
-    TIMESTEPS_TOTAL,
     DONE,
+    EPISODES_TOTAL,
+    EXPERIMENT_TAG,
     HOSTNAME,
     NODE_IP,
     PID,
-    EPISODES_TOTAL,
-    TIMESTEPS_THIS_ITER,
     TIME_TOTAL_S,
+    TIMESTEPS_THIS_ITER,
+    TIMESTEPS_TOTAL,
     TRIAL_ID,
-    EXPERIMENT_TAG,
 )
-from ray.tune.schedulers import (
-    TrialScheduler,
-    FIFOScheduler,
-    AsyncHyperBandScheduler,
-)
+from ray.tune.schedulers import AsyncHyperBandScheduler, FIFOScheduler, TrialScheduler
 from ray.tune.schedulers.pb2 import PB2
-from ray.tune.stopper import (
-    MaximumIterationStopper,
-    TrialPlateauStopper,
-    ExperimentPlateauStopper,
-)
-from ray.tune.search import BasicVariantGenerator, grid_search, ConcurrencyLimiter
+from ray.tune.search import BasicVariantGenerator, ConcurrencyLimiter, grid_search
 from ray.tune.search._mock import _MockSuggestionAlgorithm
 from ray.tune.search.ax import AxSearch
 from ray.tune.search.hyperopt import HyperOptSearch
-from ray.tune.experiment import Trial
-from ray.tune.execution.tune_controller import TuneController
+from ray.tune.stopper import (
+    ExperimentPlateauStopper,
+    MaximumIterationStopper,
+    TrialPlateauStopper,
+)
+from ray.tune.trainable import wrap_function
 from ray.tune.utils import flatten_dict
-from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 
 class TrainableFunctionApiTest(unittest.TestCase):
@@ -1074,6 +1069,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
     def testLogToFile(self):
         def train_fn(config):
             import sys
+
             from ray import logger
 
             for i in range(10):
@@ -1141,8 +1137,9 @@ class TrainableFunctionApiTest(unittest.TestCase):
             self.assertIn("LOG_STDERR", content)
 
     def testTimeout(self):
-        from ray.tune.stopper import TimeoutStopper
         import datetime
+
+        from ray.tune.stopper import TimeoutStopper
 
         def train_fn(config):
             for i in range(20):

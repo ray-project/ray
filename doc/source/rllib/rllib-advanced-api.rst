@@ -12,7 +12,7 @@ Custom Training Workflows
 In the `basic training example <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/custom_gym_env.py>`__,
 Tune will call ``train()`` on your algorithm once per training iteration and report
 the new training results.
-Sometimes, it is desirable to have full control over training, but still run inside Tune.
+Sometimes, it's desirable to have full control over training, but still run inside Tune.
 Tune supports :ref:`custom trainable functions <trainable-docs>` that can be used to
 implement `custom training workflows (example) <https://github.com/ray-project/ray/blob/master/rllib/examples/ray_tune/custom_train_function.py>`__.
 
@@ -132,14 +132,14 @@ results:
 
 Global Coordination
 ~~~~~~~~~~~~~~~~~~~
-Sometimes, it is necessary to coordinate between pieces of code that live in different
+Sometimes, it's necessary to coordinate between pieces of code that live in different
 processes managed by RLlib.
 For example, it can be useful to maintain a global average of a certain variable,
 or centrally control a hyperparameter used by policies.
 Ray provides a general way to achieve this through *named actors*
 (learn more about :ref:`Ray actors here <actor-guide>`).
 These actors are assigned a global name and handles to them can be retrieved using
-these names. As an example, consider maintaining a shared global counter that is
+these names. As an example, consider maintaining a shared global counter that's
 incremented by environments and read periodically from your driver program:
 
 .. literalinclude:: ./doc_code/advanced_api.py
@@ -148,7 +148,7 @@ incremented by environments and read periodically from your driver program:
    :end-before: __rllib-adv_api_counter_end__
 
 Ray actors provide high levels of performance, so in more complex cases they can be
-used implement communication patterns such as parameter servers and allreduce.
+used implement communication patterns such as parameter servers and all-reduce.
 
 Callbacks and Custom Metrics
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -163,7 +163,7 @@ intermediate data or results.
 User-defined state can be stored for the
 `episode <https://github.com/ray-project/ray/blob/master/rllib/evaluation/episode.py>`__
 in the ``episode.user_data`` dict, and custom scalar metrics reported by saving values
-to the ``episode.custom_metrics`` dict. These custom metrics will be aggregated and
+to the ``episode.custom_metrics`` dict. These custom metrics are aggregated and
 reported as part of training results. For a full example, take a look at
 `this example script here <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_metrics_and_callbacks.py>`__
 and
@@ -208,7 +208,7 @@ Customizing Exploration Behavior
 RLlib offers a unified top-level API to configure and customize an agent’s
 exploration behavior, including the decisions (how and whether) to sample
 actions from distributions (stochastically or deterministically).
-The setup can be done via using built-in Exploration classes
+The setup can be done using built-in Exploration classes
 (see `this package <https://github.com/ray-project/ray/blob/master/rllib/utils/exploration/>`__),
 which are specified (and further configured) inside
 ``AlgorithmConfig().exploration(..)``.
@@ -217,8 +217,8 @@ these built-ins, add custom behavior to it, and use that new class in
 the config instead.
 
 Every policy has-an Exploration object, which is created from the AlgorithmConfig’s
-``.exploration(exploration_config=...)`` method, which specifies the class to use via the
-special “type” key, as well as constructor arguments via all other keys,
+``.exploration(exploration_config=...)`` method, which specifies the class to use through the
+special “type” key, as well as constructor arguments through all other keys,
 e.g.:
 
 .. literalinclude:: ./doc_code/advanced_api.py
@@ -248,7 +248,7 @@ On the highest level, the ``Algorithm.compute_actions`` and ``Policy.compute_act
 methods have a boolean ``explore`` switch, which is passed into
 ``Exploration.get_exploration_action``. If ``explore=None``, the value of
 ``Algorithm.config[“explore”]`` is used, which thus serves as a main switch for
-exploratory behavior, allowing e.g. turning off any exploration easily for
+exploratory behavior, allowing for example turning off any exploration easily for
 evaluation purposes (see :ref:`CustomEvaluation`).
 
 The following are example excerpts from different Algorithms' configs
@@ -310,8 +310,8 @@ The following are example excerpts from different Algorithms' configs
 Customized Evaluation During Training
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-RLlib will report online training rewards, however in some cases you may want to compute
-rewards with different settings (e.g., with exploration turned off, or on a specific set
+RLlib reports online training rewards, however in some cases you may want to compute
+rewards with different settings (for example, with exploration turned off, or on a specific set
 of environment configurations). You can activate evaluating policies during training
 (``Algorithm.train()``) by setting the ``evaluation_interval`` to an int value (> 0)
 indicating every how many ``Algorithm.train()`` calls an "evaluation step" should be run:
@@ -331,14 +331,14 @@ take values of either ``"episodes"`` (default) or ``"timesteps"``.
    :end-before: __rllib-adv_api_evaluation_2_end__
 
 Note: When using ``evaluation_duration_unit=timesteps`` and your ``evaluation_duration``
-setting is not divisible by the number of evaluation workers (configurable via
-``evaluation_num_workers``), RLlib will round up the number of time-steps specified to
+setting isn't divisible by the number of evaluation workers (configurable with
+``evaluation_num_workers``), RLlib rounds up the number of time-steps specified to
 the nearest whole number of time-steps that is divisible by the number of evaluation
 workers.
 Also, when using ``evaluation_duration_unit=episodes`` and your
-``evaluation_duration`` setting is not divisible by the number of evaluation workers
-(configurable via ``evaluation_num_workers``), RLlib will run the remainder of episodes
-on the first n eval EnvRunners and leave the remaining workers idle for that time.
+``evaluation_duration`` setting isn't divisible by the number of evaluation workers
+(configurable with ``evaluation_num_workers``), RLlib runs the remainder of episodes
+on the first n evaluation EnvRunners and leave the remaining workers idle for that time.
 
 For example:
 
@@ -357,15 +357,14 @@ For example, for ``evaluation_interval=1``, the sequence of events is:
 Here, the indices show the version of neural network weights used.
 ``train(0->1)`` is an update step that changes the weights from version 0 to
 version 1 and ``eval(1)`` then uses weights version 1.
-Weights index 0 represents the randomly initialized weights of our neural network(s).
+Weights index 0 represents the randomly initialized weights of the neural network.
 
 Another example: For ``evaluation_interval=2``, the sequence is:
 ``train(0->1), train(1->2), eval(2), train(2->3), train(3->4), eval(4), ...``.
 
 Instead of running ``train``- and ``eval``-steps in sequence, it is also possible to
-run them in parallel via the ``evaluation_parallel_to_training=True`` config setting.
-In this case, both training- and evaluation steps are run at the same time via
-multi-threading.
+run them in parallel with the ``evaluation_parallel_to_training=True`` config setting.
+In this case, both training- and evaluation steps are run at the same time using multi-threading.
 This can speed up the evaluation process significantly, but leads to a 1-iteration
 delay between reported training- and evaluation results.
 The evaluation results are behind in this case b/c they use slightly outdated
@@ -374,8 +373,8 @@ model weights (synchronized after the previous training step).
 For example, for ``evaluation_parallel_to_training=True`` and ``evaluation_interval=1``,
 the sequence is now:
 ``train(0->1) + eval(0), train(1->2) + eval(1), train(2->3) + eval(2)``,
-where ``+`` means: "at the same time".
-Note that the change in the weights indices with respect to the non-parallel examples above.
+where ``+`` connects phases happening at the same time.
+Note that the change in the weights indices with respect to the non-parallel examples.
 The evaluation weights indices are now "one behind"
 the resulting train weights indices (``train(1->**2**) + eval(**1**)``).
 
@@ -401,11 +400,11 @@ do:
 .. note::
 
     Policy gradient algorithms are able to find the optimal
-    policy, even if this is a stochastic one. Setting "explore=False" above
-    will result in the evaluation workers not using this stochastic policy.
+    policy, even if this is a stochastic one. Setting "explore=False"
+    results in the evaluation workers not using this stochastic policy.
 
 
-The level of parallelism within the evaluation step is determined via the
+The level of parallelism within the evaluation step is determined by the
 ``evaluation_num_workers`` setting. Set this to larger values if you want the desired
 evaluation episodes or time-steps to run as much in parallel as possible.
 For example, if your ``evaluation_duration=10``, ``evaluation_duration_unit=episodes``,
@@ -413,13 +412,13 @@ and ``evaluation_num_workers=10``, each evaluation ``EnvRunner``
 only has to run one episode in each evaluation step.
 
 In case you observe occasional failures in your (evaluation) EnvRunners during
-evaluation (e.g. you have an environment that sometimes crashes or stalls),
+evaluation (for example you have an environment that sometimes crashes or stalls),
 you should use the following combination of settings, minimizing the negative effects
 of such environment behavior:
 
 Note that with or without parallel evaluation, all
 :ref:`fault tolerance settings <rllib-scaling-guide>`, such as
-``ignore_worker_failures`` or ``recreate_failed_workers`` will be respected and applied
+``ignore_worker_failures`` or ``recreate_failed_workers`` are respected and applied
 to the failed evaluation workers.
 
 Here's an example:
@@ -429,9 +428,9 @@ Here's an example:
    :start-after: __rllib-adv_api_evaluation_6_begin__
    :end-before: __rllib-adv_api_evaluation_6_end__
 
-This will run the parallel sampling of all evaluation EnvRunners, such that if one of
+This runs the parallel sampling of all evaluation EnvRunners, such that if one of
 the workers takes too long to run through an episode and return data or fails entirely,
-the other evaluation EnvRunners will still complete the job.
+the other evaluation EnvRunners still complete the job.
 
 In case you would like to entirely customize the evaluation step,
 set ``custom_eval_function`` in your config to a callable, which takes the Algorithm
@@ -506,7 +505,7 @@ Note that in the ``on_postprocess_traj`` callback you have full access to the
 trajectory batch (``post_batch``) and other training state. This can be used to
 rewrite the trajectory, which has a number of uses including:
 
- * Backdating rewards to previous time steps (e.g., based on values in ``info``).
+ * Backdating rewards to previous time steps (for example, based on values in ``info``).
  * Adding model-based curiosity bonuses to rewards (you can train the model with a
    `custom model supervised loss <rllib-models.html#supervised-model-losses>`__).
 

@@ -18,7 +18,6 @@ option cc_enable_arenas = true;
 package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
-import "src/ray/protobuf/dependency.proto";
 import "src/ray/protobuf/gcs.proto";
 import "src/ray/protobuf/logging.proto";
 

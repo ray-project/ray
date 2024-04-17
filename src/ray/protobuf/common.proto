@@ -249,6 +249,10 @@ enum ErrorType {
   // ray.ObjectRefGenerator. It should never be returned directly to
   // application code (instead raise StopIteration).
   END_OF_STREAMING_GENERATOR = 24;
+  // Actor is unavailable. Maybe there is a temporary network failure. Difference from
+  // ACTOR_DIED is that the actor may still be alive and may become available again
+  // after some retries.
+  ACTOR_UNAVAILABLE = 25;
 }
 
 /// The information per ray error type.
@@ -259,6 +263,8 @@ message RayErrorInfo {
     ActorDeathCause actor_died_error = 2;
     // for ErrorType::RUNTIME_ENV_SETUP_FAILED
     RuntimeEnvFailedContext runtime_env_setup_failed_error = 3;
+    // for ErrorType::ACTOR_UNAVAILABLE
+    ActorUnavailableContext actor_unavailable_error = 4;
   }
   string error_message = 5;
   // The type of error that caused the exception.
@@ -358,6 +364,10 @@ message OomContext {
 }
 
 // ---Actor death contexts end----
+
+message ActorUnavailableContext {
+  optional bytes actor_id = 1;
+}
 
 message JobConfig {
   enum ActorLifetime {

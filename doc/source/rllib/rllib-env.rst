@@ -62,7 +62,7 @@ For a full runnable code example using the custom environment API, see `custom_e
 
 .. warning::
 
-   The gymnasium registry is not compatible with Ray. Instead, always use the registration flows documented above to ensure Ray workers can access the environment.
+   The gymnasium registry isn't compatible with Ray. Instead, always use the registration flows documented above to ensure Ray workers can access the environment.
 
 In the above example, note that the ``env_creator`` function takes in an ``env_config`` object.
 This is a dict containing options passed in through your algorithm.
@@ -354,7 +354,7 @@ Your ``MultiAgentEnvs`` are also auto-vectorized (as can be normal, single-agent
 PettingZoo Multi-Agent Environments
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-`PettingZoo <https://github.com/Farama-Foundation/PettingZoo>`__ is a repository of over 50 diverse multi-agent environments. However, the API is not directly compatible with rllib, but it can be converted into an rllib MultiAgentEnv like in this example
+`PettingZoo <https://github.com/Farama-Foundation/PettingZoo>`__ is a repository of over 50 diverse multi-agent environments. However, the API isn't directly compatible with rllib, but it can be converted into an rllib MultiAgentEnv like in this example
 
 .. code-block:: python
 

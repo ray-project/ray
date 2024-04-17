@@ -127,7 +127,7 @@ We include an asynchronous variant of Proximal Policy Optimization (PPO) based o
 
 .. tip::
 
-    APPO is not always more efficient; it is often better to use :ref:`standard PPO <ppo>` or :ref:`IMPALA <impala>`.
+    APPO isn't always more efficient; it's often better to use :ref:`standard PPO <ppo>` or :ref:`IMPALA <impala>`.
 
 .. figure:: images/impala-arch.svg
 
@@ -206,7 +206,7 @@ Importance Weighted Actor-Learner Architecture (IMPALA)
 |pytorch| |tensorflow|
 `[paper] <https://arxiv.org/abs/1802.01561>`__
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/impala/impala.py>`__
-In IMPALA, a central learner runs SGD in a tight loop while asynchronously pulling sample batches from many actor processes. RLlib's IMPALA implementation uses DeepMind's reference `V-trace code <https://github.com/deepmind/scalable_agent/blob/master/vtrace.py>`__. Note that we do not provide a deep residual network out of the box, but one can be plugged in as a `custom model <rllib-models.html#custom-models-tensorflow>`__. Multiple learner GPUs and experience replay are also supported.
+In IMPALA, a central learner runs SGD in a tight loop while asynchronously pulling sample batches from many actor processes. RLlib's IMPALA implementation uses DeepMind's reference `V-trace code <https://github.com/deepmind/scalable_agent/blob/master/vtrace.py>`__. Note that we don't provide a deep residual network out of the box, but one can be plugged in as a `custom model <rllib-models.html#custom-models-tensorflow>`__. Multiple learner GPUs and experience replay are also supported.
 
 .. figure:: images/impala-arch.svg
 
@@ -307,7 +307,7 @@ Soft Actor Critic (SAC)
     SAC architecture (same as DQN)
 
 RLlib's soft-actor critic implementation is ported from the `official SAC repo <https://github.com/rail-berkeley/softlearning>`__ to better integrate with RLlib APIs.
-Note that SAC has two fields to configure for custom models: ``policy_model_config`` and ``q_model_config``, the ``model`` field of the config will be ignored.
+Note that SAC has two fields to configure for custom models: ``policy_model_config`` and ``q_model_config``, the ``model`` field of the config is ignored.
 
 Tuned examples (continuous actions):
 `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/sac/pendulum-sac.yaml>`__,
@@ -343,7 +343,7 @@ interactions. The world model's objective is to correctly predict all aspects
 of the transition dynamics of the RL environment, which includes (besides predicting the
 correct next observations) predicting the received rewards as well as a boolean episode
 continuation flag.
-A "recurrent state space model" or RSSM is used to alternatingly train the world model
+An RSSM (recurrent state space model) is used to train in turn the world model
 (from actual env data) as well as the critic and actor networks, both of which are trained
 on "dreamed" trajectories produced by the world model.
 
@@ -408,7 +408,7 @@ Tuned examples: `TwoStepGame <https://github.com/ray-project/ray/blob/master/rll
 
 Fully Independent Learning
 --------------------------
-`[instructions] <rllib-env.html#multi-agent-and-hierarchical>`__ Fully independent learning involves a collection of agents learning independently of each other via single agent methods. This typically works, but can be less effective than dedicated multi-agent RL methods, since they do not account for the non-stationarity of the multi-agent environment.
+`[instructions] <rllib-env.html#multi-agent-and-hierarchical>`__ Fully independent learning involves a collection of agents learning independently of each other using single agent methods. This typically works, but can be less effective than dedicated multi-agent RL methods, since they don't account for the non-stationarity of the multi-agent environment.
 
 Tuned examples: `waterworld <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_independent_learning.py>`__, `multiagent-cartpole <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_cartpole.py>`__
 
