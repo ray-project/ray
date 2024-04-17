@@ -68,8 +68,6 @@ _clean_up() {
 # Create tmp directory unique for the run
 TMP_DIR="$(mktemp -d "$HOME/tmp.XXXXXXXXXX")"
 mkdir -p "$TMP_DIR/bin"
-# Add bin dir to the path.
-export PATH="$TMP_DIR/bin:$PATH"
 
 trap _clean_up EXIT
 
