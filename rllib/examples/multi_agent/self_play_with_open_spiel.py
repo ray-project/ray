@@ -114,9 +114,11 @@ if __name__ == "__main__":
         # properly matching the different policies in the league with each other.
         .callbacks(
             functools.partial(
-                SelfPlayCallback
-                if args.enable_new_api_stack
-                else SelfPlayCallbackOldAPIStack,
+                (
+                    SelfPlayCallback
+                    if args.enable_new_api_stack
+                    else SelfPlayCallbackOldAPIStack
+                ),
                 win_rate_threshold=args.win_rate_threshold,
             )
         )
@@ -134,7 +136,6 @@ if __name__ == "__main__":
             num_gpus_per_learner_worker=1 if args.num_gpus else 0,
             num_cpus_for_local_worker=1,
         )
-        .training(model={"fcnet_hiddens": [512, 512]})
         .multi_agent(
             # Initial policy map: Random and default algo one. This will be expanded
             # to more policy snapshots taken from "main" against which "main"
@@ -163,6 +164,10 @@ if __name__ == "__main__":
             policies_to_train=["main"],
         )
         .rl_module(
+            model_config_dict={
+                "fcnet_hiddens": [512, 512],
+                "uses_new_env_runners": args.enable_new_api_stack,
+            },
             rl_module_spec=MultiAgentRLModuleSpec(
                 module_specs={
                     "main": SingleAgentRLModuleSpec(),

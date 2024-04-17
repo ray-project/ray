@@ -2114,14 +2114,13 @@ py_test(
     srcs = ["examples/checkpoints/cartpole_dqn_export.py"],
 )
 
-#@OldAPIStack
 py_test(
     name = "examples/checkpoints/checkpoint_by_custom_criteria",
     main = "examples/checkpoints/checkpoint_by_custom_criteria.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/checkpoints/checkpoint_by_custom_criteria.py"],
-    args = ["--stop-iters=3 --num-cpus=3"]
+    args = ["--enable-new-api-stack", "--stop-reward=150.0", "--num-cpus=9"]
 )
 
 #@OldAPIStack
@@ -2252,14 +2251,13 @@ py_test(
 # subdirectory: curriculum/
 # ....................................
 
-#@OldAPIStack
 py_test(
     name = "examples/curriculum/curriculum_learning",
     main = "examples/curriculum/curriculum_learning.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/curriculum/curriculum_learning.py"],
-    args = ["--as-test", "--stop-reward=800.0"]
+    args = ["--enable-new-api-stack", "--as-test"]
 )
 
 # subdirectory: debugging/
@@ -2278,24 +2276,13 @@ py_test(
 # subdirectory: envs/
 # ....................................
 
-#@OldAPIStack
 py_test(
-    name = "examples/envs/custom_gym_env_tf",
+    name = "examples/envs/custom_gym_env",
     main = "examples/envs/custom_gym_env.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/envs/custom_gym_env.py"],
-    args = ["--as-test", "--framework=tf"]
-)
-
-#@OldAPIStack
-py_test(
-    name = "examples/envs/custom_gym_env_torch",
-    main = "examples/envs/custom_gym_env.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/envs/custom_gym_env.py"],
-    args = ["--as-test", "--framework=torch"]
+    args = ["--enable-new-api-stack", "--as-test"]
 )
 
 #@OldAPIStack
@@ -2847,33 +2834,28 @@ py_test(
 
 # subdirectory: ray_tune/
 # ....................................
-#@OldAPIStack
 py_test(
     name = "examples/ray_tune/custom_experiment",
     main = "examples/ray_tune/custom_experiment.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/ray_tune/custom_experiment.py"],
-    args = ["--train-iterations=10"]
 )
 
-#@OldAPIStack
 py_test(
     name = "examples/ray_tune/custom_logger",
     main = "examples/ray_tune/custom_logger.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/ray_tune/custom_logger.py"],
-    args = ["--stop-iters=3"]
 )
 
-#@OldAPIStack
 py_test(
-    name = "examples/ray_tune/custom_train_function",
-    main = "examples/ray_tune/custom_train_function.py",
+    name = "examples/ray_tune/custom_progress_reporter",
+    main = "examples/ray_tune/custom_progress_reporter.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/ray_tune/custom_train_function.py"],
+    srcs = ["examples/ray_tune/custom_progress_reporter.py"],
 )
 
 # subdirectory: rl_modules/
@@ -2886,7 +2868,14 @@ py_test(
     size = "small",
     srcs = ["examples/rl_modules/classes/mobilenet_rlm.py"],
 )
-
+py_test(
+    name = "examples/rl_modules/pretraining_single_agent_training_multi_agent_rlm",
+    main = "examples/rl_modules/pretraining_single_agent_training_multi_agent_rlm.py",
+    tags = ["team:rllib", "examples"],
+    size = "medium",
+    srcs = ["examples/rl_modules/pretraining_single_agent_training_multi_agent_rlm.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--stop-iters-pretraining=5", "--stop-iters=20", "--stop-reward=150.0"],
+)
 
 
 

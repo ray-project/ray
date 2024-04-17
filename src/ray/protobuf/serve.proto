@@ -359,8 +359,12 @@ service FruitService {
 }
 
 // Used for gRPC benchmark
-message RawData {
+message ArrayData {
   repeated float nums = 1;
+}
+
+message StringData {
+  string data = 1;
 }
 
 message ModelOutput {
@@ -368,7 +372,8 @@ message ModelOutput {
 }
 
 service RayServeBenchmarkService {
-  rpc grpc_call(RawData) returns (ModelOutput);
+  rpc grpc_call(ArrayData) returns (ModelOutput);
+  rpc call_with_string(StringData) returns (ModelOutput);
 }
 
 // The required deployment parameters when deploying an application.

@@ -1,4 +1,5 @@
 import gymnasium as gym
+import logging
 
 from collections import defaultdict
 from functools import partial
@@ -18,6 +19,8 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import EpisodeID, ModelWeights
 from ray.util.annotations import PublicAPI
 from ray.tune.registry import ENV_CREATOR, _global_registry
+
+logger = logging.getLogger("ray.rllib")
 
 
 @PublicAPI(stability="alpha")
@@ -52,7 +55,7 @@ class MultiAgentEnvRunner(EnvRunner):
         # Create the vectorized gymnasium env.
         self.env: Optional[gym.Wrapper] = None
         self.num_envs: int = 0
-        self._make_env()
+        self.make_env()
 
         # Global counter for environment steps from all workers. This is
         # needed for schedulers used by `RLModule`s.
@@ -666,13 +669,24 @@ class MultiAgentEnvRunner(EnvRunner):
         # Make sure, we have built our gym.vector.Env and RLModule properly.
         assert self.env and self.module
 
-    @override(EnvRunner)
-    def stop(self):
-        # Note, `MultiAgentEnv` inherits `close()`-method from `gym.Env`.
-        self.env.close()
+    def make_env(self):
+        """Creates a MultiAgentEnv (is-a gymnasium env).
 
-    def _make_env(self):
-        """Creates a MultiAgentEnv (is-a gymnasium env)."""
+        Note that users can change the EnvRunner's config (e.g. change
+        `self.config.env_config`) and then call this method to create new environments
+        with the updated configuration.
+        """
+        # If an env already exists, try closing it first (to allow it to properly
+        # cleanup).
+        if self.env is not None:
+            try:
+                self.env.close()
+            except Exception as e:
+                logger.warning(
+                    "Tried closing the existing env (multi-agent), but failed with "
+                    f"error: {e.args[0]}"
+                )
+
         env_ctx = self.config.env_config
         if not isinstance(env_ctx, EnvContext):
             env_ctx = EnvContext(
@@ -714,12 +728,20 @@ class MultiAgentEnvRunner(EnvRunner):
             "to inherit from `ray.rllib.env.multi_agent_env.MultiAgentEnv`."
         )
 
+        # Set the flag to reset all envs upon the next `sample()` call.
+        self._needs_initial_reset = True
+
         # Call the `on_environment_created` callback.
         self._callbacks.on_environment_created(
             env_runner=self,
             env=self.env,
             env_context=env_ctx,
         )
+
+    @override(EnvRunner)
+    def stop(self):
+        # Note, `MultiAgentEnv` inherits `close()`-method from `gym.Env`.
+        self.env.close()
 
     def _make_module(self):
         # Create our own instance of the (single-agent) `RLModule` (which

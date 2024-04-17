@@ -1,6 +1,72 @@
+"""Example showing how one can set up evaluation running in parallel to training.
+
+Such a setup saves a considerable amount of time during RL Algorithm training, b/c
+the next training step does NOT have to wait for the previous evaluation procedure to
+finish, but can already start running (in parallel).
+
+See RLlib's documentation for more details on the effect of the different supported
+evaluation configuration options:
+https://docs.ray.io/en/latest/rllib/rllib-advanced-api.html#customized-evaluation-during-training  # noqa
+
+For an example of how to write a fully customized evaluation function (which normally
+is not necessary as the config options are sufficient and offer maximum flexibility),
+see this example script here:
+
+https://github.com/ray-project/ray/blob/master/rllib/examples/evaluation/custom_evaluation.py  # noqa
+
+
+How to run this script
+----------------------
+`python [script file name].py --enable-new-api-stack`
+
+Use the `--evaluation-num-workers` option to scale up the evaluation workers. Note
+that the requested evaluation duration (`--evaluation-duration` measured in
+`--evaluation-duration-unit`, which is either "timesteps" (default) or "episodes") is
+shared between all configured evaluation workers. For example, if the evaluation
+duration is 10 and the unit is "episodes" and you configured 5 workers, then each of the
+evaluation workers will run exactly 2 episodes.
+
+For debugging, use the following additional command line options
+`--no-tune --num-env-runners=0`
+which should allow you to set breakpoints anywhere in the RLlib code and
+have the execution stop there for inspection and debugging.
+
+For logging to your WandB account, use:
+`--wandb-key=[your WandB API key] --wandb-project=[some project name]
+--wandb-run-name=[optional: WandB run name (within the defined project)]`
+
+
+Results to expect
+-----------------
+You should see the following output (at the end of the experiment) in your console when
+running with a fixed number of 100k training timesteps
+(`--enable-new-api-stack --evaluation-duration=auto --stop-timesteps=100000
+--stop-reward=100000`):
++-----------------------------+------------+-----------------+--------+
+| Trial name                  | status     | loc             |   iter |
+|-----------------------------+------------+-----------------+--------+
+| PPO_CartPole-v1_1377a_00000 | TERMINATED | 127.0.0.1:73330 |     25 |
++-----------------------------+------------+-----------------+--------+
++------------------+--------+----------+--------------------+
+|   total time (s) |     ts |   reward |   episode_len_mean |
+|------------------+--------+----------+--------------------|
+|          71.7485 | 100000 |   476.51 |             476.51 |
++------------------+--------+----------+--------------------+
+
+When running without parallel evaluation (`--evaluation-not-parallel-to-training` flag),
+the experiment takes considerably longer (~70sec vs ~80sec):
++-----------------------------+------------+-----------------+--------+
+| Trial name                  | status     | loc             |   iter |
+|-----------------------------+------------+-----------------+--------+
+| PPO_CartPole-v1_f1788_00000 | TERMINATED | 127.0.0.1:75135 |     25 |
++-----------------------------+------------+-----------------+--------+
++------------------+--------+----------+--------------------+
+|   total time (s) |     ts |   reward |   episode_len_mean |
+|------------------+--------+----------+--------------------|
+|          81.7371 | 100000 |   494.68 |             494.68 |
++------------------+--------+----------+--------------------+
+"""
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
-from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
@@ -114,13 +180,10 @@ if __name__ == "__main__":
             lambda _: MultiAgentCartPole(config={"num_agents": args.num_agents}),
         )
 
-    config = (
+    base_config = (
         get_trainable_cls(args.algo)
         .get_default_config()
-        .experimental(_enable_new_api_stack=args.enable_new_api_stack)
         .environment("env" if args.num_agents > 0 else "CartPole-v1")
-        # Run with tracing enabled for tf2.
-        .framework(args.framework)
         # Use a custom callback that asserts that we are running the
         # configured exact number of episodes per evaluation OR - in auto
         # mode - run at least as many episodes as we have eval workers.
@@ -148,28 +211,11 @@ if __name__ == "__main__":
             # Switch off exploratory behavior for better (greedy) results.
             evaluation_config={"explore": False},
         )
-        .rollouts(
-            num_rollout_workers=args.num_env_runners,
-            # Set up the correct env-runner to use depending on
-            # old-stack/new-stack and multi-agent settings.
-            env_runner_cls=(
-                None
-                if not args.enable_new_api_stack
-                else SingleAgentEnvRunner
-                if args.num_agents == 0
-                else MultiAgentEnvRunner
-            ),
-        )
-        .resources(
-            num_learner_workers=args.num_gpus,
-            num_gpus_per_learner_worker=int(args.num_gpus != 0),
-            num_cpus_for_local_worker=1,
-        )
     )
 
     # Add a simple multi-agent setup.
     if args.num_agents > 0:
-        config.multi_agent(
+        base_config.multi_agent(
             policies={f"p{i}" for i in range(args.num_agents)},
             policy_mapping_fn=lambda aid, *a, **kw: f"p{aid}",
         )
@@ -180,4 +226,11 @@ if __name__ == "__main__":
         "timesteps_total": args.stop_timesteps,
     }
 
-    run_rllib_example_script_experiment(config, args, stop=stop)
+    run_rllib_example_script_experiment(
+        base_config,
+        args,
+        stop=stop,
+        success_metric={
+            "evaluation/sampler_results/episode_reward_mean": args.stop_reward,
+        },
+    )
