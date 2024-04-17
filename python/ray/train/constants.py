@@ -78,7 +78,7 @@ RAY_CHDIR_TO_TRIAL_DIR = "RAY_CHDIR_TO_TRIAL_DIR"
 # Defaults to 0, which always retries on node preemption failures.
 RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE = "RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE"
 
-# Set this to 1 to start a StateActor and collect infomation Train Runs
+# Set this to 1 to start a StateActor and collect information Train Runs
 # Defaults to 0
 ENABLE_TRAIN_RUN_STATE_TRACKING_ENV = "ENABLE_TRAIN_RUN_STATE_TRACKING_ENV"
 
