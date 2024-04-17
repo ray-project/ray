@@ -17,7 +17,7 @@ from ray._private.utils import (
     get_or_create_event_loop,
 )
 
-from ray.experimental.torch_serializer import TorchTensor
+from ray.experimental import TorchTensor
 
 
 logger = logging.getLogger(__name__)

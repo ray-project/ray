@@ -28,8 +28,8 @@ logger = logging.getLogger(__name__)
 CUSTOM_SERIALIZERS = (
     (
         _TorchTensorWrapper,
-        _TorchTensorWrapper.serialize,
-        _TorchTensorWrapper.deserialize,
+        _TorchTensorWrapper.serialize_to_numpy,
+        _TorchTensorWrapper.deserialize_from_numpy,
     ),
 )
 

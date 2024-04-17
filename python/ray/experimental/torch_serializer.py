@@ -35,18 +35,18 @@ class _TorchTensorWrapper:
     ):
         if not isinstance(tensor, torch.Tensor):
             raise ValueError(
-                "DAG nodes wrapped with ray.dag.TorchTensor must return a "
+                "DAG nodes wrapped with ray.experimental.TorchTensor must return a "
                 "torch.Tensor."
             )
         if tensor.shape != expected_shape:
             raise ValueError(
-                "DAG node wrapped with ray.dag.TorchTensor(shape="
+                "DAG node wrapped with ray.experimental.TorchTensor(shape="
                 f"{expected_shape}) returned "
                 f"a torch.Tensor of the shape {tensor.shape}"
             )
         if tensor.dtype != expected_dtype:
             raise ValueError(
-                "DAG node wrapped with ray.dag.TorchTensor(dtype="
+                "DAG node wrapped with ray.experimental.TorchTensor(dtype="
                 f"{expected_dtype}) returned "
                 f"a torch.Tensor of the dtype {tensor.dtype}"
             )
@@ -54,11 +54,11 @@ class _TorchTensorWrapper:
         self.tensor = tensor
 
     @staticmethod
-    def serialize(instance: "_TorchTensorWrapper"):
+    def serialize_to_numpy(instance: "_TorchTensorWrapper") -> np.ndarray:
         return instance.tensor.numpy()
 
     @staticmethod
-    def deserialize(np_array: np.ndarray):
+    def deserialize_from_numpy(np_array: np.ndarray):
         # TODO(swang): Use zero-copy from_numpy() if np_array.flags.writeable
         # is True. This is safe if the upstream task has num_readers=1 or if
         # the tensor will anyway be moved to GPU.
