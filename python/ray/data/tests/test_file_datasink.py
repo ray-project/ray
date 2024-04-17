@@ -147,6 +147,23 @@ def test_write_creates_dir(tmp_path, ray_start_regular_shared):
     assert os.path.isdir(path)
 
 
+def test_delete_dir_contents(tmp_path, ray_start_regular_shared):
+    class MockFileDatasink(BlockBasedFileDatasink):
+        def write_block_to_file(self, block: BlockAccessor, file: "pyarrow.NativeFile"):
+            file.write(b"")
+
+    ds = ray.data.range(1)
+    path = os.path.join(tmp_path, "test")
+
+    os.mkdir(path)
+    with open(os.path.join(path, "mock.txt"), "w") as f:
+        f.write("")
+
+    ds.write_datasink(MockFileDatasink(path=path, delete_dir_contents=True))
+
+    assert len(os.listdir(path)) == 1
+
+
 @pytest.mark.parametrize("num_rows_per_file", [5, 10, 50])
 def test_write_num_rows_per_file(tmp_path, ray_start_regular_shared, num_rows_per_file):
     class MockFileDatasink(BlockBasedFileDatasink):
