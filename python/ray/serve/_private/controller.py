@@ -12,6 +12,7 @@ from ray._private.utils import run_background_task
 from ray._raylet import GcsClient
 from ray.actor import ActorHandle
 from ray.serve._private.application_state import ApplicationStateManager
+from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
@@ -172,12 +173,14 @@ class ServeController:
             if actor["namespace"] == SERVE_NAMESPACE
         ]
 
+        self.autoscaling_state_manager = AutoscalingStateManager()
         self.deployment_state_manager = DeploymentStateManager(
             self.kv_store,
             self.long_poll_host,
             all_serve_actor_names,
             get_all_live_placement_group_names(),
             self.cluster_node_info_cache,
+            self.autoscaling_state_manager,
         )
 
         # Manage all applications' state
@@ -248,12 +251,12 @@ class ServeController:
         return os.getpid()
 
     def record_autoscaling_metrics(
-        self, replica_id: str, window_avg: float, send_timestamp: float
+        self, replica_id: str, window_avg: Optional[float], send_timestamp: float
     ):
         logger.debug(
             f"Received metrics from replica {replica_id}: {window_avg} running requests"
         )
-        self.deployment_state_manager.record_autoscaling_metrics(
+        self.autoscaling_state_manager.record_request_metrics_for_replica(
             replica_id, window_avg, send_timestamp
         )
 
@@ -271,7 +274,7 @@ class ServeController:
             f"Received metrics from handle {handle_id} for deployment {deployment_id}: "
             f"{queued_requests} queued requests and {running_requests} running requests"
         )
-        self.deployment_state_manager.record_handle_metrics(
+        self.autoscaling_state_manager.record_request_metrics_for_handle(
             deployment_id=deployment_id,
             handle_id=handle_id,
             actor_id=actor_id,
@@ -282,7 +285,7 @@ class ServeController:
         )
 
     def _dump_autoscaling_metrics_for_testing(self):
-        return self.deployment_state_manager.get_autoscaling_metrics()
+        return self.autoscaling_state_manager.get_metrics()
 
     def _dump_replica_states_for_testing(self, deployment_id: DeploymentID):
         return self.deployment_state_manager._deployment_states[deployment_id]._replicas
@@ -443,8 +446,9 @@ class ServeController:
             # When the controller is done recovering, drop invalid handle metrics
             # that may be stale for autoscaling
             if not any_recovering:
-                self.deployment_state_manager.drop_stale_handle_metrics(
-                    self.proxy_state_manager.get_alive_proxy_actor_ids()
+                self.autoscaling_state_manager.drop_stale_handle_metrics(
+                    self.deployment_state_manager.get_alive_replica_actor_ids()
+                    | self.proxy_state_manager.get_alive_proxy_actor_ids()
                 )
 
             loop_duration = time.time() - loop_start_time
