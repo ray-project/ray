@@ -480,6 +480,12 @@ class AlgorithmConfig(_Config):
         self.log_sys_usage = True
         self.fake_sampler = False
         self.seed = None
+        # TODO (sven): Remove this setting again in the future. We only need this
+        #  to debug a quite complex, production memory leak, possibly related to
+        #  evaluation in parallel (when `training_step` is getting called inside a
+        #  thread). It's also possible that the leak is not caused by RLlib itself,
+        #  but by Ray core, but we need more data to narrow this down.
+        self._run_training_always_in_thread = False
 
         # `self.fault_tolerance()`
         self.ignore_worker_failures = False
@@ -2637,6 +2643,7 @@ class AlgorithmConfig(_Config):
         log_sys_usage: Optional[bool] = NotProvided,
         fake_sampler: Optional[bool] = NotProvided,
         seed: Optional[int] = NotProvided,
+        _run_training_always_in_thread: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's debugging settings.
 
@@ -2657,6 +2664,11 @@ class AlgorithmConfig(_Config):
             seed: This argument, in conjunction with worker_index, sets the random
                 seed of each worker, so that identically configured trials will have
                 identical results. This makes experiments reproducible.
+            _run_training_always_in_thread: Runs the n `training_step()` calls per
+                iteration always in a separate thread (just as we would do with
+                `evaluation_parallel_to_training=True`, but even without evaluation
+                going on and even without evaluation workers being created in the
+                Algorithm).
 
         Returns:
             This updated AlgorithmConfig object.
@@ -2673,6 +2685,8 @@ class AlgorithmConfig(_Config):
             self.fake_sampler = fake_sampler
         if seed is not NotProvided:
             self.seed = seed
+        if _run_training_always_in_thread is not NotProvided:
+            self._run_training_always_in_thread = _run_training_always_in_thread
 
         return self
 
@@ -4064,6 +4078,17 @@ class AlgorithmConfig(_Config):
     # TODO (sven): Once everything is on the new API stack, we won't need this method
     #  anymore.
     def _validate_to_be_deprecated_settings(self):
+        # Env task fn will be deprecated.
+        if self._enable_new_api_stack and self.env_task_fn is not None:
+            deprecation_warning(
+                old="AlgorithmConfig.env_task_fn",
+                help="The `env_task_fn` API is not supported on the new API stack! "
+                "Curriculum learning should instead be implemented solely via "
+                "custom callbacks. Check out our curriculum learning example "
+                "script for more information: "
+                "https://github.com/ray-project/ray/blob/master/rllib/examples/curriculum/curriculum_learning.py",  # noqa
+            )
+
         if self.preprocessor_pref not in ["rllib", "deepmind", None]:
             raise ValueError(
                 "`config.preprocessor_pref` must be either 'rllib', 'deepmind' or None!"

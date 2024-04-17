@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""
-Benchmark test.
-"""
 
+import click
 import json
 import logging
+from typing import Optional
 
 from anyscale import service
 from anyscale.compute_config.models import (
@@ -15,29 +14,33 @@ from anyscale.compute_config.models import (
 import ray
 
 from anyscale_service_utils import start_service
-from locust_utils import (
-    LocustLoadTestConfig,
-    LocustStage,
-    LocustTestResults,
-    run_locust_load_test,
-)
+from locust_utils import LocustLoadTestConfig, LocustStage, run_locust_load_test
 from serve_test_utils import save_test_results
 
 
 logger = logging.getLogger(__file__)
-logging.basicConfig(level=logging.INFO)
+
+DEFAULT_FULL_TEST_NUM_REPLICA = 1000
+DEFAULT_FULL_TEST_TRIAL_LENGTH_S = 60
 
 
-URI = "https://serve-resnet-benchmark-data.s3.us-west-1.amazonaws.com/000000000019.jpeg"
-
-
-def main():
-    resnet_application = {
-        "import_path": "resnet_50:app",
+@click.command()
+@click.option("--num-replicas", type=int, default=DEFAULT_FULL_TEST_NUM_REPLICA)
+@click.option("--trial-length", type=int, default=DEFAULT_FULL_TEST_TRIAL_LENGTH_S)
+def main(num_replicas: Optional[int], trial_length: Optional[int]):
+    noop_1k_application = {
+        "name": "default",
+        "import_path": "noop:app",
+        "route_prefix": "/",
+        "runtime_env": {"working_dir": "workloads"},
         "deployments": [
             {
-                "name": "Model",
-                "num_replicas": "auto",
+                "name": "Noop",
+                "ray_actor_options": {"resources": {"worker_resource": 0.01}},
+                "autoscaling_config": {
+                    "min_replicas": num_replicas,
+                    "max_replicas": num_replicas,
+                },
             }
         ],
     }
@@ -46,35 +49,56 @@ def main():
         head_node=HeadNodeConfig(instance_type="m5.8xlarge"),
         worker_nodes=[
             WorkerNodeGroupConfig(
-                instance_type="m5.8xlarge", min_nodes=0, max_nodes=10
+                instance_type="m5.xlarge",
+                min_nodes=0,
+                max_nodes=1000,
+                resources={"worker_resource": 1},
             ),
         ],
     )
     stages = [
-        LocustStage(duration_s=1200, users=10, spawn_rate=1),
-        LocustStage(duration_s=1200, users=50, spawn_rate=10),
-        LocustStage(duration_s=1200, users=100, spawn_rate=10),
+        LocustStage(
+            duration_s=trial_length,
+            users=50,
+            spawn_rate=10,
+        ),
+        LocustStage(
+            duration_s=trial_length,
+            users=100,
+            spawn_rate=20,
+        ),
+        LocustStage(
+            duration_s=trial_length,
+            users=500,
+            spawn_rate=100,
+        ),
+        LocustStage(
+            duration_s=trial_length,
+            users=1000,
+            spawn_rate=200,
+        ),
     ]
 
     with start_service(
-        "autoscaling-load-test",
+        service_name="replica-scalability",
         compute_config=compute_config,
-        applications=[resnet_application],
+        applications=[noop_1k_application],
     ) as service_name:
-        ray.init(address="auto")
+        ray.init("auto")
         status = service.status(name=service_name)
 
         # Start the locust workload
         num_locust_workers = int(ray.available_resources()["CPU"]) - 1
-        stats: LocustTestResults = run_locust_load_test(
+        stats = run_locust_load_test(
             LocustLoadTestConfig(
                 num_workers=num_locust_workers,
                 host_url=status.query_url,
                 auth_token=status.query_auth_token,
-                data={"uri": URI},
+                data=None,
                 stages=stages,
             )
         )
+
         results_per_stage = [
             [
                 {
@@ -129,6 +153,7 @@ def main():
                 ],
             ),
         }
+
         logger.info(f"Stats history: {json.dumps(stats.history, indent=4)}")
         logger.info(f"Final aggregated metrics: {json.dumps(results, indent=4)}")
         save_test_results(results)

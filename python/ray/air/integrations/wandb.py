@@ -26,6 +26,8 @@ from ray.util.queue import Queue
 try:
     import wandb
     from wandb.sdk.data_types.base_types.wb_value import WBValue
+    from wandb.sdk.data_types.image import Image
+    from wandb.sdk.data_types.video import Video
     from wandb.sdk.lib.disabled import RunDisabled
     from wandb.util import json_dumps_safer
     from wandb.wandb_run import Run
@@ -203,7 +205,7 @@ def _is_allowed_type(obj):
     if isinstance(obj, np.ndarray) and obj.size == 1:
         return isinstance(obj.item(), Number)
     if isinstance(obj, Sequence) and len(obj) > 0:
-        return isinstance(obj[0], WBValue)
+        return isinstance(obj[0], (Image, Video, WBValue))
     return isinstance(obj, (Number, WBValue))
 
 
@@ -215,6 +217,19 @@ def _clean_log(obj: Any):
         return [_clean_log(v) for v in obj]
     elif isinstance(obj, tuple):
         return tuple(_clean_log(v) for v in obj)
+    elif isinstance(obj, np.ndarray) and obj.ndim == 3:
+        # Must be single image (H, W, C).
+        return Image(obj)
+    elif isinstance(obj, np.ndarray) and obj.ndim == 4:
+        # Must be batch of images (N >= 1, H, W, C).
+        return (
+            _clean_log([Image(v) for v in obj]) if obj.shape[0] > 1 else Image(obj[0])
+        )
+    elif isinstance(obj, np.ndarray) and obj.ndim == 5:
+        # Must be batch of videos (N >= 1, T, C, W, H).
+        return (
+            _clean_log([Video(v) for v in obj]) if obj.shape[0] > 1 else Video(obj[0])
+        )
     elif _is_allowed_type(obj):
         return obj
 
