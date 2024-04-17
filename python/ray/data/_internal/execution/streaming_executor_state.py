@@ -34,6 +34,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.progress_bar import ProgressBar
+from ray.data.context import DataContext
 
 logger = logging.getLogger(__name__)
 
@@ -197,7 +198,9 @@ class OpState:
         """
         is_all_to_all = isinstance(self.op, AllToAllOperator)
         # Only show 1:1 ops when in verbose progress mode.
-        enabled = verbose_progress or is_all_to_all
+        enabled = is_all_to_all or (
+            DataContext.get_current().enable_progress_bars and verbose_progress
+        )
         self.progress_bar = ProgressBar(
             "- " + self.op.name,
             self.op.num_outputs_total(),
