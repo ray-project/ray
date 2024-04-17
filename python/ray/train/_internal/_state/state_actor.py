@@ -5,7 +5,6 @@ from typing import Dict, Optional
 import ray
 from ray.train._internal._state.schema import TrainRunInfo
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -43,5 +42,3 @@ def get_or_create_state_actor():
             lifetime="detached",
             resources={"node:__internal_head__": 0.001},
         ).remote()
-
-

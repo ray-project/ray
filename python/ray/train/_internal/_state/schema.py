@@ -3,6 +3,7 @@ from typing import List
 from ray._private.pydantic_compat import BaseModel, Field
 from ray.util.annotations import DeveloperAPI
 
+
 @DeveloperAPI
 class TrainWorkerInfo(BaseModel):
     """Metadata of a Ray Train worker."""
@@ -11,14 +12,14 @@ class TrainWorkerInfo(BaseModel):
     world_rank: int = Field(description="World rank of the worker.")
     local_rank: int = Field(description="Local rank of the worker.")
     node_rank: int = Field(description="Node rank of the worker.")
-    node_id: str = Field(
-        description="ID of the node that the worker is running on."
-    )
+    node_id: str = Field(description="ID of the node that the worker is running on.")
     node_ip: str = Field(
         description="IP address of the node that the worker is running on."
     )
     pid: str = Field(description="Process ID of the worker.")
-    gpu_ids: List[int] = Field(description="A list of GPU ids allocated to that worker.")
+    gpu_ids: List[int] = Field(
+        description="A list of GPU ids allocated to that worker."
+    )
 
 
 @DeveloperAPI

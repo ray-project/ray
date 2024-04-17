@@ -1,14 +1,17 @@
-
-import os
 import logging
+import os
 from typing import Dict
 
 import ray
 from ray.data import Dataset
+from ray.train._internal._state.schema import (
+    TrainDatasetInfo,
+    TrainRunInfo,
+    TrainWorkerInfo,
+)
+from ray.train._internal._state.state_actor import get_or_create_state_actor
 from ray.train._internal.utils import check_for_failure
 from ray.train._internal.worker_group import WorkerGroup
-from ray.train._internal._state.state_actor import get_or_create_state_actor
-from ray.train._internal._state.schema import TrainDatasetInfo, TrainRunInfo, TrainWorkerInfo
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +57,10 @@ class TrainRunStateManager:
         success, exception = check_for_failure(futures)
 
         if not success:
-            logger.error(f"Failed to collect run information from the Ray Train workers:\n{exception}")
+            logger.error(
+                "Failed to collect run information from the Ray Train "
+                f"workers:\n{exception}"
+            )
             return
 
         worker_info_list = ray.get(futures)
