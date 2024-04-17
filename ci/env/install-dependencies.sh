@@ -416,7 +416,12 @@ install_pip_packages() {
     fi
   fi
 
-  retry_pip_install "CC=gcc pip install -Ur ${WORKSPACE_DIR}/python/requirements.txt"
+
+  if [[ -f "${WORKSPACE_DIR}/python/requirements_compiled.txt"  && "${OSTYPE}" != msys ]]; then
+    retry_pip_install "CC=gcc pip install -c ${WORKSPACE_DIR}/python/requirements_compiled.txt --ignore-installed -Ur ${WORKSPACE_DIR}/python/requirements.txt"
+  else
+    retry_pip_install "CC=gcc pip install --ignore-installed -Ur ${WORKSPACE_DIR}/python/requirements.txt"
+  fi
 
   # Install deeplearning libraries (Torch + TensorFlow)
   if [ -n "${TORCH_VERSION-}" ] || [ "${DL-}" = "1" ] || [ "${RLLIB_TESTING-}" = 1 ] || [ "${TRAIN_TESTING-}" = 1 ] || [ "${TUNE_TESTING-}" = 1 ]; then
@@ -464,7 +469,7 @@ install_pip_packages() {
   fi
 
   # Generate the pip command with collected requirements files
-  pip_cmd="pip install -U -c ${WORKSPACE_DIR}/python/requirements.txt"
+  pip_cmd="pip install -U --ignore-installed -c ${WORKSPACE_DIR}/python/requirements.txt"
 
   if [[ -f "${WORKSPACE_DIR}/python/requirements_compiled.txt"  && "${OSTYPE}" != msys ]]; then
     # On Windows, some pinned dependencies are not built for win, so we
