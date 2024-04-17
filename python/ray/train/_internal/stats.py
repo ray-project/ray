@@ -36,8 +36,8 @@ TRAIN_STATS_ACTOR_NAMESPACE = "_train_stats_actor"
 _stats_actor_lock: threading.RLock = threading.RLock()
 
 
-def get_or_launch_stats_actor():
-    """Create or launch a `TrainStatsActor` on the head node."""
+def get_or_create_stats_actor():
+    """Get or create a `TrainStatsActor` on the head node."""
     with _stats_actor_lock:
         return TrainStatsActor.options(
             name=TRAIN_STATS_ACTOR_NAME,
@@ -90,7 +90,7 @@ class TrainRunStatsManager:
         success, exception = check_for_failure(futures)
 
         if not success:
-            logger.warning("Failed to collect infomation for Ray Train Worker.")
+            logger.error(f"Failed to collect run information from the Ray Train workers:\n{exception}")
             return
 
         worker_info_list = ray.get(futures)
