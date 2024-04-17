@@ -2,7 +2,6 @@ import inspect
 import logging
 import os
 import queue
-import uuid
 from functools import partial
 from numbers import Number
 from typing import Any, Callable, Dict, Optional, Type
@@ -51,7 +50,6 @@ class FunctionTrainable(Trainable):
                 logdir=self._storage.trial_driver_staging_path,
                 driver_ip=None,
                 experiment_name=self._storage.experiment_dir_name,
-                run_id=uuid.uuid4().hex,
             ),
             storage=self._storage,
             synchronous_result_reporting=True,
@@ -186,7 +184,6 @@ class FunctionTrainable(Trainable):
                 logdir=self._storage.trial_working_directory,
                 driver_ip=None,
                 experiment_name=self._storage.experiment_dir_name,
-                run_id=uuid.uuid4().hex,
             ),
             storage=self._storage,
         )
