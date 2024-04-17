@@ -17,11 +17,18 @@ for RAY_VAR in ray-oss ray-opt ; do
 
             aws s3 sync "${S3_TEMP}/${RAY_VAR}/${PY_VERSION_CODE}" .
             sha256sum ./*.tar.gz | tee sums.txt
-            COUNT="$(awk '{print $1}' sums.txt | sort | uniq | wc -l)"
-            if [[ "${COUNT}" != "1" ]]; then
-                echo "Digest mismatch for ${RAY_VAR} ${PY_VERSION_CODE}: ${COUNT} unique digests" >/dev/stderr
-                exit 1
-            fi
+
+            for IS_MINIMIZED in "true" "false" ; do
+              if [[ "${IS_MINIMIZED}" == "true" ]]; then
+                  COUNT="$(awk '/min/{print $1}' sums.txt | sort | uniq | wc -l)"
+              else
+                  COUNT="$(awk '!/min/{print $1}' sums.txt | sort | uniq | wc -l)"
+              fi
+              if [[ "${COUNT}" != "1" ]]; then
+                echo "Digest mismatch for ${RAY_VAR} ${PY_VERSION_CODE} (minimized: ${IS_MINIMIZED}): ${COUNT} unique digests" >/dev/stderr
+                  exit 1
+              fi
+            done
         )
     done
 done

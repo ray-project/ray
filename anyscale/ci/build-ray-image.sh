@@ -5,6 +5,7 @@ set -euo pipefail
 PY_VERSION="${1:-3.8}"
 IMG_TYPE="${2:-cpu}"
 BASE_TYPE="${3:-ray}"
+USE_MINIMIZED_BASE="${4:-0}"
 
 source anyscale/ci/setup-env.sh
 
@@ -136,11 +137,16 @@ if [[ "${DATAPLANE_TGZ_GOT}" != "${DATAPLANE_TGZ_WANT}" ]]; then
     exit 1
 fi
 
-BASE_IMG="${RAYCI_WORK_REPO}:${IMAGE_PREFIX}-${BASE_TYPE}-py${PY_VERSION}-${IMG_TYPE}-base"
+if [[ "${USE_MINIMIZED_BASE}" == "1" ]]; then
+    BASE_IMG="${RAYCI_WORK_REPO}:${IMAGE_PREFIX}-min-py${PY_VERSION}-${IMG_TYPE}-base"
+else
+    BASE_IMG="${RAYCI_WORK_REPO}:${IMAGE_PREFIX}-${BASE_TYPE}-py${PY_VERSION}-${IMG_TYPE}-base"
+fi
 
 aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin "${RUNTIME_ECR}"
 
 docker pull "${BASE_IMG}"
+
 
 if [[ "${BUILDKITE:-}" == "true" ]]; then
     rm -rf /artifact-mount/sitepkg
@@ -152,10 +158,22 @@ fi
 
 export DOCKER_BUILDKIT=1
 
-BUILD_TAG="${IMAGE_PREFIX}-${PY_VERSION_CODE}-${IMG_TYPE_CODE}${IMG_SUFFIX}"
+if [[ "${USE_MINIMIZED_BASE}" == "1" ]]; then
+    BUILD_TAG="${IMAGE_PREFIX}-${PY_VERSION_CODE}-${IMG_TYPE_CODE}-min${IMG_SUFFIX}"
+    SITEPKG_TGZ="${BASE_TYPE}-${PY_VERSION_CODE}-${IMG_TYPE_CODE}-min${IMG_SUFFIX}.tar.gz"
+else
+    BUILD_TAG="${IMAGE_PREFIX}-${PY_VERSION_CODE}-${IMG_TYPE_CODE}${IMG_SUFFIX}"
+    SITEPKG_TGZ="${BASE_TYPE}-${PY_VERSION_CODE}-${IMG_TYPE_CODE}${IMG_SUFFIX}.tar.gz"
+fi
 RAY_IMG="${RUNTIME_REPO}:${BUILD_TAG}"
 ANYSCALE_IMG="${RUNTIME_REPO}:${BUILD_TAG}-as"
-SITEPKG_TGZ="${BASE_TYPE}-${PY_VERSION_CODE}-${IMG_TYPE_CODE}${IMG_SUFFIX}.tar.gz"
+
+
+if [[ "${USE_MINIMIZED_BASE}" == "1" ]]; then
+    PIP_PATH="/home/ray/.local/bin/pip"
+else
+    PIP_PATH="/home/ray/anaconda3/bin/pip"
+fi
 
 ####
 echo "--- Step 1: Build OSS site package tarball"
@@ -177,6 +195,7 @@ cp anyscale/docker/Dockerfile.sitepkg "${CONTEXT_TMP}/Dockerfile"
             --build-arg RAY_VERSION="${RAY_VERSION}" \
             --build-arg WHEEL_PATH=".whl/${WHEEL_FILE}" \
             --build-arg RAY_MOD_DATE="2020-01-01" \
+            --build-arg PIP_PATH="${PIP_PATH}" \
             --output="${BUILD_TMP}" --target=final -f Dockerfile -
 )
 
@@ -206,10 +225,11 @@ rm "${CONTEXT_TMP}/.whl/${CPP_WHEEL_FILE}" # And removes the ray-cpp wheel.
             --build-arg RAY_VERSION="${RAY_VERSION}" \
             --build-arg WHEEL_PATH=".whl/${WHEEL_FILE}" \
             --build-arg RAY_MOD_DATE="2023-01-01" \
+            --build-arg PIP_PATH="${PIP_PATH}" \
             --output="${BUILD_TMP}" --target=final -f Dockerfile -
 )
 
-mv "${BUILD_TMP}/ray.tgz" "${BUILD_TMP}/ray-opt.tgz" 
+mv "${BUILD_TMP}/ray.tgz" "${BUILD_TMP}/ray-opt.tgz"
 
 aws s3 cp "${BUILD_TMP}/ray-opt.tgz" "${S3_TEMP}/ray-opt/${PY_VERSION_CODE}/${SITEPKG_TGZ}"
 if [[ "${BUILDKITE:-}" == "true" ]]; then
@@ -240,7 +260,11 @@ chmod +x "${CONTEXT_TMP}/download_anyscale_data"
 
 # Must keep this consistent with anyscale/ci/upload-ray-site-pkg.sh
 if [[ "${RAY_RELEASE_BUILD:-}" == "true" ]]; then
+  if [[ "${USE_MINIMIZED_BASE}" == "1" ]]; then
+    ANYSCALE_PRESTART_DATA_PATH="common/ray-opt/${RAY_VERSION}/${FULL_COMMIT}/ray-opt-${PY_VERSION_CODE}-min.tar.gz"
+  else
     ANYSCALE_PRESTART_DATA_PATH="common/ray-opt/${RAY_VERSION}/${FULL_COMMIT}/ray-opt-${PY_VERSION_CODE}.tar.gz"
+  fi
 else
     ANYSCALE_PRESTART_DATA_PATH=""  # stub an empty label
 fi
@@ -276,15 +300,22 @@ fi
             --build-arg WHEEL_PATH=".whl/${WHEEL_FILE}" \
             --build-arg RAY_VERSION="${RAY_VERSION}" \
             --build-arg PRESTART_DATA_PATH="${ANYSCALE_PRESTART_DATA_PATH}" \
+            --build-arg PIP_PATH="${PIP_PATH}" \
             -t "${RAY_IMG}" -f Dockerfile -
 )
 
 rm -rf "${CONTEXT_TMP}"
 
 echo "--- Build ${ANYSCALE_IMG}"
-docker build --progress=plain \
-    --build-arg BASE_IMAGE="${RAY_IMG}" \
-    -t "${ANYSCALE_IMG}" -f Dockerfile - < "${BUILD_TMP}/dataplane.tar.gz"
+if [[ "${USE_MINIMIZED_BASE}" == "1" ]]; then
+    # this minimizes the image should satisfy anyscale dataplane dependencies
+    # so simply re-tagging the image.
+    docker tag "${RAY_IMG}" "${ANYSCALE_IMG}"
+else
+    docker build --progress=plain \
+        --build-arg BASE_IMAGE="${RAY_IMG}" \
+        -t "${ANYSCALE_IMG}" -f Dockerfile - < "${BUILD_TMP}/dataplane.tar.gz"
+fi
 
 
 ####
@@ -301,10 +332,15 @@ if [[ "${PUSH_COMMIT_TAGS}" == "true" ]]; then
         SHORT_COMMIT="${RAY_VERSION}.${SHORT_COMMIT}"
     fi
 
-    COMMIT_TAG="${SHORT_COMMIT}-${PY_VERSION_CODE}-${IMG_TYPE_CODE}${IMG_SUFFIX}"
+    if [[ "${USE_MINIMIZED_BASE}" == "1" ]]; then
+        COMMIT_TAG="${SHORT_COMMIT}-${PY_VERSION_CODE}-${IMG_TYPE_CODE}-min${IMG_SUFFIX}"
+    else
+        COMMIT_TAG="${SHORT_COMMIT}-${PY_VERSION_CODE}-${IMG_TYPE_CODE}${IMG_SUFFIX}"
+    fi
+
     docker_push_as "${RAY_IMG}" "${RUNTIME_REPO}:${COMMIT_TAG}"
     docker_push_as "${ANYSCALE_IMG}" "${RUNTIME_REPO}:${COMMIT_TAG}-as"
-    
+
     if [[ "${IMG_TYPE_CODE}" == "${ML_CUDA_VERSION}" ]]; then
         COMMIT_GPU_TAG="${SHORT_COMMIT}-${PY_VERSION_CODE}-gpu${IMG_SUFFIX}"
         docker_push_as "${RAY_IMG}" "${RUNTIME_REPO}:${COMMIT_GPU_TAG}"

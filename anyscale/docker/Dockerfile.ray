@@ -37,29 +37,35 @@ RUN \
 set -euo pipefail
 
 SITE_PKG_DIR="$(python -c "import site; print(site.getsitepackages()[0])")"
+if command -v conda > /dev/null 2>&1; then
+    PIP_PATH="/home/ray/anaconda3/bin/pip"
+    RUN_WITH_SUDO=""
+else
+    PIP_PATH="pip"
+    RUN_WITH_SUDO="sudo"
+fi
 
 if [[ -d "${SITE_PKG_DIR}/ray" ]]; then
     # Needs to uninstall ray first, otherwise pip will not overwrite the
     # existing files if OSS already published a wheel with the same version.
     # This step is required only for ray-ml images.
-    $HOME/anaconda3/bin/pip uninstall -y ray
+    ${RUN_WITH_SUDO} ${PIP_PATH} uninstall -y ray
 fi
 
 # Installs extra runtime requirements.
-$HOME/anaconda3/bin/pip --no-cache-dir \
+${RUN_WITH_SUDO} ${PIP_PATH} --no-cache-dir \
     install -c requirements_compiled.txt -r runtime-requirements.txt
 
 # Installs the runtime wheel.
-$HOME/anaconda3/bin/pip --no-cache-dir \
+${RUN_WITH_SUDO} ${PIP_PATH} --no-cache-dir \
     install -c requirements_compiled.txt $WHEEL_PATH[all]
 
-$HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
+${RUN_WITH_SUDO} ${PIP_PATH} freeze > /home/ray/pip-freeze.txt
 
 # Now swap the ray package and dist info with tarball
 
-SITE_PKG_DIR="$(python -c "import site; print(site.getsitepackages()[0])")"
-rm -r "${SITE_PKG_DIR}"/ray "${SITE_PKG_DIR}/ray-${RAY_VERSION}.dist-info"
-tar -xzf /opt/anyscale/ray-oss.tgz -C "${SITE_PKG_DIR}"
+${RUN_WITH_SUDO} rm -r "${SITE_PKG_DIR}"/ray "${SITE_PKG_DIR}/ray-${RAY_VERSION}.dist-info"
+${RUN_WITH_SUDO} tar -xzf /opt/anyscale/ray-oss.tgz -C "${SITE_PKG_DIR}"
 
 # Makes sure the ray still works, and also will generate the pyc files.
 python -c "import ray; print(ray.__version__)"

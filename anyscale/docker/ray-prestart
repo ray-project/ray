@@ -38,14 +38,20 @@ if [[ ! -S "${SERVICE_SOCK}" ]]; then
     exit 1
 fi
 
+# Check if the site package directory owner is root
+if [[ $(stat -c '%U' "${ANYSCALE_RAY_SITE_PKG_DIR}") == "root" ]]; then
+    SUDO=("sudo")
+else
+    SUDO=()
+fi
 
-rm -rf \
+"${SUDO[@]}" rm -rf \
     "${ANYSCALE_RAY_SITE_PKG_DIR}/ray" \
     "${ANYSCALE_RAY_SITE_PKG_DIR}/ray-${ANYSCALE_RAY_VERSION}.dist-info"
 
 if [[ -f "${ANYSCALE_INLINED_RAY_OPT}" ]]; then
     # This is for non-release builds only.
-    tar -xzf /opt/anyscale/ray-opt.tgz -C "${ANYSCALE_RAY_SITE_PKG_DIR}"
+    "${SUDO[@]}" tar -xzf /opt/anyscale/ray-opt.tgz -C "${ANYSCALE_RAY_SITE_PKG_DIR}"
 else
-    /opt/anyscale/download_anyscale_data "${ANYSCALE_PRESTART_DATA_PATH}" | tar -xzf - -C "${ANYSCALE_RAY_SITE_PKG_DIR}"
+    /opt/anyscale/download_anyscale_data "${ANYSCALE_PRESTART_DATA_PATH}" | "${SUDO[@]}" tar -xzf - -C "${ANYSCALE_RAY_SITE_PKG_DIR}"
 fi
