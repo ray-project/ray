@@ -4,7 +4,6 @@ from typing import Any, Callable, Dict, List, Tuple, Union, Optional
 import logging
 import traceback
 import threading
-import numpy as np
 
 import ray
 from ray.exceptions import RayTaskError
@@ -27,16 +26,20 @@ logger = logging.getLogger(__name__)
 
 
 CUSTOM_SERIALIZERS = (
-        (_TorchTensorWrapper, _TorchTensorWrapper.serialize, _TorchTensorWrapper.deserialize),
-        )
+    (
+        _TorchTensorWrapper,
+        _TorchTensorWrapper.serialize,
+        _TorchTensorWrapper.deserialize,
+    ),
+)
 
 
 @DeveloperAPI
 def register_custom_dag_serializers():
     for cls, serializer, deserializer in CUSTOM_SERIALIZERS:
-        ray.util.serialization.register_serializer(cls,
-                serializer=serializer,
-                deserializer=deserializer)
+        ray.util.serialization.register_serializer(
+            cls, serializer=serializer, deserializer=deserializer
+        )
 
 
 @DeveloperAPI
@@ -52,7 +55,6 @@ def do_allocate_channel(self, buffer_size_bytes: int, num_readers: int = 1) -> C
     """
     self._output_channel = Channel(buffer_size_bytes, num_readers)
     return self._output_channel
-
 
 
 @DeveloperAPI
@@ -171,7 +173,7 @@ class CompiledTask:
         """
         self.idx = idx
         self.dag_node = dag_node
-        self.arg_idx_to_tensor_meta : Dict[int, Dict[str, Any]] = {}
+        self.arg_idx_to_tensor_meta: Dict[int, Dict[str, Any]] = {}
 
         self.downstream_node_idxs = set()
         self.output_channel = None

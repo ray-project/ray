@@ -67,14 +67,12 @@ class TorchTensorWorker:
     def __init__(self):
         pass
 
-    def send(self, shape, dtype, value : int):
+    def send(self, shape, dtype, value: int):
         import torch
 
         return torch.ones(shape, dtype=dtype) * value
 
     def recv(self, tensor):
-        import torch
-
         return (tensor[0].item(), tensor.shape, tensor.dtype)
 
 
@@ -383,7 +381,7 @@ def test_torch_tensor(ray_start_regular_shared):
     sender = TorchTensorWorker.remote()
     receiver = TorchTensorWorker.remote()
 
-    shape = (10, )
+    shape = (10,)
     dtype = torch.float16
 
     # Test torch.Tensor sent between actors.
@@ -414,6 +412,17 @@ def test_torch_tensor(ray_start_regular_shared):
         result = output_channel.begin_read()
         assert result == (i, shape, dtype)
         output_channel.end_read()
+
+    # Passing tensors of the wrong shape will error.
+    with pytest.raises(ValueError):
+        output_channel = compiled_dag.execute(torch.ones((20,), dtype=dtype) * i)
+
+    with pytest.raises(ValueError):
+        output_channel = compiled_dag.execute(
+            torch.ones(shape, dtype=torch.float32) * i
+        )
+
+    compiled_dag.teardown()
 
 
 if __name__ == "__main__":
