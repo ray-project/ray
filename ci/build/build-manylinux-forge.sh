@@ -15,16 +15,6 @@ if [[ "${HOSTTYPE-}" == "x86_64" ]]; then
     devtoolset-8-libasan-devel.x86_64
 fi
 
-mkdir -p /tmp
-cd /tmp \
-&& git clone https://github.com/facebook/zstd.git \
-&& cd zstd \
-&& git checkout v1.5.6 \
-&& make \
-&& sudo make install \
-&& cd .. \
-&& rm -rf zstd
-
 # Install ray java dependencies.
 if [[ "${RAY_INSTALL_JAVA}" == "1" ]]; then
   yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel maven

@@ -19,9 +19,7 @@ cc_library(
         "@bazel_tools//src/conditions:windows": [
         ],
         "//conditions:default": [
-            "-L/usr/local/lib/",
             "-lpthread",
-            "-lzstd",
         ],
     }),
     strip_include_prefix = "//src",
@@ -42,5 +40,6 @@ cc_library(
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
         "@nlohmann_json",
+        "@zstd//:libzstd",
     ],
 )

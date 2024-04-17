@@ -1,0 +1,22 @@
+load("@rules_foreign_cc//foreign_cc:defs.bzl", "make")
+load("@com_github_ray_project_ray//bazel:ray.bzl", "filter_files_with_suffix")
+
+filegroup(
+    name = "all",
+    srcs = glob(["**"]),
+)
+
+make(
+    name = "libzstd",
+    lib_source = ":all",
+    # out_shared_libs = ["libzstd.so"],
+    visibility = ["//visibility:public"],
+)
+
+
+filter_files_with_suffix(
+    name = "shared",
+    srcs = ["@zstd//:libzstd"],
+    suffix = ".so",
+    visibility = ["//visibility:public"],
+)
