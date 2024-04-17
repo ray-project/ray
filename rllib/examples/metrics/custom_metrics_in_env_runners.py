@@ -10,6 +10,7 @@ from ray.rllib.utils.test_utils import (
     run_rllib_example_script_experiment,
 )
 from ray.tune.registry import get_trainable_cls, register_env
+from ray import tune
 
 
 class EnvRenderCallback(DefaultCallbacks):
@@ -136,6 +137,11 @@ if __name__ == "__main__":
                 {
                 },
             ),
+        )
+        .debugging(
+            logger_config={
+                "type": tune.logger.NoopLogger,
+            }
         )
     )
 
