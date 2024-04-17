@@ -32,6 +32,14 @@ DEFAULT_PYTHON_VERSION = tuple(
 DATAPLANE_ECR_REPO = "anyscale/ray"
 DATAPLANE_ECR_ML_REPO = "anyscale/ray-ml"
 
+MACOS_TEST_PREFIX = "darwin://"
+LINUX_TEST_PREFIX = "linux://"
+WINDOWS_TEST_PREFIX = "windows://"
+MACOS_BISECT_DAILY_RATE_LIMIT = 3
+LINUX_BISECT_DAILY_RATE_LIMIT = 0
+WINDOWS_BISECT_DAILY_RATE_LIMIT = 0
+BISECT_DAILY_RATE_LIMIT = 10
+
 
 def _convert_env_list_to_dict(env_list: List[str]) -> Dict[str, str]:
     env_dict = {}
@@ -55,6 +63,17 @@ class TestState(enum.Enum):
     FLAKY = "flaky"
     CONSITENTLY_FAILING = "consistently_failing"
     PASSING = "passing"
+
+
+class TestType(enum.Enum):
+    """
+    Type of the test
+    """
+
+    RELEASE_TEST = "release_test"
+    MACOS_TEST = "macos_test"
+    LINUX_TEST = "linux_test"
+    WINDOWS_TEST = "windows_test"
 
 
 @dataclass
@@ -198,6 +217,25 @@ class Test(dict):
         Returns whether this test is running on a BYOD cluster.
         """
         return self["cluster"].get("byod") is not None
+
+    def get_test_type(self) -> TestType:
+        test_name = self.get_name()
+        if test_name.startswith(MACOS_TEST_PREFIX):
+            return TestType.MACOS_TEST
+        if test_name.startswith(LINUX_TEST_PREFIX):
+            return TestType.LINUX_TEST
+        if test_name.startswith(WINDOWS_TEST_PREFIX):
+            return TestType.WINDOWS_TEST
+        return TestType.RELEASE_TEST
+
+    def get_bisect_daily_rate_limit(self) -> int:
+        if self.get_test_type() == TestType.MACOS_TEST:
+            return MACOS_BISECT_DAILY_RATE_LIMIT
+        if self.get_test_type() == TestType.LINUX_TEST:
+            return LINUX_BISECT_DAILY_RATE_LIMIT
+        if self.get_test_type() == TestType.WINDOWS_TEST:
+            return WINDOWS_BISECT_DAILY_RATE_LIMIT
+        return BISECT_DAILY_RATE_LIMIT
 
     def get_byod_type(self) -> Optional[str]:
         """
