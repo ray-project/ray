@@ -1,8 +1,6 @@
 from ray_release.test_automation.state_machine import (
     TestStateMachine,
     WEEKLY_RELEASE_BLOCKER_TAG,
-    BUILDKITE_BISECT_PIPELINE,
-    BUILDKITE_ORGANIZATION,
 )
 from ray_release.test import Test, TestState
 

@@ -284,6 +284,7 @@ class TestStateMachine(abc.ABC):
         if self._bisect_rate_limit_exceeded():
             logger.info(f"Skip bisect {self.test.get_name()} due to rate limit")
             return
+        test_type = self.test.get_test_type().value
         build = self.ray_buildkite.builds().create_build(
             BUILDKITE_ORGANIZATION,
             BUILDKITE_BISECT_PIPELINE,
@@ -292,7 +293,7 @@ class TestStateMachine(abc.ABC):
             message=f"[ray-test-bot] {self.test.get_name()} failing",
             env={
                 "UPDATE_TEST_STATE_MACHINE": "1",
-                "RAYCI_TEST_TYPE": self.test.get_type().value,
+                "RAYCI_TEST_TYPE": test_type,
             },
         )
         failing_commit = self.test_results[0].commit
@@ -312,7 +313,7 @@ class TestStateMachine(abc.ABC):
                 "failing-commit": failing_commit,
                 "concurrency": "3",
                 "run-per-commit": "1",
-                "test-type": self.test.get_test_type().value,
+                "test-type": test_type,
             },
         )
         self.test[Test.KEY_BISECT_BUILD_NUMBER] = build["number"]

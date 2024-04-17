@@ -4,7 +4,12 @@ import json
 from ci.ray_ci.utils import logger, ci_init
 from ci.ray_ci.bisect.macos_validator import MacOSValidator
 from ci.ray_ci.bisect.bisector import Bisector
-from ray_release.test import Test, MACOS_TEST_PREFIX, LINUX_TEST_PREFIX, WINDOWS_TEST_PREFIX
+from ray_release.test import (
+    Test,
+    MACOS_TEST_PREFIX,
+    LINUX_TEST_PREFIX,
+    WINDOWS_TEST_PREFIX,
+)
 from ray_release.test_automation.ci_state_machine import CITestStateMachine
 
 
