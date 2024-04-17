@@ -187,7 +187,11 @@ class SingleAgentEnvRunner(EnvRunner):
                 samples.extend(episodes)
 
         # Make the `on_sample_end` callback.
-        self._callbacks.on_sample_end(env_runner=self, samples=samples)
+        self._callbacks.on_sample_end(
+            env_runner=self,
+            metrics_logger=self.metrics,
+            samples=samples,
+        )
 
         return samples
 
@@ -742,6 +746,7 @@ class SingleAgentEnvRunner(EnvRunner):
         getattr(self._callbacks, which)(
             episode=episodes[idx],
             env_runner=self,
+            metrics_logger=self.metrics,
             env=self.env,
             rl_module=self.module,
             env_index=idx,

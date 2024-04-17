@@ -14,7 +14,9 @@ class MetricsLogger:
         self._keys_to_reset_on_reduce = set()
 
     def log_value(self, key, value, reduce="mean", window=None, ema_coeff=None, reset_on_reduce=False):
-        if reset_on_reduce:
+        # No reduction (continue appending to list) or reset explicitly requested
+        # -> We have to reset out values at any `reduce()`.
+        if reduce is None or reset_on_reduce:
             self._keys_to_reset_on_reduce.add(key)
 
         if key not in self.stats:
@@ -25,7 +27,9 @@ class MetricsLogger:
     def log_dict(self, stats_dict, reduce="mean", window=None, ema_coeff=None, reset_on_reduce=False):
         stats_dict = NestedDict(stats_dict)
         for key, stat_or_value in stats_dict.items():
-            if reset_on_reduce:
+            # No reduction (continue appending to list) or reset explicitly requested
+            # -> We have to reset out values at any `reduce()`.
+            if reduce is None or reset_on_reduce:
                 self._keys_to_reset_on_reduce.add(key)
 
             if not isinstance(stat_or_value, Stats):
@@ -39,39 +43,47 @@ class MetricsLogger:
                 self.stats[key] = copy.deepcopy(stat_or_value)
 
     def log_n_dicts(self, stats_dicts, reduce="mean", window=None, ema_coeff=None, reset_on_reduce=False):
+        stats_dicts = [NestedDict(s) for s in stats_dicts]
         all_keys = set()
         for s in stats_dicts:
             all_keys |= set(s.keys())
         for key in all_keys:
-            if reset_on_reduce:
+            # No reduction (continue appending to list) or reset explicitly requested
+            # -> We have to reset out values at any `reduce()`.
+            if reduce is None or reset_on_reduce:
                 self._keys_to_reset_on_reduce.add(key)
 
-            available_stats_under_key = [s for s in stats_dicts if key in s]
-            # Make a copy to not mess with the incoming stats objects.
-            stat_or_value = copy.deepcopy(available_stats_under_key[0])
-            if not isinstance(stat_or_value, Stats):
-                stat_or_value = Stats(
-                    stat_or_value,
-                    reduce=reduce,
-                    window=window,
-                    ema_coeff=ema_coeff,
-                )
-            # More than one Stat available, merge all of them together.
-            if len(available_stats_under_key) > 1:
-                stat_or_value.merge(*available_stats_under_key[1:])
-            self.stats[key] = stat_or_value
+            available_stats = [s[key] for s in stats_dicts if key in s]
+            for i, stat_or_value in enumerate(available_stats):
+                if not isinstance(stat_or_value, Stats):
+                    available_stats[i] = stat_or_value = Stats(
+                        stat_or_value,
+                        reduce=reduce,
+                        window=window,
+                        ema_coeff=ema_coeff,
+                    )
+                if key not in self.stats:
+                    self.stats[key] = Stats(
+                        reduce=stat_or_value._reduce_method,
+                        window=stat_or_value._window,
+                        ema_coeff=stat_or_value._ema_coeff,
+                    )
+            self.stats[key].merge(*available_stats)
 
     def log_time(self, key, reduce="mean", window=None, ema_coeff=None, reset_on_reduce=False):
-        if reset_on_reduce:
+        # No reduction (continue appending to list) or reset explicitly requested
+        # -> We have to reset out values at any `reduce()`.
+        if reduce is None or reset_on_reduce:
             self._keys_to_reset_on_reduce.add(key)
+
         if key not in self.stats:
             self.stats[key] = Stats(reduce=reduce, window=window, ema_coeff=ema_coeff)
         # Return the Stats object, so a `with` clause can enter and exit it.
         return self.stats[key]
 
-    def log_video(self, key, video):
-        """Convenience me"""
-        self.log_value(key, video, reduce=None)
+    #def log_video(self, key, video):
+    #    """Convenience method for logging videos."""
+    #    self.log_value(key, video, reduce=None)
 
     def get(self, *key):
         return self.stats[*key].peek()
@@ -84,7 +96,6 @@ class MetricsLogger:
         for key, stat in stats_to_return.items():
             stat.reduce()
             if key in self._keys_to_reset_on_reduce:
-                #stats_to_return[key] = stat
                 self.stats[key] = Stats(
                     reduce=stat._reduce_method,
                     window=stat._window,

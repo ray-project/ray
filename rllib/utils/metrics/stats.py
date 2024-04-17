@@ -14,13 +14,27 @@ class Stats:
         window=None,
         ema_coeff=None,
     ):
+        # Thus far, we only support mean, max, min, and sum.
+        assert reduce in [None, "mean", "min", "max", "sum"]
+        # One or both window and ema must be None.
+        assert window is None or ema_coeff is None, (
+            "Only one of `window` or `ema_coeff` can be specified!"
+        )
+        if ema_coeff is not None:
+            assert reduce == "mean", (
+                "`ema_coeff` arg only allowed to be not None when `reduce=mean`!"
+            )
+
+        # If reduce=mean AND window=ema_coeff=None, we use EMA by default with a coeff
+        # of 0.01 (we do NOT support infinite window sizes for mean as that would mean
+        # to keep data in the cache forever).
+        if reduce == "mean" and window is None and ema_coeff is None:
+            ema_coeff = 0.01
+
+        # The actual data in this Stats object.
         self.values = force_list(init_value)
 
         self._reduce_method = reduce
-
-        # One or both window and ema must be None.
-        assert window is None or ema_coeff is None
-
         self._window = window
         self._ema_coeff = ema_coeff
 
@@ -44,14 +58,14 @@ class Stats:
         if len(self.values) == 1:
             return self.values[0]
         else:
-            return self._reduced_values()
+            return self._reduced_values()[0]
 
     def reduce(self):
         # Reduce everything to a single (init) value.
-        if self._reduce_method is not None:
-            self.values = [self._reduced_values()]
-        # Return self as-is (no reduction).
-        return self
+        #if self._reduce_method is not None:
+        #    self.values = [self._reduced_values()]
+        ret, self.values = self._reduced_values()
+        return ret
 
     def merge(self, *others: "Stats"):
         # Make sure `other` has same reduction settings.
@@ -109,16 +123,15 @@ class Stats:
     def _reduced_values(self):
         # No reduction. Return list as-is.
         if self._reduce_method is None:
-            return self.values
+            return self.values, self.values
         # Do EMA (always a "mean" reduction).
         elif self._ema_coeff is not None:
             mean_value = self.values[0]
             for v in self.values[1:]:
                 mean_value = self._ema_coeff * v + (1.0 - self._ema_coeff) * mean_value
-            return mean_value
+            return mean_value, [mean_value]
         # Do some other reduction (possibly using a window).
         else:
             reduce_meth = getattr(np, self._reduce_method)
             values = self.values if self._window is None else self.values[-self._window:]
-            return reduce_meth(values)
-
+            return reduce_meth(values), values

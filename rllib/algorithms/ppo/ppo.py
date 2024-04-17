@@ -31,6 +31,7 @@ from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
+    ENV_RUNNER_SAMPLING_TIMER,
     LEARNER_RESULTS,
     LEARNER_UPDATE_TIMER,
     NUM_AGENT_STEPS_SAMPLED,
@@ -419,7 +420,7 @@ class PPO(Algorithm):
 
     def _training_step_new_api_stack(self) -> ResultDict:
         # Collect batches from sample workers until we have a full batch.
-        with self.metrics.log_time(SAMPLE_TIMER):
+        with self.metrics.log_time(ENV_RUNNER_SAMPLING_TIMER):
             # Sample in parallel from the workers.
             if self.config.count_steps_by == "agent_steps":
                 episodes, env_runner_metrics = synchronous_parallel_sample(

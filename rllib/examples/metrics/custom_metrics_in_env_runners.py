@@ -22,14 +22,22 @@ class EnvRenderCallback(DefaultCallbacks):
     We override the `on_episode_step` method to create a single ts render image
     and temporarily store it in the Episode object.
     """
+    def __init__(self):
+        super().__init__()
+        # Per sample round (on this EnvRunner), we want to only log the best- and
+        # worst performing episode's videos in the custom metrics. Otherwise, too much
+        # data would be sent to WandB.
+        self.best_episode_and_return = (None, float("-inf"))
+        self.worst_episode_and_return = (None, float("inf"))
+
     def on_episode_step(
         self,
         *,
         episode,
         env_runner,
         env,
-        rl_module,
         env_index,
+        rl_module,
         **kwargs,
     ) -> None:
         """Adds render image to episode."""
@@ -46,17 +54,50 @@ class EnvRenderCallback(DefaultCallbacks):
         episode,
         env_runner,
         env,
-        rl_module,
         env_index,
+        rl_module,
         **kwargs,
     ) -> None:
-        # Get all images of the episode.
-        images = episode.get_temporary_timestep_data("render_images")
+        # Get the episode's return.
+        episode_return = episode.get_return()
 
-        # Create a video from the images by simply stacking them.
-        video = np.stack(images, axis=0)
-        # Log video to MetricsLogger.
-        env_runner.metrics.log_video("episode_videos", video)
+        # Better than the best or worse than worst thus far?
+        if (
+            episode_return > self.best_episode_and_return[1]
+            or episode_return < self.worst_episode_and_return[1]
+        ):
+            # Get all images of the episode.
+            images = episode.get_temporary_timestep_data("render_images")
+            # Create a video from the images by simply stacking them.
+            video = np.stack(images, axis=0)
+
+            if episode_return > self.best_episode_and_return[1]:
+                self.best_episode_and_return = (video, episode_return)
+            else:
+                self.worst_episode_and_return = (video, episode_return)
+
+    def on_sample_end(
+        self,
+        *,
+        env_runner,
+        metrics_logger,
+        samples,
+        **kwargs,
+    ) -> None:
+        # Log the best and worst video to MetricsLogger.
+        env_runner.metrics.log_value(
+            "episode_videos_best",
+            self.best_episode_and_return[0],
+            reduce=None,
+        )
+        env_runner.metrics.log_value(
+            "episode_videos_worst",
+            self.worst_episode_and_return[0],
+            reduce=None,
+        )
+        # Reset our best/worst placeholders.
+        self.best_episode_and_return = (None, float("-inf"))
+        self.worst_episode_and_return = (None, float("inf"))
 
 
 parser = add_rllib_example_script_args(

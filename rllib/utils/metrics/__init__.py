@@ -63,6 +63,7 @@ SYNCH_WORKER_WEIGHTS_TIMER = "synch_weights"
 SYNCH_ENV_CONNECTOR_STATES_TIMER = "synch_env_connectors"
 GRAD_WAIT_TIMER = "grad_wait"
 SAMPLE_TIMER = "sample"
+ENV_RUNNER_SAMPLING_TIMER = "env_runner_sampling_timer"
 LEARNER_UPDATE_TIMER = "learner_update_timer"
 LEARNER_ADDITIONAL_UPDATE_TIMER = "learner_additional_update_timer"
 LEARN_ON_BATCH_TIMER = "learn"  # TODO (sven): Deprecate.
