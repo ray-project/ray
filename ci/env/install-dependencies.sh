@@ -416,12 +416,7 @@ install_pip_packages() {
     fi
   fi
 
-
-  if [[ -f "${WORKSPACE_DIR}/python/requirements_compiled.txt"  && "${OSTYPE}" != msys ]]; then
-    retry_pip_install "CC=gcc pip install -c ${WORKSPACE_DIR}/python/requirements_compiled.txt --ignore-installed -Ur ${WORKSPACE_DIR}/python/requirements.txt"
-  else
-    retry_pip_install "CC=gcc pip install --ignore-installed -Ur ${WORKSPACE_DIR}/python/requirements.txt"
-  fi
+  retry_pip_install "CC=gcc pip install --ignore-installed -Ur ${WORKSPACE_DIR}/python/requirements.txt"
 
   # Install deeplearning libraries (Torch + TensorFlow)
   if [ -n "${TORCH_VERSION-}" ] || [ "${DL-}" = "1" ] || [ "${RLLIB_TESTING-}" = 1 ] || [ "${TRAIN_TESTING-}" = 1 ] || [ "${TUNE_TESTING-}" = 1 ]; then
@@ -429,14 +424,14 @@ install_pip_packages() {
       if [ -n "${TORCH_VERSION-}" ]; then
         # Install right away, as some dependencies (e.g. torch-spline-conv) need
         # torch to be installed for their own install.
-        pip install -U "torch==${TORCH_VERSION-1.9.0}" "torchvision==${TORCHVISION_VERSION-0.10.0}"
+        pip install --ignore-installed -U "torch==${TORCH_VERSION-1.9.0}" "torchvision==${TORCHVISION_VERSION-0.10.0}"
         # We won't add dl-cpu-requirements.txt as it would otherwise overwrite our custom
         # torch. Thus we have also have to install tensorflow manually.
         TF_PACKAGE=$(grep -ohE "tensorflow==[^ ;]+" "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt" | head -n 1)
         TFPROB_PACKAGE=$(grep -ohE "tensorflow-probability==[^ ;]+" "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt" | head -n 1)
 
         # %%;* deletes everything after ; to get rid of e.g. python version specifiers
-        pip install -U "${TF_PACKAGE%%;*}" "${TFPROB_PACKAGE%%;*}"
+        pip install --ignore-installed -U "${TF_PACKAGE%%;*}" "${TFPROB_PACKAGE%%;*}"
       else
         # Otherwise, use pinned default torch version.
         # Again, install right away, as some dependencies (e.g. torch-spline-conv) need
@@ -445,7 +440,7 @@ install_pip_packages() {
         TORCHVISION_PACKAGE=$(grep -ohE "torchvision==[^ ;]+" "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt" | head -n 1)
 
         # %%;* deletes everything after ; to get rid of e.g. python version specifiers
-        pip install "${TORCH_PACKAGE%%;*}" "${TORCHVISION_PACKAGE%%;*}"
+        pip install --ignore-installed "${TORCH_PACKAGE%%;*}" "${TORCHVISION_PACKAGE%%;*}"
         requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt")
       fi
   fi
@@ -469,7 +464,7 @@ install_pip_packages() {
   fi
 
   # Generate the pip command with collected requirements files
-  pip_cmd="pip install -U --ignore-installed -c ${WORKSPACE_DIR}/python/requirements.txt"
+  pip_cmd="pip install -U -c ${WORKSPACE_DIR}/python/requirements.txt"
 
   if [[ -f "${WORKSPACE_DIR}/python/requirements_compiled.txt"  && "${OSTYPE}" != msys ]]; then
     # On Windows, some pinned dependencies are not built for win, so we
