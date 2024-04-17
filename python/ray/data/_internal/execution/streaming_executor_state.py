@@ -318,7 +318,7 @@ class OpState:
             logger.get_logger().info(
                 "@mzm: average_bytes_inputs_per_task "
                 f"{op._metrics.average_bytes_inputs_per_task}, "
-                f"average_task_duration: {op._metrics.average_task_duration}"
+                f"average_task_duration: {op._metrics.average_task_duration}, "
             )
             # Initialize grow rate to be 0.
             if (
@@ -332,7 +332,7 @@ class OpState:
                 / op._metrics.average_task_duration
                 * (
                     resource_manager.get_global_limits().cpu
-                    - self.op.num_active_tasks()
+                    - self.op.num_active_tasks() * self.op.incremental_resource_usage().cpu
                 )
             )
 
@@ -365,7 +365,7 @@ class OpState:
     def lsf_admission_control(self, resource_manager: ResourceManager) -> bool:
 
         # TODO(MaoZiming)
-        if self.op.name != "ReadRange->MapBatches(produce)":
+        if (self.op.name != "ReadRange->MapBatches(produce)" and self.op.name != "MapBatches(produce)"):
             return True
 
         INITIAL_BUDGET = resource_manager.get_global_limits().object_store_memory
