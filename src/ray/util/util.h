@@ -33,6 +33,8 @@
 #endif
 #endif
 
+#include <zstd.h>
+
 #include <chrono>
 #include <iterator>
 #include <memory>
@@ -42,7 +44,6 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
-#include <zstd.h>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/random/random.h"

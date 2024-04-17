@@ -15,7 +15,7 @@ if [[ "${HOSTTYPE-}" == "x86_64" ]]; then
     devtoolset-8-libasan-devel.x86_64
 fi
 
-mkdir -p /tmp \
+mkdir -p /tmp
 cd /tmp \
 && git clone https://github.com/facebook/zstd.git \
 && cd zstd \

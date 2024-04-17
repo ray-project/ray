@@ -517,6 +517,20 @@ install_thirdparty_packages() {
   CC=gcc python -m pip install psutil==5.9.6 setproctitle==1.2.2 colorama==0.4.6 --target="${RAY_THIRDPARTY_FILES}"
 }
 
+install_zstd() {
+  current_workspace=$(pwd)
+  mkdir -p /tmp
+  cd /tmp \
+  && git clone https://github.com/facebook/zstd.git \
+  && cd zstd \
+  && git checkout v1.5.6 \
+  && make \
+  && sudo make install \
+  && cd .. \
+  && rm -rf zstd \
+  && cd "${current_workspace}"
+}
+
 install_dependencies() {
   install_bazel
 
@@ -524,6 +538,7 @@ install_dependencies() {
   if [ -z "${BUILDKITE-}" ] || [ "${BUILD-}" = "1" ]; then
     install_base
     install_toolchains
+    install_zstd
   fi
 
   if [ -n "${PYTHON-}" ] || [ "${LINT-}" = 1 ] || [ "${MINIMAL_INSTALL-}" = "1" ]; then
