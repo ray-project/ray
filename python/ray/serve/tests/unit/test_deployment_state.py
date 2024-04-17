@@ -93,6 +93,7 @@ class MockReplicaActorWrapper:
         self._node_id_is_set = False
         self._actor_id = None
         self._pg_bundles = None
+        self._initialization_latency_s = -1
 
     @property
     def is_cross_language(self) -> bool:
@@ -161,6 +162,10 @@ class MockReplicaActorWrapper:
     @property
     def placement_group_bundles(self) -> Optional[List[Dict[str, float]]]:
         return None
+
+    @property
+    def initialization_latency_s(self) -> float:
+        return self._initialization_latency_s
 
     def set_status(self, status: ReplicaStartupStatus):
         self.status = status

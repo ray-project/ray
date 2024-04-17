@@ -264,6 +264,7 @@ class ActorReplicaWrapper:
         self._health_check_ref: Optional[ObjectRef] = None
         self._last_health_check_time: float = 0.0
         self._consecutive_health_check_failures = 0
+        self._initialization_latency_s: Optional[float] = None
 
         # Populated in `on_scheduled` or `recover`.
         self._actor_handle: ActorHandle = None
@@ -394,6 +395,18 @@ class ActorReplicaWrapper:
     def log_file_path(self) -> Optional[str]:
         """Returns the relative log file path of the actor, None if not placed."""
         return self._log_file_path
+
+    @property
+    def initialization_latency_s(self) -> Optional[float]:
+        """Returns the initialization latency for the replica actor.
+
+        Returns None if the replica hasn't started yet.
+
+        Note: this value isn't checkpointed, so if the controller restarts,
+        this value goes back to None.
+        """
+
+        return self._initialization_latency_s
 
     def start(self, deployment_info: DeploymentInfo) -> ReplicaSchedulingRequest:
         """Start the current DeploymentReplica instance.
@@ -666,7 +679,7 @@ class ActorReplicaWrapper:
                 logger.exception(msg)
                 return ReplicaStartupStatus.FAILED, msg
 
-        # Check whether relica initialization has completed.
+        # Check whether replica initialization has completed.
         replica_ready = check_obj_ref_ready_nowait(self._ready_obj_ref)
         # In case of deployment constructor failure, ray.get will help to
         # surface exception to each update() cycle.
@@ -684,10 +697,12 @@ class ActorReplicaWrapper:
                     # This should only update version if the replica is being recovered.
                     # If this is checking on a replica that is newly started, this
                     # should return a version that is identical to what's already stored
-                    _, self._version = ray.get(self._ready_obj_ref)
+                    _, self._version, self._initialization_latency_s = ray.get(
+                        self._ready_obj_ref
+                    )
             except RayTaskError as e:
                 logger.exception(
-                    f"Exception in {self._replica_id}, " "the replica will be stopped."
+                    f"Exception in {self._replica_id}, the replica will be stopped."
                 )
                 # NOTE(zcin): we should use str(e) instead of traceback.format_exc()
                 # here because the full details of the error is not displayed properly
@@ -695,7 +710,7 @@ class ActorReplicaWrapper:
                 return ReplicaStartupStatus.FAILED, str(e.as_instanceof_cause())
             except Exception as e:
                 logger.exception(
-                    f"Exception in {self._replica_id}, " "the replica will be stopped."
+                    f"Exception in {self._replica_id}, the replica will be stopped."
                 )
                 return ReplicaStartupStatus.FAILED, repr(e)
 
@@ -960,6 +975,12 @@ class DeploymentReplica:
         """Returns the node id of the actor, None if not placed."""
         return self._actor.node_id
 
+    @property
+    def initialization_latency_s(self) -> Optional[float]:
+        """Returns how long the replica took to initialize."""
+
+        return self._actor.initialization_latency_s
+
     def start(self, deployment_info: DeploymentInfo) -> ReplicaSchedulingRequest:
         """
         Start a new actor for current DeploymentReplica instance.
@@ -994,7 +1015,9 @@ class DeploymentReplica:
         self.update_actor_details(start_time_s=self._start_time)
         return True
 
-    def check_started(self) -> Tuple[ReplicaStartupStatus, Optional[str]]:
+    def check_started(
+        self,
+    ) -> Tuple[ReplicaStartupStatus, Optional[str], Optional[float]]:
         """Check if the replica has started. If so, transition to RUNNING.
 
         Should handle the case where the replica has already stopped.
@@ -1012,6 +1035,7 @@ class DeploymentReplica:
             worker_id=self._actor.worker_id,
             log_file_path=self._actor.log_file_path,
         )
+
         return is_ready
 
     def stop(self, graceful: bool = True) -> None:
@@ -2083,11 +2107,24 @@ class DeploymentState:
                 self._deployment_scheduler.on_replica_running(
                     replica.replica_id, replica.actor_node_id
                 )
-                logger.info(
+
+                # Log the startup latency.
+                e2e_replica_start_latency = time.time() - replica._start_time
+                replica_startup_message = (
                     f"{replica.replica_id} started successfully "
-                    f"on node '{replica.actor_node_id}'.",
-                    extra={"log_to_stderr": False},
+                    f"on node '{replica.actor_node_id}' after "
+                    f"{e2e_replica_start_latency:.1f}s."
                 )
+                if replica.initialization_latency_s is not None:
+                    # This condition should always be True. The initialization
+                    # latency is only None before the replica has initialized.
+                    replica_startup_message += (
+                        " Replica constructor, "
+                        "reconfigure method, and initial health check took "
+                        f"{replica.initialization_latency_s:.1f}s."
+                    )
+                logger.info(replica_startup_message, extra={"log_to_stderr": False})
+
             elif start_status == ReplicaStartupStatus.FAILED:
                 # Replica reconfigure (deploy / upgrade) failed
                 replicas_failed = True
