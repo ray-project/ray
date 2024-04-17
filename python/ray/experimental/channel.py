@@ -231,6 +231,7 @@ class Channel:
         """
         logger.debug(f"Setting error bit on channel: {self._base_ref}")
         try:
+            self.ensure_registered_as_reader()
             self._worker.core_worker.experimental_channel_set_error(self._base_ref)
         except BlockingIOError:
             logger.info("Could not close channel")
