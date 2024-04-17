@@ -1266,13 +1266,18 @@ def run_rllib_example_script_experiment(
     ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
 
     # Define one or more stopping criteria.
-    stop = stop or {
-        "training_iteration": args.stop_iters,
-        "env_runner_results/episode_return_mean": args.stop_reward,
-        "timesteps_total": args.stop_timesteps,
-        # TODO (sven): Deprecate (old API stack).
-        "sampler_results/episode_reward_mean": args.stop_reward,
-    }
+    if not stop:
+        if args.enable_new_api_stack:
+            stop = {
+                "env_runner_results/episode_return_mean": args.stop_reward,
+                "num_env_steps_sampled_lifetime": args.stop_timesteps,
+            }
+        else:
+            stop = {
+                "sampler_results/episode_reward_mean": args.stop_reward,
+                "timesteps_total": args.stop_timesteps,
+            }
+        stop.update({"training_iteration": args.stop_iters})
 
     from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
     from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner

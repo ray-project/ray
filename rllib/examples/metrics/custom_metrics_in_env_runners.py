@@ -5,6 +5,7 @@ import numpy as np
 
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
+from ray.rllib.utils.images import resize
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
@@ -47,6 +48,11 @@ class EnvRenderCallback(DefaultCallbacks):
             image = env.envs[0].render()
         else:
             image = env.render()
+        # Original render images for CartPole are 400x600 (hxw). We'll downsize here to
+        # a very small dimension to save space and bandwidth.
+        image = resize(image, 64, 96)
+        # For WandB videos, we need to put channels first.
+        image = np.transpose(image, axes=[2, 0, 1])
         episode.add_temporary_timestep_data("render_images", image)
 
     def on_episode_end(
@@ -70,7 +76,8 @@ class EnvRenderCallback(DefaultCallbacks):
             # Get all images of the episode.
             images = episode.get_temporary_timestep_data("render_images")
             # Create a video from the images by simply stacking them.
-            video = np.stack(images, axis=0)
+            video = np.expand_dims(np.stack(images, axis=0), axis=0)#TODO: test to make sure WandB properly logs videos.
+            #video = np.stack(images, axis=0)
 
             if episode_return > self.best_episode_and_return[1]:
                 self.best_episode_and_return = (video, episode_return)
@@ -90,22 +97,20 @@ class EnvRenderCallback(DefaultCallbacks):
             "episode_videos_best",
             self.best_episode_and_return[0],
             reduce=None,
+            reset_on_reduce=True,
         )
         env_runner.metrics.log_value(
             "episode_videos_worst",
             self.worst_episode_and_return[0],
             reduce=None,
+            reset_on_reduce=True,
         )
         # Reset our best/worst placeholders.
         self.best_episode_and_return = (None, float("-inf"))
         self.worst_episode_and_return = (None, float("inf"))
 
 
-parser = add_rllib_example_script_args(
-    default_iters=500,
-    default_timesteps=500000,
-    default_reward=-300.0,
-)
+parser = add_rllib_example_script_args(default_reward=450.0)
 
 
 if __name__ == "__main__":
@@ -130,6 +135,7 @@ if __name__ == "__main__":
         #    "repeat_action_probability": 0.0,
         #})
         .environment("CartPole-v1", env_config={"render_mode": "rgb_array"})
+        #.rollouts(rollout_fragment_length=4000)#TODO: remove: only to show that a list of videos can be uploaded per iteration (b/c now we need 2 rollouts, producing 2 videos per str-key)
         .callbacks(EnvRenderCallback)
         .training(
             # TODO: Atari.
