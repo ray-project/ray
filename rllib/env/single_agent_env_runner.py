@@ -78,7 +78,7 @@ class SingleAgentEnvRunner(EnvRunner):
             #  shape is (1, 1) which brings a problem with the action dists.
             #  shape=(1,) is expected.
             module_spec.action_space = self.env.envs[0].action_space
-            module_spec.model_config_dict = self.config.model
+            module_spec.model_config_dict = self.config.model_config
             # Only load a light version of the module, if available. This is useful
             # if the the module has target or critic networks not needed in sampling
             # or inference.

@@ -20,14 +20,23 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
     @override(TorchRLModule)
     def get_state(self, inference_only: bool = False) -> Mapping[str, Any]:
         state_dict = self.state_dict()
+        # Is this module is only in inference/exploration?
         if inference_only:
-            elements_to_filter = [
-                param
-                for param in state_dict
-                if ("vf" in param or "critic_encoder" in param)
-            ]
-            for param in elements_to_filter:
-                del state_dict[param]
+            # Remove the value function parameters.
+            for param in list(state_dict.keys()):
+                if "vf" in param or "critic_encoder" in param:
+                    del state_dict[param]
+
+            # If we use separate encoder networks for the actor and critic, we need to
+            # rename the actor encoder parameters to encoder parameters.
+            if not self.config.model_config_dict.get("vf_share_layers"):
+                # Rename the actor encoder parameters to encoder parameters.
+                for param in list(state_dict.keys()):
+                    if "actor_encoder" in param:
+                        state_dict[
+                            param.replace("actor_encoder", "encoder")
+                        ] = state_dict.pop(param)
+
         return state_dict
 
     @override(RLModule)

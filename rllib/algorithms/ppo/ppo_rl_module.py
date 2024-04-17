@@ -24,6 +24,9 @@ class PPORLModule(RLModule, abc.ABC):
         # is not shared with the actor network).
         if not self.is_learner_module:
             catalog._model_config_dict["vf_share_layers"] = True
+            # We need to set the shared flag in the encoder config
+            # b/c the catalog has already been built at this point.
+            catalog.actor_critic_encoder_config.shared = True
 
         # Build models from catalog
         self.encoder = catalog.build_actor_critic_encoder(framework=self.framework)
