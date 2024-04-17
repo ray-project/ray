@@ -44,6 +44,11 @@ class FakeLogger:
         return self._logs
 
 
+class FakeStdOut:
+    def __init__(self):
+        self.encoding = "utf-8"
+
+
 @pytest.fixture
 def serve_and_ray_shutdown():
     serve.shutdown()
@@ -797,7 +802,8 @@ def test_serve_logging_file_names(serve_and_ray_shutdown, ray_instance):
 def test_stream_to_logger():
     """Test calling methods on StreamToLogger."""
     logger = FakeLogger()
-    stream_to_logger = StreamToLogger(logger, logging.INFO)
+    stdout_object = FakeStdOut()
+    stream_to_logger = StreamToLogger(logger, logging.INFO, stdout_object)
     assert logger.get_logs() == []
 
     # Calling isatty() should return True.
@@ -816,6 +822,14 @@ def test_stream_to_logger():
     assert logger.get_logs() == [(20, "foobar")]
     stream_to_logger.flush()
     assert logger.get_logs() == [(20, "foobar"), (20, "baz")]
+
+    # Calling the attribute on the StreamToLogger should return the attribute on
+    # the stdout object.
+    assert stream_to_logger.encoding == stdout_object.encoding
+
+    # Calling non-existing attribute on the StreamToLogger should still raise error.
+    with pytest.raises(AttributeError):
+        stream_to_logger.i_dont_exist
 
 
 if __name__ == "__main__":
