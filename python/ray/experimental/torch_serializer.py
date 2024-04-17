@@ -66,4 +66,4 @@ class _TorchTensorWrapper:
         # there. Can also pin the underlying shared memory buffer to reduce
         # data movement time.
         # TODO(swang): Support NCCL.
-        return torch.as_tensor(np_array)
+        return torch.tensor(np_array)
