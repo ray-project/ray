@@ -1,4 +1,3 @@
-from PyFlyt.gym_envs import FlattenWaypointEnv
 import gymnasium as gym
 
 
@@ -13,12 +12,12 @@ class RewardWrapper(gym.RewardWrapper):
         return reward
 
 
-class QuadXWayPointsEnv(gym.Env):
+def create_quadx_waypoints_env(env_config):
     import PyFlyt.gym_envs  # noqa
+    from PyFlyt.gym_envs import FlattenWaypointEnv
 
-    def __init__(self, config=None):
-        env = gym.make("PyFlyt/QuadX-Waypoints-v1")
-        # Wrap Environment to use max 10 and -10 for rewards
-        env = RewardWrapper(env)
+    env = gym.make("PyFlyt/QuadX-Waypoints-v1")
+    # Wrap Environment to use max 10 and -10 for rewards
+    env = RewardWrapper(env)
 
-        self.env = FlattenWaypointEnv(env, context_length=1)
+    return FlattenWaypointEnv(env, context_length=1)

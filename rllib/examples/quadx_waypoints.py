@@ -1,10 +1,9 @@
-# TODO (sven): Move this example script into the new API stack.
-# TODO (sven): Move this script to `examples/rl_modules/...`
-
 import argparse
 import os
 
-from ray.rllib.examples.env.pyflyt_quadx_waypoints_env import QuadXWayPointsEnv
+from ray.rllib.examples.envs.classes.pyflyt_quadx_waypoints_env import (
+    create_quadx_waypoints_env,
+)
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.registry import get_trainable_cls
 
@@ -12,7 +11,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "--run", type=str, default="PPO", help="The RLlib-registered algorithm to use."
 )
-parser.add_argument("--num-cpus", type=int, default=0)
+parser.add_argument("--num-cpus", type=int, default=4)
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "torch"],
@@ -40,15 +39,18 @@ parser.add_argument(
 if __name__ == "__main__":
     import ray
     from ray import air, tune
+    from ray.tune.registry import register_env
 
     args = parser.parse_args()
 
     ray.init()
 
+    register_env("quadx_waypoints", create_quadx_waypoints_env)
+
     algo_cls = get_trainable_cls(args.run)
     config = algo_cls.get_default_config()
 
-    config.environment(env=QuadXWayPointsEnv).resources(
+    config.environment(env="quadx_waypoints").resources(
         num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
     ).framework(args.framework).reporting(min_time_s_per_iteration=0.1).training(
         model={
