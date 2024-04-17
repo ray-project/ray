@@ -21,6 +21,7 @@ from packaging import version
 
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.core.rl_module import INFERENCE_ONLY
 from ray.rllib.core.rl_module.marl_module import (
     DEFAULT_MODULE_ID,
     MultiAgentRLModuleSpec,
@@ -3656,7 +3657,7 @@ class AlgorithmConfig(_Config):
                     self.model_config | module_spec.model_config_dict
                 )
             # Set the `inference_only` flag for the module spec.
-            module_spec.model_config_dict["_inference_only"] = inference_only
+            module_spec.model_config_dict[INFERENCE_ONLY] = inference_only
 
         return marl_module_spec
 
