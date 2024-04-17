@@ -1,12 +1,12 @@
 (kuberay-istio)=
 # Enable mTLS and L7 observability of traffic in RayCluster with Istio
 
-This guide demonstrates the integration of KubeRay and Istio for enabling mTLS and L7 observability of traffic in a RayCluster on a local Kind cluster.
+This guide demonstrates the integration of KubeRay and Istio for enabling mTLS and L7 observability of traffic inside a RayCluster on a local Kind cluster.
 
 ## Istio
 
-[Istio](https://istio.io/) is an open source service mesh that layers transparently onto existing distributed applications.  Istio’s powerful features provide a uniform and more efficient way to secure, connect, and monitor services. Its powerful control plane brings vital features, including:
-* Secure service-to-service communication in a cluster with TLS encryption, strong identity-based authentication and authorization.
+[Istio](https://istio.io/) is an open source service mesh that provides a uniform and more efficient way to secure, connect, and monitor services. Its powerful control plane brings vital features, including:
+* Secure service-to-service communication in a cluster with TLS encryption.
 * Automatic metrics, logs, and traces for all traffic within a cluster.
 
 See the [Istio documentation](https://istio.io/latest/docs/) to learn more.
@@ -20,16 +20,16 @@ kind create cluster
 ## Step 1: Install Istio
 
 ```bash
-# download istioctl and manifests
+# Download istioctl and manifests
 export ISTIO_VERSION=1.21.1
 curl -L https://istio.io/downloadIstio | sh -
 cd istio-1.21.1
 export PATH=$PWD/bin:$PATH
 
-# install Istio with:
+# Install Istio with:
 #   1. 100% trace sampling for demo purpose
 #   2. "sanitize_te" disabled for proper grpc interception
-#   3. TLS 1.3
+#   3. TLS 1.3 enabled
 istioctl install -y -f - <<EOF
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
@@ -44,9 +44,9 @@ spec:
       minProtocolVersion: TLSV1_3
 EOF
 
-# install Istio addmons, including kiali dashboard and jaeger dashboard
+# Install Istio addons, including kiali dashboard and jaeger dashboard
 kubectl apply -f samples/addons
-# enable istio sidecar auto injection
+# Enable istio sidecar auto injection
 kubectl label namespace default istio-injection=enabled
 ```
 
@@ -54,11 +54,43 @@ See [Istio Getting Started](https://istio.io/latest/docs/setup/getting-started/)
 
 ## Step 2: Install the KubeRay operator
 
-Follow [Deploy a KubeRay operator](kuberay-operator-deploy) to install the latest stable KubeRay operator from the Helm repository.
+Follow [Deploy a KubeRay operator](kuberay-operator-deploy) to install the latest stable KubeRay operator from the Helm repository:
 
-## Step 3: Apply a Headless service for the upcoming RayCluster
+```bash
+helm repo add kuberay https://ray-project.github.io/kuberay-helm/
+helm install kuberay-operator kuberay/kuberay-operator --version 1.1.0
+```
 
-In order to let Istio learn the L7 information of the traffic in the upcoming RayCluster, we must apply a Headless service for it.
+## Step 3: Optional: Enable Istio mTLS STRICT mode
+
+This is an optional step to enable Istio mTLS in STRICT mode which provides the best security of service mesh by rejecting all undefined traffic.
+
+In this mode, we must set ENABLE_INIT_CONTAINER_INJECTION=false on the KubeRay controller.
+
+```bash
+# Set ENABLE_INIT_CONTAINER_INJECTION=false on the KubeRay
+helm upgrade kuberay-operator kuberay/kuberay-operator --version 1.1.0 \
+  --set env\[0\].name=ENABLE_INIT_CONTAINER_INJECTION \
+  --set-string env\[0\].value=false
+
+# Apply mTLS STRICT mode on Istio
+kubectl apply -f - <<EOF
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: "default"
+  namespace: "default"
+spec:
+  mtls:
+    mode: STRICT
+EOF
+```
+
+See [Istio Mutual TLS Migration](https://istio.io/latest/docs/tasks/security/authentication/mtls-migration/) for more information about the STRICT mode.
+
+## Step 4: Apply a Headless service for the upcoming RayCluster
+
+In order to let Istio learn the L7 information of the upcoming RayCluster, we must apply a Headless service for it.
 
 ```bash
 kubectl apply -f - <<EOF
@@ -129,42 +161,33 @@ spec:
 EOF
 ```
 
-Note that this Headless Service manifest MUST list ALL the ports, used by Ray explicitly, including ALL worker ports. See [Configuring Ray](https://docs.ray.io/en/latest/ray-core/configure.html#all-nodes) for more details on ports required by Ray.
+Note that this Headless Service manifest MUST list ALL the ports used by Ray explicitly, including ALL worker ports. See [Configuring Ray](https://docs.ray.io/en/latest/ray-core/configure.html#all-nodes) for more details on the ports required by Ray.
+
+:::{note}
+Kubernetes Service doesn't support specifying ports in ranges. We MUST set them one by one.
+:::
+
+:::{warning}
+The default Ray worker port range, from 10002 to 19999, is too large to specify in the service manifest and can cause memory issue in kubernetes. It is recommended to set a smaller `max-worker-port` to work with Istio.
+:::
 
 ## Step 4: Create the RayCluster
 
 The upcoming RayCluster MUST use exactly the same ports listed in the previous Headless Service, including the `max-worker-port`.
 In addition, the `node-ip-address` MUST be set to the Pod FQDN of the Headless Service to enable Istio L7 observability.
 
-```bash
-kubectl apply -f - <<EOF
-apiVersion: ray.io/v1
-kind: RayCluster
-metadata:
-  name: raycluster-istio
-spec:
-  rayVersion: '2.10.0-aarch64'
-  headGroupSpec:
-    rayStartParams:
-      num-cpus: '1'
-      node-manager-port: '6380'
-      object-manager-port: '6381'
-      runtime-env-agent-port: '6382'
-      dashboard-agent-grpc-port: '6383'
-      dashboard-agent-listen-port: '52365'
-      metrics-export-port: '8080'
-      max-worker-port: '10012'
-      node-ip-address: \$(hostname -I | tr -d ' ' | sed 's/\./-/g').raycluster-istio-headless-svc.default.svc.cluster.local
-    template:
-      spec:
-        containers:
-        - name: ray-head
-          image: rayproject/ray:2.10.0-aarch64
-  workerGroupSpecs:
-    - replicas: 1
-      minReplicas: 1
-      maxReplicas: 1
-      groupName: small-group
+  ::::{tab-set}
+
+  :::{tab-item} ARM64 (Apple Silicon)
+  ```bash
+  kubectl apply -f - <<EOF
+  apiVersion: ray.io/v1
+  kind: RayCluster
+  metadata:
+    name: raycluster-istio
+  spec:
+    rayVersion: '2.10.0'
+    headGroupSpec:
       rayStartParams:
         num-cpus: '1'
         node-manager-port: '6380'
@@ -178,18 +201,94 @@ spec:
       template:
         spec:
           containers:
-          - name: ray-worker
+          - name: ray-head
             image: rayproject/ray:2.10.0-aarch64
-EOF
-```
+    workerGroupSpecs:
+      - replicas: 1
+        minReplicas: 1
+        maxReplicas: 1
+        groupName: small-group
+        rayStartParams:
+          num-cpus: '1'
+          node-manager-port: '6380'
+          object-manager-port: '6381'
+          runtime-env-agent-port: '6382'
+          dashboard-agent-grpc-port: '6383'
+          dashboard-agent-listen-port: '52365'
+          metrics-export-port: '8080'
+          max-worker-port: '10012'
+          node-ip-address: \$(hostname -I | tr -d ' ' | sed 's/\./-/g').raycluster-istio-headless-svc.default.svc.cluster.local
+        template:
+          spec:
+            containers:
+            - name: ray-worker
+              image: rayproject/ray:2.10.0-aarch64
+  EOF
+  ```
+  :::
 
-## Step 5: Run Ray application to generate traffic
+  :::{tab-item} x86-64 (Intel/Linux)
+  ```bash
+  kubectl apply -f - <<EOF
+  apiVersion: ray.io/v1
+  kind: RayCluster
+  metadata:
+    name: raycluster-istio
+  spec:
+    rayVersion: '2.10.0'
+    headGroupSpec:
+      rayStartParams:
+        num-cpus: '1'
+        node-manager-port: '6380'
+        object-manager-port: '6381'
+        runtime-env-agent-port: '6382'
+        dashboard-agent-grpc-port: '6383'
+        dashboard-agent-listen-port: '52365'
+        metrics-export-port: '8080'
+        max-worker-port: '10012'
+        node-ip-address: \$(hostname -I | tr -d ' ' | sed 's/\./-/g').raycluster-istio-headless-svc.default.svc.cluster.local
+      template:
+        spec:
+          containers:
+          - name: ray-head
+            image: rayproject/ray:2.10.0
+    workerGroupSpecs:
+      - replicas: 1
+        minReplicas: 1
+        maxReplicas: 1
+        groupName: small-group
+        rayStartParams:
+          num-cpus: '1'
+          node-manager-port: '6380'
+          object-manager-port: '6381'
+          runtime-env-agent-port: '6382'
+          dashboard-agent-grpc-port: '6383'
+          dashboard-agent-listen-port: '52365'
+          metrics-export-port: '8080'
+          max-worker-port: '10012'
+          node-ip-address: \$(hostname -I | tr -d ' ' | sed 's/\./-/g').raycluster-istio-headless-svc.default.svc.cluster.local
+        template:
+          spec:
+            containers:
+            - name: ray-worker
+              image: rayproject/ray:2.10.0
+  EOF
+  ```
+  :::
+
+  ::::
+
+:::{note}
+The Pod FQDN of the Headless service should be in the format of <pod-ipv4-address>.<service>.<namespace>.svc.<zone>. or the format of <pod-hostname>.<service>.<namespace>.svc.<zone>. depending on your implementation of the [Kubernetes DNS specification](https://github.com/kubernetes/dns/blob/master/docs/specification.md).
+:::
+
+## Step 5: Run Ray application to generate traffic for later visualization
 
 After the RayCluster is ready, use the following script to generate internal traffic.
 
 ```bash
 export HEAD_POD=$(kubectl get pods --selector=ray.io/node-type=head -o custom-columns=POD:metadata.name --no-headers)
-kubectl exec -it $HEAD_POD -- python -c "import ray; ray.get([ray.remote(lambda x: print(x)).remote(i) for i in range(10000)])"
+kubectl exec -it $HEAD_POD -- python -c "import ray; ray.get([ray.remote(lambda x: print(x)).remote(i) for i in range(5000)])"
 ```
 
 ## Step 6: Verify the auto mTLS and L7 observability
@@ -200,8 +299,26 @@ istioctl dashboard kiali
 
 Go to http://localhost:20001/kiali/console/namespaces/default/workloads/raycluster-istio?duration=60&refresh=60000&tab=info
 
+![Istio Kiali Overview](../images/istio-kiali-1.png)
+
+Go to the `Traffic` tab. You can see that all traffic are protected by mTLS.
+
+![Istio Kiali Traffic](../images/istio-kiali-2.png)
+
 ```bash
-istioctl dashboard kiali
+istioctl dashboard jaeger
 ```
 
 Go to http://localhost:16686/jaeger/search?limit=1000&lookback=1h&maxDuration&minDuration&service=raycluster-istio.default
+
+![Istio Jaeger Overview](../images/istio-jaeger-1.png)
+
+You can click on any trace of the internal grpc calls and view their detail, such as grpc.path, and status code.
+
+![Istio Jaeger Trace](../images/istio-jaeger-2.png)
+
+## Step 7: Clean up
+
+```bash
+kind delete cluster
+```
