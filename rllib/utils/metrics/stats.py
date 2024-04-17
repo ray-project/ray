@@ -1,5 +1,6 @@
 import random
 import time
+from typing import Any, Dict
 
 import numpy as np
 
@@ -120,6 +121,23 @@ class Stats:
     def __int__(self):
         return int(self.peek())
 
+    def get_state(self) -> Dict[str, Any]:
+        return {
+            "values": self.values,
+            "reduce": self._reduce_method,
+            "window": self._window,
+            "ema_coeff": self._ema_coeff,
+        }
+    
+    @staticmethod
+    def from_state(self, state: Dict[str, Any]) -> "Stats":
+        return Stats(
+            state["values"],
+            reduce=state["reduce"],
+            window=state["window"],
+            ema_coeff=state["ema_coeff"],
+        )
+
     def _reduced_values(self):
         # No reduction. Return list as-is.
         if self._reduce_method is None:
@@ -134,4 +152,14 @@ class Stats:
         else:
             reduce_meth = getattr(np, self._reduce_method)
             values = self.values if self._window is None else self.values[-self._window:]
-            return reduce_meth(values), values
+            reduced = reduce_meth(values)
+
+            # For window=None (infinite window) and reduce != mean, we don't have to
+            # keep any values, except the last (reduced) one.
+            if self._window is None and self._reduce_method != "mean":
+                new_values = [reduced]
+            # In all other cases, keep the values that were also used for the reduce
+            # operation.
+            else:
+                new_values = values
+            return reduced, new_values

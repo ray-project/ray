@@ -60,6 +60,9 @@ class SingleAgentEnvRunner(EnvRunner):
         # Global counter for environment steps from all workers. This is
         # needed for schedulers used by `RLModule`s.
         self.global_num_env_steps_sampled = 0
+        # Stores the value of `self.global_num_env_steps_sampled` at end of last
+        # `self.get_metrics()` call (so we can compute the env/agent-step delta).
+        self._last_global_num_env_steps_sampled = 0
 
         # Create the env-to-module connector pipeline.
         self._env_to_module = self.config.build_env_to_module_connector(self.env)
@@ -571,7 +574,6 @@ class SingleAgentEnvRunner(EnvRunner):
                     # Per-RLModule returns.
                     "module_episode_returns_mean": {DEFAULT_MODULE_ID: episode_return},
                 },
-                window=self.config.metrics_num_episodes_for_smoothing,
             )
             # For some metrics, log min/max as well.
             self.metrics.log_dict(
@@ -580,7 +582,6 @@ class SingleAgentEnvRunner(EnvRunner):
                     "episode_return_min": episode_return,
                 },
                 reduce="min",
-                window=self.config.metrics_num_episodes_for_smoothing,
             )
             self.metrics.log_dict(
                 {
@@ -588,25 +589,23 @@ class SingleAgentEnvRunner(EnvRunner):
                     "episode_return_max": episode_return,
                 },
                 reduce="max",
-                window=self.config.metrics_num_episodes_for_smoothing,
-            )
-            # Agent- and env timesteps done.
-            self.metrics.log_dict(
-                {
-                    NUM_AGENT_STEPS_SAMPLED: {DEFAULT_AGENT_ID: episode_length},
-                    NUM_ENV_STEPS_SAMPLED: episode_length,
-                },
-                # Sum up over the n episodes that were completed ...
-                reduce="sum",
-                # ... but not over lifetime (only over individual sampling cycles).
-                reset_on_reduce=True,
             )
 
-        # Episodes this iter and lifetime.
-        self.metrics.log_value(
-            NUM_EPISODES,
-            len(self._done_episodes_for_metrics),
+        # Agent- and env timesteps done this iter.
+        # Episodes this iter.
+        num_env_steps_this_iter = (
+            self.global_num_env_steps_sampled - self._last_global_num_env_steps_sampled
+        )
+        self._last_global_num_env_steps_sampled = self.global_num_env_steps_sampled
+        self.metrics.log_dict(
+            {
+                NUM_AGENT_STEPS_SAMPLED: {DEFAULT_AGENT_ID: num_env_steps_this_iter},
+                NUM_ENV_STEPS_SAMPLED: num_env_steps_this_iter,
+                NUM_EPISODES: len(self._done_episodes_for_metrics),
+            },
+            # Sum up over the n episodes that were completed ...
             reduce="sum",
+            # ... but not over lifetime (only over individual sampling cycles).
             reset_on_reduce=True,
         )
 

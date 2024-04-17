@@ -2,22 +2,24 @@
 # TODO (sven): Change the actual strings into more fitting ones (e.g. `sampler_results`
 #  -> `env_runners` and `learner_stats` -> `learners`).
 EVALUATION_RESULTS = "evaluation"
-ENV_RUNNER_RESULTS = "sampler_results"
-LEARNER_RESULTS = "learner_stats"
+ENV_RUNNER_RESULTS = "env_runners"
+LEARNER_RESULTS = "learners"
 FAULT_TOLERANCE_RESULTS = "fault_tolerance"
-ALGORITHM_RESULTS = "algo_results"
+#ALGORITHM_RESULTS = "algorithm"
 
 # Counters for sampling, sampling (on eval workers) and
 # training steps (env- and agent steps).
 NUM_AGENT_STEPS_SAMPLED = "num_agent_steps_sampled"
-NUM_AGENT_STEPS_SAMPLED_THIS_ITER = "num_agent_steps_sampled_this_iter"
+NUM_AGENT_STEPS_SAMPLED_LIFETIME = "num_agent_steps_sampled_lifetime"
+NUM_AGENT_STEPS_SAMPLED_THIS_ITER = "num_agent_steps_sampled_this_iter"  # @OldAPIStack
 NUM_ENV_STEPS_SAMPLED = "num_env_steps_sampled"
-NUM_ENV_STEPS_SAMPLED_THIS_ITER = "num_env_steps_sampled_this_iter"
+NUM_ENV_STEPS_SAMPLED_LIFETIME = "num_env_steps_sampled_lifetime"
+NUM_ENV_STEPS_SAMPLED_THIS_ITER = "num_env_steps_sampled_this_iter"  # @OldAPIStack
 NUM_ENV_STEPS_SAMPLED_FOR_EVALUATION_THIS_ITER = (
     "num_env_steps_sampled_for_evaluation_this_iter"
 )
 NUM_EPISODES = "num_episodes"
-NUM_EPISODES_THIS_ITER = "num_episodes_this_iter"
+NUM_EPISODES_LIFETIME = "num_episodes_lifetime"
 
 NUM_ENV_STEPS_TRAINED = "num_env_steps_trained"
 NUM_AGENT_STEPS_TRAINED = "num_agent_steps_trained"
@@ -62,11 +64,11 @@ RESTORE_EVAL_WORKERS_TIMER = "restore_eval_workers"
 SYNCH_WORKER_WEIGHTS_TIMER = "synch_weights"
 SYNCH_ENV_CONNECTOR_STATES_TIMER = "synch_env_connectors"
 GRAD_WAIT_TIMER = "grad_wait"
-SAMPLE_TIMER = "sample"
+SAMPLE_TIMER = "sample"  # @OldAPIStack
 ENV_RUNNER_SAMPLING_TIMER = "env_runner_sampling_timer"
 LEARNER_UPDATE_TIMER = "learner_update_timer"
 LEARNER_ADDITIONAL_UPDATE_TIMER = "learner_additional_update_timer"
-LEARN_ON_BATCH_TIMER = "learn"  # TODO (sven): Deprecate.
+LEARN_ON_BATCH_TIMER = "learn"  # @OldAPIStack
 LOAD_BATCH_TIMER = "load"
 TARGET_NET_UPDATE_TIMER = "target_net_update"
 

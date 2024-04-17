@@ -91,7 +91,6 @@ from ray.rllib.utils.error import ERR_MSG_INVALID_ENV_DESCRIPTOR, EnvError
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.metrics import (
-    ALGORITHM_RESULTS,
     ALL_MODULES,
     ENV_RUNNER_RESULTS,
     EVALUATION_ITERATION_TIMER,
@@ -2785,7 +2784,14 @@ class Algorithm(Trainable, AlgorithmBase):
         ):
             state["local_replay_buffer"] = self.local_replay_buffer.get_state()
 
-        state["counters"] = self._counters
+        # New API stack: Save entire MetricsLogger state.
+        if self.config.uses_new_env_runners:
+            state["metrics_logger"] = self.metrics.get_state()
+        # Old API stack: Save only counters.
+        else:
+            state["counters"] = self._counters
+
+        # Save current `training_iteration`.
         state["training_iteration"] = self.training_iteration
 
         return state
@@ -2855,6 +2861,9 @@ class Algorithm(Trainable, AlgorithmBase):
                     "You configured `_enable_new_api_stack=True`, but no "
                     "`learner_state_dir` key could be found in the state dict!"
                 )
+            # Recover MetricsLogger state.
+            if "metrics_logger" in state:
+                self.metrics.set_state(state["metrics_logger"])
 
         if "counters" in state:
             self._counters = state["counters"]
@@ -3187,15 +3196,11 @@ class Algorithm(Trainable, AlgorithmBase):
     def _compile_iteration_results(
         self, *, train_results, eval_results, step_ctx
     ):
-        # Return dict.
-        results: ResultDict = {}
+        # Return dict (shallow copy of `train_results`).
+        results: ResultDict = train_results.copy()
         # Evaluation results.
         if eval_results:
             results[EVALUATION_RESULTS] = eval_results
-        # EnvRunner results.
-        results[ENV_RUNNER_RESULTS] = train_results[ENV_RUNNER_RESULTS]
-        # Learner results.
-        results[LEARNER_RESULTS] = train_results[LEARNER_RESULTS]
         # Fault tolerance stats.
         results[FAULT_TOLERANCE_STATS] = {
             "num_healthy_workers": self.workers.num_healthy_remote_workers(),
@@ -3203,57 +3208,9 @@ class Algorithm(Trainable, AlgorithmBase):
             "num_remote_worker_restarts": self.workers.num_remote_worker_restarts(),
         }
 
-        ## Train-steps- and env/agent-steps this iteration.
-        #for c in [
-        #    NUM_AGENT_STEPS_SAMPLED,
-        #    NUM_AGENT_STEPS_TRAINED,
-        #    NUM_ENV_STEPS_SAMPLED,
-        #    NUM_ENV_STEPS_TRAINED,
-        #]:
-        #    results[c] = self._counters[c]
-        #time_taken_sec = step_ctx.get_time_taken_sec()
-        #if self.config.count_steps_by == "agent_steps":
-        #    results[NUM_AGENT_STEPS_SAMPLED + "_this_iter"] = step_ctx.sampled
-        #    results[NUM_AGENT_STEPS_TRAINED + "_this_iter"] = step_ctx.trained
-        #    results[NUM_AGENT_STEPS_SAMPLED + "_throughput_per_sec"] = (
-        #        step_ctx.sampled / time_taken_sec
-        #    )
-        #    results[NUM_AGENT_STEPS_TRAINED + "_throughput_per_sec"] = (
-        #        step_ctx.trained / time_taken_sec
-        #    )
-        #    # TODO: For CQL and other algos, count by trained steps.
-        #    results["timesteps_total"] = self._counters[NUM_AGENT_STEPS_SAMPLED]
-        #else:
-        #    results[NUM_ENV_STEPS_SAMPLED + "_this_iter"] = step_ctx.sampled
-        #    results[NUM_ENV_STEPS_TRAINED + "_this_iter"] = step_ctx.trained
-        #    results[NUM_ENV_STEPS_SAMPLED + "_throughput_per_sec"] = (
-        #        step_ctx.sampled / time_taken_sec
-        #    )
-        #    results[NUM_ENV_STEPS_TRAINED + "_throughput_per_sec"] = (
-        #        step_ctx.trained / time_taken_sec
-        #    )
-        #    # TODO: For CQL and other algos, count by trained steps.
-        #    results["timesteps_total"] = self._counters[NUM_ENV_STEPS_SAMPLED]
-
         # TODO: Backward compatibility.
         #results[STEPS_TRAINED_THIS_ITER_COUNTER] = step_ctx.trained
         #results["agent_timesteps_total"] = self._counters[NUM_AGENT_STEPS_SAMPLED]
-
-        # Algorithm stats.
-        results[ALGORITHM_RESULTS] = self.metrics.reduce()
-        ## Process timer results.
-        #timers = {}
-        #for k, timer in self._timers.items():
-        #    timers["{}_time_ms".format(k)] = round(timer.mean * 1000, 3)
-        #    if timer.has_units_processed():
-        #        timers["{}_throughput".format(k)] = round(timer.mean_throughput, 3)
-        #results["timers"] = timers
-
-        ## Process counter results.
-        #counters = {}
-        #for k, counter in self._counters.items():
-        #    counters[k] = counter
-        #results["counters"] = counters
 
         return results
 
