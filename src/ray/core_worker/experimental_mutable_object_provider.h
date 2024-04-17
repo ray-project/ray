@@ -90,12 +90,12 @@ class MutableObjectProvider {
   // Object manager for the mutable objects.
   ray::experimental::MutableObjectManager object_manager_;
 
-  // Protects `cross_node_map_`.
-  absl::Mutex cross_node_map_lock_;
+  // Protects `remote_writer_object_to_local_reader_`.
+  absl::Mutex remote_writer_object_to_local_reader_lock_;
   // Maps the remote node object ID (i.e., the object ID that the remote node writes to)
   // to the corresponding local object ID (i.e., the object ID that the local node reads
   // from) and the number of readers.
-  std::unordered_map<ObjectID, LocalInfo> cross_node_map_;
+  std::unordered_map<ObjectID, LocalInfo> remote_writer_object_to_local_reader_;
 
   // Creates a function for each object. This function waits for changes on the object and
   // then sends those changes to a remote node via RPC.

@@ -65,12 +65,12 @@ void MutableObjectProvider::RegisterReaderChannel(const ObjectID &object_id) {
 void MutableObjectProvider::HandleRegisterMutableObject(const ObjectID &object_id,
                                                         int64_t num_readers,
                                                         const ObjectID &local_object_id) {
-  absl::MutexLock guard(&cross_node_map_lock_);
+  absl::MutexLock guard(&remote_writer_object_to_local_reader_lock_);
 
   LocalInfo info;
   info.num_readers = num_readers;
   info.local_object_id = local_object_id;
-  bool success = cross_node_map_.insert({object_id, info}).second;
+  bool success = remote_writer_object_to_local_reader_.insert({object_id, info}).second;
   RAY_CHECK(success);
 
   RegisterReaderChannel(local_object_id);
@@ -81,9 +81,9 @@ void MutableObjectProvider::HandlePushMutableObject(
   LocalInfo info;
   {
     const ObjectID object_id = ObjectID::FromBinary(request.object_id());
-    absl::MutexLock guard(&cross_node_map_lock_);
-    auto it = cross_node_map_.find(object_id);
-    RAY_CHECK(it != cross_node_map_.end());
+    absl::MutexLock guard(&remote_writer_object_to_local_reader_lock_);
+    auto it = remote_writer_object_to_local_reader_.find(object_id);
+    RAY_CHECK(it != remote_writer_object_to_local_reader_.end());
     info = it->second;
   }
   size_t data_size = request.data_size();
