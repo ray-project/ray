@@ -277,7 +277,7 @@ class ReplicaActor:
         # Guards against calling the user's callable constructor multiple times.
         self._user_callable_initialized = False
         self._user_callable_initialized_lock = asyncio.Lock()
-        self.initialization_latency: Optional[float] = None
+        self._initialization_latency: Optional[float] = None
 
         # Set metadata for logs and metrics.
         # servable_object will be populated in `initialize_and_get_metadata`.
@@ -589,7 +589,7 @@ class ReplicaActor:
         self,
         deployment_config: DeploymentConfig = None,
         _after: Optional[Any] = None,
-    ) -> Tuple[DeploymentConfig, DeploymentVersion, float]:
+    ) -> Tuple[DeploymentConfig, DeploymentVersion, Optional[float]]:
         """Handles initializing the replica.
 
         Returns: 3-tuple containing
@@ -622,17 +622,17 @@ class ReplicaActor:
 
             # Save the initialization latency if the replica is initializing
             # for the first time.
-            if self.initialization_latency is None:
-                self.initialization_latency = time.time() - initialization_start_time
+            if self._initialization_latency is None:
+                self._initialization_latency = time.time() - initialization_start_time
 
-            return (*self._get_metadata(), self.initialization_latency)
+            return self._get_metadata()
         except Exception:
             raise RuntimeError(traceback.format_exc()) from None
 
     async def reconfigure(
         self,
         deployment_config: DeploymentConfig,
-    ) -> Tuple[DeploymentConfig, DeploymentVersion]:
+    ) -> Tuple[DeploymentConfig, DeploymentVersion, Optional[float]]:
         try:
             user_config_changed = (
                 deployment_config.user_config != self._deployment_config.user_config
@@ -669,10 +669,11 @@ class ReplicaActor:
 
     def _get_metadata(
         self,
-    ) -> Tuple[DeploymentConfig, DeploymentVersion]:
+    ) -> Tuple[DeploymentConfig, DeploymentVersion, Optional[float]]:
         return (
             self._version.deployment_config,
             self._version,
+            self._initialization_latency,
         )
 
     def _save_cpu_profile_data(self) -> str:
