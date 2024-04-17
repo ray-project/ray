@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any, Dict, Mapping
 
 from ray.rllib.algorithms.ppo.ppo_rl_module import PPORLModule
 
@@ -16,6 +16,19 @@ torch, nn = try_import_torch()
 
 class PPOTorchRLModule(TorchRLModule, PPORLModule):
     framework: str = "torch"
+
+    @override(TorchRLModule)
+    def get_state(self, inference_only: bool = False) -> Mapping[str, Any]:
+        state_dict = self.state_dict()
+        if inference_only:
+            elements_to_filter = [
+                param
+                for param in state_dict
+                if ("vf" in param or "critic_encoder" in param)
+            ]
+            for param in elements_to_filter:
+                del state_dict[param]
+        return state_dict
 
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Dict[str, Any]:

@@ -620,7 +620,7 @@ class Algorithm(Trainable, AlgorithmBase):
         )
 
         # Ensure remote workers are initially in sync with the local worker.
-        self.workers.sync_weights()
+        self.workers.sync_weights(inference_only=True)
 
         # Compile, validate, and freeze an evaluation config.
         self.evaluation_config = self.config.get_evaluation_config_object()
@@ -762,7 +762,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 )
 
             # Sync the weights from the learner group to the rollout workers.
-            weights = self.learner_group.get_weights()
+            weights = self.learner_group.get_weights(inference_only=True)
             local_worker.set_weights(weights)
             self.workers.sync_weights()
 

@@ -615,10 +615,10 @@ class SingleAgentEnvRunner(EnvRunner):
             weights = self._convert_to_tensor(weights)
             self.module.set_state(weights)
 
-    def get_weights(self, modules=None):
+    def get_weights(self, modules=None, inference_only: bool = False):
         """Returns the weights of our (single-agent) RLModule."""
 
-        return self.module.get_state()
+        return self.module.get_state(inference_only=inference_only)
 
     @override(EnvRunner)
     def assert_healthy(self):

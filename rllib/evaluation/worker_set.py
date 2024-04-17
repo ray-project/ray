@@ -448,6 +448,7 @@ class WorkerSet:
         to_worker_indices: Optional[List[int]] = None,
         global_vars: Optional[Dict[str, TensorType]] = None,
         timeout_seconds: Optional[int] = 0,
+        inference_only: Optional[bool] = False,
     ) -> None:
         """Syncs model weights from the given weight source to all remote workers.
 
@@ -485,7 +486,7 @@ class WorkerSet:
                     "`from_worker_or_trainer` is None. In this case, workerset "
                     "should have local_worker. But local_worker is also None."
                 )
-            weights = weights_src.get_weights(policies)
+            weights = weights_src.get_weights(policies, inference_only)
             # Move weights to the object store to avoid having to make n pickled copies
             # of the weights dict for each worker.
             weights_ref = ray.put(weights)

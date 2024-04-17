@@ -464,10 +464,11 @@ class PPO(Algorithm):
                     from_worker_or_learner_group=self.learner_group,
                     policies=policies_to_update,
                     global_vars=None,
+                    inference_only=True,
                 )
             else:
                 weights = self.learner_group.get_weights()
-                self.workers.local_worker().set_weights(weights)
+                self.workers.local_worker().set_weights(weights, inference_only=True)
 
         kl_dict = {}
         if self.config.use_kl_loss:

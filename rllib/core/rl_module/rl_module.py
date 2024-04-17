@@ -380,8 +380,10 @@ class RLModule(abc.ABC):
         self.config = config
         # By default, each module is a learner module and contains all building blocks,
         # such as target networks or critic networks used in the training process.
-        self.is_learner_module = self.config.model_config_dict.get(
-            "is_learner_module", True
+        self.is_learner_module = (
+            self.config.model_config_dict.get("is_learner_module", True)
+            if hasattr(self.config, "model_config_dict")
+            else True
         )
         # Make sure, `setup()` is only called once, no matter what. In some cases
         # of multiple inheritance (and with our __post_init__ functionality in place,

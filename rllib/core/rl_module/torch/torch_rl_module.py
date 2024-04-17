@@ -105,7 +105,7 @@ class TorchRLModule(nn.Module, RLModule):
         return compile_wrapper(self, compile_config)
 
     @override(RLModule)
-    def get_state(self) -> Mapping[str, Any]:
+    def get_state(self, inference_only: bool = False) -> Mapping[str, Any]:
         return self.state_dict()
 
     @override(RLModule)
