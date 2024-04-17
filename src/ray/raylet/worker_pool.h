@@ -395,6 +395,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// reasonable size.
   void TryKillingIdleWorkers();
 
+  /// Get the NodeID of this worker pool.
+  const NodeID &GetNodeID() const;
+
  protected:
   void update_worker_startup_token_counter();
 

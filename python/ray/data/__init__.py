@@ -10,6 +10,7 @@ from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     NodeIdStr,
 )
+from ray.data._internal.logging import configure_logging
 from ray.data._internal.progress_bar import set_progress_bars
 from ray.data.context import DataContext, DatasetContext
 from ray.data.dataset import Dataset, Schema
@@ -39,6 +40,7 @@ from ray.data.read_api import (  # noqa: F401
     from_torch,
     range,
     range_tensor,
+    read_avro,
     read_bigquery,
     read_binary_files,
     read_csv,
@@ -61,6 +63,7 @@ from ray.data.read_api import (  # noqa: F401
 _cached_fn = None
 _cached_cls = None
 
+configure_logging()
 
 try:
     import pyarrow as pa
@@ -118,6 +121,7 @@ __all__ = [
     "from_huggingface",
     "range",
     "range_tensor",
+    "read_avro",
     "read_text",
     "read_binary_files",
     "read_csv",

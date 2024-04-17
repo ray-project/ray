@@ -1,50 +1,8 @@
-import asyncio
-import logging
-from typing import Tuple
-
 import click
 
 from ray import serve
-from ray.serve._private.benchmarks.common import run_throughput_benchmark
+from ray.serve._private.benchmarks.common import Benchmarker, Hello
 from ray.serve.handle import DeploymentHandle
-
-
-@serve.deployment(ray_actor_options={"num_cpus": 0})
-class Downstream:
-    def __init__(self):
-        logging.getLogger("ray.serve").setLevel(logging.WARNING)
-
-    def hi(self) -> bytes:
-        return b"hi"
-
-
-@serve.deployment
-class Caller:
-    def __init__(
-        self,
-        downstream: DeploymentHandle,
-        *,
-        batch_size: int,
-        num_trials: int,
-        trial_runtime: float,
-    ):
-        logging.getLogger("ray.serve").setLevel(logging.WARNING)
-
-        self._h = downstream
-        self._batch_size = batch_size
-        self._num_trials = num_trials
-        self._trial_runtime = trial_runtime
-
-    async def _do_single_batch(self):
-        await asyncio.gather(*[self._h.hi.remote() for _ in range(self._batch_size)])
-
-    async def run_benchmark(self) -> Tuple[float, float]:
-        return await run_throughput_benchmark(
-            fn=self._do_single_batch,
-            multiplier=self._batch_size,
-            num_trials=self._num_trials,
-            trial_runtime=self._trial_runtime,
-        )
 
 
 @click.command(help="Benchmark deployment handle throughput.")
@@ -78,15 +36,19 @@ def main(
     num_trials: int,
     trial_runtime: float,
 ):
-    app = Caller.bind(
-        Downstream.options(num_replicas=num_replicas).bind(),
+    app = Benchmarker.bind(
+        Hello.options(
+            num_replicas=num_replicas, ray_actor_options={"num_cpus": 0}
+        ).bind(),
+    )
+    h: DeploymentHandle = serve.run(app)
+
+    mean, stddev = h.run_throughput_benchmark.remote(
         batch_size=batch_size,
         num_trials=num_trials,
         trial_runtime=trial_runtime,
-    )
-    h = serve.run(app)
+    ).result()
 
-    mean, stddev = h.run_benchmark.remote().result()
     print(
         "DeploymentHandle throughput {}: {} +- {} requests/s".format(
             f"(num_replicas={num_replicas}, batch_size={batch_size})",

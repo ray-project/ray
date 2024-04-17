@@ -1,18 +1,18 @@
-from collections import Counter
 import fnmatch
-from pathlib import Path
-from typing import Callable, Dict, Optional, Union
 import logging
 import os
 import time
+from collections import Counter
+from pathlib import Path
+from typing import Callable, Dict, Optional, Union
 
 import pyarrow.fs
 
 from ray.train._internal.storage import (
     StorageContext,
-    get_fs_and_path,
     _download_from_fs_path,
     _list_at_fs_path,
+    get_fs_and_path,
 )
 from ray.tune.experiment.trial import Trial
 from ray.tune.impl.out_of_band_serialize_dataset import out_of_band_serialize_dataset

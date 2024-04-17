@@ -1,6 +1,9 @@
 import os
+import random
 import sys
+import threading
 import time
+import traceback
 
 import numpy as np
 import pytest
@@ -1168,6 +1171,62 @@ def test_get_actor_race_condition(shutdown_only):
         CONCURRENCY = 8
         results = do_run(i, concurrency=CONCURRENCY)
         assert ["ok"] * CONCURRENCY == results
+
+
+def test_create_actor_race_condition(shutdown_only):
+    """Make sure we can create actors in multiple threads without
+    race conditions.
+
+    Check https://github.com/ray-project/ray/issues/41324
+    """
+
+    @ray.remote
+    class Actor:
+        pass
+
+    def create(name, namespace, results, i):
+        time.sleep(random.random())
+        try:
+            Actor.options(
+                name=name,
+                namespace=namespace,
+                get_if_exists=True,
+                lifetime="detached",
+            ).remote()
+            results[i] = "ok"
+        except Exception:
+            e = traceback.format_exc()
+            results[i] = e
+
+    CONCURRENCY = 1000
+    ACTOR_NAME = "TestActor"
+    ACTOR_NAMESPACE = "TestNamespace"
+
+    def run_and_check():
+        results = [None] * CONCURRENCY
+        threads = [None] * CONCURRENCY
+        for i in range(CONCURRENCY):
+            threads[i] = threading.Thread(
+                target=create, args=(ACTOR_NAME, ACTOR_NAMESPACE, results, i)
+            )
+
+        for thread in threads:
+            thread.start()
+
+        for thread in threads:
+            thread.join()
+
+        for result in results:
+            assert result == "ok"
+
+        actor = ray.get_actor(
+            ACTOR_NAME, namespace=ACTOR_NAMESPACE
+        )  # Creation and get should be successful
+        ray.kill(actor)  # Cleanup
+
+    ray.init()
+    for _ in range(50):
+        run_and_check()
 
 
 def test_get_actor_in_remote_workers(ray_start_cluster):

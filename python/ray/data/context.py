@@ -217,6 +217,8 @@ class DataContext:
         log_internal_stack_trace_to_stdout: Whether to include internal Ray Data/Ray
             Core code stack frames when logging to stdout. The full stack trace is
             always written to the Ray Data log file.
+        print_on_execution_start: If ``True``, print execution information when
+            execution starts.
     """
 
     target_max_block_size: int = DEFAULT_TARGET_MAX_BLOCK_SIZE
@@ -260,6 +262,7 @@ class DataContext:
     log_internal_stack_trace_to_stdout: bool = (
         DEFAULT_LOG_INTERNAL_STACK_TRACE_TO_STDOUT
     )
+    print_on_execution_start: bool = True
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to

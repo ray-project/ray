@@ -6,7 +6,7 @@ import re
 import sys
 import threading
 import time
-from typing import Callable, Dict, List, Set, Tuple, Any, Optional
+from typing import Callable, Dict, List, Set, Tuple, Any, Optional, Union, Iterable
 
 import ray
 from ray.experimental.tqdm_ray import RAY_TQDM_MAGIC
@@ -35,7 +35,7 @@ def setup_component_logger(
     logging_level,
     logging_format,
     log_dir,
-    filename,
+    filename: Union[str, Iterable[str]],
     max_bytes,
     backup_count,
     logger_name=None,
@@ -58,8 +58,8 @@ def setup_component_logger(
         logging_format: Logging format string.
         log_dir: Log directory path. If empty, logs will go to
             stderr.
-        filename: Name of the file to write logs. If empty, logs will go
-            to stderr.
+        filename: A single filename or an iterable of filenames to write logs to.
+            If empty, logs will go to stderr.
         max_bytes: Same argument as RotatingFileHandler's maxBytes.
         backup_count: Same argument as RotatingFileHandler's backupCount.
         logger_name: Used to create or get the correspoding
@@ -71,20 +71,25 @@ def setup_component_logger(
     ray._private.log.clear_logger("ray")
 
     logger = logging.getLogger(logger_name)
-    if type(logging_level) is str:
+    if isinstance(logging_level, str):
         logging_level = logging.getLevelName(logging_level.upper())
-    if not filename or not log_dir:
-        handler = logging.StreamHandler()
-    else:
-        handler = logging.handlers.RotatingFileHandler(
-            os.path.join(log_dir, filename),
-            maxBytes=max_bytes,
-            backupCount=backup_count,
-        )
-    handler.setLevel(logging_level)
     logger.setLevel(logging_level)
-    handler.setFormatter(logging.Formatter(logging_format))
-    logger.addHandler(handler)
+
+    filenames = [filename] if isinstance(filename, str) else filename
+
+    for filename in filenames:
+        if not filename or not log_dir:
+            handler = logging.StreamHandler()
+        else:
+            handler = logging.handlers.RotatingFileHandler(
+                os.path.join(log_dir, filename),
+                maxBytes=max_bytes,
+                backupCount=backup_count,
+            )
+        handler.setLevel(logging_level)
+        handler.setFormatter(logging.Formatter(logging_format))
+        logger.addHandler(handler)
+
     logger.propagate = propagate
     return logger
 

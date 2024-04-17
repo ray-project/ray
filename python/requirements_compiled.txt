@@ -12,6 +12,7 @@ absl-py==1.4.0
     #   dm-env
     #   dopamine-rl
     #   labmaze
+    #   ml-collections
     #   mujoco
     #   open-spiel
     #   optax
@@ -23,8 +24,8 @@ absl-py==1.4.0
     #   tensorflow-metadata
     #   tensorflow-probability
     #   tf-slim
-accelerate==0.20.3
-    # via -r /ray/ci/../python/requirements/ml/core-requirements.txt
+accelerate==0.28.0
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/core-requirements.txt
 adagio==0.2.4
     # via
     #   fugue
@@ -32,7 +33,7 @@ adagio==0.2.4
 adal==1.2.7
     # via msrestazure
 aim==3.17.5
-    # via -r /ray/ci/../python/requirements/ml/tune-test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/tune-test-requirements.txt
 aim-ui==3.17.5
     # via aim
 aimrecords==0.0.7
@@ -40,7 +41,7 @@ aimrecords==0.0.7
 aimrocks==0.4.0
     # via aim
 aioboto3==11.2.0
-    # via -r /ray/ci/../python/requirements/ml/data-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/data-requirements.txt
 aiobotocore==2.5.0
     # via
     #   aioboto3
@@ -52,7 +53,7 @@ aiofiles==22.1.0
     #   ypy-websocket
 aiohttp==3.8.6
     # via
-    #   -r /ray/ci/../python/requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements.txt
     #   aiobotocore
     #   aiohttp-cors
     #   datasets
@@ -60,14 +61,14 @@ aiohttp==3.8.6
     #   google-auth
     #   s3fs
 aiohttp-cors==0.7.0
-    # via -r /ray/ci/../python/requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements.txt
 aioitertools==0.11.0
     # via aiobotocore
 aiorwlock==1.3.0
-    # via -r /ray/ci/../python/requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements.txt
 aiosignal==1.3.1
     # via
-    #   -r /ray/ci/../python/requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements.txt
     #   aiohttp
     #   ray
 aiosqlite==0.19.0
@@ -76,7 +77,7 @@ alabaster==0.7.13
     # via sphinx
 ale-py==0.8.1
     # via
-    #   -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/ml/rllib-test-requirements.txt
     #   gym
 alembic==1.12.1
     # via
@@ -116,9 +117,9 @@ argon2-cffi==23.1.0
     #   notebook
 argon2-cffi-bindings==21.2.0
     # via argon2-cffi
-array-record==0.5.0 ; sys_platform != 'darwin' and platform_system != "Windows"
+array-record==0.5.0 ; sys_platform != "darwin" and platform_system != "Windows"
     # via
-    #   -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
     #   tensorflow-datasets
 arrow==1.3.0
     # via isoduration
@@ -127,16 +128,16 @@ asttokens==2.4.1
 astunparse==1.6.3
     # via tensorflow
 async-exit-stack==1.0.1
-    # via -r /ray/ci/../python/requirements/test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
 async-generator==1.10
-    # via -r /ray/ci/../python/requirements/test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
 async-timeout==4.0.3
     # via
     #   aiohttp
     #   redis
 attrs==21.4.0
     # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   aiohttp
     #   flake8-bugbear
     #   glom
@@ -151,7 +152,7 @@ attrs==21.4.0
 autograd==1.6.2
     # via pymoo
 autorom==0.6.1 ; platform_machine != "arm64"
-    # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/rllib-test-requirements.txt
 autorom-accept-rom-license==0.6.1
     # via autorom
 aws-sam-translator==1.81.0
@@ -159,11 +160,9 @@ aws-sam-translator==1.81.0
 aws-xray-sdk==2.12.1
     # via moto
 ax-platform==0.3.2
-    # via
-    #   -r /ray/ci/../python/requirements/ml/tune-requirements.txt
-    #   ax-platform
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/tune-requirements.txt
 azure-cli-core==2.40.0
-    # via -r /ray/ci/../python/requirements/test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
 azure-cli-telemetry==1.0.8
     # via azure-cli-core
 azure-common==1.1.28
@@ -177,9 +176,9 @@ azure-core==1.29.5
     #   azure-mgmt-core
     #   msrest
 azure-identity==1.10.0
-    # via -r /ray/ci/../python/requirements/test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
 azure-mgmt-compute==23.1.0
-    # via -r /ray/ci/../python/requirements/test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
 azure-mgmt-core==1.4.0
     # via
     #   azure-cli-core
@@ -187,9 +186,9 @@ azure-mgmt-core==1.4.0
     #   azure-mgmt-network
     #   azure-mgmt-resource
 azure-mgmt-network==19.0.0
-    # via -r /ray/ci/../python/requirements/test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
 azure-mgmt-resource==20.0.0
-    # via -r /ray/ci/../python/requirements/test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
 babel==2.13.1
     # via
     #   jupyterlab-server
@@ -198,23 +197,23 @@ backcall==0.2.0
     # via ipython
 backoff==1.10.0
     # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   opentelemetry-exporter-otlp-proto-grpc
     #   segment-analytics-python
 base58==2.0.1
     # via aimrecords
 bayesian-optimization==1.4.3
     # via
-    #   -r /ray/ci/../python/requirements/ml/tune-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/ml/tune-requirements.txt
     #   nevergrad
 bcrypt==4.0.1
     # via paramiko
 beautifulsoup4==4.11.1
     # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   nbconvert
 black==22.10.0
-    # via -r /ray/ci/../python/requirements/lint-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/lint-requirements.txt
 bleach==6.1.0
     # via nbconvert
 bokeh==2.4.3
@@ -228,7 +227,7 @@ boto==2.49.0
     # via gcs-oauth2-boto-plugin
 boto3==1.26.76
     # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   aiobotocore
     #   aws-sam-translator
     #   moto
@@ -252,7 +251,7 @@ cachetools==5.3.2
     # via
     #   aim
     #   google-auth
-catboost==1.2.2
+catboost==1.2.3
     # via hebo
 certifi==2023.11.17
     # via
@@ -276,14 +275,14 @@ charset-normalizer==3.3.2
     #   aiohttp
     #   requests
 chess==1.7.0
-    # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/rllib-test-requirements.txt
 chex==0.1.7
     # via optax
 clang-format==12.0.1
-    # via -r /ray/ci/../python/requirements/lint-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/lint-requirements.txt
 click==8.1.7
     # via
-    #   -r /ray/ci/../python/requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements.txt
     #   aim
     #   autorom
     #   autorom-accept-rom-license
@@ -304,7 +303,7 @@ click-option-group==0.5.6
     # via semgrep
 cloudpickle==2.2.0
     # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   dask
     #   distributed
     #   gym
@@ -331,34 +330,36 @@ colorama==0.4.6
 coloredlogs==15.0.1
     # via onnxruntime
 colorful==0.5.5
-    # via -r /ray/ci/../python/requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements.txt
 colorlog==6.7.0
     # via optuna
 comet-ml==3.31.9
-    # via -r /ray/ci/../python/requirements/ml/core-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/core-requirements.txt
 comm==0.2.0
-    # via
-    #   ipykernel
-    #   ipywidgets
+    # via ipykernel
 commonmark==0.9.1
     # via rich
 configobj==5.0.8
     # via everett
 configspace==0.7.1
     # via
-    #   -r /ray/ci/../python/requirements/ml/tune-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/ml/tune-requirements.txt
     #   hpbandster
 contextlib2==21.6.0
-    # via pytest-shutil
+    # via
+    #   ml-collections
+    #   pytest-shutil
 contourpy==1.1.1
     # via matplotlib
+coolname==2.2.0
+    # via mosaicml
 crc32c==2.3
-    # via -r /ray/ci/../python/requirements/ml/data-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/data-requirements.txt
 crcmod==1.7
     # via gsutil
 cryptography==38.0.1
     # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   adal
     #   aim
     #   azure-cli-core
@@ -375,19 +376,18 @@ cycler==0.12.1
     # via matplotlib
 cython==0.29.32
     # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   gpy
 dask==2022.10.1
     # via
-    #   -r /ray/ci/../python/requirements/ml/data-requirements.txt
-    #   dask
+    #   -r /home/ubuntu/ray/ci/../python/requirements/ml/data-requirements.txt
     #   distributed
 databricks-cli==0.18.0
     # via mlflow
 datasets==2.14.0
     # via
-    #   -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
-    #   -r /ray/ci/../python/requirements/ml/train-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/ml/data-test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/ml/train-requirements.txt
     #   evaluate
 debugpy==1.8.0
     # via ipykernel
@@ -397,7 +397,7 @@ decorator==5.1.1
     #   paramz
     #   tensorflow-probability
 deepspeed==0.12.3
-    # via -r /ray/ci/../python/requirements/ml/train-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/train-requirements.txt
 defusedxml==0.7.1
     # via
     #   nbconvert
@@ -416,12 +416,12 @@ distlib==0.3.7
 distributed==2022.10.1
     # via dask
 dm-control==1.0.12
-    # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/rllib-test-requirements.txt
 dm-env==1.6
     # via dm-control
 dm-tree==0.1.8
     # via
-    #   -r /ray/ci/../python/requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements.txt
     #   chex
     #   dm-control
     #   dm-env
@@ -438,14 +438,14 @@ docker-pycreds==0.4.0
     # via wandb
 docutils==0.17.1
     # via
-    #   -r /ray/ci/../python/requirements/lint-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/lint-requirements.txt
     #   myst-nb
     #   myst-parser
     #   sphinx
     #   sphinx-togglebutton
 dopamine-rl==4.0.5 ; sys_platform != "darwin" or platform_machine != "arm64"
     # via
-    #   -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/ml/rllib-test-requirements.txt
     #   recsim
 dulwich==0.21.6
     # via comet-ml
@@ -463,19 +463,14 @@ et-xmlfile==1.1.0
     # via openpyxl
 etils==1.3.0
     # via
-    #   -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
     #   array-record
-    #   etils
     #   orbax-checkpoint
     #   tensorflow-datasets
 evaluate==0.4.0
-    # via -r /ray/ci/../python/requirements/ml/train-test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/train-test-requirements.txt
 everett==3.3.0
-    # via
-    #   comet-ml
-    #   everett
-exceptiongroup==1.2.0
-    # via anyio
+    # via comet-ml
 execnet==2.0.2
     # via pytest-shutil
 executing==2.0.1
@@ -483,15 +478,17 @@ executing==2.0.1
 face==22.0.0
     # via glom
 fairscale==0.4.6
-    # via -r /ray/ci/../python/requirements/ml/tune-test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/tune-test-requirements.txt
 farama-notifications==0.0.4
     # via gymnasium
 fastapi==0.109.2
     # via
-    #   -r /ray/ci/../python/requirements.txt
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   aim
     #   gradio
+fastavro==1.9.4
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/data-test-requirements.txt
 fasteners==0.19
     # via
     #   google-apitools
@@ -499,12 +496,12 @@ fasteners==0.19
 fastjsonschema==2.19.0
     # via nbformat
 feather-format==0.4.1
-    # via -r /ray/ci/../python/requirements/test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
 ffmpy==0.3.1
     # via gradio
 filelock==3.13.1
     # via
-    #   -r /ray/ci/../python/requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements.txt
     #   aim
     #   huggingface-hub
     #   ray
@@ -513,27 +510,27 @@ filelock==3.13.1
     #   virtualenv
 flake8==3.9.1
     # via
-    #   -r /ray/ci/../python/requirements/lint-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/lint-requirements.txt
     #   flake8-bugbear
     #   flake8-comprehensions
     #   flake8-quotes
 flake8-bugbear==21.9.2
-    # via -r /ray/ci/../python/requirements/lint-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/lint-requirements.txt
 flake8-comprehensions==3.10.1
-    # via -r /ray/ci/../python/requirements/lint-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/lint-requirements.txt
 flake8-quotes==2.0.0
-    # via -r /ray/ci/../python/requirements/lint-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/lint-requirements.txt
 flask==2.1.3
     # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   flask-cors
     #   mlflow
     #   moto
 flask-cors==4.0.0
     # via
-    #   -r /ray/ci/../python/requirements/ml/data-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/ml/data-requirements.txt
     #   moto
-flatbuffers==2.0.7
+flatbuffers==23.5.26
     # via
     #   onnxruntime
     #   tensorflow
@@ -545,10 +542,10 @@ fonttools==4.45.1
 fqdn==1.5.1
     # via jsonschema
 freezegun==1.1.0
-    # via -r /ray/ci/../python/requirements/test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
 frozenlist==1.4.0
     # via
-    #   -r /ray/ci/../python/requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements.txt
     #   aiohttp
     #   aiosignal
     #   ray
@@ -556,7 +553,7 @@ fs==2.4.16
     # via triad
 fsspec==2023.5.0
     # via
-    #   -r /ray/ci/../python/requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements.txt
     #   dask
     #   datasets
     #   evaluate
@@ -600,7 +597,7 @@ glom==22.1.0
     # via semgrep
 google-api-core==1.34.0
     # via
-    #   -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/ml/data-test-requirements.txt
     #   google-api-python-client
     #   google-cloud-bigquery
     #   google-cloud-bigquery-storage
@@ -608,7 +605,7 @@ google-api-core==1.34.0
     #   google-cloud-storage
     #   opencensus
 google-api-python-client==2.111.0
-    # via -r /ray/ci/../python/requirements/test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
 google-apitools==0.5.32
     # via gsutil
 google-auth==2.23.4
@@ -624,21 +621,21 @@ google-auth==2.23.4
     #   tensorboard
 google-auth-httplib2==0.1.1
     # via google-api-python-client
-google-auth-oauthlib==0.4.6
+google-auth-oauthlib==1.0.0
     # via tensorboard
 google-cloud-bigquery==3.13.0
-    # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/data-test-requirements.txt
 google-cloud-bigquery-storage==2.24.0
-    # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/data-test-requirements.txt
 google-cloud-core==2.4.1
     # via
-    #   -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/ml/data-test-requirements.txt
     #   google-cloud-bigquery
     #   google-cloud-storage
 google-cloud-storage==2.14.0
     # via
-    #   -r /ray/ci/../python/requirements/anyscale-requirements.txt
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/anyscale-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
 google-crc32c==1.5.0
     # via
     #   google-cloud-storage
@@ -659,16 +656,16 @@ googleapis-common-protos==1.61.0
     #   grpcio-status
     #   opentelemetry-exporter-otlp-proto-grpc
     #   tensorflow-metadata
-gpy==1.10.0 ; python_version <= "3.9"
+gpy==1.13.1
     # via
-    #   -r /ray/ci/../python/requirements/ml/tune-test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/ml/tune-test-requirements.txt
     #   hebo
 gpytorch==1.10
     # via
     #   botorch
     #   hebo
 gradio==3.50.2 ; platform_system != "Windows"
-    # via -r /ray/ci/../python/requirements/test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
 gradio-client==0.6.1
     # via gradio
 grapheme==0.6.0
@@ -681,8 +678,8 @@ greenlet==3.0.1
     # via sqlalchemy
 grpcio==1.60.0 ; sys_platform != "darwin"
     # via
-    #   -r /ray/ci/../python/requirements.txt
-    #   -r /ray/ci/../python/requirements/anyscale-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/anyscale-requirements.txt
     #   aim
     #   google-api-core
     #   google-cloud-bigquery
@@ -696,7 +693,7 @@ grpcio==1.60.0 ; sys_platform != "darwin"
 grpcio-status==1.48.2
     # via google-api-core
 gsutil==5.27
-    # via -r /ray/ci/../python/requirements/docker/ray-docker-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/docker/ray-docker-requirements.txt
 gunicorn==20.1.0
     # via mlflow
 gym==0.26.2
@@ -707,36 +704,36 @@ gym-notices==0.0.8
     # via gym
 gymnasium==0.28.1
     # via
-    #   -r /ray/ci/../python/requirements.txt
-    #   -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/ml/rllib-test-requirements.txt
     #   minigrid
     #   pettingzoo
     #   shimmy
     #   supersuit
 h11==0.12.0
     # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   httpcore
     #   uvicorn
-h5py==3.7.0
+h5py==3.10.0
     # via
-    #   -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/ml/rllib-test-requirements.txt
     #   tensorflow
 hebo==0.3.5
-    # via -r /ray/ci/../python/requirements/ml/tune-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/tune-requirements.txt
 higher==0.2.1
-    # via -r /ray/ci/../python/requirements/ml/rllib-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/rllib-requirements.txt
 hjson==3.1.0
     # via deepspeed
 holidays==0.39
     # via
-    #   -r /ray/ci/../python/requirements/ml/tune-test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/ml/tune-test-requirements.txt
     #   prophet
 hpbandster==0.7.4
-    # via -r /ray/ci/../python/requirements/ml/tune-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/tune-requirements.txt
 httpcore==0.15.0
     # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   httpx
 httplib2==0.20.4
     # via
@@ -748,23 +745,25 @@ httplib2==0.20.4
     #   oauth2client
 httpx==0.24.1
     # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   gradio
     #   gradio-client
 huggingface-hub==0.19.4
     # via
+    #   accelerate
     #   datasets
     #   evaluate
     #   gradio
     #   gradio-client
     #   timm
+    #   tokenizers
     #   transformers
 humanfriendly==10.0
     # via
     #   azure-cli-core
     #   coloredlogs
 hyperopt==0.2.7
-    # via -r /ray/ci/../python/requirements/ml/tune-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/tune-requirements.txt
 idna==3.6
     # via
     #   anyio
@@ -775,42 +774,35 @@ idna==3.6
     #   yarl
 imageio==2.31.1
     # via
-    #   -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/ml/rllib-test-requirements.txt
     #   scikit-image
 imageio-ffmpeg==0.4.5
-    # via -r /ray/ci/../python/requirements/ml/rllib-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/rllib-requirements.txt
 imagesize==1.4.1
     # via sphinx
 importlib-metadata==6.11.0
     # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
-    #   ale-py
-    #   flask
-    #   gym
-    #   gymnasium
-    #   jax
-    #   jupyter-ydoc
-    #   jupyterlab-server
-    #   markdown
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   mlflow
+    #   mosaicml
     #   myst-nb
 importlib-resources==5.13.0
     # via
     #   ale-py
     #   etils
     #   gradio
-    #   matplotlib
     #   orbax-checkpoint
     #   prophet
 iniconfig==2.0.0
     # via pytest
 ipykernel==6.27.1
     # via
+    #   ipywidgets
     #   nbclassic
     #   notebook
 ipython==8.12.3
     # via
-    #   -r /ray/ci/../python/requirements/docker/ray-docker-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/docker/ray-docker-requirements.txt
     #   ipykernel
     #   ipywidgets
     #   jupyter-sphinx
@@ -821,11 +813,11 @@ ipython-genutils==0.2.0
     #   ipywidgets
     #   nbclassic
     #   notebook
-ipywidgets==7.8.1
+ipywidgets==7.7.2
     # via
-    #   -r /ray/ci/../python/requirements/anyscale-requirements.txt
-    #   -r /ray/ci/../python/requirements/docker/ray-docker-requirements.txt
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/anyscale-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/docker/ray-docker-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   ax-platform
     #   jupyter-sphinx
     #   myst-nb
@@ -834,7 +826,7 @@ isodate==0.6.1
 isoduration==20.11.0
     # via jsonschema
 isort==5.10.1
-    # via -r /ray/ci/../python/requirements/lint-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/lint-requirements.txt
 itsdangerous==2.1.2
     # via flask
 jax==0.4.13
@@ -856,7 +848,7 @@ jedi==0.19.1
     # via ipython
 jinja2==3.1.2
     # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   aim
     #   altair
     #   ax-platform
@@ -889,9 +881,8 @@ jmespath==1.0.1
     #   knack
 joblib==1.2.0
     # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   scikit-learn
-    #   scikit-optimize
 jschema-to-python==1.2.3
     # via cfn-lint
 json5==0.9.14
@@ -900,7 +891,7 @@ jsondiff==2.0.0
     # via moto
 jsonpatch==1.32
     # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   cfn-lint
 jsonpickle==3.0.2
     # via jschema-to-python
@@ -910,7 +901,7 @@ jsonpointer==2.4
     #   jsonschema
 jsonschema==4.17.3
     # via
-    #   -r /ray/ci/../python/requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements.txt
     #   altair
     #   aws-sam-translator
     #   cfn-lint
@@ -972,8 +963,8 @@ jupyter-ydoc==0.2.5
     #   jupyterlab
 jupyterlab==3.6.1
     # via
-    #   -r /ray/ci/../python/requirements/anyscale-requirements.txt
-    #   -r /ray/ci/../python/requirements/ml/tune-test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/anyscale-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/ml/tune-test-requirements.txt
 jupyterlab-pygments==0.3.0
     # via nbconvert
 jupyterlab-server==2.24.0
@@ -981,17 +972,17 @@ jupyterlab-server==2.24.0
 jupyterlab-widgets==1.1.7
     # via ipywidgets
 jupytext==1.13.6
-    # via -r /ray/ci/../python/requirements/test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
 kaggle-environments==1.7.11
-    # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
-keras==2.11.0
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/rllib-test-requirements.txt
+keras==2.15.0
     # via tensorflow
 kiwisolver==1.4.5
     # via matplotlib
 knack==0.10.1
     # via azure-cli-core
 kubernetes==24.2.0
-    # via -r /ray/ci/../python/requirements/test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
 labmaze==1.0.6
     # via dm-control
 lazy-loader==0.3
@@ -1002,17 +993,17 @@ libclang==16.0.6
     # via tensorflow
 lightgbm==3.3.5
     # via
-    #   -r /ray/ci/../python/requirements/ml/core-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/ml/core-requirements.txt
     #   hebo
-    #   lightgbm-ray
-    # via -r /ray/ci/../python/requirements/ml/core-requirements.txt
+lightning-utilities==0.11.2
+    # via pytorch-lightning
 linear-operator==0.4.0
     # via
     #   botorch
     #   gpytorch
 llvmlite==0.41.1
     # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   numba
 locket==1.0.0
     # via
@@ -1020,12 +1011,12 @@ locket==1.0.0
     #   partd
 lxml==4.9.4
     # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   dm-control
     #   nbconvert
     #   vsphere-automation-sdk
 lz4==4.3.2
-    # via -r /ray/ci/../python/requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements.txt
 mako==1.3.0
     # via alembic
 markdown==3.5.1
@@ -1034,7 +1025,7 @@ markdown==3.5.1
     #   tensorboard
 markdown-it-py==1.1.0
     # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   jupytext
     #   mdit-py-plugins
     #   myst-parser
@@ -1047,10 +1038,9 @@ markupsafe==2.1.3
     #   werkzeug
 matplotlib==3.7.4
     # via
-    #   -r /ray/ci/../python/requirements/ml/tune-test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/ml/tune-test-requirements.txt
     #   catboost
     #   gradio
-    #   minigrid
     #   mlflow
     #   prophet
     #   pymoo
@@ -1066,33 +1056,38 @@ mdit-py-plugins==0.2.8
     #   jupytext
     #   myst-parser
 memray==1.10.0 ; platform_system != "Windows" and sys_platform != "darwin" and platform_machine != "aarch64"
-    # via -r /ray/ci/../python/requirements/test-requirements.txt
-minigrid==2.1.1
-    # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
+    # via
+    #   -r /home/ubuntu/ray/ci/../python/requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
+minigrid==2.3.1
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/rllib-test-requirements.txt
 mistune==0.8.4
     # via nbconvert
-ml-dtypes==0.2.0
+ml-collections==0.1.1
+    # via open-spiel
+ml-dtypes==0.3.2
     # via
     #   jax
     #   jaxlib
+    #   tensorflow
 mlagents-envs==0.28.0
-    # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/rllib-test-requirements.txt
 mlflow==2.9.2
-    # via -r /ray/ci/../python/requirements/ml/core-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/core-requirements.txt
 mock==5.1.0
     # via pytest-shutil
 modin==0.22.2
-    # via -r /ray/ci/../python/requirements/ml/data-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/data-requirements.txt
 monotonic==1.6
     # via
     #   gsutil
     #   segment-analytics-python
 more-itertools==10.1.0
     # via configspace
+mosaicml==0.14.1
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/train-test-requirements.txt
 moto==4.2.12
-    # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
-    #   moto
+    # via -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
 mpmath==1.3.0
     # via sympy
 msal==1.18.0b1
@@ -1106,15 +1101,15 @@ msal-extensions==1.0.0
     #   azure-identity
 msgpack==1.0.7
     # via
-    #   -r /ray/ci/../python/requirements.txt
-    #   -r /ray/ci/../python/requirements/ml/rllib-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/ml/rllib-requirements.txt
     #   distributed
     #   flax
     #   msgpack-numpy
     #   orbax-checkpoint
     #   ray
 msgpack-numpy==0.4.8
-    # via -r /ray/ci/../python/requirements/ml/rllib-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/rllib-requirements.txt
 msrest==0.7.1
     # via
     #   azure-mgmt-compute
@@ -1123,11 +1118,11 @@ msrest==0.7.1
     #   msrestazure
 msrestazure==0.6.4
     # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   azure-cli-core
 mujoco==2.3.6
     # via
-    #   -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/ml/rllib-test-requirements.txt
     #   dm-control
 multidict==6.0.4
     # via
@@ -1141,17 +1136,17 @@ multiprocess==0.70.15
     #   evaluate
 mypy==1.7.0
     # via
-    #   -r /ray/ci/../python/requirements/lint-requirements.txt
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/lint-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
 mypy-extensions==1.0.0
     # via
     #   black
     #   mypy
 myst-nb==0.13.1
-    # via -r /ray/ci/../python/requirements/test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
 myst-parser==0.15.2
     # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   myst-nb
 nbclassic==1.0.0
     # via
@@ -1194,14 +1189,14 @@ netifaces==0.11.0
     # via
     #   hpbandster
     #   raydp
-networkx==3.1 ; python_version < "3.11"
+networkx==3.2.1 ; python_version < "3.11"
     # via
     #   cfn-lint
     #   hyperopt
     #   scikit-image
     #   torch
 nevergrad==0.4.3.post7
-    # via -r /ray/ci/../python/requirements/ml/tune-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/tune-requirements.txt
 ninja==1.11.1.1
     # via deepspeed
 notebook==6.5.6
@@ -1216,16 +1211,16 @@ notebook-shim==0.2.3
     # via vsphere-automation-sdk
 numba==0.58.1
     # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   statsforecast
 numexpr==2.8.4
     # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   pymars
 numpy==1.24.4
     # via
-    #   -r /ray/ci/../python/requirements.txt
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   accelerate
     #   aim
     #   ale-py
@@ -1269,6 +1264,7 @@ numpy==1.24.4
     #   mlagents-envs
     #   mlflow
     #   modin
+    #   mosaicml
     #   msgpack-numpy
     #   mujoco
     #   nevergrad
@@ -1297,7 +1293,6 @@ numpy==1.24.4
     #   recsim
     #   scikit-image
     #   scikit-learn
-    #   scikit-optimize
     #   scipy
     #   shimmy
     #   stanio
@@ -1321,8 +1316,8 @@ numpy==1.24.4
     #   triad
     #   tune-sklearn
     #   utilsforecast
+    #   webdataset
     #   xgboost
-    #   xgboost-ray
     #   zoopt
 oauth2client==4.1.3
     # via
@@ -1332,20 +1327,20 @@ oauthlib==3.2.2
     # via
     #   databricks-cli
     #   requests-oauthlib
-onnx==1.12.0 ; sys_platform != "darwin" or platform_machine != "arm64"
+onnx==1.15.0 ; sys_platform != "darwin" or platform_machine != "arm64"
     # via
-    #   -r /ray/ci/../python/requirements/ml/rllib-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/ml/rllib-requirements.txt
     #   tf2onnx
-onnxruntime==1.14.1 ; sys_platform != "darwin" or platform_machine != "arm64"
-    # via -r /ray/ci/../python/requirements/ml/rllib-requirements.txt
-open-spiel==1.2
-    # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
+onnxruntime==1.16.3 ; sys_platform != "darwin" or platform_machine != "arm64"
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/rllib-requirements.txt
+open-spiel==1.4
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/rllib-test-requirements.txt
 openapi-schema-validator==0.4.4
     # via openapi-spec-validator
 openapi-spec-validator==0.5.7
     # via moto
 opencensus==0.11.3
-    # via -r /ray/ci/../python/requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements.txt
 opencensus-context==0.1.3
     # via opencensus
 opencensus-proto==0.1.0
@@ -1353,31 +1348,31 @@ opencensus-proto==0.1.0
 opencv-python==4.8.1.78
     # via dopamine-rl
 openpyxl==3.0.10
-    # via -r /ray/ci/../python/requirements/test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
 opentelemetry-api==1.1.0
     # via
-    #   -r /ray/ci/../python/requirements.txt
-    #   -r /ray/ci/../python/requirements/anyscale-requirements.txt
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/anyscale-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   opentelemetry-exporter-opencensus
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-sdk
 opentelemetry-exporter-opencensus==0.20b0
-    # via -r /ray/ci/../python/requirements/test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
 opentelemetry-exporter-otlp==1.1.0
     # via
-    #   -r /ray/ci/../python/requirements.txt
-    #   -r /ray/ci/../python/requirements/anyscale-requirements.txt
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/anyscale-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
 opentelemetry-exporter-otlp-proto-grpc==1.1.0
     # via opentelemetry-exporter-otlp
 opentelemetry-proto==1.1.0
     # via opentelemetry-exporter-otlp-proto-grpc
 opentelemetry-sdk==1.1.0
     # via
-    #   -r /ray/ci/../python/requirements.txt
-    #   -r /ray/ci/../python/requirements/anyscale-requirements.txt
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/anyscale-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   opentelemetry-exporter-opencensus
     #   opentelemetry-exporter-otlp-proto-grpc
 opentelemetry-semantic-conventions==0.20b0
@@ -1390,14 +1385,14 @@ opt-einsum==3.3.0
 optax==0.1.7
     # via flax
 optuna==3.2.0
-    # via -r /ray/ci/../python/requirements/ml/tune-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/tune-requirements.txt
 orbax-checkpoint==0.2.3
     # via flax
 orjson==3.9.10
     # via gradio
 packaging==21.3
     # via
-    #   -r /ray/ci/../python/requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements.txt
     #   accelerate
     #   aim
     #   altair
@@ -1418,10 +1413,11 @@ packaging==21.3
     #   jupyter-server
     #   jupyterlab
     #   jupyterlab-server
-    #   lightgbm-ray
+    #   lightning-utilities
     #   matplotlib
     #   mlflow
     #   modin
+    #   mosaicml
     #   nbconvert
     #   onnxruntime
     #   optuna
@@ -1440,11 +1436,10 @@ packaging==21.3
     #   torchmetrics
     #   transformers
     #   utilsforecast
-    #   xgboost-ray
 pandas==1.5.3
     # via
-    #   -r /ray/ci/../python/requirements.txt
-    #   -r /ray/ci/../python/requirements/ml/data-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/ml/data-requirements.txt
     #   altair
     #   ax-platform
     #   catboost
@@ -1466,12 +1461,11 @@ pandas==1.5.3
     #   statsmodels
     #   triad
     #   utilsforecast
-    #   xgboost-ray
 pandocfilters==1.5.0
     # via nbconvert
 paramiko==2.12.0
     # via azure-cli-core
-paramz==0.9.5
+paramz==0.9.6
     # via gpy
 parso==0.8.3
     # via jedi
@@ -1496,16 +1490,16 @@ pbr==6.0.0
 peewee==3.17.0
     # via semgrep
 pettingzoo==1.23.1
-    # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/rllib-test-requirements.txt
 pexpect==4.8.0
     # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   ipython
 pickleshare==0.7.5
     # via ipython
 pillow==9.2.0 ; platform_system != "Windows"
     # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   aim
     #   bokeh
     #   dopamine-rl
@@ -1529,14 +1523,14 @@ plotly==5.18.0
 pluggy==1.3.0
     # via pytest
 polars==0.14.21
-    # via -r /ray/ci/../python/requirements/test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
 portalocker==2.8.2
     # via
     #   azure-cli-telemetry
     #   msal-extensions
 prometheus-client==0.19.0
     # via
-    #   -r /ray/ci/../python/requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements.txt
     #   jupyter-server
     #   nbclassic
     #   notebook
@@ -1547,14 +1541,14 @@ promise==2.3
 prompt-toolkit==3.0.41
     # via ipython
 prophet==1.1.5
-    # via -r /ray/ci/../python/requirements/ml/tune-test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/tune-test-requirements.txt
 proto-plus==1.22.3
     # via
     #   google-cloud-bigquery
     #   google-cloud-bigquery-storage
-protobuf==3.19.6
+protobuf==3.20.3
     # via
-    #   -r /ray/ci/../python/requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements.txt
     #   aim
     #   dm-control
     #   google-api-core
@@ -1569,7 +1563,6 @@ protobuf==3.19.6
     #   opentelemetry-exporter-opencensus
     #   opentelemetry-proto
     #   proto-plus
-    #   pytorch-lightning
     #   ray
     #   raydp
     #   tensorboard
@@ -1577,9 +1570,10 @@ protobuf==3.19.6
     #   tensorflow
     #   tensorflow-datasets
     #   tensorflow-metadata
+    #   tf2onnx
     #   wandb
 proxy-py==2.4.3
-    # via -r /ray/ci/../python/requirements/test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
 psutil==5.9.6
     # via
     #   accelerate
@@ -1589,6 +1583,7 @@ psutil==5.9.6
     #   distributed
     #   ipykernel
     #   modin
+    #   mosaicml
     #   pymars
     #   raydp
     #   tensorflow-datasets
@@ -1605,22 +1600,22 @@ py==1.11.0
     #   pytest
     #   pytest-forked
 py-cpuinfo==9.0.0
-    # via deepspeed
+    # via
+    #   deepspeed
+    #   mosaicml
 py-partiql-parser==0.5.0
     # via moto
 py-spy==0.3.14
-    # via -r /ray/ci/../python/requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements.txt
 py3nvml==0.2.7
     # via aim
 py4j==0.10.9.7
     # via
     #   hyperopt
     #   pyspark
-pyaml==23.9.7
-    # via scikit-optimize
 pyarrow==12.0.1
     # via
-    #   -r /ray/ci/../python/requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements.txt
     #   datasets
     #   feather-format
     #   mlflow
@@ -1643,31 +1638,30 @@ pycparser==2.21
     # via cffi
 pydantic==2.5.0
     # via
-    #   -r /ray/ci/../python/requirements.txt
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   aws-sam-translator
     #   deepspeed
     #   fastapi
     #   gradio
 pydantic-core==2.14.1
     # via pydantic
-pydeprecate==0.3.2
-    # via pytorch-lightning
 pydot==1.4.2
-    # via -r /ray/ci/../python/requirements/test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
 pydub==0.25.1
     # via gradio
 pyflakes==2.3.1
     # via flake8
 pygame==2.5.2
     # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   dopamine-rl
+    #   minigrid
 pyglet==1.5.15
-    # via -r /ray/ci/../python/requirements/ml/rllib-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/rllib-requirements.txt
 pygments==2.13.0
     # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   ipython
     #   knack
     #   nbconvert
@@ -1681,13 +1675,13 @@ pyjwt==2.8.0
     #   databricks-cli
     #   msal
 pymars==0.10.0
-    # via -r /ray/ci/../python/requirements/ml/data-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/data-requirements.txt
 pymongo==4.3.2
-    # via -r /ray/ci/../python/requirements/test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
 pymoo==0.6.1.1
     # via hebo
 pymunk==6.2.1
-    # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/rllib-test-requirements.txt
 pynacl==1.5.0
     # via paramiko
 pynvml==11.5.0
@@ -1698,8 +1692,8 @@ pyopengl==3.1.7
     #   mujoco
 pyopenssl==23.0.0
     # via
-    #   -r /ray/ci/../python/requirements/anyscale-requirements.txt
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/anyscale-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   azure-cli-core
     #   gcs-oauth2-boto-plugin
     #   gsutil
@@ -1726,11 +1720,11 @@ pysocks==1.7.1
     # via requests
 pyspark==3.4.1
     # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   raydp
 pytest==7.0.1
     # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   pytest-asyncio
     #   pytest-docker-tools
     #   pytest-fixture-config
@@ -1745,33 +1739,33 @@ pytest==7.0.1
     #   pytest-timeout
     #   pytest-virtualenv
 pytest-asyncio==0.16.0
-    # via -r /ray/ci/../python/requirements/test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
 pytest-docker-tools==3.1.3
-    # via -r /ray/ci/../python/requirements/test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
 pytest-fixture-config==1.7.0
     # via pytest-virtualenv
 pytest-forked==1.4.0
-    # via -r /ray/ci/../python/requirements/test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
 pytest-httpserver==1.0.6
-    # via -r /ray/ci/../python/requirements/test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
 pytest-lazy-fixture==0.6.3
-    # via -r /ray/ci/../python/requirements/test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
 pytest-remotedata==0.3.2
-    # via -r /ray/ci/../python/requirements/ml/tune-test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/tune-test-requirements.txt
 pytest-repeat==0.9.3
-    # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/data-test-requirements.txt
 pytest-rerunfailures==11.1.2
-    # via -r /ray/ci/../python/requirements/test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
 pytest-shutil==1.7.0
     # via pytest-virtualenv
 pytest-sphinx @ git+https://github.com/ray-project/pytest-sphinx
-    # via -r /ray/ci/../python/requirements/test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
 pytest-sugar==0.9.5
-    # via -r /ray/ci/../python/requirements/test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
 pytest-timeout==2.1.0
-    # via -r /ray/ci/../python/requirements/test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
 pytest-virtualenv==1.7.0
-    # via -r /ray/ci/../python/requirements/test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
 python-dateutil==2.8.2
     # via
     #   adal
@@ -1788,22 +1782,20 @@ python-dateutil==2.8.2
     #   pandas
     #   segment-analytics-python
 python-jose==3.3.0
-    # via
-    #   moto
-    #   python-jose
+    # via moto
 python-json-logger==2.0.7
     # via jupyter-events
 python-lsp-jsonrpc==1.0.0
     # via semgrep
 python-multipart==0.0.6
     # via gradio
-python-snappy==0.6.1 ; python_version <= "3.10"
-    # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
-pytorch-lightning==1.6.5
-    # via -r /ray/ci/../python/requirements/ml/tune-test-requirements.txt
+pytorch-lightning==1.8.6
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/tune-test-requirements.txt
+pytorch-ranger==0.1.1
+    # via torch-optimizer
 pytz==2022.7.1
     # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   aim
     #   mlflow
     #   pandas
@@ -1815,8 +1807,8 @@ pywavelets==1.5.0
     # via scikit-image
 pyyaml==6.0.1
     # via
-    #   -r /ray/ci/../python/requirements.txt
-    #   -r /ray/ci/../python/requirements/anyscale-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/anyscale-requirements.txt
     #   accelerate
     #   bokeh
     #   cfn-lint
@@ -1831,14 +1823,15 @@ pyyaml==6.0.1
     #   jupytext
     #   knack
     #   kubernetes
+    #   ml-collections
     #   mlagents-envs
     #   mlflow
+    #   mosaicml
     #   moto
     #   myst-nb
     #   myst-parser
     #   optuna
     #   orbax-checkpoint
-    #   pyaml
     #   pymars
     #   pytorch-lightning
     #   ray
@@ -1861,20 +1854,19 @@ querystring-parser==1.2.4
     # via
     #   raydp
     #   tune-sklearn
-    #   xgboost-ray
 raydp==1.7.0b20231020.dev0
-    # via -r /ray/ci/../python/requirements/ml/data-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/data-requirements.txt
 recsim==0.2.4 ; sys_platform != "darwin" or platform_machine != "arm64"
-    # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/rllib-test-requirements.txt
 redis==4.4.2
-    # via -r /ray/ci/../python/requirements/test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
 regex==2023.10.3
     # via
     #   cfn-lint
     #   transformers
 requests==2.31.0
     # via
-    #   -r /ray/ci/../python/requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements.txt
     #   adal
     #   aim
     #   autorom
@@ -1899,6 +1891,7 @@ requests==2.31.0
     #   jupyterlab-server
     #   kubernetes
     #   mlflow
+    #   mosaicml
     #   moto
     #   msal
     #   msrest
@@ -1929,7 +1922,7 @@ requests-toolbelt==1.0.0
     # via comet-ml
 responses==0.13.4
     # via
-    #   -r /ray/ci/../python/requirements/ml/data-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/ml/data-requirements.txt
     #   evaluate
     #   moto
 restrictedpython==7.0
@@ -1949,8 +1942,8 @@ rfc3986-validator==0.1.1
     #   jupyter-events
 rich==12.6.0
     # via
-    #   -r /ray/ci/../python/requirements.txt
-    #   -r /ray/ci/../python/requirements/ml/rllib-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/ml/rllib-requirements.txt
     #   flax
     #   memray
     #   semgrep
@@ -1965,18 +1958,21 @@ ruamel-yaml==0.17.40
 ruamel-yaml-clib==0.2.8
     # via ruamel-yaml
 s3fs==2023.5.0
-    # via -r /ray/ci/../python/requirements/ml/core-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/core-requirements.txt
 s3transfer==0.6.2
     # via boto3
 safetensors==0.4.1
-    # via timm
+    # via
+    #   accelerate
+    #   timm
+    #   transformers
 sarif-om==1.0.4
     # via cfn-lint
 scikit-image==0.21.0 ; python_version < "3.11"
-    # via -r /ray/ci/../python/requirements.txt
-scikit-learn==1.0.2 ; python_version < "3.11"
+    # via -r /home/ubuntu/ray/ci/../python/requirements.txt
+scikit-learn==1.3.2
     # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   ax-platform
     #   bayesian-optimization
     #   gpytorch
@@ -1984,12 +1980,11 @@ scikit-learn==1.0.2 ; python_version < "3.11"
     #   lightgbm
     #   mlflow
     #   pymars
-    #   scikit-optimize
     #   torch-geometric
     #   tune-sklearn
-scipy==1.10.1 ; python_version < "3.11"
+scipy==1.11.4 ; python_version < "3.11"
     # via
-    #   -r /ray/ci/../python/requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements.txt
     #   ax-platform
     #   bayesian-optimization
     #   botorch
@@ -2011,7 +2006,6 @@ scipy==1.10.1 ; python_version < "3.11"
     #   recsim
     #   scikit-image
     #   scikit-learn
-    #   scikit-optimize
     #   statsforecast
     #   statsmodels
     #   torch-cluster
@@ -2021,21 +2015,21 @@ scipy==1.10.1 ; python_version < "3.11"
     #   xgboost
 segment-analytics-python==2.2.0
     # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   aim
 semantic-version==2.10.0
     # via
     #   comet-ml
     #   gradio
 semgrep==1.32.0
-    # via -r /ray/ci/../python/requirements/lint-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/lint-requirements.txt
 send2trash==1.8.2
     # via
     #   jupyter-server
     #   nbclassic
     #   notebook
 sentencepiece==0.1.96
-    # via -r /ray/ci/../python/requirements/ml/train-test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/train-test-requirements.txt
 sentry-sdk==1.37.1
     # via
     #   comet-ml
@@ -2047,12 +2041,12 @@ serpent==1.41
 setproctitle==1.3.3
     # via wandb
 shellcheck-py==0.7.1.1
-    # via -r /ray/ci/../python/requirements/lint-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/lint-requirements.txt
 shimmy==1.3.0
-    # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/rllib-test-requirements.txt
 shortuuid==1.0.1
     # via
-    #   -r /ray/ci/../python/requirements/ml/tune-test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/ml/tune-test-requirements.txt
     #   wandb
 six==1.16.0
     # via
@@ -2077,6 +2071,7 @@ six==1.16.0
     #   isodate
     #   junit-xml
     #   kubernetes
+    #   ml-collections
     #   msrestazure
     #   oauth2client
     #   paramiko
@@ -2091,6 +2086,7 @@ six==1.16.0
     #   querystring-parser
     #   responses
     #   rfc3339-validator
+    #   tensorboard
     #   tensorflow
     #   tensorflow-probability
     #   tf2onnx
@@ -2099,8 +2095,8 @@ six==1.16.0
     #   wandb
 smart-open==6.2.0
     # via
-    #   -r /ray/ci/../python/requirements.txt
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
 smmap==5.0.1
     # via gitdb
 sniffio==1.3.0
@@ -2113,12 +2109,12 @@ snowballstemmer==2.2.0
 sortedcontainers==2.4.0
     # via distributed
 soundfile==0.12.1
-    # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/data-test-requirements.txt
 soupsieve==2.5
     # via beautifulsoup4
 sphinx==4.3.2
     # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   jupyter-sphinx
     #   myst-nb
     #   myst-parser
@@ -2158,17 +2154,16 @@ stanio==0.3.0
     # via cmdstanpy
 starlette==0.36.3
     # via
-    #   -r /ray/ci/../python/requirements.txt
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements.txt
     #   fastapi
 statsforecast==1.7.0
-    # via -r /ray/ci/../python/requirements/ml/tune-test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/tune-test-requirements.txt
 statsmodels==0.14.0
     # via
     #   hpbandster
     #   statsforecast
 supersuit==3.8.0
-    # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/rllib-test-requirements.txt
 sympy==1.12
     # via
     #   cfn-lint
@@ -2178,47 +2173,49 @@ tabulate==0.9.0
     # via
     #   databricks-cli
     #   knack
+    #   mosaicml
 tblib==3.0.0
     # via
-    #   -r /ray/ci/../python/requirements/docker/ray-docker-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/docker/ray-docker-requirements.txt
     #   distributed
 tenacity==8.2.3
     # via plotly
-tensorboard==2.11.2
+tensorboard==2.15.2
     # via
-    #   pytorch-lightning
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   tensorflow
-tensorboard-data-server==0.6.1
-    # via tensorboard
-tensorboard-plugin-wit==1.8.1
-    # via tensorboard
+tensorboard-data-server==0.7.2
+    # via
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
+    #   tensorboard
 tensorboardx==2.6
     # via
-    #   -r /ray/ci/../python/requirements.txt
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
+    #   pytorch-lightning
     #   ray
-tensorflow==2.11.0 ; sys_platform != "darwin" or platform_machine != "arm64"
+tensorflow==2.15.1 ; sys_platform != "darwin" or platform_machine != "arm64"
     # via
-    #   -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
     #   dopamine-rl
     #   recsim
 tensorflow-datasets==4.9.0
     # via
-    #   -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
-    #   -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
-tensorflow-estimator==2.11.0
+    #   -r /home/ubuntu/ray/ci/../python/requirements/ml/data-test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
+tensorflow-estimator==2.15.0
     # via
-    #   -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/ml/rllib-test-requirements.txt
     #   tensorflow
 tensorflow-io-gcs-filesystem==0.31.0
     # via
-    #   -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
     #   tensorflow
 tensorflow-metadata==1.13.0
     # via tensorflow-datasets
-tensorflow-probability==0.19.0
+tensorflow-probability==0.23.0
     # via
-    #   -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
     #   dopamine-rl
 tensorstore==0.1.45
     # via
@@ -2236,26 +2233,26 @@ terminado==0.18.0
     #   nbclassic
     #   notebook
 testfixtures==7.0.0
-    # via -r /ray/ci/../python/requirements/test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
 tf-slim==1.1.0
     # via dopamine-rl
-tf2onnx==1.13.0 ; sys_platform != "darwin" or platform_machine != "arm64"
-    # via -r /ray/ci/../python/requirements/ml/rllib-requirements.txt
+tf2onnx==1.15.1 ; sys_platform != "darwin" or platform_machine != "arm64"
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/rllib-requirements.txt
 threadpoolctl==3.1.0
     # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   scikit-learn
 tifffile==2023.7.10
     # via scikit-image
 timm==0.9.2
-    # via -r /ray/ci/../python/requirements/ml/tune-test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/tune-test-requirements.txt
 tinycss2==1.2.1
     # via nbconvert
 tinyscaler==1.2.6
     # via
-    #   -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/ml/rllib-test-requirements.txt
     #   supersuit
-tokenizers==0.12.1
+tokenizers==0.15.2
     # via transformers
 toml==0.10.2
     # via
@@ -2263,9 +2260,6 @@ toml==0.10.2
     #   tensorflow-datasets
 tomli==2.0.1
     # via
-    #   black
-    #   jupyterlab
-    #   mypy
     #   pytest
     #   semgrep
 tomlkit==0.12.3
@@ -2279,7 +2273,7 @@ toolz==0.12.0
     #   partd
 torch==2.0.1
     # via
-    #   -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
     #   accelerate
     #   botorch
     #   deepspeed
@@ -2287,34 +2281,41 @@ torch==2.0.1
     #   hebo
     #   higher
     #   linear-operator
+    #   mosaicml
     #   pyro-ppl
     #   pytorch-lightning
+    #   pytorch-ranger
     #   timm
+    #   torch-optimizer
     #   torchdata
     #   torchmetrics
     #   torchtext
     #   torchvision
 torch-cluster==1.6.1
-    # via -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
 torch-geometric==2.3.1
-    # via -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
+torch-optimizer==0.3.0
+    # via mosaicml
 torch-scatter==2.1.1
-    # via -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
 torch-sparse==0.6.17
-    # via -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
 torch-spline-conv==1.2.2
-    # via -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
 torchdata==0.6.1
     # via torchtext
 torchmetrics==0.10.3
     # via
-    #   -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
+    #   mosaicml
     #   pytorch-lightning
 torchtext==0.15.2
-    # via -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
 torchvision==0.15.2
     # via
-    #   -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
+    #   mosaicml
     #   timm
 tornado==6.1
     # via
@@ -2331,7 +2332,7 @@ tornado==6.1
     #   terminado
 tqdm==4.64.1
     # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   aim
     #   cmdstanpy
     #   datasets
@@ -2340,6 +2341,7 @@ tqdm==4.64.1
     #   evaluate
     #   huggingface-hub
     #   hyperopt
+    #   mosaicml
     #   optuna
     #   prophet
     #   pymars
@@ -2366,8 +2368,8 @@ traitlets==5.14.0
     #   nbconvert
     #   nbformat
     #   notebook
-transformers==4.19.1
-    # via -r /ray/ci/../python/requirements/ml/core-requirements.txt
+transformers==4.36.2
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/core-requirements.txt
 triad==0.9.3
     # via
     #   adagio
@@ -2375,28 +2377,23 @@ triad==0.9.3
     #   fugue-sql-antlr
     #   qpd
 trustme==0.9.0
-    # via -r /ray/ci/../python/requirements/test-requirements.txt
-    # via -r /ray/ci/../python/requirements/ml/tune-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/tune-requirements.txt
 typeguard==2.13.3
     # via ax-platform
 typer==0.9.0
-    # via -r /ray/ci/../python/requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements.txt
 types-python-dateutil==2.8.19.14
     # via arrow
 types-pyyaml==6.0.12.2
-    # via -r /ray/ci/../python/requirements/lint-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/lint-requirements.txt
 typing-extensions==4.8.0
     # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
-    #   aioitertools
-    #   ale-py
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   alembic
-    #   altair
     #   aws-sam-translator
     #   azure-core
-    #   black
     #   bokeh
-    #   chex
     #   configspace
     #   etils
     #   fastapi
@@ -2405,17 +2402,14 @@ typing-extensions==4.8.0
     #   gradio-client
     #   gymnasium
     #   huggingface-hub
-    #   ipython
+    #   lightning-utilities
     #   mypy
     #   nevergrad
-    #   onnx
     #   orbax-checkpoint
-    #   polars
     #   pydantic
     #   pydantic-core
     #   pytorch-lightning
     #   semgrep
-    #   starlette
     #   tensorflow
     #   torch
     #   typer
@@ -2442,8 +2436,8 @@ utilsforecast==0.0.23
     # via statsforecast
 uvicorn==0.22.0
     # via
-    #   -r /ray/ci/../python/requirements.txt
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   aim
     #   gradio
 uvloop==0.19.0
@@ -2469,18 +2463,18 @@ uvloop==0.19.0
     # via vsphere-automation-sdk
 virtualenv==20.21.0
     # via
-    #   -r /ray/ci/../python/requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements.txt
     #   pytest-virtualenv
     # via vsphere-automation-sdk
     # via vsphere-automation-sdk
 vsphere-automation-sdk @ git+https://github.com/vmware/vsphere-automation-sdk-python.git@v8.0.1.0
-    # via -r /ray/ci/../python/requirements/test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
 wandb==0.13.4
-    # via -r /ray/ci/../python/requirements/ml/core-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/core-requirements.txt
 watchfiles==0.19.0
     # via
-    #   -r /ray/ci/../python/requirements.txt
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
 wcmatch==8.5
     # via semgrep
 wcwidth==0.2.12
@@ -2488,7 +2482,7 @@ wcwidth==0.2.12
 webcolors==1.13
     # via jsonschema
 webdataset==0.2.86
-    # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/data-test-requirements.txt
 webencodings==0.5.1
     # via
     #   bleach
@@ -2501,12 +2495,12 @@ websocket-client==1.6.4
     #   kubernetes
 websockets==11.0.3
     # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   gradio
     #   gradio-client
 werkzeug==2.3.8
     # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   flask
     #   moto
     #   pytest-httpserver
@@ -2516,10 +2510,9 @@ wheel==0.42.0
     #   astunparse
     #   lightgbm
     #   sphinx-togglebutton
-    #   tensorboard
 widgetsnbextension==3.6.6
     # via ipywidgets
-wrapt==1.16.0
+wrapt==1.14.1
     # via
     #   aiobotocore
     #   aws-xray-sdk
@@ -2527,19 +2520,14 @@ wrapt==1.16.0
     #   deprecated
     #   tensorflow
     #   tensorflow-datasets
-    #   xgboost-ray
 wurlitzer==3.0.3
     # via comet-ml
 xgboost==1.7.6
     # via
-    #   -r /ray/ci/../python/requirements/ml/core-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/ml/core-requirements.txt
     #   hebo
-    #   xgboost-ray
-    # via
-    #   -r /ray/ci/../python/requirements/ml/core-requirements.txt
-    #   lightgbm-ray
 xlrd==2.0.1
-    # via -r /ray/ci/../python/requirements/test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
 xmltodict==0.13.0
     # via
     #   moto
@@ -2559,17 +2547,16 @@ ypy-websocket==0.8.4
     # via jupyter-server-ydoc
 yq==3.2.2
     # via
-    #   -r /ray/ci/../python/requirements/lint-requirements.txt
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/lint-requirements.txt
+    #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
 zict==3.0.0
     # via distributed
 zipp==3.17.0
     # via
     #   etils
     #   importlib-metadata
-    #   importlib-resources
 zoopt==0.4.1
-    # via -r /ray/ci/../python/requirements/ml/tune-test-requirements.txt
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/tune-test-requirements.txt
 
 # The following packages are considered to be unsafe in a requirements file:
 # pip
