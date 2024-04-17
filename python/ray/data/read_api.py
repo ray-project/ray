@@ -2861,12 +2861,14 @@ def from_torch(
 
     Args:
         dataset: A `Torch Dataset`_.
+        local_read: If ``True``, perform the read as a local read.
 
     Returns:
         A :class:`~ray.data.Dataset` containing the Torch dataset samples.
     """  # noqa: E501
 
     # Files may not be accessible from all nodes, run the read task on current node.
+    ray_remote_args = {}
     if local_read:
         ray_remote_args = {
             "scheduling_strategy": NodeAffinitySchedulingStrategy(
