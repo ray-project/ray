@@ -814,7 +814,10 @@ class JobManager:
         runtime_env["env_vars"] = env_vars
 
         if os.getenv(RAY_STREAM_RUNTIME_ENV_LOG_TO_JOB_DRIVER_LOG_ENV_VAR, "0") == "1":
-            config = runtime_env.get("config", RuntimeEnvConfig())
+            config = runtime_env.get("config")
+            # Empty fields may be set to None, so we need to check for None explicitly.
+            if config is None:
+                config = RuntimeEnvConfig()
             config["log_files"] = [self._log_client.get_log_file_path(submission_id)]
             runtime_env["config"] = config
         return runtime_env
@@ -1002,13 +1005,19 @@ class JobManager:
                 self._monitor_job(submission_id, job_supervisor=supervisor)
             )
         except Exception as e:
+            tb_str = traceback.format_exc()
+
             logger.warning(
                 f"Failed to start supervisor actor for job {submission_id}: '{e}'"
+                f". Full traceback:\n{tb_str}"
             )
             await self._job_info_client.put_status(
                 submission_id,
                 JobStatus.FAILED,
-                message=f"Failed to start supervisor actor {submission_id}: '{e}'",
+                message=(
+                    f"Failed to start supervisor actor {submission_id}: '{e}'"
+                    f". Full traceback:\n{tb_str}"
+                ),
             )
 
         return submission_id
