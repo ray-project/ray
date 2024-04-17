@@ -132,6 +132,7 @@ class ReleaseTestStateMachine(TestStateMachine):
                 "failing-commit": failing_commit,
                 "concurrency": "3",
                 "run-per-commit": "1",
+                "test-type": "release-test",
             },
         )
         self.test[Test.KEY_BISECT_BUILD_NUMBER] = build["number"]
