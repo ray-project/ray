@@ -169,12 +169,6 @@ RAY_IMG="${RUNTIME_REPO}:${BUILD_TAG}"
 ANYSCALE_IMG="${RUNTIME_REPO}:${BUILD_TAG}-as"
 
 
-if [[ "${USE_MINIMIZED_BASE}" == "1" ]]; then
-    PIP_PATH="/home/ray/.local/bin/pip"
-else
-    PIP_PATH="/home/ray/anaconda3/bin/pip"
-fi
-
 ####
 echo "--- Step 1: Build OSS site package tarball"
 ####
@@ -195,7 +189,6 @@ cp anyscale/docker/Dockerfile.sitepkg "${CONTEXT_TMP}/Dockerfile"
             --build-arg RAY_VERSION="${RAY_VERSION}" \
             --build-arg WHEEL_PATH=".whl/${WHEEL_FILE}" \
             --build-arg RAY_MOD_DATE="2020-01-01" \
-            --build-arg PIP_PATH="${PIP_PATH}" \
             --output="${BUILD_TMP}" --target=final -f Dockerfile -
 )
 
@@ -225,7 +218,6 @@ rm "${CONTEXT_TMP}/.whl/${CPP_WHEEL_FILE}" # And removes the ray-cpp wheel.
             --build-arg RAY_VERSION="${RAY_VERSION}" \
             --build-arg WHEEL_PATH=".whl/${WHEEL_FILE}" \
             --build-arg RAY_MOD_DATE="2023-01-01" \
-            --build-arg PIP_PATH="${PIP_PATH}" \
             --output="${BUILD_TMP}" --target=final -f Dockerfile -
 )
 
@@ -300,7 +292,6 @@ fi
             --build-arg WHEEL_PATH=".whl/${WHEEL_FILE}" \
             --build-arg RAY_VERSION="${RAY_VERSION}" \
             --build-arg PRESTART_DATA_PATH="${ANYSCALE_PRESTART_DATA_PATH}" \
-            --build-arg PIP_PATH="${PIP_PATH}" \
             -t "${RAY_IMG}" -f Dockerfile -
 )
 
