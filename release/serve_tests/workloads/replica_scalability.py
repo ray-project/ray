@@ -126,7 +126,7 @@ def main(num_replicas: Optional[int], trial_length: Optional[int]):
         ]
         results = {
             "total_requests": stats.total_requests,
-            "history": stats.history,
+            "service_id": status.id,
             "perf_metrics": sum(
                 results_per_stage,
                 [
@@ -154,6 +154,7 @@ def main(num_replicas: Optional[int], trial_length: Optional[int]):
             ),
         }
 
+        logger.info(f"Stats history: {json.dumps(stats.history, indent=4)}")
         logger.info(f"Final aggregated metrics: {json.dumps(results, indent=4)}")
         save_test_results(results)
 
