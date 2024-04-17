@@ -2875,6 +2875,10 @@ def from_torch(
                 ray.get_runtime_context().get_node_id(),
                 soft=False,
             ),
+            # The user might have initialized Ray to have num_cpus = 0 for the head
+            # node. For a local read we expect the read task to be executed on the
+            # head node, so we should set num_cpus = 0 for the task to allow it to
+            # run regardless of the user's head node configuration.
             "num_cpus": 0,
         }
     return read_datasource(
