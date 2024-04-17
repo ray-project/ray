@@ -37,7 +37,7 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         # If we use a noisy encoder. Note, only if the observation
         # space is a flat space we can use a noisy encoder.
         self.uses_noisy_encoder = isinstance(self.encoder, TorchNoisyMLPEncoder)
-        if self.is_learner_module:
+        if not self.inference_only:
             # We do not want to train the target networks.
             # AND sync all target nets with the actual (trained) ones.
             self.target_encoder.requires_grad_(False)
@@ -132,10 +132,10 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
     def _forward_train(
         self, batch: Dict[str, TensorType]
     ) -> Dict[str, TensorStructType]:
-        if not self.is_learner_module:
+        if self.inference_only:
             raise RuntimeError(
                 "Trying to train a module that is not a learner module. Set the "
-                "flag `is_learner_module=True` when building the module."
+                "flag `inference_only=False` when building the module."
             )
         output = {}
 

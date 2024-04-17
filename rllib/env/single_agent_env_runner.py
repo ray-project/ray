@@ -82,7 +82,7 @@ class SingleAgentEnvRunner(EnvRunner):
             # or inference.
             # TODO (simon): Once we use `get_marl_module_spec` here, we can remove
             # this line here as the function takes care of this flag.
-            module_spec.model_config_dict["is_learner_module"] = False
+            module_spec.model_config_dict["_inference_only"] = True
             self.module: RLModule = module_spec.build()
         except NotImplementedError:
             self.module = None

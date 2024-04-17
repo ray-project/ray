@@ -3403,7 +3403,7 @@ class AlgorithmConfig(_Config):
         single_agent_rl_module_spec: Optional[SingleAgentRLModuleSpec] = None,
         env: Optional[EnvType] = None,
         spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
-        is_learner_module: bool = True,
+        inference_only: bool = False,
     ) -> MultiAgentRLModuleSpec:
         """Returns the MultiAgentRLModule spec based on the given policy spec dict.
 
@@ -3432,7 +3432,7 @@ class AlgorithmConfig(_Config):
                 EnvRunner. If not provided, will try to infer from `env`. Otherwise
                 from `self.observation_space` and `self.action_space`. If no
                 information on spaces can be inferred, will raise an error.
-            is_learner_module: If `False`, the module spec will be used in either
+            inference_only: If `True`, the module spec will be used in either
                 sampling or inference and can be built in its light version (if
                 available), i.e. it contains only the networks needed for acting in the
                 environment (no target or critic networks).
@@ -3628,8 +3628,8 @@ class AlgorithmConfig(_Config):
                 module_spec.action_space = policy_spec.action_space
             if module_spec.model_config_dict is None:
                 module_spec.model_config_dict = policy_spec.config.get("model", {})
-            # Set the `is_learner_module` flag for the module spec.
-            module_spec.model_config_dict["is_learner_module"] = is_learner_module
+            # Set the `inference_only` flag for the module spec.
+            module_spec.model_config_dict["_inference_only"] = inference_only
 
         return marl_module_spec
 

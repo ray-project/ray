@@ -52,7 +52,7 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
             output[Columns.STATE_OUT] = encoder_outs[Columns.STATE_OUT]
 
         # Value head
-        if self.is_learner_module:
+        if not self.inference_only:
             vf_out = self.vf(encoder_outs[ENCODER_OUT][CRITIC])
             output[Columns.VF_PREDS] = vf_out.squeeze(-1)
 

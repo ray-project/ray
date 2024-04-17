@@ -22,14 +22,14 @@ class PPORLModule(RLModule, abc.ABC):
         # network is then either the share encoder network from the learner module
         # or the actor encoder network from the learner module (if the value network
         # is not shared with the actor network).
-        if not self.is_learner_module:
+        if self.inference_only:
             catalog._model_config_dict["vf_share_layers"] = True
 
         # Build models from catalog
         self.encoder = catalog.build_actor_critic_encoder(framework=self.framework)
         self.pi = catalog.build_pi_head(framework=self.framework)
         # Only build the critic network when this is a learner module.
-        if self.is_learner_module:
+        if not self.inference_only:
             self.vf = catalog.build_vf_head(framework=self.framework)
 
         self.action_dist_cls = catalog.get_action_dist_cls(framework=self.framework)
