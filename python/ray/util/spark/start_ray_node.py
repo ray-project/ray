@@ -63,6 +63,12 @@ if __name__ == "__main__":
     # using the temp directory.
     fcntl.flock(lock_fd, fcntl.LOCK_SH)
     process = subprocess.Popen(
+        # 'ray start ...' command uses python that is set by
+        # Shebang #! ..., the Shebang line is hardcoded in ray script,
+        # it can't be changed to other python executable path.
+        # to enforce using current python executable,
+        # turn the subprocess command to
+        # '`sys.executable` `which ray` start ...'
         [sys.executable, shutil.which(ray_cli_cmd), "start", *arg_list],
         text=True,
     )
