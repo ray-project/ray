@@ -14,8 +14,6 @@ from ray.air.util.tensor_extensions.utils import (
     create_ragged_ndarray,
 )
 from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray.util.debug import log_once
-
 
 PYARROW_VERSION = _get_pyarrow_version()
 if PYARROW_VERSION is not None:
@@ -139,7 +137,7 @@ class ArrowTensorType(pa.ExtensionType):
         )
 
     def __arrow_ext_serialize__(self):
-        return json.dumps(self._shape).encode()t
+        return json.dumps(self._shape).encode()
 
     @classmethod
     def __arrow_ext_deserialize__(cls, storage_type, serialized):
