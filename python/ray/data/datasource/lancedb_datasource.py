@@ -4,13 +4,15 @@ Module to read an LanceDB table into a Ray Dataset, by using the Ray Datasource 
 
 import logging
 from typing import List, Optional, Union
+
+import lance
+import pyarrow as pa
+from lance import LanceFragment
+
 from ray.data import ReadTask
 from ray.data.block import Block, BlockMetadata
 from ray.data.datasource import Datasource
 from ray.util.annotations import DeveloperAPI
-import lance
-from lance import LanceFragment
-import pyarrow as pa
 
 logger = logging.getLogger(__name__)
 
