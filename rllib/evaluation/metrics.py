@@ -1,10 +1,10 @@
 import collections
 import logging
 import numpy as np
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import List, Optional, TYPE_CHECKING
 
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils.annotations import OldAPIStack
+from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import GradInfoDict, LearnerStatsDict, ResultDict
 
@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-RolloutMetrics = OldAPIStack(
+RolloutMetrics = DeveloperAPI(
     collections.namedtuple(
         "RolloutMetrics",
         [
@@ -32,7 +32,7 @@ RolloutMetrics = OldAPIStack(
 RolloutMetrics.__new__.__defaults__ = (0, 0, {}, {}, {}, {}, {}, False, {})
 
 
-@OldAPIStack
+@DeveloperAPI
 def get_learner_stats(grad_info: GradInfoDict) -> LearnerStatsDict:
     """Return optimization stats reported from the policy.
 
@@ -61,7 +61,7 @@ def get_learner_stats(grad_info: GradInfoDict) -> LearnerStatsDict:
     return multiagent_stats
 
 
-@OldAPIStack
+@DeveloperAPI
 def collect_metrics(
     workers: "WorkerSet",
     remote_worker_ids: Optional[List[int]] = None,
@@ -90,7 +90,7 @@ def collect_metrics(
     return metrics
 
 
-@OldAPIStack
+@DeveloperAPI
 def collect_episodes(
     workers: "WorkerSet",
     remote_worker_ids: Optional[List[int]] = None,
@@ -126,7 +126,7 @@ def collect_episodes(
     return episodes
 
 
-@OldAPIStack
+@DeveloperAPI
 def summarize_episodes(
     episodes: List[RolloutMetrics],
     new_episodes: List[RolloutMetrics] = None,

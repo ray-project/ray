@@ -21,7 +21,6 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
     PublicAPI,
 )
-from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.exploration.random_encoder import (
     _MovingMeanStd,
     compute_states_entropy,
@@ -50,6 +49,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
     callbacks, subclass DefaultCallbacks and then set
     {"callbacks": YourCallbacksClass} in the algo config.
     """
+
     @OverrideToImplementCustomLogic
     def on_algorithm_init(
         self,

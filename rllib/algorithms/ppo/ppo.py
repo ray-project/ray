@@ -30,19 +30,10 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.metrics import (
-    ENV_RUNNER_RESULTS,
-    ENV_RUNNER_SAMPLING_TIMER,
-    LEARNER_RESULTS,
-    LEARNER_UPDATE_TIMER,
     NUM_AGENT_STEPS_SAMPLED,
-    NUM_AGENT_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_SAMPLED,
-    NUM_ENV_STEPS_SAMPLED_LIFETIME,
-    NUM_EPISODES,
-    NUM_EPISODES_LIFETIME,
     SYNCH_WORKER_WEIGHTS_TIMER,
     SAMPLE_TIMER,
-    TIMERS,
     ALL_MODULES,
 )
 from ray.rllib.utils.schedules.scheduler import Scheduler
@@ -425,51 +416,41 @@ class PPO(Algorithm):
 
     def _training_step_new_api_stack(self) -> ResultDict:
         # Collect batches from sample workers until we have a full batch.
-        with self.metrics.log_time((TIMERS, ENV_RUNNER_SAMPLING_TIMER)):
+        with self._timers[SAMPLE_TIMER]:
             # Sample in parallel from the workers.
             if self.config.count_steps_by == "agent_steps":
-                episodes, env_runner_metrics = synchronous_parallel_sample(
+                episodes = synchronous_parallel_sample(
                     worker_set=self.workers,
                     max_agent_steps=self.config.total_train_batch_size,
                     sample_timeout_s=self.config.sample_timeout_s,
                     _uses_new_env_runners=self.config.uses_new_env_runners,
-                    _return_metrics=True,
                 )
             else:
-                episodes, env_runner_metrics = synchronous_parallel_sample(
+                episodes = synchronous_parallel_sample(
                     worker_set=self.workers,
                     max_env_steps=self.config.total_train_batch_size,
                     sample_timeout_s=self.config.sample_timeout_s,
                     _uses_new_env_runners=self.config.uses_new_env_runners,
-                    _return_metrics=True,
                 )
             # Return early if all our workers failed.
             if not episodes:
                 return {}
-
-            # Reduce EnvRunner metrics over the n EnvRunners.
-            self.metrics.log_n_dicts(env_runner_metrics, key=ENV_RUNNER_RESULTS)
-            # Log lifetime counts for env- and agent steps.
-            self.metrics.log_dict(
-                {
-                    NUM_AGENT_STEPS_SAMPLED_LIFETIME: self.metrics.get(ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED),
-                    NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.get(ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED),
-                    NUM_EPISODES_LIFETIME: self.metrics.get(ENV_RUNNER_RESULTS, NUM_EPISODES),
-                },
-                reduce="sum",
+            self._counters[NUM_AGENT_STEPS_SAMPLED] += sum(
+                e.agent_steps() for e in episodes
+            )
+            self._counters[NUM_ENV_STEPS_SAMPLED] += sum(
+                e.env_steps() for e in episodes
             )
 
         # Perform a train step on the collected batch.
-        with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
-            learner_results = self.learner_group.update_from_episodes(
-                episodes=episodes,
-                minibatch_size=(
-                    self.config.mini_batch_size_per_learner
-                    or self.config.sgd_minibatch_size
-                ),
-                num_iters=self.config.num_sgd_iter,
-            )
-            self.metrics.log_dict(learner_results, key=LEARNER_RESULTS)
+        train_results = self.learner_group.update_from_episodes(
+            episodes=episodes,
+            minibatch_size=(
+                self.config.mini_batch_size_per_learner
+                or self.config.sgd_minibatch_size
+            ),
+            num_iters=self.config.num_sgd_iter,
+        )
 
         # The train results's loss keys are pids to their loss values. But we also
         # return a total_loss key at the same level as the pid keys. So we need to
@@ -477,11 +458,11 @@ class PPO(Algorithm):
         # TODO (Kourosh): We should also not be using train_results as a message
         #  passing medium to infer which policies to update. We could use
         #  policies_to_train variable that is given by the user to infer this.
-        policies_to_update = set(learner_results.keys()) - {ALL_MODULES}
+        policies_to_update = set(train_results.keys()) - {ALL_MODULES}
 
         # Update weights - after learning on the local worker - on all remote
         # workers.
-        with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
+        with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
             if self.workers.num_remote_workers() > 0:
                 self.workers.sync_weights(
                     # Sync weights from learner_group to all rollout workers.
@@ -496,7 +477,7 @@ class PPO(Algorithm):
         kl_dict = {}
         if self.config.use_kl_loss:
             for pid in policies_to_update:
-                kl = learner_results[pid][LEARNER_RESULTS_KL_KEY]
+                kl = train_results[pid][LEARNER_RESULTS_KL_KEY]
                 kl_dict[pid] = kl
                 if np.isnan(kl):
                     logger.warning(
@@ -513,11 +494,12 @@ class PPO(Algorithm):
         additional_results = self.learner_group.additional_update(
             module_ids_to_update=policies_to_update,
             sampled_kl_values=kl_dict,
-            timestep=self.metrics.get(ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED),
+            timestep=self._counters[NUM_AGENT_STEPS_SAMPLED],
         )
-        self.metrics.log_dict(additional_results, LEARNER_RESULTS)
+        for pid, res in additional_results.items():
+            train_results[pid].update(res)
 
-        return self.metrics.reduce()
+        return train_results
 
     def _training_step_old_and_hybrid_api_stacks(self) -> ResultDict:
         # Collect batches from sample workers until we have a full batch.

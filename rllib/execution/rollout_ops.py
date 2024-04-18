@@ -79,14 +79,13 @@ def synchronous_parallel_sample(
     agent_or_env_steps = 0
     max_agent_or_env_steps = max_agent_steps or max_env_steps or None
     sample_batches_or_episodes = []
-    all_metrics = []
+    all_stats_dicts = []
 
     # Stop collecting batches as soon as one criterium is met.
     while (max_agent_or_env_steps is None and agent_or_env_steps == 0) or (
         max_agent_or_env_steps is not None
         and agent_or_env_steps < max_agent_or_env_steps
     ):
-        all_stats_dicts = []
         # No remote workers in the set -> Use local worker for collecting
         # samples.
         if worker_set.num_remote_workers() <= 0:
@@ -137,8 +136,7 @@ def synchronous_parallel_sample(
                 )
             else:
                 agent_or_env_steps += sum(
-                    int(stat_dict[NUM_ENV_STEPS_SAMPLED])
-                    for stat_dict in stats_dicts
+                    int(stat_dict[NUM_ENV_STEPS_SAMPLED]) for stat_dict in stats_dicts
                 )
         else:
             for batch_or_episode in sampled_data:

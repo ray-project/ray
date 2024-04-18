@@ -8,24 +8,20 @@ from typing import DefaultDict, Dict, List, Optional
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.core import DEFAULT_AGENT_ID, DEFAULT_MODULE_ID
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.env.utils import _gym_env_creator
+from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.metrics import (
-    NUM_AGENT_STEPS_SAMPLED,
-    NUM_ENV_STEPS_SAMPLED,
-    NUM_EPISODES,
-)
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.spaces.space_utils import unbatch
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-from ray.rllib.utils.typing import EpisodeID, ModelWeights, ResultDict, TensorType
+from ray.rllib.utils.typing import EpisodeID, ModelWeights, TensorType
 from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.util.annotations import PublicAPI
 
@@ -332,13 +328,14 @@ class SingleAgentEnvRunner(EnvRunner):
                             rl_module=self.module,
                             shared_data=self._shared_data,
                         )
-                    # Make the `on_episode_step` and `on_episode_end` callbacks (before
-                    # finalizing the episode object).
+                    # Make the `on_episode_step` callback (before finalizing the
+                    # episode object).
                     self._make_on_episode_callback("on_episode_step", env_index)
-                    self._make_on_episode_callback("on_episode_end", env_index)
-
-                    # Then finalize (numpy'ize) the episode.
                     done_episodes_to_return.append(self._episodes[env_index].finalize())
+
+                    # Make the `on_episode_end` callback (after having finalized the
+                    # episode object).
+                    self._make_on_episode_callback("on_episode_end", env_index)
 
                     # Create a new episode object with already the reset data in it.
                     self._episodes[env_index] = SingleAgentEpisode(
@@ -498,17 +495,16 @@ class SingleAgentEnvRunner(EnvRunner):
                         truncated=truncateds[env_index],
                         extra_model_outputs=extra_model_output,
                     )
-                    # Make `on_episode_step` and `on_episode_end` callbacks before
-                    # finalizing the episode.
+                    # Make `on_episode_step` callback before finalizing the episode.
                     self._make_on_episode_callback(
                         "on_episode_step", env_index, episodes
                     )
+                    done_episodes_to_return.append(episodes[env_index].finalize())
+
+                    # Make `on_episode_end` callback after finalizing the episode.
                     self._make_on_episode_callback(
                         "on_episode_end", env_index, episodes
                     )
-
-                    # Finalize (numpy'ize) the episode.
-                    done_episodes_to_return.append(episodes[env_index].finalize())
 
                     # Also early-out if we reach the number of episodes within this
                     # for-loop.
@@ -548,72 +544,33 @@ class SingleAgentEnvRunner(EnvRunner):
 
         return samples
 
-    def get_metrics(self) -> ResultDict:
+    # TODO (sven): Remove the requirement for EnvRunners to have this
+    #  API. Instead Algorithm should compile episode metrics itself via its local
+    #  buffer.
+    def get_metrics(self) -> List[RolloutMetrics]:
         # Compute per-episode metrics (only on already completed episodes).
+        metrics = []
         for eps in self._done_episodes_for_metrics:
             assert eps.is_done
             episode_length = len(eps)
-            episode_return = eps.get_return()
-            episode_duration_s = eps.get_duration_s()
+            episode_reward = eps.get_return()
             # Don't forget about the already returned chunks of this episode.
             if eps.id_ in self._ongoing_episodes_for_metrics:
                 for eps2 in self._ongoing_episodes_for_metrics[eps.id_]:
                     episode_length += len(eps2)
-                    episode_return += eps2.get_return()
-                    episode_duration_s += eps2.get_duration_s()
+                    episode_reward += eps2.get_return()
                 del self._ongoing_episodes_for_metrics[eps.id_]
 
-            # Log general episode metrics.
-            self.metrics.log_dict(
-                {
-                    "episode_length_mean": episode_length,
-                    "episode_return_mean": episode_return,
-                    "episode_duration_sec_mean": episode_duration_s,
-                    # Per-agent returns.
-                    "agent_episode_returns_mean": {DEFAULT_AGENT_ID: episode_return},
-                    # Per-RLModule returns.
-                    "module_episode_returns_mean": {DEFAULT_MODULE_ID: episode_return},
-                },
-            )
-            # For some metrics, log min/max as well.
-            self.metrics.log_dict(
-                {
-                    "episode_length_min": episode_length,
-                    "episode_return_min": episode_return,
-                },
-                reduce="min",
-            )
-            self.metrics.log_dict(
-                {
-                    "episode_length_max": episode_length,
-                    "episode_return_max": episode_return,
-                },
-                reduce="max",
+            metrics.append(
+                RolloutMetrics(
+                    episode_length=episode_length,
+                    episode_reward=episode_reward,
+                )
             )
 
-        # Agent- and env timesteps done this iter.
-        # Episodes this iter.
-        num_env_steps_this_iter = (
-            self.global_num_env_steps_sampled - self._last_global_num_env_steps_sampled
-        )
-        self._last_global_num_env_steps_sampled = self.global_num_env_steps_sampled
-        self.metrics.log_dict(
-            {
-                NUM_AGENT_STEPS_SAMPLED: {DEFAULT_AGENT_ID: num_env_steps_this_iter},
-                NUM_ENV_STEPS_SAMPLED: num_env_steps_this_iter,
-                NUM_EPISODES: len(self._done_episodes_for_metrics),
-            },
-            # Sum up over the n episodes that were completed ...
-            reduce="sum",
-            # ... but not over lifetime (only over individual sampling cycles).
-            reset_on_reduce=True,
-        )
-
-        # Now that we have logged everything, clear cache of done episodes.
         self._done_episodes_for_metrics.clear()
 
-        # Return reduced metrics.
-        return self.metrics.reduce()
+        return metrics
 
     # TODO (sven): Remove the requirement for EnvRunners/RolloutWorkers to have this
     #  API. Replace by proper state overriding via `EnvRunner.set_state()`

@@ -6,10 +6,10 @@ that come with each Algorithm are enough to properly evaluate the learning progr
 of your Algorithm.
 
 This script uses the SimpleCorridor environment, a simple 1D gridworld, in which
-the agent can only walk left (action=0) or right (action=1). The goal state lies the
-end of the (1D) corridor. The env exposes an API to change the length of the corridor
-on-the-fly. We use this API here to extend the size of the corridor for the evaluation
-runs.
+the agent can only walk left (action=0) or right (action=1). The goal state is located
+at the end of the (1D) corridor. The env exposes an API to change the length of the
+corridor on-the-fly. We use this API here to extend the size of the corridor for the
+evaluation runs.
 
 For demonstration purposes only, we define a simple custom evaluation method that does
 the following:
