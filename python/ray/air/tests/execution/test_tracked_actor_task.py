@@ -7,7 +7,6 @@ from ray.air import ResourceRequest
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
 from ray.air.execution._internal.actor_manager import RayActorManager
 
-
 RESOURCE_MANAGERS = [FixedResourceManager, PlacementGroupResourceManager]
 
 

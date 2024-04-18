@@ -1,15 +1,14 @@
+import sys
 from typing import Dict, Optional
 
 import pytest
-import sys
 
 import ray
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
+from ray.train.tests.util import mock_storage_context
 from ray.tune import Callback, ResumeConfig
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
-
-from ray.train.tests.util import mock_storage_context
 
 
 @pytest.fixture(scope="function")
