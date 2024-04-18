@@ -206,7 +206,7 @@ void WorkerPool::PopWorkerCallbackInternal(const TaskSpecification &task_spec,
   RAY_CHECK(callback);
   auto used = false;
   if (worker && finished_jobs_.contains(task_spec.JobId()) &&
-      !task_spec.IsDetachedActor()) {
+      task_spec.AncestorDetachedActorId().IsNil()) {
     RAY_CHECK(status == PopWorkerStatus::OK);
     callback(nullptr, PopWorkerStatus::JobFinished, "");
   } else {
@@ -992,7 +992,7 @@ void WorkerPool::InvokePopWorkerCallbackForProcess(
     // invoking the callback immediately.
     RAY_CHECK(status != PopWorkerStatus::RuntimeEnvCreationFailed);
     if (worker && finished_jobs_.contains(it->second.task_spec.JobId()) &&
-        !it->second.task_spec.IsDetachedActor()) {
+        it->second.task_spec.AncestorDetachedActorId().IsNil()) {
       RAY_CHECK(status == PopWorkerStatus::OK);
       callback(nullptr, PopWorkerStatus::JobFinished, "");
     } else {
@@ -1112,7 +1112,8 @@ void WorkerPool::KillIdleWorker(std::shared_ptr<WorkerInterface> idle_worker,
   rpc::ExitRequest request;
   const auto &job_id = idle_worker->GetAssignedJobId();
   if (finished_jobs_.contains(job_id) &&
-      RayConfig::instance().kill_idle_workers_of_terminated_job()) {
+      (!idle_worker->GetAncestorDetachedActorId().has_value() ||
+       idle_worker->GetAncestorDetachedActorId()->IsNil())) {
     RAY_LOG(INFO) << "Force exiting worker whose job has exited "
                   << idle_worker->WorkerId();
     request.set_force_exit(true);
@@ -1218,6 +1219,11 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
         it->first->GetAssignedJobId() != task_spec.JobId()) {
       skip_cached_worker_job_mismatch++;
       stats::NumCachedWorkersSkippedJobMismatch.Record(1);
+      continue;
+    }
+    if (it->first->GetAncestorDetachedActorId().has_value() &&
+        it->first->GetAncestorDetachedActorId().value() !=
+            task_spec.AncestorDetachedActorId()) {
       continue;
     }
 

@@ -112,6 +112,10 @@ class WorkerInterface {
 
   virtual void SetJobId(const JobID &job_id) = 0;
 
+  virtual std::optional<ActorID> GetAncestorDetachedActorId() const = 0;
+
+  virtual void SetAncestorDetachedActorId(ActorID ancestor_detached_actor_id) = 0;
+
  protected:
   virtual void SetStartupToken(StartupToken startup_token) = 0;
 
@@ -205,6 +209,17 @@ class Worker : public WorkerInterface {
     lifetime_allocated_instances_ = allocated_instances;
   };
 
+  std::optional<ActorID> GetAncestorDetachedActorId() const {
+    return ancestor_detached_actor_id_;
+  }
+
+  void SetAncestorDetachedActorId(ActorID detached_actor_id) {
+    if (!ancestor_detached_actor_id_.has_value()) {
+      ancestor_detached_actor_id_ = detached_actor_id;
+    }
+    RAY_CHECK_EQ(ancestor_detached_actor_id_.value(), detached_actor_id);
+  }
+
   std::shared_ptr<TaskResourceInstances> GetLifetimeAllocatedInstances() {
     return lifetime_allocated_instances_;
   };
@@ -271,6 +286,8 @@ class Worker : public WorkerInterface {
   const int runtime_env_hash_;
   /// The worker's actor ID. If this is nil, then the worker is not an actor.
   ActorID actor_id_;
+  /// Ancestor detached actor ID for the worker's last assigned task.
+  std::optional<ActorID> ancestor_detached_actor_id_;
   /// The worker's placement group bundle. It is used to detect if the worker is
   /// associated with a placement group bundle.
   BundleID bundle_id_;

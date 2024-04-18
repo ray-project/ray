@@ -287,6 +287,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   TaskID ParentTaskId() const;
 
+  ActorID AncestorDetachedActorId() const;
+
   TaskID SubmitterTaskId() const;
 
   size_t ParentCounter() const;

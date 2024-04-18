@@ -883,6 +883,7 @@ void LocalTaskManager::Dispatch(
   }
   worker->AssignTaskId(task_spec.TaskId());
   worker->SetAssignedTask(task);
+  worker->SetAncestorDetachedActorId(task_spec.AncestorDetachedActorId());
 
   // Pass the contact info of the worker to use.
   reply->set_worker_pid(worker->GetProcess().GetId());
