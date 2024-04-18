@@ -22,9 +22,9 @@ Datasets
 
 :class:`Dataset <ray.data.Dataset>` is the main user-facing Python API. It represents a 
 distributed data collection, and defines data loading and processing operations. You 
-typically use the API like this:
+typically use the API in this way:
 
-1. Create a Dataset from external storage or in-memory data.
+1. Create a Ray Dataset from external storage or in-memory data.
 2. Apply transformations to the data. 
 3. Write the outputs to external storage or feed the outputs to training workers. 
 
@@ -36,8 +36,8 @@ transfers over the network. Each block contains a disjoint subset of rows, and R
 loads and transforms these blocks in parallel. 
 
 The following figure visualizes a dataset with three blocks, each holding 1000 rows.
-The :class:`~ray.data.Dataset` is held on the driver while materialized blocks are 
-stored as objects in Ray's shared-memory :ref:`object store <objects-in-ray>`.
+Ray Data holds the :class:`~ray.data.Dataset` on the driver and stores the materialized 
+blocks as objects in Ray's shared-memory :ref:`object store <objects-in-ray>`.
 
 .. image:: images/dataset-arch.svg
 
@@ -47,8 +47,8 @@ stored as objects in Ray's shared-memory :ref:`object store <objects-in-ray>`.
 Block formats
 ~~~~~~~~~~~~~
 
-Blocks are Arrow tables or pandas DataFrames. Generally, blocks are Arrow tables unless 
-Arrow can’t represent your data. 
+Blocks are Arrow tables or `pandas` DataFrames. Generally, blocks are Arrow tables 
+unless Arrow can’t represent your data. 
 
 The block format doesn’t affect the type of data returned by APIs like 
 :meth:`~ray.data.Dataset.iter_batches`.
@@ -109,7 +109,7 @@ Types of physical operators
 
 Physical operators take in a stream of block references and output another stream of 
 block references. Some physical operators launch Ray Tasks and Actors to transform  
-the blocks, and others only manipulate the references
+the blocks, and others only manipulate the references.
 
 ``MapOperator`` is the most common operator. All read, transform, and write operations 
 are implemented with it. To process data, ``MapOperator`` implementations use either Ray 
@@ -126,7 +126,7 @@ The executor
 
 The *executor* schedules tasks and moves data between physical operators.
 
-The executor and operators are located on the driver process, except for training jobs 
+The executor and operators are located on the driver process, except for training jobs, 
 where they're located on a special actor called ``SplitCoordinator``. Tasks and actors 
 launched by operators are scheduled across the cluster, and outputs are stored in Ray’s 
 distributed object store. The executor manipulates references to objects, and doesn’t 
