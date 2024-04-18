@@ -63,7 +63,7 @@ if __name__ == "__main__":
     # using the temp directory.
     fcntl.flock(lock_fd, fcntl.LOCK_SH)
     process = subprocess.Popen(
-        ["python", shutil.which(ray_cli_cmd), "start", *arg_list],
+        [sys.executable, shutil.which(ray_cli_cmd), "start", *arg_list],
         text=True,
     )
 
