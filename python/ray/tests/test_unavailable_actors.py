@@ -10,6 +10,34 @@ from ray.exceptions import ActorUnavailableError, ActorDiedError
 from typing import Tuple
 
 
+@pytest.fixture
+def ray_start_regular_with_patch_with_patch(ray_start_regular_with_patch):
+    """
+    A hotfix about the test environment. This file's tests breaks grpc connections
+    which triggers a certain MacOS gRPC bug. Specifically, on MacOS, we have a
+    thread `worker.logger_thread` that polls GCS in a loop for logs. On `ray.shutdown()`
+    we invoke gRPC `grpc::ClientContext::TryCancel` but the thread still hangs in
+    `poll`. We will investigate more on it, e.g. to add a timeout; before that we skip
+    the logging.
+    """
+    address = ray_start_regular_with_patch["address"]
+    if sys.platform == "win32":
+        pytest.skip("Skipping test on Windows")
+    elif sys.platform == "darwin":
+        print("Running test on macOS, don't print driver to log")
+        try:
+            yield ray.init(address=address, log_to_driver=False)
+        finally:
+            ray.shutdown()
+    elif sys.platform == "linux":
+        try:
+            yield ray.init(address=address)
+        finally:
+            ray.shutdown()
+    else:
+        raise ValueError(f"unknown {sys.platform}")
+
+
 @ray.remote
 class Counter:
     def __init__(self, init_time_s=0.01) -> None:
@@ -104,7 +132,7 @@ def test_generators_early_stop_unavailable(ray_start_regular, caller):
     "caller",
     ["actor", "task", "driver"],
 )
-def test_actor_unavailable_conn_broken(ray_start_regular, caller):
+def test_actor_unavailable_conn_broken(ray_start_regular_with_patch, caller):
     def body():
         a = Counter.remote()
         assert ray.get(a.slow_increment.remote(2, 0.1)) == 2
@@ -137,7 +165,7 @@ def test_actor_unavailable_conn_broken(ray_start_regular, caller):
     "caller",
     ["actor", "task", "driver"],
 )
-def test_actor_unavailable_restarting(ray_start_regular, caller):
+def test_actor_unavailable_restarting(ray_start_regular_with_patch, caller):
     def body():
         a = Counter.options(max_restarts=1).remote(init_time_s=5)
         assert ray.get(a.slow_increment.remote(2, 0.1)) == 2
@@ -172,7 +200,7 @@ def test_actor_unavailable_restarting(ray_start_regular, caller):
     "caller",
     ["actor", "task", "driver"],
 )
-def test_actor_unavailable_norestart(ray_start_regular, caller):
+def test_actor_unavailable_norestart(ray_start_regular_with_patch, caller):
     def body():
         a = Counter.remote()
         assert ray.get(a.read.remote()) == 0
@@ -218,7 +246,7 @@ class SlowCtor:
         return os.getpid()
 
 
-def test_unavailable_then_actor_error(ray_start_regular):
+def test_unavailable_then_actor_error(ray_start_regular_with_patch):
     c = Counter.remote()
     # Restart config:
     # Initial run, Restart #1: ok.
@@ -254,7 +282,7 @@ def test_unavailable_then_actor_error(ray_start_regular):
         print(ray.get(a.ping.remote("actor error")))
 
 
-def test_inf_task_retries(ray_start_regular):
+def test_inf_task_retries(ray_start_regular_with_patch):
     c = Counter.remote()
     # The actor spends 2s in the init.
     # Initial start and restart #1 succeeds, but restarts #2, #3, #4 fails. Then all
