@@ -58,7 +58,7 @@ if __name__ == "__main__":
             evaluation_num_workers=1,
             evaluation_parallel_to_training=True,
             evaluation_interval=1,
-            evaluation_duration=20,
+            evaluation_duration=10,
             evaluation_duration_unit="episodes",
             evaluation_config={
                 "explore": False,
