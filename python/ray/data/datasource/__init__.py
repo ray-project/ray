@@ -92,6 +92,7 @@ __all__ = [
     "ImageDatasource",
     "_JSONDatasink",
     "JSONDatasource",
+    "LanceDBDatasource",
     "_NumpyDatasink",
     "NumpyDatasource",
     "ParquetBaseDatasource",
