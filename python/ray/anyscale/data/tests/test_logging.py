@@ -1,7 +1,7 @@
 import logging
 import os
+from unittest.mock import patch
 
-import numpy as np
 import pytest
 
 import ray
@@ -22,15 +22,18 @@ def reset_logging_fixture():
 def test_internal_error_logged_to_error_log(reset_logging, ray_start_regular):
     configure_logging()
 
-    class UnsupportedType:
+    class FakeException(Exception):
         pass
 
-    def fn(row):
-        # This should raise an internal `pyarrow.lib.ArrowNotImplementedError`.
-        return {"data": np.array([UnsupportedType()])}
-
-    with pytest.raises(Exception):
-        ray.data.range(1).map(fn).materialize()
+    with pytest.raises(FakeException):
+        with patch(
+            (
+                "ray.data._internal.execution.legacy_compat."
+                "get_legacy_lazy_block_list_read_only"
+            ),
+            side_effect=FakeException("fake exception"),
+        ):
+            ray.data.range(1).materialize()
 
     log_path = os.path.join(get_log_directory(), "ray-data-errors.log")
     with open(log_path) as file:
