@@ -1128,6 +1128,8 @@ def override_deployment_info(
 
             options["autoscaling_config"] = AutoscalingConfig(**new_config)
 
+            ServeUsageTag.AUTO_NUM_REPLICAS_USED.record("1")
+
         # What to pass to info.update
         override_options = dict()
 
