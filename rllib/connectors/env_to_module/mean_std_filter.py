@@ -80,10 +80,9 @@ class MeanStdFilter(ConnectorV2):
             clip_by_value: If not None, clip the incoming data within the interval:
                 [-clip_by_value, +clip_by_value].
             update_stats: Whether to update the internal mean and std stats with each
-                incoming sample (with each `__call__()`) or not. For example, you should
-                set this to False if you would like to perform inference in a
-                production environment, without continuing to "learn" stats from new
-                data.
+                incoming sample (with each `__call__()`) or not. You should set this to
+                False if you would like to perform inference in a production
+                environment, without continuing to "learn" stats from new data.
         """
         super().__init__(**kwargs)
 

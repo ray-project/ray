@@ -102,6 +102,7 @@ from ray.rllib.utils.metrics import (
     RESTORE_WORKERS_TIMER,
     RESTORE_EVAL_WORKERS_TIMER,
     SYNCH_ENV_CONNECTOR_STATES_TIMER,
+    SYNCH_EVAL_ENV_CONNECTOR_STATES_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
     TRAINING_ITERATION_TIMER,
     TRAINING_STEP_TIMER,
@@ -859,13 +860,12 @@ class Algorithm(Trainable, AlgorithmBase):
         #  inside the `training_step` as well. See the new IMPALA for an example.
         if self.config.uses_new_env_runners:
             # Synchronize EnvToModule and ModuleToEnv connector states and broadcast new
-            # states back to all workers.
+            # states back to all EnvRunners.
             with self._timers[SYNCH_ENV_CONNECTOR_STATES_TIMER]:
-                # Merge connector states from all EnvRunners and broadcast updated
-                # states back to all EnvRunners.
                 self.workers.sync_env_runner_states(
                     env_steps_sampled=self._counters[NUM_ENV_STEPS_SAMPLED],
-                    timeout_s=self.config.sync_filters_on_rollout_workers_timeout_s,
+                    config=self.config,
+                    #timeout_s=self.config.sync_filters_on_rollout_workers_timeout_s,
                 )
         else:
             self._sync_filters_if_needed(
@@ -935,6 +935,16 @@ class Algorithm(Trainable, AlgorithmBase):
             self.evaluation_workers.sync_weights(
                 from_worker_or_learner_group=self.workers.local_worker()
             )
+
+            if self.config.uses_new_env_runners:
+                # Synchronize EnvToModule and ModuleToEnv connector states and broadcast
+                # new states back to all eval EnvRunners.
+                with self._timers[SYNCH_EVAL_ENV_CONNECTOR_STATES_TIMER]:
+                    self.evaluation_workers.sync_env_runner_states(
+                        from_worker=self.workers.local_worker(),
+                        env_steps_sampled=self._counters[NUM_ENV_STEPS_SAMPLED],
+                        timeout_s=self.config.sync_filters_on_rollout_workers_timeout_s,
+                    )
             self._sync_filters_if_needed(
                 central_worker=self.workers.local_worker(),
                 workers=self.evaluation_workers,
