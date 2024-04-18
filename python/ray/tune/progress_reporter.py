@@ -1520,7 +1520,8 @@ def _detect_reporter(**kwargs) -> TuneReporterBase:
 
     Keyword arguments are passed on to the reporter class.
     """
-    if IS_NOTEBOOK:
+    _trainer_api = kwargs.pop("_trainer_api", False)
+    if IS_NOTEBOOK and not _trainer_api:
         kwargs.setdefault("overwrite", not has_verbosity(Verbosity.V2_TRIAL_NORM))
         progress_reporter = JupyterNotebookReporter(**kwargs)
     else:
