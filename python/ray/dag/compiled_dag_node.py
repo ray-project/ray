@@ -18,28 +18,38 @@ from ray.experimental.channel import (
 )
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
-from ray.experimental.torch_serializer import TorchTensor, _TorchTensorWrapper
+from ray.experimental.torch_serializer import (
+    TorchTensor,
+    _TorchTensorWrapper,
+    _TorchTensorSerializer,
+)
 
 MAX_BUFFER_SIZE = int(100 * 1e6)  # 100MB
 
 logger = logging.getLogger(__name__)
 
 
-CUSTOM_SERIALIZERS = (
-    (
-        _TorchTensorWrapper,
-        _TorchTensorWrapper.serialize_to_numpy,
-        _TorchTensorWrapper.deserialize_from_numpy,
-    ),
-)
-
-
 @DeveloperAPI
-def register_custom_dag_serializers():
+def do_register_custom_dag_serializers(self):
+    from ray.air._internal import torch_utils
+
+    default_device = torch_utils.get_devices()[0]
+    torch_tensor_serializer = _TorchTensorSerializer(default_device)
+
+    CUSTOM_SERIALIZERS = (
+        (
+            _TorchTensorWrapper,
+            torch_tensor_serializer.serialize_to_numpy,
+            torch_tensor_serializer.deserialize_from_numpy,
+        ),
+    )
+
     for cls, serializer, deserializer in CUSTOM_SERIALIZERS:
         ray.util.serialization.register_serializer(
             cls, serializer=serializer, deserializer=deserializer
         )
+
+    self._torch_tensor_serializer = torch_tensor_serializer
 
 
 @DeveloperAPI
@@ -78,7 +88,7 @@ def do_exec_compiled_task(
             the loop.
     """
     try:
-        register_custom_dag_serializers()
+        do_register_custom_dag_serializers(self)
 
         method = getattr(self, actor_method_name)
 
@@ -515,7 +525,7 @@ class CompiledDAG:
         input_task = self.idx_to_task[self.input_task_idx]
         self.input_wrapper_fn = input_task.output_wrapper_fn
         self.dag_input_channel = input_task.output_channel
-        register_custom_dag_serializers()
+        do_register_custom_dag_serializers(self)
 
         self.dag_output_channels = []
         for output in self.idx_to_task[self.output_task_idx].args:

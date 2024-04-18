@@ -17,8 +17,6 @@ from ray._private.utils import (
     get_or_create_event_loop,
 )
 
-from ray.experimental import TorchTensor
-
 
 logger = logging.getLogger(__name__)
 
@@ -60,20 +58,6 @@ class Actor:
     def sleep(self, x):
         time.sleep(x)
         return x
-
-
-@ray.remote
-class TorchTensorWorker:
-    def __init__(self):
-        pass
-
-    def send(self, shape, dtype, value: int):
-        import torch
-
-        return torch.ones(shape, dtype=dtype) * value
-
-    def recv(self, tensor):
-        return (tensor[0].item(), tensor.shape, tensor.dtype)
 
 
 def test_basic(ray_start_regular):
@@ -372,56 +356,6 @@ def test_asyncio_exceptions(ray_start_regular_shared, max_queue_size):
     loop.run_until_complete(main())
     # Note: must teardown before starting a new Ray session, otherwise you'll get
     # a segfault from the dangling monitor thread upon the new Ray init.
-    compiled_dag.teardown()
-
-
-def test_torch_tensor(ray_start_regular_shared):
-    import torch
-
-    sender = TorchTensorWorker.remote()
-    receiver = TorchTensorWorker.remote()
-
-    shape = (10,)
-    dtype = torch.float16
-
-    # Test torch.Tensor sent between actors.
-    with InputNode() as inp:
-        dag = sender.send.bind(shape, dtype, inp)
-        dag = TorchTensor(dag, shape, dtype)
-        dag = receiver.recv.bind(dag)
-
-    compiled_dag = dag.experimental_compile()
-    for i in range(3):
-        output_channel = compiled_dag.execute(i)
-        # TODO(swang): Replace with fake ObjectRef.
-        result = output_channel.begin_read()
-        assert result == (i, shape, dtype)
-        output_channel.end_read()
-
-    compiled_dag.teardown()
-
-    # Test torch.Tensor as input.
-    with InputNode() as inp:
-        torch_inp = TorchTensor(inp, shape, dtype)
-        dag = receiver.recv.bind(torch_inp)
-
-    compiled_dag = dag.experimental_compile()
-    for i in range(3):
-        output_channel = compiled_dag.execute(torch.ones(shape, dtype=dtype) * i)
-        # TODO(swang): Replace with fake ObjectRef.
-        result = output_channel.begin_read()
-        assert result == (i, shape, dtype)
-        output_channel.end_read()
-
-    # Passing tensors of the wrong shape will error.
-    with pytest.raises(ValueError):
-        output_channel = compiled_dag.execute(torch.ones((20,), dtype=dtype) * i)
-
-    with pytest.raises(ValueError):
-        output_channel = compiled_dag.execute(
-            torch.ones(shape, dtype=torch.float32) * i
-        )
-
     compiled_dag.teardown()
 
 

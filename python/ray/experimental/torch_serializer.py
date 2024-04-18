@@ -10,7 +10,7 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 @PublicAPI(stability="alpha")
 class TorchTensor:
     def __init__(
-        self, dag_node: "ray.dag.DAGNode", shape: Tuple[int], dtype: torch.dtype
+        self, dag_node: "ray.dag.DAGNode", shape: Tuple[int], dtype: "torch.dtype"
     ):
         self.dag_node = dag_node
         self.tensor_meta = {
@@ -29,9 +29,9 @@ class TorchTensor:
 class _TorchTensorWrapper:
     def __init__(
         self,
-        tensor: torch.Tensor,
+        tensor: "torch.Tensor",
         expected_shape: Tuple[int],
-        expected_dtype: torch.dtype,
+        expected_dtype: "torch.dtype",
     ):
         if not isinstance(tensor, torch.Tensor):
             raise ValueError(
@@ -53,17 +53,26 @@ class _TorchTensorWrapper:
 
         self.tensor = tensor
 
-    @staticmethod
-    def serialize_to_numpy(instance: "_TorchTensorWrapper") -> np.ndarray:
-        return instance.tensor.numpy()
+
+@DeveloperAPI
+class _TorchTensorSerializer:
+    def __init__(self, device: "torch.device"):
+        self.device = device
 
     @staticmethod
-    def deserialize_from_numpy(np_array: np.ndarray):
+    def serialize_to_numpy(instance: "_TorchTensorWrapper") -> np.ndarray:
+        tensor = instance.tensor
+        # Transfer through Ray's shared memory store for now.
+        if tensor.device.type == "cuda":
+            tensor = tensor.to("cpu")
+        return tensor.numpy()
+
+    def deserialize_from_numpy(self, np_array: np.ndarray):
         # TODO(swang): Use zero-copy from_numpy() if np_array.flags.writeable
         # is True. This is safe if the upstream task has num_readers=1 or if
         # the tensor will anyway be moved to GPU.
         # TODO(swang): If there is a GPU assigned to this worker, move it
         # there. Can also pin the underlying shared memory buffer to reduce
         # data movement time.
-        # TODO(swang): Support NCCL.
-        return torch.tensor(np_array)
+        # TODO(swang): Support multinode transfers with NCCL.
+        return torch.tensor(np_array, device=self.device)
