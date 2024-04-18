@@ -189,11 +189,7 @@ def test_remote_reader(ray_start_cluster, remote):
     if remote:
         for reader in readers:
             reader_node_id = ray.get(reader.get_node_id.remote())
-            channel = ray_channel.Channel(
-                ray.runtime_context.get_runtime_context().get_node_id(),
-                1000,
-                _reader_node_id=reader_node_id,
-            )
+            channel = ray_channel.Channel(reader_node_id, 1000)
             reader_channel = ray.get(
                 reader.allocate_local_reader_channel.remote(channel, num_readers)
             )

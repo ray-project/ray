@@ -3674,23 +3674,17 @@ cdef class CoreWorker:
     def experimental_channel_register_reader(
             self,
             ObjectRef object_ref,
-            local_reader_object_ref: ObjectRef,
-            num_readers):
+            ObjectRef local_reader_object_ref,
+            int64_t num_readers):
         cdef:
             CObjectID c_object_id = object_ref.native()
-            int64_t num_readers_copy
-            int64_t *num_readers_ptr = NULL
             CObjectID c_local_reader_object_id = local_reader_object_ref.native()
-
-        if num_readers is not None:
-            num_readers_copy = num_readers
-            num_readers_ptr = &num_readers_copy
 
         with nogil:
             check_status(
                 CCoreWorkerProcess.GetCoreWorker()
                 .ExperimentalRegisterMutableObjectReader(
-                    c_object_id, &c_local_reader_object_id, num_readers_ptr))
+                    c_object_id, c_local_reader_object_id, num_readers))
 
     def experimental_channel_read_release(self, object_refs):
         """

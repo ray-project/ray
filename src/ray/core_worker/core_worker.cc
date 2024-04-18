@@ -1473,8 +1473,8 @@ Status CoreWorker::ExperimentalRegisterMutableObjectReader(
     std::future<void> future = promise.get_future();
     local_raylet_client_->RegisterMutableObjectReader(
         object_id,
-        *num_readers,
-        *local_reader_object_id,
+        num_readers,
+        local_reader_object_id,
         [&promise](const Status &status, const rpc::RegisterMutableObjectReply &reply) {
           promise.set_value();
         });
