@@ -729,8 +729,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status ExperimentalRegisterMutableObjectWriter(const ObjectID &object_id,
                                                  const NodeID *node_id);
   Status ExperimentalRegisterMutableObjectReader(const ObjectID &object_id,
-                                                 int64_t *num_readers,
-                                                 const ObjectID *local_reader_object_id);
+                                                 const ObjectID &local_reader_object_id,
+                                                 int64_t num_readers);
 
   /// Get a list of objects from the object store. Objects that failed to be retrieved
   /// will be returned as nullptrs.

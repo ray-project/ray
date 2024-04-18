@@ -1464,23 +1464,11 @@ Status CoreWorker::ExperimentalRegisterMutableObjectWriter(const ObjectID &objec
 
 Status CoreWorker::ExperimentalRegisterMutableObjectReader(
     const ObjectID &object_id,
-    int64_t *num_readers,
-    const ObjectID *local_reader_object_id) {
-  if (num_readers) {
-    if (!local_reader_object_id) {
-      return Status::Invalid(
-          "Both `num_readers` and `local_reader_object_id` must be a nullptr or they "
-          "both must not be a nullptr.");
-    }
-
+    const ObjectID &local_reader_object_id,
+    int64_t num_readers) {
+  if (object_id == local_reader_object_id) {
     experimental_mutable_object_provider_->RegisterReaderChannel(object_id);
   } else {
-    if (local_reader_object_id) {
-      return Status::Invalid(
-          "Both `num_readers` and `local_reader_object_id` must be a nullptr or they "
-          "both must not be a nullptr.");
-    }
-
     std::promise<void> promise;
     std::future<void> future = promise.get_future();
     local_raylet_client_->RegisterMutableObjectReader(

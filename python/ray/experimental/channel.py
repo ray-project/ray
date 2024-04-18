@@ -112,7 +112,7 @@ class Channel:
 
         if self._writer_channel is not None:
             self._worker.core_worker.experimental_channel_register_reader(
-                self._writer_channel._base_ref, self._num_readers, self._base_ref
+                self._writer_channel._base_ref, self._base_ref, self._num_readers
             )
 
     @staticmethod
@@ -142,7 +142,9 @@ class Channel:
         if self._reader_registered:
             return
 
-        self._worker.core_worker.experimental_channel_register_reader(self._base_ref)
+        self._worker.core_worker.experimental_channel_register_reader(
+            self._base_ref, self._base_ref, self._num_readers
+        )
         self._reader_registered = True
 
     @staticmethod
