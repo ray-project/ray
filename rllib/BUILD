@@ -2155,96 +2155,96 @@ py_test(
 # ....................................
 # Framestacking examples only run in smoke-test mode (a few iters only).
 py_test(
-    name = "examples/connectors/connector_v2_frame_stacking_ppo",
-    main = "examples/connectors/connector_v2_frame_stacking.py",
+    name = "examples/connectors/frame_stacking_ppo",
+    main = "examples/connectors/frame_stacking.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/connectors/connector_v2_frame_stacking.py"],
+    srcs = ["examples/connectors/frame_stacking.py"],
     args = ["--enable-new-api-stack", "--stop-iter=2", "--framework=torch", "--algo=PPO"]
 )
 
 py_test(
-    name = "examples/connectors/connector_v2_frame_stacking_multi_agent_ppo",
-    main = "examples/connectors/connector_v2_frame_stacking.py",
+    name = "examples/connectors/frame_stacking_multi_agent_ppo",
+    main = "examples/connectors/frame_stacking.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/connectors/connector_v2_frame_stacking.py"],
+    srcs = ["examples/connectors/frame_stacking.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--stop-iter=2", "--framework=torch", "--algo=PPO", "--num-env-runners=4", "--num-cpus=6"]
 )
 
 # Nested action spaces (flattening obs and learning w/ multi-action distribution).
 py_test(
-    name = "examples/connectors/connector_v2_nested_action_spaces_ppo",
-    main = "examples/connectors/connector_v2_nested_action_spaces.py",
+    name = "examples/connectors/nested_action_spaces_ppo",
+    main = "examples/connectors/nested_action_spaces.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "large",
-    srcs = ["examples/connectors/connector_v2_nested_action_spaces.py"],
+    srcs = ["examples/connectors/nested_action_spaces.py"],
     args = ["--enable-new-api-stack", "--as-test", "--framework=torch", "--stop-reward=-500.0", "--algo=PPO"]
 )
 
 py_test(
-    name = "examples/connectors/connector_v2_nested_action_spaces_multi_agent_ppo",
-    main = "examples/connectors/connector_v2_nested_action_spaces.py",
+    name = "examples/connectors/nested_action_spaces_multi_agent_ppo",
+    main = "examples/connectors/nested_action_spaces.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "large",
-    srcs = ["examples/connectors/connector_v2_nested_action_spaces.py"],
+    srcs = ["examples/connectors/nested_action_spaces.py"],
     args = ["--enable-new-api-stack", "--as-test", "--num-agents=2", "--framework=torch", "--stop-reward=-1000.0", "--algo=PPO"]
 )
 
 # Nested observation spaces (flattening).
 py_test(
-    name = "examples/connectors/connector_v2_nested_observation_spaces_ppo",
-    main = "examples/connectors/connector_v2_nested_observation_spaces.py",
+    name = "examples/connectors/nested_observation_spaces_ppo",
+    main = "examples/connectors/nested_observation_spaces.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/connectors/connector_v2_nested_observation_spaces.py"],
+    srcs = ["examples/connectors/nested_observation_spaces.py"],
     args = ["--enable-new-api-stack", "--as-test", "--stop-reward=400.0", "--framework=torch", "--algo=PPO"]
 )
 
 py_test(
-    name = "examples/connectors/connector_v2_nested_observation_spaces_multi_agent_ppo",
-    main = "examples/connectors/connector_v2_nested_observation_spaces.py",
+    name = "examples/connectors/nested_observation_spaces_multi_agent_ppo",
+    main = "examples/connectors/nested_observation_spaces.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/connectors/connector_v2_nested_observation_spaces.py"],
+    srcs = ["examples/connectors/nested_observation_spaces.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=800.0", "--framework=torch", "--algo=PPO"]
 )
 
 # Prev-r/prev actions + LSTM example.
 py_test(
-    name = "examples/connectors/connector_v2_prev_actions_prev_rewards_ppo",
-    main = "examples/connectors/connector_v2_prev_actions_prev_rewards.py",
+    name = "examples/connectors/prev_actions_prev_rewards_ppo",
+    main = "examples/connectors/prev_actions_prev_rewards.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "large",
-    srcs = ["examples/connectors/connector_v2_prev_actions_prev_rewards.py"],
+    srcs = ["examples/connectors/prev_actions_prev_rewards.py"],
     args = ["--enable-new-api-stack", "--as-test", "--stop-reward=200.0", "--framework=torch", "--algo=PPO", "--num-env-runners=4", "--num-cpus=6"]
 )
 
 py_test(
-    name = "examples/connectors/connector_v2_prev_actions_prev_rewards_multi_agent_ppo",
-    main = "examples/connectors/connector_v2_prev_actions_prev_rewards.py",
+    name = "examples/connectors/prev_actions_prev_rewards_multi_agent_ppo",
+    main = "examples/connectors/prev_actions_prev_rewards.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "large",
-    srcs = ["examples/connectors/connector_v2_prev_actions_prev_rewards.py"],
+    srcs = ["examples/connectors/prev_actions_prev_rewards.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=400.0", "--framework=torch", "--algo=PPO", "--num-env-runners=4", "--num-cpus=6"]
 )
 
 # MeanStd filtering example.
 py_test(
-    name = "examples/connectors/connector_v2_mean_std_filtering_ppo",
-    main = "examples/connectors/connector_v2_mean_std_filtering.py",
+    name = "examples/connectors/mean_std_filtering_ppo",
+    main = "examples/connectors/mean_std_filtering.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/connectors/connector_v2_mean_std_filtering.py"],
+    srcs = ["examples/connectors/mean_std_filtering.py"],
     args = ["--enable-new-api-stack", "--as-test", "--stop-reward=-300.0", "--framework=torch", "--algo=PPO", "--num-env-runners=2"]
 )
 
 py_test(
-    name = "examples/connectors/connector_v2_mean_std_filtering_multi_agent_ppo",
-    main = "examples/connectors/connector_v2_mean_std_filtering.py",
+    name = "examples/connectors/mean_std_filtering_multi_agent_ppo",
+    main = "examples/connectors/mean_std_filtering.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/connectors/connector_v2_mean_std_filtering.py"],
+    srcs = ["examples/connectors/mean_std_filtering.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=-600.0", "--framework=torch", "--algo=PPO", "--num-env-runners=5", "--num-cpus=6"]
 )
 
