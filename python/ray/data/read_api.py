@@ -54,6 +54,7 @@ from ray.data.datasource import (
     Datasource,
     ImageDatasource,
     JSONDatasource,
+    LanceDBDatasource,
     MongoDatasource,
     NumpyDatasource,
     ParquetBaseDatasource,
@@ -2898,6 +2899,52 @@ def from_torch(
         # Only non-parallel, streaming read is currently supported
         override_num_blocks=1,
     )
+
+
+@PublicAPI
+def from_lancedb(
+    *,
+    uri: str,
+    columns: Optional[List[str]] = None,
+    filter: Optional[str] = None,
+    parallelism: int = -1,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+) -> Dataset:
+    """
+    Create a :class:`~ray.data.Dataset` from a LanceDB dataset. The dataset to read from
+    is specified using a fully qualified ```uri```. Using LanceDB, any
+    intended columns or filters are applied, and the files that satisfy
+    the query are distributed across Ray read tasks. The number of tasks is
+    determined by ``parallelism`` which can be requested from this interface or
+    automatically chosen if unspecified (see the``parallelism`` arg below).
+
+    Examples:
+        >>> import ray
+        >>> ds = ray.data.read_lancedb(
+        ...     uri="./db_name.lance",
+        ...     columns=["column_name", "label"],
+        ...     filter="label = 2 AND column_name IS NOT NULL",
+        ...     parallelism=64
+        ... )
+
+    Args:
+        uri: The URI of the source LanceDB dataset to read from.
+            Currently supports local file paths, S3, or GCS URIs are supported.
+        columns: The columns to read from the dataset. If not specified, all columns are read.
+        filter: The filter to apply to the dataset. If not specified, no filter is applied.
+        parallelism: Degree of parallelism to use for the Dataset
+        ray_remote_args: Optional arguments to pass to `ray.remote` in the read tasks
+
+    Returns:
+        A :class:`~ray.data.Dataset` the LanceDB dataset from the results of executing the read.
+    """
+    datasource = LanceDBDatasource(uri=uri, columns=columns, filter=filter)
+
+    dataset = read_datasource(
+        datasource=datasource, parallelism=parallelism, ray_remote_args=ray_remote_args
+    )
+
+    return dataset
 
 
 def _get_datasource_or_legacy_reader(
