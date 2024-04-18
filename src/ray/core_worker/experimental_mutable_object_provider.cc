@@ -71,7 +71,7 @@ void MutableObjectProvider::HandleRegisterMutableObject(const ObjectID &object_i
                                                         const ObjectID &local_object_id) {
   absl::MutexLock guard(&remote_writer_object_to_local_reader_lock_);
 
-  LocalInfo info;
+  LocalReaderInfo info;
   info.num_readers = num_readers;
   info.local_object_id = local_object_id;
   bool success = remote_writer_object_to_local_reader_.insert({object_id, info}).second;
@@ -82,7 +82,7 @@ void MutableObjectProvider::HandleRegisterMutableObject(const ObjectID &object_i
 
 void MutableObjectProvider::HandlePushMutableObject(
     const rpc::PushMutableObjectRequest &request, rpc::PushMutableObjectReply *reply) {
-  LocalInfo info;
+  LocalReaderInfo info;
   {
     const ObjectID object_id = ObjectID::FromBinary(request.object_id());
     absl::MutexLock guard(&remote_writer_object_to_local_reader_lock_);

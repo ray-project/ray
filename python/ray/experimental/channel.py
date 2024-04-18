@@ -56,10 +56,10 @@ class Channel:
 
     def __init__(
         self,
+        reader_node_id: str,
         buffer_size_bytes: Optional[int] = None,
         num_readers: int = 1,
-        reader_node_id: str,
-        writer_channel: "Channel",
+        _writer_channel: Optional["Channel"] = None,
         _base_ref: Optional["ray.ObjectRef"] = None,
     ):
         """
@@ -76,13 +76,13 @@ class Channel:
         Returns:
             Channel: A wrapper around ray.ObjectRef.
         """
-        if writer_channel is not None:
+        if _writer_channel is not None:
             if buffer_size_bytes is not None:
                 raise ValueError(
                     "`buffer_size_bytes should not be specified if "
-                    "`writer_channel` is given."
+                    "`_writer_channel` is given."
                 )
-            buffer_size_bytes = writer_channel._buffer_size_bytes
+            buffer_size_bytes = _writer_channel._buffer_size_bytes
 
         if buffer_size_bytes is None:
             if _base_ref is None:
@@ -101,7 +101,7 @@ class Channel:
         self._buffer_size_bytes = buffer_size_bytes
 
         self._reader_node_id = reader_node_id
-        self._writer_channel = writer_channel
+        self._writer_channel = _writer_channel
 
         self._num_readers = num_readers
         self._worker = ray._private.worker.global_worker
@@ -115,7 +115,7 @@ class Channel:
                 self._writer_channel._base_ref, self._num_readers, self._base_ref
             )
 
-    def is_local_node(node_id):
+    def is_local_node(node_id: str):
         return ray.runtime_context.get_runtime_context().get_node_id() == node_id
 
     def ensure_registered_as_writer(self):
@@ -125,7 +125,7 @@ class Channel:
         if not isinstance(self._reader_node_id, str):
             raise ValueError("`self._reader_node_id` must be a str")
 
-        if is_local_node(self._reader_node_id):
+        if self.is_local_node(self._reader_node_id):
             # Writing locally.
             self._worker.core_worker.experimental_channel_register_writer(
                 self._base_ref, ""
@@ -141,9 +141,7 @@ class Channel:
         if self._reader_registered:
             return
 
-        self._worker.core_worker.experimental_channel_register_reader(
-            self._base_ref
-        )
+        self._worker.core_worker.experimental_channel_register_reader(self._base_ref)
         self._reader_registered = True
 
     @staticmethod
