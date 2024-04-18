@@ -7,6 +7,7 @@ import torch
 import pytest
 
 import ray
+from ray.air._internal import torch_utils
 import ray.cluster_utils
 from ray.dag import InputNode
 from ray.tests.conftest import *  # noqa
@@ -23,16 +24,19 @@ if sys.platform != "linux" and sys.platform != "darwin":
 @ray.remote
 class TorchTensorWorker:
     def __init__(self):
-        pass
+        self.device = torch_utils.get_devices()[0]
 
     def send(self, shape, dtype, value: int):
-        return torch.ones(shape, dtype=dtype) * value
+        return torch.ones(shape, dtype=dtype, device=self.device) * value
 
     def recv(self, tensor):
+        # Check that tensor got loaded to the correct device.
+        assert tensor.device == self.device
         return (tensor[0].item(), tensor.shape, tensor.dtype)
 
 
-def test_torch_tensor_p2p(ray_start_regular_shared):
+@pytest.mark.parametrize("use_gpu", [False, True])
+def test_torch_tensor_p2p(ray_start_regular_shared, use_gpu):
     sender = TorchTensorWorker.remote()
     receiver = TorchTensorWorker.remote()
 

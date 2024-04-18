@@ -63,16 +63,32 @@ class _TorchTensorSerializer:
     def serialize_to_numpy(instance: "_TorchTensorWrapper") -> np.ndarray:
         tensor = instance.tensor
         # Transfer through Ray's shared memory store for now.
+        # TODO(swang): This requires two copies, one to transfer from GPU to
+        # CPU and another from CPU to shared memory. Ideally we should elide
+        # the first copy and memcpy directly from GPU to the shared memory
+        # buffer.
         if tensor.device.type == "cuda":
             tensor = tensor.to("cpu")
+
         return tensor.numpy()
 
     def deserialize_from_numpy(self, np_array: np.ndarray):
-        # TODO(swang): Use zero-copy from_numpy() if np_array.flags.writeable
-        # is True. This is safe if the upstream task has num_readers=1 or if
-        # the tensor will anyway be moved to GPU.
-        # TODO(swang): If there is a GPU assigned to this worker, move it
-        # there. Can also pin the underlying shared memory buffer to reduce
-        # data movement time.
+        # TODO(swang): Support local P2P transfers if available.
         # TODO(swang): Support multinode transfers with NCCL.
+
+        # If there is a GPU assigned to this worker, move it there.
+        if self.device.type == "cuda":
+            # Use zero-copy from_numpy() because we are going to copy to GPU
+            # anyway.
+            # TODO: Pin the np_array memory to reduce data movement time.
+            # TODO: Set np_array.flags.writeable=True to avoid the PyTorch
+            # warning about not owning the underlying memory. This is safe to
+            # do as long as all other readers are also copying the data to a
+            # GPU.
+            cpu_tensor = torch.from_numpy(np_array)
+            return cpu_tensor.to(device=self.device)
+
+        # TODO(swang): Use zero-copy from_numpy() if np_array.flags.writeable
+        # is True. This is safe to set when deserializing np_array if the
+        # upstream task has num_readers=1.
         return torch.tensor(np_array, device=self.device)
