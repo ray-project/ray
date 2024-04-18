@@ -4,6 +4,9 @@ depends_on:
   - forge
 steps:
   #build
+  - name: onecpubuild
+    wanda: ci/docker/one.cpu.build.wanda.yaml
+
   - name: doctestbuild
     wanda: ci/docker/doctest.build.wanda.yaml
 
