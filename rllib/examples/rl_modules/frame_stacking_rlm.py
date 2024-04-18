@@ -6,7 +6,7 @@ Instead, you can use RLlib's built-in ConnectorV2 for frame stacking (or write a
 ConnectorV2). Take a look at this example script here, which shows how you can do frame-
 stacking with RLlib's new ConnectorV2 API.
 
-`ray.rllib.examples.connectors.connector_v2_frame_stacking.py`
+`ray.rllib.examples.connectors.frame_stacking.py`
 """
 
 raise NotImplementedError(msg)
