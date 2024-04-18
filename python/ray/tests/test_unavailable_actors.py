@@ -10,8 +10,23 @@ from ray.exceptions import ActorUnavailableError, ActorDiedError
 from typing import Tuple
 
 
+def ray_init_args():
+    if sys.platform == "darwin":
+        return {"log_to_driver": False}
+    elif sys.platform == "linux":
+        return {}
+    else:
+        raise ValueError(f"unexpected {sys.platform}")
+
+
 @pytest.fixture
-def ray_start_regular_with_patch_with_patch(ray_start_regular_with_patch):
+@pytest.mark.skipif(sys.platform == "win32", reason="Doesn't work on windows")
+@pytest.mark.parametrize(
+    "ray_start_regular",
+    [ray_init_args()],
+    indirect=True,
+)
+def ray_start_regular_with_patch(ray_start_regular):
     """
     A hotfix about the test environment. This file's tests breaks grpc connections
     which triggers a certain MacOS gRPC bug. Specifically, on MacOS, we have a
@@ -21,22 +36,7 @@ def ray_start_regular_with_patch_with_patch(ray_start_regular_with_patch):
     the logging.
     https://github.com/ray-project/ray/issues/44836
     """
-    address = ray_start_regular_with_patch["address"]
-    if sys.platform == "win32":
-        pytest.skip("Skipping test on Windows")
-    elif sys.platform == "darwin":
-        print("Running test on macOS, don't print driver to log")
-        try:
-            yield ray.init(address=address, log_to_driver=False)
-        finally:
-            ray.shutdown()
-    elif sys.platform == "linux":
-        try:
-            yield ray.init(address=address)
-        finally:
-            ray.shutdown()
-    else:
-        raise ValueError(f"unknown {sys.platform}")
+    yield ray_start_regular
 
 
 @ray.remote
