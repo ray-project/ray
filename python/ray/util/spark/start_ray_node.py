@@ -62,7 +62,10 @@ if __name__ == "__main__":
     # same temp directory, adding a shared lock representing current ray node is
     # using the temp directory.
     fcntl.flock(lock_fd, fcntl.LOCK_SH)
-    process = subprocess.Popen([ray_cli_cmd, "start", *arg_list], text=True)
+    process = subprocess.Popen(
+        ["python", shutil.which(ray_cli_cmd), "start", *arg_list],
+        text=True,
+    )
 
     def try_clean_temp_dir_at_exit():
         try:
