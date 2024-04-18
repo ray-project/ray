@@ -545,7 +545,7 @@ install_dependencies() {
     "${SCRIPT_DIR}"/install-hdfs.sh
   fi
 
-  if [ "${MINIMAL_INSTALL-}" != "1" ]; then
+  if [[ "${MINIMAL_INSTALL-}" != "1" && "${SKIP_REQUIREMENT_PACKAGES-}" != "1" ]]; then
     install_pip_packages
   fi
 

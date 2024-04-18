@@ -23,63 +23,53 @@ run_small_and_large_flaky_tests() {
   # shellcheck disable=SC2046
   # 42 is the universal rayci exit code for test failures
   (bazel query 'attr(tags, "client_tests|small_size_python_tests|large_size_python_tests_shard_0|large_size_python_tests_shard_1|large_size_python_tests_shard_2", tests(//python/ray/tests/...))' | select_flaky_tests |
-    xargs bazel test --config=ci $(./ci/run/bazel_export_options) \
-      --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX \
-      --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI) || exit 42
+    xargs ./ci/ray_ci/macos/macos_ci_test.sh) || exit 42
 }
 
 run_medium_flaky_tests() {
   # shellcheck disable=SC2046
   # 42 is the universal rayci exit code for test failures
   (bazel query 'attr(tags, "medium_size_python_tests_a_to_j|medium_size_python_tests_k_to_z", tests(//python/ray/tests/...))' | select_flaky_tests |
-    xargs bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CI) || exit 42
+    xargs ./ci/ray_ci/macos/macos_ci_test.sh) || exit 42
 }
 
 run_small_test() {
   # shellcheck disable=SC2046
   # 42 is the universal rayci exit code for test failures
   (bazel query 'attr(tags, "client_tests|small_size_python_tests", tests(//python/ray/tests/...))' | filter_out_flaky_tests |
-    xargs bazel test --config=ci $(./ci/run/bazel_export_options) \
-      --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX \
-      --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI) || exit 42
+    xargs ./ci/ray_ci/macos/macos_ci_test.sh) || exit 42
 }
 
 run_medium_a_j_test() {
   # shellcheck disable=SC2046
   # 42 is the universal rayci exit code for test failures
   (bazel query 'attr(tags, "medium_size_python_tests_a_to_j", tests(//python/ray/tests/...))' | filter_out_flaky_tests |
-    xargs bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CI) || exit 42
+    xargs ./ci/ray_ci/macos/macos_ci_test.sh) || exit 42
 }
 
 run_medium_k_z_test() {
   # shellcheck disable=SC2046
   # 42 is the universal rayci exit code for test failures
   (bazel query 'attr(tags, "medium_size_python_tests_k_to_z", tests(//python/ray/tests/...))' | filter_out_flaky_tests |
-    xargs bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CI) || exit 42
+    xargs ./ci/ray_ci/macos/macos_ci_test.sh) || exit 42
 }
 
 run_large_test() {
   # shellcheck disable=SC2046
   # 42 is the universal rayci exit code for test failures
   (bazel query 'attr(tags, "large_size_python_tests_shard_'"${BUILDKITE_PARALLEL_JOB}"'", tests(//python/ray/tests/...))' | filter_out_flaky_tests |
-    xargs bazel test --config=ci $(./ci/run/bazel_export_options) \
-      --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV \
-      --test_env=CONDA_PROMPT_MODIFIER --test_env=CI) || exit 42
+    xargs ./ci/ray_ci/macos/macos_ci_test.sh) || exit 42
 }
 
 run_core_dashboard_test() {
-  TORCH_VERSION=1.9.0 ./ci/env/install-dependencies.sh
-  # Use --dynamic_mode=off until MacOS CI runs on Big Sur or newer. Otherwise there are problems with running tests
-  # with dynamic linking.
-  # shellcheck disable=SC2046
-  # 42 is the universal rayci exit code for test failures
-  (bazel test --config=ci --dynamic_mode=off \
-    --test_env=CI $(./ci/run/bazel_export_options) --build_tests_only \
-    --test_tag_filters=-post_wheel_build -- \
+  (./ci/ray_ci/macos/macos_ci_test.sh --test_tag_filters=-post_wheel_build \
     //:all python/ray/dashboard/... -python/ray/serve/... -rllib/...) || exit 42
 }
 
 run_ray_cpp_and_java() {
+  # build ray
+  ./ci/ci.sh build
+
   # clang-format is needed by java/test.sh
   # 42 is the universal rayci exit code for test failures
   pip install clang-format==12.0.1
@@ -90,9 +80,8 @@ run_ray_cpp_and_java() {
 _prelude() {
   rm -rf /tmp/bazel_event_logs
   (which bazel && bazel clean) || true;
-  . ./ci/ci.sh init && source ~/.zshenv
+  SKIP_REQUIREMENT_PACKAGES=1 . ./ci/ci.sh init && source ~/.zshenv
   source ~/.zshrc
-  ./ci/ci.sh build
   ./ci/env/env_info.sh
 }
 
