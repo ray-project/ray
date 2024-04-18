@@ -59,6 +59,10 @@ class PPOCatalog(Catalog):
     function, the inference-only module will contain only the actor encoder network
     , but with different parameter names. We rename parameters when synching between
     learner and inference-only module to avoid conflicts.
+    The module classes contain a `_inference_only_state_dict_keys` attribute that
+    contains the keys to be taken care of when synching the state. The method
+    `__set_inference_only_state_dict_keys` has to be overridden to define these keys
+    and `_inference_only_get_state_hook`.
     """
 
     def __init__(
