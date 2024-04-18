@@ -9,14 +9,6 @@ filegroup(
 make(
     name = "libzstd",
     lib_source = ":all",
-    # out_shared_libs = ["libzstd.so"],
-    visibility = ["//visibility:public"],
-)
-
-
-filter_files_with_suffix(
-    name = "shared",
-    srcs = ["@zstd//:libzstd"],
-    suffix = ".so",
+    args = ["ZSTD_NO_ASM=1"],
     visibility = ["//visibility:public"],
 )
