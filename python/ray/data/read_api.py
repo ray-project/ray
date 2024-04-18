@@ -2930,14 +2930,16 @@ def from_lancedb(
     Args:
         uri: The URI of the source LanceDB dataset to read from.
             Currently supports local file paths, S3, or GCS URIs are supported.
-        columns: The columns to read from the dataset. If not specified, all columns are read.
-        filter: The filter to apply to the dataset. If not specified, no filter is applied.
+        columns: The columns to read from the dataset.
+            If not specified, all columns are read.
+        filter: The filter to apply to the dataset.
+            If not specified, no filter is applied.
         parallelism: Degree of parallelism to use for the Dataset
         ray_remote_args: Optional arguments to pass to `ray.remote` in the read tasks
 
     Returns:
         A :class:`~ray.data.Dataset` the LanceDB dataset from the results of executing the read.
-    """
+    """  # noqa: E501
     datasource = LanceDBDatasource(uri=uri, columns=columns, filter=filter)
 
     dataset = read_datasource(
