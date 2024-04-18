@@ -69,6 +69,42 @@ def sigkill_actor(actor):
     "caller",
     ["actor", "task", "driver"],
 )
+def test_generators_early_stop_unavailable(ray_start_regular, caller):
+    """
+    For a streaming generator, if a connection break happens, *some* elements may still
+    yield because they are received prior to the break. Then, two things can happen:
+    - an early StopIteration, if `next(gen)` is called.
+    - a ActorUnavailableError, if `ray.get(obj_ref)` is called.
+    """
+
+    def body():
+        a = Counter.remote()
+        pid = ray.get(a.getpid.remote())
+        total = 2000000
+        break_at = 5
+        gen = a.gen_iota.remote(total)
+        obj_refs = []
+        i = 0
+        for obj_ref in gen:
+            obj_refs.append(obj_ref)
+            if i == break_at:
+                print(f"breaking conns at {i}")
+                close_common_connections(pid)
+            i += 1
+        # StopIteration happened before `total` elements reached.
+        # On my laptop, 11120 elements are collected.
+        print(f"collected {len(obj_refs)} elements")
+        assert len(obj_refs) < total
+        with pytest.raises(ActorUnavailableError):
+            ray.get(obj_refs)
+
+    call_from(body, caller)
+
+
+@pytest.mark.parametrize(
+    "caller",
+    ["actor", "task", "driver"],
+)
 def test_actor_unavailable_conn_broken(ray_start_regular, caller):
     def body():
         a = Counter.remote()
