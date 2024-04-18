@@ -24,7 +24,7 @@ class PPORLModule(RLModule, abc.ABC):
         # network is then either the share encoder network from the learner module
         # or the actor encoder network from the learner module (if the value network
         # is not shared with the actor network).
-        if not self.is_learner_module:
+        if self.inference_only:
             # catalog._model_config_dict["vf_share_layers"] = True
             # We need to set the shared flag in the encoder config
             # b/c the catalog has already been built at this point.

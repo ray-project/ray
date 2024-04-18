@@ -764,7 +764,7 @@ class Algorithm(Trainable, AlgorithmBase):
             # Sync the weights from the learner group to the rollout workers.
             weights = self.learner_group.get_weights(inference_only=True)
             local_worker.set_weights(weights)
-            self.workers.sync_weights()
+            self.workers.sync_weights(inference_only=True)
 
         # Run `on_algorithm_init` callback after initialization is done.
         self.callbacks.on_algorithm_init(algorithm=self)
@@ -933,7 +933,8 @@ class Algorithm(Trainable, AlgorithmBase):
         # Sync weights to the evaluation EnvRunners.
         if self.evaluation_workers is not None:
             self.evaluation_workers.sync_weights(
-                from_worker_or_learner_group=self.workers.local_worker()
+                from_worker_or_learner_group=self.workers.local_worker(),
+                inference_only=True,
             )
             self._sync_filters_if_needed(
                 central_worker=self.workers.local_worker(),
@@ -1554,6 +1555,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 from_worker_or_learner_group=from_worker_or_trainer,
                 policies=set(train_results.keys()) - {ALL_MODULES},
                 global_vars=global_vars,
+                inference_only=True,
             )
 
         return train_results
@@ -2110,11 +2112,13 @@ class Algorithm(Trainable, AlgorithmBase):
 
         # Create RLModule on all EnvRunners.
         self.workers.foreach_worker(_add, local_worker=True)
-        self.workers.sync_weights(policies=[module_id])
+        self.workers.sync_weights(policies=[module_id], inference_only=True)
         # Also on the eval EnvRunners?
         if evaluation_workers is True and self.evaluation_workers is not None:
             self.evaluation_workers.foreach_worker(_add, local_worker=True)
-            self.evaluation_workers.sync_weights(policies=[module_id])
+            self.evaluation_workers.sync_weights(
+                policies=[module_id], inference_only=True
+            )
         # Create RLModule on all Learner workers.
         new_module = self.workers.local_worker().module[module_id]
         self.learner_group.foreach_learner(_add)
@@ -2333,7 +2337,7 @@ class Algorithm(Trainable, AlgorithmBase):
             # Make also sure, all training EnvRunners get the just loaded weights.
             weights = self.learner_group.get_weights()
             self.workers.local_worker().set_weights(weights)
-            self.workers.sync_weights()
+            self.workers.sync_weights(inference_only=True)
 
         # Call the `on_checkpoint_loaded` callback.
         self.callbacks.on_checkpoint_loaded(algorithm=self)

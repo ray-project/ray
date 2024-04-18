@@ -1,4 +1,4 @@
-from typing import Any, Dict, Mapping
+from typing import Any, Dict
 
 from ray.rllib.algorithms.ppo.ppo_rl_module import PPORLModule
 
@@ -24,15 +24,16 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
         # If not an inference-only module (e.g., for evaluation), set up the
         # parameter names to be removed or renamed when syncing from the state dict
         # when synching.
-        if self.is_learner_module:
+        if not self.inference_only:
             # Set the expected and unexpected keys for the inference-only module.
             self._set_inference_only_state_dict_keys()
 
+    # TODO (simon): Refactor to parent method.
     @override(TorchRLModule)
-    def get_state(self, inference_only: bool = False) -> Mapping[str, Any]:
+    def get_state(self, inference_only: bool = False) -> Dict[str, Any]:
         state_dict = self.state_dict()
-        # Is this state dict for an inference only module?
-        if self.is_learner_module and inference_only:
+        # If this module is not for inference, but the state dict is.
+        if not self.inference_only and inference_only:
             # Call the local hook to remove or rename the parameters.
             return self._inference_only_get_state_hook(state_dict)
         # Otherwise, the state dict is for checkpointing or saving the model.
@@ -76,6 +77,8 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
 
         # Value head
         if not self.inference_only:
+            # If not for inference/exploration only, we need to compute the
+            # value function.
             vf_out = self.vf(encoder_outs[ENCODER_OUT][CRITIC])
             output[Columns.VF_PREDS] = vf_out.squeeze(-1)
 
@@ -87,6 +90,11 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
 
     @override(RLModule)
     def _forward_train(self, batch: NestedDict) -> Dict[str, Any]:
+        if self.inference_only:
+            raise RuntimeError(
+                "Trying to train a module that is not a learner module. Set the "
+                "flag `inference_only=False` when building the module."
+            )
         output = {}
 
         # Shared encoder.
@@ -137,7 +145,8 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
             name for name in state_dict if "vf" in name or "critic_encoder" in name
         ]
         # Do we use a separate encoder for the actor and critic?
-        if not self.config.model_config_dict.get("vf_share_layers", True):
+        # if not self.config.model_config_dict.get("vf_share_layers", True):
+        if not self.config.model_config_dict["vf_share_layers"]:
             # If we use separate encoder networks for the actor and critic, we need to
             # rename the actor encoder parameters to encoder parameters b/c the
             # inference-only modules uses a plain encoder network
@@ -148,13 +157,17 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
                 if "actor_encoder" in name
             }
 
+    @override(PPORLModule)
     def _inference_only_get_state_hook(
         self, state_dict: Dict[str, Any]
     ) -> Dict[str, Any]:
+        # If we have keys in the state dict to take care of.
         if self._inference_only_state_dict_keys:
+            # If we have unexpected keys remove them.
             if self._inference_only_state_dict_keys.get("unexpected_keys"):
                 for param in self._inference_only_state_dict_keys["unexpected_keys"]:
                     del state_dict[param]
+            # If we have expected keys, rename.
             if self._inference_only_state_dict_keys.get("expected_keys"):
                 for param in self._inference_only_state_dict_keys["expected_keys"]:
                     state_dict[

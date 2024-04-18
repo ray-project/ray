@@ -26,7 +26,6 @@ from ray.rllib.core.models.specs.checker import (
     check_output_specs,
     convert_to_canonical_format,
 )
-from ray.rllib.core.rl_module import INFERENCE_ONLY
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.annotations import (
@@ -380,6 +379,8 @@ class RLModule(abc.ABC):
     def __init__(self, config: RLModuleConfig):
         self.config = config
 
+        from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
+
         if isinstance(self, MultiAgentRLModule):
             # A MARL module is always a learner module b/c it only contains
             # the single-agent modules. Each of the contained modules can be
@@ -390,7 +391,7 @@ class RLModule(abc.ABC):
             # building blocks, such as target networks or critic networks
             # used in the training process.
             self.inference_only = self.config.model_config_dict.get(
-                INFERENCE_ONLY, False
+                "_inference_only", False
             )
 
         # Make sure, `setup()` is only called once, no matter what. In some cases
