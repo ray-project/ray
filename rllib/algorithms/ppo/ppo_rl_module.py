@@ -34,7 +34,7 @@ class PPORLModule(RLModule, abc.ABC):
         self.encoder = catalog.build_actor_critic_encoder(framework=self.framework)
         self.pi = catalog.build_pi_head(framework=self.framework)
         # Only build the critic network when this is a learner module.
-        if self.is_learner_module:
+        if not self.inference_only:
             self.vf = catalog.build_vf_head(framework=self.framework)
             # Holds the parameter names to be removed or renamed when synching
             # from the learner to the inference module.

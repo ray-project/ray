@@ -61,7 +61,7 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         # Note further, by using the base encoder the correct encoder
         # is chosen for the observation space used.
         self.encoder = catalog.build_encoder(framework=self.framework)
-        if self.is_learner_module:
+        if not self.inference_only:
             # Build the same encoder for the target network(s).
             self.target_encoder = catalog.build_encoder(framework=self.framework)
 
@@ -70,7 +70,7 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         if self.uses_dueling:
             # If in a dueling setting setup the value function head.
             self.vf = catalog.build_vf_head(framework=self.framework)
-        if self.is_learner_module:
+        if not self.inference_only:
             # Implement the same heads for the target network(s).
             self.af_target = catalog.build_af_head(framework=self.framework)
             if self.uses_dueling:

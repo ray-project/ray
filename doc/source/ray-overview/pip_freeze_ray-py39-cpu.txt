@@ -5,7 +5,7 @@ aiosignal==1.3.1
 annotated-types==0.6.0
 anyio==3.7.1
 applicationinsights==0.11.10
-archspec @ file:///croot/archspec_1697725767277/work
+archspec @ file:///croot/archspec_1709217642129/work
 argcomplete==1.12.3
 async-timeout==4.0.3
 attrs==21.4.0
@@ -32,7 +32,7 @@ click==8.1.7
 cloudpickle==2.2.0
 colorful==0.5.5
 commonmark==0.9.1
-conda @ file:///home/conda/feedstock_root/build_artifacts/conda_1708705621174/work
+conda @ file:///home/conda/feedstock_root/build_artifacts/conda_1711445838568/work
 conda-content-trust @ file:///croot/conda-content-trust_1693490622020/work
 conda-libmamba-solver @ file:///croot/conda-libmamba-solver_1706733287605/work/src
 conda-package-handling @ file:///croot/conda-package-handling_1690999929514/work
@@ -46,7 +46,7 @@ exceptiongroup==1.2.0
 Farama-Notifications==0.0.4
 fastapi==0.109.2
 filelock==3.13.1
-flatbuffers==24.3.7
+flatbuffers==24.3.25
 frozenlist==1.4.0
 fsspec==2023.5.0
 google-api-core==1.34.0
@@ -66,14 +66,17 @@ imageio==2.31.1
 importlib-metadata==6.11.0
 isodate==0.6.1
 jax-jumpy==1.0.0
+Jinja2==3.1.2
 jmespath==1.0.1
 jsonpatch @ file:///tmp/build/80754af9/jsonpatch_1615747632069/work
 jsonpointer==2.1
 jsonschema==4.17.3
 knack==0.10.1
 lazy_loader==0.3
-libmambapy @ file:///croot/mamba-split_1704219408234/work/libmambapy
+libmambapy @ file:///croot/mamba-split_1712091911343/work/libmambapy
 lz4==4.3.2
+MarkupSafe==2.1.3
+memray==1.10.0
 menuinst @ file:///croot/menuinst_1706732933928/work
 msal==1.18.0b1
 msal-extensions==1.0.0
@@ -81,7 +84,7 @@ msgpack==1.0.7
 msrest==0.7.1
 msrestazure==0.6.4
 multidict==6.0.4
-networkx==3.1
+networkx==3.2.1
 numpy==1.24.4
 oauthlib==3.2.2
 opencensus==0.11.3
@@ -101,7 +104,7 @@ platformdirs==3.11.0
 pluggy @ file:///tmp/build/80754af9/pluggy_1648024445381/work
 portalocker==2.8.2
 prometheus-client==0.19.0
-protobuf==3.19.6
+protobuf==3.20.3
 psutil==5.9.8
 py-spy==0.3.14
 pyarrow==12.0.1
@@ -123,17 +126,17 @@ python-dotenv==1.0.1
 pytz==2022.7.1
 PyWavelets==1.5.0
 PyYAML==6.0.1
-ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=b57426422c34061b387bfacd049036dedb39bf39036803876571ec9058510c47
+ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=bc790357ec5ba7d05635ba28589fb4061da226d74f73263c79db9ac63f56834f
 redis==3.5.3
 requests @ file:///croot/requests_1707355572290/work
-requests-oauthlib==1.4.0
+requests-oauthlib==2.0.0
 rich==12.6.0
 rsa==4.7.2
 ruamel.yaml @ file:///croot/ruamel.yaml_1666304550667/work
 ruamel.yaml.clib @ file:///croot/ruamel.yaml.clib_1666302247304/work
 s3transfer==0.6.2
 scikit-image==0.21.0
-scipy==1.10.1
+scipy==1.11.4
 six==1.16.0
 smart-open==6.2.0
 sniffio==1.3.0

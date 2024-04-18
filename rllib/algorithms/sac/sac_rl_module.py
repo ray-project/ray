@@ -68,7 +68,7 @@ class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         # Build the encoder for the policy.
         self.pi_encoder = catalog.build_encoder(framework=self.framework)
 
-        if self.is_learner_module:
+        if not self.inference_only:
             # SAC needs a separate Q network encoder (besides the pi network).
             # This is because the Q network also takes the action as input
             # (concatenated with the observations).
@@ -90,7 +90,7 @@ class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         # Build heads.
         self.pi = catalog.build_pi_head(framework=self.framework)
 
-        if self.is_learner_module:
+        if not self.inference_only:
             self.qf = catalog.build_qf_head(framework=self.framework)
             # The Q target network head is an identical copy of the Q network head.
             self.qf_target = catalog.build_qf_head(framework=self.framework)
