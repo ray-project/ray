@@ -19,6 +19,7 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <fstream>
 
 #include "absl/functional/bind_front.h"
 #include "absl/time/clock.h"
@@ -785,6 +786,10 @@ void NodeManager::HandleRegisterMutableObject(
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   int64_t num_readers = request.num_readers();
   ObjectID local_object_id = ObjectID::FromBinary(request.local_object_id());
+
+  std::ofstream f;
+  f.open("/tmp/blah", std::ofstream::app);
+  f << "NodeManager::HandleRegisterMutableObject" << std::endl;
 
   mutable_object_provider_->HandleRegisterMutableObject(
       object_id, num_readers, local_object_id);

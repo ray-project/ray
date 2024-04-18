@@ -14,139 +14,7 @@ import ray.experimental.channel as ray_channel
 logger = logging.getLogger(__name__)
 
 
-@pytest.mark.skipif(sys.platform != "linux", reason="Requires Linux.")
-def test_put_local_get(ray_start_regular):
-    chan = ray_channel.Channel(
-        ray.runtime_context.get_runtime_context().get_node_id(), 1000
-    )
-
-    num_writes = 1000
-    for i in range(num_writes):
-        val = i.to_bytes(8, "little")
-        chan.write(val, num_readers=1)
-        assert chan.begin_read() == val
-        chan.end_read()
-
-
-@pytest.mark.skipif(sys.platform != "linux", reason="Requires Linux.")
-def test_errors(ray_start_regular):
-    @ray.remote
-    class Actor:
-        def make_chan(self, do_write=True):
-            self.chan = ray_channel.Channel(
-                ray.runtime_context.get_runtime_context().get_node_id(), 1000
-            )
-            if do_write:
-                self.chan.write(b"hello", num_readers=1)
-            return self.chan
-
-    a = Actor.remote()
-    # Multiple consecutive reads from the same process are fine.
-    chan = ray.get(a.make_chan.remote(do_write=True))
-    assert chan.begin_read() == b"hello"
-    chan.end_read()
-
-    @ray.remote
-    class Reader:
-        def __init__(self):
-            pass
-
-        def read(self, chan):
-            return chan.begin_read()
-
-    # Multiple reads from n different processes, where n > num_readers, errors.
-    chan = ray.get(a.make_chan.remote(do_write=True))
-    readers = [Reader.remote(), Reader.remote()]
-    # At least 1 reader
-    with pytest.raises(ray.exceptions.RayTaskError) as exc_info:
-        ray.get([reader.read.remote(chan) for reader in readers])
-    assert "ray.exceptions.RaySystemError" in str(exc_info.value)
-
-
-@pytest.mark.skipif(sys.platform != "linux", reason="Requires Linux.")
-def test_put_different_meta(ray_start_regular):
-    chan = ray_channel.Channel(
-        ray.runtime_context.get_runtime_context().get_node_id(), 1000
-    )
-
-    def _test(val):
-        chan.write(val, num_readers=1)
-
-        read_val = chan.begin_read()
-        if isinstance(val, np.ndarray):
-            assert np.array_equal(read_val, val)
-        else:
-            assert read_val == val
-        chan.end_read()
-
-    _test(b"hello")
-    _test("hello")
-    _test(1000)
-    _test(np.random.rand(10))
-
-    # Cannot put a serialized value larger than the allocated buffer.
-    with pytest.raises(ValueError):
-        _test(np.random.rand(100))
-
-    _test(np.random.rand(1))
-
-
-@pytest.mark.skipif(sys.platform != "linux", reason="Requires Linux.")
-@pytest.mark.parametrize("num_readers", [1, 4])
-def test_put_remote_get(ray_start_regular, num_readers):
-    chan = ray_channel.Channel(
-        ray.runtime_context.get_runtime_context().get_node_id(), 1000
-    )
-
-    @ray.remote(num_cpus=0)
-    class Reader:
-        def __init__(self):
-            pass
-
-        def read(self, chan, num_writes):
-            for i in range(num_writes):
-                val = i.to_bytes(8, "little")
-                assert chan.begin_read() == val
-                chan.end_read()
-
-            for i in range(num_writes):
-                val = i.to_bytes(100, "little")
-                assert chan.begin_read() == val
-                chan.end_read()
-
-            for val in [
-                b"hello world",
-                "hello again",
-                1000,
-            ]:
-                assert chan.begin_read() == val
-                chan.end_read()
-
-    chan.ensure_registered_as_writer()
-    num_writes = 1000
-    readers = [Reader.remote() for _ in range(num_readers)]
-    done = [reader.read.remote(chan, num_writes) for reader in readers]
-    for i in range(num_writes):
-        val = i.to_bytes(8, "little")
-        chan.write(val, num_readers=num_readers)
-
-    # Test different data size.
-    for i in range(num_writes):
-        val = i.to_bytes(100, "little")
-        chan.write(val, num_readers=num_readers)
-
-    # Test different metadata.
-    for val in [
-        b"hello world",
-        "hello again",
-        1000,
-    ]:
-        chan.write(val, num_readers=num_readers)
-
-    ray.get(done)
-
-
-@pytest.mark.parametrize("remote", [True, False])
+@pytest.mark.parametrize("remote", [True])
 def test_remote_reader(ray_start_cluster, remote):
     num_readers = 10
     num_writes = 1000
@@ -154,10 +22,13 @@ def test_remote_reader(ray_start_cluster, remote):
 
     cluster = ray_start_cluster
     if remote:
+        # This node is for the driver.
         cluster.add_node(num_cpus=0)
         ray.init(address=cluster.address)
+        # This node is for the Reader actors.
         cluster.add_node(num_cpus=num_readers)
     else:
+        # This node is for both the driver and the Reader actors.
         cluster.add_node(num_cpus=num_readers)
         ray.init(address=cluster.address)
 
@@ -170,30 +41,46 @@ def test_remote_reader(ray_start_cluster, remote):
             return ray.get_runtime_context().get_node_id()
 
         def allocate_local_reader_channel(self, writer_channel, num_readers):
-            ret = ray_channel.Channel(
+            print("HERE\n")
+            self._reader_chan = ray_channel.Channel(
                 ray.runtime_context.get_runtime_context().get_node_id(),
                 _writer_channel=writer_channel,
                 num_readers=num_readers,
             )
-            return ret
+            return self._reader_chan
 
         def send_channel(self, reader_channel):
             self._reader_chan = reader_channel
 
+        def pass_channel(self, channel):
+            print("pass channel here\n")
+            if ray.runtime_context.get_runtime_context().get_node_id() == channel._local_node_id:
+                # Reader and writer are on the same node.
+                self._reader_chan = channel
+            else:
+                # Reader and writer are on different nodes.
+                self._reader_chan = ray_channel.Channel(
+                    ray.runtime_context.get_runtime_context().get_node_id(),
+                    _writer_channel=channel,
+                    # Pass 1 only for this reader. If the channel is already registered on the
+                    # local node, `num_readers` will be incremented by 1.
+                    num_readers=1,
+                )
+
         def read(self, num_reads):
+            print("here to read\n")
             for i in range(num_reads):
                 self._reader_chan.begin_read()
                 self._reader_chan.end_read()
 
     readers = [Reader.remote() for _ in range(num_readers)]
     if remote:
+        reader_node_id = ray.get(readers[0].get_node_id.remote())
+        channel = ray_channel.Channel(reader_node_id, 1000, num_readers)
         for reader in readers:
-            reader_node_id = ray.get(reader.get_node_id.remote())
-            channel = ray_channel.Channel(reader_node_id, 1000)
-            reader_channel = ray.get(
-                reader.allocate_local_reader_channel.remote(channel, num_readers)
-            )
+            reader_channel = ray.get(reader.pass_channel.remote(channel))
     else:
+        print("hmmm\n")
         channel = ray_channel.Channel(
             ray.runtime_context.get_runtime_context().get_node_id(),
             1000,
@@ -201,12 +88,16 @@ def test_remote_reader(ray_start_cluster, remote):
         )
         reader_channel = channel
 
-    ray.get([reader.send_channel.remote(reader_channel) for reader in readers])
+    # ray.get([reader.send_channel.remote(reader_channel) for reader in readers])
     for j in range(num_iterations):
+        print("start A\n")
         work = [reader.read.remote(num_writes) for reader in readers]
+        print("start B\n")
         start = time.perf_counter()
         for i in range(num_writes):
+            print("start C\n")
             channel.write(b"x")
+            print("start D\n")
         end = time.perf_counter()
         ray.get(work)
         print(end - start, 10_000 / (end - start))

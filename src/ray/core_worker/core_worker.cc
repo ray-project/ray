@@ -20,6 +20,8 @@
 
 #include <google/protobuf/util/json_util.h>
 
+#include <fstream>
+
 #include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_format.h"
 #include "boost/fiber/all.hpp"
@@ -1466,9 +1468,16 @@ Status CoreWorker::ExperimentalRegisterMutableObjectReader(
     const ObjectID &object_id,
     const ObjectID &local_reader_object_id,
     int64_t num_readers) {
+
+   std::ofstream f;
+  f.open("/tmp/blah", std::ofstream::app);
+  f << "CoreWorker::ExperimentalRegisterMutableObjectReader" << std::endl;
+
   if (object_id == local_reader_object_id) {
+  f << "In here A" << std::endl;
     experimental_mutable_object_provider_->RegisterReaderChannel(object_id);
   } else {
+  f << "In here B" << std::endl;
     std::promise<void> promise;
     std::future<void> future = promise.get_future();
     local_raylet_client_->RegisterMutableObjectReader(

@@ -14,6 +14,10 @@
 
 #include "ray/core_worker/experimental_mutable_object_provider.h"
 
+#include <fstream>
+
+#include "absl/strings/str_format.h"
+
 namespace ray {
 namespace core {
 namespace experimental {
@@ -71,13 +75,24 @@ void MutableObjectProvider::HandleRegisterMutableObject(const ObjectID &object_i
                                                         const ObjectID &local_object_id) {
   absl::MutexLock guard(&remote_writer_object_to_local_reader_lock_);
 
-  LocalReaderInfo info;
-  info.num_readers = num_readers;
-  info.local_object_id = local_object_id;
-  bool success = remote_writer_object_to_local_reader_.insert({object_id, info}).second;
-  RAY_CHECK(success);
+  if (remote_writer_object_to_local_reader_.count(object_id)) {
+    // Channel already exists.
+    remote_writer_object_to_local_reader_[object_id].num_readers += num_readers;
+  } else {
+    // Channel does not exist.
+    LocalReaderInfo info;
+    info.num_readers = num_readers;
+    info.local_object_id = local_object_id;
+    bool success = remote_writer_object_to_local_reader_.insert({object_id, info}).second;
+    RAY_CHECK(success);
 
-  RegisterReaderChannel(local_object_id);
+    RegisterReaderChannel(local_object_id);
+  }
+
+  std::ofstream f;
+  f.open("/tmp/blah", std::ofstream::app);
+  f << "HandlePushMutableObject object_id = " << object_id << ", local_object_id = " << local_object_id << std::endl;
+  f << absl::StrFormat("HandlePushMutableObject, num_readers = %ld, new num_readers = %ld", num_readers, remote_writer_object_to_local_reader_[object_id].num_readers) << std::endl;
 }
 
 void MutableObjectProvider::HandlePushMutableObject(
@@ -97,6 +112,9 @@ void MutableObjectProvider::HandlePushMutableObject(
   std::shared_ptr<Buffer> data;
   const uint8_t *metadata_ptr =
       reinterpret_cast<const uint8_t *>(request.data().data()) + request.data_size();
+  std::ofstream f;
+  f.open("/tmp/blah", std::ofstream::app);
+  f << "HandlePushMutableObject, num_readers = " << info.num_readers << std::endl;
   RAY_CHECK_OK(object_manager_.WriteAcquire(info.local_object_id,
                                             data_size,
                                             metadata_ptr,

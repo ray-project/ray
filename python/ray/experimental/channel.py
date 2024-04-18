@@ -76,6 +76,8 @@ class Channel:
         Returns:
             Channel: A wrapper around ray.ObjectRef.
         """
+        self._local_node_id = ray.runtime_context.get_runtime_context().get_node_id()
+
         if _writer_channel is not None:
             if buffer_size_bytes is not None:
                 raise ValueError(
