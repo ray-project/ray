@@ -68,6 +68,20 @@ def do_allocate_channel(self, buffer_size_bytes: int, num_readers: int = 1) -> C
 
 
 @DeveloperAPI
+def _wrap_exception(exc):
+    backtrace = ray._private.utils.format_error_message(
+        "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+        task_exception=True,
+    )
+    wrapped = RayTaskError(
+        function_name="do_exec_compiled_task",
+        traceback_str=backtrace,
+        cause=exc,
+    )
+    return wrapped
+
+
+@DeveloperAPI
 def do_exec_compiled_task(
     self,
     inputs: List[Union[Any, Channel]],
@@ -110,7 +124,12 @@ def do_exec_compiled_task(
         self._output_writer.start()
 
         while True:
-            res = self._input_reader.begin_read()
+            try:
+                res = self._input_reader.begin_read()
+            except ValueError as exc:
+                self._output_writer.write(exc)
+                self._input_reader.end_read()
+                continue
 
             for idx, output in zip(input_channel_idxs, res):
                 resolved_inputs[idx] = output
@@ -120,17 +139,7 @@ def do_exec_compiled_task(
                 if output_wrapper_fn is not None:
                     output_val = output_wrapper_fn(output_val)
             except Exception as exc:
-                backtrace = ray._private.utils.format_error_message(
-                    "".join(
-                        traceback.format_exception(type(exc), exc, exc.__traceback__)
-                    ),
-                    task_exception=True,
-                )
-                wrapped = RayTaskError(
-                    function_name="do_exec_compiled_task",
-                    traceback_str=backtrace,
-                    cause=exc,
-                )
+                wrapped = _wrap_exception(exc)
                 self._output_writer.write(wrapped)
             else:
                 self._output_writer.write(output_val)
