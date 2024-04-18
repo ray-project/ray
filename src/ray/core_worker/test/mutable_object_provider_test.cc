@@ -154,7 +154,7 @@ TEST(MutableObjectProvider, RegisterWriterChannel) {
   provider.RegisterWriterChannel(object_id, node_id);
 
   std::shared_ptr<Buffer> data;
-  EXPECT_EQ(provider.object_manager()
+  EXPECT_EQ(provider
                 .WriteAcquire(object_id,
                               /*data_size=*/0,
                               /*metadata=*/nullptr,
@@ -163,7 +163,7 @@ TEST(MutableObjectProvider, RegisterWriterChannel) {
                               data)
                 .code(),
             StatusCode::OK);
-  EXPECT_EQ(provider.object_manager().WriteRelease(object_id).code(), StatusCode::OK);
+  EXPECT_EQ(provider.WriteRelease(object_id).code(), StatusCode::OK);
 
   while (interface->pushed_objects().empty()) {
   }
@@ -192,11 +192,9 @@ TEST(MutableObjectProvider, HandlePushMutableObject) {
   provider.HandlePushMutableObject(request, &reply);
 
   std::shared_ptr<RayObject> result;
-  EXPECT_EQ(provider.object_manager().ReadAcquire(local_object_id, result).code(),
-            StatusCode::OK);
+  EXPECT_EQ(provider.ReadAcquire(local_object_id, result).code(), StatusCode::OK);
   EXPECT_EQ(result->GetSize(), 0UL);
-  EXPECT_EQ(provider.object_manager().ReadRelease(local_object_id).code(),
-            StatusCode::OK);
+  EXPECT_EQ(provider.ReadRelease(local_object_id).code(), StatusCode::OK);
 }
 
 #endif  // defined(__APPLE__) || defined(__linux__)

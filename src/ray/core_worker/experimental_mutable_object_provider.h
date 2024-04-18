@@ -42,8 +42,6 @@ class MutableObjectProvider {
     return client_call_manager_;
   }
 
-  ray::experimental::MutableObjectManager &object_manager() { return object_manager_; }
-
   /// Registers a reader channel for `object_id` on this node.
   /// \param[in] object_id The ID of the object.
   void RegisterReaderChannel(const ObjectID &object_id);
@@ -70,6 +68,72 @@ class MutableObjectProvider {
   /// on this node.
   void HandlePushMutableObject(const rpc::PushMutableObjectRequest &request,
                                rpc::PushMutableObjectReply *reply);
+
+  /// Checks if a reader channel is registered for an object.
+  ///
+  /// \param[in] object_id The ID of the object.
+  /// The return status. True if the channel is registered as a reader for object_id,
+  /// false otherwise.
+  bool ReaderChannelRegistered(const ObjectID &object_id);
+
+  /// Checks if a writer channel is registered for an object.
+  ///
+  /// \param[in] object_id The ID of the object.
+  /// The return status. True if the channel is registered as a writer for object_id,
+  /// false otherwise.
+  bool WriterChannelRegistered(const ObjectID &object_id);
+
+  /// Acquires a write lock on the object that prevents readers from reading
+  /// until we are done writing. This is safe for concurrent writers.
+  ///
+  /// \param[in] object_id The ID of the object.
+  /// \param[in] data_size The size of the object to write. This overwrites the
+  /// current data size.
+  /// \param[in] metadata A pointer to the object metadata buffer to copy. This
+  /// will overwrite the current metadata.
+  /// \param[in] metadata_size The number of bytes to copy from the metadata
+  /// pointer.
+  /// \param[in] num_readers The number of readers that must read and release
+  /// value we will write before the next WriteAcquire can proceed. The readers
+  /// may not start reading until WriteRelease is called.
+  /// \param[out] data The mutable object buffer in plasma that can be written to.
+  /// \return The return status.
+  Status WriteAcquire(const ObjectID &object_id,
+                      int64_t data_size,
+                      const uint8_t *metadata,
+                      int64_t metadata_size,
+                      int64_t num_readers,
+                      std::shared_ptr<Buffer> &data);
+
+  /// Releases an acquired write lock on the object, allowing readers to read.
+  /// This is the equivalent of "Seal" for normal objects.
+  ///
+  /// \param[in] object_id The ID of the object.
+  /// \return The return status.
+  Status WriteRelease(const ObjectID &object_id);
+
+  /// Acquires a read lock on the object that prevents the writer from writing
+  /// again until we are done reading the current value.
+  ///
+  /// \param[in] object_id The ID of the object.
+  /// \param[out] result The read object. This buffer is guaranteed to be valid
+  /// until the caller calls ReadRelease next.
+  /// \return The return status. The ReadAcquire can fail if there have already
+  /// been `num_readers` for the current value.
+  Status ReadAcquire(const ObjectID &object_id, std::shared_ptr<RayObject> &result);
+
+  /// Releases the object, allowing it to be written again. If the caller did
+  /// not previously ReadAcquire the object, then this first blocks until the
+  /// latest value is available to read, then releases the value.
+  ///
+  /// \param[in] object_id The ID of the object.
+  Status ReadRelease(const ObjectID &object_id);
+
+  /// Sets the error bit, causing all future readers and writers to raise an
+  /// error on acquire.
+  ///
+  /// \param[in] object_id The ID of the object.
+  Status SetError(const ObjectID &object_id);
 
  private:
   struct LocalReaderInfo {

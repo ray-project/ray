@@ -115,7 +115,8 @@ class Channel:
                 self._writer_channel._base_ref, self._num_readers, self._base_ref
             )
 
-    def is_local_node(node_id: str):
+    @staticmethod
+    def is_local_node(node_id):
         return ray.runtime_context.get_runtime_context().get_node_id() == node_id
 
     def ensure_registered_as_writer(self):
@@ -148,7 +149,11 @@ class Channel:
     def _from_base_ref(
         buffer_size_bytes: int, base_ref: "ray.ObjectRef", num_readers: int
     ) -> "Channel":
-        chan = Channel(num_readers=num_readers, _base_ref=base_ref)
+        chan = Channel(
+            ray.runtime_context.get_runtime_context().get_node_id(),
+            num_readers=num_readers,
+            _base_ref=base_ref,
+        )
         chan._buffer_size_bytes = buffer_size_bytes
         return chan
 

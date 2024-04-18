@@ -76,6 +76,12 @@ class MutableObjectManager {
   /// \param[in] object_id The ID of the object.
   /// The return status. True if the channel is registered for object_id, false otherwise.
   bool ChannelRegistered(const ObjectID &object_id) { return GetChannel(object_id); }
+
+  /// Checks if a reader channel is registered for an object.
+  ///
+  /// \param[in] object_id The ID of the object.
+  /// The return status. True if the channel is registered as a reader for object_id,
+  /// false otherwise.
   bool ReaderChannelRegistered(const ObjectID &object_id) {
     Channel *c = GetChannel(object_id);
     if (!c) {
@@ -83,6 +89,12 @@ class MutableObjectManager {
     }
     return c->reader_registered;
   }
+
+  /// Checks if a writer channel is registered for an object.
+  ///
+  /// \param[in] object_id The ID of the object.
+  /// The return status. True if the channel is registered as a writer for object_id,
+  /// false otherwise.
   bool WriterChannelRegistered(const ObjectID &object_id) {
     Channel *c = GetChannel(object_id);
     if (!c) {

@@ -35,7 +35,11 @@ def do_allocate_channel(self, buffer_size_bytes: int, num_readers: int = 1) -> C
     Returns:
         The allocated channel.
     """
-    self._output_channel = Channel(buffer_size_bytes, num_readers)
+    self._output_channel = Channel(
+        ray.runtime_context.get_runtime_context().get_node_id(),
+        buffer_size_bytes,
+        num_readers,
+    )
     return self._output_channel
 
 
@@ -404,6 +408,7 @@ class CompiledDAG:
                 self.actor_refs.add(task.dag_node._get_actor_handle())
             elif isinstance(task.dag_node, InputNode):
                 task.output_channel = Channel(
+                    ray.runtime_context.get_runtime_context().get_node_id(),
                     buffer_size_bytes=self._buffer_size_bytes,
                     num_readers=task.num_readers,
                 )

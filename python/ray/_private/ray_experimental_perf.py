@@ -66,13 +66,21 @@ def main(results=None):
                     chan.begin_read()
                     chan.end_read()
 
-    chans = [ray_channel.Channel(1000)]
+    chans = [
+        ray_channel.Channel(
+            ray.runtime_context.get_runtime_context().get_node_id(), 1000
+        )
+    ]
     results += timeit(
         "[unstable] local put:local get, single channel calls",
         lambda: put_channel_small(chans, do_get=True, do_release=True),
     )
 
-    chans = [ray_channel.Channel(1000)]
+    chans = [
+        ray_channel.Channel(
+            ray.runtime_context.get_runtime_context().get_node_id(), 1000
+        )
+    ]
     reader = ChannelReader.remote()
     ray.get(reader.ready.remote())
     reader.read.remote(chans)
@@ -85,7 +93,13 @@ def main(results=None):
     n_cpu = multiprocessing.cpu_count() // 2
     print(f"Testing multiple readers/channels, n={n_cpu}")
 
-    chans = [ray_channel.Channel(1000, num_readers=n_cpu)]
+    chans = [
+        ray_channel.Channel(
+            ray.runtime_context.get_runtime_context().get_node_id(),
+            1000,
+            num_readers=n_cpu,
+        )
+    ]
     readers = [ChannelReader.remote() for _ in range(n_cpu)]
     ray.get([reader.ready.remote() for reader in readers])
     for reader in readers:
@@ -97,7 +111,12 @@ def main(results=None):
     for reader in readers:
         ray.kill(reader)
 
-    chans = [ray_channel.Channel(1000) for _ in range(n_cpu)]
+    chans = [
+        ray_channel.Channel(
+            ray.runtime_context.get_runtime_context().get_node_id(), 1000
+        )
+        for _ in range(n_cpu)
+    ]
     reader = ChannelReader.remote()
     ray.get(reader.ready.remote())
     reader.read.remote(chans)
@@ -107,7 +126,12 @@ def main(results=None):
     )
     ray.kill(reader)
 
-    chans = [ray_channel.Channel(1000) for _ in range(n_cpu)]
+    chans = [
+        ray_channel.Channel(
+            ray.runtime_context.get_runtime_context().get_node_id(), 1000
+        )
+        for _ in range(n_cpu)
+    ]
     readers = [ChannelReader.remote() for _ in range(n_cpu)]
     ray.get([reader.ready.remote() for reader in readers])
     for chan, reader in zip(chans, readers):

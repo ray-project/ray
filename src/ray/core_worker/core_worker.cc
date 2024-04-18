@@ -1395,16 +1395,16 @@ Status CoreWorker::ExperimentalChannelWriteAcquire(
     uint64_t data_size,
     int64_t num_readers,
     std::shared_ptr<Buffer> *data) {
-  return experimental_mutable_object_provider_->object_manager().WriteAcquire(
+  return experimental_mutable_object_provider_->WriteAcquire(
       object_id, data_size, metadata->Data(), metadata->Size(), num_readers, *data);
 }
 
 Status CoreWorker::ExperimentalChannelWriteRelease(const ObjectID &object_id) {
-  return experimental_mutable_object_provider_->object_manager().WriteRelease(object_id);
+  return experimental_mutable_object_provider_->WriteRelease(object_id);
 }
 
 Status CoreWorker::ExperimentalChannelSetError(const ObjectID &object_id) {
-  return experimental_mutable_object_provider_->object_manager().SetError(object_id);
+  return experimental_mutable_object_provider_->SetError(object_id);
 }
 
 Status CoreWorker::SealOwned(const ObjectID &object_id,
@@ -1453,8 +1453,7 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
 Status CoreWorker::ExperimentalChannelReadRelease(
     const std::vector<ObjectID> &object_ids) {
   RAY_CHECK_EQ(object_ids.size(), 1UL);
-  return experimental_mutable_object_provider_->object_manager().ReadRelease(
-      object_ids[0]);
+  return experimental_mutable_object_provider_->ReadRelease(object_ids[0]);
 }
 
 Status CoreWorker::ExperimentalRegisterMutableObjectWriter(const ObjectID &object_id,
@@ -1510,8 +1509,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
   // Check whether these are experimental.Channel objects.
   bool is_experimental_channel = false;
   for (const ObjectID &id : ids) {
-    if (experimental_mutable_object_provider_->object_manager().ReaderChannelRegistered(
-            id)) {
+    if (experimental_mutable_object_provider_->ReaderChannelRegistered(id)) {
       is_experimental_channel = true;
     } else if (is_experimental_channel) {
       return Status::NotImplemented(
@@ -1535,8 +1533,8 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
 Status CoreWorker::GetExperimentalMutableObjects(
     const std::vector<ObjectID> &ids, std::vector<std::shared_ptr<RayObject>> &results) {
   for (size_t i = 0; i < ids.size(); i++) {
-    RAY_RETURN_NOT_OK(experimental_mutable_object_provider_->object_manager().ReadAcquire(
-        ids[i], results[i]));
+    RAY_RETURN_NOT_OK(
+        experimental_mutable_object_provider_->ReadAcquire(ids[i], results[i]));
   }
   return Status::OK();
 }

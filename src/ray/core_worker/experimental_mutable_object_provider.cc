@@ -112,6 +112,41 @@ void MutableObjectProvider::HandlePushMutableObject(
   RAY_CHECK_OK(object_manager_.WriteRelease(info.local_object_id));
 }
 
+bool MutableObjectProvider::ReaderChannelRegistered(const ObjectID &object_id) {
+  return object_manager_.ReaderChannelRegistered(object_id);
+}
+
+bool MutableObjectProvider::WriterChannelRegistered(const ObjectID &object_id) {
+  return object_manager_.WriterChannelRegistered(object_id);
+}
+
+Status MutableObjectProvider::WriteAcquire(const ObjectID &object_id,
+                                           int64_t data_size,
+                                           const uint8_t *metadata,
+                                           int64_t metadata_size,
+                                           int64_t num_readers,
+                                           std::shared_ptr<Buffer> &data) {
+  return object_manager_.WriteAcquire(
+      object_id, data_size, metadata, metadata_size, num_readers, data);
+}
+
+Status MutableObjectProvider::WriteRelease(const ObjectID &object_id) {
+  return object_manager_.WriteRelease(object_id);
+}
+
+Status MutableObjectProvider::ReadAcquire(const ObjectID &object_id,
+                                          std::shared_ptr<RayObject> &result) {
+  return object_manager_.ReadAcquire(object_id, result);
+}
+
+Status MutableObjectProvider::ReadRelease(const ObjectID &object_id) {
+  return object_manager_.ReadRelease(object_id);
+}
+
+Status MutableObjectProvider::SetError(const ObjectID &object_id) {
+  return object_manager_.SetError(object_id);
+}
+
 void MutableObjectProvider::PollWriterClosure(
     const ObjectID &object_id, std::shared_ptr<MutableObjectReaderInterface> reader) {
   std::shared_ptr<RayObject> object;
