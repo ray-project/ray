@@ -19,6 +19,13 @@ select_flaky_tests() {
   bazel run ci/ray_ci/automation:filter_tests -- --state_filter=flaky --prefix=darwin:
 }
 
+run_tests() {
+   # shellcheck disable=SC2046
+  bazel test --config=ci $(./ci/run/bazel_export_options) \
+      --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX \
+      --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI "$@"
+}
+
 run_small_and_large_flaky_tests() {
   # shellcheck disable=SC2046
   # 42 is the universal rayci exit code for test failures
@@ -103,7 +110,7 @@ _epilogue() {
   bazel run //ci/ray_ci/automation:test_db_bot -- core /tmp/bazel_event_logs
   # Persist ray logs
   mkdir -p /tmp/artifacts/.ray/
-  tar -czf /tmp/artifacts/.ray/logs.tgz /tmp/ray
+  find /tmp/ray -path '*/logs/*' | tar -czf /tmp/artifacts/.ray/ray_logs.tgz -T -
   # Cleanup runtime environment to save storage
   rm -rf /tmp/ray
   # Cleanup local caches - this should not clean up global disk cache

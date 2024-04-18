@@ -10,7 +10,7 @@ from ci.ray_ci.container import _DOCKER_ECR_REPO
 from ci.ray_ci.ray_docker_container import RayDockerContainer
 from ci.ray_ci.test_base import RayCITestBase
 from ci.ray_ci.utils import RAY_VERSION
-from ray_release.configs.global_config import BRANCH_PIPELINES
+from ray_release.configs.global_config import get_global_config
 
 
 class TestRayDockerContainer(RayCITestBase):
@@ -320,14 +320,18 @@ class TestRayDockerContainer(RayCITestBase):
             # environment_variables, expected_result (with upload flag on)
             (
                 {
-                    "BUILDKITE_PIPELINE_ID": BRANCH_PIPELINES[0],
+                    "BUILDKITE_PIPELINE_ID": get_global_config()[
+                        "ci_pipeline_postmerge"
+                    ][0],
                     "BUILDKITE_BRANCH": "releases/1.0.0",
                 },
                 True,  # satisfy upload requirements
             ),
             (
                 {
-                    "BUILDKITE_PIPELINE_ID": BRANCH_PIPELINES[0],
+                    "BUILDKITE_PIPELINE_ID": get_global_config()[
+                        "ci_pipeline_postmerge"
+                    ][0],
                     "BUILDKITE_BRANCH": "master",
                     "RAYCI_SCHEDULE": "nightly",
                 },
@@ -343,14 +347,18 @@ class TestRayDockerContainer(RayCITestBase):
             ),
             (
                 {
-                    "BUILDKITE_PIPELINE_ID": BRANCH_PIPELINES[-1],
+                    "BUILDKITE_PIPELINE_ID": get_global_config()[
+                        "ci_pipeline_postmerge"
+                    ][-1],
                     "BUILDKITE_BRANCH": "non-release/1.2.3",
                 },
                 False,  # not satisfied: branch is not release/master
             ),
             (
                 {
-                    "BUILDKITE_PIPELINE_ID": BRANCH_PIPELINES[-1],
+                    "BUILDKITE_PIPELINE_ID": get_global_config()[
+                        "ci_pipeline_postmerge"
+                    ][-1],
                     "BUILDKITE_BRANCH": "123",
                     "RAYCI_SCHEDULE": "nightly",
                 },

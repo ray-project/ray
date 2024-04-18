@@ -1,17 +1,17 @@
 import collections
-from enum import Enum
 import json
 import os
+from enum import Enum
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Union
 
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
 if TYPE_CHECKING:
-    from ray.train.trainer import BaseTrainer
     from ray.train._internal.storage import StorageContext
+    from ray.train.trainer import BaseTrainer
+    from ray.tune import Callback
     from ray.tune.schedulers import TrialScheduler
     from ray.tune.search import BasicVariantGenerator, Searcher
-    from ray.tune import Callback
 
 
 AIR_TRAINERS = {
@@ -135,14 +135,13 @@ def tag_setup_mlflow():
 
 def _count_callbacks(callbacks: Optional[List["Callback"]]) -> Dict[str, int]:
     """Creates a map of callback class name -> count given a list of callbacks."""
+    from ray.air.integrations.comet import CometLoggerCallback
+    from ray.air.integrations.mlflow import MLflowLoggerCallback
+    from ray.air.integrations.wandb import WandbLoggerCallback
     from ray.tune import Callback
     from ray.tune.logger import LoggerCallback
-    from ray.tune.utils.callback import DEFAULT_CALLBACK_CLASSES
-
-    from ray.air.integrations.wandb import WandbLoggerCallback
-    from ray.air.integrations.mlflow import MLflowLoggerCallback
-    from ray.air.integrations.comet import CometLoggerCallback
     from ray.tune.logger.aim import AimLoggerCallback
+    from ray.tune.utils.callback import DEFAULT_CALLBACK_CLASSES
 
     built_in_callbacks = (
         WandbLoggerCallback,
@@ -234,8 +233,8 @@ def tag_ray_air_env_vars() -> bool:
         bool: True if at least one environment var is supplied by the user.
     """
     from ray.air.constants import AIR_ENV_VARS
-    from ray.tune.constants import TUNE_ENV_VARS
     from ray.train.constants import TRAIN_ENV_VARS
+    from ray.tune.constants import TUNE_ENV_VARS
 
     all_ray_air_env_vars = sorted(
         set().union(AIR_ENV_VARS, TUNE_ENV_VARS, TRAIN_ENV_VARS)
