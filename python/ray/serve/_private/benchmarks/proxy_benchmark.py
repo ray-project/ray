@@ -159,6 +159,10 @@ def build_app(
             output = await self._handle.remote(processed)
             return serve_pb2.ModelOutput(output=output)
 
+        async def call_with_string(self, raq_data):
+            """gRPC entrypoint."""
+            return serve_pb2.ModelOutput(output=0)
+
     @serve.deployment(
         num_replicas=num_replicas,
         max_ongoing_requests=max_ongoing_requests,

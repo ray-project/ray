@@ -1,4 +1,6 @@
-import { Box, createStyles, makeStyles } from "@material-ui/core";
+import { Box } from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import classNames from "classnames";
 import React from "react";
 import { IconBaseProps } from "react-icons";

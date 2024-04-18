@@ -160,6 +160,7 @@ def test_is_stable() -> None:
     assert not Test(stable=False).is_stable()
 
 
+@patch.dict(os.environ, {"BUILDKITE_BRANCH": "food"})
 def test_result_from_bazel_event() -> None:
     result = TestResult.from_bazel_event(
         {
@@ -167,6 +168,7 @@ def test_result_from_bazel_event() -> None:
         }
     )
     assert result.is_passing()
+    assert result.branch == "food"
     result = TestResult.from_bazel_event(
         {
             "testResult": {"status": "FAILED"},
@@ -187,6 +189,10 @@ def test_from_bazel_event() -> None:
 
 
 @patch.object(boto3, "client")
+@patch.dict(
+    os.environ,
+    {"BUILDKITE_PIPELINE_ID": get_global_config()["ci_pipeline_postmerge"][0]},
+)
 def test_update_from_s3(mock_client) -> None:
     mock_object = mock.Mock()
     mock_object.return_value.get.return_value.read.return_value = json.dumps(

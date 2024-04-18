@@ -14,11 +14,9 @@ from ray import serve
 from ray._private.pydantic_compat import ValidationError
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.common import ApplicationStatus, DeploymentStatus
-from ray.serve._private.logging_utils import (
-    get_component_log_file_name,
-    get_serve_logs_dir,
-)
+from ray.serve._private.logging_utils import get_serve_logs_dir
 from ray.serve._private.test_utils import check_deployment_status, check_num_replicas_eq
+from ray.serve._private.utils import get_component_file_name
 from ray.util.state import list_actors
 
 
@@ -236,7 +234,7 @@ def test_deploy_application_unhealthy(serve_instance):
         for actor in list_actors()
         if actor["name"] == "SERVE_CONTROLLER_ACTOR"
     ][0]
-    controller_log_file_name = get_component_log_file_name(
+    controller_log_file_name = get_component_file_name(
         "controller", controller_pid, component_type=None, suffix=".log"
     )
     controller_log_path = os.path.join(get_serve_logs_dir(), controller_log_file_name)

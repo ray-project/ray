@@ -1,31 +1,28 @@
 import argparse
-
+import sys
 from unittest import mock
 
 import pytest
-import sys
-
 from freezegun import freeze_time
 
 from ray import tune
 from ray.air.constants import TRAINING_ITERATION
+from ray.tune.experiment.trial import Trial
 from ray.tune.experimental.output import (
-    _get_time_str,
-    _get_trials_by_state,
-    _get_trial_info,
-    _infer_user_metrics,
-    _max_len,
-    _current_best_trial,
-    _best_trial_str,
-    _get_trial_table_data,
-    _get_dict_as_table_data,
-    _infer_params,
     AirVerbosity,
     TrainReporter,
     TuneTerminalReporter,
+    _best_trial_str,
+    _current_best_trial,
+    _get_dict_as_table_data,
+    _get_time_str,
+    _get_trial_info,
+    _get_trial_table_data,
+    _get_trials_by_state,
+    _infer_params,
+    _infer_user_metrics,
+    _max_len,
 )
-from ray.tune.experiment.trial import Trial
-
 
 LAST_RESULT = {
     "custom_metrics": {},

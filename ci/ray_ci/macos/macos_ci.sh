@@ -103,7 +103,7 @@ _epilogue() {
   bazel run //ci/ray_ci/automation:test_db_bot -- core /tmp/bazel_event_logs
   # Persist ray logs
   mkdir -p /tmp/artifacts/.ray/
-  tar -czf /tmp/artifacts/.ray/logs.tgz /tmp/ray
+  find /tmp/ray -path '*/logs/*' | tar -czf /tmp/artifacts/.ray/ray_logs.tgz -T -
   # Cleanup runtime environment to save storage
   rm -rf /tmp/ray
   # Cleanup local caches - this should not clean up global disk cache

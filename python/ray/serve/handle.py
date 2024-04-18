@@ -10,7 +10,12 @@ from typing import Any, AsyncIterator, Dict, Iterator, Optional, Tuple, Union
 import ray
 from ray import serve
 from ray._raylet import GcsClient, ObjectRefGenerator
-from ray.serve._private.common import DeploymentID, RequestMetadata, RequestProtocol
+from ray.serve._private.common import (
+    DeploymentHandleSource,
+    DeploymentID,
+    RequestMetadata,
+    RequestProtocol,
+)
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.router import Router
@@ -65,6 +70,7 @@ class _HandleOptions:
     stream: bool = False
     _prefer_local_routing: bool = False
     _request_protocol: str = RequestProtocol.UNDEFINED
+    _source: DeploymentHandleSource = DeploymentHandleSource.UNKNOWN
 
     def copy_and_update(
         self,
@@ -73,6 +79,7 @@ class _HandleOptions:
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _request_protocol: Union[str, DEFAULT] = DEFAULT.VALUE,
+        _source: Union[DeploymentHandleSource, DEFAULT] = DEFAULT.VALUE,
     ) -> "_HandleOptions":
         return _HandleOptions(
             method_name=(
@@ -90,6 +97,7 @@ class _HandleOptions:
             _request_protocol=self._request_protocol
             if _request_protocol == DEFAULT.VALUE
             else _request_protocol,
+            _source=self._source if _source == DEFAULT.VALUE else _source,
         )
 
 
@@ -115,6 +123,11 @@ class _DeploymentHandleBase:
 
         self._router: Optional[Router] = _router
 
+        logger.info(
+            f"Created DeploymentHandle '{self.handle_id}' for {self.deployment_id}.",
+            extra={"log_to_stderr": False},
+        )
+
     def _record_telemetry_if_needed(self):
         # Record telemetry once per handle and not when used from the proxy
         # (detected via request protocol).
@@ -133,6 +146,7 @@ class _DeploymentHandleBase:
         )
 
     def _get_or_create_router(self) -> Union[Router, asyncio.AbstractEventLoop]:
+
         if self._router is None:
             node_id = ray.get_runtime_context().get_node_id()
             try:
@@ -151,6 +165,7 @@ class _DeploymentHandleBase:
                 node_id,
                 get_current_actor_id(),
                 availability_zone,
+                handle_source=self.handle_options._source,
                 event_loop=_create_or_get_global_asyncio_event_loop_in_thread(),
                 _prefer_local_node_routing=self.handle_options._prefer_local_routing,
             )
@@ -200,6 +215,7 @@ class _DeploymentHandleBase:
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        _source: Union[DeploymentHandleSource, DEFAULT] = DEFAULT.VALUE,
     ):
         if stream is True and inside_ray_client_context():
             raise RuntimeError(
@@ -212,6 +228,7 @@ class _DeploymentHandleBase:
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
             _prefer_local_routing=_prefer_local_routing,
+            _source=_source,
         )
 
         if self._router is None and _prefer_local_routing == DEFAULT.VALUE:
@@ -736,6 +753,7 @@ class DeploymentHandle(_DeploymentHandleBase):
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        _source: Union[bool, DEFAULT] = DEFAULT.VALUE,
     ) -> "DeploymentHandle":
         """Set options for this handle and return an updated copy of it.
 
@@ -759,6 +777,7 @@ class DeploymentHandle(_DeploymentHandleBase):
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
             _prefer_local_routing=_prefer_local_routing,
+            _source=_source,
         )
 
     def remote(

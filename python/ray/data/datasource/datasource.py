@@ -16,19 +16,18 @@ class Datasource:
 
     @Deprecated
     def create_reader(self, **read_args) -> "Reader":
-        """Return a Reader for the given read arguments.
-
-        The reader object will be responsible for querying the read metadata, and
-        generating the actual read tasks to retrieve the data blocks upon request.
-
-        Args:
-            read_args: Additional kwargs to pass to the datasource impl.
+        """
+        Deprecated: Implement :meth:`Datasource.get_read_tasks` and
+        :meth:`Datasource.estimate_inmemory_data_size` instead.
         """
         return _LegacyDatasourceReader(self, **read_args)
 
     @Deprecated
     def prepare_read(self, parallelism: int, **read_args) -> List["ReadTask"]:
-        """Deprecated: Please implement create_reader() instead."""
+        """
+        Deprecated: Implement :meth:`Datasource.get_read_tasks` and
+        :meth:`Datasource.estimate_inmemory_data_size` instead.
+        """
         raise NotImplementedError
 
     def get_name(self) -> str:

@@ -1,3 +1,5 @@
+# Move this example to the new API stack.
+
 # __sphinx_doc_replay_buffer_api_example_script_begin__
 """Simple example of how to modify replay buffer behaviour.
 
