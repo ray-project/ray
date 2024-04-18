@@ -145,7 +145,7 @@ class Stats:
                 is shortened to hold at most `window` items (the most recent ones).
                 Must be None if `ema_coeff` is not None.
                 If `window` is None (and `ema_coeff` is None), reduction must not be
-                "mean"
+                "mean".
             ema_coeff: An optional EMA coefficient to use if reduce is "mean"
                 and no `window` is provided. Note that if both `window` and `ema_coeff`
                 are provided, an error is thrown. Also, if `ema_coeff` is provided,
@@ -191,11 +191,14 @@ class Stats:
         self._reset_on_reduce = reset_on_reduce
 
     def push(self, value):
+        """Appends a new value into the internal values list."""
         self.values.append(value)
 
-    def __enter__(self):
+    def __enter__(self) -> "Stats":
+        """Enters a context through which users can measure a time delta."""
         assert self._start_time is None, "Concurrent updates not supported!"
         self._start_time = time.time()
+        return self
 
     def __exit__(self, exc_type, exc_value, tb):
         assert self._start_time is not None
