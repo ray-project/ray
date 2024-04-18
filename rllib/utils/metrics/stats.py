@@ -190,26 +190,57 @@ class Stats:
         # Simply store ths flag for the user of this class.
         self._reset_on_reduce = reset_on_reduce
 
-    def push(self, value):
-        """Appends a new value into the internal values list."""
+    def push(self, value) -> None:
+        """Appends a new value into the internal values list.
+
+        Args:
+            value: The value item to be appended to the internal values list
+                (`self.values`).
+        """
         self.values.append(value)
 
     def __enter__(self) -> "Stats":
-        """Enters a context through which users can measure a time delta."""
+        """Called when entering a context (with which users can measure a time delta).
+
+        Returns:
+            This Stats instance (self).
+        """
         assert self._start_time is None, "Concurrent updates not supported!"
         self._start_time = time.time()
         return self
 
-    def __exit__(self, exc_type, exc_value, tb):
+    def __exit__(self, exc_type, exc_value, tb) -> None:
+        """Called when exiting a context (with which users can measure a time delta)."""
         assert self._start_time is not None
         time_delta = time.time() - self._start_time
         self.push(time_delta)
         self._start_time = None
 
     def peek(self) -> Any:
+        """Returns the result of reducing the internal values list.
+
+        Note that this method does NOT alter the internal values list in this process.
+        Thus, users can call this method to get an accurate look at the reduced value
+        given the current internal values list.
+
+        Returns:
+            The result of reducing the internal values list.
+        """
         return self._reduced_values()[0]
 
     def reduce(self) -> "Stats":
+        """Reduces the internal values list according to the constructor settings.
+
+        Thereby, the internal values list is changed (note that this is different from
+        `peek()`, where the internal list is NOT changed). See the docstring of this
+        class for details on the reduction logic applied to the values list, based on
+        the constructor settings, such as `window`, `reduce`, etc..
+
+        Returns:
+            Returns `self` (now reduced) if self._reduced_values is False.
+            Returns a new `Stats` object with an empty internal values list, but
+            otherwise the same constructor settings (window, reduce, etc..) as `self`.
+        """
         # Reduce everything to a single (init) value.
         self.values = self._reduced_values()[1]
         # `reset_on_reduce` -> Return an empty new Stats object with the same option as
@@ -221,6 +252,16 @@ class Stats:
             return self
 
     def merge(self, *others: "Stats") -> None:
+        """Merges all internal values of `others` into `self`'s internal values list.
+
+
+
+        Args:
+            *others:
+
+        Returns:
+
+        """
         # Make sure `other` has same reduction settings.
         assert all(self._reduce_method is o._reduce_method for o in others)
         assert all(self._window == o._window for o in others)
@@ -251,7 +292,8 @@ class Stats:
                     self.values.extend(o.values)
             random.shuffle(self.values)
 
-    def __len__(self):
+    def __len__(self) -> int:
+        """Returns the length of the internal values list."""
         return len(self.values)
 
     def __repr__(self) -> str:
