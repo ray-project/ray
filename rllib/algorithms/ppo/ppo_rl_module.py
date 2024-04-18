@@ -3,7 +3,7 @@ This file holds framework-agnostic components for PPO's RLModules.
 """
 
 import abc
-from typing import Any, Type
+from typing import Any, Dict, Type
 
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.specs.specs_dict import SpecDict
@@ -23,7 +23,7 @@ class PPORLModule(RLModule, abc.ABC):
         # or the actor encoder network from the learner module (if the value network
         # is not shared with the actor network).
         if not self.is_learner_module:
-            catalog._model_config_dict["vf_share_layers"] = True
+            # catalog._model_config_dict["vf_share_layers"] = True
             # We need to set the shared flag in the encoder config
             # b/c the catalog has already been built at this point.
             catalog.actor_critic_encoder_config.shared = True
@@ -34,6 +34,9 @@ class PPORLModule(RLModule, abc.ABC):
         # Only build the critic network when this is a learner module.
         if self.is_learner_module:
             self.vf = catalog.build_vf_head(framework=self.framework)
+            # Holds the parameter names to be removed or renamed when synching
+            # from the learner to the inference module.
+            self._inference_only_state_dict_keys = {}
 
         self.action_dist_cls = catalog.get_action_dist_cls(framework=self.framework)
         # __sphinx_doc_end__
@@ -98,4 +101,34 @@ class PPORLModule(RLModule, abc.ABC):
             single value output node). However, for complex multi-agent settings with
             shareed value networks, the output might look differently (e.g. a single
             return batch without the ModuleID-based mapping).
+        """
+
+    @abc.abstractmethod
+    def _set_inference_only_state_dict_keys(self) -> None:
+        """Sets expected and unexpected keys for the inference-only module.
+
+        This method is called during setup to set the expected and unexpected keys
+        for the inference-only module. The expected keys are used to rename the keys
+        in the state dict when syncing from the learner to the inference module.
+        The unexpected keys are used to remove keys from the state dict when syncing
+        from the learner to the inference module.
+        """
+
+    @abc.abstractmethod
+    def _inference_only_get_state_hook(
+        self, state_dict: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Removes or renames the parameters in the state dict for the inference module.
+
+        This hook is called when the state dict is created on a learner module for an
+        inference-only module. The method removes or renames the parameters in the state
+        dict that are not used by the inference module.
+        The hook uses the expected and unexpected keys set during setup to remove or
+        rename the parameters.
+
+        Args:
+            state_dict: The state dict to be modified.
+
+        Returns:
+            The modified state dict.
         """

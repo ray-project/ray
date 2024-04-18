@@ -17,27 +17,28 @@ torch, nn = try_import_torch()
 class PPOTorchRLModule(TorchRLModule, PPORLModule):
     framework: str = "torch"
 
+    @override(PPORLModule)
+    def setup(self):
+        super().setup()
+
+        # If not an inference-only module (e.g., for evaluation), set up the
+        # parameter names to be removed or renamed when syncing from the state dict
+        # when synching.
+        if self.is_learner_module:
+            # Set the expected and unexpected keys for the inference-only module.
+            self._set_inference_only_state_dict_keys()
+
     @override(TorchRLModule)
     def get_state(self, inference_only: bool = False) -> Mapping[str, Any]:
         state_dict = self.state_dict()
-        # Is this module is only in inference/exploration?
-        if inference_only:
-            # Remove the value function parameters.
-            for param in list(state_dict.keys()):
-                if "vf" in param or "critic_encoder" in param:
-                    del state_dict[param]
-
-            # If we use separate encoder networks for the actor and critic, we need to
-            # rename the actor encoder parameters to encoder parameters.
-            if not self.config.model_config_dict.get("vf_share_layers"):
-                # Rename the actor encoder parameters to encoder parameters.
-                for param in list(state_dict.keys()):
-                    if "actor_encoder" in param:
-                        state_dict[
-                            param.replace("actor_encoder", "encoder")
-                        ] = state_dict.pop(param)
-
-        return state_dict
+        # Is this state dict for an inference only module?
+        if self.is_learner_module and inference_only:
+            # Call the local hook to remove or rename the parameters.
+            return self._inference_only_get_state_hook(state_dict)
+        # Otherwise, the state dict is for checkpointing or saving the model.
+        else:
+            # Return the state dict as is.
+            return state_dict
 
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Dict[str, Any]:
@@ -125,3 +126,38 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
         vf_out = self.vf(encoder_outs)
         # Squeeze out last dimension (single node value head).
         return vf_out.squeeze(-1)
+
+    @override(PPORLModule)
+    def _set_inference_only_state_dict_keys(self) -> None:
+        # Get the model_parameters.
+        state_dict = self.state_dict()
+        # Note, these keys are only known to the learner module. Furthermore,
+        # we want this to be run once during setup and not for each worker.
+        self._inference_only_state_dict_keys["unexpected_keys"] = [
+            name for name in state_dict if "vf" in name or "critic_encoder" in name
+        ]
+        # Do we use a separate encoder for the actor and critic?
+        if not self.config.model_config_dict.get("vf_share_layers", True):
+            # If we use separate encoder networks for the actor and critic, we need to
+            # rename the actor encoder parameters to encoder parameters b/c the
+            # inference-only modules uses a plain encoder network
+            # (`shared_layers=True`).
+            self._inference_only_state_dict_keys["expected_keys"] = {
+                name: name.replace("actor_encoder", "encoder")
+                for name in state_dict
+                if "actor_encoder" in name
+            }
+
+    def _inference_only_get_state_hook(
+        self, state_dict: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        if self._inference_only_state_dict_keys:
+            if self._inference_only_state_dict_keys.get("unexpected_keys"):
+                for param in self._inference_only_state_dict_keys["unexpected_keys"]:
+                    del state_dict[param]
+            if self._inference_only_state_dict_keys.get("expected_keys"):
+                for param in self._inference_only_state_dict_keys["expected_keys"]:
+                    state_dict[
+                        self._inference_only_state_dict_keys["expected_keys"][param]
+                    ] = state_dict.pop(param)
+        return state_dict
