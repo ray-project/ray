@@ -12,6 +12,8 @@ from ray.rllib.models.distributions import Distribution
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.annotations import override
 
+# TODO (simon): Write a light-weight version of this class for the `TFRLModule`
+
 
 @ExperimentalAPI
 class PPORLModule(RLModule, abc.ABC):
@@ -103,6 +105,8 @@ class PPORLModule(RLModule, abc.ABC):
             return batch without the ModuleID-based mapping).
         """
 
+    # TODO (simon): Maybe put these into `TorchRLModule`. We do not know how this
+    # will look like for the `TFRLModule`
     @abc.abstractmethod
     def _set_inference_only_state_dict_keys(self) -> None:
         """Sets expected and unexpected keys for the inference-only module.
