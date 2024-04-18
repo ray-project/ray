@@ -1,12 +1,11 @@
 import pytest
+from tblib import pickling_support
 
 import ray
 from ray import cloudpickle
-from tblib import pickling_support
+from ray.air._internal.util import StartTraceback, exception_cause, skip_exceptions
 from ray.train import ScalingConfig
-from ray.air._internal.util import StartTraceback, skip_exceptions, exception_cause
 from ray.train.data_parallel_trainer import DataParallelTrainer
-
 from ray.tune import Tuner
 
 
