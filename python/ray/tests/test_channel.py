@@ -16,7 +16,9 @@ logger = logging.getLogger(__name__)
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Requires Linux.")
 def test_put_local_get(ray_start_regular):
-    chan = ray_channel.Channel(1000)
+    chan = ray_channel.Channel(
+        ray.runtime_context.get_runtime_context().get_node_id(), 1000
+    )
 
     num_writes = 1000
     for i in range(num_writes):
@@ -31,7 +33,9 @@ def test_errors(ray_start_regular):
     @ray.remote
     class Actor:
         def make_chan(self, do_write=True):
-            self.chan = ray_channel.Channel(1000)
+            self.chan = ray_channel.Channel(
+                ray.runtime_context.get_runtime_context().get_node_id(), 1000
+            )
             if do_write:
                 self.chan.write(b"hello", num_readers=1)
             return self.chan
@@ -61,7 +65,9 @@ def test_errors(ray_start_regular):
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Requires Linux.")
 def test_put_different_meta(ray_start_regular):
-    chan = ray_channel.Channel(1000)
+    chan = ray_channel.Channel(
+        ray.runtime_context.get_runtime_context().get_node_id(), 1000
+    )
 
     def _test(val):
         chan.write(val, num_readers=1)
@@ -88,7 +94,9 @@ def test_put_different_meta(ray_start_regular):
 @pytest.mark.skipif(sys.platform != "linux", reason="Requires Linux.")
 @pytest.mark.parametrize("num_readers", [1, 4])
 def test_put_remote_get(ray_start_regular, num_readers):
-    chan = ray_channel.Channel(1000)
+    chan = ray_channel.Channel(
+        ray.runtime_context.get_runtime_context().get_node_id(), 1000
+    )
 
     @ray.remote(num_cpus=0)
     class Reader:
@@ -163,7 +171,9 @@ def test_remote_reader(ray_start_cluster, remote):
 
         def allocate_local_reader_channel(self, writer_channel, num_readers):
             ret = ray_channel.Channel(
-                _writer_channel=writer_channel, num_readers=num_readers
+                ray.runtime_context.get_runtime_context().get_node_id(),
+                _writer_channel=writer_channel,
+                num_readers=num_readers,
             )
             return ret
 
@@ -179,12 +189,20 @@ def test_remote_reader(ray_start_cluster, remote):
     if remote:
         for reader in readers:
             reader_node_id = ray.get(reader.get_node_id.remote())
-            channel = ray_channel.Channel(1000, _reader_node_id=reader_node_id)
+            channel = ray_channel.Channel(
+                ray.runtime_context.get_runtime_context().get_node_id(),
+                1000,
+                _reader_node_id=reader_node_id,
+            )
             reader_channel = ray.get(
                 reader.allocate_local_reader_channel.remote(channel, num_readers)
             )
     else:
-        channel = ray_channel.Channel(1000, num_readers=num_readers)
+        channel = ray_channel.Channel(
+            ray.runtime_context.get_runtime_context().get_node_id(),
+            1000,
+            num_readers=num_readers,
+        )
         reader_channel = channel
 
     ray.get([reader.send_channel.remote(reader_channel) for reader in readers])
