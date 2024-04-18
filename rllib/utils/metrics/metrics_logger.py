@@ -213,8 +213,7 @@ class MetricsLogger:
         window: Optional[int] = None,
         ema_coeff: Optional[float] = None,
         reset_on_reduce: bool = False,
-        throughput_prefix: Optional[str] = None
-
+        throughput_prefix: Optional[str] = None,
     ) -> None:
         """
 
@@ -278,7 +277,7 @@ class MetricsLogger:
             The (reduced) values of the (possibly nested) sub-structure found under
             the given `key` or key sequence.
         """
-        ret = tree.map_structure(lambda s: s.peek(), self.stats[*key])
+        ret = tree.map_structure(lambda s: s.peek(), self.stats[key])
         if isinstance(ret, NestedDict):
             return ret.asdict()
         return ret
@@ -323,7 +322,9 @@ class MetricsLogger:
         Args:
             state: The state to set `self` to.
         """
-        self.stats = NestedDict({
-            key: Stats.from_state(stat_state)
-            for key, stat_state in state["stats"].items()
-        })
+        self.stats = NestedDict(
+            {
+                key: Stats.from_state(stat_state)
+                for key, stat_state in state["stats"].items()
+            }
+        )

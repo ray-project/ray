@@ -874,31 +874,23 @@ class Algorithm(Trainable, AlgorithmBase):
                     env_steps_sampled=self._counters[NUM_ENV_STEPS_SAMPLED],
                     timeout_s=self.config.sync_filters_on_rollout_workers_timeout_s,
                 )
-            # Compile final ResultDict from `train_results` and `eval_results`. Note
-            # that, as opposed to the old API stack, EnvRunner stats should already be
-            # in `train_results` and `eval_results`.
-            results = self._compile_iteration_results(
-                train_results=train_results,
-                eval_results=eval_results,
-                step_ctx=train_iter_ctx,
-            )
         else:
             self._sync_filters_if_needed(
                 central_worker=self.workers.local_worker(),
                 workers=self.workers,
                 config=self.config,
             )
-            # Get EnvRunner metrics and compile them into results.
-            episodes_this_iter = collect_episodes(
-                self.workers,
-                self._remote_worker_ids_for_metrics(),
-                timeout_seconds=self.config.metrics_episode_collection_timeout_s,
-            )
-            results = self._compile_iteration_results_old_and_hybrid_api_stacks(
-                episodes_this_iter=episodes_this_iter,
-                step_ctx=train_iter_ctx,
-                iteration_results={**train_results, **eval_results},
-            )
+
+        episodes_this_iter = collect_episodes(
+            self.workers,
+            self._remote_worker_ids_for_metrics(),
+            timeout_seconds=self.config.metrics_episode_collection_timeout_s,
+        )
+        results = self._compile_iteration_results(
+            episodes_this_iter=episodes_this_iter,
+            step_ctx=train_iter_ctx,
+            iteration_results={**train_results, **eval_results},
+        )
 
         # TODO (sven): Deprecate this API, this should be done via a custom Callback.
         #  Provide example script/update existing one.

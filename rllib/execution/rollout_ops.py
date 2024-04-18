@@ -153,7 +153,8 @@ def synchronous_parallel_sample(
                         else batch_or_episode.env_steps()
                     )
         sample_batches_or_episodes.extend(sampled_data)
-        all_stats_dicts.extend(stats_dicts)
+        if _return_metrics:
+            all_stats_dicts.extend(stats_dicts)
 
     if concat is True:
         # If we have episodes flatten the episode list.
