@@ -135,10 +135,14 @@ class MeanStdFilter(ConnectorV2):
         return data
 
     def get_state(self) -> Any:
+        if self._filters is None:
+            self._init_new_filters()
         return self._get_state_from_filters(self._filters)
 
     @override(ConnectorV2)
     def set_state(self, state: Dict[AgentID, Dict[str, Any]]) -> None:
+        if self._filters is None:
+            self._init_new_filters()
         for agent_id, agent_state in state.items():
             filter = self._filters[agent_id]
             filter.shape = agent_state["shape"]

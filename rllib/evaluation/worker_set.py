@@ -389,7 +389,8 @@ class WorkerSet:
                 workers combined. Used to broadcast this number to all remote workers
                 if `update_worker_filter_stats` is True in `config`.
         """
-        from_worker = from_worker or self.local_worker()
+        local_worker = self.local_worker()
+        from_worker = from_worker or local_worker
 
         # Early out if the number of (healthy) remote workers is 0. In this case, the
         # local worker is the only operating worker and thus of course always holds
@@ -418,10 +419,10 @@ class WorkerSet:
             module_to_env_states = [s[1] for s in connector_states]
 
             env_runner_states["connector_states"] = {
-                "env_to_module_states": from_worker._env_to_module.merge_states(
+                "env_to_module_states": local_worker._env_to_module.merge_states(
                     env_to_module_states
                 ),
-                "module_to_env_states": from_worker._module_to_env.merge_states(
+                "module_to_env_states": local_worker._module_to_env.merge_states(
                     module_to_env_states
                 ),
             }
