@@ -129,11 +129,11 @@ class Channel:
         if self.is_local_node(self._reader_node_id):
             # Writing locally.
             self._worker.core_worker.experimental_channel_register_writer(
-                self._base_ref, ""
+                self._base_ref
             )
         else:
             # Writing across the network.
-            self._worker.core_worker.experimental_channel_register_writer_network(
+            self._worker.core_worker.experimental_channel_register_writer(
                 self._base_ref, self._reader_node_id
             )
         self._writer_registered = True
