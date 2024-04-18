@@ -374,18 +374,21 @@ class WorkerSet:
         """Synchronizes the connectors of this WorkerSet's EnvRunners.
 
         The exact procedure works as follows:
-        - Get all remote EnvRunners' ConnectorV2 states.
-        - Merge them into a resulting state.
+        - If `from_worker` is None, set `from_worker=self.local_worker()`.
+        - If `config.use_worker_filter_stats` is True, gather all remote EnvRunners'
+        ConnectorV2 states. Otherwise, only use the ConnectorV2 states of `from_worker`.
+        - Merge all gathered states into one resulting state.
         - Broadcast the resulting state back to all remote EnvRunners AND the local
         EnvRunner.
 
         Args:
             config: The AlgorithmConfig object to use to determine, in which
                 direction(s) we need to synch and what the timeouts are.
-            from_worker: The EnvRunner from which to synch. If None, will try to use the
-                local worker of this WorkerSet.
+            from_worker: The EnvRunner from which to synch. If None, will use the local
+                worker of this WorkerSet.
             env_steps_sampled: The total number of env steps taken thus far by all
-                workers combined.
+                workers combined. Used to broadcast this number to all remote workers
+                if `update_worker_filter_stats` is True in `config`.
         """
         from_worker = from_worker or self.local_worker()
 
@@ -461,9 +464,12 @@ class WorkerSet:
                 healthy_only=True,
                 timeout_seconds=config.sync_filters_on_rollout_workers_timeout_s,
             )
-        # Update only the local_worker.
+        # Update only the local_worker. Why don't we use `from_worker` here (assuming
+        # it's different from the local worker)? B/c we want to use this utility as
+        # a means to update only the local worker from a EnvRunner from another
+        # WorkerSet (for example synching eval EnvRunners from training EnvRunners).
         else:
-            _update(self.local_worker()) TODO: <- or use `from_worker` (insted of `local_worker()`???)
+            _update(self.local_worker())
 
     @DeveloperAPI
     def sync_weights(

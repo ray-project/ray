@@ -941,15 +941,16 @@ class Algorithm(Trainable, AlgorithmBase):
                 # new states back to all eval EnvRunners.
                 with self._timers[SYNCH_EVAL_ENV_CONNECTOR_STATES_TIMER]:
                     self.evaluation_workers.sync_env_runner_states(
+                        config=self.evaluation_config,
                         from_worker=self.workers.local_worker(),
                         env_steps_sampled=self._counters[NUM_ENV_STEPS_SAMPLED],
-                        timeout_s=self.config.sync_filters_on_rollout_workers_timeout_s,
                     )
-            self._sync_filters_if_needed(
-                central_worker=self.workers.local_worker(),
-                workers=self.evaluation_workers,
-                config=self.evaluation_config,
-            )
+            else:
+                self._sync_filters_if_needed(
+                    central_worker=self.workers.local_worker(),
+                    workers=self.evaluation_workers,
+                    config=self.evaluation_config,
+                )
 
         self.callbacks.on_evaluate_start(algorithm=self)
 
