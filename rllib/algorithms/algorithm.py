@@ -863,9 +863,8 @@ class Algorithm(Trainable, AlgorithmBase):
             # states back to all EnvRunners.
             with self._timers[SYNCH_ENV_CONNECTOR_STATES_TIMER]:
                 self.workers.sync_env_runner_states(
-                    env_steps_sampled=self._counters[NUM_ENV_STEPS_SAMPLED],
                     config=self.config,
-                    #timeout_s=self.config.sync_filters_on_rollout_workers_timeout_s,
+                    env_steps_sampled=self._counters[NUM_ENV_STEPS_SAMPLED],
                 )
         else:
             self._sync_filters_if_needed(

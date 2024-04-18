@@ -366,10 +366,9 @@ class WorkerSet:
     @DeveloperAPI
     def sync_env_runner_states(
         self,
-        config: AlgorithmConfig,
+        config: "AlgorithmConfig",
         from_worker: Optional[EnvRunner] = None,
         env_steps_sampled: Optional[int] = None,
-        #timeout_s: Optional[float] = None,
     ) -> None:
         """Synchronizes the connectors of this WorkerSet's EnvRunners.
 
@@ -466,8 +465,10 @@ class WorkerSet:
             )
         # Update only the local_worker. Why don't we use `from_worker` here (assuming
         # it's different from the local worker)? B/c we want to use this utility as
-        # a means to update only the local worker from a EnvRunner from another
-        # WorkerSet (for example synching eval EnvRunners from training EnvRunners).
+        # a means to update the local worker of WorkerSet A from another
+        # WorkerSet B (for example synching eval EnvRunners from training EnvRunners).
+        # In other words, if `from_worker` != local worker, `from_worker`'s state will
+        # not be altered by this method, no matter what.
         else:
             _update(self.local_worker())
 
