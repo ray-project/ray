@@ -84,7 +84,8 @@ void GrpcServer::Run() {
   // client to back-off keepalive pings. (https://github.com/ray-project/ray/issues/25367)
   builder.AddChannelArgument(
       GRPC_ARG_HTTP2_MIN_RECV_PING_INTERVAL_WITHOUT_DATA_MS,
-      std::min(60000L, RayConfig::instance().grpc_client_keepalive_time_ms()));
+      std::min(static_cast<int64_t>(60000),
+               RayConfig::instance().grpc_client_keepalive_time_ms()));
   if (RayConfig::instance().USE_TLS()) {
     // Create credentials from locations specified in config
     std::string rootcert = ReadCert(RayConfig::instance().TLS_CA_CERT());
