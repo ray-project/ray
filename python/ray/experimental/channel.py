@@ -46,6 +46,22 @@ def _create_channel_ref(
         raise
     return object_ref
 
+# 1. Writer creates chan = Channel().
+#    - writer allocates writer ref.
+#    - if writer node ID != reader node ID:
+#      - TODO:
+#      - writer sends RPC to remote reader raylet. Pass writer ref, buffer_size_bytes, num readers.
+#      - reader raylet allocates a local "reader ref". Reader raylet maps (writer ref) -> (reader ref, num_readers).
+#      - writer waits for reply. store reader ref.
+# 3. As long as reader ref is set, chan can be serialized. Otherwise, throw error.
+# 4. Serialize chan and pass to readers.
+# 5. Reader deserializes chan.
+# -- dag.compile() --
+# 6. On first read, reader calls chan.ensure_registered_as_reader().
+#    - expect that reader ref is already created locally.
+#    - reader calls ExperimentalRegisterMutableObjectReader(reader ref)
+# TODO: Handle failures if channel writer is remote.
+
 
 @PublicAPI(stability="alpha")
 class Channel:
@@ -57,10 +73,11 @@ class Channel:
     def __init__(
         self,
         reader_node_id: str,
-        buffer_size_bytes: Optional[int] = None,
+        buffer_size_bytes: int,
         num_readers: int = 1,
-        _writer_channel: Optional["Channel"] = None,
-        _base_ref: Optional["ray.ObjectRef"] = None,
+        _writer_node_id = None,
+        _writer_ref: Optional["ray.ObjectRef"] = None,
+        _reader_ref: Optional["ray.ObjectRef"] = None,
     ):
         """
         Create a channel that can be read and written by co-located Ray processes.
@@ -76,46 +93,41 @@ class Channel:
         Returns:
             Channel: A wrapper around ray.ObjectRef.
         """
-        self._local_node_id = ray.runtime_context.get_runtime_context().get_node_id()
-
-        if _writer_channel is not None:
-            if buffer_size_bytes is not None:
-                raise ValueError(
-                    "`buffer_size_bytes should not be specified if "
-                    "`_writer_channel` is given."
-                )
-            buffer_size_bytes = _writer_channel._buffer_size_bytes
-
-        if buffer_size_bytes is None:
-            if _base_ref is None:
-                raise ValueError(
-                    "One of `buffer_size_bytes` or `_base_ref` must be provided"
-                )
-            self._base_ref = _base_ref
-        else:
+        is_creator = False
+        if _writer_ref is None:
             if not isinstance(buffer_size_bytes, int):
                 raise ValueError("buffer_size_bytes must be an integer")
-            self._base_ref = _create_channel_ref(buffer_size_bytes)
+
+            self._writer_node_id = ray.runtime_context.get_runtime_context().get_node_id()
+            self._writer_ref = _create_channel_ref(buffer_size_bytes)
+            self._reader_ref = None
+
+            is_creator = True
+        else:
+            # TODO: better error messages.
+            assert _writer_node_id is not None
+            assert _reader_ref is not None
+
+            self._writer_ref = _writer_ref
+            self._writer_node_id = _writer_node_id
+            self._reader_ref = _reader_ref
 
         if not isinstance(num_readers, int):
             raise ValueError("num_readers must be an integer")
 
-        self._buffer_size_bytes = buffer_size_bytes
-
         self._reader_node_id = reader_node_id
-        self._writer_channel = _writer_channel
-
+        self._buffer_size_bytes = buffer_size_bytes
         self._num_readers = num_readers
+
         self._worker = ray._private.worker.global_worker
         self._worker.check_connected()
 
         self._writer_registered = False
         self._reader_registered = False
 
-        if self._writer_channel is not None:
-            self._worker.core_worker.experimental_channel_register_reader(
-                self._writer_channel._base_ref, self._base_ref, self._num_readers
-            )
+        if is_creator:
+            self.ensure_registered_as_writer()
+            assert self._reader_ref is not None
 
     @staticmethod
     def is_local_node(node_id):
@@ -125,47 +137,59 @@ class Channel:
         if self._writer_registered:
             return
 
+        if not self.is_local_node(self._writer_node_id):
+            raise ValueError("TODO")
+
         if not isinstance(self._reader_node_id, str):
             raise ValueError("`self._reader_node_id` must be a str")
 
-        if self.is_local_node(self._reader_node_id):
-            # Writing locally.
-            self._worker.core_worker.experimental_channel_register_writer(
-                self._base_ref
-            )
-        else:
-            # Writing across the network.
-            self._worker.core_worker.experimental_channel_register_writer(
-                self._base_ref, self._reader_node_id
-            )
+        # TODO: In C++, optionally do a sync RPC to the remote reader raylet.
+        # Reader raylet allocates a local "reader ref". Reader raylet maps
+        # (writer ref) -> (reader ref, num_readers).
+        self._reader_ref = self._worker.core_worker.experimental_channel_register_writer(
+            self._writer_ref, self._buffer_size_bytes, self._num_readers, self._reader_node_id
+        )
         self._writer_registered = True
 
     def ensure_registered_as_reader(self):
         if self._reader_registered:
             return
 
+        # We're passing in the base ref created by the writer, but we should
+        # get back the local ref that we are actually going to read from.
         self._worker.core_worker.experimental_channel_register_reader(
-            self._base_ref, self._base_ref, self._num_readers
+            self._reader_ref,
         )
         self._reader_registered = True
 
     @staticmethod
-    def _from_base_ref(
-        buffer_size_bytes: int, base_ref: "ray.ObjectRef", num_readers: int
+    def _deserialize_reader_channel(
+        reader_node_id: str,
+        buffer_size_bytes: int,
+        num_readers: int,
+        writer_node_id,
+        writer_ref: "ray.ObjectRef",
+        reader_ref: "ray.ObjectRef",
     ) -> "Channel":
         chan = Channel(
-            ray.runtime_context.get_runtime_context().get_node_id(),
-            num_readers=num_readers,
-            _base_ref=base_ref,
+            reader_node_id,
+            buffer_size_bytes,
+            num_readers,
+            _writer_node_id=writer_node_id,
+            _writer_ref=writer_ref,
+            _reader_ref=reader_ref,
         )
-        chan._buffer_size_bytes = buffer_size_bytes
         return chan
 
     def __reduce__(self):
-        return self._from_base_ref, (
+        assert self._reader_ref is not None
+        return self._deserialize_reader_channel, (
+            self._reader_node_id,
             self._buffer_size_bytes,
-            self._base_ref,
             self._num_readers,
+            self._writer_node_id,
+            self._writer_ref,
+            self._reader_ref,
         )
 
     def write(self, value: Any, num_readers: Optional[int] = None):
@@ -203,7 +227,7 @@ class Channel:
         try:
             self._worker.core_worker.experimental_channel_put_serialized(
                 serialized_value,
-                self._base_ref,
+                self._writer_ref,
                 num_readers,
             )
         except BlockingIOError:
@@ -221,7 +245,7 @@ class Channel:
             Any: The deserialized value.
         """
         self.ensure_registered_as_reader()
-        return ray.get(self._base_ref)
+        return ray.get(self._reader_ref)
 
     def end_read(self):
         """
@@ -231,7 +255,7 @@ class Channel:
         value is written, then drop the value.
         """
         self.ensure_registered_as_reader()
-        self._worker.core_worker.experimental_channel_read_release([self._base_ref])
+        self._worker.core_worker.experimental_channel_read_release([self._reader_ref])
 
     def close(self) -> None:
         """
@@ -240,10 +264,11 @@ class Channel:
         Does not block. Any existing values in the channel may be lost after the
         channel is closed.
         """
-        logger.debug(f"Setting error bit on channel: {self._base_ref}")
+        logger.debug(f"Setting error bit on channel: {self._writer_ref}")
         try:
             self.ensure_registered_as_reader()
-            self._worker.core_worker.experimental_channel_set_error(self._base_ref)
+            # TODO: Also close on the reader ref?
+            self._worker.core_worker.experimental_channel_set_error(self._writer_ref)
         except BlockingIOError:
             logger.info("Could not close channel")
 

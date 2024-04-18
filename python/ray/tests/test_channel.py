@@ -54,18 +54,20 @@ def test_remote_reader(ray_start_cluster, remote):
 
         def pass_channel(self, channel):
             print("pass channel here\n")
-            if ray.runtime_context.get_runtime_context().get_node_id() == channel._local_node_id:
-                # Reader and writer are on the same node.
-                self._reader_chan = channel
-            else:
-                # Reader and writer are on different nodes.
-                self._reader_chan = ray_channel.Channel(
-                    ray.runtime_context.get_runtime_context().get_node_id(),
-                    _writer_channel=channel,
-                    # Pass 1 only for this reader. If the channel is already registered on the
-                    # local node, `num_readers` will be incremented by 1.
-                    num_readers=1,
-                )
+            self._reader_chan = channel
+
+            #if ray.runtime_context.get_runtime_context().get_node_id() == channel._local_node_id:
+            #    # Reader and writer are on the same node.
+            #    self._reader_chan = channel
+            #else:
+            #    # Reader and writer are on different nodes.
+            #    self._reader_chan = ray_channel.Channel(
+            #        ray.runtime_context.get_runtime_context().get_node_id(),
+            #        _writer_channel=channel,
+            #        # Pass 1 only for this reader. If the channel is already registered on the
+            #        # local node, `num_readers` will be incremented by 1.
+            #        num_readers=1,
+            #    )
 
         def read(self, num_reads):
             print("here to read\n")
@@ -74,19 +76,15 @@ def test_remote_reader(ray_start_cluster, remote):
                 self._reader_chan.end_read()
 
     readers = [Reader.remote() for _ in range(num_readers)]
+
+    reader_node_id = ray.runtime_context.get_runtime_context().get_node_id()
     if remote:
         reader_node_id = ray.get(readers[0].get_node_id.remote())
-        channel = ray_channel.Channel(reader_node_id, 1000, num_readers)
-        for reader in readers:
-            reader_channel = ray.get(reader.pass_channel.remote(channel))
-    else:
-        print("hmmm\n")
-        channel = ray_channel.Channel(
-            ray.runtime_context.get_runtime_context().get_node_id(),
-            1000,
-            num_readers=num_readers,
-        )
-        reader_channel = channel
+
+    channel = ray_channel.Channel(reader_node_id, 1000, num_readers)
+
+    # All readers have received the channel.
+    ray.get([reader.pass_channel.remote(channel)])
 
     # ray.get([reader.send_channel.remote(reader_channel) for reader in readers])
     for j in range(num_iterations):
