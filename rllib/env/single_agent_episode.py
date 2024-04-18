@@ -381,7 +381,7 @@ class SingleAgentEpisode:
         self.validate()
 
         # Start the timer for this episode.
-        self._start_time = time.time()
+        self._start_time = time.perf_counter()
 
     def add_env_step(
         self,
@@ -450,7 +450,7 @@ class SingleAgentEpisode:
         self.validate()
 
         # Step time stats.
-        self._last_step_time = time.time()
+        self._last_step_time = time.perf_counter()
         if self._start_time is None:
             self._start_time = self._last_step_time
 
@@ -1415,9 +1415,10 @@ class SingleAgentEpisode:
                 f"finalized {type(self).__name__}! All temporary data has been erased "
                 f"upon `{type(self).__name__}.finalize()`."
             )
-        elif key not in self._temporary_timestep_data:
+        try:
+            return self._temporary_timestep_data[key]
+        except KeyError:
             raise KeyError(f"Key {key} not found in temporary timestep data!")
-        return self._temporary_timestep_data[key]
 
     def slice(self, slice_: slice) -> "SingleAgentEpisode":
         """Returns a slice of this episode with the given slice object.

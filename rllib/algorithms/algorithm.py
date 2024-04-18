@@ -1556,11 +1556,9 @@ class Algorithm(Trainable, AlgorithmBase):
         train_batch = train_batch.as_multi_agent()
 
         # Reduce EnvRunner metrics over the n EnvRunners.
-        self.metrics.log_n_stats_dicts(
+        self.metrics.log_n_dicts(
             key=ENV_RUNNER_RESULTS, stats_dicts=env_runner_metrics
         )
-        #self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
-        #self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
 
         # Only train if train_batch is not empty.
         # In an extreme situation, all rollout workers die during the
@@ -1571,7 +1569,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 learner_results = (
                     self.learner_group.update_from_batch(batch=train_batch)
                 )
-                self.metrics.log_stats_dict(
+                self.metrics.log_dict(
                     key=LEARNER_RESULTS, stats_dict=learner_results
                 )
             else:
@@ -1583,7 +1581,7 @@ class Algorithm(Trainable, AlgorithmBase):
         with self.metrics.log_time(SYNCH_WORKER_WEIGHTS_TIMER):
             self.workers.sync_weights(
                 from_worker_or_learner_group=self.learner_group,
-                policies=set(train_results.keys()) - {ALL_MODULES},
+                policies=set(learner_results.keys()) - {ALL_MODULES},
             )
 
         # Return reduced metrics (NestedDict).

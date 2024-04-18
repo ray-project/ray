@@ -20,7 +20,7 @@ class MetricsLogger:
         # No reduction (continue appending to list) or reset explicitly requested
         # -> We have to reset out values at any `reduce()`.
         if reduce is None or reset_on_reduce:
-            self._keys_to_reset_on_reduce.add(key)
+            self._keys_to_reset_on_reduce.add(force_tuple(key))
 
         if key not in self.stats:
             self.stats[key] = Stats(value, reduce=reduce, window=window, ema_coeff=ema_coeff)
@@ -63,7 +63,7 @@ class MetricsLogger:
             # -> We have to reset out values at any `reduce()`.
             if reduce is None or reset_on_reduce:
                 extended_key = prefix_key + key
-                self._keys_to_reset_on_reduce.add()
+                self._keys_to_reset_on_reduce.add(extended_key)
 
             available_stats = [s[key] for s in stats_dicts if key in s]
             for i, stat_or_value in enumerate(available_stats):
@@ -86,7 +86,7 @@ class MetricsLogger:
         # No reduction (continue appending to list) or reset explicitly requested
         # -> We have to reset out values at any `reduce()`.
         if reduce is None or reset_on_reduce:
-            self._keys_to_reset_on_reduce.add(key)
+            self._keys_to_reset_on_reduce.add(force_tuple(key))
 
         if key not in self.stats:
             self.stats[key] = Stats(reduce=reduce, window=window, ema_coeff=ema_coeff)
