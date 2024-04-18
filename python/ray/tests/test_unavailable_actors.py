@@ -19,6 +19,7 @@ def ray_start_regular_with_patch_with_patch(ray_start_regular_with_patch):
     we invoke gRPC `grpc::ClientContext::TryCancel` but the thread still hangs in
     `poll`. We will investigate more on it, e.g. to add a timeout; before that we skip
     the logging.
+    https://github.com/ray-project/ray/issues/44836
     """
     address = ray_start_regular_with_patch["address"]
     if sys.platform == "win32":
