@@ -36,14 +36,3 @@ stop = {
     "timesteps_total": 100000,
     "evaluation/sampler_results/episode_reward_mean": 150.0,
 }
-
-from ray import train, tune
-
-tuner = tune.Tuner(
-    "PPO",
-    param_space=config,
-    run_config=train.RunConfig(
-        stop=stop,
-    ),
-)
-tuner.fit()

@@ -1471,6 +1471,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
     def get_weights(
         self,
         policies: Optional[Container[PolicyID]] = None,
+        inference_only: bool = False,
     ) -> Dict[PolicyID, ModelWeights]:
         """Returns each policies' model weights of this worker.
 
