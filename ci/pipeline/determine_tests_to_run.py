@@ -320,12 +320,6 @@ if __name__ == "__main__":
                 # nothing is run but linting in these cases
                 pass
             elif (
-                changed_file == ".buildkite/macos.rayci.yml"
-                or changed_file == "ci/ray_ci/macos/macos_ci.sh"
-                or changed_file == "ci/ray_ci/macos/macos_ci_test.sh"
-            ):
-                RAY_CI_MACOS_WHEELS_AFFECTED = 1
-            elif (
                 changed_file.startswith("ci/lint")
                 or changed_file == ".buildkite/lint.rayci.yml"
             ):
@@ -362,6 +356,11 @@ if __name__ == "__main__":
                 RAY_CI_DOCKER_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_TOOLS_AFFECTED = 1
+            elif (
+                changed_file == ".buildkite/macos.rayci.yml"
+                or changed_file == ".buildkite/pipeline.macos.yml"
+            ):
+                RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif changed_file.startswith("ci/run") or changed_file == "ci/ci.sh":
                 RAY_CI_TOOLS_AFFECTED = 1
             elif changed_file.startswith("src/"):
