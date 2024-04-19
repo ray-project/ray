@@ -381,10 +381,13 @@ class RLModule(abc.ABC):
 
         from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 
-        if isinstance(self, MultiAgentRLModule):
+        if (
+            isinstance(self, MultiAgentRLModule)
+            or self.config.model_config_dict is None
+        ):
             # A MARL module is always a learner module b/c it only contains
             # the single-agent modules. Each of the contained modules can be
-            # single
+            # single.
             self.inference_only = False
         else:
             # By default, each module is a learner module and contains all

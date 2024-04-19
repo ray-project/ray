@@ -762,7 +762,9 @@ class Algorithm(Trainable, AlgorithmBase):
                 )
 
             # Sync the weights from the learner group to the rollout workers.
-            weights = self.learner_group.get_weights(inference_only=True)
+            weights = self.learner_group.get_weights(
+                inference_only=self.config.uses_new_env_runners
+            )
             local_worker.set_weights(weights)
             self.workers.sync_weights(inference_only=True)
 
