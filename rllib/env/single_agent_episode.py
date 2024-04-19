@@ -1,6 +1,7 @@
 import functools
 from collections import defaultdict
 import numpy as np
+import time
 import uuid
 
 import gymnasium as gym
@@ -146,22 +147,24 @@ class SingleAgentEpisode:
     """
 
     __slots__ = (
-        "id_",
-        "agent_id",
-        "module_id",
-        "multi_agent_episode_id",
-        "_observation_space",
-        "_action_space",
-        "observations",
-        "infos",
         "actions",
-        "rewards",
+        "agent_id",
         "extra_model_outputs",
+        "id_",
+        "infos",
         "is_terminated",
         "is_truncated",
-        "render_images",
-        "t_started",
+        "module_id",
+        "multi_agent_episode_id",
+        "observations",
+        "rewards",
         "t",
+        "t_started",
+        "_action_space",
+        "_last_step_time",
+        "_observation_space",
+        "_start_time",
+        "_temporary_timestep_data",
     )
 
     def __init__(
@@ -177,7 +180,6 @@ class SingleAgentEpisode:
         terminated: bool = False,
         truncated: bool = False,
         extra_model_outputs: Optional[Dict[str, Any]] = None,
-        render_images: Optional[List[np.ndarray]] = None,
         t_started: Optional[int] = None,
         len_lookback_buffer: Union[int, str] = "auto",
         agent_id: Optional[AgentID] = None,
@@ -222,8 +224,6 @@ class SingleAgentEpisode:
                 `InfiniteLookbackBuffer` object (possibly with extra model output data
                 in it). If mapping is to lists, will construct the buffers automatically
                 (given the data and the `len_lookback_buffer` argument).
-            render_images: An optional list of RGB uint8 images from rendering
-                the environment.
             terminated: A boolean indicating, if the episode is already terminated.
             truncated: A boolean indicating, if the episode has been truncated.
             t_started: Optional. The starting timestep of the episode. The default
@@ -330,21 +330,19 @@ class SingleAgentEpisode:
                     data=v, lookback=len_lookback_buffer
                 )
 
-        # TODO (sven): Remove this in favor of logging render images from an env inside
-        #  custom callbacks and using a to-be-designed metrics logger. Render images
-        #  from the env should NOT be stored in an episode (b/c they have nothing to do
-        #  with the data to be learned from, which should be the only thing an episode
-        #  has to be concerned with).
-        # RGB uint8 images from rendering the env; the images include the corresponding
-        # rewards.
-        assert render_images is None or observations is not None
-        self.render_images = render_images or []
-
         # The (global) timestep when this episode (possibly an episode chunk) started,
         # excluding a possible lookback buffer.
         self.t_started = t_started or 0
         # The current (global) timestep in the episode (possibly an episode chunk).
         self.t = len(self.rewards) + self.t_started
+
+        # Caches for temporary per-timestep data. May be used to store custom metrics
+        # from within a callback for the ongoing episode (e.g. render images).
+        self._temporary_timestep_data = defaultdict(list)
+
+        # Keep timer stats on deltas between steps.
+        self._start_time = None
+        self._last_step_time = None
 
         # Validate the episode data thus far.
         self.validate()
@@ -353,19 +351,14 @@ class SingleAgentEpisode:
         self,
         observation: ObsType,
         infos: Optional[Dict] = None,
-        *,
-        render_image: Optional[np.ndarray] = None,
     ) -> None:
         """Adds the initial data (after an `env.reset()`) to the episode.
 
-        This data consists of initial observations and initial infos, as well as
-        - optionally - a render image.
+        This data consists of initial observations and initial infos.
 
         Args:
             observation: The initial observation returned by `env.reset()`.
             infos: An (optional) info dict returned by `env.reset()`.
-            render_image: Optional. An RGB uint8 image from rendering
-                the environment right after the reset.
         """
         assert not self.is_done
         assert len(self.observations) == 0
@@ -383,11 +376,12 @@ class SingleAgentEpisode:
 
         self.observations.append(observation)
         self.infos.append(infos)
-        if render_image is not None:
-            self.render_images.append(render_image)
 
         # Validate our data.
         self.validate()
+
+        # Start the timer for this episode.
+        self._start_time = time.perf_counter()
 
     def add_env_step(
         self,
@@ -398,14 +392,13 @@ class SingleAgentEpisode:
         *,
         terminated: bool = False,
         truncated: bool = False,
-        render_image: Optional[np.ndarray] = None,
         extra_model_outputs: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Adds results of an `env.step()` call (including the action) to this episode.
 
         This data consists of an observation and info dict, an action, a reward,
-        terminated/truncated flags, extra model outputs (e.g. action probabilities or
-        RNN internal state outputs), and - optionally - a render image.
+        terminated/truncated flags, and extra model outputs (e.g. action probabilities
+        or RNN internal state outputs).
 
         Args:
             observation: The next observation received from the environment after(!)
@@ -417,8 +410,6 @@ class SingleAgentEpisode:
                 terminated (after taking `action`).
             truncated: A boolean indicating, if the environment has been
                 truncated (after taking `action`).
-            render_image: Optional. An RGB uint8 image from rendering
-                the environment (after taking `action`).
             extra_model_outputs: The last timestep's specific model outputs.
                 These are normally outputs of an RLModule that were computed along with
                 `action`, e.g. `action_logp` or `action_dist_inputs`.
@@ -434,8 +425,6 @@ class SingleAgentEpisode:
         infos = infos or {}
         self.infos.append(infos)
         self.t += 1
-        if render_image is not None:
-            self.render_images.append(render_image)
         if extra_model_outputs is not None:
             for k, v in extra_model_outputs.items():
                 self.extra_model_outputs[k].append(v)
@@ -458,10 +447,12 @@ class SingleAgentEpisode:
                 )
 
         # Validate our data.
-        try:  # TODO
-            self.validate()
-        except Exception as e:
-            raise e
+        self.validate()
+
+        # Step time stats.
+        self._last_step_time = time.perf_counter()
+        if self._start_time is None:
+            self._start_time = self._last_step_time
 
     def validate(self) -> None:
         """Validates the episode's data.
@@ -575,12 +566,14 @@ class SingleAgentEpisode:
         """
 
         self.observations.finalize()
-        self.render_images = np.array(self.render_images, dtype=np.uint8)
         if len(self) > 0:
             self.actions.finalize()
             self.rewards.finalize()
             for k, v in self.extra_model_outputs.items():
                 self.extra_model_outputs[k].finalize()
+
+        # Erase all temporary timestep data caches.
+        self._temporary_timestep_data.clear()
 
         return self
 
@@ -1385,6 +1378,48 @@ class SingleAgentEpisode:
                 )
             self.extra_model_outputs[key] = InfiniteLookbackBuffer(data=new_data)
 
+    def add_temporary_timestep_data(self, key: str, data: Any) -> None:
+        """Temporarily adds (until `finalized()` called) per-timestep data to self.
+
+        The given `data` is appended to a list (`self._temporary_timestep_data`), which
+        is cleared upon calling `self.finalize()`. To get the thus-far accumulated
+        temporary timestep data for a certain key, use the `get_temporary_timestep_data`
+        API.
+        Note that the size of the per timestep list is NOT checked or validated against
+        the other, non-temporary data in this episode (like observations).
+
+        Args:
+            key: The key under which to find the list to append `data` to. If `data` is
+                the first data to be added for this key, start a new list.
+            data: The data item (representing a single timestep) to be stored.
+        """
+        if self.is_finalized:
+            raise ValueError(
+                "Cannot use the `add_temporary_timestep_data` API on an already "
+                f"finalized {type(self).__name__}!"
+            )
+        self._temporary_timestep_data[key].append(data)
+
+    def get_temporary_timestep_data(self, key: str) -> List[Any]:
+        """Returns all temporarily stored data items (list) under the given key.
+
+        Note that all temporary timestep data is erased/cleared when calling
+        `self.finalize()`.
+
+        Returns:
+            The current list storing temporary timestep data under `key`.
+        """
+        if self.is_finalized:
+            raise ValueError(
+                "Cannot use the `get_temporary_timestep_data` API on an already "
+                f"finalized {type(self).__name__}! All temporary data has been erased "
+                f"upon `{type(self).__name__}.finalize()`."
+            )
+        try:
+            return self._temporary_timestep_data[key]
+        except KeyError:
+            raise KeyError(f"Key {key} not found in temporary timestep data!")
+
     def slice(self, slice_: slice) -> "SingleAgentEpisode":
         """Returns a slice of this episode with the given slice object.
 
@@ -1580,6 +1615,12 @@ class SingleAgentEpisode:
         """
         return sum(self.get_rewards())
 
+    def get_duration_s(self) -> float:
+        """Returns the duration of this Episode (chunk) in seconds."""
+        if self._last_step_time is None:
+            return 0.0
+        return self._last_step_time - self._start_time
+
     def env_steps(self) -> int:
         """Returns the number of environment steps.
 
@@ -1592,7 +1633,7 @@ class SingleAgentEpisode:
         return len(self)
 
     def agent_steps(self) -> int:
-        """Number of agent steps.
+        """Returns the number of agent steps.
 
         Note, these are identical to the environment steps for a single-agent episode.
 

@@ -98,16 +98,6 @@ steps:
         --except-tags soft_imports,gpu_only,rllib,multinode
     depends_on: [ "mlbuild", "forge" ]
 
-  - label: ":train: ml: tune new output tests"
-    tags: tune
-    instance_type: large
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tune/... ml 
-        --parallelism-per-worker 3
-        --except-tags soft_imports,gpu_only,rllib,multinode
-        --test-env=AIR_VERBOSITY=1
-    depends_on: [ "mlbuild", "forge" ]
-
   - label: ":train: ml: tune soft import tests"
     tags: tune
     instance_type: small
