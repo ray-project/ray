@@ -29,8 +29,8 @@ class Stats:
     be executed on `self.values`.
 
     .. testcode::
-        import time
 
+        import time
         from ray.rllib.utils.metrics.stats import Stats
         from ray.rllib.utils.test_utils import check
 
@@ -61,7 +61,8 @@ class Stats:
         check(stats.values, [1, 2, 3])
         # Let's call the `reduce()` method to actually reduce these values
         # to a single item of value=6:
-        check(stats.reduce(), 6)
+        stats = stats.reduce()
+        check(stats.peek(), 6)
         check(stats.values, [6])
 
         # "min" and "max" work analogous to "sum". But let's try with a `window` now:
@@ -80,7 +81,8 @@ class Stats:
         check(stats.values, [2, 3, 1, -1])
         # Let's call the `reduce()` method to actually reduce these values
         # to a list of the most recent 2 (window size) values:
-        check(stats.reduce(), 1)
+        stats = stats.reduce()
+        check(stats.peek(), 1)
         check(stats.values, [1, -1])
 
         # We can also choose to not reduce at all (reduce=None).
@@ -96,7 +98,8 @@ class Stats:
         # We have not reduced yet (all values are still stored):
         check(stats.values, [-5, -4, -3, -2])
         # Let's reduce:
-        check(stats.reduce(), [-4, -3, -2])
+        stats = stats.reduce()
+        check(stats.peek(), [-4, -3, -2])
         # Values are now shortened to contain only the most recent `window` items.
         check(stats.values, [-4, -3, -2])
 
@@ -115,7 +118,7 @@ class Stats:
         assert 2.2 > stats.peek() > 1.8
         # When calling `reduce()`, the internal values list gets cleaned up.
         check(len(stats.values), 2)  # still both deltas in the values list
-        stats.reduce()
+        stats = stats.reduce()
         check(len(stats.values), 1)  # got reduced to one value (the sum)
         assert 2.2 > stats.values[0] > 1.8
     """
