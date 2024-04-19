@@ -1,29 +1,26 @@
 import copy
-from datetime import datetime
 import logging
 import os
-from pathlib import Path
 import platform
 import sys
 import tempfile
 import time
 from contextlib import redirect_stderr, redirect_stdout
+from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
 import ray
 import ray.cloudpickle as ray_pickle
-from ray.air._internal.util import skip_exceptions, exception_cause
-from ray.air.constants import (
-    TIMESTAMP,
-    TIME_THIS_ITER_S,
-    TRAINING_ITERATION,
-)
+from ray.air._internal.util import exception_cause, skip_exceptions
+from ray.air.constants import TIME_THIS_ITER_S, TIMESTAMP, TRAINING_ITERATION
+from ray.train import Checkpoint
 from ray.train._internal.checkpoint_manager import _TrainingResult
 from ray.train._internal.storage import StorageContext, _exists_at_fs_path
-from ray.train import Checkpoint
+from ray.train.constants import DEFAULT_STORAGE_PATH
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.result import (
     DEBUG_METRICS,
-    DEFAULT_RESULTS_DIR,
     DONE,
     EPISODES_THIS_ITER,
     EPISODES_TOTAL,
@@ -43,7 +40,6 @@ from ray.tune.result import (
 from ray.tune.utils import UtilMonitor
 from ray.tune.utils.log import disable_ipython
 from ray.tune.utils.util import Tee
-from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
@@ -678,9 +674,9 @@ class Trainable:
             from ray.tune.logger import UnifiedLogger
 
             logdir_prefix = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-            ray._private.utils.try_to_create_directory(DEFAULT_RESULTS_DIR)
+            ray._private.utils.try_to_create_directory(DEFAULT_STORAGE_PATH)
             self._logdir = tempfile.mkdtemp(
-                prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR
+                prefix=logdir_prefix, dir=DEFAULT_STORAGE_PATH
             )
             self._result_logger = UnifiedLogger(config, self._logdir, loggers=None)
 

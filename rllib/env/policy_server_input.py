@@ -32,8 +32,8 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
     and port to serve policy requests and forward experiences to RLlib. For
     high performance experience collection, it implements InputReader.
 
-    For an example, run `examples/serving/cartpole_server.py` along
-    with `examples/serving/cartpole_client.py --inference-mode=local|remote`.
+    For an example, run `examples/envs/external_envs/cartpole_server.py` along
+    with `examples/envs/external_envs/cartpole_client.py --inference-mode=local|remote`.
 
     WARNING: This class is not meant to be publicly exposed. Anyone that can
     communicate with this server can execute arbitary code on the machine. Use

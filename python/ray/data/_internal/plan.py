@@ -1,11 +1,11 @@
 import copy
 import itertools
+import logging
 from typing import TYPE_CHECKING, Iterator, Optional, Tuple, Type, Union
 
 import ray
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray.data._internal.block_list import BlockList
-from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
 from ray.data._internal.logical.operators.from_operators import AbstractFrom
@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
 
 
-logger = DatasetLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class ExecutionPlan:
@@ -454,8 +454,11 @@ class ExecutionPlan:
             # This applies to newly created dataset. For example, initial dataset
             # from read, and output datasets of Dataset.split().
             self.execute()
-        # Snapshot is now guaranteed to be the final block or None.
-        return self._get_num_rows_from_blocks_metadata(self._snapshot_blocks)
+
+        if self._logical_plan.dag is self._snapshot_operator:
+            return self._get_num_rows_from_blocks_metadata(self._snapshot_blocks)
+        else:
+            return None
 
     def _get_num_rows_from_blocks_metadata(self, blocks: BlockList) -> Optional[int]:
         metadata = blocks.get_metadata() if blocks else None
@@ -546,7 +549,7 @@ class ExecutionPlan:
 
         if not ray.available_resources().get("CPU"):
             if log_once("cpu_warning"):
-                logger.get_logger().warning(
+                logger.warning(
                     "Warning: The Ray cluster currently does not have "
                     "any available CPUs. The Dataset job will hang unless more CPUs "
                     "are freed up. A common reason is that cluster resources are "
@@ -594,9 +597,9 @@ class ExecutionPlan:
                 stats_summary_string = stats.to_summary().to_string(
                     include_parent=False
                 )
-                logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
-                    stats_summary_string,
-                )
+                if context.enable_auto_log_stats:
+                    logger.info(stats_summary_string)
+
             # TODO(ekl) we shouldn't need to set this in the future once we move
             # to a fully lazy execution model, unless .materialize() is used. Th
             # reason we need it right now is since the user may iterate over a
@@ -618,7 +621,7 @@ class ExecutionPlan:
                         reply.store_stats.restored_bytes_total
                     )
             except Exception as e:
-                logger.get_logger(log_to_stdout=False).warning(
+                logger.debug(
                     "Skipping recording memory spilled and restored statistics due to "
                     f"exception: {e}"
                 )

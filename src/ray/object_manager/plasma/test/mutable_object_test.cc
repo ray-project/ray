@@ -24,6 +24,7 @@
 using namespace testing;
 
 namespace ray {
+namespace experimental {
 
 #if defined(__APPLE__) || defined(__linux__)
 
@@ -112,14 +113,16 @@ std::unique_ptr<plasma::MutableObject> MakeObject() {
   info.allocated_size = kPayloadSize;
 
   uint8_t *ptr = static_cast<uint8_t *>(malloc(kSize));
-  return std::make_unique<plasma::MutableObject>(ptr, info);
+  auto ret = std::make_unique<plasma::MutableObject>(ptr, info);
+  ret->header->Init();
+  return ret;
 }
 
 }  // namespace
 
 // Tests that a single reader can read from a single writer.
 TEST(MutableObjectTest, TestBasic) {
-  ExperimentalMutableObjectManager manager;
+  experimental::MutableObjectManager manager;
   ObjectID object_id = ObjectID::FromRandom();
   plasma::PlasmaObjectHeader *header;
   {
@@ -164,7 +167,7 @@ TEST(MutableObjectTest, TestBasic) {
 
 // Tests that multiple readers can read from a single writer.
 TEST(MutableObjectTest, TestMultipleReaders) {
-  ExperimentalMutableObjectManager manager;
+  experimental::MutableObjectManager manager;
   ObjectID object_id = ObjectID::FromRandom();
   plasma::PlasmaObjectHeader *header;
   {
@@ -219,7 +222,7 @@ TEST(MutableObjectTest, TestMultipleReaders) {
 
 // Tests that multiple readers can detect a failure initiated by the writer.
 TEST(MutableObjectTest, TestWriterFails) {
-  ExperimentalMutableObjectManager manager;
+  experimental::MutableObjectManager manager;
   ObjectID object_id = ObjectID::FromRandom();
   plasma::PlasmaObjectHeader *header;
   {
@@ -284,7 +287,7 @@ TEST(MutableObjectTest, TestWriterFails) {
 // Tests that multiple readers can detect a failure initiated by the writer after
 // `WriteAcquire()` is called.
 TEST(MutableObjectTest, TestWriterFailsAfterAcquire) {
-  ExperimentalMutableObjectManager manager;
+  experimental::MutableObjectManager manager;
   ObjectID object_id = ObjectID::FromRandom();
   plasma::PlasmaObjectHeader *header;
   {
@@ -351,7 +354,7 @@ TEST(MutableObjectTest, TestWriterFailsAfterAcquire) {
 
 // Tests that multiple readers can detect a failure initiated by another reader.
 TEST(MutableObjectTest, TestReaderFails) {
-  ExperimentalMutableObjectManager manager;
+  experimental::MutableObjectManager manager;
   ObjectID object_id = ObjectID::FromRandom();
   plasma::PlasmaObjectHeader *header;
   {
@@ -422,7 +425,7 @@ TEST(MutableObjectTest, TestReaderFails) {
 
 // Tests that a writer can detect a failure while it is in `WriteAcquire()`.
 TEST(MutableObjectTest, TestWriteAcquireDuringFailure) {
-  ExperimentalMutableObjectManager manager;
+  experimental::MutableObjectManager manager;
   ObjectID object_id = ObjectID::FromRandom();
   plasma::PlasmaObjectHeader *header;
   {
@@ -456,7 +459,7 @@ TEST(MutableObjectTest, TestWriteAcquireDuringFailure) {
 
 // Tests that a reader can detect a failure while it is in `ReadAcquire()`.
 TEST(MutableObjectTest, TestReadAcquireDuringFailure) {
-  ExperimentalMutableObjectManager manager;
+  experimental::MutableObjectManager manager;
   ObjectID object_id = ObjectID::FromRandom();
   plasma::PlasmaObjectHeader *header;
   {
@@ -516,7 +519,7 @@ TEST(MutableObjectTest, TestReadAcquireDuringFailure) {
 
 // Tests that multiple readers can detect a failure while they are in `ReadAcquire()`.
 TEST(MutableObjectTest, TestReadMultipleAcquireDuringFailure) {
-  ExperimentalMutableObjectManager manager;
+  experimental::MutableObjectManager manager;
   ObjectID object_id = ObjectID::FromRandom();
   plasma::PlasmaObjectHeader *header;
   {
@@ -597,6 +600,7 @@ TEST(MutableObjectTest, TestReadMultipleAcquireDuringFailure) {
 
 #endif  // defined(__APPLE__) || defined(__linux__)
 
+}  // namespace experimental
 }  // namespace ray
 
 int main(int argc, char **argv) {

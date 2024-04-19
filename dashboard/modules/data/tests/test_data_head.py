@@ -1,4 +1,5 @@
 import ray
+from ray.job_submission import JobSubmissionClient
 import os
 import requests
 import sys
@@ -7,7 +8,7 @@ import pytest
 # For local testing on a Macbook, set `export TEST_ON_DARWIN=1`.
 TEST_ON_DARWIN = os.environ.get("TEST_ON_DARWIN", "0") == "1"
 
-DATA_HEAD_URLS = {"GET": "http://localhost:8265/api/data/datasets"}
+DATA_HEAD_URLS = {"GET": "http://localhost:8265/api/data/datasets/{job_id}"}
 
 DATA_SCHEMA = [
     "state",
@@ -22,6 +23,7 @@ DATA_SCHEMA = [
 
 RESPONSE_SCHEMA = [
     "dataset",
+    "job_id",
     "start_time",
     "end_time",
     "operators",
@@ -41,13 +43,19 @@ def test_get_datasets():
     ds._set_name("data_head_test")
     ds.materialize()
 
-    data = requests.get(DATA_HEAD_URLS["GET"]).json()
+    client = JobSubmissionClient()
+    jobs = client.list_jobs()
+    assert len(jobs) == 1, jobs
+    job_id = jobs[0].job_id
+
+    data = requests.get(DATA_HEAD_URLS["GET"].format(job_id=job_id)).json()
 
     assert len(data["datasets"]) == 1
     assert sorted(data["datasets"][0].keys()) == sorted(RESPONSE_SCHEMA)
 
     dataset = data["datasets"][0]
     assert dataset["dataset"].startswith("data_head_test")
+    assert dataset["job_id"] == job_id
     assert dataset["state"] == "FINISHED"
     assert dataset["end_time"] is not None
 
@@ -62,11 +70,12 @@ def test_get_datasets():
     assert operators[1]["operator"] == "ReadRange->MapBatches(<lambda>)1"
 
     ds.map_batches(lambda x: x).materialize()
-    data = requests.get(DATA_HEAD_URLS["GET"]).json()
+    data = requests.get(DATA_HEAD_URLS["GET"].format(job_id=job_id)).json()
 
     assert len(data["datasets"]) == 2
     dataset = data["datasets"][1]
     assert dataset["dataset"].startswith("data_head_test")
+    assert dataset["job_id"] == job_id
     assert dataset["state"] == "FINISHED"
     assert dataset["end_time"] is not None
 

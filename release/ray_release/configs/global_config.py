@@ -1,15 +1,8 @@
 import os
 
 import yaml
+from typing import List
 from typing_extensions import TypedDict
-
-PR_PIPELINES = [
-    "0189942e-0876-4b8f-80a4-617f988ec59b",  # premerge
-]
-BRANCH_PIPELINES = [
-    "0189e759-8c96-4302-b6b5-b4274406bf89",  # postmerge
-    "018e0f94-ccb6-45c2-b072-1e624fe9a404",  # postmerge-macos
-]
 
 
 class GlobalConfig(TypedDict):
@@ -20,7 +13,12 @@ class GlobalConfig(TypedDict):
     byod_aws_cr: str
     byod_gcp_cr: str
     state_machine_aws_bucket: str
+    state_machine_pr_aws_bucket: str
+    state_machine_branch_aws_bucket: str
     aws2gce_credentials: str
+    ci_pipeline_premerge: List[str]
+    ci_pipeline_postmerge: List[str]
+    ci_pipeline_buildkite_secret: str
 
 
 config = None
@@ -78,6 +76,23 @@ def _init_global_config(config_file: str):
         ),
         state_machine_aws_bucket=config_content.get("state_machine", {}).get(
             "aws_bucket",
+        ),
+        state_machine_pr_aws_bucket=config_content.get("state_machine", {})
+        .get("pr", {})
+        .get(
+            "aws_bucket",
+        ),
+        state_machine_branch_aws_bucket=config_content.get("state_machine", {})
+        .get("branch", {})
+        .get(
+            "aws_bucket",
+        ),
+        ci_pipeline_premerge=config_content.get("ci_pipeline", {}).get("premerge", []),
+        ci_pipeline_postmerge=config_content.get("ci_pipeline", {}).get(
+            "postmerge", []
+        ),
+        ci_pipeline_buildkite_secret=config_content.get("ci_pipeline", {}).get(
+            "buildkite_secret"
         ),
     )
     # setup GCP workload identity federation
