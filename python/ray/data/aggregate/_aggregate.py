@@ -70,9 +70,9 @@ class AggregateFn:
 
         self.init = init
         self.merge = merge
+        self.name = name
         self.accumulate_block = accumulate_block
         self.finalize = finalize
-        self.name = name
 
     def _validate(self, schema: Optional[Union[type, "pa.lib.Schema"]]) -> None:
         """Raise an error if this cannot be applied to the given schema."""
