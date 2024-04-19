@@ -1334,7 +1334,7 @@ def run_rllib_example_script_experiment(
     # Run the experiment using Ray Tune.
 
     # Log results using WandB.
-    tune_callbacks = []
+    tune_callbacks = tune_callbacks or []
     if hasattr(args, "wandb_key") and args.wandb_key is not None:
         project = args.wandb_project or (
             args.algo.lower() + "-" + re.sub("\\W+", "-", str(config.env).lower())
