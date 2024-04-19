@@ -490,7 +490,6 @@ class WorkerSet:
                     "`from_worker_or_trainer` is None. In this case, workerset "
                     "should have local_worker. But local_worker is also None."
                 )
-            print("weights_src", weights_src)
             weights = weights_src.get_weights(policies, inference_only)
             # Move weights to the object store to avoid having to make n pickled copies
             # of the weights dict for each worker.

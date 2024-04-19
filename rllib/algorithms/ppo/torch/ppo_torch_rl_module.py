@@ -28,9 +28,6 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
             # Set the expected and unexpected keys for the inference-only module.
             self._set_inference_only_state_dict_keys()
 
-    # TODO (simon): Refactor to parent method.
-    # TODO (sven): It might be a good idea to add this argument to the `RLModule`
-    # class.
     @override(TorchRLModule)
     def get_state(self, inference_only: bool = False) -> Dict[str, Any]:
         state_dict = self.state_dict()

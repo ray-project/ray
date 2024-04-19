@@ -704,7 +704,7 @@ class RLModule(abc.ABC):
         """Forward-pass during training. See forward_train for details."""
 
     @OverrideToImplementCustomLogic
-    def get_state(self) -> Mapping[str, Any]:
+    def get_state(self, inference_only: bool = False) -> Mapping[str, Any]:
         """Returns the state dict of the module."""
         return {}
 

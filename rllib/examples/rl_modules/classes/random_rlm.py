@@ -14,10 +14,6 @@ from ray.rllib.utils.spaces.space_utils import batch as batch_func
 
 class RandomRLModule(RLModule):
     @override(RLModule)
-    def get_state(self, inference_only: bool = False):
-        return super().get_state()
-
-    @override(RLModule)
     def _forward_inference(self, batch, **kwargs):
         return self._random_forward(batch, **kwargs)
 
