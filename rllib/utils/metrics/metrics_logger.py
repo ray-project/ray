@@ -62,38 +62,40 @@ class MetricsLogger:
 
             from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
             from ray.rllib.utils.test_utils import check
-            
+
             logger = MetricsLogger()
-            
-            # Log n simple float values under the "loss" key. By default, all logged values
-            # under that key are averaged, once `reduce()` is called.
+
+            # Log n simple float values under the "loss" key. By default, all logged
+            # values under that key are averaged, once `reduce()` is called.
             logger.log_value("loss", 0.01, window=10)
-            logger.log_value("loss", 0.02)  # don't have to repeat `window` if key already exists
+            logger.log_value("loss", 0.02)  # don't have to repeat `window` if key
+                                            # already exists
             logger.log_value("loss", 0.03)
-            
+
             # Get a peek of the current (reduced) value.
-            # Note that in the underlying structure, the internal values list still contains all
-            # logged values (0.01, 0.02, and 0.03).
+            # Note that in the underlying structure, the internal values list still
+            # contains all logged values (0.01, 0.02, and 0.03).
             check(logger.get("loss"), 0.02)
-            
+
             # Log 10x (window size) the same value.
             for _ in range(10):
                 logger.log_value("loss", 0.05)
             check(logger.get("loss"), 0.05)
-            
-            # Internals check (note that users should not be concerned with accessing these).
+
+            # Internals check (note that users should not be concerned with accessing
+            # these).
             check(len(logger.stats["loss"].values), 13)
-            
-            # Only, when we call `reduce` does the underlying structure get "cleaned up". In this
-            # case, the list is shortened to 10 items (window size).
+
+            # Only, when we call `reduce` does the underlying structure get "cleaned
+            # up". In this case, the list is shortened to 10 items (window size).
             results = logger.reduce(return_stats_obj=False)
             check(results, {"loss": 0.05})
             check(len(logger.stats["loss"].values), 10)
-            
+
             # Log a value under a deeper nested key.
             logger.log_value(("some", "nested", "key"), -1.0)
             check(logger.get("some", "nested", "key"), -1.0)
-            
+
             # Log n values without reducing them (we want to just collect some items).
             logger.log_value("some_items", 5.0, reduce=None)
             logger.log_value("some_items", 6.0)
@@ -186,9 +188,9 @@ class MetricsLogger:
         .. testcode::
             from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
             from ray.rllib.utils.test_utils import check
-            
+
             logger = MetricsLogger()
-            
+
             # Log n dicts with keys "a" and (some) "b". By default, all logged values
             # under that key are averaged, once `reduce()` is called.
             logger.log_dict(
@@ -205,12 +207,12 @@ class MetricsLogger:
                 "a": 0.2,
                 "c": {"d": 5.0},  # can also introduce an entirely new (nested) key
             })
-            
+
             # Get a peek of the current (reduced) values under "a" and "b".
             check(logger.get("a"), 0.15)
             check(logger.get("b"), -0.15)
             check(logger.get("c", "d"), 5.0)
-            
+
             # Get reduced results.
             results = logger.reduce(return_stats_obj=False)
             check(results, {
@@ -290,7 +292,7 @@ class MetricsLogger:
         ema_coeff: Optional[float] = None,
         reset_on_reduce: bool = False,
     ) -> None:
-        """
+        """TODO (sven): docstr
 
         Args:
             stats_dicts:
@@ -352,8 +354,8 @@ class MetricsLogger:
         window: Optional[int] = None,
         ema_coeff: Optional[float] = None,
         reset_on_reduce: bool = False,
-        throughput_key: Optional[Union[str, Tuple[str]]] = None,
-        throughput_key_of_unit_count: Optional[Union[str, Tuple[str]]] = None,
+        # throughput_key: Optional[Union[str, Tuple[str]]] = None,
+        # throughput_key_of_unit_count: Optional[Union[str, Tuple[str]]] = None,
     ) -> None:
         """Measures and logs a time delta value under `key` when used with a with-block.
 
@@ -363,7 +365,7 @@ class MetricsLogger:
         .. testcode::
 
             from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
-
+            # TODO (sven): finish test case
 
         Args:
             key: The key (or tuple of keys) to log the measured time delta under.
@@ -394,28 +396,30 @@ class MetricsLogger:
             reset_on_reduce = True
 
         if key not in self.stats:
-            measure_throughput = None
-            if throughput_key_of_unit_count is not None:
-                measure_throughput = True
-                throughput_key = throughput_key or (key + "_throughput_per_s")
+            # TODO (sven): Figure out how to best implement an additional throughput
+            #  measurement.
+            # measure_throughput = None
+            # if throughput_key_of_unit_count is not None:
+            #    measure_throughput = True
+            #    throughput_key = throughput_key or (key + "_throughput_per_s")
 
             self.stats[key] = Stats(
                 reduce=reduce,
                 window=window,
                 ema_coeff=ema_coeff,
                 reset_on_reduce=reset_on_reduce,
-                on_exit=(
-                    lambda stats: (
-                        self.log_value(
-                            throughput_key,
-                            self.get(throughput_key_of_unit_count),
-                            reduce=reduce,
-                            window=window,
-                            ema_coeff=ema_coeff,
-                            reset_on_reduce=reset_on_reduce,
-                        )
-                    ),
-                ),
+                # on_exit=(
+                #    lambda stats: (
+                #        self.log_value(
+                #            throughput_key,
+                #            self.get(throughput_key_of_unit_count),
+                #            reduce=reduce,
+                #            window=window,
+                #            ema_coeff=ema_coeff,
+                #            reset_on_reduce=reset_on_reduce,
+                #        )
+                #    ),
+                # ),
             )
 
         # Return the Stats object, so a `with` clause can enter and exit it.
@@ -434,7 +438,7 @@ class MetricsLogger:
         .. testcode::
             from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
             from ray.rllib.utils.test_utils import check
-            
+
             logger = MetricsLogger()
             ema = 0.01
 
@@ -475,11 +479,77 @@ class MetricsLogger:
         if isinstance(ret, NestedDict):
             return ret.asdict()
 
-        # Otherwise, return the reduced Stats' (peek) value. 
+        # Otherwise, return the reduced Stats' (peek) value.
         return ret
 
     def reduce(self, return_stats_obj: bool = True) -> Dict:
-        """
+        """Reduces all logged values based on their settings and returns a result dict.
+
+        The returned result dict has the exact same structure as the logged keys (or
+        nested key sequences) combined. At the leafs of the returned structure are
+        either `Stats` objects (return_stats_obj=True, which is the default) or
+        primitive (non-Stats) values. In case of `return_stats_obj=True`, the returned
+        dict with Stats at the leafs can conveniently be re-used downstream for further
+        logging and reduction operations.
+
+        For example, imagine component A (e.g. an Algorithm) containing a MetricsLogger
+        and n remote components (e.g. EnvRunner  workers), each with their own
+        MetricsLogger object. Component A now calls its n remote components, each of
+        which returns an equivalent, reduced dict with `Stats` as leafs.
+        Component A can then further log these n result dicts via its own MetricsLogger:
+        `logger.log_n_dicts([n returned result dicts from the remote components])`.
+
+        .. testcode::
+
+            from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
+            from ray.rllib.utils.test_utils import check
+
+            # Log some (EMA reduced) values.
+            logger = MetricsLogger()
+            logger.log_value("a", 2.0)
+            logger.log_value("a", 3.0)
+            expected_reduced = (1.0 - 0.01) * 2.0 + 0.01 * 3.0
+            # Reduce and return primitive values (not Stats objects).
+            results = logger.reduce(return_stats_obj=False)
+            check(results, {"a": expected_reduced})
+
+            # Log some values to be averaged with a sliding window.
+            logger = MetricsLogger()
+            logger.log_value("a", 2.0, window=2)
+            logger.log_value("a", 3.0)
+            logger.log_value("a", 4.0)
+            expected_reduced = (3.0 + 4.0) / 2  # <- win size is only 2; first logged
+                                                # item not used
+            # Reduce and return primitive values (not Stats objects).
+            results = logger.reduce(return_stats_obj=False)
+            check(results, {"a": expected_reduced})
+
+            # Assume we have 2 remote components, each one returning an equivalent
+            # reduced dict when called. We can simply use these results and log them
+            # to our own MetricsLogger, then reduce over these 2 logged results.
+            comp1_logger = MetricsLogger()
+            comp1_logger.log_value("a", 1.0, window=10)
+            comp1_logger.log_value("a", 2.0)
+            result1 = comp1_logger.reduce()  # <- return Stats objects as leafs
+
+            comp2_logger = MetricsLogger()
+            comp2_logger.log_value("a", 3.0, window=10)
+            comp2_logger.log_value("a", 4.0)
+            result2 = comp2_logger.reduce()  # <- return Stats objects as leafs
+
+            # Now combine the 2 equivalent results into 1 end result dict.
+            downstream_logger = MetricsLogger()
+            downstream_logger.log_n_dicts([result1, result2])
+            # What happens internally is that both values lists of the 2 components
+            # are merged (concat'd) and randomly shuffled, then clipped at 10 (window
+            # size). This is done such that no component has an "advantage" over the
+            # other as we don't know the exact time-order in which these parallelly
+            # running components logged their own "a"-values.
+            # We execute similarly useful merging strategies for other reduce settings,
+            # such as EMA, max/min/sum-reducing, etc..
+            end_result = downstream_logger.reduce(return_stats_obj=False)
+
+            check(end_result, {"a": 2.5})
 
         Args:
             return_stats_obj: Whether in the returned dict, the leafs should be Stats
