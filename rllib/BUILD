@@ -2236,16 +2236,16 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/connectors/mean_std_filtering.py"],
-    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=-300.0", "--framework=torch", "--algo=PPO", "--num-env-runners=2"]
+    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=-300.0", "--framework=torch", "--algo=PPO", "--num-env-runners=2", "--num-cpus=4"]
 )
 
 py_test(
     name = "examples/connectors/mean_std_filtering_multi_agent_ppo",
     main = "examples/connectors/mean_std_filtering.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/connectors/mean_std_filtering.py"],
-    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=-600.0", "--framework=torch", "--algo=PPO", "--num-env-runners=5", "--num-cpus=6"]
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=-600.0", "--framework=torch", "--algo=PPO", "--num-env-runners=5", "--num-cpus=7"]
 )
 
 # subdirectory: curriculum/
