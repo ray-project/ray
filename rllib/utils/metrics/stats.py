@@ -1,6 +1,6 @@
 import random
 import time
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 import numpy as np
 
@@ -127,6 +127,7 @@ class Stats:
         window: Optional[int] = None,
         ema_coeff: Optional[float] = None,
         reset_on_reduce: bool = False,
+        on_exit: Optional[Callable] = None,
     ):
         """Initializes a Stats instance.
 
@@ -190,6 +191,9 @@ class Stats:
         # Simply store ths flag for the user of this class.
         self._reset_on_reduce = reset_on_reduce
 
+        # Code to execute when exiting a with-context.
+        self._on_exit = on_exit
+
     def push(self, value) -> None:
         """Appends a new value into the internal values list.
 
@@ -214,6 +218,11 @@ class Stats:
         assert self._start_time is not None
         time_delta = time.time() - self._start_time
         self.push(time_delta)
+
+        # Call the on_exit handler.
+        if self._on_exit:
+            self._on_exit(time_delta)
+
         self._start_time = None
 
     def peek(self) -> Any:
@@ -329,6 +338,12 @@ class Stats:
 
     def __gt__(self, other):
         return float(self) > float(other)
+
+    def __add__(self, other):
+        return float(self) + float(other)
+
+    def __sub__(self, other):
+        return float(self) - float(other)
 
     def get_state(self) -> Dict[str, Any]:
         return {

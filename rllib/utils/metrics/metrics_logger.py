@@ -60,7 +60,70 @@ class MetricsLogger:
 
         .. testcode::
 
-
+            from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
+            from ray.rllib.utils.test_utils import check
+            
+            logger = MetricsLogger()
+            
+            # Log n simple float values under the "loss" key. By default, all logged values
+            # under that key are averaged, once `reduce()` is called.
+            logger.log_value("loss", 0.01, window=10)
+            logger.log_value("loss", 0.02)  # don't have to repeat `window` if key already exists
+            logger.log_value("loss", 0.03)
+            
+            # Get a peek of the current (reduced) value.
+            # Note that in the underlying structure, the internal values list still contains all
+            # logged values (0.01, 0.02, and 0.03).
+            check(logger.get("loss"), 0.02)
+            
+            # Log 10x (window size) the same value.
+            for _ in range(10):
+                logger.log_value("loss", 0.05)
+            check(logger.get("loss"), 0.05)
+            
+            # Internals check (note that users should not be concerned with accessing these).
+            check(len(logger.stats["loss"].values), 13)
+            
+            # Only, when we call `reduce` does the underlying structure get "cleaned up". In this
+            # case, the list is shortened to 10 items (window size).
+            results = logger.reduce(return_stats_obj=False)
+            check(results, {"loss": 0.05})
+            check(len(logger.stats["loss"].values), 10)
+            
+            # Log a value under a deeper nested key.
+            logger.log_value(("some", "nested", "key"), -1.0)
+            check(logger.get("some", "nested", "key"), -1.0)
+            
+            # Log n values without reducing them (we want to just collect some items).
+            logger.log_value("some_items", 5.0, reduce=None)
+            logger.log_value("some_items", 6.0)
+            logger.log_value("some_items", 7.0)
+            # Getting these returns the full list of items.
+            check(logger.get("some_items"), [5.0, 6.0, 7.0])
+            # If you don't want the internal list to grow indefinitely, you should set
+            # `reset_on_reduce=True`:
+            logger.log_value("some_more_items", -5.0, reduce=None, reset_on_reduce=True)
+            logger.log_value("some_more_items", -6.0)
+            logger.log_value("some_more_items", -7.0)
+            # Getting these returns the full list of items.
+            check(logger.get("some_more_items"), [-5.0, -6.0, -7.0])
+            # Reducing everything.
+            results = logger.reduce(return_stats_obj=False)
+            check(results, {
+                "loss": 0.05,
+                "some": {
+                    "nested": {
+                        "key": -1.0,
+                    },
+                },
+                "some_items": [5.0, 6.0, 7.0],  # reduce=None; list as-is
+                "some_more_items": [-5.0, -6.0, -7.0],  # reduce=None; list as-is
+            })
+            # However, the `reduce()` call did empty the `some_more_items` list
+            # (b/c we set `reset_on_reduce=True`).
+            check(logger.get("some_more_items"), [])
+            # ... but not the "some_items" list (b/c `reduce_on_reset=False`).
+            check(logger.get("some_items"), [])
 
         Args:
             key: The key (or nested key-tuple) to log the `value` under.
@@ -111,17 +174,50 @@ class MetricsLogger:
         ema_coeff: Optional[float] = None,
         reset_on_reduce: bool = False,
     ) -> None:
-        """Logs the `Stats` (or simple value) leafs of a (nested) dict to this logger.
+        """Logs all leafs (`Stats` or simple values) of a (nested) dict to this logger.
 
         Traverses through all leafs of `stats_dict` and - if a path cannot be found in
-        this logger's stats yet, will add the found `Stats` under that new key in `self.
-        If a path already exists in `self`, will merge the found `Stats` with the ones
-        in `self`. This way, `stats_dict` does NOT have to have an identical structure
-        that what's already in `self`, but can also be used to log entirely new
-        keys/paths to `self`.
+        this logger yet, will add the `Stats` found at the leaf under that new key.
+        If a path already exists, will merge the found leaf (`Stats`) with the ones
+        already logged before to `self`. This way, `stats_dict` does NOT have to have
+        the same structure as what has already been logged to `self`, but can be used to
+        log values under entirely new keys/key paths.
 
         .. testcode::
-            # TODO (sven)
+            from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
+            from ray.rllib.utils.test_utils import check
+            
+            logger = MetricsLogger()
+            
+            # Log n dicts with keys "a" and (some) "b". By default, all logged values
+            # under that key are averaged, once `reduce()` is called.
+            logger.log_dict(
+                {
+                    "a": 0.1,
+                    "b": -0.1,
+                },
+                window=10,
+            )
+            logger.log_dict({
+                "b": -0.2,
+            })  # don't have to repeat `window` if key already exists
+            logger.log_dict({
+                "a": 0.2,
+                "c": {"d": 5.0},  # can also introduce an entirely new (nested) key
+            })
+            
+            # Get a peek of the current (reduced) values under "a" and "b".
+            check(logger.get("a"), 0.15)
+            check(logger.get("b"), -0.15)
+            check(logger.get("c", "d"), 5.0)
+            
+            # Get reduced results.
+            results = logger.reduce(return_stats_obj=False)
+            check(results, {
+                "a": 0.15,
+                "b": -0.15,
+                "c": {"d": 5.0},
+            })
 
         Args:
             stats_dict: The (possibly nested) dict with `Stats` or individual values as
@@ -163,13 +259,20 @@ class MetricsLogger:
                 reset_on_reduce = True
 
             if not isinstance(stat_or_value, Stats):
-                stat_or_value = Stats(
-                    stat_or_value,
-                    reduce=reduce,
-                    window=window,
-                    ema_coeff=ema_coeff,
-                    reset_on_reduce=reset_on_reduce,
-                )
+                # `self` already has this key path -> Use c'tor options from self's
+                # Stats.
+                if extended_key in self.stats:
+                    stat_or_value = Stats.similar_to(
+                        self.stats[extended_key], init_value=stat_or_value
+                    )
+                else:
+                    stat_or_value = Stats(
+                        stat_or_value,
+                        reduce=reduce,
+                        window=window,
+                        ema_coeff=ema_coeff,
+                        reset_on_reduce=reset_on_reduce,
+                    )
 
             if extended_key in self.stats:
                 # Merge existing Stats with incoming one.
@@ -301,7 +404,18 @@ class MetricsLogger:
                 window=window,
                 ema_coeff=ema_coeff,
                 reset_on_reduce=reset_on_reduce,
-                on_exit=lambda stats: self.log_value(throughput_key, self.get(throughput_key_of_unit_count), reduce=reduce, window=window, ema_coeff=ema_coeff, reset_on_reduce=reset_on_reduce),
+                on_exit=(
+                    lambda stats: (
+                        self.log_value(
+                            throughput_key,
+                            self.get(throughput_key_of_unit_count),
+                            reduce=reduce,
+                            window=window,
+                            ema_coeff=ema_coeff,
+                            reset_on_reduce=reset_on_reduce,
+                        )
+                    ),
+                ),
             )
 
         # Return the Stats object, so a `with` clause can enter and exit it.
@@ -318,26 +432,66 @@ class MetricsLogger:
         internal structures as-is.
 
         .. testcode::
-            # TODO (sven)
+            from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
+            from ray.rllib.utils.test_utils import check
+            
+            logger = MetricsLogger()
+            ema = 0.01
+
+            # Log some (EMA reduced) values.
+            key = ("some", "nested", "key", "sequence")
+            logger.log_value(key, 2.0, ema_coeff=ema)
+            logger.log_value(key, 3.0)
+
+            # Expected reduced value:
+            expected_reduced = (1.0 - ema) * 2.0 + ema * 3.0
+
+            # Get the value under `key`.
+            check(logger.get(key), expected_reduced)
+
+            # Get the nested struct under ("some", "nested").
+            check(
+                logger.get("some", "nested"),  # <- *args work as well
+                {"key": {"sequence": expected_reduced}},
+            )
+
+            # Log some more, check again.
+            logger.log_value(key, 4.0)
+            expected_reduced = (1.0 - ema) * expected_reduced + ema * 4.0
+            check(logger.get(key), expected_reduced)
 
         Args:
-            key: The key/key sequence of the sub-structure of `self`, whose values
-                (already reduced) to return.
+            key: The key/key sequence of the sub-structure of `self`, whose (reduced)
+                values to return.
 
         Returns:
             The (reduced) values of the (possibly nested) sub-structure found under
             the given `key` or key sequence.
         """
+        # Create a reduced view of the requested sub-structure or leaf (Stats object).
         ret = tree.map_structure(lambda s: s.peek(), self.stats[key])
+
+        # `key` only reached to a deeper NestedDict -> Have to convert to dict.
         if isinstance(ret, NestedDict):
             return ret.asdict()
+
+        # Otherwise, return the reduced Stats' (peek) value. 
         return ret
 
-    def reduce(self) -> Dict:
+    def reduce(self, return_stats_obj: bool = True) -> Dict:
         """
 
-        Returns:
+        Args:
+            return_stats_obj: Whether in the returned dict, the leafs should be Stats
+                objects. This is the default as it enables users to continue using
+                (and further logging) the results of this call inside another
+                (downstream) MetricsLogger object.
 
+        Returns:
+            A (nested) dict matching the structure of `self.stats` (contains all ever
+            logged keys to this MetricsLogger) with the leafs being (reduced) Stats
+            objects if `return_stats_obj=True` or primitive values, carrying no
+            reduction and history information, if `return_stats_obj=False`.
         """
         # Create a shallow copy of `self.stats` in case we need to reset some of our
         # stats due to this `reduce()` call (and the Stat having self.reset_on_reduce
@@ -355,7 +509,12 @@ class MetricsLogger:
         # Return reduced values as dict (not NestedDict).
         # TODO (sven): Maybe we want to change that to NestedDict, but we would like to
         #  asses to what extend we need to expose NestedDict to the user.
-        return stats_to_return.asdict()
+        stats_to_return = stats_to_return.asdict()
+
+        if return_stats_obj:
+            return stats_to_return
+        else:
+            return tree.map_structure(lambda s: s.peek(), stats_to_return)
 
     def get_state(self) -> Dict[str, Any]:
         """Returns the current state of `self` as a dict.
