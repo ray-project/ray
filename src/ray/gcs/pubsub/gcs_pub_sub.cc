@@ -445,14 +445,14 @@ Status PythonGcsSubscriber::Close() {
   request.set_sender_id(worker_id_);
   auto *cmd = request.add_commands();
   cmd->set_channel_type(channel_type_);
-  cmd->mutable_unsubscribe_message();
+  cmd->mutable_remove_subscriber_message();
 
   rpc::GcsSubscriberCommandBatchReply reply;
   grpc::Status status =
       pubsub_stub_->GcsSubscriberCommandBatch(&context, request, &reply);
 
   if (!status.ok()) {
-    RAY_LOG(DEBUG) << "Error while closing the subscriber: " << status.error_message()
+    RAY_LOG(DEBUG) << "Error while removing the subscriber: " << status.error_message()
                    << " [code " << status.error_code() << "]";
   }
   return Status::OK();

@@ -139,10 +139,14 @@ message Command {
   oneof command_message_one_of {
     UnsubscribeMessage unsubscribe_message = 3;
     SubMessage subscribe_message = 4;
+    RemoveSubscriberMessage remove_subscriber_message = 5;
   }
 }
 
 message UnsubscribeMessage {
+}
+
+message RemoveSubscriberMessage {
 }
 
 /// Each of subscribe command needs to include request body because in Ray's pubsub

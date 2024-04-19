@@ -3657,6 +3657,8 @@ void CoreWorker::ProcessPubsubCommands(const Commands &commands,
                               command.channel_type(),
                               command.key_id(),
                               subscriber_id);
+    } else if (command.has_remove_subscriber_message()) {
+      object_info_publisher_->UnregisterSubscriber(subscriber_id);
     } else {
       RAY_LOG(FATAL) << "Invalid command has received, "
                      << static_cast<int>(command.command_message_one_of_case())

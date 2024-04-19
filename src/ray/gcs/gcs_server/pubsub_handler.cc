@@ -123,6 +123,8 @@ void InternalPubSubHandler::HandleGcsSubscriberCommandBatch(
           subscriber_id,
           command.key_id().empty() ? std::nullopt : std::make_optional(command.key_id()));
       iter->second.insert(subscriber_id);
+    } else if (command.has_remove_subscriber_message()) {
+      gcs_publisher_->GetPublisher()->UnregisterSubscriber(subscriber_id);
     } else {
       RAY_LOG(FATAL) << "Invalid command has received, "
                      << static_cast<int>(command.command_message_one_of_case())
