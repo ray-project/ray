@@ -1,7 +1,6 @@
 from typing import Any, Dict, Iterable, List, Optional, Union
 
 from ray.data._internal.compute import ComputeStrategy
-from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.all_to_all_operator import Aggregate
 from ray.data.aggregate import AggregateFn, Count, Max, Mean, Min, Std, Sum
@@ -208,7 +207,6 @@ class GroupedData:
                 boundaries = get_key_boundaries(block_accessor)
             else:
                 boundaries = [block_accessor.num_rows()]
-            builder = DelegatingBlockBuilder()
             start = 0
             for end in boundaries:
                 group_block = block_accessor.slice(start, end)
@@ -218,10 +216,8 @@ class GroupedData:
                 # (e.g. block is Arrow format, and batch is NumPy format).
                 group_batch = group_block_accessor.to_batch_format(batch_format)
                 applied = fn(group_batch, *args, **kwargs)
-                builder.add_batch(applied)
+                yield applied
                 start = end
-            rs = builder.build()
-            return rs
 
         # Note we set batch_size=None here, so it will use the entire block as a batch,
         # which ensures that each group will be contained within a batch in entirety.
