@@ -123,14 +123,29 @@ void InternalPubSubHandler::HandleGcsSubscriberCommandBatch(
           subscriber_id,
           command.key_id().empty() ? std::nullopt : std::make_optional(command.key_id()));
       iter->second.insert(subscriber_id);
-    } else if (command.has_remove_subscriber_message()) {
-      gcs_publisher_->GetPublisher()->UnregisterSubscriber(subscriber_id);
     } else {
       RAY_LOG(FATAL) << "Invalid command has received, "
                      << static_cast<int>(command.command_message_one_of_case())
                      << ". If you see this message, please file an issue to Ray Github.";
     }
   }
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void InternalPubSubHandler::HandleGcsUnregisterSubscriber(
+    rpc::GcsUnregisterSubscriberRequest request,
+    rpc::GcsUnregisterSubscriberReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  if (gcs_publisher_ == nullptr) {
+    send_reply_callback(
+        Status::NotImplemented("GCS pubsub is not yet enabled. Please enable it with "
+                               "system config `gcs_grpc_based_pubsub=True`"),
+        nullptr,
+        nullptr);
+    return;
+  }
+  const auto subscriber_id = UniqueID::FromBinary(request.subscriber_id());
+  gcs_publisher_->GetPublisher()->UnregisterSubscriber(subscriber_id);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

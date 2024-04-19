@@ -228,7 +228,7 @@ std::string SubscriberChannel::DebugString() const {
 
 Subscriber::~Subscriber() {
   // TODO(mwtian): flush Subscriber and ensure there is no leak during destruction.
-  // TODO(ryw): Tell the service to remove this subscriber.
+  // TODO(ryw): Remove this subscriber from the service by GcsUnregisterSubscriber.
 }
 
 bool Subscriber::Subscribe(std::unique_ptr<rpc::SubMessage> sub_message,

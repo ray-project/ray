@@ -75,8 +75,6 @@ class SubscriberServiceImpl final : public rpc::SubscriberService::CallbackServi
                                          command.key_id().empty()
                                              ? std::nullopt
                                              : std::make_optional(command.key_id()));
-      } else if (command.has_remove_subscriber_message()) {
-        publisher_->UnregisterSubscriber(subscriber_id);
       } else {
         RAY_LOG(FATAL)
             << "Invalid command has received, "
