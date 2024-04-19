@@ -424,6 +424,14 @@ message ReportGeneratorItemReturnsReply {
   int64 total_num_object_consumed = 1;
 }
 
+message CreateMutableObjectRequest {
+  int64 buffer_size_bytes = 1;
+}
+
+message CreateMutableObjectReply {
+  bytes reader_ref = 1;
+}
+
 service CoreWorkerService {
   // Notify core worker GCS has restarted.
   rpc RayletNotifyGCSRestart(RayletNotifyGCSRestartRequest)
@@ -484,4 +492,5 @@ service CoreWorkerService {
   rpc AssignObjectOwner(AssignObjectOwnerRequest) returns (AssignObjectOwnerReply);
   // Get the number of pending tasks.
   rpc NumPendingTasks(NumPendingTasksRequest) returns (NumPendingTasksReply);
+  rpc CreateMutableObject(CreateMutableObjectRequest) returns (CreateMutableObjectReply);
 }

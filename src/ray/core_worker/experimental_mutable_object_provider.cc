@@ -91,8 +91,13 @@ void MutableObjectProvider::HandleRegisterMutableObject(const ObjectID &object_i
 
   std::ofstream f;
   f.open("/tmp/blah", std::ofstream::app);
-  f << "HandlePushMutableObject object_id = " << object_id << ", local_object_id = " << local_object_id << std::endl;
-  f << absl::StrFormat("HandlePushMutableObject, num_readers = %ld, new num_readers = %ld", num_readers, remote_writer_object_to_local_reader_[object_id].num_readers) << std::endl;
+  f << "HandlePushMutableObject object_id = " << object_id
+    << ", local_object_id = " << local_object_id << std::endl;
+  f << absl::StrFormat(
+           "HandlePushMutableObject, num_readers = %ld, new num_readers = %ld",
+           num_readers,
+           remote_writer_object_to_local_reader_[object_id].num_readers)
+    << std::endl;
 }
 
 void MutableObjectProvider::HandlePushMutableObject(

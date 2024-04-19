@@ -19,9 +19,9 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
-#include <fstream>
 
 #include "absl/functional/bind_front.h"
+#include "absl/synchronization/notification.h"
 #include "absl/time/clock.h"
 #include "boost/system/error_code.hpp"
 #include "ray/common/asio/asio_util.h"
@@ -785,14 +785,42 @@ void NodeManager::HandleRegisterMutableObject(
     rpc::SendReplyCallback send_reply_callback) {
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   int64_t num_readers = request.num_readers();
-  ObjectID local_object_id = ObjectID::FromBinary(request.local_object_id());
+  int64_t buffer_size_bytes = request.buffer_size_bytes();
 
   std::ofstream f;
   f.open("/tmp/blah", std::ofstream::app);
   f << "NodeManager::HandleRegisterMutableObject" << std::endl;
 
+  rpc::CreateMutableObjectRequest create_request;
+  create_request.set_buffer_size_bytes(buffer_size_bytes);
+
+  auto all_workers = worker_pool_.GetAllRegisteredWorkers();
+  for (const auto &driver : worker_pool_.GetAllRegisteredDrivers()) {
+    all_workers.push_back(driver);
+  }
+  RAY_CHECK(!all_workers.empty());
+
+  // Only need to create the mutable object in one worker because it will be accessible to
+  // all workers on the node.
+  auto &worker = all_workers[0];
+  ObjectID reader_ref;
+  f << "reader ref is " << reader_ref << std::endl;
+  absl::Notification done;
+  worker->rpc_client()->CreateMutableObject(
+      create_request,
+      [&reader_ref, &done, &f](const Status &status,
+                               const rpc::CreateMutableObjectReply &create_reply) {
+        RAY_CHECK(status.ok());
+        reader_ref = ObjectID::FromBinary(create_reply.reader_ref());
+        f << "worker is done" << std::endl;
+      });
+  done.WaitForNotification();
+  f << "reader ref is now " << reader_ref << std::endl;
+
   mutable_object_provider_->HandleRegisterMutableObject(
-      object_id, num_readers, local_object_id);
+      object_id, num_readers, reader_ref);
+
+  reply->set_reader_ref(reader_ref.Binary());
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

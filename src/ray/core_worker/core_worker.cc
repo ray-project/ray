@@ -1464,31 +1464,33 @@ Status CoreWorker::ExperimentalRegisterMutableObjectWriter(const ObjectID &objec
   return Status::OK();
 }
 
-Status CoreWorker::ExperimentalRegisterMutableObjectReader(
+Status CoreWorker::ExperimentalRegisterMutableObjectReaderRemote(
     const ObjectID &object_id,
-    const ObjectID &local_reader_object_id,
-    int64_t num_readers) {
+    int buffer_size_bytes,
+    int64_t num_readers,
+    ObjectID &reader_ref) {
+  std::promise<void> promise;
+  std::future<void> future = promise.get_future();
 
-   std::ofstream f;
+  std::ofstream f;
   f.open("/tmp/blah", std::ofstream::app);
-  f << "CoreWorker::ExperimentalRegisterMutableObjectReader" << std::endl;
+  f << "ExperimentalRegisterMutableObjectReaderRemote" << std::endl;
+  local_raylet_client_->RegisterMutableObjectReader(
+      object_id,
+      num_readers,
+      buffer_size_bytes,
+      [&promise, &reader_ref](const Status &status,
+                              const rpc::RegisterMutableObjectReply &reply) {
+        reader_ref = ObjectID::FromBinary(reply.reader_ref());
+        promise.set_value();
+      });
+  future.wait();
 
-  if (object_id == local_reader_object_id) {
-  f << "In here A" << std::endl;
-    experimental_mutable_object_provider_->RegisterReaderChannel(object_id);
-  } else {
-  f << "In here B" << std::endl;
-    std::promise<void> promise;
-    std::future<void> future = promise.get_future();
-    local_raylet_client_->RegisterMutableObjectReader(
-        object_id,
-        num_readers,
-        local_reader_object_id,
-        [&promise](const Status &status, const rpc::RegisterMutableObjectReply &reply) {
-          promise.set_value();
-        });
-    future.wait();
-  }
+  return Status::OK();
+}
+
+Status CoreWorker::ExperimentalRegisterMutableObjectReader(const ObjectID &object_id) {
+  experimental_mutable_object_provider_->RegisterReaderChannel(object_id);
   return Status::OK();
 }
 
@@ -4079,6 +4081,31 @@ void CoreWorker::HandleKillActor(rpc::KillActorRequest request,
     Exit(rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
          absl::StrCat("Worker exits because the actor is killed. ", kill_actor_reason));
   }
+}
+
+void CoreWorker::HandleCreateMutableObject(rpc::CreateMutableObjectRequest request,
+                                           rpc::CreateMutableObjectReply *reply,
+                                           rpc::SendReplyCallback send_reply_callback) {
+  std::ofstream f;
+  f.open("/tmp/blah", std::ofstream::app);
+  f << "HandleCreateMutableObject" << std::endl;
+  ObjectID reader_ref;
+  f << "HandleCreateMutableObject, reader ref is " << reader_ref << std::endl;
+  std::shared_ptr<Buffer> data;
+  Status s = CreateOwnedAndIncrementLocalRef(
+      /*is_experimental_mutable_object=*/true,
+      /*metadata=*/std::make_shared<LocalMemoryBuffer>(/*size=*/0),
+      /*data_size=*/request.buffer_size_bytes(),
+      /*contained_object_ids=*/{},
+      /*object_id=*/&reader_ref,
+      /*data=*/&data,
+      /*created_by_worker=*/true,
+      /*owner_address=*/nullptr,
+      /*inline_small_object=*/true);
+  RAY_CHECK(s.ok());
+  f << "HandleCreateMutableObject, reader ref is now " << reader_ref << std::endl;
+  reply->set_reader_ref(reader_ref.Binary());
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 int64_t CoreWorker::GetLocalMemoryStoreBytesUsed() const {

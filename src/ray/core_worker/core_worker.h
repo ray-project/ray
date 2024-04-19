@@ -728,9 +728,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   Status ExperimentalRegisterMutableObjectWriter(const ObjectID &object_id,
                                                  const NodeID *node_id);
-  Status ExperimentalRegisterMutableObjectReader(const ObjectID &object_id,
-                                                 const ObjectID &local_reader_object_id,
-                                                 int64_t num_readers);
+  Status ExperimentalRegisterMutableObjectReader(const ObjectID &object_id);
+  Status ExperimentalRegisterMutableObjectReaderRemote(const ObjectID &object_id,
+                                                       int buffer_size_bytes,
+                                                       int64_t num_readers,
+                                                       ObjectID &reader_ref);
 
   /// Get a list of objects from the object store. Objects that failed to be retrieved
   /// will be returned as nullptrs.
@@ -1260,6 +1262,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void HandlePlasmaObjectReady(rpc::PlasmaObjectReadyRequest request,
                                rpc::PlasmaObjectReadyReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Creates a new mutable object.
+  void HandleCreateMutableObject(rpc::CreateMutableObjectRequest request,
+                                 rpc::CreateMutableObjectReply *reply,
+                                 rpc::SendReplyCallback send_reply_callback) override;
 
   /// Get statistics from core worker.
   void HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request,

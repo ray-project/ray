@@ -46,12 +46,15 @@ def _create_channel_ref(
         raise
     return object_ref
 
+
 # 1. Writer creates chan = Channel().
 #    - writer allocates writer ref.
 #    - if writer node ID != reader node ID:
 #      - TODO:
-#      - writer sends RPC to remote reader raylet. Pass writer ref, buffer_size_bytes, num readers.
-#      - reader raylet allocates a local "reader ref". Reader raylet maps (writer ref) -> (reader ref, num_readers).
+#      - writer sends RPC to remote reader raylet. Pass writer ref, buffer_size_bytes,
+#        num readers.
+#      - reader raylet allocates a local "reader ref". Reader raylet maps
+#        (writer ref) -> (reader ref, num_readers).
 #      - writer waits for reply. store reader ref.
 # 3. As long as reader ref is set, chan can be serialized. Otherwise, throw error.
 # 4. Serialize chan and pass to readers.
@@ -75,7 +78,7 @@ class Channel:
         reader_node_id: str,
         buffer_size_bytes: int,
         num_readers: int = 1,
-        _writer_node_id = None,
+        _writer_node_id=None,
         _writer_ref: Optional["ray.ObjectRef"] = None,
         _reader_ref: Optional["ray.ObjectRef"] = None,
     ):
@@ -98,7 +101,9 @@ class Channel:
             if not isinstance(buffer_size_bytes, int):
                 raise ValueError("buffer_size_bytes must be an integer")
 
-            self._writer_node_id = ray.runtime_context.get_runtime_context().get_node_id()
+            self._writer_node_id = (
+                ray.runtime_context.get_runtime_context().get_node_id()
+            )
             self._writer_ref = _create_channel_ref(buffer_size_bytes)
             self._reader_ref = None
 
@@ -146,8 +151,13 @@ class Channel:
         # TODO: In C++, optionally do a sync RPC to the remote reader raylet.
         # Reader raylet allocates a local "reader ref". Reader raylet maps
         # (writer ref) -> (reader ref, num_readers).
-        self._reader_ref = self._worker.core_worker.experimental_channel_register_writer(
-            self._writer_ref, self._buffer_size_bytes, self._num_readers, self._reader_node_id
+        self._reader_ref = (
+            self._worker.core_worker.experimental_channel_register_writer(
+                self._writer_ref,
+                self._buffer_size_bytes,
+                self._num_readers,
+                self._reader_node_id,
+            )
         )
         self._writer_registered = True
 

@@ -3655,36 +3655,39 @@ cdef class CoreWorker:
                          .ExperimentalChannelSetError(c_object_id))
 
     def experimental_channel_register_writer(self,
-                                             ObjectRef object_ref,
-                                             node_id_str: Optional[str] = None):
+                                             ObjectRef writer_ref,
+                                             int buffer_size_bytes,
+                                             int num_readers,
+                                             reader_node_id: str):
         cdef:
-            CObjectID c_object_id = object_ref.native()
-            CNodeID c_node_id
-            CNodeID * c_node_id_ptr = NULL
-
-        if node_id_str is not None:
-            c_node_id = CNodeID.FromHex(node_id_str)
-            c_node_id_ptr = &c_node_id
+            CObjectID c_writer_ref = writer_ref.native()
+            CObjectID c_reader_ref
+            CNodeID c_node_id = CNodeID.FromHex(reader_node_id)
 
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker()
-                         .ExperimentalRegisterMutableObjectWriter(c_object_id,
-                                                                  c_node_id_ptr))
+                         .ExperimentalRegisterMutableObjectWriter(c_writer_ref,
+                                                                  &c_node_id,
+                                                                  ))
+            check_status(CCoreWorkerProcess.GetCoreWorker()
+                         .ExperimentalRegisterMutableObjectReaderRemote(
+                             c_writer_ref,
+                             buffer_size_bytes,
+                             num_readers,
+                             c_reader_ref
+                             ))
+        return c_reader_ref.Binary()
 
     def experimental_channel_register_reader(
             self,
-            ObjectRef object_ref,
-            ObjectRef local_reader_object_ref,
-            int64_t num_readers):
+            ObjectRef object_ref):
         cdef:
             CObjectID c_object_id = object_ref.native()
-            CObjectID c_local_reader_object_id = local_reader_object_ref.native()
 
         with nogil:
             check_status(
                 CCoreWorkerProcess.GetCoreWorker()
-                .ExperimentalRegisterMutableObjectReader(
-                    c_object_id, c_local_reader_object_id, num_readers))
+                .ExperimentalRegisterMutableObjectReader(c_object_id))
 
     def experimental_channel_read_release(self, object_refs):
         """

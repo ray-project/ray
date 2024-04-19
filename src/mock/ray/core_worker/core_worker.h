@@ -118,6 +118,12 @@ class MockCoreWorker : public CoreWorker {
                rpc::SendReplyCallback send_reply_callback),
               (override));
   MOCK_METHOD(void,
+              HandleCreateMutableObject,
+              (rpc::CreateMutableObjectRequest request,
+               rpc::CreateMutableObjectReply *reply,
+               rpc::SendReplyCallback send_reply_callback),
+              (override));
+  MOCK_METHOD(void,
               HandleGetCoreWorkerStats,
               (rpc::GetCoreWorkerStatsRequest request,
                rpc::GetCoreWorkerStatsReply *reply,

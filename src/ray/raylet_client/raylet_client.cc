@@ -409,12 +409,12 @@ void raylet::RayletClient::GetTaskFailureCause(
 void raylet::RayletClient::RegisterMutableObjectReader(
     const ObjectID &object_id,
     int64_t num_readers,
-    const ObjectID &local_reader_object_id,
+    int buffer_size_bytes,
     const ray::rpc::ClientCallback<ray::rpc::RegisterMutableObjectReply> &callback) {
   rpc::RegisterMutableObjectRequest request;
   request.set_object_id(object_id.Binary());
   request.set_num_readers(num_readers);
-  request.set_local_object_id(local_reader_object_id.Binary());
+  request.set_buffer_size_bytes(buffer_size_bytes);
   grpc_client_->RegisterMutableObject(
       request,
       [callback](const Status &status, const rpc::RegisterMutableObjectReply &reply) {
