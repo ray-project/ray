@@ -408,18 +408,6 @@ class Trainable:
             "ray_version": ray.__version__,
         }
 
-    @contextmanager
-    def _create_checkpoint_dir(self, checkpoint_dir: Optional[str] = None):
-        """Creates a directory for the user to save checkpoint contents.
-        This is a temporary directory that gets auto-cleaned up, unless a
-        path is explicitly provided as an argument."""
-        if checkpoint_dir:
-            os.makedirs(checkpoint_dir, exist_ok=True)
-            yield checkpoint_dir
-        else:
-            with tempfile.TemporaryDirectory() as tmpdir:
-                yield tmpdir
-
     def _report_class_trainable_checkpoint(
         self, checkpoint_dir: str, checkpoint_dict_or_path: Union[str, Dict]
     ) -> _TrainingResult:
@@ -491,8 +479,8 @@ class Trainable:
         Note the return value matches up with what is expected of `restore()`.
         """
         if not isinstance(self, ray.tune.trainable.FunctionTrainable):
+            # Use a temporary directory if no checkpoint_dir is provided.
             use_temp_dir = not checkpoint_dir
-
             checkpoint_dir = checkpoint_dir or tempfile.mkdtemp()
             os.makedirs(checkpoint_dir, exist_ok=True)
 
