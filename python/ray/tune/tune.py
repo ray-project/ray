@@ -620,13 +620,6 @@ def run(
         air_verbosity = None
 
     if air_verbosity is not None:
-        logger.info(
-            f"[output] This will use the new output engine with verbosity "
-            f"{air_verbosity}. To disable the new output and use the legacy "
-            f"output engine, set the environment variable RAY_AIR_NEW_OUTPUT=0. "
-            f"For more information, please see "
-            f"https://github.com/ray-project/ray/issues/36949"
-        )
         # Disable old output engine
         set_verbosity(0)
     else:
