@@ -685,6 +685,7 @@ class InternalPubSubGrpcService : public GrpcService {
     INTERNAL_PUBSUB_SERVICE_RPC_HANDLER(GcsPublish);
     INTERNAL_PUBSUB_SERVICE_RPC_HANDLER(GcsSubscriberPoll);
     INTERNAL_PUBSUB_SERVICE_RPC_HANDLER(GcsSubscriberCommandBatch);
+    INTERNAL_PUBSUB_SERVICE_RPC_HANDLER(GcsUnregisterSubscriber);
   }
 
  private:

@@ -594,8 +594,7 @@ message GcsUnregisterSubscriberRequest {
   bytes subscriber_id = 1;
 }
 
-message GcsUnregisterSubscriberReply {
-}
+message GcsUnregisterSubscriberReply {}
 
 /// This supports subscribing updates from GCS with long poll, and registering /
 /// de-registering subscribers.
