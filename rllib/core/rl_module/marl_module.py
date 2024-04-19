@@ -305,6 +305,9 @@ class MultiAgentRLModule(RLModule):
         Args:
             module_ids: The module IDs to get the state of. If None, the state of all
                 modules is returned.
+            inference_only: If True, only a subset of parameters that are needed for
+                inference are returned. This subset is defined in the module.
+
         Returns:
             A nested state dict with the first layer being the module ID and the second
             is the state of the module. The returned dict values are framework-specific

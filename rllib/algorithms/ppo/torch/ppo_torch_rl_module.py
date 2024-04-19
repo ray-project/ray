@@ -29,6 +29,8 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
             self._set_inference_only_state_dict_keys()
 
     # TODO (simon): Refactor to parent method.
+    # TODO (sven): It might be a good idea to add this argument to the `RLModule`
+    # class.
     @override(TorchRLModule)
     def get_state(self, inference_only: bool = False) -> Dict[str, Any]:
         state_dict = self.state_dict()
@@ -146,7 +148,7 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
         ]
         # Do we use a separate encoder for the actor and critic?
         # if not self.config.model_config_dict.get("vf_share_layers", True):
-        if not self.config.model_config_dict["vf_share_layers"]:
+        if not self.encoder.config.shared:
             # If we use separate encoder networks for the actor and critic, we need to
             # rename the actor encoder parameters to encoder parameters b/c the
             # inference-only modules uses a plain encoder network

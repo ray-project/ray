@@ -1478,6 +1478,8 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         Args:
             policies: List of PolicyIDs to get the weights from.
                 Use None for all policies.
+            inference_only: This argument is only added for interface
+                consistency with the new api stack.
 
         Returns:
             Dict mapping PolicyIDs to ModelWeights.
