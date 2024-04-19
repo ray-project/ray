@@ -1,16 +1,16 @@
-from typing import Optional
-
 import random
-import pytest
+from typing import Optional
 from unittest.mock import MagicMock
+
+import pytest
 
 import ray
 from ray import train
-from ray.train import DataConfig, ScalingConfig
 from ray.data import DataIterator
-from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.data._internal.execution.interfaces.execution_options import ExecutionOptions
 from ray.tests.conftest import *  # noqa
+from ray.train import DataConfig, ScalingConfig
+from ray.train.data_parallel_trainer import DataParallelTrainer
 
 
 @pytest.fixture

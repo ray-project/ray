@@ -12,6 +12,7 @@ from ray.serve._private.config import (
     handle_num_replicas_auto,
 )
 from ray.serve._private.constants import DEFAULT_MAX_ONGOING_REQUESTS, SERVE_LOGGER_NAME
+from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import DEFAULT, Default
 from ray.serve.config import AutoscalingConfig
 from ray.serve.context import _get_global_client
@@ -362,6 +363,8 @@ class Deployment:
             max_ongoing_requests, autoscaling_config = handle_num_replicas_auto(
                 max_ongoing_requests, autoscaling_config
             )
+
+            ServeUsageTag.AUTO_NUM_REPLICAS_USED.record("1")
 
         # NOTE: The user_configured_option_names should be the first thing that's
         # defined in this method. It depends on the locals() dictionary storing
