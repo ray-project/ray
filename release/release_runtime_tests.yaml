@@ -37,6 +37,7 @@
   working_dir: anyscale/data
 
   frequency: nightly
+  stable: False
   team: data
   cluster:
     byod:
