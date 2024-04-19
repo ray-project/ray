@@ -138,10 +138,10 @@ To build Ray on Ubuntu, run the following commands:
   # Install Bazel.
   ci/env/install-bazel.sh
 
-  # Install node version manager and node 14
-  $(curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh)
-  nvm install 14
-  nvm use 14
+  # Install node version manager and node 20
+  curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+  nvm install 20
+  nvm use 20
 
 
 For RHELv8 (Redhat EL 8.0-64 Minimal), run the following commands:
