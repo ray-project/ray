@@ -6,10 +6,42 @@ import tree  # pip install dm_tree
 from ray.rllib.utils import force_tuple
 from ray.rllib.utils.metrics.stats import Stats
 from ray.rllib.utils.nested_dict import NestedDict
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class MetricsLogger:
-    """TODO (sven)"""
+    """A generic class collecting and processing metrics in RL training and evaluation.
+
+    This class represents the main API used by all of RLlib's components (internal and
+    user facing) in order to log, collect, and process (reduce) stats during training
+    and evaluation/inference.
+
+    It supports:
+    - Logging of simple float/int values (for example a loss) over time or from
+    parallel runs (n Learner workers, each one reporting a loss from their respective
+    data shard).
+    - Logging of images, videos, or other more complex data structures over time.
+    - Reducing these collected values using a user specified reduction method (for
+    example "min" or "mean") and other settings controlling the reduction and internal
+    data, such as sliding windows or EMA coefficients.
+    - Resetting the logged values after a `reduce()` call in order to make space for
+    new values to be logged.
+
+    .. testcode::
+
+        from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
+
+        logger = MetricsLogger()
+
+        # Log n simple float values under the "loss" key. By default, all logged values
+        # under that key are averaged over once `reduce()` is called.
+        logger.log_value("loss", 0.001)
+        logger.log_value("loss", 0.002)
+        logger.log_value("loss", 0.003)
+        # Peek at the current (reduced) value of "loss":
+
+    """
 
     def __init__(self):
         """Initializes a MetricsLogger instance."""
@@ -25,6 +57,10 @@ class MetricsLogger:
         reset_on_reduce: bool = False,
     ) -> None:
         """Logs a new value under a (possibly nested) key to the logger.
+
+        .. testcode::
+
+
 
         Args:
             key: The key (or nested key-tuple) to log the `value` under.
@@ -213,12 +249,21 @@ class MetricsLogger:
         window: Optional[int] = None,
         ema_coeff: Optional[float] = None,
         reset_on_reduce: bool = False,
-        throughput_prefix: Optional[str] = None,
+        throughput_key: Optional[Union[str, Tuple[str]]] = None,
+        throughput_key_of_unit_count: Optional[Union[str, Tuple[str]]] = None,
     ) -> None:
-        """
+        """Measures and logs a time delta value under `key` when used with a with-block.
+
+        Additionally measures and logs the throughput for the timed code, iff
+        `log_throughput=True` and `throughput_key_for_unit_count` is provided.
+
+        .. testcode::
+
+            from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
+
 
         Args:
-            key:
+            key: The key (or tuple of keys) to log the measured time delta under.
             reduce: The reduction method to apply, once `self.reduce()` is called.
                 If None, will collect all logged values under `key` in a list (and
                 also return that list upon calling `self.reduce()`).
@@ -246,11 +291,17 @@ class MetricsLogger:
             reset_on_reduce = True
 
         if key not in self.stats:
+            measure_throughput = None
+            if throughput_key_of_unit_count is not None:
+                measure_throughput = True
+                throughput_key = throughput_key or (key + "_throughput_per_s")
+
             self.stats[key] = Stats(
                 reduce=reduce,
                 window=window,
                 ema_coeff=ema_coeff,
                 reset_on_reduce=reset_on_reduce,
+                on_exit=lambda stats: self.log_value(throughput_key, self.get(throughput_key_of_unit_count), reduce=reduce, window=window, ema_coeff=ema_coeff, reset_on_reduce=reset_on_reduce),
             )
 
         # Return the Stats object, so a `with` clause can enter and exit it.
