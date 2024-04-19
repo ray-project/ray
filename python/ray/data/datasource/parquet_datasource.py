@@ -120,24 +120,6 @@ class _SerializedFragment:
         return file_format.make_fragment(path, filesystem, partition_expression)
 
 
-class _SerializedFragmentMetadata:
-    def __init__(self, fragment_metadata: "pyarrow.parquet.FileMetaData"):
-        import io
-
-        # FileMetadata doesn't have a built-in __hash__ or serialization method,
-        # so we use the write_metadata_file() method to write to a buffer,
-        # then read back from the buffer later to pass directly into pq.read_metadata().
-        metadata_buffer = io.BytesIO()
-        fragment_metadata.write_metadata_file(metadata_buffer)
-        self._data = cloudpickle.dumps(metadata_buffer)
-
-    def deserialize(self) -> "pyarrow.parquet.FileMetaData":
-        import pyarrow.parquet as pq
-
-        metadata_readback = cloudpickle.loads(self._data)
-        return pq.read_metadata(metadata_readback)
-
-
 # Visible for test mocking.
 def _deserialize_fragments(
     serialized_fragments: List[_SerializedFragment],
@@ -145,12 +127,19 @@ def _deserialize_fragments(
     return [p.deserialize() for p in serialized_fragments]
 
 
-def _deserialize_fragment_metadata(
-    serialized_metadata: Optional[List[_SerializedFragmentMetadata]],
-) -> List["pyarrow.parquet.FileMetadata"]:
-    if not serialized_metadata:
-        return []
-    return [p.deserialize() for p in serialized_metadata]
+class ParquetFileFragmentMetaData:
+    def __init__(self, fragment_metadata: "pyarrow.parquet.FileMetaData"):
+        self.created_by = fragment_metadata.created_by
+        self.format_version = fragment_metadata.format_version
+        self.num_columns = fragment_metadata.num_columns
+        self.num_row_groups = fragment_metadata.num_row_groups
+        self.num_rows = fragment_metadata.num_rows
+        self.serialized_size = fragment_metadata.serialized_size
+
+        self.total_byte_size = 0
+        for row_group_idx in range(fragment_metadata.num_row_groups):
+            row_group_metadata = fragment_metadata.row_group(row_group_idx)
+            self.total_byte_size += row_group_metadata.total_byte_size
 
 
 @PublicAPI
@@ -283,35 +272,13 @@ class ParquetDatasource(Datasource):
                     "scheduling_strategy"
                 ] = DataContext.get_current().scheduling_strategy
 
-            metadata_list = meta_provider.prefetch_file_metadata(
-                pq_ds.fragments, **prefetch_remote_args
+            raw_metadata = (
+                meta_provider.prefetch_file_metadata(
+                    pq_ds.fragments, **prefetch_remote_args
+                )
+                or []
             )
-            # Mapping of unique metadata objects ->
-            # set(fragment indices with that metadata)
-            self._unique_metadata = {}
-            # List of metadata objects corresponding to each fragment. References
-            # common metadata objects stored in self._unique_metadata in order to
-            # conserve memory by deduplicating common metadata objects across
-            # multiple fragments.
-            self._metadata = []
-
-            if metadata_list:
-                self._metadata = [None for _ in range(len(metadata_list))]
-                for fragment_idx, fragment_md in enumerate(metadata_list):
-                    # pyarrow.parquet.FileMetaData is not hashable, so we need to
-                    # serialize it to compare equality and store in dict.
-                    fragment_md = _SerializedFragmentMetadata(fragment_md)
-                    md_exists = False
-                    for unique_md, md_indices in self._unique_metadata.items():
-                        if fragment_md == unique_md:
-                            self._metadata[fragment_idx] = unique_md
-                            md_indices.add(fragment_idx)
-                            md_exists = True
-                            break
-                    if not md_exists:
-                        self._unique_metadata[fragment_md] = (fragment_idx,)
-                        self._metadata[fragment_idx] = fragment_md
-
+            self._metadata = self._dedupe_metadata(raw_metadata)
         except OSError as e:
             _handle_read_os_error(e, paths)
 
@@ -335,12 +302,35 @@ class ParquetDatasource(Datasource):
         if shuffle == "files":
             self._file_metadata_shuffler = np.random.default_rng()
 
+    def _dedupe_metadata(
+        self,
+        raw_metadatas: List["pyarrow.parquet.FileMetaData"],
+    ) -> List[ParquetFileFragmentMetaData]:
+        self._schema_to_id = {}  # schema_id -> serialized_schema
+        self._id_to_schema = {}  # serialized_schema -> schema_id
+        stripped_metadatas = []
+        self._stripped_md_to_unique_schema = []
+        num_unique_schema = 0
+        for fragment_metadata in raw_metadatas:
+            schema_ser = cloudpickle.dumps(fragment_metadata.schema.to_arrow_schema())
+            if schema_ser not in self._schema_to_id:
+                self._schema_to_id[schema_ser] = num_unique_schema
+                self._id_to_schema[num_unique_schema] = schema_ser
+                self._stripped_md_to_unique_schema.append(num_unique_schema)
+                num_unique_schema += 1
+            else:
+                schema_id = self._schema_to_id.get(schema_ser)
+                existing_schema_ser = self._id_to_schema[schema_id]
+                self._stripped_md_to_unique_schema.append(existing_schema_ser)
+
+            stripped_md = ParquetFileFragmentMetaData(fragment_metadata)
+            stripped_metadatas.append(stripped_md)
+        return stripped_metadatas
+
     def estimate_inmemory_data_size(self) -> Optional[int]:
         total_size = 0
-        for file_metadata in _deserialize_fragment_metadata(self._metadata):
-            for row_group_idx in range(file_metadata.num_row_groups):
-                row_group_metadata = file_metadata.row_group(row_group_idx)
-                total_size += row_group_metadata.total_byte_size
+        for file_metadata in self._metadata:
+            total_size += file_metadata.total_byte_size
         return total_size * self._encoding_ratio
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
@@ -348,7 +338,7 @@ class ParquetDatasource(Datasource):
         # method in order to leverage pyarrow's ParquetDataset abstraction,
         # which simplifies partitioning logic. We still use
         # FileBasedDatasource's write side, however.
-        pq_metadata = _deserialize_fragment_metadata(self._metadata)
+        pq_metadata = self._metadata
         if len(pq_metadata) < len(self._pq_fragments):
             # Pad `pq_metadata` to be same length of `self._pq_fragments`.
             # This can happen when no file metadata being prefetched.

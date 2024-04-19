@@ -304,10 +304,7 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
             # BlockMetadata.
             block_metadata = BlockMetadata(
                 num_rows=sum(m.num_rows for m in prefetched_metadata),
-                size_bytes=sum(
-                    sum(m.row_group(i).total_byte_size for i in range(m.num_row_groups))
-                    for m in prefetched_metadata
-                ),
+                size_bytes=sum(m.total_byte_size for m in prefetched_metadata),
                 schema=schema,
                 input_files=paths,
                 exec_stats=None,
