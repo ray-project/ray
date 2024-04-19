@@ -16,7 +16,7 @@ examples:
     use_cases:
       - computer vision
     link: examples/lightning/lightning_mnist_example
-  - title: Train a text classifier with HuggingFace Accelerate
+  - title: Train a text classifier with Hugging Face Accelerate
     frameworks:
       - accelerate
       - pytorch
@@ -79,7 +79,7 @@ examples:
     use_cases:
       - natural language processing
     link: examples/lightning/lightning_cola_advanced
-  - title: Train a text classifier with HuggingFace Transformers
+  - title: Train a text classifier with Hugging Face Transformers
     frameworks:
       - transformers
     skill_level: intermediate
@@ -87,7 +87,7 @@ examples:
       - natural language processing
     link: examples/transformers/huggingface_text_classification
 
-  - title: Fine-tune Llama-2 text generation models with Deepspeed and HuggingFace Accelerate
+  - title: Fine-tune a Llama-2 text generation models with DeepSpeed and Hugging Face Accelerate
     frameworks:
       - accelerate
       - deepspeed
@@ -97,7 +97,7 @@ examples:
       - natural language processing
       - large language models
     link: https://github.com/ray-project/ray/tree/master/doc/source/templates/04_finetuning_llms_with_deepspeed
-  - title: Fine-tune GPT-J-6B text generation model with Deepspeed and HuggingFace Transformers
+  - title: Fine-tune a GPT-J-6B text generation model with DeepSpeed and Hugging Face Transformers
     frameworks:
       - hugging face
       - deepspeed
@@ -107,7 +107,7 @@ examples:
       - large language models
       - generative ai
     link: examples/deepspeed/gptj_deepspeed_fine_tuning
-  - title: Fine-tune vicuna-13b text generation model with PyTorch Lightning and DeepSpeed
+  - title: Fine-tune a vicuna-13b text generation model with PyTorch Lightning and DeepSpeed
     frameworks:
       - lightning
       - deepspeed
@@ -116,7 +116,7 @@ examples:
       - large language models
       - generative ai
     link: examples/lightning/vicuna_13b_lightning_deepspeed_finetune
-  - title: Fine-tune dolly-v2-7b text generation model with PyTorch Lightning and FSDP
+  - title: Fine-tune a dolly-v2-7b text generation model with PyTorch Lightning and FSDP
     frameworks:
       - lightning
     skill_level: advanced
