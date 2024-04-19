@@ -110,9 +110,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--evaluation-parallel-to-training-wo-thread",
-    type=str,
-    default="timesteps",
-    choices=["episodes", "timesteps"],
+    action="store_true",
     help="A debugging setting that disables using a threadpool when evaluating in "
     "parallel to training. Use for testing purposes only!",
 )
