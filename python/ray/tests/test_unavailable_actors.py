@@ -6,34 +6,20 @@ import signal
 
 import ray
 from ray._private.test_utils import close_common_connections
-from ray.tests.conftest import _ray_start
 from ray.exceptions import ActorUnavailableError, ActorDiedError
 from typing import Tuple
 
+"""
+Note on the log_to_driver=False config:
 
-@pytest.fixture
-def ray_start_regular_with_patch(request, maybe_external_redis):
-    """
-    A hotfix about the test environment. This file's tests breaks grpc connections
-    which triggers a certain MacOS gRPC bug. Specifically, on MacOS, we have a
-    thread `worker.logger_thread` that polls GCS in a loop for logs. On `ray.shutdown()`
-    we invoke gRPC `grpc::ClientContext::TryCancel` but the thread still hangs in
-    `poll`. We will investigate more on it, e.g. to add a timeout; before that we skip
-    the logging.
-    https://github.com/ray-project/ray/issues/44836
-    """
-    param = getattr(request, "param", {})
-    if sys.platform == "darwin":
-        param["log_to_driver"] = False
-    elif sys.platform == "win32":
-        pytest.skip("Doesn't work on windows")
-    elif sys.platform == "linux":
-        pass
-    else:
-        pytest.skip("Unsupported platform")
-
-    with _ray_start(**param) as res:
-        yield res
+A hotfix about the test environment. This file's tests breaks grpc connections
+which triggers a certain MacOS gRPC bug. Specifically, on MacOS, we have a
+thread `worker.logger_thread` that polls GCS in a loop for logs. On `ray.shutdown()`
+we invoke gRPC `grpc::ClientContext::TryCancel` but the thread still hangs in
+`poll`. We will investigate more on it, e.g. to add a timeout; before that we skip
+the logging.
+https://github.com/ray-project/ray/issues/44836
+"""
 
 
 @ray.remote
@@ -90,6 +76,7 @@ def sigkill_actor(actor):
     print(f"killing actor {actor}'s process {pid}")
     os.kill(pid, signal.SIGKILL)
 
+
 @pytest.mark.parametrize(
     "caller",
     ["actor", "task", "driver"],
@@ -130,7 +117,9 @@ def test_generators_early_stop_unavailable(ray_start_regular, caller):
     "caller",
     ["actor", "task", "driver"],
 )
-def test_actor_unavailable_conn_broken(ray_start_regular_with_patch, caller):
+@pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
+@pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
+def test_actor_unavailable_conn_broken(ray_start_regular, caller):
     def body():
         a = Counter.remote()
         assert ray.get(a.slow_increment.remote(2, 0.1)) == 2
@@ -165,7 +154,9 @@ def test_actor_unavailable_conn_broken(ray_start_regular_with_patch, caller):
     "caller",
     ["actor", "task", "driver"],
 )
-def test_actor_unavailable_restarting(ray_start_regular_with_patch, caller):
+@pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
+@pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
+def test_actor_unavailable_restarting(ray_start_regular, caller):
     def body():
         a = Counter.options(max_restarts=1).remote(init_time_s=5)
         assert ray.get(a.slow_increment.remote(2, 0.1)) == 2
@@ -200,7 +191,9 @@ def test_actor_unavailable_restarting(ray_start_regular_with_patch, caller):
     "caller",
     ["actor", "task", "driver"],
 )
-def test_actor_unavailable_norestart(ray_start_regular_with_patch, caller):
+@pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
+@pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
+def test_actor_unavailable_norestart(ray_start_regular, caller):
     def body():
         a = Counter.remote()
         assert ray.get(a.read.remote()) == 0
@@ -246,7 +239,9 @@ class SlowCtor:
         return os.getpid()
 
 
-def test_unavailable_then_actor_error(ray_start_regular_with_patch):
+@pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
+@pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
+def test_unavailable_then_actor_error(ray_start_regular):
     c = Counter.remote()
     # Restart config:
     # Initial run, Restart #1: ok.
@@ -282,7 +277,9 @@ def test_unavailable_then_actor_error(ray_start_regular_with_patch):
         print(ray.get(a.ping.remote("actor error")))
 
 
-def test_inf_task_retries(ray_start_regular_with_patch):
+@pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
+@pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
+def test_inf_task_retries(ray_start_regular):
     c = Counter.remote()
     # The actor spends 2s in the init.
     # Initial start and restart #1 succeeds, but restarts #2, #3, #4 fails. Then all
