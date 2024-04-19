@@ -12,6 +12,7 @@ from ray.anyscale._private.constants import ANYSCALE_RAY_NODE_AVAILABILITY_ZONE_
 from ray.anyscale.serve._private.constants import (
     ANYSCALE_RAY_SERVE_COMPACTION_TIMEOUT_S,
 )
+from ray.serve import metrics
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.constants import (
@@ -24,6 +25,7 @@ from ray.serve._private.deployment_scheduler import (
     ReplicaSchedulingRequest,
     Resources,
 )
+from ray.serve._private.usage import ServeUsageTag
 from ray.util.scheduling_strategies import In
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -100,8 +102,16 @@ class AnyscaleDeploymentScheduler(DeploymentScheduler):
         # reconcile the deployments towards a healthy state, then
         # re-identify new compaction opportunities.
         self._compacting_node: Optional[CompactingNodeInfo] = None
-        self._failed_compaction_counter: int = 0
+        # The number of consecutive failed compaction attempts since
+        # the last successful compaction
+        self._num_consecutive_failed_compactions: int = 0
         self._next_allowed_compaction_timestamp_s: float = 0
+
+        self._num_succeeded_compactions: int = 0
+        self._num_compacted_nodes_counter = metrics.Counter(
+            "serve_num_compacted_nodes",
+            description="The number of nodes that have been compacted.",
+        )
 
     def schedule(
         self,
@@ -386,13 +396,15 @@ class AnyscaleDeploymentScheduler(DeploymentScheduler):
                 f"have been scheduled on {target_node}: {new_replicas}."
             )
             self._compacting_node = None
-            self._failed_compaction_counter += 1
-            backoff_s = min(2 ** (self._failed_compaction_counter), MAX_BACKOFF_TIME_S)
+            self._num_consecutive_failed_compactions += 1
+            backoff_s = min(
+                2 ** (self._num_consecutive_failed_compactions), MAX_BACKOFF_TIME_S
+            )
             self._next_allowed_compaction_timestamp_s = time.time() + backoff_s
-            if self._failed_compaction_counter >= 2:
+            if self._num_consecutive_failed_compactions >= 2:
                 logger.info(
-                    f"Compaction failed {self._failed_compaction_counter} times in a "
-                    f"row. Retrying after {backoff_s} seconds."
+                    f"Compaction failed {self._num_consecutive_failed_compactions} "
+                    f"times in a row. Retrying after {backoff_s} seconds."
                 )
 
         # If all replicas have migrated off of the node, compaction is
@@ -400,8 +412,15 @@ class AnyscaleDeploymentScheduler(DeploymentScheduler):
         elif len(current_replicas_on_target_compact) == 0:
             logger.info(f"Successfully migrated replicas off of {target_node}.")
             self._compacting_node = None
-            self._failed_compaction_counter = 0
+            self._num_consecutive_failed_compactions = 0
             self._next_allowed_compaction_timestamp_s = 0
+
+            # Record number of successful node compactions
+            self._num_succeeded_compactions += 1
+            self._num_compacted_nodes_counter.inc()
+            ServeUsageTag.NUM_NODE_COMPACTIONS.record(
+                str(self._num_succeeded_compactions)
+            )
 
         # If we have been trying to compact the node for too long and
         # still haven't succeeded in making the target node idle, then
@@ -418,13 +437,15 @@ class AnyscaleDeploymentScheduler(DeploymentScheduler):
                 f"{target_node}: {current_replicas_on_target_compact}."
             )
             self._compacting_node = None
-            self._failed_compaction_counter += 1
-            backoff_s = min(2 ** (self._failed_compaction_counter), MAX_BACKOFF_TIME_S)
+            self._num_consecutive_failed_compactions += 1
+            backoff_s = min(
+                2 ** (self._num_consecutive_failed_compactions), MAX_BACKOFF_TIME_S
+            )
             self._next_allowed_compaction_timestamp_s = time.time() + backoff_s
-            if self._failed_compaction_counter >= 2:
+            if self._num_consecutive_failed_compactions >= 2:
                 logger.debug(
-                    f"Compaction failed {self._failed_compaction_counter} times in a "
-                    f"row. Retrying after {backoff_s} seconds."
+                    f"Compaction failed {self._num_consecutive_failed_compactions} "
+                    f"times in a row. Retrying after {backoff_s} seconds."
                 )
 
         else:
