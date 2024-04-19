@@ -26,6 +26,8 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     import pyarrow
 
+    from ray.data.datasource.parquet_datasource import _ParquetFileFragmentMetaData
+
 
 logger = logging.getLogger(__name__)
 
@@ -293,7 +295,7 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
         schema: Optional[Union[type, "pyarrow.lib.Schema"]],
         *,
         num_fragments: int,
-        prefetched_metadata: Optional[List["pyarrow.parquet.FileMetaData"]],
+        prefetched_metadata: Optional[List["_ParquetFileFragmentMetaData"]],
     ) -> BlockMetadata:
         if (
             prefetched_metadata is not None
