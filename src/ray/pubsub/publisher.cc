@@ -232,11 +232,22 @@ bool SubscriptionIndex::CheckNoLeaks() const {
 std::unique_ptr<EntityState> SubscriptionIndex::CreateEntityState() {
   switch (channel_type_) {
   case rpc::ChannelType::RAY_ERROR_INFO_CHANNEL:
-  case rpc::ChannelType::RAY_LOG_CHANNEL: {
+  case rpc::ChannelType::RAY_LOG_CHANNEL:
+  case rpc::ChannelType::RAY_NODE_RESOURCE_USAGE_CHANNEL:
     return std::make_unique<CappedEntityState>();
-  }
-  default:
+
+  case rpc::ChannelType::WORKER_OBJECT_EVICTION:
+  case rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL:
+  case rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL:
+  case rpc::ChannelType::GCS_ACTOR_CHANNEL:
+  case rpc::ChannelType::GCS_JOB_CHANNEL:
+  case rpc::ChannelType::GCS_NODE_INFO_CHANNEL:
+  case rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL:
     return std::make_unique<BasicEntityState>();
+
+  default:
+    RAY_LOG(FATAL) << "Unexpected channel type: " << rpc::ChannelType_Name(channel_type_);
+    return nullptr;
   }
 }
 
