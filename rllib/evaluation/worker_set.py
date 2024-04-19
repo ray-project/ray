@@ -366,22 +366,32 @@ class WorkerSet:
     @DeveloperAPI
     def sync_env_runner_states(
         self,
+        config: "AlgorithmConfig",
         from_worker: Optional[EnvRunner] = None,
         env_steps_sampled: Optional[int] = None,
-        timeout_s: Optional[float] = None,
     ) -> None:
         """Synchronizes the connectors of this WorkerSet's EnvRunners.
 
         The exact procedure works as follows:
-        - Get all remote EnvRunners' ConnectorV2 states.
-        - Merge them into a resulting state.
+        - If `from_worker` is None, set `from_worker=self.local_worker()`.
+        - If `config.use_worker_filter_stats` is True, gather all remote EnvRunners'
+        ConnectorV2 states. Otherwise, only use the ConnectorV2 states of `from_worker`.
+        - Merge all gathered states into one resulting state.
         - Broadcast the resulting state back to all remote EnvRunners AND the local
         EnvRunner.
 
         Args:
-            from_worker: The EnvRunner from which to synch. If None, will try to use the
-                local worker of this WorkerSet.
+            config: The AlgorithmConfig object to use to determine, in which
+                direction(s) we need to synch and what the timeouts are.
+            from_worker: The EnvRunner from which to synch. If None, will use the local
+                worker of this WorkerSet.
+            env_steps_sampled: The total number of env steps taken thus far by all
+                workers combined. Used to broadcast this number to all remote workers
+                if `update_worker_filter_stats` is True in `config`.
         """
+        local_worker = self.local_worker()
+        from_worker = from_worker or local_worker
+
         # Early out if the number of (healthy) remote workers is 0. In this case, the
         # local worker is the only operating worker and thus of course always holds
         # the reference connector state.
@@ -390,26 +400,40 @@ class WorkerSet:
                 self.local_worker().global_num_env_steps_sampled = env_steps_sampled
             return
 
-        from_worker = from_worker or self.local_worker()
+        # Also early out, if we a) don't use the remote states AND b) don't want to
+        # broadcast back from `from_worker` to all remote workers.
+        # TODO (sven): Rename these to proper "..env_runner_states.." containing names.
+        if not config.update_worker_filter_stats and not config.use_worker_filter_stats:
+            return
 
         env_runner_states = {}
-        connector_states = self.foreach_worker(
-            lambda w: (w._env_to_module.get_state(), w._module_to_env.get_state()),
-            healthy_only=True,
-            local_worker=False,
-            timeout_seconds=timeout_s,
-        )
-        env_to_module_states = [s[0] for s in connector_states]
-        module_to_env_states = [s[1] for s in connector_states]
+        # Use states from all remote EnvRunners.
+        if config.use_worker_filter_stats:
+            connector_states = self.foreach_worker(
+                lambda w: (w._env_to_module.get_state(), w._module_to_env.get_state()),
+                healthy_only=True,
+                local_worker=False,
+                timeout_seconds=config.sync_filters_on_rollout_workers_timeout_s,
+            )
+            env_to_module_states = [s[0] for s in connector_states]
+            module_to_env_states = [s[1] for s in connector_states]
 
-        env_runner_states["connector_states"] = {
-            "env_to_module_states": from_worker._env_to_module.merge_states(
-                env_to_module_states
-            ),
-            "module_to_env_states": from_worker._module_to_env.merge_states(
-                module_to_env_states
-            ),
-        }
+            env_runner_states["connector_states"] = {
+                "env_to_module_states": local_worker._env_to_module.merge_states(
+                    env_to_module_states
+                ),
+                "module_to_env_states": local_worker._module_to_env.merge_states(
+                    module_to_env_states
+                ),
+            }
+        # Ignore states from remote EnvRunners (use the current `from_worker` states
+        # only).
+        else:
+            env_runner_states["connector_states"] = {
+                "env_to_module_states": from_worker._env_to_module.get_state(),
+                "module_to_env_states": from_worker._module_to_env.get_state(),
+            }
+
         # Update the global number of environment steps, if necessary.
         if env_steps_sampled:
             env_runner_states["env_steps_sampled"] = env_steps_sampled
@@ -433,12 +457,21 @@ class WorkerSet:
                 ]
 
         # Broadcast updated states back to all workers (including the local one).
-        self.foreach_worker(
-            _update,
-            local_worker=True,
-            healthy_only=True,
-            timeout_seconds=timeout_s,
-        )
+        if config.update_worker_filter_stats:
+            self.foreach_worker(
+                _update,
+                local_worker=True,
+                healthy_only=True,
+                timeout_seconds=config.sync_filters_on_rollout_workers_timeout_s,
+            )
+        # Update only the local_worker. Why don't we use `from_worker` here (assuming
+        # it's different from the local worker)? B/c we want to use this utility as
+        # a means to update the local worker of WorkerSet A from another
+        # WorkerSet B (for example synching eval EnvRunners from training EnvRunners).
+        # In other words, if `from_worker` != local worker, `from_worker`'s state will
+        # not be altered by this method, no matter what.
+        else:
+            _update(self.local_worker())
 
     @DeveloperAPI
     def sync_weights(

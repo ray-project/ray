@@ -3,7 +3,6 @@ import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Set
 
-from ray.serve._private.autoscaling_policy import AutoscalingPolicyManager
 from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
@@ -16,6 +15,7 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
+from ray.serve._private.utils import get_capacity_adjusted_num_replicas
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -92,14 +92,11 @@ class AutoscalingState:
         self._replica_requests: Dict[ReplicaID, ReplicaMetricReport] = dict()
 
         self._deployment_info = None
-        self._autoscaling_policy_manager = None
+        self._config = None
+        self._policy = None
         self._running_replicas: List[ReplicaID] = []
         self._target_capacity: Optional[float] = None
         self._target_capacity_direction: Optional[TargetCapacityDirection] = None
-
-    @property
-    def autoscaling_policy_manager(self) -> AutoscalingPolicyManager:
-        return self._autoscaling_policy_manager
 
     def register(
         self, info: DeploymentInfo, curr_target_num_replicas: Optional[int] = None
@@ -115,11 +112,33 @@ class AutoscalingState:
             target_num_replicas = curr_target_num_replicas
 
         self._deployment_info = info
-        self._autoscaling_policy_manager = AutoscalingPolicyManager(config)
+        self._config = config
+        self._policy = self._config.get_policy()
         self._target_capacity = info.target_capacity
         self._target_capacity_direction = info.target_capacity_direction
+        self._policy_state = {}
 
         return self.apply_bounds(target_num_replicas)
+
+    def get_num_replicas_lower_bound(self):
+        if self._config.initial_replicas is not None and (
+            self._target_capacity_direction == TargetCapacityDirection.UP
+        ):
+            return get_capacity_adjusted_num_replicas(
+                self._config.initial_replicas,
+                self._target_capacity,
+            )
+        else:
+            return get_capacity_adjusted_num_replicas(
+                self._config.min_replicas,
+                self._target_capacity,
+            )
+
+    def get_num_replicas_upper_bound(self):
+        return get_capacity_adjusted_num_replicas(
+            self._config.max_replicas,
+            self._target_capacity,
+        )
 
     def update_running_replica_ids(self, running_replicas: List[ReplicaID]):
         """Update cached set of running replica IDs for this deployment."""
@@ -144,10 +163,9 @@ class AutoscalingState:
         This takes into account target capacity.
         """
 
-        return self.autoscaling_policy_manager.apply_bounds(
-            num_replicas,
-            self._target_capacity,
-            self._target_capacity_direction,
+        return max(
+            self.get_num_replicas_lower_bound(),
+            min(self.get_num_replicas_upper_bound(), num_replicas),
         )
 
     def record_request_metrics_for_replica(
@@ -202,7 +220,7 @@ class AutoscalingState:
         """
 
         timeout_s = max(
-            2 * self.autoscaling_policy_manager.get_metrics_interval_s(),
+            2 * self._config.metrics_interval_s,
             RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
         )
         for handle_id, handle_metric in list(self._handle_requests.items()):
@@ -234,20 +252,32 @@ class AutoscalingState:
                         f"Ongoing requests was: {handle_metric.total_requests}."
                     )
 
-    def get_decision_num_replicas(self, curr_target_num_replicas: int):
+    def get_decision_num_replicas(
+        self, curr_target_num_replicas: int, _skip_bound_check: bool = False
+    ):
         """Decide the target number of replicas to autoscale to.
 
         The decision is based off of the number of requests received
-        for this deployment.
+        for this deployment. After the decision number of replicas is
+        returned by the policy, it is then bounded by the bounds min
+        and max adjusted by the target capacity and returned. If
+        `_skip_bound_check` is True, then the bounds are not applied.
         """
 
-        return self.autoscaling_policy_manager.get_decision_num_replicas(
+        decision_num_replicas = self._policy(
             curr_target_num_replicas=curr_target_num_replicas,
             total_num_requests=self.get_total_num_requests(),
             num_running_replicas=len(self._running_replicas),
-            target_capacity=self._target_capacity,
-            target_capacity_direction=self._target_capacity_direction,
+            config=self._config,
+            capacity_adjusted_min_replicas=self.get_num_replicas_lower_bound(),
+            capacity_adjusted_max_replicas=self.get_num_replicas_upper_bound(),
+            policy_state=self._policy_state,
         )
+
+        if _skip_bound_check:
+            return decision_num_replicas
+
+        return self.apply_bounds(decision_num_replicas)
 
     def get_total_num_requests(self) -> float:
         """Get average total number of requests aggregated over the past
