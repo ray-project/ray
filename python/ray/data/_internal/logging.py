@@ -22,6 +22,26 @@ DEFAULT_CONFIG_PATH = os.path.abspath(
 logging.addLevelName(logging.DEBUG - 1, "TRACE")
 
 
+class HiddenRecordFilter:
+    """Filters out log records with the "hide" attribute set to True.
+
+    This filter allows you to override default logging behavior. For example, if errors
+    are printed by default, and you don't want to print a specific error, you can set
+    the "hide" attribute to avoid printing the message.
+
+    .. testcode::
+
+        import logging
+        logger = logging.getLogger("ray.data.spam")
+
+        # This warning won't be printed to the console.
+        logger.warning("ham", extra={"hide": True})
+    """
+
+    def filter(self, record):
+        return not getattr(record, "hide", False)
+
+
 class SessionFileHandler(logging.Handler):
     """A handler that writes to a log file in the Ray session directory.
 
@@ -57,6 +77,8 @@ class SessionFileHandler(logging.Handler):
         log_directory = get_log_directory()
         if log_directory is None:
             return
+
+        os.makedirs(log_directory, exist_ok=True)
 
         self._path = os.path.join(log_directory, self._filename)
         self._handler = logging.FileHandler(self._path)
@@ -97,4 +119,4 @@ def get_log_directory() -> Optional[str]:
         return None
 
     session_dir = global_node.get_session_dir_path()
-    return os.path.join(session_dir, "logs")
+    return os.path.join(session_dir, "logs", "ray-data")

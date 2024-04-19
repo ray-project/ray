@@ -35,4 +35,45 @@ except ray.exceptions.RayTaskError as e:
     # Exception: the real error
 
 # __task_exceptions_end__
+# __catch_user_exceptions_begin__
+
+class MyException(Exception):
+    ...
+
+@ray.remote
+def raises_my_exc():
+    raise MyException("a user exception")
+try:
+    ray.get(raises_my_exc.remote())
+except MyException as e:
+    print(e)
+    # ray::raises_my_exc() (pid=15329, ip=127.0.0.1)
+    #   File "<$PWD>/task_exceptions.py", line 45, in raises_my_exc
+    #     raise MyException("a user exception")
+    # MyException: a user exception
+
+# __catch_user_exceptions_end__
+# __catch_user_final_exceptions_begin__
+class MyFinalException(Exception):
+    def __init_subclass__(cls, /, *args, **kwargs):
+        raise TypeError("Cannot subclass this little exception class.")
+
+@ray.remote
+def raises_my_final_exc():
+    raise MyFinalException("a *final* user exception")
+try:
+    ray.get(raises_my_final_exc.remote())
+except ray.exceptions.RayTaskError as e:
+    assert isinstance(e.cause, MyFinalException)
+    print(e)
+    # 2024-04-08 21:11:47,417 WARNING exceptions.py:177 -- User exception type <class '__main__.MyFinalException'> in RayTaskError can not be subclassed! This exception will be raised as RayTaskError only. You can use `ray_task_error.cause` to access the user exception. Failure in subclassing: Cannot subclass this little exception class.
+    # ray::raises_my_final_exc() (pid=88226, ip=127.0.0.1)
+    # File "<$PWD>/task_exceptions.py", line 66, in raises_my_final_exc
+    #     raise MyFinalException("a *final* user exception")
+    # MyFinalException: a *final* user exception
+    print(type(e.cause))
+    # <class '__main__.MyFinalException'>
+    print(e.cause)
+    # a *final* user exception
+# __catch_user_final_exceptions_end__
 # fmt: on

@@ -272,8 +272,11 @@ def _calc_mem_per_ray_node(
         available_physical_mem_per_node * DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
     )
 
-    if object_store_bytes > available_shared_mem_per_node:
-        object_store_bytes = available_shared_mem_per_node
+    # If allow Ray using slow storage oas object store,
+    # we don't need to cap object store size by /dev/shm capacity
+    if not os.environ.get("RAY_OBJECT_STORE_ALLOW_SLOW_STORAGE"):
+        if object_store_bytes > available_shared_mem_per_node:
+            object_store_bytes = available_shared_mem_per_node
 
     object_store_bytes_upper_bound = (
         available_physical_mem_per_node

@@ -2851,6 +2851,7 @@ def from_tf(
 @PublicAPI
 def from_torch(
     dataset: "torch.utils.data.Dataset",
+    local_read: bool = False,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from a
     `Torch Dataset <https://pytorch.org/docs/stable/data.html#torch.utils.data.Dataset/>`_.
@@ -2871,18 +2872,26 @@ def from_torch(
 
     Args:
         dataset: A `Torch Dataset`_.
+        local_read: If ``True``, perform the read as a local read.
 
     Returns:
         A :class:`~ray.data.Dataset` containing the Torch dataset samples.
     """  # noqa: E501
 
     # Files may not be accessible from all nodes, run the read task on current node.
-    ray_remote_args = {
-        "scheduling_strategy": NodeAffinitySchedulingStrategy(
-            ray.get_runtime_context().get_node_id(),
-            soft=False,
-        )
-    }
+    ray_remote_args = {}
+    if local_read:
+        ray_remote_args = {
+            "scheduling_strategy": NodeAffinitySchedulingStrategy(
+                ray.get_runtime_context().get_node_id(),
+                soft=False,
+            ),
+            # The user might have initialized Ray to have num_cpus = 0 for the head
+            # node. For a local read we expect the read task to be executed on the
+            # head node, so we should set num_cpus = 0 for the task to allow it to
+            # run regardless of the user's head node configuration.
+            "num_cpus": 0,
+        }
     return read_datasource(
         TorchDatasource(dataset=dataset),
         ray_remote_args=ray_remote_args,
