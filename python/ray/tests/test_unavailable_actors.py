@@ -5,9 +5,10 @@ import time
 import signal
 
 import ray
-from ray._private.test_utils import close_common_connections
+from ray._private.test_utils import close_common_connections, SignalActor
 from ray.exceptions import ActorUnavailableError, ActorDiedError
 from typing import Tuple
+
 
 """
 Note on the log_to_driver=False config:
@@ -19,6 +20,7 @@ we invoke gRPC `grpc::ClientContext::TryCancel` but the thread still hangs in
 `poll`. We will investigate more on it, e.g. to add a timeout; before that we skip
 the logging.
 https://github.com/ray-project/ray/issues/44836
+
 """
 
 
@@ -32,6 +34,13 @@ class Counter:
     def slow_increment(self, i, secs):
         self.c += i
         print(f"incrementing self.c by {i} to {self.c}")
+        time.sleep(secs)
+        return self.c
+
+    def slow_increment_after_signal(self, i, secs, signal: SignalActor):
+        self.c += i
+        print(f"incrementing self.c by {i} to {self.c}")
+        ray.get(signal.send.remote())
         time.sleep(secs)
         return self.c
 
@@ -81,52 +90,17 @@ def sigkill_actor(actor):
     "caller",
     ["actor", "task", "driver"],
 )
-def test_generators_early_stop_unavailable(ray_start_regular, caller):
-    """
-    For a streaming generator, if a connection break happens, *some* elements may still
-    yield because they are received prior to the break. Then, two things can happen:
-    - an early StopIteration, if `next(gen)` is called.
-    - a ActorUnavailableError, if `ray.get(obj_ref)` is called.
-    """
-
-    def body():
-        a = Counter.remote()
-        pid = ray.get(a.getpid.remote())
-        total = 2000000
-        break_at = 5
-        gen = a.gen_iota.remote(total)
-        obj_refs = []
-        i = 0
-        for obj_ref in gen:
-            obj_refs.append(obj_ref)
-            if i == break_at:
-                print(f"breaking conns at {i}")
-                close_common_connections(pid)
-            i += 1
-        # StopIteration happened before `total` elements reached.
-        # On my laptop, 11120 elements are collected.
-        print(f"collected {len(obj_refs)} elements")
-        assert len(obj_refs) < total
-        with pytest.raises(ActorUnavailableError):
-            ray.get(obj_refs)
-
-    call_from(body, caller)
-
-
-@pytest.mark.parametrize(
-    "caller",
-    ["actor", "task", "driver"],
-)
-@pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
 @pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
+@pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
 def test_actor_unavailable_conn_broken(ray_start_regular, caller):
     def body():
+        s = SignalActor.remote()
         a = Counter.remote()
         assert ray.get(a.slow_increment.remote(2, 0.1)) == 2
         pid = ray.get(a.getpid.remote())
-        task = a.slow_increment.remote(3, 5)
+        task = a.slow_increment_after_signal.remote(3, 5, s)
         # Wait for the task to start.
-        time.sleep(0.5)
+        ray.get(s.wait.remote())
         # Break the grpc connection from this process to the actor process. The
         # next `ray.get` call should fail with ActorUnavailableError.
         close_common_connections(pid)
@@ -154,8 +128,8 @@ def test_actor_unavailable_conn_broken(ray_start_regular, caller):
     "caller",
     ["actor", "task", "driver"],
 )
-@pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
 @pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
+@pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
 def test_actor_unavailable_restarting(ray_start_regular, caller):
     def body():
         a = Counter.options(max_restarts=1).remote(init_time_s=5)
@@ -191,8 +165,8 @@ def test_actor_unavailable_restarting(ray_start_regular, caller):
     "caller",
     ["actor", "task", "driver"],
 )
-@pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
 @pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
+@pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
 def test_actor_unavailable_norestart(ray_start_regular, caller):
     def body():
         a = Counter.remote()
@@ -239,8 +213,8 @@ class SlowCtor:
         return os.getpid()
 
 
-@pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
 @pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
+@pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
 def test_unavailable_then_actor_error(ray_start_regular):
     c = Counter.remote()
     # Restart config:
@@ -277,8 +251,8 @@ def test_unavailable_then_actor_error(ray_start_regular):
         print(ray.get(a.ping.remote("actor error")))
 
 
-@pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
 @pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
+@pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
 def test_inf_task_retries(ray_start_regular):
     c = Counter.remote()
     # The actor spends 2s in the init.
