@@ -5,23 +5,9 @@ import time
 import signal
 
 import ray
-from ray._private.test_utils import close_common_connections, SignalActor
+from ray._private.test_utils import close_common_connections
 from ray.exceptions import ActorUnavailableError, ActorDiedError
 from typing import Tuple
-
-
-"""
-Note on the log_to_driver=False config:
-
-A hotfix about the test environment. This file's tests breaks grpc connections
-which triggers a certain MacOS gRPC bug. Specifically, on MacOS, we have a
-thread `worker.logger_thread` that polls GCS in a loop for logs. On `ray.shutdown()`
-we invoke gRPC `grpc::ClientContext::TryCancel` but the thread still hangs in
-`poll`. We will investigate more on it, e.g. to add a timeout; before that we skip
-the logging.
-https://github.com/ray-project/ray/issues/44836
-
-"""
 
 
 @ray.remote
@@ -34,13 +20,6 @@ class Counter:
     def slow_increment(self, i, secs):
         self.c += i
         print(f"incrementing self.c by {i} to {self.c}")
-        time.sleep(secs)
-        return self.c
-
-    def slow_increment_after_signal(self, i, secs, signal: SignalActor):
-        self.c += i
-        print(f"incrementing self.c by {i} to {self.c}")
-        ray.get(signal.send.remote())
         time.sleep(secs)
         return self.c
 
@@ -94,17 +73,14 @@ def sigkill_actor(actor):
 @pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
 def test_actor_unavailable_conn_broken(ray_start_regular, caller):
     def body():
-        s = SignalActor.remote()
         a = Counter.remote()
         assert ray.get(a.slow_increment.remote(2, 0.1)) == 2
         pid = ray.get(a.getpid.remote())
-        task = a.slow_increment_after_signal.remote(3, 5, s)
-        # Wait for the task to start.
-        ray.get(s.wait.remote())
+        task = a.slow_increment.remote(3, 5)
         # Break the grpc connection from this process to the actor process. The
         # next `ray.get` call should fail with ActorUnavailableError.
         close_common_connections(pid)
-        with pytest.raises(ActorUnavailableError, match="Grpc"):
+        with pytest.raises(ActorUnavailableError, match="GrpcUnavailable"):
             ray.get(task)
         # Since the remote() call happens *before* the break, the actor did receive the
         # request, so the side effects are observable, and the actor recovered.
@@ -117,7 +93,7 @@ def test_actor_unavailable_conn_broken(ray_start_regular, caller):
         # itself won't raise an error.
         close_common_connections(pid)
         task2 = a.slow_increment.remote(5, 0.1)
-        with pytest.raises(ActorUnavailableError, match="Grpc"):
+        with pytest.raises(ActorUnavailableError, match="GrpcUnavailable"):
             ray.get(task2)
         assert ray.get(a.read.remote()) == 9
 
@@ -230,7 +206,7 @@ def test_unavailable_then_actor_error(ray_start_regular):
     # calls get ActorUnavailableError.
     sigkill_actor(a)
 
-    with pytest.raises(ActorUnavailableError, match="Grpc"):
+    with pytest.raises(ActorUnavailableError, match="GrpcUnavailable"):
         print(ray.get(a.ping.remote("unavailable")))
     # When the actor is restarting, any method call raises ActorUnavailableError.
     with pytest.raises(ActorUnavailableError, match="The actor is restarting"):
