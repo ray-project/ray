@@ -40,6 +40,8 @@ class XGBoostConfig(BackendConfig):
             with CommunicatorContext():
                 yield
 
+        return collective_communication_context
+
     @property
     def backend_cls(self):
         if self.xgboost_communicator == "rabit":
