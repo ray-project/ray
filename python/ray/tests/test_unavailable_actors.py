@@ -5,7 +5,7 @@ import time
 import signal
 
 import ray
-from ray._private.test_utils import close_common_connections, SignalActor
+from ray._private.test_utils import close_common_connections
 from ray.exceptions import ActorUnavailableError, ActorDiedError
 from typing import Tuple
 
@@ -20,13 +20,6 @@ class Counter:
     def slow_increment(self, i, secs):
         self.c += i
         print(f"incrementing self.c by {i} to {self.c}")
-        time.sleep(secs)
-        return self.c
-
-    def slow_increment_after_signal(self, i, secs, signal: SignalActor):
-        self.c += i
-        print(f"incrementing self.c by {i} to {self.c}")
-        ray.get(signal.send.remote())
         time.sleep(secs)
         return self.c
 
@@ -79,13 +72,10 @@ def sigkill_actor(actor):
 @pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
 def test_actor_unavailable_conn_broken(ray_start_regular, caller):
     def body():
-        s = SignalActor.remote()
         a = Counter.remote()
         assert ray.get(a.slow_increment.remote(2, 0.1)) == 2
         pid = ray.get(a.getpid.remote())
-        task = a.slow_increment_after_signal.remote(3, 5, s)
-        # Wait for the task to start.
-        ray.get(s.wait.remote())
+        task = a.slow_increment.remote(3, 5)
         # Break the grpc connection from this process to the actor process. The
         # next `ray.get` call should fail with ActorUnavailableError.
         close_common_connections(pid)
