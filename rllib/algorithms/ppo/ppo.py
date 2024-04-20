@@ -452,9 +452,15 @@ class PPO(Algorithm):
             # Log lifetime counts for env- and agent steps.
             self.metrics.log_dict(
                 {
-                    NUM_AGENT_STEPS_SAMPLED_LIFETIME: self.metrics.get(ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED),
-                    NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.get(ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED),
-                    NUM_EPISODES_LIFETIME: self.metrics.get(ENV_RUNNER_RESULTS, NUM_EPISODES),
+                    NUM_AGENT_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
+                        ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED
+                    ),
+                    NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
+                        ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED
+                    ),
+                    NUM_EPISODES_LIFETIME: self.metrics.peek(
+                        ENV_RUNNER_RESULTS, NUM_EPISODES
+                    ),
                 },
                 reduce="sum",
             )
@@ -513,7 +519,7 @@ class PPO(Algorithm):
         additional_results = self.learner_group.additional_update(
             module_ids_to_update=policies_to_update,
             sampled_kl_values=kl_dict,
-            timestep=self.metrics.get(NUM_AGENT_STEPS_SAMPLED_LIFETIME),
+            timestep=self.metrics.peek(NUM_AGENT_STEPS_SAMPLED_LIFETIME),
         )
         self.metrics.log_dict(additional_results, key=LEARNER_RESULTS)
 

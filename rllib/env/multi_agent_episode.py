@@ -1,5 +1,6 @@
 from collections import defaultdict
 import copy
+import time
 from typing import (
     Any,
     Callable,
@@ -277,6 +278,10 @@ class MultiAgentEpisode:
             [] if render_images is None else render_images
         )
 
+        # Keep timer stats on deltas between steps.
+        self._start_time = None
+        self._last_step_time = None
+
         # Validate ourselves.
         self.validate()
 
@@ -331,6 +336,12 @@ class MultiAgentEpisode:
                 observation=agent_obs,
                 infos=infos.get(agent_id),
             )
+
+        # Validate our data.
+        self.validate()
+
+        # Start the timer for this episode.
+        self._start_time = time.perf_counter()
 
     def add_env_step(
         self,
@@ -615,6 +626,14 @@ class MultiAgentEpisode:
             # (they should be empty at this point anyways).
             if _terminated or _truncated:
                 self._del_hanging(agent_id)
+
+        # Validate our data.
+        self.validate()
+
+        # Step time stats.
+        self._last_step_time = time.perf_counter()
+        if self._start_time is None:
+            self._start_time = self._last_step_time
 
     def validate(self) -> None:
         """Validates the episode's data.
@@ -1793,6 +1812,12 @@ class MultiAgentEpisode:
             their single agent episodes are done or not.
         """
         return set(self.get_observations(-1).keys())
+
+    def get_duration_s(self) -> float:
+        """Returns the duration of this Episode (chunk) in seconds."""
+        if self._last_step_time is None:
+            return 0.0
+        return self._last_step_time - self._start_time
 
     def env_steps(self) -> int:
         """Returns the number of environment steps.

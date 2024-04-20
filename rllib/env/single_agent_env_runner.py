@@ -19,7 +19,9 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
+    NUM_AGENT_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_SAMPLED,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_EPISODES,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
@@ -57,13 +59,6 @@ class SingleAgentEnvRunner(EnvRunner):
         self.num_envs: int = 0
         self.make_env()
 
-        # Global counter for environment steps from all workers. This is
-        # needed for schedulers used by `RLModule`s.
-        self.global_num_env_steps_sampled = 0
-        # Stores the value of `self.global_num_env_steps_sampled` at end of last
-        # `self.get_metrics()` call (so we can compute the env/agent-step delta).
-        self._last_global_num_env_steps_sampled = 0
-
         # Create the env-to-module connector pipeline.
         self._env_to_module = self.config.build_env_to_module_connector(self.env)
         # Cached env-to-module results taken at the end of a `_sample_timesteps()`
@@ -91,11 +86,11 @@ class SingleAgentEnvRunner(EnvRunner):
         except NotImplementedError:
             self.module = None
 
-        # Create a MetricsLogger object for logging custom stats.
-        self.metrics = MetricsLogger()
-
         # Create the two connector pipelines: env-to-module and module-to-env.
         self._module_to_env = self.config.build_module_to_env_connector(self.env)
+
+        # Create a MetricsLogger object for logging custom stats.
+        self.metrics = MetricsLogger()
 
         # This should be the default.
         self._needs_initial_reset: bool = True
@@ -267,7 +262,7 @@ class SingleAgentEnvRunner(EnvRunner):
                 # RLModule forward pass: Explore or not.
                 if explore:
                     to_env = self.module.forward_exploration(
-                        to_module, t=self.global_num_env_steps_sampled
+                        to_module, t=self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME)
                     )
                 else:
                     to_env = self.module.forward_inference(to_module)
@@ -295,7 +290,21 @@ class SingleAgentEnvRunner(EnvRunner):
             obs, actions = unbatch(obs), unbatch(actions)
 
             ts += self.num_envs
-            self.global_num_env_steps_sampled += self.num_envs
+            self.metrics.log_dict(
+                {
+                    NUM_ENV_STEPS_SAMPLED: self.num_envs,
+                    NUM_AGENT_STEPS_SAMPLED: {DEFAULT_AGENT_ID: self.num_envs},
+                },
+                reduce="sum",
+                reset_on_reduce=True,
+            )
+            self.metrics.log_dict(
+                {
+                    NUM_ENV_STEPS_SAMPLED_LIFETIME: self.num_envs,
+                    NUM_AGENT_STEPS_SAMPLED_LIFETIME: {DEFAULT_AGENT_ID: self.num_envs},
+                },
+                reduce="sum",
+            )
 
             for env_index in range(self.num_envs):
                 # TODO (simon): This might be unfortunate if a user needs to set a
@@ -456,7 +465,7 @@ class SingleAgentEnvRunner(EnvRunner):
                 # RLModule forward pass: Explore or not.
                 if explore:
                     to_env = self.module.forward_exploration(
-                        to_module, t=self.global_num_env_steps_sampled
+                        to_module, t=self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME)
                     )
                 else:
                     to_env = self.module.forward_inference(to_module)
@@ -539,7 +548,21 @@ class SingleAgentEnvRunner(EnvRunner):
                         "on_episode_step", env_index, episodes
                     )
             ts += self.num_envs
-            self.global_num_env_steps_sampled += self.num_envs
+            self.metrics.log_dict(
+                {
+                    NUM_ENV_STEPS_SAMPLED: self.num_envs,
+                    NUM_AGENT_STEPS_SAMPLED: {DEFAULT_AGENT_ID: self.num_envs},
+                },
+                reduce="sum",
+                reset_on_reduce=True,
+            )
+            self.metrics.log_dict(
+                {
+                    NUM_ENV_STEPS_SAMPLED_LIFETIME: self.num_envs,
+                    NUM_AGENT_STEPS_SAMPLED_LIFETIME: {DEFAULT_AGENT_ID: self.num_envs},
+                },
+                reduce="sum",
+            )
 
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
 
@@ -591,21 +614,12 @@ class SingleAgentEnvRunner(EnvRunner):
                 reduce="max",
             )
 
-        # Agent- and env timesteps done this iter.
-        # Episodes this iter.
-        num_env_steps_this_iter = (
-            self.global_num_env_steps_sampled - self._last_global_num_env_steps_sampled
-        )
-        self._last_global_num_env_steps_sampled = self.global_num_env_steps_sampled
-        self.metrics.log_dict(
-            {
-                NUM_AGENT_STEPS_SAMPLED: {DEFAULT_AGENT_ID: num_env_steps_this_iter},
-                NUM_ENV_STEPS_SAMPLED: num_env_steps_this_iter,
-                NUM_EPISODES: len(self._done_episodes_for_metrics),
-            },
-            # Sum up over the n episodes that were completed ...
+        # Log num episodes counter for this iteration.
+        self.metrics.log_value(
+            NUM_EPISODES,
+            len(self._done_episodes_for_metrics),
             reduce="sum",
-            # ... but not over lifetime (only over individual sampling cycles).
+            # Reset internal data on `reduce()` call below (not a lifetime count).
             reset_on_reduce=True,
         )
 

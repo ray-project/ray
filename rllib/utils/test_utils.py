@@ -1321,9 +1321,9 @@ def run_rllib_example_script_experiment(
             results = algo.train()
             print(f"R={results['env_runner_results']['episode_return_mean']}", end="")
             if "evaluation" in results:
-                Reval = (
-                    results["evaluation_results"]["env_runner_results"]["episode_return_mean"]
-                )
+                Reval = results["evaluation_results"]["env_runner_results"][
+                    "episode_return_mean"
+                ]
                 print(f" R(eval)={Reval}", end="")
             print()
             for key, value in stop.items():

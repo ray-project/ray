@@ -418,6 +418,11 @@ class AlgorithmConfig(_Config):
         # Cached, actual AlgorithmConfig objects derived from
         # `self.algorithm_config_overrides_per_module`.
         self._per_module_overrides: Dict[ModuleID, "AlgorithmConfig"] = {}
+        # TODO (sven): Prepare multi-agent setup for logging each agent's and each
+        #  RLModule's steps taken thus far (and passing this information into the
+        #  EnvRunner metrics and the RLModule's forward pass). Thereby, deprecate the
+        #  `count_steps_by` config setting AND - at the same time - allow users to
+        #  specify the batch size unit instead (agent- vs env steps).
         self.count_steps_by = "env_steps"
         # self.agent_to_module_mapping_fn = self.DEFAULT_AGENT_TO_MODULE_MAPPING_FN
         # Soon to be Deprecated.

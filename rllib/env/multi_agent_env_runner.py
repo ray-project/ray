@@ -14,9 +14,16 @@ from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.env.utils import _gym_env_creator
-from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import EpisodeID, ModelWeights
+from ray.rllib.utils.metrics import (
+    NUM_AGENT_STEPS_SAMPLED,
+    NUM_AGENT_STEPS_SAMPLED_LIFETIME,
+    NUM_ENV_STEPS_SAMPLED,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+    NUM_EPISODES,
+)
+from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
+from ray.rllib.utils.typing import EpisodeID, ModelWeights, ResultDict
 from ray.util.annotations import PublicAPI
 from ray.tune.registry import ENV_CREATOR, _global_registry
 
@@ -57,10 +64,6 @@ class MultiAgentEnvRunner(EnvRunner):
         self.num_envs: int = 0
         self.make_env()
 
-        # Global counter for environment steps from all workers. This is
-        # needed for schedulers used by `RLModule`s.
-        self.global_num_env_steps_sampled = 0
-
         # Create the env-to-module connector pipeline.
         self._env_to_module = self.config.build_env_to_module_connector(self.env)
         # Cached env-to-module results taken at the end of a `_sample_timesteps()`
@@ -79,14 +82,14 @@ class MultiAgentEnvRunner(EnvRunner):
         # Create the two connector pipelines: env-to-module and module-to-env.
         self._module_to_env = self.config.build_module_to_env_connector(self.env)
 
+        # Set up all metrics-related structures and counters.
+        self.metrics: Optional[MetricsLogger] = None
+        self._setup_metrics()
+
         self._needs_initial_reset: bool = True
         self._episode: Optional[MultiAgentEpisode] = None
         self._shared_data = None
 
-        self._done_episodes_for_metrics: List[MultiAgentEpisode] = []
-        self._ongoing_episodes_for_metrics: DefaultDict[
-            EpisodeID, List[MultiAgentEpisode]
-        ] = defaultdict(list)
         self._weights_seq_no: int = 0
 
     @override(EnvRunner)
@@ -158,7 +161,11 @@ class MultiAgentEnvRunner(EnvRunner):
             )
 
         # Make the `on_sample_end` callback.
-        self._callbacks.on_sample_end(env_runner=self, samples=samples)
+        self._callbacks.on_sample_end(
+            env_runner=self,
+            metrics_logger=self.metrics,
+            samples=samples,
+        )
 
         return samples
 
@@ -255,7 +262,7 @@ class MultiAgentEnvRunner(EnvRunner):
                 # MARLModule forward pass: Explore or not.
                 if explore:
                     to_env = self.module.forward_exploration(
-                        to_module, t=self.global_num_env_steps_sampled + ts
+                        to_module, t=self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME)
                     )
                 else:
                     to_env = self.module.forward_inference(to_module)
@@ -283,17 +290,24 @@ class MultiAgentEnvRunner(EnvRunner):
                 actions_for_env[0]
             )
 
-            # TODO (sven, simon): We have to record these steps somewhere.
-            # TODO: Refactor into multiagent-episode sth. like `get_agent_steps()`.
-            # TODO: When env is vectorized, need to change this to:
-            #  env_steps += len(obs)  # <- vectorized observations
-            #  agent_steps += sum([len(obs) for o in obs])
-            # We count by environment steps ..
-            if self.config.count_steps_by == "env_steps":
-                ts += 1
-            # .. or by agent steps.
-            else:
-                ts += len(obs)
+            ts += self.num_envs
+            self.metrics.log_dict(
+                {
+                    NUM_ENV_STEPS_SAMPLED: self.num_envs,
+                    # TODO (sven): obs is not-vectorized. Support vectorized MA envs.
+                    NUM_AGENT_STEPS_SAMPLED: {aid: 1 for aid in obs},
+                },
+                reduce="sum",
+                reset_on_reduce=True,
+            )
+            self.metrics.log_dict(
+                {
+                    NUM_ENV_STEPS_SAMPLED_LIFETIME: self.num_envs,
+                    # TODO (sven): obs is not-vectorized. Support vectorized MA envs.
+                    NUM_AGENT_STEPS_SAMPLED_LIFETIME: {aid: 1 for aid in obs},
+                },
+                reduce="sum",
+            )
 
             # TODO (sven): This simple approach to re-map `to_env` from a
             #  dict[col, List[MADict]] to a dict[agentID, MADict] would not work for
@@ -466,7 +480,7 @@ class MultiAgentEnvRunner(EnvRunner):
                 # MARLModule forward pass: Explore or not.
                 if explore:
                     to_env = self.module.forward_exploration(
-                        to_module, t=self.global_num_env_steps_sampled + ts
+                        to_module, t=self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME)
                     )
                 else:
                     to_env = self.module.forward_inference(to_module)
@@ -561,51 +575,106 @@ class MultiAgentEnvRunner(EnvRunner):
 
                 # Make `on_episode_start` callback.
                 self._make_on_episode_callback("on_episode_start", _episode)
-            ts += 1
+            ts += self.num_envs
+            self.metrics.log_dict(
+                {
+                    NUM_ENV_STEPS_SAMPLED: self.num_envs,
+                    # TODO (sven): obs is not-vectorized. Support vectorized MA envs.
+                    NUM_AGENT_STEPS_SAMPLED: {aid: 1 for aid in obs},
+                },
+                reduce="sum",
+                reset_on_reduce=True,
+            )
+            self.metrics.log_dict(
+                {
+                    NUM_ENV_STEPS_SAMPLED_LIFETIME: self.num_envs,
+                    # TODO (sven): obs is not-vectorized. Support vectorized MA envs.
+                    NUM_AGENT_STEPS_SAMPLED_LIFETIME: {aid: 1 for aid in obs},
+                },
+                reduce="sum",
+            )
 
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
 
         return done_episodes_to_return
 
-    # TODO (sven): Remove the requirement for EnvRunners to have this
-    #  API. Instead Algorithm should compile episode metrics itself via its local
-    #  buffer.
-    def get_metrics(self) -> List[RolloutMetrics]:
+    def get_metrics(self) -> ResultDict:
         # Compute per-episode metrics (only on already completed episodes).
-        metrics = []
         for eps in self._done_episodes_for_metrics:
             assert eps.is_done
             episode_length = len(eps)
-            episode_reward = eps.get_return()
-            module_rewards = defaultdict(
+            episode_return = eps.get_return()
+            episode_duration_s = eps.get_duration_s()
+
+            agent_episode_returns = defaultdict(
                 float,
                 {
-                    (sa_eps.agent_id, sa_eps.module_id): sa_eps.get_return()
+                    sa_eps.agent_id: sa_eps.get_return()
                     for sa_eps in eps.agent_episodes.values()
                 },
             )
+            module_episode_returns = defaultdict(
+                float,
+                {
+                    sa_eps.module_id: sa_eps.get_return()
+                    for sa_eps in eps.agent_episodes.values()
+                },
+            )
+
             # Don't forget about the already returned chunks of this episode.
             if eps.id_ in self._ongoing_episodes_for_metrics:
                 for eps2 in self._ongoing_episodes_for_metrics[eps.id_]:
+                    return_eps2 = eps2.get_return()
                     episode_length += len(eps2)
-                    episode_reward += eps2.get_return()
+                    episode_return += return_eps2
+                    episode_duration_s += eps2.get_duration_s()
                     for sa_eps in eps2.agent_episodes.values():
-                        module_rewards[
-                            (sa_eps.agent_id, sa_eps.module_id)
-                        ] += eps2.get_return()
+                        agent_episode_returns[sa_eps.agent_id] += return_eps2
+                        module_episode_returns[sa_eps.module_id] += return_eps2
                 del self._ongoing_episodes_for_metrics[eps.id_]
 
-            metrics.append(
-                RolloutMetrics(
-                    episode_length=episode_length,
-                    episode_reward=episode_reward,
-                    agent_rewards=dict(module_rewards),
-                )
+            # Log general episode metrics.
+            self.metrics.log_dict(
+                {
+                    "episode_length_mean": episode_length,
+                    "episode_return_mean": episode_return,
+                    "episode_duration_sec_mean": episode_duration_s,
+                    # Per-agent returns.
+                    "agent_episode_returns_mean": agent_episode_returns,
+                    # Per-RLModule returns.
+                    "module_episode_returns_mean": module_episode_returns,
+                },
+            )
+            # For some metrics, log min/max as well.
+            self.metrics.log_dict(
+                {
+                    "episode_length_min": episode_length,
+                    "episode_return_min": episode_return,
+                },
+                reduce="min",
+            )
+            self.metrics.log_dict(
+                {
+                    "episode_length_max": episode_length,
+                    "episode_return_max": episode_return,
+                },
+                reduce="max",
             )
 
+        # Log num episodes counter for this iteration.
+        self.metrics.log_value(
+            NUM_EPISODES,
+            len(self._done_episodes_for_metrics),
+            reduce="sum",
+            # Reset internal data on `reduce()` call below (not a lifetime count).
+            reset_on_reduce=True,
+        )
+
+        # Now that we have logged everything, clear cache of done episodes.
         self._done_episodes_for_metrics.clear()
 
-        return metrics
+        # Return reduced metrics.
+        return self.metrics.reduce()
 
     # TODO (sven): Remove the requirement for EnvRunners/RolloutWorkers to have this
     #  API. Replace by proper state overriding via `EnvRunner.set_state()`
@@ -766,6 +835,14 @@ class MultiAgentEnvRunner(EnvRunner):
         except NotImplementedError:
             return None
 
+    def _setup_metrics(self):
+        self.metrics = MetricsLogger()
+
+        self._done_episodes_for_metrics: List[MultiAgentEpisode] = []
+        self._ongoing_episodes_for_metrics: DefaultDict[
+            EpisodeID, List[MultiAgentEpisode]
+        ] = defaultdict(list)
+
     def _new_episode(self):
         return MultiAgentEpisode(
             observation_space=self.env.observation_space,
@@ -778,6 +855,7 @@ class MultiAgentEnvRunner(EnvRunner):
         getattr(self._callbacks, which)(
             episode=episode,
             env_runner=self,
+            metrics_logger=self.metrics,
             env=self.env,
             rl_module=self.module,
             env_index=0,

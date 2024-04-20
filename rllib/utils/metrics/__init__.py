@@ -6,7 +6,7 @@ ENV_RUNNER_RESULTS = "env_runner_results"
 LEARNER_RESULTS = "learner_results"
 FAULT_TOLERANCE_STATS = "fault_tolerance_stats"
 TIMERS = "timers"
-#ALGORITHM_RESULTS = "algorithm"
+# ALGORITHM_RESULTS = "algorithm"
 
 # Counters for sampling, sampling (on eval workers) and
 # training steps (env- and agent steps).

@@ -14,7 +14,6 @@ from packaging import version
 import re
 import tempfile
 import time
-import tree  # pip install dm_tree
 from typing import (
     Callable,
     Container,
@@ -55,7 +54,6 @@ from ray.rllib.evaluation.metrics import (
 )
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
-from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
 from ray.rllib.offline import get_dataset_and_shards
 from ray.rllib.offline.estimators import (
     OffPolicyEstimator,
@@ -1576,9 +1574,7 @@ class Algorithm(Trainable, AlgorithmBase):
         train_batch = train_batch.as_multi_agent()
 
         # Reduce EnvRunner metrics over the n EnvRunners.
-        self.metrics.log_n_dicts(
-            key=ENV_RUNNER_RESULTS, stats_dicts=env_runner_metrics
-        )
+        self.metrics.log_n_dicts(key=ENV_RUNNER_RESULTS, stats_dicts=env_runner_metrics)
 
         # Only train if train_batch is not empty.
         # In an extreme situation, all rollout workers die during the
@@ -1586,12 +1582,10 @@ class Algorithm(Trainable, AlgorithmBase):
         # In which case, we should skip training, wait a little bit, then probe again.
         with self.metrics.log_time(LEARNER_UPDATE_TIMER):
             if train_batch.agent_steps() > 0:
-                learner_results = (
-                    self.learner_group.update_from_batch(batch=train_batch)
+                learner_results = self.learner_group.update_from_batch(
+                    batch=train_batch
                 )
-                self.metrics.log_dict(
-                    key=LEARNER_RESULTS, stats_dict=learner_results
-                )
+                self.metrics.log_dict(key=LEARNER_RESULTS, stats_dict=learner_results)
             else:
                 # Wait 1 sec before probing again via weight syncing.
                 time.sleep(1.0)
@@ -3334,9 +3328,7 @@ class Algorithm(Trainable, AlgorithmBase):
             eval_config.evaluation_num_workers > 0 or eval_config.evaluation_interval
         )
 
-    def _compile_iteration_results(
-        self, *, train_results, eval_results, step_ctx
-    ):
+    def _compile_iteration_results(self, *, train_results, eval_results, step_ctx):
         # Return dict (shallow copy of `train_results`).
         results: ResultDict = train_results.copy()
         # Evaluation results.
@@ -3350,8 +3342,8 @@ class Algorithm(Trainable, AlgorithmBase):
         }
 
         # TODO: Backward compatibility.
-        #results[STEPS_TRAINED_THIS_ITER_COUNTER] = step_ctx.trained
-        #results["agent_timesteps_total"] = self._counters[NUM_AGENT_STEPS_SAMPLED]
+        # results[STEPS_TRAINED_THIS_ITER_COUNTER] = step_ctx.trained
+        # results["agent_timesteps_total"] = self._counters[NUM_AGENT_STEPS_SAMPLED]
 
         return tree.map_structure(
             lambda s: s.peek() if isinstance(s, Stats) else s,
