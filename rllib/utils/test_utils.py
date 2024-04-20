@@ -1266,11 +1266,18 @@ def run_rllib_example_script_experiment(
     ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
 
     # Define one or more stopping criteria.
-    stop = stop or {
-        "training_iteration": args.stop_iters,
-        "sampler_results/episode_reward_mean": args.stop_reward,
-        "timesteps_total": args.stop_timesteps,
-    }
+    if not stop:
+        if args.enable_new_api_stack:
+            stop = {
+                "env_runner_results/episode_return_mean": args.stop_reward,
+                "num_env_steps_sampled_lifetime": args.stop_timesteps,
+            }
+        else:
+            stop = {
+                "sampler_results/episode_reward_mean": args.stop_reward,
+                "timesteps_total": args.stop_timesteps,
+            }
+        stop.update({"training_iteration": args.stop_iters})
 
     from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
     from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
@@ -1312,9 +1319,11 @@ def run_rllib_example_script_experiment(
         algo = config.build()
         for _ in range(args.stop_iters):
             results = algo.train()
-            print(f"R={results['sampler_results']['episode_reward_mean']}", end="")
+            print(f"R={results['env_runner_results']['episode_return_mean']}", end="")
             if "evaluation" in results:
-                Reval = results["evaluation"]["sampler_results"]["episode_reward_mean"]
+                Reval = (
+                    results["evaluation_results"]["env_runner_results"]["episode_return_mean"]
+                )
                 print(f" R(eval)={Reval}", end="")
             print()
             for key, value in stop.items():
