@@ -1,9 +1,11 @@
 import json
 import logging
 import os
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 from xgboost import RabitTracker
+from xgboost.collective import CommunicatorContext
 
 import ray
 from ray.train._internal.worker_group import WorkerGroup
@@ -30,6 +32,13 @@ class XGBoostConfig(BackendConfig):
     """
 
     xgboost_communicator: str = "rabit"
+
+    @property
+    def train_func_context(self):
+        @contextmanager
+        def collective_communication_context():
+            with CommunicatorContext():
+                yield
 
     @property
     def backend_cls(self):
