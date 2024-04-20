@@ -110,6 +110,7 @@ from ray.rllib.utils.metrics import (
     SYNCH_ENV_CONNECTOR_STATES_TIMER,
     SYNCH_EVAL_ENV_CONNECTOR_STATES_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
+    TIMERS,
     TRAINING_ITERATION_TIMER,
     TRAINING_STEP_TIMER,
     SAMPLE_TIMER,
@@ -892,7 +893,7 @@ class Algorithm(Trainable, AlgorithmBase):
             # Compile final ResultDict from `train_results` and `eval_results`. Note
             # that, as opposed to the old API stack, EnvRunner stats should already be
             # in `train_results` and `eval_results`.
-            results = self._compile_iteration_results(
+            results = self._compile_iteration_results_new_api_stack(
                 train_results=train_results,
                 eval_results=eval_results,
                 step_ctx=train_iter_ctx,
@@ -1554,7 +1555,7 @@ class Algorithm(Trainable, AlgorithmBase):
             )
 
         # Collect SampleBatches from sample workers until we have a full batch.
-        with self._timers[SAMPLE_TIMER]:
+        with self.metrics.log_time((TIMERS, SAMPLE_TIMER)):
             if self.config.count_steps_by == "agent_steps":
                 train_batch, env_runner_metrics = synchronous_parallel_sample(
                     worker_set=self.workers,
@@ -1580,7 +1581,7 @@ class Algorithm(Trainable, AlgorithmBase):
         # In an extreme situation, all rollout workers die during the
         # synchronous_parallel_sample() call above.
         # In which case, we should skip training, wait a little bit, then probe again.
-        with self.metrics.log_time(LEARNER_UPDATE_TIMER):
+        with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
             if train_batch.agent_steps() > 0:
                 learner_results = self.learner_group.update_from_batch(
                     batch=train_batch
@@ -1592,7 +1593,7 @@ class Algorithm(Trainable, AlgorithmBase):
 
         # Update weights - after learning on the local worker - on all
         # remote workers (only those RLModules that were actually trained).
-        with self.metrics.log_time(SYNCH_WORKER_WEIGHTS_TIMER):
+        with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
             self.workers.sync_weights(
                 from_worker_or_learner_group=self.learner_group,
                 policies=set(learner_results.keys()) - {ALL_MODULES},
@@ -3328,7 +3329,9 @@ class Algorithm(Trainable, AlgorithmBase):
             eval_config.evaluation_num_workers > 0 or eval_config.evaluation_interval
         )
 
-    def _compile_iteration_results(self, *, train_results, eval_results, step_ctx):
+    def _compile_iteration_results_new_api_stack(
+        self, *, train_results, eval_results, step_ctx
+    ):
         # Return dict (shallow copy of `train_results`).
         results: ResultDict = train_results.copy()
         # Evaluation results.
@@ -3340,32 +3343,11 @@ class Algorithm(Trainable, AlgorithmBase):
             "num_in_flight_async_reqs": self.workers.num_in_flight_async_reqs(),
             "num_remote_worker_restarts": self.workers.num_remote_worker_restarts(),
         }
-
-        # TODO: Backward compatibility.
-        # results[STEPS_TRAINED_THIS_ITER_COUNTER] = step_ctx.trained
-        # results["agent_timesteps_total"] = self._counters[NUM_AGENT_STEPS_SAMPLED]
-
+        # Resolve all `Stats` leafs by peeking (get their reduced values).
         return tree.map_structure(
             lambda s: s.peek() if isinstance(s, Stats) else s,
             results,
         )
-
-    def __repr__(self):
-        return type(self).__name__
-
-    def _record_usage(self, config):
-        """Record the framework and algorithm used.
-
-        Args:
-            config: Algorithm config dict.
-        """
-        record_extra_usage_tag(TagKey.RLLIB_FRAMEWORK, config["framework"])
-        record_extra_usage_tag(TagKey.RLLIB_NUM_WORKERS, str(config["num_workers"]))
-        alg = self.__class__.__name__
-        # We do not want to collect user defined algorithm names.
-        if alg not in ALL_ALGORITHMS:
-            alg = "USER_DEFINED"
-        record_extra_usage_tag(TagKey.RLLIB_ALGORITHM, alg)
 
     @OldAPIStack
     def _compile_iteration_results_old_and_hybrid_api_stacks(
@@ -3475,6 +3457,23 @@ class Algorithm(Trainable, AlgorithmBase):
         results["info"].update(counters)
 
         return results
+
+    def __repr__(self):
+        return type(self).__name__
+
+    def _record_usage(self, config):
+        """Record the framework and algorithm used.
+
+        Args:
+            config: Algorithm config dict.
+        """
+        record_extra_usage_tag(TagKey.RLLIB_FRAMEWORK, config["framework"])
+        record_extra_usage_tag(TagKey.RLLIB_NUM_WORKERS, str(config["num_workers"]))
+        alg = self.__class__.__name__
+        # We do not want to collect user defined algorithm names.
+        if alg not in ALL_ALGORITHMS:
+            alg = "USER_DEFINED"
+        record_extra_usage_tag(TagKey.RLLIB_ALGORITHM, alg)
 
     @Deprecated(error=False)
     def import_policy_model_from_h5(

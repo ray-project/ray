@@ -32,6 +32,7 @@ from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     ENV_RUNNER_SAMPLING_TIMER,
+    LEARNER_ADDITIONAL_UPDATE_TIMER,
     LEARNER_RESULTS,
     LEARNER_UPDATE_TIMER,
     NUM_AGENT_STEPS_SAMPLED,
@@ -477,51 +478,52 @@ class PPO(Algorithm):
             )
             self.metrics.log_dict(learner_results, key=LEARNER_RESULTS)
 
-        # The train results's loss keys are pids to their loss values. But we also
-        # return a total_loss key at the same level as the pid keys. So we need to
-        # subtract that to get the total set of pids to update.
-        # TODO (Kourosh): We should also not be using train_results as a message
-        #  passing medium to infer which policies to update. We could use
-        #  policies_to_train variable that is given by the user to infer this.
-        policies_to_update = set(learner_results.keys()) - {ALL_MODULES}
-
         # Update weights - after learning on the local worker - on all remote
         # workers.
         with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
+            # The train results's loss keys are pids to their loss values. But we also
+            # return a total_loss key at the same level as the pid keys. So we need to
+            # subtract that to get the total set of pids to update.
+            # TODO (Kourosh): We should also not be using train_results as a message
+            #  passing medium to infer which policies to update. We could use
+            #  policies_to_train variable that is given by the user to infer this.
+            modules_to_update = set(learner_results.keys()) - {ALL_MODULES}
             if self.workers.num_remote_workers() > 0:
                 self.workers.sync_weights(
                     # Sync weights from learner_group to all rollout workers.
                     from_worker_or_learner_group=self.learner_group,
-                    policies=policies_to_update,
+                    policies=modules_to_update,
                     global_vars=None,
                 )
             else:
                 weights = self.learner_group.get_weights()
                 self.workers.local_worker().set_weights(weights)
 
-        kl_dict = {}
-        if self.config.use_kl_loss:
-            for pid in policies_to_update:
-                kl = learner_results[pid][LEARNER_RESULTS_KL_KEY]
-                kl_dict[pid] = kl
-                if np.isnan(kl):
-                    logger.warning(
-                        f"KL divergence for Module {pid} is non-finite, this will "
-                        "likely destabilize your model and the training process. "
-                        "Action(s) in a specific state have near-zero probability. "
-                        "This can happen naturally in deterministic environments "
-                        "where the optimal policy has zero mass for a specific "
-                        "action. To fix this issue, consider setting `kl_coeff` to "
-                        "0.0 or increasing `entropy_coeff` in your config."
-                    )
+        with self.metrics.log_time((TIMERS, LEARNER_ADDITIONAL_UPDATE_TIMER)):
+            kl_dict = {}
+            if self.config.use_kl_loss:
+                for module_id in modules_to_update:
+                    kl = learner_results[module_id][LEARNER_RESULTS_KL_KEY]
+                    kl_dict[module_id] = kl
+                    if np.isnan(kl):
+                        logger.warning(
+                            f"KL divergence for Module {module_id} is non-finite, this "
+                            "will likely destabilize your model and the training "
+                            "process. Action(s) in a specific state have near-zero "
+                            "probability. This can happen naturally in deterministic "
+                            "environments where the optimal policy has zero mass for a "
+                            "specific action. To fix this issue, consider setting "
+                            "`kl_coeff` to 0.0 or increasing `entropy_coeff` in your "
+                            "config."
+                        )
 
-        # triggers a special update method on RLOptimizer to update the KL values.
-        additional_results = self.learner_group.additional_update(
-            module_ids_to_update=policies_to_update,
-            sampled_kl_values=kl_dict,
-            timestep=self.metrics.peek(NUM_AGENT_STEPS_SAMPLED_LIFETIME),
-        )
-        self.metrics.log_dict(additional_results, key=LEARNER_RESULTS)
+            # triggers a special update method on RLOptimizer to update the KL values.
+            additional_results = self.learner_group.additional_update(
+                module_ids_to_update=modules_to_update,
+                sampled_kl_values=kl_dict,
+                timestep=self.metrics.peek(NUM_AGENT_STEPS_SAMPLED_LIFETIME),
+            )
+            self.metrics.log_dict(additional_results, key=LEARNER_RESULTS)
 
         return self.metrics.reduce()
 

@@ -39,18 +39,27 @@ from ray.rllib.utils.replay_buffers.utils import (
 from ray.rllib.utils.typing import ResultDict
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
+    ENV_RUNNER_RESULTS,
     LAST_TARGET_UPDATE_TS,
+    LEARNER_ADDITIONAL_UPDATE_TIMER,
+    LEARNER_RESULTS,
+    LEARNER_UPDATE_TIMER,
     NUM_AGENT_STEPS_SAMPLED,
-    NUM_AGENT_STEPS_TRAINED,
+    NUM_AGENT_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_SAMPLED,
-    NUM_ENV_STEPS_TRAINED,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+    NUM_EPISODES,
+    NUM_EPISODES_LIFETIME,
     NUM_TARGET_UPDATES,
+    REPLAY_BUFFER_SAMPLE_TIMER,
+    REPLAY_BUFFER_UPDATE_PRIOS_TIMER,
     SAMPLE_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
+    TIMERS,
 )
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
-from ray.rllib.utils.typing import EpisodeType, RLModuleSpec, SampleBatchType
+from ray.rllib.utils.typing import RLModuleSpec, SampleBatchType
 
 logger = logging.getLogger(__name__)
 
@@ -583,36 +592,47 @@ class DQN(Algorithm):
     def _training_step_new_api_stack(self) -> ResultDict:
         # Alternate between storing and sampling and training.
         store_weight, sample_and_train_weight = calculate_rr_weights(self.config)
-        train_results = {}
 
         # Run multiple sampling + storing to buffer iterations.
         for _ in range(store_weight):
-            with self._timers[SAMPLE_TIMER]:
-                episodes: EpisodeType = synchronous_parallel_sample(
+            with self.metrics.log_time((TIMERS, SAMPLE_TIMER)):
+                episodes, env_runner_metrics = synchronous_parallel_sample(
                     worker_set=self.workers,
                     concat=True,
+                    sample_timeout_s=self.config.sample_timeout_s,
                     _uses_new_env_runners=True,
+                    _return_metrics=True,
                 )
-
-            # TODO (sven): single- vs multi-agent.
-            self._counters[NUM_AGENT_STEPS_SAMPLED] += sum(
-                e.agent_steps() for e in episodes
-            )
-            self._counters[NUM_ENV_STEPS_SAMPLED] += sum(
-                e.env_steps() for e in episodes
-            )
-
             # Add the sampled experiences to the replay buffer.
             self.local_replay_buffer.add(episodes)
 
-        # Update the target network each `target_network_update_freq` steps.
-        current_ts = self._counters[
-            (
-                NUM_AGENT_STEPS_SAMPLED
-                if self.config.count_steps_by == "agent_steps"
-                else NUM_ENV_STEPS_SAMPLED
+            # Reduce EnvRunner metrics over the n EnvRunners.
+            self.metrics.log_n_dicts(
+                key=ENV_RUNNER_RESULTS,
+                stats_dicts=env_runner_metrics,
             )
-        ]
+
+        # Log lifetime counts for env- and agent steps.
+        self.metrics.log_dict(
+            {
+                NUM_AGENT_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
+                    ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED
+                ),
+                NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
+                    ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED
+                ),
+                NUM_EPISODES_LIFETIME: self.metrics.peek(
+                    ENV_RUNNER_RESULTS, NUM_EPISODES
+                ),
+            },
+            reduce="sum",
+        )
+
+        current_ts = self.metrics.peek(
+            NUM_AGENT_STEPS_SAMPLED_LIFETIME
+            if self.config.count_steps_by == "agent_steps"
+            else NUM_AGENT_STEPS_SAMPLED_LIFETIME
+        )
 
         # If enough experiences have been sampled start training.
         if current_ts > self.config.num_steps_sampled_before_learning_starts:
@@ -625,44 +645,50 @@ class DQN(Algorithm):
             for _ in range(sample_and_train_weight):
                 # Sample training batch from replay_buffer.
                 # TODO (simon): Use sample_with_keys() here.
-                train_dict = self.local_replay_buffer.sample(
-                    num_items=self.config.train_batch_size,
-                    n_step=self.config.n_step,
-                    gamma=self.config.gamma,
-                    beta=self.config.replay_buffer_config["beta"],
-                )
-                train_batch = SampleBatch(train_dict)
+                with self.metrics.log_time((TIMERS, REPLAY_BUFFER_SAMPLE_TIMER)):
+                    train_dict = self.local_replay_buffer.sample(
+                        num_items=self.config.train_batch_size,
+                        n_step=self.config.n_step,
+                        gamma=self.config.gamma,
+                        beta=self.config.replay_buffer_config["beta"],
+                    )
+                    train_batch = SampleBatch(train_dict)
+                    # Convert to multi-agent batch as `LearnerGroup` depends on it.
+                    # TODO (sven, simon): Remove this conversion once the `LearnerGroup`
+                    # supports dict.
+                    train_batch = train_batch.as_multi_agent()
 
-                # Convert to multi-agent batch as `LearnerGroup` depends on it.
-                # TODO (sven, simon): Remove this conversion once the `LearnerGroup`
-                # supports dict.
-                train_batch = train_batch.as_multi_agent()
-
-                # Perform an update on the buffer-sampled train batch.
-                train_results = self.learner_group.update_from_batch(
-                    train_batch,
-                    reduce_fn=self._reduce_fn,
-                )
+                with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
+                    # Perform an update on the buffer-sampled train batch.
+                    learner_results = self.learner_group.update_from_batch(
+                        train_batch,
+                        reduce_fn=self._reduce_fn,
+                    )
+                    self.metrics.log_dict(LEARNER_RESULTS, learner_results)
 
                 # Update the counters.
-                self._counters[NUM_AGENT_STEPS_TRAINED] += train_batch.agent_steps()
-                self._counters[NUM_ENV_STEPS_TRAINED] += train_batch.env_steps()
+                # self._counters[NUM_AGENT_STEPS_TRAINED] += train_batch.agent_steps()
+                # self._counters[NUM_ENV_STEPS_TRAINED] += train_batch.env_steps()
 
                 # Update replay buffer priorities.
-                update_priorities_in_episode_replay_buffer(
-                    self.local_replay_buffer,
-                    self.config,
-                    train_batch,
-                    train_results,
-                )
+                with self.metrics.log_time((TIMERS, REPLAY_BUFFER_UPDATE_PRIOS_TIMER)):
+                    update_priorities_in_episode_replay_buffer(
+                        self.local_replay_buffer,
+                        self.config,
+                        train_batch,
+                        learner_results,
+                    )
 
                 # Update the target networks if necessary.
-                modules_to_update = set(train_results.keys()) - {ALL_MODULES}
-                additional_results = self.learner_group.additional_update(
-                    module_ids_to_update=modules_to_update,
-                    timestep=current_ts,
-                    last_update=self._counters[LAST_TARGET_UPDATE_TS],
-                )
+                with self.metrics.log_time((TIMERS, LEARNER_ADDITIONAL_UPDATE_TIMER)):
+                    modules_to_update = set(learner_results.keys()) - {ALL_MODULES}
+                    additional_results = self.learner_group.additional_update(
+                        module_ids_to_update=modules_to_update,
+                        timestep=current_ts,
+                        last_update=self._counters[LAST_TARGET_UPDATE_TS],
+                    )
+                    self.metrics.log_dict(additional_results, key=LEARNER_RESULTS)
+
                 # Add the additional results to the training results, if any.
                 for pid, res in additional_results.items():
                     if LAST_TARGET_UPDATE_TS in res:
@@ -671,13 +697,13 @@ class DQN(Algorithm):
                         ]
                     if NUM_TARGET_UPDATES in res:
                         self._counters[NUM_TARGET_UPDATES] += res[NUM_TARGET_UPDATES]
-                    train_results[pid].update(res)
+                    learner_results[pid].update(res)
 
             # Update weights and global_vars - after learning on the local worker -
             # on all remote workers.
             # TODO (simon): For better performance, synch only the online network
             # weights and not the target network weights.
-            with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+            with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
                 if self.workers.num_remote_workers() > 0:
                     # NOTE: the new API stack does not use global vars.
                     self.workers.sync_weights(
@@ -690,7 +716,7 @@ class DQN(Algorithm):
                     weights = self.learner_group.get_weights()
                     self.workers.local_worker().set_weights(weights)
 
-        return train_results
+        return self.metrics.reduce()
 
     def _training_step_old_and_hybrid_api_stack(self) -> ResultDict:
         """Training step for the old and hybrid training stacks.
