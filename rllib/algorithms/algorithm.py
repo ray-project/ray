@@ -69,6 +69,7 @@ from ray.rllib.utils import deep_update, FilterManager
 from ray.rllib.utils.annotations import (
     DeveloperAPI,
     ExperimentalAPI,
+    OldAPIStack,
     override,
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
@@ -110,6 +111,7 @@ from ray.rllib.utils.metrics import (
     STEPS_TRAINED_THIS_ITER_COUNTER,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
+from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer, ReplayBuffer
 from ray.rllib.utils.serialization import deserialize_type, NOT_SERIALIZABLE
@@ -459,6 +461,11 @@ class Algorithm(Trainable, AlgorithmBase):
 
         # Placeholder for our LearnerGroup responsible for updating the RLModule(s).
         self.learner_group: Optional["LearnerGroup"] = None
+
+        # The Algorithm's `MetricsLogger` object to collect stats from all its
+        # components (including timers, counters and other stats in its own
+        # `training_step()` and other methods) as well as custom callbacks.
+        self.metrics = MetricsLogger()
 
         # Create a default logger creator if no logger_creator is specified
         if logger_creator is None:
@@ -896,7 +903,6 @@ class Algorithm(Trainable, AlgorithmBase):
 
         # TODO (sven): Deprecate this API, this should be done via a custom Callback.
         #  Provide example script/update existing one.
-        # Check `env_task_fn` for possible update of the env's task.
         if self.config.env_task_fn is not None:
             if not callable(self.config.env_task_fn):
                 raise ValueError(
@@ -1523,6 +1529,16 @@ class Algorithm(Trainable, AlgorithmBase):
         Returns:
             The results dict from executing the training iteration.
         """
+        if not self.config.uses_new_env_runners:
+            raise NotImplementedError(
+                "The `Algorithm.training_step()` default implementation no longer "
+                "supports the old or hybrid API stacks! If you would like to continue "
+                "using these "
+                "old APIs with this default `training_step`, simply subclass "
+                "`Algorithm` and override its `training_step` method (copy/paste the "
+                "code and delete this error message)."
+            )
+
         # Collect SampleBatches from sample workers until we have a full batch.
         with self._timers[SAMPLE_TIMER]:
             if self.config.count_steps_by == "agent_steps":
@@ -2202,7 +2218,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 healthy_only=True,
             )
 
-    @DeveloperAPI
+    @OldAPIStack
     def export_policy_model(
         self,
         export_dir: str,
@@ -2229,7 +2245,7 @@ class Algorithm(Trainable, AlgorithmBase):
         """
         self.get_policy(policy_id).export_model(export_dir, onnx)
 
-    @DeveloperAPI
+    @OldAPIStack
     def export_policy_checkpoint(
         self,
         export_dir: str,
