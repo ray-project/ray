@@ -64,6 +64,7 @@ RESTORE_WORKERS_TIMER = "restore_workers"
 RESTORE_EVAL_WORKERS_TIMER = "restore_eval_workers"
 SYNCH_WORKER_WEIGHTS_TIMER = "synch_weights"
 SYNCH_ENV_CONNECTOR_STATES_TIMER = "synch_env_connectors"
+SYNCH_EVAL_ENV_CONNECTOR_STATES_TIMER = "synch_eval_env_connectors"
 GRAD_WAIT_TIMER = "grad_wait"
 SAMPLE_TIMER = "sample"  # @OldAPIStack
 ENV_RUNNER_SAMPLING_TIMER = "env_runner_sampling_timer"

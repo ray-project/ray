@@ -54,14 +54,21 @@ if __name__ == "__main__":
             vf_clip_param=10.0,
             vf_loss_coeff=0.01,
         )
-        # .evaluation(
-        #    evaluation_num_workers=1,
-        #    evaluation_parallel_to_training=True,
-        #    evaluation_interval=1,
-        #    evaluation_duration=10,
-        #    evaluation_duration_unit="episodes",
-        #    evaluation_config={"explore": False},
-        # )
+        .evaluation(
+            evaluation_num_workers=1,
+            evaluation_parallel_to_training=True,
+            evaluation_interval=1,
+            evaluation_duration=10,
+            evaluation_duration_unit="episodes",
+            evaluation_config={
+                "explore": False,
+                # Do NOT use the eval EnvRunners' ConnectorV2 states. Instead, before
+                # each round of evaluation, broadcast the latest training WorkerSet's
+                # ConnectorV2 state (merged from all training remote EnvRunners) to
+                # all eval EnvRunners (and discard the eval EnvRunners' stats).
+                "use_worker_filter_stats": False,
+            },
+        )
     )
     if args.enable_new_api_stack:
         config = config.rl_module(
@@ -92,4 +99,9 @@ if __name__ == "__main__":
             policy_mapping_fn=lambda aid, *a, **kw: f"p{aid}",
         )
 
-    run_rllib_example_script_experiment(config, args)
+    stop = {
+        "training_iteration": args.stop_iters,
+        "evaluation/sampler_results/episode_reward_mean": args.stop_reward,
+        "timesteps_total": args.stop_timesteps,
+    }
+    run_rllib_example_script_experiment(config, args, stop=stop)
