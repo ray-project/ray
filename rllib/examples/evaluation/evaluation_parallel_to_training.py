@@ -68,6 +68,10 @@ the experiment takes considerably longer (~70sec vs ~80sec):
 """
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
+from ray.rllib.utils.metrics import (
+    NUM_EPISODES,
+    NUM_ENV_STEPS_SAMPLED,
+)
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
@@ -118,17 +122,16 @@ parser.add_argument(
 
 class AssertEvalCallback(DefaultCallbacks):
     def on_train_result(self, *, algorithm, result, **kwargs):
+        eval_results = result.get("evaluation_results", result.get("evaluation", {}))
+        env_runner_results = eval_results.get(
+            "env_runner_results", eval_results.get("sampler_results")
+        )
         # Make sure we always run exactly the given evaluation duration,
         # no matter what the other settings are (such as
         # `evaluation_num_workers` or `evaluation_parallel_to_training`).
-        if (
-            "evaluation" in result
-            and "hist_stats" in result["evaluation"]["sampler_results"]
-        ):
-            eval_sampler_res = result["evaluation"]["sampler_results"]
-            hist_stats = eval_sampler_res["hist_stats"]
-            num_episodes_done = len(hist_stats["episode_lengths"])
-            num_timesteps_reported = result["evaluation"]["timesteps_this_iter"]
+        if env_runner_results:
+            num_episodes_done = env_runner_results[NUM_EPISODES]
+            num_timesteps_reported = env_runner_results[NUM_ENV_STEPS_SAMPLED]
 
             # We run for automatic duration (as long as training takes).
             if algorithm.config.evaluation_duration == "auto":
@@ -169,10 +172,11 @@ class AssertEvalCallback(DefaultCallbacks):
                 )
         # Expect at least evaluation/sampler_results to be always available.
         elif algorithm.config.always_attach_evaluation_results and (
-            "evaluation" not in result or "sampler_results" not in result["evaluation"]
+            not env_runner_results
         ):
             raise KeyError(
-                "`evaluation->sampler_results->hist_stats` not found in result dict!"
+                "`evaluation->[env_runner_results|sampler_results]` not found in "
+                "result dict!"
             )
 
 

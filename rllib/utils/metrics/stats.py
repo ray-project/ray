@@ -275,7 +275,7 @@ class Stats:
 
         """
         # Make sure `other` has same reduction settings.
-        assert all(self._reduce_method is o._reduce_method for o in others)
+        assert all(self._reduce_method == o._reduce_method for o in others)
         assert all(self._window == o._window for o in others)
         assert all(self._ema_coeff == o._ema_coeff for o in others)
         # No reduction, combine self's and other's values.

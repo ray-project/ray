@@ -252,4 +252,11 @@ def summarize_episodes(
         sampler_perf=dict(perf_stats),
         num_faulty_episodes=num_faulty_episodes,
         connector_metrics=mean_connector_metrics,
+        # Added these (duplicate) values here for forward compatibility with the new API
+        # stack's metrics structure. This allows us to unify our test cases and keeping
+        # the new API stack clean of backward-compatible keys.
+        num_episodes=len(new_episodes),
+        episode_return_max=max_reward,
+        episode_return_min=min_reward,
+        episode_return_mean=avg_reward,
     )

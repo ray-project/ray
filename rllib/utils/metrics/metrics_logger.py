@@ -51,6 +51,7 @@ class MetricsLogger:
         self,
         key: Union[str, Tuple[str]],
         value: Any,
+        *,
         reduce: Optional[str] = "mean",
         window: Optional[int] = None,
         ema_coeff: Optional[float] = None,
@@ -170,6 +171,7 @@ class MetricsLogger:
     def log_dict(
         self,
         stats_dict,
+        *,
         key: Optional[Union[str, Tuple[str]]] = None,
         reduce: Optional[str] = "mean",
         window: Optional[int] = None,
@@ -286,6 +288,7 @@ class MetricsLogger:
     def log_n_dicts(
         self,
         stats_dicts,
+        *,
         key: Optional[Union[str, Tuple[str]]] = None,
         reduce: Optional[str] = "mean",
         window: Optional[int] = None,
@@ -350,6 +353,7 @@ class MetricsLogger:
     def log_time(
         self,
         key: Union[str, Tuple[str]],
+        *,
         reduce: Optional[str] = "mean",
         window: Optional[int] = None,
         ema_coeff: Optional[float] = None,
@@ -487,6 +491,7 @@ class MetricsLogger:
         self,
         key: Union[str, Tuple[str]],
         value: Any,
+        *,
         reduce: Optional[str] = "mean",
         window: Optional[int] = None,
         ema_coeff: Optional[float] = None,
@@ -542,7 +547,12 @@ class MetricsLogger:
                 reset_on_reduce=reset_on_reduce,
             )
 
-    def reduce(self, return_stats_obj: bool = True) -> Dict:
+    def reduce(
+        self,
+        key: Optional[Union[str, Tuple[str]]] = None,
+        *,
+        return_stats_obj: bool = True,
+    ) -> Dict:
         """Reduces all logged values based on their settings and returns a result dict.
 
         The returned result dict has the exact same structure as the logged keys (or
@@ -612,6 +622,9 @@ class MetricsLogger:
             check(end_result, {"a": 2.5})
 
         Args:
+            key: Optional key or key sequence (for nested location within self.stats),
+                limiting the reduce operation to that particular sub-structure of self.
+                If None, will reduce all of self's Stats.
             return_stats_obj: Whether in the returned dict, the leafs should be Stats
                 objects. This is the default as it enables users to continue using
                 (and further logging) the results of this call inside another
@@ -626,15 +639,21 @@ class MetricsLogger:
         # Create a shallow copy of `self.stats` in case we need to reset some of our
         # stats due to this `reduce()` call (and the Stat having self.reset_on_reduce
         # set to True).
-        stats_to_return = self.stats.copy()
+        if key is not None:
+            stats_to_return = self.stats[key].copy()
+        else:
+            stats_to_return = self.stats.copy()
 
         # Reduce all stats according to each of their reduce-settings.
-        for key, stat in stats_to_return.items():
+        for sub_key, stat in stats_to_return.items():
             # In case we reset the Stats upon `reduce`, we get returned a new empty
             # Stats object here (same settings as existing one) and can now re-assign
             # it to `self.stats[key]` (while we return from this method the properly
             # reduced, but not emptied/reset new Stats).
-            self.stats[key] = stat.reduce()
+            if key is not None:
+                self.stats[key][sub_key] = stat.reduce()
+            else:
+                self.stats[sub_key] = stat.reduce()
 
         # Return reduced values as dict (not NestedDict).
         # TODO (sven): Maybe we want to change that to NestedDict, but we would like to
