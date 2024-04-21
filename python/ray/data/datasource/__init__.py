@@ -12,8 +12,8 @@ from ray.data.datasource.datasink import Datasink, DummyOutputDatasink
 from ray.data.datasource.datasource import (
     Datasource,
     RandomIntRowDatasource,
-    Reader,
     ReadTask,
+    Reader,
 )
 from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource,
@@ -32,8 +32,8 @@ from ray.data.datasource.file_meta_provider import (
     FileMetadataProvider,
     ParquetMetadataProvider,
 )
-from iceberg_datasource import IcebergDatasource
 from ray.data.datasource.filename_provider import FilenameProvider
+from ray.data.datasource.iceberg_datsource import IcebergDatasource
 from ray.data.datasource.image_datasink import _ImageDatasink
 from ray.data.datasource.image_datasource import ImageDatasource
 from ray.data.datasource.json_datasink import _JSONDatasink
@@ -46,8 +46,8 @@ from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
 from ray.data.datasource.parquet_datasink import _ParquetDatasink
 from ray.data.datasource.parquet_datasource import ParquetDatasource
 from ray.data.datasource.partitioning import (
-    Partitioning,
     PartitionStyle,
+    Partitioning,
     PathPartitionFilter,
     PathPartitionParser,
 )
@@ -88,6 +88,7 @@ __all__ = [
     "FileExtensionFilter",
     "FileMetadataProvider",
     "FilenameProvider",
+    "IcebergDatasource",
     "_ImageDatasink",
     "ImageDatasource",
     "_JSONDatasink",
