@@ -1232,7 +1232,7 @@ class Impala(Algorithm):
         return {}
 
     @override(Algorithm)
-    def _compile_iteration_results(self, *args, **kwargs):
+    def _compile_iteration_results_old_and_hybrid_api_stacks(self, *args, **kwargs):
         result = super()._compile_iteration_results(*args, **kwargs)
         if not self.config._enable_new_api_stack:
             result = self._learner_thread.add_learner_metrics(

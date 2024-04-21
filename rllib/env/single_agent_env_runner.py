@@ -91,6 +91,7 @@ class SingleAgentEnvRunner(EnvRunner):
 
         # Create a MetricsLogger object for logging custom stats.
         self.metrics = MetricsLogger()
+        self.metrics.log_value(NUM_ENV_STEPS_SAMPLED_LIFETIME, 0, reduce="sum")
 
         # This should be the default.
         self._needs_initial_reset: bool = True
@@ -290,6 +291,7 @@ class SingleAgentEnvRunner(EnvRunner):
             obs, actions = unbatch(obs), unbatch(actions)
 
             ts += self.num_envs
+            # Per sample cycle stats.
             self.metrics.log_dict(
                 {
                     NUM_ENV_STEPS_SAMPLED: self.num_envs,
@@ -298,6 +300,7 @@ class SingleAgentEnvRunner(EnvRunner):
                 reduce="sum",
                 reset_on_reduce=True,
             )
+            # Lifetime stats.
             self.metrics.log_dict(
                 {
                     NUM_ENV_STEPS_SAMPLED_LIFETIME: self.num_envs,

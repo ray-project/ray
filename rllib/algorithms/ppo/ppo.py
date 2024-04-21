@@ -39,6 +39,7 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
+    NUM_ENV_STEPS_TRAINED_LIFETIME,
     NUM_EPISODES,
     NUM_EPISODES_LIFETIME,
     SYNCH_WORKER_WEIGHTS_TIMER,
@@ -466,7 +467,7 @@ class PPO(Algorithm):
                 reduce="sum",
             )
 
-        # Perform a train step on the collected batch.
+        # Perform a learner update step on the collected episodes.
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
             learner_results = self.learner_group.update_from_episodes(
                 episodes=episodes,
@@ -477,6 +478,16 @@ class PPO(Algorithm):
                 num_iters=self.config.num_sgd_iter,
             )
             self.metrics.log_dict(learner_results, key=LEARNER_RESULTS)
+            self.metrics.log_dict(
+                {
+                    NUM_ENV_STEPS_TRAINED_LIFETIME: self.metrics.peek(
+                        ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED
+                    ),
+                    # NUM_MODULE_STEPS_TRAINED_LIFETIME: self.metrics.peek(
+                    #    LEARNER_RESULTS, NUM_MODULE_STEPS_TRAINED
+                    # ),
+                }
+            )
 
         # Update weights - after learning on the local worker - on all remote
         # workers.
@@ -521,9 +532,18 @@ class PPO(Algorithm):
             additional_results = self.learner_group.additional_update(
                 module_ids_to_update=modules_to_update,
                 sampled_kl_values=kl_dict,
-                timestep=self.metrics.peek(NUM_AGENT_STEPS_SAMPLED_LIFETIME),
+                timestep=self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME),
             )
-            self.metrics.log_dict(additional_results, key=LEARNER_RESULTS)
+            self.metrics.log_dict(
+                additional_results,
+                key=LEARNER_RESULTS,
+                # TODO (sven): For now, as we do NOT use MetricsLogger inside Learner and
+                #  LearnerGroup, we assume here that the Learner/LearnerGroup-returned
+                #  values are absolute (and thus require a reduce window of just 1 (take
+                #  as-is)). Remove the window setting below, once Learner/LearnerGroup
+                #  themselves use MetricsLogger.
+                window=1,
+            )
 
         return self.metrics.reduce()
 

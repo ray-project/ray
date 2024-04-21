@@ -34,6 +34,7 @@ from ray.air.integrations.wandb import WandbLoggerCallback
 from ray.rllib.common import SupportedFileType
 from ray.rllib.env.wrappers.atari_wrappers import is_atari, wrap_deepmind
 from ray.rllib.train import load_experiments_from_file
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
@@ -682,6 +683,102 @@ def check_off_policyness(
     return off_policy_ness
 
 
+def check_train_results_new_api_stack(train_results: ResultDict) -> None:
+    """Checks proper structure of a Algorithm.train() returned dict.
+
+    Args:
+        train_results: The train results dict to check.
+
+    Raises:
+        AssertionError: If `train_results` doesn't have the proper structure or
+            data in it.
+    """
+    # Import these here to avoid circular dependencies.
+    from ray.rllib.core.rl_module.rl_module import DEFAULT_POLICY_ID
+    from ray.rllib.utils.metrics import (
+        ENV_RUNNER_RESULTS,
+        FAULT_TOLERANCE_STATS,
+        LEARNER_RESULTS,
+        NUM_AGENT_STEPS_SAMPLED_LIFETIME,
+        NUM_ENV_STEPS_SAMPLED_LIFETIME,
+        TIMERS,
+    )
+
+    # Assert that some keys are where we would expect them.
+    for key in [
+        ENV_RUNNER_RESULTS,
+        FAULT_TOLERANCE_STATS,
+        LEARNER_RESULTS,
+        NUM_AGENT_STEPS_SAMPLED_LIFETIME,
+        NUM_ENV_STEPS_SAMPLED_LIFETIME,
+        TIMERS,
+        "training_iteration",
+        "config",
+    ]:
+        # "episode_len_mean",
+        # "episode_reward_max",
+        # "episode_reward_mean",
+        # "episode_reward_min",
+        # "hist_stats",
+        # "info",
+        # "iterations_since_restore",
+        # "num_healthy_workers",
+        # "perf",
+        # "policy_reward_max",
+        # "policy_reward_mean",
+        # "policy_reward_min",
+        # "sampler_perf",
+        # "time_since_restore",
+        # "time_this_iter_s",
+        # "time_total_s",
+        # ]:
+        assert (
+            key in train_results
+        ), f"'{key}' not found in `train_results` ({train_results})!"
+
+    # Make sure, `config` is an actual dict, not an AlgorithmConfig object.
+    assert isinstance(
+        train_results["config"], dict
+    ), "`config` in results not a python dict!"
+
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
+    is_multi_agent = (
+        AlgorithmConfig()
+        .update_from_dict({"policies": train_results["config"]["policies"]})
+        .is_multi_agent()
+    )
+
+    # Check in particular the "info" dict.
+    learner_results = train_results[LEARNER_RESULTS]
+    # assert NUM_ENV_STEPS_TRAINED in learner_results, (
+    #    f"'{NUM_ENV_STEPS_TRAINED}' not in 'LEARNER_RESULTS'!"
+    # )
+
+    # Make sure we have a default_policy key if we are not in a
+    # multi-agent setup.
+    if not is_multi_agent:
+        assert len(learner_results) == 0 or DEFAULT_POLICY_ID in learner_results, (
+            f"'{DEFAULT_POLICY_ID}' not found in "
+            f"train_results['{LEARNER_RESULTS}']!"
+        )
+
+    for module_id, module_metrics in learner_results.items():
+        # The ModuleID can be __all_modules__ in multi-agent case when the new learner
+        # stack is enabled.
+        if module_id == "__all_modules__":
+            continue
+
+        # On the new API stack, policy has no LEARNER_STATS_KEY under it anymore.
+        for key, value in module_metrics.items():
+            # Min- and max-stats should be single values.
+            if key.endswith("_min") or key.endswith("_max"):
+                assert np.isscalar(value), f"'key' value not a scalar ({value})!"
+
+    return train_results
+
+
+@OldAPIStack
 def check_train_results(train_results: ResultDict):
     """Checks proper structure of a Algorithm.train() returned dict.
 
