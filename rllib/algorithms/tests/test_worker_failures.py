@@ -74,7 +74,6 @@ class FaultInjectEnv(gym.Env):
     def __init__(self, config):
         # Use RandomEnv to control episode length if needed.
         self.env = RandomEnv(config)
-        self._skip_env_checking = True
         self.action_space = self.env.action_space
         self.observation_space = self.env.observation_space
         self.config = config

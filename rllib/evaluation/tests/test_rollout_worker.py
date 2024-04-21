@@ -449,16 +449,8 @@ class TestRolloutWorker(unittest.TestCase):
                 super().__init__(config=config)
 
             def step(self, action):
-                # Ensure that it is called from inside the sampling process.
-                import inspect
-
-                curframe = inspect.currentframe()
-                called_from_check = any(
-                    frame[3] == "check_gym_environments"
-                    for frame in inspect.getouterframes(curframe, 2)
-                )
                 # Check, whether the action is immutable.
-                if action.flags.writeable and not called_from_check:
+                if action.flags.writeable:
                     self.test_case.assertFalse(
                         action.flags.writeable, "Action is mutable"
                     )
