@@ -94,9 +94,17 @@ run_ray_cpp_and_java() {
   ./ci/ci.sh test_cpp || exit 42
 }
 
+bisect() {
+  bazel run //ci/ray_ci/bisect:bisect_test -- "$@"
+}
+
 _prelude() {
-  rm -rf /tmp/bazel_event_logs
-  (which bazel && bazel clean) || true;
+  if [[ "${RAYCI_BISECT_RUN-}" == 1 ]]; then
+    echo "RAYCI_BISECT_RUN is set, skipping bazel clean"
+  else
+    rm -rf /tmp/bazel_event_logs
+    (which bazel && bazel clean) || true;
+  fi
   . ./ci/ci.sh init && source ~/.zshenv
   source ~/.zshrc
   ./ci/ci.sh build
@@ -104,17 +112,21 @@ _prelude() {
 }
 
 _epilogue() {
-  # Upload test results
-  ./ci/build/upload_build_info.sh
-  # Assign all macos tests to core for now
-  bazel run //ci/ray_ci/automation:test_db_bot -- core /tmp/bazel_event_logs
-  # Persist ray logs
-  mkdir -p /tmp/artifacts/.ray/
-  find /tmp/ray -path '*/logs/*' | tar -czf /tmp/artifacts/.ray/ray_logs.tgz -T -
-  # Cleanup runtime environment to save storage
-  rm -rf /tmp/ray
-  # Cleanup local caches - this should not clean up global disk cache
-  bazel clean
+  if [[ "${RAYCI_BISECT_RUN-}" == 1 ]]; then
+    echo "RAYCI_BISECT_RUN is set, skipping epilogue"
+  else
+    # Upload test results
+    ./ci/build/upload_build_info.sh
+    # Assign all macos tests to core for now
+    bazel run //ci/ray_ci/automation:test_db_bot -- core /tmp/bazel_event_logs
+    # Persist ray logs
+    mkdir -p /tmp/artifacts/.ray/
+    find /tmp/ray -path '*/logs/*' | tar -czf /tmp/artifacts/.ray/ray_logs.tgz -T -
+    # Cleanup runtime environment to save storage
+    rm -rf /tmp/ray
+    # Cleanup local caches - this should not clean up global disk cache
+    bazel clean
+  fi
 }
 trap _epilogue EXIT
 
