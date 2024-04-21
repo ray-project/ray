@@ -19,8 +19,6 @@ package ray.rpc;
 
 import "opencensus/proto/metrics/v1/metrics.proto";
 
-import "src/ray/protobuf/common.proto";
-
 message GetProfilingStatsRequest {
   // PID of the worker process.
   uint32 pid = 1;

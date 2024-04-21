@@ -105,7 +105,8 @@ model = algo.get_policy().model
 model.variables()
 
 # Run a forward pass to get base model output. Note that complex observations
-# must be preprocessed. An example of preprocessing is examples/saving_experiences.py
+# must be preprocessed. An example of preprocessing is
+# examples/offline_rl/saving_experiences.py
 model_out = model({"obs": np.array([[0.1, 0.2, 0.3, 0.4]])})
 # (<tf.Tensor: id=832, shape=(1, 256), dtype=float32, numpy=...)
 

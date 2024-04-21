@@ -26,9 +26,9 @@ from ray.serve._private.logging_utils import (
     ServeJSONFormatter,
     StreamToLogger,
     configure_component_logger,
-    get_component_log_file_name,
     get_serve_logs_dir,
 )
+from ray.serve._private.utils import get_component_file_name
 from ray.serve.context import _get_global_client
 from ray.serve.schema import EncodingType, LoggingConfig
 
@@ -42,6 +42,11 @@ class FakeLogger:
 
     def get_logs(self):
         return self._logs
+
+
+class FakeStdOut:
+    def __init__(self):
+        self.encoding = "utf-8"
 
 
 @pytest.fixture
@@ -398,7 +403,7 @@ class TestLoggingAPI:
             print(actor["name"])
             if "SERVE_CONTROLLER_ACTOR" == actor["name"]:
                 controller_pid = actor["pid"]
-        controller_log_file_name = get_component_log_file_name(
+        controller_log_file_name = get_component_file_name(
             "controller", controller_pid, component_type=None, suffix=".log"
         )
         controller_log_path = os.path.join(serve_log_dir, controller_log_file_name)
@@ -407,7 +412,7 @@ class TestLoggingAPI:
         # Check proxy log
         nodes = state_api.list_nodes()
         node_ip_address = nodes[0].node_ip
-        proxy_log_file_name = get_component_log_file_name(
+        proxy_log_file_name = get_component_file_name(
             "proxy", node_ip_address, component_type=None, suffix=".log"
         )
         proxy_log_path = os.path.join(serve_log_dir, proxy_log_file_name)
@@ -797,7 +802,8 @@ def test_serve_logging_file_names(serve_and_ray_shutdown, ray_instance):
 def test_stream_to_logger():
     """Test calling methods on StreamToLogger."""
     logger = FakeLogger()
-    stream_to_logger = StreamToLogger(logger, logging.INFO)
+    stdout_object = FakeStdOut()
+    stream_to_logger = StreamToLogger(logger, logging.INFO, stdout_object)
     assert logger.get_logs() == []
 
     # Calling isatty() should return True.
@@ -816,6 +822,14 @@ def test_stream_to_logger():
     assert logger.get_logs() == [(20, "foobar")]
     stream_to_logger.flush()
     assert logger.get_logs() == [(20, "foobar"), (20, "baz")]
+
+    # Calling the attribute on the StreamToLogger should return the attribute on
+    # the stdout object.
+    assert stream_to_logger.encoding == stdout_object.encoding
+
+    # Calling non-existing attribute on the StreamToLogger should still raise error.
+    with pytest.raises(AttributeError):
+        stream_to_logger.i_dont_exist
 
 
 if __name__ == "__main__":

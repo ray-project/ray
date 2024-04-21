@@ -5,7 +5,7 @@ import logging
 import os
 import sys
 import traceback
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 
 import ray
 from ray.serve._private.common import ServeComponentType
@@ -30,6 +30,7 @@ from ray.serve._private.constants import (
     SERVE_LOG_WORKER_ID,
     SERVE_LOGGER_NAME,
 )
+from ray.serve._private.utils import get_component_file_name
 from ray.serve.schema import EncodingType, LoggingConfig
 
 try:
@@ -38,7 +39,6 @@ except ImportError:
     pass
 
 
-LOG_FILE_FMT = "{component_name}_{component_id}{suffix}"
 buildin_print = builtins.print
 
 
@@ -210,13 +210,18 @@ class StreamToLogger(object):
     This comes from https://stackoverflow.com/a/36296215 directly.
     """
 
-    def __init__(self, logger, log_level):
-        self.logger = logger
-        self.log_level = log_level
-        self.linebuf = ""
+    def __init__(self, logger: logging.Logger, log_level: int, original_object: Any):
+        self._logger = logger
+        self._log_level = log_level
+        self._original_object = original_object
+        self._linebuf = ""
+
+    def __getattr__(self, attr: str) -> Any:
+        # getting attributes from the original object
+        return getattr(self._original_object, attr)
 
     @staticmethod
-    def get_stacklevel():
+    def get_stacklevel() -> int:
         """Rewind stack to get the stacklevel for the user code.
 
         Going from the back of the traceback and traverse until it's no longer in
@@ -231,9 +236,9 @@ class StreamToLogger(object):
                 return index
         return 1
 
-    def write(self, buf):
-        temp_linebuf = self.linebuf + buf
-        self.linebuf = ""
+    def write(self, buf: str):
+        temp_linebuf = self._linebuf + buf
+        self._linebuf = ""
         for line in temp_linebuf.splitlines(True):
             # From the io.TextIOWrapper docs:
             #   On output, if newline is None, any '\n' characters written
@@ -241,22 +246,22 @@ class StreamToLogger(object):
             # By default sys.stdout.write() expects '\n' newlines and then
             # translates them so this is still cross-platform.
             if line[-1] == "\n":
-                self.logger.log(
-                    self.log_level,
+                self._logger.log(
+                    self._log_level,
                     line.rstrip(),
                     stacklevel=self.get_stacklevel(),
                 )
             else:
-                self.linebuf += line
+                self._linebuf += line
 
     def flush(self):
-        if self.linebuf != "":
-            self.logger.log(
-                self.log_level,
-                self.linebuf.rstrip(),
+        if self._linebuf != "":
+            self._logger.log(
+                self._log_level,
+                self._linebuf.rstrip(),
                 stacklevel=self.get_stacklevel(),
             )
-        self.linebuf = ""
+        self._linebuf = ""
 
     def isatty(self) -> bool:
         return True
@@ -333,7 +338,7 @@ def configure_component_logger(
     if backup_count is None:
         backup_count = ray._private.worker._global_node.backup_count
 
-    log_file_name = get_component_log_file_name(
+    log_file_name = get_component_file_name(
         component_name=component_name,
         component_id=component_id,
         component_type=component_type,
@@ -363,8 +368,8 @@ def configure_component_logger(
     # Redirect print, stdout, and stderr to Serve logger.
     if not RAY_SERVE_LOG_TO_STDERR:
         builtins.print = redirected_print
-        sys.stdout = StreamToLogger(logger, logging.INFO)
-        sys.stderr = StreamToLogger(logger, logging.INFO)
+        sys.stdout = StreamToLogger(logger, logging.INFO, sys.stdout)
+        sys.stderr = StreamToLogger(logger, logging.INFO, sys.stderr)
 
     logger.addHandler(file_handler)
 
@@ -386,7 +391,7 @@ def configure_component_memory_profiler(
             import memray
 
             logs_dir = get_serve_logs_dir()
-            memray_file_name = get_component_log_file_name(
+            memray_file_name = get_component_file_name(
                 component_name=component_name,
                 component_id=component_id,
                 component_type=component_type,
@@ -398,7 +403,7 @@ def configure_component_memory_profiler(
             # tracking memory.
             restart_counter = 1
             while os.path.exists(memray_file_path):
-                memray_file_name = get_component_log_file_name(
+                memray_file_name = get_component_file_name(
                     component_name=component_name,
                     component_id=component_id,
                     component_type=component_type,
@@ -463,7 +468,7 @@ def configure_component_cpu_profiler(
             return None, None
 
         logs_dir = get_serve_logs_dir()
-        cpu_profiler_file_name = get_component_log_file_name(
+        cpu_profiler_file_name = get_component_file_name(
             component_name=component_name,
             component_id=component_id,
             component_type=component_type,
@@ -486,29 +491,6 @@ def get_serve_logs_dir() -> str:
     """Get the directory that stores Serve log files."""
 
     return os.path.join(ray._private.worker._global_node.get_logs_dir_path(), "serve")
-
-
-def get_component_log_file_name(
-    component_name: str,
-    component_id: str,
-    component_type: Optional[ServeComponentType],
-    suffix: str = "",
-) -> str:
-    """Get the component's log file name."""
-
-    # For DEPLOYMENT component type, we want to log the deployment name
-    # instead of adding the component type to the component name.
-    component_log_file_name = component_name
-    if component_type is not None:
-        component_log_file_name = f"{component_type.value}_{component_name}"
-        if component_type != ServeComponentType.REPLICA:
-            component_name = f"{component_type}_{component_name}"
-    log_file_name = LOG_FILE_FMT.format(
-        component_name=component_log_file_name,
-        component_id=component_id,
-        suffix=suffix,
-    )
-    return log_file_name
 
 
 class LoggingContext:

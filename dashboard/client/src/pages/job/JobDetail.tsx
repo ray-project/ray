@@ -58,9 +58,10 @@ export const JobDetailChartsPage = () => {
   const { cluster_status } = useRayStatus();
 
   const { data } = useSWR(
-    "useDataDatasets",
-    async () => {
-      const rsp = await getDataDatasets();
+    job?.job_id ? ["useDataDatasets", job.job_id] : null,
+    async ([_, jobId]) => {
+      // Only display details for Ray Datasets that belong to this job.
+      const rsp = await getDataDatasets(jobId);
 
       if (rsp) {
         return rsp.data;

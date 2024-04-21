@@ -40,6 +40,7 @@ from ray.data.block import (
 )
 from ray.data.context import DataContext
 from ray.data.exceptions import UserCodeException
+from ray.util.rpdb import _is_ray_debugger_enabled
 
 
 def plan_udf_map_op(
@@ -108,7 +109,7 @@ def _parse_op_fn(op: AbstractUDFMap):
             try:
                 return ray.data._cached_fn(item, *fn_args, **fn_kwargs)
             except Exception as e:
-                raise UserCodeException() from e
+                _handle_debugger_exception(e)
 
         def init_fn():
             if ray.data._cached_fn is None:
@@ -123,12 +124,23 @@ def _parse_op_fn(op: AbstractUDFMap):
             try:
                 return op_fn(item, *fn_args, **fn_kwargs)
             except Exception as e:
-                raise UserCodeException() from e
+                _handle_debugger_exception(e)
 
         def init_fn():
             pass
 
     return fn, init_fn
+
+
+def _handle_debugger_exception(e: Exception):
+    """If the Ray Debugger is enabled, keep the full stack trace unmodified
+    so that the debugger can stop at the initial unhandled exception.
+    Otherwise, clear the stack trace to omit noisy internal code path."""
+
+    if _is_ray_debugger_enabled():
+        raise e
+    else:
+        raise UserCodeException() from e
 
 
 # Following are util functions for converting UDFs to `MapTransformCallable`s.

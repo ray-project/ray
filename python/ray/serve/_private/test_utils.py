@@ -206,22 +206,6 @@ def check_ray_started():
     return requests.get("http://localhost:52365/api/ray/version").status_code == 200
 
 
-def check_telemetry_recorded(storage_handle, key, expected_value):
-    report = ray.get(storage_handle.get_report.remote())
-    assert report["extra_usage_tags"][key] == expected_value
-    return True
-
-
-def check_telemetry_not_recorded(storage_handle, key):
-    report = ray.get(storage_handle.get_report.remote())
-    assert (
-        ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.get_value_from_report(
-            report
-        )
-        is None
-    )
-
-
 def check_deployment_status(
     name: str, expected_status: DeploymentStatus, app_name=SERVE_DEFAULT_APP_NAME
 ) -> bool:
@@ -374,6 +358,16 @@ def start_telemetry_app():
     return storage
 
 
+def check_telemetry(
+    tag: ServeUsageTag, expected: Any, storage_actor_name: str = STORAGE_ACTOR_NAME
+):
+    storage_handle = ray.get_actor(storage_actor_name, namespace=SERVE_NAMESPACE)
+    report = ray.get(storage_handle.get_report.remote())
+    print(report["extra_usage_tags"])
+    assert tag.get_value_from_report(report) == expected
+    return True
+
+
 def ping_grpc_list_applications(channel, app_names, test_draining=False):
     stub = serve_pb2_grpc.RayServeAPIServiceStub(channel)
     request = serve_pb2.ListApplicationsRequest()
@@ -519,50 +513,78 @@ class FakeGrpcContext:
 class FakeGauge:
     def __init__(self, name: str = None, tag_keys: Tuple[str] = None):
         self.name = name
-        self.value = 0
-        if tag_keys:
-            self.tags = {key: None for key in tag_keys}
-        else:
-            self.tags = dict()
+        self.values = dict()
+
+        self.tags = tag_keys or ()
+        self.default_tags = dict()
 
     def set_default_tags(self, tags: Dict[str, str]):
         for key, tag in tags.items():
             assert key in self.tags
-            self.tags[key] = tag
+            self.default_tags[key] = tag
 
     def set(self, value: Union[int, float], tags: Dict[str, str] = None):
-        self.value = value
-        if tags:
-            self.tags.update(tags)
+        merged_tags = self.default_tags.copy()
+        merged_tags.update(tags or {})
+        assert set(merged_tags.keys()) == set(self.tags)
 
-    def get_value(self):
-        return self.value
+        d = self.values
+        for tag in self.tags[:-1]:
+            tag_value = merged_tags[tag]
+            if tag_value not in d:
+                d[tag_value] = dict()
+            d = d[tag_value]
 
-    def get_tags(self):
-        return self.tags
+        d[merged_tags[self.tags[-1]]] = value
+
+    def get_value(self, tags: Dict[str, str]):
+        value = self.values
+        for tag in self.tags:
+            tag_value = tags[tag]
+            value = value.get(tag_value)
+            if value is None:
+                return
+
+        return value
 
 
 class FakeCounter:
     def __init__(self, name: str = None, tag_keys: Tuple[str] = None):
         self.name = name
-        self.count: int = 0
-        if tag_keys:
-            self.tags = {key: None for key in tag_keys}
-        else:
-            self.tags = dict()
+        self.counts = dict()
+
+        self.tags = tag_keys or ()
+        self.default_tags = dict()
 
     def set_default_tags(self, tags: Dict[str, str]):
         for key, tag in tags.items():
             assert key in self.tags
-            self.tags[key] = tag
+            self.default_tags[key] = tag
 
     def inc(self, value: Union[int, float] = 1.0, tags: Dict[str, str] = None):
-        self.count += value
-        if tags:
-            self.tags.update(tags)
+        merged_tags = self.default_tags.copy()
+        merged_tags.update(tags or {})
+        assert set(merged_tags.keys()) == set(self.tags)
 
-    def get_count(self) -> int:
-        return self.count
+        d = self.counts
+        for tag in self.tags[:-1]:
+            tag_value = merged_tags[tag]
+            if tag_value not in d:
+                d[tag_value] = dict()
+            d = d[tag_value]
+
+        key = merged_tags[self.tags[-1]]
+        d[key] = d.get(key, 0) + value
+
+    def get_count(self, tags: Dict[str, str]) -> int:
+        value = self.counts
+        for tag in self.tags:
+            tag_value = tags[tag]
+            value = value.get(tag_value)
+            if value is None:
+                return
+
+        return value
 
     def get_tags(self):
         return self.tags

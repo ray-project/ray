@@ -7,7 +7,7 @@ from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.episode import Episode
-from ray.rllib.examples.env.mock_env import MockEnv3
+from ray.rllib.examples.envs.classes.mock_env import MockEnv3
 from ray.rllib.policy import Policy
 from ray.rllib.utils import override
 from ray.rllib.utils.typing import TensorStructType, TensorType
