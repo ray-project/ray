@@ -25,6 +25,8 @@ ENV BUILDKITE_BAZEL_CACHE_URL=${BUILDKITE_BAZEL_CACHE_URL}
 RUN <<EOF
 #!/bin/bash
 
+# fresh builder
+
 apt-get update -qq && apt-get upgrade -qq
 apt-get install -y -qq \
     curl python-is-python3 git build-essential \

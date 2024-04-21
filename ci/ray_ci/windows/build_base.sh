@@ -2,6 +2,7 @@
 
 set -ex
 
+# refresh
 conda init 
 # newer requests version is needed for python 3.9+
 conda install -q -y python="${PYTHON}" requests=2.31.0
