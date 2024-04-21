@@ -537,11 +537,11 @@ class PPO(Algorithm):
             self.metrics.log_dict(
                 additional_results,
                 key=LEARNER_RESULTS,
-                # TODO (sven): For now, as we do NOT use MetricsLogger inside Learner and
-                #  LearnerGroup, we assume here that the Learner/LearnerGroup-returned
-                #  values are absolute (and thus require a reduce window of just 1 (take
-                #  as-is)). Remove the window setting below, once Learner/LearnerGroup
-                #  themselves use MetricsLogger.
+                # TODO (sven): For now, as we do NOT use MetricsLogger inside Learner
+                #  and LearnerGroup, we assume here that the
+                #  Learner/LearnerGroup-returned values are absolute (and thus require a
+                #  reduce window of just 1 (take as-is)). Remove the window setting
+                #  below, once Learner/LearnerGroup themselves use MetricsLogger.
                 window=1,
             )
 
