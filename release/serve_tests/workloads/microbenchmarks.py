@@ -28,6 +28,7 @@ from ray.serve._private.benchmarks.common import (
     run_latency_benchmark,
     run_throughput_benchmark,
 )
+from ray.serve._private.test_utils import convert_metrics_to_perf_metrics
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.config import gRPCOptions
 from ray.serve.handle import DeploymentHandle
@@ -63,43 +64,25 @@ class GrpcDeployment:
 def convert_throughput_to_perf_metrics(
     name: str, mean: float, std: float
 ) -> List[Dict]:
-    return [
-        {
-            "perf_metric_name": f"{name}_avg_rps",
-            "perf_metric_value": mean,
-            "perf_metric_type": "THROUGHPUT",
+    return convert_metrics_to_perf_metrics(
+        metrics={
+            f"{name}_avg_rps": mean,
+            f"{name}_throughput_std": std,
         },
-        {
-            "perf_metric_name": f"{name}_throughput_std",
-            "perf_metric_value": std,
-            "perf_metric_type": "THROUGHPUT",
-        },
-    ]
+        metric_type="THROUGHPUT",
+    )
 
 
 def convert_latencies_to_perf_metrics(name: str, latencies: pd.Series) -> List[Dict]:
-    return [
-        {
-            "perf_metric_name": f"{name}_p50_latency",
-            "perf_metric_value": latencies.quantile(0.5),
-            "perf_metric_type": "LATENCY",
+    return convert_metrics_to_perf_metrics(
+        metrics={
+            f"{name}_p50_latency": latencies.quantile(0.5),
+            f"{name}_p90_latency": latencies.quantile(0.9),
+            f"{name}_p95_latency": latencies.quantile(0.95),
+            f"{name}_p99_latency": latencies.quantile(0.99),
         },
-        {
-            "perf_metric_name": f"{name}_p90_latency",
-            "perf_metric_value": latencies.quantile(0.9),
-            "perf_metric_type": "LATENCY",
-        },
-        {
-            "perf_metric_name": f"{name}_p95_latency",
-            "perf_metric_value": latencies.quantile(0.95),
-            "perf_metric_type": "LATENCY",
-        },
-        {
-            "perf_metric_name": f"{name}_p99_latency",
-            "perf_metric_value": latencies.quantile(0.99),
-            "perf_metric_type": "LATENCY",
-        },
-    ]
+        metric_type="LATENCY",
+    )
 
 
 async def main():

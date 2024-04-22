@@ -12,6 +12,8 @@ from serve_test_cluster_utils import NUM_CPU_PER_NODE
 from subprocess import PIPE
 from typing import Dict, List, Union
 
+from ray.serve._private.test_utils import parse_size_to_KB
+
 logger = logging.getLogger(__file__)
 
 
@@ -47,36 +49,6 @@ def parse_time_to_ms(time_string: str) -> float:
 
     # Should not return here in common benchmark
     return values[1]
-
-
-def parse_size_to_KB(size_string: str) -> float:
-    """Given a size string with various unit, convert
-    to KB in float:
-
-    wrk binary unit reference
-    https://github.com/wg/wrk/blob/master/src/units.c#L29-L33
-
-        Example:
-            "200.56KB" -> 200.56
-            "50MB" -> 51200
-            "0.5GB" -> 524288
-    """
-    # Group 1 - (one or more digits + optional dot + one or more digits)
-    # 200.56 / 50 / 0.5
-    # Group 2 - (All words)
-    # KB / MB / GB
-    parsed = re.split(r"(\d+.?\d+)(\w*)", size_string)
-    values = [val for val in parsed if val]
-
-    if values[1] == "KB":
-        return float(values[0])
-    elif values[1] == "MB":
-        return float(values[0]) * 1024
-    elif values[1] == "GB":
-        return float(values[0]) * 1024 * 1024
-
-    # Bytes
-    return float(values[0]) / 1000
 
 
 def parse_metric_to_base(metric_string: str) -> float:
