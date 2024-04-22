@@ -137,7 +137,7 @@ if __name__ == "__main__":
     stop = {
         "training_iteration": args.stop_iters,
         "sampler_results/policy_reward_mean/learned": args.stop_reward,
-        "timesteps_total": args.stop_timesteps,
+        "num_env_steps_sampled_lifetime": args.stop_timesteps,
     }
 
     run_rllib_example_script_experiment(

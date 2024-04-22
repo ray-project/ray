@@ -229,7 +229,7 @@ if __name__ == "__main__":
         # But we DO want to stop, once the entire task is learned (policy achieves
         # return of 1.0 on the most difficult task=2).
         "task_solved": 1.0,
-        "timesteps_total": args.stop_timesteps,
+        "num_env_steps_sampled_lifetime": args.stop_timesteps,
     }
 
     run_rllib_example_script_experiment(
