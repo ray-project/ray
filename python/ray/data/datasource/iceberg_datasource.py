@@ -5,8 +5,8 @@ Module to read an iceberg table into a Ray Dataset, by using the Ray Datasource 
 import logging
 from typing import TYPE_CHECKING, Any, Iterable, List, Optional, Tuple, Union
 
-from ray.data import ReadTask, block
-from ray.data.datasource import Datasource
+from ray.data.block import Block, BlockMetadata
+from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
@@ -28,11 +28,10 @@ class IcebergDatasource(Datasource):
     def __init__(
         self,
         table_identifier: str,
-        catalog_type: str = "glue",
         row_filter: Union[str, "BooleanExpression"] = None,
         selected_fields: Tuple[str, ...] = ("*",),
         snapshot_id: Optional[int] = None,
-        scan_kwargs: Optional[dict[str, str]] = None,
+        scan_kwargs: Optional[dict[str, Any]] = None,
         catalog_kwargs: Optional[dict[str, Any]] = None,
     ):
         """
@@ -41,8 +40,6 @@ class IcebergDatasource(Datasource):
         Args:
             table_identifier: Fully qualified table identifier (i.e.,
                 "db_name.table_name")
-            catalog_type: The type of catalog to use PyIceberg with (defaults to
-                "glue")
             row_filter: A PyIceberg BooleanExpression to use to filter the data *prior*
                  to reading
             selected_fields: Which columns from the data to read, passed directly to
@@ -59,21 +56,25 @@ class IcebergDatasource(Datasource):
 
         self.table_identifier = table_identifier
 
-        self._catalog_type = catalog_type
         self._catalog_kwargs = catalog_kwargs if catalog_kwargs is not None else {}
+
+        if "name" in self._catalog_kwargs:
+            self._catalog_name = self._catalog_kwargs.pop("name")
+        else:
+            self._catalog_name = "default"
 
         self._row_filter = row_filter if row_filter is not None else AlwaysTrue()
         self._selected_fields = selected_fields
-        self._snapshot_id = snapshot_id
+
+        if snapshot_id:
+            self._scan_kwargs["snapshot_id"] = snapshot_id
 
         self._plan_files = None
 
     def _get_catalog(self) -> "Catalog":
         from pyiceberg import catalog
 
-        if "type" not in self._catalog_kwargs:
-            self._catalog_kwargs["type"] = self._catalog_type
-        return catalog.load_catalog(name="default", **self._catalog_kwargs)
+        return catalog.load_catalog(self._catalog_name, **self._catalog_kwargs)
 
     @property
     def plan_files(self) -> List["FileScanTask"]:
@@ -94,7 +95,6 @@ class IcebergDatasource(Datasource):
         data_scan = table.scan(
             row_filter=self._row_filter,
             selected_fields=self._selected_fields,
-            snapshot_id=self._snapshot_id,
             **self._scan_kwargs,
         )
 
@@ -133,8 +133,7 @@ class IcebergDatasource(Datasource):
             tasks: Iterable["FileScanTask"],
             table_identifier: str,
             schema: "Schema",
-            catalog_type: str = "glue",
-        ) -> Iterable[block.Block]:
+        ) -> Iterable[Block]:
             # Closure so we can pass this callable as an argument to ReadTask
 
             # Both the catalog and tbl attributes cannot be pickled, which means they
@@ -158,20 +157,25 @@ class IcebergDatasource(Datasource):
 
         # Get the PyIceberg scan
         data_scan = self._get_data_scan()
-
         # Get the plan files in this query
-        plan_files = data_scan.plan_files()
+        plan_files = self.plan_files
 
-        # Get the schema project for this scan, given all the row filters, snapshot ID,
+        # Get the projected schema for this scan, given all the row filters, snapshot ID,
         # etc.
         projected_schema = data_scan.projection()
         # Get the arrow schema, to set in the metadata
         pya_schema = pyi_pa_io.schema_to_pyarrow(projected_schema)
 
+        # Set the n_chunks to the min of the number of plan files and the actual requested n_chunks, so that there
+        # are no empty tasks
+        if parallelism > len(list(plan_files)):
+            parallelism = len(list(plan_files))
+            logger.warning(f"Reducing the parallelism to {parallelism}, as that is the number of files")
+
         read_tasks = []
         # Chunk the plan files based on the requested parallelism
         for chunk_tasks in IcebergDatasource._distribute_tasks_into_equal_chunks(plan_files, parallelism):
-            metadata = block.BlockMetadata(
+            metadata = BlockMetadata(
                 num_rows=None,
                 size_bytes=sum(task.length for task in chunk_tasks),
                 schema=pya_schema,
@@ -184,7 +188,6 @@ class IcebergDatasource(Datasource):
                         tasks=tasks,
                         table_identifier=self.table_identifier,
                         schema=projected_schema,
-                        catalog_type=self._catalog_type,
                     ),
                     metadata=metadata,
                 )

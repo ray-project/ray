@@ -33,7 +33,7 @@ from ray.data.datasource.file_meta_provider import (
     ParquetMetadataProvider,
 )
 from ray.data.datasource.filename_provider import FilenameProvider
-from ray.data.datasource.iceberg_datsource import IcebergDatasource
+from ray.data.datasource.iceberg_datasource import IcebergDatasource
 from ray.data.datasource.image_datasink import _ImageDatasink
 from ray.data.datasource.image_datasource import ImageDatasource
 from ray.data.datasource.json_datasink import _JSONDatasink

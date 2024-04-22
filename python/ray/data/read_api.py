@@ -98,7 +98,6 @@ if TYPE_CHECKING:
     import pyspark
     import tensorflow as tf
     import torch
-    from pyiceberg.expressions import BooleanExpression
     from tensorflow_metadata.proto.v0 import schema_pb2
 
     from ray.data._internal.datasource.tfrecords_datasource import TFXReadOptions
