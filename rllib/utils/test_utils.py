@@ -1194,34 +1194,78 @@ def run_learning_tests_from_yaml_or_py(
     return result
 
 
+# TODO (sven): Make this the de-facto, well documented, and unified utility for most of
+#  our tests:
+#  - CI (label: "learning_tests")
+#  - release tests (benchmarks)
+#  - example scripts
 def run_rllib_example_script_experiment(
     base_config: "AlgorithmConfig",
     args: argparse.Namespace,
     *,
     stop: Optional[Dict] = None,
-    success_metric: str = "sampler_results/episode_reward_mean",
+    success_metric: Optional[Dict] = None,
+    trainable: Optional[Type] = None,
+    tune_callbacks: Optional[List] = None,
 ) -> Union[ResultDict, tune.result_grid.ResultGrid]:
     """Given an algorithm config and some command line args, runs an experiment.
 
     There are some constraints on what properties must be defined in `args`.
-    It should ideally be generated via the ``
+    It should ideally be generated via calling
+    `args = add_rllib_example_script_args()`, which can be found in this very module
+    here.
+
+    The function sets up an Algorithm object from the given config (altered by the
+    contents of `args`), then runs the Algorithm via Tune (or manually, if
+    `args.no_tune` is set to True) using the stopping criteria in `stop`.
+
+    At the end of the experiment, if `args.as_test` is True, checks, whether the
+    Algorithm reached the `success_metric` (if None, use
+    `sampler_results/episode_reward_mean` with a minimum value of `args.stop_reward`).
+
+    See https://github.com/ray-project/ray/tree/master/rllib/examples for an overview
+    of all supported command line options.
 
     Args:
         base_config: The AlgorithmConfig object to use for this experiment. This base
             config will be automatically "extended" based on some of the provided
             `args`. For example, `args.num_env_runners` is used to set
             `config.num_rollout_workers`, etc..
-        args: A argparse.Namespace object which must have the following properties
-            defined: `stop_iters`, `stop_reward`, `stop_timesteps`, `no_tune`,
-            `verbose`, `checkpoint_freq`, `as_test`. Optionally, for wandb logging:
-            `wandb_key`, `wandb_project`, `wandb_run_name`.
+        args: A argparse.Namespace object, ideally returned by calling
+            `args = add_rllib_example_script_args()`. It must have the following
+            properties defined: `stop_iters`, `stop_reward`, `stop_timesteps`,
+            `no_tune`, `verbose`, `checkpoint_freq`, `as_test`. Optionally, for WandB
+            logging: `wandb_key`, `wandb_project`, `wandb_run_name`.
+        stop: An optional dict mapping ResultDict key strings (using "/" in case of
+            nesting, e.g. "sampler_results/episode_reward_mean" for referring to
+            `result_dict['sampler_results']['episode_reward_mean']` to minimum
+            values, reaching of which will stop the experiment). Default is:
+            {
+            "sampler_results/episode_reward_mean": args.stop_reward,
+            "training_iteration": args.stop_iters,
+            "timesteps_total": args.stop_timesteps,
+            }
+        success_metric: Only relevant if `args.as_test` is True.
+            A dict mapping a single(!) ResultDict key string (using "/" in
+            case of nesting, e.g. "sampler_results/episode_reward_mean" for referring
+            to `result_dict['sampler_results']['episode_reward_mean']` to a single(!)
+            minimum value to be reached in order for the experiment to count as
+            successful. If `args.as_test` is True AND this `success_metric` is not
+            reached with the bounds defined by `stop`, will raise an Exception.
+        trainable: The Trainable sub-class to run in the tune.Tuner. If None (default),
+            use the registered RLlib Algorithm class specified by args.algo.
+        tune_callbacks: A list of Tune callbacks to configure with the tune.Tuner.
+            In case `args.wandb_key` is provided, will append a WandB logger to this
+            list.
 
     Returns:
         The last ResultDict from a --no-tune run OR the tune.Tuner.fit()
         results.
     """
+    # Initialize Ray.
     ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
 
+    # Define one or more stopping criteria.
     stop = stop or {
         "training_iteration": args.stop_iters,
         "sampler_results/episode_reward_mean": args.stop_reward,
@@ -1231,10 +1275,13 @@ def run_rllib_example_script_experiment(
     from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
     from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 
-    # Extend the `base_config` based on provided `args`.
+    # Enhance the `base_config`, based on provided `args`.
     config = (
+        # Set the framework.
         base_config.framework(args.framework)
+        # Enable the new API stack?
         .experimental(_enable_new_api_stack=args.enable_new_api_stack)
+        # Define EnvRunner/RolloutWorker scaling and behavior.
         .rollouts(
             num_rollout_workers=args.num_env_runners,
             # Set up the correct env-runner to use depending on
@@ -1249,6 +1296,7 @@ def run_rllib_example_script_experiment(
                 )
             ),
         )
+        # Define compute resources used.
         .resources(
             # Old stack.
             num_gpus=0 if args.enable_new_api_stack else args.num_gpus,
@@ -1259,9 +1307,10 @@ def run_rllib_example_script_experiment(
         )
     )
 
+    # Run the experiment w/o Tune (directly operate on the RLlib Algorithm object).
     if args.no_tune:
         algo = config.build()
-        for iter in range(args.stop_iters):
+        for _ in range(args.stop_iters):
             results = algo.train()
             print(f"R={results['sampler_results']['episode_reward_mean']}", end="")
             if "evaluation" in results:
@@ -1279,24 +1328,29 @@ def run_rllib_example_script_experiment(
                 if val is not None and val >= value:
                     print(f"Stop criterium ({key}={value}) fulfilled!")
                     return results
+        ray.shutdown()
         return results
 
-    callbacks = None
+    # Run the experiment using Ray Tune.
+
+    # Log results using WandB.
+    tune_callbacks = tune_callbacks or []
     if hasattr(args, "wandb_key") and args.wandb_key is not None:
         project = args.wandb_project or (
             args.algo.lower() + "-" + re.sub("\\W+", "-", str(config.env).lower())
         )
-        callbacks = [
+        tune_callbacks.append(
             WandbLoggerCallback(
                 api_key=args.wandb_key,
                 project=project,
                 upload_checkpoints=True,
                 **({"name": args.wandb_run_name} if args.wandb_run_name else {}),
             )
-        ]
+        )
 
-    progress_reporter = None
+    # Auto-configure a CLIReporter (to log the results to the console).
     # Use better ProgressReporter for multi-agent cases: List individual policy rewards.
+    progress_reporter = None
     if args.num_agents > 0:
         progress_reporter = CLIReporter(
             metric_columns={
@@ -1304,10 +1358,10 @@ def run_rllib_example_script_experiment(
                     "training_iteration": "iter",
                     "time_total_s": "total time (s)",
                     "timesteps_total": "ts",
-                    "sampler_results/episode_reward_mean": "combined reward",
+                    "sampler_results/episode_reward_mean": "combined return",
                 },
                 **{
-                    f"policy_reward_mean/{pid}": f"reward {pid}"
+                    f"policy_reward_mean/{pid}": f"return {pid}"
                     for pid in config.policies
                 },
             },
@@ -1317,13 +1371,14 @@ def run_rllib_example_script_experiment(
     # `CLIReporter`.
     os.environ["RAY_AIR_NEW_OUTPUT"] = "0"
 
+    # Run the actual experiment (using Tune).
     results = tune.Tuner(
-        config.algo_class,
+        trainable or config.algo_class,
         param_space=config,
         run_config=air.RunConfig(
             stop=stop,
             verbose=args.verbose,
-            callbacks=callbacks,
+            callbacks=tune_callbacks,
             checkpoint_config=air.CheckpointConfig(
                 checkpoint_frequency=args.checkpoint_freq,
                 checkpoint_at_end=args.checkpoint_at_end,
@@ -1333,13 +1388,18 @@ def run_rllib_example_script_experiment(
         tune_config=tune.TuneConfig(num_samples=args.num_samples),
     ).fit()
 
+    # If run as a test, check whether we reached the specified success criteria.
     if args.as_test:
+        if success_metric is None:
+            success_metric = {"sampler_results/episode_reward_mean": args.stop_reward}
+        # TODO (sven): Make this work for more than one metric (AND-logic?).
+        metric = next(iter(success_metric.keys()))
         check_learning_achieved(
-            results,
-            args.stop_reward,
-            metric=success_metric,
+            tune_results=results,
+            min_value=success_metric[metric],
+            metric=metric,
         )
-
+    ray.shutdown()
     return results
 
 

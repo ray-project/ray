@@ -1,8 +1,8 @@
-from typing import Dict
 from collections import defaultdict
+from typing import Dict
 
-from ray.util.annotations import PublicAPI
 from ray.tune.stopper.stopper import Stopper
+from ray.util.annotations import PublicAPI
 
 
 @PublicAPI

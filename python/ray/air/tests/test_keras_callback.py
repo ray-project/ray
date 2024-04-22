@@ -1,20 +1,20 @@
+import os
 from typing import Dict, Tuple
 from unittest.mock import patch
-import os
 
-import pytest
 import numpy as np
+import pytest
 import tensorflow as tf
 
 import ray
 from ray import train
 from ray.air.integrations.keras import ReportCheckpointCallback
-from ray.train.constants import TRAIN_DATASET_KEY
 from ray.train import ScalingConfig
+from ray.train.constants import TRAIN_DATASET_KEY
 from ray.train.tensorflow import (
-    TensorflowTrainer,
-    TensorflowPredictor,
     TensorflowCheckpoint,
+    TensorflowPredictor,
+    TensorflowTrainer,
 )
 
 
