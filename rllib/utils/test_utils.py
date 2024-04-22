@@ -715,23 +715,6 @@ def check_train_results_new_api_stack(train_results: ResultDict) -> None:
         "training_iteration",
         "config",
     ]:
-        # "episode_len_mean",
-        # "episode_reward_max",
-        # "episode_reward_mean",
-        # "episode_reward_min",
-        # "hist_stats",
-        # "info",
-        # "iterations_since_restore",
-        # "num_healthy_workers",
-        # "perf",
-        # "policy_reward_max",
-        # "policy_reward_mean",
-        # "policy_reward_min",
-        # "sampler_perf",
-        # "time_since_restore",
-        # "time_this_iter_s",
-        # "time_total_s",
-        # ]:
         assert (
             key in train_results
         ), f"'{key}' not found in `train_results` ({train_results})!"
@@ -751,9 +734,6 @@ def check_train_results_new_api_stack(train_results: ResultDict) -> None:
 
     # Check in particular the "info" dict.
     learner_results = train_results[LEARNER_RESULTS]
-    # assert NUM_ENV_STEPS_TRAINED in learner_results, (
-    #    f"'{NUM_ENV_STEPS_TRAINED}' not in 'LEARNER_RESULTS'!"
-    # )
 
     # Make sure we have a default_policy key if we are not in a
     # multi-agent setup.
