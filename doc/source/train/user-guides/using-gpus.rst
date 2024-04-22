@@ -106,26 +106,21 @@ You can get a list of associated devices with :meth:`ray.train.torch.get_devices
 
 Setting the GPU type
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Sometimes you might want to specify the accelerator type for a worker. For example, 
-you can specify `accelerator_type="A100"` in the `ScalingConfig` if you want to 
-assign the worker an NVIDIA A100 GPU.
+Ray Train allows you to specify the accelerator type for each worker.
+This is useful if your model training has some GPU memory constraints that requires a specific type of GPU.
+In a heterogeneous Ray cluster, this means that your training workers will be forced to run on the specified GPU type, 
+rather than on any arbitrary GPU node.
 
-You can get a list of supported `accelerator_type` from :ref:`the available accelerator types <accelerator_types>`.
+For example, you can specify `accelerator_type="A100"` in the :class:`~ray.train.ScalingConfig` if you want to 
+assign each worker a NVIDIA A100 GPU.
 Ensure that your cluster has instances with the specified accelerator type 
 or is able to autoscale to fulfill the request.
 
 .. testcode::
 
-    import torch
     from ray.train import ScalingConfig
-    from ray.train.torch import TorchTrainer, get_device
+    from ray.train.torch import TorchTrainer
 
-
-    def train_func():
-        assert torch.cuda.is_available()
-
-        device = get_device()
-        assert device == torch.device("cuda:0")
 
     trainer = TorchTrainer(
         train_func,
@@ -135,7 +130,6 @@ or is able to autoscale to fulfill the request.
             accelerator_type="A100"
         )
     )
-    trainer.fit()
 
 
 (PyTorch) Setting the communication backend 
