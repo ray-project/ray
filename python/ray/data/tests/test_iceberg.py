@@ -97,6 +97,8 @@ class TestReadIceberg:
         import pyarrow as pa
         from pyiceberg import expressions as pyi_expr
 
+        pass
+
         iceberg_ds = IcebergDatasource(
             table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
             row_filter=pyi_expr.EqualTo("col_a", 1),
