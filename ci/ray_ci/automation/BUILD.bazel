@@ -2,16 +2,6 @@ load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 load("@py_deps_buildkite//:requirements.bzl", ci_require = "requirement")
 
 py_binary(
-    name = "state_machine_bot",
-    srcs = ["state_machine_bot.py"],
-    exec_compatible_with = ["//:hermetic_python"],
-    deps = [
-        ci_require("click"),
-        "//ci/ray_ci:ray_ci_lib",
-    ],
-)
-
-py_binary(
     name = "test_db_bot",
     srcs = ["test_db_bot.py"],
     exec_compatible_with = ["//:hermetic_python"],
@@ -100,6 +90,7 @@ py_test(
     ],
     deps = [
         ci_require("pytest"),
+        ci_require("docker"),
         ":docker_tags_lib",
     ],
 )
@@ -157,8 +148,29 @@ py_binary(
     srcs = ["upload_wheels_pypi.py"],
     exec_compatible_with = ["//:hermetic_python"],
     deps = [
-        ":ray_wheels_lib",
         ":pypi_lib",
+        ":ray_wheels_lib",
         ci_require("click"),
+    ],
+)
+
+py_binary(
+    name = "list_docker_tags",
+    srcs = ["list_docker_tags.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    deps = [
+        ":docker_tags_lib",
+        ci_require("click"),
+    ],
+)
+
+py_binary(
+    name = "check_nightly_ray_commit",
+    srcs = ["check_nightly_ray_commit.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    deps = [
+        ":docker_tags_lib",
+        ci_require("click"),
+        ci_require("docker"),
     ],
 )

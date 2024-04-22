@@ -1,0 +1,13 @@
+group: bisect
+depends_on: 
+  - forge
+steps:
+  - name: macos test
+    commands:
+      - if [[ "$(buildkite-agent meta-data get test-type)" != "macos-test" ]]; then exit 0; fi
+      - ./ci/ray_ci/macos/macos_ci.sh bisect "$(buildkite-agent meta-data get test-name)" 
+          "$(buildkite-agent meta-data get passing-commit)" "$(buildkite-agent meta-data get failing-commit)"
+    mount_buildkite_agent: true
+    job_env: MACOS
+    instance_type: macos
+    priority: 10

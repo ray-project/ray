@@ -16,7 +16,11 @@ from ray.serve._private.config import (
     ReplicaConfig,
     handle_num_replicas_auto,
 )
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_LOGGER_NAME
+from ray.serve._private.constants import (
+    DEFAULT_MAX_ONGOING_REQUESTS,
+    SERVE_DEFAULT_APP_NAME,
+    SERVE_LOGGER_NAME,
+)
 from ray.serve._private.deployment_graph_build import build as pipeline_build
 from ray.serve._private.deployment_graph_build import (
     get_and_validate_ingress_deployment,
@@ -347,16 +351,20 @@ def deployment(
                 "version."
             )
 
-    max_ongoing_requests = (
-        max_ongoing_requests
-        if max_ongoing_requests is not DEFAULT.VALUE
-        else max_concurrent_queries
-    )
+    if max_ongoing_requests is None:
+        raise ValueError("`max_ongoing_requests` must be non-null, got None.")
+    elif max_ongoing_requests is DEFAULT.VALUE:
+        if max_concurrent_queries is None:
+            max_ongoing_requests = DEFAULT_MAX_ONGOING_REQUESTS
+        else:
+            max_ongoing_requests = max_concurrent_queries
     if num_replicas == "auto":
         num_replicas = None
         max_ongoing_requests, autoscaling_config = handle_num_replicas_auto(
             max_ongoing_requests, autoscaling_config
         )
+
+        ServeUsageTag.AUTO_NUM_REPLICAS_USED.record("1")
 
     # NOTE: The user_configured_option_names should be the first thing that's
     # defined in this function. It depends on the locals() dictionary storing
@@ -830,6 +838,7 @@ def get_app_handle(name: str) -> DeploymentHandle:
 def get_deployment_handle(
     deployment_name: str,
     app_name: Optional[str] = None,
+    _record_telemetry: bool = True,
 ) -> DeploymentHandle:
     """Get a handle to a deployment by name.
 
@@ -916,5 +925,7 @@ def get_deployment_handle(
         else:
             app_name = internal_replica_context.app_name
 
-    ServeUsageTag.SERVE_GET_DEPLOYMENT_HANDLE_API_USED.record("1")
+    if _record_telemetry:
+        ServeUsageTag.SERVE_GET_DEPLOYMENT_HANDLE_API_USED.record("1")
+
     return client.get_handle(deployment_name, app_name)

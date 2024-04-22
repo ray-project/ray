@@ -1,7 +1,10 @@
+# TODO (sven): Move this example script into the new API stack.
+# TODO (sven): Move this script to `examples/rl_modules/...`
+
 import argparse
 import os
 
-from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
+from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.registry import get_trainable_cls
 

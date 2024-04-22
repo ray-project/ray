@@ -1,5 +1,5 @@
 import logging
-from collections import defaultdict, Counter
+from collections import Counter, defaultdict
 from dataclasses import _MISSING_TYPE, dataclass, fields
 from pathlib import Path
 from typing import (
@@ -10,28 +10,28 @@ from typing import (
     List,
     Mapping,
     Optional,
-    Union,
     Tuple,
+    Union,
 )
 
 import pyarrow.fs
 
+from ray._private.ray_constants import RESOURCE_CONSTRAINT_PREFIX
 from ray._private.storage import _get_storage_uri
 from ray._private.thirdparty.tabulate.tabulate import tabulate
-from ray.util.annotations import PublicAPI, Deprecated
-from ray.widgets import Template, make_table_html_repr
 from ray.data.preprocessor import Preprocessor
-from ray._private.ray_constants import RESOURCE_CONSTRAINT_PREFIX
+from ray.util.annotations import Deprecated, PublicAPI
+from ray.widgets import Template, make_table_html_repr
 
 if TYPE_CHECKING:
+    from ray.train import SyncConfig
     from ray.tune.callback import Callback
+    from ray.tune.execution.placement_groups import PlacementGroupFactory
+    from ray.tune.experimental.output import AirVerbosity
     from ray.tune.progress_reporter import ProgressReporter
     from ray.tune.search.sample import Domain
     from ray.tune.stopper import Stopper
-    from ray.train import SyncConfig
-    from ray.tune.experimental.output import AirVerbosity
     from ray.tune.utils.log import Verbosity
-    from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 
 # Dict[str, List] is to support `tune.grid_search`:
@@ -206,7 +206,7 @@ class ScalingConfig:
 
         if self.accelerator_type:
             accelerator = f"{RESOURCE_CONSTRAINT_PREFIX}{self.accelerator_type}"
-            resources_per_worker.setdefault(accelerator, 1)
+            resources_per_worker.setdefault(accelerator, 0.001)
         return resources_per_worker
 
     @property
@@ -662,7 +662,8 @@ class RunConfig:
         from ray.tune.experimental.output import AirVerbosity, get_air_verbosity
 
         if self.storage_path is None:
-            self.storage_path = DEFAULT_STORAGE_PATH
+            # TODO(justinvyu): [Deprecated] Remove fallback to local dir.
+            self.storage_path = self.local_dir or DEFAULT_STORAGE_PATH
 
             # If no remote path is set, try to get Ray Storage URI
             ray_storage_uri: Optional[str] = _get_storage_uri()

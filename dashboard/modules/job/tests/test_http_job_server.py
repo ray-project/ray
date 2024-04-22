@@ -377,7 +377,7 @@ def test_timeout(job_sdk_client):
     data = client.get_job_info(job_id)
     assert "Failed to set up runtime environment" in data.message
     assert "Timeout" in data.message
-    assert "consider increasing `setup_timeout_seconds`" in data.message
+    assert "setup_timeout_seconds" in data.message
 
 
 def test_per_task_runtime_env(job_sdk_client: JobSubmissionClient):

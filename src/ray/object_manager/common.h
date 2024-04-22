@@ -14,7 +14,7 @@
 
 #pragma once
 
-#ifdef __linux__
+#if defined(__APPLE__) || defined(__linux__)
 #include <semaphore.h>
 #endif
 
@@ -24,6 +24,14 @@
 
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+
+// On Darwin, named semaphores cannot have names longer than PSEMNAMLEN. On other
+// platforms, we define PSEMNAMLEN to be 30, which is what seems to work in Darwin.
+#ifdef __APPLE__
+#include <sys/posix_sem.h>
+#elif !defined(PSEMNAMLEN)
+#define PSEMNAMLEN 30UL
+#endif
 
 namespace ray {
 
@@ -48,13 +56,34 @@ using RestoreSpilledObjectCallback =
 /// needed once the object has been Sealed. For experimental mutable objects,
 /// we use the header to synchronize between writer and readers.
 struct PlasmaObjectHeader {
-// TODO(swang): PlasmaObjectHeader uses pthreads, POSIX mutex and semaphore.
-#ifdef __linux__
-  // Used to signal to the writer when all readers are done.
-  sem_t rw_semaphore;
+#if defined(__APPLE__) || defined(__linux__)
+  struct Semaphores {
+    // Synchronizes readers and writers of the mutable object.
+    sem_t *object_sem;
+    // Synchronizes accesses to the object header.
+    sem_t *header_sem;
+  };
 
-  // Protects all following state, used to signal from writer to readers.
-  pthread_mutex_t wr_mut;
+  enum class SemaphoresCreationLevel {
+    kUnitialized,
+    kInitializing,
+    kDone,
+  };
+
+  // Used to synchronize initialization of the semaphores. Multiple processes may access
+  // this mutable object, so this variable lets them coordinate to determine who will
+  // initialize the semaphores.
+  std::atomic<SemaphoresCreationLevel> semaphores_created =
+      SemaphoresCreationLevel::kUnitialized;
+  // A unique name for this object. This unique name is used to generate the named
+  // semaphores for this object.
+  char unique_name[32];
+#else  // defined(__APPLE__) || defined(__linux__)
+  // Fake types for Windows.
+  struct sem_t {};
+  struct Semaphores {};
+#endif
+
   // The object version. For immutable objects, this gets incremented to 1 on
   // the first write and then should never be modified. For mutable objects,
   // each new write must increment the version before releasing to readers.
@@ -67,7 +96,7 @@ struct PlasmaObjectHeader {
   bool is_sealed = false;
   // Set to indicate an error was encountered computing the next version of
   // the mutable object. Lockless access allowed.
-  std::atomic_bool has_error = false;
+  std::atomic<bool> has_error = false;
   // The total number of reads allowed before the writer can write again. This
   // value should be set by the writer before releasing to readers.
   // For immutable objects, this is set to -1 and infinite reads are allowed.
@@ -93,54 +122,63 @@ struct PlasmaObjectHeader {
   // different data/metadata size.
   uint64_t data_size = 0;
   uint64_t metadata_size = 0;
+
   /// Blocks until all readers for the previous write have ReadRelease'd the
   /// value. Protects against concurrent writers.
   ///
+  /// \param sem The semaphores for this channel.
   /// \param data_size The new data size of the object.
   /// \param metadata_size The new metadata size of the object.
   /// \param num_readers The number of readers for the object.
   /// \return if the acquire was successful.
-  Status WriteAcquire(uint64_t data_size, uint64_t metadata_size, int64_t num_readers);
+  Status WriteAcquire(Semaphores &sem,
+                      uint64_t data_size,
+                      uint64_t metadata_size,
+                      int64_t num_readers);
 
   /// Call after completing a write to signal that readers may read.
   /// num_readers should be set before calling this.
-  Status WriteRelease();
+  ///
+  /// \param sem The semaphores for this channel.
+  Status WriteRelease(Semaphores &sem);
 
-  // Blocks until the given version is ready to read. Returns false if the
-  // maximum number of readers have already read the requested version.
-  //
-  // \param[in] read_version The version to read.
-  // \param[out] version_read For normal immutable objects, this will be set to
-  // 0. Otherwise, the current version.
-  // \return Whether the correct version was read and there were still
-  // reads remaining.
-  Status ReadAcquire(int64_t version_to_read, int64_t *version_read);
+  /// Blocks until the given version is ready to read. Returns false if the
+  /// maximum number of readers have already read the requested version.
+  ///
+  /// \param[in] sem The semaphores for this channel.
+  /// \param[in] read_version The version to read.
+  /// \param[out] version_read For normal immutable objects, this will be set to
+  /// 0. Otherwise, the current version.
+  /// \return Whether the correct version was read and there were still
+  /// reads remaining.
+  Status ReadAcquire(Semaphores &sem, int64_t version_to_read, int64_t *version_read);
 
   // Finishes the read. If all reads are done, signals to the writer. This is
   // not necessary to call for objects that have num_readers=-1.
   ///
+  /// \param sem The semaphores for this channel.
   /// \param read_version This must match the version previously passed in
   /// ReadAcquire.
-  Status ReadRelease(int64_t read_version);
-#endif
+  Status ReadRelease(Semaphores &sem, int64_t read_version);
 
-  /// Setup synchronization primitives.
+  /// Set up synchronization primitives.
   void Init();
 
-  /// Destroy synchronization primitives.
-  void Destroy();
-
-  /// Helper method to acquire the writer mutex while aborting if the
-  /// error bit is set.
-  /// \return if the mutex was acquired successfully.
-  Status TryAcquireWriterMutex();
+  /// Helper method to acquire a semaphore while failing if the error bit is set. This
+  /// method is idempotent.
+  ///
+  /// \return OK if the mutex was acquired successfully.
+  Status TryToAcquireSemaphore(sem_t *sem) const;
 
   /// Set the error bit. This is a non-blocking method.
-  void SetErrorUnlocked() {
-#ifdef __linux__
-    has_error = true;
-#endif
-  }
+  ///
+  /// \param sem The semaphores for this channel.
+  void SetErrorUnlocked(Semaphores &sem);
+
+  /// Checks if `has_error` has been set.
+  ///
+  /// \return OK if `has_error` has not been yet, and an IOError otherwise.
+  Status CheckHasError() const;
 };
 
 /// A struct that includes info about the object.

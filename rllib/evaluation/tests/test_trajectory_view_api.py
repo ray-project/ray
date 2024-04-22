@@ -7,12 +7,11 @@ import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 import ray.rllib.algorithms.dqn as dqn
 import ray.rllib.algorithms.ppo as ppo
-from ray.rllib.examples.env.debug_counter_env import MultiAgentDebugCounterEnv
-from ray.rllib.examples.env.multi_agent import MultiAgentPendulum
+from ray.rllib.examples.envs.classes.debug_counter_env import MultiAgentDebugCounterEnv
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentPendulum
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.examples.policy.episode_env_aware_policy import (
+from ray.rllib.examples._old_api_stack.policy.episode_env_aware_policy import (
     EpisodeEnvAwareAttentionPolicy,
-    StatefulRandomPolicy,
 )
 from ray.rllib.models.tf.attention_net import GTrXLNet
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
@@ -59,7 +58,9 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         config = (
             dqn.DQNConfig()
             .rollouts(num_envs_per_worker=10, rollout_fragment_length=4)
-            .environment("ray.rllib.examples.env.debug_counter_env.DebugCounterEnv")
+            .environment(
+                "ray.rllib.examples.envs.classes.debug_counter_env.DebugCounterEnv"
+            )
         )
 
         for _ in framework_iterator(config):
@@ -186,7 +187,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             # Batch-norm models have not been migrated to the RL Module API yet.
             .experimental(_enable_new_api_stack=False)
             .environment(
-                "ray.rllib.examples.env.debug_counter_env.DebugCounterEnv",
+                "ray.rllib.examples.envs.classes.debug_counter_env.DebugCounterEnv",
                 env_config={"config": {"start_at_t": 1}},  # first obs is [1.0]
             )
             .rollouts(num_rollout_workers=0)
@@ -288,52 +289,6 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 check(a_, expected_a__)
             expected_a__ = a__
             expected_a_ = a_
-
-    def test_traj_view_lstm_functionality(self):
-        action_space = Box(float("-inf"), float("inf"), shape=(3,))
-        obs_space = Box(float("-inf"), float("inf"), (4,))
-        max_seq_len = 50
-        rollout_fragment_length = 200
-        assert rollout_fragment_length % max_seq_len == 0
-        policies = {
-            "pol0": (StatefulRandomPolicy, obs_space, action_space, None),
-        }
-
-        def policy_fn(agent_id, episode, worker, **kwargs):
-            return "pol0"
-
-        rw = RolloutWorker(
-            env_creator=lambda _: MultiAgentDebugCounterEnv({"num_agents": 4}),
-            config=ppo.PPOConfig()
-            .experimental(_enable_new_api_stack=True)
-            .framework("torch")
-            .rollouts(
-                rollout_fragment_length=rollout_fragment_length,
-                num_rollout_workers=0,
-            )
-            .multi_agent(
-                policies=policies,
-                policy_mapping_fn=policy_fn,
-            )
-            .environment(normalize_actions=False)
-            .training(
-                model={
-                    "use_lstm": True,
-                    "max_seq_len": max_seq_len,
-                }
-            ),
-        )
-
-        for iteration in range(20):
-            result = rw.sample()
-            check(result.count, rollout_fragment_length)
-            pol_batch_w = result.policy_batches["pol0"]
-            assert pol_batch_w.count >= rollout_fragment_length
-            analyze_rnn_batch_rlm(
-                pol_batch_w,
-                max_seq_len,
-                view_requirements=rw.policy_map["pol0"].view_requirements,
-            )
 
     def test_traj_view_attention_functionality(self):
         action_space = Box(float("-inf"), float("inf"), shape=(3,))

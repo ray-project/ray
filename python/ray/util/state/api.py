@@ -1036,9 +1036,9 @@ def list_tasks(
             String filter values are case-insensitive.
         limit: Max number of entries returned by the state backend.
         timeout: Max timeout value for the state APIs requests made.
-        detail: When True, more details info (specified in `WorkerState`)
+        detail: When True, more details info (specified in `TaskState`)
             will be queried and returned. See
-            :class:`WorkerState <ray.util.state.common.WorkerState>`.
+            :class:`TaskState <ray.util.state.common.TaskState>`.
         raise_on_missing_output: When True, exceptions will be raised if
             there is missing data due to truncation/data source unavailable.
         _explain: Print the API information such as API latency or

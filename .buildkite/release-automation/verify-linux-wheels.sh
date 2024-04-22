@@ -9,12 +9,13 @@ if [[ -z "$RAY_VERSION" ]]; then
     echo "RAY_VERSION environment variable is not set"
     exit 1
 fi
-if [[ -z "$RAY_HASH" ]]; then
-    echo "RAY_HASH environment variable is not set"
+if [[ -z "$BUILDKITE_COMMIT" ]]; then
+    echo "BUILDKITE_COMMIT environment variable is not set"
     exit 1
 fi
 
-export PATH="/root/miniconda3/bin:$PATH"
+export PATH="/usr/local/bin/miniconda3/bin:$PATH"
+source "/usr/local/bin/miniconda3/etc/profile.d/conda.sh"
 
 conda create -n rayio python="${PYTHON_VERSION}" -y
 
@@ -27,7 +28,7 @@ pip install \
 
 (
     cd release/util
-    python sanity_check.py
+    python sanity_check.py --ray_version="$RAY_VERSION" --ray_commit="$BUILDKITE_COMMIT"
 )
 
 (

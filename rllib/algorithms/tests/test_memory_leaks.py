@@ -3,8 +3,10 @@ import unittest
 import ray
 import ray.rllib.algorithms.dqn as dqn
 import ray.rllib.algorithms.ppo as ppo
-from ray.rllib.examples.env.memory_leaking_env import MemoryLeakingEnv
-from ray.rllib.examples.policy.memory_leaking_policy import MemoryLeakingPolicy
+from ray.rllib.examples.envs.classes.memory_leaking_env import MemoryLeakingEnv
+from ray.rllib.examples._old_api_stack.policy.memory_leaking_policy import (
+    MemoryLeakingPolicy,
+)
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.debug.memory import check_memory_leaks
 

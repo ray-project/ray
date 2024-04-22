@@ -123,6 +123,7 @@ class AgentIOTest(unittest.TestCase):
         config = (
             PPOConfig()
             .environment("CartPole-v1")
+            .training(train_batch_size=250)
             .offline_data(
                 postprocess_inputs=True,  # adds back 'advantages'
             )
@@ -231,7 +232,7 @@ class AgentIOTest(unittest.TestCase):
         test_input_procedure = [
             "custom_input",
             input_creator,
-            "ray.rllib.examples.custom_input_api.CustomJsonReader",
+            "ray.rllib.examples.offline_rl.custom_input_api.CustomJsonReader",
         ]
 
         for input_procedure in test_input_procedure:
