@@ -80,10 +80,9 @@ class MeanStdFilter(ConnectorV2):
             clip_by_value: If not None, clip the incoming data within the interval:
                 [-clip_by_value, +clip_by_value].
             update_stats: Whether to update the internal mean and std stats with each
-                incoming sample (with each `__call__()`) or not. For example, you should
-                set this to False if you would like to perform inference in a
-                production environment, without continuing to "learn" stats from new
-                data.
+                incoming sample (with each `__call__()`) or not. You should set this to
+                False if you would like to perform inference in a production
+                environment, without continuing to "learn" stats from new data.
         """
         super().__init__(**kwargs)
 
@@ -136,10 +135,14 @@ class MeanStdFilter(ConnectorV2):
         return data
 
     def get_state(self) -> Any:
+        if self._filters is None:
+            self._init_new_filters()
         return self._get_state_from_filters(self._filters)
 
     @override(ConnectorV2)
     def set_state(self, state: Dict[AgentID, Dict[str, Any]]) -> None:
+        if self._filters is None:
+            self._init_new_filters()
         for agent_id, agent_state in state.items():
             filter = self._filters[agent_id]
             filter.shape = agent_state["shape"]

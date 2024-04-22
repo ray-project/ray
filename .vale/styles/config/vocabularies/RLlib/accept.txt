@@ -2,6 +2,7 @@
 # Add new terms alphabetically.
 (APPO|appo)
 boolean
+coeff
 config
 (DQN|dqn)
 [Ee]nv

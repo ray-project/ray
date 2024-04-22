@@ -108,6 +108,12 @@ parser.add_argument(
     default=1,
     help="Every how many train iterations should we run an evaluation loop?",
 )
+parser.add_argument(
+    "--evaluation-parallel-to-training-wo-thread",
+    action="store_true",
+    help="A debugging setting that disables using a threadpool when evaluating in "
+    "parallel to training. Use for testing purposes only!",
+)
 
 
 class AssertEvalCallback(DefaultCallbacks):
@@ -210,6 +216,11 @@ if __name__ == "__main__":
             evaluation_duration_unit=args.evaluation_duration_unit,
             # Switch off exploratory behavior for better (greedy) results.
             evaluation_config={"explore": False},
+        )
+        .debugging(
+            _evaluation_parallel_to_training_wo_thread=(
+                args.evaluation_parallel_to_training_wo_thread
+            ),
         )
     )
 
