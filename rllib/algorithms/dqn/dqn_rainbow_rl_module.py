@@ -63,7 +63,7 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         self.encoder = catalog.build_encoder(framework=self.framework)
         # If not an inference-only module (e.g., for evaluation), set up the
         # target networks and state dict keys to be taken care of when syncing.
-        if not self.inference_only:
+        if not self.inference_only or self.framework != "torch":
             # Build the same encoder for the target network(s).
             self.target_encoder = catalog.build_encoder(framework=self.framework)
             # Holds the parameter names to be removed or renamed when synching
@@ -75,7 +75,7 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         if self.uses_dueling:
             # If in a dueling setting setup the value function head.
             self.vf = catalog.build_vf_head(framework=self.framework)
-        if not self.inference_only:
+        if not self.inference_only or self.framework != "torch":
             # Implement the same heads for the target network(s).
             self.af_target = catalog.build_af_head(framework=self.framework)
             if self.uses_dueling:
