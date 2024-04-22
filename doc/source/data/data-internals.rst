@@ -36,8 +36,9 @@ transfers over the network. Each block contains a disjoint subset of rows, and R
 loads and transforms these blocks in parallel. 
 
 The following figure visualizes a dataset with three blocks, each holding 1000 rows.
-Ray Data holds the :class:`~ray.data.Dataset` on the driver and stores the materialized 
-blocks as objects in Ray's shared-memory :ref:`object store <objects-in-ray>`.
+Ray Data holds the :class:`~ray.data.Dataset` on the process that triggers execution 
+(which is usually the driver) and stores the blocks as objects in Ray's shared-memory 
+:ref:`object store <objects-in-ray>`.
 
 .. image:: images/dataset-arch.svg
 
@@ -61,13 +62,35 @@ out-of-memory errors. Small blocks are good for latency and more streamed execut
 while large blocks reduce scheduler and communication overhead. The default range 
 attempts to make a good tradeoff for most jobs.
 
-By default, Ray Data attempts to bound block sizes between 1 MiB and 128 MiB. If a block 
-is larger than 192 MiB (50% more than the upper bound), Ray Data splits the block into 
-smaller blocks. 
+Ray Data attempts to bound block sizes between 1 MiB and 128 MiB. To change the block 
+size range, configure the ``target_min_block_size`` and  ``target_max_block_size`` 
+attributes of :class:`~ray.data.context.DataContext`.
+
+.. testcode::
+
+    import ray
+
+    ctx = ray.data.DataContext.get_current()
+    ctx.target_min_block_size = 1 * 1024 * 1024
+    ctx.target_max_block_size = 128 * 1024 * 1024
+
+Dynamic block splitting
+~~~~~~~~~~~~~~~~~~~~~~~
+
+If a block is larger than 192 MiB (50% more than the target max size), Ray Data 
+dynamically splits the block into smaller blocks. 
+
+To change the size at which Ray Data splits blocks, configure 
+``MAX_SAFE_BLOCK_SIZE_FACTOR``. The default value is 1.5.
+
+.. testcode::
+
+    import ray
+
+    ray.data.context.MAX_SAFE_BLOCK_SIZE_FACTOR = 1.5
 
 Ray Data can’t split rows. So, if your dataset contains large rows (for example, large 
 images), then Ray Data can’t bound the block size.
-
 
 Operators, plans, and planning
 ------------------------------
@@ -104,6 +127,20 @@ Ray Data applies optimizations to both logical and physical plans. For example, 
 ``OperatorFusionRule`` combines a chain of physical map operators into a single map 
 operator. This prevents unnecessary serialization between map operators.
 
+To add custom optimization rules, implement a class that extends ``Rule`` and configure
+``DEFAULT_LOGICAL_RULES`` or ``DEFAULT_PHYSICAL_RULES``.
+
+.. testcode::
+
+    import ray
+    from ray.data._internal.logical.interfaces import Rule
+
+    class CustomRule(Rule):
+        def apply(self, plan):
+            ...
+
+    ray.data._internal.logical.optimizers.DEFAULT_LOGICAL_RULES.append(CustomRule)
+
 Types of physical operators
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -126,11 +163,14 @@ The executor
 
 The *executor* schedules tasks and moves data between physical operators.
 
-The executor and operators are located on the driver process, except for training jobs, 
-where they're located on a special actor called ``SplitCoordinator``. Tasks and actors 
-launched by operators are scheduled across the cluster, and outputs are stored in Ray’s 
-distributed object store. The executor manipulates references to objects, and doesn’t 
-fetch the underlying data itself to the executor.
+The executor and operators are located on the process where dataset execution starts. 
+For batch inference jobs, this process is usually the driver. For training jobs, the 
+executor runs on a special actor called ``SplitCoordinator`` which handles 
+:meth:`ray.data.dataset.Dataset.streaming_split`.
+
+Tasks and actors launched by operators are scheduled across the cluster, and outputs are 
+stored in Ray’s distributed object store. The executor manipulates references to 
+objects, and doesn’t fetch the underlying data itself to the executor.
 
 Out queues
 ~~~~~~~~~~
