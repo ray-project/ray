@@ -2337,7 +2337,9 @@ class Algorithm(Trainable, AlgorithmBase):
             learner_state_dir = os.path.join(checkpoint_dir, "learner")
             self.learner_group.load_state(learner_state_dir)
             # Make also sure, all training EnvRunners get the just loaded weights.
-            weights = self.learner_group.get_weights(inference_only=self.config.uses_new_env_runners)
+            weights = self.learner_group.get_weights(
+                inference_only=self.config.uses_new_env_runners
+            )
             self.workers.local_worker().set_weights(weights)
             self.workers.sync_weights(inference_only=True)
 

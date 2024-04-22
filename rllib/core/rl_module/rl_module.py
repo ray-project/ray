@@ -383,7 +383,7 @@ class RLModule(abc.ABC):
 
         if (
             isinstance(self, MultiAgentRLModule)
-            or self.config.model_config_dict is None
+            or not hasattr(self.config, "model_config_dict")
         ):
             # A MARL module is always a learner module b/c it only contains
             # the single-agent modules. Each of the contained modules can be
