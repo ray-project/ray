@@ -27,7 +27,7 @@ from ray.util.annotations import PublicAPI
 
 
 # TODO (simon): Include cases in which the number of agents in an
-# episode are shrinking or growing during the episode itself.
+#  episode are shrinking or growing during the episode itself.
 @PublicAPI(stability="alpha")
 class MultiAgentEpisode:
     """Stores multi-agent episode data.
