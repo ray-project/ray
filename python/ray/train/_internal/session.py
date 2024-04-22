@@ -483,8 +483,7 @@ class _TrainSession:
             warnings.warn(
                 "No dataset passed in. Returning None. Make sure to "
                 "pass in a Dataset to Trainer.run to use this "
-                "function.",
-                stacklevel=2,
+                "function."
             )
         elif isinstance(shard, dict):
             if not dataset_name:
@@ -652,8 +651,7 @@ def _warn_session_misuse(default_value: Any = None):
                     warnings.warn(
                         f"`{fn_name}` is meant to only be "
                         "called inside a function that is executed by a Tuner"
-                        f" or Trainer. Returning `{default_value}`.",
-                        stacklevel=2,
+                        f" or Trainer. Returning `{default_value}`."
                     )
                 return default_value
             return fn(*args, **kwargs)

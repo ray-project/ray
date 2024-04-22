@@ -3,7 +3,7 @@ import threading
 from typing import Dict, Optional
 
 import ray
-from ray.train._internal._state.schema import TrainRunInfo
+from ray.train._internal.state.schema import TrainRunInfo
 
 logger = logging.getLogger(__name__)
 

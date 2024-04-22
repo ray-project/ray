@@ -27,8 +27,8 @@ class TrainDatasetInfo(BaseModel):
     name: str = Field(
         description="The key of the dataset dict specified in Ray Train Trainer."
     )
-    plan_name: str = Field(description="The name of the internal dataset plan.")
-    plan_uuid: str = Field(description="The uuid of the internal dataset plan.")
+    dataset_name: str = Field(description="The name of the dataset.")
+    dataset_uuid: str = Field(description="The uuid of the dataset.")
 
 
 @DeveloperAPI

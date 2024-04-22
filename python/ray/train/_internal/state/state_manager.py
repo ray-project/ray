@@ -4,12 +4,12 @@ from typing import Dict
 
 import ray
 from ray.data import Dataset
-from ray.train._internal._state.schema import (
+from ray.train._internal.state.schema import (
     TrainDatasetInfo,
     TrainRunInfo,
     TrainWorkerInfo,
 )
-from ray.train._internal._state.state_actor import get_or_create_state_actor
+from ray.train._internal.state.state_actor import get_or_create_state_actor
 from ray.train._internal.utils import check_for_failure
 from ray.train._internal.worker_group import WorkerGroup
 
@@ -69,8 +69,8 @@ class TrainRunStateManager:
         dataset_info_list = [
             TrainDatasetInfo(
                 name=ds_name,
-                plan_name=ds._plan._dataset_name,
-                plan_uuid=ds._plan._dataset_uuid,
+                dataset_name=ds._plan._dataset_name,
+                dataset_uuid=ds._plan._dataset_uuid,
             )
             for ds_name, ds in datasets.items()
         ]

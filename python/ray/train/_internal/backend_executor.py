@@ -25,7 +25,7 @@ from ray.train.constants import (
     ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
     ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV,
-    ENABLE_TRAIN_RUN_STATE_TRACKING_ENV,
+    RAY_TRAIN_ENABLE_STATE_TRACKING,
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
     TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
 )
@@ -119,9 +119,7 @@ class BackendExecutor:
             )
         ]
 
-        self.state_tracking_enabled = env_integer(
-            ENABLE_TRAIN_RUN_STATE_TRACKING_ENV, 0
-        )
+        self.state_tracking_enabled = env_integer(RAY_TRAIN_ENABLE_STATE_TRACKING, 0)
 
     def start(
         self,
@@ -200,7 +198,7 @@ class BackendExecutor:
             self._restart()
 
         if self.state_tracking_enabled:
-            from ray.train._internal._state import TrainRunStateManager
+            from ray.train._internal.state import TrainRunStateManager
 
             self.state_manager = TrainRunStateManager(worker_group=self.worker_group)
 
