@@ -2268,7 +2268,6 @@ def read_databricks_tables(
 def read_iceberg(
     *,
     table_identifier: str,
-    catalog_type: str = "glue",
     row_filter: Union[str, "BooleanExpression"] = None,
     parallelism: int = -1,
     selected_fields: Tuple[str, ...] = ("*",),
@@ -2302,7 +2301,6 @@ def read_iceberg(
 
     Args:
         table_identifier: Fully qualified table identifier (i.e., "db_name.table_name")
-        catalog_type: The type of catalog to use PyIceberg with (defaults to "glue")
         row_filter: A PyIceberg BooleanExpression to use to filter the data *prior*
             to reading
         selected_fields: Which columns from the data to read, passed directly to
@@ -2323,7 +2321,6 @@ def read_iceberg(
     # Setup the Datasource
     datasource = IcebergDatasource(
         table_identifier=table_identifier,
-        catalog_type=catalog_type,
         row_filter=row_filter,
         selected_fields=selected_fields,
         snapshot_id=snapshot_id,
