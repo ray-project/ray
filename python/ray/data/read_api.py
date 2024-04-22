@@ -2274,6 +2274,7 @@ def read_iceberg(
     selected_fields: Tuple[str, ...] = ("*",),
     snapshot_id: Optional[int] = None,
     scan_kwargs: Optional[dict[str, str]] = None,
+    catalog_kwargs: Optional[dict[str, str]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> Dataset:
     """
@@ -2308,6 +2309,8 @@ def read_iceberg(
             snapshot is used
         scan_kwargs: Optional arguments to pass to PyIceberg's Table.scan() function
              (e.g., case_sensitive, limit, etc.)
+        catalog_kwargs: Optional arguments to pass to PyIceberg's Catalog.load_catalog()
+         function (e.g., name, type, etc.)
         parallelism: Degree of parallelism to use for the Dataset
         ray_remote_args: Optional arguments to pass to `ray.remote` in the read tasks
 
@@ -2324,6 +2327,7 @@ def read_iceberg(
         selected_fields=selected_fields,
         snapshot_id=snapshot_id,
         scan_kwargs=scan_kwargs,
+        catalog_kwargs=catalog_kwargs,
     )
 
     dataset = read_datasource(datasource=datasource, parallelism=parallelism, ray_remote_args=ray_remote_args)

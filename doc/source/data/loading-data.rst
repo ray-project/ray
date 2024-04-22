@@ -939,6 +939,7 @@ To read from Iceberg, install the `Python Client for Iceberg <https://py.iceberg
     ds = ray.data.read_iceberg(
         table_identifier="db_name.table_name",
         row_filter=BooleanExpression(EqualTo("column_name", "literal_value")),
+        catalog_kwargs={"name": "default", "type": "glue"},
     )
 
 Writes are currently not supported, but will be soon as PyIceberg upgrades to support partitioned writes, etc.
