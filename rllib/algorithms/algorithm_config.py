@@ -3781,7 +3781,7 @@ class AlgorithmConfig(_Config):
             A dictionary with the automatically included properties/settings of this
             `AlgorithmConfig` object into `self.model_config`.
         """
-        return MODEL_DEFAULTS
+        return MODEL_DEFAULTS | {"_inference_only": False}
 
     # -----------------------------------------------------------
     # Various validation methods for different types of settings.
