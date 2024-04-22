@@ -25,9 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-def do_allocate_channel(
-    self, buffer_size_bytes: int, num_readers: int = 1
-) -> Channel:
+def do_allocate_channel(self, buffer_size_bytes: int, num_readers: int = 1) -> Channel:
     """Generic actor method to allocate an output channel.
 
     Args:
@@ -55,8 +53,6 @@ def do_exec_tasks(self, tasks: List["ExecutableTask"]) -> None:
         self._uuid_to_input_reader = {}
         self._uuid_to_output_writer = {}
         for task in tasks:
-            method = getattr(self, task.method_name)
-
             task.resolved_inputs = []
             task.input_channels = []
             task.input_channel_idxs = []
@@ -70,9 +66,7 @@ def do_exec_tasks(self, tasks: List["ExecutableTask"]) -> None:
                     task.resolved_inputs.append(inp)
 
             input_reader: ReaderInterface = SynchronousReader(task.input_channels)
-            output_writer: WriterInterface = SynchronousWriter(
-                task.output_channel
-            )
+            output_writer: WriterInterface = SynchronousWriter(task.output_channel)
             self._uuid_to_input_reader[task.uuid] = input_reader
             self._uuid_to_output_writer[task.uuid] = output_writer
 
@@ -81,6 +75,7 @@ def do_exec_tasks(self, tasks: List["ExecutableTask"]) -> None:
 
         while True:
             for task in tasks:
+                method = getattr(self, task.method_name)
                 input_reader = self._uuid_to_input_reader[task.uuid]
                 output_writer = self._uuid_to_output_writer[task.uuid]
                 res = input_reader.begin_read()
@@ -184,10 +179,12 @@ class ExecutableTask:
     """
 
     def __init__(
-            self, method_name: str,
-            resolved_args: List[Any],
-            output_channel: Channel,
-            uuid: str):
+        self,
+        method_name: str,
+        resolved_args: List[Any],
+        output_channel: Channel,
+        uuid: str,
+    ):
         """
         Args:
             method_name: The name of the method to execute.
@@ -419,8 +416,6 @@ class CompiledDAG:
             assert task.output_channel is None
             if isinstance(task.dag_node, ClassMethodNode):
                 fn = task.dag_node._get_remote_method("__ray_call__")
-                method_name = task.dag_node.get_method_name()
-                logger.info("Creating output channel for method %s", method_name)
                 task.output_channel = ray.get(
                     fn.remote(
                         do_allocate_channel,
@@ -442,7 +437,7 @@ class CompiledDAG:
             for idx in task.downstream_node_idxs:
                 frontier.append(idx)
 
-        # Validate input channels for tasks that have not be visited
+        # Validate input channels for tasks that have not been visited
         for node_idx, task in self.idx_to_task.items():
             if node_idx == self.input_task_idx:
                 continue
@@ -455,9 +450,9 @@ class CompiledDAG:
                         has_at_least_one_channel_input = True
                 if not has_at_least_one_channel_input:
                     raise ValueError(
-                        "Compiled DAGs require each task to take a "
-                        "ray.dag.InputNode or at least one other DAGNode as an "
-                        "input")
+                        "Compiled DAGs require each task to take a ray.dag.InputNode "
+                        "or at least one other DAGNode as an input"
+                    )
 
         # Create executable tasks for each actor
         for actor_id, tasks in self.actor_to_tasks.items():
@@ -486,11 +481,26 @@ class CompiledDAG:
                     task.dag_node.get_method_name(),
                     resolved_args,
                     task.output_channel,
-                    task.dag_node.get_stable_uuid()
+                    task.dag_node.get_stable_uuid(),
                 )
                 executable_tasks.append(executable_task)
                 if worker_fn is None:
                     worker_fn = task.dag_node._get_remote_method("__ray_call__")
+
+            import itertools
+            for _, g in itertools.groupby(executable_tasks, lambda x: x.method_name):
+                group = list(g)
+                if len(group) > 1:
+                    resolved_args = set()
+                    for executable_task in group:
+                        if len(set(executable_task.resolved_args).intersection(resolved_args)):
+                            # TODO: Support binding the same actor method to the
+                            # same input multiple times.
+                            raise ValueError(
+                                f"Compiled DAGs currently do not support binding the same "
+                                "actor method to the same input multiple times. "
+                                "Method: {executable_task.method_name}")
+                        resolved_args.update(executable_task.resolved_args)
 
             self.actor_to_executable_tasks[actor_id] = executable_tasks
             self.worker_task_refs.append(
@@ -574,7 +584,7 @@ class CompiledDAG:
                 try:
                     ray.get(outer.worker_task_refs)
                 except Exception as e:
-                    # logger.info(f"Handling exception from worker tasks: {e}")
+                    logger.debug(f"Handling exception from worker tasks: {e}")
                     if self.in_teardown:
                         return
                     for output_channel in outer.dag_output_channels:

@@ -100,17 +100,20 @@ def test_actor_multi_methods(ray_start_regular):
     compiled_dag.teardown()
 
 
-def test_actor_multi_methods_order(ray_start_regular):
-    a = Actor.remote(0)
+def test_actor_methods_execution_order(ray_start_regular):
+    actor1 = Actor.remote(0)
+    actor2 = Actor.remote(0)
     with InputNode() as inp:
-        dag = a.inc.bind(inp)
-        dag2 = a.double_and_inc.bind(inp)
-        dag3 = a.inc_two.bind(dag, dag2)
+        branch1 = actor1.inc.bind(inp)
+        branch2 = actor2.inc.bind(inp)
+        branch2 = actor1.double_and_inc.bind(branch2)
+        dag = MultiOutputNode([branch1, branch2])
 
-    compiled_dag = dag3.experimental_compile()
+    compiled_dag = dag.experimental_compile()
     output_channel = compiled_dag.execute(1)
     result = output_channel.begin_read()
-    assert result == 7
+    # test that double_and_inc() is called after inc() on actor1
+    assert result == [1, 3]
     output_channel.end_read()
 
     compiled_dag.teardown()
@@ -225,6 +228,17 @@ def test_dag_errors(ray_start_regular):
         "at least one other DAGNode as an input",
     ):
         dag.experimental_compile()
+
+    with InputNode() as inp:
+        dag = a.inc.bind(inp)
+        dag2 = a.inc.bind(inp)
+        dag3 = a.inc_two.bind(dag, dag2)
+    with pytest.raises(
+        ValueError,
+        match=r"Compiled DAGs currently do not support binding the same "
+        "actor method to the same input multiple times.*",
+    ):
+        dag3.experimental_compile()
 
     @ray.remote
     def f(x):
