@@ -472,8 +472,8 @@ class PPO(Algorithm):
                     inference_only=True,
                 )
             else:
-                weights = self.learner_group.get_weights()
-                self.workers.local_worker().set_weights(weights, inference_only=True)
+                weights = self.learner_group.get_weights(inference_only=True)
+                self.workers.local_worker().set_weights(weights)
 
         kl_dict = {}
         if self.config.use_kl_loss:
