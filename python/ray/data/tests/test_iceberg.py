@@ -4,6 +4,7 @@ import numpy as np
 import pyarrow as pa
 import pytest
 from pyiceberg import catalog as pyi_catalog
+
 from ray.data.datasource.iceberg_datasource import IcebergDatasource
 
 _CATALOG_NAME = "ray_catalog"
@@ -78,11 +79,18 @@ class TestReadIceberg:
             catalog_kwargs={"name": _CATALOG_NAME},
         )
 
-        chunks = iceberg_ds._distribute_tasks_into_equal_chunks(iceberg_ds.plan_files, 5)
+        chunks = iceberg_ds._distribute_tasks_into_equal_chunks(
+            iceberg_ds.plan_files, 5
+        )
         assert (len(c) == 2 for c in chunks)
 
-        chunks = iceberg_ds._distribute_tasks_into_equal_chunks(iceberg_ds.plan_files, 20)
-        assert sum(len(c) == 1 for c in chunks) == 10 and sum(len(c) == 0 for c in chunks) == 10
+        chunks = iceberg_ds._distribute_tasks_into_equal_chunks(
+            iceberg_ds.plan_files, 20
+        )
+        assert (
+            sum(len(c) == 1 for c in chunks) == 10
+            and sum(len(c) == 0 for c in chunks) == 10
+        )
 
     def test_get_read_tasks(self):
         iceberg_ds = IcebergDatasource(
@@ -110,4 +118,6 @@ class TestReadIceberg:
         assert all(len(rt.get_metadata().input_files) == 2 for rt in read_tasks)
 
         expected_schema = pa.schema([pa.field("col_b", pa.string())])
-        assert all(rt.get_metadata().schema.equals(expected_schema) for rt in read_tasks)
+        assert all(
+            rt.get_metadata().schema.equals(expected_schema) for rt in read_tasks
+        )
