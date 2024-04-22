@@ -1,4 +1,4 @@
-from ray.train._internal.state import TrainRunStateManager
+from ray.train._internal.state.state_manager import TrainRunStateManager
 
 try:
     import pydantic  # noqa: F401
