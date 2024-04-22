@@ -289,6 +289,9 @@ class CompiledDAG:
         ] = {}
 
     def _add_node(self, node: "ray.dag.DAGNode") -> None:
+        logger.info(f"Adding node {node} to index {self.counter}")
+        import traceback
+        traceback.print_stack()
         idx = self.counter
         self.idx_to_task[idx] = CompiledTask(idx, node)
         self.dag_node_to_idx[node] = idx
@@ -350,6 +353,9 @@ class CompiledDAG:
                 if isinstance(arg, DAGNode):
                     arg_idx = self.dag_node_to_idx[arg]
                     self.idx_to_task[arg_idx].downstream_node_idxs.add(idx)
+                    logger.info(
+                        f"Adding {idx} as downstream for {arg_idx}, all downstream is {self.idx_to_task[arg_idx].downstream_node_idxs}"
+                    )
 
         # Find the input node to the DAG.
         for idx, task in self.idx_to_task.items():
@@ -426,6 +432,7 @@ class CompiledDAG:
                 actor_handle = task.dag_node._get_actor_handle()
                 self.actor_to_ref[actor_handle._actor_id] = actor_handle
                 self.actor_to_tasks[actor_handle._actor_id].append(task)
+                logger.info(f"Adding task index {cur_idx} to actor {actor_handle._actor_id}")
             elif isinstance(task.dag_node, InputNode):
                 task.output_channel = Channel(
                     buffer_size_bytes=self._buffer_size_bytes,
@@ -435,6 +442,7 @@ class CompiledDAG:
                 assert isinstance(task.dag_node, MultiOutputNode)
 
             for idx in task.downstream_node_idxs:
+                logger.info(f"Appending {idx} to frontier")
                 frontier.append(idx)
 
         # Validate input channels for tasks that have not been visited

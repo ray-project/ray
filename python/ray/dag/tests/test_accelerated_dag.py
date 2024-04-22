@@ -105,15 +105,16 @@ def test_actor_methods_execution_order(ray_start_regular):
     actor2 = Actor.remote(0)
     with InputNode() as inp:
         branch1 = actor1.inc.bind(inp)
+        branch1 = actor2.double_and_inc.bind(branch1)
         branch2 = actor2.inc.bind(inp)
         branch2 = actor1.double_and_inc.bind(branch2)
-        dag = MultiOutputNode([branch1, branch2])
+        dag = MultiOutputNode([branch2, branch1])
 
     compiled_dag = dag.experimental_compile()
     output_channel = compiled_dag.execute(1)
     result = output_channel.begin_read()
     # test that double_and_inc() is called after inc() on actor1
-    assert result == [1, 3]
+    assert result == [4, 1]
     output_channel.end_read()
 
     compiled_dag.teardown()
