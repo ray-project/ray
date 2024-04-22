@@ -7,7 +7,10 @@ from unittest.mock import patch
 
 import ray
 from ray.dashboard.tests.conftest import *  # noqa
-from ray.dashboard.modules.reporter.profile_manager import MemoryProfilingManager
+from ray.dashboard.modules.reporter.profile_manager import (
+    _can_passwordless_sudo,
+    MemoryProfilingManager,
+)
 
 
 @pytest.fixture
@@ -160,6 +163,12 @@ class TestMemoryProfiling:
         )
         assert not success, message
         assert f"process {pid} has not been profiled" in message
+
+
+@pytest.mark.asyncio
+async def test_cannot_passwordless_sudo_if_sudo_is_not_found() -> None:
+    with patch("asyncio.create_subprocess_exec", side_effect=FileNotFoundError):
+        assert not await _can_passwordless_sudo()
 
 
 if __name__ == "__main__":
