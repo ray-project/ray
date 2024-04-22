@@ -155,6 +155,7 @@ class TorchRLModule(nn.Module, RLModule):
         """
         pass
 
+
 class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
     def __init__(self, *args, **kwargs) -> None:
         nn.parallel.DistributedDataParallel.__init__(self, *args, **kwargs)

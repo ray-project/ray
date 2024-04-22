@@ -3,7 +3,7 @@ This file holds framework-agnostic components for PPO's RLModules.
 """
 
 import abc
-from typing import Any, Dict, Type
+from typing import Any, Type
 
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.specs.specs_dict import SpecDict

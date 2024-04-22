@@ -222,4 +222,3 @@ class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         Returns:
             A `dict` cotnaining the estimated Q-values in the key `QF_PREDS`.
         """
-        
