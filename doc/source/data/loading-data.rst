@@ -942,7 +942,7 @@ To read from Iceberg, install the `Python Client for Iceberg <https://py.iceberg
         catalog_kwargs={"name": "default", "type": "glue"},
     )
 
-Writes are currently not supported, but will be soon as PyIceberg upgrades to support partitioned writes, etc.
+Writes are currently not supported, but might be soon as PyIceberg upgrades to support partitioned writes, etc.
 
 Creating synthetic data
 =======================
