@@ -451,6 +451,7 @@ py_test_module_list(
     "test_placement_group_5.py",
     "test_cancel.py",
     "test_scheduling_performance.py",
+    "test_unavailable_actors.py",
   ],
   size = "large",
   tags = ["exclusive", "large_size_python_tests_shard_0", "team:core"],

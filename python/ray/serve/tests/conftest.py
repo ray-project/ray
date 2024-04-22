@@ -12,7 +12,12 @@ from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray._private.usage import usage_lib
 from ray.cluster_utils import AutoscalingCluster, Cluster
-from ray.serve._private.test_utils import TELEMETRY_ROUTE_PREFIX, check_ray_stopped
+from ray.serve._private.test_utils import (
+    TELEMETRY_ROUTE_PREFIX,
+    check_ray_started,
+    check_ray_stopped,
+    start_telemetry_app,
+)
 from ray.serve.context import _get_global_client
 from ray.tests.conftest import propagate_logs, pytest_runtest_makereport  # noqa
 
@@ -222,7 +227,16 @@ def manage_ray_with_telemetry(monkeypatch):
         m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
         subprocess.check_output(["ray", "stop", "--force"])
         wait_for_condition(check_ray_stopped, timeout=5)
-        yield
+
+        subprocess.check_output(["ray", "start", "--head"])
+        wait_for_condition(check_ray_started, timeout=5)
+
+        storage = start_telemetry_app()
+        wait_for_condition(
+            lambda: ray.get(storage.get_reports_received.remote()) > 1, timeout=15
+        )
+
+        yield storage
 
         # Call Python API shutdown() methods to clear global variable state
         serve.shutdown()

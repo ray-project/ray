@@ -108,7 +108,7 @@ You can pass RL Module specs to the algorithm configuration to be used by the al
 
 
         .. note::
-            For passing RL Module specs, all fields do not have to be filled as they are filled based on the described environment or other algorithm configuration parameters (i.e. ,``observation_space``, ``action_space``, ``model_config_dict`` are not required fields when passing a custom RL Module spec to the algorithm config.)
+            For passing RL Module specs, all fields don't have to be filled as they are filled based on the described environment or other algorithm configuration parameters (i.e. ,``observation_space``, ``action_space``, ``model_config_dict`` are not required fields when passing a custom RL Module spec to the algorithm config.)
 
 
     .. tab-item:: Multi Agent
@@ -152,7 +152,7 @@ If you return the "actions" key:
 - RLlib will use the actions provided thereunder as-is.
 - If you also returned the "action_dist_inputs" key: RLlib will also create a :py:class:`~ray.rllib.models.distributions.Distribution` object from the distribution parameters under that key and - in the case of :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration` - compute action probs and logp values from the given actions automatically.
 
-If you do not return the "actions" key:
+If you don't return the "actions" key:
 
 - You must return the "action_dist_inputs" key instead from your :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration` and :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_inference` methods.
 - RLlib will create a :py:class:`~ray.rllib.models.distributions.Distribution` object from the distribution parameters under that key and sample actions from the thus generated distribution.
@@ -201,7 +201,7 @@ Commonly used distribution implementations can be found under ``ray.rllib.models
         .. code-block:: python
 
             """
-            An RLModule whose forward_exploration/inference methods do NOT return the
+            An RLModule whose forward_exploration/inference methods don't return the
             "actions" key.
             """
 

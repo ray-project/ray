@@ -26,6 +26,7 @@ For logging to your WandB account, use:
 `--wandb-key=[your WandB API key] --wandb-project=[some project name]
 --wandb-run-name=[optional: WandB run name (within the defined project)]`
 """
+
 import random
 
 import gymnasium as gym
@@ -103,7 +104,10 @@ if __name__ == "__main__":
             policies_to_train=["learned"],
         )
         .training(
-            model={
+            vf_loss_coeff=0.005,
+        )
+        .rl_module(
+            model_config_dict={
                 "use_lstm": args.use_lstm,
                 # Use a simpler FCNet when we also have an LSTM.
                 "fcnet_hiddens": [32] if args.use_lstm else [256, 256],
@@ -111,9 +115,6 @@ if __name__ == "__main__":
                 "max_seq_len": 15,
                 "vf_share_layers": True,
             },
-            vf_loss_coeff=0.005,
-        )
-        .rl_module(
             rl_module_spec=MultiAgentRLModuleSpec(
                 module_specs={
                     "always_same": SingleAgentRLModuleSpec(
@@ -128,7 +129,7 @@ if __name__ == "__main__":
                     ),
                     "learned": SingleAgentRLModuleSpec(),
                 }
-            )
+            ),
         )
     )
 
@@ -143,5 +144,5 @@ if __name__ == "__main__":
         base_config,
         args,
         stop=stop,
-        success_metric="sampler_results/policy_reward_mean/learned",
+        success_metric={"sampler_results/policy_reward_mean/learned": args.stop_reward},
     )
