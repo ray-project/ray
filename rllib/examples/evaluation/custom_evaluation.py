@@ -187,6 +187,8 @@ if __name__ == "__main__":
         args,
         stop=stop,
         success_metric={
-            "evaluation_results/env_runner_results/episode_return_mean": args.stop_reward,
+            "evaluation_results/env_runner_results/episode_return_mean": (
+                args.stop_reward
+            ),
         },
     )
