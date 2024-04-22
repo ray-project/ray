@@ -488,18 +488,27 @@ class CompiledDAG:
                     worker_fn = task.dag_node._get_remote_method("__ray_call__")
 
             import itertools
+
             for _, g in itertools.groupby(executable_tasks, lambda x: x.method_name):
                 group = list(g)
                 if len(group) > 1:
                     resolved_args = set()
                     for executable_task in group:
-                        if len(set(executable_task.resolved_args).intersection(resolved_args)):
+                        if (
+                            len(
+                                set(executable_task.resolved_args).intersection(
+                                    resolved_args
+                                )
+                            )
+                            > 0
+                        ):
                             # TODO: Support binding the same actor method to the
                             # same input multiple times.
                             raise ValueError(
-                                f"Compiled DAGs currently do not support binding the same "
-                                "actor method to the same input multiple times. "
-                                "Method: {executable_task.method_name}")
+                                f"Compiled DAGs currently do not support binding the "
+                                f"same actor method to the same input multiple times. "
+                                f"Method: {executable_task.method_name}"
+                            )
                         resolved_args.update(executable_task.resolved_args)
 
             self.actor_to_executable_tasks[actor_id] = executable_tasks
