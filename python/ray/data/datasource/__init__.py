@@ -12,8 +12,8 @@ from ray.data.datasource.datasink import Datasink, DummyOutputDatasink
 from ray.data.datasource.datasource import (
     Datasource,
     RandomIntRowDatasource,
-    ReadTask,
     Reader,
+    ReadTask,
 )
 from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource,
@@ -46,8 +46,8 @@ from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
 from ray.data.datasource.parquet_datasink import _ParquetDatasink
 from ray.data.datasource.parquet_datasource import ParquetDatasource
 from ray.data.datasource.partitioning import (
-    PartitionStyle,
     Partitioning,
+    PartitionStyle,
     PathPartitionFilter,
     PathPartitionParser,
 )

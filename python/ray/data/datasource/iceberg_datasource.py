@@ -101,8 +101,8 @@ class IcebergDatasource(Datasource):
         return data_scan
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
-        # Approximate the size by using the plan files - this will not incorporate the deletes, but that's a reasonable
-        # approximation
+        # Approximate the size by using the plan files - this will not
+        # incorporate the deletes, but that's a reasonable approximation
         return sum(task.length for task in self.plan_files)
 
     @staticmethod
@@ -160,21 +160,26 @@ class IcebergDatasource(Datasource):
         # Get the plan files in this query
         plan_files = self.plan_files
 
-        # Get the projected schema for this scan, given all the row filters, snapshot ID,
-        # etc.
+        # Get the projected schema for this scan, given all the row filters,
+        # snapshot ID, etc.
         projected_schema = data_scan.projection()
         # Get the arrow schema, to set in the metadata
         pya_schema = pyi_pa_io.schema_to_pyarrow(projected_schema)
 
-        # Set the n_chunks to the min of the number of plan files and the actual requested n_chunks, so that there
-        # are no empty tasks
+        # Set the n_chunks to the min of the number of plan files and the actual
+        # requested n_chunks, so that there are no empty tasks
         if parallelism > len(list(plan_files)):
             parallelism = len(list(plan_files))
-            logger.warning(f"Reducing the parallelism to {parallelism}, as that is the number of files")
+            logger.warning(
+                f"Reducing the parallelism to {parallelism}, as that is the"
+                "number of files"
+            )
 
         read_tasks = []
         # Chunk the plan files based on the requested parallelism
-        for chunk_tasks in IcebergDatasource._distribute_tasks_into_equal_chunks(plan_files, parallelism):
+        for chunk_tasks in IcebergDatasource._distribute_tasks_into_equal_chunks(
+            plan_files, parallelism
+        ):
             metadata = BlockMetadata(
                 num_rows=None,
                 size_bytes=sum(task.length for task in chunk_tasks),
