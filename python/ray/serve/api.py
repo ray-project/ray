@@ -569,7 +569,11 @@ def run(
             `route_prefix` of the application's ingress deployment.
             If specified neither as an argument nor in the ingress deployment,
             the route prefix will default to '/'.
-            If `None`, the application will not be exposed over HTTP.
+            If `None`, the application will not be exposed over HTTP
+            (this may be useful if you only want the application to be usable
+            via other methods like
+            [gRPC](serve-set-up-grpc-service) or
+            `serve.get_app_handle()`).
         logging_config: Application logging config. If provided, the config will
             be applied to all deployments which doesn't have logging config.
 
