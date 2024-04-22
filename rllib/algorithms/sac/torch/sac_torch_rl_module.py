@@ -197,7 +197,7 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
         # Return Q values.
         return output
 
-    @override(SACRLModule)
+    @override(TorchRLModule)
     def _set_inference_only_state_dict_keys(self) -> None:
         # Get the model parameters.
         state_dict = self.state_dict()
@@ -208,7 +208,7 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
             name for name in state_dict if "qf" in name
         ]
 
-    @override(SACRLModule)
+    @override(TorchRLModule)
     def _inference_only_get_state_hook(
         self, state_dict: Dict[str, Any]
     ) -> Dict[str, Any]:

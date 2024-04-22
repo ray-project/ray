@@ -431,7 +431,7 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
                 if self.uses_dueling:
                     self.vf_target._reset_noise()
 
-    @override(DQNRainbowRLModule)
+    @override(TorchRLModule)
     def _set_inference_only_state_dict_keys(self) -> None:
         # Get the model parameters.
         state_dict = self.state_dict()
@@ -442,7 +442,7 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
             name for name in state_dict if "target" in name
         ]
 
-    @override(DQNRainbowRLModule)
+    @override(TorchRLModule)
     def _inference_only_get_state_hook(
         self, state_dict: Dict[str, Any]
     ) -> Dict[str, Any]:
