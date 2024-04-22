@@ -99,6 +99,3 @@ CHECKPOINT_METADATA_KEY = "checkpoint_metadata"
 
 # Key for AIR Checkpoint world rank in TrainingResult metadata
 CHECKPOINT_RANK_KEY = "checkpoint_rank"
-
-# The default stack level for
-RAY_TRAIN_DEFAULT_STACK_LEVEL = 2
