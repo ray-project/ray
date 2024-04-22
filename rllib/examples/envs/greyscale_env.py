@@ -82,7 +82,7 @@ register_env("pistonball", lambda config: PettingZooEnv(env_creator(config)))
 config = (
     PPOConfig()
     .environment("pistonball", env_config={"local_ratio": 0.5}, clip_rewards=True)
-    .rollouts(
+    .env_runners(
         num_rollout_workers=15 if not args.as_test else 2,
         num_envs_per_worker=1,
         observation_filter="NoFilter",

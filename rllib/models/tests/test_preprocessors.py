@@ -50,7 +50,7 @@ class TestPreprocessors(unittest.TestCase):
                 },
             )
             # Run this very quickly locally.
-            .rollouts(num_rollout_workers=0)
+            .env_runners(num_env_runners=0)
             .training(
                 train_batch_size=10,
                 sgd_minibatch_size=1,
@@ -91,7 +91,7 @@ class TestPreprocessors(unittest.TestCase):
                 },
             )
             # Speed things up a little.
-            .rollouts(rollout_fragment_length=5)
+            .env_runners(rollout_fragment_length=5)
             .training(train_batch_size=100, sgd_minibatch_size=10, num_sgd_iter=1)
             .debugging(seed=42)
             # Set this to True to enforce no preprocessors being used.

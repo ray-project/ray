@@ -101,7 +101,7 @@ if __name__ == "__main__":
         )
         .framework(args.framework)
         # Use a vectorized env with 2 sub-envs.
-        .rollouts(num_envs_per_worker=2, num_rollout_workers=1)
+        .env_runners(num_envs_per_worker=2, num_rollout_workers=1)
         .evaluation(
             # Evaluate once per training iteration.
             evaluation_interval=1,
@@ -110,7 +110,7 @@ if __name__ == "__main__":
             # ... using one evaluation worker (setting this to 0 will cause
             # evaluation to run on the local evaluation worker, blocking
             # training until evaluation is done).
-            evaluation_num_workers=1,
+            evaluation_num_env_runners=1,
             # Special evaluation config. Keys specified here will override
             # the same keys in the main config, but only for evaluation.
             evaluation_config=PPOConfig.overrides(

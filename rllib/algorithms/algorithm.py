@@ -622,7 +622,7 @@ class Algorithm(Trainable, AlgorithmBase):
             validate_env=self.validate_env,
             default_policy_class=self.get_default_policy_class(self.config),
             config=self.config,
-            num_workers=self.config.num_rollout_workers,
+            num_workers=self.config.num_env_runners,
             local_worker=True,
             logdir=self.logdir,
         )
@@ -644,7 +644,7 @@ class Algorithm(Trainable, AlgorithmBase):
             )
 
             # Create a separate evaluation worker set for evaluation.
-            # If evaluation_num_workers=0, use the evaluation set's local
+            # If evaluation_num_env_runners=0, use the evaluation set's local
             # worker for evaluation, otherwise, use its remote workers
             # (parallelized evaluation).
             self.evaluation_workers: WorkerSet = WorkerSet(
@@ -652,7 +652,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 validate_env=None,
                 default_policy_class=self.get_default_policy_class(self.config),
                 config=self.evaluation_config,
-                num_workers=self.config.evaluation_num_workers,
+                num_workers=self.config.evaluation_num_env_runners,
                 logdir=self.logdir,
             )
 
@@ -1243,7 +1243,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 "Calling `sample()` on your remote evaluation worker(s) "
                 "resulted in all workers crashing! Make sure a) your environment is not"
                 " too unstable, b) you have enough evaluation workers "
-                "(`config.evaluation(evaluation_num_workers=...)`) to cover for "
+                "(`config.evaluation(evaluation_num_env_runners=...)`) to cover for "
                 "occasional losses, and c) you use the `config.fault_tolerance("
                 "recreate_failed_workers=True)` setting."
             )
@@ -1280,7 +1280,7 @@ class Algorithm(Trainable, AlgorithmBase):
         # How many episodes/timesteps do we need to run?
         unit = self.config.evaluation_duration_unit
         eval_cfg = self.evaluation_config
-        num_workers = self.config.evaluation_num_workers
+        num_workers = self.config.evaluation_num_env_runners
         force_reset = self.config.evaluation_force_reset_envs_before_iteration
         time_out = self.config.evaluation_sample_timeout_s
 
@@ -1417,7 +1417,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 "Calling `sample()` on your remote evaluation worker(s) "
                 "resulted in all workers crashing! Make sure a) your environment is not"
                 " too unstable, b) you have enough evaluation workers "
-                "(`config.evaluation(evaluation_num_workers=...)`) to cover for "
+                "(`config.evaluation(evaluation_num_env_runners=...)`) to cover for "
                 "occasional losses, and c) you use the `config.fault_tolerance("
                 "recreate_failed_workers=True)` setting."
             )
@@ -2437,7 +2437,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 "GPU": cf.num_gpus_per_worker,
                 **cf.custom_resources_per_worker,
             }
-            for _ in range(cf.num_rollout_workers)
+            for _ in range(cf.num_env_runners)
         ]
 
         # resources for remote evaluation env samplers or datasets (if any)
@@ -2450,7 +2450,7 @@ class Algorithm(Trainable, AlgorithmBase):
                     "GPU": eval_cf.num_gpus_per_worker,
                     **eval_cf.custom_resources_per_worker,
                 }
-                for _ in range(eval_cf.evaluation_num_workers)
+                for _ in range(eval_cf.evaluation_num_env_runners)
             ]
         else:
             # resources for offline dataset readers during evaluation
@@ -2615,7 +2615,7 @@ class Algorithm(Trainable, AlgorithmBase):
             "\n\nYou can adjust the resource requests of RLlib Algorithms by calling "
             "`AlgorithmConfig.resources("
             "num_gpus=.., num_cpus_per_worker=.., num_gpus_per_worker=.., ..)` or "
-            "`AgorithmConfig.rollouts(num_rollout_workers=..)`. See "
+            "`AgorithmConfig.env_runners(num_rollout_workers=..)`. See "
             "the `ray.rllib.algorithms.algorithm_config.AlgorithmConfig` classes "
             "(each Algorithm has its own subclass of this class) for more info.\n\n"
             f"The config of this Algorithm is: {config}"
@@ -3278,7 +3278,7 @@ class Algorithm(Trainable, AlgorithmBase):
         """
         assert len(self.workers.local_worker().policy_map) == 1
 
-        parallelism = self.evaluation_config.evaluation_num_workers or 1
+        parallelism = self.evaluation_config.evaluation_num_env_runners or 1
         offline_eval_results = {"off_policy_estimator": {}}
         for evaluator_name, offline_evaluator in self.reward_estimators.items():
             offline_eval_results["off_policy_estimator"][
@@ -3304,7 +3304,7 @@ class Algorithm(Trainable, AlgorithmBase):
             and not eval_config.ope_split_batch_by_episode
         )
         return not run_offline_evaluation and (
-            eval_config.evaluation_num_workers > 0 or eval_config.evaluation_interval
+            eval_config.evaluation_num_env_runners > 0 or eval_config.evaluation_interval
         )
 
     def _compile_iteration_results(

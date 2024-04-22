@@ -30,11 +30,11 @@ if __name__ == "__main__":
         get_trainable_cls(args.algo)
         .get_default_config()
         .environment("env" if args.num_agents > 0 else "Pendulum-v1")
-        .rollouts(
+        .env_runners(
             # TODO (sven): MAEnvRunner does not support vectorized envs yet
             #  due to gym's env checkers and non-compatability with RLlib's
             #  MultiAgentEnv API.
-            num_envs_per_worker=1 if args.num_agents > 0 else 20,
+            num_envs_per_env_runner=1 if args.num_agents > 0 else 20,
             # Define a single connector piece to be prepended to the env-to-module
             # connector pipeline.
             # Alternatively, return a list of n ConnectorV2 pieces (which will then be
@@ -55,7 +55,7 @@ if __name__ == "__main__":
             vf_loss_coeff=0.01,
         )
         .evaluation(
-            evaluation_num_workers=1,
+            evaluation_num_env_runners=1,
             evaluation_parallel_to_training=True,
             evaluation_interval=1,
             evaluation_duration=10,

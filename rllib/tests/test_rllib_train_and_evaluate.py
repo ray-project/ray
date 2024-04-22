@@ -183,7 +183,7 @@ def learn_test_multi_agent_plus_evaluate(algo: str):
             .get_default_config()
             .environment(MultiAgentCartPole)
             .framework(fw)
-            .rollouts(num_rollout_workers=1)
+            .env_runners(num_env_runners=1)
             .multi_agent(
                 policies={"pol0", "pol1"},
                 policy_mapping_fn=policy_fn,

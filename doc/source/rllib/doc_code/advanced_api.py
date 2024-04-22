@@ -29,7 +29,7 @@ counter.inc.remote(1)  # async call to increment the global count
 # __rllib-adv_api_explore_begin__
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
-config = AlgorithmConfig().exploration(
+config = AlgorithmConfig().env_runners(
     exploration_config={
         # Special `type` key provides class information
         "type": "StochasticSampling",

@@ -10,10 +10,10 @@ config = (
     PPOConfig()
     .experimental(_enable_new_api_stack=True)
     .environment("multi_agent_pendulum")
-    .rollouts(
+    .env_runners(
         env_runner_cls=MultiAgentEnvRunner,
-        num_envs_per_worker=1,
-        num_rollout_workers=4,
+        num_envs_per_env_runner=1,
+        num_env_runners=4,
     )
     .training(
         train_batch_size=512,

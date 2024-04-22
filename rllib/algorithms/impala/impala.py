@@ -71,7 +71,7 @@ class ImpalaConfig(AlgorithmConfig):
         config = ImpalaConfig()
         config = config.training(lr=0.0003, train_batch_size=512)
         config = config.resources(num_gpus=0)
-        config = config.rollouts(num_rollout_workers=1)
+        config = config.env_runners(num_env_runners=1)
         # Build a Algorithm object from the config and run 1 training iteration.
         algo = config.build(env="CartPole-v1")
         algo.train()
@@ -89,7 +89,7 @@ class ImpalaConfig(AlgorithmConfig):
             lr=tune.grid_search([0.0001, 0.0002]), grad_clip=20.0
         )
         config = config.resources(num_gpus=0)
-        config = config.rollouts(num_rollout_workers=1)
+        config = config.env_runners(num_env_runners=1)
         # Set the config object's env.
         config = config.environment(env="CartPole-v1")
         # Run with tune.
@@ -151,7 +151,7 @@ class ImpalaConfig(AlgorithmConfig):
         self.rollout_fragment_length = 50
         self.train_batch_size = 500
         self._minibatch_size = "auto"
-        self.num_rollout_workers = 2
+        self.num_env_runners = 2
         self.num_gpus = 1
         self.lr = 0.0005
         self.min_time_s_per_iteration = 10
@@ -402,12 +402,12 @@ class ImpalaConfig(AlgorithmConfig):
             raise ValueError("`entropy_coeff` must be >= 0.0")
 
         # Check whether worker to aggregation-worker ratio makes sense.
-        if self.num_aggregation_workers > self.num_rollout_workers:
+        if self.num_aggregation_workers > self.num_env_runners:
             raise ValueError(
                 "`num_aggregation_workers` must be smaller than or equal "
-                "`num_rollout_workers`! Aggregation makes no sense otherwise."
+                "`num_env_runners`! Aggregation makes no sense otherwise."
             )
-        elif self.num_aggregation_workers > self.num_rollout_workers / 2:
+        elif self.num_aggregation_workers > self.num_env_runners / 2:
             logger.warning(
                 "`num_aggregation_workers` should be significantly smaller "
                 "than `num_workers`! Try setting it to 0.5*`num_workers` or "
@@ -803,7 +803,7 @@ class Impala(Algorithm):
                     "GPU": cf.num_gpus_per_worker,
                     **cf.custom_resources_per_worker,
                 }
-                for _ in range(cf.num_rollout_workers)
+                for _ in range(cf.num_env_runners)
             ]
             + (
                 [
@@ -815,7 +815,7 @@ class Impala(Algorithm):
                         "GPU": eval_config.num_gpus_per_worker,
                         **eval_config.custom_resources_per_worker,
                     }
-                    for _ in range(cf.evaluation_num_workers)
+                    for _ in range(cf.evaluation_num_env_runners)
                 ]
                 if cf.evaluation_interval
                 else []
@@ -1150,7 +1150,7 @@ class Impala(Algorithm):
             self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] = 0
             self._counters[NUM_SYNCH_WORKER_WEIGHTS] += 1
             weights = self.learner_group.get_weights(policy_ids)
-            if self.config.num_rollout_workers == 0:
+            if self.config.num_env_runners == 0:
                 worker = self.workers.local_worker()
                 worker.set_weights(weights)
             else:

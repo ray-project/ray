@@ -6,7 +6,7 @@ config = (
     .environment(env="CartPole-v1")
     .framework(framework="torch")
     .experimental(_enable_new_api_stack=True)
-    .rollouts(
+    .env_runners(
         env_runner_cls=SingleAgentEnvRunner,
         num_rollout_workers=0,
     )
@@ -40,7 +40,7 @@ config = (
     .evaluation(
         evaluation_interval=1,
         evaluation_parallel_to_training=True,
-        evaluation_num_workers=1,
+        evaluation_num_env_runners=1,
         evaluation_duration="auto",
         evaluation_config={
             "explore": False,

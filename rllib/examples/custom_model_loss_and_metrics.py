@@ -74,7 +74,7 @@ if __name__ == "__main__":
         .get_default_config()
         .environment("CartPole-v1")
         .framework(args.framework)
-        .rollouts(num_rollout_workers=0)
+        .env_runners(num_env_runners=0)
         .training(
             model={
                 "custom_model": "custom_loss",

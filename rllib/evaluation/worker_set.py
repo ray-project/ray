@@ -229,7 +229,7 @@ class WorkerSet:
         # Create a number of @ray.remote workers.
         self.add_workers(
             num_workers,
-            validate=config.validate_workers_after_construction,
+            validate=config.validate_env_runners_after_construction,
         )
 
         # If num_workers > 0 and we don't have an env on the local worker,

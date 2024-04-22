@@ -173,7 +173,7 @@ if __name__ == "__main__":
         # Use the `PolicyServerInput` to generate experiences.
         .offline_data(input_=_input)
         # Use n worker processes to listen on different ports.
-        .rollouts(
+        .env_runners(
             num_rollout_workers=args.num_workers,
             # Connectors are not compatible with the external env.
             enable_connectors=False,

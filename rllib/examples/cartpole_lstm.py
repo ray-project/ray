@@ -63,7 +63,7 @@ if __name__ == "__main__":
         config.training(num_sgd_iter=5, vf_loss_coeff=0.0001, train_batch_size=512)
         config.model["vf_share_layers"] = True
     elif args.run == "IMPALA":
-        config.rollouts(num_rollout_workers=2)
+        config.env_runners(num_env_runners=2)
         config.resources(num_gpus=0)
         config.training(vf_loss_coeff=0.01)
 

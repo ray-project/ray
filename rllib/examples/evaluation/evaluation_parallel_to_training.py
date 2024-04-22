@@ -120,7 +120,7 @@ class AssertEvalCallback(DefaultCallbacks):
     def on_train_result(self, *, algorithm, result, **kwargs):
         # Make sure we always run exactly the given evaluation duration,
         # no matter what the other settings are (such as
-        # `evaluation_num_workers` or `evaluation_parallel_to_training`).
+        # `evaluation_num_env_runners` or `evaluation_parallel_to_training`).
         if (
             "evaluation" in result
             and "hist_stats" in result["evaluation"]["sampler_results"]
@@ -139,7 +139,7 @@ class AssertEvalCallback(DefaultCallbacks):
                 # fetch.
                 assert (
                     num_timesteps_reported == 0
-                    or num_timesteps_reported >= algorithm.config.evaluation_num_workers
+                    or num_timesteps_reported >= algorithm.config.evaluation_num_env_runners
                 )
             # We count in episodes.
             elif algorithm.config.evaluation_duration_unit == "episodes":
@@ -202,7 +202,7 @@ if __name__ == "__main__":
             ),
             # Use two evaluation workers. Must be >0, otherwise,
             # evaluation will run on a local worker and block (no parallelism).
-            evaluation_num_workers=args.evaluation_num_workers,
+            evaluation_num_env_runners=args.evaluation_num_env_runners,
             # Evaluate every other training iteration (together
             # with every other call to Algorithm.train()).
             evaluation_interval=args.evaluation_interval,

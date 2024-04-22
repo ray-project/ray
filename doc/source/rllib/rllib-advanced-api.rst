@@ -211,13 +211,13 @@ actions from distributions (stochastically or deterministically).
 The setup can be done using built-in Exploration classes
 (see `this package <https://github.com/ray-project/ray/blob/master/rllib/utils/exploration/>`__),
 which are specified (and further configured) inside
-``AlgorithmConfig().exploration(..)``.
+``AlgorithmConfig().env_runners(..)``.
 Besides using one of the available classes, one can sub-class any of
 these built-ins, add custom behavior to it, and use that new class in
 the config instead.
 
 Every policy has-an Exploration object, which is created from the AlgorithmConfig’s
-``.exploration(exploration_config=...)`` method, which specifies the class to use through the
+``.env_runners(exploration_config=...)`` method, which specifies the class to use through the
 special “type” key, as well as constructor arguments through all other keys,
 e.g.:
 

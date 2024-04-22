@@ -115,7 +115,7 @@ if __name__ == "__main__":
         .framework(args.framework)
         # Set up our own callbacks.
         .callbacks(TaskSettingCallback)
-        .rollouts(
+        .env_runners(
             # Force sub-envs to be ray.actor.ActorHandles, so we can step
             # through them in parallel.
             remote_worker_envs=True,

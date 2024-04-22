@@ -82,7 +82,7 @@ if __name__ == "__main__":
         get_trainable_cls(args.algo)
         .get_default_config()
         .environment("RockPaperScissors")
-        .rollouts(
+        .env_runners(
             env_to_module_connector=lambda env: (
                 AddObservationsFromEpisodesToBatch(),
                 # Only flatten obs for the learning RLModul

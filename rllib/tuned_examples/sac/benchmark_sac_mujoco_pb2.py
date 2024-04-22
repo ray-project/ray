@@ -59,7 +59,7 @@ for env, stop_criteria in benchmark_envs.items():
         .environment(env=env)
         # Enable new API stack and use EnvRunner.
         .experimental(_enable_new_api_stack=True)
-        .rollouts(
+        .env_runners(
             rollout_fragment_length="auto",
             env_runner_cls=SingleAgentEnvRunner,
             num_rollout_workers=1,
@@ -103,7 +103,7 @@ for env, stop_criteria in benchmark_envs.items():
         .evaluation(
             evaluation_duration="auto",
             evaluation_interval=1,
-            evaluation_num_workers=1,
+            evaluation_num_env_runners=1,
             evaluation_parallel_to_training=True,
             evaluation_config={
                 "explore": False,

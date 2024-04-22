@@ -63,7 +63,7 @@ config = (
         env_config={"corridor_length": 28},
     )
     # Parallelize environment rollouts.
-    .rollouts(num_rollout_workers=3)
+    .env_runners(num_env_runners=3)
 )
 # Construct the actual (PPO) algorithm object from the config.
 algo = config.build()

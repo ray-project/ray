@@ -58,7 +58,7 @@ class TestCallbacks(unittest.TestCase):
             APPOConfig()
             .environment("env")
             .callbacks(OnWorkersRecreatedCallbacks)
-            .rollouts(num_rollout_workers=3)
+            .env_runners(num_rollout_workers=3)
             .fault_tolerance(
                 recreate_failed_workers=True,
                 delay_between_worker_restarts_s=0,

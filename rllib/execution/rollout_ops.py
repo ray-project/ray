@@ -114,7 +114,7 @@ def synchronous_parallel_sample(
                         "No samples returned from remote workers. If you have a "
                         "slow environment or model, consider increasing the "
                         "`sample_timeout_s` or decreasing the "
-                        "`rollout_fragment_length` in `AlgorithmConfig.rollouts()."
+                        "`rollout_fragment_length` in `AlgorithmConfig.env_runners()."
                     )
                 elif worker_set.num_healthy_remote_workers() <= 0:
                     logger.warning(

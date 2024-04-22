@@ -122,7 +122,7 @@ if __name__ == "__main__":
                 win_rate_threshold=args.win_rate_threshold,
             )
         )
-        .rollouts(
+        .env_runners(
             num_rollout_workers=args.num_env_runners,
             num_envs_per_worker=1 if args.enable_new_api_stack else 5,
             # Set up the correct env-runner to use depending on

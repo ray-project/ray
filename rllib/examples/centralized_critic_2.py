@@ -127,9 +127,9 @@ if __name__ == "__main__":
         PPOConfig()
         .environment(TwoStepGame)
         .framework(args.framework)
-        .rollouts(
+        .env_runners(
             batch_mode="complete_episodes",
-            num_rollout_workers=0,
+            num_env_runners=0,
             # TODO(avnishn) make a new example compatible w connectors.
             enable_connectors=False,
         )
