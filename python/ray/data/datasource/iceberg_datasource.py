@@ -3,7 +3,7 @@ Module to read an iceberg table into a Ray Dataset, by using the Ray Datasource 
 """
 
 import logging
-from typing import TYPE_CHECKING, Any, Iterable, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple, Union
 
 from ray.data.block import Block, BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
@@ -31,8 +31,8 @@ class IcebergDatasource(Datasource):
         row_filter: Union[str, "BooleanExpression"] = None,
         selected_fields: Tuple[str, ...] = ("*",),
         snapshot_id: Optional[int] = None,
-        scan_kwargs: Optional[dict[str, Any]] = None,
-        catalog_kwargs: Optional[dict[str, Any]] = None,
+        scan_kwargs: Optional[Dict[str, Any]] = None,
+        catalog_kwargs: Optional[Dict[str, Any]] = None,
     ):
         """
         Initialize an IcebergDatasource.
