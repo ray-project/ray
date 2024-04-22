@@ -222,35 +222,4 @@ class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         Returns:
             A `dict` cotnaining the estimated Q-values in the key `QF_PREDS`.
         """
-
-    # TODO (simon): Maybe put these into `TorchRLModule`. We do not know how this
-    # will look like for the `TFRLModule`
-    @abstractmethod
-    def _set_inference_only_state_dict_keys(self) -> None:
-        """Sets expected and unexpected keys for the inference-only module.
-
-        This method is called during setup to set the expected and unexpected keys
-        for the inference-only module. The expected keys are used to rename the keys
-        in the state dict when syncing from the learner to the inference module.
-        The unexpected keys are used to remove keys from the state dict when syncing
-        from the learner to the inference module.
-        """
-
-    @abstractmethod
-    def _inference_only_get_state_hook(
-        self, state_dict: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Removes or renames the parameters in the state dict for the inference module.
-
-        This hook is called when the state dict is created on a learner module for an
-        inference-only module. The method removes or renames the parameters in the state
-        dict that are not used by the inference module.
-        The hook uses the expected and unexpected keys set during setup to remove or
-        rename the parameters.
-
-        Args:
-            state_dict: The state dict to be modified.
-
-        Returns:
-            The modified state dict.
-        """
+        

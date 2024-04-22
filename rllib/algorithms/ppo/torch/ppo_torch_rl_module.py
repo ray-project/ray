@@ -134,7 +134,7 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
         # Squeeze out last dimension (single node value head).
         return vf_out.squeeze(-1)
 
-    @override(PPORLModule)
+    @override(TorchRLModule)
     def _set_inference_only_state_dict_keys(self) -> None:
         # Get the model_parameters.
         state_dict = self.state_dict()
@@ -156,7 +156,7 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
                 if "actor_encoder" in name
             }
 
-    @override(PPORLModule)
+    @override(TorchRLModule)
     def _inference_only_get_state_hook(
         self, state_dict: Dict[str, Any]
     ) -> Dict[str, Any]:
