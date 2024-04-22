@@ -268,7 +268,7 @@ std::unique_ptr<EntityState> SubscriptionIndex::CreateEntityState(
                                          /*max_buffered_bytes=*/-1);
 
   default:
-    RAY_LOG(FATAL) << "Unexpected channel type: " << rpc::ChannelType_Name(channel_type_);
+    RAY_LOG(FATAL) << "Unexpected channel type: " << rpc::ChannelType_Name(channel_type);
     return nullptr;
   }
 }
