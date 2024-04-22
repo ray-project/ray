@@ -2313,17 +2313,17 @@ def read_iceberg(
 
     Examples:
         >>> import ray
-        >>> from pyiceberg.expressions import BooleanExpression, EqualTo
+        >>> from pyiceberg.expressions import EqualTo
         >>> ds = ray.data.read_iceberg(
         ...     table_identifier="db_name.table_name",
-        ...     row_filter=BooleanExpression(EqualTo("column_name", "literal_value")),
+        ...     row_filter=EqualTo("column_name", "literal_value"),
         ...     parallelism=64
         ... )
 
     Args:
-        table_identifier: Fully qualified table identifier (i.e., ``db_name.table_name``)
-        row_filter: A PyIceberg `BooleanExpression` to use to filter the data *prior*
-            to reading
+        table_identifier: Fully qualified table identifier (``db_name.table_name``)
+        row_filter: A PyIceberg :class:`~pyiceberg.expressions.BooleanExpression`
+            to use to filter the data _prior_ to reading
         selected_fields: Which columns from the data to read, passed directly to
             PyIceberg's load functions
         snapshot_id: Optional snapshot ID for the Iceberg table, by default the latest
@@ -2336,7 +2336,7 @@ def read_iceberg(
         ray_remote_args: Optional arguments to pass to `ray.remote` in the read tasks
 
     Returns:
-        :class:`~ray.data.Dataset` with rows from the executed query on the Iceberg table.
+        :class:`~ray.data.Dataset` with rows from the Iceberg table.
     """
     from ray.data.datasource.iceberg_datasource import IcebergDatasource
 
