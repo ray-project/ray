@@ -85,10 +85,12 @@ class AutoscalingState:
     def __init__(self, deployment_id: DeploymentID):
         self._deployment_id = deployment_id
 
-        # Map from handle ID to handle request metric report
+        # Map from handle ID to handle request metric report. Metrics
+        # are removed from this dict either when the actor on which the
+        # handle lived dies, or after a period of no updates.
         self._handle_requests: Dict[str, HandleMetricReport] = dict()
-        self._requests_queued_at_handles: Dict[str, float] = dict()
-        # Map from replica ID to replica request metric report
+        # Map from replica ID to replica request metric report. Metrics
+        # are removed from this dict when a replica is stopped.
         self._replica_requests: Dict[ReplicaID, ReplicaMetricReport] = dict()
 
         self._deployment_info = None
@@ -100,7 +102,7 @@ class AutoscalingState:
 
     def register(
         self, info: DeploymentInfo, curr_target_num_replicas: Optional[int] = None
-    ):
+    ) -> int:
         """Registers an autoscaling deployment's info."""
 
         config = info.deployment_config.autoscaling_config
@@ -120,7 +122,11 @@ class AutoscalingState:
 
         return self.apply_bounds(target_num_replicas)
 
-    def get_num_replicas_lower_bound(self):
+    def on_replica_stopped(self, replica_id: ReplicaID):
+        if replica_id in self._replica_requests:
+            del self._replica_requests[replica_id]
+
+    def get_num_replicas_lower_bound(self) -> int:
         if self._config.initial_replicas is not None and (
             self._target_capacity_direction == TargetCapacityDirection.UP
         ):
@@ -134,7 +140,7 @@ class AutoscalingState:
                 self._target_capacity,
             )
 
-    def get_num_replicas_upper_bound(self):
+    def get_num_replicas_upper_bound(self) -> int:
         return get_capacity_adjusted_num_replicas(
             self._config.max_replicas,
             self._target_capacity,
@@ -157,7 +163,7 @@ class AutoscalingState:
             == num_replicas_running_at_target_version
         )
 
-    def apply_bounds(self, num_replicas: int):
+    def apply_bounds(self, num_replicas: int) -> int:
         """Clips a replica count with current autoscaling bounds.
 
         This takes into account target capacity.
@@ -254,7 +260,7 @@ class AutoscalingState:
 
     def get_decision_num_replicas(
         self, curr_target_num_replicas: int, _skip_bound_check: bool = False
-    ):
+    ) -> int:
         """Decide the target number of replicas to autoscale to.
 
         The decision is based off of the number of requests received
@@ -326,7 +332,7 @@ class AutoscalingStateManager:
         deployment_id: DeploymentID,
         info: DeploymentInfo,
         curr_target_num_replicas: Optional[int] = None,
-    ):
+    ) -> int:
         """Register autoscaling deployment info."""
         assert info.deployment_config.autoscaling_config
         if deployment_id not in self._autoscaling_states:
@@ -345,6 +351,11 @@ class AutoscalingStateManager:
         self._autoscaling_states[deployment_id].update_running_replica_ids(
             running_replicas
         )
+
+    def on_replica_stopped(self, replica_id: ReplicaID):
+        deployment_id = replica_id.deployment_id
+        if deployment_id in self._autoscaling_states:
+            self._autoscaling_states[deployment_id].on_replica_stopped(replica_id)
 
     def get_metrics(self) -> Dict[DeploymentID, float]:
         return {
