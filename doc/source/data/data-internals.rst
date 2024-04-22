@@ -166,7 +166,7 @@ The *executor* schedules tasks and moves data between physical operators.
 The executor and operators are located on the process where dataset execution starts. 
 For batch inference jobs, this process is usually the driver. For training jobs, the 
 executor runs on a special actor called ``SplitCoordinator`` which handles 
-:meth:`ray.data.dataset.Dataset.streaming_split`.
+:meth:`~ray.data.Dataset.streaming_split`.
 
 Tasks and actors launched by operators are scheduled across the cluster, and outputs are 
 stored in Ray’s distributed object store. The executor manipulates references to 
@@ -188,8 +188,8 @@ for one operator to complete to start the next. Each operator takes in and outpu
 stream of blocks. This approach allows you to process datasets that are too large to fit 
 in your cluster’s memory.
 
-Scheduling loop
-~~~~~~~~~~~~~~~
+The scheduling loop
+~~~~~~~~~~~~~~~~~~~
 
 The executor runs a loop. Each step works like this:
 
