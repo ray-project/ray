@@ -383,6 +383,7 @@ class Dataset:
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+        called_from_map_groups: bool = False,
         **ray_remote_args,
     ) -> "Dataset":
         """Apply the given function to batches of data.
@@ -521,6 +522,7 @@ class Dataset:
             concurrency: The number of Ray workers to use concurrently. For a fixed-sized
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
                 worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
+            called_from_map_groups: Whether this method was invoked from GroupedData.map_groups.
             ray_remote_args: Additional resource requirements to request from
                 ray for each map worker.
 
@@ -567,7 +569,9 @@ class Dataset:
             min_rows_per_bundled_input = batch_size
 
         batch_size = _apply_batch_size(
-            batch_size, use_gpu="num_gpus" in ray_remote_args
+            batch_size,
+            use_gpu="num_gpus" in ray_remote_args,
+            called_from_map_groups = called_from_map_groups,
         )
 
         if batch_format not in VALID_BATCH_FORMATS:

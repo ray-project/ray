@@ -232,6 +232,7 @@ class GroupedData:
             batch_format=batch_format,
             fn_args=fn_args,
             fn_kwargs=fn_kwargs,
+            called_from_map_groups=True,
             **ray_remote_args,
         )
 
