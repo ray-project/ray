@@ -68,6 +68,9 @@ class AggregateFn:
                     a = accumulate_row(a, r)
                 return a
 
+        if not isinstance(name, str):
+            raise TypeError("`name` must be provided.")
+
         self.init = init
         self.merge = merge
         self.name = name
