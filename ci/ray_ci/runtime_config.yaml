@@ -6,5 +6,7 @@ release_byod:
   aws_cr: 830883877497.dkr.ecr.us-west-2.amazonaws.com
   gcp_cr: us-west1-docker.pkg.dev/anyscale-oss-ci
   aws2gce_credentials: release/aws2gce_runtime_iam.json
+ci_pipeline:
+  buildkite_secret: ray_ci_buildkite_token 
 state_machine:
   aws_bucket: ray-ci-results
