@@ -32,6 +32,14 @@ class LocustLoadTestConfig:
 
 
 @dataclass
+class PerformanceStats:
+    p50_latency: float
+    p90_latency: float
+    p99_latency: float
+    rps: float
+
+
+@dataclass
 class LocustTestResults:
     history: List[Dict]
     total_requests: int
@@ -41,6 +49,7 @@ class LocustTestResults:
     p90_latency: float
     p99_latency: float
     avg_rps: float
+    stats_in_stages: List[PerformanceStats]
 
 
 @dataclass
@@ -57,13 +66,11 @@ class LocustClient:
         self,
         host_url: str,
         token: str,
-        stages: List[LocustStage] = None,
         data: Dict[str, Any] = None,
     ):
-        from locust import task, constant, events, FastHttpUser, LoadTestShape
+        from locust import task, constant, events, FastHttpUser
         from locust.contrib.fasthttp import FastResponse
 
-        stages = stages or []
         self.errors = []
 
         class EndpointUser(FastHttpUser):
@@ -108,15 +115,7 @@ class LocustClient:
                         f"Request '{request_id}' failed with exception: {response.text}"
                     )
 
-        class StagesShape(LoadTestShape):
-            def tick(self):
-                run_time = self.get_run_time()
-                for stage in stages:
-                    if run_time < stage.duration_s:
-                        return (stage.users, stage.spawn_rate)
-
         self.user_class = EndpointUser
-        self.shape_class = StagesShape
 
 
 @ray.remote(num_cpus=1)
@@ -154,25 +153,62 @@ class LocustMaster(LocustClient):
         host_url: str,
         token: str,
         expected_num_workers: int,
-        stages: List[Dict],
+        stages: List[LocustStage],
         wait_for_workers_timeout_s: float,
     ):
         # NOTE(zcin): We need to lazily import locust because the driver
         # script won't connect to ray properly otherwise.
+        import locust
+        from locust import LoadTestShape
         from locust.env import Environment
         from locust.log import setup_logging
-        import locust
 
-        super().__init__(host_url=host_url, token=token, stages=stages)
+        super().__init__(host_url=host_url, token=token)
         setup_logging("INFO")
+
+        self.stats_in_stages: List[PerformanceStats] = []
+
+        class StagesShape(LoadTestShape):
+            curr_stage_ix = 0
+
+            def tick(cls):
+                run_time = cls.get_run_time()
+                prefix_time = 0
+                for i, stage in enumerate(stages):
+                    prefix_time += stage.duration_s
+
+                    if run_time < prefix_time:
+                        if i != cls.curr_stage_ix:
+                            self.on_stage_finished()
+                            cls.curr_stage_ix = i
+
+                        current_stage = stages[cls.curr_stage_ix]
+                        return current_stage.users, current_stage.spawn_rate
+
+                # End of stage test
+                self.on_stage_finished()
 
         self.master_env = Environment(
             user_classes=[self.user_class],
-            shape_class=self.shape_class(),
+            shape_class=StagesShape(),
             events=locust.events,
         )
         self.expected_num_workers = expected_num_workers
         self.wait_for_workers_timeout_s = wait_for_workers_timeout_s
+        self.master_runner = None
+
+    def on_stage_finished(self):
+        stats_entry_key = ("", "GET")
+        stats_entry = self.master_runner.stats.entries.get(stats_entry_key)
+
+        self.stats_in_stages.append(
+            PerformanceStats(
+                p50_latency=stats_entry.get_current_response_time_percentile(0.5),
+                p90_latency=stats_entry.get_current_response_time_percentile(0.9),
+                p99_latency=stats_entry.get_current_response_time_percentile(0.99),
+                rps=stats_entry.current_rps,
+            )
+        )
 
     def run(self):
         import gevent
@@ -184,10 +220,10 @@ class LocustMaster(LocustClient):
             stats_printer,
         )
 
-        master_runner = self.master_env.create_master_runner("*", 5557)
+        self.master_runner = self.master_env.create_master_runner("*", 5557)
 
         start = time.time()
-        while len(master_runner.clients.ready) < self.expected_num_workers:
+        while len(self.master_runner.clients.ready) < self.expected_num_workers:
             if time.time() - start > self.wait_for_workers_timeout_s:
                 raise RuntimeError(
                     f"Timed out waiting for {self.expected_num_workers} workers to "
@@ -195,7 +231,8 @@ class LocustMaster(LocustClient):
                 )
 
             print(
-                f"Waiting for workers to be ready, {len(master_runner.clients.ready)} "
+                f"Waiting for workers to be ready, "
+                f"{len(self.master_runner.clients.ready)} "
                 f"of {self.expected_num_workers} ready."
             )
             time.sleep(1)
@@ -203,36 +240,37 @@ class LocustMaster(LocustClient):
         # Periodically output current stats (each entry is aggregated
         # stats over the past 10 seconds, by default)
         gevent.spawn(stats_printer(self.master_env.stats))
-        gevent.spawn(stats_history, master_runner)
+        gevent.spawn(stats_history, self.master_runner)
 
         # Start test & wait for the shape test to finish
-        master_runner.start_shape()
-        master_runner.shape_greenlet.join()
+        self.master_runner.start_shape()
+        self.master_runner.shape_greenlet.join()
         # Send quit signal to all locust workers
-        master_runner.quit()
+        self.master_runner.quit()
 
         # Print stats
-        for line in get_stats_summary(master_runner.stats, current=False):
+        for line in get_stats_summary(self.master_runner.stats, current=False):
             print(line)
         # Print percentile stats
-        for line in get_percentile_stats_summary(master_runner.stats):
+        for line in get_percentile_stats_summary(self.master_runner.stats):
             print(line)
         # Print error report
-        if master_runner.stats.errors:
-            for line in get_error_report_summary(master_runner.stats):
+        if self.master_runner.stats.errors:
+            for line in get_error_report_summary(self.master_runner.stats):
                 print(line)
 
         stats_entry_key = ("", "GET")
-        stats_entry = master_runner.stats.entries.get(stats_entry_key)
+        stats_entry = self.master_runner.stats.entries.get(stats_entry_key)
         return LocustTestResults(
-            history=master_runner.stats.history,
-            total_requests=master_runner.stats.num_requests,
-            num_failures=master_runner.stats.num_failures,
+            history=self.master_runner.stats.history,
+            total_requests=self.master_runner.stats.num_requests,
+            num_failures=self.master_runner.stats.num_failures,
             avg_latency=stats_entry.avg_response_time,
-            p50_latency=stats_entry.get_current_response_time_percentile(0.5),
-            p90_latency=stats_entry.get_current_response_time_percentile(0.9),
-            p99_latency=stats_entry.get_current_response_time_percentile(0.99),
+            p50_latency=stats_entry.get_response_time_percentile(0.5),
+            p90_latency=stats_entry.get_response_time_percentile(0.9),
+            p99_latency=stats_entry.get_response_time_percentile(0.99),
             avg_rps=stats_entry.total_rps,
+            stats_in_stages=self.stats_in_stages,
         )
 
 

@@ -67,24 +67,6 @@ py_test(
 )
 
 py_test(
-    name = "single_deployment_1k_noop_replica_smoke_test",
-    size = "medium",
-    srcs = test_srcs,
-    env = {
-        "IS_SMOKE_TEST": "1",
-    },
-    main = "single_deployment_1k_noop_replica.py",
-    tags = [
-        "exclusive",
-        "team:serve",
-    ],
-    deps = [
-        "//:ray_lib",
-        "//python/ray/serve:serve_lib",
-    ],
-)
-
-py_test(
     name = "multi_deployment_1k_noop_replica_smoke_test",
     size = "medium",
     srcs = test_srcs,
@@ -92,42 +74,6 @@ py_test(
         "IS_SMOKE_TEST": "1",
     },
     main = "multi_deployment_1k_noop_replica.py",
-    tags = [
-        "exclusive",
-        "team:serve",
-    ],
-    deps = [
-        "//:ray_lib",
-        "//python/ray/serve:serve_lib",
-    ],
-)
-
-py_test(
-    name = "autoscaling_single_deployment_smoke_test",
-    size = "medium",
-    srcs = test_srcs,
-    env = {
-        "IS_SMOKE_TEST": "1",
-    },
-    main = "autoscaling_single_deployment.py",
-    tags = [
-        "exclusive",
-        "team:serve",
-    ],
-    deps = [
-        "//:ray_lib",
-        "//python/ray/serve:serve_lib",
-    ],
-)
-
-py_test(
-    name = "autoscaling_multi_deployment_smoke_test",
-    size = "medium",
-    srcs = test_srcs,
-    env = {
-        "IS_SMOKE_TEST": "1",
-    },
-    main = "autoscaling_multi_deployment.py",
     tags = [
         "exclusive",
         "team:serve",
