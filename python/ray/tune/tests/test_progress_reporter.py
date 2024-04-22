@@ -801,6 +801,9 @@ class ProgressReporterTest(unittest.TestCase):
             reporter = _detect_reporter()
             self.assertFalse(isinstance(reporter, CLIReporter))
             self.assertTrue(isinstance(reporter, JupyterNotebookReporter))
+            trainer_reporter = _detect_reporter(_trainer_api=True)
+            self.assertFalse(isinstance(trainer_reporter, JupyterNotebookReporter))
+            self.assertTrue(isinstance(trainer_reporter, CLIReporter))
 
     def testProgressReporterAPI(self):
         class CustomReporter(ProgressReporter):
