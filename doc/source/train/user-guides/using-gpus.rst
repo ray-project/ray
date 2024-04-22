@@ -112,7 +112,8 @@ In a heterogeneous Ray cluster, this means that your training workers will be fo
 rather than on any arbitrary GPU node.
 
 For example, you can specify `accelerator_type="A100"` in the :class:`~ray.train.ScalingConfig` if you want to 
-assign each worker a NVIDIA A100 GPU.
+assign each worker a NVIDIA A100 GPU. You can get a list of supported `accelerator_type` from 
+:ref:`the available accelerator types <accelerator_types>`.
 
 .. tip::
     Ensure that your cluster has instances with the specified accelerator type 
