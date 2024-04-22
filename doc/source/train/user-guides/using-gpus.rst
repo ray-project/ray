@@ -110,6 +110,7 @@ Ray Train allows you to specify the accelerator type for each worker.
 This is useful if your model training has some GPU memory constraints that requires a specific type of GPU.
 In a heterogeneous Ray cluster, this means that your training workers will be forced to run on the specified GPU type, 
 rather than on any arbitrary GPU node.
+
 For example, you can specify `accelerator_type="A100"` in the :class:`~ray.train.ScalingConfig` if you want to 
 assign each worker a NVIDIA A100 GPU.
 
