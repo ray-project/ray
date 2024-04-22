@@ -107,7 +107,7 @@ You can get a list of associated devices with :meth:`ray.train.torch.get_devices
 Setting the GPU type
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Ray Train allows you to specify the accelerator type for each worker.
-This is useful if your model training has some GPU memory constraints that requires a specific type of GPU.
+This is useful if you want to use a specific accelerator type for model training.
 In a heterogeneous Ray cluster, this means that your training workers will be forced to run on the specified GPU type, 
 rather than on any arbitrary GPU node.
 
@@ -121,9 +121,9 @@ assign each worker a NVIDIA A100 GPU.
 .. testcode::
 
     ScalingConfig(
-            num_workers=1,
-            use_gpu=True,
-            accelerator_type="A100"
+        num_workers=1,
+        use_gpu=True,
+        accelerator_type="A100"
     )
 
 
