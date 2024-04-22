@@ -8,6 +8,7 @@ from ray.rllib.utils import deprecation_warning
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.replay_buffers import (
     EpisodeReplayBuffer,
@@ -37,8 +38,8 @@ def update_priorities_in_episode_replay_buffer(
 
         # The `ResultDict` will be multi-agent.
         for module_id, result_dict in train_results.items():
-            # Skip the `"__all__"` key.
-            if module_id == "__all__":
+            # Skip the `"__all__"` keys.
+            if module_id in ["__all__", ALL_MODULES]:
                 continue
 
             # Get the TD-error from the results.

@@ -43,6 +43,7 @@ from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModuleSpec,
     DEFAULT_MODULE_ID,
 )
+from ray.rllib.core import DEFAULT_AGENT_ID
 from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
@@ -102,11 +103,13 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED_LIFETIME,
     NUM_AGENT_STEPS_SAMPLED_THIS_ITER,
     NUM_AGENT_STEPS_TRAINED,
+    NUM_AGENT_STEPS_TRAINED_LIFETIME,
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_SAMPLED_THIS_ITER,
     NUM_ENV_STEPS_SAMPLED_FOR_EVALUATION_THIS_ITER,
     NUM_ENV_STEPS_TRAINED,
+    NUM_ENV_STEPS_TRAINED_LIFETIME,
     NUM_EPISODES,
     NUM_EPISODES_LIFETIME,
     RESTORE_WORKERS_TIMER,
@@ -477,6 +480,16 @@ class Algorithm(Trainable, AlgorithmBase):
         # components (including timers, counters and other stats in its own
         # `training_step()` and other methods) as well as custom callbacks.
         self.metrics = MetricsLogger()
+        # Initialize lifetime counters.
+        self.metrics.log_dict(
+            {
+                NUM_ENV_STEPS_SAMPLED_LIFETIME: 0,
+                NUM_AGENT_STEPS_SAMPLED_LIFETIME: {DEFAULT_AGENT_ID: 0},
+                NUM_ENV_STEPS_TRAINED_LIFETIME: 0,
+                NUM_AGENT_STEPS_TRAINED_LIFETIME: {DEFAULT_AGENT_ID: 0},
+            },
+            reduce="sum",
+        )
 
         # Create a default logger creator if no logger_creator is specified
         if logger_creator is None:
@@ -3570,13 +3583,27 @@ class TrainIterCtx:
         self.time_start = time.time()
         self.sampled = 0
         self.trained = 0
-        self.init_env_steps_sampled = self.algo._counters[NUM_ENV_STEPS_SAMPLED]
-        self.init_env_steps_trained = self.algo._counters[NUM_ENV_STEPS_TRAINED]
-        self.init_agent_steps_sampled = self.algo._counters[NUM_AGENT_STEPS_SAMPLED]
-        self.init_agent_steps_trained = self.algo._counters[NUM_AGENT_STEPS_TRAINED]
-        self.failure_tolerance = self.algo.config[
-            "num_consecutive_worker_failures_tolerance"
-        ]
+        if self.algo.config.uses_new_env_runners:
+            self.init_env_steps_sampled = self.algo.metrics.peek(
+                NUM_ENV_STEPS_SAMPLED_LIFETIME
+            )
+            self.init_env_steps_trained = self.algo.metrics.peek(
+                NUM_ENV_STEPS_TRAINED_LIFETIME
+            )
+            self.init_agent_steps_sampled = sum(
+                self.algo.metrics.peek(NUM_AGENT_STEPS_SAMPLED_LIFETIME).values()
+            )
+            self.init_agent_steps_trained = sum(
+                self.algo.metrics.peek(NUM_AGENT_STEPS_TRAINED_LIFETIME).values()
+            )
+        else:
+            self.init_env_steps_sampled = self.algo._counters[NUM_ENV_STEPS_SAMPLED]
+            self.init_env_steps_trained = self.algo._counters[NUM_ENV_STEPS_TRAINED]
+            self.init_agent_steps_sampled = self.algo._counters[NUM_AGENT_STEPS_SAMPLED]
+            self.init_agent_steps_trained = self.algo._counters[NUM_AGENT_STEPS_TRAINED]
+        self.failure_tolerance = (
+            self.algo.config.num_consecutive_worker_failures_tolerance
+        )
         return self
 
     def __exit__(self, *args):
@@ -3602,22 +3629,52 @@ class TrainIterCtx:
             return False
 
         # Stopping criteria.
-        if self.algo.config.count_steps_by == "agent_steps":
-            self.sampled = (
-                self.algo._counters[NUM_AGENT_STEPS_SAMPLED]
-                - self.init_agent_steps_sampled
-            )
-            self.trained = (
-                self.algo._counters[NUM_AGENT_STEPS_TRAINED]
-                - self.init_agent_steps_trained
-            )
+        if self.algo.config.uses_new_env_runners:
+            if self.algo.config.count_steps_by == "agent_steps":
+                self.sampled = (
+                    sum(
+                        self.algo.metrics.peek(
+                            NUM_AGENT_STEPS_SAMPLED_LIFETIME
+                        ).values()
+                    )
+                    - self.init_agent_steps_sampled
+                )
+                self.trained = (
+                    sum(
+                        self.algo.metrics.peek(
+                            NUM_AGENT_STEPS_TRAINED_LIFETIME
+                        ).values()
+                    )
+                    - self.init_agent_steps_trained
+                )
+            else:
+                self.sampled = (
+                    self.algo.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME)
+                    - self.init_env_steps_sampled
+                )
+                self.trained = (
+                    self.algo.metrics.peek(NUM_ENV_STEPS_TRAINED_LIFETIME)
+                    - self.init_env_steps_trained
+                )
         else:
-            self.sampled = (
-                self.algo._counters[NUM_ENV_STEPS_SAMPLED] - self.init_env_steps_sampled
-            )
-            self.trained = (
-                self.algo._counters[NUM_ENV_STEPS_TRAINED] - self.init_env_steps_trained
-            )
+            if self.algo.config.count_steps_by == "agent_steps":
+                self.sampled = (
+                    self.algo._counters[NUM_AGENT_STEPS_SAMPLED]
+                    - self.init_agent_steps_sampled
+                )
+                self.trained = (
+                    self.algo._counters[NUM_AGENT_STEPS_TRAINED]
+                    - self.init_agent_steps_trained
+                )
+            else:
+                self.sampled = (
+                    self.algo._counters[NUM_ENV_STEPS_SAMPLED]
+                    - self.init_env_steps_sampled
+                )
+                self.trained = (
+                    self.algo._counters[NUM_ENV_STEPS_TRAINED]
+                    - self.init_env_steps_trained
+                )
 
         min_t = self.algo.config.min_time_s_per_iteration
         min_sample_ts = self.algo.config.min_sample_timesteps_per_iteration

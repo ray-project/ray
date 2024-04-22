@@ -49,6 +49,6 @@ config = (
 )
 
 stop = {
-    "evaluation/sampler_results/episode_reward_mean": 500.0,
-    "timesteps_total": 100000,
+    "evaluation_results/env_runner_results/episode_return_mean": 450.0,
+    "num_env_steps_sampled_lifetime": 100000,
 }

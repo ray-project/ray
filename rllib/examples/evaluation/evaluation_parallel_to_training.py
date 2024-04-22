@@ -129,9 +129,11 @@ class AssertEvalCallback(DefaultCallbacks):
         # Make sure we always run exactly the given evaluation duration,
         # no matter what the other settings are (such as
         # `evaluation_num_workers` or `evaluation_parallel_to_training`).
-        if env_runner_results:
+        if env_runner_results and NUM_EPISODES in env_runner_results:
             num_episodes_done = env_runner_results[NUM_EPISODES]
-            num_timesteps_reported = env_runner_results[NUM_ENV_STEPS_SAMPLED]
+            num_timesteps_reported = env_runner_results.get(
+                NUM_ENV_STEPS_SAMPLED, env_runner_results["episodes_timesteps_total"]
+            )
 
             # We run for automatic duration (as long as training takes).
             if algorithm.config.evaluation_duration == "auto":

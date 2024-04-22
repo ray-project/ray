@@ -607,10 +607,7 @@ class DQN(Algorithm):
             self.local_replay_buffer.add(episodes)
 
             # Reduce EnvRunner metrics over the n EnvRunners.
-            self.metrics.log_n_dicts(
-                key=ENV_RUNNER_RESULTS,
-                stats_dicts=env_runner_metrics,
-            )
+            self.metrics.log_n_dicts(env_runner_metrics, key=ENV_RUNNER_RESULTS)
 
         # Log lifetime counts for env- and agent steps.
         self.metrics.log_dict(
@@ -628,11 +625,12 @@ class DQN(Algorithm):
             reduce="sum",
         )
 
-        current_ts = self.metrics.peek(
-            NUM_AGENT_STEPS_SAMPLED_LIFETIME
-            if self.config.count_steps_by == "agent_steps"
-            else NUM_AGENT_STEPS_SAMPLED_LIFETIME
-        )
+        if self.config.count_steps_by == "agent_steps":
+            current_ts = sum(
+                self.metrics.peek(NUM_AGENT_STEPS_SAMPLED_LIFETIME).values()
+            )
+        else:
+            current_ts = self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME)
 
         # If enough experiences have been sampled start training.
         if current_ts > self.config.num_steps_sampled_before_learning_starts:
@@ -664,7 +662,7 @@ class DQN(Algorithm):
                         train_batch,
                         reduce_fn=self._reduce_fn,
                     )
-                    self.metrics.log_dict(LEARNER_RESULTS, learner_results)
+                    self.metrics.log_dict(learner_results, key=LEARNER_RESULTS)
 
                 # Update the counters.
                 # self._counters[NUM_AGENT_STEPS_TRAINED] += train_batch.agent_steps()
@@ -809,7 +807,7 @@ class DQN(Algorithm):
         """Reduces all metrics, but the TD-errors."""
         # First get the single modules' results.
         module_results = [
-            v for res in results for k, v in res.items() if k != "__all__"
+            v for res in results for k, v in res.items() if k != ALL_MODULES
         ]
         # Extract the TD-errors as we want to keep them as arrays.
         td_errors = tree.map_structure_up_to(
