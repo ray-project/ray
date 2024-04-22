@@ -91,6 +91,7 @@ class SingleAgentEnvRunner(EnvRunner):
 
         # Create a MetricsLogger object for logging custom stats.
         self.metrics = MetricsLogger()
+        # Initialize lifetime counts.
         self.metrics.log_value(NUM_ENV_STEPS_SAMPLED_LIFETIME, 0, reduce="sum")
 
         # This should be the default.

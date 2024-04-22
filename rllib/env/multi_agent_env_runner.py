@@ -837,6 +837,8 @@ class MultiAgentEnvRunner(EnvRunner):
 
     def _setup_metrics(self):
         self.metrics = MetricsLogger()
+        # Initialize lifetime counts.
+        self.metrics.log_value(NUM_ENV_STEPS_SAMPLED_LIFETIME, 0, reduce="sum")
 
         self._done_episodes_for_metrics: List[MultiAgentEpisode] = []
         self._ongoing_episodes_for_metrics: DefaultDict[
