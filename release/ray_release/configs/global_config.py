@@ -18,6 +18,7 @@ class GlobalConfig(TypedDict):
     aws2gce_credentials: str
     ci_pipeline_premerge: List[str]
     ci_pipeline_postmerge: List[str]
+    ci_pipeline_buildkite_secret: str
 
 
 config = None
@@ -89,6 +90,9 @@ def _init_global_config(config_file: str):
         ci_pipeline_premerge=config_content.get("ci_pipeline", {}).get("premerge", []),
         ci_pipeline_postmerge=config_content.get("ci_pipeline", {}).get(
             "postmerge", []
+        ),
+        ci_pipeline_buildkite_secret=config_content.get("ci_pipeline", {}).get(
+            "buildkite_secret"
         ),
     )
     # setup GCP workload identity federation

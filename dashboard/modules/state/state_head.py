@@ -3,6 +3,7 @@ import logging
 from dataclasses import asdict
 from datetime import datetime
 from typing import Callable, List, Tuple, Optional
+import functools
 
 import aiohttp.web
 from aiohttp.web import Response
@@ -101,6 +102,7 @@ class RateLimitedModule(ABC):
             ```
         """
 
+        @functools.wraps(func)
         async def async_wrapper(self, *args, **kwargs):
             if self.max_num_call_ >= 0 and self.num_call_ >= self.max_num_call_:
                 if self.logger_:

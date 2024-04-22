@@ -2,13 +2,11 @@ from collections import namedtuple
 from dataclasses import dataclass
 from typing import Dict
 from unittest.mock import Mock
+
 from wandb.util import json_dumps_safer
 
 import ray
-from ray.air.integrations.wandb import (
-    _WandbLoggingActor,
-    WandbLoggerCallback,
-)
+from ray.air.integrations.wandb import WandbLoggerCallback, _WandbLoggingActor
 
 
 class Trial(

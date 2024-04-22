@@ -620,13 +620,6 @@ def run(
         air_verbosity = None
 
     if air_verbosity is not None:
-        logger.info(
-            f"[output] This will use the new output engine with verbosity "
-            f"{air_verbosity}. To disable the new output and use the legacy "
-            f"output engine, set the environment variable RAY_AIR_NEW_OUTPUT=0. "
-            f"For more information, please see "
-            f"https://github.com/ray-project/ray/issues/36949"
-        )
         # Disable old output engine
         set_verbosity(0)
     else:
@@ -910,7 +903,10 @@ def run(
         progress_reporter = None
 
     if air_verbosity is None:
-        progress_reporter = progress_reporter or _detect_reporter()
+        is_trainer = _entrypoint == AirEntrypoint.TRAINER
+        progress_reporter = progress_reporter or _detect_reporter(
+            _trainer_api=is_trainer
+        )
 
     if resume is not None:
         resume_config = resume_config or _build_resume_config_from_legacy_config(resume)
