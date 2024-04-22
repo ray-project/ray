@@ -9,4 +9,7 @@ release_byod:
 ci_pipeline:
   buildkite_secret: ray_ci_buildkite_token 
 state_machine:
-  aws_bucket: ray-ci-results
+  pr:
+    aws_bucket: ray-ci-results
+  branch:
+    aws_bucket: ray-ci-results
