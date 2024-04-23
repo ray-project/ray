@@ -1964,588 +1964,6 @@ def test_scale_num_replicas(mock_deployment_state_manager, target_capacity_direc
     )
 
 
-@pytest.mark.parametrize("target_capacity_direction", ["up", "down"])
-def test_basic_autoscaling(mock_deployment_state_manager, target_capacity_direction):
-    """Test autoscaling up and down.
-
-    Upscaling version:
-    1. Deploy deployment with autoscaling limits [0,6], initial_replicas=3, target=1.
-    2. It becomes healthy with 3 running replicas.
-    3. Set average request metrics to 2 (compare to target=1).
-    4. Deployment autoscales, 3 replicas starting, status=UPSCALING, trigger=AUTOSCALE.
-    5. It becomes healthy with 6 running replicas, status=HEALTHY, trigger=UPSCALE.
-    """
-
-    # Create deployment state manager
-    create_dsm, timer, _, asm = mock_deployment_state_manager
-    dsm: DeploymentStateManager = create_dsm()
-    asm: AutoscalingStateManager = asm
-
-    # Deploy deployment with 3 replicas
-    info, v1 = deployment_info(
-        autoscaling_config={
-            "target_ongoing_requests": 1,
-            "min_replicas": 0,
-            "max_replicas": 6,
-            "initial_replicas": 3,
-            "upscale_delay_s": 0,
-            "downscale_delay_s": 0,
-            "metrics_interval_s": 100,
-        }
-    )
-    dsm.deploy(TEST_DEPLOYMENT_ID, info)
-    ds: DeploymentState = dsm._deployment_states[TEST_DEPLOYMENT_ID]
-
-    # status=UPDATING, status_trigger=DEPLOY
-    dsm.update()
-    check_counts(ds, total=3, by_state=[(ReplicaState.STARTING, 3, None)])
-    assert ds.curr_status_info.status == DeploymentStatus.UPDATING
-    assert (
-        ds.curr_status_info.status_trigger
-        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
-    )
-
-    # Set replicas ready and check statuses
-    for replica in ds._replicas.get():
-        replica._actor.set_ready()
-
-    # status=HEALTHY, status_trigger=DEPLOY
-    dsm.update()
-    check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, None)])
-    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
-    assert (
-        ds.curr_status_info.status_trigger
-        == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
-    )
-
-    req_per_replica = 2 if target_capacity_direction == "up" else 0
-    replicas = ds._replicas.get()
-    if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
-        asm.record_request_metrics_for_handle(
-            deployment_id=TEST_DEPLOYMENT_ID,
-            handle_id="random",
-            actor_id=None,
-            handle_source=DeploymentHandleSource.UNKNOWN,
-            queued_requests=0,
-            running_requests={
-                replica._actor.replica_id: req_per_replica for replica in replicas
-            },
-            send_timestamp=timer.time(),
-        )
-    else:
-        for replica in replicas:
-            asm.record_request_metrics_for_replica(
-                replica_id=replica._actor.replica_id,
-                window_avg=req_per_replica,
-                send_timestamp=timer.time(),
-            )
-
-    # status=UPSCALING/DOWNSCALING, status_trigger=AUTOSCALE
-    dsm.update()
-    if target_capacity_direction == "up":
-        check_counts(
-            ds,
-            total=6,
-            by_state=[
-                (ReplicaState.RUNNING, 3, None),
-                (ReplicaState.STARTING, 3, None),
-            ],
-        )
-        assert ds.curr_status_info.status == DeploymentStatus.UPSCALING
-        assert ds.curr_status_info.status_trigger == DeploymentStatusTrigger.AUTOSCALING
-
-        # Advance timer by 60 seconds; this should exceed the slow startup
-        # warning threshold. The message should be updated, but the status
-        # should remain upscaling/autoscaling
-        timer.advance(60)
-        dsm.update()
-        check_counts(
-            ds,
-            total=6,
-            by_state=[
-                (ReplicaState.RUNNING, 3, None),
-                (ReplicaState.STARTING, 3, None),
-            ],
-        )
-        assert ds.curr_status_info.status == DeploymentStatus.UPSCALING
-        assert ds.curr_status_info.status_trigger == DeploymentStatusTrigger.AUTOSCALING
-        assert "have taken more than" in ds.curr_status_info.message
-
-        # Set replicas ready
-        for replica in ds._replicas.get():
-            replica._actor.set_ready()
-    else:
-        check_counts(ds, total=3, by_state=[(ReplicaState.STOPPING, 3, None)])
-        assert ds.curr_status_info.status == DeploymentStatus.DOWNSCALING
-        assert ds.curr_status_info.status_trigger == DeploymentStatusTrigger.AUTOSCALING
-        for replica in ds._replicas.get():
-            replica._actor.set_done_stopping()
-
-    # status=HEALTHY, status_trigger=UPSCALE/DOWNSCALE
-    dsm.update()
-    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
-    assert ds.curr_status_info.status_trigger == (
-        DeploymentStatusTrigger.UPSCALE_COMPLETED
-        if target_capacity_direction == "up"
-        else DeploymentStatusTrigger.DOWNSCALE_COMPLETED
-    )
-
-    # Make sure autoscaling state is removed when deployment is deleted
-    dsm.delete_deployment(TEST_DEPLOYMENT_ID)
-    dsm.update()
-    for replica in ds._replicas.get():
-        replica._actor.set_done_stopping()
-    dsm.update()
-    assert TEST_DEPLOYMENT_ID not in dsm._deployment_states
-    assert TEST_DEPLOYMENT_ID not in asm._autoscaling_states
-
-
-@pytest.mark.parametrize(
-    "target_startup_status",
-    [
-        ReplicaStartupStatus.PENDING_ALLOCATION,
-        ReplicaStartupStatus.PENDING_INITIALIZATION,
-    ],
-)
-def test_downscaling_reclaiming_starting_replicas_first(
-    target_startup_status,
-    mock_deployment_state_manager,
-):
-    """This test asserts that when downscaling first any non-running replicas are
-    scavenged, before stopping fully running replicas
-
-    More context on the issue could be found in:
-    https://github.com/ray-project/ray/issues/43034
-    """
-
-    # Create deployment state manager
-    create_dsm, timer, _, asm = mock_deployment_state_manager
-    dsm: DeploymentStateManager = create_dsm()
-    asm: AutoscalingStateManager = asm
-
-    # Deploy deployment with 3 replicas
-    info, _ = deployment_info(
-        autoscaling_config={
-            "target_ongoing_requests": 1,
-            "min_replicas": 0,
-            "max_replicas": 6,
-            "initial_replicas": 3,
-            "upscale_delay_s": 0,
-            "downscale_delay_s": 0,
-            "metrics_interval_s": 100,
-        }
-    )
-
-    dsm.deploy(TEST_DEPLOYMENT_ID, info)
-
-    ds: DeploymentState = dsm._deployment_states[TEST_DEPLOYMENT_ID]
-
-    # status=UPDATING, status_trigger=DEPLOY
-    dsm.update()
-    check_counts(ds, total=3, by_state=[(ReplicaState.STARTING, 3, None)])
-    assert ds.curr_status_info.status == DeploymentStatus.UPDATING
-    assert (
-        ds.curr_status_info.status_trigger
-        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
-    )
-
-    # Set replicas as SUCCESSFUL and check statuses
-    for replica in ds._replicas.get():
-        replica._actor.set_ready()
-
-    # status=HEALTHY, status_trigger=DEPLOY
-    dsm.update()
-    check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, None)])
-    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
-    assert (
-        ds.curr_status_info.status_trigger
-        == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
-    )
-
-    # Fetch all currently running replicas
-    running_replicas = ds._replicas.get(states=[ReplicaState.RUNNING])
-    replicas = ds._replicas.get()
-    if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
-        asm.record_request_metrics_for_handle(
-            deployment_id=TEST_DEPLOYMENT_ID,
-            handle_id="random",
-            actor_id=None,
-            handle_source=DeploymentHandleSource.UNKNOWN,
-            queued_requests=0,
-            running_requests={replica._actor.replica_id: 2 for replica in replicas},
-            send_timestamp=timer.time(),
-        )
-    else:
-        for replica in replicas:
-            asm.record_request_metrics_for_replica(
-                replica._actor.replica_id, 2, timer.time()
-            )
-
-    # status=UPSCALING, status_trigger=AUTOSCALE
-    dsm.update()
-    check_counts(
-        ds,
-        total=6,
-        by_state=[(ReplicaState.RUNNING, 3, None), (ReplicaState.STARTING, 3, None)],
-    )
-    assert ds.curr_status_info.status == DeploymentStatus.UPSCALING
-    assert ds.curr_status_info.status_trigger == DeploymentStatusTrigger.AUTOSCALING
-
-    # Set replicas as PENDING_INITIALIZATION: actors have been successfully allocated,
-    # but replicas are still pending successful initialization
-    for replica in ds._replicas.get():
-        replica._actor.set_status(target_startup_status)
-
-    # Advance timer by 60 seconds; this should exceed the slow startup
-    # warning threshold. The message should be updated, but the status
-    # should remain upscaling/autoscaling
-    timer.advance(60)
-    dsm.update()
-    check_counts(
-        ds,
-        total=6,
-        by_state=[(ReplicaState.RUNNING, 3, None), (ReplicaState.STARTING, 3, None)],
-    )
-
-    assert ds.curr_status_info.status == DeploymentStatus.UPSCALING
-    assert ds.curr_status_info.status_trigger == DeploymentStatusTrigger.AUTOSCALING
-
-    if target_startup_status == ReplicaStartupStatus.PENDING_INITIALIZATION:
-        expected_message = (
-            "Deployment 'test_deployment' in application 'test_app' has 3 replicas "
-            f"that have taken more than {SLOW_STARTUP_WARNING_S}s to "
-            "initialize. This may be caused by a slow __init__ or reconfigure "
-            "method."
-        )
-    elif target_startup_status == ReplicaStartupStatus.PENDING_ALLOCATION:
-        expected_message = (
-            "Deployment 'test_deployment' in application 'test_app' "
-            "has 3 replicas that have taken more than 30s to be scheduled. This "
-            "may be due to waiting for the cluster to auto-scale or for a runtime "
-            "environment to be installed. Resources required for each replica: "
-            '{"CPU": 0.1}, total resources available: {}. Use `ray status` for '
-            "more details."
-        )
-    else:
-        raise RuntimeError(f"Got unexpected status: {target_startup_status}")
-
-    assert expected_message == ds.curr_status_info.message
-
-    # Now, trigger downscaling attempting to reclaim half (3) of the replicas
-    replicas = ds._replicas.get(states=[ReplicaState.RUNNING])
-    if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
-        asm.record_request_metrics_for_handle(
-            deployment_id=TEST_DEPLOYMENT_ID,
-            handle_id="random",
-            actor_id=None,
-            handle_source=DeploymentHandleSource.UNKNOWN,
-            queued_requests=0,
-            running_requests={replica._actor.replica_id: 1 for replica in replicas},
-            send_timestamp=timer.time(),
-        )
-    else:
-        for replica in replicas:
-            asm.record_request_metrics_for_replica(
-                replica._actor.replica_id, 1, timer.time()
-            )
-
-    # status=DOWNSCALING, status_trigger=AUTOSCALE
-    dsm.update()
-    check_counts(
-        ds,
-        total=6,
-        by_state=[(ReplicaState.RUNNING, 3, None), (ReplicaState.STOPPING, 3, None)],
-    )
-
-    # Assert that no RUNNING replicas are being stopped
-    assert running_replicas == ds._replicas.get(states=[ReplicaState.RUNNING])
-
-    assert ds.curr_status_info.status == DeploymentStatus.DOWNSCALING
-    assert ds.curr_status_info.status_trigger == DeploymentStatusTrigger.AUTOSCALING
-
-    for replica in ds._replicas.get():
-        replica._actor.set_done_stopping()
-
-    # status=HEALTHY, status_trigger=UPSCALE/DOWNSCALE
-    dsm.update()
-    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
-    assert (
-        ds.curr_status_info.status_trigger
-        == DeploymentStatusTrigger.DOWNSCALE_COMPLETED
-    )
-
-
-def test_update_autoscaling_config(mock_deployment_state_manager):
-    """Test updating the autoscaling config.
-
-    1. Deploy deployment with autoscaling limits [0,6] and initial replicas = 3.
-    2. It becomes healthy with 3 running replicas.
-    3. Update autoscaling config to limits [6,10].
-    4. 3 new replicas should be STARTING, and deployment status should be UPDATING.
-    5. It becomes healthy with 6 running replicas.
-    """
-
-    # Create deployment state manager
-    create_dsm, timer, _, asm = mock_deployment_state_manager
-    dsm: DeploymentStateManager = create_dsm()
-    asm: AutoscalingStateManager = asm
-
-    # Deploy deployment with 3 replicas
-    info1, _ = deployment_info(
-        autoscaling_config={
-            "target_ongoing_requests": 1,
-            "min_replicas": 0,
-            "max_replicas": 6,
-            "initial_replicas": 3,
-            "upscale_delay_s": 0,
-            "downscale_delay_s": 0,
-        },
-        version="1",
-    )
-    dsm.deploy(TEST_DEPLOYMENT_ID, info1)
-    ds: DeploymentState = dsm._deployment_states[TEST_DEPLOYMENT_ID]
-
-    # Set replicas ready
-    dsm.update()
-    for replica in ds._replicas.get():
-        replica._actor.set_ready()
-
-    # status=HEALTHY, status_trigger=DEPLOY
-    dsm.update()
-    check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, None)])
-    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
-    assert (
-        ds.curr_status_info.status_trigger
-        == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
-    )
-
-    # Num ongoing requests = 1, status should remain HEALTHY
-    replicas = ds._replicas.get()
-    if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
-        asm.record_request_metrics_for_handle(
-            deployment_id=TEST_DEPLOYMENT_ID,
-            handle_id="random",
-            actor_id=None,
-            handle_source=DeploymentHandleSource.UNKNOWN,
-            queued_requests=0,
-            running_requests={replica._actor.replica_id: 1 for replica in replicas},
-            send_timestamp=timer.time(),
-        )
-    else:
-        for replica in replicas:
-            asm.record_request_metrics_for_replica(
-                replica._actor.replica_id, 1, timer.time()
-            )
-
-    check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, None)])
-    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
-    assert (
-        ds.curr_status_info.status_trigger
-        == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
-    )
-
-    # Update autoscaling config
-    info2, _ = deployment_info(
-        autoscaling_config={
-            "target_ongoing_requests": 1,
-            "min_replicas": 6,
-            "max_replicas": 10,
-            "upscale_delay_s": 0,
-            "downscale_delay_s": 0,
-        },
-        version="1",
-    )
-    dsm.deploy(TEST_DEPLOYMENT_ID, info2)
-
-    # 3 new replicas should be starting, status should be UPDATING (not upscaling)
-    dsm.update()
-    check_counts(
-        ds,
-        total=6,
-        by_state=[(ReplicaState.RUNNING, 3, None), (ReplicaState.STARTING, 3, None)],
-    )
-    assert ds.curr_status_info.status == DeploymentStatus.UPDATING
-    assert (
-        ds.curr_status_info.status_trigger
-        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
-    )
-
-    # Set replicas ready
-    dsm.update()
-    for replica in ds._replicas.get():
-        replica._actor.set_ready()
-    dsm.update()
-    check_counts(ds, total=6, by_state=[(ReplicaState.RUNNING, 6, None)])
-    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
-    assert (
-        ds.curr_status_info.status_trigger
-        == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
-    )
-
-
-@pytest.mark.skipif(
-    not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
-    reason="Testing handle metrics behavior.",
-)
-def test_handle_metrics_timeout(mock_deployment_state_manager):
-    create_dsm, timer, _, asm = mock_deployment_state_manager
-    dsm: DeploymentStateManager = create_dsm()
-    asm: AutoscalingStateManager = asm
-
-    # Deploy, start with 1 replica
-    info, _ = deployment_info(
-        autoscaling_config={
-            "target_ongoing_requests": 1,
-            "min_replicas": 0,
-            "max_replicas": 6,
-            "initial_replicas": 1,
-            "upscale_delay_s": 0,
-            "downscale_delay_s": 0,
-        }
-    )
-    dsm.deploy(TEST_DEPLOYMENT_ID, info)
-    ds: DeploymentState = dsm._deployment_states[TEST_DEPLOYMENT_ID]
-    dsm.update()
-    ds._replicas.get()[0]._actor.set_ready()
-    asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
-    dsm.update()
-    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, None)])
-
-    # Record 2 requests/replica -> trigger upscale
-    asm.record_request_metrics_for_handle(
-        deployment_id=TEST_DEPLOYMENT_ID,
-        handle_id="random",
-        actor_id=None,
-        handle_source=DeploymentHandleSource.UNKNOWN,
-        queued_requests=0,
-        running_requests={ds._replicas.get()[0]._actor.replica_id: 2},
-        send_timestamp=timer.time(),
-    )
-    asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
-    dsm.update()
-    check_counts(
-        ds,
-        total=2,
-        by_state=[(ReplicaState.RUNNING, 1, None), (ReplicaState.STARTING, 1, None)],
-    )
-    assert asm.get_total_num_requests(TEST_DEPLOYMENT_ID) == 2
-    ds._replicas.get([ReplicaState.STARTING])[0]._actor.set_ready()
-    asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
-    dsm.update()
-    check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
-    assert asm.get_total_num_requests(TEST_DEPLOYMENT_ID) == 2
-
-    # Simulate handle was on an actor that died. 10 seconds later
-    # the handle fails to push metrics
-    timer.advance(10)
-    asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
-    dsm.update()
-    check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
-    assert asm.get_total_num_requests(TEST_DEPLOYMENT_ID) == 2
-
-    # Another 10 seconds later handle still fails to push metrics. At
-    # this point the data from the handle should be invalidated. As a
-    # result, the replicas should scale back down to 0.
-    timer.advance(10)
-    asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
-    dsm.update()
-    check_counts(ds, total=2, by_state=[(ReplicaState.STOPPING, 2, None)])
-    assert asm.get_total_num_requests(TEST_DEPLOYMENT_ID) == 0
-
-
-@pytest.mark.skipif(
-    not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
-    reason="Testing handle metrics behavior.",
-)
-def test_handle_metrics_on_dead_serve_actor(mock_deployment_state_manager):
-    """When there are handles on dead serve actors, their metrics should be dropped."""
-
-    create_dsm, timer, _, asm = mock_deployment_state_manager
-    dsm: DeploymentStateManager = create_dsm()
-    asm: AutoscalingStateManager = asm
-    d_id1 = DeploymentID("d1", "app")
-    d_id2 = DeploymentID("d2", "app")
-
-    # Deploy, start with 1 replica
-    info1, _ = deployment_info(
-        autoscaling_config={
-            "target_ongoing_requests": 1,
-            "min_replicas": 0,
-            "max_replicas": 6,
-            "initial_replicas": 1,
-            "upscale_delay_s": 0,
-            "downscale_delay_s": 0,
-        },
-    )
-    info2, _ = deployment_info(health_check_period_s=0.1)
-    dsm.deploy(d_id1, info1)
-    dsm.deploy(d_id2, info2)
-
-    ds1: DeploymentState = dsm._deployment_states[d_id1]
-    ds2: DeploymentState = dsm._deployment_states[d_id2]
-
-    # One replica each
-    asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
-    dsm.update()
-    ds1._replicas.get()[0]._actor.set_ready()
-    ds2._replicas.get()[0]._actor.set_ready()
-    ds2._replicas.get()[0]._actor.set_actor_id("d2_replica_actor_id")
-    asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
-    dsm.update()
-    check_counts(ds1, total=1, by_state=[(ReplicaState.RUNNING, 1, None)])
-    check_counts(ds2, total=1, by_state=[(ReplicaState.RUNNING, 1, None)])
-
-    # Record 2 requests/replica (sent from d2 replica) -> trigger upscale
-    asm.record_request_metrics_for_handle(
-        deployment_id=d_id1,
-        handle_id="random",
-        actor_id="d2_replica_actor_id",
-        handle_source=DeploymentHandleSource.REPLICA,
-        queued_requests=0,
-        running_requests={ds1._replicas.get()[0]._actor.replica_id: 2},
-        send_timestamp=timer.time(),
-    )
-    asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
-    dsm.update()
-    check_counts(
-        ds1,
-        total=2,
-        by_state=[(ReplicaState.RUNNING, 1, None), (ReplicaState.STARTING, 1, None)],
-    )
-    assert asm.get_total_num_requests(d_id1) == 2
-    ds1._replicas.get([ReplicaState.STARTING])[0]._actor.set_ready()
-    asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
-    dsm.update()
-    check_counts(ds1, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
-    assert asm.get_total_num_requests(d_id1) == 2
-
-    # d2 replica died
-    ds2._replicas.get()[0]._actor.set_unhealthy()
-    asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
-    dsm.update()
-    if RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS:
-        check_counts(
-            ds2,
-            total=2,
-            by_state=[
-                (ReplicaState.STARTING, 1, None),
-                (ReplicaState.STOPPING, 1, None),
-            ],
-        )
-    else:
-        check_counts(ds2, total=1, by_state=[(ReplicaState.STOPPING, 1, None)])
-    ds2._replicas.get(states=[ReplicaState.STOPPING])[0]._actor.set_done_stopping()
-    asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
-    dsm.update()
-    check_counts(ds2, total=1, by_state=[(ReplicaState.STARTING, 1, None)])
-
-    # Now that the d2 replica is dead, its metrics should be dropped.
-    # Consequently d1 should scale down to 0 replicas
-    asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
-    dsm.update()
-    check_counts(ds1, total=2, by_state=[(ReplicaState.STOPPING, 2, None)])
-
-
 @pytest.mark.parametrize("force_stop_unhealthy_replicas", [False, True])
 def test_health_check(
     mock_deployment_state_manager, force_stop_unhealthy_replicas: bool
@@ -3580,6 +2998,623 @@ def test_get_active_node_ids_none(mock_deployment_state_manager):
     check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, v1)])
     assert None not in ds.get_active_node_ids()
     assert None not in dsm.get_active_node_ids()
+
+
+class TestAutoscaling:
+    @pytest.mark.parametrize("target_capacity_direction", ["up", "down"])
+    def test_basic_autoscaling(
+        self, mock_deployment_state_manager, target_capacity_direction
+    ):
+        """Test autoscaling up and down.
+
+        Upscaling version:
+        1. Deploy deployment with autoscaling limits [0,6],
+           initial_replicas=3, target=1.
+        2. It becomes healthy with 3 running replicas.
+        3. Set average request metrics to 2 (compare to target=1).
+        4. Deployment autoscales, 3 replicas starting, status=UPSCALING,
+           trigger=AUTOSCALE.
+        5. It becomes healthy with 6 running replicas, status=HEALTHY,
+           trigger=UPSCALE.
+        """
+
+        # Create deployment state manager
+        create_dsm, timer, _, asm = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        asm: AutoscalingStateManager = asm
+
+        # Deploy deployment with 3 replicas
+        info, _ = deployment_info(
+            autoscaling_config={
+                "target_ongoing_requests": 1,
+                "min_replicas": 0,
+                "max_replicas": 6,
+                "initial_replicas": 3,
+                "upscale_delay_s": 0,
+                "downscale_delay_s": 0,
+                "metrics_interval_s": 100,
+            }
+        )
+        dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds: DeploymentState = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+        # status=UPDATING, status_trigger=DEPLOY
+        dsm.update()
+        check_counts(ds, total=3, by_state=[(ReplicaState.STARTING, 3, None)])
+        assert ds.curr_status_info.status == DeploymentStatus.UPDATING
+        assert (
+            ds.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+        )
+
+        # Set replicas ready and check statuses
+        for replica in ds._replicas.get():
+            replica._actor.set_ready()
+
+        # status=HEALTHY, status_trigger=DEPLOY
+        dsm.update()
+        check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, None)])
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert (
+            ds.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+        )
+
+        req_per_replica = 2 if target_capacity_direction == "up" else 0
+        replicas = ds._replicas.get()
+        if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
+            asm.record_request_metrics_for_handle(
+                deployment_id=TEST_DEPLOYMENT_ID,
+                handle_id="random",
+                actor_id=None,
+                handle_source=DeploymentHandleSource.UNKNOWN,
+                queued_requests=0,
+                running_requests={
+                    replica._actor.replica_id: req_per_replica for replica in replicas
+                },
+                send_timestamp=timer.time(),
+            )
+        else:
+            for replica in replicas:
+                asm.record_request_metrics_for_replica(
+                    replica_id=replica._actor.replica_id,
+                    window_avg=req_per_replica,
+                    send_timestamp=timer.time(),
+                )
+
+        # status=UPSCALING/DOWNSCALING, status_trigger=AUTOSCALE
+        dsm.update()
+        if target_capacity_direction == "up":
+            check_counts(
+                ds,
+                total=6,
+                by_state=[
+                    (ReplicaState.RUNNING, 3, None),
+                    (ReplicaState.STARTING, 3, None),
+                ],
+            )
+            assert ds.curr_status_info.status == DeploymentStatus.UPSCALING
+            assert (
+                ds.curr_status_info.status_trigger
+                == DeploymentStatusTrigger.AUTOSCALING
+            )
+
+            # Advance timer by 60 seconds; this should exceed the slow startup
+            # warning threshold. The message should be updated, but the status
+            # should remain upscaling/autoscaling
+            timer.advance(60)
+            dsm.update()
+            check_counts(
+                ds,
+                total=6,
+                by_state=[
+                    (ReplicaState.RUNNING, 3, None),
+                    (ReplicaState.STARTING, 3, None),
+                ],
+            )
+            assert ds.curr_status_info.status == DeploymentStatus.UPSCALING
+            assert (
+                ds.curr_status_info.status_trigger
+                == DeploymentStatusTrigger.AUTOSCALING
+            )
+            assert "have taken more than" in ds.curr_status_info.message
+
+            # Set replicas ready
+            for replica in ds._replicas.get():
+                replica._actor.set_ready()
+        else:
+            check_counts(ds, total=3, by_state=[(ReplicaState.STOPPING, 3, None)])
+            assert ds.curr_status_info.status == DeploymentStatus.DOWNSCALING
+            assert (
+                ds.curr_status_info.status_trigger
+                == DeploymentStatusTrigger.AUTOSCALING
+            )
+            for replica in ds._replicas.get():
+                replica._actor.set_done_stopping()
+
+            dsm.update()
+            astate = asm._autoscaling_states[TEST_DEPLOYMENT_ID]
+            assert len(astate._replica_requests) == 0
+
+        # status=HEALTHY, status_trigger=UPSCALE/DOWNSCALE
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert ds.curr_status_info.status_trigger == (
+            DeploymentStatusTrigger.UPSCALE_COMPLETED
+            if target_capacity_direction == "up"
+            else DeploymentStatusTrigger.DOWNSCALE_COMPLETED
+        )
+
+        # Make sure autoscaling state is removed when deployment is deleted
+        dsm.delete_deployment(TEST_DEPLOYMENT_ID)
+        dsm.update()
+        for replica in ds._replicas.get():
+            replica._actor.set_done_stopping()
+        dsm.update()
+        assert TEST_DEPLOYMENT_ID not in dsm._deployment_states
+        assert TEST_DEPLOYMENT_ID not in asm._autoscaling_states
+
+    @pytest.mark.parametrize(
+        "target_startup_status",
+        [
+            ReplicaStartupStatus.PENDING_ALLOCATION,
+            ReplicaStartupStatus.PENDING_INITIALIZATION,
+        ],
+    )
+    def test_downscaling_reclaiming_starting_replicas_first(
+        self,
+        target_startup_status,
+        mock_deployment_state_manager,
+    ):
+        """This test asserts that when downscaling first any non-running replicas are
+        scavenged, before stopping fully running replicas
+
+        More context on the issue could be found in:
+        https://github.com/ray-project/ray/issues/43034
+        """
+
+        # Create deployment state manager
+        create_dsm, timer, _, asm = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        asm: AutoscalingStateManager = asm
+
+        # Deploy deployment with 3 replicas
+        info, _ = deployment_info(
+            autoscaling_config={
+                "target_ongoing_requests": 1,
+                "min_replicas": 0,
+                "max_replicas": 6,
+                "initial_replicas": 3,
+                "upscale_delay_s": 0,
+                "downscale_delay_s": 0,
+                "metrics_interval_s": 100,
+            }
+        )
+
+        dsm.deploy(TEST_DEPLOYMENT_ID, info)
+
+        ds: DeploymentState = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+        # status=UPDATING, status_trigger=DEPLOY
+        dsm.update()
+        check_counts(ds, total=3, by_state=[(ReplicaState.STARTING, 3, None)])
+        assert ds.curr_status_info.status == DeploymentStatus.UPDATING
+        assert (
+            ds.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+        )
+
+        # Set replicas as SUCCESSFUL and check statuses
+        for replica in ds._replicas.get():
+            replica._actor.set_ready()
+
+        # status=HEALTHY, status_trigger=DEPLOY
+        dsm.update()
+        check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, None)])
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert (
+            ds.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+        )
+
+        # Fetch all currently running replicas
+        running_replicas = ds._replicas.get(states=[ReplicaState.RUNNING])
+        replicas = ds._replicas.get()
+        if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
+            asm.record_request_metrics_for_handle(
+                deployment_id=TEST_DEPLOYMENT_ID,
+                handle_id="random",
+                actor_id=None,
+                handle_source=DeploymentHandleSource.UNKNOWN,
+                queued_requests=0,
+                running_requests={replica._actor.replica_id: 2 for replica in replicas},
+                send_timestamp=timer.time(),
+            )
+        else:
+            for replica in replicas:
+                asm.record_request_metrics_for_replica(
+                    replica._actor.replica_id, 2, timer.time()
+                )
+
+        # status=UPSCALING, status_trigger=AUTOSCALE
+        dsm.update()
+        check_counts(
+            ds,
+            total=6,
+            by_state=[
+                (ReplicaState.RUNNING, 3, None),
+                (ReplicaState.STARTING, 3, None),
+            ],
+        )
+        assert ds.curr_status_info.status == DeploymentStatus.UPSCALING
+        assert ds.curr_status_info.status_trigger == DeploymentStatusTrigger.AUTOSCALING
+
+        # Set replicas as PENDING_INITIALIZATION: actors have been
+        # successfully allocated, but replicas are still pending
+        # successful initialization
+        for replica in ds._replicas.get():
+            replica._actor.set_status(target_startup_status)
+
+        # Advance timer by 60 seconds; this should exceed the slow startup
+        # warning threshold. The message should be updated, but the status
+        # should remain upscaling/autoscaling
+        timer.advance(60)
+        dsm.update()
+        check_counts(
+            ds,
+            total=6,
+            by_state=[
+                (ReplicaState.RUNNING, 3, None),
+                (ReplicaState.STARTING, 3, None),
+            ],
+        )
+
+        assert ds.curr_status_info.status == DeploymentStatus.UPSCALING
+        assert ds.curr_status_info.status_trigger == DeploymentStatusTrigger.AUTOSCALING
+
+        if target_startup_status == ReplicaStartupStatus.PENDING_INITIALIZATION:
+            expected_message = (
+                "Deployment 'test_deployment' in application 'test_app' has 3 replicas "
+                f"that have taken more than {SLOW_STARTUP_WARNING_S}s to "
+                "initialize. This may be caused by a slow __init__ or reconfigure "
+                "method."
+            )
+        elif target_startup_status == ReplicaStartupStatus.PENDING_ALLOCATION:
+            expected_message = (
+                "Deployment 'test_deployment' in application 'test_app' "
+                "has 3 replicas that have taken more than 30s to be scheduled. This "
+                "may be due to waiting for the cluster to auto-scale or for a runtime "
+                "environment to be installed. Resources required for each replica: "
+                '{"CPU": 0.1}, total resources available: {}. Use `ray status` for '
+                "more details."
+            )
+        else:
+            raise RuntimeError(f"Got unexpected status: {target_startup_status}")
+
+        assert expected_message == ds.curr_status_info.message
+
+        # Now, trigger downscaling attempting to reclaim half (3) of the replicas
+        replicas = ds._replicas.get(states=[ReplicaState.RUNNING])
+        if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
+            asm.record_request_metrics_for_handle(
+                deployment_id=TEST_DEPLOYMENT_ID,
+                handle_id="random",
+                actor_id=None,
+                handle_source=DeploymentHandleSource.UNKNOWN,
+                queued_requests=0,
+                running_requests={replica._actor.replica_id: 1 for replica in replicas},
+                send_timestamp=timer.time(),
+            )
+        else:
+            for replica in replicas:
+                asm.record_request_metrics_for_replica(
+                    replica._actor.replica_id, 1, timer.time()
+                )
+
+        # status=DOWNSCALING, status_trigger=AUTOSCALE
+        dsm.update()
+        check_counts(
+            ds,
+            total=6,
+            by_state=[
+                (ReplicaState.RUNNING, 3, None),
+                (ReplicaState.STOPPING, 3, None),
+            ],
+        )
+
+        # Assert that no RUNNING replicas are being stopped
+        assert running_replicas == ds._replicas.get(states=[ReplicaState.RUNNING])
+
+        assert ds.curr_status_info.status == DeploymentStatus.DOWNSCALING
+        assert ds.curr_status_info.status_trigger == DeploymentStatusTrigger.AUTOSCALING
+
+        for replica in ds._replicas.get():
+            replica._actor.set_done_stopping()
+
+        # status=HEALTHY, status_trigger=UPSCALE/DOWNSCALE
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert (
+            ds.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.DOWNSCALE_COMPLETED
+        )
+
+    def test_update_autoscaling_config(self, mock_deployment_state_manager):
+        """Test updating the autoscaling config.
+
+        1. Deploy deployment with autoscaling limits [0,6] and initial replicas = 3.
+        2. It becomes healthy with 3 running replicas.
+        3. Update autoscaling config to limits [6,10].
+        4. 3 new replicas should be STARTING, and deployment status should be UPDATING.
+        5. It becomes healthy with 6 running replicas.
+        """
+
+        # Create deployment state manager
+        create_dsm, timer, _, asm = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        asm: AutoscalingStateManager = asm
+
+        # Deploy deployment with 3 replicas
+        info1, _ = deployment_info(
+            autoscaling_config={
+                "target_ongoing_requests": 1,
+                "min_replicas": 0,
+                "max_replicas": 6,
+                "initial_replicas": 3,
+                "upscale_delay_s": 0,
+                "downscale_delay_s": 0,
+            },
+            version="1",
+        )
+        dsm.deploy(TEST_DEPLOYMENT_ID, info1)
+        ds: DeploymentState = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+        # Set replicas ready
+        dsm.update()
+        for replica in ds._replicas.get():
+            replica._actor.set_ready()
+
+        # status=HEALTHY, status_trigger=DEPLOY
+        dsm.update()
+        check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, None)])
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert (
+            ds.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+        )
+
+        # Num ongoing requests = 1, status should remain HEALTHY
+        replicas = ds._replicas.get()
+        if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
+            asm.record_request_metrics_for_handle(
+                deployment_id=TEST_DEPLOYMENT_ID,
+                handle_id="random",
+                actor_id=None,
+                handle_source=DeploymentHandleSource.UNKNOWN,
+                queued_requests=0,
+                running_requests={replica._actor.replica_id: 1 for replica in replicas},
+                send_timestamp=timer.time(),
+            )
+        else:
+            for replica in replicas:
+                asm.record_request_metrics_for_replica(
+                    replica._actor.replica_id, 1, timer.time()
+                )
+
+        check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, None)])
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert (
+            ds.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+        )
+
+        # Update autoscaling config
+        info2, _ = deployment_info(
+            autoscaling_config={
+                "target_ongoing_requests": 1,
+                "min_replicas": 6,
+                "max_replicas": 10,
+                "upscale_delay_s": 0,
+                "downscale_delay_s": 0,
+            },
+            version="1",
+        )
+        dsm.deploy(TEST_DEPLOYMENT_ID, info2)
+
+        # 3 new replicas should be starting, status should be UPDATING (not upscaling)
+        dsm.update()
+        check_counts(
+            ds,
+            total=6,
+            by_state=[
+                (ReplicaState.RUNNING, 3, None),
+                (ReplicaState.STARTING, 3, None),
+            ],
+        )
+        assert ds.curr_status_info.status == DeploymentStatus.UPDATING
+        assert (
+            ds.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+        )
+
+        # Set replicas ready
+        dsm.update()
+        for replica in ds._replicas.get():
+            replica._actor.set_ready()
+        dsm.update()
+        check_counts(ds, total=6, by_state=[(ReplicaState.RUNNING, 6, None)])
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert (
+            ds.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+        )
+
+    @pytest.mark.skipif(
+        not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+        reason="Testing handle metrics behavior.",
+    )
+    def test_handle_metrics_timeout(self, mock_deployment_state_manager):
+        create_dsm, timer, _, asm = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        asm: AutoscalingStateManager = asm
+
+        # Deploy, start with 1 replica
+        info, _ = deployment_info(
+            autoscaling_config={
+                "target_ongoing_requests": 1,
+                "min_replicas": 0,
+                "max_replicas": 6,
+                "initial_replicas": 1,
+                "upscale_delay_s": 0,
+                "downscale_delay_s": 0,
+            }
+        )
+        dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds: DeploymentState = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+        dsm.update()
+        ds._replicas.get()[0]._actor.set_ready()
+        asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
+        dsm.update()
+        check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, None)])
+
+        # Record 2 requests/replica -> trigger upscale
+        asm.record_request_metrics_for_handle(
+            deployment_id=TEST_DEPLOYMENT_ID,
+            handle_id="random",
+            actor_id=None,
+            handle_source=DeploymentHandleSource.UNKNOWN,
+            queued_requests=0,
+            running_requests={ds._replicas.get()[0]._actor.replica_id: 2},
+            send_timestamp=timer.time(),
+        )
+        asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
+        dsm.update()
+        check_counts(
+            ds,
+            total=2,
+            by_state=[
+                (ReplicaState.RUNNING, 1, None),
+                (ReplicaState.STARTING, 1, None),
+            ],
+        )
+        assert asm.get_total_num_requests(TEST_DEPLOYMENT_ID) == 2
+        ds._replicas.get([ReplicaState.STARTING])[0]._actor.set_ready()
+        asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
+        dsm.update()
+        check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
+        assert asm.get_total_num_requests(TEST_DEPLOYMENT_ID) == 2
+
+        # Simulate handle was on an actor that died. 10 seconds later
+        # the handle fails to push metrics
+        timer.advance(10)
+        asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
+        dsm.update()
+        check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
+        assert asm.get_total_num_requests(TEST_DEPLOYMENT_ID) == 2
+
+        # Another 10 seconds later handle still fails to push metrics. At
+        # this point the data from the handle should be invalidated. As a
+        # result, the replicas should scale back down to 0.
+        timer.advance(10)
+        asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
+        dsm.update()
+        check_counts(ds, total=2, by_state=[(ReplicaState.STOPPING, 2, None)])
+        assert asm.get_total_num_requests(TEST_DEPLOYMENT_ID) == 0
+
+    @pytest.mark.skipif(
+        not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+        reason="Testing handle metrics behavior.",
+    )
+    def test_handle_metrics_on_dead_serve_actor(self, mock_deployment_state_manager):
+        """Metrics for handles on dead serve actors should be dropped."""
+
+        create_dsm, timer, _, asm = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        asm: AutoscalingStateManager = asm
+        d_id1 = DeploymentID("d1", "app")
+        d_id2 = DeploymentID("d2", "app")
+
+        # Deploy, start with 1 replica
+        info1, _ = deployment_info(
+            autoscaling_config={
+                "target_ongoing_requests": 1,
+                "min_replicas": 0,
+                "max_replicas": 6,
+                "initial_replicas": 1,
+                "upscale_delay_s": 0,
+                "downscale_delay_s": 0,
+            },
+        )
+        info2, _ = deployment_info(health_check_period_s=0.1)
+        dsm.deploy(d_id1, info1)
+        dsm.deploy(d_id2, info2)
+
+        ds1: DeploymentState = dsm._deployment_states[d_id1]
+        ds2: DeploymentState = dsm._deployment_states[d_id2]
+
+        # One replica each
+        asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
+        dsm.update()
+        ds1._replicas.get()[0]._actor.set_ready()
+        ds2._replicas.get()[0]._actor.set_ready()
+        ds2._replicas.get()[0]._actor.set_actor_id("d2_replica_actor_id")
+        asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
+        dsm.update()
+        check_counts(ds1, total=1, by_state=[(ReplicaState.RUNNING, 1, None)])
+        check_counts(ds2, total=1, by_state=[(ReplicaState.RUNNING, 1, None)])
+
+        # Record 2 requests/replica (sent from d2 replica) -> trigger upscale
+        asm.record_request_metrics_for_handle(
+            deployment_id=d_id1,
+            handle_id="random",
+            actor_id="d2_replica_actor_id",
+            handle_source=DeploymentHandleSource.REPLICA,
+            queued_requests=0,
+            running_requests={ds1._replicas.get()[0]._actor.replica_id: 2},
+            send_timestamp=timer.time(),
+        )
+        asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
+        dsm.update()
+        check_counts(
+            ds1,
+            total=2,
+            by_state=[
+                (ReplicaState.RUNNING, 1, None),
+                (ReplicaState.STARTING, 1, None),
+            ],
+        )
+        assert asm.get_total_num_requests(d_id1) == 2
+        ds1._replicas.get([ReplicaState.STARTING])[0]._actor.set_ready()
+        asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
+        dsm.update()
+        check_counts(ds1, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
+        assert asm.get_total_num_requests(d_id1) == 2
+
+        # d2 replica died
+        ds2._replicas.get()[0]._actor.set_unhealthy()
+        asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
+        dsm.update()
+        if RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS:
+            check_counts(
+                ds2,
+                total=2,
+                by_state=[
+                    (ReplicaState.STARTING, 1, None),
+                    (ReplicaState.STOPPING, 1, None),
+                ],
+            )
+        else:
+            check_counts(ds2, total=1, by_state=[(ReplicaState.STOPPING, 1, None)])
+        ds2._replicas.get(states=[ReplicaState.STOPPING])[0]._actor.set_done_stopping()
+        asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
+        dsm.update()
+        check_counts(ds2, total=1, by_state=[(ReplicaState.STARTING, 1, None)])
+
+        # Now that the d2 replica is dead, its metrics should be dropped.
+        # Consequently d1 should scale down to 0 replicas
+        asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
+        dsm.update()
+        check_counts(ds1, total=2, by_state=[(ReplicaState.STOPPING, 2, None)])
 
 
 class TestTargetCapacity:
