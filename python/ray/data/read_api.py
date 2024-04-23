@@ -2927,6 +2927,11 @@ def read_lance(
         ...     parallelism=64
         ... )
 
+    Tip:
+
+        For more details about these Lance concepts, see the following:
+        - URI: https://lancedb.github.io/lance/read_and_write.html#object-store-configuration
+
     Args:
         uri: The URI of the source Lance dataset to read from.
             Currently supports local file paths, S3, GCS, and AZ URIs are supported.
