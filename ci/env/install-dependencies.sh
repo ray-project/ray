@@ -265,11 +265,11 @@ install_node() {
     fi
   fi
 
-  # Install the latest version of Node.js in order to build the dashboard.
+  # Install the latest LTM version of Node.js in order to build the dashboard.
   (
     set +x # suppress set -x since it'll get very noisy here.
     . "${HOME}/.nvm/nvm.sh"
-    NODE_VERSION="14"
+    NODE_VERSION="20"
     nvm install $NODE_VERSION
     nvm use --silent $NODE_VERSION
     npm config set loglevel warn  # make NPM quieter
