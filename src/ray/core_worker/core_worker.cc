@@ -1528,7 +1528,7 @@ Status CoreWorker::ExperimentalRegisterMutableObjectReaderRemote(
           [&promise, &f](const Status &status,
                          const rpc::CreateMutableObjectReply &reply) {
             f << "Got reply back, status is " << status << ", reader ref is "
-              << ObjectID::FromString(reply.reader_ref()).Hex() << std::endl;
+              << ObjectID::FromBinary(reply.reader_ref()).Hex() << std::endl;
             promise.set_value();
           });
       promise.get_future().wait();
