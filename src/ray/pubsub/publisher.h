@@ -422,6 +422,8 @@ class Publisher : public PublisherInterface {
   FRIEND_TEST(PublisherTest, TestRegistrationIdempotency);
   friend class MockPublisher;
 
+  Publisher() {}
+
   /// Testing only. Return true if there's no metadata remained in the private attribute.
   bool CheckNoLeaks() const;
 
