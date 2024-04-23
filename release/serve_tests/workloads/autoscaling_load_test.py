@@ -3,6 +3,7 @@
 Benchmark test.
 """
 
+import json
 import logging
 
 from anyscale import service
@@ -49,9 +50,14 @@ def main():
             ),
         ],
     )
+    stages = [
+        LocustStage(duration_s=1200, users=10, spawn_rate=1),
+        LocustStage(duration_s=1200, users=50, spawn_rate=10),
+        LocustStage(duration_s=1200, users=100, spawn_rate=10),
+    ]
 
     with start_service(
-        "autoscaling-locust-test",
+        "autoscaling-load-test",
         compute_config=compute_config,
         applications=[resnet_application],
     ) as service_name:
@@ -66,45 +72,65 @@ def main():
                 host_url=status.query_url,
                 auth_token=status.query_auth_token,
                 data={"uri": URI},
-                stages=[
-                    LocustStage(duration_s=1200, users=10, spawn_rate=1),
-                    LocustStage(duration_s=1200, users=50, spawn_rate=10),
-                    LocustStage(duration_s=1200, users=100, spawn_rate=10),
-                ],
+                stages=stages,
             )
         )
-        results = {
-            "total_requests": stats.total_requests,
-            "history": stats.history,
-            "perf_metrics": [
+        results_per_stage = [
+            [
                 {
-                    "perf_metric_name": "avg_latency",
-                    "perf_metric_value": stats.avg_latency,
+                    "perf_metric_name": f"stage_{i+1}_p50_latency",
+                    "perf_metric_value": stats.stats_in_stages[i].p50_latency,
                     "perf_metric_type": "LATENCY",
                 },
                 {
-                    "perf_metric_name": "p50_latency",
-                    "perf_metric_value": stats.p50_latency,
+                    "perf_metric_name": f"stage_{i+1}_p90_latency",
+                    "perf_metric_value": stats.stats_in_stages[i].p90_latency,
                     "perf_metric_type": "LATENCY",
                 },
                 {
-                    "perf_metric_name": "p90_latency",
-                    "perf_metric_value": stats.p90_latency,
+                    "perf_metric_name": f"stage_{i+1}_p99_latency",
+                    "perf_metric_value": stats.stats_in_stages[i].p99_latency,
                     "perf_metric_type": "LATENCY",
                 },
                 {
-                    "perf_metric_name": "p99_latency",
-                    "perf_metric_value": stats.p99_latency,
-                    "perf_metric_type": "LATENCY",
-                },
-                {
-                    "perf_metric_name": "avg_rps",
-                    "perf_metric_value": stats.avg_rps,
+                    "perf_metric_name": f"stage_{i+1}_rps",
+                    "perf_metric_value": stats.stats_in_stages[i].rps,
                     "perf_metric_type": "THROUGHPUT",
                 },
-            ],
+            ]
+            for i in range(len(stages))
+        ]
+        results = {
+            "total_requests": stats.total_requests,
+            "service_id": status.id,
+            "perf_metrics": sum(
+                results_per_stage,
+                [
+                    {
+                        "perf_metric_name": "p50_latency",
+                        "perf_metric_value": stats.p50_latency,
+                        "perf_metric_type": "LATENCY",
+                    },
+                    {
+                        "perf_metric_name": "p90_latency",
+                        "perf_metric_value": stats.p90_latency,
+                        "perf_metric_type": "LATENCY",
+                    },
+                    {
+                        "perf_metric_name": "p99_latency",
+                        "perf_metric_value": stats.p99_latency,
+                        "perf_metric_type": "LATENCY",
+                    },
+                    {
+                        "perf_metric_name": "avg_rps",
+                        "perf_metric_value": stats.avg_rps,
+                        "perf_metric_type": "THROUGHPUT",
+                    },
+                ],
+            ),
         }
-        logger.info(f"Final aggregated metrics: {results}")
+        logger.info(f"Stats history: {json.dumps(stats.history, indent=4)}")
+        logger.info(f"Final aggregated metrics: {json.dumps(results, indent=4)}")
         save_test_results(results)
 
 

@@ -144,6 +144,7 @@ def test_rest_api(manage_ray_with_telemetry, tmp_dir):
     assert ServeUsageTag.GRPC_INGRESS_USED.get_value_from_report(report) is None
     assert ServeUsageTag.HTTP_ADAPTER_USED.get_value_from_report(report) is None
     assert ServeUsageTag.DAG_DRIVER_USED.get_value_from_report(report) is None
+    assert ServeUsageTag.AUTO_NUM_REPLICAS_USED.get_value_from_report(report) is None
 
     # Check that app deletions are tracked.
     new_config = {"applications": []}

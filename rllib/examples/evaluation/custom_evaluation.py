@@ -1,4 +1,4 @@
-"""Example of customizing the evaluation procedure for an RLlib algorithm.
+"""Example of customizing the evaluation procedure for an RLlib Algorithm.
 
 Note, that you should only choose to provide a custom eval function, in case the already
 built-in eval options are not sufficient. Normally, though, RLlib's eval utilities
@@ -6,12 +6,13 @@ that come with each Algorithm are enough to properly evaluate the learning progr
 of your Algorithm.
 
 This script uses the SimpleCorridor environment, a simple 1D gridworld, in which
-the agent can only walk left (action=0) or right (action=1). The goal is at the end of
-the (1D) corridor. The env exposes an API to change the length of the corridor
-on-the-fly. We use this API here to extend the size of the corridor for the evaluation
-runs.
+the agent can only walk left (action=0) or right (action=1). The goal state is located
+at the end of the (1D) corridor. The env exposes an API to change the length of the
+corridor on-the-fly. We use this API here to extend the size of the corridor for the
+evaluation runs.
 
-We define a custom evaluation method that does the following:
+For demonstration purposes only, we define a simple custom evaluation method that does
+the following:
 - It changes the corridor length of all environments used on the evaluation EnvRunners.
 - It runs a defined number of episodes for evaluation purposes.
 - It collects the metrics from those runs, summarizes these metrics and returns them.

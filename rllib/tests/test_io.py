@@ -232,7 +232,7 @@ class AgentIOTest(unittest.TestCase):
         test_input_procedure = [
             "custom_input",
             input_creator,
-            "ray.rllib.examples.offline_rl/custom_input_api.CustomJsonReader",
+            "ray.rllib.examples.offline_rl.custom_input_api.CustomJsonReader",
         ]
 
         for input_procedure in test_input_procedure:
