@@ -2902,7 +2902,7 @@ def from_torch(
 
 
 @PublicAPI
-def from_lancedb(
+def read_lance(
     *,
     uri: str,
     columns: Optional[List[str]] = None,
@@ -2911,8 +2911,8 @@ def from_lancedb(
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> Dataset:
     """
-    Create a :class:`~ray.data.Dataset` from a LanceDB dataset. The dataset to read from
-    is specified using a fully qualified ```uri```. Using LanceDB, any
+    Create a :class:`~ray.data.Dataset` from a Lance dataset. The dataset to read from
+    is specified using a fully qualified ```uri```. Using Lance, any
     intended columns or filters are applied, and the files that satisfy
     the query are distributed across Ray read tasks. The number of tasks is
     determined by ``parallelism`` which can be requested from this interface or
@@ -2920,7 +2920,7 @@ def from_lancedb(
 
     Examples:
         >>> import ray
-        >>> ds = ray.data.read_lancedb(
+        >>> ds = ray.data.read_lance(
         ...     uri="./db_name.lance",
         ...     columns=["column_name", "label"],
         ...     filter="label = 2 AND column_name IS NOT NULL",
@@ -2928,7 +2928,7 @@ def from_lancedb(
         ... )
 
     Args:
-        uri: The URI of the source LanceDB dataset to read from.
+        uri: The URI of the source Lance dataset to read from.
             Currently supports local file paths, S3, or GCS URIs are supported.
         columns: The columns to read from the dataset.
             If not specified, all columns are read.
@@ -2938,7 +2938,7 @@ def from_lancedb(
         ray_remote_args: Optional arguments to pass to `ray.remote` in the read tasks
 
     Returns:
-        A :class:`~ray.data.Dataset` the LanceDB dataset from the results of executing the read.
+        A :class:`~ray.data.Dataset` the Lance dataset from the results of executing the read.
     """  # noqa: E501
     datasource = LanceDBDatasource(uri=uri, columns=columns, filter=filter)
 
