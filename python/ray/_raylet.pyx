@@ -648,6 +648,21 @@ cdef c_vector[CObjectID] ObjectRefsToVector(object_refs):
         result.push_back((<ObjectRef>object_ref).native())
     return result
 
+cdef c_vector[c_string] WorkerRefsToVector(object_refs):
+    """A helper function that converts a Python list of object refs to a vector.
+
+    Args:
+        object_refs (list): The Python list of object refs.
+
+    Returns:
+        The output vector.
+    """
+    cdef:
+        c_vector[c_string] result
+    for object_ref in object_refs:
+        result.push_back(object_ref)
+    return result
+
 
 def _get_actor_serialized_owner_address_or_none(actor_table_data: bytes):
     cdef:
@@ -3660,11 +3675,13 @@ cdef class CoreWorker:
                                              int num_readers,
                                              reader_node_id: str,
                                              worker_ids):
+        print(type(worker_ids))
+        print([type(w) for w in worker_ids])
         cdef:
             CObjectID c_writer_ref = writer_ref.native()
             CObjectID c_reader_ref
             CNodeID c_node_id = CNodeID.FromHex(reader_node_id)
-            c_vector[CObjectID] c_worker_ids = ObjectRefsToVector(worker_ids)
+            c_vector[c_string] c_worker_ids = WorkerRefsToVector(worker_ids)
 
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker()

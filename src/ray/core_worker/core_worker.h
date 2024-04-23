@@ -732,7 +732,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status ExperimentalRegisterMutableObjectReaderRemote(
       const ObjectID &object_id,
       const NodeID &reader_node,
-      const std::vector<ObjectID> &worker_ids,
+      const std::vector<std::string> &worker_ids,
       int buffer_size_bytes,
       int64_t num_readers,
       ObjectID &reader_ref);

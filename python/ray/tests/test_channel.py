@@ -53,16 +53,16 @@ def test_remote_reader(ray_start_cluster, remote):
                 self._reader_chan.begin_read()
                 self._reader_chan.end_read()
 
-        def get_worker_id():
+        def get_worker_id(self):
             worker = ray.worker.global_worker
-            return worker.worker_id
+            return worker.worker_id.hex()
 
     readers = [Reader.remote() for _ in range(num_readers)]
 
     reader_node_id = ray.runtime_context.get_runtime_context().get_node_id()
     if remote:
         reader_node_id = ray.get(readers[0].get_node_id.remote())
-    worker_ids = [reader.get_worker_id.remote() for reader in readers]
+    worker_ids = ray.get([reader.get_worker_id.remote() for reader in readers])
 
     print("blah A\n")
     print("worker ids are " + str(worker_ids) + "\n")

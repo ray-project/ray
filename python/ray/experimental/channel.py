@@ -77,7 +77,7 @@ class Channel:
         self,
         reader_node_id: str,
         buffer_size_bytes: int,
-        worker_ids: list["ray.ObjectRef"],
+        worker_ids: list,
         num_readers: int = 1,
         _writer_node_id=None,
         _writer_ref: Optional["ray.ObjectRef"] = None,
@@ -134,6 +134,7 @@ class Channel:
         self._reader_registered = False
 
         if is_creator:
+            print("about to do this\n")
             self.ensure_registered_as_writer()
             assert self._reader_ref is not None
 
