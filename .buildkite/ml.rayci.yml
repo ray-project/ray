@@ -58,6 +58,7 @@ steps:
         --platform cpu --image-type ray --canonical-tag multinode
       - python ./ci/build/build-multinode-image.py rayproject/ray:multinode rayproject/ray:multinode
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tune/... ml 
+        --build-only
         --only-tags multinode
         --test-env=RAY_HAS_SSH=1
         --test-env=RAY_DOCKER_IMAGE=rayproject/ray:multinode
