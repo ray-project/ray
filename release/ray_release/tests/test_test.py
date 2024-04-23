@@ -210,5 +210,17 @@ def test_update_from_s3(mock_client) -> None:
     assert test["github_issue_number"] == "1234"
 
 
+@patch("ray_release.test.Test._get_s3_name")
+@patch("ray_release.test.Test.gen_from_s3")
+def test_gen_from_name(mock_gen_from_s3, _) -> None:
+    mock_gen_from_s3.return_value = [
+        _stub_test({"name": "a"}),
+        _stub_test({"name": "good"}),
+        _stub_test({"name": "test"}),
+    ]
+
+    assert Test.gen_from_name("good").get_name() == "good"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
