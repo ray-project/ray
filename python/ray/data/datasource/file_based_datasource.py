@@ -233,6 +233,7 @@ class FileBasedDatasource(Datasource):
                 total_size += sz
         return total_size
 
+    # Need to understand how long this takes in total
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         import numpy as np
 
@@ -272,6 +273,7 @@ class FileBasedDatasource(Datasource):
                     parse = PathPartitionParser(partitioning)
                     partitions = parse(read_path)
 
+                # Put histogram here to see how long it takes to convert to pyarrow.NativeFile
                 with _open_file_with_retry(
                     read_path,
                     lambda: open_input_source(fs, read_path, **open_stream_args),
@@ -312,7 +314,10 @@ class FileBasedDatasource(Datasource):
         # fix https://github.com/ray-project/ray/issues/24296
         parallelism = min(parallelism, len(paths))
 
+        # This happens at the start, which is why the starting of a given set takes so long
+        # Could this itself be parallelized?
         read_tasks = []
+        print(f"[Connor] My number of read paths are: {len(read_tasks)}")
         for read_paths, file_sizes in zip(
             np.array_split(paths, parallelism), np.array_split(file_sizes, parallelism)
         ):
