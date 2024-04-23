@@ -16,6 +16,7 @@ import tree
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
+from ray.rllib.algorithms.dqn.dqn_rainbow_learner import TD_ERROR_KEY
 from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.algorithms.dqn.dqn_torch_policy import DQNTorchPolicy
 from ray.rllib.core.learner import Learner
@@ -619,13 +620,13 @@ class DQN(Algorithm):
         self.metrics.log_dict(
             {
                 NUM_AGENT_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                    ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED
+                    ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED, default=0
                 ),
                 NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                    ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED
+                    ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED, default=0
                 ),
                 NUM_EPISODES_LIFETIME: self.metrics.peek(
-                    ENV_RUNNER_RESULTS, NUM_EPISODES
+                    ENV_RUNNER_RESULTS, NUM_EPISODES, default=0
                 ),
             },
             reduce="sum",
@@ -672,9 +673,9 @@ class DQN(Algorithm):
                     # Isolate TD-errors from result dicts (we should not log these, they
                     # might be very large).
                     td_errors = {
-                        mid: {"td_error": res.pop("td_error")}
+                        mid: {TD_ERROR_KEY: res.pop(TD_ERROR_KEY)}
                         for mid, res in learner_results.items()
-                        if "td_error" in res
+                        if TD_ERROR_KEY in res
                     }
                     self.metrics.log_dict(
                         learner_results,
@@ -857,13 +858,13 @@ class DQN(Algorithm):
         ]
         # Extract the TD-errors as we want to keep them as arrays.
         td_errors = tree.map_structure_up_to(
-            {"td_error": True}, lambda x: x, *module_results
+            {TD_ERROR_KEY: True}, lambda x: x, *module_results
         )
         # Now reduce all other results.
         reduced_results = tree.map_structure(lambda *x: np.mean(x), *results)
         # Add the TD-error arrays to the results and return.
         return {
-            k: v if k == ALL_MODULES else {**v, "td_error": td_error}
+            k: v if k == ALL_MODULES else {**v, TD_ERROR_KEY: td_error}
             for k, v, td_error in zip(
                 reduced_results.keys(),
                 reduced_results.values(),

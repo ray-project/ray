@@ -1446,7 +1446,9 @@ def run_rllib_example_script_experiment(
                     f"{ENV_RUNNER_RESULTS}/episode_return_mean": "combined return",
                 },
                 **{
-                    f"policy_reward_mean/{pid}": f"return {pid}"
+                    (
+                        f"{ENV_RUNNER_RESULTS}/module_episode_returns_mean/" f"{pid}"
+                    ): f"return {pid}"
                     for pid in config.policies
                 },
             },

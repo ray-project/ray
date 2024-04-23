@@ -1060,7 +1060,8 @@ class Algorithm(Trainable, AlgorithmBase):
                     NUM_ENV_STEPS_SAMPLED_LIFETIME: env_steps,
                     NUM_AGENT_STEPS_SAMPLED_LIFETIME: agent_steps,
                     NUM_EPISODES_LIFETIME: self.metrics.peek(
-                        EVALUATION_RESULTS, ENV_RUNNER_RESULTS, NUM_EPISODES
+                        (EVALUATION_RESULTS, ENV_RUNNER_RESULTS, NUM_EPISODES),
+                        default=0,
                     ),
                 },
                 key=EVALUATION_RESULTS,
@@ -1319,7 +1320,8 @@ class Algorithm(Trainable, AlgorithmBase):
                 key=(EVALUATION_RESULTS, ENV_RUNNER_RESULTS),
             )
             num_episodes = self.metrics.peek(
-                EVALUATION_RESULTS, ENV_RUNNER_RESULTS, NUM_EPISODES
+                (EVALUATION_RESULTS, ENV_RUNNER_RESULTS, NUM_EPISODES),
+                default=0,
             )
             env_runner_results = None
 
@@ -1506,7 +1508,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 key=(EVALUATION_RESULTS, ENV_RUNNER_RESULTS),
             )
             num_episodes = self.metrics.peek(
-                EVALUATION_RESULTS, ENV_RUNNER_RESULTS, NUM_EPISODES
+                (EVALUATION_RESULTS, ENV_RUNNER_RESULTS, NUM_EPISODES), default=0
             )
             env_runner_results = None
 

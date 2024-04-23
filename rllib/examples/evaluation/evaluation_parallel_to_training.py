@@ -132,7 +132,8 @@ class AssertEvalCallback(DefaultCallbacks):
         if env_runner_results and NUM_EPISODES in env_runner_results:
             num_episodes_done = env_runner_results[NUM_EPISODES]
             num_timesteps_reported = env_runner_results.get(
-                NUM_ENV_STEPS_SAMPLED, env_runner_results["episodes_timesteps_total"]
+                NUM_ENV_STEPS_SAMPLED,
+                env_runner_results.get("episodes_timesteps_total"),
             )
 
             # We run for automatic duration (as long as training takes).

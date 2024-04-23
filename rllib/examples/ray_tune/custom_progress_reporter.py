@@ -66,9 +66,9 @@ my_multi_agent_progress_reporter = tune.CLIReporter(
         },
         # Because RLlib sums up all returns of all agents, we would like to also
         # see the individual agents' returns. We can find these under the result dict's
-        # 'policy_reward_mean' key (then the policy ID):
+        # 'env_runner_results/module_episode_returns_mean/' key (then the policy ID):
         **{
-            f"policy_reward_mean/{pid}": f"return {pid}"
+            f"env_runner_results/module_episode_returns_mean/{pid}": f"return {pid}"
             for pid in ["policy1", "policy2", "policy3"]
         },
     },
