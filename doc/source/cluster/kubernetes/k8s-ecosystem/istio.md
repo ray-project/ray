@@ -6,7 +6,7 @@ This guide demonstrates the integration of KubeRay and Istio for enabling mTLS a
 ## Istio
 
 [Istio](https://istio.io/) is an open source service mesh that provides a uniform and more efficient way to secure, connect, and monitor services. Its powerful control plane brings vital features, including:
-* Secure service-to-service communication in a cluster with TLS encryption.
+* Secure network traffic in a Kubernetes cluster with TLS encryption.
 * Automatic metrics, logs, and traces for all traffic within a cluster.
 
 See the [Istio documentation](https://istio.io/latest/docs/) to learn more.
