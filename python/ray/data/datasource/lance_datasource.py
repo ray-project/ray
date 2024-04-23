@@ -19,8 +19,8 @@ logger = logging.getLogger(__name__)
 
 @DeveloperAPI
 class LanceDatasource(Datasource):
-    """LanceDB Datasource
-    Read a LanceDB table as a Ray Dataset
+    """Lance Datasource
+    Read a Lance table as a Ray Dataset
 
     Parameters
     ----------
