@@ -77,6 +77,7 @@ class Channel:
         self,
         reader_node_id: str,
         buffer_size_bytes: int,
+        worker_ids: list["ray.ObjectRef"],
         num_readers: int = 1,
         _writer_node_id=None,
         _writer_ref: Optional["ray.ObjectRef"] = None,
@@ -120,6 +121,8 @@ class Channel:
         if not isinstance(num_readers, int):
             raise ValueError("num_readers must be an integer")
 
+        self._worker_ids = worker_ids
+
         self._reader_node_id = reader_node_id
         self._buffer_size_bytes = buffer_size_bytes
         self._num_readers = num_readers
@@ -157,6 +160,7 @@ class Channel:
                 self._buffer_size_bytes,
                 self._num_readers,
                 self._reader_node_id,
+                self._worker_ids,
             )
         )
         self._writer_registered = True

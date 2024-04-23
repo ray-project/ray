@@ -3658,11 +3658,13 @@ cdef class CoreWorker:
                                              ObjectRef writer_ref,
                                              int buffer_size_bytes,
                                              int num_readers,
-                                             reader_node_id: str):
+                                             reader_node_id: str,
+                                             worker_ids):
         cdef:
             CObjectID c_writer_ref = writer_ref.native()
             CObjectID c_reader_ref
             CNodeID c_node_id = CNodeID.FromHex(reader_node_id)
+            c_vector[CObjectID] c_worker_ids = ObjectRefsToVector(worker_ids)
 
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker()
@@ -3672,6 +3674,8 @@ cdef class CoreWorker:
             check_status(CCoreWorkerProcess.GetCoreWorker()
                          .ExperimentalRegisterMutableObjectReaderRemote(
                              c_writer_ref,
+                             c_node_id,
+                             c_worker_ids,
                              buffer_size_bytes,
                              num_readers,
                              c_reader_ref

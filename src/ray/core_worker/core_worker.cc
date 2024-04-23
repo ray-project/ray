@@ -1466,6 +1466,8 @@ Status CoreWorker::ExperimentalRegisterMutableObjectWriter(const ObjectID &objec
 
 Status CoreWorker::ExperimentalRegisterMutableObjectReaderRemote(
     const ObjectID &object_id,
+    const NodeID &reader_node,
+    const std::vector<ObjectID> &worker_ids,
     int buffer_size_bytes,
     int64_t num_readers,
     ObjectID &reader_ref) {
@@ -1475,6 +1477,18 @@ Status CoreWorker::ExperimentalRegisterMutableObjectReaderRemote(
   std::ofstream f;
   f.open("/tmp/blah", std::ofstream::app);
   f << "ExperimentalRegisterMutableObjectReaderRemote" << std::endl;
+
+  f << "get node info" << std::endl;
+  const rpc::GcsNodeInfo *node_info = gcs_client_->Nodes().Get(reader_node);
+  RAY_CHECK(node_info) << "No GCS info for node " << reader_node;
+  f << "got node info" << std::endl;
+  rpc::Address addr;
+  addr.set_ip_address(node_info->node_manager_address());
+  addr.set_port(node_info->node_manager_port());
+  addr.set_worker_id(worker_ids[0].Binary());
+  auto conn = core_worker_client_pool_->GetOrConnect(addr);
+  f << "connected, " << conn << std::endl;
+
   local_raylet_client_->RegisterMutableObjectReader(
       object_id,
       num_readers,
@@ -4105,7 +4119,9 @@ void CoreWorker::HandleCreateMutableObject(rpc::CreateMutableObjectRequest reque
   RAY_CHECK(s.ok());
   f << "HandleCreateMutableObject, reader ref is now " << reader_ref << std::endl;
   reply->set_reader_ref(reader_ref.Binary());
+  f << "HandleCreateMutableObject, set reader ref" << std::endl;
   send_reply_callback(Status::OK(), nullptr, nullptr);
+  f << "HandleCreateMutableObject, sent response" << std::endl;
 }
 
 int64_t CoreWorker::GetLocalMemoryStoreBytesUsed() const {

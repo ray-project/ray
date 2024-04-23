@@ -803,18 +803,18 @@ void NodeManager::HandleRegisterMutableObject(
   // Only need to create the mutable object in one worker because it will be accessible to
   // all workers on the node.
   auto &worker = all_workers[0];
+  f << "there are " << all_workers.size() << " workers" << std::endl;
   ObjectID reader_ref;
   f << "reader ref is " << reader_ref << std::endl;
-  absl::Notification done;
+  f << "my tid is " << GetTid() << std::endl;
   worker->rpc_client()->CreateMutableObject(
       create_request,
-      [&reader_ref, &done, &f](const Status &status,
-                               const rpc::CreateMutableObjectReply &create_reply) {
+      [&reader_ref, &f](const Status &status,
+                        const rpc::CreateMutableObjectReply &create_reply) {
+        f << "worker is done" << std::endl;
         RAY_CHECK(status.ok());
         reader_ref = ObjectID::FromBinary(create_reply.reader_ref());
-        f << "worker is done" << std::endl;
       });
-  done.WaitForNotification();
   f << "reader ref is now " << reader_ref << std::endl;
 
   mutable_object_provider_->HandleRegisterMutableObject(
