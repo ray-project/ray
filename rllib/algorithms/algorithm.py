@@ -710,7 +710,7 @@ class Algorithm(Trainable, AlgorithmBase):
             method_config["type"] = method_type
 
         self.learner_group = None
-        if self.config._enable_new_api_stack:
+        if self.config.enable_rl_module_and_learner:
             local_worker = self.workers.local_worker()
             env = spaces = None
             # EnvRunners have a `module` property, which stores the RLModule
@@ -760,7 +760,7 @@ class Algorithm(Trainable, AlgorithmBase):
             # Note that with the new EnvRunner API in combination with the new stack,
             # this information only needs to be kept in the Learner and not on the
             # EnvRunners anymore.
-            if not self.config.uses_new_env_runners:
+            if not self.config.enable_env_runner_and_connector_v2:
                 policies_to_train = self.config.policies_to_train or set(
                     self.config.policies
                 )
@@ -875,7 +875,7 @@ class Algorithm(Trainable, AlgorithmBase):
         #  references). Then distribute the episode refs to the learners, store metrics
         #  in special key in result dict and perform the connector merge/broadcast
         #  inside the `training_step` as well. See the new IMPALA for an example.
-        if self.config.uses_new_env_runners:
+        if self.config.enable_env_runner_and_connector_v2:
             # Synchronize EnvToModule and ModuleToEnv connector states and broadcast new
             # states back to all EnvRunners.
             with self._timers[SYNCH_ENV_CONNECTOR_STATES_TIMER]:
@@ -951,7 +951,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 from_worker_or_learner_group=self.workers.local_worker()
             )
 
-            if self.config.uses_new_env_runners:
+            if self.config.enable_env_runner_and_connector_v2:
                 # Synchronize EnvToModule and ModuleToEnv connector states and broadcast
                 # new states back to all eval EnvRunners.
                 with self._timers[SYNCH_EVAL_ENV_CONNECTOR_STATES_TIMER]:
@@ -1104,7 +1104,7 @@ class Algorithm(Trainable, AlgorithmBase):
         logger.info(f"Evaluating current state of {self} for {duration} {unit}.")
 
         all_batches = []
-        if self.config.uses_new_env_runners:
+        if self.config.enable_env_runner_and_connector_v2:
             episodes = env_runner.sample(
                 num_timesteps=duration if unit == "timesteps" else None,
                 num_episodes=duration if unit == "episodes" else None,
@@ -1179,7 +1179,7 @@ class Algorithm(Trainable, AlgorithmBase):
         ):
             _round += 1
             # New API stack -> EnvRunners return Episodes.
-            if self.config.uses_new_env_runners:
+            if self.config.enable_env_runner_and_connector_v2:
                 # Compute rough number of timesteps it takes for a single EnvRunner
                 # to occupy the estimated (parallelly running) train step.
                 _num = min(
@@ -1324,7 +1324,7 @@ class Algorithm(Trainable, AlgorithmBase):
 
             _round += 1
 
-            if self.config.uses_new_env_runners:
+            if self.config.enable_env_runner_and_connector_v2:
                 _num = [None] + [
                     (units_left_to_do // num_healthy_workers)
                     + bool(i <= (units_left_to_do % num_healthy_workers))
@@ -1529,7 +1529,7 @@ class Algorithm(Trainable, AlgorithmBase):
         Returns:
             The results dict from executing the training iteration.
         """
-        if not self.config.uses_new_env_runners:
+        if not self.config.enable_env_runner_and_connector_v2:
             raise NotImplementedError(
                 "The `Algorithm.training_step()` default implementation no longer "
                 "supports the old or hybrid API stacks! If you would like to continue "
@@ -1565,7 +1565,7 @@ class Algorithm(Trainable, AlgorithmBase):
             # cases should use the multi-GPU optimizer, even if only using 1 GPU).
             # TODO: (sven) rename MultiGPUOptimizer into something more
             #  meaningful.
-            if self.config._enable_new_api_stack:
+            if self.config.enable_rl_module_and_learner:
                 train_results = self.learner_group.update_from_batch(batch=train_batch)
             elif self.config.get("simple_optimizer") is True:
                 train_results = train_one_step(self, train_batch)
@@ -1583,7 +1583,7 @@ class Algorithm(Trainable, AlgorithmBase):
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
             # TODO (Avnish): Implement this on learner_group.get_weights().
             from_worker_or_trainer = None
-            if self.config._enable_new_api_stack:
+            if self.config.enable_rl_module_and_learner:
                 from_worker_or_trainer = self.learner_group
 
             self.workers.sync_weights(
@@ -2024,7 +2024,7 @@ class Algorithm(Trainable, AlgorithmBase):
             The newly added policy (the copy that got added to the local
             worker). If `workers` was provided, None is returned.
         """
-        if self.config.uses_new_env_runners:
+        if self.config.enable_env_runner_and_connector_v2:
             raise ValueError(
                 "`Algorithm.add_policy()` is not supported on the new API stack w/ "
                 "EnvRunners! Use `Algorithm.add_module()` instead. Also see "
@@ -2049,7 +2049,7 @@ class Algorithm(Trainable, AlgorithmBase):
 
         # If learner API is enabled, we need to also add the underlying module
         # to the learner group.
-        if self.config._enable_new_api_stack:
+        if self.config.enable_rl_module_and_learner:
             policy = self.get_policy(policy_id)
             module = policy.model
             self.learner_group.add_module(
@@ -2203,7 +2203,7 @@ class Algorithm(Trainable, AlgorithmBase):
 
         # Update each Learner's `policies_to_train` information, but only
         # if the arg is explicitly provided here.
-        if self.config._enable_new_api_stack and policies_to_train is not None:
+        if self.config.enable_rl_module_and_learner and policies_to_train is not None:
             self.learner_group.foreach_learner(
                 lambda learner: learner.config.multi_agent(
                     policies_to_train=policies_to_train
@@ -2316,7 +2316,7 @@ class Algorithm(Trainable, AlgorithmBase):
             policy_states = state["worker"].pop("policy_states", {})
 
         # Add RLlib checkpoint version.
-        if self.config._enable_new_api_stack:
+        if self.config.enable_rl_module_and_learner:
             state["checkpoint_version"] = CHECKPOINT_VERSION_LEARNER
         else:
             state["checkpoint_version"] = CHECKPOINT_VERSION
@@ -2351,7 +2351,7 @@ class Algorithm(Trainable, AlgorithmBase):
             policy.export_checkpoint(policy_dir, policy_state=policy_state)
 
         # if we are using the learner API, save the learner group state
-        if self.config._enable_new_api_stack:
+        if self.config.enable_rl_module_and_learner:
             learner_state_dir = os.path.join(checkpoint_dir, "learner")
             self.learner_group.save_state(learner_state_dir)
 
@@ -2363,7 +2363,7 @@ class Algorithm(Trainable, AlgorithmBase):
         checkpoint_info = get_checkpoint_info(checkpoint_dir)
         checkpoint_data = Algorithm._checkpoint_info_to_algorithm_state(checkpoint_info)
         self.__setstate__(checkpoint_data)
-        if self.config._enable_new_api_stack:
+        if self.config.enable_rl_module_and_learner:
             learner_state_dir = os.path.join(checkpoint_dir, "learner")
             self.learner_group.load_state(learner_state_dir)
             # Make also sure, all training EnvRunners get the just loaded weights.
@@ -2415,7 +2415,7 @@ class Algorithm(Trainable, AlgorithmBase):
         eval_cf.freeze()
 
         # resources for the driver of this trainable
-        if cf._enable_new_api_stack:
+        if cf.enable_rl_module_and_learner:
             if cf.num_learner_workers == 0:
                 # in this case local_worker only does sampling and training is done on
                 # local learner worker
@@ -2470,7 +2470,7 @@ class Algorithm(Trainable, AlgorithmBase):
 
         # resources for remote learner workers
         learner_bundles = []
-        if cf._enable_new_api_stack and cf.num_learner_workers > 0:
+        if cf.enable_rl_module_and_learner and cf.num_learner_workers > 0:
             learner_bundles = cls._get_learner_bundles(cf)
 
         bundles = [driver] + rollout_bundles + evaluation_bundles + learner_bundles
@@ -2775,7 +2775,7 @@ class Algorithm(Trainable, AlgorithmBase):
         if (
             hasattr(self, "evaluation_workers")
             and self.evaluation_workers is not None
-            and not self.config.uses_new_env_runners
+            and not self.config.enable_env_runner_and_connector_v2
         ):
             state[
                 "eval_policy_mapping_fn"
@@ -2850,12 +2850,12 @@ class Algorithm(Trainable, AlgorithmBase):
                     "data found in state!"
                 )
 
-        if self.config._enable_new_api_stack:
+        if self.config.enable_rl_module_and_learner:
             if "learner_state_dir" in state:
                 self.learner_group.load_state(state["learner_state_dir"])
             else:
                 logger.warning(
-                    "You configured `_enable_new_api_stack=True`, but no "
+                    "You configured `enable_rl_module_and_learner=True`, but no "
                     "`learner_state_dir` key could be found in the state dict!"
                 )
 
@@ -3011,7 +3011,7 @@ class Algorithm(Trainable, AlgorithmBase):
             ):
                 worker_state["is_policy_to_train"] = policies_to_train
 
-        if state["config"]._enable_new_api_stack:
+        if state["config"].enable_rl_module_and_learner:
             state["learner_state_dir"] = os.path.join(
                 checkpoint_info["checkpoint_dir"], "learner"
             )

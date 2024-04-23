@@ -5,7 +5,7 @@ from ray.rllib.examples.envs.classes.random_env import RandomLargeObsSpaceEnv
 
 config = (
     PPOConfig()
-    .experimental(_enable_new_api_stack=True)
+    .api_stack(enable_rl_module_and_learner=True)
     # Switch off np.random, which is known to have memory leaks.
     .environment(RandomLargeObsSpaceEnv, env_config={"static_samples": True})
     .env_runners(

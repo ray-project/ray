@@ -389,7 +389,7 @@ class TestWorkerFailures(unittest.TestCase):
         # Test the case where all workers fail (w/o recovery).
         self._do_test_failing_fatal(
             PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .env_runners(
                 env_runner_cls=SingleAgentEnvRunner,
                 env_to_module_connector=lambda env: FlattenObservations(),
@@ -400,7 +400,7 @@ class TestWorkerFailures(unittest.TestCase):
         # Test the case where all workers fail (w/o recovery).
         self._do_test_failing_fatal(
             PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .env_runners(env_runner_cls=MultiAgentEnvRunner)
             .multi_agent(policies={"p0"}, policy_mapping_fn=lambda *a, **k: "p0"),
         )
@@ -409,7 +409,7 @@ class TestWorkerFailures(unittest.TestCase):
     # def test_async_samples(self):
     #    self._do_test_fault_ignore(
     #        ImpalaConfig()
-    #        .experimental(_enable_new_api_stack=True)
+    #        .api_stack(enable_rl_module_and_learner=True)
     #        .env_runners(env_runner_cls=ForwardHealthCheckToEnvWorker)
     #        .resources(num_gpus=0)
     #    )
@@ -417,7 +417,7 @@ class TestWorkerFailures(unittest.TestCase):
     def test_sync_replay(self):
         self._do_test_failing_ignore(
             SACConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .environment(
                 env_config={"action_space": gym.spaces.Box(0, 1, (2,), np.float32)}
             )
@@ -429,7 +429,7 @@ class TestWorkerFailures(unittest.TestCase):
     def test_multi_gpu(self):
         self._do_test_failing_ignore(
             PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .env_runners(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
             )
@@ -443,7 +443,7 @@ class TestWorkerFailures(unittest.TestCase):
     def test_sync_samples(self):
         self._do_test_failing_ignore(
             PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .env_runners(env_runner_cls=ForwardHealthCheckToEnvWorker)
             .training(optimizer={})
         )
@@ -452,7 +452,7 @@ class TestWorkerFailures(unittest.TestCase):
         # Test the case where one eval worker fails, but we chose to ignore.
         self._do_test_failing_ignore(
             PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .env_runners(env_runner_cls=ForwardHealthCheckToEnvWorker)
             .training(model={"fcnet_hiddens": [4]}),
             fail_eval=True,
@@ -462,7 +462,7 @@ class TestWorkerFailures(unittest.TestCase):
         # Test the case where all eval workers fail, but we chose to recover.
         config = (
             PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .env_runners(env_runner_cls=ForwardHealthCheckToEnvWorker)
             .evaluation(
                 evaluation_num_env_runners=1,
@@ -482,7 +482,7 @@ class TestWorkerFailures(unittest.TestCase):
         # to recover.
         config = (
             PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .env_runners(env_runner_cls=ForwardHealthCheckToEnvWorkerMultiAgent)
             .multi_agent(
                 policies={"main", "p0", "p1"},
@@ -518,7 +518,7 @@ class TestWorkerFailures(unittest.TestCase):
 
         config = (
             PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .env_runners(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_env_runners=2,
@@ -572,7 +572,7 @@ class TestWorkerFailures(unittest.TestCase):
 
         config = (
             PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .env_runners(
                 env_runner_cls=ForwardHealthCheckToEnvWorkerMultiAgent,
                 num_env_runners=2,
@@ -674,7 +674,7 @@ class TestWorkerFailures(unittest.TestCase):
 
         config = (
             PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .env_runners(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_env_runners=2,
@@ -740,7 +740,7 @@ class TestWorkerFailures(unittest.TestCase):
             # the execution of the algorithm b/c of a single heavily stalling worker.
             # Timeout data (batches or episodes) are discarded.
             SACConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .training(
                 replay_buffer_config={"type": "EpisodeReplayBuffer"},
             )

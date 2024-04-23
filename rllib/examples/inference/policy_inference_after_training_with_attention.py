@@ -78,7 +78,7 @@ if __name__ == "__main__":
         get_trainable_cls(args.run)
         .get_default_config()
         # TODO (Kourosh): Enable when Attentions are supported.
-        .experimental(_enable_new_api_stack=False)
+        .api_stack(enable_rl_module_and_learner=False)
         .environment("FrozenLake-v1")
         # Run with tracing enabled for tf2?
         .framework(args.framework)

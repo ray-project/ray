@@ -89,7 +89,7 @@ if __name__ == "__main__":
         check(results1["hist_stats"], results2["hist_stats"])
         # As well as training behavior (minibatch sequence during SGD
         # iterations).
-        if config._enable_new_api_stack:
+        if config.enable_rl_module_and_learner:
             check(
                 results1["info"][LEARNER_INFO][DEFAULT_POLICY_ID],
                 results2["info"][LEARNER_INFO][DEFAULT_POLICY_ID],

@@ -124,8 +124,8 @@ class DQNConfig(AlgorithmConfig):
 
         # `training()`
         self.grad_clip = 40.0
-        # Note: Only when using _enable_new_api_stack=True can the clipping mode be
-        # configured by the user. On the old API stack, RLlib will always clip by
+        # Note: Only when using enable_rl_module_and_learner=True can the clipping mode
+        # be configured by the user. On the old API stack, RLlib will always clip by
         # global_norm, no matter the value of `grad_clip_by`.
         self.grad_clip_by = "global_norm"
         self.lr = 5e-4
@@ -392,7 +392,7 @@ class DQNConfig(AlgorithmConfig):
         super().validate()
 
         if (
-            not self._enable_new_api_stack
+            not self.enable_rl_module_and_learner
             and self.exploration_config["type"] == "ParameterNoise"
         ):
             if self.batch_mode != "complete_episodes":
@@ -402,7 +402,7 @@ class DQNConfig(AlgorithmConfig):
                     "batch_mode='complete_episodes')`."
                 )
 
-        if not self.uses_new_env_runners and not self.in_evaluation:
+        if not self.enable_env_runner_and_connector_v2 and not self.in_evaluation:
             validate_buffer_config(self)
 
         if self.td_error_loss_fn not in ["huber", "mse"]:
@@ -423,7 +423,7 @@ class DQNConfig(AlgorithmConfig):
         # TODO (simon): Find a clean solution to deal with
         # configuration configs when using the new API stack.
         if (
-            not self._enable_new_api_stack
+            not self.enable_rl_module_and_learner
             and self.exploration_config["type"] == "ParameterNoise"
         ):
             if self.batch_mode != "complete_episodes":
@@ -446,7 +446,7 @@ class DQNConfig(AlgorithmConfig):
         )
 
         if (
-            self.uses_new_env_runners
+            self.enable_env_runner_and_connector_v2
             and not isinstance(self.replay_buffer_config["type"], str)
             and not issubclass(self.replay_buffer_config["type"], EpisodeReplayBuffer)
         ):
@@ -572,7 +572,7 @@ class DQN(Algorithm):
             The results dict from executing the training iteration.
         """
         # New API stack (RLModule, Learner, EnvRunner, ConnectorV2).
-        if self.config.uses_new_env_runners:
+        if self.config.enable_env_runner_and_connector_v2:
             return self._training_step_new_api_stack()
         # Old and hybrid API stacks (Policy, RolloutWorker, Connector, maybe RLModule,
         # maybe Learner).

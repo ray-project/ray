@@ -5,7 +5,7 @@ from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 config = (
     PPOConfig()
     # Enable new API stack and use EnvRunner.
-    .experimental(_enable_new_api_stack=True)
+    .api_stack(enable_rl_module_and_learner=True)
     .env_runners(
         env_runner_cls=SingleAgentEnvRunner,
         num_env_runners=1,

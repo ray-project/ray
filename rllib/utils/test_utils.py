@@ -97,7 +97,7 @@ def add_rllib_example_script_args(
     parser.add_argument(
         "--enable-new-api-stack",
         action="store_true",
-        help="Whether to use the _enable_new_api_stack config setting.",
+        help="Whether to use the `enable_rl_module_and_learner` config setting.",
     )
     parser.add_argument(
         "--framework",
@@ -419,7 +419,7 @@ def check_compute_single_action(
                 input_dict[SampleBatch.PREV_ACTIONS] = action_in
                 input_dict[SampleBatch.PREV_REWARDS] = reward_in
             if state_in:
-                if what.config.get("_enable_new_api_stack", False):
+                if what.config.get("enable_rl_module_and_learner", False):
                     input_dict["state_in"] = state_in
                 else:
                     for i, s in enumerate(state_in):
@@ -813,7 +813,7 @@ def framework_iterator(
 
     for fw in frameworks:
         # Skip tf if on new API stack.
-        if fw == "tf" and config.get("_enable_new_api_stack", False):
+        if fw == "tf" and config.get("enable_rl_module_and_learner", False):
             logger.warning("Skipping `framework=tf` (new API stack configured)!")
             continue
         # Skip if tf/tf2 and py >= 3.11.
@@ -1280,7 +1280,7 @@ def run_rllib_example_script_experiment(
         # Set the framework.
         base_config.framework(args.framework)
         # Enable the new API stack?
-        .experimental(_enable_new_api_stack=args.enable_new_api_stack)
+        .api_stack(enable_rl_module_and_learner=args.enable_new_api_stack)
         # Define EnvRunner/RolloutWorker scaling and behavior.
         .env_runners(
             num_env_runners=args.num_env_runners,
@@ -1558,7 +1558,7 @@ def check_reproducibilty(
             # iterations).
             # As well as training behavior (minibatch sequence during SGD
             # iterations).
-            if algo_config._enable_new_api_stack:
+            if algo_config.enable_rl_module_and_learner:
                 check(
                     results1["info"][LEARNER_INFO][DEFAULT_POLICY_ID],
                     results2["info"][LEARNER_INFO][DEFAULT_POLICY_ID],
@@ -1921,7 +1921,7 @@ def check_supported_spaces(
         config_copy = config.copy()
         config_copy.validate()
         # If RLModules are enabled, we need to skip a few tests for now:
-        if config_copy._enable_new_api_stack:
+        if config_copy.enable_rl_module_and_learner:
             # Skip PPO cases in which RLModules don't support the given spaces yet.
             if o_name not in rlmodule_supported_observation_spaces:
                 logger.warning(
@@ -2000,7 +2000,7 @@ def check_supported_spaces(
     if not frameworks:
         frameworks = ("tf2", "tf", "torch")
 
-    if config._enable_new_api_stack:
+    if config.enable_rl_module_and_learner:
         # Only test the frameworks that are supported by RLModules.
         frameworks = tuple(
             fw for fw in frameworks if fw in rlmodule_supported_frameworks

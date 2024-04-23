@@ -58,7 +58,7 @@ def my_experiment(config: Dict):
     config = (
         PPOConfig()
         .update_from_dict(config)
-        .experimental(_enable_new_api_stack=True)
+        .api_stack(enable_rl_module_and_learner=True)
         .environment("CartPole-v1")
     )
 
@@ -155,7 +155,7 @@ def my_experiment(config: Dict):
 if __name__ == "__main__":
     base_config = (
         PPOConfig()
-        .experimental(_enable_new_api_stack=True)
+        .api_stack(enable_rl_module_and_learner=True)
         .environment("CartPole-v1")
         .env_runners(
             num_rollout_workers=0,

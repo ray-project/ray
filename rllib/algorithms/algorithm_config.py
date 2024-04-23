@@ -319,6 +319,10 @@ class AlgorithmConfig(_Config):
         )
         self.torch_compile_worker_dynamo_mode = None
 
+        # `self.api_stack()`
+        self.enable_rl_module_and_learner = False
+        self.enable_env_runner_and_connector_v2 = False
+
         # `self.environment()`
         self.env = None
         self.env_config = {}
@@ -512,7 +516,6 @@ class AlgorithmConfig(_Config):
         self.__prior_exploration_config = None
 
         # `self.experimental()`
-        self._enable_new_api_stack = False
         self._tf_policy_handles_more_than_one_loss = False
         self._disable_preprocessor_api = False
         self._disable_action_flattening = False
@@ -524,6 +527,7 @@ class AlgorithmConfig(_Config):
         # TODO: Remove, once all deprecation_warning calls upon using these keys
         #  have been removed.
         # === Deprecated keys ===
+        self._enable_new_api_stack = DEPRECATED_VALUE
         self.evaluation_num_workers = DEPRECATED_VALUE
         self.simple_optimizer = DEPRECATED_VALUE
         self.monitor = DEPRECATED_VALUE
@@ -660,10 +664,12 @@ class AlgorithmConfig(_Config):
         # Namely, we want to re-instantiate the exploration config this config had
         # inside `self.experimental()` before potentially overwriting it in the
         # following.
-        if "_enable_new_api_stack" in config_dict:
-            self.experimental(
-                _enable_new_api_stack=config_dict["_enable_new_api_stack"]
-            )
+        enable_rl_module_and_learner = config_dict.get(
+            "_enable_new_api_stack",
+            config_dict.get("enable_rl_module_and_learner"),
+        )
+        if enable_rl_module_and_learner:
+            self.api_stack(enable_rl_module_and_learner=enable_rl_module_and_learner)
 
         # Modify our properties one by one.
         for key, value in config_dict.items():
@@ -674,7 +680,7 @@ class AlgorithmConfig(_Config):
             if key == TRIAL_INFO:
                 continue
 
-            if key == "_enable_new_api_stack":
+            if key in ["_enable_new_api_stack", "enable_rl_module_and_learner"]:
                 # We've dealt with this above.
                 continue
             # Set our multi-agent settings.
@@ -707,7 +713,7 @@ class AlgorithmConfig(_Config):
             elif key.startswith("evaluation_"):
                 eval_call[key] = value
             elif key == "exploration_config":
-                if config_dict.get("_enable_new_api_stack", False):
+                if enable_rl_module_and_learner:
                     self.exploration_config = value
                     continue
                 if isinstance(value, dict) and "type" in value:
@@ -1398,6 +1404,50 @@ class AlgorithmConfig(_Config):
 
         return self
 
+
+    def api_stack(
+        self,
+        enable_rl_module_and_learner: Optional[str] = NotProvided,
+        enable_env_runner_and_connector_v2: Optional[str] = NotProvided,
+    ) -> "AlgorithmConfig":
+        """Sets the config's API stack settings.
+
+        Args:
+            enable_rl_module_and_learner: Enables the usage of `RLModule` (instead of
+                `ModelV2`) and Learner (instead of the training-related parts of
+                `Policy`). If `enable_env_runner_and_connector_v2=False`, these two
+                classes (`RLModule` and `Learner`) will be used along with
+                `RolloutWorkers` and `Policy`.
+            enable_env_runner_and_connector_v2: Enables the usage of EnvRunners
+                (SingleAgentEnvRunner and MultiAgentEnvRunner) and ConnectorV2.
+                When setting this to True, `enable_rl_module_and_learner` must be True
+                as well.
+
+        Returns:
+            This updated AlgorithmConfig object.
+        """
+        if enable_rl_module_and_learner is not NotProvided:
+            self.enable_rl_module_and_learner = enable_rl_module_and_learner
+
+            if enable_rl_module_and_learner is True and self.exploration_config:
+                self.__prior_exploration_config = self.exploration_config
+                self.exploration_config = {}
+
+            elif enable_rl_module_and_learner is False and not self.exploration_config:
+                if self.__prior_exploration_config is not None:
+                    self.exploration_config = self.__prior_exploration_config
+                    self.__prior_exploration_config = None
+                else:
+                    logger.warning(
+                        "config.enable_rl_module_and_learner was set to False, but no "
+                        "prior exploration config was found to be restored."
+                    )
+
+        if enable_env_runner_and_connector_v2 is not NotProvided:
+            self.enable_env_runner_and_connector_v2 = enable_env_runner_and_connector_v2
+
+        return self
+
     def environment(
         self,
         env: Optional[Union[str, EnvType]] = NotProvided,
@@ -1925,7 +1975,7 @@ class AlgorithmConfig(_Config):
                 full list of the available model options.
                 TODO: Provide ModelConfig objects instead of dicts.
             optimizer: Arguments to pass to the policy optimizer. This setting is not
-                used when `_enable_new_api_stack=True`.
+                used when `enable_rl_module_and_learner=True`.
             max_requests_in_flight_per_sampler_worker: Max number of inflight requests
                 to each sampling worker. See the FaultTolerantActorManager class for
                 more details.
@@ -1939,7 +1989,7 @@ class AlgorithmConfig(_Config):
                 turn down the number of remote requests in flight, or enable compression
                 in your experiment of timesteps.
             learner_class: The `Learner` class to use for (distributed) updating of the
-                RLModule. Only used when `_enable_new_api_stack=True`.
+                RLModule. Only used when `enable_rl_module_and_learner=True`.
             learner_connector: A callable taking an env observation space and an env
                 action space as inputs and returning a learner ConnectorV2 (might be
                 a pipeline) object.
@@ -1988,8 +2038,8 @@ class AlgorithmConfig(_Config):
                 deprecation_warning(
                     old="AlgorithmConfig.training(_use_default_native_models=True)",
                     help="_use_default_native_models is not supported "
-                    "anymore. To get rid of this error, set `config.experimental("
-                    "_enable_new_api_stack=True)`. Native models will "
+                    "anymore. To get rid of this error, set `config.api_stack("
+                    "enable_rl_module_and_learner=True)`. Native models will "
                     "be better supported by the upcoming RLModule API.",
                     # Error out if user tries to enable this.
                     error=model["_use_default_native_models"],
@@ -2104,8 +2154,9 @@ class AlgorithmConfig(_Config):
                 (default) will make sure that the evaluation results will not be
                 polluted with episode statistics that were actually (at least partially)
                 achieved with an earlier set of weights. Note that this setting is only
-                supported on the new API stack (`config._enable_new_api_stack=True`
-                and `config.env_runner_cls=[SingleAgentEnvRunner|MultiAgentEnvrunner]`).
+                supported on the new API stack w/ EnvRunners and ConnectorV2
+                (`config.enable_rl_module_and_learner=True` AND
+                `config.enable_env_runner_and_connector_v2=True`).
             evaluation_config: Typical usage is to pass extra args to evaluation env
                 creator and to disable exploration by computing deterministic actions.
                 IMPORTANT NOTE: Policy gradient algorithms are able to find the optimal
@@ -2367,7 +2418,7 @@ class AlgorithmConfig(_Config):
                 These tuples or PolicySpecs define the class of the policy, the
                 observation- and action spaces of the policies, and any extra config.
             algorithm_config_overrides_per_module: Only used if
-                `_enable_new_api_stack=True`.
+                `enable_rl_module_and_learner=True`.
                 A mapping from ModuleIDs to per-module AlgorithmConfig override dicts,
                 which apply certain settings,
                 e.g. the learning rate, from the main AlgorithmConfig only to this
@@ -2785,8 +2836,8 @@ class AlgorithmConfig(_Config):
 
         if _enable_rl_module_api is not NotProvided:
             deprecation_warning(
-                old="AlgorithmConfig.rl_module(_enable_rl_module_api=True|False)",
-                new="AlgorithmConfig.experimental(_enable_new_api_stack=True|False)",
+                old="AlgorithmConfig.rl_module(_enable_rl_module_api=..)",
+                new="AlgorithmConfig.api_stack(enable_rl_module_and_learner=..)",
                 error=False,
             )
         return self
@@ -2794,20 +2845,16 @@ class AlgorithmConfig(_Config):
     def experimental(
         self,
         *,
-        _enable_new_api_stack: Optional[bool] = NotProvided,
         _tf_policy_handles_more_than_one_loss: Optional[bool] = NotProvided,
         _disable_preprocessor_api: Optional[bool] = NotProvided,
         _disable_action_flattening: Optional[bool] = NotProvided,
         _disable_initialize_loss_from_dummy_batch: Optional[bool] = NotProvided,
         # Deprecated args.
-        _disable_execution_plan_api=None,
+        _enable_new_api_stack=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the config's experimental settings.
 
         Args:
-            _enable_new_api_stack: Enables the new API stack, which will use RLModule
-                (instead of ModelV2) as well as the multi-GPU capable Learner API
-                (instead of using Policy to compute loss and update the model).
             _tf_policy_handles_more_than_one_loss: Experimental flag.
                 If True, TFPolicy will handle more than one loss/optimizer.
                 Set this to True, if you would like to return more than
@@ -2829,31 +2876,13 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
-        if _disable_execution_plan_api is not None:
+        if _enable_new_api_stack != DEPRECATED_VALUE:
             deprecation_warning(
-                old="config.experimental(_disable_execution_plan_api=...)",
-                help="The execution plan API is no longer supported! Use subclassing "
-                "of the `Algorithm` class and override the "
-                "`Algorithm.training_step()` method instead.",
-                error=True,
+                old="config.experimental(_enable_new_api_stack=...)",
+                new="config.api_stack(enable_rl_module_and_learner=...)",
+                error=False,
             )
-
-        if _enable_new_api_stack is not NotProvided:
-            self._enable_new_api_stack = _enable_new_api_stack
-
-            if _enable_new_api_stack is True and self.exploration_config:
-                self.__prior_exploration_config = self.exploration_config
-                self.exploration_config = {}
-
-            elif _enable_new_api_stack is False and not self.exploration_config:
-                if self.__prior_exploration_config is not None:
-                    self.exploration_config = self.__prior_exploration_config
-                    self.__prior_exploration_config = None
-                else:
-                    logger.warning(
-                        "config._enable_new_api_stack was set to False, but no prior "
-                        "exploration config was found to be restored."
-                    )
+            self.api_stack(enable_rl_module_and_learner=_enable_new_api_stack)
 
         if _tf_policy_handles_more_than_one_loss is not NotProvided:
             self._tf_policy_handles_more_than_one_loss = (
@@ -2935,12 +2964,6 @@ class AlgorithmConfig(_Config):
             env.close()
 
         return self._is_atari
-
-    @property
-    def uses_new_env_runners(self):
-        return self.env_runner_cls is not None and not issubclass(
-            self.env_runner_cls, RolloutWorker
-        )
 
     @property
     def total_train_batch_size(self):
@@ -3777,11 +3800,11 @@ class AlgorithmConfig(_Config):
             _torch, _ = try_import_torch()
 
         # Can not use "tf" with learner API.
-        if self.framework_str == "tf" and self._enable_new_api_stack:
+        if self.framework_str == "tf" and self.enable_rl_module_and_learner:
             raise ValueError(
                 "Cannot use `framework=tf` with the new API stack! Either switch to tf2"
                 " via `config.framework('tf2')` OR disable the new API stack via "
-                "`config.experimental(_enable_new_api_stack=False)`."
+                "`config.api_stack(enable_rl_module_and_learner=False)`."
             )
 
         # Check if torch framework supports torch.compile.
@@ -3857,7 +3880,7 @@ class AlgorithmConfig(_Config):
         #  multi-agent.
         if (
             self.is_multi_agent()
-            and self.uses_new_env_runners
+            and self.enable_env_runner_and_connector_v2
             and self.num_envs_per_worker > 1
         ):
             raise ValueError(
@@ -3956,14 +3979,14 @@ class AlgorithmConfig(_Config):
     def _validate_new_api_stack_settings(self):
         """Checks, whether settings related to the new API stack make sense."""
 
-        if not self._enable_new_api_stack:
+        if not self.enable_rl_module_and_learner:
             # Throw a warning if the user has used `self.rl_module(rl_module_spec=...)`
             # but has not enabled the new API stack at the same time.
             if self._rl_module_spec is not None:
                 logger.warning(
                     "You have setup a RLModuleSpec (via calling "
                     "`config.rl_module(...)`), but have not enabled the new API stack. "
-                    "To enable it, call `config.experimental(_enable_new_api_stack="
+                    "To enable it, call `config.api_stack(enable_rl_module_and_learner="
                     "True)`."
                 )
             # Throw a warning if the user has used `self.training(learner_class=...)`
@@ -3973,18 +3996,18 @@ class AlgorithmConfig(_Config):
                     "You specified a custom Learner class (via "
                     f"`AlgorithmConfig.training(learner_class={self._learner_class})`, "
                     f"but have the new API stack disabled. You need to enable it via "
-                    "`AlgorithmConfig.experimental(_enable_new_api_stack=True)`."
+                    "`AlgorithmConfig.api_stack(enable_rl_module_and_learner=True)`."
                 )
             # User is using the new EnvRunners, but forgot to switch on
-            # `_enable_new_api_stack`.
-            if self.uses_new_env_runners:
+            # `enable_rl_module_and_learner`.
+            if self.enable_env_runner_and_connector_v2:
                 raise ValueError(
                     "You are using the new API stack EnvRunners (SingleAgentEnvRunner "
                     "or MultiAgentEnvRunner), but have forgotten to switch on the new "
                     "API stack! Try setting "
-                    "`config.experimental(_enable_new_api_stack=True)`."
+                    "`config.api_stack(enable_rl_module_and_learner=True)`."
                 )
-            # Early out. The rest of this method is only for _enable_new_api_stack=True.
+            # Early out. The rest of this method is only for enable_rl_module_and_learner=True.
             return
 
         # New API stack (RLModule, Learner APIs) only works with connectors.
@@ -4007,7 +4030,7 @@ class AlgorithmConfig(_Config):
         # gym.vector.Env yet and therefore the reset call is still made manually,
         # allowing for the callback to be fired).
         if (
-            self.uses_new_env_runners
+            self.enable_env_runner_and_connector_v2
             and not self.is_multi_agent()
             and self.callbacks_class is not DefaultCallbacks
         ):
@@ -4044,8 +4067,8 @@ class AlgorithmConfig(_Config):
             "Cannot use `{}` option with the new API stack (RLModule and "
             "Learner APIs)! `{}` is part of the ModelV2 API and Policy API,"
             " which are not compatible with the new API stack. You can either "
-            "deactivate the new stack via `config.experimental( "
-            "_enable_new_api_stack=False)`,"
+            "deactivate the new stack via `config.api_stack( "
+            "enable_rl_module_and_learner=False)`,"
             "or use the new stack (incl. RLModule API) and implement your "
             "custom model as an RLModule."
         )
@@ -4066,7 +4089,7 @@ class AlgorithmConfig(_Config):
     #  anymore.
     def _validate_to_be_deprecated_settings(self):
         # Env task fn will be deprecated.
-        if self._enable_new_api_stack and self.env_task_fn is not None:
+        if self.enable_rl_module_and_learner and self.env_task_fn is not None:
             deprecation_warning(
                 old="AlgorithmConfig.env_task_fn",
                 help="The `env_task_fn` API is not supported on the new API stack! "
@@ -4106,7 +4129,7 @@ class AlgorithmConfig(_Config):
         if self.simple_optimizer is True:
             pass
         # Multi-GPU setting: Must use MultiGPUTrainOneStep.
-        elif not self._enable_new_api_stack and self.num_gpus > 1:
+        elif not self.enable_rl_module_and_learner and self.num_gpus > 1:
             # TODO: AlphaStar uses >1 GPUs differently (1 per policy actor), so this is
             #  ok for tf2 here.
             #  Remove this hacky check, once we have fully moved to the Learner API.
@@ -4349,6 +4372,11 @@ class AlgorithmConfig(_Config):
     @Deprecated(new="AlgorithmConfig.env_runners(..)", error=False)
     def exploration(self, *args, **kwargs):
         return self.env_runners(*args, **kwargs)
+
+    @Deprecated(new="AlgorithmConfig.enable_env_runner_and_connector_v2", error=True)
+    @property
+    def uses_new_env_runners(self):
+        return None
 
 
 class TorchCompileWhatToCompile(str, Enum):

@@ -72,7 +72,7 @@ class TestCallbacks(unittest.TestCase):
     def test_episode_and_sample_callbacks_batch_mode_truncate_episodes(self):
         config = (
             PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .environment("CartPole-v1")
             .env_runners(
                 num_rollout_workers=0,
@@ -115,7 +115,7 @@ class TestCallbacks(unittest.TestCase):
     def test_episode_and_sample_callbacks_batch_mode_complete_episodes(self):
         config = (
             PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .environment("CartPole-v1")
             .env_runners(
                 batch_mode="complete_episodes",
@@ -158,7 +158,7 @@ class TestCallbacks(unittest.TestCase):
         """Tests, whw"""
         config = (
             PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .env_runners(env_runner_cls=SingleAgentEnvRunner)
             .callbacks(OnEpisodeCreatedCallback)
         )

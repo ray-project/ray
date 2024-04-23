@@ -5,7 +5,7 @@ config = (
     DQNConfig()
     .environment(env="CartPole-v1")
     .framework(framework="torch")
-    .experimental(_enable_new_api_stack=True)
+    .api_stack(enable_rl_module_and_learner=True)
     .env_runners(
         env_runner_cls=SingleAgentEnvRunner,
         num_rollout_workers=0,

@@ -80,7 +80,7 @@ config = (
     PPOConfig()
     .environment(env=tune.grid_search(list(benchmark_envs.keys())))
     # Enable new API stack and use EnvRunner.
-    .experimental(_enable_new_api_stack=True)
+    .api_stack(enable_rl_module_and_learner=True)
     .env_runners(
         env_runner_cls=SingleAgentEnvRunner,
         # Following the paper.

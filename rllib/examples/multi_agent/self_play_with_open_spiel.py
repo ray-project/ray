@@ -106,7 +106,7 @@ if __name__ == "__main__":
     config = (
         get_trainable_cls(args.algo)
         .get_default_config()
-        .experimental(_enable_new_api_stack=args.enable_new_api_stack)
+        .api_stack(enable_rl_module_and_learner=args.enable_new_api_stack)
         .environment("open_spiel_env")
         .framework(args.framework)
         # Set up the main piece in this experiment: The league-bases self-play

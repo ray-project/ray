@@ -364,7 +364,7 @@ class SACConfig(AlgorithmConfig):
         # Validate that we use the corresponding `EpisodeReplayBuffer` when using
         # episodes.
         # TODO (sven, simon): Implement the multi-agent case for replay buffers.
-        if self.uses_new_env_runners and self.replay_buffer_config["type"] not in [
+        if self.enable_env_runner_and_connector_v2 and self.replay_buffer_config["type"] not in [
             "EpisodeReplayBuffer",
             "PrioritizedEpisodeReplayBuffer",
         ]:
@@ -449,7 +449,7 @@ class SAC(DQN):
     def training_step(self) -> ResultDict:
         # If `RolloutWorker` is used, fall back to the old stack `training step`
         # of `DQN`.
-        if not self.config.uses_new_env_runners:
+        if not self.config.enable_env_runner_and_connector_v2:
             return super().training_step()
 
         # Alternate between storing and sampling and training.
@@ -464,7 +464,7 @@ class SAC(DQN):
                 episodes = synchronous_parallel_sample(
                     worker_set=self.workers,
                     sample_timeout_s=self.config.sample_timeout_s,
-                    _uses_new_env_runners=self.config.uses_new_env_runners,
+                    _uses_new_env_runners=self.config.enable_env_runner_and_connector_v2,
                 )
             # TODO (sven): single- vs multi-agent.
             self._counters[NUM_AGENT_STEPS_SAMPLED] += sum(len(e) for e in episodes)

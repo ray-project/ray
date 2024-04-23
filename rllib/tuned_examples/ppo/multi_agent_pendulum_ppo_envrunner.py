@@ -8,7 +8,7 @@ register_env("multi_agent_pendulum", lambda _: MultiAgentPendulum({"num_agents":
 
 config = (
     PPOConfig()
-    .experimental(_enable_new_api_stack=True)
+    .api_stack(enable_rl_module_and_learner=True)
     .environment("multi_agent_pendulum")
     .env_runners(
         env_runner_cls=MultiAgentEnvRunner,

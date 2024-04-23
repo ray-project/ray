@@ -37,7 +37,7 @@ class StatefulRandomPolicy(RandomPolicy):
         return True
 
     def get_initial_state(self):
-        if self.config.get("_enable_new_api_stack", False):
+        if self.config.get("enable_rl_module_and_learner", False):
             # convert the tree of tensors to a tree to numpy arrays
             return tree.map_structure(
                 lambda s: convert_to_numpy(s), self.model.get_initial_state()

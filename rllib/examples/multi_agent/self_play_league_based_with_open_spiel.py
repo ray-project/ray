@@ -160,7 +160,7 @@ if __name__ == "__main__":
         get_trainable_cls(args.algo)
         .get_default_config()
         # Use new API stack ...
-        .experimental(_enable_new_api_stack=args.enable_new_api_stack)
+        .api_stack(enable_rl_module_and_learner=args.enable_new_api_stack)
         .environment("open_spiel_env")
         .framework(args.framework)
         # Set up the main piece in this experiment: The league-bases self-play
@@ -255,7 +255,7 @@ if __name__ == "__main__":
                     action = ask_user_for_action(time_step)
                 else:
                     obs = np.array(time_step.observations["info_state"][player_id])
-                    if config.uses_new_env_runners:
+                    if config.enable_env_runner_and_connector_v2:
                         action = algo.workers.local_worker().module.forward_inference(
                             {"obs": obs}
                         )

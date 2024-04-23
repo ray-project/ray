@@ -95,7 +95,7 @@ class TestMultiAgentEnvRunner(unittest.TestCase):
         # Build the configuration and use `PPO`.
         config = (
             PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .environment(
                 MultiAgentCartPole,
                 env_config={"num_agents": 2},
