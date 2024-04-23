@@ -613,7 +613,14 @@ class PandasBlockAccessor(TableBlockAccessor):
 def _estimate_dataframe_size(df: "pandas.DataFrame") -> int:
     """Estimate the size of a pandas DataFrame.
 
-    This function is necessary
+    This function is necessary because `DataFrame.memory_usage` doesn't count values in
+    columns with `dtype=object`.
+
+    Args:
+        df: The DataFrame to estimate the size of.
+
+    Returns:
+        The estimated size of the DataFrame in bytes.
     """
     size = 0
     for column in df.columns:
@@ -624,7 +631,7 @@ def _estimate_dataframe_size(df: "pandas.DataFrame") -> int:
                 elif isinstance(item, np.ndarray):
                     size += item.nbytes
                 else:
-                    size += 8
+                    size += 8  # pandas assumes object values are 8 bytes.
         else:
             size += df[column].nbytes
     return size

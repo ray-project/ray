@@ -2399,6 +2399,8 @@ def from_pandas(
         num_blocks = math.ceil(total_size / context.target_max_block_size)
 
     if len(dfs) > 1:
+        # I assume most users pass a single DataFrame as input. For simplicity, I'm
+        # concatenating DataFrames, even though it's not efficient.
         ary = pd.concat(dfs, axis=0)
     else:
         ary = dfs[0]
