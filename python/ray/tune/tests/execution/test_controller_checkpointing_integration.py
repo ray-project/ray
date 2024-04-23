@@ -1,29 +1,26 @@
 import json
 import logging
 import os
+import sys
 import tempfile
+import time
 from unittest import mock
 
 import pytest
-import sys
-import time
-
 
 import ray
-from ray.train import CheckpointConfig
-from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
 from ray.air.constants import TRAINING_ITERATION
-from ray.train import Checkpoint
+from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
+from ray.train import Checkpoint, CheckpointConfig
 from ray.train._internal.session import _TrainingResult
 from ray.train._internal.storage import StorageContext
+from ray.train.tests.util import mock_storage_context
 from ray.tune import PlacementGroupFactory, ResumeConfig
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
 from ray.tune.result import DONE
 from ray.tune.schedulers import FIFOScheduler
 from ray.tune.search import BasicVariantGenerator
-
-from ray.train.tests.util import mock_storage_context
 from ray.tune.tests.tune_test_util import TrialResultObserver
 
 STORAGE = mock_storage_context()
@@ -274,7 +271,7 @@ def test_checkpoint_num_to_keep(
     assert len(cp_dirs) == 2, f"Checkpoint dirs: {cp_dirs}"
 
     # Re-instantiate trial runner and resume
-    runner.checkpoint(force=True)
+    runner.checkpoint(force=True, wait=True)
     runner = TuneController(
         resource_manager_factory=lambda: resource_manager_cls(),
         storage=STORAGE,
@@ -427,9 +424,7 @@ def test_checkpoint_user_checkpoint(
         {"TUNE_RESULT_BUFFER_LENGTH": "1", "TUNE_MAX_PENDING_TRIALS_PG": "1"},
     ):
         runner = TuneController(
-            resource_manager_factory=lambda: resource_manager_cls(),
-            storage=STORAGE,
-            checkpoint_period=0,
+            resource_manager_factory=lambda: resource_manager_cls(), storage=STORAGE
         )
         runner.add_trial(
             Trial("__fake", config={"user_checkpoint_freq": 2}, storage=STORAGE)
@@ -452,6 +447,7 @@ def test_checkpoint_user_checkpoint(
         runner.step()
 
         assert trials[0].has_checkpoint()
+        runner.checkpoint(force=True, wait=True)
 
         runner2 = TuneController(
             resource_manager_factory=lambda: resource_manager_cls(),

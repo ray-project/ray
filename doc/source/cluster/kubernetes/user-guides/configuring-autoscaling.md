@@ -65,7 +65,7 @@ Follow [this document](kuberay-operator-deploy) to install the latest stable Kub
 ### Step 3: Create a RayCluster custom resource with autoscaling enabled
 
 ```bash
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.0.0/ray-operator/config/samples/ray-cluster.autoscaler.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/release-1.1.0/ray-operator/config/samples/ray-cluster.autoscaler.yaml
 kubectl apply -f ray-cluster.autoscaler.yaml
 ```
 
@@ -89,7 +89,7 @@ kubectl get configmaps
 ```
 
 The RayCluster has one head Pod and zero worker Pods. The head Pod has two containers: a Ray head container and a Ray Autoscaler sidecar container.
-Additionally, the [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/v1.0.0/ray-operator/config/samples/ray-cluster.autoscaler.yaml) includes a ConfigMap named `ray-example` that houses two Python scripts: `detached_actor.py` and `terminate_detached_actor`.py.
+Additionally, the [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/release-1.1.0/ray-operator/config/samples/ray-cluster.autoscaler.yaml) includes a ConfigMap named `ray-example` that houses two Python scripts: `detached_actor.py` and `terminate_detached_actor`.py.
 
 * `detached_actor.py` is a Python script that creates a detached actor which requires 1 CPU.
   ```py
@@ -182,7 +182,7 @@ kubectl get pods -l=ray.io/is-ray-node=yes
 # raycluster-autoscaler-head-xxxxx                 2/2     Running   0          xxm
 # raycluster-autoscaler-worker-small-group-zzzzz   1/1     Running   0          xxm
 
-# Step 6.3: Terminate the detached actor "actor1".
+# Step 6.3: Terminate the detached actor "actor2".
 kubectl exec -it $HEAD_POD -- python3 /home/ray/samples/terminate_detached_actor.py actor2
 
 # Step 6.4: A worker Pod will be deleted after `idleTimeoutSeconds` (default 60s) seconds.
@@ -258,7 +258,7 @@ helm uninstall kuberay-operator
 (kuberay-autoscaling-config)=
 ## KubeRay Autoscaling Configurations
 
-The [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/v1.0.0/ray-operator/config/samples/ray-cluster.autoscaler.yaml) used in the quickstart example contains detailed comments about the configuration options.
+The [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/release-1.1.0/ray-operator/config/samples/ray-cluster.autoscaler.yaml) used in the quickstart example contains detailed comments about the configuration options.
 ***It's recommended to read this section in conjunction with the YAML file.***
 
 ### 1. Enabling autoscaling
@@ -316,6 +316,53 @@ The default is `IfNotPresent`.
 These fields specify Autoscaler container environment variables.
 These fields should be formatted following the [Kubernetes API](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/Pod-v1/#environment-variables)
 for container environment variables.
+
+### 4. Set the `rayStartParams` and the resource limits for the Ray container
+
+The Ray Autoscaler reads the `rayStartParams` field or the Ray container's resource limits in the RayCluster custom resource specification to determine the Ray Pod's resource requirements.
+The information regarding the number of CPUs is essential for the Ray Autoscaler to scale the cluster.
+Therefore, without this information, the Ray Autoscaler would report an error and fail to start.
+Take [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/release-1.1.0/ray-operator/config/samples/ray-cluster.autoscaler.yaml) as an example below:
+
+* If users set `num-cpus` in `rayStartParams`, Ray Autoscaler would work regardless of the resource limits on the container.
+* If users don't set `rayStartParams`, the Ray container must have a specified CPU resource limit.
+
+```yaml
+headGroupSpec:
+  rayStartParams:
+    num-cpus: "0"
+  template:
+    spec:
+      containers:
+      - name: ray-head
+        resources:
+          # The Ray Autoscaler still functions if you comment out the `limits` field for the
+          # head container, as users have already specified `num-cpus` in `rayStartParams`.
+          limits:
+            cpu: "1"
+            memory: "2G"
+          requests:
+            cpu: "1"
+            memory: "2G"
+...
+workerGroupSpecs:
+- groupName: small-group
+  rayStartParams: {}
+  template:
+    spec:
+      containers:
+      - name: ray-worker
+        resources:
+          limits:
+            # The Ray Autoscaler will fail to start if the CPU resource limit for the worker
+            # container is commented out because `rayStartParams` is empty.
+            cpu: "1"
+            memory: "1G"
+          requests:
+            cpu: "1"
+            memory: "1G"
+```
+
 
 ## Next steps
 

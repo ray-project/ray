@@ -308,7 +308,7 @@ class TestReplicaConfig:
 
         # Invalid: unsupported placement_group_strategy.
         with pytest.raises(
-            ValueError, match="Invalid placement group strategy 'FAKE_NEWS'"
+            ValueError, match="Invalid placement group strategy FAKE_NEWS"
         ):
             ReplicaConfig.create(
                 Class,
@@ -321,16 +321,26 @@ class TestReplicaConfig:
         # Invalid: malformed placement_group_bundles.
         with pytest.raises(
             ValueError,
-            match=(
-                "`placement_group_bundles` must be a non-empty list "
-                "of resource dictionaries."
-            ),
+            match=("Bundles must be a non-empty list " "of resource dictionaries."),
         ):
             ReplicaConfig.create(
                 Class,
                 tuple(),
                 dict(),
                 placement_group_bundles=[{"CPU": "1.0"}],
+            )
+
+        # Invalid: invalid placement_group_bundles.
+        with pytest.raises(
+            ValueError,
+            match="cannot be an empty dictionary or resources with only 0",
+        ):
+            ReplicaConfig.create(
+                Class,
+                tuple(),
+                dict(),
+                ray_actor_options={"num_cpus": 0, "num_gpus": 0},
+                placement_group_bundles=[{"CPU": 0, "GPU": 0}],
             )
 
         # Invalid: replica actor does not fit in the first bundle (CPU).
@@ -379,6 +389,53 @@ class TestReplicaConfig:
                 dict(),
                 ray_actor_options={"resources": {"custom": 1}},
                 placement_group_bundles=[{"CPU": 1}],
+            )
+
+    def test_mutually_exclusive_max_replicas_per_node_and_placement_group_bundles(self):
+        class Class:
+            pass
+
+        ReplicaConfig.create(
+            Class,
+            tuple(),
+            dict(),
+            max_replicas_per_node=5,
+        )
+
+        ReplicaConfig.create(
+            Class,
+            tuple(),
+            dict(),
+            placement_group_bundles=[{"CPU": 1.0}],
+        )
+
+        with pytest.raises(
+            ValueError,
+            match=(
+                "Setting max_replicas_per_node is not allowed when "
+                "placement_group_bundles is provided."
+            ),
+        ):
+            ReplicaConfig.create(
+                Class,
+                tuple(),
+                dict(),
+                max_replicas_per_node=5,
+                placement_group_bundles=[{"CPU": 1.0}],
+            )
+
+        with pytest.raises(
+            ValueError,
+            match=(
+                "Setting max_replicas_per_node is not allowed when "
+                "placement_group_bundles is provided."
+            ),
+        ):
+            config = ReplicaConfig.create(Class, tuple(), dict())
+            config.update(
+                ray_actor_options={},
+                max_replicas_per_node=5,
+                placement_group_bundles=[{"CPU": 1.0}],
             )
 
     def test_replica_config_lazy_deserialization(self):

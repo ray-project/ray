@@ -206,16 +206,6 @@ Optuna (tune.search.optuna.OptunaSearch)
 
     optuna.OptunaSearch
 
-.. _skopt:
-
-Scikit-Optimize (tune.search.skopt.SkOptSearch)
------------------------------------------------
-
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    skopt.SkOptSearch
 
 .. _zoopt:
 

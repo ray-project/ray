@@ -16,16 +16,17 @@ from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import (
+    OldAPIStack,
     override,
     OverrideToImplementCustomLogic,
     PublicAPI,
 )
-from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.exploration.random_encoder import (
     _MovingMeanStd,
     compute_states_entropy,
     update_beta,
 )
+from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.typing import AgentID, EnvType, EpisodeType, PolicyID
 from ray.tune.callback import _CallbackMeta
 
@@ -48,17 +49,6 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
     callbacks, subclass DefaultCallbacks and then set
     {"callbacks": YourCallbacksClass} in the algo config.
     """
-
-    def __init__(self, legacy_callbacks_dict: Dict[str, callable] = None):
-        if legacy_callbacks_dict:
-            deprecation_warning(
-                "callbacks dict interface",
-                (
-                    "a class extending rllib.algorithms.callbacks.DefaultCallbacks; see"
-                    " `rllib/examples/custom_metrics_and_callbacks.py` for an example."
-                ),
-                error=True,
-            )
 
     @OverrideToImplementCustomLogic
     def on_algorithm_init(
@@ -175,20 +165,23 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         *,
         env_runner: "EnvRunner",
         env: gym.Env,
-        env_config: EnvContext,
+        env_context: EnvContext,
         **kwargs,
     ) -> None:
         """Callback run when a new environment object has been created.
 
         Note: This only applies to the new API stack. The env used is usually a
-        gym.Env (or more specificallly a gym.vector.Env).
+        gym.Env (or more specifically a gym.vector.Env).
 
         Args:
             env_runner: Reference to the current EnvRunner instance.
             env: The environment object that has been created on `env_runner`. This is
                 usually a gym.Env (or a gym.vector.Env) object.
-            env_config: The config dict that has been passed to the `gym.make()` call
-                as kwargs.
+            env_context: The `EnvContext` object that has been passed to the
+                `gym.make()` call as kwargs (and to the gym.Env as `config`). It should
+                have all the config key/value pairs in it as well as the
+                EnvContext-typical properties: `worker_index`, `num_workers`, and
+                `remote`.
             kwargs: Forward compatibility placeholder.
         """
         pass
@@ -279,46 +272,40 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
     def on_episode_start(
         self,
         *,
-        # TODO (sven): Deprecate Episode/EpisodeV2 with new API stack.
         episode: Union[EpisodeType, Episode, EpisodeV2],
-        # TODO (sven): Deprecate this arg new API stack (in favor of `env_runner`).
-        worker: Optional["EnvRunner"] = None,
         env_runner: Optional["EnvRunner"] = None,
-        # TODO (sven): Deprecate this arg new API stack (in favor of `env`).
-        base_env: Optional[BaseEnv] = None,
+        metrics_logger: Optional[MetricsLogger] = None,
         env: Optional[gym.Env] = None,
-        # TODO (sven): Deprecate this arg new API stack (in favor of `rl_module`).
-        policies: Optional[Dict[PolicyID, Policy]] = None,
-        rl_module: Optional[RLModule] = None,
         env_index: int,
+        rl_module: Optional[RLModule] = None,
+        # TODO (sven): Deprecate these args.
+        worker: Optional["EnvRunner"] = None,
+        base_env: Optional[BaseEnv] = None,
+        policies: Optional[Dict[PolicyID, Policy]] = None,
         **kwargs,
     ) -> None:
-        """Callback run right after an Episode has started.
+        """Callback run right after an Episode has been started.
 
-        This method gets called after a new Episode(V2) (old stack) or
-        SingleAgentEpisode/MultiAgentEpisode instance has been reset via the
-        `env.reset()` API by RLlib.
+        This method gets called after a SingleAgentEpisode or MultiAgentEpisode instance
+        has been reset with a call to `env.reset()` by the EnvRunner.
 
-        1) Episode(V2)/Single-/MultiAgentEpisode created: on_episode_created is called.
+        1) Single-/MultiAgentEpisode created: `on_episode_created()` is called.
         2) Respective sub-environment (gym.Env) is `reset()`.
-        3) Episode(V2)/Single-/MultiAgentEpisode starts: This callback is called.
+        3) Single-/MultiAgentEpisode starts: This callback is called.
         4) Stepping through sub-environment/episode commences.
 
         Args:
-            episode: The just started episode (after `env.reset()`). On the new API
-                stack, this will be a SingleAgentEpisode or MultiAgentEpisode object.
-                On the old API stack, this will be a Episode or EpisodeV2 object.
-            env_runner: Replaces `worker` arg. Reference to the current EnvRunner.
-            env: Replaces `base_env` arg.  The gym.Env (new API stack) or RLlib
-                BaseEnv (old API stack) running the episode. On the old stack, the
-                underlying sub environment objects can be retrieved by calling
-                `base_env.get_sub_environments()`.
-            rl_module: Replaces `policies` arg. Either the RLModule (new API stack) or a
-                dict mapping policy IDs to policy objects (old stack). In single agent
-                mode there will only be a single policy/RLModule under the
-                `rl_module["default_policy"]` key.
+            episode: The just started (after `env.reset()`) SingleAgentEpisode or
+                MultiAgentEpisode object.
+            env_runner: Reference to the EnvRunner running the env and episode.
+            metrics_logger: The MetricsLogger object inside the `env_runner`. Can be
+                used to log custom metrics during env/episode stepping.
+            env: The gym.Env or gym.vector.Env object running the started episode.
             env_index: The index of the sub-environment that is about to be reset
                 (within the vector of sub-environments of the BaseEnv).
+            rl_module: The RLModule used to compute actions for stepping the env.
+                In a single-agent setup, this is a (single-agent) RLModule, in a multi-
+                agent setup, this will be a MultiAgentRLModule.
             kwargs: Forward compatibility placeholder.
         """
         pass
@@ -327,21 +314,19 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
     def on_episode_step(
         self,
         *,
-        # TODO (sven): Deprecate Episode/EpisodeV2 with new API stack.
         episode: Union[EpisodeType, Episode, EpisodeV2],
-        # TODO (sven): Deprecate this arg new API stack (in favor of `env_runner`).
-        worker: Optional["EnvRunner"] = None,
         env_runner: Optional["EnvRunner"] = None,
-        # TODO (sven): Deprecate this arg new API stack (in favor of `env`).
-        base_env: Optional[BaseEnv] = None,
+        metrics_logger: Optional[MetricsLogger] = None,
         env: Optional[gym.Env] = None,
-        # TODO (sven): Deprecate this arg new API stack (in favor of `rl_module`).
-        policies: Optional[Dict[PolicyID, Policy]] = None,
-        rl_module: Optional[RLModule] = None,
         env_index: int,
+        rl_module: Optional[RLModule] = None,
+        # TODO (sven): Deprecate these args.
+        worker: Optional["EnvRunner"] = None,
+        base_env: Optional[BaseEnv] = None,
+        policies: Optional[Dict[PolicyID, Policy]] = None,
         **kwargs,
     ) -> None:
-        """Called on each episode step (after the action has been logged).
+        """Called on each episode step (after the action(s) has/have been logged).
 
         Note that on the new API stack, this callback is also called after the final
         step of an episode, meaning when terminated/truncated are returned as True
@@ -353,20 +338,17 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         infos) have been logged to the given `episode` object.
 
         Args:
-            episode: The episode that has been stepped. On the new API stack, this will
-                be a SingleAgentEpisode or MultiAgentEpisode object. On the old API
-                stack, this will be a Episode or EpisodeV2 object.
-            env_runner: Replaces `worker` arg. Reference to the current EnvRunner.
-            env: Replaces `base_env` arg.  The gym.Env (new API stack) or RLlib
-                BaseEnv (old API stack) running the episode. On the old stack, the
-                underlying sub environment objects can be retrieved by calling
-                `base_env.get_sub_environments()`.
-            rl_module: Replaces `policies` arg. Either the RLModule (new API stack) or a
-                dict mapping policy IDs to policy objects (old stack). In single agent
-                mode there will only be a single policy/RLModule under the
-                `rl_module["default_policy"]` key.
-            env_index: The index of the sub-environment that is about to be reset
-                (within the vector of sub-environments of the BaseEnv).
+            episode: The just stepped SingleAgentEpisode or MultiAgentEpisode object
+                (after `env.step()` and after returned obs, rewards, etc.. have been
+                logged to the episode object).
+            env_runner: Reference to the EnvRunner running the env and episode.
+            metrics_logger: The MetricsLogger object inside the `env_runner`. Can be
+                used to log custom metrics during env/episode stepping.
+            env: The gym.Env or gym.vector.Env object running the started episode.
+            env_index: The index of the sub-environment that has just been stepped.
+            rl_module: The RLModule used to compute actions for stepping the env.
+                In a single-agent setup, this is a (single-agent) RLModule, in a multi-
+                agent setup, this will be a MultiAgentRLModule.
             kwargs: Forward compatibility placeholder.
         """
         pass
@@ -375,18 +357,16 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
     def on_episode_end(
         self,
         *,
-        # TODO (sven): Deprecate Episode/EpisodeV2 with new API stack.
         episode: Union[EpisodeType, Episode, EpisodeV2],
-        # TODO (sven): Deprecate this arg new API stack (in favor of `env_runner`).
-        worker: Optional["EnvRunner"] = None,
         env_runner: Optional["EnvRunner"] = None,
-        # TODO (sven): Deprecate this arg new API stack (in favor of `env`).
-        base_env: Optional[BaseEnv] = None,
+        metrics_logger: Optional[MetricsLogger] = None,
         env: Optional[gym.Env] = None,
-        # TODO (sven): Deprecate this arg new API stack (in favor of `rl_module`).
-        policies: Optional[Dict[PolicyID, Policy]] = None,
-        rl_module: Optional[RLModule] = None,
         env_index: int,
+        rl_module: Optional[RLModule] = None,
+        # TODO (sven): Deprecate these args.
+        worker: Optional["EnvRunner"] = None,
+        base_env: Optional[BaseEnv] = None,
+        policies: Optional[Dict[PolicyID, Policy]] = None,
         **kwargs,
     ) -> None:
         """Called when an episode is done (after terminated/truncated have been logged).
@@ -402,21 +382,21 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         been converted to numpy arrays yet).
 
         Args:
-            episode: The terminated/truncated episode. On the new API stack, this will
-                be a SingleAgentEpisode or MultiAgentEpisode object (which have already
-                been finalized, meaning their data has been converted to numpy arrays).
-                On the old API stack, this will be a Episode or EpisodeV2 object.
-            env_runner: Replaces `worker` arg. Reference to the current EnvRunner.
-            env: Replaces `base_env` arg.  The gym.Env (new API stack) or RLlib
-                BaseEnv (old API stack) running the episode. On the old stack, the
-                underlying sub environment objects can be retrieved by calling
-                `base_env.get_sub_environments()`.
-            rl_module: Replaces `policies` arg. Either the RLModule (new API stack) or a
-                dict mapping policy IDs to policy objects (old stack). In single agent
-                mode there will only be a single policy/RLModule under the
-                `rl_module["default_policy"]` key.
-            env_index: The index of the sub-environment that is about to be reset
-                (within the vector of sub-environments of the BaseEnv).
+            episode: The terminated/truncated SingleAgent- or MultiAgentEpisode object
+                (after `env.step()` that returned terminated=True OR truncated=True and
+                after the returned obs, rewards, etc.. have been logged to the episode
+                object). Note that this method is still called before(!) the episode
+                object is finalized, meaning all its timestep data is still present in
+                lists of individual timestep data.
+            env_runner: Reference to the EnvRunner running the env and episode.
+            metrics_logger: The MetricsLogger object inside the `env_runner`. Can be
+                used to log custom metrics during env/episode stepping.
+            env: The gym.Env or gym.vector.Env object running the started episode.
+            env_index: The index of the sub-environment that has just been terminated
+                or truncated.
+            rl_module: The RLModule used to compute actions for stepping the env.
+                In a single-agent setup, this is a (single-agent) RLModule, in a multi-
+                agent setup, this will be a MultiAgentRLModule.
             kwargs: Forward compatibility placeholder.
         """
         pass
@@ -501,8 +481,9 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         self,
         *,
         env_runner: Optional["EnvRunner"] = None,
-        samples: SampleBatch,
-        # TODO (sven): Replace with `env_runner` arg.
+        metrics_logger: Optional[MetricsLogger] = None,
+        samples: Union[SampleBatch, List[EpisodeType]],
+        # TODO (sven): Deprecate these args.
         worker: Optional["EnvRunner"] = None,
         **kwargs,
     ) -> None:
@@ -510,6 +491,8 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
 
         Args:
             env_runner: Reference to the current EnvRunner object.
+            metrics_logger: The MetricsLogger object inside the `env_runner`. Can be
+                used to log custom metrics during env/episode stepping.
             samples: Batch to be returned. You can mutate this
                 object to modify the samples generated.
             kwargs: Forward compatibility placeholder.
@@ -692,7 +675,6 @@ def make_multi_callbacks(
             env_runner: "EnvRunner",
             env: gym.Env,
             env_context: EnvContext,
-            env_index: Optional[int] = None,
             **kwargs,
         ) -> None:
             for callback in self._callback_list:
@@ -700,11 +682,10 @@ def make_multi_callbacks(
                     env_runner=env_runner,
                     env=env,
                     env_context=env_context,
-                    env_index=env_index,
                     **kwargs,
                 )
 
-        # TODO (sven): Replace with `on_environment_created` on the new stack.
+        @OldAPIStack
         @override(DefaultCallbacks)
         def on_sub_environment_created(
             self,
@@ -741,15 +722,28 @@ def make_multi_callbacks(
             env_index: int,
             **kwargs,
         ) -> None:
-            for callback in self._callback_list:
-                callback.on_episode_created(
-                    worker=worker,
-                    base_env=base_env,
-                    policies=policies,
-                    env_index=env_index,
-                    episode=episode,
-                    **kwargs,
-                )
+            # New API stack.
+            if env_runner is not None:
+                for callback in self._callback_list:
+                    callback.on_episode_created(
+                        env_runner=env_runner,
+                        env=env,
+                        rl_module=rl_module,
+                        episode=episode,
+                        env_index=env_index,
+                        **kwargs,
+                    )
+            # Old API stack.
+            else:
+                for callback in self._callback_list:
+                    callback.on_episode_created(
+                        worker=worker,
+                        base_env=base_env,
+                        policies=policies,
+                        env_index=env_index,
+                        episode=episode,
+                        **kwargs,
+                    )
 
         @override(DefaultCallbacks)
         def on_episode_start(
@@ -769,15 +763,28 @@ def make_multi_callbacks(
             env_index: int,
             **kwargs,
         ) -> None:
-            for callback in self._callback_list:
-                callback.on_episode_start(
-                    worker=worker,
-                    base_env=base_env,
-                    policies=policies,
-                    episode=episode,
-                    env_index=env_index,
-                    **kwargs,
-                )
+            # New API stack.
+            if env_runner is not None:
+                for callback in self._callback_list:
+                    callback.on_episode_start(
+                        env_runner=env_runner,
+                        env=env,
+                        rl_module=rl_module,
+                        episode=episode,
+                        env_index=env_index,
+                        **kwargs,
+                    )
+            # Old API stack.
+            else:
+                for callback in self._callback_list:
+                    callback.on_episode_start(
+                        worker=worker,
+                        base_env=base_env,
+                        policies=policies,
+                        episode=episode,
+                        env_index=env_index,
+                        **kwargs,
+                    )
 
         @override(DefaultCallbacks)
         def on_episode_step(
@@ -797,15 +804,28 @@ def make_multi_callbacks(
             env_index: int,
             **kwargs,
         ) -> None:
-            for callback in self._callback_list:
-                callback.on_episode_step(
-                    worker=worker,
-                    base_env=base_env,
-                    policies=policies,
-                    episode=episode,
-                    env_index=env_index,
-                    **kwargs,
-                )
+            # New API stack.
+            if env_runner is not None:
+                for callback in self._callback_list:
+                    callback.on_episode_step(
+                        env_runner=env_runner,
+                        env=env,
+                        rl_module=rl_module,
+                        episode=episode,
+                        env_index=env_index,
+                        **kwargs,
+                    )
+            # Old API stack.
+            else:
+                for callback in self._callback_list:
+                    callback.on_episode_step(
+                        worker=worker,
+                        base_env=base_env,
+                        policies=policies,
+                        episode=episode,
+                        env_index=env_index,
+                        **kwargs,
+                    )
 
         @override(DefaultCallbacks)
         def on_episode_end(
@@ -825,15 +845,28 @@ def make_multi_callbacks(
             env_index: int,
             **kwargs,
         ) -> None:
-            for callback in self._callback_list:
-                callback.on_episode_end(
-                    worker=worker,
-                    base_env=base_env,
-                    policies=policies,
-                    episode=episode,
-                    env_index=env_index,
-                    **kwargs,
-                )
+            # New API stack.
+            if env_runner is not None:
+                for callback in self._callback_list:
+                    callback.on_episode_end(
+                        env_runner=env_runner,
+                        env=env,
+                        rl_module=rl_module,
+                        episode=episode,
+                        env_index=env_index,
+                        **kwargs,
+                    )
+            # Old API stack.
+            else:
+                for callback in self._callback_list:
+                    callback.on_episode_end(
+                        worker=worker,
+                        base_env=base_env,
+                        policies=policies,
+                        episode=episode,
+                        env_index=env_index,
+                        **kwargs,
+                    )
 
         @override(DefaultCallbacks)
         def on_evaluate_start(
@@ -863,6 +896,7 @@ def make_multi_callbacks(
                     **kwargs,
                 )
 
+        @OldAPIStack
         @override(DefaultCallbacks)
         def on_postprocess_trajectory(
             self,
@@ -890,11 +924,20 @@ def make_multi_callbacks(
 
         @override(DefaultCallbacks)
         def on_sample_end(
-            self, *, worker: "EnvRunner", samples: SampleBatch, **kwargs
+            self,
+            *,
+            env_runner: Optional["EnvRunner"] = None,
+            samples: Union[SampleBatch, List[EpisodeType]],
+            # TODO (sven): Replace with `env_runner` arg.
+            worker: Optional["EnvRunner"] = None,
+            **kwargs,
         ) -> None:
             for callback in self._callback_list:
-                callback.on_sample_end(worker=worker, samples=samples, **kwargs)
+                callback.on_sample_end(
+                    env_runner=env_runner, samples=samples, worker=worker, **kwargs
+                )
 
+        @OldAPIStack
         @override(DefaultCallbacks)
         def on_learn_on_batch(
             self, *, policy: Policy, train_batch: SampleBatch, result: dict, **kwargs

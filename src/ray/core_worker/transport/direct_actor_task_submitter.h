@@ -242,13 +242,22 @@ class CoreWorkerDirectActorTaskSubmitter
   void RetryCancelTask(TaskSpecification task_spec, bool recursive, int64_t milliseconds);
 
  private:
-  struct TaskInfo {
-    TaskSpecification specification;
-    Status status;
-    ActorID actor_id;
-    bool preempted;
-  };
+  struct PendingTaskWaitingForDeathInfo {
+    int64_t deadline_ms;
+    TaskSpecification task_spec;
+    ray::Status status;
+    rpc::RayErrorInfo timeout_error_info;
+    bool actor_preempted = false;
 
+    PendingTaskWaitingForDeathInfo(int64_t deadline_ms,
+                                   TaskSpecification task_spec,
+                                   ray::Status status,
+                                   rpc::RayErrorInfo timeout_error_info)
+        : deadline_ms(deadline_ms),
+          task_spec(std::move(task_spec)),
+          status(std::move(status)),
+          timeout_error_info(std::move(timeout_error_info)) {}
+  };
   /// A helper function to get task finisher without holding mu_
   /// We should use this function when access
   /// - FailOrRetryPendingTask
@@ -299,10 +308,16 @@ class CoreWorkerDirectActorTaskSubmitter
     /// failed using the death_info in notification. For 2) we'll never receive a DEAD
     /// notification, in this case we'll wait for a fixed timeout value and then mark it
     /// as failed.
-    /// pair key: timestamp in ms when this task should be considered as timeout.
-    /// pair value: task specification, and associated task execution status.
-    std::deque<std::pair<int64_t, std::pair<TaskSpecification, Status>>>
-        wait_for_death_info_tasks;
+    ///
+    /// Invariants: tasks are ordered by the field `deadline_ms`.
+    ///
+    /// If we got an actor dead notification, the error_info from that death cause is
+    /// used.
+    /// If a task timed out, it's possible that the Actor is not dead yet, so we use
+    /// `timeout_error_info`. One special case is when the actor is preempted, where
+    /// the actor may not be dead *just yet* but we want to treat it as dead. In this
+    /// case we hard code an error info.
+    std::deque<std::shared_ptr<PendingTaskWaitingForDeathInfo>> wait_for_death_info_tasks;
 
     /// A force-kill request that should be sent to the actor once an RPC
     /// client to the actor is available.
@@ -335,8 +350,8 @@ class CoreWorkerDirectActorTaskSubmitter
     }
   };
 
-  /// Fail the task with a constructed ActorDiedError, with preemption info.
-  void FailTaskWithError(const TaskInfo &task_info);
+  /// Fail the task with the timeout error, or the preempted error.
+  void FailTaskWithError(const PendingTaskWaitingForDeathInfo &task);
 
   /// Push a task to a remote actor via the given client.
   /// Note, this function doesn't return any error status code. If an error occurs while

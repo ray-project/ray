@@ -55,6 +55,7 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
+from ray.serve._private.utils import get_component_file_name  # noqa: F401
 from ray.serve._private.utils import parse_import_path, wrap_to_ray_error
 from ray.serve._private.version import DeploymentVersion
 from ray.serve.config import AutoscalingConfig
@@ -252,6 +253,13 @@ class ReplicaActor:
         self._deployment_config = DeploymentConfig.from_proto_bytes(
             deployment_config_proto_bytes
         )
+        self._component_name = f"{self._deployment_id.name}"
+        if self._deployment_id.app_name:
+            self._component_name = (
+                f"{self._deployment_id.app_name}_" + self._component_name
+            )
+
+        self._component_id = self._replica_id.unique_id
         self._configure_logger_and_profilers(self._deployment_config.logging_config)
         self._event_loop = get_or_create_event_loop()
 
@@ -269,6 +277,7 @@ class ReplicaActor:
         # Guards against calling the user's callable constructor multiple times.
         self._user_callable_initialized = False
         self._user_callable_initialized_lock = asyncio.Lock()
+        self._initialization_latency: Optional[float] = None
 
         # Set metadata for logs and metrics.
         # servable_object will be populated in `initialize_and_get_metadata`.
@@ -284,6 +293,7 @@ class ReplicaActor:
         ray.serve.context._set_internal_replica_context(
             replica_id=self._replica_id,
             servable_object=servable_object,
+            _deployment_config=self._deployment_config,
         )
 
     def _configure_logger_and_profilers(
@@ -294,26 +304,21 @@ class ReplicaActor:
         if isinstance(logging_config, dict):
             logging_config = LoggingConfig(**logging_config)
 
-        component_name = f"{self._deployment_id.name}"
-        if self._deployment_id.app_name:
-            component_name = f"{self._deployment_id.app_name}_" + component_name
-
-        component_id = self._replica_id.unique_id
         configure_component_logger(
             component_type=ServeComponentType.REPLICA,
-            component_name=component_name,
-            component_id=component_id,
+            component_name=self._component_name,
+            component_id=self._component_id,
             logging_config=logging_config,
         )
         configure_component_memory_profiler(
             component_type=ServeComponentType.REPLICA,
-            component_name=component_name,
-            component_id=component_id,
+            component_name=self._component_name,
+            component_id=self._component_id,
         )
         self.cpu_profiler, self.cpu_profiler_log = configure_component_cpu_profiler(
             component_type=ServeComponentType.REPLICA,
-            component_name=component_name,
-            component_id=component_id,
+            component_name=self._component_name,
+            component_id=self._component_id,
         )
 
     def get_num_ongoing_requests(self) -> int:
@@ -347,6 +352,8 @@ class ReplicaActor:
         try:
             self._metrics_manager.inc_num_ongoing_requests()
             yield
+        except asyncio.CancelledError as e:
+            user_exception = e
         except Exception as e:
             user_exception = e
             logger.error(f"Request failed:\n{e}")
@@ -582,13 +589,21 @@ class ReplicaActor:
         self,
         deployment_config: DeploymentConfig = None,
         _after: Optional[Any] = None,
-    ) -> Tuple[DeploymentConfig, DeploymentVersion]:
+    ) -> Tuple[DeploymentConfig, DeploymentVersion, Optional[float]]:
+        """Handles initializing the replica.
+
+        Returns: 3-tuple containing
+            1. DeploymentConfig of the replica
+            2. DeploymentVersion of the replica
+            3. Initialization duration in seconds
+        """
         # Unused `_after` argument is for scheduling: passing an ObjectRef
         # allows delaying this call until after the `_after` call has returned.
         try:
             # Ensure that initialization is only performed once.
             # When controller restarts, it will call this method again.
             async with self._user_callable_initialized_lock:
+                initialization_start_time = time.time()
                 if not self._user_callable_initialized:
                     await self._user_callable_wrapper.initialize_callable()
                     self._user_callable_initialized = True
@@ -604,6 +619,12 @@ class ReplicaActor:
             # an initial health check. If an initial health check fails,
             # consider it an initialization failure.
             await self.check_health()
+
+            # Save the initialization latency if the replica is initializing
+            # for the first time.
+            if self._initialization_latency is None:
+                self._initialization_latency = time.time() - initialization_start_time
+
             return self._get_metadata()
         except Exception:
             raise RuntimeError(traceback.format_exc()) from None
@@ -611,7 +632,7 @@ class ReplicaActor:
     async def reconfigure(
         self,
         deployment_config: DeploymentConfig,
-    ) -> Tuple[DeploymentConfig, DeploymentVersion]:
+    ) -> Tuple[DeploymentConfig, DeploymentVersion, Optional[float]]:
         try:
             user_config_changed = (
                 deployment_config.user_config != self._deployment_config.user_config
@@ -636,16 +657,23 @@ class ReplicaActor:
                     deployment_config.user_config
                 )
 
+            # We need to update internal replica context to reflect the new
+            # deployment_config.
+            self._set_internal_replica_context(
+                servable_object=self._user_callable_wrapper.user_callable
+            )
+
             return self._get_metadata()
         except Exception:
             raise RuntimeError(traceback.format_exc()) from None
 
     def _get_metadata(
         self,
-    ) -> Tuple[DeploymentConfig, DeploymentVersion]:
+    ) -> Tuple[DeploymentConfig, DeploymentVersion, Optional[float]]:
         return (
             self._version.deployment_config,
             self._version,
+            self._initialization_latency,
         )
 
     def _save_cpu_profile_data(self) -> str:
@@ -932,7 +960,9 @@ class UserCallableWrapper:
 
         The returned `receive_task` should be cancelled when the user method exits.
         """
+        scope = pickle.loads(request.pickled_asgi_scope)
         receive = ASGIReceiveProxy(
+            scope,
             request_metadata.request_id,
             request.receive_asgi_messages,
         )
@@ -940,7 +970,7 @@ class UserCallableWrapper:
             receive.fetch_until_disconnect()
         )
         asgi_args = ASGIArgs(
-            scope=pickle.loads(request.pickled_asgi_scope),
+            scope=scope,
             receive=receive,
             send=generator_result_callback,
         )

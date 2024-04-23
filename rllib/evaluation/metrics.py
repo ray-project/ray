@@ -1,7 +1,7 @@
 import collections
 import logging
 import numpy as np
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import List, Optional, TYPE_CHECKING
 
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -30,19 +30,6 @@ RolloutMetrics = DeveloperAPI(
     )
 )
 RolloutMetrics.__new__.__defaults__ = (0, 0, {}, {}, {}, {}, {}, False, {})
-
-
-def _extract_stats(stats: Dict, key: str) -> Dict[str, Any]:
-    if key in stats:
-        return stats[key]
-
-    multiagent_stats = {}
-    for k, v in stats.items():
-        if isinstance(v, dict):
-            if key in v:
-                multiagent_stats[k] = v[key]
-
-    return multiagent_stats
 
 
 @DeveloperAPI
@@ -256,6 +243,7 @@ def summarize_episodes(
         episode_len_mean=avg_length,
         episode_media=dict(episode_media),
         episodes_this_iter=len(new_episodes),
+        episodes_timesteps_total=sum(episode_lengths),
         policy_reward_min=policy_reward_min,
         policy_reward_max=policy_reward_max,
         policy_reward_mean=policy_reward_mean,

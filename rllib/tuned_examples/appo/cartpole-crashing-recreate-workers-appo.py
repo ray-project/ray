@@ -7,7 +7,7 @@ The environment we use here is configured to crash with a certain probability on
 `step()` and/or `reset()` call.
 """
 from ray.rllib.algorithms.appo import APPOConfig
-from ray.rllib.examples.env.cartpole_crashing import CartPoleCrashing
+from ray.rllib.examples.envs.classes.cartpole_crashing import CartPoleCrashing
 from ray import tune
 
 tune.register_env("env", lambda cfg: CartPoleCrashing(cfg))
@@ -46,7 +46,6 @@ config = (
         evaluation_duration=25,
         evaluation_duration_unit="episodes",
         evaluation_parallel_to_training=True,
-        enable_async_evaluation=True,
         evaluation_config=APPOConfig.overrides(
             explore=False,
             env_config={

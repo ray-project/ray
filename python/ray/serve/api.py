@@ -18,7 +18,6 @@ from ray.serve._private.config import (
 )
 from ray.serve._private.constants import (
     DEFAULT_MAX_ONGOING_REQUESTS,
-    NEW_DEFAULT_MAX_ONGOING_REQUESTS,
     SERVE_DEFAULT_APP_NAME,
     SERVE_LOGGER_NAME,
 )
@@ -253,8 +252,8 @@ def deployment(
     num_replicas: Default[Optional[Union[int, str]]] = DEFAULT.VALUE,
     route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
     ray_actor_options: Default[Dict] = DEFAULT.VALUE,
-    placement_group_bundles: Optional[List[Dict[str, float]]] = DEFAULT.VALUE,
-    placement_group_strategy: Optional[str] = DEFAULT.VALUE,
+    placement_group_bundles: Default[List[Dict[str, float]]] = DEFAULT.VALUE,
+    placement_group_strategy: Default[str] = DEFAULT.VALUE,
     max_replicas_per_node: Default[int] = DEFAULT.VALUE,
     user_config: Default[Optional[Any]] = DEFAULT.VALUE,
     max_concurrent_queries: Default[int] = DEFAULT.VALUE,
@@ -301,6 +300,7 @@ def deployment(
             actors and tasks created by the replica actor will be scheduled in the
             placement group by default (`placement_group_capture_child_tasks` is set
             to True).
+            This cannot be set together with max_replicas_per_node.
         placement_group_strategy: Strategy to use for the replica placement group
             specified via `placement_group_bundles`. Defaults to `PACK`.
         user_config: Config to pass to the reconfigure method of the deployment. This
@@ -328,6 +328,7 @@ def deployment(
         max_replicas_per_node: The max number of replicas of this deployment that can
             run on a single node. Valid values are None (default, no limit)
             or an integer in the range of [1, 100].
+            This cannot be set together with placement_group_bundles.
 
     Returns:
         `Deployment`
@@ -345,37 +346,25 @@ def deployment(
             logger.warning(
                 "DeprecationWarning: `target_num_ongoing_requests_per_replica` in "
                 "`autoscaling_config` has been deprecated and replaced by "
-                "`target_ongoing_requests`. Note that "
+                "`target_ongoing_requests`. "
                 "`target_num_ongoing_requests_per_replica` will be removed in a future "
                 "version."
             )
 
-        if (
-            isinstance(autoscaling_config, dict)
-            and "target_num_ongoing_requests_per_replica" not in autoscaling_config
-            and "target_ongoing_requests" not in autoscaling_config
-        ) or (
-            isinstance(autoscaling_config, AutoscalingConfig)
-            and "target_num_ongoing_requests_per_replica"
-            not in autoscaling_config.dict(exclude_unset=True)
-            and "target_ongoing_requests"
-            not in autoscaling_config.dict(exclude_unset=True)
-        ):
-            logger.warning(
-                "The default value for `target_ongoing_requests` is currently 1.0, "
-                "but will change to 2.0 in an upcoming release."
-            )
-
-    max_ongoing_requests = (
-        max_ongoing_requests
-        if max_ongoing_requests is not DEFAULT.VALUE
-        else max_concurrent_queries
-    )
+    if max_ongoing_requests is None:
+        raise ValueError("`max_ongoing_requests` must be non-null, got None.")
+    elif max_ongoing_requests is DEFAULT.VALUE:
+        if max_concurrent_queries is None:
+            max_ongoing_requests = DEFAULT_MAX_ONGOING_REQUESTS
+        else:
+            max_ongoing_requests = max_concurrent_queries
     if num_replicas == "auto":
         num_replicas = None
         max_ongoing_requests, autoscaling_config = handle_num_replicas_auto(
             max_ongoing_requests, autoscaling_config
         )
+
+        ServeUsageTag.AUTO_NUM_REPLICAS_USED.record("1")
 
     # NOTE: The user_configured_option_names should be the first thing that's
     # defined in this function. It depends on the locals() dictionary storing
@@ -418,13 +407,6 @@ def deployment(
         logger.warning(
             "DeprecationWarning: `max_concurrent_queries` in `@serve.deployment` has "
             "been deprecated and replaced by `max_ongoing_requests`."
-        )
-
-    if max_concurrent_queries is DEFAULT.VALUE:
-        logger.warning(
-            "The default value for `max_ongoing_requests` is currently "
-            f"{DEFAULT_MAX_ONGOING_REQUESTS}, but will change to "
-            f"{NEW_DEFAULT_MAX_ONGOING_REQUESTS} in the next upcoming release."
         )
 
     if isinstance(logging_config, LoggingConfig):
@@ -555,7 +537,7 @@ def _run(
         # deploy_application returns; the application state manager will
         # need another reconcile iteration to create it.
         client._wait_for_deployment_created(ingress.name, name)
-        handle = client.get_handle(ingress.name, name, missing_ok=True)
+        handle = client.get_handle(ingress.name, name, check_exists=False)
         return handle
 
 
@@ -849,13 +831,17 @@ def get_app_handle(name: str) -> DeploymentHandle:
         raise RayServeException(f"Application '{name}' does not exist.")
 
     ServeUsageTag.SERVE_GET_APP_HANDLE_API_USED.record("1")
-    return client.get_handle(ingress, name)
+    # There is no need to check if the deployment exists since the
+    # deployment name was just fetched from the controller
+    return client.get_handle(ingress, name, check_exists=False)
 
 
 @DeveloperAPI
 def get_deployment_handle(
     deployment_name: str,
     app_name: Optional[str] = None,
+    _check_exists: bool = True,
+    _record_telemetry: bool = True,
 ) -> DeploymentHandle:
     """Get a handle to a deployment by name.
 
@@ -942,5 +928,7 @@ def get_deployment_handle(
         else:
             app_name = internal_replica_context.app_name
 
-    ServeUsageTag.SERVE_GET_DEPLOYMENT_HANDLE_API_USED.record("1")
-    return client.get_handle(deployment_name, app_name)
+    if _record_telemetry:
+        ServeUsageTag.SERVE_GET_DEPLOYMENT_HANDLE_API_USED.record("1")
+
+    return client.get_handle(deployment_name, app_name, check_exists=_check_exists)

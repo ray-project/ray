@@ -763,6 +763,34 @@ def test_no_slash_route_prefix(serve_instance):
         serve.run(f.bind(), route_prefix="no_slash")
 
 
+def test_mutually_exclusive_max_replicas_per_node_and_placement_group_bundles():
+    with pytest.raises(
+        ValueError,
+        match=(
+            "Setting max_replicas_per_node is not allowed when "
+            "placement_group_bundles is provided."
+        ),
+    ):
+
+        @serve.deployment(max_replicas_per_node=3, placement_group_bundles=[{"CPU": 1}])
+        def f():
+            pass
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "Setting max_replicas_per_node is not allowed when "
+            "placement_group_bundles is provided."
+        ),
+    ):
+
+        @serve.deployment
+        def g():
+            pass
+
+        g.options(max_replicas_per_node=3, placement_group_bundles=[{"CPU": 1}])
+
+
 def test_status_basic(serve_instance):
     # Before Serve is started, serve.status() should have an empty list of applications
     assert len(serve.status().applications) == 0
@@ -972,6 +1000,56 @@ def test_deployment_handle_nested_in_obj(serve_instance):
     handle_wrapper = HandleWrapper(f.bind())
     h = serve.run(MyDriver.bind(handle_wrapper))
     assert h.remote().result() == "hi"
+
+
+def test_max_ongoing_requests_none(serve_instance):
+    """We should not allow setting `max_ongoing_requests` to None. To maintain backwards
+    compatibility, we SHOULD allow setting `max_concurrent_queries` to None.
+    """
+
+    def get_max_ongoing_requests():
+        details = serve_instance.get_serve_details()
+        return details["applications"]["default"]["deployments"]["A"][
+            "deployment_config"
+        ]["max_ongoing_requests"]
+
+    class A:
+        pass
+
+    with pytest.raises(ValueError):
+        serve.deployment(max_ongoing_requests=None)(A).bind()
+    with pytest.raises(ValueError):
+        serve.deployment(A).options(max_ongoing_requests=None).bind()
+    with pytest.raises(ValueError):
+        serve.deployment(max_ongoing_requests=None, max_concurrent_queries=None)(
+            A
+        ).bind()
+
+    with pytest.raises(ValueError):
+        serve.deployment(max_ongoing_requests=None, max_concurrent_queries=7)(A).bind()
+
+    with pytest.raises(ValueError):
+        serve.deployment(A).options(
+            max_ongoing_requests=None, max_concurrent_queries=7
+        ).bind()
+
+    serve.run(serve.deployment(max_concurrent_queries=None)(A).bind())
+    assert get_max_ongoing_requests() == 100
+
+    serve.run(serve.deployment(A).options(max_concurrent_queries=None).bind())
+    assert get_max_ongoing_requests() == 100
+
+    serve.run(
+        serve.deployment(max_ongoing_requests=8, max_concurrent_queries=None)(A).bind()
+    )
+    assert get_max_ongoing_requests() == 8
+
+    serve.run(
+        serve.deployment(A)
+        .options(max_ongoing_requests=12, max_concurrent_queries=None)
+        .bind()
+    )
+    assert get_max_ongoing_requests() == 12
 
 
 if __name__ == "__main__":

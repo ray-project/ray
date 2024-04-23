@@ -12,7 +12,12 @@ from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray._private.usage import usage_lib
 from ray.cluster_utils import AutoscalingCluster, Cluster
-from ray.serve._private.test_utils import TELEMETRY_ROUTE_PREFIX, check_ray_stopped
+from ray.serve._private.test_utils import (
+    TELEMETRY_ROUTE_PREFIX,
+    check_ray_started,
+    check_ray_stopped,
+    start_telemetry_app,
+)
 from ray.serve.context import _get_global_client
 from ray.tests.conftest import propagate_logs, pytest_runtest_makereport  # noqa
 
@@ -151,6 +156,35 @@ def ray_start_stop():
     )
 
 
+@pytest.fixture(scope="function")
+def ray_start_stop_in_specific_directory(request):
+    original_working_dir = os.getcwd()
+
+    # Change working directory so Ray will start in the requested directory.
+    new_working_dir = request.param
+    os.chdir(new_working_dir)
+    print(f"\nChanged working directory to {new_working_dir}\n")
+
+    subprocess.check_output(["ray", "start", "--head"])
+    wait_for_condition(
+        lambda: requests.get("http://localhost:52365/api/ray/version").status_code
+        == 200,
+        timeout=15,
+    )
+    try:
+        yield
+    finally:
+        # Change the directory back to the original one.
+        os.chdir(original_working_dir)
+        print(f"\nChanged working directory back to {original_working_dir}\n")
+
+        subprocess.check_output(["ray", "stop", "--force"])
+        wait_for_condition(
+            check_ray_stop,
+            timeout=15,
+        )
+
+
 @pytest.fixture
 def ray_instance(request):
     """Starts and stops a Ray instance for this test.
@@ -193,7 +227,16 @@ def manage_ray_with_telemetry(monkeypatch):
         m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
         subprocess.check_output(["ray", "stop", "--force"])
         wait_for_condition(check_ray_stopped, timeout=5)
-        yield
+
+        subprocess.check_output(["ray", "start", "--head"])
+        wait_for_condition(check_ray_started, timeout=5)
+
+        storage = start_telemetry_app()
+        wait_for_condition(
+            lambda: ray.get(storage.get_reports_received.remote()) > 1, timeout=15
+        )
+
+        yield storage
 
         # Call Python API shutdown() methods to clear global variable state
         serve.shutdown()

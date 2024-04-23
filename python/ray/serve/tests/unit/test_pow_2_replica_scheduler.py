@@ -12,6 +12,7 @@ import pytest
 import ray
 from ray._private.test_utils import async_wait_for_condition
 from ray._private.utils import get_or_create_event_loop
+from ray.exceptions import ActorDiedError, ActorUnavailableError
 from ray.serve._private.common import DeploymentID, ReplicaID, RequestMetadata
 from ray.serve._private.constants import RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S
 from ray.serve._private.replica_scheduler import (
@@ -56,6 +57,7 @@ class FakeReplicaWrapper(ReplicaWrapper):
 
         self.get_queue_len_was_cancelled = False
         self.queue_len_deadline_history = list()
+        self.num_get_queue_len_calls = 0
 
     @property
     def replica_id(self) -> ReplicaID:
@@ -87,6 +89,7 @@ class FakeReplicaWrapper(ReplicaWrapper):
         self._has_queue_len_response.set()
 
     async def get_queue_len(self, *, deadline_s: float) -> int:
+        self.num_get_queue_len_calls += 1
         self.queue_len_deadline_history.append(deadline_s)
         try:
             while not self._has_queue_len_response.is_set():
@@ -1084,6 +1087,23 @@ class TestModelMultiplexing:
             task = loop.create_task(s.choose_replica_for_request(request))
             assert (await task) == r2
 
+    async def test_backoff_from_least_number_of_models_replicas(self, pow_2_scheduler):
+        """
+        If no replica has the model_id, choose the least number of models replicas.
+        If those replicas cannot be scheduled to, we should fall back to all replicas.
+        """
+        s = pow_2_scheduler
+        loop = get_or_create_event_loop()
+        r1 = FakeReplicaWrapper("r1", model_ids={"m1", "m2"})
+        r2 = FakeReplicaWrapper("r2", model_ids={"m2"})
+        r1.set_queue_len_response(0)
+        r2.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
+        s.update_replicas([r1, r2])
+        for _ in range(10):
+            request = fake_pending_request(model_id="m3")
+            task = loop.create_task(s.choose_replica_for_request(request))
+            assert (await task) == r1
+
     async def test_no_replica_has_model_id(self, pow_2_scheduler):
         """
         If no replica has the model_id, we should fall back to normal procedure.
@@ -1579,6 +1599,109 @@ async def test_queue_len_cache_entries_added_correctly(pow_2_scheduler):
         assert s._replica_queue_len_cache.get(r1.replica_id) == r1_queue_len
         assert s._replica_queue_len_cache.get(r2.replica_id) == r2_queue_len
         TIMER.advance(staleness_timeout_s + 1)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pow_2_scheduler",
+    [
+        {"prefer_local_node": True, "prefer_local_az": True},
+    ],
+    indirect=True,
+)
+@pytest.mark.parametrize("backoff_index", [0, 10, 2048])
+async def test_backoff_index_handling(pow_2_scheduler, backoff_index: int):
+    """Ensure that different ranges of backoff_index are valid.
+
+    In the past, high backoff_indexes (greater than 1024) have caused
+    OverflowErrors. See https://github.com/ray-project/ray/issues/43964.
+    """
+    s = pow_2_scheduler
+
+    r1 = FakeReplicaWrapper("r1")
+    r1.set_queue_len_response(0)
+
+    r2 = FakeReplicaWrapper("r2")
+    r2.set_queue_len_response(0)
+
+    s.update_replicas([r1, r2])
+
+    r = await s.select_from_candidate_replicas([r1, r2], backoff_index)
+    assert r in [r1, r2]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("pow_2_scheduler", [{}], indirect=True)
+async def test_replicas_actor_died_error(
+    pow_2_scheduler: PowerOfTwoChoicesReplicaScheduler,
+):
+    """
+    If replicas return an ActorDiedError, they should be removed from the
+    local list.
+    """
+    s = pow_2_scheduler
+
+    r1 = FakeReplicaWrapper("r1")
+    r1.set_queue_len_response(
+        queue_len=0,
+        exception=ActorDiedError(),
+    )
+
+    r2 = FakeReplicaWrapper("r2")
+    r2.set_queue_len_response(0)
+
+    s.update_replicas([r1, r2])
+
+    # After detecting that the first replica died, the scheduler should
+    # stop scheduling it.
+    await s.choose_replica_for_request(fake_pending_request())
+    assert set(pow_2_scheduler.curr_replicas.values()) == {r2}
+
+    # Check that get_queue_len is never called on r1 and always called on r2.
+    r1.num_get_queue_len_calls = 0
+    for _ in range(10):
+        assert (await s.choose_replica_for_request(fake_pending_request())) == r2
+    assert r1.num_get_queue_len_calls == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("pow_2_scheduler", [{}], indirect=True)
+async def test_replicas_actor_unavailable_error(
+    pow_2_scheduler: PowerOfTwoChoicesReplicaScheduler,
+):
+    """
+    If replicas return an ActorUnavailableError, they should remain in the
+    local list.
+    """
+    s = pow_2_scheduler
+
+    r1 = FakeReplicaWrapper("r1")
+    r1.set_queue_len_response(1)
+    r1.set_queue_len_response(
+        queue_len=0,
+        exception=ActorUnavailableError(
+            error_message="Actor is temporarily unavailable",
+            actor_id=b"a" * 16,
+        ),
+    )
+
+    r2 = FakeReplicaWrapper("r2")
+    r2.set_queue_len_response(5)
+
+    s.update_replicas([r1, r2])
+
+    for _ in range(10):
+        assert (await s.choose_replica_for_request(fake_pending_request())) == r2
+
+    # The scheduler should keep r1 since it may recover.
+    assert set(pow_2_scheduler.curr_replicas.values()) == {r1, r2}
+
+    # Restore r1.
+    r1.set_queue_len_response(queue_len=0, exception=None)
+
+    # The scheduler should keep picking r1 since it has a smaller queue length.
+    for _ in range(10):
+        assert (await s.choose_replica_for_request(fake_pending_request())) == r1
 
 
 if __name__ == "__main__":

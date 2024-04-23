@@ -10,8 +10,10 @@ import ray
 import ray.rllib.algorithms.dqn as dqn
 from ray.rllib.algorithms.bc import BCConfig
 import ray.rllib.algorithms.ppo as ppo
-from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
-from ray.rllib.examples.parallel_evaluation_and_training import AssertEvalCallback
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
+from ray.rllib.examples.evaluation.evaluation_parallel_to_training import (
+    AssertEvalCallback,
+)
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.test_utils import check, framework_iterator
 
@@ -80,7 +82,7 @@ class TestAlgorithm(unittest.TestCase):
             self.assertTrue("p0" in r["info"][LEARNER_INFO])
             for i in range(1, 3):
 
-                def new_mapping_fn(agent_id, episode, worker, **kwargs):
+                def new_mapping_fn(agent_id, episode, worker, i=i, **kwargs):
                     return f"p{choice([i, i - 1])}"
 
                 # Add a new policy either by class (and options) or by instance.
@@ -113,12 +115,16 @@ class TestAlgorithm(unittest.TestCase):
                 # Make sure new policy is part of remote workers in the
                 # worker set and the eval worker set.
                 self.assertTrue(
-                    all(algo.workers.foreach_worker(func=lambda w: pid in w.policy_map))
+                    all(
+                        algo.workers.foreach_worker(
+                            func=lambda w, pid=pid: pid in w.policy_map
+                        )
+                    )
                 )
                 self.assertTrue(
                     all(
                         algo.evaluation_workers.foreach_worker(
-                            func=lambda w: pid in w.policy_map
+                            func=lambda w, pid=pid: pid in w.policy_map
                         )
                     )
                 )
@@ -138,7 +144,7 @@ class TestAlgorithm(unittest.TestCase):
                 test = ppo.PPO.from_checkpoint(checkpoint)
 
                 # Make sure evaluation worker also got the restored, added policy.
-                def _has_policies(w):
+                def _has_policies(w, pid=pid):
                     return (
                         w.get_policy("p0") is not None and w.get_policy(pid) is not None
                     )
@@ -202,7 +208,7 @@ class TestAlgorithm(unittest.TestCase):
                     # Note that the complete signature of a policy_mapping_fn
                     # is: `agent_id, episode, worker, **kwargs`.
                     policy_mapping_fn=(
-                        lambda agent_id, episode, worker, **kwargs: f"p{i - 1}"
+                        lambda agent_id, episode, worker, i=i, **kwargs: f"p{i - 1}"
                     ),
                     # Update list of policies to train.
                     policies_to_train=[f"p{i - 1}"],
@@ -210,13 +216,13 @@ class TestAlgorithm(unittest.TestCase):
                 # Make sure removed policy is no longer part of remote workers in the
                 # worker set and the eval worker set.
                 self.assertTrue(
-                    algo.workers.foreach_worker(func=lambda w: pid not in w.policy_map)[
-                        0
-                    ]
+                    algo.workers.foreach_worker(
+                        func=lambda w, pid=pid: pid not in w.policy_map
+                    )[0]
                 )
                 self.assertTrue(
                     algo.evaluation_workers.foreach_worker(
-                        func=lambda w: pid not in w.policy_map
+                        func=lambda w, pid=pid: pid not in w.policy_map
                     )[0]
                 )
                 # Assert removed policy is no longer part of local worker
@@ -239,6 +245,7 @@ class TestAlgorithm(unittest.TestCase):
                 evaluation_duration=2,
                 evaluation_duration_unit="episodes",
                 evaluation_config=dqn.DQNConfig.overrides(gamma=0.98),
+                always_attach_evaluation_results=False,
             )
             .callbacks(callbacks_class=AssertEvalCallback)
         )
@@ -312,7 +319,7 @@ class TestAlgorithm(unittest.TestCase):
             algo_wo_env_on_local_worker = config.build()
             self.assertRaisesRegex(
                 ValueError,
-                "Cannot evaluate w/o an evaluation worker set",
+                "Cannot evaluate on a local worker",
                 algo_wo_env_on_local_worker.evaluate,
             )
             algo_wo_env_on_local_worker.stop()

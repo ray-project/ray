@@ -75,7 +75,7 @@ message GangResourceRequest {
   string details = 2;
 }
 
-// Cluster resource constraint represents minimial cluster size requirement,
+// Cluster resource constraint represents minimal cluster size requirement,
 // this is issued through ray.autoscaler.sdk.request_resources.
 message ClusterResourceConstraint {
   // If not emtpy, the cluster should have the capacity (total resource) to fit

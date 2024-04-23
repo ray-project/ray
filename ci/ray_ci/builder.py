@@ -10,11 +10,11 @@ from ci.ray_ci.builder_container import (
     BuilderContainer,
 )
 from ci.ray_ci.windows_builder_container import WindowsBuilderContainer
-from ci.ray_ci.docker_container import PLATFORM
+from ci.ray_ci.docker_container import PLATFORMS_RAY
 from ci.ray_ci.ray_docker_container import RayDockerContainer
 from ci.ray_ci.anyscale_docker_container import AnyscaleDockerContainer
 from ci.ray_ci.container import _DOCKER_ECR_REPO
-from ci.ray_ci.utils import logger, docker_login
+from ci.ray_ci.utils import logger, docker_login, ci_init
 
 
 @click.command()
@@ -42,7 +42,7 @@ from ci.ray_ci.utils import logger, docker_login
 @click.option(
     "--platform",
     multiple=True,
-    type=click.Choice(list(PLATFORM)),
+    type=click.Choice(list(PLATFORMS_RAY)),
     help=("Platform to build the docker with"),
 )
 @click.option(
@@ -85,6 +85,7 @@ def main(
     Build a wheel or jar artifact
     """
     docker_login(_DOCKER_ECR_REPO.split("/")[0])
+    ci_init()
     if artifact_type == "wheel":
         logger.info(f"Building wheel for {python_version}")
         build_wheel(python_version, build_type, architecture, operating_system, upload)

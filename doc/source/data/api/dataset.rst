@@ -142,17 +142,6 @@ Execution
 
     Dataset.materialize
 
-Serialization
--------------
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   Dataset.has_serializable_lineage
-   Dataset.serialize_lineage
-   Dataset.deserialize_lineage
-
 .. _block-api:
 
 Internals
