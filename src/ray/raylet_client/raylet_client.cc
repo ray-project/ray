@@ -416,14 +416,7 @@ void raylet::RayletClient::RegisterMutableObjectReader(
   request.set_object_id(object_id.Binary());
   request.set_num_readers(num_readers);
   request.set_reader_ref(reader_ref.Binary());
-  grpc_client_->RegisterMutableObject(
-      request,
-      [callback](const Status &status, const rpc::RegisterMutableObjectReply &reply) {
-        if (!status.ok()) {
-          RAY_LOG(INFO) << "Error registering mutable object: " << status;
-        }
-        callback(status, reply);
-      });
+  grpc_client_->RegisterMutableObject(request, callback);
 }
 
 void raylet::RayletClient::PushMutableObject(

@@ -3675,8 +3675,6 @@ cdef class CoreWorker:
                                              int num_readers,
                                              reader_node_id: str,
                                              worker_ids):
-        print(type(worker_ids))
-        print([type(w) for w in worker_ids])
         cdef:
             CObjectID c_writer_ref = writer_ref.native()
             CObjectID c_reader_ref

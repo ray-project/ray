@@ -20,8 +20,6 @@
 
 #include <google/protobuf/util/json_util.h>
 
-#include <fstream>
-
 #include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_format.h"
 #include "boost/fiber/all.hpp"
@@ -249,12 +247,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                         options_.node_ip_address == "127.0.0.1");
   core_worker_server_->RegisterService(grpc_service_, false /* token_auth */);
   core_worker_server_->Run();
-
-  std::ofstream f;
-  f.open("/tmp/blah", std::ofstream::app);
-  f << "constructor, worker id is " << worker_context_.GetWorkerID() << ", ip addr is "
-    << options_.node_ip_address << ", port is " << core_worker_server_->GetPort()
-    << std::endl;
 
   // Set our own address.
   RAY_CHECK(!local_raylet_id.IsNil());
@@ -1477,11 +1469,6 @@ Status CoreWorker::ExperimentalRegisterMutableObjectReaderRemote(
     int buffer_size_bytes,
     int64_t num_readers,
     ObjectID &reader_ref) {
-  std::ofstream f;
-  f.open("/tmp/blah", std::ofstream::app);
-  f << "ExperimentalRegisterMutableObjectReaderRemote, worker id is "
-    << worker_context_.GetWorkerID() << std::endl;
-
   for (const std::string &worker_id_hex : worker_ids) {
     WorkerID worker_id = WorkerID::FromHex(worker_id_hex);
     rpc::Address addr;
@@ -1511,15 +1498,15 @@ Status CoreWorker::ExperimentalRegisterMutableObjectReaderRemote(
 
       rpc::CreateMutableObjectRequest req;
       req.set_object_id(object_id.Binary());
-      req.set_num_readers(num_readers);
+      req.set_num_readers(1);
       req.set_buffer_size_bytes(buffer_size_bytes);
       rpc::CreateMutableObjectReply reply;
 
       std::promise<void> promise;
       conn->CreateMutableObject(
           req,
-          [&reader_ref, &promise](const Status &status,
-                                  const rpc::CreateMutableObjectReply &reply) {
+          [&f, &reader_ref, &promise](const Status &status,
+                                      const rpc::CreateMutableObjectReply &reply) {
             RAY_CHECK(status.ok());
             reader_ref = ObjectID::FromBinary(reply.reader_ref());
             promise.set_value();
@@ -4128,13 +4115,7 @@ void CoreWorker::HandleKillActor(rpc::KillActorRequest request,
 void CoreWorker::HandleCreateMutableObject(rpc::CreateMutableObjectRequest request,
                                            rpc::CreateMutableObjectReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
-  std::ofstream f;
-  f.open("/tmp/blah", std::ofstream::app);
-
-  f << "HandleCreateMutableObject, worker id is " << worker_context_.GetWorkerID()
-    << std::endl;
   ObjectID reader_ref;
-  f << "HandleCreateMutableObject, reader ref is " << reader_ref << std::endl;
   std::shared_ptr<Buffer> data;
   Status s = CreateOwnedAndIncrementLocalRef(
       /*is_experimental_mutable_object=*/true,
@@ -4147,26 +4128,22 @@ void CoreWorker::HandleCreateMutableObject(rpc::CreateMutableObjectRequest reque
       /*owner_address=*/nullptr,
       /*inline_small_object=*/true);
   RAY_CHECK(s.ok());
-  f << "HandleCreateMutableObject, reader ref is now " << reader_ref << std::endl;
+  s = SealOwned(reader_ref, /*pin_object=*/true, /*owner_address=*/nullptr);
+  RAY_CHECK(s.ok());
   reply->set_reader_ref(reader_ref.Binary());
-  f << "HandleCreateMutableObject, set reader ref" << std::endl;
 
   {
-    std::promise<void> promise;
     local_raylet_client_->RegisterMutableObjectReader(
         ObjectID::FromBinary(request.object_id()),
         request.num_readers(),
         request.buffer_size_bytes(),
         reader_ref,
-        [&promise](const Status &status, const rpc::RegisterMutableObjectReply &reply) {
+        [send_reply_callback](const Status &status,
+                              const rpc::RegisterMutableObjectReply &r) {
           RAY_CHECK(status.ok());
-          promise.set_value();
+          send_reply_callback(Status::OK(), nullptr, nullptr);
         });
-    promise.get_future().wait();
   }
-
-  send_reply_callback(Status::OK(), nullptr, nullptr);
-  f << "HandleCreateMutableObject, sent response" << std::endl;
 }
 
 int64_t CoreWorker::GetLocalMemoryStoreBytesUsed() const {

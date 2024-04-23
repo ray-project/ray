@@ -134,7 +134,6 @@ class Channel:
         self._reader_registered = False
 
         if is_creator:
-            print("about to do this\n")
             self.ensure_registered_as_writer()
             assert self._reader_ref is not None
 
