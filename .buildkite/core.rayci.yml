@@ -186,6 +186,7 @@ steps:
   - label: ":ray: core: minimal tests {{matrix}}"
     tags:
       - python
+      - dashboard
       - oss
     instance_type: medium
     commands:
