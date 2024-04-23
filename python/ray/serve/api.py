@@ -568,7 +568,7 @@ def run(
         route_prefix: Route prefix for HTTP requests. Defaults to '/'.
             If `None` is passed, the application will not be exposed over HTTP
             (this may be useful if you only want the application to be exposed via
-            gRPC or a `DeploymentHandle`.
+            gRPC or a `DeploymentHandle`).
         logging_config: Application logging config. If provided, the config will
             be applied to all deployments which doesn't have logging config.
 
