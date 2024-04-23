@@ -616,6 +616,9 @@ def _estimate_dataframe_size(df: "pandas.DataFrame") -> int:
     This function is necessary because `DataFrame.memory_usage` doesn't count values in
     columns with `dtype=object`.
 
+    The runtime complexity is linear in the number of values, so don't use this in
+    performance-critical code.
+
     Args:
         df: The DataFrame to estimate the size of.
 
