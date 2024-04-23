@@ -17,6 +17,8 @@ namespace pubsub {
 
 class MockPublisher : public Publisher {
  public:
+  MockPublisher() {}
+
   MOCK_METHOD(bool,
               RegisterSubscription,
               (const rpc::ChannelType channel_type,
