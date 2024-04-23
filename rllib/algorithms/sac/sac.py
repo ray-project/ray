@@ -505,7 +505,7 @@ class SAC(DQN):
                     """Reduces all metrics, but the TD-errors."""
                     # First get the single modules' results.
                     module_results = [
-                        v for res in results for k, v in res.items() if k != "__all__"
+                        v for res in results for k, v in res.items() if k != ALL_MODULES
                     ]
                     # Extract the TD-errors as we want to keep them as arrays.
                     td_errors = tree.map_structure_up_to(
@@ -517,7 +517,7 @@ class SAC(DQN):
                     )
                     # Add the TD-error arrays to the results and return.
                     return {
-                        k: v if k == "__all__" else {**v, "td_error": td_error}
+                        k: v if k == ALL_MODULES else {**v, "td_error": td_error}
                         for k, v, td_error in zip(
                             reduced_results.keys(),
                             reduced_results.values(),

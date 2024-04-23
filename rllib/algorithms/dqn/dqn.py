@@ -814,7 +814,7 @@ class DQN(Algorithm):
         reduced_results = tree.map_structure(lambda *x: np.mean(x), *results)
         # Add the TD-error arrays to the results and return.
         return {
-            k: v if k == "__all__" else {**v, "td_error": td_error}
+            k: v if k == ALL_MODULES else {**v, "td_error": td_error}
             for k, v, td_error in zip(
                 reduced_results.keys(),
                 reduced_results.values(),
