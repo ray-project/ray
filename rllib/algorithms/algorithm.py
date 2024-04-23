@@ -3518,6 +3518,12 @@ class Algorithm(Trainable, AlgorithmBase):
             # TODO: For CQL and other algos, count by trained steps.
             results["timesteps_total"] = self._counters[NUM_ENV_STEPS_SAMPLED]
 
+        # Forward compatibility with new API stack.
+        results[NUM_ENV_STEPS_SAMPLED_LIFETIME] = results["timesteps_total"]
+        results[NUM_AGENT_STEPS_SAMPLED_LIFETIME] = self._counters[
+            NUM_AGENT_STEPS_SAMPLED
+        ]
+
         # TODO: Backward compatibility.
         results[STEPS_TRAINED_THIS_ITER_COUNTER] = step_ctx.trained
         results["agent_timesteps_total"] = self._counters[NUM_AGENT_STEPS_SAMPLED]
