@@ -1,3 +1,5 @@
+from python.ray.data.datasource.lance_datasource import LanceDBDatasource
+
 from ray.data.datasource.avro_datasource import AvroDatasource
 from ray.data.datasource.bigquery_datasink import _BigQueryDatasink
 from ray.data.datasource.bigquery_datasource import BigQueryDatasource
@@ -37,7 +39,6 @@ from ray.data.datasource.image_datasink import _ImageDatasink
 from ray.data.datasource.image_datasource import ImageDatasource
 from ray.data.datasource.json_datasink import _JSONDatasink
 from ray.data.datasource.json_datasource import JSONDatasource
-from python.ray.data.datasource.lance_datasource import LanceDBDatasource
 from ray.data.datasource.mongo_datasink import _MongoDatasink
 from ray.data.datasource.mongo_datasource import MongoDatasource
 from ray.data.datasource.numpy_datasink import _NumpyDatasink
