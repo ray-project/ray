@@ -39,7 +39,10 @@ from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
     DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
+    ENV_RUNNER_RESULTS,
+    EVALUATION_RESULTS,
     NUM_ENV_STEPS_SAMPLED,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_TRAINED,
 )
 from ray.rllib.utils.nested_dict import NestedDict
@@ -601,12 +604,12 @@ def check_learning_achieved(
     tune_results: "tune.ResultGrid",
     min_value: float,
     evaluation: Optional[bool] = None,
-    metric: str = "sampler_results/episode_reward_mean",
+    metric: str = f"{ENV_RUNNER_RESULTS}/episode_return_mean",
 ):
     """Throws an error if `min_reward` is not reached within tune_results.
 
     Checks the last iteration found in tune_results for its
-    "episode_reward_mean" value and compares it to `min_reward`.
+    "episode_return_mean" value and compares it to `min_reward`.
 
     Args:
         tune_results: The tune.Tuner().fit() returned results object.
@@ -622,8 +625,10 @@ def check_learning_achieved(
     # (check if at least one trial achieved some learning)
     recorded_values = []
     for _, row in tune_results.get_dataframe().iterrows():
-        if evaluation or (evaluation is None and f"evaluation/{metric}" in row):
-            recorded_values.append(row[f"evaluation/{metric}"])
+        if evaluation or (
+            evaluation is None and f"{EVALUATION_RESULTS}/{metric}" in row
+        ):
+            recorded_values.append(row[f"{EVALUATION_RESULTS}/{metric}"])
         else:
             recorded_values.append(row[metric])
     best_value = max(recorded_values)
@@ -1297,8 +1302,8 @@ def run_rllib_example_script_experiment(
     `args.no_tune` is set to True) using the stopping criteria in `stop`.
 
     At the end of the experiment, if `args.as_test` is True, checks, whether the
-    Algorithm reached the `success_metric` (if None, use
-    `sampler_results/episode_reward_mean` with a minimum value of `args.stop_reward`).
+    Algorithm reached the `success_metric` (if None, use `env_runner_results/
+    episode_return_mean` with a minimum value of `args.stop_reward`).
 
     See https://github.com/ray-project/ray/tree/master/rllib/examples for an overview
     of all supported command line options.
@@ -1314,18 +1319,18 @@ def run_rllib_example_script_experiment(
             `no_tune`, `verbose`, `checkpoint_freq`, `as_test`. Optionally, for WandB
             logging: `wandb_key`, `wandb_project`, `wandb_run_name`.
         stop: An optional dict mapping ResultDict key strings (using "/" in case of
-            nesting, e.g. "sampler_results/episode_reward_mean" for referring to
-            `result_dict['sampler_results']['episode_reward_mean']` to minimum
+            nesting, e.g. "env_runner_results/episode_return_mean" for referring to
+            `result_dict['env_runner_results']['episode_return_mean']` to minimum
             values, reaching of which will stop the experiment). Default is:
             {
-            "sampler_results/episode_reward_mean": args.stop_reward,
+            "env_runner_results/episode_return_mean": args.stop_reward,
             "training_iteration": args.stop_iters,
             "timesteps_total": args.stop_timesteps,
             }
         success_metric: Only relevant if `args.as_test` is True.
             A dict mapping a single(!) ResultDict key string (using "/" in
-            case of nesting, e.g. "sampler_results/episode_reward_mean" for referring
-            to `result_dict['sampler_results']['episode_reward_mean']` to a single(!)
+            case of nesting, e.g. "env_runner_results/episode_return_mean" for referring
+            to `result_dict['env_runner_results']['episode_return_mean']` to a single(!)
             minimum value to be reached in order for the experiment to count as
             successful. If `args.as_test` is True AND this `success_metric` is not
             reached with the bounds defined by `stop`, will raise an Exception.
@@ -1344,17 +1349,11 @@ def run_rllib_example_script_experiment(
 
     # Define one or more stopping criteria.
     if not stop:
-        if args.enable_new_api_stack:
-            stop = {
-                "env_runner_results/episode_return_mean": args.stop_reward,
-                "num_env_steps_sampled_lifetime": args.stop_timesteps,
-            }
-        else:
-            stop = {
-                "sampler_results/episode_reward_mean": args.stop_reward,
-                "timesteps_total": args.stop_timesteps,
-            }
-        stop.update({"training_iteration": args.stop_iters})
+        stop = {
+            f"{ENV_RUNNER_RESULTS}/episode_return_mean": args.stop_reward,
+            f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": args.stop_timesteps,
+            "training_iteration": args.stop_iters,
+        }
 
     from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
     from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
@@ -1396,9 +1395,9 @@ def run_rllib_example_script_experiment(
         algo = config.build()
         for _ in range(args.stop_iters):
             results = algo.train()
-            print(f"R={results['env_runner_results']['episode_return_mean']}", end="")
-            if "evaluation" in results:
-                Reval = results["evaluation_results"]["env_runner_results"][
+            print(f"R={results[ENV_RUNNER_RESULTS]['episode_return_mean']}", end="")
+            if EVALUATION_RESULTS in results:
+                Reval = results[EVALUATION_RESULTS][ENV_RUNNER_RESULTS][
                     "episode_return_mean"
                 ]
                 print(f" R(eval)={Reval}", end="")
@@ -1443,8 +1442,8 @@ def run_rllib_example_script_experiment(
                 **{
                     "training_iteration": "iter",
                     "time_total_s": "total time (s)",
-                    "timesteps_total": "ts",
-                    "sampler_results/episode_reward_mean": "combined return",
+                    "num_env_steps_sampled_lifetime": "ts",
+                    f"{ENV_RUNNER_RESULTS}/episode_return_mean": "combined return",
                 },
                 **{
                     f"policy_reward_mean/{pid}": f"return {pid}"
@@ -1477,7 +1476,9 @@ def run_rllib_example_script_experiment(
     # If run as a test, check whether we reached the specified success criteria.
     if args.as_test:
         if success_metric is None:
-            success_metric = {"sampler_results/episode_reward_mean": args.stop_reward}
+            success_metric = {
+                f"{ENV_RUNNER_RESULTS}/episode_return_mean": args.stop_reward,
+            }
         # TODO (sven): Make this work for more than one metric (AND-logic?).
         metric = next(iter(success_metric.keys()))
         check_learning_achieved(

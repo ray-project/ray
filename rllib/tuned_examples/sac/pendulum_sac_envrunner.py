@@ -31,6 +31,9 @@ config = (
         target_network_update_freq=1,
         replay_buffer_config={
             "type": "PrioritizedEpisodeReplayBuffer",
+            "capacity": 100000,
+            "alpha": 1.0,
+            "beta": 0.0,
         },
         num_steps_sampled_before_learning_starts=256,
     )

@@ -112,8 +112,6 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
 
         # Pull a sample from the buffer using an `n-step` of 3.
         sample = buffer.sample(num_items=256, gamma=0.95, n_step=3)
-
-
     """
 
     def __init__(

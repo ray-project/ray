@@ -477,7 +477,16 @@ class PPO(Algorithm):
                 ),
                 num_iters=self.config.num_sgd_iter,
             )
-            self.metrics.log_dict(learner_results, key=LEARNER_RESULTS)
+            self.metrics.log_dict(
+                learner_results,
+                key=LEARNER_RESULTS,
+                # TODO (sven): For now, as we do NOT use MetricsLogger inside Learner
+                #  and LearnerGroup, we assume here that the
+                #  Learner/LearnerGroup-returned values are absolute (and thus require a
+                #  reduce window of just 1 (take as-is)). Remove the window setting
+                #  below, once Learner/LearnerGroup themselves use MetricsLogger.
+                window=1,
+            )
             self.metrics.log_dict(
                 {
                     NUM_ENV_STEPS_TRAINED_LIFETIME: self.metrics.peek(
