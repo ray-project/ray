@@ -10,8 +10,11 @@ from ray_release.test import (
     TestState,
 )
 from ray_release.aws import get_secret_token
+from ray_release.logger import logger
 
 RAY_REPO = "ray-project/ray"
+BUILDKITE_ORGANIZATION = "ray-project"
+BUILDKITE_BISECT_PIPELINE = "release-tests-bisect"
 AWS_SECRET_GITHUB = "ray_ci_github_token"
 AWS_SECRET_BUILDKITE = "ray_ci_buildkite_token"
 WEEKLY_RELEASE_BLOCKER_TAG = "weekly-release-blocker"
@@ -249,3 +252,29 @@ class TestStateMachine(abc.ABC):
             "Re-opening issue as test is still failing. "
             f"Latest run: {self.test_results[0].url}"
         )
+
+    def comment_blamed_commit_on_github_issue(self) -> bool:
+        """
+        Comment the blamed commit on the github issue.
+
+        Returns: True if the comment is made, False otherwise
+        """
+        blamed_commit = self.test.get(Test.KEY_BISECT_BLAMED_COMMIT)
+        issue_number = self.test.get(Test.KEY_GITHUB_ISSUE_NUMBER)
+        bisect_build_number = self.test.get(Test.KEY_BISECT_BUILD_NUMBER)
+        if not issue_number or not bisect_build_number or not blamed_commit:
+            logger.info(
+                "Skip commenting blamed commit on github issue "
+                f"for {self.test.get_name()}. The following fields should be set: "
+                f" blamed_commit={blamed_commit}, issue_number={issue_number}, "
+                f" bisect_build_number={bisect_build_number}"
+            )
+            return False
+        issue = self.ray_repo.get_issue(issue_number)
+        issue.create_comment(
+            f"Blamed commit: {blamed_commit} "
+            f"found by bisect job https://buildkite.com/{BUILDKITE_ORGANIZATION}/"
+            f"{BUILDKITE_BISECT_PIPELINE}/builds/{bisect_build_number}"
+        )
+
+        return True
