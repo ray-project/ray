@@ -172,13 +172,12 @@ class AssertEvalCallback(DefaultCallbacks):
                     "Number of run evaluation timesteps: "
                     f"{num_timesteps_reported} (ok)!"
                 )
-        # Expect at least evaluation/sampler_results to be always available.
+        # Expect at least evaluation_results/env_runner_results to be always available.
         elif algorithm.config.always_attach_evaluation_results and (
             not env_runner_results
         ):
             raise KeyError(
-                "`evaluation->[env_runner_results|sampler_results]` not found in "
-                "result dict!"
+                "`evaluation_results->env_runner_results` not found in result dict!"
             )
 
 

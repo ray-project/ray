@@ -487,6 +487,8 @@ class PPO(Algorithm):
                 #  below, once Learner/LearnerGroup themselves use MetricsLogger.
                 window=1,
             )
+            # TODO (sven): Move these counters into Learners and add
+            #  module-steps and agent-steps trained and sampled.
             self.metrics.log_dict(
                 {
                     NUM_ENV_STEPS_TRAINED_LIFETIME: self.metrics.peek(
@@ -495,7 +497,8 @@ class PPO(Algorithm):
                     # NUM_MODULE_STEPS_TRAINED_LIFETIME: self.metrics.peek(
                     #    LEARNER_RESULTS, NUM_MODULE_STEPS_TRAINED
                     # ),
-                }
+                },
+                reduce="sum",
             )
 
         # Update weights - after learning on the local worker - on all remote

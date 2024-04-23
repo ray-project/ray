@@ -102,7 +102,7 @@ if __name__ == "__main__":
     best_result = results.get_best_result(metric=metric, mode="min", scope="all")
     value_best_metric = best_result.metrics_dataframe[metric].min()
     best_return_best = best_result.metrics_dataframe[
-        "sampler_results/episode_reward_mean"
+        "env_runner_results/episode_return_mean"
     ].max()
     print(
         f"Best trial was the one with lr={best_result.metrics['config']['lr']}. "

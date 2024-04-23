@@ -52,6 +52,7 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
+    NUM_ENV_STEPS_TRAINED_LIFETIME,
     NUM_EPISODES,
     NUM_EPISODES_LIFETIME,
     NUM_TARGET_UPDATES,
@@ -678,12 +679,24 @@ class DQN(Algorithm):
                     self.metrics.log_dict(
                         learner_results,
                         key=LEARNER_RESULTS,
-                        # TODO (sven): For now, as we do NOT use MetricsLogger inside Learner
-                        #  and LearnerGroup, we assume here that the
-                        #  Learner/LearnerGroup-returned values are absolute (and thus require a
-                        #  reduce window of just 1 (take as-is)). Remove the window setting
-                        #  below, once Learner/LearnerGroup themselves use MetricsLogger.
+                        # TODO (sven): For now, as we do NOT use MetricsLogger inside
+                        #  Learner and LearnerGroup, we assume here that the
+                        #  Learner/LearnerGroup-returned values are absolute (and thus
+                        #  require a reduce window of just 1 (take as-is)). Remove the
+                        #  window setting below, once Learner/LearnerGroup themselves
+                        #  use MetricsLogger.
                         window=1,
+                    )
+                    # TODO (sven): Move these counters into Learners and add
+                    #  module-steps and agent-steps trained and sampled.
+                    self.metrics.log_dict(
+                        {
+                            NUM_ENV_STEPS_TRAINED_LIFETIME: train_batch.env_steps(),
+                            # NUM_MODULE_STEPS_TRAINED_LIFETIME: self.metrics.peek(
+                            #    LEARNER_RESULTS, NUM_MODULE_STEPS_TRAINED
+                            # ),
+                        },
+                        reduce="sum",
                     )
 
                 # Update replay buffer priorities.
@@ -711,11 +724,12 @@ class DQN(Algorithm):
                     self.metrics.log_dict(
                         additional_results,
                         key=LEARNER_RESULTS,
-                        # TODO (sven): For now, as we do NOT use MetricsLogger inside Learner
-                        #  and LearnerGroup, we assume here that the
-                        #  Learner/LearnerGroup-returned values are absolute (and thus require a
-                        #  reduce window of just 1 (take as-is)). Remove the window setting
-                        #  below, once Learner/LearnerGroup themselves use MetricsLogger.
+                        # TODO (sven): For now, as we do NOT use MetricsLogger inside
+                        #  Learner and LearnerGroup, we assume here that the Learner/
+                        #  LearnerGroup-returned values are absolute (and thus require a
+                        #  reduce window of just 1 (take as-is)). Remove the window
+                        #  setting below, once Learner/LearnerGroup themselves use
+                        #  MetricsLogger.
                         window=1,
                     )
                     # TODO (sven): Move this count increase into Learner

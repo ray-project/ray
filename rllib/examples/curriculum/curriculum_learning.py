@@ -63,6 +63,7 @@ from ray.rllib.connectors.env_to_module import (
     FlattenObservations,
     WriteObservationsToEpisodes,
 )
+from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
@@ -161,7 +162,7 @@ class EnvTaskCallback(DefaultCallbacks):
         # to a more difficult task (if possible). If we already mastered the most
         # difficult task, we publish our victory in the result dict.
         result["task_solved"] = 0.0
-        current_return = result["sampler_results"]["episode_reward_mean"]
+        current_return = result[ENV_RUNNER_RESULTS]["episode_return_mean"]
         if current_return > args.upgrade_task_threshold:
             if current_task < 2:
                 new_task = current_task + 1

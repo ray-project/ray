@@ -61,7 +61,7 @@ my_multi_agent_progress_reporter = tune.CLIReporter(
             "time_total_s": "total time (s)",
             "num_env_steps_sampled_lifetime": "ts",
             # RLlib always sums up all agents' rewards and reports it under:
-            # result_dict[sampler_results][episode_reward_mean].
+            # result_dict[env_runner_results][episode_return_mean].
             "env_runner_results/episode_return_mean": "combined return",
         },
         # Because RLlib sums up all returns of all agents, we would like to also

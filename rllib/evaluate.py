@@ -324,7 +324,7 @@ def rollout(
             # Increase time-step and episode counters.
             eps = agent.config["evaluation_duration"]
             episodes += eps
-            steps += eps * eval_result["episode_length_mean"]
+            steps += eps * eval_result["episode_len_mean"]
             # Print out results and continue.
             print(
                 "Episode #{}: reward: {}".format(

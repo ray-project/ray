@@ -600,7 +600,7 @@ class SingleAgentEnvRunner(EnvRunner):
             # Log general episode metrics.
             self.metrics.log_dict(
                 {
-                    "episode_length_mean": episode_length,
+                    "episode_len_mean": episode_length,
                     "episode_return_mean": episode_return,
                     "episode_duration_sec_mean": episode_duration_s,
                     # Per-agent returns.
