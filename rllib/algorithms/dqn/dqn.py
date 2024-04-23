@@ -609,7 +609,7 @@ class DQN(Algorithm):
             # Reduce EnvRunner metrics over the n EnvRunners.
             self.metrics.log_n_dicts(env_runner_metrics, key=ENV_RUNNER_RESULTS)
 
-        # Log lifetime counts for env- and agent steps.
+        # Log lifetime counts for env- and agent steps sampled.
         self.metrics.log_dict(
             {
                 NUM_AGENT_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
@@ -662,6 +662,13 @@ class DQN(Algorithm):
                         train_batch,
                         reduce_fn=self._reduce_fn,
                     )
+                    # Isolate TD-errors from result dicts (we should not log these, they
+                    # might be very large).
+                    td_errors = {
+                        mid: {"td_error": res.pop("td_error")}
+                        for mid, res in learner_results.items()
+                        if "td_error" in res
+                    }
                     self.metrics.log_dict(learner_results, key=LEARNER_RESULTS)
 
                 # Update replay buffer priorities.
@@ -670,7 +677,7 @@ class DQN(Algorithm):
                         self.local_replay_buffer,
                         self.config,
                         train_batch,
-                        learner_results,
+                        td_errors,
                     )
 
                 # Update the target networks, if necessary.

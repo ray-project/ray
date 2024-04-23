@@ -466,7 +466,6 @@ class SAC(DQN):
 
         # Alternate between storing and sampling and training.
         store_weight, sample_and_train_weight = calculate_rr_weights(self.config)
-        train_results = {}
 
         # Run multiple sampling + storing to buffer iterations.
         for _ in range(store_weight):
@@ -485,7 +484,7 @@ class SAC(DQN):
             # Reduce EnvRunner metrics over the n EnvRunners.
             self.metrics.log_n_dicts(env_runner_metrics, key=ENV_RUNNER_RESULTS)
 
-        # Log lifetime counts for env- and agent steps.
+        # Log lifetime counts for env- and agent steps sampled.
         self.metrics.log_dict(
             {
                 NUM_AGENT_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
@@ -558,6 +557,13 @@ class SAC(DQN):
                         train_batch,
                         reduce_fn=reduce_fn,
                     )
+                    # Isolate TD-errors from result dicts (we should not log these, they
+                    # might be very large).
+                    td_errors = {
+                        mid: {"td_error": res.pop("td_error")}
+                        for mid, res in learner_results.items()
+                        if "td_error" in res
+                    }
                     self.metrics.log_dict(learner_results, key=LEARNER_RESULTS)
 
                 # Update replay buffer priorities.
@@ -566,7 +572,7 @@ class SAC(DQN):
                         self.local_replay_buffer,
                         self.config,
                         train_batch,
-                        train_results,
+                        td_errors,
                     )
 
                 # Update the target networks, if necessary.
@@ -574,7 +580,7 @@ class SAC(DQN):
                     modules_to_update = set(learner_results.keys()) - {ALL_MODULES}
                     additional_results = self.learner_group.additional_update(
                         module_ids_to_update=modules_to_update,
-                        timestep=self._counters[NUM_AGENT_STEPS_SAMPLED],
+                        timestep=current_ts,
                         last_update=self.metrics.peek(
                             LEARNER_RESULTS, LAST_TARGET_UPDATE_TS, default=0
                         ),
