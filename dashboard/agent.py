@@ -85,7 +85,6 @@ class DashboardAgent:
 
     def _init_non_minimal(self):
         from ray._private.gcs_pubsub import GcsAioPublisher
-        from ray.dashboard.http_server_agent import HttpServerAgent
 
         self.aio_publisher = GcsAioPublisher(address=self.gcs_address)
 
@@ -138,12 +137,12 @@ class DashboardAgent:
         else:
             logger.info("Dashboard agent grpc address: %s:%s", grpc_ip, self.grpc_port)
 
-        # If the agent is not minimal it should start the http server
-        # to communicate with the dashboard in a head node.
-        # Http server is not started in the minimal version because
-        # it requires additional dependencies that are not
-        # included in the minimal ray package.
-        self.http_server = HttpServerAgent(self.ip, self.listen_port)
+    async def _configure_http_server(self, modules):
+        from ray.dashboard.http_server_agent import HttpServerAgent
+
+        http_server = HttpServerAgent(self.ip, self.listen_port)
+        await http_server.start(modules)
+        return http_server
 
     def _load_modules(self):
         """Load dashboard agent modules."""
@@ -184,9 +183,15 @@ class DashboardAgent:
 
         modules = self._load_modules()
 
-        if self.http_server:
+        # Setup http server if necessary.
+        if not self.minimal:
+            # If the agent is not minimal it should start the http server
+            # to communicate with the dashboard in a head node.
+            # Http server is not started in the minimal version because
+            # it requires additional dependencies that are not
+            # included in the minimal ray package.
             try:
-                await self.http_server.start(modules)
+                self.http_server = await self._configure_http_server(modules)
             except Exception:
                 # TODO(SongGuyang): Catch the exception here because there is
                 # port conflict issue which brought from static port. We should
@@ -209,7 +214,6 @@ class DashboardAgent:
         )
 
         tasks = [m.run(self.server) for m in modules]
-
         if sys.platform not in ["win32", "cygwin"]:
 
             def callback(msg):
@@ -221,18 +225,13 @@ class DashboardAgent:
                 self.log_dir, self.gcs_address, callback, loop
             )
             tasks.append(check_parent_task)
+        await asyncio.gather(*tasks)
 
         if self.server:
-            tasks.append(self.server.wait_for_termination())
+            await self.server.wait_for_termination()
         else:
-
-            async def wait_forever(self):
-                while True:
-                    await asyncio.sleep(3600)
-
-            tasks.append(wait_forever())
-
-        await asyncio.gather(*tasks)
+            while True:
+                await asyncio.sleep(3600)  # waits forever
 
         if self.http_server:
             await self.http_server.cleanup()
