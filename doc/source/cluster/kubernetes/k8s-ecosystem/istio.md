@@ -28,7 +28,7 @@ export PATH=$PWD/bin:$PATH
 
 # Install Istio with:
 #   1. 100% trace sampling for demo purpose
-#   2. "sanitize_te" disabled for proper grpc interception
+#   2. "sanitize_te" disabled for proper grpc interception. This is required by Istio 1.21.0 (https://github.com/istio/istio/issues/49685)
 #   3. TLS 1.3 enabled
 istioctl install -y -f - <<EOF
 apiVersion: install.istio.io/v1alpha1
@@ -54,18 +54,13 @@ See [Istio Getting Started](https://istio.io/latest/docs/setup/getting-started/)
 
 ## Step 2: Install the KubeRay operator
 
-Follow [Deploy a KubeRay operator](kuberay-operator-deploy) to install the latest stable KubeRay operator from the Helm repository:
-
-```bash
-helm repo add kuberay https://ray-project.github.io/kuberay-helm/
-helm install kuberay-operator kuberay/kuberay-operator --version 1.1.0
-```
+Follow [Deploy a KubeRay operator](kuberay-operator-deploy) to install the latest stable KubeRay operator from the Helm repository.
 
 ## Step 3: Optional: Enable Istio mTLS STRICT mode
 
 This is an optional step to enable Istio mTLS in STRICT mode which provides the best security of service mesh by rejecting all undefined traffic.
 
-In this mode, we must set ENABLE_INIT_CONTAINER_INJECTION=false on the KubeRay controller.
+In this mode, we must disable the KubeRay init container injection by setting `ENABLE_INIT_CONTAINER_INJECTION=false` on the KubeRay controller. This is necessary because the init container starts before the istio-proxy, resulting in the rejection of all its network traffic in STRICT mode.
 
 ```bash
 # Set ENABLE_INIT_CONTAINER_INJECTION=false on the KubeRay
@@ -168,7 +163,7 @@ Kubernetes Service doesn't support specifying ports in ranges. We MUST set them 
 :::
 
 :::{warning}
-The default Ray worker port range, from 10002 to 19999, is too large to specify in the service manifest and can cause memory issue in kubernetes. It is recommended to set a smaller `max-worker-port` to work with Istio.
+The default Ray worker port range, from 10002 to 19999, is too large to specify in the service manifest and can cause memory issues in Kubernetes. It is recommended to set a smaller `max-worker-port` to work with Istio.
 :::
 
 ## Step 4: Create the RayCluster
@@ -279,7 +274,7 @@ In addition, the `node-ip-address` MUST be set to the Pod FQDN of the Headless S
   ::::
 
 :::{note}
-The Pod FQDN of the Headless service should be in the format of <pod-ipv4-address>.<service>.<namespace>.svc.<zone>. or the format of <pod-hostname>.<service>.<namespace>.svc.<zone>. depending on your implementation of the [Kubernetes DNS specification](https://github.com/kubernetes/dns/blob/master/docs/specification.md).
+The Pod FQDN of the Headless service should be in the format of `pod-ipv4-address.service.namespace.svc.zone.` or the format of `pod-hostname.service.namespace.svc.zone.` depending on your implementation of the [Kubernetes DNS specification](https://github.com/kubernetes/dns/blob/master/docs/specification.md).
 :::
 
 ## Step 5: Run Ray application to generate traffic for later visualization
