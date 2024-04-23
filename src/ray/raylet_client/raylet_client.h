@@ -176,6 +176,7 @@ class MutableObjectReaderInterface {
       const ObjectID &object_id,
       int64_t num_readers,
       int buffer_size_bytes,
+      const ObjectID &reader_ref,
       const rpc::ClientCallback<rpc::RegisterMutableObjectReply> &callback) = 0;
 
   virtual void PushMutableObject(
@@ -433,6 +434,7 @@ class RayletClient : public RayletClientInterface {
       const ObjectID &object_id,
       int64_t num_readers,
       int buffer_size_bytes,
+      const ObjectID &reader_ref,
       const ray::rpc::ClientCallback<ray::rpc::RegisterMutableObjectReply> &callback)
       override;
 

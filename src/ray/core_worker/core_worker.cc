@@ -1482,71 +1482,50 @@ Status CoreWorker::ExperimentalRegisterMutableObjectReaderRemote(
   f << "ExperimentalRegisterMutableObjectReaderRemote, worker id is "
     << worker_context_.GetWorkerID() << std::endl;
 
-  f << "get node info" << std::endl;
-  const rpc::GcsNodeInfo *node_info = gcs_client_->Nodes().Get(reader_node);
-  RAY_CHECK(node_info) << "No GCS info for node " << reader_node;
-  f << "got node info, ip address is " << node_info->node_manager_address()
-    << ", port is " << node_info->node_manager_port() << std::endl;
-
   for (const std::string &worker_id_hex : worker_ids) {
-    f << "here for worker id " << worker_id_hex << std::endl;
     WorkerID worker_id = WorkerID::FromHex(worker_id_hex);
-
     rpc::Address addr;
     {
       std::promise<void> promise;
       RAY_CHECK(
           gcs_client_->Workers()
-              .AsyncGet(worker_id,
-                        [&addr, &promise, &f](
-                            Status status,
-                            const boost::optional<rpc::WorkerTableData> &result) {
-                          RAY_CHECK(result);
-                          if (result) {
-                            addr.set_ip_address(result->worker_address().ip_address());
-                            addr.set_port(result->worker_address().port());
-                            addr.set_worker_id(result->worker_address().worker_id());
-                          }
-                          promise.set_value();
-                        })
+              .AsyncGet(
+                  worker_id,
+                  [&addr, &promise](Status status,
+                                    const boost::optional<rpc::WorkerTableData> &result) {
+                    RAY_CHECK(result);
+                    if (result) {
+                      addr.set_ip_address(result->worker_address().ip_address());
+                      addr.set_port(result->worker_address().port());
+                      addr.set_worker_id(result->worker_address().worker_id());
+                    }
+                    promise.set_value();
+                  })
               .ok());
       promise.get_future().wait();
     }
 
-    std::shared_ptr<rpc::CoreWorkerClientInterface> conn =
-        core_worker_client_pool_->GetOrConnect(addr);
-    f << "conn is " << conn << std::endl;
-
-    rpc::CreateMutableObjectRequest req;
-    req.set_buffer_size_bytes(5);
-    rpc::CreateMutableObjectReply reply;
-
     {
+      std::shared_ptr<rpc::CoreWorkerClientInterface> conn =
+          core_worker_client_pool_->GetOrConnect(addr);
+
+      rpc::CreateMutableObjectRequest req;
+      req.set_object_id(object_id.Binary());
+      req.set_num_readers(num_readers);
+      req.set_buffer_size_bytes(buffer_size_bytes);
+      rpc::CreateMutableObjectReply reply;
+
       std::promise<void> promise;
       conn->CreateMutableObject(
           req,
-          [&promise, &f](const Status &status,
-                         const rpc::CreateMutableObjectReply &reply) {
-            f << "Got reply back, status is " << status << ", reader ref is "
-              << ObjectID::FromBinary(reply.reader_ref()).Hex() << std::endl;
+          [&reader_ref, &promise](const Status &status,
+                                  const rpc::CreateMutableObjectReply &reply) {
+            RAY_CHECK(status.ok());
+            reader_ref = ObjectID::FromBinary(reply.reader_ref());
             promise.set_value();
           });
       promise.get_future().wait();
     }
-  }
-
-  {
-    std::promise<void> promise;
-    local_raylet_client_->RegisterMutableObjectReader(
-        object_id,
-        num_readers,
-        buffer_size_bytes,
-        [&promise, &reader_ref](const Status &status,
-                                const rpc::RegisterMutableObjectReply &reply) {
-          reader_ref = ObjectID::FromBinary(reply.reader_ref());
-          promise.set_value();
-        });
-    promise.get_future().wait();
   }
 
   return Status::OK();
@@ -4171,6 +4150,21 @@ void CoreWorker::HandleCreateMutableObject(rpc::CreateMutableObjectRequest reque
   f << "HandleCreateMutableObject, reader ref is now " << reader_ref << std::endl;
   reply->set_reader_ref(reader_ref.Binary());
   f << "HandleCreateMutableObject, set reader ref" << std::endl;
+
+  {
+    std::promise<void> promise;
+    local_raylet_client_->RegisterMutableObjectReader(
+        ObjectID::FromBinary(request.object_id()),
+        request.num_readers(),
+        request.buffer_size_bytes(),
+        reader_ref,
+        [&promise](const Status &status, const rpc::RegisterMutableObjectReply &reply) {
+          RAY_CHECK(status.ok());
+          promise.set_value();
+        });
+    promise.get_future().wait();
+  }
+
   send_reply_callback(Status::OK(), nullptr, nullptr);
   f << "HandleCreateMutableObject, sent response" << std::endl;
 }

@@ -349,11 +349,11 @@ message DrainRayletReply {
 message RegisterMutableObjectRequest {
   bytes object_id = 1;
   int64 num_readers = 2;
-  int64 buffer_size_bytes = 3;
+  bytes reader_ref = 4;
 }
 
 message RegisterMutableObjectReply {
-  bytes reader_ref = 1;
+  // Nothing for now.
 }
 
 message PushMutableObjectRequest {

@@ -425,7 +425,9 @@ message ReportGeneratorItemReturnsReply {
 }
 
 message CreateMutableObjectRequest {
-  int64 buffer_size_bytes = 1;
+  bytes object_id = 1;
+  int64 num_readers = 2;
+  int64 buffer_size_bytes = 3;
 }
 
 message CreateMutableObjectReply {
