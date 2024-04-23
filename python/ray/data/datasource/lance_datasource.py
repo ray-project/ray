@@ -1,5 +1,5 @@
 """
-Module to read an LanceDB table into a Ray Dataset, by using the Ray Datasource API.
+Module to read an Lance table into a Ray Dataset, by using the Ray Datasource API.
 """
 
 import logging
@@ -18,14 +18,14 @@ logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-class LanceDBDatasource(Datasource):
+class LanceDatasource(Datasource):
     """LanceDB Datasource
     Read a LanceDB table as a Ray Dataset
 
     Parameters
     ----------
     uri : str
-        The base URI of the LanceDB dataset.
+        The base URI of the Lance dataset.
     columns: list
         A list of columns to return from the dataset.
     filter: str
