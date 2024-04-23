@@ -587,13 +587,13 @@ class DQN(Algorithm):
         """
         # New API stack (RLModule, Learner, EnvRunner, ConnectorV2).
         if self.config.uses_new_env_runners:
-            return self._training_step_new_api_stack()
+            return self._training_step_new_api_stack(with_noise_reset=True)
         # Old and hybrid API stacks (Policy, RolloutWorker, Connector, maybe RLModule,
         # maybe Learner).
         else:
             return self._training_step_old_and_hybrid_api_stack()
 
-    def _training_step_new_api_stack(self) -> ResultDict:
+    def _training_step_new_api_stack(self, *, with_noise_reset) -> ResultDict:
         # Alternate between storing and sampling and training.
         store_weight, sample_and_train_weight = calculate_rr_weights(self.config)
 
@@ -643,7 +643,8 @@ class DQN(Algorithm):
             # is proposed in the "Noisy Networks for Exploration" paper
             # (https://arxiv.org/abs/1706.10295) in Algorithm 1. The noise
             # gets sampled once for each training loop.
-            self.learner_group.foreach_learner(lambda lrnr: lrnr._reset_noise())
+            if with_noise_reset:
+                self.learner_group.foreach_learner(lambda lrnr: lrnr._reset_noise())
             # Run multiple sample-from-buffer and update iterations.
             for _ in range(sample_and_train_weight):
                 # Sample training batch from replay_buffer.

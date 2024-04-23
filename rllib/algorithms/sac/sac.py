@@ -459,142 +459,166 @@ class SAC(DQN):
 
     @override(DQN)
     def training_step(self) -> ResultDict:
-        # If `RolloutWorker` is used, fall back to the old stack `training step`
-        # of `DQN`.
-        if not self.config.uses_new_env_runners:
-            return super().training_step()
+        """SAC training iteration function.
 
-        # Alternate between storing and sampling and training.
-        store_weight, sample_and_train_weight = calculate_rr_weights(self.config)
+        Each training iteration, we:
+        - Sample (MultiAgentBatch) from workers.
+        - Store new samples in replay buffer.
+        - Sample training batch (MultiAgentBatch) from replay buffer.
+        - Learn on training batch.
+        - Update remote workers' new policy weights.
+        - Update target network every `target_network_update_freq` sample steps.
+        - Return all collected metrics for the iteration.
 
-        # Run multiple sampling + storing to buffer iterations.
-        for _ in range(store_weight):
-            with self.metrics.log_time((TIMERS, SAMPLE_TIMER)):
-                # Sample in parallel from workers.
-                episodes, env_runner_metrics = synchronous_parallel_sample(
-                    worker_set=self.workers,
-                    concat=True,
-                    sample_timeout_s=self.config.sample_timeout_s,
-                    _uses_new_env_runners=True,
-                    _return_metrics=True,
-                )
-            # Add the sampled experiences to the replay buffer.
-            self.local_replay_buffer.add(episodes)
-
-            # Reduce EnvRunner metrics over the n EnvRunners.
-            self.metrics.log_n_dicts(env_runner_metrics, key=ENV_RUNNER_RESULTS)
-
-        # Log lifetime counts for env- and agent steps sampled.
-        self.metrics.log_dict(
-            {
-                NUM_AGENT_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                    ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED
-                ),
-                NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                    ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED
-                ),
-                NUM_EPISODES_LIFETIME: self.metrics.peek(
-                    ENV_RUNNER_RESULTS, NUM_EPISODES
-                ),
-            },
-            reduce="sum",
-        )
-
-        if self.config.count_steps_by == "agent_steps":
-            current_ts = sum(
-                self.metrics.peek(NUM_AGENT_STEPS_SAMPLED_LIFETIME).values()
-            )
+        Returns:
+            The results dict from executing the training iteration.
+        """
+        # New API stack (RLModule, Learner, EnvRunner, ConnectorV2).
+        if self.config.uses_new_env_runners:
+            return self._training_step_new_api_stack(with_noise_reset=False)
+        # Old and hybrid API stacks (Policy, RolloutWorker, Connector, maybe RLModule,
+        # maybe Learner).
         else:
-            current_ts = self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME)
+            return self._training_step_old_and_hybrid_api_stack()
 
-        # If enough experiences have been sampled start training.
-        if current_ts >= self.config.num_steps_sampled_before_learning_starts:
-            # Run multiple sample-from-buffer and update iterations.
-            for _ in range(sample_and_train_weight):
-                # Sample training batch from replay_buffer.
-                # TODO (simon): Use sample_with_keys() here.
-                with self.metrics.log_time((TIMERS, REPLAY_BUFFER_SAMPLE_TIMER)):
-                    train_dict = self.local_replay_buffer.sample(
-                        num_items=self.config.train_batch_size,
-                        n_step=self.config.n_step,
-                        gamma=self.config.gamma,
-                        beta=self.config.replay_buffer_config["beta"],
-                    )
-                    train_batch = SampleBatch(train_dict)
-                    # Convert to multi-agent batch as `LearnerGroup` depends on it.
-                    # TODO (sven, simon): Remove this conversion once the `LearnerGroup`
-                    #  supports dict.
-                    train_batch = train_batch.as_multi_agent()
-
-                # Perform an update on the buffer-sampled train batch.
-                with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
-                    learner_results = self.learner_group.update_from_batch(
-                        train_batch,
-                        reduce_fn=DQN._reduce_fn,
-                    )
-                    # Isolate TD-errors from result dicts (we should not log these, they
-                    # might be very large).
-                    td_errors = {
-                        mid: {"td_error": res.pop("td_error")}
-                        for mid, res in learner_results.items()
-                        if "td_error" in res
-                    }
-                    self.metrics.log_dict(learner_results, key=LEARNER_RESULTS)
-
-                # Update replay buffer priorities.
-                with self.metrics.log_time((TIMERS, REPLAY_BUFFER_UPDATE_PRIOS_TIMER)):
-                    update_priorities_in_episode_replay_buffer(
-                        self.local_replay_buffer,
-                        self.config,
-                        train_batch,
-                        td_errors,
-                    )
-
-                # Update the target networks, if necessary.
-                with self.metrics.log_time((TIMERS, LEARNER_ADDITIONAL_UPDATE_TIMER)):
-                    modules_to_update = set(learner_results.keys()) - {ALL_MODULES}
-                    additional_results = self.learner_group.additional_update(
-                        module_ids_to_update=modules_to_update,
-                        timestep=current_ts,
-                        last_update=self.metrics.peek(
-                            # TODO (sven): Support multi-agent in DQN/SAC.
-                            (LEARNER_RESULTS, DEFAULT_POLICY_ID, LAST_TARGET_UPDATE_TS),
-                            default=0,
-                        ),
-                    )
-                    # Add the additional results to the training results, if any.
-                    self.metrics.log_dict(
-                        additional_results,
-                        key=LEARNER_RESULTS,
-                        # TODO (sven): For now, as we do NOT use MetricsLogger inside Learner
-                        #  and LearnerGroup, we assume here that the
-                        #  Learner/LearnerGroup-returned values are absolute (and thus require a
-                        #  reduce window of just 1 (take as-is)). Remove the window setting
-                        #  below, once Learner/LearnerGroup themselves use MetricsLogger.
-                        window=1,
-                    )
-                    # TODO (sven): Move this count increase into Learner
-                    #  `additional_update()` once MetricsLogger is in Learner.
-                    self.metrics.log_value(
-                        (LEARNER_RESULTS, NUM_TARGET_UPDATES),
-                        value=additional_results[DEFAULT_POLICY_ID][NUM_TARGET_UPDATES],
-                        reduce="sum",
-                    )
-
-            # Update weights and global_vars - after learning on the local worker -
-            # on all remote workers.
-            with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
-                if self.workers.num_remote_workers() > 0:
-                    # NOTE: the new API stack does not use global vars.
-                    self.workers.sync_weights(
-                        from_worker_or_learner_group=self.learner_group,
-                        policies=modules_to_update,
-                        global_vars=None,
-                        inference_only=True,
-                    )
-                # Then we must have a local worker.
-                else:
-                    weights = self.learner_group.get_weights(inference_only=True)
-                    self.workers.local_worker().set_weights(weights)
-
-        return self.metrics.reduce()
+    #@override(DQN)
+    #def training_step(self) -> ResultDict:
+    #    # If `RolloutWorker` is used, fall back to the old stack `training step`
+    #    # of `DQN`.
+    #    if not self.config.uses_new_env_runners:
+    #        return super().training_step()
+    #
+    #    # Alternate between storing and sampling and training.
+    #    store_weight, sample_and_train_weight = calculate_rr_weights(self.config)
+    #
+    #    # Run multiple sampling + storing to buffer iterations.
+    #    for _ in range(store_weight):
+    #        with self.metrics.log_time((TIMERS, SAMPLE_TIMER)):
+    #            # Sample in parallel from workers.
+    #            episodes, env_runner_metrics = synchronous_parallel_sample(
+    #                worker_set=self.workers,
+    #                concat=True,
+    #                sample_timeout_s=self.config.sample_timeout_s,
+    #                _uses_new_env_runners=True,
+    #                _return_metrics=True,
+    #            )
+    #        # Add the sampled experiences to the replay buffer.
+    #        self.local_replay_buffer.add(episodes)
+    #
+    #        # Reduce EnvRunner metrics over the n EnvRunners.
+    #        self.metrics.log_n_dicts(env_runner_metrics, key=ENV_RUNNER_RESULTS)
+    #
+    #    # Log lifetime counts for env- and agent steps sampled.
+    #    self.metrics.log_dict(
+    #        {
+    #            NUM_AGENT_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
+    #                ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED
+    #            ),
+    #            NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
+    #                ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED
+    #            ),
+    #            NUM_EPISODES_LIFETIME: self.metrics.peek(
+    #                ENV_RUNNER_RESULTS, NUM_EPISODES
+    #            ),
+    #        },
+    #        reduce="sum",
+    #    )
+    #
+    #    if self.config.count_steps_by == "agent_steps":
+    #        current_ts = sum(
+    #            self.metrics.peek(NUM_AGENT_STEPS_SAMPLED_LIFETIME).values()
+    #        )
+    #    else:
+    #        current_ts = self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME)
+    #
+    #    # If enough experiences have been sampled start training.
+    #    if current_ts >= self.config.num_steps_sampled_before_learning_starts:
+    #        # Run multiple sample-from-buffer and update iterations.
+    #        for _ in range(sample_and_train_weight):
+    #            # Sample training batch from replay_buffer.
+    #            # TODO (simon): Use sample_with_keys() here.
+    #            with self.metrics.log_time((TIMERS, REPLAY_BUFFER_SAMPLE_TIMER)):
+    #                train_dict = self.local_replay_buffer.sample(
+    #                    num_items=self.config.train_batch_size,
+    #                    n_step=self.config.n_step,
+    #                    gamma=self.config.gamma,
+    #                    beta=self.config.replay_buffer_config["beta"],
+    #                )
+    #                train_batch = SampleBatch(train_dict)
+    #                # Convert to multi-agent batch as `LearnerGroup` depends on it.
+    #                # TODO (sven, simon): Remove this conversion once the `LearnerGroup`
+    #                #  supports dict.
+    #                train_batch = train_batch.as_multi_agent()
+    #
+    #            # Perform an update on the buffer-sampled train batch.
+    #            with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
+    #                learner_results = self.learner_group.update_from_batch(
+    #                    train_batch,
+    #                    reduce_fn=DQN._reduce_fn,
+    #                )
+    #                # Isolate TD-errors from result dicts (we should not log these, they
+    #                # might be very large).
+    #                td_errors = {
+    #                    mid: {"td_error": res.pop("td_error")}
+    #                    for mid, res in learner_results.items()
+    #                    if "td_error" in res
+    #                }
+    #                self.metrics.log_dict(learner_results, key=LEARNER_RESULTS)
+    #
+    #            # Update replay buffer priorities.
+    #            with self.metrics.log_time((TIMERS, REPLAY_BUFFER_UPDATE_PRIOS_TIMER)):
+    #                update_priorities_in_episode_replay_buffer(
+    #                    self.local_replay_buffer,
+    #                    self.config,
+    #                    train_batch,
+    #                    td_errors,
+    #                )
+    #
+    #            # Update the target networks, if necessary.
+    #            with self.metrics.log_time((TIMERS, LEARNER_ADDITIONAL_UPDATE_TIMER)):
+    #                modules_to_update = set(learner_results.keys()) - {ALL_MODULES}
+    #                additional_results = self.learner_group.additional_update(
+    #                    module_ids_to_update=modules_to_update,
+    #                    timestep=current_ts,
+    #                    last_update=self.metrics.peek(
+    #                        # TODO (sven): Support multi-agent in DQN/SAC.
+    #                        (LEARNER_RESULTS, DEFAULT_POLICY_ID, LAST_TARGET_UPDATE_TS),
+    #                        default=0,
+    #                    ),
+    #                )
+    #                # Add the additional results to the training results, if any.
+    #                self.metrics.log_dict(
+    #                    additional_results,
+    #                    key=LEARNER_RESULTS,
+    #                    # TODO (sven): For now, as we do NOT use MetricsLogger inside Learner
+    #                    #  and LearnerGroup, we assume here that the
+    #                    #  Learner/LearnerGroup-returned values are absolute (and thus require a
+    #                    #  reduce window of just 1 (take as-is)). Remove the window setting
+    #                    #  below, once Learner/LearnerGroup themselves use MetricsLogger.
+    #                    window=1,
+    #                )
+    #                # TODO (sven): Move this count increase into Learner
+    #                #  `additional_update()` once MetricsLogger is in Learner.
+    #                self.metrics.log_value(
+    #                    (LEARNER_RESULTS, NUM_TARGET_UPDATES),
+    #                    value=additional_results[DEFAULT_POLICY_ID][NUM_TARGET_UPDATES],
+    #                    reduce="sum",
+    #                )
+    #
+    #        # Update weights and global_vars - after learning on the local worker -
+    #        # on all remote workers.
+    #        with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
+    #            if self.workers.num_remote_workers() > 0:
+    #                # NOTE: the new API stack does not use global vars.
+    #                self.workers.sync_weights(
+    #                    from_worker_or_learner_group=self.learner_group,
+    #                    policies=modules_to_update,
+    #                    global_vars=None,
+    #                    inference_only=True,
+    #                )
+    #            # Then we must have a local worker.
+    #            else:
+    #                weights = self.learner_group.get_weights(inference_only=True)
+    #                self.workers.local_worker().set_weights(weights)
+    #
+    #    return self.metrics.reduce()
