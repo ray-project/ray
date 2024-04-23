@@ -1,7 +1,3 @@
-"""
-Module to read an Lance table into a Ray Dataset, by using the Ray Datasource API.
-"""
-
 import logging
 from typing import List, Optional, Union
 
