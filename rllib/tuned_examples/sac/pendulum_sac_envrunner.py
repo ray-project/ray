@@ -42,5 +42,5 @@ config = (
 
 stop = {
     "num_env_steps_sampled_lifetime": 20000,
-    "evaluation_results/env_runner_results/episode_return_mean": -250.0,
+    "env_runner_results/episode_return_mean": -250.0,
 }

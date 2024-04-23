@@ -278,7 +278,7 @@ class Algorithm(Trainable, AlgorithmBase):
         f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}",
         f"{NUM_ENV_STEPS_TRAINED_LIFETIME}",
         f"{NUM_EPISODES_LIFETIME}",
-        f"{ENV_RUNNER_RESULTS}/episode_len_mean",
+        f"{ENV_RUNNER_RESULTS}/episode_length_mean",
     )
 
     @staticmethod
