@@ -1476,7 +1476,7 @@ Status CoreWorker::ExperimentalRegisterMutableObjectReaderRemote(
 
   std::ofstream f;
   f.open("/tmp/blah", std::ofstream::app);
-  f << "ExperimentalRegisterMutableObjectReaderRemote" << std::endl;
+  f << "ExperimentalRegisterMutableObjectReaderRemote, tid is " << GetTid() << std::endl;
 
   f << "get node info" << std::endl;
   const rpc::GcsNodeInfo *node_info = gcs_client_->Nodes().Get(reader_node);
@@ -1486,8 +1486,17 @@ Status CoreWorker::ExperimentalRegisterMutableObjectReaderRemote(
   addr.set_ip_address(node_info->node_manager_address());
   addr.set_port(node_info->node_manager_port());
   addr.set_worker_id(worker_ids[0].Binary());
-  auto conn = core_worker_client_pool_->GetOrConnect(addr);
+  std::shared_ptr<rpc::CoreWorkerClientInterface> conn =
+      core_worker_client_pool_->GetOrConnect(addr);
   f << "connected, " << conn << std::endl;
+
+  rpc::CreateMutableObjectRequest req;
+  req.set_buffer_size_bytes(5);
+  rpc::CreateMutableObjectReply reply;
+  conn->CreateMutableObject(
+      req, [&f](const Status &status, const rpc::CreateMutableObjectReply &reply) {
+        f << "Got reply back, status is " << status << std::endl;
+      });
 
   local_raylet_client_->RegisterMutableObjectReader(
       object_id,
@@ -4102,7 +4111,7 @@ void CoreWorker::HandleCreateMutableObject(rpc::CreateMutableObjectRequest reque
                                            rpc::SendReplyCallback send_reply_callback) {
   std::ofstream f;
   f.open("/tmp/blah", std::ofstream::app);
-  f << "HandleCreateMutableObject" << std::endl;
+  f << "HandleCreateMutableObject, tid is " << GetTid() << std::endl;
   ObjectID reader_ref;
   f << "HandleCreateMutableObject, reader ref is " << reader_ref << std::endl;
   std::shared_ptr<Buffer> data;
