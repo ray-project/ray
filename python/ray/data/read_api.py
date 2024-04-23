@@ -2929,7 +2929,7 @@ def read_lance(
 
     Args:
         uri: The URI of the source Lance dataset to read from.
-            Currently supports local file paths, S3, or GCS URIs are supported.
+            Currently supports local file paths, S3, GCS, and AZ URIs are supported.
         columns: The columns to read from the dataset.
             If not specified, all columns are read.
         filter: The filter to apply to the dataset.
