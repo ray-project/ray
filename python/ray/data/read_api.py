@@ -1,5 +1,6 @@
 import collections
 import logging
+import math
 import os
 import warnings
 from typing import (
@@ -31,6 +32,7 @@ from ray.data._internal.logical.operators.from_operators import (
 )
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.optimizers import LogicalPlan
+from ray.data._internal.pandas_block import _estimate_dataframe_size
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
@@ -2358,7 +2360,8 @@ def from_modin(df: "modin.pandas.dataframe.DataFrame") -> MaterializedDataset:
 
 @PublicAPI
 def from_pandas(
-    dfs: Union["pandas.DataFrame", List["pandas.DataFrame"]]
+    dfs: Union["pandas.DataFrame", List["pandas.DataFrame"]],
+    override_num_blocks: Optional[int] = None,
 ) -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a list of pandas dataframes.
 
@@ -2376,6 +2379,10 @@ def from_pandas(
 
     Args:
         dfs: A pandas dataframe or a list of pandas dataframes.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
         :class:`~ray.data.Dataset` holding data read from the dataframes.
@@ -2385,13 +2392,25 @@ def from_pandas(
     if isinstance(dfs, pd.DataFrame):
         dfs = [dfs]
 
+    context = DataContext.get_current()
+    num_blocks = override_num_blocks
+    if num_blocks is None:
+        total_size = sum(_estimate_dataframe_size(df) for df in dfs)
+        num_blocks = math.ceil(total_size / context.target_max_block_size)
+
+    if len(dfs) > 1:
+        ary = pd.concat(dfs, axis=0)
+    else:
+        ary = dfs[0]
+    dfs = np.array_split(ary, num_blocks)
+
     from ray.air.util.data_batch_conversion import (
         _cast_ndarray_columns_to_tensor_extension,
     )
 
-    context = DataContext.get_current()
     if context.enable_tensor_extension_casting:
         dfs = [_cast_ndarray_columns_to_tensor_extension(df.copy()) for df in dfs]
+
     return from_pandas_refs([ray.put(df) for df in dfs])
 
 

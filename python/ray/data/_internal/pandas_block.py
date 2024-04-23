@@ -608,3 +608,23 @@ class PandasBlockAccessor(TableBlockAccessor):
         return ret, PandasBlockAccessor(ret).get_metadata(
             None, exec_stats=stats.build()
         )
+
+
+def _estimate_dataframe_size(df: "pandas.DataFrame") -> int:
+    """Estimate the size of a pandas DataFrame.
+
+    This function is necessary
+    """
+    size = 0
+    for column in df.columns:
+        if df[column].dtype == object:
+            for item in df[column]:
+                if isinstance(item, str):
+                    size += len(item)
+                elif isinstance(item, np.ndarray):
+                    size += item.nbytes
+                else:
+                    size += 8
+        else:
+            size += df[column].nbytes
+    return size
