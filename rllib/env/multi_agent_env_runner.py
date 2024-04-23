@@ -609,7 +609,7 @@ class MultiAgentEnvRunner(EnvRunner):
             agent_episode_returns = defaultdict(
                 float,
                 {
-                    sa_eps.agent_id: sa_eps.get_return()
+                    str(sa_eps.agent_id): sa_eps.get_return()
                     for sa_eps in eps.agent_episodes.values()
                 },
             )
@@ -629,7 +629,7 @@ class MultiAgentEnvRunner(EnvRunner):
                     episode_return += return_eps2
                     episode_duration_s += eps2.get_duration_s()
                     for sa_eps in eps2.agent_episodes.values():
-                        agent_episode_returns[sa_eps.agent_id] += return_eps2
+                        agent_episode_returns[str(sa_eps.agent_id)] += return_eps2
                         module_episode_returns[sa_eps.module_id] += return_eps2
                 del self._ongoing_episodes_for_metrics[eps.id_]
 
