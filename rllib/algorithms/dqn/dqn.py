@@ -664,10 +664,6 @@ class DQN(Algorithm):
                     )
                     self.metrics.log_dict(learner_results, key=LEARNER_RESULTS)
 
-                # Update the counters.
-                # self._counters[NUM_AGENT_STEPS_TRAINED] += train_batch.agent_steps()
-                # self._counters[NUM_ENV_STEPS_TRAINED] += train_batch.env_steps()
-
                 # Update replay buffer priorities.
                 with self.metrics.log_time((TIMERS, REPLAY_BUFFER_UPDATE_PRIOS_TIMER)):
                     update_priorities_in_episode_replay_buffer(
@@ -677,7 +673,7 @@ class DQN(Algorithm):
                         learner_results,
                     )
 
-                # Update the target networks if necessary.
+                # Update the target networks, if necessary.
                 with self.metrics.log_time((TIMERS, LEARNER_ADDITIONAL_UPDATE_TIMER)):
                     modules_to_update = set(learner_results.keys()) - {ALL_MODULES}
                     additional_results = self.learner_group.additional_update(

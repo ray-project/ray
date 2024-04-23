@@ -429,7 +429,7 @@ class MetricsLogger:
         # Return the Stats object, so a `with` clause can enter and exit it.
         return self.stats[key]
 
-    def peek(self, *key) -> Any:
+    def peek(self, *key, default: Optional[Any] = None) -> Any:
         """Returns the (reduced) value(s) found under the given key or key sequence.
 
         If `key` only reaches to a nested dict deeper in `self`, that
@@ -472,11 +472,20 @@ class MetricsLogger:
         Args:
             key: The key/key sequence of the sub-structure of `self`, whose (reduced)
                 values to return.
+            default: An optional default value in case `key` cannot be found in `self`.
+                If default is not provided and `key` cannot be found, throws a KeyError.
 
         Returns:
             The (reduced) values of the (possibly nested) sub-structure found under
             the given `key` or key sequence.
+
+        Raises:
+            KeyError: If `key` cannot be found AND `default` is not provided.
         """
+        # Use default value, b/c `key` cannot be found in our stats.
+        if key not in self.stats and default is not None:
+            return default
+
         # Create a reduced view of the requested sub-structure or leaf (Stats object).
         ret = tree.map_structure(lambda s: s.peek(), self.stats[key])
 
