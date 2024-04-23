@@ -367,8 +367,11 @@ class DashboardHead:
             DataOrganizer.purge(),
             DataOrganizer.organize(),
         ]
-        await asyncio.gather(*concurrent_tasks, *(m.run(self.server) for m in modules))
-        await self.server.wait_for_termination()
+        await asyncio.gather(
+            *concurrent_tasks,
+            *(m.run(self.server) for m in modules),
+            self.server.wait_for_termination(),
+        )
 
         if self.http_server:
             await self.http_server.cleanup()
