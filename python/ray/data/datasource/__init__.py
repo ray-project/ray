@@ -1,4 +1,4 @@
-from python.ray.data.datasource.lance_datasource import LanceDBDatasource
+from python.ray.data.datasource.lance_datasource import LanceDatasource
 
 from ray.data.datasource.avro_datasource import AvroDatasource
 from ray.data.datasource.bigquery_datasink import _BigQueryDatasink
