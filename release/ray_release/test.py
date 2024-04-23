@@ -64,6 +64,7 @@ class TestResult:
     branch: str
     url: str
     timestamp: int
+    pull_request: str
 
     @classmethod
     def from_result(cls, result: Result):
@@ -73,6 +74,7 @@ class TestResult:
             branch=os.environ.get("BUILDKITE_BRANCH", ""),
             url=result.buildkite_url,
             timestamp=int(time.time() * 1000),
+            pull_request=os.environ.get("BUILDKITE_PULL_REQUEST", ""),
         )
 
     @classmethod
@@ -97,6 +99,7 @@ class TestResult:
             branch=result.get("branch", ""),
             url=result["url"],
             timestamp=result["timestamp"],
+            pull_request=result.get("pull_request", ""),
         )
 
     def is_failing(self) -> bool:
