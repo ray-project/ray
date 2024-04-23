@@ -42,8 +42,9 @@
 /ci/lint/format.sh @richardliaw @ericl @edoakes
 
 # Docker image and build scripts.
-/ci/build/build-docker-images.py @ray-project/ray-core @aslonnie @can-anyscale
-/ci/docker @aslonnie @can-anyscale
+/ci/build/build-docker-images.py @ray-project/ray-core @ray-project/ray-ci
+/ci/docker @ray-project/ray-ci
+/ci/ray_ci @ray-project/ray-ci
 
 # Python worker.
 #/python/ray/ @ray-project/ray-core
