@@ -464,7 +464,7 @@ class InfiniteLookbackBuffer:
         # If index >= 0 -> Ignore lookback buffer.
         # Otherwise, include lookback buffer.
         if idx >= 0 or neg_indices_left_of_zero:
-            idx = self.lookback + idx - (_ignore_last_ts is True)
+            idx = self.lookback + idx
         # Negative indices mean: Go to left into lookback buffer starting from idx=0.
         # But if we pass the lookback buffer, the index should be invalid and we will
         # have to fill, if required. Invalidate the index by setting it to one larger
