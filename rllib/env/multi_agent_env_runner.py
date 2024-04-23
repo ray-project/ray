@@ -295,7 +295,7 @@ class MultiAgentEnvRunner(EnvRunner):
                 {
                     NUM_ENV_STEPS_SAMPLED: self.num_envs,
                     # TODO (sven): obs is not-vectorized. Support vectorized MA envs.
-                    NUM_AGENT_STEPS_SAMPLED: {aid: 1 for aid in obs},
+                    NUM_AGENT_STEPS_SAMPLED: {str(aid): 1 for aid in obs},
                 },
                 reduce="sum",
                 reset_on_reduce=True,
@@ -304,7 +304,7 @@ class MultiAgentEnvRunner(EnvRunner):
                 {
                     NUM_ENV_STEPS_SAMPLED_LIFETIME: self.num_envs,
                     # TODO (sven): obs is not-vectorized. Support vectorized MA envs.
-                    NUM_AGENT_STEPS_SAMPLED_LIFETIME: {aid: 1 for aid in obs},
+                    NUM_AGENT_STEPS_SAMPLED_LIFETIME: {str(aid): 1 for aid in obs},
                 },
                 reduce="sum",
             )
@@ -580,7 +580,7 @@ class MultiAgentEnvRunner(EnvRunner):
                 {
                     NUM_ENV_STEPS_SAMPLED: self.num_envs,
                     # TODO (sven): obs is not-vectorized. Support vectorized MA envs.
-                    NUM_AGENT_STEPS_SAMPLED: {aid: 1 for aid in obs},
+                    NUM_AGENT_STEPS_SAMPLED: {str(aid): 1 for aid in obs},
                 },
                 reduce="sum",
                 reset_on_reduce=True,
@@ -589,7 +589,7 @@ class MultiAgentEnvRunner(EnvRunner):
                 {
                     NUM_ENV_STEPS_SAMPLED_LIFETIME: self.num_envs,
                     # TODO (sven): obs is not-vectorized. Support vectorized MA envs.
-                    NUM_AGENT_STEPS_SAMPLED_LIFETIME: {aid: 1 for aid in obs},
+                    NUM_AGENT_STEPS_SAMPLED_LIFETIME: {str(aid): 1 for aid in obs},
                 },
                 reduce="sum",
             )
