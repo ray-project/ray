@@ -3314,21 +3314,20 @@ class Algorithm(Trainable, AlgorithmBase):
                     self.evaluation_config.keep_per_episode_custom_metrics
                 ),
             )
+            # TODO: Don't dump sampler results into top-level.
+            eval_results = dict({"sampler_results": eval_results}, **eval_results)
+            eval_results[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps
+            eval_results[NUM_ENV_STEPS_SAMPLED_THIS_ITER] = env_steps
+            # TODO: Remove this key at some point. Here for backward compatibility.
+            eval_results["timesteps_this_iter"] = eval_results.get(
+                NUM_ENV_STEPS_SAMPLED_THIS_ITER, 0
+            )
         else:
             self.metrics.log_n_dicts(
                 all_metrics,
                 key=(EVALUATION_RESULTS, ENV_RUNNER_RESULTS),
             )
             eval_results = self.metrics.reduce((EVALUATION_RESULTS, ENV_RUNNER_RESULTS))
-
-        # TODO: Don't dump sampler results into top-level.
-        eval_results = dict({"sampler_results": eval_results}, **eval_results)
-        eval_results[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps
-        eval_results[NUM_ENV_STEPS_SAMPLED_THIS_ITER] = env_steps
-        # TODO: Remove this key at some point. Here for backward compatibility.
-        eval_results["timesteps_this_iter"] = eval_results.get(
-            NUM_ENV_STEPS_SAMPLED_THIS_ITER, 0
-        )
 
         # Warn if results are empty, it could be that this is because the eval timesteps
         # are not enough to run through one full episode.

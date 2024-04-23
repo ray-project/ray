@@ -683,19 +683,17 @@ class DQN(Algorithm):
                     additional_results = self.learner_group.additional_update(
                         module_ids_to_update=modules_to_update,
                         timestep=current_ts,
-                        last_update=self._counters[LAST_TARGET_UPDATE_TS],
+                        last_update=self.metrics.peek(
+                            LEARNER_RESULTS, LAST_TARGET_UPDATE_TS, default=0
+                        ),
                     )
+                    # Add the additional results to the training results, if any.
                     self.metrics.log_dict(additional_results, key=LEARNER_RESULTS)
-
-                # Add the additional results to the training results, if any.
-                for pid, res in additional_results.items():
-                    if LAST_TARGET_UPDATE_TS in res:
-                        self._counters[LAST_TARGET_UPDATE_TS] = res[
-                            LAST_TARGET_UPDATE_TS
-                        ]
-                    if NUM_TARGET_UPDATES in res:
-                        self._counters[NUM_TARGET_UPDATES] += res[NUM_TARGET_UPDATES]
-                    learner_results[pid].update(res)
+                    # TODO (sven): Move this count increase into Learner
+                    #  `additional_update()` once MetricsLogger is in Learner.
+                    self.metrics.log_value(
+                        (LEARNER_RESULTS, NUM_TARGET_UPDATES), value=1, reduce="sum"
+                    )
 
             # Update weights and global_vars - after learning on the local worker -
             # on all remote workers.
