@@ -27,7 +27,7 @@ from ray.util.annotations import PublicAPI
 
 
 # TODO (simon): Include cases in which the number of agents in an
-# episode are shrinking or growing during the episode itself.
+#  episode are shrinking or growing during the episode itself.
 @PublicAPI(stability="alpha")
 class MultiAgentEpisode:
     """Stores multi-agent episode data.
@@ -1633,21 +1633,30 @@ class MultiAgentEpisode:
         )
 
     def print(self) -> None:
+        """Prints this MultiAgentEpisode as a table of observations for the agents."""
+
         # Find the maximum timestep across all agents to determine the grid width.
-        max_ts = max(len(ts) for ts in self.env_t_to_agent_t.values())
+        max_ts = max(ts.len_incl_lookback() for ts in self.env_t_to_agent_t.values())
+        lookback = next(iter(self.env_t_to_agent_t.values())).lookback
+        longest_agent = max(len(aid) for aid in self.agent_ids)
         # Construct the header.
-        header = "ts   " + " ".join(str(i) for i in range(max_ts)) + "\n"
+        header = (
+            "ts"
+            + (" " * longest_agent)
+            + "   ".join(str(i) for i in range(-lookback, max_ts - lookback))
+            + "\n"
+        )
         # Construct each agent's row.
         rows = []
-        for agent, timesteps in self.env_t_to_agent_t.items():
-            row = f"{agent}  "
-            for t in timesteps:
+        for agent, inf_buffer in self.env_t_to_agent_t.items():
+            row = f"{agent}  " + (" " * (longest_agent - len(agent)))
+            for t in inf_buffer.data:
                 # Two spaces for alignment.
                 if t == "S":
-                    row += "  "
+                    row += "    "
                 # Mark the step with an x.
                 else:
-                    row += "x "
+                    row += " x  "
             # Remove trailing space for alignment.
             rows.append(row.rstrip())
 

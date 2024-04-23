@@ -10,6 +10,7 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
+from ray.rllib.core.rl_module import INFERENCE_ONLY
 from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
@@ -83,6 +84,12 @@ class SingleAgentEnvRunner(EnvRunner):
             #  shape=(1,) is expected.
             module_spec.action_space = self.env.envs[0].action_space
             module_spec.model_config_dict = self.config.model_config
+            # Only load a light version of the module, if available. This is useful
+            # if the the module has target or critic networks not needed in sampling
+            # or inference.
+            # TODO (simon): Once we use `get_marl_module_spec` here, we can remove
+            # this line here as the function takes care of this flag.
+            module_spec.model_config_dict[INFERENCE_ONLY] = True
             self.module: RLModule = module_spec.build()
         except NotImplementedError:
             self.module = None
@@ -602,10 +609,10 @@ class SingleAgentEnvRunner(EnvRunner):
             weights = self._convert_to_tensor(weights)
             self.module.set_state(weights)
 
-    def get_weights(self, modules=None):
+    def get_weights(self, modules=None, inference_only: bool = False):
         """Returns the weights of our (single-agent) RLModule."""
 
-        return self.module.get_state()
+        return self.module.get_state(inference_only=inference_only)
 
     @override(EnvRunner)
     def assert_healthy(self):
