@@ -129,6 +129,15 @@ class Test(dict):
         )
 
     @classmethod
+    def gen_from_name(cls, name: str):
+        tests = [
+            test
+            for test in Test.gen_from_s3(cls._get_s3_name(name))
+            if test["name"] == name
+        ]
+        return tests[0] if tests else None
+
+    @classmethod
     def gen_from_s3(cls, prefix: str):
         """
         Obtain all tests whose names start with the given prefix from s3
@@ -225,12 +234,12 @@ class Test(dict):
         """
         return self["name"]
 
-    def _get_s3_name(self) -> str:
+    def _get_s3_name(cls, test_name: str) -> str:
         """
         Returns the name of the test for s3. Since '/' is not allowed in s3 key,
         replace it with '_'.
         """
-        return self["name"].replace("/", "_")
+        return test_name.replace("/", "_")
 
     def get_oncall(self) -> str:
         """
@@ -247,7 +256,7 @@ class Test(dict):
                 boto3.client("s3")
                 .get_object(
                     Bucket=get_read_state_machine_aws_bucket(),
-                    Key=f"{AWS_TEST_KEY}/{self._get_s3_name()}.json",
+                    Key=f"{AWS_TEST_KEY}/{self._get_s3_name(self.get_name())}.json",
                 )
                 .get("Body")
                 .read()
@@ -397,7 +406,7 @@ class Test(dict):
         s3_client = boto3.client("s3")
         pages = s3_client.get_paginator("list_objects_v2").paginate(
             Bucket=get_read_state_machine_aws_bucket(),
-            Prefix=f"{AWS_TEST_RESULT_KEY}/{self._get_s3_name()}-",
+            Prefix=f"{AWS_TEST_RESULT_KEY}/{self._get_s3_name(self.get_name())}-",
         )
         files = sorted(
             chain.from_iterable([page.get("Contents", []) for page in pages]),
@@ -433,7 +442,7 @@ class Test(dict):
         s3_put_rayci_test_data(
             Bucket=get_write_state_machine_aws_bucket(),
             Key=f"{AWS_TEST_RESULT_KEY}/"
-            f"{self._get_s3_name()}-{int(time.time() * 1000)}.json",
+            f"{self._get_s3_name(self.get_name())}-{int(time.time() * 1000)}.json",
             Body=json.dumps(test_result.__dict__),
         )
 
@@ -443,7 +452,7 @@ class Test(dict):
         """
         s3_put_rayci_test_data(
             Bucket=get_write_state_machine_aws_bucket(),
-            Key=f"{AWS_TEST_KEY}/{self._get_s3_name()}.json",
+            Key=f"{AWS_TEST_KEY}/{self._get_s3_name(self.get_name())}.json",
             Body=json.dumps(self),
         )
 
