@@ -844,7 +844,7 @@ class Algorithm(Trainable, AlgorithmBase):
             self.config.evaluation_interval
             and (self.iteration + 1) % self.config.evaluation_interval == 0
         )
-        evaluate_in_general = self.config.evaluation_interval
+        evaluate_in_general = bool(self.config.evaluation_interval)
 
         # Results dict for training (and if appolicable: evaluation).
         train_results: ResultDict = {}
@@ -977,7 +977,10 @@ class Algorithm(Trainable, AlgorithmBase):
         self._before_evaluate()
 
         if self.evaluation_dataset is not None:
-            return {"evaluation": self._run_offline_evaluation()}
+            if self.config.uses_new_env_runners:
+                return {EVALUATION_RESULTS: self._run_offline_evaluation()}
+            else:
+                return {"evaluation": self._run_offline_evaluation()}
 
         # Sync weights to the evaluation EnvRunners.
         if self.evaluation_workers is not None:
@@ -993,7 +996,9 @@ class Algorithm(Trainable, AlgorithmBase):
                     self.evaluation_workers.sync_env_runner_states(
                         config=self.evaluation_config,
                         from_worker=self.workers.local_worker(),
-                        env_steps_sampled=self._counters[NUM_ENV_STEPS_SAMPLED],
+                        env_steps_sampled=self.metrics.peek(
+                            NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
+                        ),
                     )
             else:
                 self._sync_filters_if_needed(
@@ -1068,7 +1073,10 @@ class Algorithm(Trainable, AlgorithmBase):
                 key=EVALUATION_RESULTS, return_stats_obj=False
             )
         else:
-            eval_results = dict({"sampler_results": eval_results}, **eval_results)
+            eval_results = dict(
+                {"sampler_results": eval_results, ENV_RUNNER_RESULTS: eval_results},
+                **eval_results,
+            )
             eval_results[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps
             eval_results[NUM_ENV_STEPS_SAMPLED_THIS_ITER] = env_steps
             eval_results["timesteps_this_iter"] = eval_results.get(
@@ -3440,7 +3448,9 @@ class Algorithm(Trainable, AlgorithmBase):
 
         # Evaluation results.
         if "evaluation" in iteration_results:
-            results["evaluation"] = iteration_results.pop("evaluation")
+            eval_results = iteration_results.pop("evaluation")
+            iteration_results.pop(EVALUATION_RESULTS, None)
+            results["evaluation"] = results[EVALUATION_RESULTS] = eval_results
 
         # Custom metrics and episode media.
         results["custom_metrics"] = iteration_results.pop("custom_metrics", {})
@@ -3472,7 +3482,7 @@ class Algorithm(Trainable, AlgorithmBase):
         self._episode_history = self._episode_history[
             -self.config.metrics_num_episodes_for_smoothing :
         ]
-        results["sampler_results"] = summarize_episodes(
+        results["sampler_results"] = results[ENV_RUNNER_RESULTS] = summarize_episodes(
             episodes_for_metrics,
             episodes_this_iter,
             self.config.keep_per_episode_custom_metrics,

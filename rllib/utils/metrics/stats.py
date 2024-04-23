@@ -263,16 +263,17 @@ class Stats:
         else:
             return self
 
-    def merge(self, *others: "Stats") -> None:
+    def merge(self, *others: "Stats", shuffle: bool = True) -> None:
         """Merges all internal values of `others` into `self`'s internal values list.
 
-
-
         Args:
-            *others:
-
-        Returns:
-
+            others: One or more other Stats objects that need to be merged into `self.
+            shuffle: Whether to shuffle the merged internal values list after the
+                merging (extending). Set to True, if `self` and `*others` are all equal
+                components in a parallel setup (each of their values should
+                matter equally and without any time-axis bias). Set to False, if
+                `*others` is only one component AND its values should be given priority
+                (because they are newer).
         """
         # Make sure `other` has same reduction settings.
         assert all(self._reduce_method == o._reduce_method for o in others)
@@ -282,14 +283,15 @@ class Stats:
         if self._reduce_method is None:
             for o in others:
                 self.values.extend(o.values)
-        # Combine values, then shuffle to not give the values of `self` OR `other` any
-        # specific weight (over the other).
+        # Combine values, then maybe shuffle to not give the values of `self` OR `other`
+        # any specific weight (over the other).
         elif self._ema_coeff is not None:
             for o in others:
                 self.values.extend(o.values)
-            random.shuffle(self.values)
+            if shuffle:
+                random.shuffle(self.values)
         # If we have to reduce by a window:
-        # Slice self's and other's values using window, combine them, then shuffle
+        # Slice self's and other's values using window, combine them, then maybe shuffle
         # values (to make sure none gets a specific weight over the other when it
         # comes to the actual reduction step).
         else:
@@ -302,7 +304,8 @@ class Stats:
             else:
                 for o in others:
                     self.values.extend(o.values)
-            random.shuffle(self.values)
+            if shuffle:
+                random.shuffle(self.values)
 
     def __len__(self) -> int:
         """Returns the length of the internal values list."""

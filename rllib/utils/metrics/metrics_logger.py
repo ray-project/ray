@@ -280,7 +280,7 @@ class MetricsLogger:
 
             if extended_key in self.stats:
                 # Merge existing Stats with incoming one.
-                self.stats[extended_key].merge(stat_or_value)
+                self.stats[extended_key].merge(stat_or_value, shuffle=False)
             else:
                 # Make a copy to not mess with the incoming stats objects.
                 self.stats[extended_key] = copy.deepcopy(stat_or_value)
@@ -337,7 +337,9 @@ class MetricsLogger:
                 reset_on_reduce = True
 
             available_stats = [s[key] for s in stats_dicts if key in s]
+            merged_stats = None
             for i, stat_or_value in enumerate(available_stats):
+                # Value is NOT a Stats object -> Convert it to one.
                 if not isinstance(stat_or_value, Stats):
                     available_stats[i] = stat_or_value = Stats(
                         stat_or_value,
@@ -346,9 +348,21 @@ class MetricsLogger:
                         ema_coeff=ema_coeff,
                         reset_on_reduce=reset_on_reduce,
                     )
+                # `key` not in self yet -> Create an empty Stats entry under that key.
                 if extended_key not in self.stats:
                     self.stats[extended_key] = Stats.similar_to(stat_or_value)
-            self.stats[extended_key].merge(*available_stats)
+
+                # Create a new Stats object to merge everything into (with shuffle=True
+                # to make sure all to-be-merged Stats are treated equally).
+                if merged_stats is None:
+                    merged_stats = Stats.similar_to(stat_or_value)
+                # Merge all `stats_dicts` into `merged_stats`first.
+                merged_stats.merge(stat_or_value, shuffle=True)
+
+            # Finally, merge `merged_stats` into self's entry, but w/o shuffling to
+            # give the newer values (`merged_stats`) priority over possibly already
+            # existing ones.
+            self.stats[extended_key].merge(merged_stats, shuffle=False)
 
     def log_time(
         self,
