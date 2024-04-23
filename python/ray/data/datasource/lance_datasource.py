@@ -1,5 +1,5 @@
 import logging
-from typing import List, Optional, Union
+from typing import List, Optional
 
 import lance
 import pyarrow as pa
@@ -31,8 +31,8 @@ class LanceDatasource(Datasource):
     def __init__(
         self,
         uri: str,
-        columns: Union[list, None] = None,
-        filter: Union[str, None] = None,
+        columns: Optional[List[str]] = None,
+        filter: Optional[str] = None,
     ):
         self.uri = uri
         self.columns = columns
