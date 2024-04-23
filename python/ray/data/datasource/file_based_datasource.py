@@ -50,6 +50,10 @@ from ray.data.datasource.path_util import (
 )
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
+from ray.util.metrics import Histogram
+
+import time
+
 if TYPE_CHECKING:
     import pandas as pd
     import pyarrow
@@ -163,6 +167,12 @@ class FileBasedDatasource(Datasource):
         self._ignore_missing_paths = ignore_missing_paths
         self._include_paths = include_paths
         paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
+
+        self.read_task_generation_latency = Histogram(
+            "read_tasks_generation_latency",
+            description="Latencies of requests in ms."
+        )
+
         paths, file_sizes = map(
             list,
             zip(
@@ -318,6 +328,7 @@ class FileBasedDatasource(Datasource):
         # Could this itself be parallelized?
         read_tasks = []
         print(f"[Connor] My number of read paths are: {len(read_tasks)}")
+        start = time.time()
         for read_paths, file_sizes in zip(
             np.array_split(paths, parallelism), np.array_split(file_sizes, parallelism)
         ):
@@ -337,6 +348,9 @@ class FileBasedDatasource(Datasource):
 
             read_tasks.append(read_task)
 
+        latency = time.time() - start
+        print(f"[Connor] Latency to generate read tasks in seconds is: {latency}")
+        self.read_task_generation_latency.observe(1000 * latency)
         return read_tasks
 
     def _open_input_source(
