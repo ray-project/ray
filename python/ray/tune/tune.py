@@ -903,7 +903,10 @@ def run(
         progress_reporter = None
 
     if air_verbosity is None:
-        progress_reporter = progress_reporter or _detect_reporter()
+        is_trainer = _entrypoint == AirEntrypoint.TRAINER
+        progress_reporter = progress_reporter or _detect_reporter(
+            _trainer_api=is_trainer
+        )
 
     if resume is not None:
         resume_config = resume_config or _build_resume_config_from_legacy_config(resume)
