@@ -129,6 +129,7 @@ __all__ = [
     "read_datasource",
     "read_images",
     "read_json",
+    "read_lance",
     "read_numpy",
     "read_mongo",
     "read_parquet",
