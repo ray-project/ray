@@ -17,7 +17,7 @@ Then you select a `search algorithm` to effectively optimize your parameters and
 `scheduler` to stop searches early and speed up your experiments.
 Together with other configuration, your `trainable`, search algorithm, and scheduler are passed into ``Tuner``,
 which runs your experiments and creates `trials`.
-These trials can then be used in `analyses` to inspect your experiment results.
+The `Tuner` returns a `ResultGrid` to inspect your experiment results.
 The following figure shows an overview of these components, which we cover in detail in the next sections.
 
 .. image:: images/tune_flow.png
@@ -38,36 +38,38 @@ hyperparameters we want to tune to `minimize` the objective.
 Since the objective also has a variable ``x``, we need to test for different values of ``x``.
 Given concrete choices for ``a``, ``b`` and ``x`` we can evaluate the objective function and get a `score` to minimize.
 
-.. tabbed:: Function API
+.. tab-set::
 
-    With the :ref:`the function-based API <tune-function-api>` you create a function (here called ``trainable``) that
-    takes in a dictionary of hyperparameters.
-    This function computes a ``score`` in a "training loop" and `reports` this score back to Tune:
+    .. tab-item:: Function API
 
-    .. literalinclude:: doc_code/key_concepts.py
-        :language: python
-        :start-after: __function_api_start__
-        :end-before: __function_api_end__
+        With the :ref:`the function-based API <tune-function-api>` you create a function (here called ``trainable``) that
+        takes in a dictionary of hyperparameters.
+        This function computes a ``score`` in a "training loop" and `reports` this score back to Tune:
 
-    Note that we use ``session.report(...)`` to report the intermediate ``score`` in the training loop, which can be useful
-    in many machine learning tasks.
-    If you just want to report the final ``score`` outside of this loop, you can simply return the score at the
-    end of the ``trainable`` function with ``return {"score": score}``.
-    You can also use ``yield {"score": score}`` instead of ``session.report()``.
+        .. literalinclude:: doc_code/key_concepts.py
+            :language: python
+            :start-after: __function_api_start__
+            :end-before: __function_api_end__
 
-.. tabbed:: Class API
+        Note that we use ``session.report(...)`` to report the intermediate ``score`` in the training loop, which can be useful
+        in many machine learning tasks.
+        If you just want to report the final ``score`` outside of this loop, you can simply return the score at the
+        end of the ``trainable`` function with ``return {"score": score}``.
+        You can also use ``yield {"score": score}`` instead of ``session.report()``.
 
-    Here's an example of specifying the objective function using the :ref:`class-based API <tune-class-api>`:
+    .. tab-item:: Class API
 
-    .. literalinclude:: doc_code/key_concepts.py
-        :language: python
-        :start-after: __class_api_start__
-        :end-before: __class_api_end__
+        Here's an example of specifying the objective function using the :ref:`class-based API <tune-class-api>`:
 
-    .. tip:: ``session.report`` can't be used within a ``Trainable`` class.
+        .. literalinclude:: doc_code/key_concepts.py
+            :language: python
+            :start-after: __class_api_start__
+            :end-before: __class_api_end__
+
+        .. tip:: ``session.report`` can't be used within a ``Trainable`` class.
 
 Learn more about the details of :ref:`Trainables here <trainable-docs>`
-and :ref:`have a look at our examples <tune-general-examples>`.
+and :doc:`have a look at our examples <examples/other-examples>`.
 Next, let's have a closer look at what the ``config`` dictionary is that you pass into your trainables.
 
 .. _tune-key-concepts-search-spaces:
@@ -98,12 +100,12 @@ Tune Trials
 
 You use :ref:`Tuner.fit <tune-run-ref>` to execute and manage hyperparameter tuning and generate your `trials`.
 At a minimum, your ``Tuner`` call takes in a trainable as first argument, and a ``param_space`` dictionary
-to define your search space.
+to define the search space.
 
 The ``Tuner.fit()`` function also provides many features such as :ref:`logging <tune-logging>`,
-:ref:`checkpointing <tune-function-checkpointing>`, and :ref:`early stopping <tune-stopping-ref>`.
-Continuing with the example defined earlier (minimizing ``a (x ** 2) + b``), a simple Tune run with a simplistic
-search space for ``a`` and ``b`` would look like this:
+:ref:`checkpointing <tune-trial-checkpoint>`, and :ref:`early stopping <tune-stopping-ref>`.
+In the example, minimizing ``a (x ** 2) + b``, a simple Tune run with a simplistic search space for ``a`` and ``b``
+looks like this:
 
 .. literalinclude:: doc_code/key_concepts.py
     :language: python
@@ -179,7 +181,7 @@ Simply pass in a ``search_alg`` argument to ``tune.TuneConfig``, which is taken 
     :end-before: __bayes_end__
 
 Tune has Search Algorithms that integrate with many popular **optimization** libraries,
-such as :ref:`Nevergrad <nevergrad>`, :ref:`HyperOpt <tune-hyperopt>`, or :ref:`Optuna <tune-optuna>`.
+such as :ref:`HyperOpt <tune-hyperopt>` or :ref:`Optuna <tune-optuna>`.
 Tune automatically converts the provided search space into the search
 spaces the search algorithms and underlying libraries expect.
 See the :ref:`Search Algorithm API documentation <tune-search-alg>` for more details.
@@ -202,22 +204,6 @@ Here's an overview of all available search algorithms in Tune:
      - Bayesian/Bandit Optimization
      - [`Ax <https://ax.dev/>`__]
      - :doc:`/tune/examples/includes/ax_example`
-   * - :ref:`BlendSearch <BlendSearch>`
-     - Blended Search
-     - [`Bs <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`__]
-     - :doc:`/tune/examples/includes/blendsearch_example`
-   * - :ref:`CFO <CFO>`
-     - Cost-Frugal hyperparameter Optimization
-     - [`Cfo <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`__]
-     - :doc:`/tune/examples/includes/cfo_example`
-   * - :ref:`DragonflySearch <Dragonfly>`
-     - Scalable Bayesian Optimization
-     - [`Dragonfly <https://dragonfly-opt.readthedocs.io/>`__]
-     - :doc:`/tune/examples/includes/dragonfly_example`
-   * - :ref:`SkoptSearch <skopt>`
-     - Bayesian Optimization
-     - [`Scikit-Optimize <https://scikit-optimize.github.io>`__]
-     - :doc:`/tune/examples/includes/skopt_example`
    * - :ref:`HyperOptSearch <tune-hyperopt>`
      - Tree-Parzen Estimators
      - [`HyperOpt <http://hyperopt.github.io/hyperopt>`__]
@@ -238,18 +224,6 @@ Here's an overview of all available search algorithms in Tune:
      - Optuna search algorithms
      - [`Optuna <https://optuna.org/>`__]
      - :doc:`/tune/examples/optuna_example`
-   * - :ref:`ZOOptSearch <zoopt>`
-     - Zeroth-order Optimization
-     - [`ZOOpt <https://github.com/polixir/ZOOpt>`__]
-     - :doc:`/tune/examples/includes/zoopt_example`
-   * - :ref:`SigOptSearch <sigopt>`
-     - Closed source
-     - [`SigOpt <https://sigopt.com/>`__]
-     - :doc:`/tune/examples/includes/sigopt_example`
-   * - :ref:`HEBOSearch <tune-hebo>`
-     - Heteroscedastic Evolutionary Bayesian Optimization
-     - [`HEBO <https://github.com/huawei-noah/HEBO/tree/master/HEBO>`__]
-     - :doc:`/tune/examples/includes/hebo_example`
 
 .. note:: Unlike :ref:`Tune's Trial Schedulers <tune-schedulers>`,
     Tune Search Algorithms cannot affect or stop training processes.
@@ -306,10 +280,10 @@ and `Population Based Bandits (PB2) <https://arxiv.org/abs/2002.02518>`__.
 
 When using schedulers, you may face compatibility issues, as shown in the below compatibility matrix.
 Certain schedulers cannot be used with search algorithms,
-and certain schedulers require :ref:`checkpointing to be implemented <tune-function-checkpointing>`.
+and certain schedulers require that you implement :ref:`checkpointing <tune-trial-checkpoint>`.
 
 Schedulers can dynamically change trial resource requirements during tuning.
-This is currently implemented in :ref:`ResourceChangingScheduler<tune-resource-changing-scheduler>`,
+This is implemented in :ref:`ResourceChangingScheduler<tune-resource-changing-scheduler>`,
 which can wrap around any other scheduler.
 
 .. list-table:: Scheduler Compatibility Matrix
@@ -348,8 +322,8 @@ Learn more about trial schedulers in :ref:`the scheduler API documentation <sche
 
 .. _tune-concepts-analysis:
 
-Tune Run Analyses
------------------
+Tune ResultGrid
+---------------
 
 ``Tuner.fit()`` returns an :ref:`ResultGrid <tune-analysis-docs>` object which has methods you can use for
 analyzing your training.
@@ -369,7 +343,7 @@ allowing you to do ad-hoc data analysis over your results.
     :start-after: __results_start__
     :end-before: __results_end__
 
-See :doc:`/tune/examples/tune_analyze_results` for more usage examples.
+See the :ref:`result analysis user guide <tune-analysis-guide>` for more usage examples.
 
 What's Next?
 -------------

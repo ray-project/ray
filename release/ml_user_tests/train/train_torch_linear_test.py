@@ -17,7 +17,9 @@ if __name__ == "__main__":
     else:
         ray.init(address="auto")
 
-    results = train_linear(num_workers=6, use_gpu=True, epochs=20)
+    results = train_linear(
+        num_workers=6, use_gpu=True, epochs=20, storage_path="/mnt/cluster_storage"
+    )
 
     taken = time.time() - start
     result = {"time_taken": taken}

@@ -2,9 +2,10 @@
 
 # Before running this script, please make sure golang is installed
 # and buildifier is also installed. The example is showed in .travis.yml.
-set -e
+set -eo pipefail
 
 ROOT_DIR=$(cd "$(dirname "$0")/$(dirname "$(test -L "$0" && readlink "$0" || echo "/")")"; pwd)
+BUILDIFIER="${BUILDIFIER:-buildifier}"
 
 function usage()
 {
@@ -43,8 +44,17 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-pushd "$ROOT_DIR"/../..
-BAZEL_FILES=(bazel/BUILD bazel/ray.bzl BUILD.bazel java/BUILD.bazel \
- cpp/BUILD.bazel cpp/example/BUILD.bazel WORKSPACE)
-buildifier -mode=$RUN_TYPE -diff_command="diff -u" "${BAZEL_FILES[@]}"
-popd
+BAZEL_FILES=(
+  bazel/BUILD
+  bazel/ray.bzl
+  BUILD.bazel
+  java/BUILD.bazel
+  cpp/BUILD.bazel
+  cpp/example/BUILD.bazel
+  WORKSPACE
+)
+
+(
+  cd "$ROOT_DIR"/../..
+  "${BUILDIFIER}" -mode=$RUN_TYPE -diff_command="diff -u" "${BAZEL_FILES[@]}"
+)

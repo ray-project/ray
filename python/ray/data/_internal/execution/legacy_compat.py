@@ -3,36 +3,33 @@
 It should be deleted once we fully move to the new executor backend.
 """
 
-import ray.cloudpickle as cloudpickle
-from typing import Iterator, Tuple, Any
+from typing import Iterator, Tuple
 
-import ray
-from ray.data._internal.logical.optimizers import get_execution_plan
-from ray.data.context import DatasetContext
-from ray.types import ObjectRef
-from ray.data.block import Block, BlockMetadata, List
-from ray.data.datasource import ReadTask
-from ray.data._internal.stats import StatsDict, DatasetStats
-from ray.data._internal.stage_impl import RandomizeBlocksStage
 from ray.data._internal.block_list import BlockList
-from ray.data._internal.lazy_block_list import LazyBlockList
-from ray.data._internal.compute import (
-    get_compute,
-    CallableClass,
-    TaskPoolStrategy,
-    ActorPoolStrategy,
-)
-from ray.data._internal.memory_tracing import trace_allocation
-from ray.data._internal.plan import ExecutionPlan, OneToOneStage, AllToAllStage, Stage
-from ray.data._internal.execution.operators.map_operator import MapOperator
-from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
-from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.interfaces import (
     Executor,
     PhysicalOperator,
     RefBundle,
-    TaskContext,
 )
+from ray.data._internal.lazy_block_list import LazyBlockList
+from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
+from ray.data._internal.logical.operators.read_operator import Read
+from ray.data._internal.logical.optimizers import get_execution_plan
+from ray.data._internal.logical.rules.set_read_parallelism import (
+    compute_additional_split_factor,
+)
+from ray.data._internal.logical.util import record_operators_usage
+from ray.data._internal.plan import ExecutionPlan
+from ray.data._internal.planner.plan_read_op import (
+    apply_output_blocks_handling_to_read_task,
+)
+from ray.data._internal.stats import DatasetStats
+from ray.data.block import Block, BlockMetadata, List
+from ray.data.context import DataContext
+from ray.types import ObjectRef
+
+# Warn about tasks larger than this.
+TASK_SIZE_WARN_THRESHOLD_BYTES = 100000
 
 
 def execute_to_legacy_block_iterator(
@@ -40,34 +37,47 @@ def execute_to_legacy_block_iterator(
     plan: ExecutionPlan,
     allow_clear_input_blocks: bool,
     dataset_uuid: str,
-) -> Iterator[ObjectRef[Block]]:
-    """Execute a plan with the new executor and return a block iterator.
+) -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
+    """Same as execute_to_legacy_bundle_iterator but returning blocks and metadata."""
+    bundle_iter = execute_to_legacy_bundle_iterator(
+        executor, plan, allow_clear_input_blocks, dataset_uuid
+    )
+    for bundle in bundle_iter:
+        for block, metadata in bundle.blocks:
+            yield block, metadata
+
+
+def execute_to_legacy_bundle_iterator(
+    executor: Executor,
+    plan: ExecutionPlan,
+    allow_clear_input_blocks: bool,
+    dataset_uuid: str,
+    dag_rewrite=None,
+) -> Iterator[RefBundle]:
+    """Execute a plan with the new executor and return a bundle iterator.
 
     Args:
         executor: The executor to use.
         plan: The legacy plan to execute.
         allow_clear_input_blocks: Whether the executor may consider clearing blocks.
         dataset_uuid: UUID of the dataset for this execution.
+        dag_rewrite: Callback that can be used to mutate the DAG prior to execution.
+            This is currently used as a legacy hack to inject the OutputSplit operator
+            for `Dataset.streaming_split()`.
 
     Returns:
-        The output as a block iterator.
+        The output as a bundle iterator.
     """
-    if DatasetContext.get_current().optimizer_enabled:
-        dag, stats = get_execution_plan(plan._logical_plan).dag, None
-    else:
-        dag, stats = _to_operator_dag(plan, allow_clear_input_blocks)
-
-    # Enforce to preserve ordering if the plan has stages required to do so, such as
-    # Zip and Sort.
-    # TODO(chengsu): implement this for operator as well.
-    if plan.require_preserve_order():
-        executor._options.preserve_order = True
+    dag, stats = _get_execution_dag(
+        executor,
+        plan,
+        preserve_order=False,
+    )
+    if dag_rewrite:
+        dag = dag_rewrite(dag)
 
     bundle_iter = executor.execute(dag, initial_stats=stats)
-
-    for bundle in bundle_iter:
-        for block, _ in bundle.blocks:
-            yield block
+    return bundle_iter
 
 
 def execute_to_legacy_block_list(
@@ -75,6 +85,7 @@ def execute_to_legacy_block_list(
     plan: ExecutionPlan,
     allow_clear_input_blocks: bool,
     dataset_uuid: str,
+    preserve_order: bool,
 ) -> BlockList:
     """Execute a plan with the new executor and translate it into a legacy block list.
 
@@ -83,21 +94,16 @@ def execute_to_legacy_block_list(
         plan: The legacy plan to execute.
         allow_clear_input_blocks: Whether the executor may consider clearing blocks.
         dataset_uuid: UUID of the dataset for this execution.
+        preserve_order: Whether to preserve order in execution.
 
     Returns:
         The output as a legacy block list.
     """
-    if DatasetContext.get_current().optimizer_enabled:
-        dag, stats = get_execution_plan(plan._logical_plan).dag, None
-    else:
-        dag, stats = _to_operator_dag(plan, allow_clear_input_blocks)
-
-    # Enforce to preserve ordering if the plan has stages required to do so, such as
-    # Zip and Sort.
-    # TODO(chengsu): implement this for operator as well.
-    if plan.require_preserve_order():
-        executor._options.preserve_order = True
-
+    dag, stats = _get_execution_dag(
+        executor,
+        plan,
+        preserve_order,
+    )
     bundles = executor.execute(dag, initial_stats=stats)
     block_list = _bundles_to_block_list(bundles)
     # Set the stats UUID after execution finishes.
@@ -105,180 +111,91 @@ def execute_to_legacy_block_list(
     return block_list
 
 
-def _to_operator_dag(
-    plan: ExecutionPlan, allow_clear_input_blocks: bool
-) -> (PhysicalOperator, DatasetStats):
-    """Translate a plan into an operator DAG for the new execution backend."""
-
-    blocks, stats, stages = plan._optimize()
-    if allow_clear_input_blocks:
-        if isinstance(blocks, LazyBlockList):
-            # Always clear lazy input blocks since they can be recomputed.
-            owns_blocks = True
-        else:
-            # Otherwise, defer to the block's ownership status.
-            owns_blocks = blocks._owned_by_consumer
-    else:
-        owns_blocks = False
-    operator = _blocks_to_input_buffer(blocks, owns_blocks)
-    for stage in stages:
-        operator = _stage_to_operator(stage, operator)
-    return operator, stats
-
-
-def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOperator:
-    """Translate a block list into an InputBuffer operator.
+def get_legacy_lazy_block_list_read_only(
+    plan: ExecutionPlan,
+) -> LazyBlockList:
+    """For a read-only plan, construct a LazyBlockList with ReadTasks from the
+    input Datasource or Reader. Note that the plan and the underlying ReadTasks
+    are not executed, only their known metadata is fetched.
 
     Args:
-        blocks: The block list to translate.
-        owns_blocks: Whether we can take ownership of the input blocks.
+        plan: The legacy plan to execute.
 
     Returns:
-        The physical operator representing the input block list.
+        The output as a legacy LazyBlockList.
     """
+    assert plan.is_read_only(), "This function only supports read-only plans."
+    assert isinstance(plan._logical_plan, LogicalPlan)
+    read_logical_op = plan._logical_plan.dag
+    assert isinstance(read_logical_op, Read)
 
-    if hasattr(blocks, "_tasks"):
-        read_tasks = blocks._tasks
-        remote_args = blocks._remote_args
-        assert all(isinstance(t, ReadTask) for t in read_tasks), read_tasks
-        inputs = InputDataBuffer(
-            [
-                RefBundle(
-                    [
-                        (
-                            # This isn't a proper block, but it's what we are doing
-                            # in the legacy code.
-                            ray.put(read_task),
-                            BlockMetadata(
-                                num_rows=1,
-                                size_bytes=len(cloudpickle.dumps(read_task)),
-                                schema=None,
-                                input_files=[],
-                                exec_stats=None,
-                            ),
-                        )
-                    ],
-                    owns_blocks=True,
-                )
-                for read_task in read_tasks
-            ]
-        )
+    # In the full dataset execution, the logic in ApplyAdditionalSplitToOutputBlocks
+    # is normally executed as part of the MapOperator created in the
+    # LogicalPlan -> PhysicalPlan plan translation. In this case, since we
+    # get the ReadTasks directly from the Datasource or Reader,
+    # we need to manually apply this logic in order to update the ReadTasks.
+    ctx = DataContext.get_current()
+    (parallelism, _, estimated_num_blocks, k,) = compute_additional_split_factor(
+        read_logical_op._datasource_or_legacy_reader,
+        read_logical_op._parallelism,
+        read_logical_op._mem_size,
+        ctx.target_max_block_size,
+        cur_additional_split_factor=None,
+    )
+    read_tasks = read_logical_op._datasource_or_legacy_reader.get_read_tasks(
+        parallelism
+    )
+    for read_task in read_tasks:
+        apply_output_blocks_handling_to_read_task(read_task, k)
 
-        for i in inputs._input_data:
-            for b in i.blocks:
-                trace_allocation(b[0], "legacy_compat.blocks_to_input_buf[0]")
+    block_list = LazyBlockList(
+        read_tasks,
+        read_logical_op.name,
+        ray_remote_args=read_logical_op._ray_remote_args,
+        owned_by_consumer=False,
+    )
+    # Update the estimated number of blocks after applying optimizations
+    # and fetching metadata (e.g. SetReadParallelismRule).
+    block_list._estimated_num_blocks = estimated_num_blocks
+    return block_list
 
-        def do_read(blocks: Iterator[Block], ctx: TaskContext) -> Iterator[Block]:
-            for read_task in blocks:
-                yield from read_task()
 
-        return MapOperator.create(
-            do_read, inputs, name="DoRead", ray_remote_args=remote_args
-        )
+def _get_execution_dag(
+    executor: Executor,
+    plan: ExecutionPlan,
+    preserve_order: bool,
+) -> Tuple[PhysicalOperator, DatasetStats]:
+    """Get the physical operators DAG from a plan."""
+    # Record usage of logical operators if available.
+    if hasattr(plan, "_logical_plan") and plan._logical_plan is not None:
+        record_operators_usage(plan._logical_plan.dag)
+
+    # Get DAG of physical operators and input statistics.
+    dag = get_execution_plan(plan._logical_plan).dag
+    stats = _get_initial_stats_from_plan(plan)
+
+    # Enforce to preserve ordering if the plan has operators
+    # required to do so, such as Zip and Sort.
+    if preserve_order or plan.require_preserve_order():
+        executor._options.preserve_order = True
+
+    return dag, stats
+
+
+def _get_initial_stats_from_plan(plan: ExecutionPlan) -> DatasetStats:
+    if plan._snapshot_blocks is not None and not plan._snapshot_blocks.is_cleared():
+        return plan._snapshot_stats
+    # For Datasets created from "read_xxx", `plan._in_blocks` is a LazyBlockList,
+    # and `plan._in_stats` contains useless data.
+    # For Datasets created from "from_xxx", we need to use `plan._in_stats` as
+    # the initial stats. Because the `FromXxx` logical operators will be translated to
+    # "InputDataBuffer" physical operators, which will be ignored when generating
+    # stats, see `StreamingExecutor._generate_stats`.
+    # TODO(hchen): Unify the logic by saving the initial stats in `InputDataBuffer
+    if isinstance(plan._in_blocks, LazyBlockList):
+        return DatasetStats(metadata={}, parent=None)
     else:
-        output = _block_list_to_bundles(blocks, owns_blocks=owns_blocks)
-        for i in output:
-            for b in i.blocks:
-                trace_allocation(b[0], "legacy_compat.blocks_to_input_buf[1]")
-        return InputDataBuffer(output)
-
-
-def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOperator:
-    """Translate a stage into a PhysicalOperator.
-
-    Args:
-        stage: The stage to translate.
-        input_op: The upstream operator (already translated).
-
-    Returns:
-        The translated operator that depends on the input data.
-    """
-
-    if isinstance(stage, OneToOneStage):
-        compute = get_compute(stage.compute)
-
-        block_fn = stage.block_fn
-        if stage.fn:
-            if isinstance(stage.fn, CallableClass):
-                if isinstance(compute, TaskPoolStrategy):
-                    raise ValueError(
-                        "``compute`` must be specified when using a callable class, "
-                        "and must specify the actor compute strategy. "
-                        'For example, use ``compute="actors"`` or '
-                        "``compute=ActorPoolStrategy(min, max)``."
-                    )
-                assert isinstance(compute, ActorPoolStrategy)
-
-                fn_constructor_args = stage.fn_constructor_args or ()
-                fn_constructor_kwargs = stage.fn_constructor_kwargs or {}
-                fn_ = stage.fn
-
-                def fn(item: Any) -> Any:
-                    # Wrapper providing cached instantiation of stateful callable class
-                    # UDFs.
-                    if ray.data._cached_fn is None:
-                        ray.data._cached_cls = fn_
-                        ray.data._cached_fn = fn_(
-                            *fn_constructor_args, **fn_constructor_kwargs
-                        )
-                    else:
-                        # A worker is destroyed when its actor is killed, so we
-                        # shouldn't have any worker reuse across different UDF
-                        # applications (i.e. different map operators).
-                        assert ray.data._cached_cls == fn_
-                    return ray.data._cached_fn(item)
-
-            else:
-                fn = stage.fn
-            fn_args = (fn,)
-        else:
-            fn_args = ()
-        if stage.fn_args:
-            fn_args += stage.fn_args
-        fn_kwargs = stage.fn_kwargs or {}
-
-        def do_map(blocks: Iterator[Block], ctx: TaskContext) -> Iterator[Block]:
-            yield from block_fn(blocks, ctx, *fn_args, **fn_kwargs)
-
-        return MapOperator.create(
-            do_map,
-            input_op,
-            name=stage.name,
-            compute_strategy=compute,
-            min_rows_per_bundle=stage.target_block_size,
-            ray_remote_args=stage.ray_remote_args,
-        )
-    elif isinstance(stage, AllToAllStage):
-        fn = stage.fn
-        block_udf = stage.block_udf
-        remote_args = stage.ray_remote_args
-        stage_name = stage.name
-
-        def bulk_fn(
-            refs: List[RefBundle], ctx: TaskContext
-        ) -> Tuple[List[RefBundle], StatsDict]:
-            input_owned = all(b.owns_blocks for b in refs)
-            if isinstance(stage, RandomizeBlocksStage):
-                output_owned = input_owned  # Passthrough ownership hack.
-            else:
-                output_owned = True
-            block_list = _bundles_to_block_list(refs)
-            block_list, stats_dict = fn(
-                block_list, ctx, input_owned, block_udf, remote_args
-            )
-            output = _block_list_to_bundles(block_list, owns_blocks=output_owned)
-            if not stats_dict:
-                stats_dict = {stage_name: block_list.get_metadata()}
-            return output, stats_dict
-
-        return AllToAllOperator(
-            bulk_fn,
-            input_op,
-            name=stage.name,
-            num_outputs=stage.num_blocks,
-        )
-    else:
-        raise NotImplementedError
+        return plan._in_stats
 
 
 def _bundles_to_block_list(bundles: Iterator[RefBundle]) -> BlockList:

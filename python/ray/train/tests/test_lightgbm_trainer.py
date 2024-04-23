@@ -1,20 +1,16 @@
 import math
-import pytest
-import pandas as pd
 
 import lightgbm as lgbm
+import pandas as pd
+import pytest
+from sklearn.datasets import load_breast_cancer
+from sklearn.model_selection import train_test_split
 
 import ray
 from ray import tune
-from ray.air.checkpoint import Checkpoint
+from ray.train import ScalingConfig
 from ray.train.constants import TRAIN_DATASET_KEY
-
-from ray.data.preprocessor import Preprocessor
-from ray.train.lightgbm import LightGBMCheckpoint, LightGBMTrainer
-from ray.air.config import ScalingConfig
-
-from sklearn.datasets import load_breast_cancer
-from sklearn.model_selection import train_test_split
+from ray.train.lightgbm import LightGBMTrainer
 
 
 @pytest.fixture
@@ -69,8 +65,8 @@ def test_fit_with_categoricals(ray_start_6_cpus):
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
     )
     result = trainer.fit()
-    checkpoint = LightGBMCheckpoint.from_checkpoint(result.checkpoint)
-    model = checkpoint.get_model()
+    checkpoint = result.checkpoint
+    model = LightGBMTrainer.get_model(checkpoint)
     assert model.pandas_categorical == [["A", "B"]]
 
 
@@ -85,29 +81,21 @@ def test_resume_from_checkpoint(ray_start_6_cpus, tmpdir):
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
     )
     result = trainer.fit()
-    checkpoint = result.checkpoint
-    checkpoint = LightGBMCheckpoint.from_checkpoint(result.checkpoint)
-    model = checkpoint.get_model()
+    model = LightGBMTrainer.get_model(result.checkpoint)
     assert get_num_trees(model) == 5
-
-    # Move checkpoint to a different directory.
-    checkpoint_dict = result.checkpoint.to_dict()
-    checkpoint = Checkpoint.from_dict(checkpoint_dict)
-    checkpoint_path = checkpoint.to_directory(tmpdir)
-    resume_from = Checkpoint.from_directory(checkpoint_path)
 
     trainer = LightGBMTrainer(
         scaling_config=scale_config,
         label_column="target",
         params=params,
-        num_boost_round=5,
+        num_boost_round=10,
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
-        resume_from_checkpoint=resume_from,
+        resume_from_checkpoint=result.checkpoint,
     )
     result = trainer.fit()
-    checkpoint = LightGBMCheckpoint.from_checkpoint(result.checkpoint)
-    xgb_model = checkpoint.get_model()
-    assert get_num_trees(xgb_model) == 10
+    checkpoint = result.checkpoint
+    model = LightGBMTrainer.get_model(checkpoint)
+    assert get_num_trees(model) == 10
 
 
 @pytest.mark.parametrize(
@@ -126,8 +114,8 @@ def test_checkpoint_freq(ray_start_6_cpus, freq_end_expected):
     train_dataset = ray.data.from_pandas(train_df)
     valid_dataset = ray.data.from_pandas(test_df)
     trainer = LightGBMTrainer(
-        run_config=ray.air.RunConfig(
-            checkpoint_config=ray.air.CheckpointConfig(
+        run_config=ray.train.RunConfig(
+            checkpoint_config=ray.train.CheckpointConfig(
                 checkpoint_frequency=freq, checkpoint_at_end=end
             )
         ),
@@ -141,54 +129,12 @@ def test_checkpoint_freq(ray_start_6_cpus, freq_end_expected):
 
     # Assert number of checkpoints
     assert len(result.best_checkpoints) == expected, str(
-        [
-            (metrics["training_iteration"], _cp._local_path)
-            for _cp, metrics in result.best_checkpoints
-        ]
+        [(metrics["training_iteration"], cp) for cp, metrics in result.best_checkpoints]
     )
 
     # Assert checkpoint numbers are increasing
-    cp_paths = [cp._local_path for cp, _ in result.best_checkpoints]
+    cp_paths = [cp.path for cp, _ in result.best_checkpoints]
     assert cp_paths == sorted(cp_paths), str(cp_paths)
-
-
-def test_preprocessor_in_checkpoint(ray_start_6_cpus, tmpdir):
-    train_dataset = ray.data.from_pandas(train_df)
-    valid_dataset = ray.data.from_pandas(test_df)
-
-    class DummyPreprocessor(Preprocessor):
-        def __init__(self):
-            super().__init__()
-            self.is_same = True
-
-        def fit(self, dataset):
-            self.fitted_ = True
-
-        def _transform_pandas(self, df: "pd.DataFrame") -> "pd.DataFrame":
-            return df
-
-    trainer = LightGBMTrainer(
-        scaling_config=scale_config,
-        label_column="target",
-        params=params,
-        datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
-        preprocessor=DummyPreprocessor(),
-    )
-    result = trainer.fit()
-
-    # Move checkpoint to a different directory.
-    checkpoint_dict = result.checkpoint.to_dict()
-    checkpoint = Checkpoint.from_dict(checkpoint_dict)
-    checkpoint_path = checkpoint.to_directory(tmpdir)
-    resume_from = Checkpoint.from_directory(checkpoint_path)
-
-    resume_from = LightGBMCheckpoint.from_checkpoint(resume_from)
-
-    model = resume_from.get_model()
-    preprocessor = resume_from.get_preprocessor()
-    assert get_num_trees(model) == 10
-    assert preprocessor.is_same
-    assert preprocessor.fitted_
 
 
 def test_tune(ray_start_8_cpus):
@@ -197,22 +143,19 @@ def test_tune(ray_start_8_cpus):
     trainer = LightGBMTrainer(
         scaling_config=ScalingConfig(num_workers=2, resources_per_worker={"CPU": 1}),
         label_column="target",
-        params={**params, **{"max_depth": 1}},
+        params={**params, "max_depth": 1},
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
     )
 
-    tune.run(
-        trainer.as_trainable(),
-        config={"params": {"max_depth": tune.randint(2, 4)}},
-        num_samples=2,
+    tuner = tune.Tuner(
+        trainer,
+        param_space={"params": {"max_depth": tune.grid_search([2, 4])}},
     )
-
-    # Make sure original Trainer is not affected.
-    assert trainer.params["max_depth"] == 1
+    results = tuner.fit()
+    assert sorted([r.config["params"]["max_depth"] for r in results]) == [2, 4]
 
 
 def test_validation(ray_start_6_cpus):
-    train_dataset = ray.data.from_pandas(train_df)
     valid_dataset = ray.data.from_pandas(test_df)
     with pytest.raises(KeyError, match=TRAIN_DATASET_KEY):
         LightGBMTrainer(
@@ -221,37 +164,11 @@ def test_validation(ray_start_6_cpus):
             params=params,
             datasets={"valid": valid_dataset},
         )
-    with pytest.raises(KeyError, match="dmatrix_params"):
-        LightGBMTrainer(
-            scaling_config=ScalingConfig(num_workers=2),
-            label_column="target",
-            params=params,
-            dmatrix_params={"data": {}},
-            datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
-        )
-
-
-def test_default_parameters_default():
-    trainer = LightGBMTrainer(
-        datasets={TRAIN_DATASET_KEY: ray.data.from_pandas(train_df)},
-        label_column="target",
-        params=params,
-    )
-    assert trainer._ray_params.cpus_per_actor == 2
-
-
-def test_default_parameters_scaling_config():
-    trainer = LightGBMTrainer(
-        datasets={TRAIN_DATASET_KEY: ray.data.from_pandas(train_df)},
-        label_column="target",
-        params=params,
-        scaling_config=ScalingConfig(resources_per_worker={"CPU": 4}),
-    )
-    assert trainer._ray_params.cpus_per_actor == 4
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

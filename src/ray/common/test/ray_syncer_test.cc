@@ -593,7 +593,6 @@ TEST_F(SyncerTest, Broadcast) {
 
   // Change the resource in s2 and make sure s1 && s3 are correct
   s2.local_versions[0] = 1;
-
   ASSERT_TRUE(s1.WaitUntil(
       [&s1, node_id = s2.syncer->GetLocalNodeID()]() mutable {
         return s1.received_versions[node_id][0] == 1;
@@ -603,6 +602,27 @@ TEST_F(SyncerTest, Broadcast) {
   ASSERT_TRUE(s1.WaitUntil(
       [&s3, node_id = s2.syncer->GetLocalNodeID()]() mutable {
         return s3.received_versions[node_id][0] == 1;
+      },
+      5));
+  ASSERT_EQ(
+      0,
+      s1.syncer->GetSyncMessage(s1.syncer->GetLocalNodeID(), MessageType::RESOURCE_VIEW)
+          ->version());
+  ASSERT_EQ(nullptr,
+            s1.syncer->GetSyncMessage(NodeID::FromRandom().Binary(),
+                                      MessageType::RESOURCE_VIEW));
+  s1.syncer->Disconnect(s3.syncer->GetLocalNodeID());
+  RAY_LOG(INFO) << "s1.id=" << NodeID::FromBinary(s1.syncer->GetLocalNodeID());
+  RAY_LOG(INFO) << "s3.id=" << NodeID::FromBinary(s3.syncer->GetLocalNodeID());
+
+  EXPECT_TRUE(s3.WaitUntil(
+      [&s3, node_id = s1.syncer->GetLocalNodeID()]() mutable {
+        return s3.syncer->node_state_->GetClusterView().count(node_id) == 0;
+      },
+      5));
+  EXPECT_TRUE(s1.WaitUntil(
+      [&s1, node_id = s3.syncer->GetLocalNodeID()]() mutable {
+        return s1.syncer->node_state_->GetClusterView().count(node_id) == 0;
       },
       5));
 }
@@ -630,12 +650,12 @@ bool CompareViews(const std::vector<SyncerServerTest *> &servers,
       if (!google::protobuf::util::MessageDifferencer::Equals(*v[0], *vv[0])) {
         RAY_LOG(ERROR) << i << ": FAIL RESOURCE: " << v[0] << ", " << vv[0];
         std::string dbg_message;
-        google::protobuf::util::MessageToJsonString(*v[0], &dbg_message);
+        RAY_CHECK(google::protobuf::util::MessageToJsonString(*v[0], &dbg_message).ok());
         RAY_LOG(ERROR) << "server[0] >> "
                        << NodeID::FromBinary(servers[0]->syncer->GetLocalNodeID()) << ": "
                        << dbg_message << " - " << NodeID::FromBinary(v[0]->node_id());
         dbg_message.clear();
-        google::protobuf::util::MessageToJsonString(*vv[0], &dbg_message);
+        RAY_CHECK(google::protobuf::util::MessageToJsonString(*vv[0], &dbg_message).ok());
         RAY_LOG(ERROR) << "server[i] << "
                        << NodeID::FromBinary(servers[i]->syncer->GetLocalNodeID()) << ": "
                        << dbg_message << " - " << NodeID::FromBinary(vv[0]->node_id());
@@ -904,8 +924,8 @@ TEST_F(SyncerReactorTest, TestReactorFailure) {
   auto [node_s, node_c] = GetNodeID();
   ASSERT_TRUE(s != nullptr);
   ASSERT_TRUE(c != nullptr);
+  *s->disconnected_ = true;
   s->Finish(grpc::Status::CANCELLED);
-  s->disconnected_ = true;
   auto c_cleanup = client_cleanup.get_future().get();
   ASSERT_EQ(node_s, c_cleanup.first);
   ASSERT_EQ(true, c_cleanup.second);

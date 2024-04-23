@@ -1,5 +1,6 @@
-import numpy as np
 import unittest
+
+import numpy as np
 
 import ray
 from ray.rllib.policy.rnn_sequencing import (
@@ -11,7 +12,6 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import check
-
 
 tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
@@ -47,6 +47,7 @@ class TestRNNSequencing(unittest.TestCase):
             unroll_ids=unroll_ids,
             agent_indices=agent,
             dynamic_max=False,
+            padding="zero",
         )
         expected_f_pad = [[1, 1, 2, 2, 2, 0, 3, 0]]
         expected_seq_lens = [2, 2, 1, 1]
@@ -65,6 +66,22 @@ class TestRNNSequencing(unittest.TestCase):
             agent_indices=agent,
             dynamic_max=True,
         )
+        check(f_pad, expected_f_pad)
+        check(s_lens, expected_seq_lens)
+        check(s_init, expected_states)
+
+        # With padding="last"
+        f_pad, s_init, s_lens = chop_into_sequences(
+            feature_columns=feats,
+            state_columns=states,
+            max_seq_len=max_seq_len,
+            episode_ids=ep_ids,
+            unroll_ids=unroll_ids,
+            agent_indices=agent,
+            dynamic_max=False,
+            padding="last",
+        )
+        expected_f_pad = [[1, 1, 2, 2, 2, 2, 3, 3]]
         check(f_pad, expected_f_pad)
         check(s_lens, expected_seq_lens)
         check(s_init, expected_states)

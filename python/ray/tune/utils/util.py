@@ -9,28 +9,24 @@ from collections import defaultdict
 from datetime import datetime
 from numbers import Number
 from threading import Thread
-from typing import Dict, List, Union, Type, Callable, Any, Optional, Sequence
+from typing import Any, Callable, Dict, List, Optional, Sequence, Type, Union
 
 import numpy as np
-import psutil
+
 import ray
-from ray.air.checkpoint import Checkpoint
-from ray.air._internal.remote_storage import delete_at_uri
-from ray.air.util.node import _get_node_id_from_node_ip, _force_on_node
-from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray.air._internal.json import SafeFallbackEncoder  # noqa
-from ray.air._internal.util import (  # noqa: F401
-    is_nan,
-    is_nan_or_inf,
-)
 from ray._private.dict import (  # noqa: F401
-    merge_dicts,
     deep_update,
     flatten_dict,
+    merge_dicts,
     unflatten_dict,
     unflatten_list_dict,
     unflattened_lookup,
 )
+from ray.air._internal.json import SafeFallbackEncoder  # noqa
+from ray.air._internal.util import is_nan, is_nan_or_inf  # noqa: F401
+from ray.util.annotations import DeveloperAPI, PublicAPI
+
+import psutil
 
 logger = logging.getLogger(__name__)
 
@@ -43,8 +39,6 @@ def _import_gputil():
     return GPUtil
 
 
-_pinned_objects = []
-PINNED_OBJECT_PREFIX = "ray.tune.PinnedObject:"
 START_OF_TIME = time.time()
 
 
@@ -163,43 +157,6 @@ def retry_fn(
     return False
 
 
-@ray.remote
-def _serialize_checkpoint(checkpoint_path) -> bytes:
-    checkpoint = Checkpoint.from_directory(checkpoint_path)
-    return checkpoint.to_bytes()
-
-
-def _get_checkpoint_from_remote_node(
-    checkpoint_path: str, node_ip: str, timeout: float = 300.0
-) -> Optional[Checkpoint]:
-    node_id = _get_node_id_from_node_ip(node_ip)
-
-    if node_id is None:
-        logger.warning(
-            f"Could not fetch checkpoint with path {checkpoint_path} from "
-            f"node with IP {node_ip} because the node is not available "
-            f"anymore."
-        )
-        return None
-
-    fut = _serialize_checkpoint.options(num_cpus=0, **_force_on_node(node_id)).remote(
-        checkpoint_path
-    )
-    try:
-        checkpoint_data = ray.get(fut, timeout=timeout)
-    except Exception as e:
-        logger.warning(
-            f"Could not fetch checkpoint with path {checkpoint_path} from "
-            f"node with IP {node_ip} because serialization failed: {e}"
-        )
-        return None
-    return Checkpoint.from_bytes(checkpoint_data)
-
-
-def _delete_external_checkpoint(checkpoint_uri: str):
-    delete_at_uri(checkpoint_uri)
-
-
 @DeveloperAPI
 class warn_if_slow:
     """Prints a warning if a given operation is slower than 500ms.
@@ -250,17 +207,45 @@ class Tee(object):
         self.stream1 = stream1
         self.stream2 = stream2
 
+        # If True, we are currently handling a warning.
+        # We use this flag to avoid infinite recursion.
+        self._handling_warning = False
+
+    def _warn(self, op, s, args, kwargs):
+        # If we are already handling a warning, this is because
+        # `logger.warning` below triggered the same object again
+        # (e.g. because stderr is redirected to this object).
+        # In that case, exit early to avoid recursion.
+        if self._handling_warning:
+            return
+
+        msg = f"ValueError when calling '{op}' on stream ({s}). "
+        msg += f"args: {args} kwargs: {kwargs}"
+
+        self._handling_warning = True
+        logger.warning(msg)
+        self._handling_warning = False
+
     def seek(self, *args, **kwargs):
-        self.stream1.seek(*args, **kwargs)
-        self.stream2.seek(*args, **kwargs)
+        for s in [self.stream1, self.stream2]:
+            try:
+                s.seek(*args, **kwargs)
+            except ValueError:
+                self._warn("seek", s, args, kwargs)
 
     def write(self, *args, **kwargs):
-        self.stream1.write(*args, **kwargs)
-        self.stream2.write(*args, **kwargs)
+        for s in [self.stream1, self.stream2]:
+            try:
+                s.write(*args, **kwargs)
+            except ValueError:
+                self._warn("write", s, args, kwargs)
 
     def flush(self, *args, **kwargs):
-        self.stream1.flush(*args, **kwargs)
-        self.stream2.flush(*args, **kwargs)
+        for s in [self.stream1, self.stream2]:
+            try:
+                s.flush(*args, **kwargs)
+            except ValueError:
+                self._warn("flush", s, args, kwargs)
 
     @property
     def encoding(self):
@@ -349,7 +334,7 @@ def diagnose_serialization(trainable: Callable):
         assert diagnose_serialization(test) is True
 
     """
-    from ray.tune.registry import register_trainable, _check_serializability
+    from ray.tune.registry import _check_serializability, register_trainable
 
     def check_variables(objects, failure_set, printer):
         for var_name, variable in objects.items():
@@ -489,7 +474,7 @@ def wait_for_gpu(
     .. code-block:: python
 
         def tune_func(config):
-            tune.util.wait_for_gpu()
+            tune.utils.wait_for_gpu()
             train()
 
         tuner = tune.Tuner(
@@ -561,7 +546,6 @@ def validate_save_restore(
     trainable_cls: Type,
     config: Optional[Dict] = None,
     num_gpus: int = 0,
-    use_object_store: bool = False,
 ):
     """Helper method to check if your Trainable class will resume correctly.
 
@@ -574,11 +558,12 @@ def validate_save_restore(
             algorithms that pause training (i.e., PBT, HyperBand).
     """
     assert ray.is_initialized(), "Need Ray to be initialized."
+
     remote_cls = ray.remote(num_gpus=num_gpus)(trainable_cls)
     trainable_1 = remote_cls.remote(config=config)
     trainable_2 = remote_cls.remote(config=config)
 
-    from ray.tune.result import TRAINING_ITERATION
+    from ray.air.constants import TRAINING_ITERATION
 
     for _ in range(3):
         res = ray.get(trainable_1.train.remote())
@@ -588,13 +573,7 @@ def validate_save_restore(
         "to be returned."
     )
 
-    if use_object_store:
-        restore_check = trainable_2.restore_from_object.remote(
-            trainable_1.save_to_object.remote()
-        )
-        ray.get(restore_check)
-    else:
-        restore_check = ray.get(trainable_2.restore.remote(trainable_1.save.remote()))
+    ray.get(trainable_2.restore.remote(trainable_1.save.remote()))
 
     res = ray.get(trainable_2.train.remote())
     assert res[TRAINING_ITERATION] == 4
@@ -602,42 +581,6 @@ def validate_save_restore(
     res = ray.get(trainable_2.train.remote())
     assert res[TRAINING_ITERATION] == 5
     return True
-
-
-def _detect_checkpoint_function(train_func, abort=False, partial=False):
-    """Use checkpointing if any arg has "checkpoint_dir" and args = 2"""
-    func_sig = inspect.signature(train_func)
-    validated = True
-    try:
-        # check if signature is func(config, checkpoint_dir=None)
-        if partial:
-            func_sig.bind_partial({}, checkpoint_dir="tmp/path")
-        else:
-            func_sig.bind({}, checkpoint_dir="tmp/path")
-    except Exception as e:
-        logger.debug(str(e))
-        validated = False
-    if abort and not validated:
-        func_args = inspect.getfullargspec(train_func).args
-        raise ValueError(
-            "Provided training function must have 2 args "
-            "in the signature, and the latter arg must "
-            "contain `checkpoint_dir`. For example: "
-            "`func(config, checkpoint_dir=None)`. Got {}".format(func_args)
-        )
-    return validated
-
-
-def _detect_reporter(func):
-    """Use reporter if any arg has "reporter" and args = 2"""
-    func_sig = inspect.signature(func)
-    use_reporter = True
-    try:
-        func_sig.bind({}, reporter=None)
-    except Exception as e:
-        logger.debug(str(e))
-        use_reporter = False
-    return use_reporter
 
 
 def _detect_config_single(func):

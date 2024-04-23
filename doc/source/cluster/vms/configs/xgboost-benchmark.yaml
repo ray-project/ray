@@ -1,4 +1,4 @@
-# This is a Ray cluster configuration for exploration of the 100Gi Ray AIR XGBoostTrainer benchmark.
+# This is a Ray cluster configuration for exploration of the 100Gi Ray XGBoostTrainer benchmark.
 
 # The configuration includes 1 Ray head node and 9 worker nodes.
 

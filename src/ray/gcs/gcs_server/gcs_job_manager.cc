@@ -146,7 +146,7 @@ void GcsJobManager::AddJobFinishedListener(JobFinishListenerCallback listener) {
 void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
                                         rpc::GetAllJobInfoReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(INFO) << "Getting all job info.";
+  RAY_LOG(DEBUG) << "Getting all job info.";
 
   int limit = std::numeric_limits<int>::max();
   if (request.has_limit()) {
@@ -158,7 +158,7 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::Invalid("Invalid limit"));
       return;
     }
-    RAY_LOG(INFO) << "Getting job info with limit " << limit << ".";
+    RAY_LOG(DEBUG) << "Getting job info with limit " << limit << ".";
   }
 
   auto on_done = [this, reply, send_reply_callback, limit](
@@ -170,6 +170,22 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
     // that multiple jobs can come from the same Ray Job API submission (e.g. if the
     // entrypoint script calls ray.init() multiple times).
     std::unordered_map<std::string, std::vector<int>> job_data_key_to_indices;
+
+    // Create a shared counter for the number of jobs processed
+    std::shared_ptr<int> num_processed_jobs = std::make_shared<int>(0);
+
+    // Create a shared boolean flag for the internal KV callback completion
+    std::shared_ptr<bool> kv_callback_done = std::make_shared<bool>(false);
+
+    // Function to send the reply once all jobs have been processed and KV callback
+    // completed
+    auto try_send_reply =
+        [num_processed_jobs, kv_callback_done, reply, send_reply_callback]() {
+          if (*num_processed_jobs == reply->job_info_list_size() && *kv_callback_done) {
+            RAY_LOG(DEBUG) << "Finished getting all job info.";
+            GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+          }
+        };
 
     // Load the job table data into the reply.
     int i = 0;
@@ -187,13 +203,48 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
         job_api_data_keys.push_back(job_data_key);
         job_data_key_to_indices[job_data_key].push_back(i);
       }
+
+      WorkerID worker_id = WorkerID::FromBinary(data.second.driver_address().worker_id());
+
+      // If job is not dead, get is_running_tasks from the core worker for the driver.
+      if (data.second.is_dead()) {
+        reply->mutable_job_info_list(i)->set_is_running_tasks(false);
+        core_worker_clients_.Disconnect(worker_id);
+        (*num_processed_jobs)++;
+        ;
+        try_send_reply();
+      } else {
+        // Get is_running_tasks from the core worker for the driver.
+        auto client = core_worker_clients_.GetOrConnect(data.second.driver_address());
+        auto request = std::make_unique<rpc::NumPendingTasksRequest>();
+        RAY_LOG(DEBUG) << "Send NumPendingTasksRequest to worker " << worker_id;
+        client->NumPendingTasks(
+            std::move(request),
+            [worker_id, reply, i, num_processed_jobs, try_send_reply](
+                const Status &status,
+                const rpc::NumPendingTasksReply &num_pending_tasks_reply) {
+              RAY_LOG(DEBUG) << "Received NumPendingTasksReply from worker " << worker_id;
+              if (!status.ok()) {
+                RAY_LOG(WARNING) << "Failed to get is_running_tasks from core worker: "
+                                 << status.ToString();
+              }
+              bool is_running_tasks = num_pending_tasks_reply.num_pending_tasks() > 0;
+              reply->mutable_job_info_list(i)->set_is_running_tasks(is_running_tasks);
+              (*num_processed_jobs)++;
+              ;
+              try_send_reply();
+            });
+      }
       i++;
     }
 
     // Load the JobInfo for jobs submitted via the Ray Job API.
     auto kv_multi_get_callback =
-        [reply, send_reply_callback, job_data_key_to_indices](
-            std::unordered_map<std::string, std::string> result) {
+        [reply,
+         send_reply_callback,
+         job_data_key_to_indices,
+         kv_callback_done,
+         try_send_reply](std::unordered_map<std::string, std::string> result) {
           for (auto &data : result) {
             std::string job_data_key = data.first;
             // The JobInfo stored by the Ray Job API.
@@ -215,8 +266,8 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
               }
             }
           }
-          RAY_LOG(INFO) << "Finished getting all job info.";
-          GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+          *kv_callback_done = true;
+          try_send_reply();
         };
     internal_kv_.MultiGet("job", job_api_data_keys, kv_multi_get_callback);
   };
@@ -245,6 +296,29 @@ std::shared_ptr<rpc::JobConfig> GcsJobManager::GetJobConfig(const JobID &job_id)
   auto it = cached_job_configs_.find(job_id);
   RAY_CHECK(it != cached_job_configs_.end()) << "Couldn't find job with id: " << job_id;
   return it->second;
+}
+
+void GcsJobManager::OnNodeDead(const NodeID &node_id) {
+  RAY_LOG(INFO) << "Node " << node_id
+                << " failed, mark all jobs from this node as finished";
+
+  auto on_done = [this, node_id](const absl::flat_hash_map<JobID, JobTableData> &result) {
+    // If job is not dead and from driver in current node, then mark it as finished
+    for (auto &data : result) {
+      if (!data.second.is_dead() &&
+          NodeID::FromBinary(data.second.driver_address().raylet_id()) == node_id) {
+        RAY_LOG(DEBUG) << "Marking job: " << data.first << " as finished";
+        MarkJobAsFinished(data.second, [data](Status status) {
+          if (!status.ok()) {
+            RAY_LOG(WARNING) << "Failed to mark job as finished. Status: " << status;
+          }
+        });
+      }
+    }
+  };
+
+  // make all jobs in current node to finished
+  RAY_CHECK_OK(gcs_table_storage_->JobTable().GetAll(on_done));
 }
 
 }  // namespace gcs

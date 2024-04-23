@@ -1,0 +1,33 @@
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+region: us-west1
+allowed_azs:
+    - us-west1-c
+
+max_workers: 999
+
+head_node_type:
+    name: head_node
+    instance_type: n2-standard-64 # Network optimized.
+    resources:
+      cpu: 0
+      custom_resources:
+        node: 1
+        small: 1
+
+worker_node_types:
+    - name: worker_node_m
+      instance_type: n2-standard-64
+      min_workers: 32
+      max_workers: 32
+      use_spot: false
+      resources:
+        custom_resources:
+          node: 1
+    - name: worker_node_r
+      instance_type: n2-standard-64
+      min_workers: 32
+      max_workers: 32
+      use_spot: false
+      resources:
+        custom_resources:
+          node: 1

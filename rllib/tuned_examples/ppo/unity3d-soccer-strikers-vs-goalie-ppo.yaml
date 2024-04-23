@@ -20,7 +20,7 @@ unity3d-soccer-strikers-vs-goalie-ppo:
         #    policy_mapping_fn: [agent-to-policy mapping function]
 
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
         env_config:
           # Put the path to your compiled game executable here.
           file_name: /home/ubuntu/soccer_strikers_vs_goalie_linux.x86_64
@@ -41,5 +41,5 @@ unity3d-soccer-strikers-vs-goalie-ppo:
           fcnet_hiddens: [512, 512]
         # If no executable is provided (use Unity3D editor), do not evaluate,
         # b/c the editor only allows one connection at a time.
-        evaluation_interval: 0
+        evaluation_interval: null
         evaluation_duration: 1

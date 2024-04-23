@@ -1,120 +1,69 @@
 Tune Hyperparameter Optimization Framework Examples
 ---------------------------------------------------
 
+.. toctree::
+    :hidden:
+
+    Ax Example <ax_example>
+    HyperOpt Example <hyperopt_example>
+    Bayesopt Example <bayesopt_example>
+    BOHB Example <bohb_example>
+    Nevergrad Example <nevergrad_example>
+    Optuna Example <optuna_example>
+
+
 Tune integrates with a wide variety of hyperparameter optimization frameworks
 and their respective search algorithms. Here you can find detailed examples
 on each of our integrations:
 
-.. panels::
-    :container: container pb-4
-    :column: col-md-4 px-2 py-2
-    :img-top-cls: pt-5 w-75 d-block mx-auto
+.. grid:: 1 2 3 4
+    :gutter: 1
+    :class-container: container pb-3
 
-    ---
-    :img-top: ../images/ax.png
+    .. grid-item-card::
+        :img-top: ../images/ax.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    +++
-    .. link-button:: ax_example
-        :type: ref
-        :text: How To Use Tune With Ax
-        :classes: btn-link btn-block stretched-link
+        .. button-ref:: ax_example
 
-    ---
-    :img-top: ../images/dragonfly.png
+            How To Use Tune With Ax
 
-    +++
-    .. link-button:: dragonfly_example
-        :type: ref
-        :text: How To Use Tune With Dragonfly
-        :classes: btn-link btn-block stretched-link
+    .. grid-item-card::
+        :img-top: ../images/hyperopt.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    ---
-    :img-top: ../images/skopt.png
+        .. button-ref:: hyperopt_example
 
-    +++
-    .. link-button:: skopt_example
-        :type: ref
-        :text: How To Use Tune With Scikit-Optimize
-        :classes: btn-link btn-block stretched-link
+            How To Use Tune With HyperOpt
 
-    ---
-    :img-top: ../images/hyperopt.png
+    .. grid-item-card::
+        :img-top: ../images/bayesopt.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    +++
-    .. link-button:: hyperopt_example
-        :type: ref
-        :text: How To Use Tune With HyperOpt
-        :classes: btn-link btn-block stretched-link
+        .. button-ref:: bayesopt_example
 
-    ---
-    :img-top: ../images/bayesopt.png
+            How To Use Tune With BayesOpt
 
-    +++
-    .. link-button:: bayesopt_example
-        :type: ref
-        :text: How To Use Tune With BayesOpt
-        :classes: btn-link btn-block stretched-link
+    .. grid-item-card::
+        :img-top: ../images/bohb.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    ---
-    :img-top: ../images/flaml.png
+        .. button-ref:: bohb_example
 
-    +++
-    .. link-button:: flaml_example
-        :type: ref
-        :text: How To Use Tune With BlendSearch and CFO
-        :classes: btn-link btn-block stretched-link
+            How To Use Tune With TuneBOHB
 
-    ---
-    :img-top: ../images/bohb.png
+    .. grid-item-card::
+        :img-top: ../images/nevergrad.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    +++
-    .. link-button:: bohb_example
-        :type: ref
-        :text: How To Use Tune With TuneBOHB
-        :classes: btn-link btn-block stretched-link
+        .. button-ref:: nevergrad_example
 
-    ---
-    :img-top: ../images/nevergrad.png
+            How To Use Tune With Nevergrad
 
-    +++
-    .. link-button:: nevergrad_example
-        :type: ref
-        :text: How To Use Tune With Nevergrad
-        :classes: btn-link btn-block stretched-link
+    .. grid-item-card::
+        :img-top: ../images/optuna.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    ---
-    :img-top: ../images/optuna.png
+        .. button-ref:: optuna_example
 
-    +++
-    .. link-button:: optuna_example
-        :type: ref
-        :text: How To Use Tune With Optuna
-        :classes: btn-link btn-block stretched-link
-
-    ---
-    :img-top: ../images/zoopt.png
-
-    +++
-    .. link-button:: zoopt_example
-        :type: ref
-        :text: How To Use Tune With ZOOpt
-        :classes: btn-link btn-block stretched-link
-
-    ---
-    :img-top: ../images/sigopt.png
-
-    +++
-    .. link-button:: sigopt_example
-        :type: ref
-        :text: How To Use Tune With SigOpt
-        :classes: btn-link btn-block stretched-link
-
-    ---
-    :img-top: ../images/hebo.png
-
-    +++
-    .. link-button:: hebo_example
-        :type: ref
-        :text: How To Use Tune With HEBO
-        :classes: btn-link btn-block stretched-link
-
+            How To Use Tune With Optuna

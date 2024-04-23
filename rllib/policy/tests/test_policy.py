@@ -19,9 +19,9 @@ class TestPolicy(unittest.TestCase):
         ray.shutdown()
 
     def test_policy_get_and_set_state(self):
-        config = PPOConfig()
+        config = PPOConfig().environment("CartPole-v1")
         for fw in framework_iterator(config):
-            algo = config.build(env="CartPole-v1")
+            algo = config.build()
             policy = algo.get_policy()
             state1 = policy.get_state()
             algo.train()
@@ -32,7 +32,10 @@ class TestPolicy(unittest.TestCase):
             policy.set_state(state1)
             state3 = policy.get_state()
             # Make sure everything is the same.
-            check(state1["_exploration_state"], state3["_exploration_state"])
+            # This is only supported without RLModule API. See AlgorithmConfig for
+            # more info.
+            if not config._enable_new_api_stack:
+                check(state1["_exploration_state"], state3["_exploration_state"])
             check(state1["global_timestep"], state3["global_timestep"])
             check(state1["weights"], state3["weights"])
 
@@ -42,7 +45,10 @@ class TestPolicy(unittest.TestCase):
             if isinstance(policy, (EagerTFPolicyV2, DynamicTFPolicyV2, TorchPolicyV2)):
                 policy_restored_from_scratch = Policy.from_state(state3)
                 state4 = policy_restored_from_scratch.get_state()
-                check(state3["_exploration_state"], state4["_exploration_state"])
+                # This is only supported without RLModule API. See AlgorithmConfig for
+                # more info.
+                if not config._enable_new_api_stack:
+                    check(state3["_exploration_state"], state4["_exploration_state"])
                 check(state3["global_timestep"], state4["global_timestep"])
                 # For tf static graph, the new model has different layer names
                 # (as it gets written into the same graph as the old one).

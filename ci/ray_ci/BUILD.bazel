@@ -1,0 +1,210 @@
+load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
+load("@py_deps_buildkite//:requirements.bzl", ci_require = "requirement")
+
+py_library(
+    name = "ray_ci_lib",
+    srcs = glob(
+        ["*.py"],
+        exclude = [
+            "test_*.py",
+            "test_in_docker.py",
+            "build_in_docker.py",
+        ],
+    ),
+    visibility = ["//ci/ray_ci:__subpackages__"],
+    data = glob(["*.yaml"]),
+    deps = [
+        ci_require("boto3"),
+        ci_require("pyyaml"),
+        ci_require("click"),
+        "//release:ray_release",
+    ],
+)
+
+py_library(
+    name = "ray_ci_lib_test",
+    srcs = ["test_base.py"],
+    visibility = ["//visibility:private"],
+)
+
+# TODO(aslonnie): make this to use hermetic python too.
+# Hermetic python for this binary is currently somehow not working on Windows.
+py_binary(
+    name = "test_in_docker",
+    srcs = ["test_in_docker.py"],
+    deps = [":ray_ci_lib"],
+)
+
+py_binary(
+    name = "build_in_docker",
+    srcs = ["build_in_docker.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    deps = [":ray_ci_lib"],
+)
+
+py_binary(
+    name = "build_in_docker_windows",
+    srcs = ["build_in_docker_windows.py"],
+    deps = [":ray_ci_lib"],
+)
+
+py_test(
+    name = "test_linux_container",
+    size = "small",
+    srcs = ["test_linux_container.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_ci_lib",
+        ":ray_ci_lib_test",
+        ci_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_windows_container",
+    size = "small",
+    srcs = ["test_windows_container.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_ci_lib",
+        ":ray_ci_lib_test",
+        ci_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_tester",
+    size = "small",
+    srcs = ["test_tester.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_ci_lib",
+        ":ray_ci_lib_test",
+        ci_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_utils",
+    size = "small",
+    srcs = ["test_utils.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_ci_lib",
+        ":ray_ci_lib_test",
+        ci_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_builder_container",
+    size = "small",
+    srcs = ["test_builder_container.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_ci_lib",
+        ":ray_ci_lib_test",
+        ci_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_linux_tester_container",
+    size = "small",
+    srcs = ["test_linux_tester_container.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_ci_lib",
+        ":ray_ci_lib_test",
+        ci_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_windows_tester_container",
+    size = "small",
+    srcs = ["test_windows_tester_container.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_ci_lib",
+        ":ray_ci_lib_test",
+        ci_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_ray_docker_container",
+    size = "small",
+    srcs = ["test_ray_docker_container.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_ci_lib",
+        ":ray_ci_lib_test",
+        ci_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_anyscale_docker_container",
+    size = "small",
+    srcs = ["test_anyscale_docker_container.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_ci_lib",
+        ":ray_ci_lib_test",
+        ci_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_bazel_sharding",
+    size = "small",
+    srcs = ["test_bazel_sharding.py"],
+    data = ["mock_BUILD"],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_ci_lib",
+        ":ray_ci_lib_test",
+        ci_require("pytest"),
+    ],
+)

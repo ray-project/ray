@@ -1,46 +1,46 @@
 import copy
 import datetime
-from functools import partial
-import grpc
 import logging
-import os
-from pathlib import Path
-from pickle import PicklingError
 import pprint as pp
 import traceback
+from functools import partial
+from pathlib import Path
+from pickle import PicklingError
 from typing import (
+    TYPE_CHECKING,
     Any,
-    Dict,
-    Optional,
-    Sequence,
-    Union,
     Callable,
-    Type,
+    Dict,
     List,
     Mapping,
-    TYPE_CHECKING,
+    Optional,
+    Sequence,
+    Type,
+    Union,
 )
 
-from ray.air import CheckpointConfig
-from ray.air._internal.uri_utils import URI
+import ray
+from ray.exceptions import RpcError
+from ray.train import CheckpointConfig, SyncConfig
+from ray.train._internal.storage import StorageContext
+from ray.train.constants import DEFAULT_STORAGE_PATH
 from ray.tune.error import TuneError
-from ray.tune.registry import register_trainable, is_function_trainable
-from ray.tune.result import DEFAULT_RESULTS_DIR
+from ray.tune.registry import is_function_trainable, register_trainable
 from ray.tune.stopper import CombinedStopper, FunctionStopper, Stopper, TimeoutStopper
-from ray.tune.syncer import SyncConfig
-from ray.tune.utils import date_str
-
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import Deprecated, DeveloperAPI
 
 if TYPE_CHECKING:
-    from ray.tune.experiment import Trial
+    import pyarrow.fs
+
     from ray.tune import PlacementGroupFactory
+    from ray.tune.experiment import Trial
+
 
 logger = logging.getLogger(__name__)
 
 
 def _validate_log_to_file(log_to_file):
-    """Validate ``air.RunConfig``'s ``log_to_file`` parameter. Return
+    """Validate ``train.RunConfig``'s ``log_to_file`` parameter. Return
     validated relative stdout and stderr filenames."""
     if not log_to_file:
         stdout_file = stderr_file = None
@@ -65,24 +65,6 @@ def _validate_log_to_file(log_to_file):
             )
         )
     return stdout_file, stderr_file
-
-
-def _get_local_dir_with_expand_user(local_dir: Optional[str]) -> str:
-    return os.path.abspath(os.path.expanduser(local_dir or DEFAULT_RESULTS_DIR))
-
-
-def _get_dir_name(run, explicit_name: Optional[str], combined_name: str) -> str:
-    # If the name has been set explicitly, we don't want to create
-    # dated directories. The same is true for string run identifiers.
-    if (
-        int(os.environ.get("TUNE_DISABLE_DATED_SUBDIR", 0)) == 1
-        or explicit_name
-        or isinstance(run, str)
-    ):
-        dir_name = combined_name
-    else:
-        dir_name = "{}_{}".format(combined_name, date_str())
-    return dir_name
 
 
 @DeveloperAPI
@@ -111,15 +93,11 @@ class Experiment:
             checkpoint_freq=10,
             max_failures=2)
 
-    Args:
-        TODO(xwjiang): Add the whole list.
-        _experiment_checkpoint_dir: Internal use only. If present, use this
-            as the root directory for experiment checkpoint. If not present,
-            the directory path will be deduced from trainable name instead.
     """
 
     # Keys that will be present in `public_spec` dict.
     PUBLIC_KEYS = {"stop", "num_samples", "time_budget_s"}
+    _storage_context_cls = StorageContext
 
     def __init__(
         self,
@@ -133,8 +111,8 @@ class Experiment:
             None, Mapping[str, Union[float, int, Mapping]], "PlacementGroupFactory"
         ] = None,
         num_samples: int = 1,
-        local_dir: Optional[str] = None,
-        _experiment_checkpoint_dir: Optional[str] = None,
+        storage_path: Optional[str] = None,
+        storage_filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         sync_config: Optional[Union[SyncConfig, dict]] = None,
         checkpoint_config: Optional[Union[CheckpointConfig, dict]] = None,
         trial_name_creator: Optional[Callable[["Trial"], str]] = None,
@@ -143,27 +121,9 @@ class Experiment:
         export_formats: Optional[Sequence] = None,
         max_failures: int = 0,
         restore: Optional[str] = None,
+        # Deprecated
+        local_dir: Optional[str] = None,
     ):
-
-        local_dir = _get_local_dir_with_expand_user(local_dir)
-        # `_experiment_checkpoint_dir` is for internal use only for better
-        # support of Tuner API.
-        # If set, it should be a subpath under `local_dir`. Also deduce `dir_name`.
-        self._experiment_checkpoint_dir = _experiment_checkpoint_dir
-        if _experiment_checkpoint_dir:
-            experiment_checkpoint_dir_path = Path(_experiment_checkpoint_dir)
-            local_dir_path = Path(local_dir)
-            assert local_dir_path in experiment_checkpoint_dir_path.parents
-            # `dir_name` is set by `_experiment_checkpoint_dir` indirectly.
-            self.dir_name = os.path.relpath(_experiment_checkpoint_dir, local_dir)
-
-        config = config or {}
-
-        if isinstance(sync_config, dict):
-            sync_config = SyncConfig(**sync_config)
-        else:
-            sync_config = sync_config or SyncConfig()
-
         if isinstance(checkpoint_config, dict):
             checkpoint_config = CheckpointConfig(**checkpoint_config)
         else:
@@ -174,21 +134,21 @@ class Experiment:
                 raise ValueError(
                     "'checkpoint_at_end' cannot be used with a function trainable. "
                     "You should include one last call to "
-                    "`ray.air.session.report(metrics=..., checkpoint=...)` at the end "
-                    "of your training loop to get this behavior."
+                    "`ray.train.report(metrics=..., checkpoint=...)` "
+                    "at the end of your training loop to get this behavior."
                 )
             if checkpoint_config.checkpoint_frequency:
                 raise ValueError(
                     "'checkpoint_frequency' cannot be set for a function trainable. "
                     "You will need to report a checkpoint every "
                     "`checkpoint_frequency` iterations within your training loop using "
-                    "`ray.air.session.report(metrics=..., checkpoint=...)` "
+                    "`ray.train.report(metrics=..., checkpoint=...)` "
                     "to get this behavior."
                 )
         try:
             self._run_identifier = Experiment.register_if_needed(run)
-        except grpc.RpcError as e:
-            if e.code() == grpc.StatusCode.RESOURCE_EXHAUSTED:
+        except RpcError as e:
+            if e.rpc_code == ray._raylet.GRPC_STATUS_CODE_RESOURCE_EXHAUSTED:
                 raise TuneError(
                     f"The Trainable/training function is too large for grpc resource "
                     f"limit. Check that its definition is not implicitly capturing a "
@@ -200,14 +160,24 @@ class Experiment:
             else:
                 raise e
 
-        self.name = name or self._run_identifier
+        if not name:
+            name = StorageContext.get_experiment_dir_name(run)
 
-        self.sync_config = sync_config
+        storage_path = storage_path or DEFAULT_STORAGE_PATH
+        self.storage = self._storage_context_cls(
+            storage_path=storage_path,
+            storage_filesystem=storage_filesystem,
+            sync_config=sync_config,
+            experiment_dir_name=name,
+        )
+        logger.debug(f"StorageContext on the DRIVER:\n{self.storage}")
 
-        if not _experiment_checkpoint_dir:
-            self.dir_name = _get_dir_name(run, name, self.name)
-
-        assert self.dir_name
+        config = config or {}
+        if not isinstance(config, dict):
+            raise ValueError(
+                f"`Experiment(config)` must be a dict, got: {type(config)}. "
+                "Please convert your search space to a dict before passing it in."
+            )
 
         self._stopper = None
         stopping_criteria = {}
@@ -219,7 +189,7 @@ class Experiment:
                 stopper_types = [type(s) for s in stop]
                 raise ValueError(
                     "If you pass a list as the `stop` argument to "
-                    "`air.RunConfig()`, each element must be an instance of "
+                    "`train.RunConfig()`, each element must be an instance of "
                     f"`tune.stopper.Stopper`. Got {stopper_types}."
                 )
             self._stopper = CombinedStopper(*stop)
@@ -259,18 +229,16 @@ class Experiment:
             "config": config,
             "resources_per_trial": resources_per_trial,
             "num_samples": num_samples,
-            "local_dir": local_dir,
-            "experiment_dir_name": self.dir_name,
-            "sync_config": sync_config,
             "checkpoint_config": checkpoint_config,
             "trial_name_creator": trial_name_creator,
             "trial_dirname_creator": trial_dirname_creator,
             "log_to_file": (stdout_file, stderr_file),
             "export_formats": export_formats or [],
             "max_failures": max_failures,
-            "restore": os.path.abspath(os.path.expanduser(restore))
-            if restore
-            else None,
+            "restore": (
+                Path(restore).expanduser().absolute().as_posix() if restore else None
+            ),
+            "storage": self.storage,
         }
         self.spec = spec
 
@@ -392,60 +360,37 @@ class Experiment:
             raise type(e)(str(e) + " " + extra_msg) from None
         return name
 
-    @classmethod
-    def get_experiment_checkpoint_dir(
-        cls,
-        run_obj: Union[str, Callable, Type],
-        local_dir: Optional[str] = None,
-        name: Optional[str] = None,
-    ):
-        """Get experiment checkpoint dir without setting up an experiment.
-
-        This is only used internally for better support of Tuner API.
-
-        Args:
-            run_obj: Trainable to run.
-            local_dir: The local_dir path.
-            name: The name of the experiment specified by user.
-
-        Returns:
-            Checkpoint directory for experiment.
-        """
-        assert run_obj
-        local_dir = _get_local_dir_with_expand_user(local_dir)
-        run_identifier = cls.get_trainable_name(run_obj)
-        combined_name = name or run_identifier
-
-        dir_name = _get_dir_name(run_obj, name, combined_name)
-
-        return os.path.join(local_dir, dir_name)
-
     @property
     def stopper(self):
         return self._stopper
 
     @property
+    def local_path(self) -> Optional[str]:
+        return self.storage.experiment_driver_staging_path
+
+    @property
+    @Deprecated("Replaced by `local_path`")
     def local_dir(self):
-        return self.spec.get("local_dir")
+        # TODO(justinvyu): [Deprecated] Remove in 2.11.
+        raise DeprecationWarning("Use `local_path` instead of `local_dir`.")
+
+    @property
+    def remote_path(self) -> Optional[str]:
+        return self.storage.experiment_fs_path
+
+    @property
+    def path(self) -> Optional[str]:
+        return self.remote_path or self.local_path
 
     @property
     def checkpoint_config(self):
         return self.spec.get("checkpoint_config")
 
     @property
+    @Deprecated("Replaced by `local_path`")
     def checkpoint_dir(self):
-        # Provided when initializing Experiment, if so, return directly.
-        if self._experiment_checkpoint_dir:
-            return self._experiment_checkpoint_dir
-        assert self.local_dir
-        return os.path.join(self.local_dir, self.dir_name)
-
-    @property
-    def remote_checkpoint_dir(self) -> Optional[str]:
-        if not self.sync_config.upload_dir or not self.dir_name:
-            return None
-        uri = URI(self.sync_config.upload_dir)
-        return str(uri / self.dir_name)
+        # TODO(justinvyu): [Deprecated] Remove in 2.11.
+        raise DeprecationWarning("Use `local_path` instead of `checkpoint_dir`.")
 
     @property
     def run_identifier(self):

@@ -18,14 +18,21 @@
 
 namespace ray {
 namespace internal {
+// NOTE(lingxuan.zlx): This internal module is designed to export ray symbols
+// to other thirdparty outside project, which makes they can access internal
+// function of core worker library or native function and reduce symbols racing.
 
 using ray::core::CoreWorkerProcess;
 using ray::core::TaskOptions;
 
-std::vector<rpc::ObjectReference> SendInternal(const ActorID &peer_actor_id,
-                                               std::shared_ptr<LocalMemoryBuffer> buffer,
-                                               RayFunction &function,
-                                               int return_num) {
+std::vector<rpc::ObjectReference> SendInternal(
+    const ActorID &peer_actor_id,
+    std::shared_ptr<LocalMemoryBuffer> buffer,
+    RayFunction &function,
+    int return_num,
+    int max_retries,
+    bool retry_exceptions,
+    std::string serialized_retry_exception_allowlist) {
   std::unordered_map<std::string, double> resources;
   std::string name = function.GetFunctionDescriptor()->DefaultTaskName();
   TaskOptions options{name, return_num, resources};
@@ -46,17 +53,27 @@ std::vector<rpc::ObjectReference> SendInternal(const ActorID &peer_actor_id,
       std::move(buffer), meta, std::vector<rpc::ObjectReference>(), true)));
 
   std::vector<std::shared_ptr<RayObject>> results;
+  std::vector<rpc::ObjectReference> return_refs;
   auto result = CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
-      peer_actor_id, function, args, options);
-  if (!result.has_value()) {
+      peer_actor_id,
+      function,
+      args,
+      options,
+      max_retries,
+      retry_exceptions,
+      serialized_retry_exception_allowlist,
+      return_refs);
+  if (!result.ok()) {
     RAY_CHECK(false) << "Back pressure should not be enabled.";
   }
-  return result.value();
+  return return_refs;
 }
 
 const ray::stats::TagKeyType TagRegister(const std::string tag_name) {
   return ray::stats::TagKeyType::Register(tag_name);
 }
+
+const std::string TagKeyName(stats::TagKeyType &tagkey) { return tagkey.name(); }
 
 const ActorID &GetCurrentActorID() {
   return CoreWorkerProcess::GetCoreWorker().GetWorkerContext().GetCurrentActorID();

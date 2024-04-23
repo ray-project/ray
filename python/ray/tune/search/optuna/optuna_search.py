@@ -1,12 +1,20 @@
-import time
+import functools
 import logging
 import pickle
-import functools
+import time
 import warnings
-from packaging import version
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-from ray.tune.result import DEFAULT_METRIC, TRAINING_ITERATION
+from packaging import version
+
+from ray.air.constants import TRAINING_ITERATION
+from ray.tune.result import DEFAULT_METRIC
+from ray.tune.search import (
+    UNDEFINED_METRIC_MODE,
+    UNDEFINED_SEARCH_SPACE,
+    UNRESOLVED_SEARCH_SPACE,
+    Searcher,
+)
 from ray.tune.search.sample import (
     Categorical,
     Domain,
@@ -16,12 +24,6 @@ from ray.tune.search.sample import (
     Quantized,
     Uniform,
 )
-from ray.tune.search import (
-    UNRESOLVED_SEARCH_SPACE,
-    UNDEFINED_METRIC_MODE,
-    UNDEFINED_SEARCH_SPACE,
-    Searcher,
-)
 from ray.tune.search.variant_generator import parse_spec_vars
 from ray.tune.utils.util import flatten_dict, unflatten_dict, validate_warmstart
 
@@ -29,8 +31,8 @@ try:
     import optuna as ot
     from optuna.distributions import BaseDistribution as OptunaDistribution
     from optuna.samplers import BaseSampler
-    from optuna.trial import TrialState as OptunaTrialState
     from optuna.trial import Trial as OptunaTrial
+    from optuna.trial import TrialState as OptunaTrialState
 except ImportError:
     ot = None
     OptunaDistribution = None
@@ -182,8 +184,8 @@ class OptunaSearch(Searcher):
         import optuna
 
         space = {
-            "a": optuna.distributions.UniformDistribution(6, 8),
-            "b": optuna.distributions.LogUniformDistribution(1e-4, 1e-2),
+            "a": optuna.distributions.FloatDistribution(6, 8),
+            "b": optuna.distributions.FloatDistribution(1e-4, 1e-2, log=True),
         }
 
         optuna_search = OptunaSearch(
@@ -228,8 +230,8 @@ class OptunaSearch(Searcher):
         import optuna
 
         space = {
-            "a": optuna.distributions.UniformDistribution(6, 8),
-            "b": optuna.distributions.LogUniformDistribution(1e-4, 1e-2),
+            "a": optuna.distributions.FloatDistribution(6, 8),
+            "b": optuna.distributions.FloatDistribution(1e-4, 1e-2, log=True),
         }
 
         # Note you have to specify metric and mode here instead of
@@ -257,8 +259,8 @@ class OptunaSearch(Searcher):
         import optuna
 
         space = {
-            "a": optuna.distributions.UniformDistribution(6, 8),
-            "b": optuna.distributions.LogUniformDistribution(1e-4, 1e-2),
+            "a": optuna.distributions.FloatDistribution(6, 8),
+            "b": optuna.distributions.FloatDistribution(1e-4, 1e-2, log=True),
         }
 
         optuna_search = OptunaSearch(
@@ -284,8 +286,8 @@ class OptunaSearch(Searcher):
         import optuna
 
         space = {
-            "a": optuna.distributions.UniformDistribution(6, 8),
-            "b": optuna.distributions.LogUniformDistribution(1e-4, 1e-2),
+            "a": optuna.distributions.FloatDistribution(6, 8),
+            "b": optuna.distributions.FloatDistribution(1e-4, 1e-2, log=True),
         }
 
         optuna_search = OptunaSearch(
@@ -661,28 +663,28 @@ class OptunaSearch(Searcher):
                             "Optuna does not support both quantization and "
                             "sampling from LogUniform. Dropped quantization."
                         )
-                    return ot.distributions.LogUniformDistribution(
-                        domain.lower, domain.upper
+                    return ot.distributions.FloatDistribution(
+                        domain.lower, domain.upper, log=True
                     )
 
                 elif isinstance(sampler, Uniform):
                     if quantize:
-                        return ot.distributions.DiscreteUniformDistribution(
-                            domain.lower, domain.upper, quantize
+                        return ot.distributions.FloatDistribution(
+                            domain.lower, domain.upper, step=quantize
                         )
-                    return ot.distributions.UniformDistribution(
+                    return ot.distributions.FloatDistribution(
                         domain.lower, domain.upper
                     )
 
             elif isinstance(domain, Integer):
                 if isinstance(sampler, LogUniform):
-                    return ot.distributions.IntLogUniformDistribution(
-                        domain.lower, domain.upper - 1, step=quantize or 1
+                    return ot.distributions.IntDistribution(
+                        domain.lower, domain.upper - 1, step=quantize or 1, log=True
                     )
                 elif isinstance(sampler, Uniform):
                     # Upper bound should be inclusive for quantization and
                     # exclusive otherwise
-                    return ot.distributions.IntUniformDistribution(
+                    return ot.distributions.IntDistribution(
                         domain.lower,
                         domain.upper - int(bool(not quantize)),
                         step=quantize or 1,

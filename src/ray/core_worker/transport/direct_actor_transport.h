@@ -30,6 +30,7 @@
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/actor_creator.h"
 #include "ray/core_worker/actor_handle.h"
+#include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/fiber.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
@@ -55,21 +56,23 @@ class CoreWorkerDirectTaskReceiver {
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
           *dynamic_return_objects,
+      std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
       ReferenceCounter::ReferenceTableProto *borrower_refs,
       bool *is_retryable_error,
-      bool *is_application_error)>;
+      std::string *application_error)>;
 
-  using OnTaskDone = std::function<Status()>;
+  using OnActorCreationTaskDone = std::function<Status()>;
 
   CoreWorkerDirectTaskReceiver(WorkerContext &worker_context,
                                instrumented_io_context &main_io_service,
                                const TaskHandler &task_handler,
-                               const OnTaskDone &task_done)
+                               const OnActorCreationTaskDone &actor_creation_task_done_)
       : worker_context_(worker_context),
         task_handler_(task_handler),
         task_main_io_service_(main_io_service),
-        task_done_(task_done),
-        pool_manager_(std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>()) {}
+        actor_creation_task_done_(actor_creation_task_done_),
+        pool_manager_(std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>()),
+        fiber_state_manager_(nullptr) {}
 
   /// Initialize this receiver. This must be called prior to use.
   void Init(std::shared_ptr<rpc::CoreWorkerClientPool>,
@@ -83,7 +86,7 @@ class CoreWorkerDirectTaskReceiver {
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The callback to be called when the request is done.
-  void HandleTask(rpc::PushTaskRequest request,
+  void HandleTask(const rpc::PushTaskRequest &request,
                   rpc::PushTaskReply *reply,
                   rpc::SendReplyCallback send_reply_callback);
 
@@ -92,7 +95,19 @@ class CoreWorkerDirectTaskReceiver {
 
   bool CancelQueuedNormalTask(TaskID task_id);
 
+  /// Cancel an actor task queued in the actor scheduling queue for caller_worker_id.
+  /// Return true if a task is queued or executing. False otherwise.
+  /// If task is not executed yet, this will guarantee the task won't be executed.
+  /// This API is idempotent.
+  bool CancelQueuedActorTask(const WorkerID &caller_worker_id, const TaskID &task_id);
+
   void Stop();
+
+  /// Set the actor repr name for an actor.
+  ///
+  /// The actor repr name is only available after actor creation task has been run since
+  /// the repr name could include data only initialized during the creation task.
+  void SetActorReprName(const std::string &repr_name);
 
  private:
   /// Set up the configs for an actor.
@@ -101,6 +116,7 @@ class CoreWorkerDirectTaskReceiver {
 
  protected:
   /// Cache the concurrency groups of actors.
+  // TODO(ryw): remove the ActorID key since we only ever handle 1 actor.
   absl::flat_hash_map<ActorID, std::vector<ConcurrencyGroup>> concurrency_groups_cache_;
 
  private:
@@ -111,7 +127,7 @@ class CoreWorkerDirectTaskReceiver {
   /// The IO event loop for running tasks on.
   instrumented_io_context &task_main_io_service_;
   /// The callback function to be invoked when finishing a task.
-  OnTaskDone task_done_;
+  OnActorCreationTaskDone actor_creation_task_done_;
   /// Shared pool for producing new core worker clients.
   std::shared_ptr<rpc::CoreWorkerClientPool> client_pool_;
   /// Address of our RPC server.
@@ -130,11 +146,17 @@ class CoreWorkerDirectTaskReceiver {
   int fiber_max_concurrency_ = 0;
   /// If concurrent calls are allowed, holds the pools for executing these tasks.
   std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager_;
+  /// If async calls are allowed, holds the fibers for executing async tasks.
+  /// Only populated if this actor is async.
+  std::shared_ptr<ConcurrencyGroupManager<FiberState>> fiber_state_manager_;
   /// Whether this actor use asyncio for concurrency.
   bool is_asyncio_ = false;
   /// Whether this actor executes tasks out of order with respect to client submission
   /// order.
   bool execute_out_of_order_ = false;
+  /// The repr name of the actor instance for an anonymous actor.
+  /// This is only available after the actor creation task.
+  std::string actor_repr_name_ = "";
 };
 
 }  // namespace core

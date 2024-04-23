@@ -39,7 +39,7 @@ at a large scale.
   the object store, but if it is not large enough (i.e. ``--object-store-memory``
   > size of ``/dev/shm``), Ray will write the plasma store to disk instead, which
   may cause significant performance problems.
-* Use NVMe SSDs (or other high perforfmance storage) if possible. If
+* Use NVMe SSDs (or other high performance storage) if possible. If
   :ref:`object spilling <object-spilling>` is enabled Ray will spill objects to
   disk if necessary. This is most commonly needed for data processing
   workloads.
@@ -50,8 +50,13 @@ Configuring the head node
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
 In addition to the above changes, when deploying a large cluster, Ray's
-architecture means that the head node will have extra stress due to GCS.
+architecture means that the head node has extra stress due to
+additional system processes running on it like GCS.
 
+* A good starting hardware specification for the head node is 8 CPUs and 32 GB memory.
+  The actual hardware specification depends on the workload and the size of the cluster.
+  Metrics that are useful for deciding the hardware specification are
+  CPU usage, memory usage, and network bandwidth usage.
 * Make sure the head node has sufficient bandwidth. The most heavily stressed
   resource on the head node is outbound bandwidth. For large clusters (see the
   scalability envelope), we recommend using machines networking characteristics
@@ -61,8 +66,8 @@ architecture means that the head node will have extra stress due to GCS.
   set ``rayStartParams: {"num-cpus": "0"}``.
   See the :ref:`configuration guide for KubeRay clusters <kuberay-num-cpus>`.)
   Due to the heavy networking load (and the GCS and dashboard processes), we
-  recommend setting the number of CPUs to 0 on the head node to avoid
-  scheduling additional tasks on it.
+  recommend setting the quantity of logical CPU resources to 0 on the head node
+  to avoid scheduling additional tasks on it.
 
 Configuring the autoscaler
 ^^^^^^^^^^^^^^^^^^^^^^^^^^

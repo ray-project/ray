@@ -58,7 +58,8 @@ def generate_file(
         )
     df = pd.concat(buffs)
     data_size = df.memory_usage(deep=True).sum()
-    filename = os.path.join(data_dir, f"input_data_{file_index}.parquet.snappy")
+    file_ext = "gz" if compression == "gzip" else "snappy"
+    filename = os.path.join(data_dir, f"input_data_{file_index}.parquet.{file_ext}")
     df.to_parquet(
         filename,
         compression=compression,

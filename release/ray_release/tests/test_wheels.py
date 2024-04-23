@@ -6,8 +6,7 @@ from unittest.mock import patch
 
 from freezegun import freeze_time
 
-from ray_release.config import Test
-from ray_release.template import load_test_cluster_env
+from ray_release.bazel import bazel_runfile
 from ray_release.exception import RayWheelsNotFoundError, RayWheelsTimeoutError
 from ray_release.util import url_exists
 from ray_release.wheels import (
@@ -19,6 +18,7 @@ from ray_release.wheels import (
     is_wheels_url_matching_ray_verison,
     get_wheels_filename,
     maybe_rewrite_wheels_url,
+    parse_commit_from_wheel_url,
 )
 
 
@@ -30,9 +30,7 @@ def remove_buildkite_env():
 
 
 def test_get_ray_version(remove_buildkite_env):
-    init_file = os.path.join(
-        os.path.dirname(__file__), "..", "..", "..", "python", "ray", "__init__.py"
-    )
+    init_file = bazel_runfile("python/ray/__init__.py")
     with open(init_file, "rt") as fp:
         content = [line.encode() for line in fp.readlines()]
 
@@ -55,7 +53,7 @@ def test_get_ray_wheels_url(remove_buildkite_env):
     )
     assert (
         url == "https://s3-us-west-2.amazonaws.com/ray-wheels/master/1234/"
-        "ray-3.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
+        "ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl"
     )
 
 
@@ -224,32 +222,19 @@ def test_rewrite_wheels_url(remove_buildkite_env):
     )
 
 
-def test_wheels_sanity_string(remove_buildkite_env):
-    this_env = {"env": None}
-
-    def override_env(path, env):
-        this_env["env"] = env
-
-    with patch(
-        "ray_release.template.load_and_render_yaml_template", override_env
-    ), patch("ray_release.template.get_test_environment", lambda: {}):
-        load_test_cluster_env(
-            Test(cluster=dict(cluster_env="invalid")),
-            ray_wheels_url="https://no-commit-url",
-        )
-        assert "No commit sanity check" in this_env["env"]["RAY_WHEELS_SANITY_CHECK"]
-
-        sha = "abcdef1234abcdef1234abcdef1234abcdef1234"
-        load_test_cluster_env(
-            Test(cluster=dict(cluster_env="invalid")),
-            ray_wheels_url=f"https://some/{sha}/binary.whl",
-        )
-        assert sha in this_env["env"]["RAY_WHEELS_SANITY_CHECK"]
-
-
 def test_url_exist():
     assert url_exists("https://github.com/")
     assert not url_exists("invalid://somewhere")
+
+
+def test_parse_commit_from_wheel_url():
+    url = (
+        "https://s3-us-west-2.amazonaws.com/ray-wheels/master/"
+        "0e0c15065507f01e8bfe78e49b0d0de063f81164/"
+        "ray-3.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
+    )
+    expected_commit = "0e0c15065507f01e8bfe78e49b0d0de063f81164"
+    assert parse_commit_from_wheel_url(url) == expected_commit
 
 
 if __name__ == "__main__":

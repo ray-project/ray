@@ -11,12 +11,14 @@ from urllib.parse import urlparse
 from zipfile import ZipFile
 
 from filelock import FileLock
+from ray.util.annotations import DeveloperAPI
 
 from ray._private.ray_constants import (
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT,
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR,
+    RAY_RUNTIME_ENV_IGNORE_GITIGNORE,
 )
-from ray._private.gcs_utils import GcsAioClient
+from ray._private.runtime_env.conda_utils import exec_cmd_stream_to_logger
 from ray._private.thirdparty.pathspec import PathSpec
 from ray.experimental.internal_kv import (
     _internal_kv_exists,
@@ -92,7 +94,7 @@ class Protocol(Enum):
     @classmethod
     def remote_protocols(cls):
         # Returns a list of protocols that support remote storage
-        # These protocols should only be used with paths that end in ".zip"
+        # These protocols should only be used with paths that end in ".zip" or ".whl"
         return [cls.HTTPS, cls.S3, cls.GS, cls.FILE]
 
 
@@ -147,8 +149,8 @@ def _hash_directory(
     BUF_SIZE = 4096 * 1024
 
     def handler(path: Path):
-        md5 = hashlib.md5()
-        md5.update(str(path.relative_to(relative_path)).encode())
+        sha1 = hashlib.sha1()
+        sha1.update(str(path.relative_to(relative_path)).encode())
         if not path.is_dir():
             try:
                 f = path.open("rb")
@@ -161,13 +163,13 @@ def _hash_directory(
                 try:
                     data = f.read(BUF_SIZE)
                     while len(data) != 0:
-                        md5.update(data)
+                        sha1.update(data)
                         data = f.read(BUF_SIZE)
                 finally:
                     f.close()
 
         nonlocal hash_val
-        hash_val = _xor_bytes(hash_val, md5.digest())
+        hash_val = _xor_bytes(hash_val, sha1.digest())
 
     excludes = [] if excludes is None else [excludes]
     _dir_travel(root, excludes, handler, logger=logger)
@@ -181,26 +183,37 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     only for setting up local directory folders by using package name as path.
 
     >>> parse_uri("https://test.com/file.zip")
-    (Protocol.HTTPS, "https_test_com_file.zip")
+    (<Protocol.HTTPS: 'https'>, 'https_test_com_file.zip')
+
+    >>> parse_uri("https://test.com/file.whl")
+    (<Protocol.HTTPS: 'https'>, 'file.whl')
+
     """
     uri = urlparse(pkg_uri)
     try:
         protocol = Protocol(uri.scheme)
     except ValueError as e:
         raise ValueError(
-            f"Invalid protocol for runtime_env URI {pkg_uri}. "
+            f'Invalid protocol for runtime_env URI "{pkg_uri}". '
             f"Supported protocols: {Protocol._member_names_}. Original error: {e}"
         )
 
     if protocol in Protocol.remote_protocols():
-        package_name = f"{protocol.value}_{uri.netloc}{uri.path}"
+        if pkg_uri.endswith(".whl"):
+            # Don't modify the .whl filename. See
+            # https://peps.python.org/pep-0427/#file-name-convention
+            # for more information.
+            package_name = pkg_uri.split("/")[-1]
+        else:
+            package_name = f"{protocol.value}_{uri.netloc}{uri.path}"
 
-        disallowed_chars = ["/", ":", "@", "+"]
-        for disallowed_char in disallowed_chars:
-            package_name = package_name.replace(disallowed_char, "_")
+            disallowed_chars = ["/", ":", "@", "+"]
+            for disallowed_char in disallowed_chars:
+                package_name = package_name.replace(disallowed_char, "_")
 
-        # Remove all periods except the last, which is part of the file extension
-        package_name = package_name.replace(".", "_", package_name.count(".") - 1)
+            # Remove all periods except the last, which is part of the
+            # file extension
+            package_name = package_name.replace(".", "_", package_name.count(".") - 1)
     else:
         package_name = uri.netloc
 
@@ -246,6 +259,21 @@ def _get_excludes(path: Path, excludes: List[str]) -> Callable:
 
 
 def _get_gitignore(path: Path) -> Optional[Callable]:
+    """Returns a function that returns True if the path should be excluded.
+
+    Returns None if there is no .gitignore file in the path, or if the
+    RAY_RUNTIME_ENV_IGNORE_GITIGNORE environment variable is set to 1.
+
+    Args:
+        path: The path to the directory to check for a .gitignore file.
+
+    Returns:
+        A function that returns True if the path should be excluded.
+    """
+    ignore_gitignore = os.environ.get(RAY_RUNTIME_ENV_IGNORE_GITIGNORE, "0") == "1"
+    if ignore_gitignore:
+        return None
+
     path = path.absolute()
     ignore_file = path / ".gitignore"
     if ignore_file.is_file():
@@ -416,7 +444,7 @@ def get_uri_for_package(package: Path) -> str:
             protocol=Protocol.GCS.value, whl_filename=package.name
         )
     else:
-        hash_val = hashlib.md5(package.read_bytes()).hexdigest()
+        hash_val = hashlib.sha1(package.read_bytes()).hexdigest()
         return "{protocol}://{pkg_name}.zip".format(
             protocol=Protocol.GCS.value, pkg_name=RAY_PKG_PREFIX + hash_val
         )
@@ -433,9 +461,8 @@ def get_uri_for_directory(directory: str, excludes: Optional[List[str]] = None) 
 
     Examples:
 
-    .. code-block:: python
-        >>> get_uri_for_directory("/my_directory")
-        .... _ray_pkg_af2734982a741.zip
+        >>> get_uri_for_directory("/my_directory")  # doctest: +SKIP
+        _ray_pkg_af2734982a741.zip
 
     Args:
         directory: The directory.
@@ -573,10 +600,11 @@ def get_local_dir_from_uri(uri: str, base_directory: str) -> Path:
     return local_dir
 
 
+@DeveloperAPI
 async def download_and_unpack_package(
     pkg_uri: str,
     base_directory: str,
-    gcs_aio_client: GcsAioClient,
+    gcs_aio_client: Optional["GcsAioClient"] = None,  # noqa: F821
     logger: Optional[logging.Logger] = default_logger,
 ) -> str:
     """Download the package corresponding to this URI and unpack it if zipped.
@@ -598,9 +626,17 @@ async def download_and_unpack_package(
         IOError: If the download fails.
         ImportError: If smart_open is not installed and a remote URI is used.
         NotImplementedError: If the protocol of the URI is not supported.
+        ValueError: If the GCS client is not provided when downloading from GCS,
+                    or if package URI is invalid.
 
     """
     pkg_file = Path(_get_local_path(base_directory, pkg_uri))
+    if pkg_file.suffix == "":
+        raise ValueError(
+            f"Invalid package URI: {pkg_uri}."
+            "URI must have a file extension and the URI must be valid."
+        )
+
     async with _AsyncFileLock(str(pkg_file) + ".lock"):
         if logger is None:
             logger = default_logger
@@ -614,6 +650,11 @@ async def download_and_unpack_package(
         else:
             protocol, pkg_name = parse_uri(pkg_uri)
             if protocol == Protocol.GCS:
+                if gcs_aio_client is None:
+                    raise ValueError(
+                        "GCS client must be provided to download from GCS."
+                    )
+
                 # Download package from the GCS.
                 code = await gcs_aio_client.internal_kv_get(
                     pkg_uri.encode(), namespace=None, timeout=None
@@ -698,13 +739,21 @@ async def download_and_unpack_package(
                     with open_file(pkg_file, "wb") as fin:
                         fin.write(package_zip.read())
 
-                unzip_package(
-                    package_path=pkg_file,
-                    target_dir=local_dir,
-                    remove_top_level_directory=True,
-                    unlink_zip=True,
-                    logger=logger,
-                )
+                if pkg_file.suffix in [".zip", ".jar"]:
+                    unzip_package(
+                        package_path=pkg_file,
+                        target_dir=local_dir,
+                        remove_top_level_directory=True,
+                        unlink_zip=True,
+                        logger=logger,
+                    )
+                elif pkg_file.suffix == ".whl":
+                    return str(pkg_file)
+                else:
+                    raise NotImplementedError(
+                        f"Package format {pkg_file.suffix} is ",
+                        "not supported for remote protocols",
+                    )
             else:
                 raise NotImplementedError(f"Protocol {protocol} is not supported")
 
@@ -768,7 +817,6 @@ def remove_dir_from_filepaths(base_dir: str, rdir: str):
     # Move rdir to a temporary directory, so its contents can be moved to
     # base_dir without any name conflicts
     with TemporaryDirectory() as tmp_dir:
-
         # shutil.move() is used instead of os.rename() in case rdir and tmp_dir
         # are located on separate file systems
         shutil.move(os.path.join(base_dir, rdir), os.path.join(tmp_dir, rdir))
@@ -855,3 +903,34 @@ def delete_package(pkg_uri: str, base_directory: str) -> Tuple[bool, int]:
             deleted = True
 
     return deleted
+
+
+async def install_wheel_package(
+    wheel_uri: str,
+    target_dir: str,
+    logger: Optional[logging.Logger] = default_logger,
+) -> None:
+    """Install packages in the wheel URI, and then delete the local wheel file."""
+
+    pip_install_cmd = [
+        "pip",
+        "install",
+        wheel_uri,
+        f"--target={target_dir}",
+    ]
+
+    logger.info("Running py_modules wheel install command: %s", str(pip_install_cmd))
+    try:
+        # TODO(architkulkarni): Use `await check_output_cmd` or similar.
+        exit_code, output = exec_cmd_stream_to_logger(pip_install_cmd, logger)
+    finally:
+        if Path(wheel_uri).exists():
+            Path(wheel_uri).unlink()
+
+        if exit_code != 0:
+            if Path(target_dir).exists():
+                Path(target_dir).unlink()
+            raise RuntimeError(
+                f"Failed to install py_modules wheel {wheel_uri}"
+                f"to {target_dir}:\n{output}"
+            )

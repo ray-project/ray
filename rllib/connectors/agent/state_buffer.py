@@ -14,16 +14,17 @@ from ray.rllib.connectors.connector import (
 )
 from ray import cloudpickle
 from ray.rllib.connectors.registry import register_connector
+from ray.rllib.core.columns import Columns
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.typing import ActionConnectorDataType, AgentConnectorDataType
-from ray.util.annotations import PublicAPI
+from ray.rllib.utils.annotations import OldAPIStack
 
 
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="alpha")
+@OldAPIStack
 class StateBufferConnector(AgentConnector):
     def __init__(self, ctx: ConnectorContext, states: Any = None):
         super().__init__(ctx)
@@ -32,6 +33,7 @@ class StateBufferConnector(AgentConnector):
         self._action_space_struct = get_base_struct_from_space(ctx.action_space)
 
         self._states = defaultdict(lambda: defaultdict(lambda: (None, None, None)))
+        self._enable_new_api_stack = ctx.config.get("_enable_new_api_stack", False)
         # TODO(jungong) : we would not need this if policies are never stashed
         # during the rollout of a single episode.
         if states:
@@ -49,7 +51,6 @@ class StateBufferConnector(AgentConnector):
 
     @override(Connector)
     def in_eval(self):
-        self._states.clear()
         super().in_eval()
 
     def reset(self, env_id: str):
@@ -88,8 +89,12 @@ class StateBufferConnector(AgentConnector):
 
         if states is None:
             states = self._initial_states
-        for i, v in enumerate(states):
-            d["state_out_{}".format(i)] = v
+        if self._enable_new_api_stack:
+            if states:
+                d[Columns.STATE_OUT] = states
+        else:
+            for i, v in enumerate(states):
+                d["state_out_{}".format(i)] = v
 
         # Also add extra fetches if available.
         if fetches:

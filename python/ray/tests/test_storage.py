@@ -3,7 +3,7 @@ import subprocess
 import urllib
 from pathlib import Path
 
-from pkg_resources._vendor.packaging.version import parse as parse_version
+from packaging.version import parse as parse_version
 import pyarrow.fs
 import pytest
 
@@ -30,6 +30,14 @@ def path_eq(a, b):
     return Path(a).resolve() == Path(b).resolve()
 
 
+def test_storage_not_set(shutdown_only):
+    ray.init()
+    with pytest.raises(
+        RuntimeError, match=r".*No storage URI has been configured for the cluster.*"
+    ):
+        fs, prefix = storage.get_filesystem()
+
+
 def test_get_filesystem_local(shutdown_only, tmp_path):
     path = os.path.join(str(tmp_path), "foo/bar")
     ray.init(storage=path)
@@ -54,6 +62,27 @@ def test_get_filesystem_s3(shutdown_only):
         fs, prefix = storage.get_filesystem()
         assert path_eq(prefix, root), prefix
         assert isinstance(fs, pyarrow.fs.S3FileSystem), fs
+
+
+def test_escape_storage_uri_with_runtime_env(shutdown_only):
+    # https://github.com/ray-project/ray/issues/41568
+    # Test to make sure we can successfully start worker process
+    # when storage uri contains ?,& and we use runtime env and that the
+    # moto mocking actually works with the escaped uri
+    with simulate_storage("s3") as s3_uri:
+        assert "?" in s3_uri
+        assert "&" in s3_uri
+        ray.init(storage=s3_uri, runtime_env={"env_vars": {"TEST_ENV": "1"}})
+
+        client = storage.get_client("foo")
+        client.put("bar", b"baz")
+
+        @ray.remote
+        def f():
+            client = storage.get_client("foo")
+            return client.get("bar")
+
+        assert ray.get(f.remote()) == b"baz"
 
 
 def test_get_filesystem_invalid(shutdown_only, tmp_path):

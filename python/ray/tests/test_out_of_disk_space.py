@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 import ray
-from ray.cluster_utils import Cluster
+from ray.util.state import list_cluster_events
 
 
 def calculate_capacity_threshold(disk_capacity_in_bytes):
@@ -22,16 +22,17 @@ def calculate_capacity_threshold(disk_capacity_in_bytes):
 def get_current_usage():
     usage = shutil.disk_usage("/tmp")
     print(f"free: {usage.free} ")
-    print(f"current usage: {1.0 - 1.0 * usage.free  / usage.total}")
-    return 1.0 - 1.0 * usage.free / usage.total
+    usage_percentage = 1.0 - 1.0 * usage.free / usage.total
+    print(f"current usage: {usage_percentage}")
+    return usage_percentage
 
 
 @contextmanager
-def create_tmp_file(bytes):
+def create_tmp_file(n):
     tmp_dir = tempfile.mkdtemp(dir="/tmp")
     tmp_path = os.path.join(tmp_dir, "test.txt")
     with open(tmp_path, "wb") as f:
-        f.write(os.urandom(bytes))
+        f.write(os.urandom(n))
     try:
         yield tmp_path
     finally:
@@ -128,8 +129,8 @@ def test_task_put(shutdown_only):
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Not targeting Windows")
-def test_task_args(shutdown_only):
-    cluster = Cluster()
+def test_task_args(ray_start_cluster):
+    cluster = ray_start_cluster
     cluster.add_node(
         num_cpus=1,
         object_store_memory=80 * 1024 * 1024,
@@ -162,8 +163,8 @@ def test_task_args(shutdown_only):
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Not targeting Windows")
-def test_actor(shutdown_only):
-    cluster = Cluster()
+def test_actor(ray_start_cluster):
+    cluster = ray_start_cluster
     cluster.add_node(
         num_cpus=1,
         object_store_memory=80 * 1024 * 1024,
@@ -215,6 +216,49 @@ def test_actor(shutdown_only):
         ray.get(a.return_ood.remote())
     except ray.exceptions.RayTaskError as e:
         assert isinstance(e.cause, ray.exceptions.OutOfDiskError)
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not targeting Windows")
+def test_ood_events(shutdown_only):
+    local_fs_capacity_threshold = calculate_capacity_threshold(200 * 1024 * 1024)
+    ray.init(
+        num_cpus=1,
+        object_store_memory=80 * 1024 * 1024,
+        _system_config={
+            "local_fs_capacity_threshold": local_fs_capacity_threshold,
+            "local_fs_monitor_interval_ms": 10,
+        },
+    )
+
+    # create a temp file so that the disk size is over the threshold.
+    # ray.put doesn't work is that fallback allocation uses mmaped file
+    # that doesn't neccssary allocate disk spaces.
+    with create_tmp_file(250 * 1024 * 1024):
+        assert get_current_usage() > local_fs_capacity_threshold
+        time.sleep(1)
+
+        @ray.remote
+        def foo():
+            ref = ray.put(np.random.rand(20 * 1024 * 1024))  # 160 MB data
+            return ref
+
+        try:
+            ray.get(foo.remote())
+        except ray.exceptions.RayTaskError as e:
+            assert isinstance(e.cause, ray.exceptions.OutOfDiskError)
+
+    # Give it some time for events to appear.
+    # TODO(core-team): provide some way to wait for events to be flushed.
+    time.sleep(2)
+
+    events = list_cluster_events()
+    print(events)
+    # There could be more than 1 event depending on the test timing.
+    assert len(events) >= 1
+    assert (
+        "Object creation will fail if spilling is required" in events[0]["message"]
+    )  # noqa
+    assert events[0]["severity"] == "ERROR"
 
 
 if __name__ == "__main__":

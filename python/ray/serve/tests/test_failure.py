@@ -1,12 +1,15 @@
 import os
-import requests
 import sys
 import time
 
 import pytest
+import requests
+
 import ray
 from ray import serve
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import SignalActor, wait_for_condition
+from ray.serve._private.common import DeploymentID
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 
 
 def request_with_retries(endpoint, timeout=30):
@@ -70,7 +73,7 @@ def test_controller_failure(serve_instance):
 
 def _kill_http_proxies():
     http_proxies = ray.get(
-        serve.context._global_client._controller.get_http_proxies.remote()
+        serve.context._global_client._controller.get_proxies.remote()
     )
     for http_proxy in http_proxies.values():
         ray.kill(http_proxy, no_restart=False)
@@ -106,11 +109,12 @@ def test_http_proxy_failure(serve_instance):
     wait_for_condition(check_new)
 
 
-def _get_worker_handles(deployment):
+def _get_worker_handles(deployment_name: str, app_name: str = SERVE_DEFAULT_APP_NAME):
+    id = DeploymentID(name=deployment_name, app_name=app_name)
     controller = serve.context._global_client._controller
     deployment_dict = ray.get(controller._all_running_replicas.remote())
 
-    return [replica.actor_handle for replica in deployment_dict[deployment]]
+    return [replica.actor_handle for replica in deployment_dict[id]]
 
 
 # Test that a worker dying unexpectedly causes it to restart and continue
@@ -198,6 +202,56 @@ def test_worker_replica_failure(serve_instance):
                 break
             except TimeoutError:
                 time.sleep(0.1)
+
+
+def test_no_available_replicas_does_not_block_proxy(serve_instance):
+    """Test that handle blocking waiting for replicas doesn't block proxy.
+
+    This is essential so that other requests and health checks can pass while a
+    deployment is deploying/updating.
+
+    See https://github.com/ray-project/ray/issues/36460.
+    """
+
+    @serve.deployment
+    class SlowStarter:
+        def __init__(self, starting_actor, finish_starting_actor):
+            ray.get(starting_actor.send.remote())
+            ray.get(finish_starting_actor.wait.remote())
+
+        def __call__(self):
+            return "hi"
+
+    @ray.remote
+    def make_blocked_request():
+        r = requests.get("http://localhost:8000/")
+        r.raise_for_status()
+        return r.text
+
+    # Loop twice: first iteration tests deploying from nothing, second iteration
+    # tests updating the replicas of an existing deployment.
+    for _ in range(2):
+        starting_actor = SignalActor.remote()
+        finish_starting_actor = SignalActor.remote()
+        serve._run(
+            SlowStarter.bind(starting_actor, finish_starting_actor), _blocking=False
+        )
+
+        # Ensure that the replica has been started (we use _blocking=False).
+        ray.get(starting_actor.wait.remote())
+
+        # The request shouldn't complete until the replica has finished started.
+        blocked_ref = make_blocked_request.remote()
+        with pytest.raises(TimeoutError):
+            ray.get(blocked_ref, timeout=1)
+
+        # If the proxy's loop was blocked, these would hang.
+        requests.get("http://localhost:8000/-/routes").raise_for_status()
+        requests.get("http://localhost:8000/-/healthz").raise_for_status()
+
+        # Signal the replica to finish starting; request should complete.
+        ray.get(finish_starting_actor.send.remote())
+        assert ray.get(blocked_ref) == "hi"
 
 
 if __name__ == "__main__":

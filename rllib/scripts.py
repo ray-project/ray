@@ -11,7 +11,7 @@ from ray.rllib.common import (
     EXAMPLES,
     FrameworkEnum,
     example_help,
-    download_example_file,
+    _download_example_file,
 )
 
 # Main Typer CLI app
@@ -85,7 +85,7 @@ def get(example_id: str = typer.Argument(..., help="The example ID of the exampl
     Example usage: `rllib example get atari-a2c`
     """
     example_file = get_example_file(example_id)
-    example_file, temp_file = download_example_file(example_file)
+    example_file, temp_file = _download_example_file(example_file)
     with open(example_file) as f:
         console = Console()
         console.print(f.read())
@@ -99,7 +99,7 @@ def run(example_id: str = typer.Argument(..., help="Example ID to run.")):
     """
     example = EXAMPLES[example_id]
     example_file = get_example_file(example_id)
-    example_file, temp_file = download_example_file(example_file)
+    example_file, temp_file = _download_example_file(example_file)
     stop = example.get("stop")
 
     train_module.file(
@@ -194,22 +194,7 @@ def rollout(
     """Old rollout script. Please use `rllib evaluate` instead."""
     from ray.rllib.utils.deprecation import deprecation_warning
 
-    deprecation_warning(old="rllib rollout", new="rllib evaluate", error=False)
-
-    return evaluate(
-        checkpoint=checkpoint,
-        algo=algo,
-        env=env,
-        local_mode=local_mode,
-        render=render,
-        steps=steps,
-        episodes=episodes,
-        out=out,
-        config=config,
-        save_info=save_info,
-        use_shelve=use_shelve,
-        track_progress=track_progress,
-    )
+    deprecation_warning(old="rllib rollout", new="rllib evaluate", error=True)
 
 
 @app.callback()

@@ -55,15 +55,16 @@ class TestMARWIL(unittest.TestCase):
                 evaluation_parallel_to_training=True,
                 evaluation_config=marwil.MARWILConfig.overrides(input_="sampler"),
                 off_policy_estimation_methods={},
+                always_attach_evaluation_results=True,
             )
             .offline_data(input_=[data_file])
         )
 
         num_iterations = 350
-        min_reward = 70.0
+        min_reward = 100.0
 
         # Test for all frameworks.
-        for _ in framework_iterator(config, frameworks=("tf", "torch")):
+        for _ in framework_iterator(config, frameworks=("torch", "tf")):
             algo = config.build()
             learnt = False
             for i in range(num_iterations):
@@ -93,7 +94,7 @@ class TestMARWIL(unittest.TestCase):
             algo.stop()
 
     def test_marwil_cont_actions_from_offline_file(self):
-        """Test whether MARWILTrainer runs with cont. actions.
+        """Test whether MARWIL runs with cont. actions.
 
         Learns from a historic-data file.
         To generate this data, first run:
@@ -127,7 +128,7 @@ class TestMARWIL(unittest.TestCase):
         num_iterations = 3
 
         # Test for all frameworks.
-        for _ in framework_iterator(config, frameworks=("tf", "torch")):
+        for _ in framework_iterator(config, frameworks=("torch", "tf")):
             algo = config.build(env="Pendulum-v1")
             for i in range(num_iterations):
                 print(algo.train())

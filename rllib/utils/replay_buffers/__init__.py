@@ -1,3 +1,4 @@
+from ray.rllib.utils.replay_buffers.episode_replay_buffer import EpisodeReplayBuffer
 from ray.rllib.utils.replay_buffers.fifo_replay_buffer import FifoReplayBuffer
 from ray.rllib.utils.replay_buffers.multi_agent_mixin_replay_buffer import (
     MultiAgentMixInReplayBuffer,
@@ -9,6 +10,9 @@ from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import (
     MultiAgentReplayBuffer,
     ReplayMode,
 )
+from ray.rllib.utils.replay_buffers.prioritized_episode_replay_buffer import (
+    PrioritizedEpisodeReplayBuffer,
+)
 from ray.rllib.utils.replay_buffers.prioritized_replay_buffer import (
     PrioritizedReplayBuffer,
 )
@@ -17,10 +21,12 @@ from ray.rllib.utils.replay_buffers.reservoir_replay_buffer import ReservoirRepl
 from ray.rllib.utils.replay_buffers import utils
 
 __all__ = [
+    "EpisodeReplayBuffer",
     "FifoReplayBuffer",
     "MultiAgentMixInReplayBuffer",
     "MultiAgentPrioritizedReplayBuffer",
     "MultiAgentReplayBuffer",
+    "PrioritizedEpisodeReplayBuffer",
     "PrioritizedReplayBuffer",
     "ReplayMode",
     "ReplayBuffer",

@@ -11,4 +11,4 @@ available_node_types:
     node_config: {InstanceType: c5.xlarge, ImageId: ami-0b294f219d14e6a82}
 head_node_type: head_node
 setup_commands: # Set up each node.
-    - pip install ray torch torchvision tabulate tensorboard
+    - pip install ray torch torchvision tensorboard

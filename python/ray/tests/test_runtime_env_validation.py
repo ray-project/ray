@@ -68,7 +68,7 @@ class TestValidateWorkingDir:
             "gs://bucket/file",
         ]:
             with pytest.raises(
-                ValueError, match="Only .zip files supported for remote URIs."
+                ValueError, match="Only .zip or .whl files supported for remote URIs."
             ):
                 parse_and_validate_working_dir(uri)
 
@@ -102,7 +102,7 @@ class TestValidatePyModules:
             "gs://bucket/file",
         ]
         with pytest.raises(
-            ValueError, match="Only .zip files supported for remote URIs."
+            ValueError, match="Only .zip or .whl files supported for remote URIs."
         ):
             parse_and_validate_py_modules(uris)
 
@@ -111,6 +111,9 @@ class TestValidatePyModules:
             "https://some_domain.com/path/file.zip",
             "s3://bucket/file.zip",
             "gs://bucket/file.zip",
+            "https://some_domain.com/path/file.whl",
+            "s3://bucket/file.whl",
+            "gs://bucket/file.whl",
         ]
         py_modules = parse_and_validate_py_modules(uris)
         assert py_modules == uris
@@ -303,11 +306,24 @@ test_env_1 = os.path.join(
 test_env_2 = os.path.join(
     os.path.dirname(__file__), "test_runtime_env_validation_2_schema.json"
 )
+test_env_invalid_path = os.path.join(
+    os.path.dirname(__file__), "test_runtime_env_validation_non_existent.json"
+)
+test_env_bad_json = os.path.join(
+    os.path.dirname(__file__), "test_runtime_env_validation_bad_2_schema.json"
+)
 
 
 @pytest.mark.parametrize(
     "set_runtime_env_plugin_schemas",
-    [schemas_dir, f"{test_env_1},{test_env_2}"],
+    [
+        schemas_dir,
+        f"{test_env_1},{test_env_2}",
+        # Test with an invalid JSON file first in the list
+        f"{test_env_bad_json},{test_env_1},{test_env_2}",
+        # Test with a non-existent JSON file
+        f"{test_env_invalid_path},{test_env_1},{test_env_2}",
+    ],
     indirect=True,
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")

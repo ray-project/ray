@@ -15,12 +15,13 @@ JobSubmissionClient
 -------------------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
-   :template: autosummary/class_with_autosummary.rst
 
    JobSubmissionClient
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    JobSubmissionClient.submit_job
@@ -30,6 +31,7 @@ JobSubmissionClient
    JobSubmissionClient.list_jobs
    JobSubmissionClient.get_job_logs
    JobSubmissionClient.tail_job_logs
+   JobSubmissionClient.delete_job
 
 .. _job-status-ref:
 
@@ -37,6 +39,7 @@ JobStatus
 ---------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    JobStatus
@@ -47,6 +50,7 @@ JobInfo
 -------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    JobInfo
@@ -57,6 +61,7 @@ JobDetails
 ----------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    JobDetails
@@ -67,6 +72,7 @@ JobType
 -------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    JobType
@@ -77,6 +83,7 @@ DriverInfo
 ----------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    DriverInfo

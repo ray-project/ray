@@ -1,9 +1,17 @@
-.. include:: /_includes/core/announcement.rst
-
 .. _core-walkthrough:
 
 What is Ray Core?
 =================
+
+.. toctree::
+    :maxdepth: 1
+    :hidden:
+
+    Key Concepts <key-concepts>
+    User Guides <user-guide>
+    Examples <examples/overview>
+    api/index
+
 
 Ray Core provides a small number of core primitives (i.e., tasks, actors, objects) for building and scaling distributed applications. Below we'll walk through simple examples that show you how to turn your functions and classes easily into Ray tasks and actors, and how to work with Ray objects.
 
@@ -60,39 +68,36 @@ As seen above, Ray stores task and actor call results in its :ref:`distributed o
 Next Steps
 ----------
 
-.. tip:: To check how your application is doing, you can use the :ref:`Ray dashboard <ray-dashboard>`. 
+.. tip:: To check how your application is doing, you can use the :ref:`Ray dashboard <observability-getting-started>`.
 
 Ray's key primitives are simple, but can be composed together to express almost any kind of distributed computation.
 Learn more about Ray's :ref:`key concepts <core-key-concepts>` with the following user guides:
 
-.. panels::
-    :container: container pb-4
-    :column: col-md-4 px-2 py-2
-    :img-top-cls: pt-5 w-50 d-block mx-auto
-
-    ---
-    :img-top: /images/tasks.png
-
-    .. link-button:: ray-remote-functions
-        :type: ref
-        :text: Using remote functions (Tasks)
-        :classes: btn-link btn-block stretched-link
-
-    ---
-    :img-top: /images/actors.png
-
-    .. link-button:: ray-remote-classes
-        :type: ref
-        :text: Using remote classes (Actors)
-        :classes: btn-link btn-block stretched-link
-
-    ---
-    :img-top: /images/objects.png
-
-    .. link-button:: objects-in-ray
-        :type: ref
-        :text: Working with Ray Objects
-        :classes: btn-link btn-block stretched-link
+.. grid:: 1 2 3 3
+    :gutter: 1
+    :class-container: container pb-3
 
 
-.. include:: /_includes/core/announcement_bottom.rst
+    .. grid-item-card::
+        :img-top: /images/tasks.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: ray-remote-functions
+
+            Using remote functions (Tasks)
+
+    .. grid-item-card::
+        :img-top: /images/actors.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: ray-remote-classes
+
+            Using remote classes (Actors)
+
+    .. grid-item-card::
+        :img-top: /images/objects.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: objects-in-ray
+
+            Working with Ray Objects

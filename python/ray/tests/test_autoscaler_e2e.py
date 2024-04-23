@@ -1,17 +1,94 @@
 import subprocess
 from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 
+import pytest
 import ray
 import sys
 from ray._private.test_utils import (
+    reset_autoscaler_v2_enabled_cache,
     wait_for_condition,
     get_metric_check_condition,
+    MetricSamplePattern,
 )
 from ray.cluster_utils import AutoscalingCluster
 from ray.autoscaler.node_launch_exception import NodeLaunchException
 
 
-def test_ray_status_e2e(shutdown_only):
+@pytest.mark.parametrize("enable_v2", [True, False], ids=["v2", "v1"])
+def test_ray_status_activity(shutdown_only, enable_v2):
+    reset_autoscaler_v2_enabled_cache()
+    cluster = AutoscalingCluster(
+        head_resources={"CPU": 0},
+        worker_node_types={
+            "type-i": {
+                "resources": {"CPU": 4, "fun": 1},
+                "node_config": {},
+                "min_workers": 1,
+                "max_workers": 1,
+            },
+            "type-ii": {
+                "resources": {"CPU": 3, "fun": 100},
+                "node_config": {},
+                "min_workers": 1,
+                "max_workers": 1,
+            },
+        },
+        autoscaler_v2=enable_v2,
+    )
+
+    try:
+        cluster.start()
+        ray.init(address="auto")
+        if enable_v2:
+            assert (
+                subprocess.check_output("ray status --verbose", shell=True)
+                .decode()
+                .count("Idle: ")
+                > 0
+            )
+
+        @ray.remote(num_cpus=2, resources={"fun": 2})
+        class Actor:
+            def ping(self):
+                return None
+
+        actor = Actor.remote()
+        ray.get(actor.ping.remote())
+
+        occurrences = 1 if enable_v2 else 0
+        assert (
+            subprocess.check_output("ray status --verbose", shell=True)
+            .decode()
+            .count("Resource: CPU currently in use.")
+            == occurrences
+        )
+
+        from ray.util.placement_group import placement_group
+
+        pg = placement_group([{"CPU": 2}], strategy="STRICT_SPREAD")
+        ray.get(pg.ready())
+
+        occurrences = 2 if enable_v2 else 0
+        assert (
+            subprocess.check_output("ray status --verbose", shell=True)
+            .decode()
+            .count("Resource: CPU currently in use.")
+            == occurrences
+        )
+
+        assert (
+            subprocess.check_output("ray status --verbose", shell=True)
+            .decode()
+            .count("Resource: bundle_group_")
+            == 0
+        )
+    finally:
+        cluster.shutdown()
+
+
+@pytest.mark.parametrize("enable_v2", [True, False], ids=["v2", "v1"])
+def test_ray_status_e2e(shutdown_only, enable_v2):
+    reset_autoscaler_v2_enabled_cache()
     cluster = AutoscalingCluster(
         head_resources={"CPU": 0},
         worker_node_types={
@@ -28,6 +105,7 @@ def test_ray_status_e2e(shutdown_only):
                 "max_workers": 1,
             },
         },
+        autoscaler_v2=enable_v2,
     )
 
     try:
@@ -59,23 +137,25 @@ def test_ray_status_e2e(shutdown_only):
         cluster.shutdown()
 
 
-def test_metrics(shutdown_only):
+@pytest.mark.parametrize("enable_v2", [False, True], ids=["v1", "v2"])
+def test_metrics(enable_v2, shutdown_only):
     cluster = AutoscalingCluster(
         head_resources={"CPU": 0},
         worker_node_types={
             "type-i": {
                 "resources": {"CPU": 1},
                 "node_config": {},
-                "min_workers": 1,
+                "min_workers": 0,
                 "max_workers": 1,
             },
             "type-ii": {
                 "resources": {"CPU": 1},
                 "node_config": {},
-                "min_workers": 1,
+                "min_workers": 0,
                 "max_workers": 1,
             },
         },
+        autoscaler_v2=enable_v2,
     )
 
     try:
@@ -91,11 +171,30 @@ def test_metrics(shutdown_only):
                 return True
 
         zero_reported_condition = get_metric_check_condition(
-            {
-                "autoscaler_cluster_resources": 0,
-                "autoscaler_pending_resources": 0,
-                "autoscaler_pending_nodes": 0,
-            },
+            [
+                MetricSamplePattern(
+                    name="autoscaler_cluster_resources",
+                    value=0,
+                    partial_label_match={"resource": "CPU"},
+                ),
+                MetricSamplePattern(name="autoscaler_pending_resources", value=0),
+                MetricSamplePattern(name="autoscaler_pending_nodes", value=0),
+                MetricSamplePattern(
+                    name="autoscaler_active_nodes",
+                    value=0,
+                    partial_label_match={"NodeType": "type-i"},
+                ),
+                MetricSamplePattern(
+                    name="autoscaler_active_nodes",
+                    value=0,
+                    partial_label_match={"NodeType": "type-ii"},
+                ),
+                MetricSamplePattern(
+                    name="autoscaler_active_nodes",
+                    value=1,
+                    partial_label_match={"NodeType": "ray.head.default"},
+                ),
+            ],
             export_addr=autoscaler_export_addr,
         )
         wait_for_condition(zero_reported_condition)
@@ -104,15 +203,42 @@ def test_metrics(shutdown_only):
         ray.get([actor.ping.remote() for actor in actors])
 
         two_cpu_no_pending_condition = get_metric_check_condition(
-            {
-                "autoscaler_cluster_resources": 2,
-                "autoscaler_pending_resources": 0,
-                "autoscaler_pending_nodes": 0,
-            },
+            [
+                MetricSamplePattern(
+                    name="autoscaler_cluster_resources",
+                    value=2,
+                    partial_label_match={"resource": "CPU"},
+                ),
+                MetricSamplePattern(
+                    name="autoscaler_pending_nodes",
+                    value=0,
+                    partial_label_match={"NodeType": "type-i"},
+                ),
+                MetricSamplePattern(
+                    name="autoscaler_pending_nodes",
+                    value=0,
+                    partial_label_match={"NodeType": "type-ii"},
+                ),
+                MetricSamplePattern(
+                    name="autoscaler_active_nodes",
+                    value=1,
+                    partial_label_match={"NodeType": "type-i"},
+                ),
+                MetricSamplePattern(
+                    name="autoscaler_active_nodes",
+                    value=1,
+                    partial_label_match={"NodeType": "type-ii"},
+                ),
+                MetricSamplePattern(
+                    name="autoscaler_active_nodes",
+                    value=1,
+                    partial_label_match={"NodeType": "ray.head.default"},
+                ),
+            ],
             export_addr=autoscaler_export_addr,
         )
         wait_for_condition(two_cpu_no_pending_condition)
-        # TODO (Alex): Ideally we'd also assert that pending_resources
+        # TODO (Alex): Ideally we'd also assert that pending increases
         # eventually became 1 or 2, but it's difficult to do that in a
         # non-racey way. (Perhaps we would need to artificially delay the fake
         # autoscaler node launch?).

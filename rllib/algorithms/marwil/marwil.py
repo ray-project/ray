@@ -11,7 +11,7 @@ from ray.rllib.execution.train_ops import (
 )
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
@@ -76,14 +76,13 @@ class MARWILConfig(AlgorithmConfig):
         self.bc_logstd_coeff = 0.0
         self.moving_average_sqd_adv_norm_update_rate = 1e-8
         self.moving_average_sqd_adv_norm_start = 100.0
-        self.use_gae = True
         self.vf_coeff = 1.0
         self.grad_clip = None
 
         # Override some of AlgorithmConfig's default values with MARWIL-specific values.
 
         # You should override input_ to point to an offline dataset
-        # (see trainer.py and trainer_config.py).
+        # (see algorithm.py and algorithm_config.py).
         # The dataset may have an arbitrary number of timesteps
         # (and even episodes) per line.
         # However, each line must only contain consecutive timesteps in
@@ -94,6 +93,18 @@ class MARWILConfig(AlgorithmConfig):
         self.postprocess_inputs = True
         self.lr = 1e-4
         self.train_batch_size = 2000
+        # TODO (Artur): MARWIL should not need an exploration config as an offline
+        #  algorithm. However, the current implementation of the CRR algorithm
+        #  requires it. Investigate.
+        self.exploration_config = {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": "StochasticSampling",
+            # Add constructor kwargs here (if any).
+        }
         # __sphinx_doc_end__
         # fmt: on
         self._set_off_policy_estimation_methods = False
@@ -106,7 +117,6 @@ class MARWILConfig(AlgorithmConfig):
         bc_logstd_coeff: Optional[float] = NotProvided,
         moving_average_sqd_adv_norm_update_rate: Optional[float] = NotProvided,
         moving_average_sqd_adv_norm_start: Optional[float] = NotProvided,
-        use_gae: Optional[bool] = NotProvided,
         vf_coeff: Optional[float] = NotProvided,
         grad_clip: Optional[float] = NotProvided,
         **kwargs,
@@ -121,9 +131,6 @@ class MARWILConfig(AlgorithmConfig):
                 entropy for exploration.
             moving_average_sqd_adv_norm_start: Starting value for the
                 squared moving average advantage norm (c^2).
-            use_gae: If True, use the Generalized Advantage Estimator (GAE)
-                with a value function, see https://arxiv.org/pdf/1506.02438.pdf in
-                case an input line ends with a non-terminal timestep.
             vf_coeff: Balancing value estimation loss and policy optimization loss.
                 moving_average_sqd_adv_norm_update_rate: Update rate for the
                 squared moving average advantage norm (c^2).
@@ -144,8 +151,6 @@ class MARWILConfig(AlgorithmConfig):
             )
         if moving_average_sqd_adv_norm_start is not NotProvided:
             self.moving_average_sqd_adv_norm_start = moving_average_sqd_adv_norm_start
-        if use_gae is not NotProvided:
-            self.use_gae = use_gae
         if vf_coeff is not NotProvided:
             self.vf_coeff = vf_coeff
         if grad_clip is not NotProvided:
@@ -201,6 +206,10 @@ class MARWILConfig(AlgorithmConfig):
                 "calculate accum., discounted returns)! Try setting "
                 "`config.offline_data(postprocess_inputs=True)`."
             )
+
+    @property
+    def _model_auto_keys(self):
+        return super()._model_auto_keys | {"beta": self.beta}
 
 
 class MARWIL(Algorithm):
@@ -266,20 +275,3 @@ class MARWIL(Algorithm):
         self.workers.local_worker().set_global_vars(global_vars)
 
         return train_results
-
-
-# Deprecated: Use ray.rllib.algorithms.marwil.MARWILConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(MARWILConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.agents.marwil.marwil::DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.marwil.marwil::MARWILConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

@@ -1,7 +1,7 @@
 import numpy as np
 
 from ray.rllib.algorithms.appo import APPOConfig
-from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.tune.registry import register_env
 
 
@@ -32,7 +32,6 @@ config = (
         num_sgd_iter=1,
         vf_loss_coeff=0.005,
         vtrace=True,
-        vtrace_drop_last_ts=False,
     )
     .multi_agent(
         # 2 agents per sub-env.

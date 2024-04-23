@@ -139,13 +139,13 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
     RayEventInit(ray::rpc::Event_SourceType::Event_SourceType_CORE_WORKER,
                  absl::flat_hash_map<std::string, std::string>(),
                  options_.log_dir,
-                 RayConfig::instance().event_level());
+                 RayConfig::instance().event_level(),
+                 RayConfig::instance().emit_event_to_log_file());
   }
 }
 
 CoreWorkerProcessImpl::~CoreWorkerProcessImpl() {
   RAY_LOG(INFO) << "Destructing CoreWorkerProcessImpl. pid: " << getpid();
-  RAY_LOG(DEBUG) << "Stats stop in core worker.";
   // Shutdown stats module if worker process exits.
   stats::Shutdown();
   if (options_.enable_logging) {

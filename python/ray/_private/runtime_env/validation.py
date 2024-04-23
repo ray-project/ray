@@ -26,8 +26,12 @@ def validate_uri(uri: str):
             "(i.e., passed to `ray.init`)."
         )
 
-    if protocol in Protocol.remote_protocols() and not path.endswith(".zip"):
-        raise ValueError("Only .zip files supported for remote URIs.")
+    if (
+        protocol in Protocol.remote_protocols()
+        and not path.endswith(".zip")
+        and not path.endswith(".whl")
+    ):
+        raise ValueError("Only .zip or .whl files supported for remote URIs.")
 
 
 def parse_and_validate_py_modules(py_modules: List[str]) -> List[str]:

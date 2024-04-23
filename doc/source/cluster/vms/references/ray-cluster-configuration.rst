@@ -72,76 +72,165 @@ Docker
 Auth
 ~~~~
 
-.. tabbed:: AWS
+.. tab-set::
 
-    .. parsed-literal::
+    .. tab-item:: AWS
 
-        :ref:`ssh_user <cluster-configuration-ssh-user>`: str
-        :ref:`ssh_private_key <cluster-configuration-ssh-private-key>`: str
+        .. parsed-literal::
 
-.. tabbed:: Azure
+            :ref:`ssh_user <cluster-configuration-ssh-user>`: str
+            :ref:`ssh_private_key <cluster-configuration-ssh-private-key>`: str
 
-    .. parsed-literal::
+    .. tab-item:: Azure
 
-        :ref:`ssh_user <cluster-configuration-ssh-user>`: str
-        :ref:`ssh_private_key <cluster-configuration-ssh-private-key>`: str
-        :ref:`ssh_public_key <cluster-configuration-ssh-public-key>`: str
+        .. parsed-literal::
 
-.. tabbed:: GCP
+            :ref:`ssh_user <cluster-configuration-ssh-user>`: str
+            :ref:`ssh_private_key <cluster-configuration-ssh-private-key>`: str
+            :ref:`ssh_public_key <cluster-configuration-ssh-public-key>`: str
 
-    .. parsed-literal::
+    .. tab-item:: GCP
 
-        :ref:`ssh_user <cluster-configuration-ssh-user>`: str
-        :ref:`ssh_private_key <cluster-configuration-ssh-private-key>`: str
+        .. parsed-literal::
+
+            :ref:`ssh_user <cluster-configuration-ssh-user>`: str
+            :ref:`ssh_private_key <cluster-configuration-ssh-private-key>`: str
+
+    .. tab-item:: vSphere
+
+        .. parsed-literal::
+
+            :ref:`ssh_user <cluster-configuration-ssh-user>`: str
 
 .. _cluster-configuration-provider-type:
 
 Provider
 ~~~~~~~~
 
-.. tabbed:: AWS
+.. tab-set::
 
-    .. parsed-literal::
+    .. tab-item:: AWS
 
-        :ref:`type <cluster-configuration-type>`: str
-        :ref:`region <cluster-configuration-region>`: str
-        :ref:`availability_zone <cluster-configuration-availability-zone>`: str
-        :ref:`cache_stopped_nodes <cluster-configuration-cache-stopped-nodes>`: bool
-        :ref:`security_group <cluster-configuration-security-group>`:
-            :ref:`Security Group <cluster-configuration-security-group-type>`
+        .. parsed-literal::
 
-.. tabbed:: Azure
+            :ref:`type <cluster-configuration-type>`: str
+            :ref:`region <cluster-configuration-region>`: str
+            :ref:`availability_zone <cluster-configuration-availability-zone>`: str
+            :ref:`cache_stopped_nodes <cluster-configuration-cache-stopped-nodes>`: bool
+            :ref:`security_group <cluster-configuration-security-group>`:
+                :ref:`Security Group <cluster-configuration-security-group-type>`
+            :ref:`use_internal_ips <cluster-configuration-use-internal-ips>`: bool
 
-    .. parsed-literal::
+    .. tab-item:: Azure
 
-        :ref:`type <cluster-configuration-type>`: str
-        :ref:`location <cluster-configuration-location>`: str
-        :ref:`resource_group <cluster-configuration-resource-group>`: str
-        :ref:`subscription_id <cluster-configuration-subscription-id>`: str
-        :ref:`cache_stopped_nodes <cluster-configuration-cache-stopped-nodes>`: bool
+        .. parsed-literal::
 
-.. tabbed:: GCP
+            :ref:`type <cluster-configuration-type>`: str
+            :ref:`location <cluster-configuration-location>`: str
+            :ref:`resource_group <cluster-configuration-resource-group>`: str
+            :ref:`subscription_id <cluster-configuration-subscription-id>`: str
+            :ref:`msi_name <cluster-configuration-msi-name>`: str
+            :ref:`msi_resource_group <cluster-configuration-msi-resource-group>`: str
+            :ref:`cache_stopped_nodes <cluster-configuration-cache-stopped-nodes>`: bool
+            :ref:`use_internal_ips <cluster-configuration-use-internal-ips>`: bool
+            :ref:`use_external_head_ip <cluster-configuration-use-external-head-ip>`: bool
 
-    .. parsed-literal::
+    .. tab-item:: GCP
 
-        :ref:`type <cluster-configuration-type>`: str
-        :ref:`region <cluster-configuration-region>`: str
-        :ref:`availability_zone <cluster-configuration-availability-zone>`: str
-        :ref:`project_id <cluster-configuration-project-id>`: str
-        :ref:`cache_stopped_nodes <cluster-configuration-cache-stopped-nodes>`: bool
+        .. parsed-literal::
+
+            :ref:`type <cluster-configuration-type>`: str
+            :ref:`region <cluster-configuration-region>`: str
+            :ref:`availability_zone <cluster-configuration-availability-zone>`: str
+            :ref:`project_id <cluster-configuration-project-id>`: str
+            :ref:`cache_stopped_nodes <cluster-configuration-cache-stopped-nodes>`: bool
+            :ref:`use_internal_ips <cluster-configuration-use-internal-ips>`: bool
+
+    .. tab-item:: vSphere
+
+        .. parsed-literal::
+
+            :ref:`type <cluster-configuration-type>`: str
+            :ref:`vsphere_config <cluster-configuration-vsphere-config>`:
+                :ref:`vSphere Config <cluster-configuration-vsphere-config-type>`
 
 .. _cluster-configuration-security-group-type:
 
 Security Group
 ~~~~~~~~~~~~~~
 
-.. tabbed:: AWS
+.. tab-set::
 
-    .. parsed-literal::
+    .. tab-item:: AWS
 
-        :ref:`GroupName <cluster-configuration-group-name>`: str
-        :ref:`IpPermissions <cluster-configuration-ip-permissions>`:
-            - `IpPermission <https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_IpPermission.html>`_
+        .. parsed-literal::
+
+            :ref:`GroupName <cluster-configuration-group-name>`: str
+            :ref:`IpPermissions <cluster-configuration-ip-permissions>`:
+                - `IpPermission <https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_IpPermission.html>`_
+
+.. _cluster-configuration-vsphere-config-type:
+
+vSphere Config
+~~~~~~~~~~~~~~
+
+.. tab-set::
+
+    .. tab-item:: vSphere
+
+        .. parsed-literal::
+
+            :ref:`credentials <cluster-configuration-vsphere-credentials>`:
+                :ref:`vSphere Credentials <cluster-configuration-vsphere-credentials-type>`
+            :ref:`frozen_vm <cluster-configuration-vsphere-frozen-vm>`:
+                :ref:`vSphere Frozen VM Configs <cluster-configuration-vsphere-frozen-vm-configs>`
+            :ref:`gpu_config <cluster-configuration-vsphere-gpu-config>`:
+                :ref:`vSphere GPU Configs <cluster-configuration-vsphere-gpu-configs>`
+
+.. _cluster-configuration-vsphere-credentials-type:
+
+vSphere Credentials
+~~~~~~~~~~~~~~~~~~~
+
+.. tab-set::
+
+    .. tab-item:: vSphere
+
+        .. parsed-literal::
+
+            :ref:`user <cluster-configuration-vsphere-user>`: str
+            :ref:`password <cluster-configuration-vsphere-password>`: str
+            :ref:`server <cluster-configuration-vsphere-server>`: str
+
+.. _cluster-configuration-vsphere-frozen-vm-configs:
+
+vSphere Frozen VM Configs
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. tab-set::
+
+    .. tab-item:: vSphere
+
+        .. parsed-literal::
+
+            :ref:`name <cluster-configuration-vsphere-frozen-vm-name>`: str
+            :ref:`library_item <cluster-configuration-vsphere-frozen-vm-library-item>`: str
+            :ref:`resource_pool <cluster-configuration-vsphere-frozen-vm-resource-pool>`: str
+            :ref:`cluster <cluster-configuration-vsphere-frozen-vm-cluster>`: str
+            :ref:`datastore <cluster-configuration-vsphere-frozen-vm-datastore>`: str
+
+.. _cluster-configuration-vsphere-gpu-configs:
+
+vSphere GPU Configs
+~~~~~~~~~~~~~~~~~~~
+
+.. tab-set::
+
+    .. tab-item:: vSphere
+
+        .. parsed-literal::
+
+            :ref:`dynamic_pci_passthrough <cluster-configuration-vsphere-gpu-config-pci-passthrough>`: bool
 
 .. _cluster-configuration-node-types-type:
 
@@ -181,17 +270,31 @@ Cloud-specific configuration for nodes of a given node type.
 Modifying the ``node_config`` and updating with :ref:`ray up <ray-up-doc>` will cause the autoscaler to scale down all existing nodes of the node type;
 nodes with the newly applied ``node_config`` will then be created according to cluster configuration and Ray resource demands.
 
-.. tabbed:: AWS
+.. tab-set::
 
-    A YAML object which conforms to the EC2 ``create_instances`` API in `the AWS docs <https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances>`_.
+    .. tab-item:: AWS
 
-.. tabbed:: Azure
+        A YAML object which conforms to the EC2 ``create_instances`` API in `the AWS docs <https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances>`_.
 
-    A YAML object as defined in `the deployment template <https://docs.microsoft.com/en-us/azure/templates/microsoft.compute/virtualmachines>`_ whose resources are defined in `the Azure docs <https://docs.microsoft.com/en-us/azure/templates/>`_.
+    .. tab-item:: Azure
 
-.. tabbed:: GCP
+        A YAML object as defined in `the deployment template <https://docs.microsoft.com/en-us/azure/templates/microsoft.compute/virtualmachines>`_ whose resources are defined in `the Azure docs <https://docs.microsoft.com/en-us/azure/templates/>`_.
 
-    A YAML object as defined in `the GCP docs <https://cloud.google.com/compute/docs/reference/rest/v1/instances>`_.
+    .. tab-item:: GCP
+
+        A YAML object as defined in `the GCP docs <https://cloud.google.com/compute/docs/reference/rest/v1/instances>`_.
+
+    .. tab-item:: vSphere
+
+        .. parsed-literal::
+
+            # The resource pool where the head node should live, if unset, will be
+            # the frozen VM's resource pool.
+            resource_pool: str
+            # The datastore to store the vmdk of the head node vm, if unset, will be
+            # the frozen VM's datastore.
+            datastore: str
+
 
 .. _cluster-configuration-node-docker-type:
 
@@ -267,7 +370,7 @@ The maximum number of workers the cluster will have at any given time.
 ``upscaling_speed``
 ~~~~~~~~~~~~~~~~~~~
 
-The number of nodes allowed to be pending as a multiple of the current number of nodes. For example, if set to 1.0, the cluster can grow in size by at most 100% at any time, so if the cluster currently has 20 nodes, at most 20 pending launches are allowed. Note that although the autoscaler will scale down to `min_workers` (which could be 0), it will always scale up to 5 nodes at a minimum when scaling up. 
+The number of nodes allowed to be pending as a multiple of the current number of nodes. For example, if set to 1.0, the cluster can grow in size by at most 100% at any time, so if the cluster currently has 20 nodes, at most 20 pending launches are allowed. Note that although the autoscaler will scale down to `min_workers` (which could be 0), it will always scale up to 5 nodes at a minimum when scaling up.
 
 * **Required:** No
 * **Importance:** Medium
@@ -347,26 +450,28 @@ Each node type is identified by a user-specified key.
 * **Type:** :ref:`Node types <cluster-configuration-node-types-type>`
 * **Default:**
 
-.. tabbed:: AWS
+.. tab-set::
 
-    .. code-block:: yaml
+    .. tab-item:: AWS
 
-      available_node_types:
-        ray.head.default:
-            node_config:
-              InstanceType: m5.large
-              BlockDeviceMappings:
-                  - DeviceName: /dev/sda1
-                    Ebs:
-                        VolumeSize: 140
-            resources: {"CPU": 2}
-        ray.worker.default:
-            node_config:
-              InstanceType: m5.large
-              InstanceMarketOptions:
-                  MarketType: spot
-            resources: {"CPU": 2}
-            min_workers: 0
+        .. code-block:: yaml
+
+          available_node_types:
+            ray.head.default:
+                node_config:
+                  InstanceType: m5.large
+                  BlockDeviceMappings:
+                      - DeviceName: /dev/sda1
+                        Ebs:
+                            VolumeSize: 140
+                resources: {"CPU": 2}
+            ray.worker.default:
+                node_config:
+                  InstanceType: m5.large
+                  InstanceMarketOptions:
+                      MarketType: spot
+                resources: {"CPU": 2}
+                min_workers: 0
 
 .. _cluster-configuration-head-node-type:
 
@@ -462,14 +567,16 @@ A list of commands to run to set up nodes. These commands will always run on the
 * **Type:** List of String
 * **Default:**
 
-.. tabbed:: AWS
+.. tab-set::
 
-    .. code-block:: yaml
+    .. tab-item:: AWS
 
-        # Default setup_commands:
-        setup_commands:
-          - echo 'export PATH="$HOME/anaconda3/envs/tensorflow_p36/bin:$PATH"' >> ~/.bashrc
-          - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl
+        .. code-block:: yaml
+
+            # Default setup_commands:
+            setup_commands:
+              - echo 'export PATH="$HOME/anaconda3/envs/tensorflow_p36/bin:$PATH"' >> ~/.bashrc
+              - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
 
 - Setup commands should ideally be *idempotent* (i.e., can be run multiple times without changing the result); this allows Ray to safely update nodes after they have been created. You can usually make commands idempotent with small modifications, e.g. ``git clone foo`` can be rewritten as ``test -e foo || git clone foo`` which checks if the repo is already cloned first.
 
@@ -522,13 +629,15 @@ Commands to start ray on the head node. You don't need to change this.
 * **Type:** List of String
 * **Default:**
 
-.. tabbed:: AWS
+.. tab-set::
 
-    .. code-block:: yaml
+    .. tab-item:: AWS
 
-        head_start_ray_commands:
-          - ray stop
-          - ulimit -n 65536; ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
+        .. code-block:: yaml
+
+            head_start_ray_commands:
+              - ray stop
+              - ulimit -n 65536; ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
 
 .. _cluster-configuration-worker-start-ray-commands:
 
@@ -542,13 +651,15 @@ Command to start ray on worker nodes. You don't need to change this.
 * **Type:** List of String
 * **Default:**
 
-.. tabbed:: AWS
+.. tab-set::
 
-    .. code-block:: yaml
+    .. tab-item:: AWS
 
-        worker_start_ray_commands:
-          - ray stop
-          - ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076
+        .. code-block:: yaml
+
+            worker_start_ray_commands:
+              - ray stop
+              - ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076
 
 .. _cluster-configuration-image:
 
@@ -691,225 +802,339 @@ The user that Ray will authenticate with when launching new nodes.
 ``auth.ssh_private_key``
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. tabbed:: AWS
+.. tab-set::
 
-    The path to an existing private key for Ray to use. If not configured, Ray will create a new private keypair (default behavior). If configured, the key must be added to the project-wide metadata and ``KeyName`` has to be defined in the :ref:`node configuration <cluster-configuration-node-config>`.
+    .. tab-item:: AWS
 
-    * **Required:** No
-    * **Importance:** Low
-    * **Type:** String
+        The path to an existing private key for Ray to use. If not configured, Ray will create a new private keypair (default behavior). If configured, the key must be added to the project-wide metadata and ``KeyName`` has to be defined in the :ref:`node configuration <cluster-configuration-node-config>`.
 
-.. tabbed:: Azure
+        * **Required:** No
+        * **Importance:** Low
+        * **Type:** String
 
-    The path to an existing private key for Ray to use.
+    .. tab-item:: Azure
 
-    * **Required:** Yes
-    * **Importance:** High
-    * **Type:** String
+        The path to an existing private key for Ray to use.
 
-    You may use ``ssh-keygen -t rsa -b 4096`` to generate a new ssh keypair.
+        * **Required:** Yes
+        * **Importance:** High
+        * **Type:** String
 
-.. tabbed:: GCP
+        You may use ``ssh-keygen -t rsa -b 4096`` to generate a new ssh keypair.
 
-    The path to an existing private key for Ray to use. If not configured, Ray will create a new private keypair (default behavior). If configured, the key must be added to the project-wide metadata and ``KeyName`` has to be defined in the :ref:`node configuration <cluster-configuration-node-config>`.
+    .. tab-item:: GCP
 
-    * **Required:** No
-    * **Importance:** Low
-    * **Type:** String
+        The path to an existing private key for Ray to use. If not configured, Ray will create a new private keypair (default behavior). If configured, the key must be added to the project-wide metadata and ``KeyName`` has to be defined in the :ref:`node configuration <cluster-configuration-node-config>`.
+
+        * **Required:** No
+        * **Importance:** Low
+        * **Type:** String
+
+    .. tab-item:: vSphere
+
+        Not available. The vSphere provider expects the key to be located at a fixed path ``~/ray-bootstrap-key.pem``.
 
 .. _cluster-configuration-ssh-public-key:
 
 ``auth.ssh_public_key``
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-.. tabbed:: AWS
+.. tab-set::
 
-    Not available.
+    .. tab-item:: AWS
 
-.. tabbed:: Azure
+        Not available.
 
-    The path to an existing public key for Ray to use.
+    .. tab-item:: Azure
 
-    * **Required:** Yes
-    * **Importance:** High
-    * **Type:** String
+        The path to an existing public key for Ray to use.
 
-.. tabbed:: GCP
+        * **Required:** Yes
+        * **Importance:** High
+        * **Type:** String
 
-    Not available.
+    .. tab-item:: GCP
+
+        Not available.
+
+    .. tab-item:: vSphere
+
+        Not available.
 
 .. _cluster-configuration-type:
 
 ``provider.type``
 ~~~~~~~~~~~~~~~~~
 
-.. tabbed:: AWS
+.. tab-set::
 
-    The cloud service provider. For AWS, this must be set to ``aws``.
+    .. tab-item:: AWS
 
-    * **Required:** Yes
-    * **Importance:** High
-    * **Type:** String
+        The cloud service provider. For AWS, this must be set to ``aws``.
 
-.. tabbed:: Azure
+        * **Required:** Yes
+        * **Importance:** High
+        * **Type:** String
 
-    The cloud service provider. For Azure, this must be set to ``azure``.
+    .. tab-item:: Azure
 
-    * **Required:** Yes
-    * **Importance:** High
-    * **Type:** String
+        The cloud service provider. For Azure, this must be set to ``azure``.
 
-.. tabbed:: GCP
+        * **Required:** Yes
+        * **Importance:** High
+        * **Type:** String
 
-    The cloud service provider. For GCP, this must be set to ``gcp``.
+    .. tab-item:: GCP
 
-    * **Required:** Yes
-    * **Importance:** High
-    * **Type:** String
+        The cloud service provider. For GCP, this must be set to ``gcp``.
+
+        * **Required:** Yes
+        * **Importance:** High
+        * **Type:** String
+
+    .. tab-item:: vSphere
+
+        The cloud service provider. For vSphere and VCF, this must be set to ``vsphere``.
+
+        * **Required:** Yes
+        * **Importance:** High
+        * **Type:** String
 
 .. _cluster-configuration-region:
 
 ``provider.region``
 ~~~~~~~~~~~~~~~~~~~
 
-.. tabbed:: AWS
+.. tab-set::
 
-    The region to use for deployment of the Ray cluster.
+    .. tab-item:: AWS
 
-    * **Required:** Yes
-    * **Importance:** High
-    * **Type:** String
-    * **Default:** us-west-2
+        The region to use for deployment of the Ray cluster.
 
-.. tabbed:: Azure
+        * **Required:** Yes
+        * **Importance:** High
+        * **Type:** String
+        * **Default:** us-west-2
 
-    Not available.
+    .. tab-item:: Azure
 
-.. tabbed:: GCP
+        Not available.
 
-    The region to use for deployment of the Ray cluster.
+    .. tab-item:: GCP
 
-    * **Required:** Yes
-    * **Importance:** High
-    * **Type:** String
-    * **Default:** us-west1
+        The region to use for deployment of the Ray cluster.
+
+        * **Required:** Yes
+        * **Importance:** High
+        * **Type:** String
+        * **Default:** us-west1
+
+    .. tab-item:: vSphere
+
+        Not available.
 
 .. _cluster-configuration-availability-zone:
 
 ``provider.availability_zone``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. tabbed:: AWS
+.. tab-set::
 
-    A string specifying a comma-separated list of availability zone(s) that nodes may be launched in.
-    Nodes will be launched in the first listed availability zone and will be tried in the following availability
-    zones if launching fails.
+    .. tab-item:: AWS
 
-    * **Required:** No
-    * **Importance:** Low
-    * **Type:** String
-    * **Default:** us-west-2a,us-west-2b
+        A string specifying a comma-separated list of availability zone(s) that nodes may be launched in.
+        Nodes will be launched in the first listed availability zone and will be tried in the following availability
+        zones if launching fails.
 
-.. tabbed:: Azure
+        * **Required:** No
+        * **Importance:** Low
+        * **Type:** String
+        * **Default:** us-west-2a,us-west-2b
 
-    Not available.
+    .. tab-item:: Azure
 
-.. tabbed:: GCP
+        Not available.
 
-    A string specifying a comma-separated list of availability zone(s) that nodes may be launched in.
+    .. tab-item:: GCP
 
-    * **Required:** No
-    * **Importance:** Low
-    * **Type:** String
-    * **Default:** us-west1-a
+        A string specifying a comma-separated list of availability zone(s) that nodes may be launched in.
+
+        * **Required:** No
+        * **Importance:** Low
+        * **Type:** String
+        * **Default:** us-west1-a
+
+    .. tab-item:: vSphere
+
+        Not available.
 
 .. _cluster-configuration-location:
 
 ``provider.location``
 ~~~~~~~~~~~~~~~~~~~~~
 
-.. tabbed:: AWS
+.. tab-set::
 
-    Not available.
+    .. tab-item:: AWS
 
-.. tabbed:: Azure
+        Not available.
 
-    The location to use for deployment of the Ray cluster.
+    .. tab-item:: Azure
 
-    * **Required:** Yes
-    * **Importance:** High
-    * **Type:** String
-    * **Default:** westus2
+        The location to use for deployment of the Ray cluster.
 
-.. tabbed:: GCP
+        * **Required:** Yes
+        * **Importance:** High
+        * **Type:** String
+        * **Default:** westus2
 
-    Not available.
+    .. tab-item:: GCP
+
+        Not available.
+
+    .. tab-item:: vSphere
+
+        Not available.
 
 .. _cluster-configuration-resource-group:
 
 ``provider.resource_group``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. tabbed:: AWS
+.. tab-set::
 
-    Not available.
+    .. tab-item:: AWS
 
-.. tabbed:: Azure
+        Not available.
 
-    The resource group to use for deployment of the Ray cluster.
+    .. tab-item:: Azure
 
-    * **Required:** Yes
-    * **Importance:** High
-    * **Type:** String
-    * **Default:** ray-cluster
+        The resource group to use for deployment of the Ray cluster.
 
-.. tabbed:: GCP
+        * **Required:** Yes
+        * **Importance:** High
+        * **Type:** String
+        * **Default:** ray-cluster
 
-    Not available.
+    .. tab-item:: GCP
+
+        Not available.
+
+    .. tab-item:: vSphere
+
+        Not available.
 
 .. _cluster-configuration-subscription-id:
 
 ``provider.subscription_id``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. tabbed:: AWS
+.. tab-set::
 
-    Not available.
+    .. tab-item:: AWS
 
-.. tabbed:: Azure
+        Not available.
 
-    The subscription ID to use for deployment of the Ray cluster. If not specified, Ray will use the default from the Azure CLI.
+    .. tab-item:: Azure
 
-    * **Required:** No
-    * **Importance:** High
-    * **Type:** String
-    * **Default:** ``""``
+        The subscription ID to use for deployment of the Ray cluster. If not specified, Ray will use the default from the Azure CLI.
 
-.. tabbed:: GCP
+        * **Required:** No
+        * **Importance:** High
+        * **Type:** String
+        * **Default:** ``""``
 
-    Not available.
+    .. tab-item:: GCP
+
+        Not available.
+
+    .. tab-item:: vSphere
+
+        Not available.
+
+.. _cluster-configuration-msi-name:
+
+``provider.msi_name``
+~~~~~~~~~~~~~~~~~~~~~
+
+.. tab-set::
+
+    .. tab-item:: AWS
+
+        Not available.
+
+    .. tab-item:: Azure
+
+        The name of the managed identity to use for deployment of the Ray cluster. If not specified, Ray will create a default user-assigned managed identity.
+
+        * **Required:** No
+        * **Importance:** Low
+        * **Type:** String
+        * **Default:** ray-default-msi
+
+    .. tab-item:: GCP
+
+        Not available.
+
+    .. tab-item:: vSphere
+
+        Not available.
+
+.. _cluster-configuration-msi-resource-group:
+
+``provider.msi_resource_group``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. tab-set::
+
+    .. tab-item:: AWS
+
+        Not available.
+
+    .. tab-item:: Azure
+
+        The name of the managed identity's resource group to use for deployment of the Ray cluster, used in conjunction with msi_name. If not specified, Ray will create a default user-assigned managed identity in resource group specified in the provider config.
+
+        * **Required:** No
+        * **Importance:** Low
+        * **Type:** String
+        * **Default:** ray-cluster
+
+    .. tab-item:: GCP
+
+        Not available.
+
+    .. tab-item:: vSphere
+
+        Not available.
 
 .. _cluster-configuration-project-id:
 
 ``provider.project_id``
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-.. tabbed:: AWS
+.. tab-set::
 
-    Not available.
+    .. tab-item:: AWS
 
-.. tabbed:: Azure
+        Not available.
 
-    Not available.
+    .. tab-item:: Azure
 
-.. tabbed:: GCP
+        Not available.
 
-    The globally unique project ID to use for deployment of the Ray cluster.
+    .. tab-item:: GCP
 
-    * **Required:** Yes
-    * **Importance:** Low
-    * **Type:** String
-    * **Default:** ``null``
+        The globally unique project ID to use for deployment of the Ray cluster.
+
+        * **Required:** Yes
+        * **Importance:** Low
+        * **Type:** String
+        * **Default:** ``null``
+
+    .. tab-item:: vSphere
+
+        Not available.
 
 .. _cluster-configuration-cache-stopped-nodes:
 
@@ -924,27 +1149,113 @@ If enabled, nodes will be *stopped* when the cluster scales down. If disabled, n
 * **Type:** Boolean
 * **Default:** ``True``
 
+.. _cluster-configuration-use-internal-ips:
+
+``provider.use_internal_ips``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If enabled, Ray will use private IP addresses for communication between nodes.
+This should be omitted if your network interfaces use public IP addresses.
+
+If enabled, Ray CLI commands (e.g. ``ray up``) will have to be run from a machine
+that is part of the same VPC as the cluster. 
+
+This option does not affect the existence of public IP addresses for the nodes, it only
+affects which IP addresses are used by Ray. The existence of public IP addresses is
+controlled by your cloud provider's configuration.
+
+
+* **Required:** No
+* **Importance:** Low
+* **Type:** Boolean
+* **Default:** ``False``
+
+.. _cluster-configuration-use-external-head-ip:
+
+``provider.use_external_head_ip``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. tab-set::
+
+    .. tab-item:: AWS
+
+        Not available.
+
+    .. tab-item:: Azure
+
+        If enabled, Ray will provision and use a public IP address for communication with the head node,
+        regardless of the value of ``use_internal_ips``. This option can be used in combination with  
+        ``use_internal_ips`` to avoid provisioning excess public IPs for worker nodes (i.e., communicate
+        among nodes using private IPs, but provision a public IP for head node communication only). If
+        ``use_internal_ips`` is ``False``, then this option has no effect. 
+
+        * **Required:** No
+        * **Importance:** Low
+        * **Type:** Boolean
+        * **Default:** ``False``
+
+    .. tab-item:: GCP
+
+        Not available.
+
+    .. tab-item:: vSphere
+
+        Not available.
+
 .. _cluster-configuration-security-group:
 
 ``provider.security_group``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. tabbed:: AWS
+.. tab-set::
 
-    A security group that can be used to specify custom inbound rules.
+    .. tab-item:: AWS
 
-    * **Required:** No
-    * **Importance:** Medium
-    * **Type:** :ref:`Security Group <cluster-configuration-security-group-type>`
+        A security group that can be used to specify custom inbound rules.
 
-.. tabbed:: Azure
+        * **Required:** No
+        * **Importance:** Medium
+        * **Type:** :ref:`Security Group <cluster-configuration-security-group-type>`
 
-    Not available.
+    .. tab-item:: Azure
 
-.. tabbed:: GCP
+        Not available.
 
-    Not available.
+    .. tab-item:: GCP
 
+        Not available.
+
+    .. tab-item:: vSphere
+
+        Not available.
+
+.. _cluster-configuration-vsphere-config:
+
+``provider.vsphere_config``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. tab-set::
+
+    .. tab-item:: AWS
+
+        Not available.
+
+    .. tab-item:: Azure
+
+        Not available.
+
+    .. tab-item:: GCP
+
+        Not available.
+
+    .. tab-item:: vSphere
+
+        vSphere configurations used to connect vCenter Server. If not configured,
+        the VSPHERE_* environment variables will be used.
+
+        * **Required:** No
+        * **Importance:** Low
+        * **Type:** :ref:`vSphere Config <cluster-configuration-vsphere-config-type>`
 
 .. _cluster-configuration-group-name:
 
@@ -968,6 +1279,186 @@ The inbound rules associated with the security group.
 * **Required:** No
 * **Importance:** Medium
 * **Type:** `IpPermission <https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_IpPermission.html>`_
+
+.. _cluster-configuration-vsphere-credentials:
+
+``vsphere_config.credentials``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The credential to connect to the vSphere vCenter Server.
+
+* **Required:** No
+* **Importance:** Low
+* **Type:** :ref:`vSphere Credentials <cluster-configuration-vsphere-credentials-type>`
+
+.. _cluster-configuration-vsphere-user:
+
+``vsphere_config.credentials.user``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Username to connect to vCenter Server.
+
+* **Required:** No
+* **Importance:** Low
+* **Type:** String
+
+.. _cluster-configuration-vsphere-password:
+
+``vsphere_config.credentials.password``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Password of the user to connect to vCenter Server.
+
+* **Required:** No
+* **Importance:** Low
+* **Type:** String
+
+.. _cluster-configuration-vsphere-server:
+
+``vsphere_config.credentials.server``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The vSphere vCenter Server address.
+
+* **Required:** No
+* **Importance:** Low
+* **Type:** String
+
+.. _cluster-configuration-vsphere-frozen-vm:
+
+``vsphere_config.frozen_vm``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The frozen VM related configurations.
+
+If the frozen VM(s) is/are existing, then ``library_item`` should be unset. Either an existing frozen VM should be specified by ``name``, or a resource pool name of frozen VMs on every ESXi (https://docs.vmware.com/en/VMware-vSphere/index.html) host should be specified by ``resource_pool``.
+
+If the frozen VM(s) is/are to be deployed from OVF template, then `library_item` must be set to point to an OVF template (https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-vm-administration/GUID-AFEDC48B-C96F-4088-9C1F-4F0A30E965DE.html) in the content library. In such a case, ``name`` must be set to indicate the name or the name prefix of the frozen VM(s). Then, either ``resource_pool`` should be set to indicate that a set of frozen VMs will be created on each ESXi host of the resource pool, or ``cluster`` should be set to indicate that creating a single frozen VM in the vSphere cluster. The config ``datastore`` (https://docs.vmware.com/en/VMware-vSphere/7.0/com.vmware.vsphere.storage.doc/GUID-D5AB2BAD-C69A-4B8D-B468-25D86B8D39CE.html) is mandatory in this case.
+
+Valid examples:
+
+1. ``ray up`` on a frozen VM to be deployed from an OVF template:
+
+    .. code-block:: yaml
+
+        frozen_vm:
+            name: single-frozen-vm
+            library_item: frozen-vm-template
+            cluster: vsanCluster
+            datastore: vsanDatastore
+
+2. ``ray up`` on an existing frozen VM:
+
+    .. code-block:: yaml
+
+        frozen_vm:
+            name: existing-single-frozen-vm
+
+3. ``ray up`` on a resource pool of frozen VMs to be deployed from an OVF template:
+
+    .. code-block:: yaml
+
+        frozen_vm:
+            name: frozen-vm-prefix
+            library_item: frozen-vm-template
+            resource_pool: frozen-vm-resource-pool
+            datastore: vsanDatastore
+
+4. ``ray up`` on an existing resource pool of frozen VMs:
+
+    .. code-block:: yaml
+
+        frozen_vm:
+            resource_pool: frozen-vm-resource-pool
+
+Other cases not in above examples are invalid.
+
+* **Required:** Yes
+* **Importance:** High
+* **Type:** :ref:`vSphere Frozen VM Configs <cluster-configuration-vsphere-frozen-vm-configs>`
+
+.. _cluster-configuration-vsphere-frozen-vm-name:
+
+``vsphere_config.frozen_vm.name``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The name or the name prefix of the frozen VM.
+
+Can only be unset when ``resource_pool`` is set and pointing to an existing resource pool of frozen VMs.
+
+* **Required:** No
+* **Importance:** Medium
+* **Type:** String
+
+.. _cluster-configuration-vsphere-frozen-vm-library-item:
+
+``vsphere_config.frozen_vm.library_item``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The library item (https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-vm-administration/GUID-D3DD122F-16A5-4F36-8467-97994A854B16.html#GUID-D3DD122F-16A5-4F36-8467-97994A854B16) of the OVF template of the frozen VM. If set, the frozen VM or a set of frozen VMs will be deployed from an OVF template specified by ``library_item``. Otherwise, frozen VM(s) should be existing.
+
+Visit the VM Packer for Ray project (https://github.com/vmware-ai-labs/vm-packer-for-ray) to know how to create an OVF template for frozen VMs.
+
+* **Required:** No
+* **Importance:** Low
+* **Type:** String
+
+.. _cluster-configuration-vsphere-frozen-vm-resource-pool:
+
+``vsphere_config.frozen_vm.resource_pool``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The resource pool name of the frozen VMs, can point to an existing resource pool of frozen VMs. Otherwise, ``library_item`` must be specified and a set of frozen VMs will be deployed on each ESXi host.
+
+The frozen VMs will be named as "{frozen_vm.name}-{the vm's ip address}"
+
+* **Required:** No
+* **Importance:** Medium
+* **Type:** String
+
+.. _cluster-configuration-vsphere-frozen-vm-cluster:
+
+``vsphere_config.frozen_vm.cluster``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The vSphere cluster name, only takes effect when ``library_item`` is set and ``resource_pool`` is unset.
+Indicates to deploy a single frozen VM on the vSphere cluster from OVF template.
+
+* **Required:** No
+* **Importance:** Medium
+* **Type:** String
+
+.. _cluster-configuration-vsphere-frozen-vm-datastore:
+
+``vsphere_config.frozen_vm.datastore``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The target vSphere datastore name for storing the virtual machine files of the frozen VM to be deployed from OVF template.
+Will take effect only when ``library_item`` is set. If ``resource_pool`` is also set, this datastore must be a shared datastore among the ESXi hosts.
+
+* **Required:** No
+* **Importance:** Low
+* **Type:** String
+
+.. _cluster-configuration-vsphere-gpu-config:
+
+``vsphere_config.gpu_config``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. _cluster-configuration-vsphere-gpu-config-pci-passthrough:
+
+``vsphere_config.gpu_config.dynamic_pci_passthrough``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The switch controlling the way for binding the GPU from ESXi host to the Ray node VM.
+The default value is False, which indicates regular PCI Passthrough.
+If set to True, the Dynamic PCI passthrough (https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-esxi-host-client/GUID-2B6D43A6-9598-47C4-A2E7-5924E3367BB6.html) will be enabled for the GPU.
+The VM with Dynamic PCI passthrough GPU can still support vSphere DRS (https://www.vmware.com/products/vsphere/drs-dpm.html).
+
+* **Required:** No
+* **Importance:** Low
+* **Type:** Boolean
+
 
 .. _cluster-configuration-node-config:
 
@@ -1041,29 +1532,39 @@ A list of commands to run to set up worker nodes of this type. These commands wi
 ``available_node_types.<node_type_name>.node_type.resources.CPU``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. tabbed:: AWS
+.. tab-set::
 
-    The number of CPUs made available by this node. If not configured, Autoscaler can automatically detect them only for AWS/Kubernetes cloud providers.
+    .. tab-item:: AWS
 
-    * **Required:** Yes (except for AWS/K8s)
-    * **Importance:** High
-    * **Type:** Integer
+        The number of CPUs made available by this node. If not configured, Autoscaler can automatically detect them only for AWS/Kubernetes cloud providers.
 
-.. tabbed:: Azure
+        * **Required:** Yes (except for AWS/K8s)
+        * **Importance:** High
+        * **Type:** Integer
 
-    The number of CPUs made available by this node.
+    .. tab-item:: Azure
 
-    * **Required:** Yes
-    * **Importance:** High
-    * **Type:** Integer
+        The number of CPUs made available by this node.
 
-.. tabbed:: GCP
+        * **Required:** Yes
+        * **Importance:** High
+        * **Type:** Integer
 
-    The number of CPUs made available by this node.
+    .. tab-item:: GCP
 
-    * **Required:** No
-    * **Importance:** High
-    * **Type:** Integer
+        The number of CPUs made available by this node.
+
+        * **Required:** No
+        * **Importance:** High
+        * **Type:** Integer
+
+    .. tab-item:: vSphere
+
+        The number of CPUs made available by this node. If not configured, the nodes will use the same settings as the frozen VM.
+
+        * **Required:** No
+        * **Importance:** High
+        * **Type:** Integer
 
 
 .. _cluster-configuration-gpu:
@@ -1071,87 +1572,121 @@ A list of commands to run to set up worker nodes of this type. These commands wi
 ``available_node_types.<node_type_name>.node_type.resources.GPU``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. tabbed:: AWS
+.. tab-set::
 
-    The number of GPUs made available by this node. If not configured, Autoscaler can automatically detect them only for AWS/Kubernetes cloud providers.
+    .. tab-item:: AWS
 
-    * **Required:** No
-    * **Importance:** Low
-    * **Type:** Integer
+        The number of GPUs made available by this node. If not configured, Autoscaler can automatically detect them only for AWS/Kubernetes cloud providers.
 
-.. tabbed:: Azure
+        * **Required:** No
+        * **Importance:** Low
+        * **Type:** Integer
 
-    The number of GPUs made available by this node.
+    .. tab-item:: Azure
 
-    * **Required:** No
-    * **Importance:** High
-    * **Type:** Integer
+        The number of GPUs made available by this node.
 
-.. tabbed:: GCP
+        * **Required:** No
+        * **Importance:** High
+        * **Type:** Integer
 
-    The number of GPUs made available by this node.
+    .. tab-item:: GCP
 
-    * **Required:** No
-    * **Importance:** High
-    * **Type:** Integer
+        The number of GPUs made available by this node.
+
+        * **Required:** No
+        * **Importance:** High
+        * **Type:** Integer
+
+    .. tab-item:: vSphere
+
+        The number of GPUs made available by this node.
+
+        * **Required:** No
+        * **Importance:** High
+        * **Type:** Integer
 
 .. _cluster-configuration-memory:
 
 ``available_node_types.<node_type_name>.node_type.resources.memory``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. tabbed:: AWS
 
-    The memory in bytes allocated for python worker heap memory on the node. If not configured, Autoscaler will automatically detect the amount of RAM on the node for AWS/Kubernetes and allocate 70% of it for the heap.
+.. tab-set::
 
-    * **Required:** No
-    * **Importance:** Low
-    * **Type:** Integer
+    .. tab-item:: AWS
 
-.. tabbed:: Azure
+        The memory in bytes allocated for python worker heap memory on the node.
+        If not configured, Autoscaler will automatically detect the amount of RAM on
+        the node for AWS/Kubernetes and allocate 70% of it for the heap.
 
-    The memory in bytes allocated for python worker heap memory on the node.
+        * **Required:** No
+        * **Importance:** Low
+        * **Type:** Integer
 
-    * **Required:** No
-    * **Importance:** High
-    * **Type:** Integer
+    .. tab-item:: Azure
 
-.. tabbed:: GCP
+        The memory in bytes allocated for python worker heap memory on the node.
 
-    The memory in bytes allocated for python worker heap memory on the node.
+        * **Required:** No
+        * **Importance:** High
+        * **Type:** Integer
 
-    * **Required:** No
-    * **Importance:** High
-    * **Type:** Integer
-        
- .. _cluster-configuration-object-store-memory:
+    .. tab-item:: GCP
+
+        The memory in bytes allocated for python worker heap memory on the node.
+
+        * **Required:** No
+        * **Importance:** High
+        * **Type:** Integer
+
+    .. tab-item:: vSphere
+
+        The memory in megabytes allocated for python worker heap memory on the node.
+        If not configured, the node will use the same memory settings as the frozen VM.
+
+        * **Required:** No
+        * **Importance:** High
+        * **Type:** Integer
+
+.. _cluster-configuration-object-store-memory:
 
 ``available_node_types.<node_type_name>.node_type.resources.object-store-memory``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. tabbed:: AWS
+.. tab-set::
 
-    The memory in bytes allocated for the object store on the node. If not configured, Autoscaler will automatically detect the amount of RAM on the node for AWS/Kubernetes and allocate 30% of it for the object store.
+    .. tab-item:: AWS
 
-    * **Required:** No
-    * **Importance:** Low
-    * **Type:** Integer
+        The memory in bytes allocated for the object store on the node. If not configured, Autoscaler will automatically detect the amount of RAM on the node for AWS/Kubernetes and allocate 30% of it for the object store.
 
-.. tabbed:: Azure
+        * **Required:** No
+        * **Importance:** Low
+        * **Type:** Integer
 
-    The memory in bytes allocated for the object store on the node.
+    .. tab-item:: Azure
 
-    * **Required:** No
-    * **Importance:** High
-    * **Type:** Integer
+        The memory in bytes allocated for the object store on the node.
 
-.. tabbed:: GCP
+        * **Required:** No
+        * **Importance:** High
+        * **Type:** Integer
 
-    The memory in bytes allocated for the object store on the node.
+    .. tab-item:: GCP
 
-    * **Required:** No
-    * **Importance:** High
-    * **Type:** Integer
+        The memory in bytes allocated for the object store on the node.
+
+        * **Required:** No
+        * **Importance:** High
+        * **Type:** Integer
+
+    .. tab-item:: vSphere
+
+        The memory in bytes allocated for the object store on the node.
+
+        * **Required:** No
+        * **Importance:** High
+        * **Type:** Integer
 
 .. _cluster-configuration-node-docker:
 
@@ -1171,38 +1706,52 @@ Examples
 Minimal configuration
 ~~~~~~~~~~~~~~~~~~~~~
 
-.. tabbed:: AWS
+.. tab-set::
 
-    .. literalinclude:: ../../../../../python/ray/autoscaler/aws/example-minimal.yaml
-        :language: yaml
+    .. tab-item:: AWS
 
-.. tabbed:: Azure
+        .. literalinclude:: ../../../../../python/ray/autoscaler/aws/example-minimal.yaml
+            :language: yaml
 
-    .. literalinclude:: ../../../../../python/ray/autoscaler/azure/example-minimal.yaml
-        :language: yaml
+    .. tab-item:: Azure
 
-.. tabbed:: GCP
+        .. literalinclude:: ../../../../../python/ray/autoscaler/azure/example-minimal.yaml
+            :language: yaml
 
-    .. literalinclude:: ../../../../../python/ray/autoscaler/gcp/example-minimal.yaml
-        :language: yaml
+    .. tab-item:: GCP
+
+        .. literalinclude:: ../../../../../python/ray/autoscaler/gcp/example-minimal.yaml
+            :language: yaml
+
+    .. tab-item:: vSphere
+
+        .. literalinclude:: ../../../../../python/ray/autoscaler/vsphere/example-minimal.yaml
+            :language: yaml
 
 Full configuration
 ~~~~~~~~~~~~~~~~~~
 
-.. tabbed:: AWS
+.. tab-set::
 
-    .. literalinclude:: ../../../../../python/ray/autoscaler/aws/example-full.yaml
-        :language: yaml
+    .. tab-item:: AWS
 
-.. tabbed:: Azure
+        .. literalinclude:: ../../../../../python/ray/autoscaler/aws/example-full.yaml
+            :language: yaml
 
-    .. literalinclude:: ../../../../../python/ray/autoscaler/azure/example-full.yaml
-        :language: yaml
+    .. tab-item:: Azure
 
-.. tabbed:: GCP
+        .. literalinclude:: ../../../../../python/ray/autoscaler/azure/example-full.yaml
+            :language: yaml
 
-    .. literalinclude:: ../../../../../python/ray/autoscaler/gcp/example-full.yaml
-        :language: yaml
+    .. tab-item:: GCP
+
+        .. literalinclude:: ../../../../../python/ray/autoscaler/gcp/example-full.yaml
+            :language: yaml
+
+    .. tab-item:: vSphere
+
+        .. literalinclude:: ../../../../../python/ray/autoscaler/vsphere/example-full.yaml
+            :language: yaml
 
 TPU Configuration
 ~~~~~~~~~~~~~~~~~
@@ -1211,7 +1760,9 @@ It is possible to use `TPU VMs <https://cloud.google.com/tpu/docs/users-guide-tp
 
 Before using a config with TPUs, ensure that the `TPU API is enabled for your GCP project <https://cloud.google.com/tpu/docs/users-guide-tpu-vm#enable_the_cloud_tpu_api>`_.
 
-.. tabbed:: GCP
+.. tab-set::
 
-    .. literalinclude:: ../../../../../python/ray/autoscaler/gcp/tpu.yaml
-        :language: yaml
+    .. tab-item:: GCP
+
+        .. literalinclude:: ../../../../../python/ray/autoscaler/gcp/tpu.yaml
+            :language: yaml

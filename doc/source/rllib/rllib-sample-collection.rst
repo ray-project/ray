@@ -1,6 +1,6 @@
-.. include:: /_includes/rllib/announcement.rst
-
 .. include:: /_includes/rllib/we_are_hiring.rst
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 Sample Collections and Trajectory Views
 =======================================
@@ -234,7 +234,7 @@ object and what each of these properties controls.
   True by default. If False, the column will not be available inside the train batch (arriving in the
   Policy's loss function).
   RLlib will automatically switch this to False for a given column, if it detects during
-  Policy initialization that that column is not accessed inside the loss function (see below).
+  Policy initialization that that column isn't accessed inside the loss function (see below).
 
 How does RLlib determine, which Views are required?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -323,5 +323,3 @@ The above two examples add a "next_action" view to the postprocessed SampleBatch
 used by the Policy for training. It will not feed the "next_action"
 to the Model's ``compute_action`` calls (it can't b/c the next action is of course not known
 at that point).
-
-.. include:: /_includes/rllib/announcement_bottom.rst

@@ -1,4 +1,3 @@
-import json
 import os
 import ray
 import ray._private.test_utils as test_utils
@@ -100,23 +99,21 @@ print(
     f"{end_time - start_time}s. ({rate} pgs/s)"
 )
 
-if "TEST_OUTPUT_JSON" in os.environ:
-    out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
-    results = {
-        "pgs_per_second": rate,
-        "num_pgs": MAX_PLACEMENT_GROUPS,
-        "time": end_time - start_time,
-        "success": "1",
-        "_peak_memory": round(used_gb, 2),
-        "_peak_process_memory": usage,
-    }
-    if not is_smoke_test:
-        results["perf_metrics"] = [
-            {
-                "perf_metric_name": "pgs_per_second",
-                "perf_metric_value": rate,
-                "perf_metric_type": "THROUGHPUT",
-            }
-        ]
-    dashboard_test.update_release_test_result(results)
-    json.dump(results, out_file)
+results = {
+    "pgs_per_second": rate,
+    "num_pgs": MAX_PLACEMENT_GROUPS,
+    "time": end_time - start_time,
+    "success": "1",
+    "_peak_memory": round(used_gb, 2),
+    "_peak_process_memory": usage,
+}
+if not is_smoke_test:
+    results["perf_metrics"] = [
+        {
+            "perf_metric_name": "pgs_per_second",
+            "perf_metric_value": rate,
+            "perf_metric_type": "THROUGHPUT",
+        }
+    ]
+dashboard_test.update_release_test_result(results)
+test_utils.safe_write_to_results_json(results)

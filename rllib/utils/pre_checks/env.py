@@ -1,11 +1,11 @@
 """Common pre-checks for all RLlib experiments."""
-from copy import copy
-import inspect
 import logging
-import numpy as np
 import traceback
+from copy import copy
+from typing import TYPE_CHECKING, Optional, Set, Union
+
+import numpy as np
 import tree  # pip install dm_tree
-from typing import TYPE_CHECKING, Set, Union
 
 from ray.actor import ActorHandle
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -19,6 +19,7 @@ from ray.rllib.utils.typing import EnvType
 from ray.util import log_once
 
 if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
     from ray.rllib.env import BaseEnv, MultiAgentEnv, VectorEnv
 
 logger = logging.getLogger(__name__)
@@ -27,23 +28,25 @@ gym, old_gym = try_import_gymnasium_and_gym()
 
 
 @DeveloperAPI
-def check_env(env: EnvType) -> None:
+def check_env(env: EnvType, config: Optional["AlgorithmConfig"] = None) -> None:
     """Run pre-checks on env that uncover common errors in environments.
 
     Args:
         env: Environment to be checked.
+        config: Additional checks config.
 
     Raises:
         ValueError: If env is not an instance of SUPPORTED_ENVIRONMENT_TYPES.
         ValueError: See check_gym_env docstring for details.
     """
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
     from ray.rllib.env import (
         BaseEnv,
+        ExternalEnv,
+        ExternalMultiAgentEnv,
         MultiAgentEnv,
         RemoteBaseEnv,
         VectorEnv,
-        ExternalMultiAgentEnv,
-        ExternalEnv,
     )
 
     if hasattr(env, "_skip_env_checking") and env._skip_env_checking:
@@ -79,7 +82,7 @@ def check_env(env: EnvType) -> None:
         elif isinstance(env, VectorEnv):
             check_vector_env(env)
         elif isinstance(env, gym.Env) or old_gym and isinstance(env, old_gym.Env):
-            check_gym_environments(env)
+            check_gym_environments(env, AlgorithmConfig() if config is None else config)
         elif isinstance(env, BaseEnv):
             check_base_env(env)
         else:
@@ -103,11 +106,14 @@ def check_env(env: EnvType) -> None:
 
 
 @DeveloperAPI
-def check_gym_environments(env: Union[gym.Env, "old_gym.Env"]) -> None:
+def check_gym_environments(
+    env: Union[gym.Env, "old_gym.Env"], config: "AlgorithmConfig"
+) -> None:
     """Checking for common errors in a gymnasium/gym environments.
 
     Args:
         env: Environment to be checked.
+        config: Additional checks config.
 
     Warning:
         If env has no attribute spec with a sub attribute,
@@ -158,16 +164,6 @@ def check_gym_environments(env: Union[gym.Env, "old_gym.Env"]) -> None:
                 "attribute. Your horizon will default "
                 "to infinity, and your environment will not be "
                 "reset."
-            )
-    # Raise warning if using new reset api introduces in gym 0.24
-    reset_signature = inspect.signature(env.unwrapped.reset).parameters.keys()
-    if any(k in reset_signature for k in ["seed", "return_info"]):
-        if log_once("reset_signature"):
-            logger.warning(
-                "Your env reset() method appears to take 'seed' or 'return_info'"
-                " arguments. Note that these are not yet supported in RLlib."
-                " Seeding will take place using 'env.seed()' and the info dict"
-                " will not be returned from reset."
             )
 
     # check if sampled actions and observations are contained within their
@@ -222,6 +218,12 @@ def check_gym_environments(env: Union[gym.Env, "old_gym.Env"]) -> None:
                     space,
                     space_type,
                 )
+            )
+    # sample a valid action in case of parametric actions
+    if isinstance(reset_obs, dict):
+        if config.action_mask_key in reset_obs:
+            sampled_action = env.action_space.sample(
+                mask=reset_obs[config.action_mask_key]
             )
 
     # Check if env.step can run, and generates observations rewards, done
@@ -289,7 +291,7 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
         hasattr(env, "observation_space")
         and hasattr(env, "action_space")
         and hasattr(env, "_agent_ids")
-        and hasattr(env, "_observation_space_in_preferred_format")
+        and hasattr(env, "_obs_space_in_preferred_format")
         and hasattr(env, "_action_space_in_preferred_format")
     ):
         if log_once("ma_env_super_ctor_called"):
@@ -374,7 +376,7 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
     _check_if_element_multi_agent_dict(env, reward, "step, reward")
     _check_if_element_multi_agent_dict(env, done, "step, done")
     _check_if_element_multi_agent_dict(env, truncated, "step, truncated")
-    _check_if_element_multi_agent_dict(env, info, "step, info")
+    _check_if_element_multi_agent_dict(env, info, "step, info", allow_common=True)
     _check_reward(
         {"dummy_env_id": reward}, base_env=True, agent_ids=env.get_agent_ids()
     )
@@ -697,10 +699,14 @@ def _check_info(info, base_env=False, agent_ids=None):
                         "Your step function must return infos that are a dict. "
                         f"instead was a {type(inf)}: element: {inf}"
                     )
-                if not (agent_id in agent_ids or agent_id == "__all__"):
+                if not (
+                    agent_id in agent_ids
+                    or agent_id == "__all__"
+                    or agent_id == "__common__"
+                ):
                     error = (
                         f"Your dones dictionary must have agent ids that belong to "
-                        f"the environment. Agent_ids recieved from "
+                        f"the environment. Agent_ids received from "
                         f"env.get_agent_ids() are: {agent_ids}"
                     )
                     raise ValueError(error)
@@ -743,7 +749,13 @@ def _check_if_multi_env_dict(env, element, function_string):
         )
 
 
-def _check_if_element_multi_agent_dict(env, element, function_string, base_env=False):
+def _check_if_element_multi_agent_dict(
+    env,
+    element,
+    function_string,
+    base_env=False,
+    allow_common=False,
+):
     if not isinstance(element, dict):
         if base_env:
             error = (
@@ -760,6 +772,8 @@ def _check_if_element_multi_agent_dict(env, element, function_string, base_env=F
         raise ValueError(error)
     agent_ids: Set = copy(env.get_agent_ids())
     agent_ids.add("__all__")
+    if allow_common:
+        agent_ids.add("__common__")
 
     if not all(k in agent_ids for k in element):
         if base_env:
@@ -809,13 +823,14 @@ def _find_offending_sub_space(space, value):
         3) the offending sub-space's dtype, 4) the offending sub-value, 5) the offending
         sub-value's dtype.
 
-    Examples:
-         >>> path, space, space_dtype, value, value_dtype = _find_offending_sub_space(
-         ...     gym.spaces.Dict({
-         ...    -2.0, 1.5, (2, ), np.int8), np.array([-1.5, 3.0])
-         ... )
-         >>> print(path)
-         ...
+    .. testcode::
+        :skipif: True
+
+        path, space, space_dtype, value, value_dtype = _find_offending_sub_space(
+            gym.spaces.Dict({
+           -2.0, 1.5, (2, ), np.int8), np.array([-1.5, 3.0])
+        )
+
     """
     if not isinstance(space, (gym.spaces.Dict, gym.spaces.Tuple)):
         return None, space, space.dtype, value, _get_type(value)

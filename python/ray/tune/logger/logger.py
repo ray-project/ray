@@ -1,13 +1,15 @@
 import abc
 import json
 import logging
+from pathlib import Path
+from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Set, Type
 
-from typing import TYPE_CHECKING, Dict, List, Optional, Type, Iterable
-
+import pyarrow
 import yaml
+
 from ray.air._internal.json import SafeFallbackEncoder
 from ray.tune.callback import Callback
-from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     from ray.tune.experiment.trial import Trial  # noqa: F401
@@ -18,7 +20,17 @@ logger = logging.getLogger(__name__)
 # Apply flow style for sequences of this length
 _SEQUENCE_LEN_FLOW_STYLE = 3
 
+_LOGGER_DEPRECATION_WARNING = (
+    "The `{old} interface is deprecated in favor of the "
+    "`{new}` interface and will be removed in Ray 2.7."
+)
 
+
+@Deprecated(
+    message=_LOGGER_DEPRECATION_WARNING.format(
+        old="Logger", new="ray.tune.logger.LoggerCallback"
+    ),
+)
 @DeveloperAPI
 class Logger(abc.ABC):
     """Logging interface for ray.tune.
@@ -154,6 +166,27 @@ class LoggerCallback(Callback):
     ):
         self.log_trial_end(trial, failed=True)
 
+    def _restore_from_remote(self, file_name: str, trial: "Trial") -> None:
+        if not trial.checkpoint:
+            # If there's no checkpoint, there's no logging artifacts to restore
+            # since we're starting from scratch.
+            return
+
+        local_file = Path(trial.local_path, file_name).as_posix()
+        remote_file = Path(trial.storage.trial_fs_path, file_name).as_posix()
+
+        try:
+            pyarrow.fs.copy_files(
+                remote_file,
+                local_file,
+                source_filesystem=trial.storage.storage_filesystem,
+            )
+            logger.debug(f"Copied {remote_file} to {local_file}")
+        except FileNotFoundError:
+            logger.warning(f"Remote file not found: {remote_file}")
+        except Exception:
+            logger.exception(f"Error downloading {remote_file}")
+
 
 @DeveloperAPI
 class LegacyLoggerCallback(LoggerCallback):
@@ -175,12 +208,12 @@ class LegacyLoggerCallback(LoggerCallback):
         self._class_trial_loggers: Dict[Type[Logger], Dict["Trial", Logger]] = {}
 
     def log_trial_start(self, trial: "Trial"):
-        trial.init_logdir()
+        trial.init_local_path()
 
         for logger_class in self.logger_classes:
             trial_loggers = self._class_trial_loggers.get(logger_class, {})
             if trial not in trial_loggers:
-                logger = logger_class(trial.config, trial.logdir, trial)
+                logger = logger_class(trial.config, trial.local_path, trial)
                 trial_loggers[trial] = logger
             self._class_trial_loggers[logger_class] = trial_loggers
 
@@ -213,13 +246,13 @@ class _RayDumper(yaml.SafeDumper):
 
 
 @DeveloperAPI
-def pretty_print(result):
+def pretty_print(result, exclude: Optional[Set[str]] = None):
     result = result.copy()
     result.update(config=None)  # drop config from pretty print
     result.update(hist_stats=None)  # drop hist_stats from pretty print
     out = {}
     for k, v in result.items():
-        if v is not None:
+        if v is not None and (exclude is None or k not in exclude):
             out[k] = v
 
     cleaned = json.dumps(out, cls=SafeFallbackEncoder)

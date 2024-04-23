@@ -1,3 +1,4 @@
+import { KeyboardArrowDown, KeyboardArrowRight } from "@mui/icons-material";
 import {
   Button,
   Grid,
@@ -8,9 +9,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-} from "@material-ui/core";
-import { KeyboardArrowDown, KeyboardArrowRight } from "@material-ui/icons";
-import dayjs from "dayjs";
+} from "@mui/material";
 import React, {
   PropsWithChildren,
   ReactNode,
@@ -20,7 +19,8 @@ import React, {
 } from "react";
 import { Link } from "react-router-dom";
 import { GlobalContext } from "../App";
-import { Actor } from "../type/actor";
+import { formatDateFromTimeMs } from "../common/formatUtils";
+import { ActorDetail } from "../type/actor";
 import { CoreWorkerStats, Worker } from "../type/worker";
 import { memoryConverter } from "../util/converter";
 import { longTextCut } from "../util/func";
@@ -67,6 +67,7 @@ export const ExpandableTableRow = ({
           <IconButton
             style={{ color: "inherit" }}
             onClick={() => setIsExpanded(!isExpanded)}
+            size="large"
           >
             {length}
             {isExpanded ? <KeyboardArrowDown /> : <KeyboardArrowRight />}
@@ -86,13 +87,11 @@ export const ExpandableTableRow = ({
 const WorkerDetailTable = ({
   actorMap,
   coreWorkerStats,
-  newIA = false,
 }: {
-  actorMap: { [actorId: string]: Actor };
+  actorMap: { [actorId: string]: ActorDetail };
   coreWorkerStats: CoreWorkerStats[];
-  newIA?: boolean;
 }) => {
-  const actors = {} as { [actorId: string]: Actor };
+  const actors = {} as { [actorId: string]: ActorDetail };
   (coreWorkerStats || [])
     .filter((e) => actorMap[e.actorId])
     .forEach((e) => (actors[e.actorId] = actorMap[e.actorId]));
@@ -103,7 +102,7 @@ const WorkerDetailTable = ({
 
   return (
     <TableContainer>
-      <ActorTable actors={actors} newIA={newIA} />
+      <ActorTable actors={actors} detailPathPrefix="/actors" />
     </TableContainer>
   );
 };
@@ -112,16 +111,14 @@ const RayletWorkerTable = ({
   workers = [],
   actorMap,
   mini,
-  newIA = false,
 }: {
   workers: Worker[];
-  actorMap: { [actorId: string]: Actor };
+  actorMap: { [actorId: string]: ActorDetail };
   mini?: boolean;
-  newIA?: boolean;
 }) => {
   const { changeFilter, filterFunc } = useFilter();
   const [key, setKey] = useState("");
-  const { nodeMapByIp, ipLogMap } = useContext(GlobalContext);
+  const { nodeMapByIp } = useContext(GlobalContext);
   const open = () => setKey(`ON${Math.random()}`);
   const close = () => setKey(`OFF${Math.random()}`);
 
@@ -190,7 +187,6 @@ const RayletWorkerTable = ({
                     <WorkerDetailTable
                       actorMap={actorMap}
                       coreWorkerStats={coreWorkerStats}
-                      newIA={newIA}
                     />
                   }
                   length={
@@ -228,27 +224,19 @@ const RayletWorkerTable = ({
                     {cmdline && longTextCut(cmdline.filter((e) => e).join(" "))}
                   </TableCell>
                   <TableCell align="center">
-                    {dayjs(createTime * 1000).format("YYYY/MM/DD HH:mm:ss")}
+                    {formatDateFromTimeMs(createTime * 1000)}
                   </TableCell>
                   <TableCell align="center">
                     <Grid container spacing={2}>
-                      {ipLogMap[coreWorkerStats[0]?.ipAddress] && (
+                      {coreWorkerStats[0] && (
                         <Grid item>
                           <Link
                             target="_blank"
-                            to={
-                              newIA
-                                ? `/new/logs/${encodeURIComponent(
-                                    ipLogMap[coreWorkerStats[0]?.ipAddress],
-                                  )}?fileName=${
-                                    coreWorkerStats[0].jobId || ""
-                                  }-${pid}`
-                                : `/log/${encodeURIComponent(
-                                    ipLogMap[coreWorkerStats[0]?.ipAddress],
-                                  )}?fileName=${
-                                    coreWorkerStats[0].jobId || ""
-                                  }-${pid}`
-                            }
+                            to={`/logs/?nodeId=${encodeURIComponent(
+                              nodeMapByIp[coreWorkerStats[0].ipAddress],
+                            )}&fileName=${
+                              coreWorkerStats[0].jobId || ""
+                            }-${pid}`}
                           >
                             Log
                           </Link>
@@ -295,7 +283,7 @@ const RayletWorkerTable = ({
                     {nodeMapByIp[coreWorkerStats[0]?.ipAddress] ? (
                       <Link
                         target="_blank"
-                        to={`/node/${
+                        to={`/cluster/nodes/${
                           nodeMapByIp[coreWorkerStats[0]?.ipAddress]
                         }`}
                       >

@@ -1,14 +1,13 @@
-from typing import TYPE_CHECKING, Union
-from ray.air.util.data_batch_conversion import BatchFormat, BlockFormat
-from ray.data import Dataset, DatasetPipeline
+from typing import TYPE_CHECKING
+
+from ray.air.util.data_batch_conversion import BatchFormat
+from ray.data import Dataset
 from ray.data.preprocessor import Preprocessor
-from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.air.data_batch_type import DataBatchType
 
 
-@PublicAPI(stability="alpha")
 class Chain(Preprocessor):
     """Combine multiple preprocessors into a single :py:class:`Preprocessor`.
 
@@ -80,14 +79,9 @@ class Chain(Preprocessor):
             ds = preprocessor.fit_transform(ds)
         return ds
 
-    def _transform(
-        self, ds: Union[Dataset, DatasetPipeline]
-    ) -> Union[Dataset, DatasetPipeline]:
+    def _transform(self, ds: Dataset) -> Dataset:
         for preprocessor in self.preprocessors:
-            if isinstance(ds, Dataset):
-                ds = preprocessor.transform(ds)
-            elif isinstance(ds, DatasetPipeline):
-                ds = preprocessor._transform_pipeline(ds)
+            ds = preprocessor.transform(ds)
         return ds
 
     def _transform_batch(self, df: "DataBatchType") -> "DataBatchType":
@@ -99,9 +93,9 @@ class Chain(Preprocessor):
         arguments = ", ".join(repr(preprocessor) for preprocessor in self.preprocessors)
         return f"{self.__class__.__name__}({arguments})"
 
-    def _determine_transform_to_use(self, data_format: BlockFormat) -> BatchFormat:
+    def _determine_transform_to_use(self) -> BatchFormat:
         # This is relevant for BatchPrediction.
         # For Chain preprocessor, we picked the first one as entry point.
         # TODO (jiaodong): We should revisit if our Chain preprocessor is
         # still optimal with context of lazy execution.
-        return self.preprocessors[0]._determine_transform_to_use(data_format)
+        return self.preprocessors[0]._determine_transform_to_use()

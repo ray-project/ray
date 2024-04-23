@@ -1,112 +1,45 @@
 .. _ray-core-examples-tutorial:
 
-Ray Tutorials and Examples
-==========================
+Ray Core Examples
+=================
+
+.. toctree::
+    :hidden:
+    :glob:
+
+    *
+
+.. Organize example .rst files in the same manner as the
+   .py files in ray/python/ray/train/examples.
+
+Below are examples for using Ray Core for a variety use cases.
+
+Beginner
+--------
+
+.. list-table::
+
+  * - :doc:`A Gentle Introduction to Ray Core by Example <gentle_walkthrough>`
+  * - :doc:`Using Ray for Highly Parallelizable Tasks <highly_parallel>`
+  * - :doc:`Monte Carlo Estimation of π <monte_carlo_pi>`
+  
+
+Intermediate
+------------
+
+.. list-table::
+
+  * - :doc:`Running a Simple MapReduce Example with Ray Core <map_reduce>`
+  * - :doc:`Speed Up Your Web Crawler by Parallelizing it with Ray <web-crawler>`
 
 
-Machine Learning Examples
--------------------------
+Advanced
+--------
 
-.. panels::
-    :container: container pb-4
-    :column: col-md-4 px-2 py-2
-    :img-top-cls: pt-5 w-75 d-block mx-auto
-
-    ---
-    :img-top: /images/timeseries.png
-
-    +++
-    .. link-button:: automl_for_time_series
-        :type: ref
-        :text: Build Simple AutoML for Time Series Using Ray
-        :classes: btn-link btn-block stretched-link
-    ---
-    :img-top: /ray-overview/images/ray_svg_logo.svg
-
-    +++
-    .. link-button:: batch_prediction
-        :type: ref
-        :text: Build Batch Prediction Using Ray
-        :classes: btn-link btn-block stretched-link
-
-    ---
-    :img-top: /ray-overview/images/ray_svg_logo.svg
-
-    +++
-    .. link-button:: batch_training
-        :type: ref
-        :text: Build Batch Training Using Ray
-        :classes: btn-link btn-block stretched-link
-    ---
-    :img-top: images/param_actor.png
-
-    +++
-    .. link-button:: plot_parameter_server
-        :type: ref
-        :text: Build a Simple Parameter Server Using Ray
-        :classes: btn-link btn-block stretched-link
-    ---
-    :img-top: images/hyperparameter.png
-
-    +++
-    .. link-button:: plot_hyperparameter
-        :type: ref
-        :text: Simple Parallel Model Selection
-        :classes: btn-link btn-block stretched-link
-    ---
-    :img-top: /ray-overview/images/ray_svg_logo.svg
-
-    +++
-    .. link-button:: plot_example-lm
-        :type: ref
-        :text: Fault-Tolerant Fairseq Training
-        :classes: btn-link btn-block stretched-link
-
-
-Reinforcement Learning Examples
--------------------------------
-
-These are simple examples that show you how to leverage Ray Core.
-For Ray's production-grade reinforcement learning library, see `RLlib <http://docs.ray.io/en/latest/rllib.html>`__.
-
-
-.. panels::
-    :container: container pb-4
-    :column: col-md-4 px-2 py-2
-    :img-top-cls: pt-5 w-75 d-block mx-auto
-
-    ---
-    :img-top: images/pong.png
-
-    +++
-    .. link-button:: plot_pong_example
-        :type: ref
-        :text: Learning to Play Pong
-        :classes: btn-link btn-block stretched-link
-
-    ---
-    :img-top: images/a3c.png
-
-    +++
-    .. link-button:: plot_example-a3c
-        :type: ref
-        :text: Asynchronous Advantage Actor Critic (A3C)
-        :classes: btn-link btn-block stretched-link
-
-
-Basic Examples
---------------
-
-.. panels::
-    :container: container pb-4
-    :column: col-md-4 px-2 py-2
-    :img-top-cls: pt-5 w-75 d-block mx-auto
-
-    ---
-    :img-top: /ray-overview/images/ray_svg_logo.svg
-
-    +++
-    .. link-button:: highly_parallel
-        :type: ref
-        :text: Using Ray for Highly Parallelizable Tasks
-        :classes: btn-link btn-block stretched-link
+.. list-table::
+    
+  * - :doc:`Build Simple AutoML for Time Series Using Ray <automl_for_time_series>`
+  * - :doc:`Build Batch Prediction Using Ray <batch_prediction>`
+  * - :doc:`Build a Simple Parameter Server Using Ray <plot_parameter_server>`
+  * - :doc:`Simple Parallel Model Selection <plot_hyperparameter>`
+  * - :doc:`Learning to Play Pong <plot_pong_example>`

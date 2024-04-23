@@ -1,6 +1,7 @@
-.. include:: /_includes/rllib/announcement.rst
 
 .. include:: /_includes/rllib/we_are_hiring.rst
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 .. _rllib-saving-and-loading-algos-and-policies-docs:
 
@@ -9,7 +10,7 @@ Saving and Loading your RL Algorithms and Policies
 ##################################################
 
 
-You can use :py:class:`~ray.air.checkpoint.Checkpoint` objects to store
+You can use :py:class:`~ray.train.Checkpoint` objects to store
 and load the current state of your :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
 or :py:class:`~ray.rllib.policy.policy.Policy` and the neural networks (weights)
 within these structures. In the following, we will cover how you can create these
@@ -27,8 +28,14 @@ or a single :py:class:`~ray.rllib.policy.policy.Policy` instance.
 The Algorithm- or Policy instances that were used to create the checkpoint in the first place
 may or may not have been trained prior to this.
 
-RLlib uses the new Ray AIR :py:class:`~ray.air.checkpoint.Checkpoint` class to create checkpoints and
+RLlib uses the :py:class:`~ray.train.Checkpoint` class to create checkpoints and
 restore objects from them.
+
+The main file in a checkpoint directory, containing the state information, is currently
+generated using Ray's `cloudpickle` package. Since `cloudpickle` is volatile with respect to
+the python version used, we are currently experimenting with `msgpack` (and `msgpack_numpy`)
+as an alternative checkpoint format. In case you are interested in generating
+python-verion independent checkpoints, see below for further details.
 
 
 Algorithm checkpoints
@@ -45,12 +52,12 @@ How do I create an Algorithm checkpoint?
 ----------------------------------------
 
 The :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` ``save()`` method creates a new checkpoint
-(directory with files in it) and returns the path to that directory.
+(directory with files in it).
 
 Let's take a look at a simple example on how to create such an
 Algorithm checkpoint:
 
-.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_policies.py
+.. literalinclude:: doc_code/saving_and_loading_algos_and_policies.py
     :language: python
     :start-after: __create-algo-checkpoint-begin__
     :end-before: __create-algo-checkpoint-end__
@@ -64,8 +71,6 @@ like this:
     $ ls -la
       .
       ..
-      .is_checkpoint
-      .tune_metadata
       policies/
       algorithm_state.pkl
       rllib_checkpoint.json
@@ -132,6 +137,33 @@ info file (``rllib_checkpoint.json``), which is always identical to the enclosin
 algorithm checkpoint version.
 
 
+Checkpoints are py-version specific, but can be converted to be version independent
+-----------------------------------------------------------------------------------
+
+Algorithm checkpoints created via the ``save()`` method are always cloudpickle-based and
+thus dependent on the python version used. This means there is no guarantee that you
+will to be able to use a checkpoint created with python 3.8 to restore an Algorithm
+in a new environment that runs python 3.9.
+
+However, we now provide a utility for converting a checkpoint (generated with
+`Algorithm.save()`) into a python version independent checkpoint (based on msgpack).
+You can then use the newly converted msgpack checkpoint to restore another
+Algorithm instance from it. Look at this this short example here on how to do this:
+
+.. literalinclude:: doc_code/checkpoints.py
+    :language: python
+    :start-after: __rllib-convert-pickle-to-msgpack-checkpoint-begin__
+    :end-before: __rllib-convert-pickle-to-msgpack-checkpoint-end__
+
+This way, you can continue to run your algorithms and `save()` them occasionally or
+- if you are running trials with Ray Tune - use Tune's integrated checkpointing settings.
+As has been, this will produce cloudpickle based checkpoints. Once you need to migrate to
+a higher (or lower) python version, use the ``convert_to_msgpack_checkpoint()`` utility,
+create a msgpack-based checkpoint and hand that to either ``Algorithm.from_checkpoint()``
+or provide this to your Tune config. RLlib is able to recreate Algorithms from both these
+formats now.
+
+
 How do I restore an Algorithm from a checkpoint?
 ------------------------------------------------
 
@@ -139,7 +171,7 @@ Given our checkpoint path (returned by ``Algorithm.save()``), we can now
 create a completely new Algorithm instance and make it the exact same as the one we
 had stopped (and could thus no longer use) in the example above:
 
-.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_policies.py
+.. literalinclude:: doc_code/saving_and_loading_algos_and_policies.py
     :language: python
     :start-after: __restore-from-algo-checkpoint-begin__
     :end-before: __restore-from-algo-checkpoint-end__
@@ -149,7 +181,7 @@ Alternatively, you could also first create a new Algorithm instance using the
 same config that you used for the original algo, and only then call the new
 Algorithm's ``restore()`` method, passing it the checkpoint directory:
 
-.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_policies.py
+.. literalinclude:: doc_code/saving_and_loading_algos_and_policies.py
     :language: python
     :start-after: __restore-from-algo-checkpoint-2-begin__
     :end-before: __restore-from-algo-checkpoint-2-end__
@@ -190,7 +222,7 @@ inside the sub-directory ``policies/``.
 
 For example:
 
-.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_policies.py
+.. literalinclude:: doc_code/saving_and_loading_algos_and_policies.py
     :language: python
     :start-after: __multi-agent-checkpoints-begin__
     :end-before: __multi-agent-checkpoints-end__
@@ -205,7 +237,7 @@ However, there may be a situation where you have so many policies in your algori
 instance from your checkpoint, but only include some of the original policies in this
 new Algorithm object. In this case, you can also do:
 
-.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_policies.py
+.. literalinclude:: doc_code/saving_and_loading_algos_and_policies.py
     :language: python
     :start-after: __multi-agent-checkpoints-restore-policy-sub-set-begin__
     :end-before: __multi-agent-checkpoints-restore-policy-sub-set-end__
@@ -251,7 +283,7 @@ described above or - if you need more fine-grained control - by doing the follow
 
 
 
-.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_policies.py
+.. literalinclude:: doc_code/saving_and_loading_algos_and_policies.py
     :language: python
     :start-after: __create-policy-checkpoint-begin__
     :end-before: __create-policy-checkpoint-end__
@@ -284,7 +316,7 @@ contains all its Policies' checkpoints.
 
 Here is how you can do this:
 
-.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_policies.py
+.. literalinclude:: doc_code/saving_and_loading_algos_and_policies.py
     :language: python
     :start-after: __restore-policy-begin__
     :end-before: __restore-policy-end__
@@ -309,7 +341,7 @@ You can use the original checkpoint (with the 100 policies in it) and the
 This example here shows this for five original policies that you would like reduce to
 two policies:
 
-.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_policies.py
+.. literalinclude:: doc_code/saving_and_loading_algos_and_policies.py
     :language: python
     :start-after: __restore-algorithm-from-checkpoint-with-fewer-policies-begin__
     :end-before: __restore-algorithm-from-checkpoint-with-fewer-policies-end__
@@ -338,7 +370,7 @@ There are several ways of creating Keras- or PyTorch native model "exports".
 
 Here is the example code that illustrates these:
 
-.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_policies.py
+.. literalinclude:: doc_code/saving_and_loading_algos_and_policies.py
     :language: python
     :start-after: __export-models-begin__
     :end-before: __export-models-end__
@@ -348,21 +380,21 @@ to disk ...
 
 1) Using the Policy object:
 
-.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_policies.py
+.. literalinclude:: doc_code/saving_and_loading_algos_and_policies.py
     :language: python
     :start-after: __export-models-1-begin__
     :end-before: __export-models-1-end__
 
 2) Via the Policy's checkpointing method:
 
-.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_policies.py
+.. literalinclude:: doc_code/saving_and_loading_algos_and_policies.py
     :language: python
     :start-after: __export-models-2-begin__
     :end-before: __export-models-2-end__
 
 3) Via the Algorithm (Policy) checkpoint:
 
-.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_policies.py
+.. literalinclude:: doc_code/saving_and_loading_algos_and_policies.py
     :language: python
     :start-after: __export-models-3-begin__
     :end-before: __export-models-3-end__
@@ -376,7 +408,7 @@ RLlib also supports exporting your NN models in the ONNX format. For that, use t
 extra ``onnx`` arg as follows:
 
 
-.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_policies.py
+.. literalinclude:: doc_code/saving_and_loading_algos_and_policies.py
     :language: python
     :start-after: __export-models-as-onnx-begin__
     :end-before: __export-models-as-onnx-end__

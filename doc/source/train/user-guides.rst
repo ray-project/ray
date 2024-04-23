@@ -1,45 +1,18 @@
+.. _train-user-guides:
+
 Ray Train User Guides
 =====================
 
-.. panels::
-    :container: container pb-4 full-width
-    :column: col-md-4 px-2 py-2
-    :img-top-cls: pt-5 w-75 d-block mx-auto
+.. toctree::
+    :maxdepth: 2
 
-    ---
-    :img-top: /ray-overview/images/ray_svg_logo.svg
-
-    +++
-    .. link-button:: config_guide
-        :type: ref
-        :text: Configurations User Guide
-        :classes: btn-link btn-block stretched-link
-
-    ---
-    :img-top: /ray-overview/images/ray_svg_logo.svg
-
-    +++
-    .. link-button:: dl_guide
-        :type: ref
-        :text: Deep Learning User Guide
-        :classes: btn-link btn-block stretched-link
-
-
-    ---
-    :img-top: /ray-overview/images/ray_svg_logo.svg
-
-    +++
-    .. link-button:: gbdt
-        :type: ref
-        :text: XGBoost / LightGBM User Guide
-        :classes: btn-link btn-block stretched-link
-
-    ---
-    :img-top: /ray-overview/images/ray_svg_logo.svg
-
-    +++
-    .. link-button:: architecture
-        :type: ref
-        :text: Ray Train Architecture
-        :classes: btn-link btn-block stretched-link
-
+    user-guides/data-loading-preprocessing
+    user-guides/using-gpus
+    user-guides/persistent-storage
+    user-guides/monitoring-logging
+    user-guides/checkpoints
+    user-guides/experiment-tracking
+    user-guides/results
+    user-guides/fault-tolerance
+    user-guides/reproducibility
+    Hyperparameter Optimization <user-guides/hyperparameter-optimization>

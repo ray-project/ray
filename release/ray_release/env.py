@@ -1,16 +1,16 @@
 import os
 from typing import Dict
 
+from ray_release.bazel import bazel_runfile
 from ray_release.exception import ReleaseTestConfigError
 
-DEFAULT_ENVIRONMENT = "staging_v2"
+DEFAULT_ENVIRONMENT = "aws"
 
 
 def load_environment(environment_name: str) -> Dict[str, str]:
-    this_dir = os.path.dirname(__file__)
-    env_file = os.path.join(this_dir, "environments", f"{environment_name}.env")
-
-    if not os.path.exists(env_file):
+    file_base = f"{environment_name}.env"
+    env_file = bazel_runfile("release/ray_release/environments", file_base)
+    if not env_file or not os.path.isfile(env_file):
         raise ReleaseTestConfigError(
             f"Unknown environment with name: {environment_name}"
         )

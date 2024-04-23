@@ -1,11 +1,6 @@
-import {
-  createStyles,
-  makeStyles,
-  Table,
-  TableBody,
-  TableCell,
-  TableRow,
-} from "@material-ui/core";
+import { Table, TableBody, TableCell, TableRow } from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import classNames from "classnames";
 import React, { useState } from "react";
 import {
@@ -15,6 +10,7 @@ import {
   RiCloseLine,
   RiSubtractLine,
 } from "react-icons/ri";
+import { Link } from "react-router-dom";
 import { ClassNameProps } from "../../../common/props";
 import { JobProgressGroup, NestedJobProgressLink } from "../../../type/job";
 import { MiniTaskProgressBar } from "../TaskProgressBar";
@@ -166,15 +162,21 @@ export const AdvancedProgressBarSegment = ({
               }}
             />
             {link ? (
-              <button
-                className={classes.link}
-                onClick={(event) => {
-                  onClickLink?.(link);
-                  event.stopPropagation();
-                }}
-              >
-                {name}
-              </button>
+              link.type === "actor" ? (
+                <button
+                  className={classes.link}
+                  onClick={(event) => {
+                    onClickLink?.(link);
+                    event.stopPropagation();
+                  }}
+                >
+                  {name}
+                </button>
+              ) : (
+                <Link className={classes.link} to={`tasks/${link.id}`}>
+                  {name}
+                </Link>
+              )
             ) : (
               name
             )}

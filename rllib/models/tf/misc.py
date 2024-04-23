@@ -8,6 +8,7 @@ from ray.rllib.utils.typing import TensorType
 tf1, tf, tfv = try_import_tf()
 
 
+# TODO: (sven) obsolete this class.
 @DeveloperAPI
 def normc_initializer(std: float = 1.0) -> Any:
     def _initializer(shape, dtype=None, partition_info=None):
@@ -31,6 +32,7 @@ def conv2d(
     dtype: Optional[Any] = None,
     collections: Optional[Any] = None,
 ) -> TensorType:
+
     if dtype is None:
         dtype = tf.float32
 

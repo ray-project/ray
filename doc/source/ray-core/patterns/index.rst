@@ -12,6 +12,7 @@ This section is a collection of common design patterns and anti-patterns for wri
     generators
     limit-pending-tasks
     limit-running-tasks
+    concurrent-operations-async-actor
     actor-sync
     tree-of-actors
     pipelining

@@ -1,7 +1,7 @@
 Out-Of-Memory Prevention
 ========================
 
-If application tasks or actors consume a large amount of heap space, it can cause the node to run out of memory (OOM). When that happens, the operating system will start killing worker or raylet processes, disrupting the application. OOM may also stall metrics and if this happens on the head node, it may stall the :ref:`dashboard <ray-dashboard>` or other control processes and cause the cluster to become unusable.
+If application tasks or actors consume a large amount of heap space, it can cause the node to run out of memory (OOM). When that happens, the operating system will start killing worker or raylet processes, disrupting the application. OOM may also stall metrics and if this happens on the head node, it may stall the :ref:`dashboard <observability-getting-started>` or other control processes and cause the cluster to become unusable.
 
 In this section we will go over:
 
@@ -11,12 +11,16 @@ In this section we will go over:
 
 - How to use the memory monitor to detect and resolve memory issues
 
+Also view :ref:`Debugging Out of Memory <troubleshooting-out-of-memory>` to learn how to troubleshoot out-of-memory issues.
+
+.. _ray-oom-monitor:
+
 What is the memory monitor?
 ---------------------------
 
 The memory monitor is a component that runs within the :ref:`raylet <whitepaper>` process on each node. It periodically checks the memory usage, which includes the worker heap, the object store, and the raylet as described in :ref:`memory management <memory>`. If the combined usage exceeds a configurable threshold the raylet will kill a task or actor process to free up memory and prevent Ray from failing.
 
-It is available on Linux and is tested with Ray running inside a container that is using cgroup v1. If you encounter issues when running the memory monitor outside of a container or the container is using cgroup v2, please :ref:`file an issue or post a question <oom-questions>`.
+It's available on Linux and is tested with Ray running inside a container that is using cgroup v1/v2. If you encounter issues when running the memory monitor outside of a container, :ref:`file an issue or post a question <oom-questions>`.
 
 How do I disable the memory monitor?
 --------------------------------------
@@ -35,6 +39,8 @@ The memory monitor is controlled by the following environment variables:
 
 Using the Memory Monitor
 ------------------------
+
+.. _ray-oom-retry-policy:
 
 Retry policy
 ~~~~~~~~~~~~

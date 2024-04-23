@@ -10,13 +10,14 @@ from ray.rllib.models.torch.misc import (
     SlimFC,
 )
 from ray.rllib.models.utils import get_activation_fn, get_filter_config
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
 
 torch, nn = try_import_torch()
 
 
+@OldAPIStack
 class VisionNetwork(TorchModelV2, nn.Module):
     """Generic vision network."""
 
@@ -28,7 +29,6 @@ class VisionNetwork(TorchModelV2, nn.Module):
         model_config: ModelConfigDict,
         name: str,
     ):
-
         if not model_config.get("conv_filters"):
             model_config["conv_filters"] = get_filter_config(obs_space.shape)
 

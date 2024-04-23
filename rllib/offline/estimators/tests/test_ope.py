@@ -14,8 +14,10 @@ import ray
 from ray.data import read_json
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.dqn import DQNConfig
-from ray.rllib.examples.env.cliff_walking_wall_env import CliffWalkingWallEnv
-from ray.rllib.examples.policy.cliff_walking_wall_policy import CliffWalkingWallPolicy
+from ray.rllib.examples.envs.classes.cliff_walking_wall_env import CliffWalkingWallEnv
+from ray.rllib.examples._old_api_stack.policy.cliff_walking_wall_policy import (
+    CliffWalkingWallPolicy,
+)
 from ray.rllib.offline.dataset_reader import DatasetReader
 from ray.rllib.offline.estimators import (
     DirectMethod,
@@ -280,8 +282,8 @@ class TestOPE(unittest.TestCase):
     def test_algo_with_ope_from_checkpoint(self):
         algo = self.config_dqn_on_cartpole.build()
         tmpdir = tempfile.mkdtemp()
-        checkpoint = algo.save_checkpoint(tmpdir)
-        algo = Algorithm.from_checkpoint(checkpoint)
+        algo.save_checkpoint(tmpdir)
+        algo = Algorithm.from_checkpoint(tmpdir)
         shutil.rmtree(tmpdir)
 
 

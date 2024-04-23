@@ -6,9 +6,11 @@ import pytest
 import requests
 
 import ray
-import ray.serve as serve
+from ray import serve
 from ray._private.test_utils import wait_for_condition
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.storage.kv_store import KVStoreError, RayInternalKVStore
+from ray.serve.context import _get_global_client
 from ray.tests.conftest import external_redis  # noqa: F401
 
 
@@ -21,7 +23,8 @@ def serve_ha(external_redis, monkeypatch):  # noqa: F811
         _metrics_export_port=9999,
         _system_config={"metrics_report_interval_ms": 1000, "task_retry_delay_ms": 50},
     )
-    yield (address_info, serve.start(detached=True))
+    serve.start()
+    yield (address_info, _get_global_client())
     ray.shutdown()
 
 
@@ -40,9 +43,9 @@ def test_ray_internal_kv_timeout(serve_ha):  # noqa: F811
 
     with pytest.raises(KVStoreError) as e:
         kv1.put("2", b"2")
-    assert e.value.args[0] in (
-        grpc.StatusCode.UNAVAILABLE,
-        grpc.StatusCode.DEADLINE_EXCEEDED,
+    assert e.value.rpc_code in (
+        grpc.StatusCode.UNAVAILABLE.value[0],
+        grpc.StatusCode.DEADLINE_EXCEEDED.value[0],
     )
 
 
@@ -58,7 +61,8 @@ def test_controller_gcs_failure(serve_ha, use_handle):  # noqa: F811
 
     def call():
         if use_handle:
-            ret = ray.get(d.get_handle().remote())
+            handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
+            ret = handle.remote().result()
         else:
             ret = requests.get("http://localhost:8000/d").text
         return ret

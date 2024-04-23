@@ -59,11 +59,11 @@ class GcsServerTest : public ::testing::Test {
 
   void TearDown() override {
     io_service_.stop();
-    rpc::DrainAndResetServerCallExecutor();
+    rpc::DrainServerCallExecutor();
     gcs_server_->Stop();
     thread_io_service_->join();
     gcs_server_.reset();
-    ray::gcs::RedisCallbackManager::instance().Clear();
+    rpc::ResetServerCallExecutor();
   }
 
   bool AddJob(const rpc::AddJobRequest &request) {
@@ -144,24 +144,6 @@ class GcsServerTest : public ::testing::Test {
         });
     EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
     return node_info_list;
-  }
-
-  std::map<std::string, gcs::ResourceTableData> GetResources(const std::string &node_id) {
-    rpc::GetResourcesRequest request;
-    request.set_node_id(node_id);
-    std::map<std::string, gcs::ResourceTableData> resources;
-    std::promise<bool> promise;
-    client_->GetResources(request,
-                          [&resources, &promise](const Status &status,
-                                                 const rpc::GetResourcesReply &reply) {
-                            RAY_CHECK_OK(status);
-                            for (auto &resource : reply.resources()) {
-                              resources[resource.first] = resource.second;
-                            }
-                            promise.set_value(true);
-                          });
-    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
-    return resources;
   }
 
   bool ReportWorkerFailure(const rpc::ReportWorkerFailureRequest &request) {

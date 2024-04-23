@@ -1,17 +1,18 @@
-import { TableCell, TableRow, Tooltip } from "@material-ui/core";
-import { makeStyles } from "@material-ui/core/styles";
-import dayjs from "dayjs";
+import { Link, TableCell, TableRow, Tooltip } from "@mui/material";
+import makeStyles from "@mui/styles/makeStyles";
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link as RouterLink } from "react-router-dom";
+import { CodeDialogButtonWithPreview } from "../../common/CodeDialogButton";
 import { DurationText } from "../../common/DurationText";
+import { formatDateFromTimeMs } from "../../common/formatUtils";
+import { JobStatusWithIcon } from "../../common/JobStatus";
 import {
   CpuProfilingLink,
   CpuStackTraceLink,
+  MemoryProfilingButton,
 } from "../../common/ProfilingLink";
-import { StatusChip } from "../../components/StatusChip";
 import { UnifiedJob } from "../../type/job";
 import { useJobProgress } from "./hook/useJobProgress";
-import { JobLogsLink } from "./JobDetail";
 import { MiniTaskProgressBar } from "./TaskProgressBar";
 
 const useStyles = makeStyles((theme) => ({
@@ -23,19 +24,23 @@ const useStyles = makeStyles((theme) => ({
     overflow: "hidden",
     whiteSpace: "nowrap",
   },
+  statusMessage: {
+    maxWidth: 250,
+    display: "inline-flex",
+  },
 }));
 
 type JobRowProps = {
   job: UnifiedJob;
-  newIA?: boolean;
 };
 
-export const JobRow = ({ job, newIA = false }: JobRowProps) => {
+export const JobRow = ({ job }: JobRowProps) => {
   const {
     job_id,
     submission_id,
     driver_info,
     status,
+    message,
     start_time,
     end_time,
     entrypoint,
@@ -58,28 +63,42 @@ export const JobRow = ({ job, newIA = false }: JobRowProps) => {
     }
   })();
 
+  const jobId = job_id ? job_id : submission_id;
+
   return (
     <TableRow>
       <TableCell align="center">
         {job_id ? (
-          <Link to={newIA ? `${job_id}` : `/job/${job_id}`}>{job_id}</Link>
+          <Link component={RouterLink} to={job_id}>
+            {job_id}
+          </Link>
+        ) : submission_id ? (
+          <Link component={RouterLink} to={submission_id}>
+            (no ray driver)
+          </Link>
         ) : (
-          "-"
+          "(no ray driver)"
         )}
       </TableCell>
       <TableCell align="center">{submission_id ?? "-"}</TableCell>
       <TableCell align="center">
-        <Tooltip
-          className={classes.overflowCell}
-          title={entrypoint}
-          arrow
-          interactive
-        >
+        <Tooltip className={classes.overflowCell} title={entrypoint} arrow>
           <div>{entrypoint}</div>
         </Tooltip>
       </TableCell>
       <TableCell align="center">
-        <StatusChip type="job" status={job.status} />
+        <JobStatusWithIcon job={job} />
+      </TableCell>
+      <TableCell align="center">
+        {message ? (
+          <CodeDialogButtonWithPreview
+            className={classes.statusMessage}
+            title="Status message"
+            code={message}
+          />
+        ) : (
+          "-"
+        )}
       </TableCell>
       <TableCell align="center">
         {start_time && start_time > 0 ? (
@@ -90,9 +109,19 @@ export const JobRow = ({ job, newIA = false }: JobRowProps) => {
       </TableCell>
       <TableCell align="center">{progressBar}</TableCell>
       <TableCell align="center">
-        {/* TODO(aguo): Also show logs for the job id instead
-      of just the submission's logs */}
-        <JobLogsLink job={job} newIA={newIA} />
+        {jobId && (
+          <React.Fragment>
+            <Link component={RouterLink} to={jobId}>
+              Log
+            </Link>
+            <br />
+          </React.Fragment>
+        )}
+        <CpuStackTraceLink
+          pid={job.driver_info?.pid}
+          ip={job.driver_info?.node_ip_address}
+          type="Driver"
+        />
         <br />
         <CpuProfilingLink
           pid={job.driver_info?.pid}
@@ -100,19 +129,17 @@ export const JobRow = ({ job, newIA = false }: JobRowProps) => {
           type="Driver"
         />
         <br />
-        <CpuStackTraceLink
+        <MemoryProfilingButton
           pid={job.driver_info?.pid}
           ip={job.driver_info?.node_ip_address}
           type="Driver"
         />
       </TableCell>
       <TableCell align="center">
-        {dayjs(Number(start_time)).format("YYYY/MM/DD HH:mm:ss")}
+        {start_time ? formatDateFromTimeMs(start_time) : "-"}
       </TableCell>
       <TableCell align="center">
-        {end_time && end_time > 0
-          ? dayjs(Number(end_time)).format("YYYY/MM/DD HH:mm:ss")
-          : "-"}
+        {end_time && end_time > 0 ? formatDateFromTimeMs(end_time) : "-"}
       </TableCell>
       <TableCell align="center">{driver_info?.pid ?? "-"}</TableCell>
     </TableRow>

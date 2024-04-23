@@ -4,18 +4,19 @@ import gymnasium as gym
 import ray
 from ray.rllib.core.testing.torch.bc_module import (
     DiscreteBCTorchModule,
-    BCTorchMultiAgentSpec,
     BCTorchRLModuleWithSharedGlobalEncoder,
+    BCTorchMultiAgentModuleWithSharedEncoder,
 )
 from ray.rllib.core.testing.tf.bc_module import (
     DiscreteBCTFModule,
-    BCTfMultiAgentSpec,
     BCTfRLModuleWithSharedGlobalEncoder,
+    BCTfMultiAgentModuleWithSharedEncoder,
 )
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.testing.bc_algorithm import BCConfigTest
 from ray.rllib.utils.test_utils import framework_iterator
-from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 
 
 class TestLearner(unittest.TestCase):
@@ -32,8 +33,8 @@ class TestLearner(unittest.TestCase):
 
         config = (
             BCConfigTest()
-            .rl_module(_enable_rl_module_api=True)
-            .training(_enable_learner_api=True, model={"fcnet_hiddens": [32, 32]})
+            .training(model={"fcnet_hiddens": [32, 32]})
+            .experimental(_enable_new_api_stack=True)
         )
 
         # TODO (Kourosh): Add tf2 support
@@ -44,7 +45,7 @@ class TestLearner(unittest.TestCase):
 
             if fw == "torch":
                 assert isinstance(rl_module, DiscreteBCTorchModule)
-            elif fw == "tf":
+            elif fw == "tf2":
                 assert isinstance(rl_module, DiscreteBCTFModule)
 
     def test_bc_algorithm_marl(self):
@@ -53,8 +54,8 @@ class TestLearner(unittest.TestCase):
         policies = {"policy_1", "policy_2"}
         config = (
             BCConfigTest()
-            .rl_module(_enable_rl_module_api=True)
-            .training(_enable_learner_api=True, model={"fcnet_hiddens": [32, 32]})
+            .experimental(_enable_new_api_stack=True)
+            .training(model={"fcnet_hiddens": [32, 32]})
             .multi_agent(
                 policies=policies,
                 policy_mapping_fn=lambda agent_id, **kwargs: list(policies)[agent_id],
@@ -71,33 +72,36 @@ class TestLearner(unittest.TestCase):
 
                 if fw == "torch":
                     assert isinstance(rl_module, DiscreteBCTorchModule)
-                elif fw == "tf":
+                elif fw == "tf2":
                     assert isinstance(rl_module, DiscreteBCTFModule)
 
     def test_bc_algorithm_w_custom_marl_module(self):
         """Tests the independent multi-agent case with shared encoders."""
 
+        policies = {"policy_1", "policy_2"}
+
         for fw in ["torch"]:
             if fw == "torch":
-                spec = BCTorchMultiAgentSpec(
+                spec = MultiAgentRLModuleSpec(
+                    marl_module_class=BCTorchMultiAgentModuleWithSharedEncoder,
                     module_specs=SingleAgentRLModuleSpec(
                         module_class=BCTorchRLModuleWithSharedGlobalEncoder
-                    )
+                    ),
                 )
             else:
-                spec = BCTfMultiAgentSpec(
+                spec = MultiAgentRLModuleSpec(
+                    marl_module_class=BCTfMultiAgentModuleWithSharedEncoder,
                     module_specs=SingleAgentRLModuleSpec(
                         module_class=BCTfRLModuleWithSharedGlobalEncoder
-                    )
+                    ),
                 )
 
-            policies = {"policy_1", "policy_2"}
             config = (
                 BCConfigTest()
+                .experimental(_enable_new_api_stack=True)
                 .framework(fw)
-                .rl_module(_enable_rl_module_api=True, rl_module_spec=spec)
+                .rl_module(rl_module_spec=spec)
                 .training(
-                    _enable_learner_api=True,
                     model={"fcnet_hiddens": [32, 32]},
                 )
                 .multi_agent(
@@ -126,7 +130,7 @@ class TestLearner(unittest.TestCase):
 
                 if fw == "torch":
                     assert isinstance(rl_module, BCTorchRLModuleWithSharedGlobalEncoder)
-                elif fw == "tf":
+                elif fw == "tf2":
                     assert isinstance(rl_module, BCTfRLModuleWithSharedGlobalEncoder)
 
 

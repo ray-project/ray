@@ -32,13 +32,6 @@ RAYCLUSTERS_QUALIFIED = "rayclusters.ray.io"
 LOG_FORMAT = "[%(levelname)s %(asctime)s] " "%(filename)s: %(lineno)d  " "%(message)s"
 
 
-def setup_logging():
-    logging.basicConfig(
-        level=logging.INFO,
-        format=LOG_FORMAT,
-    )
-
-
 def switch_to_ray_parent_dir():
     # Switch to parent of Ray repo, because that's what the doc examples do.
     logger.info("Switching to parent of Ray directory.")
@@ -295,8 +288,13 @@ def kubectl_exec(
     kubectl_exec_command = (
         ["kubectl", "exec", "-it", pod] + container_option + ["--"] + command
     )
-    out = subprocess.check_output(kubectl_exec_command).decode().strip()
     # Print for debugging convenience.
+    try:
+        out = subprocess.check_output(kubectl_exec_command).decode().strip()
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Error running command {kubectl_exec_command}.")
+        logger.error(f"Output: {e.output.decode()}")
+        raise e from None
     print(out)
     return out
 

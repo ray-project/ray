@@ -1,6 +1,7 @@
-.. include:: /_includes/rllib/announcement.rst
 
 .. include:: /_includes/rllib/we_are_hiring.rst
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 .. _rllib-reference-docs:
 
@@ -23,12 +24,10 @@ If you think there is anything missing, please open an issue on `Github`_.
     env.rst
     policy.rst
     models.rst
+    catalogs.rst
+    rl_modules.rst
+    learner.rst
     evaluation.rst
-    offline.rst
-    parallel_requests.rst
-    train_ops.rst
     replay-buffers.rst
     utils.rst
     external-app.rst
-
-.. include:: /_includes/rllib/announcement_bottom.rst

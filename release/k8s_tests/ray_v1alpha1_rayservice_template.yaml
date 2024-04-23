@@ -167,8 +167,6 @@ spec:
                   value: redis-{cluster_id}:6379
                 - name: RAY_gcs_rpc_server_reconnect_timeout_s
                   value: "600"
-                - name: RAY_num_heartbeats_timeout
-                  value: "120"
                 - name: RAY_gcs_failover_worker_reconnect_timeout
                   value: "600"
                 - name: SERVE_DEPLOYMENT_HANDLE_IS_SYNC
@@ -285,8 +283,6 @@ spec:
                         fieldPath: status.podIP
                   - name: RAY_gcs_rpc_server_reconnect_timeout_s
                     value: "600"
-                  - name: RAY_num_heartbeats_timeout
-                    value: "120"
                   - name: RAY_gcs_failover_worker_reconnect_timeout
                     value: "600"
                   - name: RAY_gcs_server_request_timeout_seconds

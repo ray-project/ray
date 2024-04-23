@@ -1,12 +1,14 @@
 import unittest
 
+import numpy as np
+
 from ray import tune
 from ray.tune.impl.placeholder import (
-    inject_placeholders,
-    resolve_placeholders,
-    create_resolvers_map,
     _FunctionResolver,
     _RefResolver,
+    create_resolvers_map,
+    inject_placeholders,
+    resolve_placeholders,
 )
 from ray.tune.search.sample import Float, Integer
 
@@ -84,7 +86,7 @@ class PlaceholderTest(unittest.TestCase):
             [(_RefResolver.TOKEN, "35397f1a"), "not ok"],
         )
 
-        # Pretend we picked a choice from the grid searches.
+        # Pretend we picked a choice from the categoricals.
         config["param2"][1] = (_RefResolver.TOKEN, "e6a5a3d5")
         config["param3"]["param4"] = "not ok"
 
@@ -92,6 +94,28 @@ class PlaceholderTest(unittest.TestCase):
 
         self.assertEqual(config["param2"][1].value, "ok")
         self.assertEqual(config["param3"]["param4"], "not ok")
+
+    def _testNonSearchSpaceRef(self, value):
+        """Tests that non-primitives (numpy, lambda fn) get replaced by a reference."""
+        config = {"param": tune.choice([value, "other", value])}
+
+        replaced = create_resolvers_map()
+        config = inject_placeholders(config, replaced)
+
+        self.assertEqual(
+            config["param"].categories,
+            [
+                (_RefResolver.TOKEN, "ab9affa5"),
+                "other",
+                (_RefResolver.TOKEN, "ceae296d"),
+            ],
+        )
+
+    def testNumpyToRef(self):
+        self._testNonSearchSpaceRef(np.arange(10))
+
+    def testLambdaToRef(self):
+        self._testNonSearchSpaceRef(lambda x: x)
 
     def testFunction(self):
         config = {
@@ -174,10 +198,6 @@ class PlaceholderTest(unittest.TestCase):
         self.assertEqual(config["param3"]["param4"][1][1].value, "not ok")
 
     def testOtherDomains(self):
-        class Dummy:
-            def __init__(self, value):
-                self.value = value
-
         config = {
             "param1": tune.uniform(0, 1),
             "param2": tune.randint(2, 3),
@@ -289,7 +309,8 @@ class PlaceholderTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

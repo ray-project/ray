@@ -3,10 +3,10 @@ halfcheetah_sac:
     env: HalfCheetah-v3
     run: SAC
     stop:
-        episode_reward_mean: 9000
+        sampler_results/episode_reward_mean: 9000
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
         q_model_config:
           fcnet_activation: relu
           fcnet_hiddens: [256, 256]

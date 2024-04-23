@@ -17,31 +17,47 @@
 namespace ray {
 namespace rpc {
 
-optional<shared_ptr<CoreWorkerClientInterface>> CoreWorkerClientPool::GetByID(
-    ray::WorkerID id) {
-  absl::MutexLock lock(&mu_);
-  auto it = client_map_.find(id);
-  if (it == client_map_.end()) {
-    return {};
-  }
-  return it->second;
-}
-
 shared_ptr<CoreWorkerClientInterface> CoreWorkerClientPool::GetOrConnect(
     const Address &addr_proto) {
-  RAY_CHECK(addr_proto.worker_id() != "");
+  RAY_CHECK_NE(addr_proto.worker_id(), "");
   absl::MutexLock lock(&mu_);
+
+  RemoveIdleClients();
+
+  CoreWorkerClientEntry entry;
   auto id = WorkerID::FromBinary(addr_proto.worker_id());
   auto it = client_map_.find(id);
   if (it != client_map_.end()) {
-    return it->second;
+    entry = *it->second;
+    client_list_.erase(it->second);
+  } else {
+    entry = CoreWorkerClientEntry(id, client_factory_(addr_proto));
   }
-  auto connection = client_factory_(addr_proto);
-  client_map_[id] = connection;
+  client_list_.emplace_front(entry);
+  client_map_[id] = client_list_.begin();
 
-  RAY_LOG(DEBUG) << "Connected to " << addr_proto.ip_address() << ":"
-                 << addr_proto.port();
-  return connection;
+  RAY_LOG(DEBUG) << "Connected to worker " << id << " with address "
+                 << addr_proto.ip_address() << ":" << addr_proto.port();
+  return entry.core_worker_client;
+}
+
+void CoreWorkerClientPool::RemoveIdleClients() {
+  while (!client_list_.empty()) {
+    auto id = client_list_.back().worker_id;
+    // The last client in the list is the least recent accessed client.
+    if (client_list_.back().core_worker_client->IsChannelIdleAfterRPCs()) {
+      client_map_.erase(id);
+      client_list_.pop_back();
+      RAY_LOG(DEBUG) << "Remove idle client to worker " << id
+                     << " , num of clients is now " << client_list_.size();
+    } else {
+      auto entry = client_list_.back();
+      client_list_.pop_back();
+      client_list_.emplace_front(entry);
+      client_map_[id] = client_list_.begin();
+      break;
+    }
+  }
 }
 
 void CoreWorkerClientPool::Disconnect(ray::WorkerID id) {
@@ -50,6 +66,7 @@ void CoreWorkerClientPool::Disconnect(ray::WorkerID id) {
   if (it == client_map_.end()) {
     return;
   }
+  client_list_.erase(it->second);
   client_map_.erase(it);
 }
 

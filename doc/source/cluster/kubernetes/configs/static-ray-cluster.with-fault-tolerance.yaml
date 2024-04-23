@@ -73,6 +73,7 @@ metadata:
   labels:
     app: ray-cluster-head
 spec:
+  clusterIP: None
   ports:
   - name: client
     protocol: TCP
@@ -159,7 +160,7 @@ spec:
               # For production use-cases, we recommend specifying integer CPU reqests and limits.
               # We also recommend setting requests equal to limits for both CPU and memory.
               # For this example, we use a 500m CPU request to accomodate resource-constrained local
-              # Kubernetes testing environments such as KinD and minikube.
+              # Kubernetes testing environments such as Kind and minikube.
               cpu: "500m"
               # The rest state memory usage of the Ray head node is around 1Gb. We do not
               # recommend allocating less than 2Gb memory for the Ray head pod.
@@ -198,7 +199,7 @@ spec:
         imagePullPolicy: Always
         command: ["/bin/bash", "-c", "--"]
         args:
-          - "ray start --num-cpus=$MY_CPU_REQUEST --address=$SERVICE_RAY_CLUSTER_SERVICE_HOST:$SERVICE_RAY_CLUSTER_SERVICE_PORT_GCS_SERVER --object-manager-port=8076 --node-manager-port=8077 --dashboard-agent-grpc-port=8078 --dashboard-agent-listen-port=52365 --block"
+          - "ray start --num-cpus=$MY_CPU_REQUEST --address=service-ray-cluster:6380 --object-manager-port=8076 --node-manager-port=8077 --dashboard-agent-grpc-port=8078 --dashboard-agent-listen-port=52365 --block"
 
         # This volume allocates shared memory for Ray to use for its plasma
         # object store. If you do not provide this, Ray will fall back to
@@ -225,7 +226,7 @@ spec:
             # For production use-cases, we recommend specifying integer CPU reqests and limits.
             # We also recommend setting requests equal to limits for both CPU and memory.
             # For this example, we use a 500m CPU request to accomodate resource-constrained local
-            # Kubernetes testing environments such as KinD and minikube.
+            # Kubernetes testing environments such as Kind and minikube.
           requests:
             cpu: "500m"
             memory: "1G"

@@ -1,10 +1,6 @@
-import {
-  createStyles,
-  makeStyles,
-  Paper,
-  TooltipProps,
-  Typography,
-} from "@material-ui/core";
+import { Box, TooltipProps, Typography } from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import React from "react";
 import { RiArrowDownSLine, RiArrowRightSLine } from "react-icons/ri";
 import { HelpInfo, StyledTooltip } from "../Tooltip";
@@ -18,7 +14,6 @@ const useStyles = makeStyles((theme) =>
     legendRoot: {
       display: "flex",
       flexDirection: "row",
-      marginBottom: theme.spacing(2),
     },
     legendItemContainer: {
       display: "flex",
@@ -136,6 +131,10 @@ export type ProgressBarProps = {
    */
   expanded?: boolean;
   onClick?: () => void;
+  /**
+   * Controls that can be put to the right of the legend.
+   */
+  controls?: JSX.Element;
 };
 
 export const ProgressBar = ({
@@ -147,6 +146,7 @@ export const ProgressBar = ({
   showTotalProgress,
   expanded,
   onClick,
+  controls,
 }: ProgressBarProps) => {
   const classes = useStyles();
   const segmentTotal = progress.reduce((acc, { value }) => acc + value, 0);
@@ -169,31 +169,41 @@ export const ProgressBar = ({
   const filteredSegments = segments.filter(({ value }) => value);
 
   return (
-    <div className={classes.root} onClick={onClick}>
-      {showLegend && (
-        <div className={classes.legendRoot}>
-          <div className={classes.legendItemContainer}>
-            <div
-              className={classes.colorLegend}
-              style={{ backgroundColor: "black" }}
-            />
-            <Typography>Total: {finalTotal}</Typography>
-          </div>
-          {filteredSegments.map(({ value, label, hint, color }) => (
-            <div key={label} className={classes.legendItemContainer}>
-              <div
-                className={classes.colorLegend}
-                style={{ backgroundColor: color }}
-              />
-              <Typography>
-                {label}: {value}
-              </Typography>
-              {hint && <HelpInfo className={classes.hint}>{hint}</HelpInfo>}
+    <div className={classes.root}>
+      {(showLegend || controls) && (
+        <Box
+          display="flex"
+          justifyContent="space-between"
+          alignItems="center"
+          marginBottom={1}
+        >
+          {showLegend && (
+            <div className={classes.legendRoot}>
+              <div className={classes.legendItemContainer}>
+                <div
+                  className={classes.colorLegend}
+                  style={{ backgroundColor: "black" }}
+                />
+                <Typography>Total: {finalTotal}</Typography>
+              </div>
+              {filteredSegments.map(({ value, label, hint, color }) => (
+                <div key={label} className={classes.legendItemContainer}>
+                  <div
+                    className={classes.colorLegend}
+                    style={{ backgroundColor: color }}
+                  />
+                  <Typography>
+                    {label}: {value}
+                  </Typography>
+                  {hint && <HelpInfo className={classes.hint}>{hint}</HelpInfo>}
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          )}
+          {controls && controls}
+        </Box>
       )}
-      <div className={classes.progressBarContainer}>
+      <div className={classes.progressBarContainer} onClick={onClick}>
         {expanded !== undefined &&
           (expanded ? (
             <RiArrowDownSLine className={classes.icon} />
@@ -274,7 +284,7 @@ const LegendTooltip = ({
       <StyledTooltip
         placement="right"
         title={
-          <Paper>
+          <Box>
             <div className={classes.legendItemContainer}>
               <div
                 className={classes.colorLegend}
@@ -293,7 +303,7 @@ const LegendTooltip = ({
                 </Typography>
               </div>
             ))}
-          </Paper>
+          </Box>
         }
       >
         {children}

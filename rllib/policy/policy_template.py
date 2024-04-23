@@ -1,4 +1,3 @@
-import gymnasium as gym
 from typing import (
     Any,
     Callable,
@@ -11,8 +10,9 @@ from typing import (
     Union,
 )
 
+import gymnasium as gym
+
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.models.jax.jax_modelv2 import JAXModelV2
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
@@ -20,7 +20,7 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils import add_mixins, NullContextManager
-from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.framework import try_import_torch, try_import_jax
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -33,8 +33,7 @@ jax, _ = try_import_jax()
 torch, _ = try_import_torch()
 
 
-# TODO: Deprecate in favor of directly sub-classing from TorchPolicy.
-@DeveloperAPI
+@OldAPIStack
 def build_policy_class(
     name: str,
     framework: str,
@@ -250,10 +249,6 @@ def build_policy_class(
 
     class policy_cls(base):
         def __init__(self, obs_space, action_space, config):
-            # Set up the config from possible default-config fn and given
-            # config arg.
-            if get_default_config:
-                config = dict(get_default_config(), **config)
             self.config = config
 
             # Set the DL framework for this Policy.
@@ -296,7 +291,7 @@ def build_policy_class(
                 )
 
             # Make sure, we passed in a correct Model factory.
-            model_cls = TorchModelV2 if framework == "torch" else JAXModelV2
+            model_cls = TorchModelV2
             assert isinstance(
                 self.model, model_cls
             ), "ERROR: Generated Model must be a TorchModelV2 object!"

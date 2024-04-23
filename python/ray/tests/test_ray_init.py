@@ -1,6 +1,7 @@
 import os
 import sys
 import unittest.mock
+import signal
 import subprocess
 
 import grpc
@@ -13,6 +14,7 @@ from ray.cluster_utils import Cluster
 from ray.util.client.common import ClientObjectRef
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.util.client.worker import Worker
+from ray._private.test_utils import wait_for_condition, enable_external_redis
 
 
 @pytest.mark.skipif(
@@ -77,6 +79,39 @@ def test_ray_init_existing_instance(call_ray_start, address):
             assert res.address_info["gcs_address"] == ray_address
     finally:
         ray.shutdown()
+        subprocess.check_output("ray stop --force", shell=True)
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") and sys.platform == "win32",
+    reason="Flaky when run on windows CI",
+)
+def test_ray_init_existing_instance_via_blocked_ray_start():
+    blocked = subprocess.Popen(
+        ["ray", "start", "--head", "--block", "--num-cpus", "1999"]
+    )
+
+    def _connect_to_existing_instance():
+        while True:
+            try:
+                # Make sure ray.init can connect to the existing cluster.
+                ray.init()
+                if ray.cluster_resources().get("CPU", 0) == 1999:
+                    return True
+                else:
+                    return False
+            except Exception:
+                return False
+            finally:
+                ray.shutdown()
+
+    try:
+        wait_for_condition(
+            _connect_to_existing_instance, timeout=30, retry_interval_ms=1000
+        )
+    finally:
+        blocked.terminate()
+        blocked.wait()
         subprocess.check_output("ray stop --force", shell=True)
 
 
@@ -198,6 +233,63 @@ def test_ray_init_using_hostname(ray_start_cluster):
     node_table = cluster.global_state.node_table()
     assert len(node_table) == 1
     assert node_table[0].get("NodeManagerHostname", "") == hostname
+
+
+def test_new_ray_instance_new_session_dir(shutdown_only):
+    ray.init()
+    session_dir = ray._private.worker._global_node.get_session_dir_path()
+    ray.shutdown()
+    ray.init()
+    if enable_external_redis():
+        assert ray._private.worker._global_node.get_session_dir_path() == session_dir
+    else:
+        assert ray._private.worker._global_node.get_session_dir_path() != session_dir
+
+
+def test_new_cluster_new_session_dir(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node()
+    ray.init(address=cluster.address)
+    session_dir = ray._private.worker._global_node.get_session_dir_path()
+    ray.shutdown()
+    cluster.shutdown()
+    cluster.add_node()
+    ray.init(address=cluster.address)
+    if enable_external_redis():
+        assert ray._private.worker._global_node.get_session_dir_path() == session_dir
+    else:
+        assert ray._private.worker._global_node.get_session_dir_path() != session_dir
+    ray.shutdown()
+    cluster.shutdown()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="SIGTERM only on posix")
+def test_ray_init_sigterm_handler():
+    TEST_FILENAME = "sigterm.txt"
+
+    def sigterm_handler_cmd(ray_init=False):
+        return f"""
+import os
+import sys
+import signal
+def sigterm_handler(signum, frame):
+    f = open("{TEST_FILENAME}", "w")
+    sys.exit(0)
+signal.signal(signal.SIGTERM, sigterm_handler)
+
+import ray
+{"ray.init()" if ray_init else ""}
+os.kill(os.getpid(), signal.SIGTERM)
+"""
+
+    # test if sigterm handler is not overwritten by import ray
+    test_child = subprocess.run(["python", "-c", sigterm_handler_cmd()])
+    assert test_child.returncode == 0 and os.path.exists(TEST_FILENAME)
+    os.remove(TEST_FILENAME)
+
+    # test if sigterm handler is overwritten by ray.init
+    test_child = subprocess.run(["python", "-c", sigterm_handler_cmd(ray_init=True)])
+    assert test_child.returncode == signal.SIGTERM and not os.path.exists(TEST_FILENAME)
 
 
 if __name__ == "__main__":

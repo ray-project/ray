@@ -1,12 +1,11 @@
 import logging
-
 from typing import List, Optional, Union
+
 import numpy as np
 import pandas as pd
 
 from ray.data.preprocessor import Preprocessor
 from ray.util.annotations import PublicAPI
-
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +87,7 @@ class Concatenator(Preprocessor):
 
         >>> concatenator = Concatenator(include=["X0", "X1"], dtype=np.float32)
         >>> concatenator.fit_transform(ds)  # doctest: +SKIP
-        Dataset(num_blocks=1, num_rows=3, schema={Y: object, concat_out: TensorDtype(shape=(2,), dtype=float32)})
+        Dataset(num_rows=3, schema={Y: object, concat_out: TensorDtype(shape=(2,), dtype=float32)})
 
     Args:
         output_column_name: The desired name for the new column.

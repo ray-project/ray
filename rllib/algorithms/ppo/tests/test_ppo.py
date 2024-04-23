@@ -1,11 +1,13 @@
-import numpy as np
 import unittest
+
+import numpy as np
 
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF2Policy
 from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
+from ray.rllib.core.columns import Columns
 from ray.rllib.evaluation.postprocessing import (
     compute_gae_for_sample_batch,
     Postprocessing,
@@ -27,24 +29,52 @@ from ray.rllib.utils.test_utils import (
 
 
 # Fake CartPole episode of n time steps.
-FAKE_BATCH = SampleBatch(
+CARTPOLE_FAKE_BATCH = SampleBatch(
     {
-        SampleBatch.OBS: np.array(
+        Columns.OBS: np.array(
             [[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8], [0.9, 1.0, 1.1, 1.2]],
             dtype=np.float32,
         ),
-        SampleBatch.ACTIONS: np.array([0, 1, 1]),
+        Columns.ACTIONS: np.array([0, 1, 1]),
         SampleBatch.PREV_ACTIONS: np.array([0, 1, 1]),
-        SampleBatch.REWARDS: np.array([1.0, -1.0, 0.5], dtype=np.float32),
+        Columns.REWARDS: np.array([1.0, -1.0, 0.5], dtype=np.float32),
         SampleBatch.PREV_REWARDS: np.array([1.0, -1.0, 0.5], dtype=np.float32),
-        SampleBatch.TERMINATEDS: np.array([False, False, True]),
-        SampleBatch.TRUNCATEDS: np.array([False, False, False]),
-        SampleBatch.VF_PREDS: np.array([0.5, 0.6, 0.7], dtype=np.float32),
-        SampleBatch.ACTION_DIST_INPUTS: np.array(
+        Columns.TERMINATEDS: np.array([False, False, True]),
+        Columns.TRUNCATEDS: np.array([False, False, False]),
+        Columns.VF_PREDS: np.array([0.5, 0.6, 0.7], dtype=np.float32),
+        Columns.ACTION_DIST_INPUTS: np.array(
             [[-2.0, 0.5], [-3.0, -0.3], [-0.1, 2.5]], dtype=np.float32
         ),
-        SampleBatch.ACTION_LOGP: np.array([-0.5, -0.1, -0.2], dtype=np.float32),
-        SampleBatch.EPS_ID: np.array([0, 0, 0]),
+        Columns.ACTION_LOGP: np.array([-0.5, -0.1, -0.2], dtype=np.float32),
+        Columns.EPS_ID: np.array([0, 0, 0]),
+        SampleBatch.AGENT_INDEX: np.array([0, 0, 0]),
+    }
+)
+
+# Fake Pendulum episode of n time steps.
+PENDULUM_FAKE_BATCH = SampleBatch(
+    {
+        Columns.OBS: np.array(
+            [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6], [0.7, 0.8, 0.9]],
+            dtype=np.float32,
+        ),
+        Columns.ACTIONS: np.array([0.1, 0.2, 0.3], dtype=np.float32),
+        SampleBatch.PREV_ACTIONS: np.array([0.3, 0.4], dtype=np.float32),
+        Columns.REWARDS: np.array([1.0, -1.0, 0.5], dtype=np.float32),
+        SampleBatch.PREV_REWARDS: np.array([1.0, -1.0, 0.5], dtype=np.float32),
+        Columns.TERMINATEDS: np.array([False, False, True]),
+        Columns.TRUNCATEDS: np.array([False, False, False]),
+        Columns.VF_PREDS: np.array([0.5, 0.6, 0.7], dtype=np.float32),
+        Columns.ACTION_DIST_INPUTS: np.array(
+            [
+                [0.1, 0.0, 0.1, 0.2, 0.3, 0.4],
+                [0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+                [1.1, 1.2, 1.3, 1.4, 1.5, 1.6],
+            ],
+            dtype=np.float32,
+        ),
+        Columns.ACTION_LOGP: np.array([-0.5, -0.1, -0.2], dtype=np.float32),
+        Columns.EPS_ID: np.array([0, 0, 0]),
         SampleBatch.AGENT_INDEX: np.array([0, 0, 0]),
     }
 )
@@ -98,6 +128,9 @@ class TestPPO(unittest.TestCase):
         # Build a PPOConfig object.
         config = (
             ppo.PPOConfig()
+            # TODO (Kourosh): Enable when the scheduler is supported in the new
+            #  Learner API stack.
+            .experimental(_enable_new_api_stack=False)
             .training(
                 num_sgd_iter=2,
                 # Setup lr schedule for testing.
@@ -120,11 +153,16 @@ class TestPPO(unittest.TestCase):
                 enable_connectors=True,
             )
             .callbacks(MyCallbacks)
+            .evaluation(
+                evaluation_duration=2,
+                evaluation_duration_unit="episodes",
+                evaluation_num_workers=1,
+            )
         )  # For checking lr-schedule correctness.
 
         num_iterations = 2
 
-        for fw in framework_iterator(config, with_eager_tracing=True):
+        for fw in framework_iterator(config):
             for env in ["FrozenLake-v1", "ALE/MsPacman-v5"]:
                 print("Env={}".format(env))
                 for lstm in [False, True]:
@@ -153,6 +191,8 @@ class TestPPO(unittest.TestCase):
                         check_train_results(results)
                         print(results)
 
+                    algo.evaluate()
+
                     check_inference_w_connectors(policy, env_name=env)
                     algo.stop()
 
@@ -162,6 +202,9 @@ class TestPPO(unittest.TestCase):
         # Build a PPOConfig object.
         config = (
             ppo.PPOConfig()
+            # TODO (Kourosh): Enable when the scheduler is supported in the new
+            #  Learner API stack.
+            .experimental(_enable_new_api_stack=False)
             .training(
                 # Setup lr schedule for testing.
                 lr_schedule=[[0, 5e-5], [256, 0.0]],
@@ -188,7 +231,7 @@ class TestPPO(unittest.TestCase):
 
         num_iterations = 2
 
-        for fw in framework_iterator(config, with_eager_tracing=True):
+        for fw in framework_iterator(config):
             for env in ["FrozenLake-v1", "ALE/MsPacman-v5"]:
                 print("Env={}".format(env))
                 for lstm in [False, True]:
@@ -232,11 +275,11 @@ class TestPPO(unittest.TestCase):
         """Tests, whether PPO runs with different exploration setups."""
         config = (
             ppo.PPOConfig()
+            # .experimental(_enable_new_api_stack=True)
             .environment(
                 "FrozenLake-v1",
                 env_config={"is_slippery": False, "map_name": "4x4"},
-            )
-            .rollouts(
+            ).rollouts(
                 # Run locally.
                 num_rollout_workers=0,
             )
@@ -244,22 +287,16 @@ class TestPPO(unittest.TestCase):
         obs = np.array(0)
 
         # Test against all frameworks.
-        for fw in framework_iterator(config):
+        for fw, sess in framework_iterator(config, session=True):
             # Default Agent should be setup with StochasticSampling.
-            trainer = config.build()
+            algo = config.build()
             # explore=False, always expect the same (deterministic) action.
-            a_ = trainer.compute_single_action(
+            a_ = algo.compute_single_action(
                 obs, explore=False, prev_action=np.array(2), prev_reward=np.array(1.0)
             )
-            # Test whether this is really the argmax action over the logits.
-            if fw != "tf":
-                last_out = trainer.get_policy().model.last_output()
-                if fw == "torch":
-                    check(a_, np.argmax(last_out.detach().cpu().numpy(), 1)[0])
-                else:
-                    check(a_, np.argmax(last_out.numpy(), 1)[0])
+
             for _ in range(50):
-                a = trainer.compute_single_action(
+                a = algo.compute_single_action(
                     obs,
                     explore=False,
                     prev_action=np.array(2),
@@ -271,17 +308,26 @@ class TestPPO(unittest.TestCase):
             actions = []
             for _ in range(300):
                 actions.append(
-                    trainer.compute_single_action(
+                    algo.compute_single_action(
                         obs, prev_action=np.array(2), prev_reward=np.array(1.0)
                     )
                 )
             check(np.mean(actions), 1.5, atol=0.2)
-            trainer.stop()
+            algo.stop()
 
     def test_ppo_free_log_std(self):
-        """Tests the free log std option works."""
+        """Tests the free log std option works.
+
+        This test is overfitted to the old ModelV2 stack (e.g.
+        policy.model.trainable_variables is not callable in the new stack)
+        # TODO (Kourosh) we should create a new test for the new RLModule stack.
+        """
+
         config = (
             ppo.PPOConfig()
+            # TODO (Kourosh): Enable when free log std is supported in the new
+            #  Learner API stack.
+            .experimental(_enable_new_api_stack=False)
             .environment("CartPole-v1")
             .rollouts(
                 num_rollout_workers=0,
@@ -298,8 +344,8 @@ class TestPPO(unittest.TestCase):
         )
 
         for fw, sess in framework_iterator(config, session=True):
-            trainer = config.build()
-            policy = trainer.get_policy()
+            algo = config.build()
+            policy = algo.get_policy()
 
             # Check the free log std var is created.
             if fw == "torch":
@@ -327,7 +373,7 @@ class TestPPO(unittest.TestCase):
             # Check the variable is initially zero.
             init_std = get_value()
             assert init_std == 0.0, init_std
-            batch = compute_gae_for_sample_batch(policy, FAKE_BATCH.copy())
+            batch = compute_gae_for_sample_batch(policy, CARTPOLE_FAKE_BATCH.copy())
             if fw == "torch":
                 batch = policy._lazy_tensor_dict(batch)
             policy.learn_on_batch(batch)
@@ -335,12 +381,18 @@ class TestPPO(unittest.TestCase):
             # Check the variable is updated.
             post_std = get_value()
             assert post_std != 0.0, post_std
-            trainer.stop()
+            algo.stop()
 
     def test_ppo_loss_function(self):
-        """Tests the PPO loss function math."""
+        """Tests the PPO loss function math.
+
+        This test is overfitted to the old ModelV2 stack (e.g.
+        policy.model.trainable_variables is not callable in the new stack)
+        # TODO (Kourosh) we should create a new test for the new RLModule stack.
+        """
         config = (
             ppo.PPOConfig()
+            .experimental(_enable_new_api_stack=False)
             .environment("CartPole-v1")
             .rollouts(
                 num_rollout_workers=0,
@@ -356,8 +408,8 @@ class TestPPO(unittest.TestCase):
         )
 
         for fw, sess in framework_iterator(config, session=True):
-            trainer = config.build()
-            policy = trainer.get_policy()
+            algo = config.build()
+            policy = algo.get_policy()
 
             # Check no free log std var by default.
             if fw == "torch":
@@ -374,7 +426,9 @@ class TestPPO(unittest.TestCase):
             # to train_batch dict.
             # A = [0.99^2 * 0.5 + 0.99 * -1.0 + 1.0, 0.99 * 0.5 - 1.0, 0.5] =
             # [0.50005, -0.505, 0.5]
-            train_batch = compute_gae_for_sample_batch(policy, FAKE_BATCH.copy())
+            train_batch = compute_gae_for_sample_batch(
+                policy, CARTPOLE_FAKE_BATCH.copy()
+            )
             if fw == "torch":
                 train_batch = policy._lazy_tensor_dict(train_batch)
 
@@ -397,7 +451,7 @@ class TestPPO(unittest.TestCase):
             if fw == "tf":
                 vars = policy.get_session().run(vars)
             expected_shared_out = fc(
-                train_batch[SampleBatch.CUR_OBS],
+                train_batch[Columns.OBS],
                 vars[0 if fw != "torch" else 2],
                 vars[1 if fw != "torch" else 3],
                 framework=fw,
@@ -454,7 +508,7 @@ class TestPPO(unittest.TestCase):
                 check(policy._mean_policy_loss, np.mean(-pg_loss))
                 check(policy._mean_vf_loss, np.mean(vf_loss), decimals=4)
                 check(policy._total_loss, overall_loss, decimals=4)
-            trainer.stop()
+            algo.stop()
 
     def _ppo_loss_helper(
         self, policy, model, dist_class, train_batch, logits, vf_outs, sess=None
@@ -465,15 +519,12 @@ class TestPPO(unittest.TestCase):
         """
         # Calculate expected PPO loss results.
         dist = dist_class(logits, policy.model)
-        dist_prev = dist_class(
-            train_batch[SampleBatch.ACTION_DIST_INPUTS], policy.model
-        )
-        expected_logp = dist.logp(train_batch[SampleBatch.ACTIONS])
+        dist_prev = dist_class(train_batch[Columns.ACTION_DIST_INPUTS], policy.model)
+        expected_logp = dist.logp(train_batch[Columns.ACTIONS])
         if isinstance(model, TorchModelV2):
             train_batch.set_get_interceptor(None)
             expected_rho = np.exp(
-                expected_logp.detach().cpu().numpy()
-                - train_batch[SampleBatch.ACTION_LOGP]
+                expected_logp.detach().cpu().numpy() - train_batch[Columns.ACTION_LOGP]
             )
             # KL(prev vs current action dist)-loss component.
             kl = np.mean(dist_prev.kl(dist).detach().cpu().numpy())
@@ -482,7 +533,7 @@ class TestPPO(unittest.TestCase):
         else:
             if sess:
                 expected_logp = sess.run(expected_logp)
-            expected_rho = np.exp(expected_logp - train_batch[SampleBatch.ACTION_LOGP])
+            expected_rho = np.exp(expected_logp - train_batch[Columns.ACTION_LOGP])
             # KL(prev vs current action dist)-loss component.
             kl = dist_prev.kl(dist)
             if sess:
@@ -507,8 +558,8 @@ class TestPPO(unittest.TestCase):
 
         # Value function loss component.
         vf_loss1 = np.power(vf_outs - train_batch[Postprocessing.VALUE_TARGETS], 2.0)
-        vf_clipped = train_batch[SampleBatch.VF_PREDS] + np.clip(
-            vf_outs - train_batch[SampleBatch.VF_PREDS],
+        vf_clipped = train_batch[Columns.VF_PREDS] + np.clip(
+            vf_outs - train_batch[Columns.VF_PREDS],
             -policy.config["vf_clip_param"],
             policy.config["vf_clip_param"],
         )

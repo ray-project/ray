@@ -1,3 +1,11 @@
+# TODO (sven): Move this example script into the new API stack.
+
+# ***********************************************************************************
+# IMPORTANT NOTE: This script is using the old API stack and will soon be replaced by
+# `ray.rllib.examples.multi_agent.pettingzoo_shared_value_function.py`!
+# ***********************************************************************************
+
+
 """An example of implementing a centralized critic with ObservationFunction.
 
 The advantage of this approach is that it's very simple and you don't have to
@@ -17,11 +25,11 @@ import os
 from ray import air, tune
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.examples.models.centralized_critic_models import (
+from ray.rllib.examples._old_api_stack.models.centralized_critic_models import (
     YetAnotherCentralizedCriticModel,
     YetAnotherTorchCentralizedCriticModel,
 )
-from ray.rllib.examples.env.two_step_game import TwoStepGame
+from ray.rllib.examples.envs.classes.two_step_game import TwoStepGame
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.test_utils import check_learning_achieved
@@ -30,7 +38,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "torch"],
-    default="tf",
+    default="torch",
     help="The DL framework specifier.",
 )
 parser.add_argument(

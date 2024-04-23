@@ -2,12 +2,13 @@
 
 import argparse
 import json
-import logging.handlers
+import logging
 import os
 import signal
 import sys
 import time
 import traceback
+from collections import Counter
 from dataclasses import asdict
 from typing import Any, Callable, Dict, Optional, Union
 
@@ -15,21 +16,21 @@ import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.utils
 from ray._private.event.event_logger import get_event_logger
-from ray._private.gcs_pubsub import GcsPublisher
-from ray._private.gcs_utils import GcsClient
 from ray._private.ray_logging import setup_component_logger
+from ray._raylet import GcsClient
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler._private.commands import teardown_cluster
 from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE,
     AUTOSCALER_METRIC_PORT,
     AUTOSCALER_UPDATE_INTERVAL_S,
+    DISABLE_LAUNCH_CONFIG_CHECK_KEY,
 )
 from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler._private.util import format_readonly_node_type
-from ray.core.generated import gcs_pb2, gcs_service_pb2, gcs_service_pb2_grpc
+from ray.core.generated import gcs_pb2
 from ray.core.generated.event_pb2 import Event as RayEvent
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
@@ -101,6 +102,7 @@ BASE_READONLY_CONFIG = {
     "provider": {
         "type": "readonly",
         "use_node_id_as_ip": True,  # For emulated multi-node on laptop.
+        DISABLE_LAUNCH_CONFIG_CHECK_KEY: True,  # No launch check.
     },
     "auth": {},
     "available_node_types": {
@@ -118,8 +120,6 @@ BASE_READONLY_CONFIG = {
     "worker_setup_commands": [],
     "head_start_ray_commands": [],
     "worker_start_ray_commands": [],
-    "head_node": {},
-    "worker_nodes": {},
 }
 
 
@@ -140,30 +140,22 @@ class Monitor:
         retry_on_failure: bool = True,
     ):
         self.gcs_address = address
-        options = ray_constants.GLOBAL_GRPC_OPTIONS
-        gcs_channel = ray._private.utils.init_grpc_channel(self.gcs_address, options)
-        # TODO: Use gcs client for this
-        self.gcs_node_resources_stub = (
-            gcs_service_pb2_grpc.NodeResourceInfoGcsServiceStub(gcs_channel)
-        )
-        self.gcs_node_info_stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(
-            gcs_channel
-        )
         worker = ray._private.worker.global_worker
-        gcs_client = GcsClient(address=self.gcs_address)
+        # TODO: eventually plumb ClusterID through to here
+        self.gcs_client = GcsClient(address=self.gcs_address)
 
         if monitor_ip:
             monitor_addr = f"{monitor_ip}:{AUTOSCALER_METRIC_PORT}"
-            gcs_client.internal_kv_put(
+            self.gcs_client.internal_kv_put(
                 b"AutoscalerMetricsAddress", monitor_addr.encode(), True, None
             )
-        _initialize_internal_kv(gcs_client)
+        _initialize_internal_kv(self.gcs_client)
         if monitor_ip:
             monitor_addr = f"{monitor_ip}:{AUTOSCALER_METRIC_PORT}"
-            gcs_client.internal_kv_put(
+            self.gcs_client.internal_kv_put(
                 b"AutoscalerMetricsAddress", monitor_addr.encode(), True, None
             )
-        self._session_name = self.get_session_name(gcs_client)
+        self._session_name = self.get_session_name(self.gcs_client)
         logger.info(f"session_name: {self._session_name}")
         worker.mode = 0
         head_node_ip = self.gcs_address.split(":")[0]
@@ -190,6 +182,7 @@ class Monitor:
             self.event_logger = None
 
         self.prom_metrics = AutoscalerPrometheusMetrics(session_name=self._session_name)
+
         if monitor_ip and prometheus_client:
             # If monitor_ip wasn't passed in, then don't attempt to start the
             # metric server to keep behavior identical to before metrics were
@@ -206,6 +199,11 @@ class Monitor:
                     registry=self.prom_metrics.registry,
                     **kwargs,
                 )
+
+                # Reset some gauges, since we don't know which labels have
+                # leaked if the autoscaler was restarted.
+                self.prom_metrics.pending_nodes.clear()
+                self.prom_metrics.active_nodes.clear()
             except Exception:
                 logger.exception(
                     "An exception occurred while starting the metrics server."
@@ -233,7 +231,7 @@ class Monitor:
         self.autoscaler = StandardAutoscaler(
             autoscaling_config,
             self.load_metrics,
-            self.gcs_node_info_stub,
+            self.gcs_client,
             self._session_name,
             prefix_cluster_info=self.prefix_cluster_info,
             event_summarizer=self.event_summarizer,
@@ -243,8 +241,7 @@ class Monitor:
     def update_load_metrics(self):
         """Fetches resource usage data from GCS and updates load metrics."""
 
-        request = gcs_service_pb2.GetAllResourceUsageRequest()
-        response = self.gcs_node_resources_stub.GetAllResourceUsage(request, timeout=60)
+        response = self.gcs_client.get_all_resource_usage(timeout=60)
         resources_batch_data = response.resource_usage_data
         log_resource_batch_data_if_desired(resources_batch_data)
 
@@ -284,7 +281,6 @@ class Monitor:
             ):
                 # A worker node has detected the cluster full of actors.
                 cluster_full = True
-            resource_load = dict(resource_message.resource_load)
             total_resources = dict(resource_message.resources_total)
             available_resources = dict(resource_message.resources_available)
 
@@ -318,7 +314,6 @@ class Monitor:
                 node_id,
                 total_resources,
                 available_resources,
-                resource_load,
                 waiting_bundles,
                 infeasible_bundles,
                 pending_placement_groups,
@@ -364,6 +359,7 @@ class Monitor:
 
     def _run(self):
         """Run the monitor loop."""
+
         while True:
             try:
                 gcs_request_start_time = time.time()
@@ -374,7 +370,6 @@ class Monitor:
                 load_metrics_summary = self.load_metrics.summary()
                 status = {
                     "gcs_request_time": gcs_request_time,
-                    "load_metrics_report": asdict(load_metrics_summary),
                     "time": time.time(),
                     "monitor_pid": os.getpid(),
                 }
@@ -390,8 +385,19 @@ class Monitor:
                     )
                 elif self.autoscaler:
                     # Process autoscaling actions
+                    update_start_time = time.time()
                     self.autoscaler.update()
+                    status["autoscaler_update_time"] = time.time() - update_start_time
                     autoscaler_summary = self.autoscaler.summary()
+                    try:
+                        self.emit_metrics(
+                            load_metrics_summary,
+                            autoscaler_summary,
+                            self.autoscaler.all_node_types,
+                        )
+                    except Exception:
+                        logger.exception("Error emitting metrics")
+
                     if autoscaler_summary:
                         status["autoscaler_report"] = asdict(autoscaler_summary)
                         status[
@@ -399,27 +405,6 @@ class Monitor:
                         ] = (
                             self.autoscaler.non_terminated_nodes.non_terminated_nodes_time  # noqa: E501
                         )
-
-                        for resource_name in ["CPU", "GPU"]:
-                            _, total = load_metrics_summary.usage.get(
-                                resource_name, (0, 0)
-                            )
-                            pending = autoscaler_summary.pending_resources.get(
-                                resource_name, 0
-                            )
-                            self.prom_metrics.cluster_resources.labels(
-                                resource=resource_name,
-                                SessionName=self.prom_metrics.session_name,
-                            ).set(total)
-                            self.prom_metrics.pending_resources.labels(
-                                resource=resource_name,
-                                SessionName=self.prom_metrics.session_name,
-                            ).set(pending)
-
-                    self.prom_metrics.pending_nodes.set(
-                        len(autoscaler_summary.pending_nodes)
-                        + len(autoscaler_summary.pending_launches)
-                    )
 
                     for msg in self.event_summarizer.summary():
                         # Need to prefix each line of the message for the lines to
@@ -435,6 +420,7 @@ class Monitor:
 
                     self.event_summarizer.clear()
 
+                status["load_metrics_report"] = asdict(load_metrics_summary)
                 as_json = json.dumps(status)
                 if _internal_kv_initialized():
                     _internal_kv_put(
@@ -451,17 +437,68 @@ class Monitor:
             # round of messages.
             time.sleep(AUTOSCALER_UPDATE_INTERVAL_S)
 
+    def emit_metrics(self, load_metrics_summary, autoscaler_summary, node_types):
+        if autoscaler_summary is None:
+            return None
+
+        for resource_name in ["CPU", "GPU", "TPU"]:
+            _, total = load_metrics_summary.usage.get(resource_name, (0, 0))
+            pending = autoscaler_summary.pending_resources.get(resource_name, 0)
+            self.prom_metrics.cluster_resources.labels(
+                resource=resource_name,
+                SessionName=self.prom_metrics.session_name,
+            ).set(total)
+            self.prom_metrics.pending_resources.labels(
+                resource=resource_name,
+                SessionName=self.prom_metrics.session_name,
+            ).set(pending)
+
+        pending_node_count = Counter()
+        for _, node_type, _ in autoscaler_summary.pending_nodes:
+            pending_node_count[node_type] += 1
+
+        for node_type, count in autoscaler_summary.pending_launches.items():
+            pending_node_count[node_type] += count
+
+        for node_type in node_types:
+            count = pending_node_count[node_type]
+            self.prom_metrics.pending_nodes.labels(
+                SessionName=self.prom_metrics.session_name,
+                NodeType=node_type,
+            ).set(count)
+
+        for node_type in node_types:
+            count = autoscaler_summary.active_nodes.get(node_type, 0)
+            self.prom_metrics.active_nodes.labels(
+                SessionName=self.prom_metrics.session_name,
+                NodeType=node_type,
+            ).set(count)
+
+        failed_node_counts = Counter()
+        for _, node_type in autoscaler_summary.failed_nodes:
+            failed_node_counts[node_type] += 1
+
+        # NOTE: This metric isn't reset with monitor resets. This means it will
+        # only be updated when the autoscaler' node tracker remembers failed
+        # nodes. If the node type failure is evicted from the autoscaler, the
+        # metric may not update for a while.
+        for node_type, count in failed_node_counts.items():
+            self.prom_metrics.recently_failed_nodes.labels(
+                SessionName=self.prom_metrics.session_name,
+                NodeType=node_type,
+            ).set(count)
+
     def update_event_summary(self):
         """Report the current size of the cluster.
 
-        To avoid log spam, only cluster size changes (CPU or GPU count change)
+        To avoid log spam, only cluster size changes (CPU, GPU or TPU count change)
         are reported to the event summarizer. The event summarizer will report
         only the latest cluster size per batch.
         """
         avail_resources = self.load_metrics.resources_avail_summary()
         if not self.readonly_config and avail_resources != self.last_avail_resources:
             self.event_summarizer.add(
-                "Resized to {}.",  # e.g., Resized to 100 CPUs, 4 GPUs.
+                "Resized to {}.",  # e.g., Resized to 100 CPUs, 4 GPUs, 4 TPUs.
                 quantity=avail_resources,
                 aggregate=lambda old, new: new,
             )
@@ -500,7 +537,6 @@ class Monitor:
                 time.sleep(2)
 
     def _handle_failure(self, error):
-        logger.exception("Error in monitor loop")
         if (
             self.autoscaler is not None
             and os.environ.get("RAY_AUTOSCALER_FATESHARE_WORKERS", "") == "1"
@@ -516,7 +552,7 @@ class Monitor:
             _internal_kv_put(
                 ray_constants.DEBUG_AUTOSCALING_ERROR, message, overwrite=True
             )
-        gcs_publisher = GcsPublisher(address=self.gcs_address)
+        gcs_publisher = ray._raylet.GcsPublisher(address=self.gcs_address)
         from ray._private.utils import publish_error_to_driver
 
         publish_error_to_driver(
@@ -547,6 +583,7 @@ class Monitor:
             self._initialize_autoscaler()
             self._run()
         except Exception:
+            logger.exception("Error in monitor loop")
             self._handle_failure(traceback.format_exc())
             raise
 

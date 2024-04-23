@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[project]
+name = "rllib-maml"
+authors = [{name = "Anyscale Inc."}]
+version = "0.1.0"
+description = ""
+readme = "README.md"
+requires-python = ">=3.7, <3.11"
+dependencies = ["gymnasium[mujoco]==0.26.3", "higher", "ray[rllib]==2.3.1"]
+
+[project.optional-dependencies]
+development = ["pytest>=7.2.2", "pre-commit==2.21.0", "tensorflow==2.11.0", "torch==1.12.0"]

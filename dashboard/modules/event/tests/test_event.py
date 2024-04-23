@@ -11,15 +11,16 @@ import tempfile
 import socket
 
 from pprint import pprint
+from datetime import datetime
 
 import pytest
 import numpy as np
 
 import ray
-from ray.experimental.state.api import list_cluster_events
+from ray.util.state import list_cluster_events
 from ray._private.utils import binary_to_hex
 from ray.cluster_utils import AutoscalingCluster
-from ray._private.event.event_logger import get_event_logger
+from ray._private.event.event_logger import filter_event_by_level, get_event_logger
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.dashboard.modules.event import event_consts
 from ray.core.generated import event_pb2
@@ -46,7 +47,7 @@ def _get_event(msg="empty message", job_id=None, source_type=None):
         "pid": random.randint(1, 65536),
         "label": "",
         "message": msg,
-        "time_stamp": time.time(),
+        "timestamp": time.time(),
         "severity": "INFO",
         "custom_fields": {
             "job_id": ray.JobID.from_int(random.randint(1, 100)).hex()
@@ -293,7 +294,8 @@ async def test_monitor_events():
         assert len(os.listdir(temp_dir)) > 1, "Event log should have rollovers."
 
 
-def test_autoscaler_cluster_events(shutdown_only):
+@pytest.mark.parametrize("autoscaler_v2", [False, True], ids=["v1", "v2"])
+def test_autoscaler_cluster_events(autoscaler_v2, shutdown_only):
     cluster = AutoscalingCluster(
         head_resources={"CPU": 2},
         worker_node_types={
@@ -315,6 +317,7 @@ def test_autoscaler_cluster_events(shutdown_only):
                 "max_workers": 1,
             },
         },
+        autoscaler_v2=autoscaler_v2,
         idle_timeout_minutes=1,
     )
 
@@ -345,9 +348,12 @@ def test_autoscaler_cluster_events(shutdown_only):
 
         def verify():
             cluster_events = list_cluster_events()
+            print(cluster_events)
             messages = {(e["message"], e["source_type"]) for e in cluster_events}
-
-            assert ("Resized to 2 CPUs.", "AUTOSCALER") in messages, cluster_events
+            if not autoscaler_v2:
+                # With head node resources, we don't actually resized. So this event is
+                # not really accurate.
+                assert ("Resized to 2 CPUs.", "AUTOSCALER") in messages, cluster_events
             assert (
                 "Adding 1 node(s) of type gpu_node.",
                 "AUTOSCALER",
@@ -364,14 +370,9 @@ def test_autoscaler_cluster_events(shutdown_only):
                 "Resized to 8 CPUs, 1 GPUs.",
                 "AUTOSCALER",
             ) in messages, cluster_events
-            assert (
-                (
-                    "Error: No available node types can fulfill resource "
-                    "request {'GPU': 5.0}. Add suitable node "
-                    "types to this cluster to resolve this issue."
-                ),
-                "AUTOSCALER",
-            ) in messages
+            assert "No available node types can fulfill resource request" in "".join(
+                [t[0] for t in messages]
+            )
 
             return True
 
@@ -380,6 +381,36 @@ def test_autoscaler_cluster_events(shutdown_only):
     finally:
         ray.shutdown()
         cluster.shutdown()
+
+
+def test_filter_event_by_level(monkeypatch):
+    def gen_event(level: str):
+        return event_pb2.Event(
+            source_type=event_pb2.Event.AUTOSCALER,
+            severity=event_pb2.Event.Severity.Value(level),
+            message=level,
+        )
+
+    trace = gen_event("TRACE")
+    debug = gen_event("DEBUG")
+    info = gen_event("INFO")
+    warning = gen_event("WARNING")
+    error = gen_event("ERROR")
+    fatal = gen_event("FATAL")
+
+    def assert_events_filtered(events, expected, filter_level):
+        filtered = [e for e in events if filter_event_by_level(e, filter_level)]
+        print(filtered)
+        assert len(filtered) == len(expected)
+        assert {e.message for e in filtered} == {e.message for e in expected}
+
+    events = [trace, debug, info, warning, error, fatal]
+    assert_events_filtered(events, [], "TRACE")
+    assert_events_filtered(events, [trace], "DEBUG")
+    assert_events_filtered(events, [trace, debug], "INFO")
+    assert_events_filtered(events, [trace, debug, info], "WARNING")
+    assert_events_filtered(events, [trace, debug, info, warning], "ERROR")
+    assert_events_filtered(events, [trace, debug, info, warning, error], "FATAL")
 
 
 def test_jobs_cluster_events(shutdown_only):
@@ -447,6 +478,42 @@ def test_jobs_cluster_events(shutdown_only):
 
     print("Test failed (runtime_env failure) job run.")
     wait_for_condition(verify, timeout=30)
+    pprint(list_cluster_events())
+
+
+def test_core_events(shutdown_only):
+    # Test events recorded from core RAY_EVENT APIs.
+    ray.init()
+
+    @ray.remote
+    class Actor:
+        def getpid(self):
+            return os.getpid()
+
+    a = Actor.remote()
+    pid = ray.get(a.getpid.remote())
+    os.kill(pid, 9)
+    s = time.time()
+
+    def verify():
+        events = list_cluster_events(filters=[("source_type", "=", "RAYLET")])
+        print(events)
+        assert len(list_cluster_events()) == 1
+        event = events[0]
+        assert event["severity"] == "ERROR"
+        datetime_str = event["time"]
+        datetime_obj = datetime.strptime(datetime_str, "%Y-%m-%d %H:%M:%S")
+        timestamp = time.mktime(datetime_obj.timetuple())
+
+        # Make sure timestamp is not incorrect. Add sufficient buffer (60 seconds)
+        assert abs(timestamp - s) < 60
+        assert (
+            "A worker died or was killed while executing "
+            "a task by an unexpected system error" in event["message"]
+        )
+        return True
+
+    wait_for_condition(verify)
     pprint(list_cluster_events())
 
 

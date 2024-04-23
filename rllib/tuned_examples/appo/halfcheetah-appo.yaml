@@ -7,7 +7,7 @@ halfcheetah-appo:
         time_total_s: 10800
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
         vtrace: True
         gamma: 0.99
         lambda: 0.95

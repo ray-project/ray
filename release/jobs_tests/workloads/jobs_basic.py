@@ -58,7 +58,10 @@ if __name__ == "__main__":
     client = JobSubmissionClient(address)
     job_id = client.submit_job(
         entrypoint="python run_simple_tune_job.py",
-        runtime_env={"pip": ["ray[tune]"], "working_dir": args.working_dir},
+        runtime_env={
+            "pip": ["ray[tune]"],
+            "working_dir": args.working_dir,
+        },
     )
     timeout_s = 10 * 60
     status = wait_until_finish(client=client, job_id=job_id, timeout_s=timeout_s)

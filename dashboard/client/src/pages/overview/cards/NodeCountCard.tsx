@@ -1,4 +1,6 @@
-import { createStyles, makeStyles, Typography } from "@material-ui/core";
+import { Typography } from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import classNames from "classnames";
 import React, { useContext } from "react";
 import { GlobalContext } from "../../../App";
@@ -39,20 +41,28 @@ export const NodeCountCard = ({ className }: NodeCountCardProps) => {
   const classes = useStyles();
 
   const {
+    metricsContextLoaded,
     grafanaHost,
     prometheusHealth,
     sessionName,
-    grafanaDefaultDashboardUid = "rayDefaultDashboard",
+    dashboardUids,
+    dashboardDatasource,
   } = useContext(GlobalContext);
-  const path = `/d-solo/${grafanaDefaultDashboardUid}/default-dashboard?orgId=1&theme=light&panelId=24`;
+  const grafanaDefaultDashboardUid =
+    dashboardUids?.default ?? "rayDefaultDashboard";
+  const path = `/d-solo/${grafanaDefaultDashboardUid}/default-dashboard?orgId=1&theme=light&panelId=24&var-datasource=${dashboardDatasource}`;
   const timeRangeParams = "&from=now-30m&to=now";
+
+  if (!metricsContextLoaded || grafanaHost === "DISABLED") {
+    return null;
+  }
 
   return (
     <OverviewCard className={classNames(classes.root, className)}>
       {grafanaHost === undefined || !prometheusHealth ? (
         <div className={classes.noGraph}>
           <Typography variant="h3">Node count</Typography>
-          <GrafanaNotRunningAlert className={classes.alert} />
+          <GrafanaNotRunningAlert className={classes.alert} severity="info" />
         </div>
       ) : (
         <iframe
@@ -63,7 +73,7 @@ export const NodeCountCard = ({ className }: NodeCountCardProps) => {
         />
       )}
       <div className={classes.links}>
-        <LinkWithArrow text="View all nodes" to="/new/cluster" />
+        <LinkWithArrow text="View all nodes" to="/cluster" />
       </div>
     </OverviewCard>
   );

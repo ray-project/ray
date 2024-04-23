@@ -6,7 +6,7 @@ from ray.util.timer import _Timer
 from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.minibatch_buffer import MinibatchBuffer
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
@@ -17,6 +17,7 @@ tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
+@OldAPIStack
 class MultiGPULearnerThread(LearnerThread):
     """Learner that can use multiple GPUs and parallel loading.
 
@@ -138,7 +139,12 @@ class MultiGPULearnerThread(LearnerThread):
 
     @override(LearnerThread)
     def step(self) -> None:
-        assert self.loader_thread.is_alive()
+        if not self.loader_thread.is_alive():
+            raise RuntimeError(
+                "The `_MultiGPULoaderThread` has died! Will therefore also terminate "
+                "the `MultiGPULearnerThread`."
+            )
+
         with self.load_wait_timer:
             buffer_idx, released = self.ready_tower_stacks_buffer.get()
 
@@ -162,7 +168,9 @@ class MultiGPULearnerThread(LearnerThread):
                 default_policy_results = policy.learn_on_loaded_batch(
                     offset=0, buffer_index=buffer_idx
                 )
-                learner_info_builder.add_learn_on_batch_results(default_policy_results)
+                learner_info_builder.add_learn_on_batch_results(
+                    default_policy_results, policy_id=pid
+                )
                 self.policy_ids_updated.append(pid)
                 get_num_samples_loaded_into_buffer += (
                     policy.get_num_samples_loaded_into_buffer(buffer_idx)

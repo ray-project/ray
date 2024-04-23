@@ -1,4 +1,3 @@
-import sys
 from typing import Optional
 
 import ray
@@ -6,14 +5,12 @@ from ray.data.dataset import Dataset
 
 from benchmark import Benchmark
 
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
+from typing import Literal
 
 
 def iter_batches(
     ds: Dataset,
+    block_format: Literal["pandas", "pyarrow", "simple"] = "pyarrow",
     batch_size: Optional[int] = None,
     batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
     local_shuffle_buffer_size: Optional[int] = None,
@@ -32,13 +29,13 @@ def iter_batches(
             num_batches += 1
     print(
         "iter_batches done, block_format:",
-        ds.dataset_format(),
+        block_format,
         "batch_format:",
         batch_format,
         "num_rows:",
         ds.count(),
         "num_blocks:",
-        ds.num_blocks(),
+        ds._plan.initial_num_blocks(),
         "num_batches:",
         num_batches,
     )
@@ -53,7 +50,7 @@ def run_iter_batches_benchmark(benchmark: Benchmark):
             "s3://anonymous@air-example-data/ursa-labs-taxi-data/by_year/2018/01"
         )
         .repartition(12)
-        .fully_executed()
+        .materialize()
     )
 
     batch_formats = ["pandas", "numpy"]
@@ -61,7 +58,7 @@ def run_iter_batches_benchmark(benchmark: Benchmark):
 
     # Test default args.
     test_name = "iter-batches-default"
-    benchmark.run(
+    benchmark.run_materialize_ds(
         test_name,
         iter_batches,
         ds=ds,
@@ -72,15 +69,16 @@ def run_iter_batches_benchmark(benchmark: Benchmark):
     for current_format in ["pyarrow", "pandas"]:
         new_ds = ds.map_batches(
             lambda ds: ds, batch_format=current_format, batch_size=None
-        ).fully_executed()
+        ).materialize()
         for new_format in ["pyarrow", "pandas", "numpy"]:
             for batch_size in batch_sizes:
                 test_name = f"iter-batches-conversion-{current_format}-to-{new_format}-{batch_size}"  # noqa: E501
-                benchmark.run(
+                benchmark.run_materialize_ds(
                     test_name,
                     iter_batches,
                     ds=new_ds,
                     batch_format=new_format,
+                    block_format=current_format,
                     batch_size=batch_size,
                 )
 
@@ -89,7 +87,7 @@ def run_iter_batches_benchmark(benchmark: Benchmark):
         for batch_size in batch_sizes:
             for shuffle_buffer_size in [batch_size, 2 * batch_size, 4 * batch_size]:
                 test_name = f"iter-batches-shuffle-{batch_format}-{batch_size}-{shuffle_buffer_size}"  # noqa: E501
-                benchmark.run(
+                benchmark.run_materialize_ds(
                     test_name,
                     iter_batches,
                     ds=ds,
@@ -104,14 +102,15 @@ def run_iter_batches_benchmark(benchmark: Benchmark):
     new_ds = ds.repartition(512)
     new_ds = new_ds.map_batches(
         lambda ds: ds, batch_format="pandas", batch_size=None
-    ).fully_executed()
+    ).materialize()
     for batch_size in [32 * 1024, 64 * 1024, 256 * 1024]:
         test_name = f"iter-batches-block-concat-to-batch-{batch_size}"
-        benchmark.run(
+        benchmark.run_materialize_ds(
             test_name,
             iter_batches,
             ds=new_ds,
             batch_format="pandas",
+            block_format="pandas",
             batch_size=batch_size,
         )
 

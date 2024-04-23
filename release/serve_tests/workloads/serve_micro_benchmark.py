@@ -1,7 +1,7 @@
 import asyncio
 import logging
 
-from ray.serve.benchmarks.microbenchmark import main as benchmark_main
+from ray.serve._private.benchmarks.microbenchmark import main as benchmark_main
 from serve_test_cluster_utils import (
     setup_local_single_node_cluster,
     setup_anyscale_cluster,

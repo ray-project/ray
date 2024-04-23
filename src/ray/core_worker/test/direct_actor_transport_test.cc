@@ -720,12 +720,13 @@ class MockWorkerContext : public WorkerContext {
 
 class MockCoreWorkerDirectTaskReceiver : public CoreWorkerDirectTaskReceiver {
  public:
-  MockCoreWorkerDirectTaskReceiver(WorkerContext &worker_context,
-                                   instrumented_io_context &main_io_service,
-                                   const TaskHandler &task_handler,
-                                   const OnTaskDone &task_done)
+  MockCoreWorkerDirectTaskReceiver(
+      WorkerContext &worker_context,
+      instrumented_io_context &main_io_service,
+      const TaskHandler &task_handler,
+      const OnActorCreationTaskDone &actor_creation_task_done_)
       : CoreWorkerDirectTaskReceiver(
-            worker_context, main_io_service, task_handler, task_done) {}
+            worker_context, main_io_service, task_handler, actor_creation_task_done_) {}
 
   void UpdateConcurrencyGroupsCache(const ActorID &actor_id,
                                     const std::vector<ConcurrencyGroup> &cgs) {
@@ -745,7 +746,8 @@ class DirectActorReceiverTest : public ::testing::Test {
                                   std::placeholders::_2,
                                   std::placeholders::_3,
                                   std::placeholders::_4,
-                                  std::placeholders::_5);
+                                  std::placeholders::_5,
+                                  std::placeholders::_6);
     receiver_ = std::make_unique<MockCoreWorkerDirectTaskReceiver>(
         worker_context_, main_io_service_, execute_task, [] { return Status::OK(); });
     receiver_->Init(std::make_shared<rpc::CoreWorkerClientPool>(
@@ -760,6 +762,7 @@ class DirectActorReceiverTest : public ::testing::Test {
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
           *dynamic_return_objects,
+      std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
       ReferenceCounter::ReferenceTableProto *borrowed_refs) {
     return Status::OK();
   }

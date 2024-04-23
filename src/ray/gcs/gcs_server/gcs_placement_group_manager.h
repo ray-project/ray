@@ -82,7 +82,11 @@ class GcsPlacementGroup {
     placement_group_table_data_.set_is_detached(placement_group_spec.is_detached());
     placement_group_table_data_.set_max_cpu_fraction_per_node(
         placement_group_spec.max_cpu_fraction_per_node());
+    placement_group_table_data_.set_soft_target_node_id(
+        placement_group_spec.soft_target_node_id());
     placement_group_table_data_.set_ray_namespace(ray_namespace);
+    placement_group_table_data_.set_placement_group_creation_timestamp_ms(
+        current_sys_time_ms());
     SetupStates();
   }
 
@@ -155,6 +159,10 @@ class GcsPlacementGroup {
 
   /// Returns the maximum CPU fraction per node for this placement group.
   double GetMaxCpuFractionPerNode() const;
+
+  /// Return the target node ID where bundles of this placement group should be placed.
+  /// Only works for STRICT_PACK placement group.
+  NodeID GetSoftTargetNodeID() const;
 
   const rpc::PlacementGroupStats &GetStats() const;
 
@@ -323,6 +331,13 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// \param node_id The specified node id.
   void OnNodeAdd(const NodeID &node_id);
 
+  /// Get bundles on a node.
+  ///
+  /// \param node_id The specified node id.
+  /// \return A map from placement group id to bundles indices on the node.
+  virtual absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> GetBundlesOnNode(
+      const NodeID &node_id) const;
+
   /// Clean placement group that belongs to the job id if necessary.
   ///
   /// This interface is a part of automatic lifecycle management for placement groups.
@@ -368,6 +383,20 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   void SetUsageStatsClient(UsageStatsClient *usage_stats_client) {
     usage_stats_client_ = usage_stats_client;
   }
+
+  /// Get the placement group load information.
+  ///
+  /// The API guarantees the returned placement groups' states
+  /// are either PENDING or RESCHEDULING.
+  ///
+  /// \return Placement group load information. Users should check if
+  /// the returned rpc has any placement_group_data.
+  virtual std::shared_ptr<rpc::PlacementGroupLoad> GetPlacementGroupLoad() const;
+
+ protected:
+  /// For testing/mocking only.
+  explicit GcsPlacementGroupManager(instrumented_io_context &io_context,
+                                    GcsResourceManager &gcs_resource_manager);
 
  private:
   /// Push a placement group to pending queue.

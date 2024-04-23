@@ -4,8 +4,6 @@ from collections import Counter
 from functools import reduce
 from typing import Dict, List
 
-import numpy as np
-
 from ray._private.gcs_utils import PlacementGroupTableData
 from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE,
@@ -76,7 +74,6 @@ class LoadMetrics:
         self.static_resources_by_ip = {}
         self.dynamic_resources_by_ip = {}
         self.raylet_id_by_ip = {}
-        self.resource_load_by_ip = {}
         self.waiting_bundles = []
         self.infeasible_bundles = []
         self.pending_placement_groups = []
@@ -95,13 +92,11 @@ class LoadMetrics:
         raylet_id: bytes,
         static_resources: Dict[str, Dict],
         dynamic_resources: Dict[str, Dict],
-        resource_load: Dict[str, Dict],
         waiting_bundles: List[Dict[str, float]] = None,
         infeasible_bundles: List[Dict[str, float]] = None,
         pending_placement_groups: List[PlacementGroupTableData] = None,
         cluster_full_of_actors_detected: bool = False,
     ):
-        self.resource_load_by_ip[ip] = resource_load
         self.static_resources_by_ip[ip] = static_resources
         self.raylet_id_by_ip[ip] = raylet_id
         self.cluster_full_of_actors_detected = cluster_full_of_actors_detected
@@ -175,7 +170,6 @@ class LoadMetrics:
         prune(self.static_resources_by_ip, should_log=False)
         prune(self.raylet_id_by_ip, should_log=False)
         prune(self.dynamic_resources_by_ip, should_log=False)
-        prune(self.resource_load_by_ip, should_log=False)
         prune(self.last_heartbeat_time_by_ip, should_log=False)
 
     def get_node_resources(self):
@@ -194,8 +188,8 @@ class LoadMetrics:
 
         Example:
             >>> from ray.autoscaler._private.load_metrics import LoadMetrics
-            >>> metrics = LoadMetrics(...) # doctest: +SKIP
-            >>> metrics.get_static_node_resources_by_ip()
+            >>> metrics = LoadMetrics(...)  # doctest: +SKIP
+            >>> metrics.get_static_node_resources_by_ip()  # doctest: +SKIP
             {127.0.0.1: {"CPU": 1}, 127.0.0.2: {"CPU": 4, "GPU": 8}}
         """
         return self.static_resources_by_ip
@@ -204,21 +198,10 @@ class LoadMetrics:
         return self.dynamic_resources_by_ip
 
     def _get_resource_usage(self):
-        num_nodes = 0
-        num_nonidle = 0
         resources_used = {}
         resources_total = {}
         for ip, max_resources in self.static_resources_by_ip.items():
-            # Nodes without resources don't count as nodes (e.g. unmanaged
-            # nodes)
-            if any(max_resources.values()):
-                num_nodes += 1
             avail_resources = self.dynamic_resources_by_ip[ip]
-            resource_load = self.resource_load_by_ip[ip]
-            max_frac = 0.0
-            for resource_id, amount in resource_load.items():
-                if amount > 0:
-                    max_frac = 1.0  # the resource is saturated
             for resource_id, amount in max_resources.items():
                 used = amount - avail_resources[resource_id]
                 if resource_id not in resources_used:
@@ -227,12 +210,6 @@ class LoadMetrics:
                 resources_used[resource_id] += used
                 resources_total[resource_id] += amount
                 used = max(0, used)
-                if amount > 0:
-                    frac = used / float(amount)
-                    if frac > max_frac:
-                        max_frac = frac
-            if max_frac > 0:
-                num_nonidle += 1
 
         return resources_used, resources_total
 
@@ -268,6 +245,8 @@ class LoadMetrics:
         out = "{} CPUs".format(int(total_resources.get("CPU", 0)))
         if "GPU" in total_resources:
             out += ", {} GPUs".format(int(total_resources["GPU"]))
+        if "TPU" in total_resources:
+            out += ", {} TPUs".format(int(total_resources["TPU"]))
         return out
 
     def summary(self):
@@ -383,14 +362,16 @@ class LoadMetrics:
                 ]
             ),
             "NodeIdleSeconds": "Min={} Mean={} Max={}".format(
-                int(np.min(idle_times)) if idle_times else -1,
-                int(np.mean(idle_times)) if idle_times else -1,
-                int(np.max(idle_times)) if idle_times else -1,
+                int(min(idle_times)) if idle_times else -1,
+                int(float(sum(idle_times)) / len(idle_times)) if idle_times else -1,
+                int(max(idle_times)) if idle_times else -1,
             ),
             "TimeSinceLastHeartbeat": "Min={} Mean={} Max={}".format(
-                int(np.min(heartbeat_times)) if heartbeat_times else -1,
-                int(np.mean(heartbeat_times)) if heartbeat_times else -1,
-                int(np.max(heartbeat_times)) if heartbeat_times else -1,
+                int(min(heartbeat_times)) if heartbeat_times else -1,
+                int(float(sum(heartbeat_times)) / len(heartbeat_times))
+                if heartbeat_times
+                else -1,
+                int(max(heartbeat_times)) if heartbeat_times else -1,
             ),
             "MostDelayedHeartbeats": most_delayed_heartbeats,
         }

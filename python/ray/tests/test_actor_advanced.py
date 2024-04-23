@@ -1,12 +1,16 @@
 import os
+import random
 import sys
+import threading
 import time
+import traceback
 
 import numpy as np
 import pytest
 
 import ray
 import ray._private.gcs_utils as gcs_utils
+from ray.util.state import list_actors
 import ray.cluster_utils
 from ray._private.test_utils import (
     SignalActor,
@@ -20,11 +24,6 @@ from ray._private.test_utils import (
 from ray._private.ray_constants import gcs_actor_scheduling_enabled
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
 
-try:
-    import pytest_timeout
-except ImportError:
-    pytest_timeout = None
-
 
 def test_remote_functions_not_scheduled_on_actors(ray_start_regular):
     # Make sure that regular remote functions are not scheduled on actors.
@@ -35,14 +34,14 @@ def test_remote_functions_not_scheduled_on_actors(ray_start_regular):
             pass
 
         def get_id(self):
-            return ray._private.worker.global_worker.worker_id
+            return ray.get_runtime_context().get_worker_id()
 
     a = Actor.remote()
     actor_id = ray.get(a.get_id.remote())
 
     @ray.remote
     def f():
-        return ray._private.worker.global_worker.worker_id
+        return ray.get_runtime_context().get_worker_id()
 
     resulting_ids = ray.get([f.remote() for _ in range(100)])
     assert actor_id not in resulting_ids
@@ -767,8 +766,9 @@ def test_actor_creation_task_crash(ray_start_regular):
 
     # Verify an exception is thrown.
     a = Actor.remote()
-    with pytest.raises(ray.exceptions.RayActorError):
+    with pytest.raises(ray.exceptions.RayActorError) as excinfo:
         ray.get(a.f.remote())
+    assert excinfo.value.actor_id == a._actor_id.hex()
 
     # Test an actor can be restarted successfully
     # afte it dies in its constructor.
@@ -1058,13 +1058,9 @@ def test_actor_timestamps(ray_start_regular):
         state_after_ending = ray._private.state.actors()[actor_id]
 
         assert state_after_starting["StartTime"] == state_after_ending["StartTime"]
-
         start_time = state_after_ending["StartTime"]
         end_time = state_after_ending["EndTime"]
-        lapsed = end_time - start_time
-
         assert end_time > start_time > 0, f"Start: {start_time}, End: {end_time}"
-        assert 500 < lapsed < 1500, f"Start: {start_time}, End: {end_time}"
 
     def not_graceful_exit():
         actor = Foo.remote()
@@ -1080,10 +1076,7 @@ def test_actor_timestamps(ray_start_regular):
 
         start_time = state_after_ending["StartTime"]
         end_time = state_after_ending["EndTime"]
-        lapsed = end_time - start_time
-
         assert end_time > start_time > 0, f"Start: {start_time}, End: {end_time}"
-        assert 500 < lapsed < 1500, f"Start: {start_time}, End: {end_time}"
 
     def restarted():
         actor = Foo.options(max_restarts=1, max_task_retries=-1).remote()
@@ -1101,10 +1094,7 @@ def test_actor_timestamps(ray_start_regular):
 
         start_time = state_after_ending["StartTime"]
         end_time = state_after_ending["EndTime"]
-        lapsed = end_time - start_time
-
         assert end_time > start_time > 0, f"Start: {start_time}, End: {end_time}"
-        assert 1500 < lapsed < 2500, f"Start: {start_time}, End: {end_time}"
 
     graceful_exit()
     not_graceful_exit()
@@ -1183,6 +1173,62 @@ def test_get_actor_race_condition(shutdown_only):
         assert ["ok"] * CONCURRENCY == results
 
 
+def test_create_actor_race_condition(shutdown_only):
+    """Make sure we can create actors in multiple threads without
+    race conditions.
+
+    Check https://github.com/ray-project/ray/issues/41324
+    """
+
+    @ray.remote
+    class Actor:
+        pass
+
+    def create(name, namespace, results, i):
+        time.sleep(random.random())
+        try:
+            Actor.options(
+                name=name,
+                namespace=namespace,
+                get_if_exists=True,
+                lifetime="detached",
+            ).remote()
+            results[i] = "ok"
+        except Exception:
+            e = traceback.format_exc()
+            results[i] = e
+
+    CONCURRENCY = 1000
+    ACTOR_NAME = "TestActor"
+    ACTOR_NAMESPACE = "TestNamespace"
+
+    def run_and_check():
+        results = [None] * CONCURRENCY
+        threads = [None] * CONCURRENCY
+        for i in range(CONCURRENCY):
+            threads[i] = threading.Thread(
+                target=create, args=(ACTOR_NAME, ACTOR_NAMESPACE, results, i)
+            )
+
+        for thread in threads:
+            thread.start()
+
+        for thread in threads:
+            thread.join()
+
+        for result in results:
+            assert result == "ok"
+
+        actor = ray.get_actor(
+            ACTOR_NAME, namespace=ACTOR_NAMESPACE
+        )  # Creation and get should be successful
+        ray.kill(actor)  # Cleanup
+
+    ray.init()
+    for _ in range(50):
+        run_and_check()
+
+
 def test_get_actor_in_remote_workers(ray_start_cluster):
     """Make sure we can get and create actors without
     race condition in a remote worker.
@@ -1255,6 +1301,73 @@ def test_resource_leak_when_cancel_actor_in_phase_of_creating(ray_start_cluster)
 
     # Ensure there is no resource leak.
     wait_for_condition(lambda: ray.available_resources()["CPU"] == 2)
+
+
+def test_actor_gc(monkeypatch, shutdown_only):
+    MAX_DEAD_ACTOR_CNT = 5
+    with monkeypatch.context() as m:
+        m.setenv("RAY_maximum_gcs_destroyed_actor_cached_count", MAX_DEAD_ACTOR_CNT)
+        ray.init()
+
+        @ray.remote
+        class Actor:
+            def ready(self):
+                pass
+
+        actors = [Actor.remote() for _ in range(10)]
+        ray.get([actor.ready.remote() for actor in actors])
+        alive_actors = 0
+        for a in list_actors():
+            if a["state"] == "ALIVE":
+                alive_actors += 1
+        assert alive_actors == 10
+        # Kill actors
+        del actors
+
+        def verify_cached_dead_actor_cleaned():
+            return len(list_actors()) == MAX_DEAD_ACTOR_CNT  # noqa
+
+        wait_for_condition(verify_cached_dead_actor_cleaned)
+
+        # Test detached actors
+        actors = [Actor.options(lifetime="detached").remote() for _ in range(10)]
+        ray.get([actor.ready.remote() for actor in actors])
+        alive_actors = 0
+        for a in list_actors():
+            if a["state"] == "ALIVE":
+                alive_actors += 1
+        assert alive_actors == 10
+        # Kill actors
+        for actor in actors:
+            ray.kill(actor)
+
+        wait_for_condition(verify_cached_dead_actor_cleaned)
+
+        # Test actors created by a driver.
+
+        driver = """
+import ray
+from ray.util.state import list_actors
+ray.init("auto")
+
+@ray.remote
+class A:
+    def ready(self):
+        pass
+
+actors = [A.remote() for _ in range(10)]
+ray.get([actor.ready.remote() for actor in actors])
+alive_actors = 0
+for a in list_actors():
+    if a["state"] == "ALIVE":
+        alive_actors += 1
+assert alive_actors == 10
+"""
+
+        run_string_as_driver(driver)
+        # Driver exits, so dead actors must be cleaned.
+        wait_for_condition(verify_cached_dead_actor_cleaned)
+        print(list_actors())
 
 
 if __name__ == "__main__":

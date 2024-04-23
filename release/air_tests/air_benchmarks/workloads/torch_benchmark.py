@@ -18,17 +18,6 @@ CONFIG = {"lr": 1e-3, "batch_size": 64}
 VANILLA_RESULT_JSON = "/tmp/vanilla_out.json"
 
 
-def find_network_interface():
-    for iface in os.listdir("/sys/class/net"):
-        if iface.startswith("ens"):
-            network_interface = iface
-            break
-    else:
-        network_interface = "^lo,docker"
-
-    return network_interface
-
-
 # Define model
 class NeuralNetwork(nn.Module):
     def __init__(self):
@@ -93,7 +82,6 @@ def train_func(use_ray: bool, config: Dict):
     local_start_time = time.monotonic()
 
     if use_ray:
-        from ray.air import session
         import ray.train as train
 
     batch_size = config["batch_size"]
@@ -102,7 +90,7 @@ def train_func(use_ray: bool, config: Dict):
     shuffle = config.get("shuffle", False)
 
     if use_ray:
-        world_size = session.get_world_size()
+        world_size = train.get_context().get_world_size()
         local_rank = distributed.get_rank()
     else:
         world_size = distributed.get_world_size()
@@ -195,7 +183,10 @@ def train_func(use_ray: bool, config: Dict):
     loss_fn = nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=lr)
 
-    for _ in range(epochs):
+    for epoch in range(epochs):
+        if world_size > 1:
+            train_dataloader.sampler.set_epoch(epoch)
+
         train_epoch(
             train_dataloader,
             model,
@@ -215,7 +206,7 @@ def train_func(use_ray: bool, config: Dict):
         local_time_taken = time.monotonic() - local_start_time
 
         if use_ray:
-            session.report(dict(loss=loss, local_time_taken=local_time_taken))
+            train.report(dict(loss=loss, local_time_taken=local_time_taken))
         else:
             print(f"Reporting loss: {loss:.4f}")
             if local_rank == 0:
@@ -232,8 +223,8 @@ def train_torch_ray_air(
 ) -> Tuple[float, float, float]:
     # This function is kicked off by the main() function and runs a full training
     # run using Ray AIR.
+    from ray.train import ScalingConfig
     from ray.train.torch import TorchTrainer
-    from ray.air.config import ScalingConfig
 
     def train_loop(config):
         train_func(use_ray=True, config=config)
@@ -309,19 +300,12 @@ def train_torch_vanilla(
 
     num_epochs = config["epochs"]
 
-    try:
-        nccl_network_interface = find_network_interface()
-        runtime_env = {"env_vars": {"NCCL_SOCKET_IFNAME": nccl_network_interface}}
-    except Exception:
-        runtime_env = {}
-
     actors = create_actors_with_options(
         num_actors=num_workers,
         resources={
             "CPU": cpus_per_worker,
             "GPU": int(use_gpu),
         },
-        runtime_env=runtime_env,
     )
 
     run_fn_on_actors(actors=actors, fn=lambda: os.environ.pop("OMP_NUM_THREADS", None))

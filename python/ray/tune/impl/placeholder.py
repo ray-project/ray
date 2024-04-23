@@ -1,11 +1,10 @@
-from collections import defaultdict
 import hashlib
+from collections import defaultdict
 from typing import Any, Dict, Tuple
 
 from ray.tune.search.sample import Categorical, Domain, Function
 from ray.tune.search.variant_generator import assign_value
 from ray.util.annotations import DeveloperAPI
-
 
 ID_HASH_LENGTH = 8
 
@@ -61,7 +60,7 @@ def _is_primitive(x):
 
     Primitive types are int, float, str, bool, and None.
     """
-    return isinstance(x, (int, float, str, bool)) or not x
+    return isinstance(x, (int, float, str, bool)) or x is None
 
 
 @DeveloperAPI

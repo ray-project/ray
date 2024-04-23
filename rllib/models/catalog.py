@@ -8,7 +8,6 @@ from typing import List, Optional, Type, Union
 
 from ray.tune.registry import (
     RLLIB_MODEL,
-    RLLIB_PREPROCESSOR,
     RLLIB_ACTION_DIST,
     _global_registry,
 )
@@ -26,13 +25,13 @@ from ray.rllib.models.tf.tf_action_dist import (
 from ray.rllib.models.torch.torch_action_dist import (
     TorchCategorical,
     TorchDeterministic,
+    TorchDirichlet,
     TorchDiagGaussian,
     TorchMultiActionDistribution,
     TorchMultiCategorical,
 )
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.deprecation import (
-    Deprecated,
     DEPRECATED_VALUE,
     deprecation_warning,
 )
@@ -71,9 +70,31 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # Number of hidden layers to be used.
     "fcnet_hiddens": [256, 256],
     # Activation function descriptor.
-    # Supported values are: "tanh", "relu", "swish" (or "silu"),
+    # Supported values are: "tanh", "relu", "swish" (or "silu", which is the same),
     # "linear" (or None).
     "fcnet_activation": "tanh",
+    # Initializer function or class descriptor for encoder weigths.
+    # Supported values are the initializer names (str), classes or functions listed
+    # by the frameworks (`tf2``, `torch`). See
+    # https://pytorch.org/docs/stable/nn.init.html for `torch` and
+    # https://www.tensorflow.org/api_docs/python/tf/keras/initializers for `tf2`.
+    # Note, if `None`, the default initializer defined by `torch` or `tf2` is used.
+    "fcnet_weights_initializer": None,
+    # Initializer configuration for encoder weights.
+    # This configuration is passed to the initializer defined in
+    # `fcnet_weights_initializer`.
+    "fcnet_weights_initializer_config": None,
+    # Initializer function or class descriptor for encoder bias.
+    # Supported values are the initializer names (str), classes or functions listed
+    # by the frameworks (`tf2``, `torch`). See
+    # https://pytorch.org/docs/stable/nn.init.html for `torch` and
+    # https://www.tensorflow.org/api_docs/python/tf/keras/initializers for `tf2`.
+    # Note, if `None`, the default initializer defined by `torch` or `tf2` is used.
+    "fcnet_bias_initializer": None,
+    # Initializer configuration for encoder bias.
+    # This configuration is passed to the initializer defined in
+    # `fcnet_bias_initializer`.
+    "fcnet_bias_initializer_config": None,
 
     # VisionNetwork (tf and torch): rllib.models.tf|torch.visionnet.py
     # These are used if no custom model is specified and the input space is 2D.
@@ -83,9 +104,53 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # observation space.
     "conv_filters": None,
     # Activation function descriptor.
-    # Supported values are: "tanh", "relu", "swish" (or "silu"),
+    # Supported values are: "tanh", "relu", "swish" (or "silu", which is the same),
     # "linear" (or None).
     "conv_activation": "relu",
+    # Initializer function or class descriptor for CNN encoder kernel.
+    # Supported values are the initializer names (str), classes or functions listed
+    # by the frameworks (`tf2``, `torch`). See
+    # https://pytorch.org/docs/stable/nn.init.html for `torch` and
+    # https://www.tensorflow.org/api_docs/python/tf/keras/initializers for `tf2`.
+    # Note, if `None`, the default initializer defined by `torch` or `tf2` is used.
+    "conv_kernel_initializer": None,
+    # Initializer configuration for CNN encoder kernel.
+    # This configuration is passed to the initializer defined in
+    # `conv_weights_initializer`.
+    "conv_kernel_initializer_config": None,
+    # Initializer function or class descriptor for CNN encoder bias.
+    # Supported values are the initializer names (str), classes or functions listed
+    # by the frameworks (`tf2``, `torch`). See
+    # https://pytorch.org/docs/stable/nn.init.html for `torch` and
+    # https://www.tensorflow.org/api_docs/python/tf/keras/initializers for `tf2`.
+    # Note, if `None`, the default initializer defined by `torch` or `tf2` is used.
+    "conv_bias_initializer": None,
+    # Initializer configuration for CNN encoder bias.
+    # This configuration is passed to the initializer defined in
+    # `conv_bias_initializer`.
+    "conv_bias_initializer_config": None,
+    # Initializer function or class descriptor for CNN head (pi, Q, V) kernel.
+    # Supported values are the initializer names (str), classes or functions listed
+    # by the frameworks (`tf2``, `torch`). See
+    # https://pytorch.org/docs/stable/nn.init.html for `torch` and
+    # https://www.tensorflow.org/api_docs/python/tf/keras/initializers for `tf2`.
+    # Note, if `None`, the default initializer defined by `torch` or `tf2` is used.
+    "conv_transpose_kernel_initializer": None,
+    # Initializer configuration for CNN head (pi, Q, V) kernel.
+    # This configuration is passed to the initializer defined in
+    # `conv_transpose_weights_initializer`.
+    "conv_transpose_kernel_initializer_config": None,
+    # Initializer function or class descriptor for CNN head (pi, Q, V) bias.
+    # Supported values are the initializer names (str), classes or functions listed
+    # by the frameworks (`tf2``, `torch`). See
+    # https://pytorch.org/docs/stable/nn.init.html for `torch` and
+    # https://www.tensorflow.org/api_docs/python/tf/keras/initializers for `tf2`.
+    # Note, if `None`, the default initializer defined by `torch` or `tf2` is used.
+    "conv_transpose_bias_initializer": None,
+    # Initializer configuration for CNN head (pi, Q, V) bias.
+    # This configuration is passed to the initializer defined in
+    # `conv_transpose_bias_initializer`.
+    "conv_transpose_bias_initializer_config": None,
 
     # Some default models support a final FC stack of n Dense layers with given
     # activation:
@@ -98,6 +163,28 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # (that's why it's empty by default).
     "post_fcnet_hiddens": [],
     "post_fcnet_activation": "relu",
+    # Initializer function or class descriptor for head (pi, Q, V) weights.
+    # Supported values are the initializer names (str), classes or functions listed
+    # by the frameworks (`tf2``, `torch`). See
+    # https://pytorch.org/docs/stable/nn.init.html for `torch` and
+    # https://www.tensorflow.org/api_docs/python/tf/keras/initializers for `tf2`.
+    # Note, if `None`, the default initializer defined by `torch` or `tf2` is used.
+    "post_fcnet_weights_initializer": None,
+    # Initializer configuration for head (pi, Q, V) weights.
+    # This configuration is passed to the initializer defined in
+    # `post_fcnet_weights_initializer`.
+    "post_fcnet_weights_initializer_config": None,
+    # Initializer function or class descriptor for head (pi, Q, V) bias.
+    # Supported values are the initializer names (str), classes or functions listed
+    # by the frameworks (`tf2``, `torch`). See
+    # https://pytorch.org/docs/stable/nn.init.html for `torch` and
+    # https://www.tensorflow.org/api_docs/python/tf/keras/initializers for `tf2`.
+    # Note, if `None`, the default initializer defined by `torch` or `tf2` is used.
+    "post_fcnet_bias_initializer": None,
+    # Initializer configuration for head (pi, Q, V) bias.
+    # This configuration is passed to the initializer defined in
+    # `post_fcnet_bias_initializer`.
+    "post_fcnet_bias_initializer_config": None,
 
     # For DiagGaussian action distributions, make the second half of the model
     # outputs floating bias variables instead of state-dependent. This only
@@ -121,6 +208,28 @@ MODEL_DEFAULTS: ModelConfigDict = {
     "lstm_use_prev_action": False,
     # Whether to feed r_{t-1} to LSTM.
     "lstm_use_prev_reward": False,
+    # Initializer function or class descriptor for LSTM weights.
+    # Supported values are the initializer names (str), classes or functions listed
+    # by the frameworks (`tf2``, `torch`). See
+    # https://pytorch.org/docs/stable/nn.init.html for `torch` and
+    # https://www.tensorflow.org/api_docs/python/tf/keras/initializers for `tf2`.
+    # Note, if `None`, the default initializer defined by `torch` or `tf2` is used.
+    "lstm_weights_initializer": None,
+    # Initializer configuration for LSTM weights.
+    # This configuration is passed to the initializer defined in
+    # `lstm_weights_initializer`.
+    "lstm_weights_initializer_config": None,
+    # Initializer function or class descriptor for LSTM bias.
+    # Supported values are the initializer names (str), classes or functions listed
+    # by the frameworks (`tf2``, `torch`). See
+    # https://pytorch.org/docs/stable/nn.init.html for `torch` and
+    # https://www.tensorflow.org/api_docs/python/tf/keras/initializers for `tf2`.
+    # Note, if `None`, the default initializer defined by `torch` or `tf2` is used.
+    "lstm_bias_initializer": None,
+    # Initializer configuration for LSTM bias.
+    # This configuration is passed to the initializer defined in
+    # `lstm_bias_initializer`.
+    "lstm_bias_initializer_config": None,
     # Whether the LSTM is time-major (TxBx..) or batch-major (BxTx..).
     "_time_major": False,
 
@@ -183,6 +292,13 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # backward compatibility to old configs. This yields different models than past
     # versions of RLlib.
     "encoder_latent_dim": None,
+    # Whether to always check the inputs and outputs of RLlib's default models for
+    # their specifications. Input specifications are checked on failed forward passes
+    # of the models regardless of this flag. If this flag is set to `True`, inputs and
+    # outputs are checked on every call. This leads to a slow-down and should only be
+    # used for debugging. Note that this flag is only relevant for instances of
+    # RLlib's Model class. These are commonly generated from ModelConfigs in RLModules.
+    "always_check_shapes": False,
 
     # Deprecated keys:
     # Use `lstm_use_prev_action` or `lstm_use_prev_reward` instead.
@@ -195,20 +311,22 @@ MODEL_DEFAULTS: ModelConfigDict = {
 # fmt: on
 
 
-@PublicAPI
+@DeveloperAPI
 class ModelCatalog:
     """Registry of models, preprocessors, and action distributions for envs.
 
-    Examples:
-        >>> prep = ModelCatalog.get_preprocessor(env)
-        >>> observation = prep.transform(raw_observation)
+    .. testcode::
+        :skipif: True
 
-        >>> dist_class, dist_dim = ModelCatalog.get_action_dist(
-        ...     env.action_space, {})
-        >>> model = ModelCatalog.get_model_v2(
-        ...     obs_space, action_space, num_outputs, options)
-        >>> dist = dist_class(model.outputs, model)
-        >>> action = dist.sample()
+        prep = ModelCatalog.get_preprocessor(env)
+        observation = prep.transform(raw_observation)
+
+        dist_class, dist_dim = ModelCatalog.get_action_dist(
+            env.action_space, {})
+        model = ModelCatalog.get_model_v2(
+            obs_space, action_space, num_outputs, options)
+        dist = dist_class(model.outputs, model)
+        action = dist.sample()
     """
 
     @staticmethod
@@ -325,12 +443,7 @@ class ModelCatalog:
             )
         # Simplex -> Dirichlet.
         elif isinstance(action_space, Simplex):
-            if framework == "torch":
-                # TODO(sven): implement
-                raise NotImplementedError(
-                    "Simplex action spaces not supported for torch."
-                )
-            dist_cls = Dirichlet
+            dist_cls = TorchDirichlet if framework == "torch" else Dirichlet
         # MultiDiscrete -> MultiCategorical.
         elif isinstance(action_space, MultiDiscrete):
             dist_cls = (
@@ -345,7 +458,7 @@ class ModelCatalog:
                 "Unsupported args: {} {}".format(action_space, dist_type)
             )
 
-        return dist_cls, dist_cls.required_model_output_shape(action_space, config)
+        return dist_cls, int(dist_cls.required_model_output_shape(action_space, config))
 
     @staticmethod
     @DeveloperAPI
@@ -431,7 +544,7 @@ class ModelCatalog:
             action_space: Action space of the target gym env.
             num_outputs: The size of the output vector of the model.
             model_config: The "model" sub-config dict
-                within the Trainer's config dict.
+                within the Algorithm's config dict.
             framework: One of "tf2", "tf", "torch", or "jax".
             name: Name (scope) for the model.
             model_interface: Interface required for the model
@@ -653,7 +766,6 @@ class ModelCatalog:
                 raise ValueError("ModelV2 class could not be determined!")
 
             if model_config.get("use_lstm") or model_config.get("use_attention"):
-
                 from ray.rllib.models.tf.attention_net import (
                     AttentionWrapper,
                 )
@@ -700,7 +812,6 @@ class ModelCatalog:
                 raise ValueError("ModelV2 class could not be determined!")
 
             if model_config.get("use_lstm") or model_config.get("use_attention"):
-
                 from ray.rllib.models.torch.attention_net import AttentionWrapper
                 from ray.rllib.models.torch.recurrent_net import LSTMWrapper
 
@@ -738,24 +849,32 @@ class ModelCatalog:
 
     @staticmethod
     @DeveloperAPI
-    def get_preprocessor(env: gym.Env, options: Optional[dict] = None) -> Preprocessor:
+    def get_preprocessor(
+        env: gym.Env, options: Optional[dict] = None, include_multi_binary: bool = False
+    ) -> Preprocessor:
         """Returns a suitable preprocessor for the given env.
 
         This is a wrapper for get_preprocessor_for_space().
         """
 
-        return ModelCatalog.get_preprocessor_for_space(env.observation_space, options)
+        return ModelCatalog.get_preprocessor_for_space(
+            env.observation_space, options, include_multi_binary
+        )
 
     @staticmethod
     @DeveloperAPI
     def get_preprocessor_for_space(
-        observation_space: gym.Space, options: dict = None
+        observation_space: gym.Space,
+        options: dict = None,
+        include_multi_binary: bool = False,
     ) -> Preprocessor:
         """Returns a suitable preprocessor for the given observation space.
 
         Args:
             observation_space: The input observation space.
             options: Options to pass to the preprocessor.
+            include_multi_binary: Whether to include the MultiBinaryPreprocessor in
+                the possible preprocessors returned by this method.
 
         Returns:
             preprocessor: Preprocessor for the observations.
@@ -770,22 +889,10 @@ class ModelCatalog:
                     )
                 )
 
-        if options.get("custom_preprocessor"):
-            preprocessor = options["custom_preprocessor"]
-            logger.info("Using custom preprocessor {}".format(preprocessor))
-            logger.warning(
-                "DeprecationWarning: Custom preprocessors are deprecated, "
-                "since they sometimes conflict with the built-in "
-                "preprocessors for handling complex observation spaces. "
-                "Please use wrapper classes around your environment "
-                "instead of preprocessors."
-            )
-            prep = _global_registry.get(RLLIB_PREPROCESSOR, preprocessor)(
-                observation_space, options
-            )
-        else:
-            cls = get_preprocessor(observation_space)
-            prep = cls(observation_space, options)
+        cls = get_preprocessor(
+            observation_space, include_multi_binary=include_multi_binary
+        )
+        prep = cls(observation_space, options)
 
         if prep is not None:
             logger.debug(
@@ -794,24 +901,6 @@ class ModelCatalog:
                 )
             )
         return prep
-
-    @staticmethod
-    @Deprecated(error=True)
-    def register_custom_preprocessor(
-        preprocessor_name: str, preprocessor_class: type
-    ) -> None:
-        """Register a custom preprocessor class by name.
-
-        The preprocessor can be later used by specifying
-        {"custom_preprocessor": preprocesor_name} in the model config.
-
-        Args:
-            preprocessor_name: Name to register the preprocessor under.
-            preprocessor_class: Python class of the preprocessor.
-        """
-        _global_registry.register(
-            RLLIB_PREPROCESSOR, preprocessor_name, preprocessor_class
-        )
 
     @staticmethod
     @PublicAPI
@@ -868,7 +957,6 @@ class ModelCatalog:
     def _get_v2_model_class(
         input_space: gym.Space, model_config: ModelConfigDict, framework: str = "tf"
     ) -> Type[ModelV2]:
-
         VisionNet = None
         ComplexNet = None
 
@@ -961,7 +1049,7 @@ class ModelCatalog:
 
         Args:
             config: The "model" sub-config dict
-                within the Trainer's config dict.
+                within the Algorithm's config dict.
             action_space: The action space of the model, whose config are
                     validated.
             framework: One of "jax", "tf2", "tf", or "torch".

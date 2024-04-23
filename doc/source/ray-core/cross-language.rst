@@ -10,39 +10,43 @@ Setup the driver
 
 We need to set :ref:`code_search_path` in your driver.
 
-.. tabbed:: Python
+.. tab-set::
 
-    .. literalinclude:: ./doc_code/cross_language.py
-        :language: python
-        :start-after: __crosslang_init_start__
-        :end-before: __crosslang_init_end__
+    .. tab-item:: Python
 
-.. tabbed:: Java
+        .. literalinclude:: ./doc_code/cross_language.py
+            :language: python
+            :start-after: __crosslang_init_start__
+            :end-before: __crosslang_init_end__
 
-    .. code-block:: bash
+    .. tab-item:: Java
 
-        java -classpath <classpath> \
-            -Dray.address=<address> \
-            -Dray.job.code-search-path=/path/to/code/ \
-            <classname> <args>
+        .. code-block:: bash
+
+            java -classpath <classpath> \
+                -Dray.address=<address> \
+                -Dray.job.code-search-path=/path/to/code/ \
+                <classname> <args>
 
 You may want to include multiple directories to load both Python and Java code for workers, if they are placed in different directories.
 
-.. tabbed:: Python
+.. tab-set::
 
-    .. literalinclude:: ./doc_code/cross_language.py
-        :language: python
-        :start-after: __crosslang_multidir_start__
-        :end-before: __crosslang_multidir_end__
+    .. tab-item:: Python
 
-.. tabbed:: Java
+        .. literalinclude:: ./doc_code/cross_language.py
+            :language: python
+            :start-after: __crosslang_multidir_start__
+            :end-before: __crosslang_multidir_end__
 
-    .. code-block:: bash
+    .. tab-item:: Java
 
-        java -classpath <classpath> \
-            -Dray.address=<address> \
-            -Dray.job.code-search-path=/path/to/jars:/path/to/pys \
-            <classname> <args>
+        .. code-block:: bash
+
+            java -classpath <classpath> \
+                -Dray.address=<address> \
+                -Dray.job.code-search-path=/path/to/jars:/path/to/pys \
+                <classname> <args>
 
 Python calling Java
 -------------------
@@ -115,6 +119,8 @@ from the above Python class.
   public class JavaCallPythonDemo {
 
     public static void main(String[] args) {
+      // Set the code-search-path to the directory of your `ray_demo.py` file.
+      System.setProperty("ray.job.code-search-path", "/path/to/the_dir/");
       Ray.init();
 
       // Define a Python class.

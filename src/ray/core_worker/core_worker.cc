@@ -1,3 +1,4 @@
+
 // Copyright 2017 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,6 +21,8 @@
 
 #include <google/protobuf/util/json_util.h>
 
+#include "absl/cleanup/cleanup.h"
+#include "absl/strings/str_format.h"
 #include "boost/fiber/all.hpp"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/ray_config.h"
@@ -32,6 +35,7 @@
 #include "ray/stats/metric_defs.h"
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
+#include "ray/util/subreaper.h"
 #include "ray/util/util.h"
 
 namespace ray {
@@ -86,11 +90,11 @@ class ScopedTaskMetricSetter {
 using ActorLifetime = ray::rpc::JobConfig_ActorLifetime;
 
 // Helper function converts GetObjectLocationsOwnerReply to ObjectLocation
-ObjectLocation CreateObjectLocation(const rpc::GetObjectLocationsOwnerReply &reply) {
+ObjectLocation CreateObjectLocation(
+    const rpc::WorkerObjectLocationsPubMessage &object_info) {
   std::vector<NodeID> node_ids;
-  const auto &object_info = reply.object_location_info();
   node_ids.reserve(object_info.node_ids_size());
-  for (auto i = 0; i < object_info.node_ids_size(); i++) {
+  for (int i = 0; i < object_info.node_ids_size(); ++i) {
     node_ids.push_back(NodeID::FromBinary(object_info.node_ids(i)));
   }
   bool is_spilled = !object_info.spilled_url().empty();
@@ -99,7 +103,8 @@ ObjectLocation CreateObjectLocation(const rpc::GetObjectLocationsOwnerReply &rep
                         std::move(node_ids),
                         is_spilled,
                         object_info.spilled_url(),
-                        NodeID::FromBinary(object_info.spilled_node_id()));
+                        NodeID::FromBinary(object_info.spilled_node_id()),
+                        object_info.did_spill());
 }
 }  // namespace
 
@@ -116,8 +121,35 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       num_executed_tasks_(0),
       resource_ids_(new ResourceMappingType()),
       grpc_service_(io_service_, *this),
-      task_execution_service_work_(task_execution_service_) {
+      task_execution_service_work_(task_execution_service_),
+      exiting_detail_(std::nullopt),
+      pid_(getpid()) {
+  // Notify that core worker is initialized.
+  auto initialzed_scope_guard = absl::MakeCleanup([this] {
+    absl::MutexLock lock(&initialize_mutex_);
+    initialized_ = true;
+    intialize_cv_.SignalAll();
+  });
   RAY_LOG(DEBUG) << "Constructing CoreWorker, worker_id: " << worker_id;
+
+  if (RayConfig::instance().kill_child_processes_on_worker_exit_with_raylet_subreaper()) {
+#ifdef __linux__
+    // Not setting sigchld = ignore: user may want to do waitpid on their own.
+    // If user's bad code causes a zombie process, it will hang their in zombie status
+    // until this worker exits and raylet reaps it.
+    if (SetThisProcessAsSubreaper()) {
+      RAY_LOG(INFO) << "Set this core_worker process as subreaper: " << getpid();
+      SetSigchldIgnore();
+    } else {
+      RAY_LOG(WARNING)
+          << "Failed to set this core_worker process as subreaper. If Raylet is set as "
+             "subreaper, user-spawn daemon processes may be killed by raylet.";
+    }
+#else
+    RAY_LOG(WARNING) << "Subreaper is not supported on this platform. Raylet will not "
+                        "kill unknown children.";
+#endif
+  }
 
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER || options_.is_local_mode) {
@@ -130,10 +162,11 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                   std::placeholders::_4,
                                   std::placeholders::_5,
                                   std::placeholders::_6,
-                                  std::placeholders::_7);
+                                  std::placeholders::_7,
+                                  std::placeholders::_8);
     direct_task_receiver_ = std::make_unique<CoreWorkerDirectTaskReceiver>(
         worker_context_, task_execution_service_, execute_task, [this] {
-          return local_raylet_client_->TaskDone();
+          return local_raylet_client_->ActorCreationTaskDone();
         });
   }
 
@@ -150,11 +183,22 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   if (options_.worker_type != WorkerType::DRIVER) {
     periodical_runner_.RunFnPeriodically(
         [this] { ExitIfParentRayletDies(); },
-        RayConfig::instance().raylet_death_check_interval_milliseconds());
+        RayConfig::instance().raylet_death_check_interval_milliseconds(),
+        "CoreWorker.ExitIfParentRayletDies");
   }
 
   // Start the IO thread first to make sure the checker is working.
-  io_thread_ = std::thread([this]() { RunIOService(); });
+  boost::thread::attributes io_thread_attrs;
+#if defined(__APPLE__)
+  // io thread will run python code through cython
+  // but Mac's default stack size for non-main-thread is too small
+  // for certain python libraries like numpy and will cause sigbus.
+  // Here we increase the stack size to the size that python uses in
+  // https://github.com/python/cpython/blob/v3.9.0/Python/thread_pthread.h#L35.
+  // See https://github.com/ray-project/ray/issues/41094 for more details.
+  io_thread_attrs.set_stack_size(16777216);
+#endif
+  io_thread_ = boost::thread(io_thread_attrs, [this]() { RunIOService(); });
 
   Status raylet_client_status;
   NodeID local_raylet_id;
@@ -183,8 +227,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                              &local_raylet_id,
                                              &assigned_port,
                                              options_.serialized_job_config,
-                                             options_.startup_token,
-                                             options_.entrypoint);
+                                             options_.startup_token);
 
   if (!raylet_client_status.ok()) {
     // Avoid using FATAL log or RAY_CHECK here because they may create a core dump file.
@@ -203,7 +246,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       std::make_unique<rpc::GrpcServer>(WorkerTypeString(options_.worker_type),
                                         assigned_port,
                                         options_.node_ip_address == "127.0.0.1");
-  core_worker_server_->RegisterService(grpc_service_);
+  core_worker_server_->RegisterService(grpc_service_, false /* token_auth */);
   core_worker_server_->Run();
 
   // Set our own address.
@@ -216,10 +259,10 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                 << rpc_address_.port() << ", worker ID " << worker_context_.GetWorkerID()
                 << ", raylet " << local_raylet_id;
 
-  gcs_client_ = std::make_shared<gcs::GcsClient>(options_.gcs_options);
+  gcs_client_ = std::make_shared<gcs::GcsClient>(options_.gcs_options, GetWorkerID());
 
-  RAY_CHECK_OK(gcs_client_->Connect(io_service_));
-  RegisterToGcs();
+  RAY_CHECK_OK(gcs_client_->Connect(io_service_, options_.cluster_id));
+  RegisterToGcs(options_.worker_launch_time_ms, options_.worker_launched_time_ms);
 
   // Initialize the task state event buffer.
   auto task_event_gcs_client = std::make_unique<gcs::GcsClient>(options_.gcs_options);
@@ -242,7 +285,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       /*periodical_runner=*/&periodical_runner_,
       /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
       /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
-      /*publish_batch_size_=*/RayConfig::instance().publish_batch_size());
+      /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
+      GetWorkerID());
   object_info_subscriber_ = std::make_unique<pubsub::Subscriber>(
       /*subscriber_id=*/GetWorkerID(),
       /*channels=*/
@@ -317,6 +361,13 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       local_raylet_client_,
       options_.check_signals,
       [this](const RayObject &obj) {
+        rpc::ErrorType error_type;
+        if (obj.IsException(&error_type) &&
+            error_type == rpc::ErrorType::END_OF_STREAMING_GENERATOR) {
+          // End-of-stream ObjectRefs are sentinels and should never get
+          // returned to the caller.
+          return;
+        }
         // Run this on the event loop to avoid calling back into the language runtime
         // from the middle of user operations.
         io_service_.post(
@@ -327,6 +378,11 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
             },
             "CoreWorker.HandleException");
       }));
+
+#if defined(__APPLE__) || defined(__linux__)
+  experimental_mutable_object_manager_ =
+      std::make_shared<experimental::MutableObjectManager>();
+#endif
 
   auto push_error_callback = [this](const JobID &job_id,
                                     const std::string &type,
@@ -342,7 +398,10 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         RAY_CHECK_OK(PutInLocalPlasmaStore(object, object_id, /*pin_object=*/true));
       },
       /* retry_task_callback= */
-      [this](TaskSpecification &spec, bool object_recovery, uint32_t delay_ms) {
+      [this](TaskSpecification &spec,
+             bool object_recovery,
+             bool update_seqno,
+             uint32_t delay_ms) {
         spec.GetMutableMessage().set_attempt_number(spec.AttemptNumber() + 1);
         if (!object_recovery) {
           // Retry after a delay to emulate the existing Raylet reconstruction
@@ -350,12 +409,14 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           RAY_LOG(INFO) << "Will resubmit task after a " << delay_ms
                         << "ms delay: " << spec.DebugString();
           absl::MutexLock lock(&mutex_);
-          TaskToRetry task_to_retry{current_time_ms() + delay_ms, spec};
+          TaskToRetry task_to_retry{current_time_ms() + delay_ms, spec, update_seqno};
           to_resubmit_.push(std::move(task_to_retry));
         } else {
           if (spec.IsActorTask()) {
-            auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
-            actor_handle->SetResubmittedActorTaskSpec(spec, spec.ActorDummyObject());
+            if (update_seqno) {
+              auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
+              actor_handle->SetResubmittedActorTaskSpec(spec, spec.ActorDummyObject());
+            }
             RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(spec));
           } else {
             RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
@@ -387,7 +448,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     SetCurrentTaskId(task_id, /*attempt_number=*/0, "driver");
 
     // Add the driver task info.
-    if (task_event_buffer_->Enabled()) {
+    if (task_event_buffer_->Enabled() &&
+        !RayConfig::instance().task_events_skip_driver_for_test()) {
       const auto spec = builder.Build();
       auto task_event = std::make_unique<worker::TaskStatusEvent>(
           task_id,
@@ -535,8 +597,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   // NOTE: This also marks the worker as available in Raylet. We do this at the
   // very end in case there is a problem during construction.
   if (options.connect_on_start) {
-    RAY_CHECK_OK(
-        local_raylet_client_->AnnounceWorkerPort(core_worker_server_->GetPort()));
+    ConnectToRayletInternal();
   }
   // Used to detect if the object is in the plasma store.
   max_direct_call_object_size_ = RayConfig::instance().max_direct_call_object_size();
@@ -553,7 +614,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                         << "Task Event stats:\n"
                         << task_event_buffer_->DebugString() << "\n";
         },
-        event_stats_print_interval_ms);
+        event_stats_print_interval_ms,
+        "CoreWorker.PrintEventStats");
   }
 
   // Set event context for current core worker thread.
@@ -583,15 +645,23 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           }
         }
       },
-      100);
+      100,
+      "CoreWorker.RecoverObjects");
 
   periodical_runner_.RunFnPeriodically(
       [this] { InternalHeartbeat(); },
-      RayConfig::instance().core_worker_internal_heartbeat_ms());
+      RayConfig::instance().core_worker_internal_heartbeat_ms(),
+      "CoreWorker.InternalHeartbeat");
 
   periodical_runner_.RunFnPeriodically(
       [this] { RecordMetrics(); },
-      RayConfig::instance().metrics_report_interval_ms() / 2);
+      RayConfig::instance().metrics_report_interval_ms() / 2,
+      "CoreWorker.RecordMetrics");
+
+  periodical_runner_.RunFnPeriodically(
+      [this] { TryDeleteObjectRefStreams(); },
+      RayConfig::instance().local_gc_min_interval_s() * 1000,
+      "CoreWorker.GCStreamingGeneratorMetadata");
 
 #ifndef _WIN32
   // Doing this last during CoreWorker initialization, so initialization logic like
@@ -664,12 +734,26 @@ void CoreWorker::Shutdown() {
   RAY_LOG(INFO) << "Core worker ready to be deallocated.";
 }
 
-void CoreWorker::ConnectToRaylet() {
-  RAY_CHECK(!options_.connect_on_start);
+void CoreWorker::ConnectToRayletInternal() {
   // Tell the raylet the port that we are listening on.
   // NOTE: This also marks the worker as available in Raylet. We do this at the
   // very end in case there is a problem during construction.
-  RAY_CHECK_OK(local_raylet_client_->AnnounceWorkerPort(core_worker_server_->GetPort()));
+  if (options_.worker_type == WorkerType::DRIVER) {
+    Status status = local_raylet_client_->AnnounceWorkerPortForDriver(
+        core_worker_server_->GetPort(), options_.entrypoint);
+    RAY_CHECK(status.ok()) << "Failed to announce driver's port to raylet and GCS: "
+                           << status;
+  } else {
+    Status status =
+        local_raylet_client_->AnnounceWorkerPortForWorker(core_worker_server_->GetPort());
+    RAY_CHECK(status.ok()) << "Failed to announce worker's port to raylet and GCS: "
+                           << status;
+  }
+}
+
+void CoreWorker::ConnectToRaylet() {
+  RAY_CHECK(!options_.connect_on_start);
+  ConnectToRayletInternal();
 }
 
 void CoreWorker::Disconnect(
@@ -680,7 +764,8 @@ void CoreWorker::Disconnect(
   RecordMetrics();
 
   // Driver exiting.
-  if (options_.worker_type == WorkerType::DRIVER && task_event_buffer_->Enabled()) {
+  if (options_.worker_type == WorkerType::DRIVER && task_event_buffer_->Enabled() &&
+      !RayConfig::instance().task_events_skip_driver_for_test()) {
     auto task_event = std::make_unique<worker::TaskStatusEvent>(
         worker_context_.GetCurrentTaskID(),
         worker_context_.GetCurrentJobID(),
@@ -704,6 +789,56 @@ void CoreWorker::Disconnect(
   }
 }
 
+void CoreWorker::KillChildProcs() {
+  // There are cases where worker processes can "leak" child processes.
+  // Basically this means that the worker process (either itself, or via
+  // code in a task or actor) spawned a process and did not kill it on termination.
+  // The process will continue living beyond the lifetime of the worker process.
+  // If that leaked process has expensive resources, such as a CUDA context and associated
+  // GPU memory, then those resources will never be cleaned until something else kills the
+  // process.
+  //
+  // This function lists all processes that are direct children of the current worker
+  // process, then kills them. This currently only works for the "happy-path"; worker
+  // process crashes will still leak processes.
+  // TODO(cade) Use more robust method to catch leaked processes even in worker crash
+  // scenarios (subreaper).
+
+  if (!RayConfig::instance().kill_child_processes_on_worker_exit()) {
+    RAY_LOG(DEBUG)
+        << "kill_child_processes_on_worker_exit is not true, skipping KillChildProcs";
+    return;
+  }
+
+  RAY_LOG(DEBUG) << "kill_child_processes_on_worker_exit true, KillChildProcs";
+  auto maybe_child_procs = GetAllProcsWithPpid(GetPID());
+
+  // Enumerating child procs is not supported on this platform.
+  if (!maybe_child_procs) {
+    RAY_LOG(DEBUG) << "Killing leaked procs not supported on this platform.";
+    return;
+  }
+
+  const auto &child_procs = *maybe_child_procs;
+  const auto child_procs_str = absl::StrJoin(child_procs, ",");
+  RAY_LOG(INFO) << "Try killing all child processes of this worker as it exits. "
+                << "Child process pids: " << child_procs_str;
+
+  for (const auto &child_pid : child_procs) {
+    auto maybe_error_code = KillProc(child_pid);
+    RAY_CHECK(maybe_error_code)
+        << "Expected this path to only be called when KillProc is supported.";
+    auto error_code = *maybe_error_code;
+
+    RAY_LOG(INFO) << "Kill result for child pid " << child_pid << ": "
+                  << error_code.message() << ", bool " << (bool)error_code;
+    if (error_code) {
+      RAY_LOG(WARNING) << "Unable to kill potentially leaked process " << child_pid
+                       << ": " << error_code.message();
+    }
+  }
+}
+
 void CoreWorker::Exit(
     const rpc::WorkerExitType exit_type,
     const std::string &detail,
@@ -712,10 +847,19 @@ void CoreWorker::Exit(
                    "tasks have finished"
                 << ", exit_type=" << rpc::WorkerExitType_Name(exit_type)
                 << ", detail=" << detail;
-  exiting_ = true;
+  {
+    absl::MutexLock lock(&mutex_);
+    RAY_CHECK_NE(detail, "");
+    exiting_detail_ = std::optional<std::string>{detail};
+  }
   // Release the resources early in case draining takes a long time.
-  RAY_CHECK_OK(
-      local_raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources*/ true));
+  auto status =
+      local_raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources*/ true);
+  if (!status.ok()) {
+    RAY_LOG(WARNING)
+        << "Failed to notify Raylet. It is either the raylet is already dead or the "
+           "raylet disconnects the client because it kills this worker.";
+  }
 
   RAY_LOG(DEBUG) << "Exit signal received, remove all local references.";
   /// Since this core worker is exiting, it's necessary to release all local references,
@@ -732,7 +876,12 @@ void CoreWorker::Exit(
          exit_type,
          detail = std::move(detail),
          creation_task_exception_pb_bytes]() {
-          rpc::DrainAndResetServerCallExecutor();
+          rpc::DrainServerCallExecutor();
+          KillChildProcs();
+          // Disconnect should be put close to Shutdown
+          // https://github.com/ray-project/ray/pull/34883
+          // TODO (iycheng) Improve the Process.h and make it able to monitor
+          // process liveness
           Disconnect(exit_type, detail, creation_task_exception_pb_bytes);
           Shutdown();
         },
@@ -777,7 +926,14 @@ void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
                            const std::string &detail) {
   RAY_LOG(WARNING) << "Force exit the process. "
                    << " Details: " << detail;
+
+  KillChildProcs();
+  // Disconnect should be put close to Exit
+  // https://github.com/ray-project/ray/pull/34883
+  // TODO (iycheng) Improve the Process.h and make it able to monitor
+  // process liveness
   Disconnect(exit_type, detail);
+
   // NOTE(hchen): Use `QuickExit()` to force-exit this process without doing cleanup.
   // `exit()` will destruct static objects in an incorrect order, which will lead to
   // core dumps.
@@ -811,7 +967,8 @@ void CoreWorker::SetCurrentTaskId(const TaskID &task_id,
   }
 }
 
-void CoreWorker::RegisterToGcs() {
+void CoreWorker::RegisterToGcs(int64_t worker_launch_time_ms,
+                               int64_t worker_launched_time_ms) {
   absl::flat_hash_map<std::string, std::string> worker_info;
   const auto &worker_id = GetWorkerID();
   worker_info.emplace("node_ip_address", options_.node_ip_address);
@@ -845,8 +1002,10 @@ void CoreWorker::RegisterToGcs() {
   worker_data->mutable_worker_info()->insert(worker_info.begin(), worker_info.end());
 
   worker_data->set_is_alive(true);
-  worker_data->set_pid(getpid());
+  worker_data->set_pid(pid_);
   worker_data->set_start_time_ms(current_sys_time_ms());
+  worker_data->set_worker_launch_time_ms(worker_launch_time_ms);
+  worker_data->set_worker_launched_time_ms(worker_launched_time_ms);
 
   RAY_CHECK_OK(gcs_client_->Workers().AsyncAdd(worker_data, nullptr));
 }
@@ -859,24 +1018,33 @@ void CoreWorker::ExitIfParentRayletDies() {
   if (should_shutdown) {
     RAY_LOG(WARNING) << "Shutting down the core worker because the local raylet failed. "
                      << "Check out the raylet.out log file. Raylet pid: " << raylet_pid;
+
+    // Kill child procs so that child processes of the workers do not outlive the workers.
+    KillChildProcs();
+
     QuickExit();
   }
 }
 
 void CoreWorker::InternalHeartbeat() {
   // Retry tasks.
-  std::vector<TaskSpecification> tasks_to_resubmit;
+  std::vector<TaskToRetry> tasks_to_resubmit;
   {
     absl::MutexLock lock(&mutex_);
     while (!to_resubmit_.empty() &&
            current_time_ms() > to_resubmit_.top().execution_time_ms) {
-      tasks_to_resubmit.push_back(std::move(to_resubmit_.top().task_spec));
+      tasks_to_resubmit.push_back(std::move(to_resubmit_.top()));
       to_resubmit_.pop();
     }
   }
 
-  for (auto &spec : tasks_to_resubmit) {
+  for (auto &task_to_retry : tasks_to_resubmit) {
+    auto &spec = task_to_retry.task_spec;
     if (spec.IsActorTask()) {
+      if (task_to_retry.update_seqno) {
+        auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
+        actor_handle->SetResubmittedActorTaskSpec(spec, spec.ActorDummyObject());
+      }
       RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(spec));
     } else {
       RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
@@ -922,6 +1090,10 @@ CoreWorker::GetAllReferenceCounts() const {
     counts.erase(actor_handle_id);
   }
   return counts;
+}
+
+std::vector<TaskID> CoreWorker::GetPendingChildrenTasks(const TaskID &task_id) const {
+  return task_manager_->GetPendingChildrenTasks(task_id);
 }
 
 const rpc::Address &CoreWorker::GetRpcAddress() const { return rpc_address_; }
@@ -1099,6 +1271,7 @@ Status CoreWorker::Put(const RayObject &object,
 }
 
 Status CoreWorker::CreateOwnedAndIncrementLocalRef(
+    bool is_experimental_mutable_object,
     const std::shared_ptr<Buffer> &metadata,
     const size_t data_size,
     const std::vector<ObjectID> &contained_object_ids,
@@ -1173,7 +1346,8 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
                                               *object_id,
                                               /* owner_address = */ real_owner_address,
                                               data,
-                                              created_by_worker);
+                                              created_by_worker,
+                                              is_experimental_mutable_object);
     }
     if (!status.ok()) {
       RemoveLocalReference(*object_id);
@@ -1202,6 +1376,24 @@ Status CoreWorker::CreateExisting(const std::shared_ptr<Buffer> &metadata,
     return plasma_store_provider_->Create(
         metadata, data_size, object_id, owner_address, data, created_by_worker);
   }
+}
+
+Status CoreWorker::ExperimentalChannelWriteAcquire(
+    const ObjectID &object_id,
+    const std::shared_ptr<Buffer> &metadata,
+    uint64_t data_size,
+    int64_t num_readers,
+    std::shared_ptr<Buffer> *data) {
+  return experimental_mutable_object_manager_->WriteAcquire(
+      object_id, data_size, metadata->Data(), metadata->Size(), num_readers, *data);
+}
+
+Status CoreWorker::ExperimentalChannelWriteRelease(const ObjectID &object_id) {
+  return experimental_mutable_object_manager_->WriteRelease(object_id);
+}
+
+Status CoreWorker::ExperimentalChannelSetError(const ObjectID &object_id) {
+  return experimental_mutable_object_manager_->SetError(object_id);
 }
 
 Status CoreWorker::SealOwned(const ObjectID &object_id,
@@ -1247,6 +1439,36 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
   return Status::OK();
 }
 
+Status CoreWorker::ExperimentalChannelReadRelease(
+    const std::vector<ObjectID> &object_ids) {
+  RAY_CHECK(object_ids.size() == 1);
+  return experimental_mutable_object_manager_->ReadRelease(object_ids[0]);
+}
+
+Status CoreWorker::ExperimentalChannelRegisterReader(const ObjectID &object_id) {
+  return ExperimentalChannelRegisterWriterOrReader(object_id, /*is_writer=*/false);
+}
+
+Status CoreWorker::ExperimentalChannelRegisterWriter(const ObjectID &object_id) {
+  return ExperimentalChannelRegisterWriterOrReader(object_id, /*is_writer=*/true);
+}
+
+Status CoreWorker::ExperimentalChannelRegisterWriterOrReader(const ObjectID &object_id,
+                                                             bool is_writer) {
+  std::unique_ptr<plasma::MutableObject> object = nullptr;
+  RAY_RETURN_NOT_OK(
+      plasma_store_provider_->GetExperimentalMutableObject(object_id, &object));
+  RAY_CHECK(object) << "Mutable object must be local to be registered";
+  if (is_writer) {
+    RAY_RETURN_NOT_OK(experimental_mutable_object_manager_->RegisterWriterChannel(
+        object_id, std::move(object)));
+  } else {
+    RAY_RETURN_NOT_OK(experimental_mutable_object_manager_->RegisterReaderChannel(
+        object_id, std::move(object)));
+  }
+  return Status::OK();
+}
+
 Status CoreWorker::Get(const std::vector<ObjectID> &ids,
                        const int64_t timeout_ms,
                        std::vector<std::shared_ptr<RayObject>> *results) {
@@ -1258,6 +1480,45 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
   }
   results->resize(ids.size(), nullptr);
 
+  // Check whether these are experimental.Channel objects.
+  bool is_experimental_channel = false;
+  for (const auto &id : ids) {
+    if (experimental_mutable_object_manager_->ReaderChannelRegistered(id)) {
+      is_experimental_channel = true;
+    } else {
+      if (is_experimental_channel) {
+        return Status::NotImplemented(
+            "ray.get can only be called on all normal objects, or all "
+            "experimental.Channel objects");
+      }
+    }
+  }
+
+  // ray.get path for experimental.Channel objects.
+  if (is_experimental_channel) {
+    if (timeout_ms >= 0) {
+      return Status::NotImplemented(
+          "non-infinity timeout_ms not supported for experimental channels");
+    }
+    return GetExperimentalMutableObjects(ids, results);
+  } else {
+    return GetObjects(ids, timeout_ms, results);
+  }
+}
+
+Status CoreWorker::GetExperimentalMutableObjects(
+    const std::vector<ObjectID> &ids, std::vector<std::shared_ptr<RayObject>> *results) {
+  for (size_t i = 0; i < ids.size(); i++) {
+    RAY_RETURN_NOT_OK(
+        experimental_mutable_object_manager_->ReadAcquire(ids[i], (*results)[i]));
+  }
+  return Status::OK();
+}
+
+Status CoreWorker::GetObjects(const std::vector<ObjectID> &ids,
+                              const int64_t timeout_ms,
+                              std::vector<std::shared_ptr<RayObject>> *results) {
+  // Normal ray.get path for immutable in-memory and shared memory objects.
   absl::flat_hash_set<ObjectID> plasma_object_ids;
   absl::flat_hash_set<ObjectID> memory_object_ids(ids.begin(), ids.end());
 
@@ -1341,6 +1602,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
       missing_result = true;
     }
   }
+
   // If no timeout was set and none of the results will throw an exception,
   // then check that we fetched all results before returning.
   if (timeout_ms < 0 && !will_throw_exception) {
@@ -1393,20 +1655,11 @@ void RetryObjectInPlasmaErrors(std::shared_ptr<CoreWorkerMemoryStore> &memory_st
   for (auto iter = memory_object_ids.begin(); iter != memory_object_ids.end();) {
     auto current = iter++;
     const auto &mem_id = *current;
-    auto ready_iter = ready.find(mem_id);
-    if (ready_iter != ready.end()) {
-      std::vector<std::shared_ptr<RayObject>> found;
-      RAY_CHECK_OK(memory_store->Get({mem_id},
-                                     /*num_objects=*/1,
-                                     /*timeout=*/0,
-                                     worker_context,
-                                     /*remote_after_get=*/false,
-                                     &found));
-      if (found.size() == 1 && found[0]->IsInPlasmaError()) {
-        plasma_object_ids.insert(mem_id);
-        ready.erase(ready_iter);
-        memory_object_ids.erase(current);
-      }
+    auto found = memory_store->GetIfExists(mem_id);
+    if (found != nullptr && found->IsInPlasmaError()) {
+      plasma_object_ids.insert(mem_id);
+      ready.erase(mem_id);
+      memory_object_ids.erase(current);
     }
   }
 }
@@ -1541,38 +1794,75 @@ Status CoreWorker::GetLocationFromOwner(
     return Status::OK();
   }
 
+  absl::flat_hash_map<rpc::Address, std::vector<ObjectID>> objects_by_owner;
+  for (const auto &object_id : object_ids) {
+    rpc::Address owner_address;
+    RAY_RETURN_NOT_OK(GetOwnerAddress(object_id, &owner_address));
+    objects_by_owner[owner_address].push_back(object_id);
+  }
+
   auto mutex = std::make_shared<absl::Mutex>();
-  auto num_remaining = std::make_shared<size_t>(object_ids.size());
+  auto num_remaining = std::make_shared<size_t>(0);  // Will be incremented per batch
   auto ready_promise = std::make_shared<std::promise<void>>();
   auto location_by_id =
       std::make_shared<absl::flat_hash_map<ObjectID, std::shared_ptr<ObjectLocation>>>();
 
-  for (const auto &object_id : object_ids) {
-    rpc::Address owner_address;
-    RAY_RETURN_NOT_OK(GetOwnerAddress(object_id, &owner_address));
-    auto client = core_worker_client_pool_->GetOrConnect(owner_address);
-    rpc::GetObjectLocationsOwnerRequest request;
-    auto object_location_request = request.mutable_object_location_request();
-    object_location_request->set_intended_worker_id(owner_address.worker_id());
-    object_location_request->set_object_id(object_id.Binary());
-    client->GetObjectLocationsOwner(
-        request,
-        [object_id, mutex, num_remaining, ready_promise, location_by_id](
-            const Status &status, const rpc::GetObjectLocationsOwnerReply &reply) {
-          absl::MutexLock lock(mutex.get());
-          if (status.ok()) {
-            location_by_id->emplace(
-                object_id, std::make_shared<ObjectLocation>(CreateObjectLocation(reply)));
-          } else {
-            RAY_LOG(WARNING) << "Failed to query location information for " << object_id
-                             << " with error: " << status.ToString();
-          }
-          (*num_remaining)--;
-          if (*num_remaining == 0) {
-            ready_promise->set_value();
-          }
-        });
+  for (const auto &owner_and_objects : objects_by_owner) {
+    const auto &owner_address = owner_and_objects.first;
+    const auto &owner_object_ids = owner_and_objects.second;
+
+    // Calculate the number of batches
+    // Use the same config from worker_fetch_request_size
+    size_t batch_size =
+        static_cast<size_t>(RayConfig::instance().worker_fetch_request_size());
+
+    for (size_t batch_start = 0; batch_start < owner_object_ids.size();
+         batch_start += batch_size) {
+      *num_remaining += 1;
+      size_t batch_end = std::min(batch_start + batch_size, owner_object_ids.size());
+      auto client = core_worker_client_pool_->GetOrConnect(owner_address);
+      rpc::GetObjectLocationsOwnerRequest request;
+      request.set_intended_worker_id(owner_address.worker_id());
+
+      // Add object IDs for the current batch to the request
+      for (size_t i = batch_start; i < batch_end; ++i) {
+        request.add_object_ids(owner_object_ids[i].Binary());
+      }
+
+      client->GetObjectLocationsOwner(
+          request,
+          [owner_object_ids,
+           batch_start,
+           mutex,
+           num_remaining,
+           ready_promise,
+           location_by_id,
+           owner_address](const Status &status,
+                          const rpc::GetObjectLocationsOwnerReply &reply) {
+            absl::MutexLock lock(mutex.get());
+            if (status.ok()) {
+              for (int i = 0; i < reply.object_location_infos_size(); ++i) {
+                // Map the object ID to its location, adjusting index by batch_start
+                location_by_id->emplace(
+                    owner_object_ids[batch_start + i],
+                    std::make_shared<ObjectLocation>(
+                        CreateObjectLocation(reply.object_location_infos(i))));
+              }
+            } else {
+              RAY_LOG(WARNING) << "Failed to query location information for objects "
+                               << debug_string(owner_object_ids) << " owned by "
+                               << owner_address.worker_id()
+                               << " with error: " << status.ToString();
+            }
+            (*num_remaining)--;
+            if (*num_remaining == 0) {
+              ready_promise->set_value();
+            }
+          });
+    }
   }
+
+  // Wait for all batches to be processed or timeout
   if (timeout_ms < 0) {
     ready_promise->get_future().wait();
   } else if (ready_promise->get_future().wait_for(
@@ -1583,6 +1873,7 @@ Status CoreWorker::GetLocationFromOwner(
     return Status::TimedOut(stream.str());
   }
 
+  // Fill in the results vector
   for (size_t i = 0; i < object_ids.size(); i++) {
     auto pair = location_by_id->find(object_ids[i]);
     if (pair == location_by_id->end()) {
@@ -1590,6 +1881,7 @@ Status CoreWorker::GetLocationFromOwner(
     }
     (*results)[i] = pair->second;
   }
+
   return Status::OK();
 }
 
@@ -1629,53 +1921,6 @@ Status CoreWorker::PushError(const JobID &job_id,
     return Status::OK();
   }
   return local_raylet_client_->PushError(job_id, type, error_message, timestamp);
-}
-
-void CoreWorker::SpillOwnedObject(const ObjectID &object_id,
-                                  const std::shared_ptr<RayObject> &obj,
-                                  std::function<void()> callback) {
-  if (!obj->IsInPlasmaError()) {
-    RAY_LOG(ERROR) << "Cannot spill inlined object " << object_id;
-    callback();
-    return;
-  }
-
-  // Find the raylet that hosts the primary copy of the object.
-  bool owned_by_us = false;
-  NodeID pinned_at;
-  bool spilled = false;
-  RAY_CHECK(reference_counter_->IsPlasmaObjectPinnedOrSpilled(
-      object_id, &owned_by_us, &pinned_at, &spilled));
-  RAY_CHECK(owned_by_us);
-  if (spilled) {
-    // The object has already been spilled.
-    return;
-  }
-  auto node = gcs_client_->Nodes().Get(pinned_at);
-  if (pinned_at.IsNil() || !node) {
-    RAY_LOG(ERROR) << "Primary raylet for object " << object_id << " unreachable";
-    callback();
-    return;
-  }
-
-  // Ask the raylet to spill the object.
-  RAY_LOG(DEBUG) << "Sending spill request to raylet for object " << object_id;
-  auto raylet_client = std::make_shared<raylet::RayletClient>(
-      rpc::NodeManagerWorkerClient::make(node->node_manager_address(),
-                                         node->node_manager_port(),
-                                         *client_call_manager_));
-  raylet_client->RequestObjectSpillage(
-      object_id,
-      [object_id, callback](const Status &status,
-                            const rpc::RequestObjectSpillageReply &reply) {
-        if (!status.ok() || !reply.success()) {
-          RAY_LOG(ERROR) << "Failed to spill object " << object_id
-                         << ", raylet unreachable or object could not be spilled.";
-        }
-        // TODO(Clark): Provide spilled URL and spilled node ID to callback so it can
-        // added them to the reference.
-        callback();
-      });
 }
 
 json CoreWorker::OverrideRuntimeEnv(json &child, const std::shared_ptr<json> parent) {
@@ -1776,7 +2021,9 @@ void CoreWorker::BuildCommonTaskSpec(
     const std::string &serialized_runtime_env_info,
     const TaskID &main_thread_current_task_id,
     const std::string &concurrency_group_name,
-    bool include_job_config) {
+    bool include_job_config,
+    int64_t generator_backpressure_num_objects,
+    bool enable_task_events) {
   // Build common task spec.
   auto override_runtime_env_info =
       OverrideTaskOrActorRuntimeEnvInfo(serialized_runtime_env_info);
@@ -1786,6 +2033,16 @@ void CoreWorker::BuildCommonTaskSpec(
     // This remote function returns 1 ObjectRef, whose value
     // is a generator of ObjectRefs.
     num_returns = 1;
+  }
+  // TODO(sang): Remove this and integrate it to
+  // nun_returns == -1 once migrating to streaming
+  // generator.
+  bool is_streaming_generator = num_returns == kStreamingGeneratorReturn;
+  if (is_streaming_generator) {
+    num_returns = 1;
+    // We are using the dynamic return if
+    // the streaming generator is used.
+    returns_dynamic = true;
   }
   RAY_CHECK(num_returns >= 0);
   builder.SetCommonTaskSpec(
@@ -1803,13 +2060,16 @@ void CoreWorker::BuildCommonTaskSpec(
       address,
       num_returns,
       returns_dynamic,
+      is_streaming_generator,
+      generator_backpressure_num_objects,
       required_resources,
       required_placement_resources,
       debugger_breakpoint,
       depth,
       main_thread_current_task_id,
       override_runtime_env_info,
-      concurrency_group_name);
+      concurrency_group_name,
+      enable_task_events);
   // Set task arguments.
   for (const auto &arg : args) {
     builder.AddArg(*arg);
@@ -1824,7 +2084,8 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
     bool retry_exceptions,
     const rpc::SchedulingStrategy &scheduling_strategy,
     const std::string &debugger_breakpoint,
-    const std::string &serialized_retry_exception_allowlist) {
+    const std::string &serialized_retry_exception_allowlist,
+    const TaskID current_task_id) {
   RAY_CHECK(scheduling_strategy.scheduling_strategy_case() !=
             rpc::SchedulingStrategy::SchedulingStrategyCase::SCHEDULING_STRATEGY_NOT_SET);
 
@@ -1836,7 +2097,6 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
   auto constrained_resources =
       AddPlacementGroupConstraint(task_options.resources, scheduling_strategy);
 
-  const std::unordered_map<std::string, double> required_resources;
   auto task_name = task_options.name.empty()
                        ? function.GetFunctionDescriptor()->DefaultTaskName()
                        : task_options.name;
@@ -1846,7 +2106,9 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       worker_context_.GetCurrentJobID(),
                       task_id,
                       task_name,
-                      worker_context_.GetCurrentTaskID(),
+                      current_task_id != TaskID::Nil()
+                          ? current_task_id
+                          : worker_context_.GetCurrentTaskID(),
                       next_task_index,
                       GetCallerId(),
                       rpc_address_,
@@ -1854,13 +2116,16 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       args,
                       task_options.num_returns,
                       constrained_resources,
-                      required_resources,
+                      constrained_resources,
                       debugger_breakpoint,
                       depth,
                       task_options.serialized_runtime_env_info,
                       worker_context_.GetMainThreadOrActorCreationTaskID(),
                       /*concurrency_group_name*/ "",
-                      /*include_job_config*/ true);
+                      /*include_job_config*/ true,
+                      /*generator_backpressure_num_objects*/
+                      task_options.generator_backpressure_num_objects,
+                      /*enable_task_event*/ task_options.enable_task_events);
   builder.SetNormalTaskSpec(max_retries,
                             retry_exceptions,
                             serialized_retry_exception_allowlist,
@@ -1873,6 +2138,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
   } else {
     returned_refs = task_manager_->AddPendingTask(
         task_spec.CallerAddress(), task_spec, CurrentCallSite(), max_retries);
+
     io_service_.post(
         [this, task_spec]() {
           RAY_UNUSED(direct_task_submitter_->SubmitTask(task_spec));
@@ -1913,7 +2179,6 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   const JobID job_id = worker_context_.GetCurrentJobID();
   // Propagate existing environment variable overrides, but override them with any new
   // ones
-  std::vector<ObjectID> return_ids;
   TaskSpecBuilder builder;
   auto new_placement_resources =
       AddPlacementGroupConstraint(actor_creation_options.placement_resources,
@@ -1944,7 +2209,9 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       actor_creation_options.serialized_runtime_env_info,
                       worker_context_.GetMainThreadOrActorCreationTaskID(),
                       /*concurrency_group_name*/ "",
-                      /*include_job_config*/ true);
+                      /*include_job_config*/ true,
+                      /*generator_backpressure_num_objects*/ -1,
+                      /*enable_task_events*/ actor_creation_options.enable_task_events);
 
   // If the namespace is not specified, get it from the job.
   const auto ray_namespace = (actor_creation_options.ray_namespace.empty()
@@ -1963,7 +2230,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_name,
       ray_namespace,
       actor_creation_options.max_pending_calls,
-      actor_creation_options.execute_out_of_order);
+      actor_creation_options.execute_out_of_order,
+      actor_creation_options.enable_task_events);
   std::string serialized_actor_handle;
   actor_handle->Serialize(&serialized_actor_handle);
   builder.SetActorCreationTaskSpec(actor_id,
@@ -2053,7 +2321,7 @@ Status CoreWorker::CreatePlacementGroup(
       if (resource.first == kBundle_ResourceLabel) {
         std::ostringstream stream;
         stream << kBundle_ResourceLabel << " is a system reserved resource, which is not "
-               << "allowed to be used in placement groupd ";
+               << "allowed to be used in placement group. ";
         return Status::Invalid(stream.str());
       }
     }
@@ -2067,6 +2335,7 @@ Status CoreWorker::CreatePlacementGroup(
       placement_group_creation_options.strategy,
       placement_group_creation_options.is_detached,
       placement_group_creation_options.max_cpu_fraction_per_node,
+      placement_group_creation_options.soft_target_node_id,
       worker_context_.GetCurrentJobID(),
       worker_context_.GetCurrentActorID(),
       worker_context_.CurrentActorDetached());
@@ -2117,17 +2386,32 @@ Status CoreWorker::WaitPlacementGroupReady(const PlacementGroupID &placement_gro
   }
 }
 
-std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
+Status CoreWorker::SubmitActorTask(
     const ActorID &actor_id,
     const RayFunction &function,
     const std::vector<std::unique_ptr<TaskArg>> &args,
-    const TaskOptions &task_options) {
+    const TaskOptions &task_options,
+    int max_retries,
+    bool retry_exceptions,
+    const std::string &serialized_retry_exception_allowlist,
+    std::vector<rpc::ObjectReference> &task_returns,
+    const TaskID current_task_id) {
   absl::ReleasableMutexLock lock(&actor_task_mutex_);
+  task_returns.clear();
+  if (!direct_actor_submitter_->CheckActorExists(actor_id)) {
+    std::string err_msg = absl::StrFormat(
+        "Can't find actor %s. It might be dead or it's from a different cluster",
+        actor_id.Hex());
+    return Status::NotFound(std::move(err_msg));
+  }
   /// Check whether backpressure may happen at the very beginning of submitting a task.
   if (direct_actor_submitter_->PendingTasksFull(actor_id)) {
     RAY_LOG(DEBUG) << "Back pressure occurred while submitting the task to " << actor_id
                    << ". " << direct_actor_submitter_->DebugString(actor_id);
-    return std::nullopt;
+    return Status::OutOfResource(absl::StrFormat(
+        "Too many tasks (%d) pending to be executed for actor %s. Please try later",
+        direct_actor_submitter_->NumPendingTasks(actor_id),
+        actor_id.Hex()));
   }
 
   auto actor_handle = actor_manager_->GetActorHandle(actor_id);
@@ -2155,7 +2439,9 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
                       actor_handle->CreationJobID(),
                       actor_task_id,
                       task_name,
-                      worker_context_.GetCurrentTaskID(),
+                      current_task_id != TaskID::Nil()
+                          ? current_task_id
+                          : worker_context_.GetCurrentTaskID(),
                       next_task_index,
                       GetCallerId(),
                       rpc_address_,
@@ -2169,11 +2455,18 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
                       "{}",  /* serialized_runtime_env_info */
                       worker_context_.GetMainThreadOrActorCreationTaskID(),
                       task_options.concurrency_group_name,
-                      /*include_job_config*/ false);
+                      /*include_job_config*/ false,
+                      /*generator_backpressure_num_objects*/
+                      task_options.generator_backpressure_num_objects,
+                      /*enable_task_events*/ task_options.enable_task_events);
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.
 
-  actor_handle->SetActorTaskSpec(builder, ObjectID::Nil());
+  actor_handle->SetActorTaskSpec(builder,
+                                 ObjectID::Nil(),
+                                 max_retries,
+                                 retry_exceptions,
+                                 serialized_retry_exception_allowlist);
   // Submit task.
   TaskSpecification task_spec = builder.Build();
   RAY_LOG(DEBUG) << "Submitting actor task " << task_spec.DebugString();
@@ -2187,32 +2480,53 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
     returned_refs = ExecuteTaskLocalMode(task_spec, actor_id);
   } else {
     returned_refs = task_manager_->AddPendingTask(
-        rpc_address_, task_spec, CurrentCallSite(), actor_handle->MaxTaskRetries());
+        rpc_address_, task_spec, CurrentCallSite(), max_retries);
+
     RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(task_spec));
   }
-  return {std::move(returned_refs)};
+  task_returns = std::move(returned_refs);
+  return Status::OK();
 }
 
 Status CoreWorker::CancelTask(const ObjectID &object_id,
                               bool force_kill,
                               bool recursive) {
-  if (actor_manager_->CheckActorHandleExists(object_id.TaskId().ActorId())) {
-    return Status::Invalid("Actor task cancellation is not supported.");
-  }
   rpc::Address obj_addr;
   if (!reference_counter_->GetOwner(object_id, &obj_addr)) {
     return Status::Invalid("No owner found for object.");
   }
+
   if (obj_addr.SerializeAsString() != rpc_address_.SerializeAsString()) {
+    // We don't have CancelRemoteTask for direct_actor_submitter_
+    // because it requires the same implementation.
+    RAY_LOG(DEBUG) << "Request to cancel a task of object id " << object_id
+                   << " to an owner " << obj_addr.SerializeAsString();
     return direct_task_submitter_->CancelRemoteTask(
         object_id, obj_addr, force_kill, recursive);
   }
 
   auto task_spec = task_manager_->GetTaskSpec(object_id.TaskId());
-  if (task_spec.has_value() && !task_spec.value().IsActorCreationTask()) {
+  if (!task_spec.has_value()) {
+    // Task is already finished.
+    RAY_LOG(DEBUG) << "Cancel request is ignored because the task is already canceled "
+                      "for an object id "
+                   << object_id;
+    return Status::OK();
+  }
+
+  if (task_spec.value().IsActorCreationTask()) {
+    RAY_LOG(FATAL) << "Cannot cancel actor creation tasks";
+  }
+
+  if (task_spec->IsActorTask()) {
+    if (force_kill) {
+      return Status::InvalidArgument("force=True is not supported for actor tasks.");
+    }
+
+    return direct_actor_submitter_->CancelTask(task_spec.value(), recursive);
+  } else {
     return direct_task_submitter_->CancelTask(task_spec.value(), force_kill, recursive);
   }
-  return Status::OK();
 }
 
 Status CoreWorker::CancelChildren(const TaskID &task_id, bool force_kill) {
@@ -2227,11 +2541,8 @@ Status CoreWorker::CancelChildren(const TaskID &task_id, bool force_kill) {
                          Status::UnknownError(
                              "Recursive task cancellation failed--check warning logs.")));
     } else if (child_spec->IsActorTask()) {
-      recursive_success = false;
-      recursive_cancellation_status.push_back(std::make_pair(
-          child_id,
-          Status::Invalid(
-              "Actor task cancellation is not supported. The task won't be cancelled.")));
+      auto result = direct_actor_submitter_->CancelTask(child_spec.value(), true);
+      recursive_cancellation_status.push_back(std::make_pair(child_id, result));
     } else {
       auto result =
           direct_task_submitter_->CancelTask(child_spec.value(), force_kill, true);
@@ -2399,6 +2710,11 @@ CoreWorker::ListNamedActorsLocalMode() {
   return std::make_pair(actors, Status::OK());
 }
 
+const std::string CoreWorker::GetActorName() const {
+  absl::MutexLock lock(&mutex_);
+  return actor_manager_->GetActorHandle(actor_id_)->GetName();
+}
+
 const ResourceMappingType CoreWorker::GetResourceIDs() const {
   absl::MutexLock lock(&mutex_);
   return *resource_ids_;
@@ -2411,6 +2727,26 @@ std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
 }
 
 void CoreWorker::RunTaskExecutionLoop() {
+  PeriodicalRunner signal_checker(task_execution_service_);
+  if (options_.check_signals) {
+    signal_checker.RunFnPeriodically(
+        [this] {
+          /// The overhead of this is only a single digit microsecond.
+          auto status = options_.check_signals();
+          if (status.IsIntentionalSystemExit()) {
+            Exit(rpc::WorkerExitType::INTENDED_USER_EXIT,
+                 absl::StrCat("Worker exits by a signal. ", status.message()),
+                 nullptr);
+          } else if (status.IsUnexpectedSystemExit()) {
+            Exit(
+                rpc::WorkerExitType::SYSTEM_ERROR,
+                absl::StrCat("Worker exits unexpectedly by a signal. ", status.message()),
+                nullptr);
+          }
+        },
+        10,
+        "CoreWorker.CheckSignal");
+  }
   task_execution_service_.run();
   RAY_CHECK(is_shutdown_)
       << "Task execution loop was terminated without calling shutdown API.";
@@ -2420,11 +2756,10 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
                                         const size_t &data_size,
                                         const std::shared_ptr<Buffer> &metadata,
                                         const std::vector<ObjectID> &contained_object_ids,
+                                        const rpc::Address &caller_address,
                                         int64_t *task_output_inlined_bytes,
                                         std::shared_ptr<RayObject> *return_object) {
-  rpc::Address owner_address(options_.is_local_mode
-                                 ? rpc::Address()
-                                 : worker_context_.GetCurrentTask()->CallerAddress());
+  rpc::Address owner_address(options_.is_local_mode ? rpc::Address() : caller_address);
 
   bool object_already_exists = false;
   std::shared_ptr<Buffer> data_buffer;
@@ -2470,20 +2805,45 @@ Status CoreWorker::ExecuteTask(
     const std::shared_ptr<ResourceMappingType> &resource_ids,
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_return_objects,
+    std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
     ReferenceCounter::ReferenceTableProto *borrowed_refs,
     bool *is_retryable_error,
-    bool *is_application_error) {
+    std::string *application_error) {
   RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
+
+  // If the worker is exitted via Exit API, we shouldn't execute
+  // tasks anymore.
+  if (IsExiting()) {
+    absl::MutexLock lock(&mutex_);
+    return Status::IntentionalSystemExit(
+        absl::StrCat("Worker has already exited. Detail: ", exiting_detail_.value()));
+  }
+
   task_queue_length_ -= 1;
   num_executed_tasks_ += 1;
 
   // Modify the worker's per function counters.
   std::string func_name = task_spec.FunctionDescriptor()->CallString();
+  std::string actor_repr_name = "";
+  {
+    absl::MutexLock lock(&mutex_);
+    actor_repr_name = actor_repr_name_;
+  }
   if (!options_.is_local_mode) {
     task_counter_.MovePendingToRunning(func_name, task_spec.IsRetry());
 
-    task_manager_->RecordTaskStatusEvent(
-        task_spec.AttemptNumber(), task_spec, rpc::TaskStatus::RUNNING);
+    const auto update =
+        (task_spec.IsActorTask() && !actor_repr_name.empty())
+            ? worker::TaskStatusEvent::TaskStateUpdate(actor_repr_name, pid_)
+            : worker::TaskStatusEvent::TaskStateUpdate(pid_);
+    RAY_UNUSED(
+        task_manager_->RecordTaskStatusEventIfNeeded(task_spec.TaskId(),
+                                                     worker_context_.GetCurrentJobID(),
+                                                     task_spec.AttemptNumber(),
+                                                     task_spec,
+                                                     rpc::TaskStatus::RUNNING,
+                                                     /* include_task_info */ false,
+                                                     update));
 
     worker_context_.SetCurrentTask(task_spec);
     SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber(), task_spec.GetName());
@@ -2516,12 +2876,15 @@ Status CoreWorker::ExecuteTask(
     dynamic_return_objects = NULL;
   } else if (task_spec.AttemptNumber() > 0) {
     for (const auto &dynamic_return_id : task_spec.DynamicReturnIds()) {
+      // Increase the put index so that when the generator creates a new obj
+      // the object id won't conflict.
+      worker_context_.GetNextPutIndex();
       dynamic_return_objects->push_back(
           std::make_pair<>(dynamic_return_id, std::shared_ptr<RayObject>()));
       RAY_LOG(DEBUG) << "Re-executed task " << task_spec.TaskId()
                      << " should return dynamic object " << dynamic_return_id;
 
-      AddLocalReference(dynamic_return_id, "<temporary (ObjectRefGenerator)>");
+      AddLocalReference(dynamic_return_id, "<temporary (DynamicObjectRefGenerator)>");
       reference_counter_->AddBorrowedObject(
           dynamic_return_id, ObjectID::Nil(), task_spec.CallerAddress());
     }
@@ -2559,7 +2922,6 @@ Status CoreWorker::ExecuteTask(
   } else if (task_spec.IsActorTask()) {
     name_of_concurrency_group_to_execute = task_spec.ConcurrencyGroupName();
   }
-
   status = options_.task_execution_callback(
       task_spec.CallerAddress(),
       task_type,
@@ -2572,12 +2934,17 @@ Status CoreWorker::ExecuteTask(
       task_spec.GetSerializedRetryExceptionAllowlist(),
       return_objects,
       dynamic_return_objects,
+      streaming_generator_returns,
       creation_task_exception_pb_bytes,
       is_retryable_error,
-      is_application_error,
+      application_error,
       defined_concurrency_groups,
       name_of_concurrency_group_to_execute,
-      /*is_reattempt=*/task_spec.AttemptNumber() > 0);
+      /*is_reattempt=*/task_spec.AttemptNumber() > 0,
+      /*is_streaming_generator*/ task_spec.IsStreamingGenerator(),
+      /*retry_exception*/ task_spec.ShouldRetryExceptions(),
+      /*generator_backpressure_num_objects*/
+      task_spec.GeneratorBackpressureNumObjects());
 
   // Get the reference counts for any IDs that we borrowed during this task,
   // remove the local reference for these IDs, and return the ref count info to
@@ -2652,22 +3019,69 @@ Status CoreWorker::ExecuteTask(
 
 Status CoreWorker::SealReturnObject(const ObjectID &return_id,
                                     std::shared_ptr<RayObject> return_object,
-                                    const ObjectID &generator_id) {
+                                    const ObjectID &generator_id,
+                                    const rpc::Address &caller_address) {
   RAY_LOG(DEBUG) << "Sealing return object " << return_id;
   Status status = Status::OK();
   RAY_CHECK(return_object);
   RAY_CHECK(!options_.is_local_mode);
-  std::unique_ptr<rpc::Address> caller_address =
-      std::make_unique<rpc::Address>(worker_context_.GetCurrentTask()->CallerAddress());
+  std::unique_ptr<rpc::Address> caller_address_ptr =
+      std::make_unique<rpc::Address>(caller_address);
   if (return_object->GetData() != nullptr && return_object->GetData()->IsPlasmaBuffer()) {
     status = SealExisting(
-        return_id, /*pin_object=*/true, generator_id, std::move(caller_address));
+        return_id, /*pin_object=*/true, generator_id, std::move(caller_address_ptr));
     if (!status.ok()) {
       RAY_LOG(FATAL) << "Failed to seal object " << return_id
                      << " in store: " << status.message();
     }
   }
   return status;
+}
+
+void CoreWorker::AsyncDelObjectRefStream(const ObjectID &generator_id) {
+  RAY_LOG(DEBUG) << "AsyncDelObjectRefStream " << generator_id;
+  if (task_manager_->TryDelObjectRefStream(generator_id)) {
+    return;
+  }
+  deleted_generator_ids_.insert(generator_id);
+}
+
+void CoreWorker::TryDeleteObjectRefStreams() {
+  std::vector<ObjectID> out_of_scope_generator_ids;
+  for (auto it = deleted_generator_ids_.begin(); it != deleted_generator_ids_.end();
+       it++) {
+    const auto &generator_id = *it;
+    if (task_manager_->TryDelObjectRefStream(generator_id)) {
+      out_of_scope_generator_ids.push_back(generator_id);
+    }
+  }
+
+  for (const auto &generator_id : out_of_scope_generator_ids) {
+    deleted_generator_ids_.erase(generator_id);
+  }
+}
+
+Status CoreWorker::TryReadObjectRefStream(const ObjectID &generator_id,
+                                          rpc::ObjectReference *object_ref_out) {
+  ObjectID object_id;
+  const auto &status = task_manager_->TryReadObjectRefStream(generator_id, &object_id);
+  RAY_CHECK(object_ref_out != nullptr);
+  object_ref_out->set_object_id(object_id.Binary());
+  object_ref_out->mutable_owner_address()->CopyFrom(rpc_address_);
+  return status;
+}
+
+bool CoreWorker::StreamingGeneratorIsFinished(const ObjectID &generator_id) const {
+  return task_manager_->StreamingGeneratorIsFinished(generator_id);
+}
+
+std::pair<rpc::ObjectReference, bool> CoreWorker::PeekObjectRefStream(
+    const ObjectID &generator_id) {
+  auto [object_id, ready] = task_manager_->PeekObjectRefStream(generator_id);
+  rpc::ObjectReference object_ref;
+  object_ref.set_object_id(object_id.Binary());
+  object_ref.mutable_owner_address()->CopyFrom(rpc_address_);
+  return {object_ref, ready};
 }
 
 bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
@@ -2723,14 +3137,102 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
   }
 }
 
-ObjectID CoreWorker::AllocateDynamicReturnId() {
-  const auto &task_spec = worker_context_.GetCurrentTask();
-  const auto return_id =
-      ObjectID::FromIndex(task_spec->TaskId(), worker_context_.GetNextPutIndex());
-  AddLocalReference(return_id, "<temporary (ObjectRefGenerator)>");
-  reference_counter_->AddBorrowedObject(
-      return_id, ObjectID::Nil(), worker_context_.GetCurrentTask()->CallerAddress());
+ObjectID CoreWorker::AllocateDynamicReturnId(const rpc::Address &owner_address,
+                                             const TaskID &task_id,
+                                             std::optional<ObjectIDIndexType> put_index) {
+  const auto return_id = worker_context_.GetGeneratorReturnId(task_id, put_index);
+  AddLocalReference(return_id, "<temporary (DynamicObjectRefGenerator)>");
+  reference_counter_->AddBorrowedObject(return_id, ObjectID::Nil(), owner_address);
   return return_id;
+}
+
+Status CoreWorker::ReportGeneratorItemReturns(
+    const std::pair<ObjectID, std::shared_ptr<RayObject>> &dynamic_return_object,
+    const ObjectID &generator_id,
+    const rpc::Address &caller_address,
+    int64_t item_index,
+    uint64_t attempt_number,
+    std::shared_ptr<GeneratorBackpressureWaiter> waiter) {
+  rpc::ReportGeneratorItemReturnsRequest request;
+  request.mutable_worker_addr()->CopyFrom(rpc_address_);
+  request.set_item_index(item_index);
+  request.set_generator_id(generator_id.Binary());
+  request.set_attempt_number(attempt_number);
+  auto client = core_worker_client_pool_->GetOrConnect(caller_address);
+
+  if (!dynamic_return_object.first.IsNil()) {
+    auto return_object_proto = request.add_dynamic_return_objects();
+    SerializeReturnObject(
+        dynamic_return_object.first, dynamic_return_object.second, return_object_proto);
+    std::vector<ObjectID> deleted;
+    // When we allocate a dynamic return ID (AllocateDynamicReturnId),
+    // we borrow the object. When the object value is allocatd, the
+    // memory store is updated. We should clear borrowers and memory store
+    // here.
+    ReferenceCounter::ReferenceTableProto borrowed_refs;
+    reference_counter_->PopAndClearLocalBorrowers(
+        {dynamic_return_object.first}, &borrowed_refs, &deleted);
+    memory_store_->Delete(deleted);
+  }
+  const auto return_id = dynamic_return_object.first;
+  RAY_LOG(DEBUG) << "Write the object ref stream, index: " << item_index
+                 << ", id: " << return_id;
+
+  waiter->IncrementObjectGenerated();
+
+  client->ReportGeneratorItemReturns(
+      request,
+      [waiter, generator_id, return_id, item_index](
+          const Status &status, const rpc::ReportGeneratorItemReturnsReply &reply) {
+        RAY_LOG(DEBUG) << "ReportGeneratorItemReturns replied. " << generator_id
+                       << "index: " << item_index << ". total_consumed_reported: "
+                       << reply.total_num_object_consumed();
+        RAY_LOG(DEBUG) << "Total object consumed: " << waiter->TotalObjectConsumed()
+                       << ". Total object generated: " << waiter->TotalObjectGenerated();
+        int64_t num_objects_consumed;
+        if (status.ok()) {
+          num_objects_consumed = reply.total_num_object_consumed();
+        } else {
+          // TODO(sang): Handle network error more gracefully.
+          // If the request fails, we should just resume until task finishes without
+          // backpressure.
+          num_objects_consumed = waiter->TotalObjectGenerated();
+          RAY_LOG(WARNING) << "Failed to report streaming generator return " << return_id
+                           << " to the caller. The yield'ed ObjectRef may not be usable.";
+        }
+        waiter->HandleObjectReported(num_objects_consumed);
+      });
+
+  // Backpressure if needed. See task_manager.h and search "backpressure" for protocol
+  // details.
+  return waiter->WaitUntilObjectConsumed();
+}
+
+void CoreWorker::HandleReportGeneratorItemReturns(
+    rpc::ReportGeneratorItemReturnsRequest request,
+    rpc::ReportGeneratorItemReturnsReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  auto generator_id = ObjectID::FromBinary(request.generator_id());
+  auto worker_id = WorkerID::FromBinary(request.worker_addr().worker_id());
+  task_manager_->HandleReportGeneratorItemReturns(
+      request,
+      /*execution_signal_callback*/
+      [reply,
+       worker_id = std::move(worker_id),
+       generator_id = std::move(generator_id),
+       send_reply_callback = std::move(send_reply_callback)](
+          Status status, int64_t total_num_object_consumed) {
+        RAY_LOG(DEBUG) << "Reply HandleReportGeneratorItemReturns to signal "
+                          "executor to resume tasks. "
+                       << generator_id << ". Worker ID: " << worker_id
+                       << ". Total consumed: " << total_num_object_consumed;
+        if (!status.ok()) {
+          RAY_CHECK_EQ(total_num_object_consumed, -1);
+        }
+
+        reply->set_total_num_object_consumed(total_num_object_consumed);
+        send_reply_callback(status, nullptr, nullptr);
+      });
 }
 
 std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
@@ -2759,16 +3261,18 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
   auto old_id = GetActorId();
   SetActorId(actor_id);
   bool is_retryable_error;
-  bool is_application_error;
-  // TODO(swang): Support ObjectRefGenerators in local mode?
+  std::string application_error = "";
+  // TODO(swang): Support DynamicObjectRefGenerators in local mode?
   std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> dynamic_return_objects;
+  std::vector<std::pair<ObjectID, bool>> streaming_generator_returns;
   RAY_UNUSED(ExecuteTask(task_spec,
                          resource_ids,
                          &return_objects,
                          &dynamic_return_objects,
+                         &streaming_generator_returns,
                          &borrowed_refs,
                          &is_retryable_error,
-                         &is_application_error));
+                         &application_error));
   SetActorId(old_id);
   return returned_refs;
 }
@@ -2786,12 +3290,6 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
 
   for (size_t i = 0; i < task.NumArgs(); ++i) {
     if (task.ArgByRef(i)) {
-      // We need to put an OBJECT_IN_PLASMA error here so the subsequent call to Get()
-      // properly redirects to the plasma store.
-      if (!options_.is_local_mode) {
-        RAY_UNUSED(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
-                                      task.ArgId(i)));
-      }
       const auto &arg_ref = task.ArgRef(i);
       const auto arg_id = ObjectID::FromBinary(arg_ref.object_id());
       by_ref_ids.insert(arg_id);
@@ -2812,6 +3310,14 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
       reference_counter_->AddBorrowedObject(
           arg_id, ObjectID::Nil(), task.ArgRef(i).owner_address());
       borrowed_ids->push_back(arg_id);
+      // We need to put an OBJECT_IN_PLASMA error here so the subsequent call to Get()
+      // properly redirects to the plasma store.
+      // NOTE: This needs to be done after adding reference to reference counter
+      // otherwise, the put is a no-op.
+      if (!options_.is_local_mode) {
+        RAY_UNUSED(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
+                                      task.ArgId(i)));
+      }
     } else {
       // A pass-by-value argument.
       std::shared_ptr<LocalMemoryBuffer> data = nullptr;
@@ -2869,6 +3375,8 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
 void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
                                 rpc::PushTaskReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(DEBUG) << "Received Handle Push Task "
+                 << TaskID::FromBinary(request.task_spec().task_id());
   if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
                            send_reply_callback)) {
     return;
@@ -2890,10 +3398,18 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
   // execution service.
   if (request.task_spec().type() == TaskType::ACTOR_TASK) {
     task_execution_service_.post(
-        [this, request, reply, send_reply_callback = std::move(send_reply_callback)] {
+        [this,
+         request,
+         reply,
+         send_reply_callback = std::move(send_reply_callback),
+         func_name] {
           // We have posted an exit task onto the main event loop,
           // so shouldn't bother executing any further work.
-          if (exiting_) return;
+          if (IsExiting()) {
+            RAY_LOG(INFO) << "Queued task " << func_name
+                          << " won't be executed because the worker already exited.";
+            return;
+          }
           direct_task_receiver_->HandleTask(request, reply, send_reply_callback);
         },
         "CoreWorker.HandlePushTaskActor");
@@ -2902,10 +3418,14 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
     // the task execution service.
     direct_task_receiver_->HandleTask(request, reply, send_reply_callback);
     task_execution_service_.post(
-        [=] {
+        [this, func_name] {
           // We have posted an exit task onto the main event loop,
           // so shouldn't bother executing any further work.
-          if (exiting_) return;
+          if (IsExiting()) {
+            RAY_LOG(INFO) << "Queued task " << func_name
+                          << " won't be executed because the worker already exited.";
+            return;
+          }
           direct_task_receiver_->RunNormalTasksFromQueue();
         },
         "CoreWorker.HandlePushTask");
@@ -3065,7 +3585,7 @@ void CoreWorker::ProcessSubscribeForObjectEviction(
     pub_message.mutable_worker_object_eviction_message()->set_object_id(
         object_id.Binary());
 
-    object_info_publisher_->Publish(pub_message);
+    object_info_publisher_->Publish(std::move(pub_message));
   };
 
   const auto object_id = ObjectID::FromBinary(message.object_id());
@@ -3086,7 +3606,13 @@ void CoreWorker::ProcessSubscribeForObjectEviction(
     // counter so that we know that it exists.
     const auto generator_id = ObjectID::FromBinary(message.generator_id());
     RAY_CHECK(!generator_id.IsNil());
-    reference_counter_->AddDynamicReturn(object_id, generator_id);
+    if (task_manager_->ObjectRefStreamExists(generator_id)) {
+      // ObjectRefStreamExists is used to distinguigsh num_returns="dynamic" vs
+      // "streaming".
+      task_manager_->TemporarilyOwnGeneratorReturnRefIfNeeded(object_id, generator_id);
+    } else {
+      reference_counter_->AddDynamicReturn(object_id, generator_id);
+    }
   }
 
   // Returns true if the object was present and the callback was added. It might have
@@ -3219,8 +3745,13 @@ void CoreWorker::AddSpilledObjectLocationOwner(
     // object is spilled before the reply from the task that created the
     // object. Add the dynamically created object to our ref counter so that we
     // know that it exists.
-    RAY_CHECK(!generator_id->IsNil());
-    reference_counter_->AddDynamicReturn(object_id, *generator_id);
+    if (task_manager_->ObjectRefStreamExists(*generator_id)) {
+      // ObjectRefStreamExists is used to distinguigsh num_returns="dynamic" vs
+      // "streaming".
+      task_manager_->TemporarilyOwnGeneratorReturnRefIfNeeded(object_id, *generator_id);
+    } else {
+      reference_counter_->AddDynamicReturn(object_id, *generator_id);
+    }
   }
 
   auto reference_exists =
@@ -3248,9 +3779,16 @@ void CoreWorker::AddObjectLocationOwner(const ObjectID &object_id,
   // until the task finishes.
   const auto &maybe_generator_id = task_manager_->TaskGeneratorId(object_id.TaskId());
   if (!maybe_generator_id.IsNil()) {
-    // The task is a generator and may not have finished yet. Add the internal
-    // ObjectID so that we can update its location.
-    reference_counter_->AddDynamicReturn(object_id, maybe_generator_id);
+    if (task_manager_->ObjectRefStreamExists(maybe_generator_id)) {
+      // ObjectRefStreamExists is used to distinguigsh num_returns="dynamic" vs
+      // "streaming".
+      task_manager_->TemporarilyOwnGeneratorReturnRefIfNeeded(object_id,
+                                                              maybe_generator_id);
+    } else {
+      // The task is a generator and may not have finished yet. Add the internal
+      // ObjectID so that we can update its location.
+      reference_counter_->AddDynamicReturn(object_id, maybe_generator_id);
+    }
     RAY_UNUSED(reference_counter_->AddObjectLocation(object_id, node_id));
   }
 }
@@ -3285,16 +3823,16 @@ void CoreWorker::HandleGetObjectLocationsOwner(
     rpc::GetObjectLocationsOwnerRequest request,
     rpc::GetObjectLocationsOwnerReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  auto &object_location_request = request.object_location_request();
-  if (HandleWrongRecipient(
-          WorkerID::FromBinary(object_location_request.intended_worker_id()),
-          send_reply_callback)) {
+  if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
+                           send_reply_callback)) {
     return;
   }
-  auto object_id = ObjectID::FromBinary(object_location_request.object_id());
-  auto object_info = reply->mutable_object_location_info();
-  auto status = reference_counter_->FillObjectInformation(object_id, object_info);
-  send_reply_callback(status, nullptr, nullptr);
+  for (int i = 0; i < request.object_ids_size(); ++i) {
+    auto object_id = ObjectID::FromBinary(request.object_ids(i));
+    auto object_info = reply->add_object_location_infos();
+    reference_counter_->FillObjectInformation(object_id, object_info);
+  }
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void CoreWorker::ProcessSubscribeForRefRemoved(
@@ -3334,6 +3872,51 @@ void CoreWorker::HandleCancelTask(rpc::CancelTaskRequest request,
                                   rpc::CancelTaskReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) {
   TaskID task_id = TaskID::FromBinary(request.intended_task_id());
+  bool force_kill = request.force_kill();
+  bool recursive = request.recursive();
+  const auto &current_actor_id = worker_context_.GetCurrentActorID();
+  const auto caller_worker_id = WorkerID::FromBinary(request.caller_worker_id());
+
+  auto on_cancel_callback = [this,
+                             reply,
+                             send_reply_callback = std::move(send_reply_callback),
+                             force_kill,
+                             task_id](bool success, bool requested_task_running) {
+    reply->set_attempt_succeeded(success);
+    reply->set_requested_task_running(requested_task_running);
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+
+    // Do force kill after reply callback sent.
+    if (force_kill) {
+      // We grab the lock again to make sure that we are force-killing the correct
+      // task. This is guaranteed not to deadlock because ForceExit should not
+      // require any other locks.
+      absl::MutexLock lock(&mutex_);
+      if (main_thread_task_id_ == task_id) {
+        ForceExit(rpc::WorkerExitType::INTENDED_USER_EXIT,
+                  absl::StrCat("The worker exits because the task ",
+                               main_thread_task_name_,
+                               " has received a force ray.cancel request."));
+      }
+    }
+  };
+
+  if (task_id.ActorId() == current_actor_id) {
+    RAY_LOG(INFO) << "Cancel an actor task " << task_id << " for an actor "
+                  << current_actor_id;
+    CancelActorTaskOnExecutor(
+        caller_worker_id, task_id, force_kill, recursive, on_cancel_callback);
+  } else {
+    RAY_CHECK(current_actor_id.IsNil());
+    RAY_LOG(INFO) << "Cancel a normal task " << task_id;
+    CancelTaskOnExecutor(task_id, force_kill, recursive, on_cancel_callback);
+  }
+}
+
+void CoreWorker::CancelTaskOnExecutor(TaskID task_id,
+                                      bool force_kill,
+                                      bool recursive,
+                                      OnCanceledCallback on_canceled) {
   bool requested_task_running;
   {
     absl::MutexLock lock(&mutex_);
@@ -3348,7 +3931,7 @@ void CoreWorker::HandleCancelTask(rpc::CancelTaskRequest request,
   // the kill callback runs; the kill callback is responsible for also making
   // sure it cancels the right task.
   // See https://github.com/ray-project/ray/issues/29739.
-  if (requested_task_running && !request.force_kill()) {
+  if (requested_task_running && !force_kill) {
     RAY_LOG(INFO) << "Cancelling a running task with id: " << task_id;
     success = options_.kill_main(task_id);
   } else if (!requested_task_running) {
@@ -3358,30 +3941,92 @@ void CoreWorker::HandleCancelTask(rpc::CancelTaskRequest request,
     // normal tasks, and remove it if found.
     success = direct_task_receiver_->CancelQueuedNormalTask(task_id);
   }
-  if (request.recursive()) {
-    auto recursive_cancel = CancelChildren(task_id, request.force_kill());
+  if (recursive) {
+    auto recursive_cancel = CancelChildren(task_id, force_kill);
     if (!recursive_cancel.ok()) {
       RAY_LOG(ERROR) << recursive_cancel.ToString();
     }
   }
 
-  reply->set_attempt_succeeded(success);
-  reply->set_requested_task_running(requested_task_running);
-  send_reply_callback(Status::OK(), nullptr, nullptr);
+  on_canceled(/*success*/ success, /*requested_task_running*/ requested_task_running);
+}
 
-  // Do force kill after reply callback sent.
-  if (request.force_kill()) {
-    // We grab the lock again to make sure that we are force-killing the correct
-    // task. This is guaranteed not to deadlock because ForceExit should not
-    // require any other locks.
-    absl::MutexLock lock(&mutex_);
-    if (main_thread_task_id_ == task_id) {
-      ForceExit(rpc::WorkerExitType::INTENDED_USER_EXIT,
-                absl::StrCat("The worker exits because the task ",
-                             main_thread_task_name_,
-                             " has received a force ray.cancel request."));
+void CoreWorker::CancelActorTaskOnExecutor(WorkerID caller_worker_id,
+                                           TaskID task_id,
+                                           bool force_kill,
+                                           bool recursive,
+                                           OnCanceledCallback on_canceled) {
+  RAY_CHECK(!force_kill);
+  auto is_async_actor = worker_context_.CurrentActorIsAsync();
+
+  auto cancel = [this,
+                 task_id,
+                 caller_worker_id,
+                 on_canceled = std::move(on_canceled),
+                 is_async_actor]() {
+    bool is_task_running;
+    TaskSpecification spec;
+    RayFunction func;
+    std::string concurrency_group_name;
+
+    bool is_task_queued_or_executing =
+        direct_task_receiver_->CancelQueuedActorTask(caller_worker_id, task_id);
+
+    // If a task is already running, we send a cancel request.
+    // Right now, we can only cancel async actor tasks.
+    if (is_task_queued_or_executing) {
+      {
+        absl::MutexLock lock(&mutex_);
+        auto it = current_tasks_.find(task_id);
+        is_task_running = it != current_tasks_.end();
+        if (is_task_running) {
+          spec = it->second;
+          func = RayFunction(spec.GetLanguage(), spec.FunctionDescriptor());
+          concurrency_group_name = spec.ConcurrencyGroupName();
+        }
+      }
+
+      if (is_task_running && is_async_actor) {
+        options_.cancel_async_task(task_id, func, concurrency_group_name);
+      }
+      // TODO(sang): else support regular actor interrupt.
     }
+
+    // If `is_task_queued_or_executing`is true, task was either queued or run.
+    // If a task is queued, it is guaranteed to be canceled by
+    // CancelQueuedActorTask. If a task is executing, we try canceling
+    // them, but it is not guaranteed. For both cases, we consider cancelation
+    // succeeds. If `is_task_queued_or_executing` is false, it means task is finished
+    // or not received yet. In this case, we mark `success` as false, so that the
+    // caller can retry cancel RPCs. Note that the caller knows exactly when a task is
+    // finished from their end, so it won't infinitely retry cancel RPCs.
+    // requested_task_running is not used, so we just always mark it as false.
+    on_canceled(/*success*/ is_task_queued_or_executing,
+                /*requested_task_running*/ false);
+  };
+
+  if (is_async_actor) {
+    // If it is an async actor, post it to an execution service
+    // to avoid thread issues. Note that when it is an async actor
+    // task_execution_service_ won't actually run a task but it will
+    // just create coroutines.
+    task_execution_service_.post([cancel = std::move(cancel)]() { cancel(); },
+                                 "CoreWorker.CancelActorTaskOnExecutor");
+  } else {
+    // For regular actor, we cannot post it to task_execution_service because
+    // main thread is blocked. Threaded actor can do both (dispatching to
+    // task execution service, or just directly call it in io_service).
+    // There's no special reason why we don't dispatch
+    // cancel to task_execution_service_ for threaded actors.
+    cancel();
   }
+
+  if (recursive) {
+    auto recursive_cancel = CancelChildren(task_id, force_kill);
+    if (!recursive_cancel.ok()) {
+      RAY_LOG(ERROR) << recursive_cancel.ToString();
+    }
+  };
 }
 
 void CoreWorker::HandleKillActor(rpc::KillActorRequest request,
@@ -3415,6 +4060,11 @@ void CoreWorker::HandleKillActor(rpc::KillActorRequest request,
   }
 }
 
+int64_t CoreWorker::GetLocalMemoryStoreBytesUsed() const {
+  MemoryStoreStats memory_store_stats = memory_store_->GetMemoryStoreStatisticalData();
+  return memory_store_stats.num_local_objects_bytes;
+}
+
 void CoreWorker::HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request,
                                           rpc::GetCoreWorkerStatsReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
@@ -3427,6 +4077,8 @@ void CoreWorker::HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request
   stats->set_task_queue_length(task_queue_length_);
   stats->set_num_executed_tasks(num_executed_tasks_);
   stats->set_num_object_refs_in_scope(reference_counter_->NumObjectIDsInScope());
+  stats->set_num_owned_objects(reference_counter_->NumObjectsOwnedByUs());
+  stats->set_num_owned_actors(reference_counter_->NumActorsOwnedByUs());
   stats->set_ip_address(rpc_address_.ip_address());
   stats->set_port(rpc_address_.port());
   stats->set_pid(getpid());
@@ -3435,6 +4087,7 @@ void CoreWorker::HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request
   stats->set_worker_id(worker_context_.GetWorkerID().Binary());
   stats->set_actor_id(actor_id_.Binary());
   stats->set_worker_type(worker_context_.GetWorkerType());
+  stats->set_num_running_tasks(current_tasks_.size());
   auto used_resources_map = stats->mutable_used_resources();
   for (auto const &it : *resource_ids_) {
     rpc::ResourceAllocations allocations;
@@ -3642,6 +4295,15 @@ void CoreWorker::HandleAssignObjectOwner(rpc::AssignObjectOwnerRequest request,
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
+// Handle RPC for TaskManager::NumPendingTasks().
+void CoreWorker::HandleNumPendingTasks(rpc::NumPendingTasksRequest request,
+                                       rpc::NumPendingTasksReply *reply,
+                                       rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(DEBUG) << "Received NumPendingTasks request.";
+  reply->set_num_pending_tasks(task_manager_->NumPendingTasks());
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
 void CoreWorker::YieldCurrentFiber(FiberEvent &event) {
   RAY_CHECK(worker_context_.CurrentActorIsAsync());
   boost::this_fiber::yield();
@@ -3650,7 +4312,7 @@ void CoreWorker::YieldCurrentFiber(FiberEvent &event) {
 
 void CoreWorker::GetAsync(const ObjectID &object_id,
                           SetResultCallback success_callback,
-                          void *python_future) {
+                          void *python_user_callback) {
   auto fallback_callback = std::bind(&CoreWorker::PlasmaCallback,
                                      this,
                                      success_callback,
@@ -3658,15 +4320,32 @@ void CoreWorker::GetAsync(const ObjectID &object_id,
                                      std::placeholders::_2,
                                      std::placeholders::_3);
 
-  memory_store_->GetAsync(object_id,
-                          [python_future, success_callback, fallback_callback, object_id](
-                              std::shared_ptr<RayObject> ray_object) {
-                            if (ray_object->IsInPlasmaError()) {
-                              fallback_callback(ray_object, object_id, python_future);
-                            } else {
-                              success_callback(ray_object, object_id, python_future);
-                            }
-                          });
+  memory_store_->GetAsync(
+      object_id,
+      [this,
+       object_id,
+       python_user_callback,
+       success_callback = std::move(success_callback),
+       fallback_callback =
+           std::move(fallback_callback)](std::shared_ptr<RayObject> ray_object) {
+        // Post the callback to the io_service_ to avoid deadlocks.
+        // The user callback can make arbitrary Ray API calls and will be called
+        // immediately when the object is `Put` into the in-memory store. This can
+        // cause deadlocks if the callers of `Put` is holding a lock.
+        io_service_.post(
+            [object_id,
+             python_user_callback,
+             success_callback = std::move(success_callback),
+             fallback_callback = std::move(fallback_callback),
+             ray_object = std::move(ray_object)]() {
+              if (ray_object->IsInPlasmaError()) {
+                fallback_callback(ray_object, object_id, python_user_callback);
+              } else {
+                success_callback(ray_object, object_id, python_user_callback);
+              }
+            },
+            "CoreWorker.GetAsync.Callback");
+      });
 }
 
 void CoreWorker::PlasmaCallback(SetResultCallback success,
@@ -3745,15 +4424,21 @@ void CoreWorker::SetActorTitle(const std::string &title) {
   actor_title_ = title;
 }
 
+void CoreWorker::SetActorReprName(const std::string &repr_name) {
+  RAY_CHECK(direct_task_receiver_ != nullptr);
+  direct_task_receiver_->SetActorReprName(repr_name);
+
+  absl::MutexLock lock(&mutex_);
+  actor_repr_name_ = repr_name;
+}
+
 rpc::JobConfig CoreWorker::GetJobConfig() const {
   return worker_context_.GetCurrentJobConfig();
 }
 
-bool CoreWorker::IsExiting() const { return exiting_; }
-
-std::unordered_map<std::string, std::vector<int64_t>> CoreWorker::GetActorCallStats()
-    const {
-  return task_counter_.AsMap();
+bool CoreWorker::IsExiting() const {
+  absl::MutexLock lock(&mutex_);
+  return exiting_detail_.has_value();
 }
 
 Status CoreWorker::WaitForActorRegistered(const std::vector<ObjectID> &ids) {
@@ -3821,6 +4506,76 @@ std::vector<ObjectID> CoreWorker::GetCurrentReturnIds(int num_returns,
     return_ids[i] = ObjectID::FromIndex(task_id, i + 1);
   }
   return return_ids;
+}
+
+void CoreWorker::RecordTaskLogStart(const TaskID &task_id,
+                                    int32_t attempt_number,
+                                    const std::string &stdout_path,
+                                    const std::string &stderr_path,
+                                    int64_t stdout_start_offset,
+                                    int64_t stderr_start_offset) const {
+  if (options_.is_local_mode) {
+    return;
+  }
+  rpc::TaskLogInfo task_log_info;
+  task_log_info.set_stdout_file(stdout_path);
+  task_log_info.set_stderr_file(stderr_path);
+  task_log_info.set_stdout_start(stdout_start_offset);
+  task_log_info.set_stderr_start(stderr_start_offset);
+
+  auto current_task = worker_context_.GetCurrentTask();
+  RAY_CHECK(current_task)
+      << "We should have set the current task spec while executing the task.";
+  RAY_UNUSED(task_manager_->RecordTaskStatusEventIfNeeded(
+      task_id,
+      worker_context_.GetCurrentJobID(),
+      attempt_number,
+      *current_task,
+      rpc::TaskStatus::NIL,
+      /* include_task_info */ false,
+      worker::TaskStatusEvent::TaskStateUpdate(task_log_info)));
+}
+
+void CoreWorker::RecordTaskLogEnd(const TaskID &task_id,
+                                  int32_t attempt_number,
+                                  int64_t stdout_end_offset,
+                                  int64_t stderr_end_offset) const {
+  if (options_.is_local_mode) {
+    return;
+  }
+  rpc::TaskLogInfo task_log_info;
+  task_log_info.set_stdout_end(stdout_end_offset);
+  task_log_info.set_stderr_end(stderr_end_offset);
+
+  auto current_task = worker_context_.GetCurrentTask();
+  RAY_CHECK(current_task)
+      << "We should have set the current task spec before executing the task.";
+  RAY_UNUSED(task_manager_->RecordTaskStatusEventIfNeeded(
+      task_id,
+      worker_context_.GetCurrentJobID(),
+      attempt_number,
+      *current_task,
+      rpc::TaskStatus::NIL,
+      /* include_task_info */ false,
+      worker::TaskStatusEvent::TaskStateUpdate(task_log_info)));
+}
+
+void CoreWorker::UpdateTaskIsDebuggerPaused(const TaskID &task_id,
+                                            const bool is_debugger_paused) {
+  absl::MutexLock lock(&mutex_);
+  auto current_task_it = current_tasks_.find(task_id);
+  RAY_CHECK(current_task_it != current_tasks_.end())
+      << "We should have set the current task spec before executing the task.";
+  RAY_LOG(DEBUG) << "Task " << current_task_it->second.TaskId()
+                 << " is paused by debugger set to" << is_debugger_paused;
+  RAY_UNUSED(task_manager_->RecordTaskStatusEventIfNeeded(
+      task_id,
+      worker_context_.GetCurrentJobID(),
+      current_task_it->second.AttemptNumber(),
+      current_task_it->second,
+      rpc::TaskStatus::NIL,
+      /* include_task_info */ false,
+      worker::TaskStatusEvent::TaskStateUpdate(is_debugger_paused)));
 }
 
 ClusterSizeBasedLeaseRequestRateLimiter::ClusterSizeBasedLeaseRequestRateLimiter(

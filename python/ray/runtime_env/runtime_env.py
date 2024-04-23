@@ -3,7 +3,7 @@ import logging
 import os
 from copy import deepcopy
 from dataclasses import asdict, is_dataclass
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 import ray
 from ray._private.ray_constants import DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS
@@ -39,17 +39,19 @@ class RuntimeEnvConfig(dict):
             This flag is set to `True` by default.
     """
 
-    known_fields: Set[str] = {"setup_timeout_seconds", "eager_install"}
+    known_fields: Set[str] = {"setup_timeout_seconds", "eager_install", "log_files"}
 
     _default_config: Dict = {
         "setup_timeout_seconds": DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS,
         "eager_install": True,
+        "log_files": [],
     }
 
     def __init__(
         self,
         setup_timeout_seconds: int = DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS,
         eager_install: bool = True,
+        log_files: Optional[List[str]] = None,
     ):
         super().__init__()
         if not isinstance(setup_timeout_seconds, int):
@@ -69,6 +71,20 @@ class RuntimeEnvConfig(dict):
                 f"eager_install must be a boolean. got {type(eager_install)}"
             )
         self["eager_install"] = eager_install
+
+        if log_files is not None:
+            if not isinstance(log_files, list):
+                raise TypeError(
+                    "log_files must be a list of strings or None, got "
+                    f"{log_files} with type {type(log_files)}."
+                )
+            for file_name in log_files:
+                if not isinstance(file_name, str):
+                    raise TypeError("Each item in log_files must be a string.")
+        else:
+            log_files = self._default_config["log_files"]
+
+        self["log_files"] = log_files
 
     @staticmethod
     def parse_and_validate_runtime_env_config(
@@ -102,6 +118,8 @@ class RuntimeEnvConfig(dict):
         runtime_env_config = ProtoRuntimeEnvConfig()
         runtime_env_config.setup_timeout_seconds = self["setup_timeout_seconds"]
         runtime_env_config.eager_install = self["eager_install"]
+        if self["log_files"] is not None:
+            runtime_env_config.log_files.extend(self["log_files"])
         return runtime_env_config
 
     @classmethod
@@ -117,6 +135,7 @@ class RuntimeEnvConfig(dict):
         return cls(
             setup_timeout_seconds=setup_timeout_seconds,
             eager_install=runtime_env_config.eager_install,
+            log_files=list(runtime_env_config.log_files),
         )
 
     def to_dict(self) -> Dict:
@@ -235,6 +254,14 @@ class RuntimeEnv(dict):
             The `run_options` list spec is here:
             https://docs.docker.com/engine/reference/run/
         env_vars: Environment variables to set.
+        worker_process_setup_hook: (Experimental) The setup hook that's
+            called after workers start and before Tasks and Actors are scheduled.
+            A module name (string type) or callable (function) can be passed.
+            When a module name is passed, Ray worker should be able to access the
+            module name. When a callable is passed, callable should be serializable.
+            When a runtime env is specified by job submission API,
+            only a module name (string) is allowed.
+        nsight: Dictionary mapping nsight profile option name to it's value.
         config: config for runtime environment. Either
             a dict or a RuntimeEnvConfig. Field: (1) setup_timeout_seconds, the
             timeout of runtime environment creation,  timeout is in seconds.
@@ -258,6 +285,9 @@ class RuntimeEnv(dict):
         # field which is not supported. We should remove it
         # with the test.
         "docker",
+        "worker_process_setup_hook",
+        "_nsight",
+        "mpi",
     }
 
     extensions_fields: Set[str] = {
@@ -275,8 +305,11 @@ class RuntimeEnv(dict):
         conda: Optional[Union[Dict[str, str], str]] = None,
         container: Optional[Dict[str, str]] = None,
         env_vars: Optional[Dict[str, str]] = None,
+        worker_process_setup_hook: Optional[Union[Callable, str]] = None,
+        nsight: Optional[Union[str, Dict[str, str]]] = None,
         config: Optional[Union[Dict, RuntimeEnvConfig]] = None,
         _validate: bool = True,
+        mpi: Optional[Dict] = None,
         **kwargs,
     ):
         super().__init__()
@@ -290,13 +323,18 @@ class RuntimeEnv(dict):
             runtime_env["pip"] = pip
         if conda is not None:
             runtime_env["conda"] = conda
+        if nsight is not None:
+            runtime_env["_nsight"] = nsight
         if container is not None:
             runtime_env["container"] = container
         if env_vars is not None:
             runtime_env["env_vars"] = env_vars
         if config is not None:
             runtime_env["config"] = config
-
+        if worker_process_setup_hook is not None:
+            runtime_env["worker_process_setup_hook"] = worker_process_setup_hook
+        if mpi is not None:
+            runtime_env["mpi"] = mpi
         if runtime_env.get("java_jars"):
             runtime_env["java_jars"] = runtime_env.get("java_jars")
 
@@ -321,6 +359,14 @@ class RuntimeEnv(dict):
                 "user-guide/tasks/manage-environments.html"
                 "#create-env-file-manually"
             )
+
+        if self.get("container"):
+            if len(runtime_env) > 1:
+                raise ValueError(
+                    "The 'container' field currently cannot be used "
+                    "together with other fields of runtime_env. "
+                    f"Specified fields: {runtime_env.keys()}"
+                )
 
         for option, validate_fn in OPTION_TO_VALIDATION_FN.items():
             option_val = self.get(option)
@@ -430,6 +476,12 @@ class RuntimeEnv(dict):
             return list(self["java_jars"])
         return []
 
+    def mpi(self) -> Optional[Union[str, Dict[str, str]]]:
+        return self.get("mpi", None)
+
+    def nsight(self) -> Optional[Union[str, Dict[str, str]]]:
+        return self.get("_nsight", None)
+
     def env_vars(self) -> Dict:
         return self.get("env_vars", {})
 
@@ -499,3 +551,53 @@ class RuntimeEnv(dict):
             if key not in self.known_fields:
                 result.append((key, value))
         return result
+
+
+def _merge_runtime_env(
+    parent: Optional[RuntimeEnv],
+    child: Optional[RuntimeEnv],
+    override: bool = False,
+) -> Optional[RuntimeEnv]:
+    """Merge the parent and child runtime environments.
+
+    If override = True, the child's runtime env overrides the parent's
+    runtime env in the event of a conflict.
+
+    Merging happens per key (i.e., "conda", "pip", ...), but
+    "env_vars" are merged per env var key.
+
+    It returns None if Ray fails to merge runtime environments because
+    of a conflict and `override = False`.
+
+    Args:
+        parent: Parent runtime env.
+        child: Child runtime env.
+        override: If True, the child's runtime env overrides
+            conflicting fields.
+    Returns:
+        The merged runtime env's if Ray successfully merges them.
+        None if the runtime env's conflict. Empty dict if
+        parent and child are both None.
+    """
+    if parent is None:
+        parent = {}
+    if child is None:
+        child = {}
+
+    parent = deepcopy(parent)
+    child = deepcopy(child)
+    parent_env_vars = parent.pop("env_vars", {})
+    child_env_vars = child.pop("env_vars", {})
+
+    if not override:
+        if set(parent.keys()).intersection(set(child.keys())):
+            return None
+        if set(parent_env_vars.keys()).intersection(set(child_env_vars.keys())):  # noqa
+            return None
+
+    parent.update(child)
+    parent_env_vars.update(child_env_vars)
+    if parent_env_vars:
+        parent["env_vars"] = parent_env_vars
+
+    return parent

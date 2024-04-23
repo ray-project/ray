@@ -7,7 +7,7 @@ import numpy
 
 import ray
 import ray.experimental.internal_kv as internal_kv
-from ray._private.gcs_utils import GcsClient
+from ray._raylet import GcsClient
 from ray.util.collective.types import ReduceOp, torch_available
 from ray.util.queue import _QueueActor
 

@@ -202,7 +202,11 @@ class TestModelImport(unittest.TestCase):
                 PPOConfig()
                 .environment("CartPole-v1")
                 .rollouts(num_rollout_workers=0)
-                .training(model={"vf_share_layers": True})
+                # We need to diable the RLModule / Learner API here, since this test is
+                # overfitted to the ModelV2 API stack.
+                .training(
+                    model={"vf_share_layers": True},
+                )
             )
         )
 

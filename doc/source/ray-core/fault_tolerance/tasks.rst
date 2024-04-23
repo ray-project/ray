@@ -16,12 +16,51 @@ on a remote worker or actor fails due to a Python-level exception, Ray wraps
 the original exception in a ``RayTaskError`` and stores this as the task's
 return value. This wrapped exception will be thrown to any worker that tries
 to get the result, either by calling ``ray.get`` or if the worker is executing
-another task that depends on the object.
+another task that depends on the object. If the user's exception type can be subclassed,
+the raised exception is an instance of both ``RayTaskError`` and the user's exception type
+so the user can try-catch either of them. Otherwise, the wrapped exception is just
+``RayTaskError`` and the actual user's exception type can be accessed via the ``cause``
+field of the ``RayTaskError``.
 
 .. literalinclude:: ../doc_code/task_exceptions.py
   :language: python
   :start-after: __task_exceptions_begin__
   :end-before: __task_exceptions_end__
+
+Example code of catching the user exception type when the exception type can be subclassed:
+
+.. literalinclude:: ../doc_code/task_exceptions.py
+  :language: python
+  :start-after: __catch_user_exceptions_begin__
+  :end-before: __catch_user_exceptions_end__
+
+Example code of accessing the user exception type when the exception type can *not* be subclassed:
+
+.. literalinclude:: ../doc_code/task_exceptions.py
+  :language: python
+  :start-after: __catch_user_final_exceptions_begin__
+  :end-before: __catch_user_final_exceptions_end__
+
+Use `ray list tasks` from :ref:`State API CLI <state-api-overview-ref>` to query task exit details:
+
+.. code-block:: bash
+
+  # This API is only available when you download Ray via `pip install "ray[default]"`
+  ray list tasks 
+
+.. code-block:: bash
+
+  ======== List: 2023-05-26 10:32:00.962610 ========
+  Stats:
+  ------------------------------
+  Total: 3
+
+  Table:
+  ------------------------------
+      TASK_ID                                             ATTEMPT_NUMBER  NAME    STATE      JOB_ID  ACTOR_ID    TYPE         FUNC_OR_CLASS_NAME    PARENT_TASK_ID                                    NODE_ID                                                   WORKER_ID                                                 ERROR_TYPE
+   0  16310a0f0a45af5cffffffffffffffffffffffff01000000                 0  f       FAILED   01000000              NORMAL_TASK  f                     ffffffffffffffffffffffffffffffffffffffff01000000  767bd47b72efb83f33dda1b661621cce9b969b4ef00788140ecca8ad  b39e3c523629ab6976556bd46be5dbfbf319f0fce79a664122eb39a9  TASK_EXECUTION_EXCEPTION
+   1  c2668a65bda616c1ffffffffffffffffffffffff01000000                 0  g       FAILED   01000000              NORMAL_TASK  g                     ffffffffffffffffffffffffffffffffffffffff01000000  767bd47b72efb83f33dda1b661621cce9b969b4ef00788140ecca8ad  b39e3c523629ab6976556bd46be5dbfbf319f0fce79a664122eb39a9  TASK_EXECUTION_EXCEPTION
+   2  c8ef45ccd0112571ffffffffffffffffffffffff01000000                 0  f       FAILED   01000000              NORMAL_TASK  f                     ffffffffffffffffffffffffffffffffffffffff01000000  767bd47b72efb83f33dda1b661621cce9b969b4ef00788140ecca8ad  b39e3c523629ab6976556bd46be5dbfbf319f0fce79a664122eb39a9  TASK_EXECUTION_EXCEPTION
 
 .. _task-retries:
 
@@ -63,6 +102,28 @@ exception, or pass a list of retryable exceptions. An example is shown below.
   :language: python
   :start-after: __tasks_fault_tolerance_retries_exception_begin__
   :end-before: __tasks_fault_tolerance_retries_exception_end__
+
+
+Use `ray list tasks -f task_id=\<task_id\>` from :ref:`State API CLI <state-api-overview-ref>` to see task attempts failures and retries:
+
+.. code-block:: bash
+
+  # This API is only available when you download Ray via `pip install "ray[default]"`
+  ray list tasks -f task_id=16310a0f0a45af5cffffffffffffffffffffffff01000000
+
+.. code-block:: bash
+
+  ======== List: 2023-05-26 10:38:08.809127 ========
+  Stats:
+  ------------------------------
+  Total: 2
+
+  Table:
+  ------------------------------
+      TASK_ID                                             ATTEMPT_NUMBER  NAME              STATE       JOB_ID  ACTOR_ID    TYPE         FUNC_OR_CLASS_NAME    PARENT_TASK_ID                                    NODE_ID                                                   WORKER_ID                                                 ERROR_TYPE
+   0  16310a0f0a45af5cffffffffffffffffffffffff01000000                 0  potentially_fail  FAILED    01000000              NORMAL_TASK  potentially_fail      ffffffffffffffffffffffffffffffffffffffff01000000  94909e0958e38d10d668aa84ed4143d0bf2c23139ae1a8b8d6ef8d9d  b36d22dbf47235872ad460526deaf35c178c7df06cee5aa9299a9255  WORKER_DIED
+   1  16310a0f0a45af5cffffffffffffffffffffffff01000000                 1  potentially_fail  FINISHED  01000000              NORMAL_TASK  potentially_fail      ffffffffffffffffffffffffffffffffffffffff01000000  94909e0958e38d10d668aa84ed4143d0bf2c23139ae1a8b8d6ef8d9d  22df7f2a9c68f3db27498f2f435cc18582de991fbcaf49ce0094ddb0
+
 
 Cancelling misbehaving tasks
 ----------------------------

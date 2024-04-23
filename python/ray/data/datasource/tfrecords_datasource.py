@@ -1,29 +1,87 @@
-from typing import TYPE_CHECKING, Any, Callable, Dict, Union, Iterable, Iterator
+import logging
 import struct
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Dict, Iterable, Iterator, List, Optional, Union
 
 import numpy as np
+import pyarrow
 
-from ray.util.annotations import PublicAPI
-from ray.data._internal.util import _check_import
-from ray.data.block import Block, BlockAccessor
+from ray.data.aggregate import AggregateFn
+from ray.data.block import Block
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
-    import pyarrow
+    import pandas as pd
     import tensorflow as tf
+    from tensorflow_metadata.proto.v0 import schema_pb2
+
+    from ray.data.dataset import Dataset
+
+
+# Default batch size to be used when using TFX BSL for reading tfrecord files
+# Ray will use this parameter by default to read the tf.examples in batches.
+DEFAULT_BATCH_SIZE = 2048
+
+logger = logging.getLogger(__name__)
+
+
+@PublicAPI(stability="alpha")
+@dataclass
+class TFXReadOptions:
+    """
+    Specifies read options when reading TFRecord files with TFX.
+    """
+
+    # An int representing the number of consecutive elements of
+    # this dataset to combine in a single batch when tfx-bsl is used to read
+    # the tfrecord files.
+    batch_size: int = DEFAULT_BATCH_SIZE
+
+    # Toggles the schema inference applied; applicable
+    # only if tfx-bsl is used and tf_schema argument is missing.
+    # Defaults to True.
+    auto_infer_schema: bool = True
 
 
 @PublicAPI(stability="alpha")
 class TFRecordDatasource(FileBasedDatasource):
+    """TFRecord datasource, for reading and writing TFRecord files."""
 
-    _FILE_EXTENSION = "tfrecords"
+    _FILE_EXTENSIONS = ["tfrecords"]
 
-    def _read_stream(
-        self, f: "pyarrow.NativeFile", path: str, **reader_args
+    def __init__(
+        self,
+        paths: Union[str, List[str]],
+        tf_schema: Optional["schema_pb2.Schema"] = None,
+        tfx_read_options: Optional[TFXReadOptions] = None,
+        **file_based_datasource_kwargs,
+    ):
+        """
+        Args:
+            tf_schema: Optional TensorFlow Schema which is used to explicitly set
+                the schema of the underlying Dataset.
+            tfx_read_options: Optional options for enabling reading tfrecords
+                using tfx-bsl.
+
+        """
+        super().__init__(paths, **file_based_datasource_kwargs)
+
+        self._tf_schema = tf_schema
+        self._tfx_read_options = tfx_read_options
+
+    def _read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
+        if self._tfx_read_options:
+            yield from self._tfx_read_stream(f, path)
+        else:
+            yield from self._default_read_stream(f, path)
+
+    def _default_read_stream(
+        self, f: "pyarrow.NativeFile", path: str
     ) -> Iterator[Block]:
-        from google.protobuf.message import DecodeError
         import pyarrow as pa
         import tensorflow as tf
+        from google.protobuf.message import DecodeError
 
         for record in _read_records(f, path):
             example = tf.train.Example()
@@ -36,53 +94,112 @@ class TFRecordDatasource(FileBasedDatasource):
                     f"file contains a message type other than `tf.train.Example`: {e}"
                 )
 
-            yield pa.Table.from_pydict(_convert_example_to_dict(example))
+            yield pa.Table.from_pydict(
+                _convert_example_to_dict(example, self._tf_schema)
+            )
 
-    def _write_block(
-        self,
-        f: "pyarrow.NativeFile",
-        block: BlockAccessor,
-        writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
-        **writer_args,
-    ) -> None:
+    def _tfx_read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
+        import tensorflow as tf
+        from tfx_bsl.cc.tfx_bsl_extension.coders import ExamplesToRecordBatchDecoder
 
-        _check_import(self, module="crc32c", package="crc32c")
+        full_path = self._resolve_full_path(path)
 
-        arrow_table = block.to_arrow()
+        compression = (self._open_stream_args or {}).get("compression", None)
 
-        # It seems like TFRecords are typically row-based,
-        # https://www.tensorflow.org/tutorials/load_data/tfrecord#writing_a_tfrecord_file_2
-        # so we must iterate through the rows of the block,
-        # serialize to tf.train.Example proto, and write to file.
+        if compression:
+            compression = compression.upper()
 
-        examples = _convert_arrow_table_to_examples(arrow_table)
+        tf_schema_string = (
+            self._tf_schema.SerializeToString() if self._tf_schema else None
+        )
 
-        # Write each example to the arrow file in the TFRecord format.
-        for example in examples:
-            _write_record(f, example)
+        decoder = ExamplesToRecordBatchDecoder(tf_schema_string)
+        exception_thrown = None
+        try:
+            for record in tf.data.TFRecordDataset(
+                full_path, compression_type=compression
+            ).batch(self._tfx_read_options.batch_size):
+                yield _cast_large_list_to_list(
+                    pyarrow.Table.from_batches([decoder.DecodeBatch(record.numpy())])
+                )
+        except Exception as error:
+            logger.exception(f"Failed to read TFRecord file {full_path}")
+            exception_thrown = error
+
+        # we need to do this hack were we raise an exception outside of the
+        # except block because tensorflow DataLossError is unpickable, and
+        # even if we raise a runtime error, ray keeps information about the
+        # original error, which makes it unpickable still.
+        if exception_thrown:
+            raise RuntimeError(f"Failed to read TFRecord file {full_path}.")
+
+    def _resolve_full_path(self, relative_path):
+        if isinstance(self._filesystem, pyarrow.fs.S3FileSystem):
+            return f"s3://{relative_path}"
+        if isinstance(self._filesystem, pyarrow.fs.GcsFileSystem):
+            return f"gs://{relative_path}"
+        if isinstance(self._filesystem, pyarrow.fs.HadoopFileSystem):
+            return f"hdfs:///{relative_path}"
+        if isinstance(self._filesystem, pyarrow.fs.PyFileSystem):
+            protocol = self._filesystem.handler.fs.protocol
+            if isinstance(protocol, list) or isinstance(protocol, tuple):
+                protocol = protocol[0]
+            if protocol == "gcs":
+                protocol = "gs"
+            return f"{protocol}://{relative_path}"
+
+        return relative_path
 
 
 def _convert_example_to_dict(
     example: "tf.train.Example",
-) -> Dict[str, "pyarrow.Array"]:
+    tf_schema: Optional["schema_pb2.Schema"],
+) -> Dict[str, pyarrow.Array]:
     record = {}
+    schema_dict = {}
+    # Convert user-specified schema into dict for convenient mapping
+    if tf_schema is not None:
+        for schema_feature in tf_schema.feature:
+            schema_dict[schema_feature.name] = schema_feature.type
+
     for feature_name, feature in example.features.feature.items():
-        record[feature_name] = _get_feature_value(feature)
+        if tf_schema is not None and feature_name not in schema_dict:
+            raise ValueError(
+                f"Found extra unexpected feature {feature_name} "
+                f"not in specified schema: {tf_schema}"
+            )
+        schema_feature_type = schema_dict.get(feature_name)
+        record[feature_name] = _get_feature_value(feature, schema_feature_type)
     return record
 
 
 def _convert_arrow_table_to_examples(
-    arrow_table: "pyarrow.Table",
+    arrow_table: pyarrow.Table,
+    tf_schema: Optional["schema_pb2.Schema"] = None,
 ) -> Iterable["tf.train.Example"]:
     import tensorflow as tf
 
+    schema_dict = {}
+    # Convert user-specified schema into dict for convenient mapping
+    if tf_schema is not None:
+        for schema_feature in tf_schema.feature:
+            schema_dict[schema_feature.name] = schema_feature.type
+
     # Serialize each row[i] of the block to a tf.train.Example and yield it.
     for i in range(arrow_table.num_rows):
-
         # First, convert row[i] to a dictionary.
         features: Dict[str, "tf.train.Feature"] = {}
         for name in arrow_table.column_names:
-            features[name] = _value_to_feature(arrow_table[name][i])
+            if tf_schema is not None and name not in schema_dict:
+                raise ValueError(
+                    f"Found extra unexpected feature {name} "
+                    f"not in specified schema: {tf_schema}"
+                )
+            schema_feature_type = schema_dict.get(name)
+            features[name] = _value_to_feature(
+                arrow_table[name][i],
+                schema_feature_type,
+            )
 
         # Convert the dictionary to an Example proto.
         proto = tf.train.Example(features=tf.train.Features(feature=features))
@@ -90,42 +207,78 @@ def _convert_arrow_table_to_examples(
         yield proto
 
 
+def _get_single_true_type(dct) -> str:
+    """Utility function for getting the single key which has a `True` value in
+    a dict. Used to filter a dict of `{field_type: is_valid}` to get
+    the field type from a schema or data source."""
+    filtered_types = iter([_type for _type in dct if dct[_type]])
+    # In the case where there are no keys with a `True` value, return `None`
+    return next(filtered_types, None)
+
+
 def _get_feature_value(
     feature: "tf.train.Feature",
-) -> "pyarrow.Array":
+    schema_feature_type: Optional["schema_pb2.FeatureType"] = None,
+) -> pyarrow.Array:
     import pyarrow as pa
 
-    values = (
-        feature.HasField("int64_list"),
-        feature.HasField("float_list"),
-        feature.HasField("bytes_list"),
-    )
-    # At most one of `bytes_list`, `float_list`, and `int64_list` contains data.
-    # If none contain data, this indicates an empty feature value.
-    assert sum(bool(value) for value in values) <= 1
+    underlying_feature_type = {
+        "bytes": feature.HasField("bytes_list"),
+        "float": feature.HasField("float_list"),
+        "int": feature.HasField("int64_list"),
+    }
+    # At most one of `bytes_list`, `float_list`, and `int64_list`
+    # should contain values. If none contain data, this indicates
+    # an empty feature value.
+    assert sum(bool(value) for value in underlying_feature_type.values()) <= 1
 
-    if feature.HasField("bytes_list"):
+    if schema_feature_type is not None:
+        try:
+            from tensorflow_metadata.proto.v0 import schema_pb2
+        except ModuleNotFoundError:
+            raise ModuleNotFoundError(
+                "To use TensorFlow schemas, please install "
+                "the tensorflow-metadata package."
+            )
+        # If a schema is specified, compare to the underlying type
+        specified_feature_type = {
+            "bytes": schema_feature_type == schema_pb2.FeatureType.BYTES,
+            "float": schema_feature_type == schema_pb2.FeatureType.FLOAT,
+            "int": schema_feature_type == schema_pb2.FeatureType.INT,
+        }
+        und_type = _get_single_true_type(underlying_feature_type)
+        spec_type = _get_single_true_type(specified_feature_type)
+        if und_type is not None and und_type != spec_type:
+            raise ValueError(
+                "Schema field type mismatch during read: specified type is "
+                f"{spec_type}, but underlying type is {und_type}",
+            )
+        # Override the underlying value type with the type in the user-specified schema.
+        underlying_feature_type = specified_feature_type
+
+    if underlying_feature_type["bytes"]:
         value = feature.bytes_list.value
         type_ = pa.binary()
-    elif feature.HasField("float_list"):
+    elif underlying_feature_type["float"]:
         value = feature.float_list.value
         type_ = pa.float32()
-    elif feature.HasField("int64_list"):
+    elif underlying_feature_type["int"]:
         value = feature.int64_list.value
         type_ = pa.int64()
     else:
         value = []
         type_ = pa.null()
     value = list(value)
-    if len(value) == 1:
+    if len(value) == 1 and schema_feature_type is None:
         # Use the value itself if the features contains a single value.
         # This is to give better user experience when writing preprocessing UDF on
         # these single-value lists.
         value = value[0]
     else:
-        # If the feature value is empty, set the type to null for now
-        # to allow pyarrow to construct a valid Array; later, infer the
-        # type from other records which have non-empty values for the feature.
+        # If the feature value is empty and no type is specified in the user-provided
+        # schema, set the type to null for now to allow pyarrow to construct a valid
+        # Array; later, infer the type from other records which have non-empty values
+        # for the feature.
         if len(value) == 0:
             type_ = pa.null()
         type_ = pa.list_(type_)
@@ -133,10 +286,11 @@ def _get_feature_value(
 
 
 def _value_to_feature(
-    value: Union["pyarrow.Scalar", "pyarrow.Array"]
+    value: Union["pyarrow.Scalar", "pyarrow.Array"],
+    schema_feature_type: Optional["schema_pb2.FeatureType"] = None,
 ) -> "tf.train.Feature":
-    import tensorflow as tf
     import pyarrow as pa
+    import tensorflow as tf
 
     if isinstance(value, pa.ListScalar):
         # Use the underlying type of the ListScalar's value in
@@ -151,11 +305,49 @@ def _value_to_feature(
         else:
             value = [value]
 
-    if pa.types.is_integer(value_type):
+    underlying_value_type = {
+        "bytes": pa.types.is_binary(value_type),
+        "string": pa.types.is_string(value_type),
+        "float": pa.types.is_floating(value_type),
+        "int": pa.types.is_integer(value_type),
+    }
+    assert sum(bool(value) for value in underlying_value_type.values()) <= 1
+
+    if schema_feature_type is not None:
+        try:
+            from tensorflow_metadata.proto.v0 import schema_pb2
+        except ModuleNotFoundError:
+            raise ModuleNotFoundError(
+                "To use TensorFlow schemas, please install "
+                "the tensorflow-metadata package."
+            )
+        specified_feature_type = {
+            "bytes": schema_feature_type == schema_pb2.FeatureType.BYTES
+            and not underlying_value_type["string"],
+            "string": schema_feature_type == schema_pb2.FeatureType.BYTES
+            and underlying_value_type["string"],
+            "float": schema_feature_type == schema_pb2.FeatureType.FLOAT,
+            "int": schema_feature_type == schema_pb2.FeatureType.INT,
+        }
+
+        und_type = _get_single_true_type(underlying_value_type)
+        spec_type = _get_single_true_type(specified_feature_type)
+        if und_type is not None and und_type != spec_type:
+            raise ValueError(
+                "Schema field type mismatch during write: specified type is "
+                f"{spec_type}, but underlying type is {und_type}",
+            )
+        # Override the underlying value type with the type in the user-specified schema.
+        underlying_value_type = specified_feature_type
+
+    if underlying_value_type["int"]:
         return tf.train.Feature(int64_list=tf.train.Int64List(value=value))
-    if pa.types.is_floating(value_type):
+    if underlying_value_type["float"]:
         return tf.train.Feature(float_list=tf.train.FloatList(value=value))
-    if pa.types.is_binary(value_type):
+    if underlying_value_type["bytes"]:
+        return tf.train.Feature(bytes_list=tf.train.BytesList(value=value))
+    if underlying_value_type["string"]:
+        value = [v.encode() for v in value]  # casting to bytes
         return tf.train.Feature(bytes_list=tf.train.BytesList(value=value))
     if pa.types.is_null(value_type):
         raise ValueError(
@@ -268,6 +460,96 @@ def _read_records(
             if data_length is not None:
                 error_message += f" Byte size of current record data is {data_length}."
             raise RuntimeError(error_message) from e
+
+
+def _cast_large_list_to_list(batch: pyarrow.Table):
+    """
+    This function transform pyarrow.large_list into list and pyarrow.large_binary into
+    pyarrow.binary so that all types resulting from the tfrecord_datasource are usable
+    with dataset.to_tf().
+    """
+    old_schema = batch.schema
+    fields = {}
+
+    for column_name in old_schema.names:
+        field_type = old_schema.field(column_name).type
+        if type(field_type) == pyarrow.lib.LargeListType:
+            value_type = field_type.value_type
+
+            if value_type == pyarrow.large_binary():
+                value_type = pyarrow.binary()
+
+            fields[column_name] = pyarrow.list_(value_type)
+        elif field_type == pyarrow.large_binary():
+            fields[column_name] = pyarrow.binary()
+        else:
+            fields[column_name] = old_schema.field(column_name)
+
+    new_schema = pyarrow.schema(fields)
+    return batch.cast(new_schema)
+
+
+def _infer_schema_and_transform(dataset: "Dataset"):
+    list_sizes = dataset.aggregate(_MaxListSize(dataset.schema().names))
+
+    return dataset.map_batches(
+        _unwrap_single_value_lists,
+        fn_kwargs={"col_lengths": list_sizes["max_list_size"]},
+        batch_format="pyarrow",
+    )
+
+
+def _unwrap_single_value_lists(batch: pyarrow.Table, col_lengths: Dict[str, int]):
+    """
+    This function will transfrom the dataset converting list types that always
+    contain single values to thery underlying data type
+    (i.e. pyarrow.int64() and pyarrow.float64())
+    """
+    columns = {}
+
+    for col in col_lengths:
+        value_type = batch[col].type.value_type
+
+        if col_lengths[col] == 1:
+            if batch[col]:
+                columns[col] = pyarrow.array(
+                    [x.as_py()[0] if x.as_py() else None for x in batch[col]],
+                    type=value_type,
+                )
+        else:
+            columns[col] = batch[col]
+
+    return pyarrow.table(columns)
+
+
+class _MaxListSize(AggregateFn):
+    def __init__(self, columns: List[str]):
+        self._columns = columns
+        super().__init__(
+            init=self._init,
+            merge=self._merge,
+            accumulate_row=self._accumulate_row,
+            finalize=lambda a: a,
+            name="max_list_size",
+        )
+
+    def _init(self, k: str):
+        return {col: 0 for col in self._columns}
+
+    def _merge(self, acc1: Dict[str, int], acc2: Dict[str, int]):
+        merged = {}
+        for col in self._columns:
+            merged[col] = max(acc1[col], acc2[col])
+
+        return merged
+
+    def _accumulate_row(self, acc: Dict[str, int], row: "pd.Series"):
+        for k in row:
+            value = row[k]
+            if value:
+                acc[k] = max(len(value), acc[k])
+
+        return acc
 
 
 # Adapted from https://github.com/vahidk/tfrecord/blob/74b2d24a838081356d993ec0e147eaf59ccd4c84/tfrecord/writer.py#L57-L72  # noqa: E501

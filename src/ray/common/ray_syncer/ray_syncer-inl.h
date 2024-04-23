@@ -63,6 +63,9 @@ class NodeState {
     return cluster_view_;
   }
 
+  /// Remove a node from the cluster view.
+  bool RemoveNode(const std::string &node_id);
+
  private:
   /// For local nodes
   std::array<const ReporterInterface *, kComponentArraySize> reporters_ = {nullptr};
@@ -138,19 +141,20 @@ class RaySyncerBidiReactor {
   /// Disconnect will terminate the communication between local and remote node.
   /// It also needs to do proper cleanup.
   void Disconnect() {
-    if (!IsDisconnected()) {
-      disconnected_ = true;
+    if (!*disconnected_) {
+      *disconnected_ = true;
       DoDisconnect();
     }
   };
 
   /// Return true if it's disconnected.
-  bool IsDisconnected() const { return disconnected_; }
+  std::shared_ptr<bool> IsDisconnected() const { return disconnected_; }
+
+  std::string remote_node_id_;
 
  private:
   virtual void DoDisconnect() = 0;
-  std::string remote_node_id_;
-  bool disconnected_ = false;
+  std::shared_ptr<bool> disconnected_ = std::make_shared<bool>(false);
 
   FRIEND_TEST(SyncerReactorTest, TestReactorFailure);
 };
@@ -178,7 +182,7 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
         message_processor_(std::move(message_processor)) {}
 
   bool PushToSendingQueue(std::shared_ptr<const RaySyncMessage> message) override {
-    if (IsDisconnected()) {
+    if (*IsDisconnected()) {
       return false;
     }
 
@@ -202,7 +206,7 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
     return false;
   }
 
-  virtual ~RaySyncerBidiReactorBase() {}
+  virtual ~RaySyncerBidiReactorBase() = default;
 
   void StartPull() {
     receiving_message_ = std::make_shared<RaySyncMessage>();
@@ -215,7 +219,7 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   instrumented_io_context &io_context_;
 
  private:
-  /// Handle the udpates sent from the remote node.
+  /// Handle the updates sent from the remote node.
   ///
   /// \param messages The message received.
   void ReceiveUpdate(std::shared_ptr<const RaySyncMessage> message) {
@@ -229,7 +233,7 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
       node_versions[message->message_type()] = message->version();
       message_processor_(message);
     } else {
-      RAY_LOG_EVERY_N(WARNING, 100)
+      RAY_LOG_EVERY_MS(WARNING, 1000)
           << "Drop message received from " << NodeID::FromBinary(message->node_id())
           << " because the message version " << message->version()
           << " is older than the local version " << node_versions[message->message_type()]
@@ -282,12 +286,15 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
 
   void OnWriteDone(bool ok) override {
     io_context_.dispatch(
-        [this, ok]() {
+        [this, disconnected = IsDisconnected(), ok]() {
+          if (*disconnected) {
+            return;
+          }
           if (ok) {
             SendNext();
           } else {
-            RAY_LOG_EVERY_N(ERROR, 100) << "Failed to send the message to: "
-                                        << NodeID::FromBinary(GetRemoteNodeID());
+            RAY_LOG_EVERY_MS(INFO, 1000) << "Failed to send the message to: "
+                                         << NodeID::FromBinary(GetRemoteNodeID());
             Disconnect();
           }
         },
@@ -296,14 +303,20 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
 
   void OnReadDone(bool ok) override {
     io_context_.dispatch(
-        [this, ok, msg = std::move(receiving_message_)]() mutable {
+        [this,
+         ok,
+         disconnected = IsDisconnected(),
+         msg = std::move(receiving_message_)]() mutable {
+          if (*disconnected) {
+            return;
+          }
           if (ok) {
             RAY_CHECK(!msg->node_id().empty());
             ReceiveUpdate(std::move(msg));
             StartPull();
           } else {
-            RAY_LOG_EVERY_N(ERROR, 100) << "Failed to read the message from: "
-                                        << NodeID::FromBinary(GetRemoteNodeID());
+            RAY_LOG_EVERY_MS(INFO, 1000) << "Failed to read the message from: "
+                                         << NodeID::FromBinary(GetRemoteNodeID());
             Disconnect();
           }
         },

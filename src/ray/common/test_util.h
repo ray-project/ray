@@ -112,7 +112,8 @@ extern std::string TEST_MOCK_WORKER_EXEC_PATH;
 /// 5. start/stop raylet monitor
 class TestSetupUtil {
  public:
-  static void StartUpRedisServers(const std::vector<int> &redis_server_ports);
+  static void StartUpRedisServers(const std::vector<int> &redis_server_ports,
+                                  bool save = false);
   static void ShutDownRedisServers();
   static void FlushAllRedisServers();
 
@@ -124,11 +125,10 @@ class TestSetupUtil {
                                  const std::string &resource,
                                  std::string *store_socket_name);
   static void StopRaylet(const std::string &raylet_socket_name);
-
- private:
-  static int StartUpRedisServer(const int &port);
-  static void ShutDownRedisServer(const int &port);
-  static void FlushRedisServer(const int &port);
+  static void ExecuteRedisCmd(int port, std::vector<std::string> cmd);
+  static int StartUpRedisServer(int port, bool save = false);
+  static void ShutDownRedisServer(int port);
+  static void FlushRedisServer(int port);
 };
 
 }  // namespace ray

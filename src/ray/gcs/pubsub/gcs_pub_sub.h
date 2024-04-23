@@ -25,6 +25,7 @@
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
 #include "src/ray/protobuf/gcs.pb.h"
+#include "src/ray/protobuf/gcs_service.grpc.pb.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
@@ -44,6 +45,8 @@ class GcsPublisher {
   /// Test only.
   /// TODO: remove this constructor and inject mock / fake from the other constructor.
   explicit GcsPublisher() {}
+
+  virtual ~GcsPublisher() = default;
 
   /// Returns the underlying pubsub::Publisher. Caller does not take ownership.
   /// Returns nullptr when RayConfig::instance().gcs_grpc_based_pubsub() is false.
@@ -67,18 +70,18 @@ class GcsPublisher {
                     const rpc::JobTableData &message,
                     const StatusCallback &done);
 
-  Status PublishNodeInfo(const NodeID &id,
-                         const rpc::GcsNodeInfo &message,
-                         const StatusCallback &done);
+  virtual Status PublishNodeInfo(const NodeID &id,
+                                 const rpc::GcsNodeInfo &message,
+                                 const StatusCallback &done);
 
   /// Actually rpc::WorkerDeltaData is not a delta message.
   Status PublishWorkerFailure(const WorkerID &id,
                               const rpc::WorkerDeltaData &message,
                               const StatusCallback &done);
 
-  Status PublishError(const std::string &id,
-                      const rpc::ErrorTableData &message,
-                      const StatusCallback &done);
+  virtual Status PublishError(const std::string &id,
+                              const rpc::ErrorTableData &message,
+                              const StatusCallback &done);
 
   /// TODO: remove once it is converted to GRPC-based push broadcasting.
   Status PublishResourceBatch(const rpc::ResourceUsageBatchData &message,
@@ -131,6 +134,87 @@ class GcsSubscriber {
   const rpc::Address gcs_address_;
   const std::unique_ptr<pubsub::SubscriberInterface> subscriber_;
 };
+
+// This client is only supposed to be used from Cython / Python
+class RAY_EXPORT PythonGcsPublisher {
+ public:
+  explicit PythonGcsPublisher(const std::string &gcs_address);
+
+  /// Connect to the publisher service of the GCS.
+  /// This function must be called before calling other functions.
+  ///
+  /// \return Status
+  Status Connect();
+
+  /// Publish error information to GCS.
+  Status PublishError(const std::string &key_id,
+                      const rpc::ErrorTableData &data,
+                      int64_t num_retries);
+
+  /// Publish logs to GCS.
+  Status PublishLogs(const std::string &key_id, const rpc::LogBatch &log_batch);
+
+ private:
+  Status DoPublishWithRetries(const rpc::GcsPublishRequest &request,
+                              int64_t num_retries,
+                              int64_t timeout_ms);
+  std::unique_ptr<rpc::InternalPubSubGcsService::Stub> pubsub_stub_;
+  std::shared_ptr<grpc::Channel> channel_;
+  std::string gcs_address_;
+  int gcs_port_;
+};
+
+// This client is only supposed to be used from Cython / Python
+class RAY_EXPORT PythonGcsSubscriber {
+ public:
+  explicit PythonGcsSubscriber(const std::string &gcs_address,
+                               int gcs_port,
+                               rpc::ChannelType channel_type,
+                               const std::string &subscriber_id,
+                               const std::string &worker_id);
+
+  /// Register a subscription for the subscriber's channel type.
+  ///
+  /// Before the registration, published messages in the channel
+  /// will not be saved for the subscriber.
+  Status Subscribe();
+
+  /// Polls for new error message.
+  /// Both key_id and data are out parameters.
+  Status PollError(std::string *key_id, int64_t timeout_ms, rpc::ErrorTableData *data);
+
+  /// Polls for new log messages.
+  Status PollLogs(std::string *key_id, int64_t timeout_ms, rpc::LogBatch *data);
+
+  /// Polls for actor messages.
+  Status PollActor(std::string *key_id, int64_t timeout_ms, rpc::ActorTableData *data);
+
+  /// Closes the subscriber and its active subscription.
+  Status Close();
+
+  int64_t last_batch_size();
+
+ private:
+  Status DoPoll(int64_t timeout_ms, rpc::PubMessage *message);
+
+  mutable absl::Mutex mu_;
+
+  std::unique_ptr<rpc::InternalPubSubGcsService::Stub> pubsub_stub_;
+  std::shared_ptr<grpc::Channel> channel_;
+  const rpc::ChannelType channel_type_;
+  const std::string subscriber_id_;
+  std::string publisher_id_;
+  const std::string worker_id_;
+  int64_t max_processed_sequence_id_ ABSL_GUARDED_BY(mu_);
+  int64_t last_batch_size_ ABSL_GUARDED_BY(mu_);
+  std::deque<rpc::PubMessage> queue_ ABSL_GUARDED_BY(mu_);
+  bool closed_ ABSL_GUARDED_BY(mu_);
+  std::shared_ptr<grpc::ClientContext> current_polling_context_ ABSL_GUARDED_BY(mu_);
+};
+
+/// Get the .lines() attribute of a LogBatch as a std::vector
+/// (this is needed so it can be wrapped in Cython)
+std::vector<std::string> PythonGetLogBatchLines(const rpc::LogBatch &log_batch);
 
 }  // namespace gcs
 }  // namespace ray

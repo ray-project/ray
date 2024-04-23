@@ -1,0 +1,75 @@
+auth:
+    ssh_user: ubuntu
+cluster_name: test-cli
+docker:
+    image: anyscale/ray-ml:latest
+    container_name: ray_container
+    pull_before_run: true
+    head_image: anyscale/ray-ml:head-default
+    worker_image: anyscale/ray-ml:worker-default
+max_workers:
+    10
+file_mounts:
+    ~/tests: .
+available_node_types:
+    head_node:
+        resources: {}
+        max_workers: 0
+        node_config:
+            ImageId: latest_dlami
+            InstanceType: t1.micro
+    default:
+        resources: {}
+        max_workers: 2
+        min_workers: 0
+        node_config:
+            ImageId: latest_dlami
+            InstanceType: t1.micro
+    worker_nodes:
+        resources: {}
+        max_workers: 2
+        min_workers: 1
+        node_config:
+            ImageId: latest_dlami
+            InstanceType: t1.micro
+        initialization_commands:
+            - echo what
+    worker_nodes1:
+        resources:
+            CPU: 2
+        labels:
+            foo: bar 
+        max_workers: 2
+        min_workers: 1
+        node_config:
+            ImageId: latest_dlami
+            InstanceType: t1.micro
+        worker_setup_commands:
+            - echo worker1
+        docker:
+            worker_image: anyscale/ray-ml:worker_nodes1
+            pull_before_run: true
+head_node_type: head_node
+head_setup_commands:
+    - echo head
+head_start_ray_commands:
+    - ray stop
+    - ray start --head --autoscaling-config=~/ray_bootstrap_config.yaml
+idle_timeout_minutes: 5
+initialization_commands:
+    - echo init
+provider:
+    availability_zone: us-west-2a
+    key_pair:
+        key_name: __test-cli
+    region: us-west-2
+    type: aws
+setup_commands:
+    - echo a
+    - echo b
+    - echo ${echo hi}
+worker_setup_commands:
+    - echo worker
+worker_start_ray_commands:
+    - ray stop
+    - ray start --address=$RAY_HEAD_IP

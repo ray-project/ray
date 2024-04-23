@@ -3,19 +3,24 @@ import logging
 import os
 import uuid
 from functools import wraps
+from threading import Lock
 
 import ray._private.signature
-from ray import Language
-from ray import cloudpickle as pickle
-from ray import cross_language
+from ray import Language, cross_language
 from ray._private import ray_option_utils
+from ray._private.auto_init_hook import wrap_auto_init
 from ray._private.client_mode_hook import (
     client_mode_convert_function,
     client_mode_should_convert,
 )
 from ray._private.ray_option_utils import _warn_if_using_deprecated_placement_group
+from ray._private.serialization import pickle_dumps
 from ray._private.utils import get_runtime_env_info, parse_runtime_env
-from ray._raylet import PythonFunctionDescriptor
+from ray._raylet import (
+    STREAMING_GENERATOR_RETURN,
+    ObjectRefGenerator,
+    PythonFunctionDescriptor,
+)
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.placement_group import _configure_placement_group_based_on_context
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -70,7 +75,7 @@ class RemoteFunction:
             return the resulting ObjectRefs. For an example, see
             "test_decorated_function" in "python/ray/tests/test_basic.py".
         _function_signature: The function signature.
-        _last_export_session_and_job: A pair of the last exported session
+        _last_export_cluster_and_job: A pair of the last exported cluster
             and job to help us to know whether this function was exported.
             This is an imperfect mechanism used to determine if we need to
             export the remote function again. It is imperfect in the sense that
@@ -97,8 +102,12 @@ class RemoteFunction:
 
         # When gpu is used, set the task non-recyclable by default.
         # https://github.com/ray-project/ray/issues/29624 for more context.
+        # Note: Ray task worker process is not being reused when nsight
+        # profiler is running, as nsight generate report once the process exit.
         num_gpus = self._default_options.get("num_gpus") or 0
-        if num_gpus > 0 and self._default_options.get("max_calls", None) is None:
+        if (
+            num_gpus > 0 and self._default_options.get("max_calls", None) is None
+        ) or "nsight" in (self._default_options.get("runtime_env") or {}):
             self._default_options["max_calls"] = 1
 
         # TODO(suquark): This is a workaround for class attributes of options.
@@ -112,15 +121,16 @@ class RemoteFunction:
             self._default_options["runtime_env"] = self._runtime_env
 
         self._language = language
-        self._function = _inject_tracing_into_function(function)
+        self._is_generator = inspect.isgeneratorfunction(function)
+        self._function = function
+        self._function_signature = None
+        # Guards trace injection to enforce exactly once semantics
+        self._inject_lock = Lock()
         self._function_name = function.__module__ + "." + function.__name__
         self._function_descriptor = function_descriptor
         self._is_cross_language = language != Language.PYTHON
         self._decorator = getattr(function, "__ray_invocation_decorator__", None)
-        self._function_signature = ray._private.signature.extract_signature(
-            self._function
-        )
-        self._last_export_session_and_job = None
+        self._last_export_cluster_and_job = None
         self._uuid = uuid.uuid4()
 
         # Override task.remote's signature and docstring
@@ -136,6 +146,16 @@ class RemoteFunction:
             f"of running '{self._function_name}()', "
             f"try '{self._function_name}.remote()'."
         )
+
+    # Lock is not picklable
+    def __getstate__(self):
+        attrs = self.__dict__.copy()
+        del attrs["_inject_lock"]
+        return attrs
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self.__dict__["_inject_lock"] = Lock()
 
     def options(self, **task_options):
         """Configures and overrides the task invocation parameters.
@@ -155,7 +175,7 @@ class RemoteFunction:
                 This is a dictionary mapping strings (resource names) to floats.
             accelerator_type: If specified, requires that the task or actor run
                 on a node with the specified type of accelerator.
-                See `ray.util.accelerators` for accelerator types.
+                See :ref:`accelerator types <accelerator_types>`.
             memory: The heap memory request in bytes for this task/actor,
                 rounded down to the nearest integer.
             object_store_memory: The object store memory request for actors only.
@@ -190,6 +210,10 @@ class RemoteFunction:
                 placement group based scheduling;
                 `NodeAffinitySchedulingStrategy`:
                 node id based affinity scheduling.
+            enable_task_events: This specifies whether to enable task events for this
+                task. If set to True, task events such as (task running, finished)
+                are emitted, and available to Ray Dashboard and State API.
+                See :ref:`state-api-overview-ref` for more details.
             _metadata: Extended options for Ray libraries. For example,
                 _metadata={"workflows.io/options": <workflow options>} for
                 Ray workflows.
@@ -237,23 +261,33 @@ class RemoteFunction:
 
         return FuncWrapper()
 
+    @wrap_auto_init
     @_tracing_task_invocation
     def _remote(self, args=None, kwargs=None, **task_options):
         """Submit the remote function for execution."""
         # We pop the "max_calls" coming from "@ray.remote" here. We no longer need
         # it in "_remote()".
         task_options.pop("max_calls", None)
-        if client_mode_should_convert(auto_init=True):
+        if client_mode_should_convert():
             return client_mode_convert_function(self, args, kwargs, **task_options)
 
         worker = ray._private.worker.global_worker
         worker.check_connected()
 
-        # If this function was not exported in this session and job, we need to
+        # We cannot do this when the function is first defined, because we need
+        # ray.init() to have been called when this executes
+        with self._inject_lock:
+            if self._function_signature is None:
+                self._function = _inject_tracing_into_function(self._function)
+                self._function_signature = ray._private.signature.extract_signature(
+                    self._function
+                )
+
+        # If this function was not exported in this cluster and job, we need to
         # export this function again, because the current GCS doesn't have it.
         if (
             not self._is_cross_language
-            and self._last_export_session_and_job != worker.current_session_and_job
+            and self._last_export_cluster_and_job != worker.current_cluster_and_job
         ):
             self._function_descriptor = PythonFunctionDescriptor.from_function(
                 self._function, self._uuid
@@ -267,18 +301,12 @@ class RemoteFunction:
             # independent of whether or not the function was invoked by the
             # first driver. This is an argument for repickling the function,
             # which we do here.
-            try:
-                self._pickled_function = pickle.dumps(self._function)
-            except TypeError as e:
-                msg = (
-                    "Could not serialize the function "
-                    f"{self._function_descriptor.repr}. Check "
-                    "https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting "  # noqa
-                    "for more information."
-                )
-                raise TypeError(msg) from e
+            self._pickled_function = pickle_dumps(
+                self._function,
+                f"Could not serialize the function {self._function_descriptor.repr}",
+            )
 
-            self._last_export_session_and_job = worker.current_session_and_job
+            self._last_export_cluster_and_job = worker.current_cluster_and_job
             worker.function_actor_manager.export(self)
 
         kwargs = {} if kwargs is None else kwargs
@@ -308,9 +336,26 @@ class RemoteFunction:
             "placement_group_capture_child_tasks"
         ]
         scheduling_strategy = task_options["scheduling_strategy"]
+
         num_returns = task_options["num_returns"]
+        if num_returns is None:
+            if self._is_generator:
+                num_returns = "streaming"
+            else:
+                num_returns = 1
+
         if num_returns == "dynamic":
             num_returns = -1
+        elif num_returns == "streaming":
+            # TODO(sang): This is a temporary private API.
+            # Remove it when we migrate to the streaming generator.
+            num_returns = ray._raylet.STREAMING_GENERATOR_RETURN
+        generator_backpressure_num_objects = task_options[
+            "_generator_backpressure_num_objects"
+        ]
+        if generator_backpressure_num_objects is None:
+            generator_backpressure_num_objects = -1
+
         max_retries = task_options["max_retries"]
         retry_exceptions = task_options["retry_exceptions"]
         if isinstance(retry_exceptions, (list, tuple)):
@@ -370,6 +415,9 @@ class RemoteFunction:
         if _task_launch_hook:
             _task_launch_hook(self._function_descriptor, resources, scheduling_strategy)
 
+        # Override enable_task_events to default for actor if not specified (i.e. None)
+        enable_task_events = task_options.get("enable_task_events")
+
         def invocation(args, kwargs):
             if self._is_cross_language:
                 list_args = cross_language._format_args(worker, args, kwargs)
@@ -397,10 +445,18 @@ class RemoteFunction:
                 scheduling_strategy,
                 worker.debugger_breakpoint,
                 serialized_runtime_env_info or "{}",
+                generator_backpressure_num_objects,
+                enable_task_events,
             )
             # Reset worker's debug context from the last "remote" command
             # (which applies only to this .remote call).
             worker.debugger_breakpoint = b""
+            if num_returns == STREAMING_GENERATOR_RETURN:
+                # Streaming generator will return a single ref
+                # that is for the generator task.
+                assert len(object_refs) == 1
+                generator_ref = object_refs[0]
+                return ObjectRefGenerator(generator_ref, worker)
             if len(object_refs) == 1:
                 return object_refs[0]
             elif len(object_refs) > 1:

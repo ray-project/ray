@@ -4,11 +4,42 @@ import os
 import sys
 from typing import Any, Optional
 
+import tree  # pip install dm_tree
+
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.typing import TensorShape, TensorType
+from ray.rllib.utils.typing import TensorShape, TensorStructType, TensorType
 
 logger = logging.getLogger(__name__)
+
+
+@PublicAPI
+def convert_to_tensor(
+    data: TensorStructType,
+    framework: str,
+    device: Optional[str] = None,
+):
+    """Converts any nested numpy struct into framework-specific tensors.
+
+    Args:
+        data: The input data (numpy) to convert to framework-specific tensors.
+        framework: The framework to convert to. Only "torch" and "tf2" allowed.
+        device: An optional device name (for torch only).
+
+    Returns:
+        The converted tensor struct matching the input data.
+    """
+    if framework == "torch":
+        from ray.rllib.utils.torch_utils import convert_to_torch_tensor
+
+        return convert_to_torch_tensor(data, device=device)
+    elif framework == "tf2":
+        _, tf, _ = try_import_tf()
+
+        return tree.map_structure(lambda s: tf.convert_to_tensor(s), data)
+    raise NotImplementedError(
+        f"framework={framework} not supported in `convert_to_tensor()`!"
+    )
 
 
 @PublicAPI
@@ -26,7 +57,7 @@ def try_import_jax(error: bool = False):
     """
     if "RLLIB_TEST_NO_JAX_IMPORT" in os.environ:
         logger.warning("Not importing JAX for test purposes.")
-        return None
+        return None, None
 
     try:
         import jax
@@ -64,7 +95,7 @@ def try_import_tf(error: bool = False):
     # that uses them: del os.environ["RLLIB_TEST_NO_TF_IMPORT"]
     if "RLLIB_TEST_NO_TF_IMPORT" in os.environ:
         logger.warning("Not importing TensorFlow for test purposes")
-        return None, None, None
+        return None, tf_stub, None
 
     if "TF_CPP_MIN_LOG_LEVEL" not in os.environ:
         os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
@@ -286,10 +317,12 @@ def get_variable(
             initializer=value,
             dtype=dtype,
             trainable=trainable,
-            **({} if shape is None else {"shape": shape})
+            **({} if shape is None else {"shape": shape}),
         )
     elif framework == "torch" and torch_tensor is True:
         torch, _ = try_import_torch()
+        if not isinstance(value, np.ndarray):
+            value = np.array(value)
         var_ = torch.from_numpy(value)
         if dtype in [torch.float32, np.float32]:
             var_ = var_.float()

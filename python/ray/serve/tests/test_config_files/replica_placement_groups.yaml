@@ -1,0 +1,27 @@
+applications:
+  - name: valid
+    route_prefix: /valid
+    import_path: ray.serve.tests.test_config_files.replica_placement_groups.app
+    deployments:
+      - name: D
+        placement_group_bundles:
+          - {"CPU": 1}
+        placement_group_strategy: STRICT_PACK
+
+  - name: invalid_bundles
+    route_prefix: /invalid_bundles
+    import_path: ray.serve.tests.test_config_files.replica_placement_groups.app
+    deployments:
+      - name: D
+        # Insufficient resources for the replica actor.
+        placement_group_bundles:
+          - {"CPU": 0.1}
+
+  - name: invalid_strategy
+    route_prefix: /invalid_strategy
+    import_path: ray.serve.tests.test_config_files.replica_placement_groups.app
+    deployments:
+      - name: D
+        placement_group_bundles:
+          - {"CPU": 1}
+        placement_group_strategy: FAKE_NEWS

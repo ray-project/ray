@@ -1,16 +1,36 @@
 from typing import List
 
 from ray.data._internal.logical.interfaces import (
-    Rule,
-    Optimizer,
     LogicalPlan,
+    Optimizer,
     PhysicalPlan,
+    Rule,
 )
-from ray.data._internal.logical.rules import (
-    OperatorFusionRule,
-    ReorderRandomizeBlocksRule,
+from ray.data._internal.logical.rules._user_provided_optimizer_rules import (
+    add_user_provided_logical_rules,
+    add_user_provided_physical_rules,
+)
+from ray.data._internal.logical.rules.inherit_target_max_block_size import (
+    InheritTargetMaxBlockSizeRule,
+)
+from ray.data._internal.logical.rules.operator_fusion import OperatorFusionRule
+from ray.data._internal.logical.rules.randomize_blocks import ReorderRandomizeBlocksRule
+from ray.data._internal.logical.rules.set_read_parallelism import SetReadParallelismRule
+from ray.data._internal.logical.rules.zero_copy_map_fusion import (
+    EliminateBuildOutputBlocks,
 )
 from ray.data._internal.planner.planner import Planner
+
+DEFAULT_LOGICAL_RULES = [
+    ReorderRandomizeBlocksRule,
+]
+
+DEFAULT_PHYSICAL_RULES = [
+    InheritTargetMaxBlockSizeRule,
+    SetReadParallelismRule,
+    OperatorFusionRule,
+    EliminateBuildOutputBlocks,
+]
 
 
 class LogicalOptimizer(Optimizer):
@@ -18,7 +38,8 @@ class LogicalOptimizer(Optimizer):
 
     @property
     def rules(self) -> List[Rule]:
-        return [ReorderRandomizeBlocksRule()]
+        rules = add_user_provided_logical_rules(DEFAULT_LOGICAL_RULES)
+        return [rule_cls() for rule_cls in rules]
 
 
 class PhysicalOptimizer(Optimizer):
@@ -26,7 +47,8 @@ class PhysicalOptimizer(Optimizer):
 
     @property
     def rules(self) -> List["Rule"]:
-        return [OperatorFusionRule()]
+        rules = add_user_provided_physical_rules(DEFAULT_PHYSICAL_RULES)
+        return [rule_cls() for rule_cls in rules]
 
 
 def get_execution_plan(logical_plan: LogicalPlan) -> PhysicalPlan:
@@ -37,7 +59,7 @@ def get_execution_plan(logical_plan: LogicalPlan) -> PhysicalPlan:
     (2) planning: convert logical to physical operators.
     (3) physical optimization: optimize physical operators.
     """
-
-    logical_plan = LogicalOptimizer().optimize(logical_plan)
-    physical_plan = Planner().plan(logical_plan)
+    optimized_logical_plan = LogicalOptimizer().optimize(logical_plan)
+    logical_plan._dag = optimized_logical_plan.dag
+    physical_plan = Planner().plan(optimized_logical_plan)
     return PhysicalOptimizer().optimize(physical_plan)

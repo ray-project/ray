@@ -1,10 +1,10 @@
 memory-leak-test-sac:
     env:
-        ray.rllib.examples.env.random_env.RandomLargeObsSpaceEnvContActions
+        ray.rllib.examples.envs.classes.random_env.RandomLargeObsSpaceEnvContActions
     run: SAC
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
         # Switch off np.random, which is known to have memory leaks.
         env_config:
             config:

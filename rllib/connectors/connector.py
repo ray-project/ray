@@ -14,7 +14,7 @@ from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
     TensorType,
 )
-from ray.util.annotations import PublicAPI
+from ray.rllib.utils.annotations import OldAPIStack
 
 if TYPE_CHECKING:
     from ray.rllib.policy.policy import Policy
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="alpha")
+@OldAPIStack
 class ConnectorContext:
     """Data bits that may be needed for running connectors.
 
@@ -79,7 +79,7 @@ class ConnectorContext:
         )
 
 
-@PublicAPI(stability="alpha")
+@OldAPIStack
 class Connector(abc.ABC):
     """Connector base class.
 
@@ -137,7 +137,7 @@ class Connector(abc.ABC):
         return NotImplementedError
 
 
-@PublicAPI(stability="alpha")
+@OldAPIStack
 class AgentConnector(Connector):
     """Connector connecting user environments to RLlib policies.
 
@@ -149,59 +149,70 @@ class AgentConnector(Connector):
     AgentConnectorDataTypes can be used to specify arbitrary type of env data,
 
     Example:
-    .. code-block:: python
-        # A dict of multi-agent data from one env step() call.
-        ac = AgentConnectorDataType(
-            env_id="env_1",
-            agent_id=None,
-            data={
-                "agent_1": np.array(...),
-                "agent_2": np.array(...),
-            }
-        )
 
-    Example:
-    .. code-block:: python
-        # Single agent data ready to be preprocessed.
-        ac = AgentConnectorDataType(
-            env_id="env_1",
-            agent_id="agent_1",
-            data=np.array(...)
-        )
+        Represent a list of agent data from one env step() call.
 
-    We can adapt a simple stateless function into an agent connector by using
-    register_lambda_agent_connector:
-    .. code-block:: python
-        TimesTwoAgentConnector = register_lambda_agent_connector(
-            "TimesTwoAgentConnector", lambda data: data * 2
-        )
+        .. testcode::
 
-    More complicated agent connectors can be implemented by extending this
-    AgentConnector class:
+            import numpy as np
+            ac = AgentConnectorDataType(
+                env_id="env_1",
+                agent_id=None,
+                data={
+                    "agent_1": np.array([1, 2, 3]),
+                    "agent_2": np.array([4, 5, 6]),
+                }
+            )
 
-    Example:
-    .. code-block:: python
-        class FrameSkippingAgentConnector(AgentConnector):
-            def __init__(self, n):
-                self._n = n
-                self._frame_count = default_dict(str, default_dict(str, int))
+        Or a single agent data ready to be preprocessed.
 
-            def reset(self, env_id: str):
-                del self._frame_count[env_id]
+        .. testcode::
 
-            def __call__(
-                self, ac_data: List[AgentConnectorDataType]
-            ) -> List[AgentConnectorDataType]:
-                ret = []
-                for d in ac_data:
-                    assert d.env_id and d.agent_id, "Frame skipping works per agent"
+            ac = AgentConnectorDataType(
+                env_id="env_1",
+                agent_id="agent_1",
+                data=np.array([1, 2, 3]),
+            )
 
-                    count = self._frame_count[ac_data.env_id][ac_data.agent_id]
-                    self._frame_count[ac_data.env_id][ac_data.agent_id] = count + 1
+        We can also adapt a simple stateless function into an agent connector by
+        using register_lambda_agent_connector:
 
-                    if count % self._n == 0:
-                        ret.append(d)
-                return ret
+        .. testcode::
+
+            import numpy as np
+            from ray.rllib.connectors.agent.lambdas import (
+                register_lambda_agent_connector
+            )
+            TimesTwoAgentConnector = register_lambda_agent_connector(
+                "TimesTwoAgentConnector", lambda data: data * 2
+            )
+
+            # More complicated agent connectors can be implemented by extending this
+            # AgentConnector class:
+
+            class FrameSkippingAgentConnector(AgentConnector):
+                def __init__(self, n):
+                    self._n = n
+                    self._frame_count = default_dict(str, default_dict(str, int))
+
+                def reset(self, env_id: str):
+                    del self._frame_count[env_id]
+
+                def __call__(
+                    self, ac_data: List[AgentConnectorDataType]
+                ) -> List[AgentConnectorDataType]:
+                    ret = []
+                    for d in ac_data:
+                        assert d.env_id and d.agent_id, "Skipping works per agent!"
+
+                        count = self._frame_count[ac_data.env_id][ac_data.agent_id]
+                        self._frame_count[ac_data.env_id][ac_data.agent_id] = (
+                            count + 1
+                        )
+
+                        if count % self._n == 0:
+                            ret.append(d)
+                    return ret
 
     As shown, an agent connector may choose to emit an empty list to stop input
     observations from being further prosessed.
@@ -266,7 +277,7 @@ class AgentConnector(Connector):
         raise NotImplementedError
 
 
-@PublicAPI(stability="alpha")
+@OldAPIStack
 class ActionConnector(Connector):
     """Action connector connects policy outputs including actions,
     to user environments.
@@ -279,7 +290,12 @@ class ActionConnector(Connector):
     into an ActionConnector by using register_lambda_action_connector.
 
     Example:
-    .. code-block:: python
+
+    .. testcode::
+
+        from ray.rllib.connectors.action.lambdas import (
+            register_lambda_action_connector
+        )
         ZeroActionConnector = register_lambda_action_connector(
             "ZeroActionsConnector",
             lambda actions, states, fetches: (
@@ -316,7 +332,7 @@ class ActionConnector(Connector):
         raise NotImplementedError
 
 
-@PublicAPI(stability="alpha")
+@OldAPIStack
 class ConnectorPipeline(abc.ABC):
     """Utility class for quick manipulation of a connector pipeline."""
 

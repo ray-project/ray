@@ -14,6 +14,7 @@ import grpc
 import ray._raylet as raylet
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
+from ray._private import ray_constants
 from ray._private.inspect_util import (
     is_class_method,
     is_cython,
@@ -65,6 +66,7 @@ GRPC_KEEPALIVE_TIME_MS = 1000 * 30
 GRPC_KEEPALIVE_TIMEOUT_MS = 1000 * 600
 
 GRPC_OPTIONS = [
+    *ray_constants.GLOBAL_GRPC_OPTIONS,
     ("grpc.max_send_message_length", GRPC_MAX_MESSAGE_SIZE),
     ("grpc.max_receive_message_length", GRPC_MAX_MESSAGE_SIZE),
     ("grpc.keepalive_time_ms", GRPC_KEEPALIVE_TIME_MS),
@@ -79,8 +81,8 @@ GRPC_OPTIONS = [
 
 CLIENT_SERVER_MAX_THREADS = float(os.getenv("RAY_CLIENT_SERVER_MAX_THREADS", 100))
 
-# Large objects are chunked into 64 MiB messages
-OBJECT_TRANSFER_CHUNK_SIZE = 64 * 2**20
+# Large objects are chunked into 5 MiB messages, ref PR #35025
+OBJECT_TRANSFER_CHUNK_SIZE = 5 * 2**20
 
 # Warn the user if the object being transferred is larger than 2 GiB
 OBJECT_TRANSFER_WARNING_SIZE = 2 * 2**30
@@ -471,6 +473,12 @@ class ClientActorHandle(ClientStub):
     @property
     def _actor_id(self) -> ClientActorRef:
         return self.actor_ref
+
+    def __hash__(self) -> int:
+        return hash(self._actor_id)
+
+    def __eq__(self, __value) -> bool:
+        return hash(self) == hash(__value)
 
     def __getattr__(self, key):
         if key == "_method_num_returns":

@@ -1,111 +1,104 @@
 Examples using Ray Tune with ML Frameworks
 ------------------------------------------
 
+.. toctree::
+    :hidden:
+
+    Keras Example <tune_mnist_keras>
+    PyTorch Example <tune-pytorch-cifar>
+    PyTorch Lightning Example <tune-pytorch-lightning>
+    Ray RLlib Example <pbt_ppo_example>
+    XGBoost Example <tune-xgboost>
+    LightGBM Example <lightgbm_example>
+    Horovod Example <horovod_simple>
+    Hugging Face Transformers Example <pbt_transformers>
+
+
 Ray Tune integrates with many popular machine learning frameworks.
 Here you find a few practical examples showing you how to tune your models.
 At the end of these guides you will often find links to even more examples.
 
-.. panels::
-    :container: container pb-4
-    :column: col-md-4 px-2 py-2
-    :img-top-cls: pt-5 w-75 d-block mx-auto
+.. grid:: 1 2 3 4
+    :gutter: 1
+    :class-container: container pb-3
 
-    ---
-    :img-top: /images/tune-sklearn.png
+    .. grid-item-card::
+        :img-top: /images/keras.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    +++
-    .. link-button:: tune-sklearn
-        :type: ref
-        :text: How To Use Tune's Scikit-Learn Adapters?
-        :classes: btn-link btn-block stretched-link
+        .. button-ref:: tune-mnist-keras
 
-    ---
-    :img-top: /images/keras.png
+            How To Use Tune With Keras & TF Models
 
-    +++
-    .. link-button:: tune-mnist-keras
-        :type: ref
-        :text: How To Use Tune With Keras & TF Models
-        :classes: btn-link btn-block stretched-link
+    .. grid-item-card::
+        :img-top: /images/pytorch_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    ---
-    :img-top: /images/pytorch_logo.png
+        .. button-ref:: tune-pytorch-cifar-ref
 
-    +++
-    .. link-button:: tune-pytorch-cifar-ref
-        :type: ref
-        :text: How To Use Tune With PyTorch Models
-        :classes: btn-link btn-block stretched-link
+            How To Use Tune With PyTorch Models
 
-    ---
-    :img-top: /images/pytorch_lightning_small.png
+    .. grid-item-card::
+        :img-top: /images/pytorch_lightning_small.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    +++
-    .. link-button:: tune-pytorch-lightning-ref
-        :type: ref
-        :text: How To Tune PyTorch Lightning Models
-        :classes: btn-link btn-block stretched-link
+        .. button-ref:: tune-pytorch-lightning-ref
 
-    ---
-    :img-top: /images/mxnet_logo.png
+            How To Tune PyTorch Lightning Models
 
-    +++
-    .. link-button:: tune-mxnet-example
-        :type: ref
-        :text: How To Tune MXNet Models
-        :classes: btn-link btn-block stretched-link
+    .. grid-item-card::
+        :img-top: /rllib/images/rllib-logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    ---
-    :img-top: /images/serve.svg
+        .. button-ref:: tune-rllib-example
 
-    +++
-    .. link-button:: tune-serve-integration-mnist
-        :type: ref
-        :text: Model Selection & Serving With Ray Serve
-        :classes: btn-link btn-block stretched-link
+            Tuning RL Experiments With Ray Tune & Ray Serve
 
-    ---
-    :img-top: /rllib/images/rllib-logo.png
+    .. grid-item-card::
+        :img-top: /images/xgboost_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    +++
-    .. link-button:: tune-rllib-example
-        :type: ref
-        :text: Tuning RL Experiments With Ray Tune & Ray Serve
-        :classes: btn-link btn-block stretched-link
+        .. button-ref:: tune-xgboost-ref
 
-    ---
-    :img-top: /images/xgboost_logo.png
+            A Guide To Tuning XGBoost Parameters With Tune
 
-    +++
-    .. link-button:: tune-xgboost-ref
-        :type: ref
-        :text: A Guide To Tuning XGBoost Parameters With Tune
-        :classes: btn-link btn-block stretched-link
+    .. grid-item-card::
+        :img-top: /images/lightgbm_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    ---
-    :img-top: /images/lightgbm_logo.png
+        .. button-ref:: tune-lightgbm-example
 
-    +++
-    .. link-button:: tune-lightgbm-example
-        :type: ref
-        :text: A Guide To Tuning LightGBM Parameters With Tune
-        :classes: btn-link btn-block stretched-link
+            A Guide To Tuning LightGBM Parameters With Tune
 
-    ---
-    :img-top: /images/horovod.png
+    .. grid-item-card::
+        :img-top: /images/horovod.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    +++
-    .. link-button:: tune-horovod-example
-        :type: ref
-        :text: A Guide To Tuning Horovod Parameters With Tune
-        :classes: btn-link btn-block stretched-link
+        .. button-ref:: tune-horovod-example
 
-    ---
-    :img-top: /images/hugging.png
+            A Guide To Tuning Horovod Parameters With Tune
 
-    +++
-    .. link-button:: tune-huggingface-example
-        :type: ref
-        :text: A Guide To Tuning Huggingface Transformers With Tune
-        :classes: btn-link btn-block stretched-link
+    .. grid-item-card::
+        :img-top: /images/hugging.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: tune-huggingface-example
+
+            A Guide To Tuning Huggingface Transformers With Tune
+
+    .. grid-item-card::
+        :img-top: /images/tune.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: tune_train_tf_example
+
+            End-to-end Example for Tuning a TensorFlow Model
+
+    .. grid-item-card::
+        :img-top: /images/tune.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: tune_train_torch_example
+
+            End-to-end Example for Tuning a PyTorch Model with PBT
 

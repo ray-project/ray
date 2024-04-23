@@ -10,11 +10,11 @@ aws:
 
 head_node_type:
     name: head_node
-    instance_type: i3.4xlarge
+    instance_type: m6i.4xlarge
 
 worker_node_types:
     - name: worker_node
-      instance_type: i3.4xlarge
+      instance_type: m6i.4xlarge
       min_workers: 0
       max_workers: 19
       use_spot: false

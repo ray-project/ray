@@ -1,18 +1,19 @@
 import argparse
-from filelock import FileLock
-import horovod.torch as hvd
 import os
+import tempfile
+
+import horovod.torch as hvd
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import torch.utils.data.distributed
+from filelock import FileLock
 from torchvision import datasets, transforms
 
-from ray.air import session
-from ray.air.config import ScalingConfig
-from ray.train.horovod import HorovodTrainer
-from ray.train.torch.torch_checkpoint import TorchCheckpoint
 import ray.train.torch
+from ray import train
+from ray.train import Checkpoint, ScalingConfig
+from ray.train.horovod import HorovodTrainer
 
 
 def metric_average(val, name):
@@ -142,7 +143,6 @@ def train_func(config):
     num_epochs = config.get("num_epochs", 10)
     log_interval = config.get("log_interval", 10)
     use_cuda = config.get("use_cuda", False)
-    save_model_as_dict = config.get("save_model_as_dict", False)
 
     model, optimizer, train_loader, train_sampler = setup(config)
 
@@ -151,12 +151,10 @@ def train_func(config):
         loss = train_epoch(
             model, optimizer, train_sampler, train_loader, epoch, log_interval, use_cuda
         )
-        if save_model_as_dict:
-            checkpoint = TorchCheckpoint.from_state_dict(model.state_dict())
-        else:
-            checkpoint = TorchCheckpoint.from_model(model)
         results.append(loss)
-        session.report(dict(loss=loss), checkpoint=checkpoint)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            torch.save(model.state_dict(), os.path.join(tmpdir, "model.pt"))
+            train.report({"loss": loss}, checkpoint=Checkpoint.from_directory(tmpdir))
 
     # Only used for testing.
     return results

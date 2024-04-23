@@ -6,7 +6,7 @@ from typing import Dict
 
 import ray
 
-from ray.experimental.state.api import list_actors
+from ray.util.state import list_actors
 from ray._private.test_utils import (
     raw_metrics,
     wait_for_condition,
@@ -133,8 +133,11 @@ def test_destroy_actors(shutdown_only):
     del c
 
 
-def test_destroy_actors_from_driver(shutdown_only):
-    driver = """
+def test_destroy_actors_from_driver(monkeypatch, shutdown_only):
+    with monkeypatch.context() as m:
+        # Dead actors are not cached.
+        m.setenv("RAY_maximum_gcs_destroyed_actor_cached_count", 5)
+        driver = """
 import ray
 ray.init("auto")
 @ray.remote(num_cpus=0)
@@ -144,33 +147,33 @@ class Actor:
 actors = [Actor.remote() for _ in range(10)]
 ray.get([actor.ready.remote() for actor in actors])
 """
-    info = ray.init(num_cpus=3, _system_config=_SYSTEM_CONFIG)
+        info = ray.init(num_cpus=3, _system_config=_SYSTEM_CONFIG)
 
-    output = run_string_as_driver(driver)
-    print(output)
+        output = run_string_as_driver(driver)
+        print(output)
 
-    expected = {
-        "DEAD": 10,
-    }
-    wait_for_condition(
-        lambda: actors_by_state(info) == expected,
-        timeout=20,
-        retry_interval_ms=500,
-    )
+        expected = {
+            "DEAD": 10,
+        }
+        wait_for_condition(
+            lambda: actors_by_state(info) == expected,
+            timeout=20,
+            retry_interval_ms=500,
+        )
 
-    """
-    Make sure even after the actor entries are deleted from GCS by GC
-    (100ms after actors are cleaned) the metrics are correct.
-    """
-    # Wait until the state API returns the # of actors are 0
-    # becasue entries are GC'ed by GCS.
-    wait_for_condition(lambda: len(list_actors()) == 0, timeout=60)
-    # DEAD count shouldn't be changed.
-    wait_for_condition(
-        lambda: actors_by_state(info) == expected,
-        timeout=20,
-        retry_interval_ms=500,
-    )
+        """
+        Make sure even after the actor entries are deleted from GCS by GC
+        the metrics are correct.
+        """
+        # Wait until the state API returns the # of actors are 0
+        # becasue entries are GC'ed by GCS.
+        wait_for_condition(lambda: len(list_actors()) == 5)
+        # DEAD count shouldn't be changed.
+        wait_for_condition(
+            lambda: actors_by_state(info) == expected,
+            timeout=20,
+            retry_interval_ms=500,
+        )
 
 
 def test_dep_wait(shutdown_only):
@@ -275,6 +278,41 @@ def test_tracking_by_name(shutdown_only):
         timeout=20,
         retry_interval_ms=500,
     )
+
+
+def test_get_all_actors_info(shutdown_only):
+    ray.init(num_cpus=2)
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def ping(self):
+            pass
+
+    actor_1 = Actor.remote()
+    actor_2 = Actor.remote()
+    ray.get([actor_1.ping.remote(), actor_2.ping.remote()], timeout=5)
+    actors_info = ray.state.actors()
+    assert len(actors_info) == 2
+
+    # To filter actors by job id
+    job_id = ray.get_runtime_context().job_id
+    actors_info = ray.state.actors(job_id=job_id)
+    assert len(actors_info) == 2
+    actors_info = ray.state.actors(job_id=ray.JobID.from_int(100))
+    assert len(actors_info) == 0
+
+    # To filter actors by state
+    actor_3 = Actor.remote()
+    wait_for_condition(
+        lambda: len(ray.state.actors(actor_state_name="PENDING_CREATION")) == 1
+    )
+    assert (
+        actor_3._actor_id.hex()
+        in ray.state.actors(actor_state_name="PENDING_CREATION").keys()
+    )
+
+    with pytest.raises(ValueError, match="not a valid actor state name"):
+        actors_info = ray.state.actors(actor_state_name="UNKONWN_STATE")
 
 
 if __name__ == "__main__":

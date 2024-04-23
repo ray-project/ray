@@ -6,8 +6,8 @@ import pandas as pd
 
 from ray.air.util.data_batch_conversion import (
     BatchFormat,
-    convert_batch_type_to_pandas,
-    convert_pandas_to_batch_type,
+    _convert_batch_type_to_pandas,
+    _convert_pandas_to_batch_type,
 )
 from ray.train.predictor import Predictor
 from ray.util.annotations import DeveloperAPI
@@ -76,13 +76,13 @@ class DLPredictor(Predictor):
         data: pd.DataFrame,
         dtype: Optional[Union[TensorDtype, Dict[str, TensorDtype]]],
     ) -> pd.DataFrame:
-        numpy_input = convert_pandas_to_batch_type(
+        numpy_input = _convert_pandas_to_batch_type(
             data,
             BatchFormat.NUMPY,
             self._cast_tensor_columns,
         )
         numpy_output = self._predict_numpy(numpy_input, dtype)
-        return convert_batch_type_to_pandas(numpy_output)
+        return _convert_batch_type_to_pandas(numpy_output)
 
     def _predict_numpy(
         self,

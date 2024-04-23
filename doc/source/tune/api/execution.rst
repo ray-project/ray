@@ -3,20 +3,19 @@ Tune Execution (tune.Tuner)
 
 .. _tune-run-ref:
 
-.. _air-tuner-ref:
-
 Tuner
 -----
 
 .. currentmodule:: ray.tune
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     Tuner
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     Tuner.fit
@@ -26,18 +25,20 @@ Tuner Configuration
 ~~~~~~~~~~~~~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     TuneConfig
 
 .. seealso::
 
-    The `Tuner` constructor also takes in a :class:`air.RunConfig <ray.air.RunConfig>`.
+    The `Tuner` constructor also takes in a :class:`RunConfig <ray.train.RunConfig>`.
 
 Restoring a Tuner
 ~~~~~~~~~~~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     Tuner.restore
@@ -48,6 +49,7 @@ tune.run_experiments
 --------------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     run_experiments

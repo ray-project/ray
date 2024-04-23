@@ -1,7 +1,7 @@
-from typing import Any, Dict
+from typing import Any, Dict, Optional, Union
 
 from ray.data._internal.logical.operators.map_operator import AbstractMap
-from ray.data.datasource.datasource import Datasource
+from ray.data.datasource.datasource import Datasource, Reader
 
 
 class Read(AbstractMap):
@@ -10,11 +10,35 @@ class Read(AbstractMap):
     def __init__(
         self,
         datasource: Datasource,
-        parallelism: int = -1,
-        ray_remote_args: Dict[str, Any] = None,
-        read_args: Dict[str, Any] = None,
+        datasource_or_legacy_reader: Union[Datasource, Reader],
+        parallelism: int,
+        mem_size: Optional[int],
+        num_outputs: Optional[int] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+        concurrency: Optional[int] = None,
     ):
-        super().__init__("Read", None, ray_remote_args)
+        super().__init__(
+            f"Read{datasource.get_name()}",
+            None,
+            num_outputs,
+            ray_remote_args=ray_remote_args,
+        )
         self._datasource = datasource
+        self._datasource_or_legacy_reader = datasource_or_legacy_reader
         self._parallelism = parallelism
-        self._read_args = read_args
+        self._mem_size = mem_size
+        self._concurrency = concurrency
+        self._detected_parallelism = None
+
+    def set_detected_parallelism(self, parallelism: int):
+        """
+        Set the true parallelism that should be used during execution. This
+        should be specified by the user or detected by the optimizer.
+        """
+        self._detected_parallelism = parallelism
+
+    def get_detected_parallelism(self) -> int:
+        """
+        Get the true parallelism that should be used during execution.
+        """
+        return self._detected_parallelism

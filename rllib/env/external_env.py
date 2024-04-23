@@ -5,7 +5,7 @@ import uuid
 from typing import Callable, Tuple, Optional, TYPE_CHECKING
 
 from ray.rllib.env.base_env import BaseEnv
-from ray.rllib.utils.annotations import override, PublicAPI
+from ray.rllib.utils.annotations import override, OldAPIStack
 from ray.rllib.utils.typing import (
     EnvActionType,
     EnvInfoDict,
@@ -13,12 +13,13 @@ from ray.rllib.utils.typing import (
     EnvType,
     MultiEnvDict,
 )
+from ray.rllib.utils.deprecation import deprecation_warning
 
 if TYPE_CHECKING:
     from ray.rllib.models.preprocessors import Preprocessor
 
 
-@PublicAPI
+@OldAPIStack
 class ExternalEnv(threading.Thread):
     """An environment that interfaces with external agents.
 
@@ -37,31 +38,29 @@ class ExternalEnv(threading.Thread):
 
     This env is thread-safe, but individual episodes must be executed serially.
 
-    Examples:
-        >>> from ray.tune import register_env
-        >>> from ray.rllib.algorithms.dqn import DQN # doctest: +SKIP
-        >>> YourExternalEnv = ... # doctest: +SKIP
-        >>> register_env("my_env", # doctest: +SKIP
-        ...     lambda config: YourExternalEnv(config))
-        >>> trainer = DQN(env="my_env") # doctest: +SKIP
-        >>> while True: # doctest: +SKIP
-        >>>     print(trainer.train()) # doctest: +SKIP
+    .. testcode::
+        :skipif: True
+
+        from ray.tune import register_env
+        from ray.rllib.algorithms.dqn import DQN
+        YourExternalEnv = ...
+        register_env("my_env", lambda config: YourExternalEnv(config))
+        algo = DQN(env="my_env")
+        while True:
+            print(algo.train())
     """
 
-    @PublicAPI
     def __init__(
         self,
         action_space: gym.Space,
         observation_space: gym.Space,
-        max_concurrent: int = 100,
+        max_concurrent: int = None,
     ):
         """Initializes an ExternalEnv instance.
 
         Args:
             action_space: Action space of the env.
             observation_space: Observation space of the env.
-            max_concurrent: Max number of active episodes to allow at
-                once. Exceeding this limit raises an error.
         """
 
         threading.Thread.__init__(self)
@@ -72,9 +71,15 @@ class ExternalEnv(threading.Thread):
         self._episodes = {}
         self._finished = set()
         self._results_avail_condition = threading.Condition()
-        self._max_concurrent_episodes = max_concurrent
+        if max_concurrent is not None:
+            deprecation_warning(
+                "The `max_concurrent` argument has been deprecated. Please configure"
+                "the number of episodes using the `rollout_fragment_length` and"
+                "`batch_mode` arguments. Please raise an issue on the Ray Github if "
+                "these arguments do not support your expected use case for ExternalEnv",
+                error=True,
+            )
 
-    @PublicAPI
     def run(self):
         """Override this to implement the run loop.
 
@@ -89,7 +94,6 @@ class ExternalEnv(threading.Thread):
         """
         raise NotImplementedError
 
-    @PublicAPI
     def start_episode(
         self, episode_id: Optional[str] = None, training_enabled: bool = True
     ) -> str:
@@ -120,7 +124,6 @@ class ExternalEnv(threading.Thread):
 
         return episode_id
 
-    @PublicAPI
     def get_action(self, episode_id: str, observation: EnvObsType) -> EnvActionType:
         """Record an observation and get the on-policy action.
 
@@ -135,7 +138,6 @@ class ExternalEnv(threading.Thread):
         episode = self._get(episode_id)
         return episode.wait_for_action(observation)
 
-    @PublicAPI
     def log_action(
         self, episode_id: str, observation: EnvObsType, action: EnvActionType
     ) -> None:
@@ -150,7 +152,6 @@ class ExternalEnv(threading.Thread):
         episode = self._get(episode_id)
         episode.log_action(observation, action)
 
-    @PublicAPI
     def log_returns(
         self, episode_id: str, reward: float, info: Optional[EnvInfoDict] = None
     ) -> None:
@@ -172,7 +173,6 @@ class ExternalEnv(threading.Thread):
         if info:
             episode.cur_info = info or {}
 
-    @PublicAPI
     def end_episode(self, episode_id: str, observation: EnvObsType) -> None:
         """Records the end of an episode.
 
@@ -241,6 +241,7 @@ class ExternalEnv(threading.Thread):
         return env
 
 
+@OldAPIStack
 class _ExternalEnvEpisode:
     """Tracked state for each active episode."""
 
@@ -347,7 +348,7 @@ class _ExternalEnvEpisode:
             self.results_avail_condition.notify()
 
 
-@PublicAPI
+@OldAPIStack
 class ExternalEnvWrapper(BaseEnv):
     """Internal adapter of ExternalEnv to BaseEnv."""
 
@@ -377,11 +378,6 @@ class ExternalEnvWrapper(BaseEnv):
                 results = self._poll()
                 if not self.external_env.is_alive():
                     raise Exception("Serving thread has stopped.")
-        limit = self.external_env._max_concurrent_episodes
-        assert len(results[0]) < limit, (
-            "Too many concurrent episodes, were some leaked? This "
-            "ExternalEnv was created with max_concurrent={}".format(limit)
-        )
         return results
 
     @override(BaseEnv)
@@ -476,12 +472,10 @@ class ExternalEnvWrapper(BaseEnv):
 
     @property
     @override(BaseEnv)
-    @PublicAPI
     def observation_space(self) -> gym.spaces.Dict:
         return self._observation_space
 
     @property
     @override(BaseEnv)
-    @PublicAPI
     def action_space(self) -> gym.Space:
         return self._action_space

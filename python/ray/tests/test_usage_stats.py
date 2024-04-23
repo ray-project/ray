@@ -3,17 +3,19 @@ import os
 import pathlib
 import sys
 import time
+import threading
 from dataclasses import asdict
 from pathlib import Path
+from unittest.mock import patch
 
 import requests
 import pytest
 from jsonschema import validate
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import ray
 import ray._private.usage.usage_constants as usage_constants
 import ray._private.usage.usage_lib as ray_usage_lib
-from ray._private import gcs_utils
 from ray._private.test_utils import (
     format_web_url,
     run_string_as_driver,
@@ -25,6 +27,7 @@ from ray.autoscaler._private.cli_logger import cli_logger
 from ray.util.placement_group import (
     placement_group,
 )
+from ray._private.accelerators import NvidiaGPUAcceleratorManager
 
 schema = {
     "$schema": "http://json-schema.org/draft-07/schema#",
@@ -43,6 +46,7 @@ schema = {
         "min_workers": {"type": ["null", "integer"]},
         "max_workers": {"type": ["null", "integer"]},
         "head_node_instance_type": {"type": ["null", "string"]},
+        "libc_version": {"type": ["null", "string"]},
         "worker_node_instance_types": {
             "type": ["null", "array"],
             "items": {"type": "string"},
@@ -52,6 +56,10 @@ schema = {
         "total_memory_gb": {"type": ["null", "number"]},
         "total_object_store_memory_gb": {"type": ["null", "number"]},
         "library_usages": {
+            "type": ["null", "array"],
+            "items": {"type": "string"},
+        },
+        "hardware_usages": {
             "type": ["null", "array"],
             "items": {"type": "string"},
         },
@@ -120,10 +128,37 @@ def reset_ray_version_commit():
     ray.__commit__ = saved_ray_commit
 
 
+@pytest.fixture
+def start_usage_stats_server():
+    class UsageStatsServer(BaseHTTPRequestHandler):
+        num_reports = 0
+        report_payload = None
+
+        def do_POST(self):
+            content_length = int(self.headers["Content-Length"])
+            post_data = self.rfile.read(content_length)
+            UsageStatsServer.num_reports += 1
+            UsageStatsServer.report_payload = json.loads(post_data)
+            self.send_response(200)
+            self.send_header("Content-type", "text/html")
+            self.end_headers()
+
+    server = HTTPServer(("127.0.0.1", 8000), UsageStatsServer)
+    server_thread = threading.Thread(target=server.serve_forever)
+    server_thread.start()
+
+    yield UsageStatsServer
+
+    server.shutdown()
+    server_thread.join()
+
+
 @pytest.mark.parametrize("ray_client", [True, False])
 def test_get_extra_usage_tags_to_report(
     monkeypatch, call_ray_start, reset_usage_stats, ray_client, gcs_storage_type
 ):
+    if os.environ.get("RAY_MINIMAL") == "1" and ray_client:
+        pytest.skip("Skipping due to we don't have ray client in minimal.")
     with monkeypatch.context() as m:
         # Test a normal case.
         m.setenv("RAY_USAGE_STATS_EXTRA_TAGS", "key=val;key2=val2")
@@ -239,7 +274,7 @@ def test_worker_crash_increment_stats():
         with pytest.raises(ray.exceptions.OutOfMemoryError):
             ray.get(oomer.options(max_retries=0).remote())
 
-        gcs_client = gcs_utils.GcsClient(address=ctx.address_info["gcs_address"])
+        gcs_client = ray._raylet.GcsClient(address=ctx.address_info["gcs_address"])
         wait_for_condition(
             lambda: "worker_crash_system_error"
             in ray_usage_lib.get_extra_usage_tags_to_report(gcs_client),
@@ -264,7 +299,7 @@ def test_actor_stats(reset_usage_stats):
     with ray.init(
         _system_config={"metrics_report_interval_ms": 1000},
     ) as ctx:
-        gcs_client = gcs_utils.GcsClient(address=ctx.address_info["gcs_address"])
+        gcs_client = ray._raylet.GcsClient(address=ctx.address_info["gcs_address"])
 
         actor = Actor.remote()
         wait_for_condition(
@@ -319,7 +354,7 @@ def test_pg_stats(reset_usage_stats):
         num_cpus=3,
         _system_config={"metrics_report_interval_ms": 1000},
     ) as ctx:
-        gcs_client = gcs_utils.GcsClient(address=ctx.address_info["gcs_address"])
+        gcs_client = ray._raylet.GcsClient(address=ctx.address_info["gcs_address"])
 
         pg = placement_group([{"CPU": 1}], strategy="STRICT_PACK")
         ray.get(pg.ready())
@@ -349,7 +384,7 @@ def test_task_stats(reset_usage_stats):
     with ray.init(
         _system_config={"metrics_report_interval_ms": 1000},
     ) as ctx:
-        gcs_client = gcs_utils.GcsClient(address=ctx.address_info["gcs_address"])
+        gcs_client = ray._raylet.GcsClient(address=ctx.address_info["gcs_address"])
 
         wait_for_condition(
             lambda: ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
@@ -650,7 +685,7 @@ def test_usage_lib_cluster_metadata_generation(
         """
         Test metadata stored is equivalent to `_generate_cluster_metadata`.
         """
-        meta = ray_usage_lib._generate_cluster_metadata()
+        meta = ray_usage_lib._generate_cluster_metadata(ray_init_cluster=False)
         cluster_metadata = ray_usage_lib.get_cluster_metadata(
             ray.experimental.internal_kv.internal_kv_get_gcs_client()
         )
@@ -665,7 +700,8 @@ def test_usage_lib_cluster_metadata_generation(
         Make sure put & get works properly.
         """
         cluster_metadata = ray_usage_lib.put_cluster_metadata(
-            ray.experimental.internal_kv.internal_kv_get_gcs_client()
+            ray.experimental.internal_kv.internal_kv_get_gcs_client(),
+            ray_init_cluster=False,
         )
         assert cluster_metadata == ray_usage_lib.get_cluster_metadata(
             ray.experimental.internal_kv.internal_kv_get_gcs_client()
@@ -697,6 +733,22 @@ def test_usage_stats_enabled_endpoint(
         assert response.json()["data"]["usageStatsPromptEnabled"] is False
 
 
+def test_hardware_usages(shutdown_only, reset_usage_stats):
+    with patch.object(
+        NvidiaGPUAcceleratorManager,
+        "get_current_node_accelerator_type",
+        return_value="TestAccelerator",
+    ), patch.object(
+        ray._private.utils, "get_current_node_cpu_model_name", return_value="TestCPU"
+    ):
+        ray.init(num_gpus=4)
+        assert set(
+            ray_usage_lib.get_hardware_usages_to_report(
+                ray.experimental.internal_kv.internal_kv_get_gcs_client()
+            )
+        ) == {"TestAccelerator", "TestCPU"}
+
+
 @pytest.mark.skipif(
     os.environ.get("RAY_MINIMAL") == "1",
     reason="This test is not supposed to work for minimal installation "
@@ -704,6 +756,8 @@ def test_usage_stats_enabled_endpoint(
 )
 @pytest.mark.parametrize("ray_client", [True, False])
 def test_library_usages(call_ray_start, reset_usage_stats, ray_client):
+    from ray.job_submission import JobSubmissionClient
+
     address = call_ray_start
     ray.init(address=address)
 
@@ -748,9 +802,7 @@ with joblib.parallel_backend("ray"):
     run_string_as_driver(driver)
 
     if sys.platform != "win32":
-        job_submission_client = ray.job_submission.JobSubmissionClient(
-            "http://127.0.0.1:8265"
-        )
+        job_submission_client = JobSubmissionClient("http://127.0.0.1:8265")
         job_id = job_submission_client.submit_job(entrypoint="ls")
         wait_for_condition(
             lambda: job_submission_client.get_job_status(job_id)
@@ -787,10 +839,11 @@ def test_usage_lib_cluster_metadata_generation_usage_disabled(
     """
     with monkeypatch.context() as m:
         m.setenv("RAY_USAGE_STATS_ENABLED", "0")
-        meta = ray_usage_lib._generate_cluster_metadata()
+        meta = ray_usage_lib._generate_cluster_metadata(ray_init_cluster=False)
         assert "ray_version" in meta
         assert "python_version" in meta
-        assert len(meta) == 2
+        assert "ray_init_cluster" in meta
+        assert len(meta) == 3
 
 
 def test_usage_lib_get_total_num_running_jobs_to_report(
@@ -798,7 +851,7 @@ def test_usage_lib_get_total_num_running_jobs_to_report(
 ):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1)
-    gcs_client = gcs_utils.GcsClient(address=cluster.gcs_address)
+    gcs_client = ray._raylet.GcsClient(address=cluster.gcs_address)
     assert ray_usage_lib.get_total_num_running_jobs_to_report(gcs_client) == 0
 
     ray.init(address=cluster.address)
@@ -832,8 +885,16 @@ def test_usage_lib_get_total_num_nodes_to_report(ray_start_cluster, reset_usage_
     )
 
 
-def test_usage_lib_get_cluster_status_to_report(shutdown_only, reset_usage_stats):
-    ray.init(num_cpus=3, num_gpus=1, object_store_memory=2**30)
+@pytest.mark.parametrize("enable_v2", [True, False])
+def test_usage_lib_get_cluster_status_to_report(
+    enable_v2, shutdown_only, reset_usage_stats
+):
+    ray.init(
+        num_cpus=3,
+        num_gpus=1,
+        object_store_memory=2**30,
+        _system_config={"enable_autoscaler_v2": enable_v2},
+    )
     # Wait for monitor.py to update cluster status
     wait_for_condition(
         lambda: ray_usage_lib.get_cluster_status_to_report(
@@ -967,20 +1028,19 @@ available_node_types:
     assert cluster_config_to_report.cloud_provider == "kuberay"
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Test depends on runtime env feature not supported on Windows.",
-)
 def test_usage_lib_report_data(
-    monkeypatch, ray_start_cluster, tmp_path, reset_usage_stats
+    monkeypatch,
+    ray_start_cluster,
+    tmp_path,
+    start_usage_stats_server,
+    reset_usage_stats,
 ):
     with monkeypatch.context() as m:
         m.setenv("RAY_USAGE_STATS_ENABLED", "1")
         m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000")
         cluster = ray_start_cluster
         cluster.add_node(num_cpus=0)
-        # Runtime env is required to run this test in minimal installation test.
-        ray.init(address=cluster.address, runtime_env={"pip": ["ray[serve]"]})
+        ray.init(address=cluster.address)
         """
         Make sure the generated data is following the schema.
         """
@@ -1019,46 +1079,22 @@ provider:
         """
         Make sure report usage data works as expected
         """
-
-        @ray.remote(num_cpus=0)
-        class ServeInitator:
-            def __init__(self):
-                # Start the ray serve server to verify requests are sent
-                # to the right place.
-                from ray import serve
-
-                serve.start()
-
-                @serve.deployment(ray_actor_options={"num_cpus": 0})
-                async def usage(request):
-                    body = await request.json()
-                    if body == asdict(d):
-                        return True
-                    else:
-                        return False
-
-                usage.deploy()
-
-            def ready(self):
-                pass
-
-        # We need to start a serve with runtime env to make this test
-        # work with minimal installation.
-        s = ServeInitator.remote()
-        ray.get(s.ready.remote())
+        usage_stats_server = start_usage_stats_server
 
         # Query our endpoint over HTTP.
-        r = client.report_usage_data("http://127.0.0.1:8000/usage", d)
-        r.raise_for_status()
-        assert json.loads(r.text) is True
+        wait_for_condition(
+            lambda: client.report_usage_data("http://127.0.0.1:8000", d), timeout=30
+        )
+        assert usage_stats_server.report_payload == asdict(d)
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Test depends on runtime env feature not supported on Windows.",
-)
 def test_usage_report_e2e(
-    monkeypatch, ray_start_cluster, tmp_path, reset_usage_stats, gcs_storage_type
+    monkeypatch,
+    ray_start_cluster,
+    tmp_path,
+    start_usage_stats_server,
+    reset_usage_stats,
+    gcs_storage_type,
 ):
     """
     Test usage report works e2e with env vars.
@@ -1074,12 +1110,17 @@ provider:
     availability_zone: us-west-2a
 """
     )
-    with monkeypatch.context() as m:
+    with patch.object(
+        ray._private.utils, "get_current_node_cpu_model_name", return_value="TestCPU"
+    ), monkeypatch.context() as m:
         m.setenv("HOME", str(tmp_path))
         m.setenv("RAY_USAGE_STATS_ENABLED", "1")
-        m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000/usage")
+        m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000")
         m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
         m.setenv("RAY_USAGE_STATS_EXTRA_TAGS", "extra_k1=extra_v1")
+
+        usage_stats_server = start_usage_stats_server
+
         cluster = ray_start_cluster
         cluster.add_node(num_cpus=3)
         if os.environ.get("RAY_MINIMAL") != "1":
@@ -1101,53 +1142,6 @@ provider:
             tuner = tune.Tuner(objective)
             tuner.fit()
 
-        @ray.remote(num_cpus=0)
-        class StatusReporter:
-            def __init__(self):
-                self.reported = 0
-                self.payload = None
-
-            def report_payload(self, payload):
-                self.payload = payload
-
-            def reported(self):
-                self.reported += 1
-
-            def get(self):
-                return self.reported
-
-            def get_payload(self):
-                return self.payload
-
-        reporter = StatusReporter.remote()
-
-        @ray.remote(num_cpus=0, runtime_env={"pip": ["ray[serve]"]})
-        class ServeInitator:
-            def __init__(self):
-                # This is used in the worker process
-                # so it won't be tracked as library usage.
-                from ray import serve
-
-                serve.start()
-
-                # Usage report should be sent to the URL every 1 second.
-                @serve.deployment(ray_actor_options={"num_cpus": 0})
-                async def usage(request):
-                    body = await request.json()
-                    reporter.reported.remote()
-                    reporter.report_payload.remote(body)
-                    return True
-
-                usage.deploy()
-
-            def ready(self):
-                pass
-
-        # We need to start a serve with runtime env to make this test
-        # work with minimal installation.
-        s = ServeInitator.remote()
-        ray.get(s.ready.remote())
-
         """
         Verify the usage stats are reported to the server.
         """
@@ -1155,16 +1149,26 @@ provider:
         # Since the interval is 1 second, there must have been
         # more than 5 requests sent within 30 seconds.
         try:
-            wait_for_condition(lambda: ray.get(reporter.get.remote()) > 5, timeout=30)
+            wait_for_condition(lambda: usage_stats_server.num_reports > 5, timeout=30)
         except Exception:
             print_dashboard_log()
             raise
-        payload = ray.get(reporter.get_payload.remote())
+        payload = usage_stats_server.report_payload
         ray_version, python_version = ray._private.utils.compute_version_info()
         assert payload["ray_version"] == ray_version
         assert payload["python_version"] == python_version
         assert payload["schema_version"] == "0.1"
         assert payload["os"] == sys.platform
+        if sys.platform != "linux":
+            payload["libc_version"] is None
+        else:
+            import platform
+
+            assert (
+                payload["libc_version"]
+                == f"{platform.libc_ver()[0]}:{platform.libc_ver()[1]}"
+            )
+
         assert payload["source"] == "OSS"
         assert payload["cloud_provider"] == "aws"
         assert payload["min_workers"] is None
@@ -1187,14 +1191,12 @@ provider:
         payload["extra_usage_tags"]["num_actor_tasks"] = "0"
         payload["extra_usage_tags"]["num_normal_tasks"] = "0"
         payload["extra_usage_tags"]["num_drivers"] = "0"
-        assert payload["extra_usage_tags"] == {
+        expected_payload = {
             "extra_k1": "extra_v1",
             "_test1": "extra_v2",
             "_test2": "extra_v3",
             "dashboard_metrics_grafana_enabled": "False",
             "dashboard_metrics_prometheus_enabled": "False",
-            "serve_num_deployments": "1",
-            "serve_api_version": "v1",
             "actor_num_created": "0",
             "pg_num_created": "0",
             "num_actor_creation_tasks": "0",
@@ -1204,14 +1206,19 @@ provider:
             "gcs_storage": gcs_storage_type,
             "dashboard_used": "False",
         }
+        if os.environ.get("RAY_MINIMAL") != "1":
+            expected_payload["tune_scheduler"] = "FIFOScheduler"
+            expected_payload["tune_searcher"] = "BasicVariantGenerator"
+            expected_payload["air_entrypoint"] = "Tuner.fit"
+            expected_payload["air_storage_configuration"] = "local"
+        assert payload["extra_usage_tags"] == expected_payload
         assert payload["total_num_nodes"] == 1
         assert payload["total_num_running_jobs"] == 1
         if os.environ.get("RAY_MINIMAL") == "1":
-            # Since we start a serve actor for mocking a server using runtime env.
-            assert set(payload["library_usages"]) == {"serve"}
+            assert set(payload["library_usages"]) == set()
         else:
-            # Serve is recorded due to our mock server.
-            assert set(payload["library_usages"]) == {"rllib", "train", "tune", "serve"}
+            assert set(payload["library_usages"]) == {"rllib", "train", "tune"}
+        assert payload["hardware_usages"] == ["TestCPU"]
         validate(instance=payload, schema=schema)
         """
         Verify the usage_stats.json is updated.
@@ -1254,22 +1261,28 @@ def test_first_usage_report_delayed(monkeypatch, ray_start_cluster, reset_usage_
         assert (session_path / usage_constants.USAGE_STATS_FILE).exists()
 
 
-def test_usage_report_disabled(monkeypatch, ray_start_cluster, reset_usage_stats):
+def test_usage_report_disabled_ray_init_cluster(
+    monkeypatch, start_usage_stats_server, reset_usage_stats, shutdown_only
+):
     """
-    Make sure usage report module is disabled when the env var is not set.
-    It also verifies that the failure message is not printed (note that
-    the invalid report url is given as an env var).
+    Make sure we don't send anything to the server for the ray.init cluster
+    if usage stats is disabled.
     """
     with monkeypatch.context() as m:
         m.setenv("RAY_USAGE_STATS_ENABLED", "0")
         m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000")
         m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
-        cluster = ray_start_cluster
-        cluster.add_node(num_cpus=0)
-        ray.init(address=cluster.address)
-        # Wait enough so that usage report should happen.
-        time.sleep(5)
 
+        usage_stats_server = start_usage_stats_server
+
+        ray.init()
+
+        time.sleep(5)
+        assert usage_stats_server.num_reports == 0
+
+        """
+        Verify the correct logs are printed.
+        """
         session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
         session_path = Path(session_dir)
         log_dir_path = session_path / "logs"
@@ -1281,18 +1294,62 @@ def test_usage_report_disabled(monkeypatch, ray_start_cluster, reset_usage_stats
             if "dashboard.log" in str(path):
                 with open(str(path), "r") as f:
                     contents = f.readlines()
+                break
         assert contents is not None
+        assert any(["Usage reporting is disabled" in c for c in contents])
 
-        keyword_found = False
-        for c in contents:
-            if "Usage reporting is disabled" in c:
-                keyword_found = True
 
-        # Make sure the module was disabled.
-        assert keyword_found
+def test_usage_report_disabled(
+    monkeypatch, ray_start_cluster, start_usage_stats_server, reset_usage_stats
+):
+    """
+    Make sure usage report module is disabled when the env var is not set.
+    It also verifies that the failure message is not printed (note that
+    the invalid report url is given as an env var).
+    """
+    with monkeypatch.context() as m:
+        m.setenv("RAY_USAGE_STATS_ENABLED", "0")
+        m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000")
+        m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
+        m.delenv("RAY_USAGE_STATS_RAY_INIT_CLUSTER", raising=False)
 
-        for c in contents:
-            assert "Failed to report usage stats" not in c
+        usage_stats_server = start_usage_stats_server
+
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=0)
+        ray.init(address=cluster.address)
+
+        """
+        Verify the disabled usage stat is reported to the server.
+        """
+        wait_for_condition(lambda: usage_stats_server.num_reports == 1)
+        # We should have one and only one report to the server.
+        time.sleep(5)
+        assert usage_stats_server.num_reports == 1
+        payload = usage_stats_server.report_payload
+        assert payload["schema_version"] == "0.1"
+        assert payload["source"] == "OSS"
+        assert payload["collect_timestamp_ms"] > 0
+        assert len({k: v for k, v in payload.items() if v is not None}) == 3
+
+        """
+        Verify the correct logs are printed.
+        """
+        session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
+        session_path = Path(session_dir)
+        log_dir_path = session_path / "logs"
+
+        paths = list(log_dir_path.iterdir())
+
+        contents = None
+        for path in paths:
+            if "dashboard.log" in str(path):
+                with open(str(path), "r") as f:
+                    contents = f.readlines()
+                break
+        assert contents is not None
+        assert any(["Usage reporting is disabled" in c for c in contents])
+        assert all(["Usage report request failed" not in c for c in contents])
 
 
 def test_usage_file_error_message(monkeypatch, ray_start_cluster, reset_usage_stats):
@@ -1391,8 +1448,8 @@ if os.environ.get("RAY_MINIMAL") != "1":
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Test depends on runtime env feature not supported on Windows.",
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
 )
 def test_lib_used_from_workers(monkeypatch, ray_start_cluster, reset_usage_stats):
     """
@@ -1423,10 +1480,7 @@ def test_lib_used_from_workers(monkeypatch, ray_start_cluster, reset_usage_stats
 
                 tune.run(objective)
 
-        # Use a runtime env to run tests in minimal installation.
-        a = ActorWithLibImport.options(
-            runtime_env={"pip": ["ray[rllib]", "ray[tune]"]}
-        ).remote()
+        a = ActorWithLibImport.remote()
         ray.get(a.ready.remote())
 
         """

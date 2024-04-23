@@ -1,6 +1,6 @@
-base_image: {{ env["RAY_IMAGE_NIGHTLY_CPU"] | default("anyscale/ray:nightly-py37") }}
+base_image: {{ env["RAY_IMAGE_NIGHTLY_CPU"] }}
 debian_packages: []
-env_vars: {"RAY_MAX_LIMIT_FROM_API_SERVER": "1000000000", "RAY_MAX_LIMIT_FROM_DATA_SOURCE":"1000000000", "RAY_task_events_max_buffer_size":"100000"}
+env_vars: {"RAY_MAX_LIMIT_FROM_API_SERVER": "1000000000", "RAY_MAX_LIMIT_FROM_DATA_SOURCE":"1000000000"}
 
 python:
   pip_packages:

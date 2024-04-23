@@ -1,13 +1,14 @@
-from functools import partial
-from typing import List, Dict, Optional
-
 from collections import Counter, OrderedDict
+from functools import partial
+from typing import Dict, List, Optional
+
 import numpy as np
 import pandas as pd
 import pandas.api.types
 
+from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data import Dataset
-from ray.data.preprocessor import Preprocessor
+from ray.data.preprocessor import Preprocessor, PreprocessorNotFittedException
 from ray.util.annotations import PublicAPI
 
 
@@ -317,7 +318,10 @@ class MultiHotEncoder(Preprocessor):
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
         self.stats_ = _get_unique_value_indices(
-            dataset, self.columns, max_categories=self.max_categories, encode_lists=True
+            dataset,
+            self.columns,
+            max_categories=self.max_categories,
+            encode_lists=True,
         )
         return self
 
@@ -412,6 +416,48 @@ class LabelEncoder(Preprocessor):
             return s.map(s_values)
 
         df[self.label_column] = df[self.label_column].transform(column_label_encoder)
+        return df
+
+    def inverse_transform(self, ds: "Dataset") -> "Dataset":
+        """Inverse transform the given dataset.
+
+        Args:
+            ds: Input Dataset that has been fitted and/or transformed.
+
+        Returns:
+            ray.data.Dataset: The inverse transformed Dataset.
+
+        Raises:
+            PreprocessorNotFittedException: if ``fit`` is not called yet.
+        """
+
+        fit_status = self.fit_status()
+
+        if fit_status in (
+            Preprocessor.FitStatus.PARTIALLY_FITTED,
+            Preprocessor.FitStatus.NOT_FITTED,
+        ):
+            raise PreprocessorNotFittedException(
+                "`fit` must be called before `inverse_transform`, "
+            )
+
+        kwargs = self._get_transform_config()
+
+        return ds.map_batches(
+            self._inverse_transform_pandas, batch_format=BatchFormat.PANDAS, **kwargs
+        )
+
+    def _inverse_transform_pandas(self, df: pd.DataFrame):
+        def column_label_decoder(s: pd.Series):
+            inverse_values = {
+                value: key
+                for key, value in self.stats_[
+                    f"unique_values({self.label_column})"
+                ].items()
+            }
+            return s.map(inverse_values)
+
+        df[self.label_column] = df[self.label_column].transform(column_label_decoder)
         return df
 
     def __repr__(self):
@@ -544,19 +590,19 @@ def _get_unique_value_indices(
         result = {}
         for col in columns:
             if col in df_columns:
-                result[col] = get_pd_value_counts_per_column(df[col])
+                result[col] = [get_pd_value_counts_per_column(df[col])]
             else:
                 raise ValueError(
                     f"Column '{col}' does not exist in DataFrame, which has columns: {df_columns}"  # noqa: E501
                 )
-        return [result]
+        return result
 
     value_counts = dataset.map_batches(get_pd_value_counts, batch_format="pandas")
     final_counters = {col: Counter() for col in columns}
     for batch in value_counts.iter_batches(batch_size=None):
-        for col_value_counts in batch:
-            for col, value_counts in col_value_counts.items():
-                final_counters[col] += value_counts
+        for col, counters in batch.items():
+            for counter in counters:
+                final_counters[col] += counter
 
     # Inspect if there is any NA values.
     for col in columns:

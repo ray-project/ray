@@ -26,7 +26,7 @@ export const useNodeList = () => {
   const onSwitchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setRefresh(event.target.checked);
   };
-  const { data } = useSWR(
+  const { data, isLoading } = useSWR(
     "useNodeList",
     async () => {
       const { data } = await getNodeList();
@@ -36,32 +36,40 @@ export const useNodeList = () => {
       } else {
         setMsg("");
       }
-      return rspData.summary;
+      return rspData;
     },
     { refreshInterval: isRefreshing ? API_REFRESH_INTERVAL_MS : 0 },
   );
 
-  const nodeList = data ?? [];
+  const nodeList = data?.summary ?? [];
+  const nodeLogicalResources = data?.nodeLogicalResources ?? {};
 
-  const nodeListWithState = nodeList
+  const nodeListWithAdditionalInfo = nodeList
     .map((e) => ({
       ...e,
       state: e.raylet.state,
+      logicalResources: nodeLogicalResources[e.raylet.nodeId],
     }))
     .sort(sorterFunc);
 
-  const sortedList = _.sortBy(nodeListWithState, [
-    (obj) => !obj.raylet.isHeadNode,
-    // sort by alive first, then alphabetically for other states
-    (obj) => (obj.raylet.state === "ALIVE" ? "0" : obj.raylet.state),
-    (obj) => obj.raylet.nodeId,
-  ]);
+  const sortedList = _.sortBy(nodeListWithAdditionalInfo, (node) => {
+    // After sorting by user specified field, stable sort by
+    // 1) Alive nodes first then alphabetically for other states
+    // 2) Head node
+    // 3) Alphabetical by node id
+    const nodeStateOrder =
+      node.raylet.state === "ALIVE" ? "0" : node.raylet.state;
+    const isHeadNodeOrder = node.raylet.isHeadNode ? "0" : "1";
+    const nodeIdOrder = node.raylet.nodeId;
+    return [nodeStateOrder, isHeadNodeOrder, nodeIdOrder];
+  });
 
   return {
     nodeList: sortedList.filter((node) =>
       filter.every((f) => node[f.key] && node[f.key].includes(f.val)),
     ),
     msg,
+    isLoading,
     isRefreshing,
     onSwitchChange,
     changeFilter,

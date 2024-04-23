@@ -145,4 +145,5 @@ class FixedResourceManager(ResourceManager):
 
     def clear(self):
         # Reset internal state
-        self.__init__(total_resources=self._total_resources)
+        self._requested_resources = []
+        self._used_resources = []

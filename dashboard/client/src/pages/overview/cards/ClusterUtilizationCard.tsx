@@ -1,4 +1,6 @@
-import { createStyles, makeStyles, Typography } from "@material-ui/core";
+import { Typography } from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import classNames from "classnames";
 import React, { useContext } from "react";
 import { GlobalContext } from "../../../App";
@@ -41,13 +43,21 @@ export const ClusterUtilizationCard = ({
   const classes = useStyles();
 
   const {
+    metricsContextLoaded,
     grafanaHost,
     prometheusHealth,
     sessionName,
-    grafanaDefaultDashboardUid = "rayDefaultDashboard",
+    dashboardUids,
+    dashboardDatasource,
   } = useContext(GlobalContext);
-  const path = `/d-solo/${grafanaDefaultDashboardUid}/default-dashboard?orgId=1&theme=light&panelId=41`;
+  const grafanaDefaultDashboardUid =
+    dashboardUids?.default ?? "rayDefaultDashboard";
+  const path = `/d-solo/${grafanaDefaultDashboardUid}/default-dashboard?orgId=1&theme=light&panelId=41&var-datasource=${dashboardDatasource}`;
   const timeRangeParams = "&from=now-30m&to=now";
+
+  if (!metricsContextLoaded || grafanaHost === "DISABLED") {
+    return null;
+  }
 
   return (
     <OverviewCard className={classNames(classes.root, className)}>
@@ -56,7 +66,7 @@ export const ClusterUtilizationCard = ({
       {grafanaHost === undefined || !prometheusHealth ? (
         <div className={classes.noGraph}>
           <Typography variant="h3">Cluster utilization</Typography>
-          <GrafanaNotRunningAlert className={classes.alert} />
+          <GrafanaNotRunningAlert className={classes.alert} severity="info" />
         </div>
       ) : (
         <React.Fragment>
@@ -67,7 +77,7 @@ export const ClusterUtilizationCard = ({
             frameBorder="0"
           />
           <div className={classes.links}>
-            <LinkWithArrow text="View all metrics" to="/new/metrics" />
+            <LinkWithArrow text="View all metrics" to="/metrics" />
           </div>
         </React.Fragment>
       )}

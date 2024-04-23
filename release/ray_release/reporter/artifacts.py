@@ -2,7 +2,7 @@ import gzip
 import json
 import os
 
-from ray_release.config import Test
+from ray_release.test import Test
 from ray_release.logger import logger
 from ray_release.reporter.reporter import Reporter
 from ray_release.result import Result
@@ -17,6 +17,8 @@ METRICS_RESULT_FILE = "metrics.json.gz"
 
 
 class ArtifactsReporter(Reporter):
+    """This is called on on buildkite runners."""
+
     def __init__(self, artifacts_dir: str = DEFAULT_ARTIFACTS_DIR):
         self.artifacts_dir = artifacts_dir
 

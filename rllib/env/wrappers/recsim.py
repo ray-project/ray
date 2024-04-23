@@ -1,7 +1,7 @@
 """Tools and utils to create RLlib-ready recommender system envs using RecSim.
 
 For examples on how to generate a RecSim env class (usable in RLlib):
-See ray.rllib.examples.env.recommender_system_envs_with_recsim.py
+See ray.rllib.examples.envs.classes.recommender_system_envs_with_recsim.py
 
 For more information on google's RecSim itself:
 https://github.com/google-research/recsim
@@ -225,7 +225,7 @@ def make_recsim_env(
             reward).
 
     Returns:
-        An RLlib-ready gym.Env class to use inside a Trainer.
+        An RLlib-ready gym.Env class to use inside an Algorithm.
     """
 
     class _RecSimEnv(gym.Wrapper):

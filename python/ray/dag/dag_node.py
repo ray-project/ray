@@ -16,6 +16,8 @@ from typing import (
 import uuid
 import asyncio
 
+from ray.dag.compiled_dag_node import build_compiled_dag_from_ray_dag
+
 T = TypeVar("T")
 
 
@@ -103,9 +105,33 @@ class DAGNode(DAGNodeBase):
     def clear_cache(self):
         self.cache_from_last_execute = {}
 
+    def experimental_compile(
+        self,
+        buffer_size_bytes: Optional[int] = None,
+        enable_asyncio: bool = False,
+        async_max_queue_size: Optional[int] = None,
+    ) -> "ray.dag.CompiledDAG":
+        """Compile an accelerated execution path for this DAG.
+
+        Args:
+            buffer_size_bytes: The maximum size of messages that can be passed
+                between tasks in the DAG.
+            max_concurrency: The max number of concurrent executions to allow for
+                the DAG.
+
+        Returns:
+            A compiled DAG.
+        """
+        return build_compiled_dag_from_ray_dag(
+            self,
+            buffer_size_bytes,
+            enable_asyncio,
+            async_max_queue_size,
+        )
+
     def execute(
         self, *args, _ray_cache_refs: bool = False, **kwargs
-    ) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
+    ) -> Union[ray.ObjectRef, "ray.actor.ActorHandle"]:
         """Execute this DAG using the Ray default executor _execute_impl().
 
         Args:
@@ -230,27 +256,31 @@ class DAGNode(DAGNodeBase):
             Return type of the fn after application to the tree.
         """
 
-        class _CachingFn:
-            def __init__(self, fn):
-                self.cache = {}
-                self.fn = fn
-                self.fn.cache = self.cache
-                self.input_node_uuid = None
-
-            def __call__(self, node):
-                if node._stable_uuid not in self.cache:
-                    self.cache[node._stable_uuid] = self.fn(node)
-                if type(node).__name__ == "InputNode":
-                    if not self.input_node_uuid:
-                        self.input_node_uuid = node._stable_uuid
-                    elif self.input_node_uuid != node._stable_uuid:
-                        raise AssertionError(
-                            "Each DAG should only have one unique InputNode."
-                        )
-                return self.cache[node._stable_uuid]
-
         if not type(fn).__name__ == "_CachingFn":
+
+            class _CachingFn:
+                def __init__(self, fn):
+                    self.cache = {}
+                    self.fn = fn
+                    self.fn.cache = self.cache
+                    self.input_node_uuid = None
+
+                def __call__(self, node: "DAGNode"):
+                    if node._stable_uuid not in self.cache:
+                        self.cache[node._stable_uuid] = self.fn(node)
+                    if type(node).__name__ == "InputNode":
+                        if not self.input_node_uuid:
+                            self.input_node_uuid = node._stable_uuid
+                        elif self.input_node_uuid != node._stable_uuid:
+                            raise AssertionError(
+                                "Each DAG should only have one unique InputNode."
+                            )
+                    return self.cache[node._stable_uuid]
+
             fn = _CachingFn(fn)
+        else:
+            if self._stable_uuid in fn.cache:
+                return fn.cache[self._stable_uuid]
 
         return fn(
             self._apply_and_replace_all_child_nodes(
@@ -294,7 +324,9 @@ class DAGNode(DAGNodeBase):
 
         return replaced_inputs
 
-    def _execute_impl(self) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
+    def _execute_impl(
+        self, *args, **kwargs
+    ) -> Union[ray.ObjectRef, "ray.actor.ActorHandle"]:
         """Execute this node, assuming args have been transformed already."""
         raise NotImplementedError
 
@@ -322,13 +354,13 @@ class DAGNode(DAGNodeBase):
         instance._stable_uuid = self._stable_uuid
         return instance
 
-    def __reduce__(self):
-        """We disallow serialization to prevent inadvertent closure-capture.
+    def __getstate__(self):
+        """Required due to overriding `__getattr__` else pickling fails."""
+        return self.__dict__
 
-        Use ``.to_json()`` and ``.from_json()`` to convert DAGNodes to a
-        serializable form.
-        """
-        raise ValueError(f"DAGNode cannot be serialized. DAGNode: {str(self)}")
+    def __setstate__(self, d: Dict[str, Any]):
+        """Required due to overriding `__getattr__` else pickling fails."""
+        self.__dict__.update(d)
 
     def __getattr__(self, attr: str):
         if attr == "bind":

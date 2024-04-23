@@ -10,7 +10,7 @@ EPOCH_SIZE = 512
 TEST_SIZE = 256
 
 
-def train(model, optimizer, train_loader, device=None):
+def train_epoch(model, optimizer, train_loader, device=None):
     device = device or torch.device("cpu")
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
@@ -78,15 +78,12 @@ class ConvNet(nn.Module):
 
 
 # __pytorch_optuna_start__
-# 1. Wrap your PyTorch model in an objective function.
 import torch
-from ray import tune, air
-from ray.air import session
+from ray import train, tune
 from ray.tune.search.optuna import OptunaSearch
 
 
-# 1. Wrap a PyTorch model in an objective function.
-def objective(config):
+def objective(config):  # <1>
     train_loader, test_loader = load_data()  # Load some data
     model = ConvNet().to("cpu")  # Create a PyTorch conv net
     optimizer = torch.optim.SGD(  # Tune the optimizer
@@ -94,24 +91,22 @@ def objective(config):
     )
 
     while True:
-        train(model, optimizer, train_loader)  # Train the model
+        train_epoch(model, optimizer, train_loader)  # Train the model
         acc = test(model, test_loader)  # Compute test accuracy
-        session.report({"mean_accuracy": acc})  # Report to Tune
+        train.report({"mean_accuracy": acc})  # Report to Tune
 
 
-# 2. Define a search space and initialize the search algorithm.
 search_space = {"lr": tune.loguniform(1e-4, 1e-2), "momentum": tune.uniform(0.1, 0.9)}
-algo = OptunaSearch()
+algo = OptunaSearch()  # <2>
 
-# 3. Start a Tune run that maximizes mean accuracy and stops after 5 iterations.
-tuner = tune.Tuner(
+tuner = tune.Tuner(  # <3>
     objective,
     tune_config=tune.TuneConfig(
         metric="mean_accuracy",
         mode="max",
         search_alg=algo,
     ),
-    run_config=air.RunConfig(
+    run_config=train.RunConfig(
         stop={"training_iteration": 5},
     ),
     param_space=search_space,

@@ -11,6 +11,7 @@ import numpy as np
 import ray
 from ray._private.test_utils import monitor_memory_usage, wait_for_condition
 from ray.data._internal.progress_bar import ProgressBar
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
 def run_task_workload(total_num_cpus, smoke):
@@ -87,9 +88,13 @@ def run_actor_workload(total_num_cpus, smoke):
     if smoke:
         multiplier = 1
     TOTAL_TASKS = int(300 * multiplier)
-    current_node_ip = ray._private.worker.global_worker.node_ip_address
+    head_node_id = ray.get_runtime_context().get_node_id()
     db_actors = [
-        DBActor.options(resources={f"node:{current_node_ip}": 0.001}).remote()
+        DBActor.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(
+                node_id=head_node_id, soft=False
+            )
+        ).remote()
         for _ in range(NUM_CPUS)
     ]
 
@@ -186,6 +191,7 @@ def main():
     print("Warm up... Prestarting workers if necessary.")
     start = time.time()
     workload(total_num_cpus, args.smoke)
+    print(f"Runtime when warm up: {time.time() - start}")
 
     # Step 2
     print("Running without failures")
@@ -200,14 +206,11 @@ def main():
     # Step 3
     print("Running with failures")
     start = time.time()
-    node_killer = ray.get_actor("node_killer", namespace="release_test_namespace")
+    node_killer = ray.get_actor("NodeKillerActor", namespace="release_test_namespace")
     node_killer.run.remote()
     workload(total_num_cpus, args.smoke)
     print(f"Runtime when there are many failures: {time.time() - start}")
-    print(
-        f"Total node failures: "
-        f"{ray.get(node_killer.get_total_killed_nodes.remote())}"
-    )
+    print(f"Total node failures: " f"{ray.get(node_killer.get_total_killed.remote())}")
     node_killer.stop_run.remote()
     used_gb, usage = ray.get(monitor_actor.get_peak_memory_info.remote())
     print("Memory usage with failures.")
@@ -218,7 +221,7 @@ def main():
     ray.get(monitor_actor.stop_run.remote())
     print(
         "Total number of killed nodes: "
-        f"{ray.get(node_killer.get_total_killed_nodes.remote())}"
+        f"{ray.get(node_killer.get_total_killed.remote())}"
     )
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:
         f.write(

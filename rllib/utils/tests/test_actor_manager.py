@@ -7,7 +7,7 @@ import time
 import unittest
 
 import ray
-from ray.experimental.state.api import list_actors
+from ray.util.state import list_actors
 from ray.rllib.utils.actor_manager import FaultAwareApply, FaultTolerantActorManager
 
 
@@ -366,7 +366,7 @@ class TestActorManager(unittest.TestCase):
 
         manager.foreach_actor_async(lambda w: w.ping(), tag="pingpong")
         manager.foreach_actor_async(lambda w: w.call(), tag="call")
-        time.sleep(1)
+        time.sleep(2)
         results_ping_pong = manager.fetch_ready_async_reqs(
             tags="pingpong", timeout_seconds=5
         )

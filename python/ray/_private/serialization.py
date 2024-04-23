@@ -1,24 +1,29 @@
+import io
 import logging
 import threading
 import traceback
+from typing import Any
+
+import google.protobuf.message
 
 import ray._private.utils
 import ray.cloudpickle as pickle
 from ray._private import ray_constants
-from ray._private.gcs_utils import ErrorType
 from ray._raylet import (
     MessagePackSerializedObject,
     MessagePackSerializer,
-    ObjectRefGenerator,
+    DynamicObjectRefGenerator,
     Pickle5SerializedObject,
     Pickle5Writer,
     RawSerializedObject,
     split_buffer,
     unpack_pickle5_buffers,
 )
-from ray.core.generated.common_pb2 import RayErrorInfo
+from ray.core.generated.common_pb2 import ErrorType, RayErrorInfo
 from ray.exceptions import (
+    ActorDiedError,
     ActorPlacementGroupRemoved,
+    ActorUnavailableError,
     ActorUnschedulableError,
     LocalRayletDiedError,
     NodeDiedError,
@@ -30,7 +35,6 @@ from ray.exceptions import (
     OutOfDiskError,
     OwnerDiedError,
     PlasmaObjectNotAvailable,
-    RayActorError,
     RayError,
     RaySystemError,
     RayTaskError,
@@ -42,14 +46,29 @@ from ray.exceptions import (
     TaskUnschedulableError,
     WorkerCrashedError,
     OutOfMemoryError,
+    ObjectRefStreamEndOfStreamError,
 )
 from ray.util import serialization_addons
+from ray.util import inspect_serializability
 
 logger = logging.getLogger(__name__)
 
 
 class DeserializationError(Exception):
     pass
+
+
+def pickle_dumps(obj: Any, error_msg: str):
+    """Wrap cloudpickle.dumps to provide better error message
+    when the object is not serializable.
+    """
+    try:
+        return pickle.dumps(obj)
+    except TypeError as e:
+        sio = io.StringIO()
+        inspect_serializability(obj, print_file=sio)
+        msg = f"{error_msg}:\n{sio.getvalue()}"
+        raise TypeError(msg) from e
 
 
 def _object_ref_deserializer(binary, call_site, owner_address, object_status):
@@ -126,10 +145,10 @@ class SerializationContext:
         self._register_cloudpickle_reducer(ray.ObjectRef, object_ref_reducer)
 
         def object_ref_generator_reducer(obj):
-            return ObjectRefGenerator, (obj._refs,)
+            return DynamicObjectRefGenerator, (obj._refs,)
 
         self._register_cloudpickle_reducer(
-            ObjectRefGenerator, object_ref_generator_reducer
+            DynamicObjectRefGenerator, object_ref_generator_reducer
         )
 
         serialization_addons.apply(self)
@@ -229,7 +248,7 @@ class SerializationContext:
 
     def _deserialize_actor_died_error(self, data, metadata_fields):
         if not data:
-            return RayActorError()
+            return ActorDiedError()
         ray_error_info = self._deserialize_error_info(data, metadata_fields)
         assert ray_error_info.HasField("actor_died_error")
         if ray_error_info.actor_died_error.HasField("creation_task_failure_context"):
@@ -238,7 +257,7 @@ class SerializationContext:
             )
         else:
             assert ray_error_info.actor_died_error.HasField("actor_died_error_context")
-            return RayActorError(
+            return ActorDiedError(
                 cause=ray_error_info.actor_died_error.actor_died_error_context
             )
 
@@ -280,7 +299,22 @@ class SerializationContext:
             elif error_type == ErrorType.Value("LOCAL_RAYLET_DIED"):
                 return LocalRayletDiedError()
             elif error_type == ErrorType.Value("TASK_CANCELLED"):
-                return TaskCancelledError()
+                # Task cancellations are serialized in two ways, so check both
+                # deserialization paths.
+                # TODO(swang): We should only have one serialization path.
+                try:
+                    # Deserialization from C++ (the CoreWorker task submitter).
+                    # The error info will be stored as a RayErrorInfo.
+                    error_message = ""
+                    if data:
+                        error_info = self._deserialize_error_info(data, metadata_fields)
+                        error_message = error_info.error_message
+                    return TaskCancelledError(error_message=error_message)
+                except google.protobuf.message.DecodeError:
+                    # Deserialization from Python. The TaskCancelledError is
+                    # serialized and returned directly.
+                    obj = self._deserialize_msgpack_data(data, metadata_fields)
+                    return RayError.from_bytes(obj)
             elif error_type == ErrorType.Value("OBJECT_LOST"):
                 return ObjectLostError(
                     object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
@@ -344,6 +378,15 @@ class SerializationContext:
             elif error_type == ErrorType.Value("ACTOR_UNSCHEDULABLE_ERROR"):
                 error_info = self._deserialize_error_info(data, metadata_fields)
                 return ActorUnschedulableError(error_info.error_message)
+            elif error_type == ErrorType.Value("END_OF_STREAMING_GENERATOR"):
+                return ObjectRefStreamEndOfStreamError()
+            elif error_type == ErrorType.Value("ACTOR_UNAVAILABLE"):
+                error_info = self._deserialize_error_info(data, metadata_fields)
+                if error_info.HasField("actor_unavailable_error"):
+                    actor_id = error_info.actor_unavailable_error.actor_id
+                else:
+                    actor_id = None
+                return ActorUnavailableError(error_info.error_message, actor_id)
             else:
                 return RaySystemError("Unrecognized error type " + str(error_type))
         elif data:
@@ -401,8 +444,17 @@ class SerializationContext:
         contained_object_refs = []
 
         if isinstance(value, RayTaskError):
-            metadata = str(ErrorType.Value("TASK_EXECUTION_EXCEPTION")).encode("ascii")
-            value = value.to_bytes()
+            if issubclass(value.cause.__class__, TaskCancelledError):
+                # Handle task cancellation errors separately because we never
+                # want to warn about tasks that were intentionally cancelled by
+                # the user.
+                metadata = str(ErrorType.Value("TASK_CANCELLED")).encode("ascii")
+                value = value.to_bytes()
+            else:
+                metadata = str(ErrorType.Value("TASK_EXECUTION_EXCEPTION")).encode(
+                    "ascii"
+                )
+                value = value.to_bytes()
         elif isinstance(value, ray.actor.ActorHandle):
             # TODO(fyresone): ActorHandle should be serialized via the
             # custom type feature of cross-language.

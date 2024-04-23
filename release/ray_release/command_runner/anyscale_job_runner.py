@@ -3,7 +3,7 @@ import os
 import re
 import tempfile
 import shlex
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional, List
 
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.command_runner.job_runner import JobRunner
@@ -22,7 +22,12 @@ from ray_release.exception import (
 from ray_release.file_manager.job_file_manager import JobFileManager
 from ray_release.job_manager import AnyscaleJobManager
 from ray_release.logger import logger
-from ray_release.util import get_anyscale_sdk, generate_tmp_s3_path, join_s3_paths
+from ray_release.util import (
+    join_cloud_storage_paths,
+    generate_tmp_cloud_storage_path,
+    get_anyscale_sdk,
+    S3_CLOUD_STORAGE,
+)
 
 if TYPE_CHECKING:
     from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
@@ -45,6 +50,7 @@ class AnyscaleJobRunner(JobRunner):
         file_manager: JobFileManager,
         working_dir: str,
         sdk: Optional["AnyscaleSDK"] = None,
+        artifact_path: Optional[str] = None,
     ):
         super().__init__(
             cluster_manager=cluster_manager,
@@ -55,13 +61,20 @@ class AnyscaleJobRunner(JobRunner):
         self.job_manager = AnyscaleJobManager(cluster_manager)
 
         self.last_command_scd_id = None
-        self.path_in_bucket = join_s3_paths(
+        self.path_in_bucket = join_cloud_storage_paths(
             "working_dirs",
-            self.cluster_manager.test_name.replace(" ", "_"),
-            generate_tmp_s3_path(),
+            self.cluster_manager.test.get_name().replace(" ", "_"),
+            generate_tmp_cloud_storage_path(),
         )
-        self.upload_path = join_s3_paths(
-            f"s3://{self.file_manager.bucket}", self.path_in_bucket
+        # The root cloud storage bucket path. result, metric, artifact files
+        # will be uploaded to under it on cloud storage.
+        cloud_storage_provider = os.environ.get(
+            "ANYSCALE_CLOUD_STORAGE_PROVIDER",
+            S3_CLOUD_STORAGE,
+        )
+        self.upload_path = join_cloud_storage_paths(
+            f"{cloud_storage_provider}://{self.file_manager.bucket}",
+            self.path_in_bucket,
         )
         self.output_json = "/tmp/output.json"
         self.prepare_commands = []
@@ -70,13 +83,13 @@ class AnyscaleJobRunner(JobRunner):
         self._results_uploaded = True
         self._metrics_uploaded = True
 
-    def prepare_remote_env(self):
-        # Copy anyscale job script to working dir
-        job_script = os.path.join(os.path.dirname(__file__), "_anyscale_job_wrapper.py")
-        if os.path.exists("anyscale_job_wrapper.py"):
-            os.unlink("anyscale_job_wrapper.py")
-        os.link(job_script, "anyscale_job_wrapper.py")
+        # artifact related
+        # user provided path to where they write the artifact to.
+        self._artifact_path = artifact_path
+        self._artifact_uploaded = artifact_path is not None
 
+    def prepare_remote_env(self):
+        self._copy_script_to_working_dir("anyscale_job_wrapper.py")
         super().prepare_remote_env()
 
     def run_prepare_command(
@@ -139,6 +152,7 @@ class AnyscaleJobRunner(JobRunner):
             # fetching later.
             self._results_uploaded = output_json["uploaded_results"]
             self._metrics_uploaded = output_json["uploaded_metrics"]
+            self._artifact_uploaded = output_json["uploaded_artifact"]
 
             if prepare_return_codes and prepare_return_codes[-1] != 0:
                 if prepare_return_codes[-1] == TIMEOUT_RETURN_CODE:
@@ -189,6 +203,7 @@ class AnyscaleJobRunner(JobRunner):
         env: Optional[Dict] = None,
         timeout: float = 3600.0,
         raise_on_timeout: bool = True,
+        pip: Optional[List[str]] = None,
     ) -> float:
         prepare_command_strs = []
         prepare_command_timeouts = []
@@ -208,23 +223,26 @@ class AnyscaleJobRunner(JobRunner):
         )
 
         full_env = self.get_full_command_env(env)
-        env_str = _get_env_str(full_env)
 
         no_raise_on_timeout_str = (
             " --test-no-raise-on-timeout" if not raise_on_timeout else ""
         )
         full_command = (
-            f"{env_str}python anyscale_job_wrapper.py '{command}' "
+            f"python anyscale_job_wrapper.py '{command}' "
             f"--test-workload-timeout {timeout}{no_raise_on_timeout_str} "
-            "--results-s3-uri "
-            f"'{join_s3_paths(self.upload_path, self.result_output_json)}' "
-            "--metrics-s3-uri "
-            f"'{join_s3_paths(self.upload_path, self.metrics_output_json)}' "
-            "--output-s3-uri "
-            f"'{join_s3_paths(self.upload_path, self.output_json)}' "
+            "--results-cloud-storage-uri "
+            f"'{join_cloud_storage_paths(self.upload_path, self._RESULT_OUTPUT_JSON)}' "
+            "--metrics-cloud-storage-uri "
+            f"'"
+            f"{join_cloud_storage_paths(self.upload_path, self._METRICS_OUTPUT_JSON)}' "
+            "--output-cloud-storage-uri "
+            f"'{join_cloud_storage_paths(self.upload_path, self.output_json)}' "
+            f"--upload-cloud-storage-uri '{self.upload_path}' "
             f"--prepare-commands {prepare_commands_shell} "
-            f"--prepare-commands-timeouts {prepare_commands_timeouts_shell}"
+            f"--prepare-commands-timeouts {prepare_commands_timeouts_shell} "
         )
+        if self._artifact_path:
+            full_command += f"--artifact-path '{self._artifact_path}' "
 
         timeout = min(
             (self.cluster_manager.maximum_uptime_minutes - 1) * 60,
@@ -245,6 +263,7 @@ class AnyscaleJobRunner(JobRunner):
             working_dir=".",
             upload_path=self.upload_path,
             timeout=int(timeout),
+            pip=pip,
         )
         try:
             error = self.job_manager.last_job_result.state.error
@@ -261,7 +280,7 @@ class AnyscaleJobRunner(JobRunner):
         try:
             tmpfile = tempfile.mkstemp(suffix=".json")[1]
             logger.info(tmpfile)
-            self.file_manager.download_from_s3(
+            self.file_manager.download_from_cloud(
                 path, tmpfile, delete_after_download=True
             )
 
@@ -279,7 +298,7 @@ class AnyscaleJobRunner(JobRunner):
                 "Could not fetch results from session as they were not uploaded."
             )
         return self._fetch_json(
-            join_s3_paths(self.path_in_bucket, self.result_output_json)
+            join_cloud_storage_paths(self.path_in_bucket, self._RESULT_OUTPUT_JSON)
         )
 
     def fetch_metrics(self) -> Dict[str, Any]:
@@ -288,11 +307,46 @@ class AnyscaleJobRunner(JobRunner):
                 "Could not fetch metrics from session as they were not uploaded."
             )
         return self._fetch_json(
-            join_s3_paths(self.path_in_bucket, self.metrics_output_json)
+            join_cloud_storage_paths(self.path_in_bucket, self._METRICS_OUTPUT_JSON)
+        )
+
+    def fetch_artifact(self):
+        """Fetch artifact (file) from `self._artifact_path` on Anyscale cluster
+        head node.
+
+        Note, an implementation detail here is that by the time this function is called,
+        the artifact file is already present in s3 bucket by the name of
+        `self._USER_GENERATED_ARTIFACT`. This is because, the uploading to s3 portion is
+        done by `_anyscale_job_wrapper`.
+
+        The fetched artifact will be placed under `self._DEFAULT_ARTIFACTS_DIR`,
+        which will ultimately show up in buildkite Artifacts UI tab.
+        The fetched file will have the same filename and extension as the one
+        on Anyscale cluster head node (same as `self._artifact_path`).
+        """
+        if not self._artifact_uploaded:
+            raise FetchResultError(
+                "Could not fetch artifact from session as they "
+                "were either not generated or not uploaded."
+            )
+        # first make sure that `self._DEFAULT_ARTIFACTS_DIR` exists.
+        if not os.path.exists(self._DEFAULT_ARTIFACTS_DIR):
+            os.makedirs(self._DEFAULT_ARTIFACTS_DIR, 0o755)
+
+        # we use the same artifact file name and extension specified by user
+        # and put it under `self._DEFAULT_ARTIFACTS_DIR`.
+        artifact_file_name = os.path.basename(self._artifact_path)
+        self.file_manager.download_from_cloud(
+            join_cloud_storage_paths(
+                self.path_in_bucket, self._USER_GENERATED_ARTIFACT
+            ),
+            os.path.join(self._DEFAULT_ARTIFACTS_DIR, artifact_file_name),
         )
 
     def fetch_output(self) -> Dict[str, Any]:
-        return self._fetch_json(join_s3_paths(self.path_in_bucket, self.output_json))
+        return self._fetch_json(
+            join_cloud_storage_paths(self.path_in_bucket, self.output_json),
+        )
 
     def cleanup(self):
         try:

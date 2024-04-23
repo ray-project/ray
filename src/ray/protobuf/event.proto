@@ -36,6 +36,15 @@ message Event {
     WARNING = 1;
     ERROR = 2;
     FATAL = 3;
+    // Ideally we would want these to be smaller numerically than INFO, but
+    // unfortunately the original rpc enum comes without such, and to be backward
+    // compatible we have to keep the same values for INFO.
+    // DEBUG: messages that are useful for debugging. These messages are not
+    // intended to be seen by end users.
+    DEBUG = 4;
+    // TRACE: messages that are useful for tracing (e.g. function entering/exit),
+    // more detailed than DEBUG info.
+    TRACE = 5;
   }
 
   // event_id is the unique ID of this event
@@ -53,7 +62,7 @@ message Event {
   string label = 6;
   // message is main information of this event
   string message = 7;
-  // timestamp is the report millionseconds since 00:00, Jan 1 1970 UTC
+  // timestamp is the report milliseconds since 00:00, Jan 1 1970 UTC
   int64 timestamp = 8;
   // store custom key such as node_id, job_id, task_id
   map<string, string> custom_fields = 9;

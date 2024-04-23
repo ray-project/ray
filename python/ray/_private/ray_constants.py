@@ -3,6 +3,7 @@
 import logging
 import os
 import sys
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -39,10 +40,17 @@ def env_set_by_user(key):
 # Whether event logging to driver is enabled. Set to 0 to disable.
 AUTOSCALER_EVENTS = env_integer("RAY_SCHEDULER_EVENTS", 1)
 
+# Filter level under which events will be filtered out, i.e. not printing to driver
+RAY_LOG_TO_DRIVER_EVENT_LEVEL = os.environ.get("RAY_LOG_TO_DRIVER_EVENT_LEVEL", "INFO")
+
 # Internal kv keys for storing monitor debug status.
 DEBUG_AUTOSCALING_ERROR = "__autoscaling_error"
 DEBUG_AUTOSCALING_STATUS = "__autoscaling_status"
 DEBUG_AUTOSCALING_STATUS_LEGACY = "__autoscaling_status_legacy"
+
+# Sync with src/ray/common/constants.h
+AUTOSCALER_V2_ENABLED_KEY = "__autoscaler_v2_enabled"
+AUTOSCALER_NAMESPACE = "__autoscaler"
 
 ID_SIZE = 28
 
@@ -54,6 +62,13 @@ DEFAULT_OBJECT_STORE_MEMORY_PROPORTION = 0.3
 # The smallest cap on the memory used by the object store that we allow.
 # This must be greater than MEMORY_RESOURCE_UNIT_BYTES
 OBJECT_STORE_MINIMUM_MEMORY_BYTES = 75 * 1024 * 1024
+# Each ObjectRef currently uses about 3KB of caller memory.
+CALLER_MEMORY_USAGE_PER_OBJECT_REF = 3000
+# Match max_direct_call_object_size in
+# src/ray/common/ray_config_def.h.
+# TODO(swang): Ideally this should be pulled directly from the
+# config in case the user overrides it.
+DEFAULT_MAX_DIRECT_CALL_OBJECT_SIZE = 100 * 1024
 # The default maximum number of bytes that the non-primary Redis shards are
 # allowed to use unless overridden by the user.
 DEFAULT_REDIS_MAX_MEMORY_BYTES = 10**10
@@ -78,10 +93,17 @@ RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE = "RAY_RUNTIME_ENV"
 RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR = (
     "RAY_RUNTIME_ENV_TEMPORARY_REFERENCE_EXPIRATION_S"
 )
+# Ray populates this env var to the working dir in the creation of a runtime env.
+# For example, `pip` and `conda` users can use this environment variable to locate the
+# `requirements.txt` file.
+RAY_RUNTIME_ENV_CREATE_WORKING_DIR_ENV_VAR = "RAY_RUNTIME_ENV_CREATE_WORKING_DIR"
 # Defaults to 10 minutes. This should be longer than the total time it takes for
 # the local working_dir and py_modules to be uploaded, or these files might get
 # garbage collected before the job starts.
 RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT = 10 * 60
+# If set to 1, then `.gitignore` files will not be parsed and loaded into "excludes"
+# when using a local working_dir or py_modules.
+RAY_RUNTIME_ENV_IGNORE_GITIGNORE = "RAY_RUNTIME_ENV_IGNORE_GITIGNORE"
 RAY_STORAGE_ENVIRONMENT_VARIABLE = "RAY_STORAGE"
 # Hook for running a user-specified runtime-env hook. This hook will be called
 # unconditionally given the runtime_env dict passed for ray.init. It must return
@@ -94,6 +116,9 @@ RAY_START_HOOK = "RAY_START_HOOK"
 # Hook that is invoked on `ray job submit`. It will be given all the same args as the
 # job.cli.submit() function gets, passed as kwargs to this function.
 RAY_JOB_SUBMIT_HOOK = "RAY_JOB_SUBMIT_HOOK"
+# Headers to pass when using the Job CLI. It will be given to
+# instantiate a Job SubmissionClient.
+RAY_JOB_HEADERS = "RAY_JOB_HEADERS"
 
 DEFAULT_DASHBOARD_IP = "127.0.0.1"
 DEFAULT_DASHBOARD_PORT = 8265
@@ -142,35 +167,30 @@ RAY_OVERRIDE_DASHBOARD_URL = "RAY_OVERRIDE_DASHBOARD_URL"
 # Different types of Ray errors that can be pushed to the driver.
 # TODO(rkn): These should be defined in flatbuffers and must be synced with
 # the existing C++ definitions.
-WAIT_FOR_CLASS_PUSH_ERROR = "wait_for_class"
 PICKLING_LARGE_OBJECT_PUSH_ERROR = "pickling_large_object"
 WAIT_FOR_FUNCTION_PUSH_ERROR = "wait_for_function"
-TASK_PUSH_ERROR = "task"
-REGISTER_REMOTE_FUNCTION_PUSH_ERROR = "register_remote_function"
-FUNCTION_TO_RUN_PUSH_ERROR = "function_to_run"
 VERSION_MISMATCH_PUSH_ERROR = "version_mismatch"
-CHECKPOINT_PUSH_ERROR = "checkpoint"
 WORKER_CRASH_PUSH_ERROR = "worker_crash"
 WORKER_DIED_PUSH_ERROR = "worker_died"
 WORKER_POOL_LARGE_ERROR = "worker_pool_large"
 PUT_RECONSTRUCTION_PUSH_ERROR = "put_reconstruction"
-INFEASIBLE_TASK_ERROR = "infeasible_task"
 RESOURCE_DEADLOCK_ERROR = "resource_deadlock"
 REMOVED_NODE_ERROR = "node_removed"
 MONITOR_DIED_ERROR = "monitor_died"
 LOG_MONITOR_DIED_ERROR = "log_monitor_died"
-REPORTER_DIED_ERROR = "reporter_died"
 DASHBOARD_AGENT_DIED_ERROR = "dashboard_agent_died"
 DASHBOARD_DIED_ERROR = "dashboard_died"
 RAYLET_DIED_ERROR = "raylet_died"
-RAYLET_CONNECTION_ERROR = "raylet_connection_error"
 DETACHED_ACTOR_ANONYMOUS_NAMESPACE_ERROR = "detached_actor_anonymous_namespace"
 EXCESS_QUEUEING_WARNING = "excess_queueing_warning"
 
 # Used in gpu detection
 RESOURCE_CONSTRAINT_PREFIX = "accelerator_type:"
 
+# Used by autoscaler to set the node custom resources and labels
+# from cluster.yaml.
 RESOURCES_ENVIRONMENT_VARIABLE = "RAY_OVERRIDE_RESOURCES"
+LABELS_ENVIRONMENT_VARIABLE = "RAY_OVERRIDE_LABELS"
 
 # The reporter will report its statistics this often (milliseconds).
 REPORTER_UPDATE_INTERVAL_MS = env_integer("REPORTER_UPDATE_INTERVAL_MS", 2500)
@@ -181,7 +201,8 @@ REPORTER_UPDATE_INTERVAL_MS = env_integer("REPORTER_UPDATE_INTERVAL_MS", 2500)
 DISABLE_DASHBOARD_LOG_INFO = env_integer("RAY_DISABLE_DASHBOARD_LOG_INFO", 0)
 
 LOGGER_FORMAT = "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s"
-LOGGER_FORMAT_HELP = f"The logging format. default='{LOGGER_FORMAT}'"
+LOGGER_FORMAT_ESCAPE = json.dumps(LOGGER_FORMAT.replace("%", "%%"))
+LOGGER_FORMAT_HELP = f"The logging format. default={LOGGER_FORMAT_ESCAPE}"
 LOGGER_LEVEL = "info"
 LOGGER_LEVEL_CHOICES = ["debug", "info", "warning", "error", "critical"]
 LOGGER_LEVEL_HELP = (
@@ -210,6 +231,7 @@ PROCESS_TYPE_LOG_MONITOR = "log_monitor"
 PROCESS_TYPE_REPORTER = "reporter"
 PROCESS_TYPE_DASHBOARD = "dashboard"
 PROCESS_TYPE_DASHBOARD_AGENT = "dashboard_agent"
+PROCESS_TYPE_RUNTIME_ENV_AGENT = "runtime_env_agent"
 PROCESS_TYPE_WORKER = "worker"
 PROCESS_TYPE_RAYLET = "raylet"
 PROCESS_TYPE_REDIS_SERVER = "redis_server"
@@ -221,6 +243,22 @@ PROCESS_TYPE_PYTHON_CORE_WORKER = "python-core-worker"
 # Log file names
 MONITOR_LOG_FILE_NAME = f"{PROCESS_TYPE_MONITOR}.log"
 LOG_MONITOR_LOG_FILE_NAME = f"{PROCESS_TYPE_LOG_MONITOR}.log"
+
+# Enable log deduplication.
+RAY_DEDUP_LOGS = env_bool("RAY_DEDUP_LOGS", True)
+
+# How many seconds of messages to buffer for log deduplication.
+RAY_DEDUP_LOGS_AGG_WINDOW_S = env_integer("RAY_DEDUP_LOGS_AGG_WINDOW_S", 5)
+
+# Regex for log messages to never deduplicate, or None. This takes precedence over
+# the skip regex below. A default pattern is set for testing.
+TESTING_NEVER_DEDUP_TOKEN = "__ray_testing_never_deduplicate__"
+RAY_DEDUP_LOGS_ALLOW_REGEX = os.environ.get(
+    "RAY_DEDUP_LOGS_ALLOW_REGEX", TESTING_NEVER_DEDUP_TOKEN
+)
+
+# Regex for log messages to always skip / suppress, or None.
+RAY_DEDUP_LOGS_SKIP_REGEX = os.environ.get("RAY_DEDUP_LOGS_SKIP_REGEX")
 
 WORKER_PROCESS_TYPE_IDLE_WORKER = "ray::IDLE"
 WORKER_PROCESS_TYPE_SPILL_WORKER_NAME = "SpillWorker"
@@ -299,6 +337,9 @@ NODE_DEFAULT_IP = "127.0.0.1"
 # The Mach kernel page size in bytes.
 MACH_PAGE_SIZE_BYTES = 4096
 
+# The max number of bytes for task execution error message.
+MAX_APPLICATION_ERROR_LEN = 500
+
 # Max 64 bit integer value, which is needed to ensure against overflow
 # in C++ when passing integer values cross-language.
 MAX_INT64_VALUE = 9223372036854775807
@@ -330,6 +371,15 @@ CALL_STACK_LINE_DELIMITER = " | "
 # NOTE: This is equal to the C++ limit of (RAY_CONFIG::max_grpc_message_size)
 GRPC_CPP_MAX_MESSAGE_SIZE = 250 * 1024 * 1024
 
+# The gRPC send & receive max length for "dashboard agent" server.
+# NOTE: This is equal to the C++ limit of RayConfig::max_grpc_message_size
+#       and HAVE TO STAY IN SYNC with it (ie, meaning that both of these values
+#       have to be set at the same time)
+AGENT_GRPC_MAX_MESSAGE_LENGTH = env_integer(
+    "AGENT_GRPC_MAX_MESSAGE_LENGTH", 20 * 1024 * 1024  # 20MB
+)
+
+
 # GRPC options
 GRPC_ENABLE_HTTP_PROXY = (
     1
@@ -355,7 +405,19 @@ KV_NAMESPACE_FUNCTION_TABLE = b"fun"
 
 LANGUAGE_WORKER_TYPES = ["python", "java", "cpp"]
 
+# Accelerator constants
 NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"
+
+CUDA_VISIBLE_DEVICES_ENV_VAR = "CUDA_VISIBLE_DEVICES"
+NEURON_RT_VISIBLE_CORES_ENV_VAR = "NEURON_RT_VISIBLE_CORES"
+TPU_VISIBLE_CHIPS_ENV_VAR = "TPU_VISIBLE_CHIPS"
+
+NEURON_CORES = "neuron_cores"
+GPU = "GPU"
+TPU = "TPU"
+
+
+RAY_WORKER_NICENESS = "RAY_worker_niceness"
 
 # Default max_retries option in @ray.remote for non-actor
 # tasks.
@@ -367,6 +429,7 @@ DEFAULT_TASK_MAX_RETRIES = 3
 # Please keep this in sync with the definition kRayInternalNamespacePrefix
 # in /src/ray/gcs/gcs_server/gcs_job_manager.h.
 RAY_INTERNAL_NAMESPACE_PREFIX = "_ray_internal_"
+RAY_INTERNAL_DASHBOARD_NAMESPACE = f"{RAY_INTERNAL_NAMESPACE_PREFIX}dashboard"
 
 
 def gcs_actor_scheduling_enabled():
@@ -378,12 +441,48 @@ DEFAULT_RESOURCES = {"CPU", "GPU", "memory", "object_store_memory"}
 # Supported Python versions for runtime env's "conda" field. Ray downloads
 # Ray wheels into the conda environment, so the Ray wheels for these Python
 # versions must be available online.
-RUNTIME_ENV_CONDA_PY_VERSIONS = [(3, 6), (3, 7), (3, 8), (3, 9), (3, 10)]
+RUNTIME_ENV_CONDA_PY_VERSIONS = [(3, 8), (3, 9), (3, 10), (3, 11)]
 
 # Whether to enable Ray clusters (in addition to local Ray).
 # Ray clusters are not explicitly supported for Windows and OSX.
+IS_WINDOWS_OR_OSX = sys.platform == "darwin" or sys.platform == "win32"
 ENABLE_RAY_CLUSTERS_ENV_VAR = "RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER"
 ENABLE_RAY_CLUSTER = env_bool(
     ENABLE_RAY_CLUSTERS_ENV_VAR,
-    not (sys.platform == "darwin" or sys.platform == "win32"),
+    not IS_WINDOWS_OR_OSX,
 )
+
+SESSION_LATEST = "session_latest"
+NUM_PORT_RETRIES = 40
+NUM_REDIS_GET_RETRIES = int(os.environ.get("RAY_NUM_REDIS_GET_RETRIES", "20"))
+
+# The allowed cached ports in Ray. Refer to Port configuration for more details:
+# https://docs.ray.io/en/latest/ray-core/configure.html#ports-configurations
+RAY_ALLOWED_CACHED_PORTS = {
+    "metrics_agent_port",
+    "metrics_export_port",
+    "dashboard_agent_listen_port",
+    "runtime_env_agent_port",
+    "gcs_server_port",  # the `port` option for gcs port.
+}
+
+# Turn this on if actor task log's offsets are expected to be recorded.
+# With this enabled, actor tasks' log could be queried with task id.
+RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING = env_bool(
+    "RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING", False
+)
+
+# RuntimeEnv env var to indicate it exports a function
+WORKER_PROCESS_SETUP_HOOK_ENV_VAR = "__RAY_WORKER_PROCESS_SETUP_HOOK_ENV_VAR"
+RAY_WORKER_PROCESS_SETUP_HOOK_LOAD_TIMEOUT_ENV_VAR = (
+    "RAY_WORKER_PROCESS_SETUP_HOOK_LOAD_TIMEOUT"  # noqa
+)
+
+RAY_DEFAULT_LABEL_KEYS_PREFIX = "ray.io/"
+
+RAY_TPU_MAX_CONCURRENT_CONNECTIONS_ENV_VAR = "RAY_TPU_MAX_CONCURRENT_ACTIVE_CONNECTIONS"
+
+
+RAY_NODE_IP_FILENAME = "node_ip_address.json"
+
+PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME = "bundle"

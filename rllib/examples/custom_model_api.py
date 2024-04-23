@@ -2,7 +2,7 @@ import argparse
 from gymnasium.spaces import Box, Discrete
 import numpy as np
 
-from ray.rllib.examples.models.custom_model_api import (
+from ray.rllib.examples._old_api_stack.models.custom_model_api import (
     DuelingQModel,
     TorchDuelingQModel,
     ContActionQModel,
@@ -19,7 +19,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "torch"],
-    default="tf",
+    default="torch",
     help="The DL framework specifier.",
 )
 

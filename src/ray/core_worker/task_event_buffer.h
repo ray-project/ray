@@ -26,12 +26,15 @@
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/util/counter_map.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace core {
 
 namespace worker {
+
+using TaskAttempt = std::pair<TaskID, int32_t>;
 
 /// A  wrapper class that will be converted to rpc::TaskEvents
 ///
@@ -57,6 +60,10 @@ class TaskEvent {
   /// If it is a profile event.
   virtual bool IsProfileEvent() const = 0;
 
+  virtual TaskAttempt GetTaskAttempt() const {
+    return std::make_pair(task_id_, attempt_number_);
+  }
+
  protected:
   /// Task Id.
   const TaskID task_id_ = TaskID::Nil();
@@ -69,6 +76,45 @@ class TaskEvent {
 /// TaskStatusEvent is generated when a task changes its status.
 class TaskStatusEvent : public TaskEvent {
  public:
+  /// A class that contain data that will be converted to rpc::TaskStateUpdate
+  struct TaskStateUpdate {
+    TaskStateUpdate() {}
+
+    TaskStateUpdate(const absl::optional<const rpc::RayErrorInfo> &error_info)
+        : error_info_(error_info) {}
+
+    TaskStateUpdate(const NodeID &node_id, const WorkerID &worker_id)
+        : node_id_(node_id), worker_id_(worker_id) {}
+
+    TaskStateUpdate(const rpc::TaskLogInfo &task_log_info)
+        : task_log_info_(task_log_info) {}
+
+    TaskStateUpdate(const std::string &actor_repr_name, uint32_t pid)
+        : actor_repr_name_(actor_repr_name), pid_(pid) {}
+
+    TaskStateUpdate(uint32_t pid) : pid_(pid) {}
+
+    TaskStateUpdate(bool is_debugger_paused) : is_debugger_paused_(is_debugger_paused) {}
+
+   private:
+    friend class TaskStatusEvent;
+
+    /// Node id if it's a SUBMITTED_TO_WORKER status change.
+    const absl::optional<NodeID> node_id_ = absl::nullopt;
+    /// Worker id if it's a SUBMITTED_TO_WORKER status change.
+    const absl::optional<WorkerID> worker_id_ = absl::nullopt;
+    /// Task error info.
+    const absl::optional<rpc::RayErrorInfo> error_info_ = absl::nullopt;
+    /// Task log info.
+    const absl::optional<rpc::TaskLogInfo> task_log_info_ = absl::nullopt;
+    /// Actor task repr name.
+    const std::string actor_repr_name_ = "";
+    /// Worker's pid if it's a RUNNING status change.
+    const absl::optional<uint32_t> pid_ = absl::nullopt;
+    /// Is the task is paused by the debugger.
+    const absl::optional<bool> is_debugger_paused_ = absl::nullopt;
+  };
+
   explicit TaskStatusEvent(
       TaskID task_id,
       JobID job_id,
@@ -76,8 +122,7 @@ class TaskStatusEvent : public TaskEvent {
       const rpc::TaskStatus &task_status,
       int64_t timestamp,
       const std::shared_ptr<const TaskSpecification> &task_spec = nullptr,
-      absl::optional<NodeID> node_id = absl::nullopt,
-      absl::optional<WorkerID> worker_id = absl::nullopt);
+      absl::optional<const TaskStateUpdate> state_update = absl::nullopt);
 
   void ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) override;
 
@@ -90,10 +135,8 @@ class TaskStatusEvent : public TaskEvent {
   const int64_t timestamp_ = -1;
   /// Pointer to the task spec.
   const std::shared_ptr<const TaskSpecification> task_spec_ = nullptr;
-  /// Node id if it's a SUBMITTED_TO_WORKER status change.
-  const absl::optional<NodeID> node_id_ = absl::nullopt;
-  /// Worker id if it's a SUBMITTED_TO_WORKER status change.
-  const absl::optional<WorkerID> worker_id_ = absl::nullopt;
+  /// Optional task state update
+  const absl::optional<const TaskStateUpdate> state_update_ = absl::nullopt;
 };
 
 /// TaskProfileEvent is generated when `RAY_enable_timeline` is on.
@@ -127,6 +170,21 @@ class TaskProfileEvent : public TaskEvent {
   std::string extra_data_;
 };
 
+/// @brief An enum class defining counters to be used in TaskEventBufferImpl.
+enum TaskEventBufferCounter {
+  kNumTaskProfileEventDroppedSinceLastFlush,
+  kNumTaskStatusEventDroppedSinceLastFlush,
+  kNumTaskProfileEventsStored,
+  kNumTaskStatusEventsStored,
+  kNumDroppedTaskAttemptsStored,
+  kTotalNumTaskProfileEventDropped,
+  kTotalNumTaskStatusEventDropped,
+  kTotalNumTaskAttemptsReported,
+  kTotalNumLostTaskAttemptsReported,
+  kTotalTaskEventsBytesReported,
+  kTotalNumFailedToReport,
+};
+
 /// An interface for a buffer that stores task status changes and profiling events,
 /// and reporting these events to the GCS periodically.
 ///
@@ -136,9 +194,10 @@ class TaskProfileEvent : public TaskEvent {
 ///   1. If any of the gRPC call failed, the task events will be dropped and warnings
 ///   logged. This is probably fine since this usually indicated a much worse issue.
 ///
-///   2. More than `RAY_task_events_max_buffer_size` tasks have been stored
-///   in the buffer, any new task events will be dropped. In this case, the number of
-///   dropped task events will also be included in the next flush to surface this.
+///   2. More than `RAY_task_events_max_num_status_events_buffer_on_worker` tasks have
+///   been stored in the buffer, any new task events will be dropped. In this case, the
+///   number of dropped task events will also be included in the next flush to surface
+///   this.
 ///
 /// No overloading of GCS
 /// =====================
@@ -205,41 +264,97 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// \param gcs_client GCS client
   TaskEventBufferImpl(std::unique_ptr<gcs::GcsClient> gcs_client);
 
+  ~TaskEventBufferImpl() override;
+
   void AddTaskEvent(std::unique_ptr<TaskEvent> task_event)
-      LOCKS_EXCLUDED(mutex_) override;
+      ABSL_LOCKS_EXCLUDED(mutex_) override;
 
-  void FlushEvents(bool forced) LOCKS_EXCLUDED(mutex_) override;
+  void FlushEvents(bool forced) ABSL_LOCKS_EXCLUDED(mutex_) override;
 
-  Status Start(bool auto_flush = true) LOCKS_EXCLUDED(mutex_) override;
+  Status Start(bool auto_flush = true) ABSL_LOCKS_EXCLUDED(mutex_) override;
 
-  void Stop() LOCKS_EXCLUDED(mutex_) override;
+  void Stop() ABSL_LOCKS_EXCLUDED(mutex_) override;
 
   bool Enabled() const override;
 
-  const std::string DebugString() LOCKS_EXCLUDED(mutex_) override;
+  const std::string DebugString() override;
 
  private:
+  /// Add a task status event to be reported.
+  ///
+  /// \param status_event Task status event.
+  void AddTaskStatusEvent(std::unique_ptr<TaskEvent> status_event)
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
+  /// Add a task profile event to be reported.
+  ///
+  /// \param profile_event Task profile event.
+  void AddTaskProfileEvent(std::unique_ptr<TaskEvent> profile_event)
+      ABSL_LOCKS_EXCLUDED(profile_mutex_);
+
+  /// Get data related to task status events to be send to GCS.
+  ///
+  /// \param[out] status_events_to_send Task status events to be sent.
+  /// \param[out] dropped_task_attempts_to_send Task attempts that were dropped due to
+  ///             status events being dropped.
+  void GetTaskStatusEventsToSend(
+      std::vector<std::unique_ptr<TaskEvent>> *status_events_to_send,
+      absl::flat_hash_set<TaskAttempt> *dropped_task_attempts_to_send)
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
+  /// Get data related to task profile events to be send to GCS.
+  ///
+  /// \param[out] profile_events_to_send Task profile events to be sent.
+  void GetTaskProfileEventsToSend(
+      std::vector<std::unique_ptr<TaskEvent>> *profile_events_to_send)
+      ABSL_LOCKS_EXCLUDED(profile_mutex_);
+
+  /// Get the task events to GCS.
+  ///
+  /// \param status_events_to_send Task status events to be sent.
+  /// \param profile_events_to_send Task profile events to be sent.
+  /// \param dropped_task_attempts_to_send Task attempts that were dropped due to
+  ///        status events being dropped.
+  /// \return A unique_ptr to rpc::TaskEvents to be sent to GCS.
+  std::unique_ptr<rpc::TaskEventData> CreateDataToSend(
+      std::vector<std::unique_ptr<TaskEvent>> &&status_events_to_send,
+      std::vector<std::unique_ptr<TaskEvent>> &&profile_events_to_send,
+      absl::flat_hash_set<TaskAttempt> &&dropped_task_attempts_to_send);
+
+  /// Reset the counters during flushing data to GCS.
+  void ResetCountersForFlush();
+
   /// Test only functions.
-  std::vector<std::reference_wrapper<const TaskEvent>> GetAllTaskEvents()
-      LOCKS_EXCLUDED(mutex_) {
-    absl::MutexLock lock(&mutex_);
-    std::vector<std::reference_wrapper<const TaskEvent>> copy;
-    for (const auto &e : buffer_) {
-      copy.push_back(std::cref(*e));
-    }
-    return copy;
+  size_t GetNumTaskEventsStored() {
+    return stats_counter_.Get(TaskEventBufferCounter::kNumTaskStatusEventsStored) +
+           stats_counter_.Get(TaskEventBufferCounter::kNumTaskProfileEventsStored);
   }
 
   /// Test only functions.
-  size_t GetNumStatusTaskEventsDropped() LOCKS_EXCLUDED(mutex_) {
-    absl::MutexLock lock(&mutex_);
-    return num_status_task_events_dropped_;
+  size_t GetTotalNumStatusTaskEventsDropped() {
+    return stats_counter_.Get(TaskEventBufferCounter::kTotalNumTaskStatusEventDropped);
   }
 
   /// Test only functions.
-  size_t GetNumProfileTaskEventsDropped() LOCKS_EXCLUDED(mutex_) {
-    absl::MutexLock lock(&mutex_);
-    return num_profile_task_events_dropped_;
+  size_t GetNumStatusTaskEventsDroppedSinceLastFlush() {
+    return stats_counter_.Get(
+        TaskEventBufferCounter::kNumTaskStatusEventDroppedSinceLastFlush);
+  }
+
+  /// Test only functions.
+  size_t GetTotalNumProfileTaskEventsDropped() {
+    return stats_counter_.Get(TaskEventBufferCounter::kTotalNumTaskProfileEventDropped);
+  }
+
+  /// Test only functions.
+  size_t GetNumProfileTaskEventsDroppedSinceLastFlush() {
+    return stats_counter_.Get(
+        TaskEventBufferCounter::kNumTaskProfileEventDroppedSinceLastFlush);
+  }
+
+  /// Test only functions.
+  size_t GetNumFailedToReport() {
+    return stats_counter_.Get(TaskEventBufferCounter::kTotalNumFailedToReport);
   }
 
   /// Test only functions.
@@ -250,6 +365,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
 
   /// Mutex guarding task_events_data_.
   absl::Mutex mutex_;
+
+  absl::Mutex profile_mutex_;
 
   /// IO service event loop owned by TaskEventBuffer.
   instrumented_io_context io_service_;
@@ -264,30 +381,31 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   PeriodicalRunner periodical_runner_;
 
   /// Client to the GCS used to push profile events to it.
-  std::unique_ptr<gcs::GcsClient> gcs_client_ GUARDED_BY(mutex_);
+  std::unique_ptr<gcs::GcsClient> gcs_client_ ABSL_GUARDED_BY(mutex_);
 
   /// True if the TaskEventBuffer is enabled.
   std::atomic<bool> enabled_ = false;
 
-  /// Circular buffered task events.
-  boost::circular_buffer<std::unique_ptr<TaskEvent>> buffer_ GUARDED_BY(mutex_);
+  /// Circular buffered task status events.
+  boost::circular_buffer<std::unique_ptr<TaskEvent>> status_events_
+      ABSL_GUARDED_BY(mutex_);
 
-  /// Number of profile task events dropped since the last report flush.
-  size_t num_profile_task_events_dropped_ GUARDED_BY(mutex_) = 0;
+  /// Buffered task attempts that were dropped due to status events being dropped.
+  /// This will be sent to GCS to surface the dropped task attempts.
+  absl::flat_hash_set<TaskAttempt> dropped_task_attempts_unreported_
+      ABSL_GUARDED_BY(mutex_);
 
-  /// Number of status task events dropped since the last report flush.
-  size_t num_status_task_events_dropped_ GUARDED_BY(mutex_) = 0;
+  /// Buffered task profile events. A FIFO queue to be sent to GCS.
+  absl::flat_hash_map<TaskAttempt, std::vector<std::unique_ptr<TaskEvent>>>
+      profile_events_ ABSL_GUARDED_BY(profile_mutex_);
+
+  /// Stats counter map.
+  CounterMapThreadSafe<TaskEventBufferCounter> stats_counter_;
 
   /// True if there's a pending gRPC call. It's a simple way to prevent overloading
   /// GCS with too many calls. There is no point sending more events if GCS could not
   /// process them quick enough.
-  bool grpc_in_progress_ GUARDED_BY(mutex_) = false;
-
-  /// Debug stats: total number of bytes of task events sent so far to GCS.
-  uint64_t total_events_bytes_ GUARDED_BY(mutex_) = 0;
-
-  /// Debug stats: total number of task events sent so far to GCS.
-  uint64_t total_num_events_ GUARDED_BY(mutex_) = 0;
+  std::atomic<bool> grpc_in_progress_ = false;
 
   FRIEND_TEST(TaskEventBufferTestManualStart, TestGcsClientFail);
   FRIEND_TEST(TaskEventBufferTestBatchSend, TestBatchedSend);
@@ -296,7 +414,9 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   FRIEND_TEST(TaskEventBufferTest, TestFailedFlush);
   FRIEND_TEST(TaskEventBufferTest, TestBackPressure);
   FRIEND_TEST(TaskEventBufferTest, TestForcedFlush);
-  FRIEND_TEST(TaskEventBufferTest, TestBufferSizeLimit);
+  FRIEND_TEST(TaskEventBufferTestLimitBuffer, TestBufferSizeLimitStatusEvents);
+  FRIEND_TEST(TaskEventBufferTestLimitProfileEvents, TestBufferSizeLimitProfileEvents);
+  FRIEND_TEST(TaskEventBufferTestLimitProfileEvents, TestLimitProfileEventsPerTask);
 };
 
 }  // namespace worker

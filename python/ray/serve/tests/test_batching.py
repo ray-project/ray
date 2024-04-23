@@ -1,10 +1,14 @@
 import asyncio
+from concurrent.futures.thread import ThreadPoolExecutor
+from functools import partial
+from typing import List, Optional
 
 import pytest
+import requests
+from starlette.responses import StreamingResponse
 
 import ray
 from ray import serve
-from ray._private.utils import get_or_create_event_loop
 
 
 def test_batching(serve_instance):
@@ -24,16 +28,11 @@ def test_batching(serve_instance):
 
     handle = serve.run(BatchingExample.bind())
 
-    future_list = []
-    for _ in range(20):
-        f = handle.remote(1)
-        future_list.append(f)
-
-    counter_result = ray.get(future_list)
+    result_list = [handle.remote(1) for _ in range(20)]
     # since count is only updated per batch of queries
     # If there atleast one __call__ fn call with batch size greater than 1
     # counter result will always be less than 20
-    assert max(counter_result) < 20
+    assert max([r.result() for r in result_list]) < 20
 
 
 def test_batching_exception(serve_instance):
@@ -53,242 +52,158 @@ def test_batching_exception(serve_instance):
     handle = serve.run(NoListReturned.bind())
 
     with pytest.raises(ray.exceptions.RayTaskError):
-        assert ray.get(handle.remote(1))
+        assert handle.remote(1).result()
 
 
 @pytest.mark.asyncio
-async def test_decorator_validation():
-    @serve.batch
-    async def function():
-        pass
+async def test_batch_generator_streaming_response_integration_test(serve_instance):
+    NUM_YIELDS = 10
 
-    @serve.batch(max_batch_size=10, batch_wait_timeout_s=1.5)
-    async def function2():
-        pass
+    @serve.deployment
+    class Textgen:
+        @serve.batch(max_batch_size=4, batch_wait_timeout_s=1000)
+        async def batch_handler(self, prompts: List[str]):
+            for _ in range(NUM_YIELDS):
+                # Check that the batch handler can yield unhashable types
+                prompt_responses = [{"value": prompt} for prompt in prompts]
+                yield prompt_responses
 
-    class Class:
-        @serve.batch
-        async def method(self):
-            pass
+        async def value_extractor(self, prompt_responses):
+            async for prompt_response in prompt_responses:
+                yield prompt_response["value"]
 
-    class Class2:
-        @serve.batch(max_batch_size=10, batch_wait_timeout_s=1.5)
-        async def method(self):
-            pass
+        async def __call__(self, request):
+            prompt = request.query_params["prompt"]
+            response_values = self.value_extractor(self.batch_handler(prompt))
+            return StreamingResponse(response_values)
 
-    with pytest.raises(TypeError, match="async def"):
+    serve.run(Textgen.bind())
 
-        @serve.batch
-        def non_async_function():
-            pass
+    prompt_prefix = "hola"
+    url = f"http://localhost:8000/?prompt={prompt_prefix}"
+    with ThreadPoolExecutor() as pool:
+        futs = [pool.submit(partial(requests.get, url + str(idx))) for idx in range(4)]
+        responses = [fut.result() for fut in futs]
 
-    with pytest.raises(TypeError, match="async def"):
-
-        class NotAsync:
-            @serve.batch
-            def method(self, requests):
-                pass
-
-    with pytest.raises(ValueError):
-
-        class ZeroBatch:
-            @serve.batch(max_batch_size=0)
-            async def method(self, requests):
-                pass
-
-    with pytest.raises(TypeError):
-
-        class FloatNonIntBatch:
-            @serve.batch(max_batch_size=1.1)
-            async def method(self, requests):
-                pass
-
-    class FloatIntegerBatch:
-        @serve.batch(max_batch_size=1.0)
-        async def method(self, requests):
-            pass
-
-    with pytest.raises(ValueError):
-
-        class NegativeTimeout:
-            @serve.batch(batch_wait_timeout_s=-0.1)
-            async def method(self, requests):
-                pass
-
-    class FloatZeroTimeout:
-        @serve.batch(batch_wait_timeout_s=0.0)
-        async def method(self, requests):
-            pass
-
-    class IntZeroTimeout:
-        @serve.batch(batch_wait_timeout_s=0)
-        async def method(self, requests):
-            pass
-
-    with pytest.raises(TypeError):
-
-        class NonTimeout:
-            @serve.batch(batch_wait_timeout_s="a")
-            async def method(self, requests):
-                pass
+    for idx, response in enumerate(responses):
+        assert response.status_code == 200
+        assert response.text == "".join([prompt_prefix + str(idx)] * NUM_YIELDS)
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize("use_class", [True, False])
-async def test_batch_size_one_long_timeout(use_class):
-    @serve.batch(max_batch_size=1, batch_wait_timeout_s=1000)
-    async def long_timeout(requests):
-        if "raise" in requests:
-            1 / 0
-        return requests
+def test_batching_client_dropped_unary(serve_instance):
+    """Test unary batching with clients that drops the connection.
 
-    class LongTimeout:
-        @serve.batch(max_batch_size=1, batch_wait_timeout_s=1000)
-        async def long_timeout(self, requests):
-            if "raise" in requests:
-                1 / 0
-            return requests
+    After requests are dropped. The next request should succeed.
+    """
 
-    cls = LongTimeout()
+    @serve.deployment
+    class ModelUnary:
+        @serve.batch(max_batch_size=5)
+        async def handle_batch(self, requests):
+            await asyncio.sleep(0.05)
+            return ["fake-response" for _ in range(len(requests))]
 
-    async def call(arg):
-        if use_class:
-            return await cls.long_timeout(arg)
-        else:
-            return await long_timeout(arg)
+        async def __call__(self, request):
+            return await self.handle_batch(request)
 
-    assert await call("hi") == "hi"
-    with pytest.raises(ZeroDivisionError):
-        await call("raise")
+    serve.run(ModelUnary.bind())
 
+    url = "http://localhost:8000/"
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize("use_class", [True, False])
-async def test_batch_size_multiple_zero_timeout(use_class):
-    @serve.batch(max_batch_size=2, batch_wait_timeout_s=0)
-    async def zero_timeout(requests):
-        await asyncio.sleep(1)
-        if "raise" in requests:
-            1 / 0
-        return requests
+    # Sending requests with clients that drops the connection.
+    for _ in range(3):
+        with pytest.raises(requests.exceptions.ReadTimeout):
+            requests.get(url, timeout=0.005)
 
-    class ZeroTimeout:
-        @serve.batch(max_batch_size=2, batch_wait_timeout_s=0)
-        async def zero_timeout(self, requests):
-            await asyncio.sleep(1)
-            if "raise" in requests:
-                1 / 0
-            return requests
-
-    cls = ZeroTimeout()
-
-    async def call(arg):
-        if use_class:
-            return await cls.zero_timeout(arg)
-        else:
-            return await zero_timeout(arg)
-
-    assert await call("hi") == "hi"
-    with pytest.raises(ZeroDivisionError):
-        await call("raise")
-
-    # Check that 2 requests will be executed together if available.
-    # The first should cause a size-one batch to be executed, then
-    # the next two should be executed together (signaled by both
-    # having the exception).
-    t1 = get_or_create_event_loop().create_task(call("hi1"))
-    await asyncio.sleep(0.5)
-    t2 = get_or_create_event_loop().create_task(call("hi2"))
-    t3 = get_or_create_event_loop().create_task(call("raise"))
-
-    assert await t1 == "hi1"
-
-    with pytest.raises(ZeroDivisionError):
-        await t2
-    with pytest.raises(ZeroDivisionError):
-        await t3
+    # The following request should succeed.
+    resp = requests.get(url, timeout=1)
+    assert resp.status_code == 200
+    assert resp.text == "fake-response"
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize("use_class", [True, False])
-async def test_batch_size_multiple_long_timeout(use_class):
-    @serve.batch(max_batch_size=3, batch_wait_timeout_s=1000)
-    async def long_timeout(requests):
-        if "raise" in requests:
-            1 / 0
-        return requests
+def test_batching_client_dropped_streaming(serve_instance):
+    """Test streaming batching with clients that drops the connection.
 
-    class LongTimeout:
-        @serve.batch(max_batch_size=3, batch_wait_timeout_s=1000)
-        async def long_timeout(self, requests):
-            if "raise" in requests:
-                1 / 0
-            return requests
+    After requests are dropped. The next request should succeed.
+    """
 
-    cls = LongTimeout()
+    @serve.deployment
+    class ModelStreaming:
+        @serve.batch(max_batch_size=3)
+        async def handle_batch(self, requests):
+            await asyncio.sleep(0.05)
+            for i in range(10):
+                yield [str(i) for _ in range(len(requests))]
 
-    async def call(arg):
-        if use_class:
-            return await cls.long_timeout(arg)
-        else:
-            return await long_timeout(arg)
+        async def __call__(self, request):
+            return StreamingResponse(self.handle_batch(request))
 
-    t1 = get_or_create_event_loop().create_task(call("hi1"))
-    t2 = get_or_create_event_loop().create_task(call("hi2"))
-    done, pending = await asyncio.wait([t1, t2], timeout=0.1)
-    assert len(done) == 0
-    t3 = get_or_create_event_loop().create_task(call("hi3"))
-    done, pending = await asyncio.wait([t1, t2, t3], timeout=100)
-    assert set(done) == {t1, t2, t3}
-    assert [t1.result(), t2.result(), t3.result()] == ["hi1", "hi2", "hi3"]
+    serve.run(ModelStreaming.bind())
 
-    t1 = get_or_create_event_loop().create_task(call("hi1"))
-    t2 = get_or_create_event_loop().create_task(call("raise"))
-    done, pending = await asyncio.wait([t1, t2], timeout=0.1)
-    assert len(done) == 0
-    t3 = get_or_create_event_loop().create_task(call("hi3"))
-    done, pending = await asyncio.wait([t1, t2, t3], timeout=100)
-    assert set(done) == {t1, t2, t3}
-    assert all(isinstance(t.exception(), ZeroDivisionError) for t in done)
-    with pytest.raises(ZeroDivisionError):
-        t1.result()
-    with pytest.raises(ZeroDivisionError):
-        t2.result()
-    with pytest.raises(ZeroDivisionError):
-        t3.result()
+    url = "http://localhost:8000/"
+
+    # Sending requests with clients that drops the connection.
+    for _ in range(3):
+        with pytest.raises(
+            (requests.exceptions.ReadTimeout, requests.exceptions.ConnectionError)
+        ):
+            requests.get(url, timeout=0.005)
+
+    # The following request should succeed.
+    resp = requests.get(url, timeout=1)
+    assert resp.status_code == 200
+    assert resp.text == "0123456789"
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize("mode", ["args", "kwargs", "mixed", "out-of-order"])
-@pytest.mark.parametrize("use_class", [True, False])
-async def test_batch_args_kwargs(mode, use_class):
-    if use_class:
+def test_observability_helpers():
+    """Checks observability helper methods that are used for batching.
 
-        class MultipleArgs:
-            @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
-            async def method(self, key1, key2):
-                return [(key1[i], key2[i]) for i in range(len(key1))]
+    Tests three observability helper methods:
+        * _get_curr_iteration_start_time: gets the current iteration's start
+            time.
+        * _is_batching_task_alive: returns whether the batch-handler task is
+            alive.
+        * _get_handling_task_stack: returns the stack for the batch-handler task.
+    """
 
-        instance = MultipleArgs()
-        func = instance.method
+    @serve.deployment(name="batcher")
+    class Batcher:
+        @serve.batch(max_batch_size=3)
+        async def handle_batch(self, requests):
+            return [0] * len(requests)
 
-    else:
+        async def __call__(self, request):
+            return await self.handle_batch(request)
 
-        @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
-        async def func(key1, key2):
-            return [(key1[i], key2[i]) for i in range(len(key1))]
+        async def _get_curr_iteration_start_time(self) -> Optional[float]:
+            return self.handle_batch._get_curr_iteration_start_time()
 
-    if mode == "args":
-        coros = [func("hi1", "hi2"), func("hi3", "hi4")]
-    elif mode == "kwargs":
-        coros = [func(key1="hi1", key2="hi2"), func(key1="hi3", key2="hi4")]
-    elif mode == "mixed":
-        coros = [func("hi1", key2="hi2"), func("hi3", key2="hi4")]
-    elif mode == "out-of-order":
-        coros = [func(key2="hi2", key1="hi1"), func(key2="hi4", key1="hi3")]
+        async def _is_batching_task_alive(self) -> bool:
+            return await self.handle_batch._is_batching_task_alive()
 
-    result = await asyncio.gather(*coros)
-    assert result == [("hi1", "hi2"), ("hi3", "hi4")]
+        async def _get_handling_task_stack(self) -> Optional[str]:
+            return await self.handle_batch._get_handling_task_stack()
+
+    serve.run(target=Batcher.bind(), name="app_name")
+    handle = serve.get_deployment_handle(deployment_name="batcher", app_name="app_name")
+
+    assert handle._is_batching_task_alive.remote().result()
+
+    requests.get("http://localhost:8000/")
+
+    assert len(handle._get_handling_task_stack.remote().result()) is not None
+    assert handle._is_batching_task_alive.remote().result()
+
+    curr_iteration_start_time = handle._get_curr_iteration_start_time.remote().result()
+
+    for _ in range(5):
+        requests.get("http://localhost:8000/")
+
+    new_iteration_start_time = handle._get_curr_iteration_start_time.remote().result()
+
+    assert new_iteration_start_time > curr_iteration_start_time
+    assert len(handle._get_handling_task_stack.remote().result()) is not None
+    assert handle._is_batching_task_alive.remote().result()
 
 
 if __name__ == "__main__":

@@ -1,0 +1,12 @@
+name: "corebuild-py$PYTHON"
+froms: ["cr.ray.io/rayproject/oss-ci-base_build-py$PYTHON"]
+dockerfile: ci/docker/core.build.Dockerfile
+srcs:
+  - python/requirements.txt
+  - python/requirements_compiled.txt
+  - python/requirements/test-requirements.txt
+  - python/requirements/ml/dl-cpu-requirements.txt
+build_args:
+  - DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_build-py$PYTHON
+tags:
+  - cr.ray.io/rayproject/corebuild-py$PYTHON

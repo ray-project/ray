@@ -1,3 +1,4 @@
+import tempfile
 import time
 import warnings
 
@@ -5,26 +6,39 @@ import pytest
 
 import ray
 from ray.air._internal.util import StartTraceback
-from ray.air.checkpoint import Checkpoint
-from ray.train._internal.accelerator import Accelerator
 from ray.air.constants import SESSION_MISUSE_LOG_ONCE_KEY
-from ray.train._internal.session import (
-    init_session,
-    shutdown_session,
-    get_session,
-    TrainingResultType,
-    get_accelerator,
-    set_accelerator,
-)
 from ray.air.session import (
     get_checkpoint,
-    get_world_rank,
-    get_local_rank,
-    report,
     get_dataset_shard,
+    get_local_rank,
+    get_world_rank,
     get_world_size,
+    report,
 )
+from ray.train._internal.accelerator import Accelerator
+from ray.train._internal.session import (
+    get_accelerator,
+    get_session,
+    init_session,
+    set_accelerator,
+    shutdown_session,
+)
+from ray.train._internal.storage import StorageContext
 from ray.train.error import SessionMisuseError
+from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
+
+storage = StorageContext(
+    storage_path=tempfile.mkdtemp(),
+    experiment_dir_name="exp_name",
+    trial_dir_name="trial_name",
+)
+
+
+@pytest.fixture(autouse=True, scope="module")
+def ray_start_4_cpus():
+    ray.init(num_cpus=4)
+    yield
+    ray.shutdown()
 
 
 @pytest.fixture(scope="function")
@@ -39,9 +53,16 @@ def session():
         node_rank=0,
         local_world_size=1,
         world_size=1,
+        storage=storage,
     )
     yield get_session()
     shutdown_session()
+
+
+@pytest.fixture(autouse=True)
+def shutdown():
+    if get_session():
+        shutdown_session()
 
 
 def test_init_fail(session):
@@ -77,11 +98,10 @@ def test_world_size(session):
 
 def test_train(session):
     session.start()
-    output = session.finish()
-    assert output == 1
+    session.finish()
 
 
-def test_get_dataset_shard(shutdown_only):
+def test_get_dataset_shard():
     dataset = ray.data.from_items([1, 2, 3])
     init_session(
         training_func=lambda: 1,
@@ -91,6 +111,7 @@ def test_get_dataset_shard(shutdown_only):
         local_world_size=1,
         world_size=1,
         dataset_shard=dataset,
+        storage=storage,
     )
     assert get_dataset_shard() == dataset
     shutdown_session()
@@ -108,11 +129,12 @@ def test_report():
         node_rank=0,
         local_world_size=1,
         world_size=1,
+        storage=storage,
     )
     session = get_session()
     session.start()
-    assert session.get_next().data["loss"] == 0
-    assert session.get_next().data["loss"] == 1
+    assert session.get_next().metrics["loss"] == 0
+    assert session.get_next().metrics["loss"] == 1
     shutdown_session()
 
 
@@ -129,6 +151,7 @@ def test_report_fail():
         node_rank=0,
         local_world_size=1,
         world_size=1,
+        storage=storage,
     )
     session = get_session()
     session.start()
@@ -156,13 +179,13 @@ def test_no_start(session):
 def test_checkpoint():
     def train_func():
         for i in range(2):
-            report({}, checkpoint=Checkpoint.from_dict(dict(epoch=i)))
+            with create_dict_checkpoint(dict(epoch=i)) as checkpoint:
+                report({}, checkpoint=checkpoint)
 
     def validate_zero(expected):
         next = session.get_next()
-        assert next is not None
-        assert next.type == TrainingResultType.CHECKPOINT
-        assert next.data.to_dict()["epoch"] == expected
+        assert next is not None and next.checkpoint is not None
+        assert load_dict_checkpoint(next.checkpoint)["epoch"] == expected
 
     init_session(
         training_func=train_func,
@@ -171,72 +194,12 @@ def test_checkpoint():
         node_rank=0,
         local_world_size=1,
         world_size=1,
+        storage=storage,
     )
     session = get_session()
     session.start()
     validate_zero(0)
-    session.get_next()  # handle report
     validate_zero(1)
-    session.get_next()
-    session.finish()
-    shutdown_session()
-
-    def validate_nonzero():
-        next = session.get_next()
-        assert next is not None
-        assert next.type == TrainingResultType.CHECKPOINT
-        assert not next.data
-
-    init_session(
-        training_func=train_func,
-        world_rank=1,
-        local_rank=1,
-        node_rank=0,
-        local_world_size=1,
-        world_size=1,
-    )
-    session = get_session()
-    session.start()
-    validate_nonzero()
-    session.get_next()  # handle report
-    validate_nonzero()
-    session.get_next()
-    session.finish()
-    shutdown_session()
-
-
-def test_encode_data():
-    def train_func():
-        report(dict(epoch=0), checkpoint=Checkpoint.from_dict(dict(epoch=0)))
-
-    def encode_checkpoint(checkpoint):
-        data = checkpoint.to_dict()
-        data["encoded"] = True
-        return checkpoint.from_dict(data)
-
-    def validate_encoded(result_type: TrainingResultType):
-        next = session.get_next()
-        assert next.type is result_type
-        data = next.data
-        if isinstance(data, Checkpoint):
-            data = data.to_dict()
-        assert data["encoded"] is True
-
-    init_session(
-        training_func=train_func,
-        world_rank=0,
-        local_rank=0,
-        node_rank=0,
-        local_world_size=1,
-        world_size=1,
-        encode_data_fn=encode_checkpoint,
-    )
-
-    session = get_session()
-    session.start()
-    # Validate checkpoint is encoded.
-    validate_encoded(TrainingResultType.CHECKPOINT)
-    session.get_next()
     session.finish()
     shutdown_session()
 
@@ -244,9 +207,10 @@ def test_encode_data():
 def test_load_checkpoint_after_save():
     def train_func():
         for i in range(2):
-            report(dict(epoch=i), checkpoint=Checkpoint.from_dict(dict(epoch=i)))
+            with create_dict_checkpoint(dict(epoch=i)) as checkpoint:
+                report(dict(epoch=i), checkpoint=checkpoint)
             checkpoint = get_checkpoint()
-            assert checkpoint.to_dict()["epoch"] == i
+            assert load_dict_checkpoint(checkpoint)["epoch"] == i
 
     init_session(
         training_func=train_func,
@@ -255,11 +219,11 @@ def test_load_checkpoint_after_save():
         node_rank=0,
         local_world_size=1,
         world_size=1,
+        storage=storage,
     )
     session = get_session()
     session.start()
     for i in range(2):
-        session.get_next()
         session.get_next()
     session.finish()
     shutdown_session()
@@ -280,6 +244,7 @@ def test_locking():
         node_rank=0,
         local_world_size=1,
         world_size=1,
+        storage=storage,
     )
     session = get_session()
     with pytest.raises(KeyboardInterrupt):
@@ -298,6 +263,7 @@ def test_locking():
         node_rank=0,
         local_world_size=1,
         world_size=1,
+        storage=storage,
     )
     session = get_session()
     session.start()
@@ -308,7 +274,8 @@ def test_locking():
     session.get_next()
 
     with pytest.raises(KeyboardInterrupt):
-        session.finish()
+        session.get_next()
+    session.finish()
     shutdown_session()
 
 
@@ -324,6 +291,7 @@ def test_warn(fn):
     """Checks if calling session functions outside of session raises warning."""
 
     with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
         # Ignore Deprecation warnings.
         warnings.filterwarnings("ignore", category=DeprecationWarning)
         assert not fn()
@@ -339,6 +307,7 @@ def test_warn_report():
     fn = report
 
     with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
         # Ignore Deprecation warnings.
         warnings.filterwarnings("ignore", category=DeprecationWarning)
         assert not fn(dict())
@@ -353,6 +322,7 @@ def test_warn_once():
 
     with warnings.catch_warnings(record=True) as record:
         # Ignore Deprecation warnings.
+        warnings.simplefilter("always")
         warnings.filterwarnings("ignore", category=DeprecationWarning)
         assert not get_checkpoint()
         assert not get_checkpoint()
@@ -408,6 +378,7 @@ def test_application_error_raised():
         node_rank=0,
         local_world_size=1,
         world_size=1,
+        storage=storage,
     )
     session = get_session()
     session.start()
@@ -417,7 +388,8 @@ def test_application_error_raised():
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

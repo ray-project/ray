@@ -4,7 +4,7 @@ import numpy as np
 import gymnasium as gym
 from typing import Any, List
 
-from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.spaces.repeated import Repeated
 from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.images import resize
@@ -20,7 +20,7 @@ OBS_VALIDATION_INTERVAL = 100
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI
+@OldAPIStack
 class Preprocessor:
     """Defines an abstract observation preprocessor function.
 
@@ -28,7 +28,6 @@ class Preprocessor:
         shape (List[int]): Shape of the preprocessed output.
     """
 
-    @PublicAPI
     def __init__(self, obs_space: gym.Space, options: dict = None):
         _legacy_patch_shapes(obs_space)
         self._obs_space = obs_space
@@ -43,12 +42,10 @@ class Preprocessor:
         self._i = 0
         self._obs_for_type_matching = self._obs_space.sample()
 
-    @PublicAPI
     def _init_shape(self, obs_space: gym.Space, options: dict) -> List[int]:
         """Returns the shape after preprocessing."""
         raise NotImplementedError
 
-    @PublicAPI
     def transform(self, observation: TensorType) -> np.ndarray:
         """Returns the preprocessed observation."""
         raise NotImplementedError
@@ -89,12 +86,10 @@ class Preprocessor:
         self._i += 1
 
     @property
-    @PublicAPI
     def size(self) -> int:
         return self._size
 
     @property
-    @PublicAPI
     def observation_space(self) -> gym.Space:
         obs_space = gym.spaces.Box(-1.0, 1.0, self.shape, dtype=np.float32)
         # Stash the unwrapped space so that we can unwrap dict and tuple spaces
@@ -112,7 +107,7 @@ class Preprocessor:
         return obs_space
 
 
-@DeveloperAPI
+@OldAPIStack
 class GenericPixelPreprocessor(Preprocessor):
     """Generic image preprocessor.
 
@@ -155,7 +150,7 @@ class GenericPixelPreprocessor(Preprocessor):
         return scaled
 
 
-@DeveloperAPI
+@OldAPIStack
 class AtariRamPreprocessor(Preprocessor):
     @override(Preprocessor)
     def _init_shape(self, obs_space: gym.Space, options: dict) -> List[int]:
@@ -167,15 +162,27 @@ class AtariRamPreprocessor(Preprocessor):
         return (observation.astype("float32") - 128) / 128
 
 
-@DeveloperAPI
+@OldAPIStack
 class OneHotPreprocessor(Preprocessor):
     """One-hot preprocessor for Discrete and MultiDiscrete spaces.
 
-    Examples:
-        >>> self.transform(Discrete(3).sample())
-        ... np.array([0.0, 1.0, 0.0])
-        >>> self.transform(MultiDiscrete([2, 3]).sample())
-        ... np.array([0.0, 1.0, 0.0, 0.0, 1.0])
+    .. testcode::
+        :skipif: True
+
+        self.transform(Discrete(3).sample())
+
+    .. testoutput::
+
+        np.array([0.0, 1.0, 0.0])
+
+    .. testcode::
+        :skipif: True
+
+        self.transform(MultiDiscrete([2, 3]).sample())
+
+    .. testoutput::
+
+        np.array([0.0, 1.0, 0.0, 0.0, 1.0])
     """
 
     @override(Preprocessor)
@@ -195,7 +202,7 @@ class OneHotPreprocessor(Preprocessor):
         array[offset : offset + self.size] = self.transform(observation)
 
 
-@PublicAPI
+@OldAPIStack
 class NoPreprocessor(Preprocessor):
     @override(Preprocessor)
     def _init_shape(self, obs_space: gym.Space, options: dict) -> List[int]:
@@ -216,7 +223,39 @@ class NoPreprocessor(Preprocessor):
         return self._obs_space
 
 
-@DeveloperAPI
+@OldAPIStack
+class MultiBinaryPreprocessor(Preprocessor):
+    """Preprocessor that turns a MultiBinary space into a Box.
+
+    Note: Before RLModules were introduced, RLlib's ModelCatalogV2 would produce
+    ComplexInputNetworks that treat MultiBinary spaces as Boxes. This preprocessor is
+    needed to get rid of the ComplexInputNetworks and use RLModules instead because
+    RLModules lack the logic to handle MultiBinary or other non-Box spaces.
+    """
+
+    @override(Preprocessor)
+    def _init_shape(self, obs_space: gym.Space, options: dict) -> List[int]:
+        return self._obs_space.shape
+
+    @override(Preprocessor)
+    def transform(self, observation: TensorType) -> np.ndarray:
+        # The shape stays the same, but the dtype changes.
+        self.check_shape(observation)
+        return observation.astype(np.float32)
+
+    @override(Preprocessor)
+    def write(self, observation: TensorType, array: np.ndarray, offset: int) -> None:
+        array[offset : offset + self._size] = np.array(observation, copy=False).ravel()
+
+    @property
+    @override(Preprocessor)
+    def observation_space(self) -> gym.Space:
+        obs_space = gym.spaces.Box(0.0, 1.0, self.shape, dtype=np.float32)
+        obs_space.original_space = self._obs_space
+        return obs_space
+
+
+@OldAPIStack
 class TupleFlatteningPreprocessor(Preprocessor):
     """Preprocesses each tuple element, then flattens it all into a vector.
 
@@ -256,7 +295,7 @@ class TupleFlatteningPreprocessor(Preprocessor):
             offset += p.size
 
 
-@DeveloperAPI
+@OldAPIStack
 class DictFlatteningPreprocessor(Preprocessor):
     """Preprocesses each dict value, then flattens it all into a vector.
 
@@ -300,7 +339,7 @@ class DictFlatteningPreprocessor(Preprocessor):
             offset += p.size
 
 
-@DeveloperAPI
+@OldAPIStack
 class RepeatedValuesPreprocessor(Preprocessor):
     """Pads and batches the variable-length list value."""
 
@@ -345,8 +384,8 @@ class RepeatedValuesPreprocessor(Preprocessor):
             self.child_preprocessor.write(elem, array, offset_i)
 
 
-@PublicAPI
-def get_preprocessor(space: gym.Space) -> type:
+@OldAPIStack
+def get_preprocessor(space: gym.Space, include_multi_binary=False) -> type:
     """Returns an appropriate preprocessor class for the given space."""
 
     _legacy_patch_shapes(space)
@@ -379,6 +418,9 @@ def get_preprocessor(space: gym.Space) -> type:
         preprocessor = DictFlatteningPreprocessor
     elif isinstance(space, Repeated):
         preprocessor = RepeatedValuesPreprocessor
+    # We usually only want to include this when using RLModules
+    elif isinstance(space, gym.spaces.MultiBinary) and include_multi_binary:
+        preprocessor = MultiBinaryPreprocessor
     else:
         preprocessor = NoPreprocessor
 

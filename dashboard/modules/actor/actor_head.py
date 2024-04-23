@@ -16,10 +16,9 @@ from ray.core.generated import (
 )
 from ray.dashboard.datacenter import DataSource, DataOrganizer
 from ray.dashboard.modules.actor import actor_consts
-from ray.dashboard.optional_utils import rest_response
 
 logger = logging.getLogger(__name__)
-routes = dashboard_optional_utils.ClassMethodRouteTable
+routes = dashboard_optional_utils.DashboardHeadRouteTable
 
 MAX_ACTORS_TO_CACHE = int(os.environ.get("RAY_DASHBOARD_MAX_ACTORS_TO_CACHE", 1000))
 ACTOR_CLEANUP_FREQUENCY = 1  # seconds
@@ -39,7 +38,7 @@ def actor_table_data_to_dict(message):
             "parentTaskId",
             "sourceActorId",
         },
-        including_default_value_fields=True,
+        always_print_fields_with_no_presence=True,
     )
     # The complete schema for actor table is here:
     #     src/ray/protobuf/gcs.proto
@@ -57,6 +56,7 @@ def actor_table_data_to_dict(message):
         "className",
         "startTime",
         "endTime",
+        "reprName",
     }
     light_message = {k: v for (k, v) in orig_message.items() if k in fields}
     light_message["actorClass"] = orig_message["className"]
@@ -141,6 +141,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             "exitDetail",
             "startTime",
             "endTime",
+            "reprName",
         )
 
         def process_actor_data_from_pubsub(actor_id, actor_table_data):
@@ -192,11 +193,12 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
                 logger.debug(
                     f"Processing takes {elapsed}. Total process: " f"{len(published)}"
                 )
-                logger.debug(
-                    "Processing throughput: "
-                    f"{self.total_published_events / self.accumulative_event_processing_s}"  # noqa
-                    " / s"
-                )
+                if self.accumulative_event_processing_s > 0:
+                    logger.debug(
+                        "Processing throughput: "
+                        f"{self.total_published_events / self.accumulative_event_processing_s}"  # noqa
+                        " / s"
+                    )
                 logger.debug(f"queue size: {self.subscriber_queue_size}")
             except Exception:
                 logger.exception("Error processing actor info from GCS.")
@@ -239,10 +241,11 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
     @routes.get("/logical/actors")
     @dashboard_optional_utils.aiohttp_cache
     async def get_all_actors(self, req) -> aiohttp.web.Response:
-        return rest_response(
+        actors = await DataOrganizer.get_all_actors()
+        return dashboard_optional_utils.rest_response(
             success=True,
             message="All actors fetched.",
-            actors=DataSource.actors,
+            actors=actors,
             # False to avoid converting Ray resource name to google style.
             # It's not necessary here because the fields are already
             # google formatted when protobuf was converted into dict.

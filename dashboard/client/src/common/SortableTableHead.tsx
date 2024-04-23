@@ -1,10 +1,6 @@
-import {
-  createStyles,
-  makeStyles,
-  TableHead,
-  TableRow,
-  TableSortLabel,
-} from "@material-ui/core";
+import { TableHead, TableRow, TableSortLabel } from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import React from "react";
 import { StyledTableCell } from "./TableCell";
 import { Order } from "./tableUtils";

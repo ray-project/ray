@@ -9,22 +9,22 @@ import time
 import unittest
 
 import ray
-from ray.rllib.algorithms.a2c import A2CConfig
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.pg import PGConfig
+from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.examples.env.mock_env import (
+from ray.rllib.examples.envs.classes.mock_env import (
     MockEnv,
     MockEnv2,
     MockVectorEnv,
     VectorizedMockEnv,
 )
-from ray.rllib.examples.env.multi_agent import BasicMultiAgent, MultiAgentCartPole
-from ray.rllib.examples.policy.random_policy import RandomPolicy
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
+from ray.rllib.examples.envs.classes.random_env import RandomEnv
+from ray.rllib.examples._old_api_stack.policy.random_policy import RandomPolicy
 from ray.rllib.offline.dataset_reader import DatasetReader, get_dataset_and_shards
 from ray.rllib.offline.json_reader import JsonReader
 from ray.rllib.policy.policy import Policy, PolicySpec
@@ -158,7 +158,7 @@ class TestRolloutWorker(unittest.TestCase):
 
     def test_global_vars_update(self):
         config = (
-            A2CConfig()
+            PPOConfig()
             .environment("CartPole-v1")
             .rollouts(num_envs_per_worker=1)
             # lr = 0.1 - [(0.1 - 0.000001) / 100000] * ts
@@ -194,7 +194,7 @@ class TestRolloutWorker(unittest.TestCase):
 
     def test_no_step_on_init(self):
         register_env("fail", lambda _: FailOnStepEnv())
-        config = PGConfig().environment("fail").rollouts(num_rollout_workers=2)
+        config = PPOConfig().environment("fail").rollouts(num_rollout_workers=2)
         for _ in framework_iterator(config):
             # We expect this to fail already on Algorithm init due
             # to the env sanity check right after env creation (inside
@@ -207,32 +207,32 @@ class TestRolloutWorker(unittest.TestCase):
     def test_query_evaluators(self):
         register_env("test", lambda _: gym.make("CartPole-v1"))
         config = (
-            PGConfig()
+            PPOConfig()
             .environment("test")
             .rollouts(
                 num_rollout_workers=2,
                 num_envs_per_worker=2,
                 create_env_on_local_worker=True,
             )
-            .training(train_batch_size=20)
+            .training(train_batch_size=20, sgd_minibatch_size=5, num_sgd_iter=1)
         )
         for _ in framework_iterator(config, frameworks=("torch", "tf")):
-            pg = config.build()
-            results = pg.workers.foreach_worker(
+            algo = config.build()
+            results = algo.workers.foreach_worker(
                 lambda w: w.total_rollout_fragment_length
             )
-            results2 = pg.workers.foreach_worker_with_id(
+            results2 = algo.workers.foreach_worker_with_id(
                 lambda i, w: (i, w.total_rollout_fragment_length)
             )
-            results3 = pg.workers.foreach_worker(lambda w: w.foreach_env(lambda env: 1))
+            results3 = algo.workers.foreach_worker(
+                lambda w: w.foreach_env(lambda env: 1)
+            )
             self.assertEqual(results, [10, 10, 10])
             self.assertEqual(results2, [(0, 10), (1, 10), (2, 10)])
             self.assertEqual(results3, [[1, 1], [1, 1], [1, 1]])
-            pg.stop()
+            algo.stop()
 
     def test_action_clipping(self):
-        from ray.rllib.examples.env.random_env import RandomEnv
-
         action_space = gym.spaces.Box(-2.0, 1.0, (3,))
 
         # Clipping: True (clip between Policy's action_space.low/high).
@@ -325,8 +325,6 @@ class TestRolloutWorker(unittest.TestCase):
         ev3.stop()
 
     def test_action_normalization(self):
-        from ray.rllib.examples.env.random_env import RandomEnv
-
         action_space = gym.spaces.Box(0.0001, 0.0002, (5,))
 
         # Normalize: True (unsquash between Policy's action_space.low/high).
@@ -443,8 +441,6 @@ class TestRolloutWorker(unittest.TestCase):
                     ev.stop()
 
     def test_action_immutability(self):
-        from ray.rllib.examples.env.random_env import RandomEnv
-
         action_space = gym.spaces.Box(0.0001, 0.0002, (5,))
 
         class ActionMutationEnv(RandomEnv):
@@ -522,8 +518,6 @@ class TestRolloutWorker(unittest.TestCase):
             self.assertEqual(result["episode_reward_mean"], 1000)
         ev.stop()
 
-        from ray.rllib.examples.env.random_env import RandomEnv
-
         # Clipping in certain range (-2.0, 2.0).
         ev2 = RolloutWorker(
             env_creator=lambda _: RandomEnv(
@@ -573,7 +567,7 @@ class TestRolloutWorker(unittest.TestCase):
                 batch_mode="complete_episodes",
             ),
         )
-        remote_ev = RolloutWorker.as_remote().remote(
+        remote_ev = ray.remote(RolloutWorker).remote(
             env_creator=lambda _: MockEnv(episode_length=10),
             default_policy_class=MockPolicy,
             config=AlgorithmConfig().rollouts(
@@ -591,25 +585,6 @@ class TestRolloutWorker(unittest.TestCase):
         result = collect_metrics(ws)
         self.assertEqual(result["episodes_this_iter"], 20)
         self.assertEqual(result["episode_reward_mean"], 10)
-        ev.stop()
-
-    def test_async(self):
-        ev = RolloutWorker(
-            env_creator=lambda _: gym.make("CartPole-v1"),
-            default_policy_class=MockPolicy,
-            config=AlgorithmConfig().rollouts(sample_async=True, num_rollout_workers=0),
-        )
-        batch = convert_ma_batch_to_sample_batch(ev.sample())
-        for key in [
-            "obs",
-            "actions",
-            "rewards",
-            "terminateds",
-            "truncateds",
-            "advantages",
-        ]:
-            self.assertIn(key, batch)
-        self.assertGreater(batch["advantages"][0], 1)
         ev.stop()
 
     def test_auto_vectorization(self):
@@ -831,7 +806,6 @@ class TestRolloutWorker(unittest.TestCase):
             env_creator=lambda _: gym.make("CartPole-v1"),
             default_policy_class=MockPolicy,
             config=AlgorithmConfig().rollouts(
-                sample_async=True,
                 num_rollout_workers=0,
                 observation_filter="ConcurrentMeanStdFilter",
             ),
@@ -851,7 +825,6 @@ class TestRolloutWorker(unittest.TestCase):
             config=AlgorithmConfig().rollouts(
                 observation_filter="ConcurrentMeanStdFilter",
                 num_rollout_workers=0,
-                sample_async=True,
             ),
         )
         self.sample_and_flush(ev)
@@ -871,7 +844,6 @@ class TestRolloutWorker(unittest.TestCase):
             config=AlgorithmConfig().rollouts(
                 observation_filter="ConcurrentMeanStdFilter",
                 num_rollout_workers=0,
-                sample_async=True,
             ),
         )
         obs_f = self.sample_and_flush(ev)
@@ -969,6 +941,8 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertIsNotNone(ev)
 
     def test_wrap_multi_agent_env(self):
+        from ray.rllib.env.tests.test_multi_agent_env import BasicMultiAgent
+
         ev = RolloutWorker(
             env_creator=lambda _: BasicMultiAgent(10),
             default_policy_class=MockPolicy,

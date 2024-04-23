@@ -1,9 +1,9 @@
 # coding: utf-8
 import logging
+import random
 import sys
 import time
 
-import numpy as np
 import pytest
 
 import ray
@@ -83,15 +83,27 @@ def test_many_fractional_resources(shutdown_only):
 
     # Check that the resource are assigned correctly.
     result_ids = []
-    for rand1, rand2, rand3 in np.random.uniform(size=(100, 3)):
+    for i in range(100):
+        rand1 = random.random()
+        rand2 = random.random()
+        rand3 = random.random()
+
         resource_set = {"CPU": int(rand1 * 10000) / 10000}
-        result_ids.append(f._remote([False, resource_set], num_cpus=rand1))
+        result_ids.append(
+            f._remote([False, resource_set], num_cpus=resource_set["CPU"])
+        )
 
         resource_set = {"CPU": 1, "GPU": int(rand1 * 10000) / 10000}
-        result_ids.append(f._remote([False, resource_set], num_gpus=rand1))
+        result_ids.append(
+            f._remote([False, resource_set], num_gpus=resource_set["GPU"])
+        )
 
         resource_set = {"CPU": 1, "Custom": int(rand1 * 10000) / 10000}
-        result_ids.append(f._remote([False, resource_set], resources={"Custom": rand1}))
+        result_ids.append(
+            f._remote(
+                [False, resource_set], resources={"Custom": resource_set["Custom"]}
+            )
+        )
 
         resource_set = {
             "CPU": int(rand1 * 10000) / 10000,
@@ -101,17 +113,17 @@ def test_many_fractional_resources(shutdown_only):
         result_ids.append(
             f._remote(
                 [False, resource_set],
-                num_cpus=rand1,
-                num_gpus=rand2,
-                resources={"Custom": rand3},
+                num_cpus=resource_set["CPU"],
+                num_gpus=resource_set["GPU"],
+                resources={"Custom": resource_set["Custom"]},
             )
         )
         result_ids.append(
             f._remote(
                 [True, resource_set],
-                num_cpus=rand1,
-                num_gpus=rand2,
-                resources={"Custom": rand3},
+                num_cpus=resource_set["CPU"],
+                num_gpus=resource_set["GPU"],
+                resources={"Custom": resource_set["Custom"]},
             )
         )
     assert all(ray.get(result_ids))

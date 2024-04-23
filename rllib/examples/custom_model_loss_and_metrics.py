@@ -1,4 +1,9 @@
-"""Example of using custom_loss() with an imitation learning loss.
+# TODO (sven): Move this example script into the new API stack.
+#  Users should just inherit the Learner and extend the loss_fn.
+# TODO (sven): Move this example script to `examples/learners/...`
+
+"""Example of using custom_loss() with an imitation learning loss under the Policy
+and ModelV2 API.
 
 The default input file is too small to learn a good policy, but you can
 generate new experiences for IL training as follows:
@@ -16,7 +21,7 @@ import os
 
 import ray
 from ray import air, tune
-from ray.rllib.examples.models.custom_loss_model import (
+from ray.rllib.examples._old_api_stack.models.custom_loss_model import (
     CustomLossModel,
     TorchCustomLossModel,
 )
@@ -30,12 +35,12 @@ tf1, tf, tfv = try_import_tf()
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--run", type=str, default="PG", help="The RLlib-registered algorithm to use."
+    "--run", type=str, default="PPO", help="The RLlib-registered algorithm to use."
 )
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "torch"],
-    default="tf",
+    default="torch",
     help="The DL framework specifier.",
 )
 parser.add_argument("--stop-iters", type=int, default=200)
@@ -76,7 +81,7 @@ if __name__ == "__main__":
                 "custom_model_config": {
                     "input_files": args.input_files,
                 },
-            }
+            },
         )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))

@@ -23,6 +23,9 @@
 namespace ray {
 
 namespace pubsub {
+namespace {
+const NodeID kDefaultPublisherId = NodeID::FromRandom();
+}
 
 using namespace pub_internal;
 
@@ -44,19 +47,28 @@ class PublisherTest : public ::testing::Test {
         /*periodic_runner=*/periodic_runner_.get(),
         /*get_time_ms=*/[this]() { return current_time_; },
         /*subscriber_timeout_ms=*/subscriber_timeout_ms_,
-        /*batch_size*/ 100);
+        /*batch_size*/ 100,
+        kDefaultPublisherId);
     current_time_ = 0;
     request_.set_subscriber_id(subscriber_id_.Binary());
+    request_.set_publisher_id(kDefaultPublisherId.Binary());
   }
 
-  void TearDown() { subscribers_map_.clear(); }
+  void TearDown() {}
 
-  const rpc::PubMessage GeneratePubMessage(const ObjectID &object_id) {
+  void ResetSequenceId() { sequence_id_ = 0; }
+
+  int64_t GetNextSequenceId() { return ++sequence_id_; }
+
+  const rpc::PubMessage GeneratePubMessage(const ObjectID &object_id,
+                                           int64_t sequence_id = 0) {
     rpc::PubMessage pub_message;
     auto *object_eviction_msg = pub_message.mutable_worker_object_eviction_message();
     object_eviction_msg->set_object_id(object_id.Binary());
     pub_message.set_key_id(object_id.Binary());
     pub_message.set_channel_type(rpc::ChannelType::WORKER_OBJECT_EVICTION);
+    RAY_LOG(INFO) << "message sequence_id is" << sequence_id;
+    pub_message.set_sequence_id(sequence_id);
     return pub_message;
   }
 
@@ -81,7 +93,8 @@ class PublisherTest : public ::testing::Test {
         NodeID::FromRandom(),
         /*get_time_ms=*/[]() { return 1.0; },
         /*subscriber_timeout_ms=*/1000,
-        /*publish_batch_size=*/1000));
+        /*publish_batch_size=*/1000,
+        kDefaultPublisherId));
     return subscribers_.back().get();
   }
 
@@ -97,6 +110,8 @@ class PublisherTest : public ::testing::Test {
   }
 
   instrumented_io_context io_service_;
+  rpc::PubsubLongPollingReply reply;
+  rpc::SendReplyCallback send_reply_callback;
   std::shared_ptr<PeriodicalRunner> periodic_runner_;
   std::shared_ptr<Publisher> publisher_;
   absl::flat_hash_map<ObjectID, absl::flat_hash_set<NodeID>> subscribers_map_;
@@ -105,6 +120,7 @@ class PublisherTest : public ::testing::Test {
   const SubscriberID subscriber_id_ = SubscriberID::FromRandom();
   rpc::PubsubLongPollingRequest request_;
   std::vector<std::unique_ptr<SubscriberState>> subscribers_;
+  int64_t sequence_id_ = 0;
 };
 
 TEST_F(PublisherTest, TestSubscriptionIndexSingeNodeSingleObject) {
@@ -312,21 +328,24 @@ TEST_F(PublisherTest, TestSubscriptionIndexIdempotency) {
 
 TEST_F(PublisherTest, TestSubscriber) {
   absl::flat_hash_set<ObjectID> object_ids_published;
-  rpc::PubsubLongPollingReply reply;
-  rpc::SendReplyCallback send_reply_callback =
-      [&reply, &object_ids_published](
-          Status status, std::function<void()> success, std::function<void()> failure) {
-        for (int i = 0; i < reply.pub_messages_size(); i++) {
-          const auto &msg = reply.pub_messages(i);
-          const auto oid =
-              ObjectID::FromBinary(msg.worker_object_eviction_message().object_id());
-          object_ids_published.emplace(oid);
-        }
-        reply = rpc::PubsubLongPollingReply();
-      };
+  send_reply_callback = [this, &object_ids_published](Status status,
+                                                      std::function<void()> success,
+                                                      std::function<void()> failure) {
+    for (int i = 0; i < reply.pub_messages_size(); i++) {
+      const auto &msg = reply.pub_messages(i);
+      const auto oid =
+          ObjectID::FromBinary(msg.worker_object_eviction_message().object_id());
+      object_ids_published.emplace(oid);
+    }
+    reply = rpc::PubsubLongPollingReply();
+  };
 
   auto subscriber = std::make_shared<SubscriberState>(
-      subscriber_id_, [this]() { return current_time_; }, subscriber_timeout_ms_, 10);
+      subscriber_id_,
+      [this]() { return current_time_; },
+      subscriber_timeout_ms_,
+      10,
+      kDefaultPublisherId);
   // If there's no connection, it will return false.
   ASSERT_FALSE(subscriber->PublishIfPossible());
   // Try connecting.
@@ -341,8 +360,9 @@ TEST_F(PublisherTest, TestSubscriber) {
   absl::flat_hash_set<ObjectID> published_objects;
   // Make sure publishing one object works as expected.
   auto oid = ObjectID::FromRandom();
-  subscriber->QueueMessage(std::make_shared<rpc::PubMessage>(GeneratePubMessage(oid)),
-                           /*try_publish=*/false);
+  subscriber->QueueMessage(
+      std::make_shared<rpc::PubMessage>(GeneratePubMessage(oid, GetNextSequenceId())),
+      /*try_publish=*/false);
   published_objects.emplace(oid);
   ASSERT_TRUE(subscriber->PublishIfPossible());
   ASSERT_TRUE(object_ids_published.contains(oid));
@@ -352,8 +372,9 @@ TEST_F(PublisherTest, TestSubscriber) {
   // Add 3 oids and see if it works properly.
   for (int i = 0; i < 3; i++) {
     oid = ObjectID::FromRandom();
-    subscriber->QueueMessage(std::make_shared<rpc::PubMessage>(GeneratePubMessage(oid)),
-                             /*try_publish=*/false);
+    subscriber->QueueMessage(
+        std::make_shared<rpc::PubMessage>(GeneratePubMessage(oid, GetNextSequenceId())),
+        /*try_publish=*/false);
     published_objects.emplace(oid);
   }
   // Since there's no connection, objects won't be published.
@@ -362,20 +383,40 @@ TEST_F(PublisherTest, TestSubscriber) {
   for (auto oid : published_objects) {
     ASSERT_TRUE(object_ids_published.contains(oid));
   }
+
+  // Queue is not cleaned up if max_processed_sequence_id hasn't
+  // been set properly.
+  request_.set_max_processed_sequence_id(1);
+  subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback);
+  ASSERT_FALSE(subscriber->CheckNoLeaks());
+
+  // If we set wrong publisher_id, the queue won't be cleaned up.
+  request_.set_publisher_id(NodeID::FromRandom().Binary());
+  request_.set_max_processed_sequence_id(sequence_id_);
+  subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback);
+  ASSERT_FALSE(subscriber->CheckNoLeaks());
+
+  // By sending back max_processed_sequence_id, the subscriber's sending queue
+  // is cleaned up.
+  request_.set_max_processed_sequence_id(sequence_id_);
+  request_.set_publisher_id(kDefaultPublisherId.Binary());
+  subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback);
   ASSERT_TRUE(subscriber->CheckNoLeaks());
 }
 
 TEST_F(PublisherTest, TestSubscriberBatchSize) {
   absl::flat_hash_set<ObjectID> object_ids_published;
-  rpc::PubsubLongPollingReply reply;
-  rpc::SendReplyCallback send_reply_callback =
-      [&reply, &object_ids_published](
+  int64_t max_processed_seuquence_id = 0;
+  send_reply_callback =
+      [this, &object_ids_published, &max_processed_seuquence_id](
           Status status, std::function<void()> success, std::function<void()> failure) {
         for (int i = 0; i < reply.pub_messages_size(); i++) {
           const auto &msg = reply.pub_messages(i);
           const auto oid =
               ObjectID::FromBinary(msg.worker_object_eviction_message().object_id());
           object_ids_published.emplace(oid);
+          max_processed_seuquence_id =
+              std::max(msg.sequence_id(), max_processed_seuquence_id);
         }
         reply = rpc::PubsubLongPollingReply();
       };
@@ -385,7 +426,8 @@ TEST_F(PublisherTest, TestSubscriberBatchSize) {
       subscriber_id_,
       [this]() { return current_time_; },
       subscriber_timeout_ms_,
-      max_publish_size);
+      max_publish_size,
+      kDefaultPublisherId);
   subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback);
 
   absl::flat_hash_set<ObjectID> published_objects;
@@ -393,8 +435,9 @@ TEST_F(PublisherTest, TestSubscriberBatchSize) {
   for (int i = 0; i < 10; i++) {
     auto oid = ObjectID::FromRandom();
     oids.push_back(oid);
-    subscriber->QueueMessage(std::make_shared<rpc::PubMessage>(GeneratePubMessage(oid)),
-                             /*try_publish=*/false);
+    subscriber->QueueMessage(
+        std::make_shared<rpc::PubMessage>(GeneratePubMessage(oid, GetNextSequenceId())),
+        /*try_publish=*/false);
     published_objects.emplace(oid);
   }
 
@@ -409,6 +452,8 @@ TEST_F(PublisherTest, TestSubscriberBatchSize) {
   }
 
   // Remaining messages are published upon polling.
+  ASSERT_EQ(max_processed_seuquence_id, max_publish_size);
+  request_.set_max_processed_sequence_id(max_processed_seuquence_id);
   subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback);
   for (int i = 0; i < 10; i++) {
     ASSERT_TRUE(object_ids_published.contains(oids[i]));
@@ -421,14 +466,16 @@ TEST_F(PublisherTest, TestSubscriberActiveTimeout) {
   ///
 
   auto reply_cnt = 0;
-  rpc::PubsubLongPollingReply reply;
-  rpc::SendReplyCallback send_reply_callback =
-      [&reply_cnt](Status status,
-                   std::function<void()> success,
-                   std::function<void()> failure) { reply_cnt++; };
+  send_reply_callback = [&reply_cnt](Status status,
+                                     std::function<void()> success,
+                                     std::function<void()> failure) { reply_cnt++; };
 
   auto subscriber = std::make_shared<SubscriberState>(
-      subscriber_id_, [this]() { return current_time_; }, subscriber_timeout_ms_, 10);
+      subscriber_id_,
+      [this]() { return current_time_; },
+      subscriber_timeout_ms_,
+      10,
+      kDefaultPublisherId);
 
   subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback);
 
@@ -451,6 +498,7 @@ TEST_F(PublisherTest, TestSubscriberActiveTimeout) {
   ASSERT_EQ(reply_cnt, 1);
 
   // New connection is established.
+  reply = rpc::PubsubLongPollingReply();
   subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback);
   ASSERT_TRUE(subscriber->IsActive());
   ASSERT_TRUE(subscriber->ConnectionExists());
@@ -462,7 +510,8 @@ TEST_F(PublisherTest, TestSubscriberActiveTimeout) {
 
   // A message is published, so the connection is refreshed.
   auto oid = ObjectID::FromRandom();
-  subscriber->QueueMessage(std::make_shared<rpc::PubMessage>(GeneratePubMessage(oid)));
+  subscriber->QueueMessage(
+      std::make_shared<rpc::PubMessage>(GeneratePubMessage(oid, GetNextSequenceId())));
   ASSERT_TRUE(subscriber->IsActive());
   ASSERT_FALSE(subscriber->ConnectionExists());
   ASSERT_EQ(reply_cnt, 2);
@@ -473,6 +522,13 @@ TEST_F(PublisherTest, TestSubscriberActiveTimeout) {
   ASSERT_TRUE(subscriber->IsActive());
   ASSERT_FALSE(subscriber->ConnectionExists());
 
+  // There is one message to be GCed.
+  ASSERT_FALSE(subscriber->CheckNoLeaks());
+
+  // Notify that message 1 is safe to be GCed.
+  request_.set_max_processed_sequence_id(1);
+  reply = rpc::PubsubLongPollingReply();
+  subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback);
   ASSERT_TRUE(subscriber->CheckNoLeaks());
 }
 
@@ -482,14 +538,16 @@ TEST_F(PublisherTest, TestSubscriberDisconnected) {
   ///
 
   auto reply_cnt = 0;
-  rpc::PubsubLongPollingReply reply;
-  rpc::SendReplyCallback send_reply_callback =
-      [&reply_cnt](Status status,
-                   std::function<void()> success,
-                   std::function<void()> failure) { reply_cnt++; };
+  send_reply_callback = [&reply_cnt](Status status,
+                                     std::function<void()> success,
+                                     std::function<void()> failure) { reply_cnt++; };
 
   auto subscriber = std::make_shared<SubscriberState>(
-      subscriber_id_, [this]() { return current_time_; }, subscriber_timeout_ms_, 10);
+      subscriber_id_,
+      [this]() { return current_time_; },
+      subscriber_timeout_ms_,
+      10,
+      kDefaultPublisherId);
 
   // Suppose the new connection is removed.
   subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback);
@@ -542,14 +600,16 @@ TEST_F(PublisherTest, TestSubscriberTimeoutComplicated) {
   ///
 
   auto reply_cnt = 0;
-  rpc::PubsubLongPollingReply reply;
-  rpc::SendReplyCallback send_reply_callback =
-      [&reply_cnt](Status status,
-                   std::function<void()> success,
-                   std::function<void()> failure) { reply_cnt++; };
+  send_reply_callback = [&reply_cnt](Status status,
+                                     std::function<void()> success,
+                                     std::function<void()> failure) { reply_cnt++; };
 
   auto subscriber = std::make_shared<SubscriberState>(
-      subscriber_id_, [this]() { return current_time_; }, subscriber_timeout_ms_, 10);
+      subscriber_id_,
+      [this]() { return current_time_; },
+      subscriber_timeout_ms_,
+      10,
+      kDefaultPublisherId);
 
   // Suppose the new connection is removed.
   subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback);
@@ -585,42 +645,40 @@ TEST_F(PublisherTest, TestSubscriberTimeoutComplicated) {
 
 TEST_F(PublisherTest, TestBasicSingleSubscriber) {
   std::vector<ObjectID> batched_ids;
-  rpc::PubsubLongPollingReply reply;
-  rpc::SendReplyCallback send_reply_callback =
-      [&reply, &batched_ids](
-          Status status, std::function<void()> success, std::function<void()> failure) {
-        for (int i = 0; i < reply.pub_messages_size(); i++) {
-          const auto &msg = reply.pub_messages(i);
-          const auto oid =
-              ObjectID::FromBinary(msg.worker_object_eviction_message().object_id());
-          batched_ids.push_back(oid);
-        }
-        reply = rpc::PubsubLongPollingReply();
-      };
+  send_reply_callback = [this, &batched_ids](Status status,
+                                             std::function<void()> success,
+                                             std::function<void()> failure) {
+    for (int i = 0; i < reply.pub_messages_size(); i++) {
+      const auto &msg = reply.pub_messages(i);
+      const auto oid =
+          ObjectID::FromBinary(msg.worker_object_eviction_message().object_id());
+      batched_ids.push_back(oid);
+    }
+    reply = rpc::PubsubLongPollingReply();
+  };
 
   const auto oid = ObjectID::FromRandom();
 
   publisher_->ConnectToSubscriber(request_, &reply, send_reply_callback);
   publisher_->RegisterSubscription(
       rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary());
-  publisher_->Publish(GeneratePubMessage(oid));
+  publisher_->Publish(GeneratePubMessage(oid, 0));
   ASSERT_EQ(batched_ids[0], oid);
 }
 
 TEST_F(PublisherTest, TestNoConnectionWhenRegistered) {
   std::vector<ObjectID> batched_ids;
-  rpc::PubsubLongPollingReply reply;
-  rpc::SendReplyCallback send_reply_callback =
-      [&reply, &batched_ids](
-          Status status, std::function<void()> success, std::function<void()> failure) {
-        for (int i = 0; i < reply.pub_messages_size(); i++) {
-          const auto &msg = reply.pub_messages(i);
-          const auto oid =
-              ObjectID::FromBinary(msg.worker_object_eviction_message().object_id());
-          batched_ids.push_back(oid);
-        }
-        reply = rpc::PubsubLongPollingReply();
-      };
+  send_reply_callback = [this, &batched_ids](Status status,
+                                             std::function<void()> success,
+                                             std::function<void()> failure) {
+    for (int i = 0; i < reply.pub_messages_size(); i++) {
+      const auto &msg = reply.pub_messages(i);
+      const auto oid =
+          ObjectID::FromBinary(msg.worker_object_eviction_message().object_id());
+      batched_ids.push_back(oid);
+    }
+    reply = rpc::PubsubLongPollingReply();
+  };
 
   const auto oid = ObjectID::FromRandom();
 
@@ -636,18 +694,17 @@ TEST_F(PublisherTest, TestNoConnectionWhenRegistered) {
 
 TEST_F(PublisherTest, TestMultiObjectsFromSingleNode) {
   std::vector<ObjectID> batched_ids;
-  rpc::PubsubLongPollingReply reply;
-  rpc::SendReplyCallback send_reply_callback =
-      [&reply, &batched_ids](
-          Status status, std::function<void()> success, std::function<void()> failure) {
-        for (int i = 0; i < reply.pub_messages_size(); i++) {
-          const auto &msg = reply.pub_messages(i);
-          const auto oid =
-              ObjectID::FromBinary(msg.worker_object_eviction_message().object_id());
-          batched_ids.push_back(oid);
-        }
-        reply = rpc::PubsubLongPollingReply();
-      };
+  send_reply_callback = [this, &batched_ids](Status status,
+                                             std::function<void()> success,
+                                             std::function<void()> failure) {
+    for (int i = 0; i < reply.pub_messages_size(); i++) {
+      const auto &msg = reply.pub_messages(i);
+      const auto oid =
+          ObjectID::FromBinary(msg.worker_object_eviction_message().object_id());
+      batched_ids.push_back(oid);
+    }
+    reply = rpc::PubsubLongPollingReply();
+  };
 
   std::vector<ObjectID> oids;
   int num_oids = 5;
@@ -671,18 +728,17 @@ TEST_F(PublisherTest, TestMultiObjectsFromSingleNode) {
 
 TEST_F(PublisherTest, TestMultiObjectsFromMultiNodes) {
   std::vector<ObjectID> batched_ids;
-  rpc::PubsubLongPollingReply reply;
-  rpc::SendReplyCallback send_reply_callback =
-      [&reply, &batched_ids](
-          Status status, std::function<void()> success, std::function<void()> failure) {
-        for (int i = 0; i < reply.pub_messages_size(); i++) {
-          const auto &msg = reply.pub_messages(i);
-          const auto oid =
-              ObjectID::FromBinary(msg.worker_object_eviction_message().object_id());
-          batched_ids.push_back(oid);
-        }
-        reply = rpc::PubsubLongPollingReply();
-      };
+  send_reply_callback = [this, &batched_ids](Status status,
+                                             std::function<void()> success,
+                                             std::function<void()> failure) {
+    for (int i = 0; i < reply.pub_messages_size(); i++) {
+      const auto &msg = reply.pub_messages(i);
+      const auto oid =
+          ObjectID::FromBinary(msg.worker_object_eviction_message().object_id());
+      batched_ids.push_back(oid);
+    }
+    reply = rpc::PubsubLongPollingReply();
+  };
 
   std::vector<NodeID> subscribers;
   std::vector<ObjectID> oids;
@@ -712,10 +768,9 @@ TEST_F(PublisherTest, TestMultiObjectsFromMultiNodes) {
 
 TEST_F(PublisherTest, TestMultiSubscribers) {
   absl::flat_hash_set<ObjectID> batched_ids;
-  rpc::PubsubLongPollingReply reply;
   int reply_invoked = 0;
-  rpc::SendReplyCallback send_reply_callback =
-      [&reply, &batched_ids, &reply_invoked](
+  send_reply_callback =
+      [this, &batched_ids, &reply_invoked](
           Status status, std::function<void()> success, std::function<void()> failure) {
         for (int i = 0; i < reply.pub_messages_size(); i++) {
           const auto &msg = reply.pub_messages(i);
@@ -753,18 +808,20 @@ TEST_F(PublisherTest, TestMultiSubscribers) {
 TEST_F(PublisherTest, TestBatch) {
   // Test if published objects are batched properly.
   std::vector<ObjectID> batched_ids;
-  rpc::PubsubLongPollingReply reply;
-  rpc::SendReplyCallback send_reply_callback =
-      [&reply, &batched_ids](
-          Status status, std::function<void()> success, std::function<void()> failure) {
-        for (int i = 0; i < reply.pub_messages_size(); i++) {
-          const auto &msg = reply.pub_messages(i);
-          const auto oid =
-              ObjectID::FromBinary(msg.worker_object_eviction_message().object_id());
-          batched_ids.push_back(oid);
-        }
-        reply = rpc::PubsubLongPollingReply();
-      };
+  int64_t max_processed_sequence_id = 0;
+  send_reply_callback = [this, &batched_ids, &max_processed_sequence_id](
+                            Status status,
+                            std::function<void()> success,
+                            std::function<void()> failure) {
+    for (int i = 0; i < reply.pub_messages_size(); i++) {
+      const auto &msg = reply.pub_messages(i);
+      const auto oid =
+          ObjectID::FromBinary(msg.worker_object_eviction_message().object_id());
+      batched_ids.push_back(oid);
+      max_processed_sequence_id = std::max(max_processed_sequence_id, msg.sequence_id());
+    }
+    reply = rpc::PubsubLongPollingReply();
+  };
 
   std::vector<ObjectID> oids;
   int num_oids = 5;
@@ -778,6 +835,7 @@ TEST_F(PublisherTest, TestBatch) {
   ASSERT_EQ(batched_ids.size(), 0);
 
   // Now connection is initiated, and all oids are published.
+  request_.set_max_processed_sequence_id(max_processed_sequence_id);
   publisher_->ConnectToSubscriber(request_, &reply, send_reply_callback);
   for (int i = 0; i < num_oids; i++) {
     const auto oid_test = oids[i];
@@ -795,7 +853,10 @@ TEST_F(PublisherTest, TestBatch) {
         rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary());
     publisher_->Publish(GeneratePubMessage(oid));
   }
+  request_.set_max_processed_sequence_id(max_processed_sequence_id);
   publisher_->ConnectToSubscriber(request_, &reply, send_reply_callback);
+  ASSERT_EQ(num_oids, oids.size());
+  ASSERT_EQ(num_oids, batched_ids.size());
   for (int i = 0; i < num_oids; i++) {
     const auto oid_test = oids[i];
     const auto published_oid = batched_ids[i];
@@ -805,8 +866,7 @@ TEST_F(PublisherTest, TestBatch) {
 
 TEST_F(PublisherTest, TestNodeFailureWhenConnectionExisted) {
   bool long_polling_connection_replied = false;
-  rpc::PubsubLongPollingReply reply;
-  rpc::SendReplyCallback send_reply_callback =
+  send_reply_callback =
       [&long_polling_connection_replied](
           Status status, std::function<void()> success, std::function<void()> failure) {
         long_polling_connection_replied = true;
@@ -847,8 +907,7 @@ TEST_F(PublisherTest, TestNodeFailureWhenConnectionExisted) {
 
 TEST_F(PublisherTest, TestNodeFailureWhenConnectionDoesntExist) {
   bool long_polling_connection_replied = false;
-  rpc::PubsubLongPollingReply reply;
-  rpc::SendReplyCallback send_reply_callback =
+  send_reply_callback =
       [&long_polling_connection_replied](
           Status status, std::function<void()> success, std::function<void()> failure) {
         long_polling_connection_replied = true;
@@ -893,8 +952,7 @@ TEST_F(PublisherTest, TestNodeFailureWhenConnectionDoesntExist) {
 // Unregistration an entry.
 TEST_F(PublisherTest, TestUnregisterSubscription) {
   bool long_polling_connection_replied = false;
-  rpc::PubsubLongPollingReply reply;
-  rpc::SendReplyCallback send_reply_callback =
+  send_reply_callback =
       [&long_polling_connection_replied](
           Status status, std::function<void()> success, std::function<void()> failure) {
         long_polling_connection_replied = true;
@@ -934,8 +992,7 @@ TEST_F(PublisherTest, TestUnregisterSubscription) {
 // Unregistration a subscriber.
 TEST_F(PublisherTest, TestUnregisterSubscriber) {
   bool long_polling_connection_replied = false;
-  rpc::PubsubLongPollingReply reply;
-  rpc::SendReplyCallback send_reply_callback =
+  send_reply_callback =
       [&long_polling_connection_replied](
           Status status, std::function<void()> success, std::function<void()> failure) {
         long_polling_connection_replied = true;
@@ -998,20 +1055,19 @@ TEST_F(PublisherTest, TestPublishFailure) {
   /// Test the publish failure API.
   ///
   std::vector<ObjectID> failed_ids;
-  rpc::PubsubLongPollingReply reply;
-  rpc::SendReplyCallback send_reply_callback =
-      [&reply, &failed_ids](
-          Status status, std::function<void()> success, std::function<void()> failure) {
-        for (int i = 0; i < reply.pub_messages_size(); i++) {
-          const auto &msg = reply.pub_messages(i);
-          RAY_LOG(ERROR) << "ha";
-          if (msg.has_failure_message()) {
-            const auto oid = ObjectID::FromBinary(msg.key_id());
-            failed_ids.push_back(oid);
-          }
-        }
-        reply = rpc::PubsubLongPollingReply();
-      };
+  send_reply_callback = [this, &failed_ids](Status status,
+                                            std::function<void()> success,
+                                            std::function<void()> failure) {
+    for (int i = 0; i < reply.pub_messages_size(); i++) {
+      const auto &msg = reply.pub_messages(i);
+      RAY_LOG(ERROR) << "ha";
+      if (msg.has_failure_message()) {
+        const auto oid = ObjectID::FromBinary(msg.key_id());
+        failed_ids.push_back(oid);
+      }
+    }
+    reply = rpc::PubsubLongPollingReply();
+  };
 
   const auto oid = ObjectID::FromRandom();
 
@@ -1049,18 +1105,21 @@ TEST_F(PublisherTest, TestMaxBufferSizePerEntity) {
   rpc::PubMessage pub_message;
   pub_message.set_key_id(job_id.Binary());
   pub_message.set_channel_type(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
+  pub_message.set_sequence_id(GetNextSequenceId());
   pub_message.mutable_error_info_message()->set_error_message(std::string(4000, 'a'));
 
   // Buffer is available.
-  EXPECT_TRUE(subscription_index.Publish(pub_message));
+  EXPECT_TRUE(subscription_index.Publish(std::make_shared<rpc::PubMessage>(pub_message)));
 
   // Buffer is still available.
   pub_message.mutable_error_info_message()->set_error_message(std::string(4000, 'b'));
-  EXPECT_TRUE(subscription_index.Publish(pub_message));
+  pub_message.set_sequence_id(GetNextSequenceId());
+  EXPECT_TRUE(subscription_index.Publish(std::make_shared<rpc::PubMessage>(pub_message)));
 
   // Buffer is full.
   pub_message.mutable_error_info_message()->set_error_message(std::string(4000, 'c'));
-  EXPECT_TRUE(subscription_index.Publish(pub_message));
+  pub_message.set_sequence_id(GetNextSequenceId());
+  EXPECT_TRUE(subscription_index.Publish(std::make_shared<rpc::PubMessage>(pub_message)));
 
   // Subscriber receives the last two messages. 1st message is dropped.
   auto reply = FlushSubscriber(subscriber);
@@ -1072,7 +1131,8 @@ TEST_F(PublisherTest, TestMaxBufferSizePerEntity) {
 
   // A message larger than the buffer limit can still be published.
   pub_message.mutable_error_info_message()->set_error_message(std::string(14000, 'd'));
-  EXPECT_TRUE(subscription_index.Publish(pub_message));
+  pub_message.set_sequence_id(GetNextSequenceId());
+  EXPECT_TRUE(subscription_index.Publish(std::make_shared<rpc::PubMessage>(pub_message)));
   reply = FlushSubscriber(subscriber);
   ASSERT_EQ(reply.pub_messages().size(), 1);
   EXPECT_EQ(reply.pub_messages(0).error_info_message().error_message(),
@@ -1091,19 +1151,22 @@ TEST_F(PublisherTest, TestMaxBufferSizeAllEntities) {
   pub_message.set_key_id("aaa");
   pub_message.set_channel_type(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
   pub_message.mutable_error_info_message()->set_error_message(std::string(4000, 'a'));
+  pub_message.set_sequence_id(GetNextSequenceId());
 
   // Buffer is available.
-  EXPECT_TRUE(subscription_index.Publish(pub_message));
+  EXPECT_TRUE(subscription_index.Publish(std::make_shared<rpc::PubMessage>(pub_message)));
 
   // Buffer is still available.
   pub_message.set_key_id("bbb");
   pub_message.mutable_error_info_message()->set_error_message(std::string(4000, 'b'));
-  EXPECT_TRUE(subscription_index.Publish(pub_message));
+  pub_message.set_sequence_id(GetNextSequenceId());
+  EXPECT_TRUE(subscription_index.Publish(std::make_shared<rpc::PubMessage>(pub_message)));
 
   // Buffer is full.
   pub_message.set_key_id("ccc");
   pub_message.mutable_error_info_message()->set_error_message(std::string(4000, 'c'));
-  EXPECT_TRUE(subscription_index.Publish(pub_message));
+  pub_message.set_sequence_id(GetNextSequenceId());
+  EXPECT_TRUE(subscription_index.Publish(std::make_shared<rpc::PubMessage>(pub_message)));
 
   auto reply = FlushSubscriber(subscriber);
   ASSERT_EQ(reply.pub_messages().size(), 2);

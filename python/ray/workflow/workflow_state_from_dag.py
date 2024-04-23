@@ -156,7 +156,7 @@ def workflow_state_from_dag(
                 # so it won't be mutated later. This guarantees correct
                 # semantics. See "tests/test_variable_mutable.py" as
                 # an example.
-                if client_mode_should_convert(auto_init=False):
+                if client_mode_should_convert():
                     # Handle client mode. The Ray client would serialize and
                     # then deserialize objects in the Ray client server. When
                     # the object is being deserialized, the serialization context

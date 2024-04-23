@@ -1,10 +1,9 @@
-from typing import Tuple, Callable, Any, Union
 from types import ModuleType
+from typing import Any, Callable, Tuple, Union
 
 import numpy as np
 
-from ray.data.block import T, U, Block, KeyType, AggType
-
+from ray.data.block import AggType, Block, KeyType, T, U
 
 WrappedAggType = Tuple[AggType, int]
 
@@ -15,7 +14,7 @@ WrappedAggType = Tuple[AggType, int]
 #                                                     aggregation of non-null values.
 #   2. Mix of values and nulls - ignore_nulls=False:  Return None.
 #   3. All nulls:                                     Return None.
-#   4. Empty dataset:                                 Return None.
+#   4. Empty dataset:                              Return None.
 #
 # This is accomplished by checking rows for null values and by propagating nulls
 # if found AND if we're not ignoring them. If not ignoring nulls, in order to delineate
@@ -190,9 +189,9 @@ def _null_wrap_accumulate_row(
 
 def _null_wrap_accumulate_block(
     ignore_nulls: bool,
-    accum_block: Callable[[AggType, Block[T]], AggType],
+    accum_block: Callable[[AggType, Block], AggType],
     null_merge: Callable[[WrappedAggType, WrappedAggType], WrappedAggType],
-) -> Callable[[WrappedAggType, Block[T]], WrappedAggType]:
+) -> Callable[[WrappedAggType, Block], WrappedAggType]:
     """
     Wrap vectorized aggregate function with null handling.
 
@@ -212,7 +211,7 @@ def _null_wrap_accumulate_block(
         A new vectorized aggregate function that handles nulls.
     """
 
-    def _accum_block_null(a: WrappedAggType, block: Block[T]) -> WrappedAggType:
+    def _accum_block_null(a: WrappedAggType, block: Block) -> WrappedAggType:
         ret = accum_block(block)
         if ret is not None:
             ret = _wrap_acc(ret, has_data=True)

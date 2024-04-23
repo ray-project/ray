@@ -42,19 +42,11 @@ inline void MetricTransform(JNIEnv *env,
                             std::string *metric_name,
                             std::string *description,
                             std::string *unit,
-                            std::vector<TagKeyType> &tag_keys) {
+                            std::vector<std::string> *tag_keys) {
   *metric_name = JavaStringToNativeString(env, static_cast<jstring>(j_name));
   *description = JavaStringToNativeString(env, static_cast<jstring>(j_description));
   *unit = JavaStringToNativeString(env, static_cast<jstring>(j_unit));
-  std::vector<std::string> tag_key_str_list;
-  JavaStringListToNativeStringVector(env, tag_key_list, &tag_key_str_list);
-  // We just call TagKeyType::Register to get tag object since opencensus tags
-  // registry is thread-safe and registry can return a new tag or registered
-  // item when it already exists.
-  std::transform(tag_key_str_list.begin(),
-                 tag_key_str_list.end(),
-                 std::back_inserter(tag_keys),
-                 [](std::string &tag_key) { return TagKeyType::Register(tag_key); });
+  JavaStringListToNativeStringVector(env, tag_key_list, tag_keys);
 }
 
 #ifdef __cplusplus
@@ -77,7 +69,7 @@ Java_io_ray_runtime_metric_NativeMetric_registerGaugeNative(JNIEnv *env,
   std::string metric_name;
   std::string description;
   std::string unit;
-  std::vector<TagKeyType> tag_keys;
+  std::vector<std::string> tag_keys;
   MetricTransform(env,
                   j_name,
                   j_description,
@@ -86,7 +78,7 @@ Java_io_ray_runtime_metric_NativeMetric_registerGaugeNative(JNIEnv *env,
                   &metric_name,
                   &description,
                   &unit,
-                  tag_keys);
+                  &tag_keys);
   auto *gauge = new stats::Gauge(metric_name, description, unit, tag_keys);
   return reinterpret_cast<jlong>(gauge);
 }
@@ -101,7 +93,7 @@ Java_io_ray_runtime_metric_NativeMetric_registerCountNative(JNIEnv *env,
   std::string metric_name;
   std::string description;
   std::string unit;
-  std::vector<TagKeyType> tag_keys;
+  std::vector<std::string> tag_keys;
   MetricTransform(env,
                   j_name,
                   j_description,
@@ -110,7 +102,7 @@ Java_io_ray_runtime_metric_NativeMetric_registerCountNative(JNIEnv *env,
                   &metric_name,
                   &description,
                   &unit,
-                  tag_keys);
+                  &tag_keys);
   auto *count = new stats::Count(metric_name, description, unit, tag_keys);
   return reinterpret_cast<jlong>(count);
 }
@@ -125,7 +117,7 @@ Java_io_ray_runtime_metric_NativeMetric_registerSumNative(JNIEnv *env,
   std::string metric_name;
   std::string description;
   std::string unit;
-  std::vector<TagKeyType> tag_keys;
+  std::vector<std::string> tag_keys;
   MetricTransform(env,
                   j_name,
                   j_description,
@@ -134,7 +126,7 @@ Java_io_ray_runtime_metric_NativeMetric_registerSumNative(JNIEnv *env,
                   &metric_name,
                   &description,
                   &unit,
-                  tag_keys);
+                  &tag_keys);
   auto *sum = new stats::Sum(metric_name, description, unit, tag_keys);
   return reinterpret_cast<jlong>(sum);
 }
@@ -150,7 +142,7 @@ Java_io_ray_runtime_metric_NativeMetric_registerHistogramNative(JNIEnv *env,
   std::string metric_name;
   std::string description;
   std::string unit;
-  std::vector<TagKeyType> tag_keys;
+  std::vector<std::string> tag_keys;
   MetricTransform(env,
                   j_name,
                   j_description,
@@ -159,7 +151,7 @@ Java_io_ray_runtime_metric_NativeMetric_registerHistogramNative(JNIEnv *env,
                   &metric_name,
                   &description,
                   &unit,
-                  tag_keys);
+                  &tag_keys);
   std::vector<double> boundaries;
 
   JavaDoubleArrayToNativeDoubleVector(env, j_boundaries, &boundaries);

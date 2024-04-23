@@ -1,7 +1,6 @@
 import logging
 from typing import Any, Dict, List, Optional, Type, Union
 
-import ray
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import compute_advantages, Postprocessing
 from ray.rllib.models.action_dist import ActionDistribution
@@ -56,7 +55,7 @@ class PostprocessAdvantages:
             # Create an input dict according to the Model's requirements.
             index = "last" if SampleBatch.NEXT_OBS in sample_batch else -1
             input_dict = sample_batch.get_single_step_input_dict(
-                self.model.view_requirements, index=index
+                self.view_requirements, index=index
             )
             last_r = self._value(**input_dict)
 
@@ -173,10 +172,6 @@ def get_marwil_tf_policy(name: str, base: type) -> type:
         ):
             # First thing first, enable eager execution if necessary.
             base.enable_eager_execution_if_necessary()
-
-            config = dict(
-                ray.rllib.algorithms.marwil.marwil.MARWILConfig().to_dict(), **config
-            )
 
             # Initialize base class.
             base.__init__(

@@ -1,13 +1,17 @@
-import pytest
-import ray
-import numpy as np
+from typing import Any, Dict, Optional
 
-from ray.data._internal.util import _check_pyarrow_version
+import numpy as np
+import pytest
+
+import ray
+from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.memory_tracing import (
+    leak_report,
     trace_allocation,
     trace_deallocation,
-    leak_report,
 )
+from ray.data._internal.util import _check_pyarrow_version, _split_list
+from ray.data.datasource.parquet_datasource import ParquetDatasource
 from ray.data.tests.conftest import *  # noqa: F401, F403
 
 
@@ -43,7 +47,7 @@ def test_check_pyarrow_version_supported():
 
 @pytest.mark.parametrize("enabled", [False, True])
 def test_memory_tracing(enabled):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     ctx.trace_allocations = enabled
     ref1 = ray.put(np.zeros(1024 * 1024))
     ref2 = ray.put(np.zeros(1024 * 1024))
@@ -70,6 +74,61 @@ def test_memory_tracing(enabled):
         assert "test3" not in report, report
         assert "test4" not in report, report
         assert "test5" not in report, report
+
+
+def test_list_splits():
+    with pytest.raises(AssertionError):
+        _split_list(list(range(5)), 0)
+
+    with pytest.raises(AssertionError):
+        _split_list(list(range(5)), -1)
+
+    assert _split_list(list(range(5)), 7) == [[0], [1], [2], [3], [4], [], []]
+    assert _split_list(list(range(5)), 2) == [[0, 1, 2], [3, 4]]
+    assert _split_list(list(range(6)), 2) == [[0, 1, 2], [3, 4, 5]]
+    assert _split_list(list(range(5)), 1) == [[0, 1, 2, 3, 4]]
+    assert _split_list(["foo", 1, [0], None], 2) == [["foo", 1], [[0], None]]
+    assert _split_list(["foo", 1, [0], None], 3) == [["foo", 1], [[0]], [None]]
+
+
+def get_parquet_read_logical_op(
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    **read_kwargs,
+) -> Read:
+    datasource = ParquetDatasource(paths="example://iris.parquet")
+    if "parallelism" not in read_kwargs:
+        read_kwargs["parallelism"] = 10
+    mem_size = None
+    if "mem_size" in read_kwargs:
+        mem_size = read_kwargs.pop("mem_size")
+    read_op = Read(
+        datasource=datasource,
+        datasource_or_legacy_reader=datasource,
+        mem_size=mem_size,
+        ray_remote_args=ray_remote_args,
+        **read_kwargs,
+    )
+    return read_op
+
+
+@ray.remote(num_cpus=0)
+class ConcurrencyCounter:
+    def __init__(self):
+        self.concurrency = 0
+        self.max_concurrency = 0
+
+    def inc(self):
+        self.concurrency += 1
+        if self.concurrency > self.max_concurrency:
+            self.max_concurrency = self.concurrency
+        return self.concurrency
+
+    def decr(self):
+        self.concurrency -= 1
+        return self.concurrency
+
+    def get_max_concurrency(self):
+        return self.max_concurrency
 
 
 if __name__ == "__main__":

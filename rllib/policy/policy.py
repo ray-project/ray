@@ -1,13 +1,8 @@
-from abc import ABCMeta, abstractmethod
-import gymnasium as gym
-from gymnasium.spaces import Box
 import json
 import logging
-import numpy as np
 import os
-from packaging import version
 import platform
-import tree  # pip install dm_tree
+from abc import ABCMeta, abstractmethod
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -22,39 +17,53 @@ from typing import (
     Union,
 )
 
+import gymnasium as gym
+import numpy as np
+import tree  # pip install dm_tree
+from gymnasium.spaces import Box
+from packaging import version
+
 import ray
-from ray.actor import ActorHandle
-from ray.air.checkpoint import Checkpoint
 import ray.cloudpickle as pickle
+from ray.actor import ActorHandle
+from ray.train import Checkpoint
+from ray.rllib.core.columns import Columns
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import (
-    DeveloperAPI,
-    ExperimentalAPI,
+    OldAPIStack,
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
     is_overridden,
 )
+from ray.rllib.utils.checkpoints import (
+    CHECKPOINT_VERSION,
+    get_checkpoint_info,
+    try_import_msgpack,
+)
 from ray.rllib.utils.deprecation import (
-    Deprecated,
     DEPRECATED_VALUE,
     deprecation_warning,
 )
-from ray.rllib.utils.checkpoints import CHECKPOINT_VERSION, get_checkpoint_info
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.serialization import space_from_dict, space_to_dict
+from ray.rllib.utils.serialization import (
+    deserialize_type,
+    space_from_dict,
+    space_to_dict,
+)
 from ray.rllib.utils.spaces.space_utils import (
     get_base_struct_from_space,
     get_dummy_batch_for_space,
     unbatch,
 )
+from ray.rllib.utils.tensor_dtype import get_np_dtype
 from ray.rllib.utils.tf_utils import get_tf_eager_cls_if_necessary
 from ray.rllib.utils.typing import (
     AgentID,
@@ -67,7 +76,6 @@ from ray.rllib.utils.typing import (
     TensorStructType,
     TensorType,
 )
-from ray.util.annotations import PublicAPI
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -80,7 +88,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI
+@OldAPIStack
 class PolicySpec:
     """A policy spec used in the "config.multiagent.policies" specification dict.
 
@@ -137,7 +145,7 @@ class PolicySpec:
             "observation_space": space_to_dict(self.observation_space),
             "action_space": space_to_dict(self.action_space),
             # TODO(jungong) : try making the config dict durable by maybe
-            # getting rid of all the fields that are not JSON serializable.
+            #  getting rid of all the fields that are not JSON serializable.
             "config": self.config,
         }
 
@@ -162,30 +170,94 @@ class PolicySpec:
         )
 
 
-@DeveloperAPI
+@OldAPIStack
 class Policy(metaclass=ABCMeta):
-    """Policy base class: Calculates actions, losses, and holds NN models.
+    """RLlib's base class for all Policy implementations.
 
     Policy is the abstract superclass for all DL-framework specific sub-classes
     (e.g. TFPolicy or TorchPolicy). It exposes APIs to
 
-    1) Compute actions from observation (and possibly other) inputs.
-    2) Manage the Policy's NN model(s), like exporting and loading their
-       weights.
-    3) Postprocess a given trajectory from the environment or other input
-       via the `postprocess_trajectory` method.
-    4) Compute losses from a train batch.
-    5) Perform updates from a train batch on the NN-models (this normally
-       includes loss calculations) either a) in one monolithic step
-       (`train_on_batch`) or b) via batch pre-loading, then n steps of actual
-       loss computations and updates (`load_batch_into_buffer` +
-       `learn_on_loaded_batch`).
+    1. Compute actions from observation (and possibly other) inputs.
 
-    Note: It is not recommended to sub-class Policy directly, but rather use
-    one of the following two convenience methods:
-    `rllib.policy.policy_template::build_policy_class` (PyTorch) or
-    `rllib.policy.tf_policy_template::build_tf_policy_class` (TF).
+    2. Manage the Policy's NN model(s), like exporting and loading their weights.
+
+    3. Postprocess a given trajectory from the environment or other input via the
+        `postprocess_trajectory` method.
+
+    4. Compute losses from a train batch.
+
+    5. Perform updates from a train batch on the NN-models (this normally includes loss
+        calculations) either:
+
+        a. in one monolithic step (`learn_on_batch`)
+
+        b. via batch pre-loading, then n steps of actual loss computations  and updates
+            (`load_batch_into_buffer` + `learn_on_loaded_batch`).
     """
+
+    def __init__(
+        self,
+        observation_space: gym.Space,
+        action_space: gym.Space,
+        config: AlgorithmConfigDict,
+    ):
+        """Initializes a Policy instance.
+
+        Args:
+            observation_space: Observation space of the policy.
+            action_space: Action space of the policy.
+            config: A complete Algorithm/Policy config dict. For the default
+                config keys and values, see rllib/algorithm/algorithm.py.
+        """
+        self.observation_space: gym.Space = observation_space
+        self.action_space: gym.Space = action_space
+        # the policy id in the global context.
+        self.__policy_id = config.get("__policy_id")
+        # The base struct of the observation/action spaces.
+        # E.g. action-space = gym.spaces.Dict({"a": Discrete(2)}) ->
+        # action_space_struct = {"a": Discrete(2)}
+        self.observation_space_struct = get_base_struct_from_space(observation_space)
+        self.action_space_struct = get_base_struct_from_space(action_space)
+
+        self.config: AlgorithmConfigDict = config
+        self.framework = self.config.get("framework")
+
+        # Create the callbacks object to use for handling custom callbacks.
+        from ray.rllib.algorithms.callbacks import DefaultCallbacks
+
+        callbacks = self.config.get("callbacks")
+        if isinstance(callbacks, DefaultCallbacks):
+            self.callbacks = callbacks()
+        elif isinstance(callbacks, (str, type)):
+            try:
+                self.callbacks: "DefaultCallbacks" = deserialize_type(
+                    self.config.get("callbacks")
+                )()
+            except Exception:
+                pass  # TEST
+        else:
+            self.callbacks: "DefaultCallbacks" = DefaultCallbacks()
+
+        # The global timestep, broadcast down from time to time from the
+        # local worker to all remote workers.
+        self.global_timestep: int = 0
+        # The number of gradient updates this policy has undergone.
+        self.num_grad_updates: int = 0
+
+        # The action distribution class to use for action sampling, if any.
+        # Child classes may set this.
+        self.dist_class: Optional[Type] = None
+
+        # Initialize view requirements.
+        self.init_view_requirements()
+
+        # Whether the Model's initial state (method) has been added
+        # automatically based on the given view requirements of the model.
+        self._model_init_state_automatically_added = False
+
+        # Connectors.
+        self.agent_connectors = None
+        self.action_connectors = None
 
     @staticmethod
     def from_checkpoint(
@@ -239,7 +311,7 @@ class Policy(metaclass=ABCMeta):
                 for pid, policy_state in policy_states.items():
                     # Get spec and config, merge config with
                     serialized_policy_spec = worker_state["policy_specs"][pid]
-                    policy_config = Algorithm.merge_trainer_configs(
+                    policy_config = Algorithm.merge_algorithm_configs(
                         worker_state["policy_config"], serialized_policy_spec["config"]
                     )
                     serialized_policy_spec.update({"config": policy_config})
@@ -264,8 +336,15 @@ class Policy(metaclass=ABCMeta):
 
         # Policy checkpoint: Return a single Policy instance.
         else:
+            msgpack = None
+            if checkpoint_info.get("format") == "msgpack":
+                msgpack = try_import_msgpack(error=True)
+
             with open(checkpoint_info["state_file"], "rb") as f:
-                state = pickle.load(f)
+                if msgpack is not None:
+                    state = msgpack.load(f)
+                else:
+                    state = pickle.load(f)
             return Policy.from_state(state)
 
     @staticmethod
@@ -317,70 +396,14 @@ class Policy(metaclass=ABCMeta):
         # Return the new policy.
         return new_policy
 
-    @DeveloperAPI
-    def __init__(
-        self,
-        observation_space: gym.Space,
-        action_space: gym.Space,
-        config: AlgorithmConfigDict,
-    ):
-        """Initializes a Policy instance.
-
-        Args:
-            observation_space: Observation space of the policy.
-            action_space: Action space of the policy.
-            config: A complete Algorithm/Policy config dict. For the default
-                config keys and values, see rllib/trainer/trainer.py.
-        """
-        self.observation_space: gym.Space = observation_space
-        self.action_space: gym.Space = action_space
-        # the policy id in the global context.
-        self.__policy_id = config.get("__policy_id")
-        # The base struct of the observation/action spaces.
-        # E.g. action-space = gym.spaces.Dict({"a": Discrete(2)}) ->
-        # action_space_struct = {"a": Discrete(2)}
-        self.observation_space_struct = get_base_struct_from_space(observation_space)
-        self.action_space_struct = get_base_struct_from_space(action_space)
-
-        self.config: AlgorithmConfigDict = config
-        self.framework = self.config.get("framework")
-        # Create the callbacks object to use for handling custom callbacks.
-        if self.config.get("callbacks"):
-            self.callbacks: "DefaultCallbacks" = self.config.get("callbacks")()
-        else:
-            from ray.rllib.algorithms.callbacks import DefaultCallbacks
-
-            self.callbacks: "DefaultCallbacks" = DefaultCallbacks()
-
-        # The global timestep, broadcast down from time to time from the
-        # local worker to all remote workers.
-        self.global_timestep: int = 0
-        # The number of gradient updates this policy has undergone.
-        self.num_grad_updates: int = 0
-
-        # The action distribution class to use for action sampling, if any.
-        # Child classes may set this.
-        self.dist_class: Optional[Type] = None
-
-        # Initialize view requirements.
-        self.init_view_requirements()
-
-        # Whether the Model's initial state (method) has been added
-        # automatically based on the given view requirements of the model.
-        self._model_init_state_automatically_added = False
-
-        # Connectors.
-        self.agent_connectors = None
-        self.action_connectors = None
-
-    @ExperimentalAPI
     @OverrideToImplementCustomLogic
     def make_rl_module(self) -> "RLModule":
-        """Returns the RL Module.
+        """Returns the RL Module (only for when RLModule API is enabled.)
 
-        If RLModule API is enabled (self.config.rl_module(_enable_rl_module_api=True),
-        this method should be implemented and should return the RLModule instance to
-        use for this Policy. Otherwise, RLlib will error out.
+        If RLModule API is enabled
+        (self.config.experimental(_enable_new_api_stack=True), this method should be
+        implemented and should return the RLModule instance to use for this Policy.
+        Otherwise, RLlib will error out.
         """
         # if imported on top it creates circular dependency
         from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
@@ -392,14 +415,20 @@ class Policy(metaclass=ABCMeta):
                 "bug, please file a github issue."
             )
 
-        module_spec = self.config["__marl_module_spec"]
-        if isinstance(module_spec, SingleAgentRLModuleSpec):
-            module = module_spec.build()
+        spec = self.config["__marl_module_spec"]
+        if isinstance(spec, SingleAgentRLModuleSpec):
+            module = spec.build()
         else:
-            module = module_spec.build(module_id=self.__policy_id)
+            # filter the module_spec to only contain the policy_id of this policy
+            marl_spec = type(spec)(
+                marl_module_class=spec.marl_module_class,
+                module_specs={self.__policy_id: spec.module_specs[self.__policy_id]},
+            )
+            marl_module = marl_spec.build()
+            module = marl_module[self.__policy_id]
+
         return module
 
-    @DeveloperAPI
     def init_view_requirements(self):
         """Maximal view requirements dict for `learn_on_batch()` and
         `compute_actions` calls.
@@ -437,7 +466,6 @@ class Policy(metaclass=ABCMeta):
         self.agent_connectors.reset(env_id=env_id)
         self.action_connectors.reset(env_id=env_id)
 
-    @DeveloperAPI
     def compute_single_action(
         self,
         obs: Optional[TensorStructType] = None,
@@ -493,8 +521,11 @@ class Policy(metaclass=ABCMeta):
         if input_dict is None:
             input_dict = {SampleBatch.OBS: obs}
             if state is not None:
-                for i, s in enumerate(state):
-                    input_dict[f"state_in_{i}"] = s
+                if self.config.get("_enable_new_api_stack", False):
+                    input_dict["state_in"] = state
+                else:
+                    for i, s in enumerate(state):
+                        input_dict[f"state_in_{i}"] = s
             if prev_action is not None:
                 input_dict[SampleBatch.PREV_ACTIONS] = prev_action
             if prev_reward is not None:
@@ -545,7 +576,6 @@ class Policy(metaclass=ABCMeta):
             tree.map_structure(lambda x: x[0], info),
         )
 
-    @DeveloperAPI
     def compute_actions_from_input_dict(
         self,
         input_dict: Union[SampleBatch, Dict[str, TensorStructType]],
@@ -587,7 +617,7 @@ class Policy(metaclass=ABCMeta):
         """
         # Default implementation just passes obs, prev-a/r, and states on to
         # `self.compute_actions()`.
-        state_batches = [s for k, s in input_dict.items() if k[:9] == "state_in_"]
+        state_batches = [s for k, s in input_dict.items() if k.startswith("state_in")]
         return self.compute_actions(
             input_dict[SampleBatch.OBS],
             state_batches,
@@ -601,7 +631,6 @@ class Policy(metaclass=ABCMeta):
         )
 
     @abstractmethod
-    @DeveloperAPI
     def compute_actions(
         self,
         obs_batch: Union[List[TensorStructType], TensorStructType],
@@ -645,7 +674,6 @@ class Policy(metaclass=ABCMeta):
         """
         raise NotImplementedError
 
-    @DeveloperAPI
     def compute_log_likelihoods(
         self,
         actions: Union[List[TensorType], TensorType],
@@ -654,6 +682,7 @@ class Policy(metaclass=ABCMeta):
         prev_action_batch: Optional[Union[List[TensorType], TensorType]] = None,
         prev_reward_batch: Optional[Union[List[TensorType], TensorType]] = None,
         actions_normalized: bool = True,
+        in_training: bool = True,
     ) -> TensorType:
         """Computes the log-prob/likelihood for a given action and observation.
 
@@ -672,13 +701,13 @@ class Policy(metaclass=ABCMeta):
                 (between -1.0 and 1.0) or not? If not and
                 `normalize_actions=True`, we need to normalize the given
                 actions first, before calculating log likelihoods.
-
+            in_training: Whether to use the forward_train() or forward_exploration() of
+                the underlying RLModule.
         Returns:
             Batch of log probs/likelihoods, with shape: [BATCH_SIZE].
         """
         raise NotImplementedError
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def postprocess_trajectory(
         self,
@@ -712,7 +741,6 @@ class Policy(metaclass=ABCMeta):
         # The default implementation just returns the same, unaltered batch.
         return sample_batch
 
-    @ExperimentalAPI
     @OverrideToImplementCustomLogic
     def loss(
         self, model: ModelV2, dist_class: ActionDistribution, train_batch: SampleBatch
@@ -732,7 +760,6 @@ class Policy(metaclass=ABCMeta):
         """
         raise NotImplementedError
 
-    @DeveloperAPI
     def learn_on_batch(self, samples: SampleBatch) -> Dict[str, TensorType]:
         """Perform one learning update, given `samples`.
 
@@ -745,9 +772,11 @@ class Policy(metaclass=ABCMeta):
         Returns:
             Dictionary of extra metadata from `compute_gradients()`.
 
-        Examples:
-            >>> policy, sample_batch = ... # doctest: +SKIP
-            >>> policy.learn_on_batch(sample_batch) # doctest: +SKIP
+        .. testcode::
+            :skipif: True
+
+            policy, sample_batch = ...
+            policy.learn_on_batch(sample_batch)
         """
         # The default implementation is simply a fused `compute_gradients` plus
         # `apply_gradients` call.
@@ -755,7 +784,6 @@ class Policy(metaclass=ABCMeta):
         self.apply_gradients(grads)
         return grad_info
 
-    @ExperimentalAPI
     def learn_on_batch_from_replay_buffer(
         self, replay_actor: ActorHandle, policy_id: PolicyID
     ) -> Dict[str, TensorType]:
@@ -785,7 +813,6 @@ class Policy(metaclass=ABCMeta):
         else:
             return self.learn_on_batch(batch)
 
-    @DeveloperAPI
     def load_batch_into_buffer(self, batch: SampleBatch, buffer_index: int = 0) -> int:
         """Bulk-loads the given SampleBatch into the devices' memories.
 
@@ -804,7 +831,6 @@ class Policy(metaclass=ABCMeta):
         """
         raise NotImplementedError
 
-    @DeveloperAPI
     def get_num_samples_loaded_into_buffer(self, buffer_index: int = 0) -> int:
         """Returns the number of currently loaded samples in the given buffer.
 
@@ -819,7 +845,6 @@ class Policy(metaclass=ABCMeta):
         """
         raise NotImplementedError
 
-    @DeveloperAPI
     def learn_on_loaded_batch(self, offset: int = 0, buffer_index: int = 0):
         """Runs a single step of SGD on an already loaded data in a buffer.
 
@@ -843,7 +868,6 @@ class Policy(metaclass=ABCMeta):
         """
         raise NotImplementedError
 
-    @DeveloperAPI
     def compute_gradients(
         self, postprocessed_batch: SampleBatch
     ) -> Tuple[ModelGradients, Dict[str, TensorType]]:
@@ -862,7 +886,6 @@ class Policy(metaclass=ABCMeta):
         """
         raise NotImplementedError
 
-    @DeveloperAPI
     def apply_gradients(self, gradients: ModelGradients) -> None:
         """Applies the (previously) computed gradients.
 
@@ -875,7 +898,6 @@ class Policy(metaclass=ABCMeta):
         """
         raise NotImplementedError
 
-    @DeveloperAPI
     def get_weights(self) -> ModelWeights:
         """Returns model weights.
 
@@ -890,7 +912,6 @@ class Policy(metaclass=ABCMeta):
         """
         raise NotImplementedError
 
-    @DeveloperAPI
     def set_weights(self, weights: ModelWeights) -> None:
         """Sets this Policy's model's weights.
 
@@ -903,7 +924,6 @@ class Policy(metaclass=ABCMeta):
         """
         raise NotImplementedError
 
-    @DeveloperAPI
     def get_exploration_state(self) -> Dict[str, TensorType]:
         """Returns the state of this Policy's exploration component.
 
@@ -912,7 +932,6 @@ class Policy(metaclass=ABCMeta):
         """
         return self.exploration.get_state()
 
-    @DeveloperAPI
     def is_recurrent(self) -> bool:
         """Whether this Policy holds a recurrent Model.
 
@@ -921,7 +940,6 @@ class Policy(metaclass=ABCMeta):
         """
         return False
 
-    @DeveloperAPI
     def num_state_tensors(self) -> int:
         """The number of internal states needed by the RNN-Model of the Policy.
 
@@ -930,7 +948,6 @@ class Policy(metaclass=ABCMeta):
         """
         return 0
 
-    @DeveloperAPI
     def get_initial_state(self) -> List[TensorType]:
         """Returns initial RNN state for the current policy.
 
@@ -939,7 +956,6 @@ class Policy(metaclass=ABCMeta):
         """
         return []
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def get_state(self) -> PolicyState:
         """Returns the entire current state of this Policy.
@@ -948,6 +964,9 @@ class Policy(metaclass=ABCMeta):
         State includes the Model(s)' weights, optimizer weights,
         the exploration component's state, as well as global variables, such
         as sampling timesteps.
+
+        Note that the state may contain references to the original variables.
+        This means that you may need to deepcopy() the state before mutating it.
 
         Returns:
             Serialized local state.
@@ -982,7 +1001,6 @@ class Policy(metaclass=ABCMeta):
 
         return state
 
-    @PublicAPI(stability="alpha")
     def restore_connectors(self, state: PolicyState):
         """Restore agent and action connectors if configs available.
 
@@ -1011,7 +1029,6 @@ class Policy(metaclass=ABCMeta):
             logger.debug("restoring action connectors:")
             logger.debug(self.action_connectors.__str__(indentation=4))
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def set_state(self, state: PolicyState) -> None:
         """Restores the entire current state of this Policy from `state`.
@@ -1049,7 +1066,6 @@ class Policy(metaclass=ABCMeta):
         self.set_weights(state["weights"])
         self.restore_connectors(state)
 
-    @ExperimentalAPI
     def apply(
         self,
         func: Callable[["Policy", Optional[Any], Optional[Any]], T],
@@ -1073,7 +1089,6 @@ class Policy(metaclass=ABCMeta):
         """
         return func(self, *args, **kwargs)
 
-    @DeveloperAPI
     def on_global_var_update(self, global_vars: Dict[str, TensorType]) -> None:
         """Called on an update to global vars.
 
@@ -1094,13 +1109,13 @@ class Policy(metaclass=ABCMeta):
         if num_grad_updates is not None:
             self.num_grad_updates = num_grad_updates
 
-    @DeveloperAPI
     def export_checkpoint(
         self,
         export_dir: str,
         filename_prefix=DEPRECATED_VALUE,
         *,
         policy_state: Optional[PolicyState] = None,
+        checkpoint_format: str = "cloudpickle",
     ) -> None:
         """Exports Policy checkpoint to a local directory and returns an AIR Checkpoint.
 
@@ -1110,11 +1125,14 @@ class Policy(metaclass=ABCMeta):
             policy_state: An optional PolicyState to write to disk. Used by
                 `Algorithm.save_checkpoint()` to save on the additional
                 `self.get_state()` calls of its different Policies.
+            checkpoint_format: Either one of 'cloudpickle' or 'msgpack'.
 
-        Example:
-            >>> from ray.rllib.algorithms.ppo import PPOTorchPolicy
-            >>> policy = PPOTorchPolicy(...) # doctest: +SKIP
-            >>> policy.export_checkpoint("/tmp/export_dir") # doctest: +SKIP
+        .. testcode::
+            :skipif: True
+
+            from ray.rllib.algorithms.ppo import PPOTorchPolicy
+            policy = PPOTorchPolicy(...)
+            policy.export_checkpoint("/tmp/export_dir")
         """
         # `filename_prefix` should not longer be used as new Policy checkpoints
         # contain more than one file with a fixed filename structure.
@@ -1123,14 +1141,34 @@ class Policy(metaclass=ABCMeta):
                 old="Policy.export_checkpoint(filename_prefix=...)",
                 error=True,
             )
+        if checkpoint_format not in ["cloudpickle", "msgpack"]:
+            raise ValueError(
+                f"Value of `checkpoint_format` ({checkpoint_format}) must either be "
+                "'cloudpickle' or 'msgpack'!"
+            )
+
         if policy_state is None:
             policy_state = self.get_state()
-        policy_state["checkpoint_version"] = CHECKPOINT_VERSION
 
         # Write main policy state file.
         os.makedirs(export_dir, exist_ok=True)
-        with open(os.path.join(export_dir, "policy_state.pkl"), "w+b") as f:
-            pickle.dump(policy_state, f)
+        if checkpoint_format == "cloudpickle":
+            policy_state["checkpoint_version"] = CHECKPOINT_VERSION
+            state_file = "policy_state.pkl"
+            with open(os.path.join(export_dir, state_file), "w+b") as f:
+                pickle.dump(policy_state, f)
+        else:
+            from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
+            msgpack = try_import_msgpack(error=True)
+            policy_state["checkpoint_version"] = str(CHECKPOINT_VERSION)
+            # Serialize the config for msgpack dump'ing.
+            policy_state["policy_spec"]["config"] = AlgorithmConfig._serialize_dict(
+                policy_state["policy_spec"]["config"]
+            )
+            state_file = "policy_state.msgpck"
+            with open(os.path.join(export_dir, state_file), "w+b") as f:
+                msgpack.dump(policy_state, f)
 
         # Write RLlib checkpoint json.
         with open(os.path.join(export_dir, "rllib_checkpoint.json"), "w") as f:
@@ -1138,6 +1176,8 @@ class Policy(metaclass=ABCMeta):
                 {
                     "type": "Policy",
                     "checkpoint_version": str(policy_state["checkpoint_version"]),
+                    "format": checkpoint_format,
+                    "state_file": state_file,
                     "ray_version": ray.__version__,
                     "ray_commit": ray.__commit__,
                 },
@@ -1148,7 +1188,6 @@ class Policy(metaclass=ABCMeta):
         if self.config["export_native_model_files"]:
             self.export_model(os.path.join(export_dir, "model"))
 
-    @DeveloperAPI
     def export_model(self, export_dir: str, onnx: Optional[int] = None) -> None:
         """Exports the Policy's Model to local directory for serving.
 
@@ -1167,7 +1206,6 @@ class Policy(metaclass=ABCMeta):
         """
         raise NotImplementedError
 
-    @DeveloperAPI
     def import_model_from_h5(self, import_file: str) -> None:
         """Imports Policy from local file.
 
@@ -1176,7 +1214,6 @@ class Policy(metaclass=ABCMeta):
         """
         raise NotImplementedError
 
-    @DeveloperAPI
     def get_session(self) -> Optional["tf1.Session"]:
         """Returns tf.Session object to use for computing actions or None.
 
@@ -1215,10 +1252,10 @@ class Policy(metaclass=ABCMeta):
             # If in local debugging mode, and _fake_gpus is not on.
             num_gpus = 0
         elif worker_idx == 0:
-            # if we are in the new rl trainer world num_gpus is deprecated.
-            # so use num_gpus_per_worker for policy sampling
+            # If we are on the new RLModule/Learner stack, `num_gpus` is deprecated.
+            # so use `num_gpus_per_worker` for policy sampling
             # we need this .get() syntax here to ensure backwards compatibility.
-            if self.config.get("_enable_learner_api", False):
+            if self.config.get("_enable_new_api_stack", False):
                 num_gpus = self.config["num_gpus_per_worker"]
             else:
                 # If head node, take num_gpus.
@@ -1243,7 +1280,7 @@ class Policy(metaclass=ABCMeta):
     def _create_exploration(self) -> Exploration:
         """Creates the Policy's Exploration object.
 
-        This method only exists b/c some Trainers do not use TfPolicy nor
+        This method only exists b/c some Algorithms do not use TfPolicy nor
         TorchPolicy, but inherit directly from Policy. Others inherit from
         TfPolicy w/o using DynamicTFPolicy.
         TODO(sven): unify these cases.
@@ -1333,6 +1370,9 @@ class Policy(metaclass=ABCMeta):
                 TensorType]]]): An optional stats function to be called after
                 the loss.
         """
+
+        if self.config.get("_disable_initialize_loss_from_dummy_batch", False):
+            return
         # Signal Policy that currently we do not like to eager/jit trace
         # any function calls. This is to be able to track, which columns
         # in the dummy batch are accessed by the different function (e.g.
@@ -1341,20 +1381,25 @@ class Policy(metaclass=ABCMeta):
         # Save for later so that loss init does not change global timestep
         global_ts_before_init = int(convert_to_numpy(self.global_timestep))
 
-        sample_batch_size = max(self.batch_divisibility_req * 4, 32)
+        sample_batch_size = min(
+            max(self.batch_divisibility_req * 4, 32),
+            self.config["train_batch_size"],  # Don't go over the asked batch size.
+        )
         self._dummy_batch = self._get_dummy_batch_from_view_requirements(
             sample_batch_size
         )
         self._lazy_tensor_dict(self._dummy_batch)
-        # With RL modules you want the explore flag to be True for initialization of the
-        # tensors and placeholder you'd need for training.
-        explore = self.config.get("_enable_rl_module_api", False)
+        # With RL Modules you want the explore flag to be True for initialization
+        # of the tensors and placeholder you'd need for training.
+        explore = self.config.get("_enable_new_api_stack", False)
+
         actions, state_outs, extra_outs = self.compute_actions_from_input_dict(
             self._dummy_batch, explore=explore
         )
-        for key, view_req in self.view_requirements.items():
-            if key not in self._dummy_batch.accessed_keys:
-                view_req.used_for_compute_actions = False
+        if not self.config.get("_enable_new_api_stack", False):
+            for key, view_req in self.view_requirements.items():
+                if key not in self._dummy_batch.accessed_keys:
+                    view_req.used_for_compute_actions = False
         # Add all extra action outputs to view reqirements (these may be
         # filtered out later again, if not needed for postprocessing or loss).
         for key, value in extra_outs.items():
@@ -1393,51 +1438,77 @@ class Policy(metaclass=ABCMeta):
         self._dummy_batch.deleted_keys.clear()
         self._dummy_batch.added_keys.clear()
 
-        self.exploration.postprocess_trajectory(self, self._dummy_batch)
+        if self.exploration:
+            # Policies with RLModules don't have an exploration object.
+            self.exploration.postprocess_trajectory(self, self._dummy_batch)
+
         postprocessed_batch = self.postprocess_trajectory(self._dummy_batch)
         seq_lens = None
         if state_outs:
             B = 4  # For RNNs, have B=4, T=[depends on sample_batch_size]
-            i = 0
-            while "state_in_{}".format(i) in postprocessed_batch:
-                postprocessed_batch["state_in_{}".format(i)] = postprocessed_batch[
-                    "state_in_{}".format(i)
-                ][:B]
-                if "state_out_{}".format(i) in postprocessed_batch:
-                    postprocessed_batch["state_out_{}".format(i)] = postprocessed_batch[
-                        "state_out_{}".format(i)
+            if self.config.get("_enable_new_api_stack", False):
+                sub_batch = postprocessed_batch[:B]
+                postprocessed_batch["state_in"] = sub_batch["state_in"]
+                postprocessed_batch["state_out"] = sub_batch["state_out"]
+            else:
+                i = 0
+                while "state_in_{}".format(i) in postprocessed_batch:
+                    postprocessed_batch["state_in_{}".format(i)] = postprocessed_batch[
+                        "state_in_{}".format(i)
                     ][:B]
-                i += 1
+                    if "state_out_{}".format(i) in postprocessed_batch:
+                        postprocessed_batch[
+                            "state_out_{}".format(i)
+                        ] = postprocessed_batch["state_out_{}".format(i)][:B]
+                    i += 1
+
             seq_len = sample_batch_size // B
             seq_lens = np.array([seq_len for _ in range(B)], dtype=np.int32)
             postprocessed_batch[SampleBatch.SEQ_LENS] = seq_lens
-        # Switch on lazy to-tensor conversion on `postprocessed_batch`.
-        train_batch = self._lazy_tensor_dict(postprocessed_batch)
-        # Calling loss, so set `is_training` to True.
-        train_batch.set_training(True)
-        if seq_lens is not None:
-            train_batch[SampleBatch.SEQ_LENS] = seq_lens
-        train_batch.count = self._dummy_batch.count
-        # Call the loss function, if it exists.
-        # TODO(jungong) : clean up after all agents get migrated.
-        # We should simply do self.loss(...) here.
-        if self._loss is not None:
-            self._loss(self, self.model, self.dist_class, train_batch)
-        elif is_overridden(self.loss) and not self.config["in_evaluation"]:
-            self.loss(self.model, self.dist_class, train_batch)
-        # Call the stats fn, if given.
-        # TODO(jungong) : clean up after all agents get migrated.
-        # We should simply do self.stats_fn(train_batch) here.
-        if stats_fn is not None:
-            stats_fn(self, train_batch)
-        if hasattr(self, "stats_fn") and not self.config["in_evaluation"]:
-            self.stats_fn(train_batch)
+
+        if not self.config.get("_enable_new_api_stack"):
+            # Switch on lazy to-tensor conversion on `postprocessed_batch`.
+            train_batch = self._lazy_tensor_dict(postprocessed_batch)
+            # Calling loss, so set `is_training` to True.
+            train_batch.set_training(True)
+            if seq_lens is not None:
+                train_batch[SampleBatch.SEQ_LENS] = seq_lens
+            train_batch.count = self._dummy_batch.count
+
+            # Call the loss function, if it exists.
+            # TODO(jungong) : clean up after all agents get migrated.
+            # We should simply do self.loss(...) here.
+            if self._loss is not None:
+                self._loss(self, self.model, self.dist_class, train_batch)
+            elif is_overridden(self.loss) and not self.config["in_evaluation"]:
+                self.loss(self.model, self.dist_class, train_batch)
+            # Call the stats fn, if given.
+            # TODO(jungong) : clean up after all agents get migrated.
+            # We should simply do self.stats_fn(train_batch) here.
+            if stats_fn is not None:
+                stats_fn(self, train_batch)
+            if hasattr(self, "stats_fn") and not self.config["in_evaluation"]:
+                self.stats_fn(train_batch)
+        else:
+            # This is not needed to run a training with the Learner API, but useful if
+            # we want to create a batch of data for training from view requirements.
+            for key in set(postprocessed_batch.keys()).difference(
+                set(new_batch.keys())
+            ):
+                # Add all columns generated by postprocessing to view requirements.
+                if key not in self.view_requirements and key != SampleBatch.SEQ_LENS:
+                    self.view_requirements[key] = ViewRequirement(
+                        used_for_compute_actions=False
+                    )
 
         # Re-enable tracing.
         self._no_tracing = False
 
         # Add new columns automatically to view-reqs.
-        if auto_remove_unneeded_view_reqs:
+        if (
+            not self.config.get("_enable_new_api_stack")
+            and auto_remove_unneeded_view_reqs
+        ):
             # Add those needed for postprocessing and training.
             all_accessed_keys = (
                 train_batch.accessed_keys
@@ -1515,6 +1586,99 @@ class Policy(metaclass=ABCMeta):
                 "either of type `int` or `tf.Variable`, "
                 "but is of type {}.".format(self, type(self.global_timestep))
             )
+
+    def maybe_add_time_dimension(
+        self,
+        input_dict: Dict[str, TensorType],
+        seq_lens: TensorType,
+        framework: str = None,
+    ):
+        """Adds a time dimension for recurrent RLModules.
+
+        Args:
+            input_dict: The input dict.
+            seq_lens: The sequence lengths.
+            framework: The framework to use for adding the time dimensions.
+                If None, will default to the framework of the policy.
+
+        Returns:
+            The input dict, with a possibly added time dimension.
+        """
+        # We need to check for hasattr(self, "model") because a dummy Policy may not
+        # have a model.
+        if (
+            self.config.get("_enable_new_api_stack", False)
+            and hasattr(self, "model")
+            and self.model.is_stateful()
+        ):
+            # Note that this is a temporary workaround to fit the old sampling stack
+            # to RL Modules.
+            ret = {}
+            framework = framework or self.model.framework
+
+            def _add_time_dimension(inputs):
+                inputs = add_time_dimension(
+                    inputs,
+                    seq_lens=seq_lens,
+                    framework=framework,
+                    time_major=self.config.get("model", {}).get("_time_major", False),
+                )
+                return inputs
+
+            def _add_state_out_time_dimension(inputs):
+                # We do a hack here in that we add a time dimension,
+                # even though the tensor already has one. Then, we remove the
+                # original time dimension.
+                v_w_two_time_dims = _add_time_dimension(inputs)
+                if framework == "tf2":
+                    return tf.squeeze(v_w_two_time_dims, axis=2)
+                elif framework == "torch":
+                    # Remove second time dimensions
+                    return torch.squeeze(v_w_two_time_dims, axis=2)
+                elif framework == "np":
+                    shape = v_w_two_time_dims.shape
+                    padded_batch_dim = shape[0]
+                    padded_time_dim = shape[1]
+                    other_dims = shape[3:]
+                    new_shape = (padded_batch_dim, padded_time_dim) + other_dims
+                    return v_w_two_time_dims.reshape(new_shape)
+                else:
+                    raise ValueError(f"Framework {framework} not implemented!")
+
+            for k, v in input_dict.items():
+                if k == SampleBatch.INFOS:
+                    ret[k] = _add_time_dimension(v)
+                elif k == SampleBatch.SEQ_LENS:
+                    # sequence lengths have no time dimension
+                    ret[k] = v
+                elif k == Columns.STATE_IN:
+                    # Assume that batch_repeat_value is max seq len.
+                    # This is commonly the case for Columns.STATE_IN
+                    # Values should already have correct batch and time dimension
+                    assert self.view_requirements[k].batch_repeat_value != 1
+                    ret[k] = v
+                elif k == Columns.STATE_OUT:
+                    # Assume that batch_repeat_value is 1
+                    # This is commonly the case for STATE_OUT
+                    assert self.view_requirements[k].batch_repeat_value == 1
+                    ret[k] = tree.map_structure(_add_state_out_time_dimension, v)
+                else:
+                    ret[k] = tree.map_structure(_add_time_dimension, v)
+
+            return SampleBatch(ret)
+        else:
+            return input_dict
+
+    def maybe_remove_time_dimension(self, input_dict: Dict[str, TensorType]):
+        """Removes a time dimension for recurrent RLModules.
+
+        Args:
+            input_dict: The input dict.
+
+        Returns:
+            The input dict with a possibly removed time dimension.
+        """
+        raise NotImplementedError
 
     def _get_dummy_batch_from_view_requirements(
         self, batch_size: int = 1
@@ -1641,48 +1805,37 @@ class Policy(metaclass=ABCMeta):
                         space=space, used_for_training=True
                     )
 
-    @DeveloperAPI
     def __repr__(self):
         return type(self).__name__
 
-    @Deprecated(new="get_exploration_state", error=True)
-    def get_exploration_info(self) -> Dict[str, TensorType]:
-        return self.get_exploration_state()
 
-
-@DeveloperAPI
+@OldAPIStack
 def get_gym_space_from_struct_of_tensors(
-    value: Union[Mapping, np.ndarray]
-) -> gym.spaces.Dict:
-    if isinstance(value, Mapping):
-        value_dict = NestedDict(value)
-        struct = tree.map_structure(
-            lambda x: gym.spaces.Box(-1.0, 1.0, shape=x.shape[1:], dtype=x.dtype),
-            value_dict,
-        )
-        space = get_gym_space_from_struct_of_spaces(struct.asdict())
-    elif isinstance(value, np.ndarray):
-        space = gym.spaces.Box(-1.0, 1.0, shape=value.shape[1:], dtype=value.dtype)
-    else:
-        raise ValueError(
-            f"Unsupported type of value {type(value)} passed "
-            "to get_gym_space_from_struct_of_tensors. Only Nested dict with "
-            "np.ndarray leaves or an np.ndarray are supported."
-        )
+    value: Union[Mapping, Tuple, List, TensorType],
+    batched_input=True,
+) -> gym.Space:
+    start_idx = 1 if batched_input else 0
+    struct = tree.map_structure(
+        lambda x: gym.spaces.Box(
+            -1.0, 1.0, shape=x.shape[start_idx:], dtype=get_np_dtype(x)
+        ),
+        value,
+    )
+    space = get_gym_space_from_struct_of_spaces(struct)
     return space
 
 
-@DeveloperAPI
+@OldAPIStack
 def get_gym_space_from_struct_of_spaces(value: Union[Dict, Tuple]) -> gym.spaces.Dict:
-    if isinstance(value, dict):
+    if isinstance(value, Mapping):
         return gym.spaces.Dict(
             {k: get_gym_space_from_struct_of_spaces(v) for k, v in value.items()}
         )
-    elif isinstance(value, tuple):
+    elif isinstance(value, (tuple, list)):
         return gym.spaces.Tuple([get_gym_space_from_struct_of_spaces(v) for v in value])
     else:
-        assert isinstance(
-            value, gym.spaces.Space
-        ), "The struct of spaces should only contain dicts, tiples and primitive "
-        "gym spaces."
+        assert isinstance(value, gym.spaces.Space), (
+            f"The struct of spaces should only contain dicts, tiples and primitive "
+            f"gym spaces. Space is of type {type(value)}"
+        )
         return value

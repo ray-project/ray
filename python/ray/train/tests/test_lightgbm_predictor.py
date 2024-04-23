@@ -3,21 +3,13 @@ import re
 import lightgbm as lgbm
 import numpy as np
 import pandas as pd
-import pyarrow as pa
 import pytest
-import ray
 
-from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MAX_REPR_LENGTH
-from ray.air.util.data_batch_conversion import convert_pandas_to_batch_type
-from ray.data.preprocessor import Preprocessor
-from ray.train.batch_predictor import BatchPredictor
+from ray.air.util.data_batch_conversion import _convert_pandas_to_batch_type
 from ray.train.lightgbm import LightGBMCheckpoint, LightGBMPredictor
 from ray.train.predictor import TYPE_TO_ENUM
-from typing import Tuple
-
 from ray.train.tests.dummy_preprocessor import DummyPreprocessor
-
 
 dummy_data = np.array([[1, 2], [3, 4], [5, 6]])
 dummy_target = np.array([0, 1, 0])
@@ -38,23 +30,11 @@ def test_repr():
     assert pattern.match(representation)
 
 
-def create_checkpoint_preprocessor() -> Tuple[Checkpoint, Preprocessor]:
-    preprocessor = DummyPreprocessor()
-
-    checkpoint = LightGBMCheckpoint.from_model(booster=model, preprocessor=preprocessor)
-
-    return checkpoint, preprocessor
-
-
 def test_lightgbm_checkpoint():
-    checkpoint, preprocessor = create_checkpoint_preprocessor()
-
-    predictor = LightGBMPredictor(model=model, preprocessor=preprocessor)
-
-    checkpoint_predictor = LightGBMPredictor.from_checkpoint(checkpoint)
-
-    assert get_num_trees(checkpoint_predictor.model) == get_num_trees(predictor.model)
-    assert checkpoint_predictor.get_preprocessor() == predictor.get_preprocessor()
+    preprocessor = DummyPreprocessor()
+    checkpoint = LightGBMCheckpoint.from_model(booster=model, preprocessor=preprocessor)
+    assert get_num_trees(checkpoint.get_model()) == get_num_trees(model)
+    assert checkpoint.get_preprocessor() == preprocessor
 
 
 @pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, dict])
@@ -63,33 +43,11 @@ def test_predict(batch_type):
     predictor = LightGBMPredictor(model=model, preprocessor=preprocessor)
 
     raw_batch = pd.DataFrame([[1, 2], [3, 4], [5, 6]])
-    data_batch = convert_pandas_to_batch_type(raw_batch, type=TYPE_TO_ENUM[batch_type])
+    data_batch = _convert_pandas_to_batch_type(raw_batch, type=TYPE_TO_ENUM[batch_type])
     predictions = predictor.predict(data_batch)
 
     assert len(predictions) == 3
     assert predictor.get_preprocessor().has_preprocessed
-
-
-@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame])
-def test_predict_batch(ray_start_4_cpus, batch_type):
-    checkpoint, _ = create_checkpoint_preprocessor()
-    predictor = BatchPredictor.from_checkpoint(checkpoint, LightGBMPredictor)
-
-    raw_batch = pd.DataFrame(dummy_data, columns=["A", "B"])
-    data_batch = convert_pandas_to_batch_type(raw_batch, type=TYPE_TO_ENUM[batch_type])
-
-    if batch_type == np.ndarray:
-        dataset = ray.data.from_numpy(dummy_data)
-    elif batch_type == pd.DataFrame:
-        dataset = ray.data.from_pandas(data_batch)
-    elif batch_type == pa.Table:
-        dataset = ray.data.from_arrow(data_batch)
-    else:
-        raise RuntimeError("Invalid batch_type")
-
-    predictions = predictor.predict(dataset)
-
-    assert predictions.count() == 3
 
 
 def test_predict_feature_columns():

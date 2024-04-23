@@ -19,19 +19,16 @@ To compile the documentation and open it locally, run the following command from
 make develop && open _build/html/index.html
 ```
 
-> **_NOTE:_**  The above command is for development. To reproduce build failures from the
-> CI, you should use `make html` which is the same as `make develop` but treats warnings as errors.
+## Building just one subproject
 
-## Building just one sub-project
-
-Often your changes in documentation just concern one sub-project, such as Tune or Train.
-To build just this one sub-project, and ignore the rest
+Often your changes in documentation just concern one subproject, such as Tune or Train.
+To build just this one subproject, and ignore the rest
 (leading to build warnings due to broken references etc.), run the following command:
 
 ```shell
 DOC_LIB=<project> sphinx-build -b html -d _build/doctrees  source _build/html
 ```
-where `<project>` is the name of the sub-project and can be any of the docs projects in the `source/`
+where `<project>` is the name of the subproject and can be any of the docs projects in the `source/`
 directory either called `tune`, `rllib`, `train`, `cluster`, `serve`, `data` or the ones starting
 with `ray-`, e.g. `ray-observability`.
 
@@ -62,14 +59,14 @@ make linkcheck
 To run tests for examples shipping with docstrings in Python files, run the following command:
 
 ```shell
-RAY_MOCK_MODULES=0 make doctest
+make doctest
 ```
 
 ## Adding examples as MyST Markdown Notebooks
 
 You can now add [executable notebooks](https://myst-nb.readthedocs.io/en/latest/use/markdown.html) to this project,
 which will get built into the documentation.
-An [example can be found here](./source/serve/tutorials/rllib.md).
+<!--An [example can be found here](./source/serve/tutorials/rllib.md).-->
 By default, building the docs with `make develop` will not run those notebooks.
 If you set the `RUN_NOTEBOOKS` environment variable to `"cache"`, each notebook cell will be run when you build the
 documentation, and outputs will be cached into `_build/.jupyter_cache`.

@@ -1,17 +1,26 @@
 import {
   Box,
   IconButton,
+  Link,
   TableCell,
   TableRow,
   Tooltip,
-} from "@material-ui/core";
-import AddIcon from "@material-ui/icons/Add";
-import RemoveIcon from "@material-ui/icons/Remove";
+} from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import { sortBy } from "lodash";
 import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import { RiArrowDownSLine, RiArrowRightSLine } from "react-icons/ri";
+import { Link as RouterLink } from "react-router-dom";
 import useSWR from "swr";
+import { CodeDialogButtonWithPreview } from "../../common/CodeDialogButton";
 import { API_REFRESH_INTERVAL_MS } from "../../common/constants";
+import { NodeLink } from "../../common/links";
+import {
+  CpuProfilingLink,
+  CpuStackTraceLink,
+  MemoryProfilingButton,
+} from "../../common/ProfilingLink";
 import rowStyles from "../../common/RowStyles";
 import PercentageBar from "../../components/PercentageBar";
 import { StatusChip } from "../../components/StatusChip";
@@ -19,7 +28,7 @@ import { getNodeDetail } from "../../service/node";
 import { NodeDetail } from "../../type/node";
 import { Worker } from "../../type/worker";
 import { memoryConverter } from "../../util/converter";
-import { NodeGPUView, WorkerGPU } from "./GPUColumn";
+import { NodeGPUView, WorkerGpuRow } from "./GPUColumn";
 import { NodeGRAM, WorkerGRAM } from "./GRAMColumn";
 
 const TEXT_COL_MIN_WIDTH = 100;
@@ -33,8 +42,43 @@ type NodeRowProps = Pick<NodeRowsProps, "node"> & {
    * Click handler for when one clicks on the expand/unexpand button in this row.
    */
   onExpandButtonClick: () => void;
-  newIA?: boolean;
 };
+
+const useStyles = makeStyles((theme) =>
+  createStyles({
+    tableContainer: {
+      overflowX: "scroll",
+    },
+    expandCollapseIcon: {
+      color: theme.palette.text.secondary,
+      fontSize: "1.5em",
+      verticalAlign: "middle",
+    },
+    idCol: {
+      display: "block",
+      width: "50px",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap",
+    },
+    OverflowCol: {
+      display: "block",
+      width: "100px",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap",
+    },
+    helpInfo: {
+      marginLeft: theme.spacing(1),
+    },
+    logicalResources: {
+      maxWidth: 200,
+    },
+    labels: {
+      maxWidth: 200,
+    },
+  }),
+);
 
 /**
  * A single row that represents the node information only.
@@ -44,7 +88,6 @@ export const NodeRow = ({
   node,
   expanded,
   onExpandButtonClick,
-  newIA = false,
 }: NodeRowProps) => {
   const {
     hostname = "",
@@ -54,22 +97,27 @@ export const NodeRow = ({
     disk,
     networkSpeed = [0, 0],
     raylet,
-    logUrl,
+    logicalResources,
   } = node;
 
-  const classes = rowStyles();
+  const classes = useStyles();
 
   const objectStoreTotalMemory =
     raylet.objectStoreAvailableMemory + raylet.objectStoreUsedMemory;
+
+  /**
+   * Why do we use raylet.state instead of node.state in the following code?
+   * Because in ray, raylet == node
+   */
 
   return (
     <TableRow>
       <TableCell>
         <IconButton size="small" onClick={onExpandButtonClick}>
           {!expanded ? (
-            <AddIcon className={classes.expandCollapseIcon} />
+            <RiArrowRightSLine className={classes.expandCollapseIcon} />
           ) : (
-            <RemoveIcon className={classes.expandCollapseIcon} />
+            <RiArrowDownSLine className={classes.expandCollapseIcon} />
           )}
         </IconButton>
       </TableCell>
@@ -80,13 +128,14 @@ export const NodeRow = ({
         <StatusChip type="node" status={raylet.state} />
       </TableCell>
       <TableCell align="center">
-        <Tooltip title={raylet.nodeId} arrow interactive>
-          <Link
-            to={newIA ? `nodes/${raylet.nodeId}` : `/node/${raylet.nodeId}`}
-            className={classes.idCol}
-          >
-            {raylet.nodeId}
-          </Link>
+        <Tooltip title={raylet.nodeId} arrow>
+          <div>
+            <NodeLink
+              nodeId={raylet.nodeId}
+              to={`nodes/${raylet.nodeId}`}
+              className={classes.idCol}
+            />
+          </div>
         </Tooltip>
       </TableCell>
       <TableCell align="center">
@@ -95,15 +144,14 @@ export const NodeRow = ({
         </Box>
       </TableCell>
       <TableCell>
-        <Link
-          to={
-            newIA
-              ? `/new/logs/${encodeURIComponent(logUrl)}`
-              : `/log/${encodeURIComponent(logUrl)}`
-          }
-        >
-          Log
-        </Link>
+        {raylet.state !== "DEAD" && (
+          <Link
+            component={RouterLink}
+            to={`/logs/?nodeId=${encodeURIComponent(raylet.nodeId)}`}
+          >
+            Log
+          </Link>
+        )}
       </TableCell>
       <TableCell>
         <PercentageBar num={Number(cpu)} total={100}>
@@ -151,6 +199,24 @@ export const NodeRow = ({
       </TableCell>
       <TableCell align="center">{memoryConverter(networkSpeed[0])}/s</TableCell>
       <TableCell align="center">{memoryConverter(networkSpeed[1])}/s</TableCell>
+      <TableCell align="center">
+        {logicalResources ? (
+          <CodeDialogButtonWithPreview
+            className={classes.logicalResources}
+            title="Logical Resources"
+            code={logicalResources}
+          />
+        ) : (
+          "-"
+        )}
+      </TableCell>
+      <TableCell align="center">
+        <CodeDialogButtonWithPreview
+          className={classes.labels}
+          title="Labels"
+          code={raylet.labels}
+        />
+      </TableCell>
     </TableRow>
   );
 };
@@ -164,16 +230,19 @@ type WorkerRowProps = {
    * Detail of the node the worker is inside.
    */
   node: NodeDetail;
-  newIA?: boolean;
 };
 
 /**
  * A single row that represents the data of a Worker
  */
-export const WorkerRow = ({ node, worker, newIA = false }: WorkerRowProps) => {
+export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
   const classes = rowStyles();
 
-  const { ip, mem, logUrl } = node;
+  const {
+    ip,
+    mem,
+    raylet: { nodeId },
+  } = node;
   const {
     pid,
     cpuPercent: cpu = 0,
@@ -184,10 +253,8 @@ export const WorkerRow = ({ node, worker, newIA = false }: WorkerRowProps) => {
 
   const coreWorker = coreWorkerStats.length ? coreWorkerStats[0] : undefined;
   const workerLogUrl =
-    (newIA
-      ? `/new/logs/${encodeURIComponent(logUrl)}`
-      : `/log/${encodeURIComponent(logUrl)}`) +
-    (coreWorker ? `?fileName=${coreWorker.workerId}` : "");
+    `/logs/?nodeId=${encodeURIComponent(nodeId)}` +
+    (coreWorker ? `&fileName=${coreWorker.workerId}` : "");
 
   return (
     <TableRow>
@@ -200,35 +267,22 @@ export const WorkerRow = ({ node, worker, newIA = false }: WorkerRowProps) => {
       </TableCell>
       <TableCell align="center">
         {coreWorker && (
-          <Tooltip title={coreWorker.workerId} arrow interactive>
+          <Tooltip title={coreWorker.workerId} arrow>
             <span className={classes.idCol}>{coreWorker.workerId}</span>
           </Tooltip>
         )}
       </TableCell>
       <TableCell align="center">{pid}</TableCell>
       <TableCell>
-        <Link to={workerLogUrl} target="_blank">
-          Logs
+        <Link component={RouterLink} to={workerLogUrl} target="_blank">
+          Log
         </Link>
         <br />
-        <a
-          href={`/worker/traceback?pid=${pid}&ip=${ip}&native=0`}
-          target="_blank"
-          title="Sample the current Python stack trace for this worker."
-          rel="noreferrer"
-        >
-          Stack&nbsp;Trace
-        </a>
+        <CpuProfilingLink pid={pid} ip={ip} type="" />
         <br />
-        <a
-          href={`/worker/cpu_profile?pid=${pid}&ip=${ip}&duration=5&native=0`}
-          target="_blank"
-          title="Profile the Python worker for 5 seconds (default) and display a CPU flame graph."
-          rel="noreferrer"
-        >
-          CPU&nbsp;Flame&nbsp;Graph
-        </a>
+        <CpuStackTraceLink pid={pid} ip={ip} type="" />
         <br />
+        <MemoryProfilingButton pid={pid} ip={ip} />
       </TableCell>
       <TableCell>
         <PercentageBar num={Number(cpu)} total={100}>
@@ -245,13 +299,15 @@ export const WorkerRow = ({ node, worker, newIA = false }: WorkerRowProps) => {
         )}
       </TableCell>
       <TableCell>
-        <WorkerGPU worker={worker} />
+        <WorkerGpuRow workerPID={pid} gpus={node.gpus} />
       </TableCell>
       <TableCell>
-        <WorkerGRAM worker={worker} node={node} />
+        <WorkerGRAM workerPID={pid} gpus={node.gpus} />
       </TableCell>
       <TableCell>N/A</TableCell>
       <TableCell>N/A</TableCell>
+      <TableCell align="center">N/A</TableCell>
+      <TableCell align="center">N/A</TableCell>
       <TableCell align="center">N/A</TableCell>
       <TableCell align="center">N/A</TableCell>
     </TableRow>
@@ -271,7 +327,6 @@ type NodeRowsProps = {
    * Whether the row should start expanded. By default, this is false.
    */
   startExpanded?: boolean;
-  newIA?: boolean;
 };
 
 /**
@@ -281,13 +336,12 @@ export const NodeRows = ({
   node,
   isRefreshing,
   startExpanded = false,
-  newIA = false,
 }: NodeRowsProps) => {
   const [isExpanded, setExpanded] = useState(startExpanded);
 
   const { data } = useSWR(
     ["getNodeDetail", node.raylet.nodeId],
-    async (_, nodeId) => {
+    async ([_, nodeId]) => {
       const { data } = await getNodeDetail(nodeId);
       const { data: rspData, result } = data;
 
@@ -318,16 +372,10 @@ export const NodeRows = ({
         node={node}
         expanded={isExpanded}
         onExpandButtonClick={handleExpandButtonClick}
-        newIA={newIA}
       />
       {isExpanded &&
         workers.map((worker) => (
-          <WorkerRow
-            key={worker.pid}
-            node={node}
-            worker={worker}
-            newIA={newIA}
-          />
+          <WorkerRow key={worker.pid} node={node} worker={worker} />
         ))}
     </React.Fragment>
   );

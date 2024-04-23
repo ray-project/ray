@@ -1,9 +1,11 @@
 import unittest
+from collections import OrderedDict
 
 import gymnasium as gym
 import numpy as np
 
 from ray.rllib.utils.serialization import (
+    convert_numpy_to_python_primitives,
     gym_space_from_dict,
     gym_space_to_dict,
     space_from_dict,
@@ -42,6 +44,13 @@ class TestGymCheckEnv(unittest.TestCase):
 
         action_space = env.action_space
         self.assertEqual(sp.n, action_space.n)
+
+    def test_multi_binary_space(self):
+        mb = gym.spaces.MultiBinary((2, 3))
+        d = space_to_dict(mb)
+        sp = space_from_dict(d)
+
+        self.assertEqual(sp.n, mb.n)
 
     def test_multi_discrete_space(self):
         md_space = gym.spaces.MultiDiscrete(nvec=np.array([3, 4, 5]))
@@ -102,6 +111,34 @@ class TestGymCheckEnv(unittest.TestCase):
         self.assertEqual(sp.dtype, space.dtype)
 
         self.assertEqual(sp.spaces["action"].n, space.spaces["action"].n)
+
+    def test_dict_space_with_ordered_dict(self):
+        """Tests whether correct dict order is restored based on the original order."""
+        # User provides an OrderedDict -> gymnasium should take it and not further
+        # sort the keys. The same (user-provided) order must be restored.
+        input_space = gym.spaces.Dict(
+            OrderedDict(
+                {
+                    "b_key": gym.spaces.Box(low=np.array([-1.0]), high=np.array([1.0])),
+                    "a_key": gym.spaces.Discrete(n=3),
+                }
+            )
+        )
+        serialized_dict = space_to_dict(input_space)
+        deserialized_space = space_from_dict(serialized_dict)
+        self.assertTrue(input_space == deserialized_space)
+
+        # User provides a simple dict -> gymnasium automatically sorts all keys
+        # alphabetically. The same (alphabetical) order must be restored.
+        input_space = gym.spaces.Dict(
+            {
+                "b_key": gym.spaces.Box(low=np.array([-1.0]), high=np.array([1.0])),
+                "a_key": gym.spaces.Discrete(n=3),
+            }
+        )
+        serialized_dict = space_to_dict(input_space)
+        deserialized_space = space_from_dict(serialized_dict)
+        self.assertTrue(input_space == deserialized_space)
 
     def test_simplex_space(self):
         space = Simplex(shape=(3, 4), concentration=np.array((1, 2, 1)))
@@ -175,6 +212,23 @@ class TestGymCheckEnv(unittest.TestCase):
         self.assertTrue(isinstance(sp.original_space, gym.spaces.Dict))
         self.assertTrue(isinstance(sp.original_space["obs1"], gym.spaces.Box))
         self.assertTrue(isinstance(sp.original_space["obs2"], gym.spaces.Box))
+
+
+class TestConvertNumpyToPythonPrimitives(unittest.TestCase):
+    def test_convert_numpy_to_python_primitives(self):
+        # test utility for converting numpy types to python primitives
+        test_cases = [
+            [1, 2, 3],
+            [1.0, 2.0, 3.0],
+            ["abc", "def", "ghi"],
+            [True, False, True],
+        ]
+        for test_case in test_cases:
+            _assert_array_equal(
+                self.assertEqual,
+                convert_numpy_to_python_primitives(np.array(test_case)),
+                test_case,
+            )
 
 
 if __name__ == "__main__":

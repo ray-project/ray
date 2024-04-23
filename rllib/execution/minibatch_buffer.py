@@ -1,7 +1,10 @@
 from typing import Any, Tuple
 import queue
 
+from ray.rllib.utils.annotations import OldAPIStack
 
+
+@OldAPIStack
 class MinibatchBuffer:
     """Ring buffer of recent data batches for minibatch SGD.
 

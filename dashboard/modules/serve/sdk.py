@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional
 from ray._private.utils import split_address
 
 try:
@@ -11,16 +11,15 @@ except ImportError:
 from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 
 
-DEPLOY_PATH = "/api/serve/deployments/"
-INFO_PATH = "/api/serve/deployments/"
-STATUS_PATH = "/api/serve/deployments/status"
-DELETE_PATH = "/api/serve/deployments/"
+DEPLOY_PATH = "/api/serve/applications/"
+DELETE_PATH = "/api/serve/applications/"
+STATUS_PATH = "/api/serve/applications/"
 
 
 class ServeSubmissionClient(SubmissionClient):
     def __init__(
         self,
-        dashboard_agent_address: str,
+        dashboard_head_address: str,
         create_cluster_if_needed=False,
         cookies: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, Any]] = None,
@@ -29,23 +28,23 @@ class ServeSubmissionClient(SubmissionClient):
         if requests is None:
             raise RuntimeError(
                 "The Serve CLI requires the ray[default] "
-                "installation: `pip install 'ray[default']``"
+                'installation: `pip install "ray[default]"`'
             )
 
         invalid_address_message = (
             "Got an unexpected address"
-            f'"{dashboard_agent_address}" while trying '
-            "to connect to the Ray dashboard agent. The Serve SDK/CLI requires the "
-            "Ray dashboard agent's HTTP(S) address (which should start with "
+            f'"{dashboard_head_address}" while trying '
+            "to connect to the Ray dashboard. The Serve SDK/CLI requires the "
+            "Ray dashboard's HTTP(S) address (which should start with "
             '"http://" or "https://". If this address '
-            "wasn't passed explicitly, it may be set in the RAY_AGENT_ADDRESS "
-            "environment variable."
+            "wasn't passed explicitly, it may be set in the "
+            "RAY_DASHBOARD_ADDRESS environment variable."
         )
 
-        if "://" not in dashboard_agent_address:
+        if "://" not in dashboard_head_address:
             raise ValueError(invalid_address_message)
 
-        module_string, _ = split_address(dashboard_agent_address)
+        module_string, _ = split_address(dashboard_head_address)
 
         # If user passes in ray://, raise error. Serve submission should
         # not use a Ray client address.
@@ -53,7 +52,7 @@ class ServeSubmissionClient(SubmissionClient):
             raise ValueError(invalid_address_message)
 
         super().__init__(
-            address=dashboard_agent_address,
+            address=dashboard_head_address,
             create_cluster_if_needed=create_cluster_if_needed,
             cookies=cookies,
             metadata=metadata,
@@ -67,27 +66,20 @@ class ServeSubmissionClient(SubmissionClient):
             url="/api/ray/version",
         )
 
-    def deploy_application(self, config: Dict) -> None:
-        response = self._do_request("PUT", DEPLOY_PATH, json_data=config)
-
+    def get_serve_details(self) -> Dict:
+        response = self._do_request("GET", STATUS_PATH)
         if response.status_code != 200:
             self._raise_error(response)
 
-    def get_info(self) -> Union[Dict, None]:
-        response = self._do_request("GET", INFO_PATH)
-        if response.status_code == 200:
-            return response.json()
-        else:
+        return response.json()
+
+    def deploy_applications(self, config: Dict):
+        """Deploy multiple applications."""
+        response = self._do_request("PUT", DEPLOY_PATH, json_data=config)
+        if response.status_code != 200:
             self._raise_error(response)
 
-    def get_status(self) -> Union[Dict, None]:
-        response = self._do_request("GET", STATUS_PATH)
-        if response.status_code == 200:
-            return response.json()
-        else:
-            self._raise_error(response)
-
-    def delete_application(self) -> None:
+    def delete_applications(self):
         response = self._do_request("DELETE", DELETE_PATH)
         if response.status_code != 200:
             self._raise_error(response)

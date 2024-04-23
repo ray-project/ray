@@ -1,3 +1,10 @@
+# TODO (sven): Move this example script into the new API stack.
+
+# ***********************************************************************************
+# IMPORTANT NOTE: This script is using the old API stack and will soon be replaced by
+# `ray.rllib.examples.multi_agent.pettingzoo_shared_value_function.py`!
+# ***********************************************************************************
+
 """An example of customizing PPO to leverage a centralized critic.
 
 Here the model and policy are hard-coded to implement a centralized critic
@@ -14,8 +21,8 @@ modifies the environment.
 """
 
 import argparse
-import numpy as np
 from gymnasium.spaces import Discrete
+import numpy as np
 import os
 
 import ray
@@ -27,8 +34,8 @@ from ray.rllib.algorithms.ppo.ppo_tf_policy import (
 )
 from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
 from ray.rllib.evaluation.postprocessing import compute_advantages, Postprocessing
-from ray.rllib.examples.env.two_step_game import TwoStepGame
-from ray.rllib.examples.models.centralized_critic_models import (
+from ray.rllib.examples.envs.classes.two_step_game import TwoStepGame
+from ray.rllib.examples._old_api_stack.models.centralized_critic_models import (
     CentralizedCriticModel,
     TorchCentralizedCriticModel,
 )
@@ -51,7 +58,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "torch"],
-    default="tf",
+    default="torch",
     help="The DL framework specifier.",
 )
 parser.add_argument(

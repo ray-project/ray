@@ -2,21 +2,20 @@ import dataclasses
 import logging
 from typing import Any, Dict, Iterator, List, Optional, Union
 import ray
-from pkg_resources import packaging
+import packaging.version
 from ray.dashboard.utils import get_address_for_submission_client
 from ray.dashboard.modules.job.utils import strip_keys_with_value_none
+from ray.dashboard.modules.job.pydantic_models import (
+    JobDetails,
+)
 
 
 try:
     import aiohttp
     import requests
-    from ray.dashboard.modules.job.pydantic_models import (
-        JobDetails,
-    )
 except ImportError:
     aiohttp = None
     requests = None
-    JobDetails = None
 
 from ray.dashboard.modules.job.common import (
     JobDeleteResponse,
@@ -60,6 +59,8 @@ class JobSubmissionClient(SubmissionClient):
             via a simple dict update.
         headers: Headers to use when sending requests to the HTTP job server, used
             for cases like authentication to a remote cluster.
+        verify: Boolean indication to verify the server's TLS certificate or a path to
+            a file or directory of trusted certificates. Default: True.
     """
 
     def __init__(
@@ -69,6 +70,7 @@ class JobSubmissionClient(SubmissionClient):
         cookies: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, Any]] = None,
+        verify: Optional[Union[str, bool]] = True,
     ):
         self._client_ray_version = ray.__version__
         """Initialize a JobSubmissionClient and check the connection to the cluster."""
@@ -77,7 +79,6 @@ class JobSubmissionClient(SubmissionClient):
                 "The Ray jobs CLI & SDK require the ray[default] "
                 "installation: `pip install 'ray[default]'`"
             )
-
         # Check types of arguments
         if address is not None and not isinstance(address, str):
             raise TypeError(f"address must be a string, got {type(address)}")
@@ -92,6 +93,8 @@ class JobSubmissionClient(SubmissionClient):
             raise TypeError(f"metadata must be a dict, got {type(metadata)}")
         if headers is not None and not isinstance(headers, dict):
             raise TypeError(f"headers must be a dict, got {type(headers)}")
+        if not (isinstance(verify, str) or isinstance(verify, bool)):
+            raise TypeError(f"verify must be a str or bool, got {type(verify)}")
 
         api_server_url = get_address_for_submission_client(address)
 
@@ -101,6 +104,7 @@ class JobSubmissionClient(SubmissionClient):
             cookies=cookies,
             metadata=metadata,
             headers=headers,
+            verify=verify,
         )
         self._check_connection_and_version(
             min_version="1.9",
@@ -132,6 +136,7 @@ class JobSubmissionClient(SubmissionClient):
         submission_id: Optional[str] = None,
         entrypoint_num_cpus: Optional[Union[int, float]] = None,
         entrypoint_num_gpus: Optional[Union[int, float]] = None,
+        entrypoint_memory: Optional[int] = None,
         entrypoint_resources: Optional[Dict[str, float]] = None,
     ) -> str:
         """Submit and execute a job asynchronously.
@@ -165,6 +170,9 @@ class JobSubmissionClient(SubmissionClient):
             entrypoint_num_gpus: The quantity of GPUs to reserve for the execution
                 of the entrypoint command, separately from any tasks or actors launched
                 by it. Defaults to 0.
+            entrypoint_memory: The quantity of memory to reserve for the
+                execution of the entrypoint command, separately from any tasks or
+                actors launched by it. Defaults to 0.
             entrypoint_resources: The quantity of custom resources to reserve for the
                 execution of the entrypoint command, separately from any tasks or
                 actors launched by it.
@@ -191,12 +199,31 @@ class JobSubmissionClient(SubmissionClient):
                 "running Ray 2.2 or higher.",
             )
 
+        if entrypoint_memory:
+            self._check_connection_and_version(
+                min_version="2.8",
+                version_error_message="`entrypoint_memory` kwarg "
+                "is not supported on the Ray cluster. Please ensure the cluster is "
+                "running Ray 2.8 or higher.",
+            )
+
         runtime_env = runtime_env or {}
         metadata = metadata or {}
         metadata.update(self._default_metadata)
 
         self._upload_working_dir_if_needed(runtime_env)
         self._upload_py_modules_if_needed(runtime_env)
+
+        # Verify worker_process_setup_hook type.
+        setup_hook = runtime_env.get("worker_process_setup_hook")
+        if setup_hook and not isinstance(setup_hook, str):
+            raise ValueError(
+                f"Invalid type {type(setup_hook)} for `worker_process_setup_hook`. "
+                "When a job submission API is used, `worker_process_setup_hook` "
+                "only allows a string type (module name). "
+                "Specify `worker_process_setup_hook` via "
+                "ray.init within a driver to use a `Callable` type. "
+            )
 
         # Run the RuntimeEnv constructor to parse local pip/conda requirements files.
         runtime_env = RuntimeEnv(**runtime_env).to_dict()
@@ -209,6 +236,7 @@ class JobSubmissionClient(SubmissionClient):
             metadata=metadata,
             entrypoint_num_cpus=entrypoint_num_cpus,
             entrypoint_num_gpus=entrypoint_num_gpus,
+            entrypoint_memory=entrypoint_memory,
             entrypoint_resources=entrypoint_resources,
         )
 
@@ -259,7 +287,7 @@ class JobSubmissionClient(SubmissionClient):
         else:
             self._raise_error(r)
 
-    @PublicAPI(stability="alpha")
+    @PublicAPI(stability="stable")
     def delete_job(
         self,
         job_id: str,
@@ -454,7 +482,7 @@ class JobSubmissionClient(SubmissionClient):
             cookies=self._cookies, headers=self._headers
         ) as session:
             ws = await session.ws_connect(
-                f"{self._address}/api/jobs/{job_id}/logs/tail"
+                f"{self._address}/api/jobs/{job_id}/logs/tail", ssl=self._ssl_context
             )
 
             while True:

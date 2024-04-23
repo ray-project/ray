@@ -92,11 +92,15 @@ def get_feature_importance_on_index(
         difference between the expected output and the output due to the perturbation.
     """
     perturbed_ds = dataset.map_batches(
-        perturb_fn, batch_size=batch_size, fn_kwargs={"index": index}
+        perturb_fn,
+        batch_size=batch_size,
+        batch_format="pandas",
+        fn_kwargs={"index": index},
     )
     perturbed_actions = perturbed_ds.map_batches(
         _compute_actions,
         batch_size=batch_size,
+        batch_format="pandas",
         fn_kwargs={
             "output_key": "perturbed_actions",
             "input_key": "perturbed_obs",
@@ -110,7 +114,9 @@ def get_feature_importance_on_index(
         batch["delta"] = np.abs(batch["ref_actions"] - batch["perturbed_actions"])
         return batch
 
-    delta = perturbed_actions.map_batches(delta_fn, batch_size=batch_size)
+    delta = perturbed_actions.map_batches(
+        delta_fn, batch_size=batch_size, batch_format="pandas"
+    )
 
     return delta
 

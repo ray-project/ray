@@ -1,12 +1,14 @@
 import argparse
+import os
+import tempfile
 
 import numpy as np
-from ray.air import session
 import torch
 import torch.nn as nn
+
 import ray.train as train
-from ray.train.torch import TorchTrainer, TorchCheckpoint
-from ray.air.config import ScalingConfig
+from ray.train import Checkpoint, RunConfig, ScalingConfig
+from ray.train.torch import TorchTrainer
 
 
 class LinearDataset(torch.utils.data.Dataset):
@@ -24,7 +26,10 @@ class LinearDataset(torch.utils.data.Dataset):
         return len(self.x)
 
 
-def train_epoch(dataloader, model, loss_fn, optimizer):
+def train_epoch(epoch, dataloader, model, loss_fn, optimizer):
+    if train.get_context().get_world_size() > 1:
+        dataloader.sampler.set_epoch(epoch)
+
     for X, y in dataloader:
         # Compute prediction error
         pred = model(X)
@@ -75,22 +80,26 @@ def train_func(config):
     optimizer = torch.optim.SGD(model.parameters(), lr=lr)
 
     results = []
-    for _ in range(epochs):
-        train_epoch(train_loader, model, loss_fn, optimizer)
+    for epoch in range(epochs):
+        train_epoch(epoch, train_loader, model, loss_fn, optimizer)
         state_dict, loss = validate_epoch(validation_loader, model, loss_fn)
         result = dict(loss=loss)
         results.append(result)
-        session.report(result, checkpoint=TorchCheckpoint.from_state_dict(state_dict))
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            torch.save(state_dict, os.path.join(tmpdir, "model.pt"))
+            train.report(result, checkpoint=Checkpoint.from_directory(tmpdir))
 
     return results
 
 
-def train_linear(num_workers=2, use_gpu=False, epochs=3):
+def train_linear(num_workers=2, use_gpu=False, epochs=3, storage_path=None):
     config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": epochs}
     trainer = TorchTrainer(
         train_loop_per_worker=train_func,
         train_loop_config=config,
         scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
+        run_config=RunConfig(storage_path=storage_path),
     )
     result = trainer.fit()
 

@@ -5,9 +5,6 @@ import re
 import time
 import tracemalloc
 from typing import Callable, List, Optional
-
-import numpy as np
-
 from ray.util.annotations import DeveloperAPI
 
 _logged = set()
@@ -23,8 +20,15 @@ def log_once(key):
     Various logging settings can adjust the definition of "first".
 
     Example:
-        >>> if log_once("some_key"):
-        ...     logger.info("Some verbose logging statement")
+
+        .. testcode::
+
+            import logging
+            from ray.util.debug import log_once
+
+            logger = logging.getLogger(__name__)
+            if log_once("some_key"):
+                logger.info("Some verbose logging statement")
     """
 
     global _last_logged
@@ -60,10 +64,15 @@ def enable_periodic_logging():
 
 
 @DeveloperAPI
-def reset_log_once(key):
-    """Resets log_once for the provided key."""
+def reset_log_once(key: Optional[str] = None):
+    """Resets log_once for the provided key.
 
-    _logged.discard(key)
+    If you don't provide a key, resets log_once for all keys.
+    """
+    if key is None:
+        _logged.clear()
+    else:
+        _logged.discard(key)
 
 
 # A suspicious memory-allocating stack-trace that we should re-test
@@ -202,6 +211,7 @@ def _take_snapshot(table, suspicious=None):
 
 def _find_memory_leaks_in_table(table):
     import scipy.stats
+    import numpy as np
 
     suspects = []
 

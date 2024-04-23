@@ -25,8 +25,8 @@ logger = logging.getLogger(__name__)
 WINDOWS_DRIVES = [chr(i) for i in range(ord("c"), ord("z") + 1)]
 
 
-# TODO(jungong) : use DatasetWriter to back JsonWriter, so we reduce
-#     codebase complexity without losing existing functionality.
+# TODO(jungong): use DatasetWriter to back JsonWriter, so we reduce codebase complexity
+#  without losing existing functionality.
 @PublicAPI
 class JsonWriter(OutputWriter):
     """Writer object that saves experiences in JSON file chunks."""
@@ -113,6 +113,7 @@ def _to_jsonable(v, compress: bool) -> Any:
         return str(pack(v))
     elif isinstance(v, np.ndarray):
         return v.tolist()
+
     return v
 
 

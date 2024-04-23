@@ -1,9 +1,12 @@
 import gymnasium as gym
 from typing import List, Any
 
+from ray.rllib.utils.annotations import OldAPIStack
+
 TaskType = Any  # Can be different types depending on env, e.g., int or dict
 
 
+@OldAPIStack
 class TaskSettableEnv(gym.Env):
     """
     Extension of gym.Env to define a task-settable Env.
@@ -17,9 +20,11 @@ class TaskSettableEnv(gym.Env):
     - Setting the env to any task it supports.
     - Getting the current task this env has been set to.
 
-    Examples:
-        >>> from ray.rllib.env.apis.task_settable_env import TaskSettableEnv
-        >>> env = TaskSettableEnv(...) # doctest: +SKIP
+    .. testcode::
+        :skipif: True
+
+        from ray.rllib.env.apis.task_settable_env import TaskSettableEnv
+        env = TaskSettableEnv(...)
     """
 
     def sample_tasks(self, n_tasks: int) -> List[TaskType]:

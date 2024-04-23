@@ -7,7 +7,6 @@ import numpy as np
 
 import ray
 from ray.rllib.algorithms.dqn.distributional_q_tf_model import DistributionalQTFModel
-from ray.rllib.algorithms.simple_q.utils import Q_SCOPE, Q_TARGET_SCOPE
 from ray.rllib.evaluation.postprocessing import adjust_nstep
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -33,6 +32,8 @@ tf1, tf, tfv = try_import_tf()
 
 # Importance sampling weights for prioritized replay
 PRIO_WEIGHTS = "weights"
+Q_SCOPE = "q_func"
+Q_TARGET_SCOPE = "target_q_func"
 
 
 class QLoss:
@@ -479,7 +480,7 @@ def postprocess_nstep_and_prio(
 
 DQNTFPolicy = build_tf_policy(
     name="DQNTFPolicy",
-    get_default_config=lambda: ray.rllib.algorithms.dqn.dqn.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.algorithms.dqn.dqn.DQNConfig(),
     make_model=build_q_model,
     action_distribution_fn=get_distribution_inputs_and_class,
     loss_fn=build_q_losses,

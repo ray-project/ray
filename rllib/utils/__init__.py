@@ -2,10 +2,15 @@ import contextlib
 from functools import partial
 
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
-from ray.rllib.utils.framework import try_import_tf, try_import_tfp, try_import_torch
 from ray.rllib.utils.deprecation import deprecation_warning
-from ray.rllib.utils.filter_manager import FilterManager
 from ray.rllib.utils.filter import Filter
+from ray.rllib.utils.filter_manager import FilterManager
+from ray.rllib.utils.framework import (
+    try_import_jax,
+    try_import_tf,
+    try_import_tfp,
+    try_import_torch,
+)
 from ray.rllib.utils.numpy import (
     sigmoid,
     softmax,
@@ -120,6 +125,7 @@ __all__ = [
     "relu",
     "sigmoid",
     "softmax",
+    "try_import_jax",
     "try_import_tf",
     "try_import_tfp",
     "try_import_torch",

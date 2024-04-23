@@ -66,11 +66,22 @@ ObjectID NativeTaskSubmitter::Submit(InvocationSpec &invocation,
   options.name = call_options.name;
   options.resources = call_options.resources;
   options.serialized_runtime_env_info = call_options.serialized_runtime_env_info;
-  std::optional<std::vector<rpc::ObjectReference>> return_refs;
+  options.generator_backpressure_num_objects = -1;
+  std::vector<rpc::ObjectReference> return_refs;
   if (invocation.task_type == TaskType::ACTOR_TASK) {
-    return_refs = core_worker.SubmitActorTask(
-        invocation.actor_id, BuildRayFunction(invocation), invocation.args, options);
-    if (!return_refs.has_value()) {
+    // NOTE: Ray CPP doesn't support per-method max_retries and retry_exceptions
+    const auto native_actor_handle = core_worker.GetActorHandle(invocation.actor_id);
+    int max_retries = native_actor_handle->MaxTaskRetries();
+
+    auto status = core_worker.SubmitActorTask(invocation.actor_id,
+                                              BuildRayFunction(invocation),
+                                              invocation.args,
+                                              options,
+                                              max_retries,
+                                              /*retry_exceptions=*/false,
+                                              /*serialized_retry_exception_allowlist=*/"",
+                                              return_refs);
+    if (!status.ok()) {
       return ObjectID::Nil();
     }
   } else {
@@ -95,7 +106,7 @@ ObjectID NativeTaskSubmitter::Submit(InvocationSpec &invocation,
                                          "");
   }
   std::vector<ObjectID> return_ids;
-  for (const auto &ref : return_refs.value()) {
+  for (const auto &ref : return_refs) {
     return_ids.push_back(ObjectID::FromBinary(ref.object_id()));
   }
   return return_ids[0];

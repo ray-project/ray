@@ -1,3 +1,10 @@
+load("//bazel:python.bzl", "doctest")
+
+doctest(
+    files = glob(["**/*.py"], exclude=glob(["examples/**/*", "tests/**/*", "callbacks/*.py", "integrations/wandb.py"])),  # TODO: Add note for callbacks
+    tags = ["team:ml"]
+)
+
 # --------------------------------------------------------------------
 # Tests from the python/ray/air/examples directory.
 # Please keep these sorted alphabetically.
@@ -35,17 +42,9 @@ py_test(
 )
 
 py_test(
-    name = "test_checkpoints",
+    name = "test_air_usage",
     size = "small",
-    srcs = ["tests/test_checkpoints.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
-    name = "test_checkpoint_manager",
-    size = "small",
-    srcs = ["tests/test_checkpoint_manager.py"],
+    srcs = ["tests/test_air_usage.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
@@ -62,18 +61,36 @@ py_test(
     name = "test_data_batch_conversion",
     size = "small",
     srcs = ["tests/test_data_batch_conversion.py"],
-    tags = ["team:ml", "exclusive", "ray_data"],
+    tags = ["team:ml", "team:data", "exclusive", "ray_data"],
     deps = [":ml_lib"]
 )
 
 py_test(
-    name = "test_dataset_config",
+    name = "test_new_dataset_config",
     size = "large",
-    srcs = ["tests/test_dataset_config.py"],
+    srcs = ["tests/test_new_dataset_config.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
 
+py_test(
+    name = "test_experiment_restore",
+    size = "large",
+    srcs = [
+        "tests/test_experiment_restore.py",
+        "tests/_test_experiment_restore_run.py"
+    ],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_errors",
+    size = "medium",
+    srcs = ["tests/test_errors.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
 
 py_test(
     name = "test_integration_comet",
@@ -101,16 +118,8 @@ py_test(
 
 py_test(
     name = "test_keras_callback",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_keras_callback.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
-    name = "test_remote_storage",
-    size = "small",
-    srcs = ["tests/test_remote_storage.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
@@ -135,7 +144,7 @@ py_test(
     name = "test_tensor_extension",
     size = "small",
     srcs = ["tests/test_tensor_extension.py"],
-    tags = ["team:ml", "exclusive", "ray_data"],
+    tags = ["team:ml", "team:data", "exclusive", "ray_data"],
     deps = [":ml_lib"]
 )
 
@@ -144,6 +153,22 @@ py_test(
     size = "small",
     srcs = ["tests/test_tracebacks.py"],
     tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_utils",
+    size = "small",
+    srcs = ["tests/test_utils.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_util_torch_dist",
+    size = "small",
+    srcs = ["tests/test_util_torch_dist.py"],
+    tags = ["team:ml", "gpu", "exclusive"],
     deps = [":ml_lib"]
 )
 
@@ -224,7 +249,6 @@ py_test(
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
-
 
 
 # This is a dummy test dependency that causes the above tests to be

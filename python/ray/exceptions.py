@@ -1,6 +1,7 @@
+import logging
 import os
 from traceback import format_exception
-from typing import Optional, Union
+from typing import Optional, Type, Union
 
 import colorama
 
@@ -17,6 +18,8 @@ from ray.core.generated.common_pb2 import (
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 import setproctitle
+
+logger = logging.getLogger(__name__)
 
 
 @PublicAPI
@@ -73,13 +76,19 @@ class TaskCancelledError(RayError):
             cancelled.
     """
 
-    def __init__(self, task_id: Optional[TaskID] = None):
+    def __init__(
+        self, task_id: Optional[TaskID] = None, error_message: Optional[str] = None
+    ):
         self.task_id = task_id
+        self.error_message = error_message
 
     def __str__(self):
-        if self.task_id is None:
-            return "This task or its dependency was cancelled by"
-        return "Task: " + str(self.task_id) + " was cancelled"
+        msg = ""
+        if self.task_id:
+            msg = "Task: " + str(self.task_id) + " was cancelled. "
+        if self.error_message:
+            msg += self.error_message
+        return msg
 
 
 @PublicAPI
@@ -102,6 +111,7 @@ class RayTaskError(RayError):
         pid=None,
         ip=None,
         actor_repr=None,
+        actor_id=None,
     ):
         """Initialize a RayTaskError."""
         import ray
@@ -119,25 +129,15 @@ class RayTaskError(RayError):
         self.function_name = function_name
         self.traceback_str = traceback_str
         self.actor_repr = actor_repr
+        self._actor_id = actor_id
         # TODO(edoakes): should we handle non-serializable exception objects?
         self.cause = cause
         assert traceback_str is not None
 
-    def as_instanceof_cause(self):
-        """Returns an exception that is an instance of the cause's class.
-
-        The returned exception will inherit from both RayTaskError and the
-        cause class and will contain all of the attributes of the cause
-        exception.
-        """
-
+    def make_dual_exception_type(self) -> Type:
+        """Makes a Type that inherits from both RayTaskError and the type of
+        `self.cause`. Raises TypeError if the cause class can't be subclassed"""
         cause_cls = self.cause.__class__
-        if issubclass(RayTaskError, cause_cls):
-            return self  # already satisfied
-
-        if issubclass(cause_cls, RayError):
-            return self  # don't try to wrap ray internal errors
-
         error_msg = str(self)
 
         class cls(RayTaskError, cause_cls):
@@ -158,7 +158,33 @@ class RayTaskError(RayError):
         cls.__name__ = name
         cls.__qualname__ = name
 
-        return cls(self.cause)
+        return cls
+
+    def as_instanceof_cause(self):
+        """Returns an exception that's an instance of the cause's class.
+
+        The returned exception inherits from both RayTaskError and the
+        cause class and contains all of the attributes of the cause
+        exception.
+
+        If the cause class can't be subclassed, issues a warning and returns `self`.
+        """
+        cause_cls = self.cause.__class__
+        if issubclass(RayTaskError, cause_cls):
+            return self  # already satisfied
+
+        try:
+            dual_cls = self.make_dual_exception_type()
+        except TypeError as e:
+            logger.warning(
+                f"User exception type {type(self.cause)} in RayTaskError can't"
+                " be subclassed! This exception is raised as"
+                " RayTaskError only. You can use `ray_task_error.cause` to"
+                f" access the user exception. Failure in subclassing: {e}"
+            )
+            return self
+
+        return dual_cls(self.cause)
 
     def __str__(self):
         """Format a RayTaskError as a string."""
@@ -183,7 +209,9 @@ class RayTaskError(RayError):
                     f"(pid={self.pid}, ip={self.ip}"
                 )
                 if self.actor_repr:
-                    traceback_line += f", repr={self.actor_repr})"
+                    traceback_line += (
+                        f", actor_id={self._actor_id}, repr={self.actor_repr})"
+                    )
                 else:
                     traceback_line += ")"
                 code_from_internal_file = False
@@ -245,14 +273,49 @@ class WorkerCrashedError(RayError):
 
 @PublicAPI
 class RayActorError(RayError):
+    """Indicates that the actor has outages unexpectedly before finishing a task.
+
+    This exception could happen because the actor process is dead, or is unavailable for
+    the moment. Ray raises subclasses `ActorDiedError` and `ActorUnavailableError`
+    respectively.
+    """
+
+    BASE_ERROR_MSG = "The actor experienced an error before finishing this task."
+
+    def __init__(
+        self,
+        actor_id: str = None,
+        error_msg: str = BASE_ERROR_MSG,
+        actor_init_failed: bool = False,
+        preempted: bool = False,
+    ):
+        #: The actor ID in hex string.
+        self.actor_id = actor_id
+        #: Whether the actor failed in the middle of __init__.
+        self.error_msg = error_msg
+        #: The full error message.
+        self._actor_init_failed = actor_init_failed
+        #: Whether the actor died because the node was preempted.
+        self._preempted = preempted
+
+    def __str__(self) -> str:
+        return self.error_msg
+
+    @property
+    def preempted(self) -> bool:
+        return self._preempted
+
+    @property
+    def actor_init_failed(self) -> bool:
+        return self._actor_init_failed
+
+
+@DeveloperAPI
+class ActorDiedError(RayActorError):
     """Indicates that the actor died unexpectedly before finishing a task.
 
     This exception could happen either because the actor process dies while
     executing a task, or because a task is submitted to a dead actor.
-
-    If the actor is dead because of an exception thrown in its creation tasks,
-    RayActorError will contain the creation_task_error, which is used to
-    reconstruct the exception on the caller side.
 
     Args:
         cause: The cause of the actor error. `RayTaskError` type means
@@ -263,17 +326,25 @@ class RayActorError(RayError):
             but it is there as a safety check.
     """
 
+    BASE_ERROR_MSG = "The actor died unexpectedly before finishing this task."
+
     def __init__(self, cause: Union[RayTaskError, ActorDiedErrorContext] = None):
-        # -- If the actor has failed in the middle of __init__, this is set. --
-        self._actor_init_failed = False
-        # -- The base actor error message. --
-        self.base_error_msg = "The actor died unexpectedly before finishing this task."
+        """
+        Construct a RayActorError by building the arguments.
+        """
+
+        actor_id = None
+        error_msg = ActorDiedError.BASE_ERROR_MSG
+        actor_init_failed = False
+        preempted = False
 
         if not cause:
-            self.error_msg = self.base_error_msg
+            # Use the defaults above.
+            pass
         elif isinstance(cause, RayTaskError):
-            self._actor_init_failed = True
-            self.error_msg = (
+            actor_init_failed = True
+            actor_id = cause._actor_id
+            error_msg = (
                 "The actor died because of an error"
                 " raised in its creation task, "
                 f"{cause.__str__()}"
@@ -281,7 +352,7 @@ class RayActorError(RayError):
         else:
             # Inidicating system-level actor failures.
             assert isinstance(cause, ActorDiedErrorContext)
-            error_msg_lines = [self.base_error_msg]
+            error_msg_lines = [ActorDiedError.BASE_ERROR_MSG]
             error_msg_lines.append(f"\tclass_name: {cause.class_name}")
             error_msg_lines.append(f"\tactor_id: {ActorID(cause.actor_id).hex()}")
             # Below items are optional fields.
@@ -298,19 +369,34 @@ class RayActorError(RayError):
                 error_msg_lines.append(
                     "The actor never ran - it was cancelled before it started running."
                 )
-            self.error_msg = "\n".join(error_msg_lines)
-            self.actor_id = ActorID(cause.actor_id).hex()
-
-    @property
-    def actor_init_failed(self) -> bool:
-        return self._actor_init_failed
-
-    def __str__(self) -> str:
-        return self.error_msg
+            if cause.preempted:
+                preempted = True
+                error_msg_lines.append(
+                    "\tThe actor's node was killed by a spot preemption."
+                )
+            error_msg = "\n".join(error_msg_lines)
+            actor_id = ActorID(cause.actor_id).hex()
+        super().__init__(actor_id, error_msg, actor_init_failed, preempted)
 
     @staticmethod
     def from_task_error(task_error: RayTaskError):
-        return RayActorError(task_error)
+        return ActorDiedError(task_error)
+
+
+@DeveloperAPI
+class ActorUnavailableError(RayActorError):
+    """Raised when the actor is temporarily unavailable but may be available later."""
+
+    def __init__(self, error_message: str, actor_id: Optional[bytes]):
+        actor_id = ActorID(actor_id).hex() if actor_id is not None else None
+        error_msg = (
+            f"The actor {actor_id} is unavailable: {error_message}. The task may or may"
+            "not have been executed on the actor."
+        )
+        actor_init_failed = False
+        preempted = False
+
+        super().__init__(actor_id, error_msg, actor_init_failed, preempted)
 
 
 @PublicAPI
@@ -329,6 +415,16 @@ class RaySystemError(RayError):
         if self.traceback_str:
             error_msg += f"\ntraceback: {self.traceback_str}"
         return error_msg
+
+
+@DeveloperAPI
+class UserCodeException(RayError):
+    """Indicates that an exception occurred while executing user code.
+    For example, this exception can be used to wrap user code exceptions
+    from a remote task or actor. The `retry_exceptions` parameter will
+    still respect the underlying cause of this exception."""
+
+    pass
 
 
 @PublicAPI
@@ -455,6 +551,18 @@ class ObjectFetchTimedOutError(ObjectLostError):
                 "system-level bug."
             )
         )
+
+
+@DeveloperAPI
+class RpcError(RayError):
+    """Indicates an error in the underlying RPC system."""
+
+    def __init__(self, message, rpc_code=None):
+        self.message = message
+        self.rpc_code = rpc_code
+
+    def __str__(self):
+        return self.message
 
 
 @DeveloperAPI
@@ -697,6 +805,15 @@ class ActorUnschedulableError(RayError):
         return f"The actor is not schedulable: {self.error_message}"
 
 
+@DeveloperAPI
+class ObjectRefStreamEndOfStreamError(RayError):
+    """Raised by streaming generator tasks when there are no more ObjectRefs to
+    read.
+    """
+
+    pass
+
+
 RAY_EXCEPTION_TYPES = [
     PlasmaObjectNotAvailable,
     RayError,
@@ -719,5 +836,7 @@ RAY_EXCEPTION_TYPES = [
     PendingCallsLimitExceeded,
     LocalRayletDiedError,
     TaskUnschedulableError,
+    ActorDiedError,
     ActorUnschedulableError,
+    ActorUnavailableError,
 ]

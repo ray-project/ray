@@ -3,7 +3,6 @@
 # isort: skip_file
 
 # __tf_setup_begin__
-
 import numpy as np
 import tensorflow as tf
 
@@ -32,21 +31,17 @@ def build_and_compile_cnn_model():
         optimizer=tf.keras.optimizers.SGD(learning_rate=0.001),
         metrics=['accuracy'])
     return model
-
 # __tf_setup_end__
 
 # __tf_single_begin__
-
 def train_func():
     batch_size = 64
     single_worker_dataset = mnist_dataset(batch_size)
     single_worker_model = build_and_compile_cnn_model()
     single_worker_model.fit(single_worker_dataset, epochs=3, steps_per_epoch=70)
-
 # __tf_single_end__
 
 # __tf_distributed_begin__
-
 import json
 import os
 
@@ -66,20 +61,16 @@ def train_func_distributed():
         multi_worker_model = build_and_compile_cnn_model()
 
     multi_worker_model.fit(multi_worker_dataset, epochs=3, steps_per_epoch=70)
-
 # __tf_distributed_end__
 
 if __name__ == "__main__":
     # __tf_single_run_begin__
-
     train_func()
-
     # __tf_single_run_end__
 
     # __tf_trainer_begin__
-
     from ray.train.tensorflow import TensorflowTrainer
-    from ray.air.config import ScalingConfig
+    from ray.train import ScalingConfig
 
     # For GPU Training, set `use_gpu` to True.
     use_gpu = False
@@ -87,5 +78,4 @@ if __name__ == "__main__":
     trainer = TensorflowTrainer(train_func_distributed, scaling_config=ScalingConfig(num_workers=4, use_gpu=use_gpu))
 
     trainer.fit()
-
     # __tf_trainer_end__

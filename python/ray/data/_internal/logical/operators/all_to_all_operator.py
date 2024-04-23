@@ -1,8 +1,10 @@
 from typing import Any, Dict, List, Optional
 
 from ray.data._internal.logical.interfaces import LogicalOperator
+from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
+from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
+from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
 from ray.data.aggregate import AggregateFn
-from ray.data.block import KeyFn
 
 
 class AbstractAllToAll(LogicalOperator):
@@ -15,6 +17,7 @@ class AbstractAllToAll(LogicalOperator):
         name: str,
         input_op: LogicalOperator,
         num_outputs: Optional[int] = None,
+        sub_progress_bar_names: Optional[List[str]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         """
@@ -27,9 +30,10 @@ class AbstractAllToAll(LogicalOperator):
                 operator.
             ray_remote_args: Args to provide to ray.remote.
         """
-        super().__init__(name, [input_op])
+        super().__init__(name, [input_op], num_outputs)
         self._num_outputs = num_outputs
         self._ray_remote_args = ray_remote_args or {}
+        self._sub_progress_bar_names = sub_progress_bar_names
 
 
 class RandomizeBlocks(AbstractAllToAll):
@@ -41,7 +45,7 @@ class RandomizeBlocks(AbstractAllToAll):
         seed: Optional[int] = None,
     ):
         super().__init__(
-            "RandomizeBlocks",
+            "RandomizeBlockOrder",
             input_op,
         )
         self._seed = seed
@@ -53,14 +57,17 @@ class RandomShuffle(AbstractAllToAll):
     def __init__(
         self,
         input_op: LogicalOperator,
+        name: str = "RandomShuffle",
         seed: Optional[int] = None,
-        num_outputs: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
-            "RandomShuffle",
+            name,
             input_op,
-            num_outputs=num_outputs,
+            sub_progress_bar_names=[
+                ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME,
+                ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
+            ],
             ray_remote_args=ray_remote_args,
         )
         self._seed = seed
@@ -75,10 +82,20 @@ class Repartition(AbstractAllToAll):
         num_outputs: int,
         shuffle: bool,
     ):
+        if shuffle:
+            sub_progress_bar_names = [
+                ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME,
+                ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
+            ]
+        else:
+            sub_progress_bar_names = [
+                ShuffleTaskSpec.SPLIT_REPARTITION_SUB_PROGRESS_BAR_NAME,
+            ]
         super().__init__(
             "Repartition",
             input_op,
             num_outputs=num_outputs,
+            sub_progress_bar_names=sub_progress_bar_names,
         )
         self._shuffle = shuffle
 
@@ -89,15 +106,18 @@ class Sort(AbstractAllToAll):
     def __init__(
         self,
         input_op: LogicalOperator,
-        key: Optional[KeyFn],
-        descending: bool,
+        sort_key: SortKey,
     ):
         super().__init__(
             "Sort",
             input_op,
+            sub_progress_bar_names=[
+                SortTaskSpec.SORT_SAMPLE_SUB_PROGRESS_BAR_NAME,
+                ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME,
+                ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
+            ],
         )
-        self._key = key
-        self._descending = descending
+        self._sort_key = sort_key
 
 
 class Aggregate(AbstractAllToAll):
@@ -106,12 +126,16 @@ class Aggregate(AbstractAllToAll):
     def __init__(
         self,
         input_op: LogicalOperator,
-        key: Optional[KeyFn],
+        key: Optional[str],
         aggs: List[AggregateFn],
     ):
         super().__init__(
             "Aggregate",
             input_op,
+            sub_progress_bar_names=[
+                ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME,
+                ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
+            ],
         )
         self._key = key
         self._aggs = aggs

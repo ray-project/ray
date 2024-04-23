@@ -1,117 +1,74 @@
-from dataclasses import dataclass
-import numpy as np
-from typing import Any, List, Mapping
-import tree
+from typing import Dict
 
-from ray.rllib import SampleBatch
+import tree
+from ray.rllib.algorithms.impala.impala import ImpalaConfig
+from ray.rllib.algorithms.impala.impala_learner import ImpalaLearner
 from ray.rllib.algorithms.impala.tf.vtrace_tf_v2 import make_time_major, vtrace_tf2
-from ray.rllib.core.learner.learner import LearnerHPs
+from ray.rllib.core.columns import Columns
+from ray.rllib.core.learner.learner import ENTROPY_KEY
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
+from ray.rllib.core.models.base import CRITIC, ENCODER_OUT
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.typing import ResultDict, TensorType
+from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.utils.typing import ModuleID, TensorType
 
 _, tf, _ = try_import_tf()
 
 
-@dataclass
-class ImpalaHPs(LearnerHPs):
-    """Hyper-parameters for IMPALA.
-
-    Attributes:
-        rollout_frag_or_episode_len: The length of a rollout fragment or episode.
-            Used when making SampleBatches time major for computing loss.
-        recurrent_seq_len: The length of a recurrent sequence. Used when making
-            SampleBatches time major for computing loss.
-        discount_factor: The discount factor to use for computing returns.
-        vtrace_clip_rho_threshold: The rho threshold to use for clipping the
-            importance weights.
-        vtrace_clip_pg_rho_threshold: The rho threshold to use for clipping the
-            importance weights when computing the policy_gradient loss.
-        vtrace_drop_last_ts: Whether to drop the last timestep when computing the loss.
-            This is useful for stabilizing the loss.
-            NOTE: This shouldn't be True when training on environments where the rewards
-            come at the end of the episode.
-        vf_loss_coeff: The amount to weight the value function loss by when computing
-            the total loss.
-        entropy_coeff: The amount to weight the average entropy of the actions in the
-            SampleBatch towards the total_loss for module updates. The higher this
-            coefficient, the more that the policy network will be encouraged to output
-            distributions with higher entropy/std deviation, which will encourage
-            greater exploration.
-
-    """
-
-    rollout_frag_or_episode_len: int = None
-    recurrent_seq_len: int = None
-    discount_factor: float = 0.99
-    vtrace_clip_rho_threshold: float = 1.0
-    vtrace_clip_pg_rho_threshold: float = 1.0
-    vtrace_drop_last_ts: bool = True
-    vf_loss_coeff: float = 0.5
-    entropy_coeff: float = 0.01
-
-
-class ImpalaTfLearner(TfLearner):
-    """Implements IMPALA loss / update logic on top of TfLearner.
-
-    This class implements the IMPALA loss under `_compute_loss_per_module()`.
-    """
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        self.vtrace_clip_rho_threshold = self._hps.vtrace_clip_rho_threshold
-        self.vtrace_clip_pg_rho_threshold = self._hps.vtrace_clip_pg_rho_threshold
-        self.vtrace_drop_last_ts = self._hps.vtrace_drop_last_ts
-        self.vf_loss_coeff = self._hps.vf_loss_coeff
-        self.entropy_coeff = self._hps.entropy_coeff
-        self.rollout_frag_or_episode_len = self._hps.rollout_frag_or_episode_len
-        self.recurrent_seq_len = self._hps.recurrent_seq_len
-        self.discount_factor = self._hps.discount_factor
-        assert (
-            self.rollout_frag_or_episode_len is not None
-            or self.recurrent_seq_len is not None
-        ) and not (self.rollout_frag_or_episode_len and self.recurrent_seq_len), (
-            "Either rollout_frag_or_episode_len or recurrent_seq_len"
-            " must be set in the IMPALA HParams. "
-        )
+class ImpalaTfLearner(ImpalaLearner, TfLearner):
+    """Implements the IMPALA loss function in tensorflow."""
 
     @override(TfLearner)
-    def compute_loss_per_module(
-        self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
+    def compute_loss_for_module(
+        self,
+        *,
+        module_id: ModuleID,
+        config: ImpalaConfig,
+        batch: NestedDict,
+        fwd_out: Dict[str, TensorType],
     ) -> TensorType:
-        values = fwd_out[SampleBatch.VF_PREDS]
-        target_policy_dist = fwd_out[SampleBatch.ACTION_DIST]
+        action_dist_class_train = self.module[module_id].get_train_action_dist_cls()
+        target_policy_dist = action_dist_class_train.from_logits(
+            fwd_out[Columns.ACTION_DIST_INPUTS]
+        )
+        values = fwd_out[Columns.VF_PREDS]
 
-        behaviour_actions_logp = batch[SampleBatch.ACTION_LOGP]
-        target_actions_logp = target_policy_dist.logp(batch[SampleBatch.ACTIONS])
+        behaviour_actions_logp = batch[Columns.ACTION_LOGP]
+        target_actions_logp = target_policy_dist.logp(batch[Columns.ACTIONS])
+        rollout_frag_or_episode_len = config.get_rollout_fragment_length()
+        recurrent_seq_len = None
 
         behaviour_actions_logp_time_major = make_time_major(
             behaviour_actions_logp,
-            trajectory_len=self.rollout_frag_or_episode_len,
-            recurrent_seq_len=self.recurrent_seq_len,
-            drop_last=self.vtrace_drop_last_ts,
+            trajectory_len=rollout_frag_or_episode_len,
+            recurrent_seq_len=recurrent_seq_len,
         )
         target_actions_logp_time_major = make_time_major(
             target_actions_logp,
-            trajectory_len=self.rollout_frag_or_episode_len,
-            recurrent_seq_len=self.recurrent_seq_len,
-            drop_last=self.vtrace_drop_last_ts,
+            trajectory_len=rollout_frag_or_episode_len,
+            recurrent_seq_len=recurrent_seq_len,
+        )
+        rewards_time_major = make_time_major(
+            batch[Columns.REWARDS],
+            trajectory_len=rollout_frag_or_episode_len,
+            recurrent_seq_len=recurrent_seq_len,
         )
         values_time_major = make_time_major(
             values,
-            trajectory_len=self.rollout_frag_or_episode_len,
-            recurrent_seq_len=self.recurrent_seq_len,
-            drop_last=self.vtrace_drop_last_ts,
+            trajectory_len=rollout_frag_or_episode_len,
+            recurrent_seq_len=recurrent_seq_len,
         )
-        bootstrap_value = values_time_major[-1]
-        rewards_time_major = make_time_major(
-            batch[SampleBatch.REWARDS],
-            trajectory_len=self.rollout_frag_or_episode_len,
-            recurrent_seq_len=self.recurrent_seq_len,
-            drop_last=self.vtrace_drop_last_ts,
-        )
+        if self.config.uses_new_env_runners:
+            bootstrap_values = batch[Columns.VALUES_BOOTSTRAPPED]
+        else:
+            bootstrap_values_time_major = make_time_major(
+                batch[Columns.VALUES_BOOTSTRAPPED],
+                trajectory_len=rollout_frag_or_episode_len,
+                recurrent_seq_len=recurrent_seq_len,
+            )
+            bootstrap_values = bootstrap_values_time_major[-1]
 
         # the discount factor that is used should be gamma except for timesteps where
         # the episode is terminated. In that case, the discount factor should be 0.
@@ -119,25 +76,27 @@ class ImpalaTfLearner(TfLearner):
             1.0
             - tf.cast(
                 make_time_major(
-                    batch[SampleBatch.TERMINATEDS],
-                    trajectory_len=self.rollout_frag_or_episode_len,
-                    recurrent_seq_len=self.recurrent_seq_len,
-                    drop_last=self.vtrace_drop_last_ts,
+                    batch[Columns.TERMINATEDS],
+                    trajectory_len=rollout_frag_or_episode_len,
+                    recurrent_seq_len=recurrent_seq_len,
                 ),
                 dtype=tf.float32,
             )
-        ) * self.discount_factor
+        ) * config.gamma
+
+        # Note that vtrace will compute the main loop on the CPU for better performance.
         vtrace_adjusted_target_values, pg_advantages = vtrace_tf2(
             target_action_log_probs=target_actions_logp_time_major,
             behaviour_action_log_probs=behaviour_actions_logp_time_major,
+            discounts=discounts_time_major,
             rewards=rewards_time_major,
             values=values_time_major,
-            bootstrap_value=bootstrap_value,
-            clip_pg_rho_threshold=self.vtrace_clip_pg_rho_threshold,
-            clip_rho_threshold=self.vtrace_clip_rho_threshold,
-            discounts=discounts_time_major,
+            bootstrap_values=bootstrap_values,
+            clip_pg_rho_threshold=config.vtrace_clip_pg_rho_threshold,
+            clip_rho_threshold=config.vtrace_clip_rho_threshold,
         )
 
+        # Sample size is T x B, where T is the trajectory length and B is the batch size
         batch_size = tf.cast(target_actions_logp_time_major.shape[-1], tf.float32)
 
         # The policy gradients loss.
@@ -150,49 +109,45 @@ class ImpalaTfLearner(TfLearner):
         mean_vf_loss = vf_loss / batch_size
 
         # The entropy loss.
-        entropy_loss = -tf.reduce_sum(target_actions_logp_time_major)
+        mean_entropy_loss = -tf.reduce_mean(target_policy_dist.entropy())
 
         # The summed weighted loss.
         total_loss = (
-            pi_loss + vf_loss * self.vf_loss_coeff + entropy_loss * self.entropy_coeff
+            pi_loss
+            + vf_loss * config.vf_loss_coeff
+            + (
+                mean_entropy_loss
+                * self.entropy_coeff_schedulers_per_module[
+                    module_id
+                ].get_current_value()
+            )
         )
-        return {
-            self.TOTAL_LOSS_KEY: total_loss,
-            "pi_loss": mean_pi_loss,
-            "vf_loss": mean_vf_loss,
-        }
 
-    @override(TfLearner)
-    def compile_results(
-        self,
-        batch: SampleBatch,
-        fwd_out: Mapping[str, Any],
-        postprocessed_loss: Mapping[str, Any],
-        postprocessed_gradients: Mapping[str, Any],
-    ) -> Mapping[str, Any]:
-        results = super().compile_results(
-            batch, fwd_out, postprocessed_loss, postprocessed_gradients
+        # Register important loss stats.
+        self.register_metrics(
+            module_id,
+            {
+                "pi_loss": mean_pi_loss,
+                "vf_loss": mean_vf_loss,
+                ENTROPY_KEY: -mean_entropy_loss,
+            },
         )
-        results["agent_steps_trained"] = batch.agent_steps()
-        results["env_steps_trained"] = batch.env_steps()
-        return results
+        # Return the total loss.
+        return total_loss
 
+    @override(ImpalaLearner)
+    def _compute_values(self, batch):
+        infos = batch.pop(Columns.INFOS, None)
+        batch = tree.map_structure(lambda s: tf.convert_to_tensor(s), batch)
+        if infos is not None:
+            batch[Columns.INFOS] = infos
 
-def _reduce_impala_results(results: List[ResultDict]) -> ResultDict:
-    """Reduce/Aggregate a list of results from Impala Learners.
+        # TODO (sven): Make multi-agent capable.
+        module = self.module[DEFAULT_POLICY_ID].unwrapped()
 
-    Average the values of the result dicts. Add keys for the number of agent and env
-    steps trained.
-
-    Args:
-        results: result dicts to reduce.
-
-    Returns:
-        A reduced result dict.
-    """
-    result = tree.map_structure(lambda *x: np.mean(x), *results)
-    agent_steps_trained = sum([r["agent_steps_trained"] for r in results])
-    env_steps_trained = sum([r["env_steps_trained"] for r in results])
-    result["agent_steps_trained"] = agent_steps_trained
-    result["env_steps_trained"] = env_steps_trained
-    return result
+        # Shared encoder.
+        encoder_outs = module.encoder(batch)
+        # Value head.
+        vf_out = module.vf(encoder_outs[ENCODER_OUT][CRITIC])
+        # Squeeze out last dimension (single node value head).
+        return tf.squeeze(vf_out, -1)

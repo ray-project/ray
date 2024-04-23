@@ -27,7 +27,6 @@ from ray.rllib.utils.typing import (
     AgentConnectorDataType,
     AgentConnectorsOutput,
     PartialAlgorithmConfigDict,
-    PolicyID,
     PolicyState,
     TensorStructType,
     TensorType,
@@ -86,7 +85,7 @@ def create_policy_for_framework(
     session_creator: Optional[Callable[[], "tf1.Session"]] = None,
     seed: Optional[int] = None,
 ):
-    """Frame specific policy creation logics.
+    """Framework-specific policy creation logics.
 
     Args:
         policy_id: Policy ID.
@@ -185,6 +184,8 @@ def local_policy_inference(
     terminated: Optional[bool] = None,
     truncated: Optional[bool] = None,
     info: Optional[Mapping] = None,
+    explore: bool = None,
+    timestep: Optional[int] = None,
 ) -> TensorStructType:
     """Run a connector enabled policy using environment observation.
 
@@ -215,6 +216,9 @@ def local_policy_inference(
             require this extra information.
         info: Info that is potentially used durin inference. If not required,
             may be left empty. Some policies have ViewRequirements that require this.
+        explore: Whether to pick an exploitation or exploration action
+            (default: None -> use self.config["explore"]).
+        timestep: The current (sampling) time step.
 
     Returns:
         List of outputs from policy forward pass.
@@ -247,7 +251,11 @@ def local_policy_inference(
     ac_outputs: List[AgentConnectorsOutput] = policy.agent_connectors(acd_list)
     outputs = []
     for ac in ac_outputs:
-        policy_output = policy.compute_actions_from_input_dict(ac.data.sample_batch)
+        policy_output = policy.compute_actions_from_input_dict(
+            ac.data.sample_batch,
+            explore=explore,
+            timestep=timestep,
+        )
 
         # Note (Kourosh): policy output is batched, the AgentConnectorDataType should
         # not be batched during inference. This is the assumption made in AgentCollector
@@ -305,12 +313,9 @@ def compute_log_likelihoods_from_input_dict(
     return log_likelihoods
 
 
-@Deprecated(new="Policy.from_checkpoint([checkpoint path], [policy IDs]?)", error=False)
-def load_policies_from_checkpoint(
-    path: str, policy_ids: Optional[List[PolicyID]] = None
-) -> Dict[PolicyID, "Policy"]:
-
-    return Policy.from_checkpoint(path, policy_ids)
+@Deprecated(new="Policy.from_checkpoint([checkpoint path], [policy IDs]?)", error=True)
+def load_policies_from_checkpoint(path, policy_ids=None):
+    pass
 
 
 def __check_atari_obs_space(obs):

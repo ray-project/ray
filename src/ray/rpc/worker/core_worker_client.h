@@ -36,6 +36,19 @@
 #include "src/ray/protobuf/core_worker.grpc.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 
+namespace std {
+template <>
+struct hash<ray::rpc::Address> {
+  size_t operator()(const ray::rpc::Address &addr) const {
+    size_t hash = std::hash<int32_t>()(addr.port());
+    hash ^= std::hash<std::string>()(addr.ip_address());
+    hash ^= std::hash<std::string>()(addr.worker_id());
+    hash ^= std::hash<std::string>()(addr.raylet_id());
+    return hash;
+  }
+};
+}  // namespace std
+
 namespace ray {
 namespace rpc {
 
@@ -57,42 +70,9 @@ const static int64_t RequestSizeInBytes(const PushTaskRequest &request) {
 // Shared between direct actor and task submitters.
 /* class CoreWorkerClientInterface; */
 
-// TODO(swang): Remove and replace with rpc::Address.
-class WorkerAddress {
- public:
-  WorkerAddress(const rpc::Address &address)
-      : ip_address(address.ip_address()),
-        port(address.port()),
-        worker_id(WorkerID::FromBinary(address.worker_id())),
-        raylet_id(NodeID::FromBinary(address.raylet_id())) {}
-  template <typename H>
-  friend H AbslHashValue(H h, const WorkerAddress &w) {
-    return H::combine(std::move(h), w.ip_address, w.port, w.worker_id, w.raylet_id);
-  }
-
-  bool operator==(const WorkerAddress &other) const {
-    return other.ip_address == ip_address && other.port == port &&
-           other.worker_id == worker_id && other.raylet_id == raylet_id;
-  }
-
-  rpc::Address ToProto() const {
-    rpc::Address addr;
-    addr.set_raylet_id(raylet_id.Binary());
-    addr.set_ip_address(ip_address);
-    addr.set_port(port);
-    addr.set_worker_id(worker_id.Binary());
-    return addr;
-  }
-
-  /// The ip address of the worker.
-  const std::string ip_address;
-  /// The local port of the worker.
-  const int port;
-  /// The unique id of the worker.
-  const WorkerID worker_id;
-  /// The unique id of the worker raylet.
-  const NodeID raylet_id;
-};
+inline bool operator==(const rpc::Address &lhs, const rpc::Address &rhs) {
+  return google::protobuf::util::MessageDifferencer::Equivalent(lhs, rhs);
+}
 
 /// Abstract client interface for testing.
 class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
@@ -101,6 +81,8 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
     static const rpc::Address empty_addr_;
     return empty_addr_;
   }
+
+  virtual bool IsChannelIdleAfterRPCs() const { return false; }
 
   /// Push an actor task directly from worker to worker.
   ///
@@ -117,6 +99,14 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
   /// push non-actor tasks directly to a worker.
   virtual void PushNormalTask(std::unique_ptr<PushTaskRequest> request,
                               const ClientCallback<PushTaskReply> &callback) {}
+
+  /// Get the number of pending tasks for this worker.
+  ///
+  /// \param[in] request The request message.
+  /// \param[in] callback The callback function that handles reply.
+  /// \return if the rpc call succeeds
+  virtual void NumPendingTasks(std::unique_ptr<NumPendingTasksRequest> request,
+                               const ClientCallback<NumPendingTasksReply> &callback) {}
 
   /// Notify a wait has completed for direct actor call arguments.
   ///
@@ -153,6 +143,10 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
   virtual void GetObjectLocationsOwner(
       const GetObjectLocationsOwnerRequest &request,
       const ClientCallback<GetObjectLocationsOwnerReply> &callback) {}
+
+  virtual void ReportGeneratorItemReturns(
+      const ReportGeneratorItemReturnsRequest &request,
+      const ClientCallback<ReportGeneratorItemReturnsReply> &callback) {}
 
   /// Tell this actor to exit immediately.
   virtual void KillActor(const KillActorRequest &request,
@@ -213,7 +207,6 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   /// Constructor.
   ///
   /// \param[in] address Address of the worker server.
-  /// \param[in] port Port of the worker server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   CoreWorkerClient(const rpc::Address &address, ClientCallManager &client_call_manager)
       : addr_(address) {
@@ -222,6 +215,10 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   };
 
   const rpc::Address &Addr() const override { return addr_; }
+
+  bool IsChannelIdleAfterRPCs() const override {
+    return grpc_client_->IsChannelIdleAfterRPCs();
+  }
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
                          DirectActorCallArgWaitComplete,
@@ -279,6 +276,12 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
                          GetObjectLocationsOwner,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1,
+                         override)
+
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService,
+                         ReportGeneratorItemReturns,
                          grpc_client_,
                          /*method_timeout_ms*/ -1,
                          override)
@@ -378,6 +381,16 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
                     /*method_timeout_ms*/ -1);
   }
 
+  void NumPendingTasks(std::unique_ptr<NumPendingTasksRequest> request,
+                       const ClientCallback<NumPendingTasksReply> &callback) override {
+    INVOKE_RPC_CALL(CoreWorkerService,
+                    NumPendingTasks,
+                    *request,
+                    callback,
+                    grpc_client_,
+                    /*method_timeout_ms*/ -1);
+  }
+
   /// Send as many pending tasks as possible. This method is thread-safe.
   ///
   /// The client will guarantee no more than kMaxBytesInFlight bytes of RPCs are being
@@ -443,13 +456,13 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   /// Queue of requests to send.
   std::deque<std::pair<std::unique_ptr<PushTaskRequest>, ClientCallback<PushTaskReply>>>
-      send_queue_ GUARDED_BY(mutex_);
+      send_queue_ ABSL_GUARDED_BY(mutex_);
 
   /// The number of bytes currently in flight.
-  int64_t rpc_bytes_in_flight_ GUARDED_BY(mutex_) = 0;
+  int64_t rpc_bytes_in_flight_ ABSL_GUARDED_BY(mutex_) = 0;
 
   /// The max sequence number we have processed responses for.
-  int64_t max_finished_seq_no_ GUARDED_BY(mutex_) = -1;
+  int64_t max_finished_seq_no_ ABSL_GUARDED_BY(mutex_) = -1;
 };
 
 typedef std::function<std::shared_ptr<CoreWorkerClientInterface>(const rpc::Address &)>

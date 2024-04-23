@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import requests
 from ray_release.logger import logger
+from ray_release.configs.global_config import get_global_config
 
 if TYPE_CHECKING:
     from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
@@ -25,6 +26,45 @@ class DeferredEnvVar:
 
 
 ANYSCALE_HOST = DeferredEnvVar("ANYSCALE_HOST", "https://console.anyscale.com")
+S3_CLOUD_STORAGE = "s3"
+GS_CLOUD_STORAGE = "gs"
+GS_BUCKET = "anyscale-oss-dev-bucket"
+ERROR_LOG_PATTERNS = [
+    "ERROR",
+    "Traceback (most recent call last)",
+]
+
+
+def get_read_state_machine_aws_bucket(allow_pr_bucket: bool = False) -> str:
+    # We support by default reading from the branch bucket only, since most of the use
+    # cases are on branch pipelines. Changing the default flag to read from the bucket
+    # according to the current pipeline
+    if allow_pr_bucket:
+        return get_write_state_machine_aws_bucket()
+    return (
+        get_global_config()["state_machine_aws_bucket"]
+        or get_global_config()["state_machine_branch_aws_bucket"]
+    )
+
+
+def get_write_state_machine_aws_bucket() -> str:
+    # We support different buckets for writing test result data; one for pr and one for
+    # branch. This is because pr and branch pipeline have different permissions, and we
+    # want data on branch pipeline being protected.
+    bucket_v1 = get_global_config()["state_machine_aws_bucket"]
+    if bucket_v1:
+        return bucket_v1
+
+    pipeline_id = os.environ.get("BUILDKITE_PIPELINE_ID")
+    pr_pipelines = get_global_config()["ci_pipeline_premerge"]
+    branch_pipelines = get_global_config()["ci_pipeline_postmerge"]
+    assert pipeline_id in pr_pipelines + branch_pipelines, (
+        "Test state machine is only supported for branch or pr pipeline, "
+        f"{pipeline_id} is given"
+    )
+    if pipeline_id in pr_pipelines:
+        return get_global_config()["state_machine_pr_aws_bucket"]
+    return get_global_config()["state_machine_branch_aws_bucket"]
 
 
 def deep_update(d, u) -> Dict:
@@ -141,8 +181,6 @@ def run_bash_script(bash_script: str) -> None:
 
 def reinstall_anyscale_dependencies() -> None:
     logger.info("Re-installing `anyscale` package")
-
-    # Copy anyscale pin to requirements.txt and requirements_buildkite.txt
     subprocess.check_output(
         "pip install -U anyscale",
         shell=True,
@@ -161,11 +199,11 @@ def python_version_str(python_version: Tuple[int, int]) -> str:
     return "".join([str(x) for x in python_version])
 
 
-def generate_tmp_s3_path() -> str:
+def generate_tmp_cloud_storage_path() -> str:
     return "".join(random.choice(string.ascii_lowercase) for i in range(10))
 
 
-def join_s3_paths(*paths: str):
+def join_cloud_storage_paths(*paths: str):
     paths = list(paths)
     if len(paths) > 1:
         for i in range(1, len(paths)):

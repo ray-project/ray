@@ -30,8 +30,9 @@ std::unique_ptr<boost::asio::thread_pool> &_GetServerCallExecutor() {
 
 boost::asio::thread_pool &GetServerCallExecutor() { return *_GetServerCallExecutor(); }
 
-void DrainAndResetServerCallExecutor() {
-  GetServerCallExecutor().join();
+void DrainServerCallExecutor() { GetServerCallExecutor().join(); }
+
+void ResetServerCallExecutor() {
   _GetServerCallExecutor() = std::make_unique<boost::asio::thread_pool>(
       ::RayConfig::instance().num_server_call_thread());
 }

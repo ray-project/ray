@@ -8,6 +8,9 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         T FromBinary(const c_string &binary)
 
         @staticmethod
+        T FromHex(const c_string &hex)
+
+        @staticmethod
         const T Nil()
 
         @staticmethod
@@ -69,6 +72,9 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
 
         @staticmethod
         CNodeID FromHex(const c_string &hex_str)
+
+        @staticmethod
+        const CNodeID Nil()
 
     cdef cppclass CConfigID "ray::ConfigID"(CUniqueID):
 
@@ -154,6 +160,20 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
 
         CTaskID TaskId() const
 
+    cdef cppclass CClusterID "ray::ClusterID"(CUniqueID):
+
+        @staticmethod
+        CClusterID FromBinary(const c_string &binary)
+
+        @staticmethod
+        CClusterID FromHex(const c_string &hex_str)
+
+        @staticmethod
+        CClusterID FromRandom()
+
+        @staticmethod
+        const CClusterID Nil()
+
     cdef cppclass CWorkerID "ray::WorkerID"(CUniqueID):
 
         @staticmethod
@@ -173,3 +193,5 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
 
         @staticmethod
         CPlacementGroupID Of(CJobID job_id)
+
+    ctypedef uint32_t ObjectIDIndexType

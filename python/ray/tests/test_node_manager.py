@@ -1,4 +1,5 @@
 import ray
+from ray.util.state import list_workers
 from ray._private.test_utils import (
     get_load_metrics_report,
     run_string_as_driver,
@@ -8,8 +9,11 @@ from ray._private.test_utils import (
 )
 import pytest
 import os
-from ray.experimental.state.api import list_objects
+from ray.util.state import list_objects
 import subprocess
+from ray._private.utils import get_num_cpus
+import time
+import sys
 
 
 # This tests the queue transitions for infeasible tasks. This has been an issue
@@ -181,6 +185,59 @@ ray.get(f.options(num_cpus=99999999).remote())
     )
 
 
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port=25555"],
+    indirect=True,
+)
+def test_exiting_driver_clears_infeasible(call_ray_start):
+    # Test that there is no leaking infeasible demands
+    # from an exited driver.
+    # See https://github.com/ray-project/ray/issues/43687
+    # for a bug where it happened.
+
+    driver = """
+import ray
+
+ray.init()
+
+@ray.remote
+def f():
+    pass
+
+f.options(num_cpus=99999999).remote()
+  """
+    proc = run_string_as_driver_nonblocking(driver)
+    proc.wait()
+
+    client_driver = """
+import ray
+
+ray.init("ray://127.0.0.1:25555")
+
+@ray.remote
+def f():
+    pass
+
+f.options(num_cpus=99999999).remote()
+  """
+    proc = run_string_as_driver_nonblocking(client_driver)
+    proc.wait()
+
+    ctx = ray.init(address=call_ray_start)
+
+    # Give gcs some time to update the load
+    time.sleep(1)
+
+    wait_for_condition(
+        check_infeasible,
+        timeout=10,
+        retry_interval_ms=1000,
+        expect_infeasible=False,
+        ray_ctx=ctx,
+    )
+
+
 def test_kill_driver_keep_infeasible_detached_actor(ray_start_cluster):
     cluster = ray_start_cluster
     address = cluster.address
@@ -234,12 +291,16 @@ import ray
 import numpy as np
 import tensorflow
 
+@ray.remote(max_retries=0)
 def leak_repro(obj):
     tensorflow
     return []
 
-ds = ray.data.from_numpy(np.ones((100_000)))
-ds.map(leak_repro, max_retries=0)
+refs = []
+for i in range(100_000):
+    refs.append(leak_repro.remote(i))
+
+ray.get(refs)
   """
     try:
         run_string_as_driver(driver)
@@ -253,6 +314,47 @@ ds.map(leak_repro, max_retries=0)
         return len(objects) == 0
 
     wait_for_condition(no_object_leaks, timeout=10, retry_interval_ms=1000)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="subprocess command only works for unix"
+)
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["""ray start --head --system-config={"enable_worker_prestart":true}"""],
+    indirect=True,
+)
+def test_worker_prestart_on_node_manager_start(call_ray_start, shutdown_only):
+    def num_idle_workers(count):
+        result = subprocess.check_output(
+            "ps aux | grep ray::IDLE | grep -v grep",
+            shell=True,
+        )
+        return len(result.splitlines()) == count
+
+    wait_for_condition(num_idle_workers, count=get_num_cpus())
+
+    with ray.init():
+        for _ in range(5):
+            workers = list_workers(filters=[("worker_type", "=", "WORKER")])
+            assert len(workers) == get_num_cpus(), workers
+            time.sleep(1)
+
+
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["""ray start --head"""],
+    indirect=True,
+)
+def test_jobs_prestart_worker_once(call_ray_start, shutdown_only):
+    with ray.init():
+        workers = list_workers(filters=[("worker_type", "=", "WORKER")])
+        assert len(workers) == get_num_cpus(), workers
+    with ray.init():
+        for _ in range(5):
+            workers = list_workers(filters=[("worker_type", "=", "WORKER")])
+            assert len(workers) == get_num_cpus(), workers
+            time.sleep(1)
 
 
 if __name__ == "__main__":

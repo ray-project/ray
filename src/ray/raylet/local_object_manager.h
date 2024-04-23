@@ -147,10 +147,10 @@ class LocalObjectManager {
   /// \return True if spilling is still in progress. False otherwise.
   bool IsSpillingInProgress();
 
-  /// Populate object spilling stats.
+  /// Populate object store stats.
   ///
-  /// \param Output parameter.
-  void FillObjectSpillingStats(rpc::GetNodeStatsReply *reply) const;
+  /// \param reply Output parameter.
+  void FillObjectStoreStats(rpc::GetNodeStatsReply *reply) const;
 
   /// Record object spilling stats to metrics.
   void RecordMetrics() const;
@@ -318,7 +318,7 @@ class LocalObjectManager {
   mutable absl::Mutex mutex_;
 
   /// The current number of active spill workers.
-  int64_t num_active_workers_ GUARDED_BY(mutex_);
+  int64_t num_active_workers_ ABSL_GUARDED_BY(mutex_);
 
   /// The max number of active spill workers.
   const int64_t max_active_workers_;

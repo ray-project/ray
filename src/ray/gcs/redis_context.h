@@ -28,6 +28,10 @@
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
+extern "C" {
+#include "hiredis/hiredis.h"
+}
+
 struct redisContext;
 struct redisAsyncContext;
 struct redisSSLContext;
@@ -46,6 +50,9 @@ class CallbackReply {
   /// Whether this reply is `nil` type reply.
   bool IsNil() const;
 
+  /// Whether an error happened;
+  bool IsError() const;
+
   /// Read this reply data as an integer.
   int64_t ReadAsInteger() const;
 
@@ -57,9 +64,6 @@ class CallbackReply {
   /// Note that this will return an empty string if
   /// the type of this reply is `nil` or `status`.
   const std::string &ReadAsString() const;
-
-  /// Read this reply data as pub-sub data.
-  const std::string &ReadAsPubsubData() const;
 
   /// Read this reply data as a string array.
   [[nodiscard]] const std::vector<std::optional<std::string>> &ReadAsStringArray() const;
@@ -89,6 +93,9 @@ class CallbackReply {
   /// Reply data if reply_type_ is REDIS_REPLY_STRING.
   std::string string_reply_;
 
+  /// Reply data if reply_type_ is REDIS_REPLY_ERROR.
+  std::string error_reply_;
+
   /// Reply data if reply_type_ is REDIS_REPLY_ARRAY.
   /// Represent the reply of StringArray or ScanArray.
   std::vector<std::optional<std::string>> string_array_reply_;
@@ -101,62 +108,30 @@ class CallbackReply {
 /// operation.
 using RedisCallback = std::function<void(std::shared_ptr<CallbackReply>)>;
 
-void GlobalRedisCallback(void *c, void *r, void *privdata);
+class RedisContext;
+struct RedisRequestContext {
+  RedisRequestContext(instrumented_io_context &io_service,
+                      RedisCallback callback,
+                      RedisAsyncContext *context,
+                      std::vector<std::string> args);
 
-class RedisCallbackManager {
- public:
-  static RedisCallbackManager &instance() {
-    static RedisCallbackManager instance;
-    return instance;
-  }
+  static void RedisResponseFn(struct redisAsyncContext *async_context,
+                              void *raw_reply,
+                              void *privdata);
 
-  struct CallbackItem : public std::enable_shared_from_this<CallbackItem> {
-    CallbackItem() = default;
-
-    CallbackItem(const RedisCallback &callback,
-                 int64_t start_time,
-                 instrumented_io_context &io_service)
-        : callback_(callback), start_time_(start_time), io_service_(&io_service) {}
-
-    void Dispatch(std::shared_ptr<CallbackReply> &reply) {
-      std::shared_ptr<CallbackItem> self = shared_from_this();
-      if (callback_ != nullptr) {
-        io_service_->post([self, reply]() { self->callback_(std::move(reply)); },
-                          "RedisCallbackManager.DispatchCallback");
-      }
-    }
-
-    RedisCallback callback_;
-    int64_t start_time_;
-    instrumented_io_context *io_service_;
-  };
-
-  /// Allocate an index at which we can add a callback later on.
-  int64_t AllocateCallbackIndex();
-
-  /// Add a callback at an optionally specified index.
-  int64_t AddCallback(const RedisCallback &function,
-                      instrumented_io_context &io_service,
-                      int64_t callback_index = -1);
-
-  /// Remove a callback.
-  void RemoveCallback(int64_t callback_index);
-
-  /// Get a callback.
-  std::shared_ptr<CallbackItem> GetCallback(int64_t callback_index) const;
-
-  /// Clear all callbacks.
-  void Clear();
+  void Run();
 
  private:
-  RedisCallbackManager() : num_callbacks_(0){};
+  ExponentialBackOff exp_back_off_;
+  instrumented_io_context &io_service_;
+  RedisAsyncContext *redis_context_;
+  size_t pending_retries_;
+  RedisCallback callback_;
+  absl::Time start_time_;
 
-  ~RedisCallbackManager() {}
-
-  mutable std::mutex mutex_;
-
-  int64_t num_callbacks_ = 0;
-  absl::flat_hash_map<int64_t, std::shared_ptr<CallbackItem>> callback_items_;
+  std::vector<std::string> redis_cmds_;
+  std::vector<const char *> argv_;
+  std::vector<size_t> argc_;
 };
 
 class RedisContext {
@@ -165,18 +140,13 @@ class RedisContext {
 
   ~RedisContext();
 
-  /// Test whether the address and port has a reachable Redis service.
-  ///
-  /// \param address IP address to test.
-  /// \param port port number to test.
-  /// \return The Status that we would get if we Connected.
-  Status PingPort(const std::string &address, int port);
-
   Status Connect(const std::string &address,
                  int port,
-                 bool sharding,
                  const std::string &password,
                  bool enable_ssl = false);
+
+  /// Disconnect from the server.
+  void Disconnect();
 
   /// Run an arbitrary Redis command synchronously.
   ///
@@ -188,29 +158,25 @@ class RedisContext {
   ///
   /// \param args The vector of command args to pass to Redis.
   /// \param redis_callback The Redis callback function.
-  /// \return Status.
-  Status RunArgvAsync(const std::vector<std::string> &args,
-                      const RedisCallback &redis_callback = nullptr);
+  void RunArgvAsync(std::vector<std::string> args,
+                    RedisCallback redis_callback = nullptr);
 
   redisContext *sync_context() {
     RAY_CHECK(context_);
-    return context_;
+    return context_.get();
   }
 
   RedisAsyncContext &async_context() {
     RAY_CHECK(redis_async_context_);
-    return *redis_async_context_;
+    return *redis_async_context_.get();
   }
 
   instrumented_io_context &io_service() { return io_service_; }
 
  private:
-  // These functions avoid problems with dependence on hiredis headers with clang-cl.
-  static int GetRedisError(redisContext *context);
-  static void FreeRedisReply(void *reply);
-
   instrumented_io_context &io_service_;
-  redisContext *context_;
+
+  std::unique_ptr<redisContext, RedisContextDeleter> context_;
   redisSSLContext *ssl_context_;
   std::unique_ptr<RedisAsyncContext> redis_async_context_;
 };

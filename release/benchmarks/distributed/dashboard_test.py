@@ -1,5 +1,6 @@
 import asyncio
 import time
+import urllib
 from typing import Dict, Optional, List
 from pprint import pprint
 
@@ -8,6 +9,7 @@ import ray
 import logging
 
 from collections import defaultdict
+from ray.util.state import list_nodes
 from ray._private.test_utils import fetch_prometheus_metrics
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from pydantic import BaseModel
@@ -40,7 +42,7 @@ endpoints = [
     "/api/cluster_status",
     "/events",
     "/api/jobs/",
-    "/log_index",
+    "/api/v0/logs",
     "/api/prometheus_health",
 ]
 
@@ -59,9 +61,22 @@ class DashboardTester:
 
     async def ping(self, endpoint):
         """Synchronously call an endpoint."""
+        node_id = ray.get_runtime_context().get_node_id()
         while True:
             start = time.monotonic()
-            resp = requests.get(self.dashboard_url + endpoint, timeout=30)
+            # for logs API, we should append node ID and glob.
+            if "/api/v0/logs" in endpoint:
+                glob_filter = "*"
+
+                options_dict = {"node_id": node_id, "glob": glob_filter}
+                url = (
+                    f"{self.dashboard_url}{endpoint}?"
+                    f"{urllib.parse.urlencode(options_dict)}"
+                )
+            else:
+                url = f"{self.dashboard_url}{endpoint}"
+
+            resp = requests.get(url, timeout=30)
             elapsed = time.monotonic() - start
 
             if resp.status_code == 200:
@@ -85,9 +100,7 @@ class DashboardTestAtScale:
 
         # Schedule the actor on the current node (which is a head node).
         current_node_ip = ray._private.worker.global_worker.node_ip_address
-        nodes = ray.experimental.state.api.list_nodes(
-            filters=[("node_ip", "=", current_node_ip)]
-        )
+        nodes = list_nodes(filters=[("node_ip", "=", current_node_ip)])
         assert len(nodes) > 0, f"{current_node_ip} not found in the cluster"
         node = nodes[0]
         # Schedule on a head node.
@@ -123,9 +136,7 @@ class DashboardTestAtScale:
                         memories.append(sample.value)
 
         return Result(
-            success=True,
-            result=result,
-            memory_mb=max(memories),
+            success=True, result=result, memory_mb=max(memories) if memories else None
         )
 
     def update_release_test_result(self, release_result: dict):

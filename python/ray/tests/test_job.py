@@ -9,14 +9,13 @@ import json
 from subprocess import Popen, PIPE, STDOUT, list2cmdline
 from typing import List
 from pathlib import Path
+import pytest
 
 import ray
-import ray._private.gcs_utils as gcs_utils
 from ray._private.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
     wait_for_condition,
-    wait_for_num_actors,
     format_web_url,
 )
 from ray.job_config import JobConfig
@@ -41,6 +40,17 @@ def execute_driver(commands: List[str], input: bytes = None):
                 p.kill()
             except Exception:
                 pass
+
+
+def test_invalid_gcs_address():
+    with pytest.raises(ValueError):
+        JobSubmissionClient("foobar")
+
+    with pytest.raises(ValueError):
+        JobSubmissionClient("")
+
+    with pytest.raises(ValueError):
+        JobSubmissionClient("abc:abc")
 
 
 def test_job_isolation(call_ray_start):
@@ -84,129 +94,6 @@ assert ray.get(lib.task.remote()) == {}
 
         subprocess.check_call([sys.executable, v1_driver])
         subprocess.check_call([sys.executable, v2_driver])
-
-
-def test_export_queue_isolation(call_ray_start):
-    address = call_ray_start
-    driver_template = """
-import ray
-import ray.experimental.internal_kv as kv
-ray.init(address="{}")
-
-@ray.remote
-def f():
-    pass
-
-ray.get(f.remote())
-
-count = 0
-for k in kv._internal_kv_list(""):
-    if b"IsolatedExports:" + ray.get_runtime_context().job_id.binary() in k:
-        count += 1
-
-# Check exports aren't shared across the 5 jobs.
-assert count < 5, count
-"""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        os.makedirs(os.path.join(tmpdir, "v1"))
-        v1_driver = os.path.join(tmpdir, "v1", "driver.py")
-        with open(v1_driver, "w") as f:
-            f.write(driver_template.format(address))
-
-        try:
-            subprocess.check_call([sys.executable, v1_driver])
-        except Exception:
-            # Ignore the first run, since it runs extra exports.
-            pass
-
-        # Further runs do not increase the num exports count.
-        for _ in range(5):
-            subprocess.check_call([sys.executable, v1_driver])
-
-
-def test_job_gc(call_ray_start):
-    address = call_ray_start
-
-    ray.init(address=address)
-    driver = """
-import ray
-
-ray.init(address="{}")
-
-@ray.remote
-class Actor:
-    def __init__(self):
-        pass
-
-_ = Actor.remote()
-""".format(
-        address
-    )
-
-    p = run_string_as_driver_nonblocking(driver)
-    # Wait for actor to be created
-    wait_for_num_actors(1)
-
-    actor_table = ray._private.state.actors()
-    assert len(actor_table) == 1
-
-    job_table = ray._private.state.jobs()
-    assert len(job_table) == 2  # dash
-
-    # Kill the driver process.
-    p.kill()
-    p.wait()
-
-    def actor_finish():
-        actor_table = ray._private.state.actors()
-        if len(actor_table) == 0:
-            return True
-        else:
-            return False
-
-    wait_for_condition(actor_finish)
-
-
-def test_job_gc_with_detached_actor(call_ray_start):
-    address = call_ray_start
-
-    ray.init(address=address, namespace="test")
-    driver = """
-import ray
-
-ray.init(address="{}", namespace="test")
-
-@ray.remote
-class Actor:
-    def __init__(self):
-        pass
-
-    def value(self):
-        return 1
-
-_ = Actor.options(lifetime="detached", name="DetachedActor").remote()
-# Make sure the actor is created before the driver exits.
-ray.get(_.value.remote())
-""".format(
-        address
-    )
-
-    p = run_string_as_driver_nonblocking(driver)
-    # Wait for actor to be created
-    wait_for_num_actors(1, gcs_utils.ActorTableData.ALIVE)
-
-    actor_table = ray._private.state.actors()
-    assert len(actor_table) == 1
-
-    job_table = ray._private.state.jobs()
-    assert len(job_table) == 2  # dash
-
-    # Kill the driver process.
-    p.kill()
-    p.wait()
-
-    detached_actor = ray.get_actor("DetachedActor")
-    assert ray.get(detached_actor.value.remote()) == 1
 
 
 def test_job_observability(ray_start_regular):
@@ -378,7 +265,7 @@ ray.get(f.remote())
             "/api/jobs/",
         )
 
-        assert r.status_code == 200
+        assert r.status_code == 200, r.text
         jobs_info_json = json.loads(r.text)
         jobs_info_json.sort(key=lambda j: j["job_id"])
         info_json = jobs_info_json[1]
@@ -410,7 +297,6 @@ ray.get(f.remote())
 
 
 if __name__ == "__main__":
-    import pytest
 
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"

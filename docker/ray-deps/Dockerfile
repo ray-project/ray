@@ -4,9 +4,6 @@ FROM rayproject/base-deps:nightly"$BASE_IMAGE"
 ARG AUTOSCALER="autoscaler"
 ARG WHEEL_PATH
 ARG FIND_LINKS_PATH=".whl"
-# For Click
-ENV LC_ALL=C.UTF-8
-ENV LANG=C.UTF-8
 COPY $WHEEL_PATH .
 COPY $FIND_LINKS_PATH $FIND_LINKS_PATH
 RUN $HOME/anaconda3/bin/pip --no-cache-dir install --find-links $FIND_LINKS_PATH \
@@ -14,10 +11,11 @@ RUN $HOME/anaconda3/bin/pip --no-cache-dir install --find-links $FIND_LINKS_PATH
     $(if [ "$AUTOSCALER" = "autoscaler" ]; then echo \
         "redis>=3.5.0,<4.0.0" \
         "six==1.13.0" \
-        "boto3==1.4.8" \
+        "boto3==1.26.76" \
+        "pyOpenSSL==22.1.0" \
+        "cryptography==38.0.1" \
         "google-api-python-client==1.7.8" \
         "google-oauth" \
-        "kubernetes" \
         "azure-cli-core==2.40.0" \
         "azure-identity==1.10.0" \
         "azure-mgmt-compute==23.1.0" \

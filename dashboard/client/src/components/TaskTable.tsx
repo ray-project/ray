@@ -1,8 +1,7 @@
 import {
   Box,
-  createStyles,
   InputAdornment,
-  makeStyles,
+  Link,
   Table,
   TableBody,
   TableCell,
@@ -12,27 +11,30 @@ import {
   TextFieldProps,
   Tooltip,
   Typography,
-} from "@material-ui/core";
-import Autocomplete from "@material-ui/lab/Autocomplete";
-import Pagination from "@material-ui/lab/Pagination";
-import React, { useContext, useState } from "react";
-import { Link } from "react-router-dom";
-import { GlobalContext } from "../App";
-import DialogWithTitle from "../common/DialogWithTitle";
+} from "@mui/material";
+import Autocomplete from "@mui/material/Autocomplete";
+import Pagination from "@mui/material/Pagination";
+import React, { useState } from "react";
+import { Link as RouterLink } from "react-router-dom";
+import { CodeDialogButton } from "../common/CodeDialogButton";
 import { DurationText } from "../common/DurationText";
+import { ActorLink, NodeLink } from "../common/links";
+import {
+  TaskCpuProfilingLink,
+  TaskCpuStackTraceLink,
+  TaskMemoryProfilingButton,
+} from "../common/ProfilingLink";
 import rowStyles from "../common/RowStyles";
 import { Task } from "../type/task";
 import { useFilter } from "../util/hook";
 import StateCounter from "./StatesCounter";
 import { StatusChip } from "./StatusChip";
 import { HelpInfo } from "./Tooltip";
-
 export type TaskTableProps = {
   tasks: Task[];
   jobId?: string;
   filterToTaskId?: string;
   onFilterChange?: () => void;
-  newIA?: boolean;
   actorId?: string;
 };
 
@@ -41,7 +43,6 @@ const TaskTable = ({
   jobId,
   filterToTaskId,
   onFilterChange,
-  newIA = false,
   actorId,
 }: TaskTableProps) => {
   const [pageNo, setPageNo] = useState(1);
@@ -61,7 +62,7 @@ const TaskTable = ({
   const columns = [
     { label: "ID" },
     { label: "Name" },
-    { label: "Job Id" },
+    { label: "Job ID" },
     { label: "State" },
     {
       label: "Actions",
@@ -74,17 +75,21 @@ const TaskTable = ({
           tasks.
           <br />- Error: For tasks that have failed, show a stack trace for the
           faiure.
+          <br /> Stack Trace: Get a stacktrace of the worker process where the
+          task is running.
+          <br />- CPU Flame Graph: Get a flame graph of the next 5 seconds of
+          the worker process where the task is running.
         </Typography>
       ),
     },
     { label: "Duration" },
-    { label: "Function or Class Name" },
-    { label: "Node Id" },
-    { label: "Actor_id" },
-    { label: "Worker_id" },
+    { label: "Function or class name" },
+    { label: "Node ID" },
+    { label: "Actor ID" },
+    { label: "Worker ID" },
     { label: "Type" },
-    { label: "Placement Group Id" },
-    { label: "Required Resources" },
+    { label: "Placement group ID" },
+    { label: "Required resources" },
   ];
 
   return (
@@ -158,8 +163,8 @@ const TaskTable = ({
           )}
         />
         <TextField
-          style={{ margin: 8, width: 120 }}
           label="Page Size"
+          sx={{ margin: 1, width: 120 }}
           size="small"
           defaultValue={10}
           InputProps={{
@@ -226,13 +231,10 @@ const TaskTable = ({
               return (
                 <TableRow key={task_id}>
                   <TableCell align="center">
-                    <Tooltip
-                      className={classes.idCol}
-                      title={task_id}
-                      arrow
-                      interactive
-                    >
-                      <div>{task_id}</div>
+                    <Tooltip className={classes.idCol} title={task_id} arrow>
+                      <Link component={RouterLink} to={`tasks/${task_id}`}>
+                        {task_id}
+                      </Link>
                     </Tooltip>
                   </TableCell>
                   <TableCell align="center">{name ? name : "-"}</TableCell>
@@ -241,7 +243,7 @@ const TaskTable = ({
                     <StatusChip type="task" status={state} />
                   </TableCell>
                   <TableCell align="center">
-                    <TaskTableActions task={task} newIA={newIA} />
+                    <TaskTableActions task={task} />
                   </TableCell>
                   <TableCell align="center">
                     {start_time_ms && start_time_ms > 0 ? (
@@ -259,9 +261,8 @@ const TaskTable = ({
                       className={classes.idCol}
                       title={node_id ? node_id : "-"}
                       arrow
-                      interactive
                     >
-                      <div>{node_id ? node_id : "-"}</div>
+                      {node_id ? <NodeLink nodeId={node_id} /> : <div>-</div>}
                     </Tooltip>
                   </TableCell>
                   <TableCell align="center">
@@ -269,9 +270,12 @@ const TaskTable = ({
                       className={classes.idCol}
                       title={actor_id ? actor_id : "-"}
                       arrow
-                      interactive
                     >
-                      <div>{actor_id ? actor_id : "-"}</div>
+                      {actor_id ? (
+                        <ActorLink actorId={actor_id} />
+                      ) : (
+                        <div>-</div>
+                      )}
                     </Tooltip>
                   </TableCell>
                   <TableCell align="center">
@@ -279,7 +283,6 @@ const TaskTable = ({
                       className={classes.idCol}
                       title={worker_id ? worker_id : "-"}
                       arrow
-                      interactive
                     >
                       <div>{worker_id ? worker_id : "-"}</div>
                     </Tooltip>
@@ -290,30 +293,19 @@ const TaskTable = ({
                       className={classes.idCol}
                       title={placement_group_id ? placement_group_id : "-"}
                       arrow
-                      interactive
                     >
                       <div>{placement_group_id ? placement_group_id : "-"}</div>
                     </Tooltip>
                   </TableCell>
                   <TableCell align="center">
-                    <Tooltip
-                      className={classes.OverflowCol}
-                      title={Object.entries(required_resources || {}).map(
-                        ([key, val]) => (
-                          <div style={{ margin: 4 }}>
-                            {key}: {val}
-                          </div>
-                        ),
-                      )}
-                      arrow
-                      interactive
-                    >
-                      <div>
-                        {Object.entries(required_resources || {})
-                          .map(([key, val]) => `${key}: ${val}`)
-                          .join(", ")}
-                      </div>
-                    </Tooltip>
+                    {Object.entries(required_resources || {}).length > 0 ? (
+                      <CodeDialogButton
+                        title="Required resources"
+                        code={JSON.stringify(required_resources, undefined, 2)}
+                      />
+                    ) : (
+                      "{}"
+                    )}
                   </TableCell>
                 </TableRow>
               );
@@ -327,81 +319,53 @@ const TaskTable = ({
 
 export default TaskTable;
 
-const useTaskTableActionsStyles = makeStyles(() =>
-  createStyles({
-    errorDetails: {
-      whiteSpace: "pre",
-    },
-    link: {
-      border: "none",
-      cursor: "pointer",
-      color: "#036DCF",
-      textDecoration: "underline",
-      background: "none",
-    },
-  }),
-);
-
 type TaskTableActionsProps = {
-  newIA?: boolean;
   task: Task;
 };
 
-const TaskTableActions = ({ task, newIA = false }: TaskTableActionsProps) => {
-  const classes = useTaskTableActionsStyles();
-  const { ipLogMap } = useContext(GlobalContext);
-  const [showErrorDetailsDialog, setShowErrorDetailsDialog] = useState(false);
-
-  const handleErrorClick = () => {
-    setShowErrorDetailsDialog(true);
-  };
-
-  const executeEvent = task.profiling_data?.events?.find(
-    ({ event_name }) => event_name === "task:execute",
-  );
+const TaskTableActions = ({ task }: TaskTableActionsProps) => {
   const errorDetails =
-    executeEvent?.extra_data?.traceback && executeEvent?.extra_data?.type
-      ? `${executeEvent?.extra_data?.type}\n${executeEvent?.extra_data?.traceback}`
+    task.error_type !== null && task.error_message !== null
+      ? `Error Type: ${task.error_type}\n\n${task.error_message}`
       : undefined;
+
+  const isTaskActive = task.state === "RUNNING" && task.worker_id;
 
   return (
     <React.Fragment>
-      {task?.profiling_data?.node_ip_address &&
-        ipLogMap[task?.profiling_data?.node_ip_address] &&
-        task.worker_id &&
-        task.job_id && (
-          <React.Fragment>
-            <Link
-              target="_blank"
-              to={
-                newIA
-                  ? `/new/logs/${encodeURIComponent(
-                      ipLogMap[task.profiling_data.node_ip_address],
-                    )}?fileName=worker-${task.worker_id}`
-                  : `/log/${encodeURIComponent(
-                      ipLogMap[task.profiling_data.node_ip_address],
-                    )}?fileName=worker-${task.worker_id}`
-              }
-            >
-              Log
-            </Link>
-            <br />
-          </React.Fragment>
-        )}
-      {errorDetails && (
-        <button className={classes.link} onClick={handleErrorClick}>
-          Error
-        </button>
+      <Link component={RouterLink} to={`tasks/${task.task_id}`}>
+        Log
+      </Link>
+      {isTaskActive && (
+        <React.Fragment>
+          <br />
+          <TaskCpuProfilingLink
+            taskId={task.task_id}
+            attemptNumber={task.attempt_number}
+            nodeId={task.node_id}
+          />
+          <br />
+          <TaskCpuStackTraceLink
+            taskId={task.task_id}
+            attemptNumber={task.attempt_number}
+            nodeId={task.node_id}
+          />
+          <br />
+          <TaskMemoryProfilingButton
+            taskId={task.task_id}
+            attemptNumber={task.attempt_number}
+            nodeId={task.node_id}
+          />
+        </React.Fragment>
       )}
-      {showErrorDetailsDialog && errorDetails && (
-        <DialogWithTitle
+      <br />
+
+      {errorDetails && (
+        <CodeDialogButton
           title="Error details"
-          handleClose={() => {
-            setShowErrorDetailsDialog(false);
-          }}
-        >
-          <div className={classes.errorDetails}>{errorDetails}</div>
-        </DialogWithTitle>
+          code={errorDetails}
+          buttonText="Error"
+        />
       )}
     </React.Fragment>
   );

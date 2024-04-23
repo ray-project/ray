@@ -14,12 +14,15 @@
 
 #pragma once
 
+#include <boost/algorithm/string.hpp>
 #include <cstdint>
 #include <sstream>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "absl/strings/escaping.h"
+#include "absl/strings/str_split.h"
 #include "ray/util/logging.h"
 
 template <typename T>
@@ -42,6 +45,16 @@ template <>
 inline bool ConvertValue<bool>(const std::string &type_string, const std::string &value) {
   auto new_value = absl::AsciiStrToLower(value);
   return new_value == "true" || new_value == "1";
+}
+
+template <>
+inline std::vector<std::string> ConvertValue<std::vector<std::string>>(
+    const std::string &type_string, const std::string &value) {
+  std::vector<std::string> split = absl::StrSplit(value, ",");
+  for (auto &value : split) {
+    boost::algorithm::trim(value);
+  }
+  return split;
 }
 
 class RayConfig {
@@ -82,6 +95,8 @@ class RayConfig {
   void initialize(const std::string &config_list);
 
  private:
+  RayConfig();
+
   template <typename T>
   T ReadEnv(const std::string &name, const std::string &type_string, T default_value) {
     auto value = std::getenv(name.c_str());

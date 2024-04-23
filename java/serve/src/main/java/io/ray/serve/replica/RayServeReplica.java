@@ -1,13 +1,11 @@
 package io.ray.serve.replica;
 
-import io.ray.serve.deployment.DeploymentVersion;
-
 public interface RayServeReplica {
 
   Object handleRequest(Object requestMetadata, Object requestArgs);
 
-  default Object reconfigure(Object userConfig) {
-    return new DeploymentVersion(null, userConfig);
+  default Object reconfigure(byte[] deploymentConfigBytes) {
+    return null;
   }
 
   default boolean checkHealth() {
@@ -16,5 +14,9 @@ public interface RayServeReplica {
 
   default boolean prepareForShutdown() {
     return true;
+  }
+
+  default int getNumOngoingRequests() {
+    return 0;
   }
 }

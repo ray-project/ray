@@ -1,0 +1,135 @@
+# Check if code checked into external resources (blogs, tutorials)
+# that we also track in our CI is affected by a PR.
+# In that case, we add a label to the PR (`external-code-affected`) and
+# add a comment to make sure that the external code still works and is
+# eventually updated.
+name: External code check
+
+on: pull_request_target
+
+jobs:
+  check-changes:
+    permissions: write-all
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
+        fetch-depth: 0
+      
+    - name: Check for changes in tracked files
+      run: |
+        set -xe
+        git clone https://github.com/ray-project/rayci.git ./rayci
+
+        # Find changed files
+        GIT_DIFF=$(git diff --name-only ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }})
+        
+        echo "All changed files:"
+        echo "$GIT_DIFF"
+        
+        GIT_DIFF_SERIALIZED=$(echo "$GIT_DIFF" | tr '\n' '|')
+        echo "GIT_DIFF_SERIALIZED=$GIT_DIFF_SERIALIZED" >> $GITHUB_ENV
+
+    - name: Add label and comment if a tracked file changed
+      uses: actions/github-script@v5
+      with:
+        github-token: ${{secrets.GITHUB_TOKEN}}
+        script: |
+          const {
+            deserializeIntoArray,
+            filterFilesByNames,
+            getCommentContentChanged,
+            getCommentContentNotChanged,
+            parseTrackedFilesToURIs,
+            readFileContent
+          } = require('./rayci/external_code_tracker/track_code');
+          
+          const fs = require("fs");
+          
+          const commentHeader = `## Attention: External code changed`
+          const externalCodeFile = "doc/external/external_code.txt" 
+          
+          // Get existing comments
+          const existingComments = await github.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number
+          });
+          
+          // Find comment by the bot that starts with the header
+          let commentToUpdate = existingComments.data.find(comment =>
+            comment.user.login === 'github-actions[bot]' && comment.body.startsWith(commentHeader)
+          );
+          
+          let externCodeFileContent;
+          let trackedFilesToURIs;
+          
+          // Read and parse external_code.txt file
+          try {
+            externCodeFileContent = fs.readFileSync(externalCodeFile, "utf8");
+            trackedFilesToURIs = parseTrackedFilesToURIs(externCodeFileContent);
+          } catch (error) {
+            console.error("An error occurred reading the external code file:", error);
+            trackedFilesToURIs = {};
+          }
+          
+          console.log("trackedFileToURIs");
+          console.log(trackedFilesToURIs);
+          
+          // Get changed files from environment variable
+          let changedFiles = await deserializeIntoArray(process.env.GIT_DIFF_SERIALIZED)
+          
+          console.log("changedFiles");
+          console.log(changedFiles);
+          
+          // Filter associative array
+          let changedFileToURIs = filterFilesByNames(trackedFilesToURIs, changedFiles);
+          
+          console.log("changedFileToURIs");
+          console.log(changedFileToURIs);
+          console.log(changedFileToURIs.length);
+          
+          if (Object.keys(changedFileToURIs).length === 0) {
+            console.log("No changes to tracked files detected");
+            commentBody = getCommentContentNotChanged(commentHeader);
+            if (commentToUpdate && commentBody !== commentToUpdate.body) {
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: commentToUpdate.id,
+                  body: commentBody
+                });
+            }
+          } else {
+              console.log("Changes to tracked files detected");
+              commentBody = getCommentContentChanged(commentHeader, changedFileToURIs);
+          
+              if (commentToUpdate) {
+              // Only update if content changed
+                if (commentBody !== commentToUpdate.body) {
+                  await github.rest.issues.updateComment({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    comment_id: commentToUpdate.id,
+                    body: commentBody
+                  });
+                }
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: commentBody
+              });
+            }
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ['external-code-affected']
+            });
+          
+          }
+

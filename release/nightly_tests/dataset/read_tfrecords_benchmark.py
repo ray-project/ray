@@ -13,7 +13,7 @@ import numpy as np
 
 
 def read_tfrecords(path: str) -> Dataset:
-    return ray.data.read_tfrecords(paths=path)
+    return ray.data.read_tfrecords(paths=path).materialize()
 
 
 def generate_tfrecords_from_images(
@@ -25,10 +25,11 @@ def generate_tfrecords_from_images(
 
         # Convert images from NumPy to bytes
         def images_to_bytes(batch):
-            images_as_bytes = [image.tobytes() for image in batch.values()]
-            return pa.table({"image": images_as_bytes})
+            return {"image": [image.tobytes() for image in batch["image"]]}
 
         ds = ds.map_batches(images_to_bytes, batch_format="numpy")
+        assert ds.count() == num_images
+
         tfrecords_dir = tempfile.mkdtemp()
         ds.write_tfrecords(tfrecords_dir)
     finally:
@@ -38,16 +39,18 @@ def generate_tfrecords_from_images(
 
 def generate_random_tfrecords(
     num_rows: int,
+    *,
     num_int: int = 0,
     num_float: int = 0,
     num_bytes: int = 0,
     bytes_size: int = 0,
 ) -> str:
     def generate_features(batch):
+        batch_size = len(batch["id"])
         features = {"int_features": [], "float_features": [], "bytes_features": []}
         lower_bound = -(2**32)
         upper_bound = 2**32
-        for _ in batch:
+        for _ in range(batch_size):
             if num_int > 0:
                 int_features = [
                     random.randint(lower_bound, upper_bound) for _ in range(num_int)
@@ -65,6 +68,8 @@ def generate_random_tfrecords(
         return pa.table(features)
 
     ds = ray.data.range(num_rows).map_batches(generate_features)
+    assert ds.count() == num_rows, ds.count()
+
     tfrecords_dir = tempfile.mkdtemp()
     ds.write_tfrecords(tfrecords_dir)
     return tfrecords_dir
@@ -86,12 +91,24 @@ def run_tfrecords_benchmark(benchmark: Benchmark):
     ]
 
     try:
-        benchmark.run("tfrecords-images-100-256", read_tfrecords, path=test_input[0])
-        benchmark.run("tfrecords-images-100-2048", read_tfrecords, path=test_input[1])
-        benchmark.run("tfrecords-images-1000-mix", read_tfrecords, path=test_input[2])
-        benchmark.run("tfrecords-random-int-1g", read_tfrecords, path=test_input[3])
-        benchmark.run("tfrecords-random-float-1g", read_tfrecords, path=test_input[4])
-        benchmark.run("tfrecords-random-bytes-1g", read_tfrecords, path=test_input[5])
+        benchmark.run_materialize_ds(
+            "tfrecords-images-100-256", read_tfrecords, path=test_input[0]
+        )
+        benchmark.run_materialize_ds(
+            "tfrecords-images-100-2048", read_tfrecords, path=test_input[1]
+        )
+        benchmark.run_materialize_ds(
+            "tfrecords-images-1000-mix", read_tfrecords, path=test_input[2]
+        )
+        benchmark.run_materialize_ds(
+            "tfrecords-random-int-1g", read_tfrecords, path=test_input[3]
+        )
+        benchmark.run_materialize_ds(
+            "tfrecords-random-float-1g", read_tfrecords, path=test_input[4]
+        )
+        benchmark.run_materialize_ds(
+            "tfrecords-random-bytes-1g", read_tfrecords, path=test_input[5]
+        )
 
     finally:
         for root in test_input:

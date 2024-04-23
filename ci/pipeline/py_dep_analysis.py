@@ -168,6 +168,9 @@ def build_dep_graph() -> DepGraph:
                 continue
 
             full = _full_module_path(module, f)
+            if full.startswith("ray.serve.tests.test_config_files."):
+                # Skip ray serve test files; can contain invalid python code.
+                continue
 
             if full not in graph.ids:
                 graph.ids[full] = len(graph.ids)

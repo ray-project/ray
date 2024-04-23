@@ -1,7 +1,7 @@
 .. _dataset-api:
 
 Dataset API
-===========
+==============
 
 .. currentmodule:: ray.data
 
@@ -9,8 +9,8 @@ Constructor
 -----------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
-   :template: autosummary/class_with_autosummary.rst
 
    Dataset
 
@@ -18,6 +18,7 @@ Basic Transformations
 ---------------------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    Dataset.map
@@ -34,6 +35,7 @@ Sorting, Shuffling, Repartitioning
 ----------------------------------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    Dataset.sort
@@ -42,14 +44,16 @@ Sorting, Shuffling, Repartitioning
    Dataset.repartition
 
 Splitting and Merging Datasets
-------------------------------
+---------------------------------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    Dataset.split
    Dataset.split_at_indices
    Dataset.split_proportionately
+   Dataset.streaming_split
    Dataset.train_test_split
    Dataset.union
    Dataset.zip
@@ -58,9 +62,11 @@ Grouped and Global Aggregations
 -------------------------------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    Dataset.groupby
+   Dataset.unique
    Dataset.aggregate
    Dataset.sum
    Dataset.min
@@ -68,23 +74,16 @@ Grouped and Global Aggregations
    Dataset.mean
    Dataset.std
 
-Converting to Pipeline
-----------------------
+Consuming Data
+---------------------
 
 .. autosummary::
-   :toctree: doc/
-
-   Dataset.repeat
-   Dataset.window
-
-Consuming Datasets
-------------------
-
-.. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    Dataset.show
    Dataset.take
+   Dataset.take_batch
    Dataset.take_all
    Dataset.iterator
    Dataset.iter_rows
@@ -96,6 +95,7 @@ I/O and Conversion
 ------------------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    Dataset.write_parquet
@@ -103,6 +103,7 @@ I/O and Conversion
    Dataset.write_csv
    Dataset.write_numpy
    Dataset.write_tfrecords
+   Dataset.write_webdataset
    Dataset.write_mongo
    Dataset.write_datasource
    Dataset.to_torch
@@ -115,17 +116,17 @@ I/O and Conversion
    Dataset.to_pandas_refs
    Dataset.to_numpy_refs
    Dataset.to_arrow_refs
-   Dataset.to_random_access_dataset
 
 Inspecting Metadata
 -------------------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    Dataset.count
+   Dataset.columns
    Dataset.schema
-   Dataset.default_batch_format
    Dataset.num_blocks
    Dataset.size_bytes
    Dataset.input_files
@@ -136,18 +137,21 @@ Execution
 ---------
 
 .. autosummary::
-   :toctree: doc/
+    :nosignatures:
+    :toctree: doc/
 
-   Dataset.fully_executed
-   Dataset.is_fully_executed
-   Dataset.lazy
+    Dataset.materialize
 
-Serialization
--------------
+.. _block-api:
+
+Internals
+---------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
-   Dataset.has_serializable_lineage
-   Dataset.serialize_lineage
-   Dataset.deserialize_lineage
+   block.Block
+   block.BlockExecStats
+   block.BlockMetadata
+   block.BlockAccessor

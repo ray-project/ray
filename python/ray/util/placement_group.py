@@ -2,14 +2,22 @@ import warnings
 from typing import Dict, List, Optional, Union
 
 import ray
+from ray._private.auto_init_hook import auto_init_ray
 from ray._private.client_mode_hook import client_mode_should_convert, client_mode_wrap
 from ray._private.utils import hex_to_binary, get_ray_doc_version
 from ray._raylet import PlacementGroupID
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+import ray._private.ray_constants as ray_constants
 
 bundle_reservation_check = None
-BUNDLE_RESOURCE_LABEL = "bundle"
+
+VALID_PLACEMENT_GROUP_STRATEGIES = {
+    "PACK",
+    "SPREAD",
+    "STRICT_PACK",
+    "STRICT_SPREAD",
+}
 
 
 # We need to import this method to use for ready API.
@@ -56,13 +64,15 @@ class PlacementGroup:
         It is compatible to ray.get and ray.wait.
 
         Example:
+            .. testcode::
 
-            >>> import ray
-            >>> from ray.util.placement_group import PlacementGroup
-            >>> pg = PlacementGroup([{"CPU": 1}]) # doctest: +SKIP
-            >>> ray.get(pg.ready()) # doctest: +SKIP
-            >>> pg = PlacementGroup([{"CPU": 1}]) # doctest: +SKIP
-            >>> ray.wait([pg.ready()], timeout=0) # doctest: +SKIP
+                import ray
+
+                pg = ray.util.placement_group([{"CPU": 1}])
+                ray.get(pg.ready())
+
+                pg = ray.util.placement_group([{"CPU": 1}])
+                ray.wait([pg.ready()])
 
         """
         self._fill_bundle_cache_if_needed()
@@ -77,7 +87,6 @@ class PlacementGroup:
 
         return bundle_reservation_check.options(
             scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=self),
-            resources={BUNDLE_RESOURCE_LABEL: 0.001},
         ).remote(self)
 
     def wait(self, timeout_seconds: Union[float, int] = 30) -> bool:
@@ -103,6 +112,14 @@ class PlacementGroup:
     def _fill_bundle_cache_if_needed(self) -> None:
         if not self.bundle_cache:
             self.bundle_cache = _get_bundle_cache(self.id)
+
+    def __eq__(self, other):
+        if not isinstance(other, PlacementGroup):
+            return False
+        return self.id == other.id
+
+    def __hash__(self):
+        return hash(self.id)
 
 
 @client_mode_wrap
@@ -131,6 +148,7 @@ def placement_group(
     name: str = "",
     lifetime: Optional[str] = None,
     _max_cpu_fraction_per_node: float = 1.0,
+    _soft_target_node_id: Optional[str] = None,
 ) -> PlacementGroup:
     """Asynchronously creates a PlacementGroup.
 
@@ -158,6 +176,12 @@ def placement_group(
             placement group scheduling. Note: This feature is experimental and is not
             recommended for use with autoscaling clusters (scale-up will not trigger
             properly).
+        _soft_target_node_id: (Private, Experimental) Soft hint where bundles of
+            this placement group should be placed.
+            The target node is specified by it's hex ID.
+            If the target node has no available resources or died,
+            bundles can be placed elsewhere.
+            This currently only works with STRICT_PACK pg.
 
     Raises:
         ValueError if bundle type is not a list.
@@ -167,55 +191,22 @@ def placement_group(
     Return:
         PlacementGroup: Placement group object.
     """
+
     worker = ray._private.worker.global_worker
     worker.check_connected()
 
-    if not isinstance(bundles, list):
-        raise ValueError("The type of bundles must be list, got {}".format(bundles))
+    validate_placement_group(
+        bundles=bundles,
+        strategy=strategy,
+        lifetime=lifetime,
+        _max_cpu_fraction_per_node=_max_cpu_fraction_per_node,
+        _soft_target_node_id=_soft_target_node_id,
+    )
 
-    if not bundles:
-        raise ValueError(
-            "The placement group `bundles` argument cannot contain an empty list"
-        )
-
-    assert _max_cpu_fraction_per_node is not None
-
-    if _max_cpu_fraction_per_node <= 0 or _max_cpu_fraction_per_node > 1:
-        raise ValueError(
-            "Invalid argument `_max_cpu_fraction_per_node`: "
-            f"{_max_cpu_fraction_per_node}. "
-            "_max_cpu_fraction_per_node must be a float between 0 and 1. "
-        )
-
-    # Validate bundles
-    for bundle in bundles:
-        if len(bundle) == 0 or all(
-            resource_value == 0 for resource_value in bundle.values()
-        ):
-            raise ValueError(
-                "Bundles cannot be an empty dictionary or "
-                f"resources with only 0 values. Bundles: {bundles}"
-            )
-
-        if "object_store_memory" in bundle.keys():
-            warnings.warn(
-                "Setting 'object_store_memory' for"
-                " bundles is deprecated since it doesn't actually"
-                " reserve the required object store memory."
-                f" Use object spilling that's enabled by default (https://docs.ray.io/en/{get_ray_doc_version()}/ray-core/objects/object-spilling.html) "  # noqa: E501
-                "instead to bypass the object store memory size limitation.",
-                DeprecationWarning,
-                stacklevel=1,
-            )
-
-    if lifetime is None:
-        detached = False
-    elif lifetime == "detached":
+    if lifetime == "detached":
         detached = True
     else:
-        raise ValueError(
-            "placement group `lifetime` argument must be either `None` or 'detached'"
-        )
+        detached = False
 
     placement_group_id = worker.core_worker.create_placement_group(
         name,
@@ -223,6 +214,7 @@ def placement_group(
         strategy,
         detached,
         _max_cpu_fraction_per_node,
+        _soft_target_node_id,
     )
 
     return PlacementGroup(placement_group_id)
@@ -260,7 +252,9 @@ def get_placement_group(placement_group_name: str) -> PlacementGroup:
         placement_group_name, worker.namespace
     )
     if placement_group_info is None:
-        raise ValueError(f"Failed to look up actor with name: {placement_group_name}")
+        raise ValueError(
+            f"Failed to look up placement group with name: {placement_group_name}"
+        )
     else:
         return PlacementGroup(
             PlacementGroupID(hex_to_binary(placement_group_info["placement_group_id"]))
@@ -291,29 +285,34 @@ def get_current_placement_group() -> Optional[PlacementGroup]:
     (because drivers never belong to any placement group).
 
     Examples:
-        >>> import ray
-        >>> from ray.util.placement_group import PlacementGroup
-        >>> from ray.util.placement_group import get_current_placement_group
-        >>> @ray.remote # doctest: +SKIP
-        ... def f(): # doctest: +SKIP
-        ...     # This will return the placement group the task f belongs to.
-        ...     # It means this pg will be identical to the pg created below.
-        ...     pg = get_current_placement_group() # doctest: +SKIP
-        >>> pg = PlacementGroup([{"CPU": 2}]) # doctest: +SKIP
-        >>> f.options(placement_group=pg).remote() # doctest: +SKIP
+        .. testcode::
 
-        >>> # New script.
-        >>> ray.init() # doctest: +SKIP
-        >>> # New script doesn't belong to any placement group,
-        >>> # so it returns None.
-        >>> assert get_current_placement_group() is None # doctest: +SKIP
+            import ray
+            from ray.util.placement_group import get_current_placement_group
+            from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+
+            @ray.remote
+            def f():
+                # This returns the placement group the task f belongs to.
+                # It means this pg is identical to the pg created below.
+                return get_current_placement_group()
+
+            pg = ray.util.placement_group([{"CPU": 2}])
+            assert ray.get(f.options(
+                    scheduling_strategy=PlacementGroupSchedulingStrategy(
+                        placement_group=pg)).remote()) == pg
+
+            # Driver doesn't belong to any placement group,
+            # so it returns None.
+            assert get_current_placement_group() is None
 
     Return:
         PlacementGroup: Placement group object.
             None if the current task or actor wasn't
             created with any placement group.
     """
-    if client_mode_should_convert(auto_init=True):
+    auto_init_ray()
+    if client_mode_should_convert():
         # Client mode is only a driver.
         return None
     worker = ray._private.worker.global_worker
@@ -342,6 +341,100 @@ def check_placement_group_index(
         )
 
 
+def validate_placement_group(
+    bundles: List[Dict[str, float]],
+    strategy: str = "PACK",
+    lifetime: Optional[str] = None,
+    _max_cpu_fraction_per_node: float = 1.0,
+    _soft_target_node_id: Optional[str] = None,
+) -> bool:
+    """Validates inputs for placement_group.
+
+    Raises ValueError if inputs are invalid.
+    """
+
+    assert _max_cpu_fraction_per_node is not None
+
+    if _max_cpu_fraction_per_node <= 0 or _max_cpu_fraction_per_node > 1:
+        raise ValueError(
+            "Invalid argument `_max_cpu_fraction_per_node`: "
+            f"{_max_cpu_fraction_per_node}. "
+            "_max_cpu_fraction_per_node must be a float between 0 and 1. "
+        )
+
+    if _soft_target_node_id and strategy != "STRICT_PACK":
+        raise ValueError(
+            "_soft_target_node_id currently only works "
+            f"with STRICT_PACK but got {strategy}"
+        )
+
+    if _soft_target_node_id and ray.NodeID.from_hex(_soft_target_node_id).is_nil():
+        raise ValueError(
+            f"Invalid hex ID of _soft_target_node_id, got {_soft_target_node_id}"
+        )
+
+    _validate_bundles(bundles)
+
+    if strategy not in VALID_PLACEMENT_GROUP_STRATEGIES:
+        raise ValueError(
+            f"Invalid placement group strategy {strategy}. "
+            f"Supported strategies are: {VALID_PLACEMENT_GROUP_STRATEGIES}."
+        )
+
+    if lifetime not in [None, "detached"]:
+        raise ValueError(
+            "Placement group `lifetime` argument must be either `None` or "
+            f"'detached'. Got {lifetime}."
+        )
+
+
+def _validate_bundles(bundles: List[Dict[str, float]]):
+    """Validates each bundle and raises a ValueError if any bundle is invalid."""
+
+    if not isinstance(bundles, list):
+        raise ValueError(
+            "Placement group bundles must be a list, " f"got {type(bundles)}."
+        )
+
+    if len(bundles) == 0:
+        raise ValueError(
+            "Bundles must be a non-empty list of resource "
+            'dictionaries. For example: `[{"CPU": 1.0}, {"GPU": 1.0}]`. '
+            "Got empty list instead."
+        )
+
+    for bundle in bundles:
+        if (
+            not isinstance(bundle, dict)
+            or not all(isinstance(k, str) for k in bundle.keys())
+            or not all(isinstance(v, (int, float)) for v in bundle.values())
+        ):
+            raise ValueError(
+                "Bundles must be a non-empty list of "
+                "resource dictionaries. For example: "
+                '`[{"CPU": 1.0}, {"GPU": 1.0}]`.'
+            )
+
+        if len(bundle) == 0 or all(
+            resource_value == 0 for resource_value in bundle.values()
+        ):
+            raise ValueError(
+                "Bundles cannot be an empty dictionary or "
+                f"resources with only 0 values. Bundles: {bundles}"
+            )
+
+        if "object_store_memory" in bundle.keys():
+            warnings.warn(
+                "Setting 'object_store_memory' for"
+                " bundles is deprecated since it doesn't actually"
+                " reserve the required object store memory."
+                f" Use object spilling that's enabled by default (https://docs.ray.io/en/{get_ray_doc_version()}/ray-core/objects/object-spilling.html) "  # noqa: E501
+                "instead to bypass the object store memory size limitation.",
+                DeprecationWarning,
+                stacklevel=1,
+            )
+
+
 def _valid_resource_shape(resources, bundle_specs):
     """
     If the resource shape cannot fit into every
@@ -352,7 +445,7 @@ def _valid_resource_shape(resources, bundle_specs):
         for resource, requested_val in resources.items():
             # Skip "bundle" resource as it is automatically added
             # to all nodes with bundles by the placement group.
-            if resource == BUNDLE_RESOURCE_LABEL:
+            if resource == ray_constants.PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME:
                 continue
             if bundle.get(resource, 0) < requested_val:
                 fit_in_bundle = False
@@ -366,7 +459,6 @@ def _valid_resource_shape(resources, bundle_specs):
 def _validate_resource_shape(
     placement_group, resources, placement_resources, task_or_actor_repr
 ):
-
     bundles = placement_group.bundle_specs
     resources_valid = _valid_resource_shape(resources, bundles)
     placement_resources_valid = _valid_resource_shape(placement_resources, bundles)

@@ -1,21 +1,25 @@
 import {
+  Box,
   Button,
-  InputAdornment,
-  LinearProgress,
+  IconButton,
+  Link,
   List,
   ListItem,
-  makeStyles,
   Paper,
-  Switch,
-  TextField,
-} from "@material-ui/core";
-import { SearchOutlined } from "@material-ui/icons";
-import React, { useEffect, useRef, useState } from "react";
-import { Outlet, useLocation, useParams } from "react-router-dom";
-import LogVirtualView from "../../components/LogView/LogVirtualView";
+  Typography,
+} from "@mui/material";
+import { grey } from "@mui/material/colors";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
+import React, { useMemo, useState } from "react";
+import { RiDownload2Line } from "react-icons/ri";
+import { Outlet, Link as RouterLink, useSearchParams } from "react-router-dom";
+import useSWR from "swr";
+import { StateApiLogViewer } from "../../common/MultiTabLogViewer";
 import { SearchInput } from "../../components/SearchComponent";
 import TitleCard from "../../components/TitleCard";
-import { getLogDetail } from "../../service/log";
+import { getStateApiDownloadLogUrl, listStateApiLogs } from "../../service/log";
+import { getNodeList } from "../../service/node";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 
 const useStyles = makeStyles((theme) => ({
@@ -31,276 +35,283 @@ const useStyles = makeStyles((theme) => ({
     padding: theme.spacing(2),
     marginTop: theme.spacing(2),
   },
-  search: {
-    margin: theme.spacing(1),
-  },
 }));
 
-type LogsProps = {
-  theme?: "dark" | "light";
-  newIA?: boolean;
-};
-
-const useLogs = ({ theme, newIA }: LogsProps) => {
-  const { search: urlSearch } = useLocation();
-  const { host, path } = useParams();
-  const searchMap = new URLSearchParams(urlSearch);
-  const urlFileName = searchMap.get("fileName");
-  const el = useRef<HTMLDivElement>(null);
-  const [origin, setOrigin] = useState<string>();
-  const [search, setSearch] =
-    useState<{
-      keywords?: string;
-      lineNumber?: string;
-      fontSize?: number;
-      revert?: boolean;
-    }>();
-  const [fileName, setFileName] = useState(searchMap.get("fileName") || "");
-  const [log, setLogs] =
-    useState<undefined | string | { [key: string]: string }[]>();
-  const [startTime, setStart] = useState<string>();
-  const [endTime, setEnd] = useState<string>();
-
-  useEffect(() => {
-    setFileName(urlFileName || "");
-  }, [urlFileName]);
-
-  useEffect(() => {
-    let url = "log_index";
-    setLogs("Loading...");
-    if (host) {
-      url = decodeURIComponent(host);
-      setOrigin(new URL(url).origin);
-      if (path) {
-        url += decodeURIComponent(path);
-      }
-    } else {
-      setOrigin(undefined);
-    }
-    getLogDetail(url)
-      .then((res) => {
-        if (res) {
-          setLogs(res);
-        } else {
-          setLogs("(null)");
-        }
-      })
-      .catch(() => {
-        setLogs("Failed to load");
-      });
-  }, [host, path]);
-
-  return {
-    log,
-    origin,
-    host,
-    path,
-    el,
-    search,
-    setSearch,
-    theme,
-    fileName,
-    setFileName,
-    startTime,
-    setStart,
-    endTime,
-    setEnd,
-  };
-};
-
-const Logs = (props: LogsProps) => {
+export const StateApiLogsListPage = () => {
   const classes = useStyles();
-  const {
-    log,
-    origin,
-    path,
-    el,
-    search,
-    setSearch,
-    theme,
-    fileName,
-    setFileName,
-    startTime,
-    setStart,
-    endTime,
-    setEnd,
-  } = useLogs(props);
-  const { newIA } = props;
-  let href = newIA ? "#/new/logs/" : "#/log/";
+  const [searchParams] = useSearchParams();
+  const nodeId = searchParams.get("nodeId");
+  const folder = searchParams.get("folder");
+  const fileNameParam = searchParams.get("fileName");
+  const [fileName, setFileName] = useState(fileNameParam || "");
 
-  if (origin) {
-    if (path) {
-      const after = decodeURIComponent(path).split("/");
-      after.pop();
-      if (after.length > 1) {
-        href += encodeURIComponent(origin);
-        href += "/";
-        href += encodeURIComponent(after.join("/"));
-      }
-    }
-  }
+  const backFolder = folder
+    ? [...folder.split("/").slice(0, -1)].join("/")
+    : undefined;
+  const backHref =
+    // backGlob is undefined when glob is empty
+    // backGlob is empty string when glob is 1 level deep.
+    backFolder !== undefined && nodeId
+      ? `/logs/?nodeId=${encodeURIComponent(
+          nodeId,
+        )}&folder=${encodeURIComponent(backFolder)}`
+      : `/logs/`;
 
   return (
-    <div className={classes.root} ref={el}>
+    <div className={classes.root}>
       <TitleCard title="Logs Viewer">
-        <Paper>
-          {!origin && <p>Select a node to view logs</p>}
-          {origin && (
-            <p>
-              Node: {origin}
-              {decodeURIComponent(path || "")}
-            </p>
+        <Paper elevation={0}>
+          {!nodeId && <p>Select a node to view logs</p>}
+          {nodeId && (
+            <React.Fragment>
+              <p>Node: {nodeId}</p>
+              <p>{decodeURIComponent(folder || "")}</p>
+            </React.Fragment>
           )}
-          {origin && (
-            <div>
-              <Button
-                variant="contained"
-                href={href}
-                className={classes.search}
-              >
+          {nodeId && (
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: "row",
+                flexWrap: "nowrap",
+                alignItems: "center",
+                margin: 1,
+                gap: 2,
+              }}
+            >
+              <Button component={RouterLink} variant="contained" to={backHref}>
                 Back To ../
               </Button>
-              {typeof log === "object" && (
-                <SearchInput
-                  defaultValue={fileName}
-                  label="File Name"
-                  onChange={(val) => {
-                    setFileName(val);
-                  }}
-                />
-              )}
-            </div>
+              <SearchInput
+                defaultValue={fileName}
+                label="File Name"
+                onChange={(val) => {
+                  setFileName(val);
+                }}
+              />
+            </Box>
           )}
         </Paper>
-        <Paper>
-          {typeof log === "object" && (
-            <List>
-              {log
-                .filter((e) => !fileName || e?.name?.includes(fileName))
-                .map((e: { [key: string]: string }) => (
-                  <ListItem key={e.name}>
-                    <a
-                      href={
-                        newIA
-                          ? `#/new/logs/${
-                              origin ? `${encodeURIComponent(origin)}/` : ""
-                            }${encodeURIComponent(e.href)}`
-                          : `#/log/${
-                              origin ? `${encodeURIComponent(origin)}/` : ""
-                            }${encodeURIComponent(e.href)}`
-                      }
+        <Paper elevation={0}>
+          {nodeId ? (
+            <StateApiLogsFilesList
+              nodeId={nodeId}
+              folder={folder}
+              fileName={fileName}
+            />
+          ) : (
+            <StateApiLogsNodesList />
+          )}
+        </Paper>
+      </TitleCard>
+    </div>
+  );
+};
+
+export const StateApiLogsNodesList = () => {
+  const { data: nodes, error } = useSWR(["/api/v0/nodes"], async () => {
+    const resp = await getNodeList();
+    const nodes = resp.data.data.summary;
+    return nodes.filter((node) => node.raylet.state === "ALIVE");
+  });
+
+  const isLoading = nodes === undefined && error === undefined;
+
+  return (
+    <React.Fragment>
+      {isLoading ? (
+        <Typography>Loading...</Typography>
+      ) : error ? (
+        <Typography color="error">{error}</Typography>
+      ) : (
+        <List>
+          {nodes?.map(({ raylet: { nodeId }, ip }) => (
+            <ListItem key={nodeId}>
+              <Link component={RouterLink} to={`?nodeId=${nodeId}`}>
+                Node ID: {nodeId} (IP: {ip})
+              </Link>
+            </ListItem>
+          ))}
+        </List>
+      )}
+    </React.Fragment>
+  );
+};
+
+const useStateApiLogsFilesListStyles = makeStyles((theme) =>
+  createStyles({
+    iconButton: {
+      verticalAlign: "baseline",
+      color: grey[700],
+    },
+  }),
+);
+
+type StateApiLogsFilesListProps = {
+  nodeId: string;
+  folder: string | null;
+  fileName: string;
+};
+
+export const StateApiLogsFilesList = ({
+  nodeId,
+  folder,
+  fileName,
+}: StateApiLogsFilesListProps) => {
+  const classes = useStateApiLogsFilesListStyles();
+
+  // We want to do a partial search for file name.
+  const fileNameGlob = fileName ? `*${fileName}*` : undefined;
+  const glob = fileNameGlob
+    ? folder
+      ? `${folder}/${fileNameGlob}`
+      : `${fileNameGlob}`
+    : folder
+    ? `${folder}/*`
+    : undefined;
+
+  const { data: fileGroups, error } = useSWR(
+    nodeId ? ["/api/v0/logs", nodeId, glob] : null,
+    async ([_, nodeId, glob]) => {
+      const resp = await listStateApiLogs({ nodeId, glob });
+      return resp.data.data.result;
+    },
+  );
+
+  const isLoading = fileGroups === undefined && error === undefined;
+
+  const files = useMemo(
+    () =>
+      (fileGroups !== undefined
+        ? Object.values(fileGroups)
+            .flatMap((e) => e)
+            .sort()
+        : []
+      ).map((fileName) => {
+        const isDir = fileName.endsWith("/");
+        const fileNameWithoutEndingSlash = fileName.substring(
+          0,
+          fileName.length - 1,
+        );
+        const parentFolder = folder ? `${folder}/` : "";
+        const fileNameWithoutParent = fileName.startsWith(parentFolder)
+          ? fileName.substring(parentFolder.length)
+          : fileName;
+
+        const linkPath = isDir
+          ? `?nodeId=${encodeURIComponent(nodeId)}&folder=${encodeURIComponent(
+              fileNameWithoutEndingSlash,
+            )}`
+          : `viewer?nodeId=${encodeURIComponent(
+              nodeId,
+            )}&fileName=${encodeURIComponent(fileName)}`;
+
+        const downloadUrl = isDir
+          ? undefined
+          : getStateApiDownloadLogUrl({
+              nodeId,
+              filename: fileName,
+              maxLines: -1,
+            });
+
+        return {
+          fileName,
+          name: fileNameWithoutParent,
+          linkPath,
+          isDir,
+          downloadUrl,
+        };
+      }),
+    [fileGroups, folder, nodeId],
+  );
+
+  return (
+    <React.Fragment>
+      {isLoading ? (
+        <p>Loading...</p>
+      ) : (
+        files.length === 0 && <p>No files found.</p>
+      )}
+      {files && (
+        <List>
+          {files.map(({ fileName, name, downloadUrl, linkPath }) => {
+            return (
+              <ListItem key={fileName}>
+                <Link component={RouterLink} to={linkPath}>
+                  {name}
+                </Link>
+                {downloadUrl && (
+                  <Box paddingLeft={0.5}>
+                    <IconButton
+                      component="a"
+                      href={downloadUrl}
+                      download={fileName}
+                      size="small"
+                      className={classes.iconButton}
                     >
-                      {e.name}
-                    </a>
-                  </ListItem>
-                ))}
-            </List>
+                      <RiDownload2Line size={16} />
+                    </IconButton>
+                  </Box>
+                )}
+              </ListItem>
+            );
+          })}
+        </List>
+      )}
+    </React.Fragment>
+  );
+};
+
+export const StateApiLogViewerPage = () => {
+  const classes = useStyles();
+  const [searchParams] = useSearchParams();
+  const nodeId = searchParams.get("nodeId");
+  const fileName = searchParams.get("fileName");
+
+  const backFolder = fileName
+    ? [...fileName.split("/").slice(0, -1)].join("/")
+    : undefined;
+  const backHref =
+    // backGlob is undefined when glob is empty
+    // backGlob is empty string when glob is 1 level deep.
+    backFolder !== undefined
+      ? `/logs/?nodeId=${nodeId}&folder=${backFolder}`
+      : `/logs/?nodeId=${nodeId}`;
+
+  return (
+    <div className={classes.root}>
+      <TitleCard title="Logs Viewer">
+        <Paper elevation={0}>
+          {!nodeId && <p>Select a node to view logs</p>}
+          {nodeId && (
+            <React.Fragment>
+              <p>Node: {nodeId}</p>
+              <p>File: {decodeURIComponent(fileName || "")}</p>
+            </React.Fragment>
           )}
-          {typeof log === "string" && log !== "Loading..." && (
-            <div>
-              <div>
-                <TextField
-                  className={classes.search}
-                  label="Keyword"
-                  InputProps={{
-                    onChange: ({ target: { value } }) => {
-                      setSearch({ ...search, keywords: value });
-                    },
-                    type: "",
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <SearchOutlined />
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-                <TextField
-                  className={classes.search}
-                  label="Line Number"
-                  InputProps={{
-                    onChange: ({ target: { value } }) => {
-                      setSearch({ ...search, lineNumber: value });
-                    },
-                    type: "",
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <SearchOutlined />
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-                <TextField
-                  className={classes.search}
-                  label="Font Size"
-                  InputProps={{
-                    onChange: ({ target: { value } }) => {
-                      setSearch({ ...search, fontSize: Number(value) });
-                    },
-                    type: "",
-                  }}
-                />
-                <TextField
-                  id="datetime-local"
-                  label="Start Time"
-                  type="datetime-local"
-                  value={startTime}
-                  className={classes.search}
-                  onChange={(val) => {
-                    setStart(val.target.value);
-                  }}
-                  InputLabelProps={{
-                    shrink: true,
-                  }}
-                />
-                <TextField
-                  label="End Time"
-                  type="datetime-local"
-                  value={endTime}
-                  className={classes.search}
-                  onChange={(val) => {
-                    setEnd(val.target.value);
-                  }}
-                  InputLabelProps={{
-                    shrink: true,
-                  }}
-                />
-                <div className={classes.search}>
-                  Reverse:{" "}
-                  <Switch
-                    checked={search?.revert}
-                    onChange={(e, v) => setSearch({ ...search, revert: v })}
-                  />
-                  <Button
-                    className={classes.search}
-                    variant="contained"
-                    onClick={() => {
-                      setStart("");
-                      setEnd("");
-                    }}
-                  >
-                    Reset Time
-                  </Button>
-                </div>
-              </div>
-              <LogVirtualView
-                height={600}
-                theme={theme}
-                revert={search?.revert}
-                keywords={search?.keywords}
-                focusLine={Number(search?.lineNumber) || undefined}
-                fontSize={search?.fontSize || 12}
-                content={log}
-                language="prolog"
-                startTime={startTime}
-                endTime={endTime}
-              />
-            </div>
+          {nodeId && (
+            <Box
+              sx={{
+                margin: 1,
+              }}
+            >
+              <Button component={RouterLink} variant="contained" to={backHref}>
+                Back To ../
+              </Button>
+            </Box>
           )}
-          {log === "Loading..." && (
-            <div>
-              <br />
-              <LinearProgress />
-            </div>
+        </Paper>
+        <Paper elevation={0}>
+          {nodeId && fileName ? (
+            <StateApiLogViewer
+              data={{
+                nodeId,
+                filename: fileName,
+              }}
+              height={600}
+            />
+          ) : (
+            <Typography color="error">Invalid url parameters</Typography>
           )}
         </Paper>
       </TitleCard>
@@ -311,15 +322,13 @@ const Logs = (props: LogsProps) => {
 /**
  * Logs page for the new information architecture
  */
-export const NewIALogsPage = () => {
+export const LogsLayout = () => {
   return (
     <React.Fragment>
       <MainNavPageInfo
-        pageInfo={{ title: "Logs", id: "logs", path: "/new/logs" }}
+        pageInfo={{ title: "Logs", id: "logs", path: "/logs" }}
       />
       <Outlet />
     </React.Fragment>
   );
 };
-
-export default Logs;

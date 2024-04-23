@@ -1,17 +1,17 @@
 import itertools
 import logging
-from typing import Union, Iterable, Tuple, List
+from typing import Iterable, List, Tuple, Union
 
 import ray
 from ray.data._internal.block_list import BlockList
-from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.memory_tracing import trace_deallocation
+from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data.block import (
     Block,
-    BlockPartition,
     BlockAccessor,
     BlockExecStats,
     BlockMetadata,
+    BlockPartition,
 )
 from ray.types import ObjectRef
 

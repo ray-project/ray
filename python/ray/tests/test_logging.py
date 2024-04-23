@@ -25,6 +25,7 @@ from ray._private.log_monitor import (
 from ray._private.test_utils import (
     get_log_batch,
     get_log_message,
+    get_log_data,
     init_log_pubsub,
     run_string_as_driver,
     wait_for_condition,
@@ -127,7 +128,7 @@ def test_log_rotation_config(ray_start_cluster, monkeypatch):
 
 def test_log_file_exists(shutdown_only):
     """Verify all log files exist as specified in
-    https://docs.ray.io/en/master/ray-observability/ray-logging.html#logging-directory-structure # noqa
+    https://docs.ray.io/en/master/ray-observability/user-guides/configure-logging.html#logging-directory-structure # noqa
     """
     ray.init(num_cpus=1)
     session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
@@ -137,6 +138,7 @@ def test_log_file_exists(shutdown_only):
     log_rotating_component = [
         (ray_constants.PROCESS_TYPE_DASHBOARD, [".log", ".err"]),
         (ray_constants.PROCESS_TYPE_DASHBOARD_AGENT, [".log"]),
+        (ray_constants.PROCESS_TYPE_RUNTIME_ENV_AGENT, [".log", ".out", ".err"]),
         (ray_constants.PROCESS_TYPE_LOG_MONITOR, [".log", ".err"]),
         (ray_constants.PROCESS_TYPE_MONITOR, [".log", ".out", ".err"]),
         (ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER, [".log"]),
@@ -213,7 +215,12 @@ def test_log_rotation(shutdown_only, monkeypatch):
     # Create a runtime env to make sure dashboard agent is alive.
     ray.get(f.options(runtime_env={"env_vars": {"A": "a", "B": "b"}}).remote())
 
-    paths = list(log_dir_path.iterdir())
+    # Filter out only paths that end in .log, .log.1, etc.
+    # These paths are handled by the logger; the others (.out, .err) are not.
+    paths = []
+    for path in log_dir_path.iterdir():
+        if re.search(r".*\.log(\.\d+)?", str(path)):
+            paths.append(path)
 
     def component_exist(component, paths):
         for path in paths:
@@ -380,11 +387,11 @@ def test_ignore_windows_access_violation(ray_start_regular_shared):
     assert msgs[0][0] == "done"
 
 
-def test_log_redirect_to_stderr(shutdown_only, capfd):
+def test_log_redirect_to_stderr(shutdown_only):
 
     log_components = {
         ray_constants.PROCESS_TYPE_DASHBOARD: "Dashboard head grpc address",
-        ray_constants.PROCESS_TYPE_DASHBOARD_AGENT: "Dashboard agent grpc address",
+        ray_constants.PROCESS_TYPE_DASHBOARD_AGENT: "",
         ray_constants.PROCESS_TYPE_GCS_SERVER: "Loading job table data",
         # No log monitor output if all components are writing to stderr.
         ray_constants.PROCESS_TYPE_LOG_MONITOR: "",
@@ -438,7 +445,6 @@ assert set(log_component_names).isdisjoint(set(paths)), paths
 
     # Make sure that the expected startup log records for each of the
     # components appears in the stderr stream.
-    # stderr = capfd.readouterr().err
     for component, canonical_record in log_components.items():
         if not canonical_record:
             # Process not run or doesn't generate logs; skip.
@@ -546,7 +552,7 @@ def test_log_monitor(tmp_path, live_dead_pids):
 
     mock_publisher = MagicMock()
     log_monitor = LogMonitor(
-        str(log_dir), mock_publisher, is_proc_alive, max_files_open=5
+        "127.0.0.1", str(log_dir), mock_publisher, is_proc_alive, max_files_open=5
     )
 
     # files
@@ -701,7 +707,7 @@ def test_log_monitor_actor_task_name_and_job_id(tmp_path):
 
     mock_publisher = MagicMock()
     log_monitor = LogMonitor(
-        str(log_dir), mock_publisher, lambda _: True, max_files_open=5
+        "127.0.0.1", str(log_dir), mock_publisher, lambda _: True, max_files_open=5
     )
     worker_out_log_file = f"worker-{worker_id}-{job_id}-{pid}.out"
     first_line = "First line\n"
@@ -787,7 +793,7 @@ def test_log_monitor_update_backpressure(tmp_path, mock_timer):
     log_dir.mkdir()
     mock_publisher = MagicMock()
     log_monitor = LogMonitor(
-        str(log_dir), mock_publisher, lambda _: True, max_files_open=5
+        "127.0.0.1", str(log_dir), mock_publisher, lambda _: True, max_files_open=5
     )
 
     current = 0
@@ -811,16 +817,16 @@ def test_log_monitor_update_backpressure(tmp_path, mock_timer):
     assert log_monitor.should_update_filenames(current)
 
 
-def test_repr_inheritance():
+def test_repr_inheritance(shutdown_only):
     """Tests that a subclass's repr is used in logging."""
     logger = logging.getLogger(__name__)
 
     class MyClass:
         def __repr__(self) -> str:
-            return "ThisIsMyCustomActorName"
+            return "ThisIsMyCustomActorName" + ray_constants.TESTING_NEVER_DEDUP_TOKEN
 
         def do(self):
-            logger.warning("text")
+            logger.warning("text" + ray_constants.TESTING_NEVER_DEDUP_TOKEN)
 
     class MySubclass(MyClass):
         pass
@@ -851,8 +857,8 @@ def test_repr_inheritance():
 
 
 def test_ray_does_not_break_makeRecord():
-    """Importing Ray used to cause `logging.makeRecord` to use the default record factory,
-    rather than the factory set by `logging.setRecordFactory`.
+    """Importing Ray used to cause `logging.makeRecord` to use the default record
+    factory, rather than the factory set by `logging.setRecordFactory`.
 
     This tests validates that this bug is fixed.
     """
@@ -872,6 +878,78 @@ def test_ray_does_not_break_makeRecord():
     finally:
         # Set it back to the default factory.
         logging.setLogRecordFactory(logging.LogRecord)
+
+
+@pytest.mark.parametrize(
+    "logger_name,logger_level",
+    (
+        ("ray", logging.INFO),
+        ("ray.air", logging.INFO),
+        ("ray.data", logging.INFO),
+        ("ray.rllib", logging.WARNING),
+        ("ray.serve", logging.INFO),
+        ("ray.train", logging.INFO),
+        ("ray.tune", logging.INFO),
+        ("ray.workflow", logging.INFO),
+    ),
+)
+@pytest.mark.parametrize(
+    "test_level",
+    (
+        logging.NOTSET,
+        logging.DEBUG,
+        logging.INFO,
+        logging.WARNING,
+        logging.ERROR,
+        logging.CRITICAL,
+    ),
+)
+def test_log_level_settings(
+    propagate_logs, caplog, logger_name, logger_level, test_level
+):
+    """Test that logs of lower level than the ray subpackage is
+    configured for are rejected.
+    """
+    logger = logging.getLogger(logger_name)
+
+    logger.log(test_level, "Test!")
+
+    if test_level >= logger_level:
+        assert caplog.records, "Log message missing where one is expected."
+        assert caplog.records[-1].levelno == test_level, "Log message level mismatch."
+    else:
+        assert len(caplog.records) == 0, "Log message found where none are expected."
+
+
+def test_log_with_import():
+
+    logger = logging.getLogger(__name__)
+    assert not logger.disabled
+    ray.log.logger_initialized = False
+    ray.log.generate_logging_config()
+    assert not logger.disabled
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
+def test_log_monitor_ip_correct(ray_start_cluster):
+    cluster = ray_start_cluster
+    # add first node
+    cluster.add_node(node_ip_address="127.0.0.2")
+    address = cluster.address
+    ray.init(address)
+    # add second node
+    cluster.add_node(node_ip_address="127.0.0.3")
+
+    @ray.remote
+    def print_msg():
+        print("abc")
+
+    p = init_log_pubsub()
+    print_msg.remote()
+    data = get_log_data(
+        p, num=6, timeout=10, job_id=ray.get_runtime_context().get_job_id()
+    )
+    assert data[0]["ip"] == "127.0.0.2"
 
 
 if __name__ == "__main__":

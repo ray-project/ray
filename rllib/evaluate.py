@@ -18,6 +18,8 @@ from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
 from ray.rllib.common import CLIArguments as cli
+from ray.train._checkpoint import Checkpoint
+from ray.train._internal.session import _TrainingResult
 from ray.tune.utils import merge_dicts
 from ray.tune.registry import get_trainable_cls, _global_registry, ENV_CREATOR
 
@@ -249,11 +251,19 @@ def run(
 
     # Create the Algorithm from config.
     cls = get_trainable_cls(algo)
-    algorithm = cls(env=env, config=config)
+    algorithm = cls(config=config)
 
     # Load state from checkpoint, if provided.
     if checkpoint:
-        algorithm.restore(checkpoint)
+        if os.path.isdir(checkpoint):
+            checkpoint_dir = checkpoint
+        else:
+            checkpoint_dir = str(Path(checkpoint).parent)
+        print(f"Restoring algorithm from {checkpoint_dir}")
+        restore_result = _TrainingResult(
+            checkpoint=Checkpoint.from_directory(checkpoint_dir), metrics={}
+        )
+        algorithm.restore(restore_result)
 
     # Do the actual rollout.
     with RolloutSaver(
@@ -329,7 +339,7 @@ def rollout(
         env = agent.workers.local_worker().env
         multiagent = isinstance(env, MultiAgentEnv)
         if agent.workers.local_worker().multiagent:
-            policy_agent_mapping = agent.config["multiagent"]["policy_mapping_fn"]
+            policy_agent_mapping = agent.config.policy_mapping_fn
         policy_map = agent.workers.local_worker().policy_map
         state_init = {p: m.get_initial_state() for p, m in policy_map.items()}
         use_lstm = {p: len(s) > 0 for p, s in state_init.items()}

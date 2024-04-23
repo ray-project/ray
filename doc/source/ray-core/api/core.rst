@@ -2,16 +2,19 @@ Core API
 ========
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ray.init
     ray.shutdown
     ray.is_initialized
+    ray.job_config.JobConfig
 
 Tasks
 -----
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ray.remote
@@ -22,6 +25,7 @@ Actors
 ------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ray.remote
@@ -34,6 +38,7 @@ Objects
 -------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ray.get
@@ -45,6 +50,7 @@ Objects
 Runtime Context
 ---------------
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ray.runtime_context.get_runtime_context
@@ -54,6 +60,7 @@ Runtime Context
 Cross Language
 --------------
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ray.cross_language.java_function

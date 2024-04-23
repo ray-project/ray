@@ -37,10 +37,7 @@ def update_global_seed_if_necessary(
         if cuda_version is not None and float(torch.version.cuda) >= 10.2:
             os.environ["CUBLAS_WORKSPACE_CONFIG"] = "4096:8"
         else:
-            try:
-                from packaging.version import Version
-            except ImportError:
-                from distutils.version import LooseVersion as Version
+            from packaging.version import Version
 
             if Version(torch.__version__) >= Version("1.8.0"):
                 # Not all Operations support this.
