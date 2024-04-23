@@ -520,7 +520,6 @@ class SAC(DQN):
                         gamma=self.config.gamma,
                     )
                     train_batch = SampleBatch(train_dict)
-
                     # Convert to multi-agent batch as `LearnerGroup` depends on it.
                     train_batch = train_batch.as_multi_agent()
 
