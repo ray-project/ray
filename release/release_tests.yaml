@@ -2277,7 +2277,7 @@
 # Serve tests
 ########################
 
-- name: serve_single_deployment_1k_noop_replica
+- name: serve_scale_replicas
   group: Serve tests
   working_dir: serve_tests
 
@@ -2286,22 +2286,17 @@
 
   cluster:
     byod: {}
-    cluster_compute: compute_tpl_32_cpu.yaml
+    cluster_compute: compute_tpl_single_node_32_cpu.yaml
 
   run:
     timeout: 7200
     long_running: false
-    script: python workloads/single_deployment_1k_noop_replica.py
+    script: python workloads/replica_scalability.py
 
   alert: default
 
   variations:
     - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: compute_tpl_32_cpu_gce.yaml
 
 - name: serve_multi_deployment_1k_noop_replica
   group: Serve tests
@@ -2353,59 +2348,6 @@
   variations:
     - __suffix__: aws
 
-- name: serve_autoscaling_single_deployment
-  group: Serve tests
-  working_dir: serve_tests
-
-  frequency: nightly
-  team: serve
-
-  cluster:
-    byod: {}
-    cluster_compute: compute_tpl_8_cpu_autoscaling.yaml
-
-  run:
-    timeout: 7200
-    long_running: false
-    script: python workloads/autoscaling_single_deployment.py
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: compute_tpl_8_cpu_autoscaling_gce.yaml
-
-- name: serve_autoscaling_multi_deployment
-  group: Serve tests
-  working_dir: serve_tests
-
-  frequency: nightly
-  stable: False
-  team: serve
-
-  cluster:
-    byod: {}
-    cluster_compute: compute_tpl_32_cpu_autoscaling.yaml
-
-  run:
-    timeout: 7200
-    long_running: false
-    script: python workloads/autoscaling_multi_deployment.py
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: compute_tpl_32_cpu_autoscaling_gce.yaml
-
 - name: serve_serve_micro_benchmark
   group: Serve tests
   working_dir: serve_tests
@@ -2432,26 +2374,7 @@
       cluster:
         cluster_compute: compute_tpl_single_node_gce.yaml
 
-# - name: serve_serve_micro_benchmark_k8s
-#   group: Serve tests
-#   working_dir: serve_tests
-
-#   # TODO(architkulkarni) Reenable after K8s migration.  Currently failing
-#   frequency: manual
-#   team: serve
-
-#   cluster:
-#     cluster_compute: compute_tpl_single_node_k8s.yaml
-
-#   run:
-#     timeout: 7200
-#     long_running: false
-#     script: python workloads/serve_micro_benchmark.py
-
-#   alert: default
-
-
-- name: deployment_graph_long_chain
+- name: serve_microbenchmarks
   group: Serve tests
   working_dir: serve_tests
 
@@ -2463,63 +2386,9 @@
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
 
   run:
-    timeout: 3600
+    timeout: 7200
     long_running: false
-    script: python workloads/deployment_graph_long_chain.py --chain-length=10 --num-clients=4 --local-test=False
-
-  alert: default
-  stable: False
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: compute_tpl_single_node_32_cpu_gce.yaml
-
-- name: deployment_graph_wide_ensemble
-  group: Serve tests
-  working_dir: serve_tests
-
-  frequency: nightly
-  team: serve
-
-  cluster:
-    byod: {}
-    cluster_compute: compute_tpl_single_node_32_cpu.yaml
-
-  run:
-    timeout: 3600
-    long_running: false
-    script: python workloads/deployment_graph_wide_ensemble.py --fanout-degree=10 --num-clients=4 --local-test=False
-
-  alert: default
-  stable: False
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: compute_tpl_single_node_32_cpu_gce.yaml
-
-- name: serve_handle_long_chain
-  group: Serve tests
-  working_dir: serve_tests
-
-  frequency: nightly
-  team: serve
-
-  cluster:
-    byod: {}
-    cluster_compute: compute_tpl_single_node_32_cpu.yaml
-
-  run:
-    timeout: 3600
-    long_running: false
-    script: python workloads/serve_handle_long_chain.py --chain-length=10 --num-clients=4 --local-test=False
+    script: python workloads/microbenchmarks.py
 
   alert: default
 
@@ -2529,34 +2398,7 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_compute: compute_tpl_single_node_32_cpu_gce.yaml
-
-- name: serve_handle_wide_ensemble
-  group: Serve tests
-  working_dir: serve_tests
-
-  frequency: nightly
-  team: serve
-
-  cluster:
-    byod: {}
-    cluster_compute: compute_tpl_single_node_32_cpu.yaml
-
-  run:
-    timeout: 3600
-    long_running: false
-    script: python workloads/serve_handle_wide_ensemble.py --fanout-degree=10 --num-clients=4 --local-test=False
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: compute_tpl_single_node_32_cpu_gce.yaml
-
+        cluster_compute: compute_tpl_single_node_gce.yaml
 
 - name: serve_resnet_benchmark
   group: Serve tests
@@ -4011,7 +3853,7 @@
     cluster_compute: stress_tests/stress_tests_single_node_oom_compute.yaml
 
   run:
-    timeout: 500
+    timeout: 1000
     script: python stress_tests/test_parallel_tasks_memory_pressure.py --num-tasks 20
 
   variations:

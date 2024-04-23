@@ -206,22 +206,6 @@ def check_ray_started():
     return requests.get("http://localhost:52365/api/ray/version").status_code == 200
 
 
-def check_telemetry_recorded(storage_handle, key, expected_value):
-    report = ray.get(storage_handle.get_report.remote())
-    assert report["extra_usage_tags"][key] == expected_value
-    return True
-
-
-def check_telemetry_not_recorded(storage_handle, key):
-    report = ray.get(storage_handle.get_report.remote())
-    assert (
-        ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.get_value_from_report(
-            report
-        )
-        is None
-    )
-
-
 def check_deployment_status(
     name: str, expected_status: DeploymentStatus, app_name=SERVE_DEFAULT_APP_NAME
 ) -> bool:
@@ -372,6 +356,16 @@ def start_telemetry_app():
     storage = TelemetryStorage.remote()
     serve.run(receiver_app, name="telemetry", route_prefix=TELEMETRY_ROUTE_PREFIX)
     return storage
+
+
+def check_telemetry(
+    tag: ServeUsageTag, expected: Any, storage_actor_name: str = STORAGE_ACTOR_NAME
+):
+    storage_handle = ray.get_actor(storage_actor_name, namespace=SERVE_NAMESPACE)
+    report = ray.get(storage_handle.get_report.remote())
+    print(report["extra_usage_tags"])
+    assert tag.get_value_from_report(report) == expected
+    return True
 
 
 def ping_grpc_list_applications(channel, app_names, test_draining=False):

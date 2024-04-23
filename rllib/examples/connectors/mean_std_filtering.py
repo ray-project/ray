@@ -26,7 +26,7 @@ if __name__ == "__main__":
             lambda _: MultiAgentPendulum(config={"num_agents": args.num_agents}),
         )
 
-    base_config = (
+    config = (
         get_trainable_cls(args.algo)
         .get_default_config()
         .environment("env" if args.num_agents > 0 else "Pendulum-v1")
@@ -53,31 +53,55 @@ if __name__ == "__main__":
             lambda_=0.1,
             vf_clip_param=10.0,
             vf_loss_coeff=0.01,
+        )
+        .evaluation(
+            evaluation_num_workers=1,
+            evaluation_parallel_to_training=True,
+            evaluation_interval=1,
+            evaluation_duration=10,
+            evaluation_duration_unit="episodes",
+            evaluation_config={
+                "explore": False,
+                # Do NOT use the eval EnvRunners' ConnectorV2 states. Instead, before
+                # each round of evaluation, broadcast the latest training WorkerSet's
+                # ConnectorV2 state (merged from all training remote EnvRunners) to
+                # all eval EnvRunners (and discard the eval EnvRunners' stats).
+                "use_worker_filter_stats": False,
+            },
+        )
+    )
+    if args.enable_new_api_stack:
+        config = config.rl_module(
+            model_config_dict={
+                "fcnet_activation": "relu",
+                "fcnet_weights_initializer": torch.nn.init.xavier_uniform_,
+                "fcnet_bias_initializer": torch.nn.init.constant_,
+                "fcnet_bias_initializer_config": {"val": 0.0},
+                "uses_new_env_runners": True,
+            }
+        )
+    else:
+        config = config.training(
             model=dict(
                 {
                     "fcnet_activation": "relu",
                     "fcnet_weights_initializer": torch.nn.init.xavier_uniform_,
                     "fcnet_bias_initializer": torch.nn.init.constant_,
                     "fcnet_bias_initializer_config": {"val": 0.0},
-                },
-                **({"uses_new_env_runners": True} if args.enable_new_api_stack else {}),
-            ),
+                }
+            )
         )
-        # .evaluation(
-        #    evaluation_num_workers=1,
-        #    evaluation_parallel_to_training=True,
-        #    evaluation_interval=1,
-        #    evaluation_duration=10,
-        #    evaluation_duration_unit="episodes",
-        #    evaluation_config={"explore": False},
-        # )
-    )
 
     # Add a simple multi-agent setup.
     if args.num_agents > 0:
-        base_config.multi_agent(
+        config = config.multi_agent(
             policies={f"p{i}" for i in range(args.num_agents)},
             policy_mapping_fn=lambda aid, *a, **kw: f"p{aid}",
         )
 
-    run_rllib_example_script_experiment(base_config, args)
+    stop = {
+        "training_iteration": args.stop_iters,
+        "evaluation/sampler_results/episode_reward_mean": args.stop_reward,
+        "timesteps_total": args.stop_timesteps,
+    }
+    run_rllib_example_script_experiment(config, args, stop=stop)

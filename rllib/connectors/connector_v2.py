@@ -820,7 +820,7 @@ class ConnectorV2(abc.ABC):
         Args:
             state: The state dict to define this ConnectorV2's new state.
         """
-        pass
+        return
 
     def reset_state(self) -> None:
         """Resets the state of this ConnectorV2 to some initial value.
@@ -828,18 +828,23 @@ class ConnectorV2(abc.ABC):
         Note that this may NOT be the exact state that this ConnectorV2 was originally
         constructed with.
         """
-        pass
+        return
 
-    @staticmethod
-    def merge_states(states: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Computes a resulting state given a list of other state dicts.
+    def merge_states(self, states: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Computes a resulting state given self's state and a list of other states.
 
-        Algorithms should use this method for synchronizing states between connectors
-        running on workers (of the same type, e.g. EnvRunner workers).
+        Algorithms should use this method for merging states between connectors
+        running on parallel EnvRunner workers. For example, to synchronize the connector
+        states of n remote workers and a local worker, one could:
+        - Gather all remote worker connector states in a list.
+        - Call `self.merge_states()` on the local worker passing it the states list.
+        - Broadcast the resulting local worker's connector state back to all remote
+        workers. After this, all workers (including the local one) hold a
+        merged/synchronized new connecto state.
 
         Args:
-            states: The list of n other ConnectorV2 states to merge into a single
-                resulting state.
+            states: The list of n other ConnectorV2 states to merge with self's state
+                into a single resulting state.
 
         Returns:
             The resulting state dict.

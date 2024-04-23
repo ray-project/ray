@@ -363,7 +363,7 @@ You can configure experience input for an agent using the following options:
     # on-policy algorithms.
     "postprocess_inputs": False,
     # If positive, input batches will be shuffled via a sliding window buffer
-    # of this number of batches. Use this if the input data is not in random
+    # of this number of batches. Use this if the input data isn't in random
     # enough order. Input is delayed until the shuffle buffer is filled.
     "shuffle_buffer_size": 0,
 

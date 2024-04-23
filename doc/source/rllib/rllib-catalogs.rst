@@ -281,7 +281,7 @@ The following are typical requirements and steps for writing a new Catalog:
 - Does the Algorithm need a special tokenizer? Overwrite :py:meth:`~ray.rllib.core.models.catalog.Catalog.get_tokenizer_config`.
 - Does the Algorithm not need an Encoder at all? Overwrite :py:meth:`~ray.rllib.core.models.catalog.Catalog._determine_components_hook`.
 
-The following example shows our implementation of a Catalog for PPO that follows the above steps:
+The following example shows the implementation of a Catalog for the PPO algorithm based on the preceeding steps:
 
 .. dropdown:: **Catalog for PPORLModules**
 

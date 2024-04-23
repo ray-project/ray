@@ -364,6 +364,8 @@ def deployment(
             max_ongoing_requests, autoscaling_config
         )
 
+        ServeUsageTag.AUTO_NUM_REPLICAS_USED.record("1")
+
     # NOTE: The user_configured_option_names should be the first thing that's
     # defined in this function. It depends on the locals() dictionary storing
     # only the function args/kwargs.
@@ -535,7 +537,7 @@ def _run(
         # deploy_application returns; the application state manager will
         # need another reconcile iteration to create it.
         client._wait_for_deployment_created(ingress.name, name)
-        handle = client.get_handle(ingress.name, name, missing_ok=True)
+        handle = client.get_handle(ingress.name, name, check_exists=False)
         return handle
 
 
@@ -829,13 +831,17 @@ def get_app_handle(name: str) -> DeploymentHandle:
         raise RayServeException(f"Application '{name}' does not exist.")
 
     ServeUsageTag.SERVE_GET_APP_HANDLE_API_USED.record("1")
-    return client.get_handle(ingress, name)
+    # There is no need to check if the deployment exists since the
+    # deployment name was just fetched from the controller
+    return client.get_handle(ingress, name, check_exists=False)
 
 
 @DeveloperAPI
 def get_deployment_handle(
     deployment_name: str,
     app_name: Optional[str] = None,
+    _check_exists: bool = True,
+    _record_telemetry: bool = True,
 ) -> DeploymentHandle:
     """Get a handle to a deployment by name.
 
@@ -922,5 +928,7 @@ def get_deployment_handle(
         else:
             app_name = internal_replica_context.app_name
 
-    ServeUsageTag.SERVE_GET_DEPLOYMENT_HANDLE_API_USED.record("1")
-    return client.get_handle(deployment_name, app_name)
+    if _record_telemetry:
+        ServeUsageTag.SERVE_GET_DEPLOYMENT_HANDLE_API_USED.record("1")
+
+    return client.get_handle(deployment_name, app_name, check_exists=_check_exists)
