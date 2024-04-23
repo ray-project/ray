@@ -273,12 +273,12 @@ class Algorithm(Trainable, AlgorithmBase):
     _override_all_key_list = ["off_policy_estimation_methods", "policies"]
 
     _progress_metrics = (
-        "num_env_steps_sampled",
-        "num_env_steps_trained",
-        "episodes_total",
-        "sampler_results/episode_len_mean",
-        "sampler_results/episode_reward_mean",
-        "evaluation/sampler_results/episode_reward_mean",
+        f"{ENV_RUNNER_RESULTS}/episode_return_mean",
+        f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/episode_return_mean",
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}",
+        f"{NUM_ENV_STEPS_TRAINED_LIFETIME}",
+        f"{NUM_EPISODES_LIFETIME}",
+        f"{ENV_RUNNER_RESULTS}/episode_len_mean",
     )
 
     @staticmethod
@@ -977,10 +977,7 @@ class Algorithm(Trainable, AlgorithmBase):
         self._before_evaluate()
 
         if self.evaluation_dataset is not None:
-            if self.config.uses_new_env_runners:
-                return {EVALUATION_RESULTS: self._run_offline_evaluation()}
-            else:
-                return {"evaluation": self._run_offline_evaluation()}
+            return self._run_offline_evaluation()
 
         # Sync weights to the evaluation EnvRunners.
         if self.evaluation_workers is not None:

@@ -608,6 +608,9 @@ class SingleAgentEnvRunner(EnvRunner):
                     # Per-RLModule returns.
                     "module_episode_returns_mean": {DEFAULT_MODULE_ID: episode_return},
                 },
+                # To mimick the old API stack behavior, we'll use window=100 here for
+                # these particular stats (instead of the default EMA).
+                window=self.config.metrics_num_episodes_for_smoothing,
             )
             # For some metrics, log min/max as well.
             self.metrics.log_dict(
