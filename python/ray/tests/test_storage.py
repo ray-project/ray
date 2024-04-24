@@ -87,8 +87,7 @@ def test_escape_storage_uri_with_runtime_env(shutdown_only):
         assert ray.get(f.remote()) == b"baz"
 
 
-@pytest.mark.parametrize("char", ["", "fs"])
-def test_storage_uri_special(shutdown_only, char):
+def test_storage_uri_special(shutdown_only):
     # Test various non-ascii characters that can appear in a URI
     with simulate_storage("s3") as s3_uri:
         # test that ';' can be used instead of '&'
