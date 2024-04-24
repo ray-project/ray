@@ -231,7 +231,7 @@ class AddModuleCallback(DefaultCallbacks):
         spec = algorithm.config.get_default_rl_module_spec()
         spec.observation_space = gym.spaces.Box(low=0, high=1, shape=(8,))
         spec.action_space = gym.spaces.Discrete(2)
-        spec.model_config_dict = {}
+        spec.model_config_dict = {"_inference_only": True}
         algorithm.add_module(
             module_id="test_module",
             module_spec=spec,
@@ -525,10 +525,12 @@ class TestWorkerFailures(unittest.TestCase):
                 num_rollout_workers=2,
                 rollout_fragment_length=16,
             )
+            .rl_module(
+                model_config_dict={"fcnet_hiddens": [4]},
+            )
             .training(
                 train_batch_size_per_learner=32,
                 sgd_minibatch_size=32,
-                model={"fcnet_hiddens": [4]},
             )
             .environment(
                 env="fault_env",
@@ -579,10 +581,12 @@ class TestWorkerFailures(unittest.TestCase):
                 num_rollout_workers=2,
                 rollout_fragment_length=16,
             )
+            .rl_module(
+                model_config_dict={"fcnet_hiddens": [4]},
+            )
             .training(
                 train_batch_size_per_learner=32,
                 sgd_minibatch_size=32,
-                model={"fcnet_hiddens": [4]},
             )
             .environment(
                 env="multi_agent_fault_env",
@@ -681,10 +685,12 @@ class TestWorkerFailures(unittest.TestCase):
                 num_rollout_workers=2,
                 rollout_fragment_length=16,
             )
+            .rl_module(
+                model_config_dict={"fcnet_hiddens": [4]},
+            )
             .training(
                 train_batch_size_per_learner=32,
                 sgd_minibatch_size=32,
-                model={"fcnet_hiddens": [4]},
             )
             .environment(env="fault_env")
             .evaluation(

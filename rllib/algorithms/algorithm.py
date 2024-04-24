@@ -14,7 +14,6 @@ from packaging import version
 import re
 import tempfile
 import time
-import tree  # pip install dm_tree
 from typing import (
     Callable,
     Container,
@@ -636,7 +635,7 @@ class Algorithm(Trainable, AlgorithmBase):
         )
 
         # Ensure remote workers are initially in sync with the local worker.
-        self.workers.sync_weights()
+        self.workers.sync_weights(inference_only=True)
 
         # Compile, validate, and freeze an evaluation config.
         self.evaluation_config = self.config.get_evaluation_config_object()
@@ -778,9 +777,11 @@ class Algorithm(Trainable, AlgorithmBase):
                 )
 
             # Sync the weights from the learner group to the rollout workers.
-            weights = self.learner_group.get_weights()
+            weights = self.learner_group.get_weights(
+                inference_only=self.config.uses_new_env_runners
+            )
             local_worker.set_weights(weights)
-            self.workers.sync_weights()
+            self.workers.sync_weights(inference_only=True)
 
         # Run `on_algorithm_init` callback after initialization is done.
         self.callbacks.on_algorithm_init(algorithm=self)
@@ -964,7 +965,8 @@ class Algorithm(Trainable, AlgorithmBase):
         # Sync weights to the evaluation EnvRunners.
         if self.evaluation_workers is not None:
             self.evaluation_workers.sync_weights(
-                from_worker_or_learner_group=self.workers.local_worker()
+                from_worker_or_learner_group=self.workers.local_worker(),
+                inference_only=True,
             )
 
             if self.config.uses_new_env_runners:
@@ -1602,6 +1604,7 @@ class Algorithm(Trainable, AlgorithmBase):
             self.workers.sync_weights(
                 from_worker_or_learner_group=self.learner_group,
                 policies=set(learner_results.keys()) - {ALL_MODULES},
+                inference_only=True,
             )
 
         # Return reduced metrics (NestedDict).
@@ -2162,11 +2165,13 @@ class Algorithm(Trainable, AlgorithmBase):
 
         # Create RLModule on all EnvRunners.
         self.workers.foreach_worker(_add, local_worker=True)
-        self.workers.sync_weights(policies=[module_id])
+        self.workers.sync_weights(policies=[module_id], inference_only=True)
         # Also on the eval EnvRunners?
         if evaluation_workers is True and self.evaluation_workers is not None:
             self.evaluation_workers.foreach_worker(_add, local_worker=True)
-            self.evaluation_workers.sync_weights(policies=[module_id])
+            self.evaluation_workers.sync_weights(
+                policies=[module_id], inference_only=True
+            )
         # Create RLModule on all Learner workers.
         new_module = self.workers.local_worker().module[module_id]
         self.learner_group.foreach_learner(_add)
@@ -2383,9 +2388,11 @@ class Algorithm(Trainable, AlgorithmBase):
             learner_state_dir = os.path.join(checkpoint_dir, "learner")
             self.learner_group.load_state(learner_state_dir)
             # Make also sure, all training EnvRunners get the just loaded weights.
-            weights = self.learner_group.get_weights()
+            weights = self.learner_group.get_weights(
+                inference_only=self.config.uses_new_env_runners
+            )
             self.workers.local_worker().set_weights(weights)
-            self.workers.sync_weights()
+            self.workers.sync_weights(inference_only=True)
 
         # Call the `on_checkpoint_loaded` callback.
         self.callbacks.on_checkpoint_loaded(algorithm=self)
@@ -3358,23 +3365,6 @@ class Algorithm(Trainable, AlgorithmBase):
             results,
         )
 
-    def __repr__(self):
-        return type(self).__name__
-
-    def _record_usage(self, config):
-        """Record the framework and algorithm used.
-
-        Args:
-            config: Algorithm config dict.
-        """
-        record_extra_usage_tag(TagKey.RLLIB_FRAMEWORK, config["framework"])
-        record_extra_usage_tag(TagKey.RLLIB_NUM_WORKERS, str(config["num_workers"]))
-        alg = self.__class__.__name__
-        # We do not want to collect user defined algorithm names.
-        if alg not in ALL_ALGORITHMS:
-            alg = "USER_DEFINED"
-        record_extra_usage_tag(TagKey.RLLIB_ALGORITHM, alg)
-
     @OldAPIStack
     def _compile_iteration_results_old_and_hybrid_api_stacks(
         self, *, episodes_this_iter, step_ctx, iteration_results
@@ -3483,6 +3473,23 @@ class Algorithm(Trainable, AlgorithmBase):
         results["info"].update(counters)
 
         return results
+
+    def __repr__(self):
+        return type(self).__name__
+
+    def _record_usage(self, config):
+        """Record the framework and algorithm used.
+
+        Args:
+            config: Algorithm config dict.
+        """
+        record_extra_usage_tag(TagKey.RLLIB_FRAMEWORK, config["framework"])
+        record_extra_usage_tag(TagKey.RLLIB_NUM_WORKERS, str(config["num_workers"]))
+        alg = self.__class__.__name__
+        # We do not want to collect user defined algorithm names.
+        if alg not in ALL_ALGORITHMS:
+            alg = "USER_DEFINED"
+        record_extra_usage_tag(TagKey.RLLIB_ALGORITHM, alg)
 
     @Deprecated(error=False)
     def import_policy_model_from_h5(

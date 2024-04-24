@@ -537,7 +537,7 @@ def _run(
         # deploy_application returns; the application state manager will
         # need another reconcile iteration to create it.
         client._wait_for_deployment_created(ingress.name, name)
-        handle = client.get_handle(ingress.name, name, missing_ok=True)
+        handle = client.get_handle(ingress.name, name, check_exists=False)
         return handle
 
 
@@ -546,7 +546,7 @@ def run(
     target: Application,
     blocking: bool = False,
     name: str = SERVE_DEFAULT_APP_NAME,
-    route_prefix: str = DEFAULT.VALUE,
+    route_prefix: Optional[str] = DEFAULT.VALUE,
     logging_config: Optional[Union[Dict, LoggingConfig]] = None,
 ) -> DeploymentHandle:
     """Run an application and return a handle to its ingress deployment.
@@ -565,9 +565,10 @@ def run(
             will loop and log status until Ctrl-C'd.
         name: Application name. If not provided, this will be the only
             application running on the cluster (it will delete all others).
-        route_prefix: Route prefix for HTTP requests. If not provided, it will use
-            route_prefix of the ingress deployment. If specified neither as an argument
-            nor in the ingress deployment, the route prefix will default to '/'.
+        route_prefix: Route prefix for HTTP requests. Defaults to '/'.
+            If `None` is passed, the application will not be exposed over HTTP
+            (this may be useful if you only want the application to be exposed via
+            gRPC or a `DeploymentHandle`).
         logging_config: Application logging config. If provided, the config will
             be applied to all deployments which doesn't have logging config.
 
@@ -831,13 +832,16 @@ def get_app_handle(name: str) -> DeploymentHandle:
         raise RayServeException(f"Application '{name}' does not exist.")
 
     ServeUsageTag.SERVE_GET_APP_HANDLE_API_USED.record("1")
-    return client.get_handle(ingress, name)
+    # There is no need to check if the deployment exists since the
+    # deployment name was just fetched from the controller
+    return client.get_handle(ingress, name, check_exists=False)
 
 
 @DeveloperAPI
 def get_deployment_handle(
     deployment_name: str,
     app_name: Optional[str] = None,
+    _check_exists: bool = True,
     _record_telemetry: bool = True,
 ) -> DeploymentHandle:
     """Get a handle to a deployment by name.
@@ -928,4 +932,4 @@ def get_deployment_handle(
     if _record_telemetry:
         ServeUsageTag.SERVE_GET_DEPLOYMENT_HANDLE_API_USED.record("1")
 
-    return client.get_handle(deployment_name, app_name)
+    return client.get_handle(deployment_name, app_name, check_exists=_check_exists)

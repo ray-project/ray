@@ -343,7 +343,7 @@ class PPOConfig(AlgorithmConfig):
         elif self._enable_new_api_stack:
             mbs = self.mini_batch_size_per_learner or self.sgd_minibatch_size
             tbs = self.train_batch_size_per_learner or self.train_batch_size
-            if mbs > tbs:
+            if isinstance(mbs, int) and isinstance(tbs, int) and mbs > tbs:
                 raise ValueError(
                     f"`mini_batch_size_per_learner` ({mbs}) must be <= "
                     f"`train_batch_size_per_learner` ({tbs}). In PPO, the train batch"
@@ -488,9 +488,10 @@ class PPO(Algorithm):
                     from_worker_or_learner_group=self.learner_group,
                     policies=policies_to_update,
                     global_vars=None,
+                    inference_only=True,
                 )
             else:
-                weights = self.learner_group.get_weights()
+                weights = self.learner_group.get_weights(inference_only=True)
                 self.workers.local_worker().set_weights(weights)
 
         kl_dict = {}

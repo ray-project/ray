@@ -565,10 +565,11 @@ class SAC(DQN):
                         from_worker_or_learner_group=self.learner_group,
                         policies=modules_to_update,
                         global_vars=None,
+                        inference_only=True,
                     )
                 # Then we must have a local worker.
                 else:
-                    weights = self.learner_group.get_weights()
+                    weights = self.learner_group.get_weights(inference_only=True)
                     self.workers.local_worker().set_weights(weights)
 
         return train_results
