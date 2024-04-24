@@ -150,6 +150,11 @@ class Stats:
                 Must be None if `ema_coeff` is not None.
                 If `window` is None (and `ema_coeff` is None), reduction must not be
                 "mean".
+                TODO (sven): Allow window=float("inf"), iff reset_on_reduce=True.
+                This would enable cases where we want to accumulate n data points (w/o
+                limitation, then average over these, then reset the data pool on reduce,
+                e.g. for evaluation env_runner stats, which should NOT use any window,
+                just like in the old API stack).
             ema_coeff: An optional EMA coefficient to use if reduce is "mean"
                 and no `window` is provided. Note that if both `window` and `ema_coeff`
                 are provided, an error is thrown. Also, if `ema_coeff` is provided,
@@ -173,7 +178,7 @@ class Stats:
         if ema_coeff is not None:
             assert (
                 reduce == "mean"
-            ), "`ema_coeff` arg only allowed to be not None when `reduce=mean`!"
+            ), "`ema_coeff` arg only allowed (not None) when `reduce=mean`!"
 
         # If reduce=mean AND window=ema_coeff=None, we use EMA by default with a coeff
         # of 0.01 (we do NOT support infinite window sizes for mean as that would mean

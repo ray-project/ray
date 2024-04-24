@@ -44,6 +44,11 @@ config = (
         evaluation_duration="auto",
         evaluation_config={
             "explore": False,
+            # TODO (sven): Add support for windoe=float(inf) and reduce=mean for
+            #  evaluation episdode_return_mean reductions (identical to old stack
+            #  behavior, which does NOT use a window (100 by default) to reduce
+            #  eval episode returns.
+            "metrics_num_episodes_for_smoothing": 4,
         },
     )
 )
