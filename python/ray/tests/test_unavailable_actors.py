@@ -69,6 +69,8 @@ def sigkill_actor(actor):
     "caller",
     ["actor", "task", "driver"],
 )
+@pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
+@pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
 def test_actor_unavailable_conn_broken(ray_start_regular, caller):
     def body():
         a = Counter.remote()
@@ -102,6 +104,8 @@ def test_actor_unavailable_conn_broken(ray_start_regular, caller):
     "caller",
     ["actor", "task", "driver"],
 )
+@pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
+@pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
 def test_actor_unavailable_restarting(ray_start_regular, caller):
     def body():
         a = Counter.options(max_restarts=1).remote(init_time_s=5)
@@ -137,6 +141,8 @@ def test_actor_unavailable_restarting(ray_start_regular, caller):
     "caller",
     ["actor", "task", "driver"],
 )
+@pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
+@pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
 def test_actor_unavailable_norestart(ray_start_regular, caller):
     def body():
         a = Counter.remote()
@@ -183,6 +189,8 @@ class SlowCtor:
         return os.getpid()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
+@pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
 def test_unavailable_then_actor_error(ray_start_regular):
     c = Counter.remote()
     # Restart config:
@@ -219,6 +227,8 @@ def test_unavailable_then_actor_error(ray_start_regular):
         print(ray.get(a.ping.remote("actor error")))
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
+@pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
 def test_inf_task_retries(ray_start_regular):
     c = Counter.remote()
     # The actor spends 2s in the init.

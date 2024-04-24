@@ -374,9 +374,28 @@ class RLModule(abc.ABC):
     """
 
     framework: str = None
+    inference_only: bool = None
 
     def __init__(self, config: RLModuleConfig):
         self.config = config
+
+        from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
+
+        if isinstance(self, MultiAgentRLModule) or not hasattr(
+            self.config, "model_config_dict"
+        ):
+            # A MARL module is always a learner module b/c it only contains
+            # the single-agent modules. Each of the contained modules can be
+            # single.
+            self.inference_only = False
+        else:
+            # By default, each module is a learner module and contains all
+            # building blocks, such as target networks or critic networks
+            # used in the training process.
+            self.inference_only = self.config.model_config_dict.get(
+                "_inference_only", False
+            )
+
         # Make sure, `setup()` is only called once, no matter what. In some cases
         # of multiple inheritance (and with our __post_init__ functionality in place,
         # this might get called twice.
@@ -684,7 +703,7 @@ class RLModule(abc.ABC):
         """Forward-pass during training. See forward_train for details."""
 
     @OverrideToImplementCustomLogic
-    def get_state(self) -> Mapping[str, Any]:
+    def get_state(self, inference_only: bool = False) -> Mapping[str, Any]:
         """Returns the state dict of the module."""
         return {}
 

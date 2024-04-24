@@ -3,38 +3,34 @@ import os
 import pickle
 import urllib
 import warnings
-
-import numpy as np
 from numbers import Number
-
-import pyarrow.fs
-
 from types import ModuleType
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
+import numpy as np
+import pyarrow.fs
+
 import ray
 from ray import logger
+from ray._private.storage import _load_class
 from ray.air import session
 from ray.air._internal import usage as air_usage
 from ray.air.util.node import _force_on_current_node
-
+from ray.train._internal.syncer import DEFAULT_SYNC_TIMEOUT
+from ray.tune.experiment import Trial
 from ray.tune.logger import LoggerCallback
 from ray.tune.utils import flatten_dict
-from ray.tune.experiment import Trial
-from ray.train._internal.syncer import DEFAULT_SYNC_TIMEOUT
-
-from ray._private.storage import _load_class
 from ray.util import PublicAPI
 from ray.util.queue import Queue
 
 try:
     import wandb
-    from wandb.util import json_dumps_safer
-    from wandb.wandb_run import Run
-    from wandb.sdk.lib.disabled import RunDisabled
     from wandb.sdk.data_types.base_types.wb_value import WBValue
     from wandb.sdk.data_types.image import Image
     from wandb.sdk.data_types.video import Video
+    from wandb.sdk.lib.disabled import RunDisabled
+    from wandb.util import json_dumps_safer
+    from wandb.wandb_run import Run
 except ImportError:
     wandb = json_dumps_safer = Run = RunDisabled = WBValue = None
 

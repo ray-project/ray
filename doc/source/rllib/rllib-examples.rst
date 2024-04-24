@@ -125,7 +125,7 @@ Multi-Agent and Hierarchical
 Special Action- and Observation Spaces
 --------------------------------------
 
-- `Nested action spaces <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/connector_v2_nested_action_spaces.py>`__:
+- `Nested action spaces <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/nested_action_spaces.py>`__:
    Learning in arbitrarily nested action spaces.
 - `Parametric actions <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/parametric_actions_cartpole.py>`__:
    Example of how to handle variable-length or parametric action spaces.

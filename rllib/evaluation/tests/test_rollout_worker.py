@@ -192,18 +192,6 @@ class TestRolloutWorker(unittest.TestCase):
                 check(lr, expected_lr, rtol=0.05)
             algo.stop()
 
-    def test_no_step_on_init(self):
-        register_env("fail", lambda _: FailOnStepEnv())
-        config = PPOConfig().environment("fail").rollouts(num_rollout_workers=2)
-        for _ in framework_iterator(config):
-            # We expect this to fail already on Algorithm init due
-            # to the env sanity check right after env creation (inside
-            # RolloutWorker).
-            self.assertRaises(
-                Exception,
-                lambda: config.build(),
-            )
-
     def test_query_evaluators(self):
         register_env("test", lambda _: gym.make("CartPole-v1"))
         config = (
@@ -449,16 +437,8 @@ class TestRolloutWorker(unittest.TestCase):
                 super().__init__(config=config)
 
             def step(self, action):
-                # Ensure that it is called from inside the sampling process.
-                import inspect
-
-                curframe = inspect.currentframe()
-                called_from_check = any(
-                    frame[3] == "check_gym_environments"
-                    for frame in inspect.getouterframes(curframe, 2)
-                )
                 # Check, whether the action is immutable.
-                if action.flags.writeable and not called_from_check:
+                if action.flags.writeable:
                     self.test_case.assertFalse(
                         action.flags.writeable, "Action is mutable"
                     )
