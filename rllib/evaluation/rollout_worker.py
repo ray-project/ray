@@ -632,12 +632,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         # not tracking weights versions.
         self.weights_seq_no: Optional[int] = None
 
-        logger.debug(
-            "Created rollout worker with env {} ({}), policies {}".format(
-                self.async_env, self.env, self.policy_map
-            )
-        )
-
     @override(EnvRunner)
     def assert_healthy(self):
         is_healthy = self.policy_map and self.input_reader and self.output_writer
@@ -1468,12 +1462,15 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
     def get_weights(
         self,
         policies: Optional[Container[PolicyID]] = None,
+        inference_only: bool = False,
     ) -> Dict[PolicyID, ModelWeights]:
         """Returns each policies' model weights of this worker.
 
         Args:
             policies: List of PolicyIDs to get the weights from.
                 Use None for all policies.
+            inference_only: This argument is only added for interface
+                consistency with the new api stack.
 
         Returns:
             Dict mapping PolicyIDs to ModelWeights.

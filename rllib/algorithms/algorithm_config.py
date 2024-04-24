@@ -22,6 +22,7 @@ from packaging import version
 
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.core.rl_module import INFERENCE_ONLY
 from ray.rllib.core.rl_module.marl_module import (
     DEFAULT_MODULE_ID,
     MultiAgentRLModuleSpec,
@@ -3408,6 +3409,7 @@ class AlgorithmConfig(_Config):
         single_agent_rl_module_spec: Optional[SingleAgentRLModuleSpec] = None,
         env: Optional[EnvType] = None,
         spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
+        inference_only: bool = False,
     ) -> MultiAgentRLModuleSpec:
         """Returns the MultiAgentRLModule spec based on the given policy spec dict.
 
@@ -3436,6 +3438,10 @@ class AlgorithmConfig(_Config):
                 EnvRunner. If not provided, will try to infer from `env`. Otherwise
                 from `self.observation_space` and `self.action_space`. If no
                 information on spaces can be inferred, will raise an error.
+            inference_only: If `True`, the module spec will be used in either
+                sampling or inference and can be built in its light version (if
+                available), i.e. it contains only the networks needed for acting in the
+                environment (no target or critic networks).
         """
         # TODO (Kourosh,sven): When we replace policy entirely there will be no need for
         #  this function to map policy_dict to marl_module_specs anymore. The module
@@ -3637,6 +3643,8 @@ class AlgorithmConfig(_Config):
                 module_spec.model_config_dict = (
                     self.model_config | module_spec.model_config_dict
                 )
+            # Set the `inference_only` flag for the module spec.
+            module_spec.model_config_dict[INFERENCE_ONLY] = inference_only
 
         return marl_module_spec
 
@@ -3760,7 +3768,7 @@ class AlgorithmConfig(_Config):
             A dictionary with the automatically included properties/settings of this
             `AlgorithmConfig` object into `self.model_config`.
         """
-        return MODEL_DEFAULTS
+        return MODEL_DEFAULTS | {"_inference_only": False}
 
     # -----------------------------------------------------------
     # Various validation methods for different types of settings.
@@ -4074,6 +4082,16 @@ class AlgorithmConfig(_Config):
                 "custom callbacks. Check out our curriculum learning example "
                 "script for more information: "
                 "https://github.com/ray-project/ray/blob/master/rllib/examples/curriculum/curriculum_learning.py",  # noqa
+            )
+        # Render_env
+        if self._enable_new_api_stack and self.render_env is not False:
+            deprecation_warning(
+                old="AlgorithmConfig.render_env",
+                help="The `render_env` setting is not supported on the new API stack! "
+                "Take a look at the new rendering example here for how to create videos "
+                "of your envs and send them to WandB: "
+                "https://github.com/ray-project/ray/blob/master/rllib/examples/metrics/",
+                ssdsd TODO ^^
             )
 
         if self.preprocessor_pref not in ["rllib", "deepmind", None]:

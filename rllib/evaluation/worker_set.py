@@ -481,6 +481,7 @@ class WorkerSet:
         to_worker_indices: Optional[List[int]] = None,
         global_vars: Optional[Dict[str, TensorType]] = None,
         timeout_seconds: Optional[int] = 0,
+        inference_only: Optional[bool] = False,
     ) -> None:
         """Syncs model weights from the given weight source to all remote workers.
 
@@ -501,6 +502,10 @@ class WorkerSet:
                 calls to complete. Default is 0 (sync-and-forget, do not wait
                 for any sync calls to finish). This significantly improves
                 algorithm performance.
+            inference_only: Synch weights with workers that keep inference-only
+                modules. This is needed for algorithms in the new stack that
+                use inference-only modules. In this case only a part of the
+                parameters are synced to the workers. Default is False.
         """
         if self.local_worker() is None and from_worker_or_learner_group is None:
             raise TypeError(
@@ -518,7 +523,7 @@ class WorkerSet:
                     "`from_worker_or_trainer` is None. In this case, workerset "
                     "should have local_worker. But local_worker is also None."
                 )
-            weights = weights_src.get_weights(policies)
+            weights = weights_src.get_weights(policies, inference_only)
             # Move weights to the object store to avoid having to make n pickled copies
             # of the weights dict for each worker.
             weights_ref = ray.put(weights)
