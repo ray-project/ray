@@ -223,8 +223,8 @@ if __name__ == "__main__":
             # Switch off exploratory behavior for better (greedy) results.
             evaluation_config={
                 "explore": False,
-                # TODO (sven): Add support for windoe=float(inf) and reduce=mean for
-                #  evaluation episdode_return_mean reductions (identical to old stack
+                # TODO (sven): Add support for window=float(inf) and reduce=mean for
+                #  evaluation episode_return_mean reductions (identical to old stack
                 #  behavior, which does NOT use a window (100 by default) to reduce
                 #  eval episode returns.
                 "metrics_num_episodes_for_smoothing": 5,
