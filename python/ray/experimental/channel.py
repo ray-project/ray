@@ -79,6 +79,7 @@ class Channel:
         readers: list,
         buffer_size_bytes: int,
         _writer_node_id=None,
+        _reader_node_id=None,
         _writer_ref: Optional["ray.ObjectRef"] = None,
         _reader_ref: Optional["ray.ObjectRef"] = None,
     ):
@@ -106,10 +107,14 @@ class Channel:
             )
             self._writer_ref = _create_channel_ref(self, buffer_size_bytes)
 
-            fn = readers[0].__ray_call__
-            self._reader_ref = ray.get(
-                fn.remote(_create_channel_ref, buffer_size_bytes)
-            )
+            self._reader_node_id = ray.get(readers[0].get_node_id.remote())
+            if self.is_remote():
+                fn = readers[0].__ray_call__
+                self._reader_ref = ray.get(
+                    fn.remote(_create_channel_ref, buffer_size_bytes)
+                )
+            else:
+                self._reader_ref = self._writer_ref
 
             is_creator = True
         else:
@@ -119,6 +124,7 @@ class Channel:
 
             self._writer_ref = _writer_ref
             self._writer_node_id = _writer_node_id
+            self._reader_node_id = _reader_node_id
             self._reader_ref = _reader_ref
 
         if len(readers) == 0:
@@ -141,6 +147,9 @@ class Channel:
     def is_local_node(node_id):
         return ray.runtime_context.get_runtime_context().get_node_id() == node_id
 
+    def is_remote(self):
+        return self._writer_node_id != self._reader_node_id
+
     def ensure_registered_as_writer(self):
         if self._writer_registered:
             return
@@ -151,14 +160,14 @@ class Channel:
         if self._reader_ref is None:
             raise ValueError("`self._reader_ref` must be not be None")
 
-        reader_node = ray.get(self._readers[0].get_node_id.remote())
         # TODO: In C++, optionally do a sync RPC to the remote reader raylet.
         # Reader raylet allocates a local "reader ref". Reader raylet maps
         # (writer ref) -> (reader ref, num_readers).
         self._worker.core_worker.experimental_channel_register_writer(
             self._writer_ref,
             self._reader_ref,
-            reader_node,
+            self._writer_node_id,
+            self._reader_node_id,
             self._readers[0]._actor_id,
             len(self._readers),
         )
@@ -180,6 +189,7 @@ class Channel:
         readers: list,
         buffer_size_bytes: int,
         writer_node_id,
+        reader_node_id,
         writer_ref: "ray.ObjectRef",
         reader_ref: "ray.ObjectRef",
     ) -> "Channel":
@@ -187,6 +197,7 @@ class Channel:
             readers,
             buffer_size_bytes,
             _writer_node_id=writer_node_id,
+            _reader_node_id=reader_node_id,
             _writer_ref=writer_ref,
             _reader_ref=reader_ref,
         )
@@ -198,6 +209,7 @@ class Channel:
             self._readers,
             self._buffer_size_bytes,
             self._writer_node_id,
+            self._reader_node_id,
             self._writer_ref,
             self._reader_ref,
         )
@@ -219,6 +231,8 @@ class Channel:
             num_readers = len(self._readers)
         if num_readers <= 0:
             raise ValueError("``num_readers`` must be a positive integer.")
+        if self.is_remote():
+            num_readers = 1
 
         self.ensure_registered_as_writer()
 

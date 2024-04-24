@@ -14,7 +14,7 @@ import ray.experimental.channel as ray_channel
 logger = logging.getLogger(__name__)
 
 
-@pytest.mark.parametrize("remote", [True])
+@pytest.mark.parametrize("remote", [True, False])
 def test_remote_reader(ray_start_cluster, remote):
     num_readers = 10
     num_writes = 1000
@@ -44,16 +44,11 @@ def test_remote_reader(ray_start_cluster, remote):
             self._reader_chan = channel
 
         def read(self, num_reads):
-            print("here to read\n")
             for i in range(num_reads):
-                print("iteration " + str(i) + "\n")
                 self._reader_chan.begin_read()
-                print("begin_read finished\n")
                 self._reader_chan.end_read()
-                print("end_read finished\n")
 
     readers = [Reader.remote() for _ in range(num_readers)]
-    print(type(readers[0]))
     channel = ray_channel.Channel(readers, 1000)
 
     # All readers have received the channel.
@@ -63,9 +58,7 @@ def test_remote_reader(ray_start_cluster, remote):
         work = [reader.read.remote(num_writes) for reader in readers]
         start = time.perf_counter()
         for i in range(num_writes):
-            print("start C\n")
             channel.write(b"x")
-            print("start D\n")
         end = time.perf_counter()
         ray.get(work)
         print(end - start, 10_000 / (end - start))

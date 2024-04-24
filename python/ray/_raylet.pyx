@@ -3657,29 +3657,36 @@ cdef class CoreWorker:
     def experimental_channel_register_writer(self,
                                              ObjectRef writer_ref,
                                              ObjectRef reader_ref,
+                                             writer_node,
                                              reader_node,
                                              ActorID reader,
                                              int64_t num_readers):
         cdef:
             CObjectID c_writer_ref = writer_ref.native()
             CObjectID c_reader_ref = reader_ref.native()
-            CNodeID c_reader_node_id = CNodeID.FromHex(reader_node)
+            CNodeID c_reader_node = CNodeID.FromHex(reader_node)
+            CNodeID *c_reader_node_id = NULL
             CActorID c_reader_actor = reader.native()
 
         if num_readers == 0:
             return
+        if writer_node != reader_node:
+            c_reader_node_id = &c_reader_node
 
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker()
                          .ExperimentalRegisterMutableObjectWriter(c_writer_ref,
-                                                                  &c_reader_node_id,
+                                                                  c_reader_node_id,
                                                                   ))
-            check_status(CCoreWorkerProcess.GetCoreWorker()
-                         .ExperimentalRegisterMutableObjectReaderRemote(c_writer_ref,
-                                                                        c_reader_actor,
-                                                                        num_readers,
-                                                                        c_reader_ref
-                                                                        ))
+        if writer_node != reader_node:
+            with nogil:
+                check_status(
+                        CCoreWorkerProcess.GetCoreWorker()
+                        .ExperimentalRegisterMutableObjectReaderRemote(c_writer_ref,
+                                                                       c_reader_actor,
+                                                                       num_readers,
+                                                                       c_reader_ref
+                                                                       ))
 
     def experimental_channel_register_reader(self, ObjectRef object_ref):
         cdef:
