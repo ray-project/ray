@@ -49,7 +49,7 @@ class LanceDatasource(Datasource):
             # Fetch table from the fragment
             batches = fragment.to_batches(columns=self.columns, filter=self.filter)
             for batch in batches:
-                yield pa.Table.from_batches([batch])
+                return pa.Table.from_batches([batch])
 
         # If the number of fragments is lower then the parallelism,
         # set the parallelism to the min of the number of fragments
