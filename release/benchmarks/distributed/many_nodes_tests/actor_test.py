@@ -93,7 +93,10 @@ def main():
     args, unknown = parse_script_args()
     args.total_actors.sort()
 
-    from distributed.dashboard_test import DashboardTestAtScale
+    from distributed.dashboard_test import (
+        DashboardTestAtScale,
+        update_release_test_result_for_dashboard_api_requests_duration_seconds,
+    )
 
     addr = ray.init(address="auto")
     dashboard_test = DashboardTestAtScale(addr)
@@ -120,6 +123,7 @@ def main():
         ]
         result["perf_metrics"] = perf
         dashboard_test.update_release_test_result(result)
+        update_release_test_result_for_dashboard_api_requests_duration_seconds(result)
 
         print(f"Writing data into file: {os.environ['TEST_OUTPUT_JSON']}")
         json.dump(result, out_file)

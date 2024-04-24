@@ -5,7 +5,10 @@ import time
 import tqdm
 
 from ray.util.state import summarize_tasks
-from dashboard_test import DashboardTestAtScale
+from dashboard_test import (
+    DashboardTestAtScale,
+    update_release_test_result_for_dashboard_api_requests_duration_seconds,
+)
 from ray._private.state_api_test_utils import (
     StateAPICallSpec,
     periodic_invoke_state_apis_with_actor,
@@ -130,6 +133,7 @@ def test(num_tasks):
     }
 
     dashboard_test.update_release_test_result(results)
+    update_release_test_result_for_dashboard_api_requests_duration_seconds(results)
     test_utils.safe_write_to_results_json(results)
 
 

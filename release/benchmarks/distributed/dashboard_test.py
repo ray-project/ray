@@ -1,8 +1,9 @@
 import asyncio
 import time
 import urllib
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Tuple
 from pprint import pprint
+import os
 
 import requests
 import ray
@@ -10,7 +11,7 @@ import logging
 
 from collections import defaultdict
 from ray.util.state import list_nodes
-from ray._private.test_utils import fetch_prometheus_metrics
+from ray._private.test_utils import fetch_prometheus_metrics, query_prometheus
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from pydantic import BaseModel
 from ray.dashboard.consts import DASHBOARD_METRIC_PORT
@@ -185,3 +186,62 @@ class DashboardTestAtScale:
                 ]
             )
             release_result["_dashboard_memory_usage_mb"] = test_result.memory_mb
+
+
+def query_promthesus_dashboard_api_requests_duration_seconds(
+    quantiles: Tuple[int] = (50, 95, 99), window: str = "5m"
+):
+    """Query promethesus for the metric with quantiles.
+
+    Returns: {quantile_str: {endpoint: value}}
+    Raises: Exception on failure to get, or ImportError in minimal tests.
+    """
+    promethesus_host = os.environ.get("RAY_PROMETHEUS_HOST", "http://localhost:9090")
+    metric = "ray_dashboard_api_requests_duration_seconds_bucket"
+
+    ret = {}
+    for quantile in quantiles:
+        assert 0 < quantile <= 100
+
+        quantile_str = str(quantile)
+        ret[quantile_str] = {}
+
+        query = f"histogram_quantile(0.{quantile}, sum(rate({metric}[{window}])) by (le, endpoint))"
+        results = query_prometheus(promethesus_host, query)
+        for result in results["data"]["result"]:
+            endpoint = result["metric"]["endpoint"]
+            value = result["value"][1]
+            if value != "NaN":
+                ret[quantile_str][endpoint] = value
+    return ret
+
+
+def update_release_test_result_for_dashboard_api_requests_duration_seconds(
+    release_result: dict,
+):
+    try:
+        test_result = query_promthesus_dashboard_api_requests_duration_seconds()
+        release_result["_dashboard_api_requests_duration_seconds_test_success"] = True
+    except Exception as e:
+        print(f"Failed to get prometheus metrics: {e}")
+        release_result["_dashboard_api_requests_duration_seconds_test_success"] = False
+        return
+
+    print(f"====== Print ray_dashboard_api_requests_duration_seconds_bucket ======")
+    pprint(test_result)
+
+    if "perf_metrics" not in release_result:
+        release_result["perf_metrics"] = []
+
+    # Add the list of results, sorted by (quantile, endpoint).
+    for quantile_str, endpoint_values in sorted(test_result.items()):
+        p_str = f"p{quantile_str}"  # "95" -> "p95"
+        p_results = [
+            {
+                "perf_metric_name": f"dashboard_api_requests_{endpoint}_{p_str}_latency_s",
+                "perf_metric_value": value,
+                "perf_metric_type": "LATENCY",
+            }
+            for endpoint, value in sorted(endpoint_values.items())
+        ]
+        release_result["perf_metrics"].extend(p_results)
