@@ -2568,7 +2568,6 @@ class Algorithm(Trainable, AlgorithmBase):
                 return env_id, functools.partial(
                     _gym_env_creator,
                     env_descriptor=env_specifier,
-                    auto_wrap_old_gym_envs=config.get("auto_wrap_old_gym_envs", True),
                 )
             # All other env classes: Call c'tor directly.
             else:

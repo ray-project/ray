@@ -149,7 +149,7 @@ class TestEnvRunnerV2(unittest.TestCase):
         config = (
             PPOConfig()
             .framework("torch")
-            .environment("env_under_test", disable_env_checking=True)
+            .environment("env_under_test")
             .rollouts(
                 num_envs_per_worker=1,
                 num_rollout_workers=0,
