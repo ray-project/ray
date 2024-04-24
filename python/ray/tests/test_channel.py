@@ -40,17 +40,8 @@ def test_remote_reader(ray_start_cluster, remote):
         def get_node_id(self) -> str:
             return ray.get_runtime_context().get_node_id()
 
-        def send_channel(self, reader_channel):
-            self._reader_chan = reader_channel
-
         def pass_channel(self, channel):
-            print("pass channel here\n")
             self._reader_chan = channel
-
-        def create_reader_ref(self):
-            # create the object
-            # return the object ref
-            pass
 
         def read(self, num_reads):
             print("here to read\n")
@@ -61,27 +52,14 @@ def test_remote_reader(ray_start_cluster, remote):
                 self._reader_chan.end_read()
                 print("end_read finished\n")
 
-        def get_worker_id(self):
-            worker = ray.worker.global_worker
-            return worker.worker_id.hex()
-
     readers = [Reader.remote() for _ in range(num_readers)]
-    print(type(readers[0]))
-    print(readers[0])
-
-    print("blah A\n")
     channel = ray_channel.Channel(readers, 1000)
-    print("blah B\n")
 
-    print("Pass channel to readers, " + str(len(readers)) + "\n")
     # All readers have received the channel.
     ray.get([reader.pass_channel.remote(channel) for reader in readers])
 
-    # ray.get([reader.send_channel.remote(reader_channel) for reader in readers])
     for j in range(num_iterations):
-        print("start A\n")
         work = [reader.read.remote(num_writes) for reader in readers]
-        print("start B\n")
         start = time.perf_counter()
         for i in range(num_writes):
             print("start C\n")

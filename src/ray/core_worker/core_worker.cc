@@ -20,8 +20,6 @@
 
 #include <google/protobuf/util/json_util.h>
 
-#include <fstream>
-
 #include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_format.h"
 #include "boost/fiber/all.hpp"
@@ -1521,12 +1519,7 @@ Status CoreWorker::ExperimentalRegisterMutableObjectReaderRemote(
 }
 
 Status CoreWorker::ExperimentalRegisterMutableObjectReader(const ObjectID &object_id) {
-  std::ofstream f;
-  f.open("/tmp/blah", std::ofstream::app);
-
-  f << "in core worker A" << std::endl;
   experimental_mutable_object_provider_->RegisterReaderChannel(object_id);
-  f << "in core worker B" << std::endl;
   return Status::OK();
 }
 

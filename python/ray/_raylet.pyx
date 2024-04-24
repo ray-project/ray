@@ -648,21 +648,6 @@ cdef c_vector[CObjectID] ObjectRefsToVector(object_refs):
         result.push_back((<ObjectRef>object_ref).native())
     return result
 
-cdef c_vector[c_string] WorkerRefsToVector(object_refs):
-    """A helper function that converts a Python list of object refs to a vector.
-
-    Args:
-        object_refs (list): The Python list of object refs.
-
-    Returns:
-        The output vector.
-    """
-    cdef:
-        c_vector[c_string] result
-    for object_ref in object_refs:
-        result.push_back(object_ref)
-    return result
-
 
 def _get_actor_serialized_owner_address_or_none(actor_table_data: bytes):
     cdef:
@@ -3676,10 +3661,9 @@ cdef class CoreWorker:
         cdef:
             CObjectID c_writer_ref = writer_ref.native()
             CObjectReference c_reader_ref
-            c_vector[c_string] c_readers = WorkerRefsToVector(readers)
             CNodeID c_reader_node_id
 
-        if len(c_readers) == 0:
+        if len(readers) == 0:
             return
         c_reader_node_id = CNodeID.FromHex(ray.get(readers[0].get_node_id.remote()))
 
@@ -3690,7 +3674,6 @@ cdef class CoreWorker:
                                                                   ))
 
     def experimental_channel_register_reader(self, ObjectRef object_ref):
-        print("Hello, object_ref is " + str(object_ref) + "\n")
         cdef:
             CObjectID c_object_id = object_ref.native()
 
