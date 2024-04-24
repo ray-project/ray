@@ -1,14 +1,19 @@
 import logging
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional, Iterator
 
 import lance
-import pyarrow as pa
 from lance import LanceFragment
 
+import pyarrow as pa
+import numpy as np
+
 from ray.data import ReadTask
-from ray.data.block import Block, BlockMetadata
+from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource
 from ray.util.annotations import DeveloperAPI
+
+if TYPE_CHECKING:
+    import pyarrow
 
 logger = logging.getLogger(__name__)
 
@@ -44,37 +49,37 @@ class LanceDatasource(Datasource):
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         # To begin with, read one Fragment at a time
         # Each Ray Data Block contains a Pandas RecordBatch
-        def _read_single_fragment(fragment: LanceFragment) -> Block:
-            # Fetch table from the fragment
-            batches = fragment.to_batches(columns=self.columns, filter=self.filter)
-            for batch in batches:
-                return pa.Table.from_batches([batch])
+        def _read_fragments(
+            fragments: List[LanceFragment],
+        ) -> Iterator["pyarrow.Table"]:
+            for fragment in fragments:
+                batches = fragment.to_batches(columns=self.columns, filter=self.filter)
+                for batch in batches:
+                    yield pa.Table.from_batches([batch])
 
-        # If the number of fragments is lower then the parallelism,
-        # set the parallelism to the min of the number of fragments
+        # Set the parallelism to the min of the number of fragments
         if parallelism > len(self.fragments):
             parallelism = len(self.fragments)
             logger.warning(
-                f"Reducing the parallelism to {parallelism}, as that is the"
+                f"Reducing the parallelism to {parallelism}, as that is the "
                 "number of files"
             )
 
         read_tasks = []
-        for fragment in self.fragments:
-            data_files = ", ".join(
-                [data_file.path() for data_file in fragment.data_files()]
-            )
+        for fragments in np.array_split(self.fragments, parallelism):
+            if len(fragments) <= 0:
+                continue
 
             metadata = BlockMetadata(
-                num_rows=fragment.count_rows(),
+                num_rows=None,
+                schema=None,
+                input_files=None,
                 size_bytes=None,
-                schema=fragment.schema,
-                input_files=[data_files],
                 exec_stats=None,
             )
 
             read_task = ReadTask(
-                lambda fragment=fragment: [_read_single_fragment(fragment)],
+                lambda fragments=fragments: _read_fragments(fragments),
                 metadata,
             )
             read_tasks.append(read_task)
