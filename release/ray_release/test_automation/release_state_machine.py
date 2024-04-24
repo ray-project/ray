@@ -3,14 +3,14 @@ from datetime import datetime, timedelta
 from ray_release.test_automation.state_machine import (
     TestStateMachine,
     WEEKLY_RELEASE_BLOCKER_TAG,
+    BUILDKITE_BISECT_PIPELINE,
+    BUILDKITE_ORGANIZATION,
 )
 from ray_release.test import Test, TestState
 from ray_release.logger import logger
 
 
 MAX_BISECT_PER_DAY = 10  # Max number of bisects to run per day for all tests
-BUILDKITE_ORGANIZATION = "ray-project"
-BUILDKITE_BISECT_PIPELINE = "release-tests-bisect"
 CONTINUOUS_FAILURE_TO_JAIL = 3  # Number of continuous failures before jailing
 UNSTABLE_RELEASE_TEST_TAG = "unstable-release-test"
 
@@ -136,23 +136,3 @@ class ReleaseTestStateMachine(TestStateMachine):
             },
         )
         self.test[Test.KEY_BISECT_BUILD_NUMBER] = build["number"]
-
-    def comment_blamed_commit_on_github_issue(self) -> None:
-        """
-        Comment the blamed commit on the github issue.
-        """
-        blamed_commit = self.test.get(Test.KEY_BISECT_BLAMED_COMMIT)
-        issue_number = self.test.get(Test.KEY_GITHUB_ISSUE_NUMBER)
-        bisect_build_number = self.test.get(Test.KEY_BISECT_BUILD_NUMBER)
-        if not issue_number or not bisect_build_number or not blamed_commit:
-            logger.info(
-                "Skip commenting blamed commit on github issue "
-                f"for {self.test.get_name()}"
-            )
-            return
-        issue = self.ray_repo.get_issue(issue_number)
-        issue.create_comment(
-            f"Blamed commit: {blamed_commit} "
-            f"found by bisect job https://buildkite.com/{BUILDKITE_ORGANIZATION}/"
-            f"{BUILDKITE_BISECT_PIPELINE}/builds/{bisect_build_number}"
-        )
