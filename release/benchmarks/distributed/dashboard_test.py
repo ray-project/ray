@@ -206,7 +206,10 @@ def query_promthesus_dashboard_api_requests_duration_seconds(
         quantile_str = str(quantile)
         ret[quantile_str] = {}
 
-        query = f"histogram_quantile(0.{quantile}, sum(rate({metric}[{window}])) by (le, endpoint))"
+        query = (
+            f"histogram_quantile(0.{quantile}, sum(rate({metric}[{window}]))"
+            " by (le, endpoint))"
+        )
         results = query_prometheus(promethesus_host, query)
         for result in results["data"]["result"]:
             endpoint = result["metric"]["endpoint"]
@@ -227,7 +230,7 @@ def update_release_test_result_for_dashboard_api_requests_duration_seconds(
         release_result["_dashboard_api_requests_duration_seconds_test_success"] = False
         return
 
-    print(f"====== Print ray_dashboard_api_requests_duration_seconds_bucket ======")
+    print("====== Print ray_dashboard_api_requests_duration_seconds_bucket ======")
     pprint(test_result)
 
     if "perf_metrics" not in release_result:
@@ -238,7 +241,9 @@ def update_release_test_result_for_dashboard_api_requests_duration_seconds(
         p_str = f"p{quantile_str}"  # "95" -> "p95"
         p_results = [
             {
-                "perf_metric_name": f"dashboard_api_requests_{endpoint}_{p_str}_latency_s",
+                "perf_metric_name": (
+                    f"dashboard_api_requests_{endpoint}_{p_str}_latency_s"
+                ),
                 "perf_metric_value": value,
                 "perf_metric_type": "LATENCY",
             }
