@@ -160,7 +160,7 @@ def test_is_stable() -> None:
     assert not Test(stable=False).is_stable()
 
 
-@patch.dict(os.environ, {"BUILDKITE_BRANCH": "food"})
+@patch.dict(os.environ, {"BUILDKITE_BRANCH": "food", "BUILDKITE_PULL_REQUEST": "1"})
 def test_result_from_bazel_event() -> None:
     result = TestResult.from_bazel_event(
         {
@@ -169,6 +169,7 @@ def test_result_from_bazel_event() -> None:
     )
     assert result.is_passing()
     assert result.branch == "food"
+    assert result.pull_request == "1"
     result = TestResult.from_bazel_event(
         {
             "testResult": {"status": "FAILED"},
