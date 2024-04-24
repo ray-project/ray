@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 def _create_channel_ref(
+    self,
     buffer_size_bytes: int,
 ) -> "ray.ObjectRef":
     """
@@ -75,10 +76,8 @@ class Channel:
 
     def __init__(
         self,
-        reader_node_id: str,
+        readers: list,
         buffer_size_bytes: int,
-        worker_ids: list,
-        num_readers: int = 1,
         _writer_node_id=None,
         _writer_ref: Optional["ray.ObjectRef"] = None,
         _reader_ref: Optional["ray.ObjectRef"] = None,
@@ -106,11 +105,17 @@ class Channel:
             self._writer_node_id = (
                 ray.runtime_context.get_runtime_context().get_node_id()
             )
-            self._writer_ref = _create_channel_ref(buffer_size_bytes)
-            self._reader_ref = None
+            self._writer_ref = _create_channel_ref(self, buffer_size_bytes)
+
+            fn = readers[0].__ray_call__
+            self._reader_ref = ray.get(
+                fn.remote(_create_channel_ref, buffer_size_bytes)
+            )
+            print("ok... " + str(self._reader_ref))
 
             is_creator = True
         else:
+            print("Bad\n")
             # TODO: better error messages.
             assert _writer_node_id is not None
             assert _reader_ref is not None
@@ -119,16 +124,9 @@ class Channel:
             self._writer_node_id = _writer_node_id
             self._reader_ref = _reader_ref
 
-        if not isinstance(num_readers, int):
-            raise ValueError("num_readers must be an integer")
-
-        self._worker_ids = worker_ids
-
-        self._reader_node_id = reader_node_id
+        self._readers = readers
         self._buffer_size_bytes = buffer_size_bytes
-        self._num_readers = num_readers
 
-        print("Created self._worker\n")
         self._worker = ray._private.worker.global_worker
         self._worker.check_connected()
 
@@ -150,20 +148,16 @@ class Channel:
         if not self.is_local_node(self._writer_node_id):
             raise ValueError("TODO")
 
-        if not isinstance(self._reader_node_id, str):
-            raise ValueError("`self._reader_node_id` must be a str")
+        if self._reader_ref is None:
+            raise ValueError("`self._reader_ref` must be not be None")
 
         # TODO: In C++, optionally do a sync RPC to the remote reader raylet.
         # Reader raylet allocates a local "reader ref". Reader raylet maps
         # (writer ref) -> (reader ref, num_readers).
-        self._reader_ref = (
-            self._worker.core_worker.experimental_channel_register_writer(
-                self._writer_ref,
-                self._buffer_size_bytes,
-                self._num_readers,
-                self._reader_node_id,
-                self._worker_ids,
-            )
+        self._worker.core_worker.experimental_channel_register_writer(
+            self._writer_ref,
+            self._reader_ref,
+            self._readers,
         )
         print(
             "ensure_registered_as_writer, reader ref is " + str(self._reader_ref) + "\n"
@@ -194,17 +188,15 @@ class Channel:
 
     @staticmethod
     def _deserialize_reader_channel(
-        reader_node_id: str,
+        readers: list,
         buffer_size_bytes: int,
-        num_readers: int,
         writer_node_id,
         writer_ref: "ray.ObjectRef",
         reader_ref: "ray.ObjectRef",
     ) -> "Channel":
         chan = Channel(
-            reader_node_id,
+            readers,
             buffer_size_bytes,
-            num_readers,
             _writer_node_id=writer_node_id,
             _writer_ref=writer_ref,
             _reader_ref=reader_ref,
@@ -214,9 +206,8 @@ class Channel:
     def __reduce__(self):
         assert self._reader_ref is not None
         return self._deserialize_reader_channel, (
-            self._reader_node_id,
+            self._readers,
             self._buffer_size_bytes,
-            self._num_readers,
             self._writer_node_id,
             self._writer_ref,
             self._reader_ref,
@@ -236,7 +227,7 @@ class Channel:
                 before we can write again.
         """
         if num_readers is None:
-            num_readers = self._num_readers
+            num_readers = len(self._readers)
         if num_readers <= 0:
             raise ValueError("``num_readers`` must be a positive integer.")
 

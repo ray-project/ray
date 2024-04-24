@@ -47,6 +47,11 @@ def test_remote_reader(ray_start_cluster, remote):
             print("pass channel here\n")
             self._reader_chan = channel
 
+        def create_reader_ref(self):
+            # create the object
+            # return the object ref
+            pass
+
         def read(self, num_reads):
             print("here to read\n")
             for i in range(num_reads):
@@ -61,15 +66,11 @@ def test_remote_reader(ray_start_cluster, remote):
             return worker.worker_id.hex()
 
     readers = [Reader.remote() for _ in range(num_readers)]
-
-    reader_node_id = ray.runtime_context.get_runtime_context().get_node_id()
-    if remote:
-        reader_node_id = ray.get(readers[0].get_node_id.remote())
-    worker_ids = ray.get([reader.get_worker_id.remote() for reader in readers])
+    print(type(readers[0]))
+    print(readers[0])
 
     print("blah A\n")
-    print("worker ids are " + str(worker_ids) + "\n")
-    channel = ray_channel.Channel(reader_node_id, 1000, worker_ids, num_readers)
+    channel = ray_channel.Channel(readers, 1000)
     print("blah B\n")
 
     print("Pass channel to readers, " + str(len(readers)) + "\n")

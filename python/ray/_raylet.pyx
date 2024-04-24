@@ -3671,38 +3671,28 @@ cdef class CoreWorker:
 
     def experimental_channel_register_writer(self,
                                              ObjectRef writer_ref,
-                                             int buffer_size_bytes,
-                                             int num_readers,
-                                             reader_node_id: str,
-                                             worker_ids):
+                                             ObjectRef reader_ref,
+                                             readers):
         cdef:
             CObjectID c_writer_ref = writer_ref.native()
             CObjectReference c_reader_ref
-            CNodeID c_node_id = CNodeID.FromHex(reader_node_id)
-            c_vector[c_string] c_worker_ids = WorkerRefsToVector(worker_ids)
+            c_vector[c_string] c_readers = WorkerRefsToVector(readers)
+            CNodeID c_reader_node_id
+
+        if len(c_readers) == 0:
+            return
+        c_reader_node_id = CNodeID.FromHex(ray.get(readers[0].get_node_id.remote()))
 
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker()
                          .ExperimentalRegisterMutableObjectWriter(c_writer_ref,
-                                                                  &c_node_id,
+                                                                  &c_reader_node_id,
                                                                   ))
-            check_status(CCoreWorkerProcess.GetCoreWorker()
-                         .ExperimentalRegisterMutableObjectReaderRemote(
-                             c_writer_ref,
-                             c_node_id,
-                             c_worker_ids,
-                             buffer_size_bytes,
-                             num_readers,
-                             c_reader_ref
-                             ))
-        return ObjectRef(c_reader_ref.object_id(),
-                         c_reader_ref.owner_address().SerializeAsString(),
-                         c_reader_ref.call_site())
 
-    def experimental_channel_register_reader(self, object_ref):
+    def experimental_channel_register_reader(self, ObjectRef object_ref):
         print("Hello, object_ref is " + str(object_ref) + "\n")
         cdef:
-            CObjectID c_object_id = CObjectID.FromBinary(object_ref)
+            CObjectID c_object_id = object_ref.native()
 
         with nogil:
             check_status(
