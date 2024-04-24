@@ -542,8 +542,9 @@ class BackendExecutor:
             self.state_manager.register_train_run(
                 run_id=self._trial_info.run_id,
                 run_name=self._trial_info.experiment_name,
-                datasets=datasets,
+                job_id=core_context.get_job_id(),
                 controller_actor_id=core_context.get_actor_id(),
+                datasets=datasets,
             )
 
         # Run the training function asynchronously in its own thread.

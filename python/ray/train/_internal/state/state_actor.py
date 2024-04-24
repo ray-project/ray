@@ -13,6 +13,9 @@ class TrainStateActor:
     def __init__(self):
         self._run_infos: Dict[str, TrainRunInfo] = {}
 
+    def ready(self):
+        pass
+
     def register_train_run(self, run_info: TrainRunInfo) -> None:
         # Register a new train run.
         self._run_infos[run_info.id] = run_info
@@ -35,10 +38,14 @@ _state_actor_lock: threading.RLock = threading.RLock()
 def get_or_create_state_actor():
     """Get or create a `TrainStateActor` on the head node."""
     with _state_actor_lock:
-        return TrainStateActor.options(
+        state_actor = TrainStateActor.options(
             name=TRAIN_STATE_ACTOR_NAME,
             namespace=TRAIN_STATE_ACTOR_NAMESPACE,
             get_if_exists=True,
             lifetime="detached",
             resources={"node:__internal_head__": 0.001},
         ).remote()
+
+    # Ensure the state actor is ready
+    ray.get(state_actor.ready.remote())
+    return state_actor

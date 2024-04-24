@@ -16,7 +16,7 @@ class TrainWorkerInfo(BaseModel):
     node_ip: str = Field(
         description="IP address of the node that the worker is running on."
     )
-    pid: str = Field(description="Process ID of the worker.")
+    pid: int = Field(description="Process ID of the worker.")
     gpu_ids: List[int] = Field(
         description="A list of GPU ids allocated to that worker."
     )

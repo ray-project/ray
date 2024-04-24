@@ -9,7 +9,10 @@ from ray.train._internal.state.schema import (
     TrainRunInfo,
     TrainWorkerInfo,
 )
-from ray.train._internal.state.state_actor import get_or_create_state_actor
+from ray.train._internal.state.state_actor import (
+    TRAIN_STATE_ACTOR_NAME,
+    TRAIN_STATE_ACTOR_NAMESPACE,
+)
 from ray.train._internal.utils import check_for_failure
 from ray.train._internal.worker_group import WorkerGroup
 
@@ -23,14 +26,17 @@ class TrainRunStateManager:
     """
 
     def __init__(self, worker_group: WorkerGroup) -> None:
-        self.state_actor = get_or_create_state_actor()
+        self.state_actor = ray.get_actor(
+            name=TRAIN_STATE_ACTOR_NAME, namespace=TRAIN_STATE_ACTOR_NAMESPACE
+        )
         self.worker_group = worker_group
 
     def register_train_run(
         self,
         run_id: str,
+        job_id: str,
         run_name: str,
-        trainer_actor_id: str,
+        controller_actor_id: str,
         datasets: Dict[str, Dataset],
     ) -> None:
         """Collect Train Run Info and report to StateActor."""
@@ -45,7 +51,7 @@ class TrainRunStateManager:
                 node_rank=train_context.get_node_rank(),
                 actor_id=core_context.get_actor_id(),
                 node_id=core_context.get_node_id(),
-                node_ip=core_context.get_node_ip_address(),
+                node_ip=ray.util.get_node_ip_address(),
                 gpu_ids=ray.get_gpu_ids(),
                 pid=os.getpid(),
             )
@@ -77,10 +83,11 @@ class TrainRunStateManager:
 
         train_run_info = TrainRunInfo(
             id=run_id,
+            job_id=job_id,
             name=run_name,
-            trainer_actor_id=trainer_actor_id,
+            controller_actor_id=controller_actor_id,
             workers=worker_info_list,
             datasets=dataset_info_list,
         )
 
-        self.state_actor.register_train_run.remote(train_run_info)
+        ray.get(self.state_actor.register_train_run.remote(train_run_info))

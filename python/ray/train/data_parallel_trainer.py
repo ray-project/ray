@@ -3,6 +3,7 @@ import uuid
 from typing import Any, Callable, Dict, List, Optional, Type, Union
 
 import ray
+from ray._private.ray_constants import env_integer
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.air.config import RunConfig, ScalingConfig
 from ray.train import BackendConfig, Checkpoint, TrainingIterator
@@ -10,7 +11,9 @@ from ray.train._internal import session
 from ray.train._internal.backend_executor import BackendExecutor, TrialInfo
 from ray.train._internal.data_config import DataConfig
 from ray.train._internal.session import _TrainingResult, get_session
+from ray.train._internal.state.state_actor import get_or_create_state_actor
 from ray.train._internal.utils import construct_train_func, count_required_parameters
+from ray.train.constants import RAY_TRAIN_ENABLE_STATE_TRACKING
 from ray.train.trainer import BaseTrainer, GenDataset
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.widgets import Template
@@ -265,6 +268,9 @@ class DataParallelTrainer(BaseTrainer):
             train_total_resources.get("CPU", 0),
             train_total_resources.get("GPU", 0),
         )
+
+        if env_integer(RAY_TRAIN_ENABLE_STATE_TRACKING, 0):
+            get_or_create_state_actor()
 
     @PublicAPI(stability="beta")
     @classmethod
