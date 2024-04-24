@@ -619,9 +619,12 @@ class DQN(Algorithm):
         # Log lifetime counts for env- and agent steps sampled.
         self.metrics.log_dict(
             {
-                NUM_AGENT_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                    ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED, default=0
-                ),
+                NUM_AGENT_STEPS_SAMPLED_LIFETIME: {
+                    aid: self.metrics.peek(
+                        ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED, aid, default=0
+                    )
+                    for aid in self.metrics.peek(NUM_AGENT_STEPS_SAMPLED_LIFETIME)
+                },
                 NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
                     ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED, default=0
                 ),

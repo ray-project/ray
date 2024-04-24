@@ -1395,7 +1395,7 @@ class Algorithm(Trainable, AlgorithmBase):
 
             # New API stack -> EnvRunners return Episodes.
             if self.config.uses_new_env_runners:
-                _num = [None] + [
+                _num = [None] + [  # [None]: skip idx=0 (local worker)
                     (units_left_to_do // num_healthy_workers)
                     + bool(i <= (units_left_to_do % num_healthy_workers))
                     for i in range(1, num_workers + 1)
@@ -1423,7 +1423,7 @@ class Algorithm(Trainable, AlgorithmBase):
                     agent_steps += ag_s
                     all_metrics.append(met)
                     num_units_done += (
-                        len(met)
+                        met[NUM_EPISODES].peek()
                         if unit == "episodes"
                         else (
                             env_s if self.config.count_steps_by == "env_steps" else ag_s
