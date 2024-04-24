@@ -1,4 +1,5 @@
 import gymnasium as gym
+import logging
 
 from collections import defaultdict
 from functools import partial
@@ -15,9 +16,12 @@ from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.pre_checks.env import check_multiagent_environments
 from ray.rllib.utils.typing import EpisodeID, ModelWeights
 from ray.util.annotations import PublicAPI
 from ray.tune.registry import ENV_CREATOR, _global_registry
+
+logger = logging.getLogger("ray.rllib")
 
 
 @PublicAPI(stability="alpha")
@@ -52,7 +56,7 @@ class MultiAgentEnvRunner(EnvRunner):
         # Create the vectorized gymnasium env.
         self.env: Optional[gym.Wrapper] = None
         self.num_envs: int = 0
-        self._make_env()
+        self.make_env()
 
         # Global counter for environment steps from all workers. This is
         # needed for schedulers used by `RLModule`s.
@@ -639,19 +643,23 @@ class MultiAgentEnvRunner(EnvRunner):
         if weights_seq_no == 0 or self._weights_seq_no < weights_seq_no:
             self.module.set_state(weights)
 
-    def get_weights(self, modules=None) -> Dict[ModuleID, ModelWeights]:
+    def get_weights(
+        self, modules=None, inference_only: bool = False
+    ) -> Dict[ModuleID, ModelWeights]:
         """Returns the weights of our multi-agent `RLModule`.
 
         Args:
             modules: `ModuleID`s for which to return the weights. If `None`
                 weigths for all modules are returned. See for details
                 `MultiAgentRLModule.get_state()`.
+            inference_only: If True, will return only a specified subset of the
+                weights (e.g. only the weights needed for inference).
 
         Returns:
             A dictionary mapping `ModuleID`s to their corresponding weights.
         """
 
-        return self.module.get_state(module_ids=modules)
+        return self.module.get_state(module_ids=modules, inference_only=inference_only)
 
     @override(EnvRunner)
     def assert_healthy(self):
@@ -666,13 +674,24 @@ class MultiAgentEnvRunner(EnvRunner):
         # Make sure, we have built our gym.vector.Env and RLModule properly.
         assert self.env and self.module
 
-    @override(EnvRunner)
-    def stop(self):
-        # Note, `MultiAgentEnv` inherits `close()`-method from `gym.Env`.
-        self.env.close()
+    def make_env(self):
+        """Creates a MultiAgentEnv (is-a gymnasium env).
 
-    def _make_env(self):
-        """Creates a MultiAgentEnv (is-a gymnasium env)."""
+        Note that users can change the EnvRunner's config (e.g. change
+        `self.config.env_config`) and then call this method to create new environments
+        with the updated configuration.
+        """
+        # If an env already exists, try closing it first (to allow it to properly
+        # cleanup).
+        if self.env is not None:
+            try:
+                self.env.close()
+            except Exception as e:
+                logger.warning(
+                    "Tried closing the existing env (multi-agent), but failed with "
+                    f"error: {e.args[0]}"
+                )
+
         env_ctx = self.config.env_config
         if not isinstance(env_ctx, EnvContext):
             env_ctx = EnvContext(
@@ -705,7 +724,11 @@ class MultiAgentEnvRunner(EnvRunner):
         )
 
         # Perform actual gym.make call.
-        self.env = gym.make("rllib-multi-agent-env-v0")
+        self.env: MultiAgentEnv = gym.make("rllib-multi-agent-env-v0")
+        try:
+            check_multiagent_environments(self.env.unwrapped)
+        except Exception as e:
+            logger.exception(e.args[0])
         self.num_envs = 1
 
         # Create the MultiAgentEnv (is-a gymnasium env).
@@ -714,6 +737,9 @@ class MultiAgentEnvRunner(EnvRunner):
             "to inherit from `ray.rllib.env.multi_agent_env.MultiAgentEnv`."
         )
 
+        # Set the flag to reset all envs upon the next `sample()` call.
+        self._needs_initial_reset = True
+
         # Call the `on_environment_created` callback.
         self._callbacks.on_environment_created(
             env_runner=self,
@@ -721,11 +747,16 @@ class MultiAgentEnvRunner(EnvRunner):
             env_context=env_ctx,
         )
 
+    @override(EnvRunner)
+    def stop(self):
+        # Note, `MultiAgentEnv` inherits `close()`-method from `gym.Env`.
+        self.env.close()
+
     def _make_module(self):
         # Create our own instance of the (single-agent) `RLModule` (which
         # the needs to be weight-synched) each iteration.
         # TODO (sven, simon): We have to rebuild the `AlgorithmConfig` to work on
-        # `RLModule`s and not `Policy`s. Like here `policies`->`modules`
+        #  `RLModule`s and not `Policy`s. Like here `policies`->`modules`.
         try:
             policy_dict, _ = self.config.get_multi_agent_setup(
                 spaces={
@@ -734,7 +765,9 @@ class MultiAgentEnvRunner(EnvRunner):
                 },
             )
             ma_rlm_spec: MultiAgentRLModuleSpec = self.config.get_marl_module_spec(
-                policy_dict=policy_dict
+                policy_dict=policy_dict,
+                # Built only a light version of the module in sampling and inference.
+                inference_only=True,
             )
 
             # Build the module from its spec.

@@ -1,11 +1,11 @@
-from enum import Enum
-from typing import Dict, Union, List, TYPE_CHECKING
 import warnings
+from enum import Enum
+from typing import TYPE_CHECKING, Dict, List, Union
 
 import numpy as np
 
-from ray.air.data_batch_type import DataBatchType
 from ray.air.constants import TENSOR_COLUMN_NAME
+from ray.air.data_batch_type import DataBatchType
 from ray.util.annotations import Deprecated, DeveloperAPI
 
 if TYPE_CHECKING:
@@ -219,8 +219,8 @@ def _convert_batch_type_to_numpy(
     elif pyarrow is not None and isinstance(data, pyarrow.Table):
         from ray.air.util.tensor_extensions.arrow import ArrowTensorType
         from ray.air.util.transform_pyarrow import (
-            _is_column_extension_type,
             _concatenate_extension_column,
+            _is_column_extension_type,
         )
 
         if data.column_names == [TENSOR_COLUMN_NAME] and (

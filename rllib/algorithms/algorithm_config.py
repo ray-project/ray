@@ -17,10 +17,12 @@ from typing import (
     Union,
 )
 
+import gymnasium as gym
 from packaging import version
 
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.core.rl_module import INFERENCE_ONLY
 from ray.rllib.core.rl_module.marl_module import (
     DEFAULT_MODULE_ID,
     MultiAgentRLModuleSpec,
@@ -47,10 +49,6 @@ from ray.rllib.utils.deprecation import (
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import NotProvided, from_config
-from ray.rllib.utils.gym import (
-    convert_old_gym_space_to_gymnasium_space,
-    try_import_gymnasium_and_gym,
-)
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.serialization import (
@@ -78,7 +76,6 @@ from ray.tune.registry import get_trainable_cls
 from ray.tune.result import TRIAL_INFO
 from ray.tune.tune import _Config
 
-gym, old_gym = try_import_gymnasium_and_gym()
 Space = gym.Space
 
 """TODO(jungong, sven): in "offline_data" we can potentially unify all input types
@@ -180,7 +177,7 @@ class AlgorithmConfig(_Config):
             config_dict: The legacy formatted python config dict for some algorithm.
 
         Returns:
-             A new AlgorithmConfig object that matches the given python config dict.
+            A new AlgorithmConfig object that matches the given python config dict.
         """
         # Create a default config object of this class.
         config_obj = cls()
@@ -326,8 +323,6 @@ class AlgorithmConfig(_Config):
         self.clip_rewards = None
         self.normalize_actions = True
         self.clip_actions = False
-        self.disable_env_checking = False
-        self.auto_wrap_old_gym_envs = True
         self.action_mask_key = "action_mask"
         # Whether this env is an atari env (for atari-specific preprocessing).
         # If not specified, we will try to auto-detect this.
@@ -480,6 +475,13 @@ class AlgorithmConfig(_Config):
         self.log_sys_usage = True
         self.fake_sampler = False
         self.seed = None
+        # TODO (sven): Remove these settings again in the future. We only need them
+        #  to debug a quite complex, production memory leak, possibly related to
+        #  evaluation in parallel (when `training_step` is getting called inside a
+        #  thread). It's also possible that the leak is not caused by RLlib itself,
+        #  but by Ray core, but we need more data to narrow this down.
+        self._run_training_always_in_thread = False
+        self._evaluation_parallel_to_training_wo_thread = False
 
         # `self.fault_tolerance()`
         self.ignore_worker_failures = False
@@ -502,6 +504,7 @@ class AlgorithmConfig(_Config):
         self.worker_restore_timeout_s = 1800
 
         # `self.rl_module()`
+        self._model_config_dict = {}
         self._rl_module_spec = None
         # Helper to keep track of the original exploration config when dis-/enabling
         # rl modules.
@@ -536,6 +539,9 @@ class AlgorithmConfig(_Config):
         self.synchronize_filters = DEPRECATED_VALUE
         self.enable_async_evaluation = DEPRECATED_VALUE
         self.custom_async_evaluation_function = DEPRECATED_VALUE
+        self._enable_rl_module_api = DEPRECATED_VALUE
+        self.auto_wrap_old_gym_envs = DEPRECATED_VALUE
+        self.disable_env_checking = DEPRECATED_VALUE
 
         # The following values have moved because of the new ReplayBuffer API
         self.buffer_size = DEPRECATED_VALUE
@@ -819,7 +825,7 @@ class AlgorithmConfig(_Config):
         Args:
             env: Name of the environment to use (e.g. a gym-registered str),
                 a full class path (e.g.
-                "ray.rllib.examples.env.random_env.RandomEnv"), or an Env
+                "ray.rllib.examples.envs.classes.random_env.RandomEnv"), or an Env
                 class directly. Note that this arg can also be specified via
                 the "env" key in `config`.
             logger_creator: Callable that creates a ray.tune.Logger
@@ -1404,10 +1410,11 @@ class AlgorithmConfig(_Config):
         clip_rewards: Optional[Union[bool, float]] = NotProvided,
         normalize_actions: Optional[bool] = NotProvided,
         clip_actions: Optional[bool] = NotProvided,
-        disable_env_checking: Optional[bool] = NotProvided,
         is_atari: Optional[bool] = NotProvided,
-        auto_wrap_old_gym_envs: Optional[bool] = NotProvided,
         action_mask_key: Optional[str] = NotProvided,
+        # Deprecated args.
+        auto_wrap_old_gym_envs=DEPRECATED_VALUE,
+        disable_env_checking=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the config's RL-environment settings.
 
@@ -1417,7 +1424,7 @@ class AlgorithmConfig(_Config):
                 or a string specifier of an RLlib supported type. In the latter case,
                 RLlib will try to interpret the specifier as either an Farama-Foundation
                 gymnasium env, a PyBullet env, or a fully qualified classpath to an Env
-                class, e.g. "ray.rllib.examples.env.random_env.RandomEnv".
+                class, e.g. "ray.rllib.examples.envs.classes.random_env.RandomEnv".
             env_config: Arguments dict passed to the env creator as an EnvContext
                 object (which is a dict plus the properties: num_rollout_workers,
                 worker_index, vector_index, and remote).
@@ -1447,32 +1454,31 @@ class AlgorithmConfig(_Config):
             clip_actions: If True, the RLlib default ModuleToEnv connector will clip
                 actions according to the env's bounds (before sending them into the
                 `env.step()` call).
-            disable_env_checking: If True, disable the environment pre-checking module.
             is_atari: This config can be used to explicitly specify whether the env is
                 an Atari env or not. If not specified, RLlib will try to auto-detect
                 this.
-            auto_wrap_old_gym_envs: Whether to auto-wrap old gym environments (using
-                the pre 0.24 gym APIs, e.g. reset() returning single obs and no info
-                dict). If True, RLlib will automatically wrap the given gym env class
-                with the gym-provided compatibility wrapper
-                (gym.wrappers.EnvCompatibility). If False, RLlib will produce a
-                descriptive error on which steps to perform to upgrade to gymnasium
-                (or to switch this flag to True).
-             action_mask_key: If observation is a dictionary, expect the value by
+            action_mask_key: If observation is a dictionary, expect the value by
                 the key `action_mask_key` to contain a valid actions mask (`numpy.int8`
                 array of zeros and ones). Defaults to "action_mask".
 
         Returns:
             This updated AlgorithmConfig object.
         """
+        if auto_wrap_old_gym_envs != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.environment(auto_wrap_old_gym_envs=..)",
+                error=True,
+            )
+        if disable_env_checking != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.environment(disable_env_checking=..)",
+                error=True,
+            )
+
         if env is not NotProvided:
             self.env = env
         if env_config is not NotProvided:
-            deep_update(
-                self.env_config,
-                env_config,
-                True,
-            )
+            deep_update(self.env_config, env_config, True)
         if observation_space is not NotProvided:
             self.observation_space = observation_space
         if action_space is not NotProvided:
@@ -1487,12 +1493,8 @@ class AlgorithmConfig(_Config):
             self.normalize_actions = normalize_actions
         if clip_actions is not NotProvided:
             self.clip_actions = clip_actions
-        if disable_env_checking is not NotProvided:
-            self.disable_env_checking = disable_env_checking
         if is_atari is not NotProvided:
             self._is_atari = is_atari
-        if auto_wrap_old_gym_envs is not NotProvided:
-            self.auto_wrap_old_gym_envs = auto_wrap_old_gym_envs
         if action_mask_key is not NotProvided:
             self.action_mask_key = action_mask_key
 
@@ -2639,6 +2641,8 @@ class AlgorithmConfig(_Config):
         log_sys_usage: Optional[bool] = NotProvided,
         fake_sampler: Optional[bool] = NotProvided,
         seed: Optional[int] = NotProvided,
+        _run_training_always_in_thread: Optional[bool] = NotProvided,
+        _evaluation_parallel_to_training_wo_thread: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's debugging settings.
 
@@ -2659,6 +2663,15 @@ class AlgorithmConfig(_Config):
             seed: This argument, in conjunction with worker_index, sets the random
                 seed of each worker, so that identically configured trials will have
                 identical results. This makes experiments reproducible.
+            _run_training_always_in_thread: Runs the n `training_step()` calls per
+                iteration always in a separate thread (just as we would do with
+                `evaluation_parallel_to_training=True`, but even without evaluation
+                going on and even without evaluation workers being created in the
+                Algorithm).
+            _evaluation_parallel_to_training_wo_thread: Only relevant if
+                `evaluation_parallel_to_training` is True. Then, in order to achieve
+                parallelism, RLlib will not use a thread pool (as it usually does in
+                this situation).
 
         Returns:
             This updated AlgorithmConfig object.
@@ -2675,6 +2688,12 @@ class AlgorithmConfig(_Config):
             self.fake_sampler = fake_sampler
         if seed is not NotProvided:
             self.seed = seed
+        if _run_training_always_in_thread is not NotProvided:
+            self._run_training_always_in_thread = _run_training_always_in_thread
+        if _evaluation_parallel_to_training_wo_thread is not NotProvided:
+            self._evaluation_parallel_to_training_wo_thread = (
+                _evaluation_parallel_to_training_wo_thread
+            )
 
         return self
 
@@ -2745,13 +2764,17 @@ class AlgorithmConfig(_Config):
     def rl_module(
         self,
         *,
+        model_config_dict: Optional[Dict[str, Any]] = NotProvided,
         rl_module_spec: Optional[RLModuleSpec] = NotProvided,
         # Deprecated arg.
-        _enable_rl_module_api: Optional[bool] = NotProvided,
+        _enable_rl_module_api=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the config's RLModule settings.
 
         Args:
+            model_config_dict: The default model config dictionary for `RLModule`s. This
+                will be used for any `RLModule` if not otherwise specified in the
+                `rl_module_spec`.
             rl_module_spec: The RLModule spec to use for this config. It can be either
                 a SingleAgentRLModuleSpec or a MultiAgentRLModuleSpec. If the
                 observation_space, action_space, catalog_class, or the model config is
@@ -2761,6 +2784,8 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
+        if model_config_dict is not NotProvided:
+            self._model_config_dict = model_config_dict
         if rl_module_spec is not NotProvided:
             self._rl_module_spec = rl_module_spec
 
@@ -2768,7 +2793,7 @@ class AlgorithmConfig(_Config):
             deprecation_warning(
                 old="AlgorithmConfig.rl_module(_enable_rl_module_api=True|False)",
                 new="AlgorithmConfig.experimental(_enable_new_api_stack=True|False)",
-                error=True,
+                error=False,
             )
         return self
 
@@ -3159,16 +3184,8 @@ class AlgorithmConfig(_Config):
             if policy_spec.policy_class is None and default_policy_class is not None:
                 policies[pid].policy_class = default_policy_class
 
-            # In case - somehow - an old gym Space made it to here, convert it
-            # to the corresponding gymnasium space.
-            if old_gym and isinstance(policy_spec.observation_space, old_gym.Space):
-                policies[
-                    pid
-                ].observation_space = convert_old_gym_space_to_gymnasium_space(
-                    policy_spec.observation_space
-                )
             # Infer observation space.
-            elif policy_spec.observation_space is None:
+            if policy_spec.observation_space is None:
                 if spaces is not None and pid in spaces:
                     obs_space = spaces[pid][0]
                 elif env_obs_space is not None:
@@ -3223,14 +3240,8 @@ class AlgorithmConfig(_Config):
 
                 policies[pid].observation_space = obs_space
 
-            # In case - somehow - an old gym Space made it to here, convert it
-            # to the corresponding gymnasium space.
-            if old_gym and isinstance(policy_spec.action_space, old_gym.Space):
-                policies[pid].action_space = convert_old_gym_space_to_gymnasium_space(
-                    policy_spec.action_space
-                )
             # Infer action space.
-            elif policy_spec.action_space is None:
+            if policy_spec.action_space is None:
                 if spaces is not None and pid in spaces:
                     act_space = spaces[pid][1]
                 elif env_act_space is not None:
@@ -3403,6 +3414,7 @@ class AlgorithmConfig(_Config):
         single_agent_rl_module_spec: Optional[SingleAgentRLModuleSpec] = None,
         env: Optional[EnvType] = None,
         spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
+        inference_only: bool = False,
     ) -> MultiAgentRLModuleSpec:
         """Returns the MultiAgentRLModule spec based on the given policy spec dict.
 
@@ -3431,6 +3443,10 @@ class AlgorithmConfig(_Config):
                 EnvRunner. If not provided, will try to infer from `env`. Otherwise
                 from `self.observation_space` and `self.action_space`. If no
                 information on spaces can be inferred, will raise an error.
+            inference_only: If `True`, the module spec will be used in either
+                sampling or inference and can be built in its light version (if
+                available), i.e. it contains only the networks needed for acting in the
+                environment (no target or critic networks).
         """
         # TODO (Kourosh,sven): When we replace policy entirely there will be no need for
         #  this function to map policy_dict to marl_module_specs anymore. The module
@@ -3621,8 +3637,19 @@ class AlgorithmConfig(_Config):
                 module_spec.observation_space = policy_spec.observation_space
             if module_spec.action_space is None:
                 module_spec.action_space = policy_spec.action_space
+            # In case the `RLModuleSpec` does not have a model config dict, we use the
+            # the one defined by the auto keys and the `model_config_dict` arguments in
+            # `self.rl_module()`.
             if module_spec.model_config_dict is None:
-                module_spec.model_config_dict = policy_spec.config.get("model", {})
+                module_spec.model_config_dict = self.model_config
+            # Otherwise we combine the two dictionaries where settings from the
+            # `RLModuleSpec` have higher priority.
+            else:
+                module_spec.model_config_dict = (
+                    self.model_config | module_spec.model_config_dict
+                )
+            # Set the `inference_only` flag for the module spec.
+            module_spec.model_config_dict[INFERENCE_ONLY] = inference_only
 
         return marl_module_spec
 
@@ -3717,6 +3744,36 @@ class AlgorithmConfig(_Config):
     def items(self):
         """Shim method to help pretend we are a dict."""
         return self.to_dict().items()
+
+    @property
+    def model_config(self):
+        """Defines the model configuration used.
+
+        This method combines the auto configuration `self _model_config_auto_includes`
+        defined by an algorithm with the user-defined configuration in
+        `self._model_config_dict`.This configuration dictionary will be used to
+        configure the `RLModule` in the new stack and the `ModelV2` in the old
+        stack.
+
+        Returns:
+            A dictionary with the model configuration.
+        """
+        return self._model_config_auto_includes | self._model_config_dict
+
+    @property
+    def _model_config_auto_includes(self) -> Dict[str, Any]:
+        """Defines which `AlgorithmConfig` settings/properties should be
+        auto-included into `self.model_config`.
+
+        The dictionary in this property contains the default configuration of an
+        algorithm. Together with the `self._model`, this method will be used to
+        define the configuration sent to the `RLModule`.
+
+        Returns:
+            A dictionary with the automatically included properties/settings of this
+            `AlgorithmConfig` object into `self.model_config`.
+        """
+        return MODEL_DEFAULTS | {"_inference_only": False}
 
     # -----------------------------------------------------------
     # Various validation methods for different types of settings.
@@ -4021,6 +4078,17 @@ class AlgorithmConfig(_Config):
     # TODO (sven): Once everything is on the new API stack, we won't need this method
     #  anymore.
     def _validate_to_be_deprecated_settings(self):
+        # Env task fn will be deprecated.
+        if self._enable_new_api_stack and self.env_task_fn is not None:
+            deprecation_warning(
+                old="AlgorithmConfig.env_task_fn",
+                help="The `env_task_fn` API is not supported on the new API stack! "
+                "Curriculum learning should instead be implemented solely via "
+                "custom callbacks. Check out our curriculum learning example "
+                "script for more information: "
+                "https://github.com/ray-project/ray/blob/master/rllib/examples/curriculum/curriculum_learning.py",  # noqa
+            )
+
         if self.preprocessor_pref not in ["rllib", "deepmind", None]:
             raise ValueError(
                 "`config.preprocessor_pref` must be either 'rllib', 'deepmind' or None!"

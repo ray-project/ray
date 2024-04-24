@@ -7,7 +7,7 @@ The environment we use here is configured to crash with a certain probability on
 `step()` and/or `reset()` call.
 """
 from ray.rllib.algorithms.appo import APPOConfig
-from ray.rllib.examples.env.cartpole_crashing import CartPoleCrashing
+from ray.rllib.examples.envs.classes.cartpole_crashing import CartPoleCrashing
 from ray import tune
 
 tune.register_env("env", lambda cfg: CartPoleCrashing(cfg))
@@ -28,9 +28,6 @@ config = (
             "p_crash_reset": 0.005,  # prob to crash during reset()
             "crash_on_worker_indices": [1, 2],
         },
-        # Disable env checking. Env checker doesn't handle Exceptions from
-        # user envs, and will crash rollout worker.
-        disable_env_checking=True,
     )
     .rollouts(
         num_rollout_workers=3,

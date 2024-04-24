@@ -21,6 +21,7 @@ from ray.rllib.core.rl_module.rl_module import (
     SingleAgentRLModuleSpec,
     RLMODULE_STATE_DIR_NAME,
 )
+from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
@@ -51,7 +52,10 @@ def _get_backend_config(learner_class: Type[Learner]) -> str:
 
         backend_config = TensorflowConfig()
     else:
-        raise ValueError("framework must be either torch or tf")
+        raise ValueError(
+            "`learner_class.framework` must be either 'torch' or 'tf2' (but is "
+            f"{learner_class.framework}!"
+        )
 
     return backend_config
 
@@ -320,7 +324,12 @@ class LearnerGroup:
         num_iters: int = 1,
     ) -> Union[Dict[str, Any], List[Dict[str, Any]], List[List[Dict[str, Any]]]]:
         # Define function to be called on all Learner actors (or the local learner).
-        def _learner_update(learner: Learner, batch_shard=None, episodes_shard=None):
+        def _learner_update(
+            learner: Learner,
+            batch_shard=None,
+            episodes_shard=None,
+            min_total_mini_batches=0,
+        ):
             if batch_shard is not None:
                 return learner.update_from_batch(
                     batch=batch_shard,
@@ -334,8 +343,11 @@ class LearnerGroup:
                     reduce_fn=reduce_fn,
                     minibatch_size=minibatch_size,
                     num_iters=num_iters,
+                    min_total_mini_batches=min_total_mini_batches,
                 )
 
+        # Local Learner worker: Don't shard batch/episodes, just run data as-is through
+        # this Learner.
         if self.is_local:
             if async_update:
                 raise ValueError(
@@ -350,18 +362,58 @@ class LearnerGroup:
                     episodes_shard=episodes,
                 )
             ]
+        # One or more remote Learners: Shard batch/episodes into equal pieces (roughly
+        # equal if multi-agent AND episodes) and send each Learner worker one of these
+        # shards.
         else:
+            # MultiAgentBatch: Shard into equal pieces.
+            # TODO (sven): The sharder used here destroys - for multi-agent only -
+            #  the relationship of the different agents' timesteps to each other.
+            #  Thus, in case the algorithm requires agent-synchronized data (aka.
+            #  "lockstep"), the `ShardBatchIterator` should not be used.
             if episodes is None:
                 partials = [
                     partial(_learner_update, batch_shard=batch_shard)
                     for batch_shard in ShardBatchIterator(batch, len(self._workers))
                 ]
+            # Single- or MultiAgentEpisodes: Shard into equal pieces (only roughly equal
+            # in case of multi-agent).
             else:
-                partials = [
-                    partial(_learner_update, episodes_shard=episodes_shard)
-                    for episodes_shard in ShardEpisodesIterator(
-                        episodes, len(self._workers)
+                eps_shards = list(ShardEpisodesIterator(episodes, len(self._workers)))
+                # In the multi-agent case AND `minibatch_size` AND num_workers > 1, we
+                # compute a max iteration counter such that the different Learners will
+                # not go through a different number of iterations.
+                min_total_mini_batches = 0
+                if (
+                    isinstance(episodes[0], MultiAgentEpisode)
+                    and minibatch_size
+                    and len(self._workers) > 1
+                ):
+                    # Find episode w/ the largest single-agent episode in it, then
+                    # compute this single-agent episode's total number of mini batches
+                    # (if we iterated over it num_sgd_iter times with the mini batch
+                    # size).
+                    longest_ts = 0
+                    per_mod_ts = defaultdict(int)
+                    for i, shard in enumerate(eps_shards):
+                        for ma_episode in shard:
+                            for sa_episode in ma_episode.agent_episodes.values():
+                                key = (i, sa_episode.module_id)
+                                per_mod_ts[key] += len(sa_episode)
+                                if per_mod_ts[key] > longest_ts:
+                                    longest_ts = per_mod_ts[key]
+                    min_total_mini_batches = self._compute_num_total_mini_batches(
+                        batch_size=longest_ts,
+                        mini_batch_size=minibatch_size,
+                        num_iters=num_iters,
                     )
+                partials = [
+                    partial(
+                        _learner_update,
+                        episodes_shard=eps_shard,
+                        min_total_mini_batches=min_total_mini_batches,
+                    )
+                    for eps_shard in eps_shards
                 ]
 
             if async_update:
@@ -533,7 +585,9 @@ class LearnerGroup:
                 refs.append(ref)
             ray.get(refs)
 
-    def get_weights(self, module_ids: Optional[Set[str]] = None) -> Dict[str, Any]:
+    def get_weights(
+        self, module_ids: Optional[Set[str]] = None, inference_only: bool = False
+    ) -> Dict[str, Any]:
         """Get the weights of the MultiAgentRLModule maintained by each Learner.
 
         Args:
@@ -544,12 +598,13 @@ class LearnerGroup:
 
         """
         if self.is_local:
-            state = self._learner.get_module_state(module_ids)
+            state = self._learner.get_module_state(module_ids, inference_only)
         else:
             worker = self._worker_manager.healthy_actor_ids()[0]
             assert len(self._workers) == self._worker_manager.num_healthy_actors()
             state = self._worker_manager.foreach_actor(
-                lambda w: w.get_module_state(module_ids), remote_actor_ids=[worker]
+                lambda w: w.get_module_state(module_ids, inference_only),
+                remote_actor_ids=[worker],
             )
             state = self._get_results(state)[0]
 
@@ -956,6 +1011,22 @@ class LearnerGroup:
     def __del__(self):
         if not self._is_shut_down:
             self.shutdown()
+
+    @staticmethod
+    def _compute_num_total_mini_batches(batch_size, mini_batch_size, num_iters):
+        num_total_mini_batches = 0
+        rest_size = 0
+        for i in range(num_iters):
+            eaten_batch = -rest_size
+            while eaten_batch < batch_size:
+                eaten_batch += mini_batch_size
+                num_total_mini_batches += 1
+            rest_size = mini_batch_size - (eaten_batch - batch_size)
+            if rest_size:
+                num_total_mini_batches -= 1
+        if rest_size:
+            num_total_mini_batches += 1
+        return num_total_mini_batches
 
     @Deprecated(new="LearnerGroup.update_from_batch(async=False)", error=False)
     def update(self, *args, **kwargs):

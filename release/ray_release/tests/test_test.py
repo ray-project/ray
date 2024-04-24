@@ -12,7 +12,6 @@ from ray_release.bazel import bazel_runfile
 from ray_release.configs.global_config import (
     init_global_config,
     get_global_config,
-    BRANCH_PIPELINES,
 )
 from ray_release.test import (
     Test,
@@ -161,7 +160,7 @@ def test_is_stable() -> None:
     assert not Test(stable=False).is_stable()
 
 
-@patch.dict(os.environ, {"BUILDKITE_BRANCH": "food"})
+@patch.dict(os.environ, {"BUILDKITE_BRANCH": "food", "BUILDKITE_PULL_REQUEST": "1"})
 def test_result_from_bazel_event() -> None:
     result = TestResult.from_bazel_event(
         {
@@ -170,6 +169,7 @@ def test_result_from_bazel_event() -> None:
     )
     assert result.is_passing()
     assert result.branch == "food"
+    assert result.pull_request == "1"
     result = TestResult.from_bazel_event(
         {
             "testResult": {"status": "FAILED"},
@@ -190,7 +190,10 @@ def test_from_bazel_event() -> None:
 
 
 @patch.object(boto3, "client")
-@patch.dict(os.environ, {"BUILDKITE_PIPELINE_ID": BRANCH_PIPELINES[0]})
+@patch.dict(
+    os.environ,
+    {"BUILDKITE_PIPELINE_ID": get_global_config()["ci_pipeline_postmerge"][0]},
+)
 def test_update_from_s3(mock_client) -> None:
     mock_object = mock.Mock()
     mock_object.return_value.get.return_value.read.return_value = json.dumps(
@@ -206,6 +209,18 @@ def test_update_from_s3(mock_client) -> None:
     assert test.get_state() == TestState.FAILING
     assert test.get_oncall() == "ci"
     assert test["github_issue_number"] == "1234"
+
+
+@patch("ray_release.test.Test._get_s3_name")
+@patch("ray_release.test.Test.gen_from_s3")
+def test_gen_from_name(mock_gen_from_s3, _) -> None:
+    mock_gen_from_s3.return_value = [
+        _stub_test({"name": "a"}),
+        _stub_test({"name": "good"}),
+        _stub_test({"name": "test"}),
+    ]
+
+    assert Test.gen_from_name("good").get_name() == "good"
 
 
 if __name__ == "__main__":

@@ -1,4 +1,5 @@
 import gymnasium as gym
+import logging
 import tree
 
 from collections import defaultdict
@@ -7,16 +8,18 @@ from typing import DefaultDict, Dict, List, Optional
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
+from ray.rllib.core.rl_module import INFERENCE_ONLY
 from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.evaluation.metrics import RolloutMetrics
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.spaces.space_utils import unbatch
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import EpisodeID, ModelWeights, TensorType
@@ -24,6 +27,7 @@ from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.util.annotations import PublicAPI
 
 _, tf, _ = try_import_tf()
+logger = logging.getLogger("ray.rllib")
 
 
 @PublicAPI(stability="alpha")
@@ -48,11 +52,14 @@ class SingleAgentEnvRunner(EnvRunner):
         # Create the vectorized gymnasium env.
         self.env: Optional[gym.Wrapper] = None
         self.num_envs: int = 0
-        self._make_env()
+        self.make_env()
 
         # Global counter for environment steps from all workers. This is
         # needed for schedulers used by `RLModule`s.
         self.global_num_env_steps_sampled = 0
+        # Stores the value of `self.global_num_env_steps_sampled` at end of last
+        # `self.get_metrics()` call (so we can compute the env/agent-step delta).
+        self._last_global_num_env_steps_sampled = 0
 
         # Create the env-to-module connector pipeline.
         self._env_to_module = self.config.build_env_to_module_connector(self.env)
@@ -76,10 +83,19 @@ class SingleAgentEnvRunner(EnvRunner):
             #  shape is (1, 1) which brings a problem with the action dists.
             #  shape=(1,) is expected.
             module_spec.action_space = self.env.envs[0].action_space
-            module_spec.model_config_dict = self.config.model
+            module_spec.model_config_dict = self.config.model_config
+            # Only load a light version of the module, if available. This is useful
+            # if the the module has target or critic networks not needed in sampling
+            # or inference.
+            # TODO (simon): Once we use `get_marl_module_spec` here, we can remove
+            # this line here as the function takes care of this flag.
+            module_spec.model_config_dict[INFERENCE_ONLY] = True
             self.module: RLModule = module_spec.build()
         except NotImplementedError:
             self.module = None
+
+        # Create a MetricsLogger object for logging custom stats.
+        self.metrics = MetricsLogger()
 
         # Create the two connector pipelines: env-to-module and module-to-env.
         self._module_to_env = self.config.build_module_to_env_connector(self.env)
@@ -106,7 +122,6 @@ class SingleAgentEnvRunner(EnvRunner):
         explore: bool = None,
         random_actions: bool = False,
         force_reset: bool = False,
-        with_render_data: bool = False,
     ) -> List[SingleAgentEpisode]:
         """Runs and returns a sample (n timesteps or m episodes) on the env(s).
 
@@ -128,8 +143,6 @@ class SingleAgentEnvRunner(EnvRunner):
                 sampling. Useful if you would like to collect a clean slate of new
                 episodes via this call. Note that when sampling n episodes
                 (`num_episodes != None`), this is fixed to True.
-            with_render_data: If True, will call `render()` on the environment and
-                collect returned images.
 
         Returns:
             A list of `SingleAgentEpisode` instances, carrying the sampled data.
@@ -164,7 +177,6 @@ class SingleAgentEnvRunner(EnvRunner):
                 num_episodes=num_episodes,
                 explore=explore,
                 random_actions=random_actions,
-                with_render_data=with_render_data,
             )
         # For complete episodes mode, sample as long as the number of timesteps
         # done is smaller than the `train_batch_size`.
@@ -176,13 +188,16 @@ class SingleAgentEnvRunner(EnvRunner):
                     num_episodes=self.num_envs,
                     explore=explore,
                     random_actions=random_actions,
-                    with_render_data=with_render_data,
                 )
                 total += sum(len(e) for e in episodes)
                 samples.extend(episodes)
 
         # Make the `on_sample_end` callback.
-        self._callbacks.on_sample_end(env_runner=self, samples=samples)
+        self._callbacks.on_sample_end(
+            env_runner=self,
+            metrics_logger=self.metrics,
+            samples=samples,
+        )
 
         return samples
 
@@ -396,7 +411,6 @@ class SingleAgentEnvRunner(EnvRunner):
         num_episodes: int,
         explore: bool,
         random_actions: bool = False,
-        with_render_data: bool = False,
     ) -> List[SingleAgentEpisode]:
         """Helper method to run n episodes.
 
@@ -417,16 +431,10 @@ class SingleAgentEnvRunner(EnvRunner):
             self._make_on_episode_callback("on_episode_created", env_index, episodes)
         _shared_data = {}
 
-        # Initialize image rendering if needed.
-        render_images = [None] * self.num_envs
-        if with_render_data:
-            render_images = [e.render() for e in self.env.envs]
-
         for env_index in range(self.num_envs):
             episodes[env_index].add_env_reset(
                 observation=obs[env_index],
                 infos=infos[env_index],
-                render_image=render_images[env_index],
             )
             self._make_on_episode_callback("on_episode_start", env_index, episodes)
 
@@ -479,10 +487,6 @@ class SingleAgentEnvRunner(EnvRunner):
             )
             obs, actions = unbatch(obs), unbatch(actions)
 
-            # Add render data if needed.
-            if with_render_data:
-                render_images = [e.render() for e in self.env.envs]
-
             for env_index in range(self.num_envs):
                 extra_model_output = {k: v[env_index] for k, v in to_env.items()}
 
@@ -518,9 +522,6 @@ class SingleAgentEnvRunner(EnvRunner):
                     episodes[env_index] = SingleAgentEpisode(
                         observations=[obs[env_index]],
                         infos=[infos[env_index]],
-                        render_images=None
-                        if render_images[env_index] is None
-                        else [render_images[env_index]],
                         observation_space=self.env.single_observation_space,
                         action_space=self.env.single_action_space,
                     )
@@ -534,7 +535,6 @@ class SingleAgentEnvRunner(EnvRunner):
                         actions[env_index],
                         rewards[env_index],
                         infos=infos[env_index],
-                        render_image=render_images[env_index],
                         extra_model_outputs=extra_model_output,
                     )
                     # Make `on_episode_step` callback.
@@ -604,15 +604,15 @@ class SingleAgentEnvRunner(EnvRunner):
         # Only update the weigths, if this is the first synchronization or
         # if the weights of this `EnvRunner` lacks behind the actual ones.
         if weights_seq_no == 0 or self._weights_seq_no < weights_seq_no:
-            if isinstance(weights, dict) and DEFAULT_POLICY_ID in weights:
-                weights = weights[DEFAULT_POLICY_ID]
+            if isinstance(weights, dict) and DEFAULT_MODULE_ID in weights:
+                weights = weights[DEFAULT_MODULE_ID]
             weights = self._convert_to_tensor(weights)
             self.module.set_state(weights)
 
-    def get_weights(self, modules=None):
+    def get_weights(self, modules=None, inference_only: bool = False):
         """Returns the weights of our (single-agent) RLModule."""
 
-        return self.module.get_state()
+        return self.module.get_state(inference_only=inference_only)
 
     @override(EnvRunner)
     def assert_healthy(self):
@@ -627,13 +627,24 @@ class SingleAgentEnvRunner(EnvRunner):
         # Make sure, we have built our gym.vector.Env and RLModule properly.
         assert self.env and self.module
 
-    @override(EnvRunner)
-    def stop(self):
-        # Close our env object via gymnasium's API.
-        self.env.close()
+    def make_env(self) -> None:
+        """Creates a vectorized gymnasium env and stores it in `self.env`.
 
-    def _make_env(self):
-        """Creates a vectorized gymnasium env."""
+        Note that users can change the EnvRunner's config (e.g. change
+        `self.config.env_config`) and then call this method to create new environments
+        with the updated configuration.
+        """
+        # If an env already exists, try closing it first (to allow it to properly
+        # cleanup).
+        if self.env is not None:
+            try:
+                self.env.close()
+            except Exception as e:
+                logger.warning(
+                    "Tried closing the existing env, but failed with error: "
+                    f"{e.args[0]}"
+                )
+
         env_ctx = self.config.env_config
         if not isinstance(env_ctx, EnvContext):
             env_ctx = EnvContext(
@@ -672,12 +683,20 @@ class SingleAgentEnvRunner(EnvRunner):
         self.num_envs: int = self.env.num_envs
         assert self.num_envs == self.config.num_envs_per_worker
 
+        # Set the flag to reset all envs upon the next `sample()` call.
+        self._needs_initial_reset = True
+
         # Call the `on_environment_created` callback.
         self._callbacks.on_environment_created(
             env_runner=self,
             env=self.env,
             env_context=env_ctx,
         )
+
+    @override(EnvRunner)
+    def stop(self):
+        # Close our env object via gymnasium's API.
+        self.env.close()
 
     def _new_episode(self):
         return SingleAgentEpisode(
@@ -690,6 +709,7 @@ class SingleAgentEnvRunner(EnvRunner):
         getattr(self._callbacks, which)(
             episode=episodes[idx],
             env_runner=self,
+            metrics_logger=self.metrics,
             env=self.env,
             rl_module=self.module,
             env_index=idx,

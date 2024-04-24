@@ -30,7 +30,7 @@ const columns = [
   { label: "" }, // Empty column for dropdown icons
   { label: "Dataset / Operator Name", align: "start" },
   {
-    label: "Progress",
+    label: "Blocks Outputted",
     helpInfo: <Typography>Blocks outputted by output operator.</Typography>,
   },
   { label: "State", align: "center" },

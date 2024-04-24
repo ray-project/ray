@@ -1,6 +1,6 @@
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
-from ray.rllib.examples.env.multi_agent import MultiAgentPendulum
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentPendulum
 from ray.tune.registry import register_env
 
 
@@ -13,7 +13,13 @@ config = (
     .rollouts(
         env_runner_cls=MultiAgentEnvRunner,
         num_envs_per_worker=1,
-        num_rollout_workers=4,
+        num_rollout_workers=2,
+    )
+    .rl_module(
+        model_config_dict={
+            "fcnet_activation": "relu",
+            "uses_new_env_runners": True,
+        },
     )
     .training(
         train_batch_size=512,
@@ -21,10 +27,6 @@ config = (
         gamma=0.95,
         lr=0.0003,
         sgd_minibatch_size=64,
-        model={
-            "fcnet_activation": "relu",
-            "uses_new_env_runners": True,
-        },
         vf_clip_param=10.0,
     )
     .multi_agent(

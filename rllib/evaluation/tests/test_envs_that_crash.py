@@ -2,8 +2,8 @@ import unittest
 
 import ray
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.examples.env.cartpole_crashing import CartPoleCrashing
-from ray.rllib.examples.env.multi_agent import make_multi_agent
+from ray.rllib.examples.envs.classes.cartpole_crashing import CartPoleCrashing
+from ray.rllib.examples.envs.classes.multi_agent import make_multi_agent
 from ray.rllib.utils.error import EnvError
 from ray.tune.registry import register_env
 
@@ -60,7 +60,6 @@ class TestEnvsThatCrash(unittest.TestCase):
                     "p_crash": 0.2,
                     "init_time_s": 0.3,
                 },
-                disable_env_checking=True,
             )
         )
 
@@ -76,7 +75,7 @@ class TestEnvsThatCrash(unittest.TestCase):
             # just be bubbled up by RLlib Algorithm and tune.Trainable during the
             # `step()` call).
             self.assertRaisesRegex(
-                EnvError, "Simulated env crash", lambda: algo.train()
+                EnvError, "Simulated env crash", lambda algo=algo: algo.train()
             )
             algo.stop()
 
@@ -99,7 +98,6 @@ class TestEnvsThatCrash(unittest.TestCase):
                     # Only crash on worker with index 1.
                     "crash_on_worker_indices": [1],
                 },
-                disable_env_checking=True,
             )
         )
 
@@ -140,8 +138,6 @@ class TestEnvsThatCrash(unittest.TestCase):
                     # Only crash on worker with index 2.
                     "crash_on_worker_indices": [2],
                 },
-                # Make sure nothing happens during pre-checks.
-                disable_env_checking=True,
             )
             .fault_tolerance(delay_between_worker_restarts_s=0)
         )
@@ -185,8 +181,6 @@ class TestEnvsThatCrash(unittest.TestCase):
                     # Crash prob=1%.
                     "p_crash": 0.01,
                 },
-                # Make sure nothing happens during pre-checks.
-                disable_env_checking=True,
             )
         )
         for multi_agent in [True]:  # TODO, False]:
