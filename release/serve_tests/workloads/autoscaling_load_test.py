@@ -42,7 +42,7 @@ def main():
         ],
     }
     compute_config = ComputeConfig(
-        cloud="serve_release_tests_cloud",
+        cloud="anyscale_v2_default_cloud",
         head_node=HeadNodeConfig(instance_type="m5.8xlarge"),
         worker_nodes=[
             WorkerNodeGroupConfig(
