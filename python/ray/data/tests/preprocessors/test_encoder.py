@@ -3,6 +3,7 @@ import pandas as pd
 import pytest
 
 import ray
+from ray.data.exceptions import UserCodeException
 from ray.data.preprocessor import PreprocessorNotFittedException
 from ray.data.preprocessors import (
     Categorizer,
@@ -96,7 +97,7 @@ def test_ordinal_encoder():
     null_encoder.fit(nonnull_ds)
 
     # Verify transform fails for null values.
-    with pytest.raises(ValueError):
+    with pytest.raises((UserCodeException, ValueError)):
         null_encoder.transform(null_ds).materialize()
     null_encoder.transform(nonnull_ds)
 
@@ -298,7 +299,7 @@ def test_one_hot_encoder():
     null_encoder.fit(nonnull_ds)
 
     # Verify transform fails for null values.
-    with pytest.raises(ValueError):
+    with pytest.raises((UserCodeException, ValueError)):
         null_encoder.transform(null_ds).materialize()
     null_encoder.transform(nonnull_ds)
 
@@ -407,7 +408,7 @@ def test_multi_hot_encoder():
     null_encoder.fit(nonnull_ds)
 
     # Verify transform fails for null values.
-    with pytest.raises(ValueError):
+    with pytest.raises((UserCodeException, ValueError)):
         null_encoder.transform(null_ds).materialize()
     null_encoder.transform(nonnull_ds)
 
@@ -473,6 +474,25 @@ def test_label_encoder():
     )
     assert out_df.equals(expected_df)
 
+    # Inverse transform data.
+    inverse_transformed = encoder.inverse_transform(transformed)
+    inverse_df = inverse_transformed.to_pandas()
+
+    assert inverse_df.equals(in_df)
+
+    # Inverse transform without fitting.
+    new_encoder = LabelEncoder("A")
+
+    with pytest.raises(RuntimeError):
+        new_encoder.inverse_transform(ds)
+
+    # Inverse transform on fitted preprocessor that hasn't transformed anything.
+    new_encoder.fit(ds)
+    inv_non_fitted = new_encoder.inverse_transform(transformed)
+    inv_non_fitted_df = inv_non_fitted.to_pandas()
+
+    assert inv_non_fitted_df.equals(in_df)
+
     # Transform batch.
     pred_col_a = ["blue", "red", "yellow"]
     pred_col_b = ["cold", "unknown", None]
@@ -510,7 +530,7 @@ def test_label_encoder():
     null_encoder.fit(nonnull_ds)
 
     # Verify transform fails for null values.
-    with pytest.raises(ValueError):
+    with pytest.raises((UserCodeException, ValueError)):
         null_encoder.transform(null_ds).materialize()
     null_encoder.transform(nonnull_ds)
 

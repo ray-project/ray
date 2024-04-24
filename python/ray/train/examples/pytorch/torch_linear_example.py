@@ -5,10 +5,10 @@ import tempfile
 import numpy as np
 import torch
 import torch.nn as nn
+
 import ray.train as train
 from ray.train import Checkpoint, RunConfig, ScalingConfig
-from ray.train.torch import TorchTrainer, LegacyTorchCheckpoint
-from ray.train._internal.storage import _use_storage_context
+from ray.train.torch import TorchTrainer
 
 
 class LinearDataset(torch.utils.data.Dataset):
@@ -26,7 +26,10 @@ class LinearDataset(torch.utils.data.Dataset):
         return len(self.x)
 
 
-def train_epoch(dataloader, model, loss_fn, optimizer):
+def train_epoch(epoch, dataloader, model, loss_fn, optimizer):
+    if train.get_context().get_world_size() > 1:
+        dataloader.sampler.set_epoch(epoch)
+
     for X, y in dataloader:
         # Compute prediction error
         pred = model(X)
@@ -77,21 +80,15 @@ def train_func(config):
     optimizer = torch.optim.SGD(model.parameters(), lr=lr)
 
     results = []
-    for _ in range(epochs):
-        train_epoch(train_loader, model, loss_fn, optimizer)
+    for epoch in range(epochs):
+        train_epoch(epoch, train_loader, model, loss_fn, optimizer)
         state_dict, loss = validate_epoch(validation_loader, model, loss_fn)
         result = dict(loss=loss)
         results.append(result)
 
-        if _use_storage_context():
-            with tempfile.TemporaryDirectory() as tmpdir:
-                torch.save(state_dict, os.path.join(tmpdir, "model.pt"))
-                train.report(result, checkpoint=Checkpoint.from_directory(tmpdir))
-        else:
-            # TODO(justinvyu): Temporary for CI to pass during the API transition.
-            train.report(
-                result, checkpoint=LegacyTorchCheckpoint.from_state_dict(state_dict)
-            )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            torch.save(state_dict, os.path.join(tmpdir, "model.pt"))
+            train.report(result, checkpoint=Checkpoint.from_directory(tmpdir))
 
     return results
 

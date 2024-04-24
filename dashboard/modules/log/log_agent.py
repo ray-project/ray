@@ -1,5 +1,5 @@
 import logging
-from typing import Tuple
+from typing import Optional
 
 import concurrent.futures
 import ray.dashboard.modules.log.log_utils as log_utils
@@ -17,13 +17,9 @@ from pathlib import Path
 
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
-from ray._private.ray_constants import (
-    LOG_PREFIX_TASK_ATTEMPT_START,
-    LOG_PREFIX_TASK_ATTEMPT_END,
-)
 
 logger = logging.getLogger(__name__)
-routes = dashboard_optional_utils.ClassMethodRouteTable
+routes = dashboard_optional_utils.DashboardAgentRouteTable
 
 # 64 KB
 BLOCK_SIZE = 1 << 16
@@ -275,6 +271,10 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
         if server:
             reporter_pb2_grpc.add_LogServiceServicer_to_server(self, server)
 
+    @property
+    def node_id(self) -> Optional[str]:
+        return self._dashboard_agent.get_node_id()
+
     @staticmethod
     def is_minimal_module():
         # Dashboard is only available with non-minimal install now.
@@ -296,79 +296,44 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
             )
         log_files = []
         for p in path.glob(request.glob_filter):
-            log_files.append(str(p.relative_to(path)))
+            log_files.append(str(p.relative_to(path)) + ("/" if p.is_dir() else ""))
         return reporter_pb2.ListLogsReply(log_files=log_files)
 
     @classmethod
-    async def _find_task_log_offsets(
-        cls, task_id: str, attempt_number: int, lines: int, f: io.BufferedIOBase
-    ) -> Tuple[int, int]:
-        """Find the start and end offsets in the log file for a task attempt
-        Current task log is in the format of below:
-
-            :job_id:xxx
-            :task_name:xxx
-            :task_attempt_start:<task_id>-<attempt_number>
-            ...
-            actual user logs
-            ...
-            :task_attempt_end:<task_id>-<attempt_number>
-            ... (other tasks)
-
-
-        For async actor tasks, task logs from multiple tasks might however
-        be interleaved.
+    def _resolve_filename(cls, root_log_dir: Path, filename: str) -> Path:
         """
+        Resolves the file path relative to the root log directory.
 
-        # Find start
-        task_attempt_start_magic_line = (
-            f"{LOG_PREFIX_TASK_ATTEMPT_START}{task_id}-{attempt_number}\n"
-        )
+        Args:
+            root_log_dir: Root log directory.
+            filename: File path relative to the root log directory.
 
-        # Offload the heavy IO CPU work to a thread pool to avoid blocking the
-        # event loop for concurrent requests.
-        task_attempt_magic_line_offset = (
-            await asyncio.get_running_loop().run_in_executor(
-                _task_log_search_worker_pool,
-                find_offset_of_content_in_file,
-                f,
-                task_attempt_start_magic_line.encode(),
-            )
-        )
+        Raises:
+            FileNotFoundError: If the file path is invalid.
 
-        if task_attempt_magic_line_offset == -1:
-            raise FileNotFoundError(
-                f"Log for task attempt({task_id},{attempt_number}) not found"
-            )
-        start_offset = task_attempt_magic_line_offset + len(
-            task_attempt_start_magic_line
-        )
+        Returns:
+            The absolute file path resolved from the root log directory.
+        """
+        if not Path(filename).is_absolute():
+            filepath = root_log_dir / filename
+        else:
+            filepath = Path(filename)
 
-        # Find the end of the task log, which is the start of the next task log if any
-        # with the LOG_PREFIX_TASK_ATTEMPT_END magic line.
-        task_attempt_end_magic_line = (
-            f"{LOG_PREFIX_TASK_ATTEMPT_END}{task_id}-{attempt_number}\n"
-        )
-        end_offset = await asyncio.get_running_loop().run_in_executor(
-            _task_log_search_worker_pool,
-            find_offset_of_content_in_file,
-            f,
-            task_attempt_end_magic_line.encode(),
-            start_offset,
-        )
+        # We want to allow relative paths that include symlinks pointing outside of the
+        # `root_log_dir`, so use `os.path.abspath` instead of `Path.resolve()` because
+        # `os.path.abspath` does not resolve symlinks.
+        filepath = Path(os.path.abspath(filepath))
 
-        if end_offset == -1:
-            # No other tasks (might still be running), stream til the end.
-            end_offset = find_end_offset_file(f)
+        if not filepath.is_file():
+            raise FileNotFoundError(f"A file is not found at: {filepath}")
 
-        if lines != -1:
-            # Tail lines specified, find end_offset - lines offsets.
-            start_offset = max(
-                find_start_offset_last_n_lines_from_offset(f, end_offset, lines),
-                start_offset,
-            )
+        try:
+            filepath.relative_to(root_log_dir)
+        except ValueError as e:
+            raise FileNotFoundError(f"{filepath} not in {root_log_dir}: {e}")
 
-        return start_offset, end_offset
+        # Fully resolve the path before returning (including following symlinks).
+        return filepath.resolve()
 
     async def StreamLog(self, request, context):
         """
@@ -384,15 +349,12 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
         # be automatically terminated.
         lines = request.lines if request.lines else 1000
 
-        if not Path(request.log_file_name).is_absolute():
-            filepath = Path(self._dashboard_agent.log_dir) / request.log_file_name
-        else:
-            filepath = Path(request.log_file_name)
-
-        if not filepath.is_file():
-            await context.send_initial_metadata(
-                [[log_consts.LOG_GRPC_ERROR, log_consts.FILE_NOT_FOUND]]
+        try:
+            filepath = self._resolve_filename(
+                Path(self._dashboard_agent.log_dir), request.log_file_name
             )
+        except FileNotFoundError as e:
+            await context.send_initial_metadata([[log_consts.LOG_GRPC_ERROR, str(e)]])
         else:
             with open(filepath, "rb") as f:
                 await context.send_initial_metadata([])

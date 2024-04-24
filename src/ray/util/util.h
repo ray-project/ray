@@ -14,6 +14,25 @@
 
 #pragma once
 
+#ifdef __APPLE__
+#include <pthread.h>
+#endif
+
+#ifdef __linux__
+#include <sys/syscall.h>
+#endif
+
+#ifdef _WIN32
+#ifndef _WINDOWS_
+#ifndef WIN32_LEAN_AND_MEAN  // Sorry for the inconvenience. Please include any related
+                             // headers you need manually.
+                             // (https://stackoverflow.com/a/8294669)
+#define WIN32_LEAN_AND_MEAN  // Prevent inclusion of WinSock2.h
+#endif
+#include <Windows.h>  // Force inclusion of WinGDI here to resolve name conflict
+#endif
+#endif
+
 #include <chrono>
 #include <iterator>
 #include <memory>
@@ -86,6 +105,19 @@ inline std::string AppendToEachLine(const std::string &str,
   }
   return ss.str();
 }
+
+// Returns the TID of the calling thread.
+#ifdef __APPLE__
+inline uint64_t GetTid() {
+  uint64_t tid;
+  RAY_CHECK_EQ(pthread_threadid_np(NULL, &tid), 0);
+  return tid;
+}
+#elif defined(_WIN32)
+inline DWORD GetTid() { return GetCurrentThreadId(); }
+#else
+inline pid_t GetTid() { return syscall(__NR_gettid); }
+#endif
 
 inline int64_t current_sys_time_s() {
   std::chrono::seconds s_since_epoch = std::chrono::duration_cast<std::chrono::seconds>(

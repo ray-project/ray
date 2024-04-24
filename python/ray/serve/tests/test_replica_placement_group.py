@@ -1,20 +1,15 @@
+import os
 import sys
 
 import pytest
 
 import ray
-from ray.util.placement_group import (
-    get_current_placement_group,
-    PlacementGroup,
-)
-from ray.util.scheduling_strategies import (
-    PlacementGroupSchedulingStrategy,
-)
-from ray._private.test_utils import wait_for_condition
-
 from ray import serve
-from ray.serve.context import _get_global_client
+from ray._private.test_utils import wait_for_condition
 from ray.serve._private.utils import get_all_live_placement_group_names
+from ray.serve.context import _get_global_client
+from ray.util.placement_group import PlacementGroup, get_current_placement_group
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
 def _get_pg_strategy(pg: PlacementGroup) -> str:
@@ -37,7 +32,9 @@ def test_basic(serve_instance):
 
     # Verify that each replica has its own placement group with the correct config.
     assert len(get_all_live_placement_group_names()) == 2
-    unique_pgs = set(ray.get([h.get_pg.remote() for _ in range(20)]))
+    unique_pgs = set(
+        ray.get([h.get_pg.remote()._to_object_ref_sync() for _ in range(20)])
+    )
     assert len(unique_pgs) == 2
     for pg in unique_pgs:
         assert _get_pg_strategy(pg) == "PACK"
@@ -65,7 +62,7 @@ def test_upgrade_and_change_pg(serve_instance):
 
     # Check that the original replica is created with the expected PG config.
     assert len(get_all_live_placement_group_names()) == 1
-    original_pg = ray.get(h.get_pg.remote())
+    original_pg = h.get_pg.remote().result()
     assert original_pg.bundle_specs == [{"CPU": 1}, {"CPU": 0.1}]
     assert _get_pg_strategy(original_pg) == "STRICT_PACK"
 
@@ -77,7 +74,7 @@ def test_upgrade_and_change_pg(serve_instance):
 
     h = serve.run(D.bind(), name="pg_test")
     assert len(get_all_live_placement_group_names()) == 1
-    new_pg = ray.get(h.get_pg.remote())
+    new_pg = h.get_pg.remote().result()
     assert new_pg.bundle_specs == [{"CPU": 2}, {"CPU": 0.2}]
     assert _get_pg_strategy(new_pg) == "SPREAD"
 
@@ -101,7 +98,9 @@ def test_pg_removed_on_replica_graceful_shutdown(serve_instance):
 
     # Two replicas to start, each should have their own placement group.
     assert len(get_all_live_placement_group_names()) == 2
-    original_unique_pgs = set(ray.get([h.get_pg.remote() for _ in range(20)]))
+    original_unique_pgs = set(
+        ray.get([h.get_pg.remote()._to_object_ref_sync() for _ in range(20)])
+    )
     assert len(original_unique_pgs) == 2
 
     # Re-deploy the application with a single replica.
@@ -109,7 +108,9 @@ def test_pg_removed_on_replica_graceful_shutdown(serve_instance):
     # new replica.
     h = serve.run(D.options(num_replicas=1).bind(), name="pg_test")
     assert len(get_all_live_placement_group_names()) == 1
-    new_unique_pgs = set(ray.get([h.get_pg.remote() for _ in range(20)]))
+    new_unique_pgs = set(
+        ray.get([h.get_pg.remote()._to_object_ref_sync() for _ in range(20)])
+    )
     assert len(new_unique_pgs) == 1
     assert not new_unique_pgs.issubset(original_unique_pgs)
 
@@ -128,7 +129,7 @@ def test_pg_removed_on_replica_crash(serve_instance):
     )
     class D:
         def die(self):
-            sys.exit()
+            os._exit(1)
 
         def get_pg(self) -> PlacementGroup:
             return get_current_placement_group()
@@ -137,15 +138,15 @@ def test_pg_removed_on_replica_crash(serve_instance):
 
     # Get the placement group for the original replica.
     assert len(get_all_live_placement_group_names()) == 1
-    pg = ray.get(h.get_pg.remote())
+    pg = h.get_pg.remote().result()
 
     # Kill the replica forcefully.
     with pytest.raises(ray.exceptions.RayActorError):
-        ray.get(h.die.remote())
+        h.die.remote().result()
 
     def new_replica_scheduled():
         try:
-            ray.get(h.get_pg.remote())
+            h.get_pg.remote().result()
         except ray.exceptions.RayActorError:
             return False
 
@@ -154,7 +155,7 @@ def test_pg_removed_on_replica_crash(serve_instance):
     # The original placement group should be deleted and a new replica should
     # be scheduled with its own new placement group.
     wait_for_condition(new_replica_scheduled)
-    new_pg = ray.get(h.get_pg.remote())
+    new_pg = h.get_pg.remote().result()
     assert pg != new_pg
     assert len(get_all_live_placement_group_names()) == 1
 
@@ -199,14 +200,14 @@ def test_leaked_pg_removed_on_controller_recovery(serve_instance):
     )
     class D:
         def die(self):
-            sys.exit()
+            os._exit(1)
 
         def get_pg(self) -> PlacementGroup:
             return get_current_placement_group()
 
     h = serve.run(D.bind(), name="pg_test")
 
-    prev_pg = ray.get(h.get_pg.remote())
+    prev_pg = h.get_pg.remote().result()
     assert len(get_all_live_placement_group_names()) == 1
 
     # Kill the controller and the replica immediately after.
@@ -214,11 +215,11 @@ def test_leaked_pg_removed_on_controller_recovery(serve_instance):
     # should still detect the leaked placement group and clean it up.
     ray.kill(_get_global_client()._controller, no_restart=False)
     with pytest.raises(ray.exceptions.RayActorError):
-        ray.get(h.die.remote())
+        h.die.remote().result()
 
     def leaked_pg_cleaned_up():
         try:
-            new_pg = ray.get(h.get_pg.remote())
+            new_pg = h.get_pg.remote().result()
         except ray.exceptions.RayActorError:
             return False
 
@@ -308,7 +309,7 @@ def test_coschedule_actors_and_tasks(serve_instance):
             )
 
     h = serve.run(Parent.bind())
-    ray.get(h.run_test.remote())
+    h.run_test.remote().result()
 
 
 if __name__ == "__main__":

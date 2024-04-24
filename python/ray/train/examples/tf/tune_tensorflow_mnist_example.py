@@ -2,10 +2,9 @@ import argparse
 
 import ray
 from ray import tune
-from ray.train.tensorflow import TensorflowTrainer
 from ray.train import ScalingConfig
-
 from ray.train.examples.tf.tensorflow_mnist_example import train_func
+from ray.train.tensorflow import TensorflowTrainer
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 

@@ -27,3 +27,20 @@ try:
 except ray.exceptions.RayTaskError:
     print("Object reference was cancelled.")
 # __cancel_end__
+
+
+# __enable_task_events_start__
+@ray.remote
+class FooActor:
+
+    # Disable task events reporting for this method.
+    @ray.method(enable_task_events=False)
+    def foo(self):
+        pass
+
+
+foo_actor = FooActor.remote()
+ray.get(foo_actor.foo.remote())
+
+
+# __enable_task_events_end__

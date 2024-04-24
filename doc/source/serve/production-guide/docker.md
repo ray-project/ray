@@ -69,7 +69,7 @@ Make sure to replace `your_dockerhub_username` with your DockerHub user name and
 
 ## Adding your Serve application to the Docker image
 
-During development, it's useful to package your Serve application into a zip file and pull it into your Ray cluster using `runtime_envs`. During production, it's more stable to put the Serve application in the Docker image instead of the `runtime_env` since new nodes won't need to dynamically pull and isntall the Serve application code before running it.
+During development, it's useful to package your Serve application into a zip file and pull it into your Ray cluster using `runtime_envs`. During production, it's more stable to put the Serve application in the Docker image instead of the `runtime_env` since new nodes won't need to dynamically pull and install the Serve application code before running it.
 
 Use the [WORKDIR](https://docs.docker.com/engine/reference/builder/#workdir) and [COPY](https://docs.docker.com/engine/reference/builder/#copy) commands inside the Dockerfile to install the example Serve application code in your image:
 

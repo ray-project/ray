@@ -1,0 +1,11 @@
+{   
+    "r": 8,
+    "lora_alpha": 16,
+    "lora_dropout": 0.05,
+    "target_modules": ["gate_proj", "up_proj", "down_proj"],
+    "task_type": "CAUSAL_LM",
+    "modules_to_save": [],
+    "bias": "none",
+    "fan_in_fan_out": false,
+    "init_lora_weights": true
+}

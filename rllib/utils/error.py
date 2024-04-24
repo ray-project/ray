@@ -16,6 +16,13 @@ class EnvError(Exception):
 
 
 @PublicAPI
+class MultiAgentEnvError(Exception):
+    """Error if we encounter an error during MultiAgentEnv stepping/validation."""
+
+    pass
+
+
+@PublicAPI
 class NotSerializable(Exception):
     """Error if we encounter objects that can't be serialized by ray."""
 
@@ -40,15 +47,12 @@ c) Not a valid env class string.
 
 Try one of the following:
 a) For Atari support: `pip install gym[atari] autorom[accept-rom-license]`.
-   For VizDoom support: Install VizDoom
-   (https://github.com/mwydmuch/ViZDoom/blob/master/doc/Building.md) and
-   `pip install vizdoomgym`.
    For PyBullet support: `pip install pybullet`.
 b) To register your custom env, do `from ray import tune;
    tune.register('[name]', lambda cfg: [return env obj from here using cfg])`.
    Then in your config, do `config['env'] = [name]`.
 c) Make sure you provide a fully qualified classpath, e.g.:
-   `ray.rllib.examples.env.repeat_after_me_env.RepeatAfterMeEnv`
+   `ray.rllib.examples.envs.classes.repeat_after_me_env.RepeatAfterMeEnv`
 """
 
 
@@ -95,7 +99,7 @@ For your custom RLlib `MultiAgentEnv` classes:
    Return this new `truncateds` dict between `dones/terminateds` and `infos`. This
    flag should indicate, whether the episode (for some agent or all agents) was
    terminated prematurely due to some time constraint or other kind of horizon setting.
-"""
+"""  # noqa
 
 
 ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL = """Could not save keras model under self[TfPolicy].model.base_model!
@@ -103,12 +107,12 @@ ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL = """Could not save keras model under 
     a) .. this Policy's ModelV2 not having any `base_model` (tf.keras.Model) property
     b) .. the ModelV2's `base_model` not being used by the Algorithm and thus its
        variables not being properly initialized.
-"""
+"""  # noqa
 
 ERR_MSG_TORCH_POLICY_CANNOT_SAVE_MODEL = """Could not save torch model under self[TorchPolicy].model!
     This is most likely due to the fact that you are using an Algorithm that
     uses a Catalog-generated TorchModelV2 subclass, which is torch.save() cannot pickle.
-"""
+"""  # noqa
 
 # -------
 # HOWTO_ strings can be added to any error/warning/into message

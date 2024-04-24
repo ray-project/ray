@@ -1,7 +1,6 @@
-import { useContext, useState } from "react";
+import { useState } from "react";
 import { useParams } from "react-router-dom";
 import useSWR from "swr";
-import { GlobalContext } from "../../../App";
 import { API_REFRESH_INTERVAL_MS } from "../../../common/constants";
 import { getJobDetail } from "../../../service/job";
 
@@ -9,7 +8,6 @@ export const useJobDetail = () => {
   const params = useParams() as { id: string };
   const [msg, setMsg] = useState("Loading the job detail");
   const [refreshing, setRefresh] = useState(true);
-  const { ipLogMap } = useContext(GlobalContext);
   const { data: job, isLoading } = useSWR(
     ["useJobDetail", params.id],
     async ([_, jobId]) => {
@@ -29,6 +27,5 @@ export const useJobDetail = () => {
     isLoading,
     msg,
     params,
-    ipLogMap,
   };
 };

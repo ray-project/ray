@@ -74,6 +74,8 @@ namespace gcs {
 
 class MockGcsActorTable : public GcsActorTable {
  public:
+  MockGcsActorTable() : GcsActorTable(nullptr) {}
+
   MOCK_METHOD(JobID, GetJobIdFromKey, (const ActorID &key), (override));
 };
 
@@ -95,6 +97,14 @@ namespace gcs {
 
 class MockGcsNodeTable : public GcsNodeTable {
  public:
+  MockGcsNodeTable() : GcsNodeTable(nullptr){};
+
+  MOCK_METHOD(Status,
+              Put,
+              (const NodeID &key,
+               const GcsNodeInfo &value,
+               const StatusCallback &callback),
+              (override));
 };
 
 }  // namespace gcs
@@ -145,6 +155,9 @@ namespace gcs {
 
 class MockGcsTableStorage : public GcsTableStorage {
  public:
+  MockGcsTableStorage() : GcsTableStorage(nullptr) {}
+
+  MOCK_METHOD((GcsNodeTable &), NodeTable, (), (override));
 };
 
 }  // namespace gcs

@@ -26,7 +26,9 @@ For example, Alice wants to use RLlib to train models for her work project. Bob 
 
 This scenario describes most usages of Ray libraries today.
 
-.. image:: images/air_arch_1.png
+.. https://docs.google.com/drawings/d/1DcrchNda9m_3MH45NuhgKY49ZCRtj2Xny5dgY0X9PCA/edit
+
+.. image:: /images/air_arch_1.svg
 
 In the above diagram:
 

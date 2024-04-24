@@ -28,6 +28,11 @@ describe("RecentServeCard", () => {
               import_path: "home:graph",
             },
             last_deployed_time_s: new Date().getTime() / 1000,
+            deployments: {
+              FirstDeployment: {
+                name: "FirstDeployment",
+              },
+            },
           },
           "second-app": {
             name: "second-app",
@@ -36,48 +41,52 @@ describe("RecentServeCard", () => {
             status: ServeApplicationStatus.DEPLOYING,
             deployed_app_config: null,
             last_deployed_time_s: new Date().getTime() / 1000,
-            deployments: {},
+            deployments: {
+              SecondDeployment: {
+                name: "SecondDeployment",
+              },
+            },
           },
         },
       },
     } as any);
   });
 
-  it("should display serve applications with deployed_app_config", async () => {
+  it("should display serve deployments with deployed_app_config", async () => {
     render(<RecentServeCard />, {
       wrapper: TEST_APP_WRAPPER,
     });
 
-    await screen.findByText("View all applications");
+    await screen.findByText("View all deployments");
 
     expect.assertions(3);
-    expect(screen.getByText("home")).toBeInTheDocument();
+    expect(screen.getByText("FirstDeployment")).toBeInTheDocument();
     expect(screen.getByText("home:graph")).toBeInTheDocument();
-    expect(screen.getByText("Serve Applications")).toBeInTheDocument();
+    expect(screen.getByText("Serve Deployments")).toBeInTheDocument();
   });
 
-  it("should display serve applications without deployed_app_config", async () => {
+  it("should display serve deployments without deployed_app_config", async () => {
     render(<RecentServeCard />, {
       wrapper: TEST_APP_WRAPPER,
     });
 
-    await screen.findByText("View all applications");
+    await screen.findByText("View all deployments");
 
     expect.assertions(3);
-    expect(screen.getByText("second-app")).toBeInTheDocument();
-    expect(screen.getByText("-")).toBeInTheDocument(); // default value for no deployed_app_config
-    expect(screen.getByText("Serve Applications")).toBeInTheDocument();
+    expect(screen.getByText("SecondDeployment")).toBeInTheDocument();
+    expect(screen.getByText("second-app")).toBeInTheDocument(); // default value for no deployed_app_config
+    expect(screen.getByText("Serve Deployments")).toBeInTheDocument();
   });
 
-  it("should navigate to the applications page when the 'View all applications' link is clicked", async () => {
+  it("should navigate to the applications page when the 'View all deployments' link is clicked", async () => {
     render(<RecentServeCard />, {
       wrapper: TEST_APP_WRAPPER,
     });
 
-    await screen.findByText("View all applications");
+    await screen.findByText("View all deployments");
     const link = screen.getByRole("link", {
-      name: /view all applications/i,
+      name: /view all deployments/i,
     });
-    expect(link).toHaveAttribute("href");
+    expect(link).toHaveAttribute("href", "/serve");
   });
 });

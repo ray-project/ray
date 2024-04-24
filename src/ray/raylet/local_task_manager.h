@@ -147,7 +147,7 @@ class LocalTaskManager : public ILocalTaskManager {
   /// \param worker: The worker who will give up the CPU resources.
   /// \return true if the cpu resources of the specified worker are released successfully,
   /// else false.
-  bool ReleaseCpuResourcesFromUnblockedWorker(std::shared_ptr<WorkerInterface> worker);
+  bool ReleaseCpuResourcesFromBlockedWorker(std::shared_ptr<WorkerInterface> worker);
 
   /// When a task is no longer blocked in a ray.get or ray.wait, the CPU resources that
   /// the worker gave up should be returned to it.
@@ -155,7 +155,7 @@ class LocalTaskManager : public ILocalTaskManager {
   /// \param worker The blocked worker.
   /// \return true if the cpu resources are returned back to the specified worker, else
   /// false.
-  bool ReturnCpuResourcesToBlockedWorker(std::shared_ptr<WorkerInterface> worker);
+  bool ReturnCpuResourcesToUnblockedWorker(std::shared_ptr<WorkerInterface> worker);
 
   /// TODO(Chong-Li): Removing this and maintaining normal task resources by local
   /// resource manager.

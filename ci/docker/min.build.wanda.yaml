@@ -1,0 +1,14 @@
+name: "minbuild-$EXTRA_DEPENDENCY-py$PYTHON_VERSION"
+froms: ["cr.ray.io/rayproject/oss-ci-base_build"]
+dockerfile: ci/docker/min.build.Dockerfile
+srcs:
+  - ci/env/install-dependencies.sh
+  - ci/env/install-core-prerelease-dependencies.sh
+  - python/setup.py
+  - python/ray/_version.py
+  - README.rst
+build_args:
+  - PYTHON_VERSION
+  - EXTRA_DEPENDENCY
+tags:
+  - cr.ray.io/rayproject/minbuild-$EXTRA_DEPENDENCY-py$PYTHON_VERSION

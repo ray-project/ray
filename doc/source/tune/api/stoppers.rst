@@ -22,11 +22,13 @@ Stopper Interface (tune.Stopper)
 .. currentmodule:: ray.tune.stopper
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     Stopper
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     Stopper.__call__
@@ -36,6 +38,7 @@ Tune Built-in Stoppers
 ----------------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     MaximumIterationStopper

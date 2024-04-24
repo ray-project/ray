@@ -729,20 +729,24 @@ def test_scheduling_class_depth(ray_start_regular):
     # because one has depth=1, and the other has depth=2.
     metric_name = "ray_internal_num_infeasible_scheduling_classes"
 
-    # timeout=60 necessary to pass on windows debug/asan builds.
+    timeout = 60
+    if sys.platform == "win32":
+        # longer timeout is necessary to pass on windows debug/asan builds.
+        timeout = 180
+
     wait_for_condition(
         get_metric_check_condition([MetricSamplePattern(name=metric_name, value=2)]),
-        timeout=60,
+        timeout=timeout,
     )
     start_infeasible.remote(2)
     wait_for_condition(
         get_metric_check_condition([MetricSamplePattern(name=metric_name, value=3)]),
-        timeout=60,
+        timeout=timeout,
     )
     start_infeasible.remote(4)
     wait_for_condition(
         get_metric_check_condition([MetricSamplePattern(name=metric_name, value=4)]),
-        timeout=60,
+        timeout=timeout,
     )
 
 

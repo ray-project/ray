@@ -1,7 +1,7 @@
 import numpy as np
 
 from ray.rllib.algorithms.appo import APPOConfig
-from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.tune.registry import register_env
 
 

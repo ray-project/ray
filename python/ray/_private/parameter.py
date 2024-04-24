@@ -1,7 +1,6 @@
 import logging
 import os
 from typing import Dict, List, Optional
-import pkg_resources
 
 import ray._private.ray_constants as ray_constants
 from ray._private.utils import (
@@ -98,6 +97,7 @@ class RayParams:
             Defaults to random available port.
         runtime_env_agent_port: The port at which the runtime env agent
             listens to for HTTP.
+            Defaults to random available port.
         plasma_store_socket_name: If provided, it specifies the socket
             name used by the plasma store.
         raylet_socket_name: If provided, it specifies the socket path
@@ -129,7 +129,7 @@ class RayParams:
         env_vars: Override environment variables for the raylet.
         session_name: The name of the session of the ray cluster.
         webui: The url of the UI.
-        cluster_id: The cluster ID.
+        cluster_id: The cluster ID in hex string.
     """
 
     def __init__(
@@ -192,6 +192,7 @@ class RayParams:
         session_name: Optional[str] = None,
         webui: Optional[str] = None,
         cluster_id: Optional[str] = None,
+        node_id: Optional[str] = None,
     ):
         self.redis_address = redis_address
         self.gcs_address = gcs_address
@@ -254,6 +255,7 @@ class RayParams:
         self.labels = labels
         self._check_usage()
         self.cluster_id = cluster_id
+        self.node_id = node_id
 
         # Set the internal config options for object reconstruction.
         if enable_object_reconstruction:
@@ -445,15 +447,6 @@ class RayParams:
 
         if self.redirect_output is not None:
             raise DeprecationWarning("The redirect_output argument is deprecated.")
-
-        # Parse the numpy version.
-        numpy_version = pkg_resources.get_distribution("numpy").version.split(".")
-        numpy_major, numpy_minor = int(numpy_version[0]), int(numpy_version[1])
-        if numpy_major <= 1 and numpy_minor < 16:
-            logger.warning(
-                "Using ray with numpy < 1.16.0 will result in slow "
-                "serialization. Upgrade numpy if using with ray."
-            )
 
         if self.temp_dir is not None and not os.path.isabs(self.temp_dir):
             raise ValueError("temp_dir must be absolute path or None.")

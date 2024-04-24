@@ -251,7 +251,7 @@ def run(
 
     # Create the Algorithm from config.
     cls = get_trainable_cls(algo)
-    algorithm = cls(env=env, config=config)
+    algorithm = cls(config=config)
 
     # Load state from checkpoint, if provided.
     if checkpoint:

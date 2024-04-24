@@ -2,9 +2,7 @@ import pytest
 
 import ray
 from ray import serve
-from ray.serve._private.deployment_node import (
-    DeploymentNode,
-)
+from ray.serve._private.deployment_node import DeploymentNode
 
 
 @serve.deployment
@@ -54,7 +52,7 @@ async def test_simple_deployment_async(serve_instance):
         {},
         {},
     )
-    node._deployment.deploy()
+    node._deployment._deploy()
     handle = node._deployment_handle
 
     assert ray.get(await node.get.execute()) == 10

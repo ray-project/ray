@@ -43,6 +43,8 @@ public enum RayServeMetrics {
 
   public static final String TAG_REPLICA = "replica";
 
+  public static final String TAG_APPLICATION = "application";
+
   private static final boolean canBeUsed =
       Ray.isInitialized() && !Ray.getRuntimeContext().isLocalMode();
 

@@ -6,9 +6,8 @@ import pytest
 import requests
 
 import ray
-from ray._private.test_utils import wait_for_condition
-
 from ray import serve
+from ray._private.test_utils import wait_for_condition
 from ray.serve.gradio_integrations import GradioIngress, GradioServer
 
 

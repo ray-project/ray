@@ -1,7 +1,9 @@
 import enum
 import os
+import platform
 import json
 import time
+from itertools import chain
 from typing import Optional, List, Dict
 from dataclasses import dataclass
 
@@ -9,18 +11,23 @@ import boto3
 from botocore.exceptions import ClientError
 from github import Repository
 
+from ray_release.aws import s3_put_rayci_test_data
 from ray_release.configs.global_config import get_global_config
 from ray_release.result import (
     ResultStatus,
     Result,
 )
 from ray_release.logger import logger
-from ray_release.util import dict_hash
+from ray_release.util import (
+    dict_hash,
+    get_read_state_machine_aws_bucket,
+    get_write_state_machine_aws_bucket,
+)
 
 AWS_TEST_KEY = "ray_tests"
 AWS_TEST_RESULT_KEY = "ray_test_results"
 DEFAULT_PYTHON_VERSION = tuple(
-    int(v) for v in os.environ.get("RELEASE_PY", "3.8").split(".")
+    int(v) for v in os.environ.get("RELEASE_PY", "3.9").split(".")
 )
 DATAPLANE_ECR_REPO = "anyscale/ray"
 DATAPLANE_ECR_ML_REPO = "anyscale/ray-ml"
@@ -45,6 +52,7 @@ class TestState(enum.Enum):
 
     JAILED = "jailed"
     FAILING = "failing"
+    FLAKY = "flaky"
     CONSITENTLY_FAILING = "consistently_failing"
     PASSING = "passing"
 
@@ -53,16 +61,34 @@ class TestState(enum.Enum):
 class TestResult:
     status: str
     commit: str
+    branch: str
     url: str
     timestamp: int
+    pull_request: str
 
     @classmethod
     def from_result(cls, result: Result):
         return cls(
             status=result.status,
             commit=os.environ.get("BUILDKITE_COMMIT", ""),
+            branch=os.environ.get("BUILDKITE_BRANCH", ""),
             url=result.buildkite_url,
             timestamp=int(time.time() * 1000),
+            pull_request=os.environ.get("BUILDKITE_PULL_REQUEST", ""),
+        )
+
+    @classmethod
+    def from_bazel_event(cls, event: dict):
+        return cls.from_result(
+            Result(
+                status=ResultStatus.SUCCESS.value
+                if event["testResult"]["status"] == "PASSED"
+                else ResultStatus.ERROR.value,
+                buildkite_url=(
+                    f"{os.environ.get('BUILDKITE_BUILD_URL')}"
+                    f"#{os.environ.get('BUILDKITE_JOB_ID')}"
+                ),
+            )
         )
 
     @classmethod
@@ -70,8 +96,10 @@ class TestResult:
         return cls(
             status=result["status"],
             commit=result["commit"],
+            branch=result.get("branch", ""),
             url=result["url"],
             timestamp=result["timestamp"],
+            pull_request=result.get("pull_request", ""),
         )
 
     def is_failing(self) -> bool:
@@ -91,6 +119,51 @@ class Test(dict):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.test_results = None
+
+    @classmethod
+    def from_bazel_event(cls, event: dict, team: str):
+        name = event["id"]["testResult"]["label"]
+        system = platform.system().lower()
+        return cls(
+            {
+                "name": f"{system}:{name}",
+                "team": team,
+            }
+        )
+
+    @classmethod
+    def gen_from_name(cls, name: str):
+        tests = [
+            test
+            for test in Test.gen_from_s3(cls._get_s3_name(name))
+            if test["name"] == name
+        ]
+        return tests[0] if tests else None
+
+    @classmethod
+    def gen_from_s3(cls, prefix: str):
+        """
+        Obtain all tests whose names start with the given prefix from s3
+        """
+        bucket = get_read_state_machine_aws_bucket()
+        s3_client = boto3.client("s3")
+        pages = s3_client.get_paginator("list_objects_v2").paginate(
+            Bucket=bucket,
+            Prefix=f"{AWS_TEST_KEY}/{prefix}",
+        )
+        files = chain.from_iterable([page.get("Contents", []) for page in pages])
+
+        return [
+            Test(
+                json.loads(
+                    s3_client.get_object(Bucket=bucket, Key=file["Key"])
+                    .get("Body")
+                    .read()
+                    .decode("utf-8")
+                )
+            )
+            for file in files
+        ]
 
     def is_jailed_with_open_issue(self, ray_github: Repository) -> bool:
         """
@@ -164,22 +237,29 @@ class Test(dict):
         """
         return self["name"]
 
+    def _get_s3_name(cls, test_name: str) -> str:
+        """
+        Returns the name of the test for s3. Since '/' is not allowed in s3 key,
+        replace it with '_'.
+        """
+        return test_name.replace("/", "_")
+
     def get_oncall(self) -> str:
         """
         Returns the oncall for the test.
         """
         return self["team"]
 
-    def update_from_s3(self) -> None:
+    def update_from_s3(self, force_branch_bucket: bool = True) -> None:
         """
-        Update test object with data field from s3
+        Update test object with data fields that exist only on s3
         """
         try:
             data = (
                 boto3.client("s3")
                 .get_object(
-                    Bucket=get_global_config()["state_machine_aws_bucket"],
-                    Key=f"{AWS_TEST_KEY}/{self.get_name()}.json",
+                    Bucket=get_read_state_machine_aws_bucket(),
+                    Key=f"{AWS_TEST_KEY}/{self._get_s3_name(self.get_name())}.json",
                 )
                 .get("Body")
                 .read()
@@ -188,7 +268,9 @@ class Test(dict):
         except ClientError as e:
             logger.warning(f"Failed to update data for {self.get_name()} from s3:  {e}")
             return
-        self.update(json.loads(data))
+        for key, value in json.loads(data).items():
+            if key not in self:
+                self[key] = value
 
     def get_state(self) -> TestState:
         """
@@ -228,9 +310,6 @@ class Test(dict):
             os.environ["BUILDKITE_BRANCH"],
         )
         pr = os.environ.get("BUILDKITE_PULL_REQUEST", "false")
-        assert (
-            pr != "false" or branch == "master" or branch.startswith("releases/")
-        ), f"Invalid branch name {branch}"
         ray_version = commit[:6]
         if pr != "false":
             ray_version = f"pr-{pr}.{ray_version}"
@@ -251,7 +330,7 @@ class Test(dict):
         }
         return f"{self.get_byod_base_image_tag()}-{dict_hash(custom_info)}"
 
-    def _use_byod_ml_image(self) -> bool:
+    def use_byod_ml_image(self) -> bool:
         """Returns whether to use the ML image for this test."""
         return self.get_byod_type() == "gpu"
 
@@ -259,7 +338,7 @@ class Test(dict):
         """
         Returns the byod repo to use for this test.
         """
-        if self._use_byod_ml_image():
+        if self.use_byod_ml_image():
             return DATAPLANE_ECR_ML_REPO
         return DATAPLANE_ECR_REPO
 
@@ -328,19 +407,20 @@ class Test(dict):
             return self.test_results
 
         s3_client = boto3.client("s3")
+        pages = s3_client.get_paginator("list_objects_v2").paginate(
+            Bucket=get_read_state_machine_aws_bucket(),
+            Prefix=f"{AWS_TEST_RESULT_KEY}/{self._get_s3_name(self.get_name())}-",
+        )
         files = sorted(
-            s3_client.list_objects_v2(
-                Bucket=get_global_config()["state_machine_aws_bucket"],
-                Prefix=f"{AWS_TEST_RESULT_KEY}/{self.get_name()}-",
-            ).get("Contents", []),
-            key=lambda file: int(file["LastModified"].strftime("%s")),
+            chain.from_iterable([page.get("Contents", []) for page in pages]),
+            key=lambda file: int(file["LastModified"].timestamp()),
             reverse=True,
         )[:limit]
         self.test_results = [
             TestResult.from_dict(
                 json.loads(
                     s3_client.get_object(
-                        Bucket=get_global_config()["state_machine_aws_bucket"],
+                        Bucket=get_read_state_machine_aws_bucket(),
                         Key=file["Key"],
                     )
                     .get("Body")
@@ -354,22 +434,28 @@ class Test(dict):
 
     def persist_result_to_s3(self, result: Result) -> bool:
         """
+        Persist result object to s3
+        """
+        self.persist_test_result_to_s3(TestResult.from_result(result))
+
+    def persist_test_result_to_s3(self, test_result: TestResult) -> bool:
+        """
         Persist test result object to s3
         """
-        boto3.client("s3").put_object(
-            Bucket=get_global_config()["state_machine_aws_bucket"],
+        s3_put_rayci_test_data(
+            Bucket=get_write_state_machine_aws_bucket(),
             Key=f"{AWS_TEST_RESULT_KEY}/"
-            f"{self.get_name()}-{int(time.time() * 1000)}.json",
-            Body=json.dumps(TestResult.from_result(result).__dict__),
+            f"{self._get_s3_name(self.get_name())}-{int(time.time() * 1000)}.json",
+            Body=json.dumps(test_result.__dict__),
         )
 
     def persist_to_s3(self) -> bool:
         """
         Persist test object to s3
         """
-        boto3.client("s3").put_object(
-            Bucket=get_global_config()["state_machine_aws_bucket"],
-            Key=f"{AWS_TEST_KEY}/{self.get_name()}.json",
+        s3_put_rayci_test_data(
+            Bucket=get_write_state_machine_aws_bucket(),
+            Key=f"{AWS_TEST_KEY}/{self._get_s3_name(self.get_name())}.json",
             Body=json.dumps(self),
         )
 

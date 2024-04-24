@@ -96,6 +96,12 @@ Auth
             :ref:`ssh_user <cluster-configuration-ssh-user>`: str
             :ref:`ssh_private_key <cluster-configuration-ssh-private-key>`: str
 
+    .. tab-item:: vSphere
+
+        .. parsed-literal::
+
+            :ref:`ssh_user <cluster-configuration-ssh-user>`: str
+
 .. _cluster-configuration-provider-type:
 
 Provider
@@ -123,8 +129,11 @@ Provider
             :ref:`location <cluster-configuration-location>`: str
             :ref:`resource_group <cluster-configuration-resource-group>`: str
             :ref:`subscription_id <cluster-configuration-subscription-id>`: str
+            :ref:`msi_name <cluster-configuration-msi-name>`: str
+            :ref:`msi_resource_group <cluster-configuration-msi-resource-group>`: str
             :ref:`cache_stopped_nodes <cluster-configuration-cache-stopped-nodes>`: bool
             :ref:`use_internal_ips <cluster-configuration-use-internal-ips>`: bool
+            :ref:`use_external_head_ip <cluster-configuration-use-external-head-ip>`: bool
 
     .. tab-item:: GCP
 
@@ -136,6 +145,14 @@ Provider
             :ref:`project_id <cluster-configuration-project-id>`: str
             :ref:`cache_stopped_nodes <cluster-configuration-cache-stopped-nodes>`: bool
             :ref:`use_internal_ips <cluster-configuration-use-internal-ips>`: bool
+
+    .. tab-item:: vSphere
+
+        .. parsed-literal::
+
+            :ref:`type <cluster-configuration-type>`: str
+            :ref:`vsphere_config <cluster-configuration-vsphere-config>`:
+                :ref:`vSphere Config <cluster-configuration-vsphere-config-type>`
 
 .. _cluster-configuration-security-group-type:
 
@@ -151,6 +168,69 @@ Security Group
             :ref:`GroupName <cluster-configuration-group-name>`: str
             :ref:`IpPermissions <cluster-configuration-ip-permissions>`:
                 - `IpPermission <https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_IpPermission.html>`_
+
+.. _cluster-configuration-vsphere-config-type:
+
+vSphere Config
+~~~~~~~~~~~~~~
+
+.. tab-set::
+
+    .. tab-item:: vSphere
+
+        .. parsed-literal::
+
+            :ref:`credentials <cluster-configuration-vsphere-credentials>`:
+                :ref:`vSphere Credentials <cluster-configuration-vsphere-credentials-type>`
+            :ref:`frozen_vm <cluster-configuration-vsphere-frozen-vm>`:
+                :ref:`vSphere Frozen VM Configs <cluster-configuration-vsphere-frozen-vm-configs>`
+            :ref:`gpu_config <cluster-configuration-vsphere-gpu-config>`:
+                :ref:`vSphere GPU Configs <cluster-configuration-vsphere-gpu-configs>`
+
+.. _cluster-configuration-vsphere-credentials-type:
+
+vSphere Credentials
+~~~~~~~~~~~~~~~~~~~
+
+.. tab-set::
+
+    .. tab-item:: vSphere
+
+        .. parsed-literal::
+
+            :ref:`user <cluster-configuration-vsphere-user>`: str
+            :ref:`password <cluster-configuration-vsphere-password>`: str
+            :ref:`server <cluster-configuration-vsphere-server>`: str
+
+.. _cluster-configuration-vsphere-frozen-vm-configs:
+
+vSphere Frozen VM Configs
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. tab-set::
+
+    .. tab-item:: vSphere
+
+        .. parsed-literal::
+
+            :ref:`name <cluster-configuration-vsphere-frozen-vm-name>`: str
+            :ref:`library_item <cluster-configuration-vsphere-frozen-vm-library-item>`: str
+            :ref:`resource_pool <cluster-configuration-vsphere-frozen-vm-resource-pool>`: str
+            :ref:`cluster <cluster-configuration-vsphere-frozen-vm-cluster>`: str
+            :ref:`datastore <cluster-configuration-vsphere-frozen-vm-datastore>`: str
+
+.. _cluster-configuration-vsphere-gpu-configs:
+
+vSphere GPU Configs
+~~~~~~~~~~~~~~~~~~~
+
+.. tab-set::
+
+    .. tab-item:: vSphere
+
+        .. parsed-literal::
+
+            :ref:`dynamic_pci_passthrough <cluster-configuration-vsphere-gpu-config-pci-passthrough>`: bool
 
 .. _cluster-configuration-node-types-type:
 
@@ -203,6 +283,18 @@ nodes with the newly applied ``node_config`` will then be created according to c
     .. tab-item:: GCP
 
         A YAML object as defined in `the GCP docs <https://cloud.google.com/compute/docs/reference/rest/v1/instances>`_.
+
+    .. tab-item:: vSphere
+
+        .. parsed-literal::
+
+            # The resource pool where the head node should live, if unset, will be
+            # the frozen VM's resource pool.
+            resource_pool: str
+            # The datastore to store the vmdk of the head node vm, if unset, will be
+            # the frozen VM's datastore.
+            datastore: str
+
 
 .. _cluster-configuration-node-docker-type:
 
@@ -738,6 +830,10 @@ The user that Ray will authenticate with when launching new nodes.
         * **Importance:** Low
         * **Type:** String
 
+    .. tab-item:: vSphere
+
+        Not available. The vSphere provider expects the key to be located at a fixed path ``~/ray-bootstrap-key.pem``.
+
 .. _cluster-configuration-ssh-public-key:
 
 ``auth.ssh_public_key``
@@ -758,6 +854,10 @@ The user that Ray will authenticate with when launching new nodes.
         * **Type:** String
 
     .. tab-item:: GCP
+
+        Not available.
+
+    .. tab-item:: vSphere
 
         Not available.
 
@@ -792,6 +892,14 @@ The user that Ray will authenticate with when launching new nodes.
         * **Importance:** High
         * **Type:** String
 
+    .. tab-item:: vSphere
+
+        The cloud service provider. For vSphere and VCF, this must be set to ``vsphere``.
+
+        * **Required:** Yes
+        * **Importance:** High
+        * **Type:** String
+
 .. _cluster-configuration-region:
 
 ``provider.region``
@@ -820,6 +928,10 @@ The user that Ray will authenticate with when launching new nodes.
         * **Importance:** High
         * **Type:** String
         * **Default:** us-west1
+
+    .. tab-item:: vSphere
+
+        Not available.
 
 .. _cluster-configuration-availability-zone:
 
@@ -852,6 +964,10 @@ The user that Ray will authenticate with when launching new nodes.
         * **Type:** String
         * **Default:** us-west1-a
 
+    .. tab-item:: vSphere
+
+        Not available.
+
 .. _cluster-configuration-location:
 
 ``provider.location``
@@ -873,6 +989,10 @@ The user that Ray will authenticate with when launching new nodes.
         * **Default:** westus2
 
     .. tab-item:: GCP
+
+        Not available.
+
+    .. tab-item:: vSphere
 
         Not available.
 
@@ -900,6 +1020,10 @@ The user that Ray will authenticate with when launching new nodes.
 
         Not available.
 
+    .. tab-item:: vSphere
+
+        Not available.
+
 .. _cluster-configuration-subscription-id:
 
 ``provider.subscription_id``
@@ -921,6 +1045,66 @@ The user that Ray will authenticate with when launching new nodes.
         * **Default:** ``""``
 
     .. tab-item:: GCP
+
+        Not available.
+
+    .. tab-item:: vSphere
+
+        Not available.
+
+.. _cluster-configuration-msi-name:
+
+``provider.msi_name``
+~~~~~~~~~~~~~~~~~~~~~
+
+.. tab-set::
+
+    .. tab-item:: AWS
+
+        Not available.
+
+    .. tab-item:: Azure
+
+        The name of the managed identity to use for deployment of the Ray cluster. If not specified, Ray will create a default user-assigned managed identity.
+
+        * **Required:** No
+        * **Importance:** Low
+        * **Type:** String
+        * **Default:** ray-default-msi
+
+    .. tab-item:: GCP
+
+        Not available.
+
+    .. tab-item:: vSphere
+
+        Not available.
+
+.. _cluster-configuration-msi-resource-group:
+
+``provider.msi_resource_group``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. tab-set::
+
+    .. tab-item:: AWS
+
+        Not available.
+
+    .. tab-item:: Azure
+
+        The name of the managed identity's resource group to use for deployment of the Ray cluster, used in conjunction with msi_name. If not specified, Ray will create a default user-assigned managed identity in resource group specified in the provider config.
+
+        * **Required:** No
+        * **Importance:** Low
+        * **Type:** String
+        * **Default:** ray-cluster
+
+    .. tab-item:: GCP
+
+        Not available.
+
+    .. tab-item:: vSphere
 
         Not available.
 
@@ -947,6 +1131,10 @@ The user that Ray will authenticate with when launching new nodes.
         * **Importance:** Low
         * **Type:** String
         * **Default:** ``null``
+
+    .. tab-item:: vSphere
+
+        Not available.
 
 .. _cluster-configuration-cache-stopped-nodes:
 
@@ -982,6 +1170,38 @@ controlled by your cloud provider's configuration.
 * **Type:** Boolean
 * **Default:** ``False``
 
+.. _cluster-configuration-use-external-head-ip:
+
+``provider.use_external_head_ip``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. tab-set::
+
+    .. tab-item:: AWS
+
+        Not available.
+
+    .. tab-item:: Azure
+
+        If enabled, Ray will provision and use a public IP address for communication with the head node,
+        regardless of the value of ``use_internal_ips``. This option can be used in combination with  
+        ``use_internal_ips`` to avoid provisioning excess public IPs for worker nodes (i.e., communicate
+        among nodes using private IPs, but provision a public IP for head node communication only). If
+        ``use_internal_ips`` is ``False``, then this option has no effect. 
+
+        * **Required:** No
+        * **Importance:** Low
+        * **Type:** Boolean
+        * **Default:** ``False``
+
+    .. tab-item:: GCP
+
+        Not available.
+
+    .. tab-item:: vSphere
+
+        Not available.
+
 .. _cluster-configuration-security-group:
 
 ``provider.security_group``
@@ -1005,6 +1225,37 @@ controlled by your cloud provider's configuration.
 
         Not available.
 
+    .. tab-item:: vSphere
+
+        Not available.
+
+.. _cluster-configuration-vsphere-config:
+
+``provider.vsphere_config``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. tab-set::
+
+    .. tab-item:: AWS
+
+        Not available.
+
+    .. tab-item:: Azure
+
+        Not available.
+
+    .. tab-item:: GCP
+
+        Not available.
+
+    .. tab-item:: vSphere
+
+        vSphere configurations used to connect vCenter Server. If not configured,
+        the VSPHERE_* environment variables will be used.
+
+        * **Required:** No
+        * **Importance:** Low
+        * **Type:** :ref:`vSphere Config <cluster-configuration-vsphere-config-type>`
 
 .. _cluster-configuration-group-name:
 
@@ -1028,6 +1279,186 @@ The inbound rules associated with the security group.
 * **Required:** No
 * **Importance:** Medium
 * **Type:** `IpPermission <https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_IpPermission.html>`_
+
+.. _cluster-configuration-vsphere-credentials:
+
+``vsphere_config.credentials``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The credential to connect to the vSphere vCenter Server.
+
+* **Required:** No
+* **Importance:** Low
+* **Type:** :ref:`vSphere Credentials <cluster-configuration-vsphere-credentials-type>`
+
+.. _cluster-configuration-vsphere-user:
+
+``vsphere_config.credentials.user``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Username to connect to vCenter Server.
+
+* **Required:** No
+* **Importance:** Low
+* **Type:** String
+
+.. _cluster-configuration-vsphere-password:
+
+``vsphere_config.credentials.password``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Password of the user to connect to vCenter Server.
+
+* **Required:** No
+* **Importance:** Low
+* **Type:** String
+
+.. _cluster-configuration-vsphere-server:
+
+``vsphere_config.credentials.server``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The vSphere vCenter Server address.
+
+* **Required:** No
+* **Importance:** Low
+* **Type:** String
+
+.. _cluster-configuration-vsphere-frozen-vm:
+
+``vsphere_config.frozen_vm``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The frozen VM related configurations.
+
+If the frozen VM(s) is/are existing, then ``library_item`` should be unset. Either an existing frozen VM should be specified by ``name``, or a resource pool name of frozen VMs on every ESXi (https://docs.vmware.com/en/VMware-vSphere/index.html) host should be specified by ``resource_pool``.
+
+If the frozen VM(s) is/are to be deployed from OVF template, then `library_item` must be set to point to an OVF template (https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-vm-administration/GUID-AFEDC48B-C96F-4088-9C1F-4F0A30E965DE.html) in the content library. In such a case, ``name`` must be set to indicate the name or the name prefix of the frozen VM(s). Then, either ``resource_pool`` should be set to indicate that a set of frozen VMs will be created on each ESXi host of the resource pool, or ``cluster`` should be set to indicate that creating a single frozen VM in the vSphere cluster. The config ``datastore`` (https://docs.vmware.com/en/VMware-vSphere/7.0/com.vmware.vsphere.storage.doc/GUID-D5AB2BAD-C69A-4B8D-B468-25D86B8D39CE.html) is mandatory in this case.
+
+Valid examples:
+
+1. ``ray up`` on a frozen VM to be deployed from an OVF template:
+
+    .. code-block:: yaml
+
+        frozen_vm:
+            name: single-frozen-vm
+            library_item: frozen-vm-template
+            cluster: vsanCluster
+            datastore: vsanDatastore
+
+2. ``ray up`` on an existing frozen VM:
+
+    .. code-block:: yaml
+
+        frozen_vm:
+            name: existing-single-frozen-vm
+
+3. ``ray up`` on a resource pool of frozen VMs to be deployed from an OVF template:
+
+    .. code-block:: yaml
+
+        frozen_vm:
+            name: frozen-vm-prefix
+            library_item: frozen-vm-template
+            resource_pool: frozen-vm-resource-pool
+            datastore: vsanDatastore
+
+4. ``ray up`` on an existing resource pool of frozen VMs:
+
+    .. code-block:: yaml
+
+        frozen_vm:
+            resource_pool: frozen-vm-resource-pool
+
+Other cases not in above examples are invalid.
+
+* **Required:** Yes
+* **Importance:** High
+* **Type:** :ref:`vSphere Frozen VM Configs <cluster-configuration-vsphere-frozen-vm-configs>`
+
+.. _cluster-configuration-vsphere-frozen-vm-name:
+
+``vsphere_config.frozen_vm.name``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The name or the name prefix of the frozen VM.
+
+Can only be unset when ``resource_pool`` is set and pointing to an existing resource pool of frozen VMs.
+
+* **Required:** No
+* **Importance:** Medium
+* **Type:** String
+
+.. _cluster-configuration-vsphere-frozen-vm-library-item:
+
+``vsphere_config.frozen_vm.library_item``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The library item (https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-vm-administration/GUID-D3DD122F-16A5-4F36-8467-97994A854B16.html#GUID-D3DD122F-16A5-4F36-8467-97994A854B16) of the OVF template of the frozen VM. If set, the frozen VM or a set of frozen VMs will be deployed from an OVF template specified by ``library_item``. Otherwise, frozen VM(s) should be existing.
+
+Visit the VM Packer for Ray project (https://github.com/vmware-ai-labs/vm-packer-for-ray) to know how to create an OVF template for frozen VMs.
+
+* **Required:** No
+* **Importance:** Low
+* **Type:** String
+
+.. _cluster-configuration-vsphere-frozen-vm-resource-pool:
+
+``vsphere_config.frozen_vm.resource_pool``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The resource pool name of the frozen VMs, can point to an existing resource pool of frozen VMs. Otherwise, ``library_item`` must be specified and a set of frozen VMs will be deployed on each ESXi host.
+
+The frozen VMs will be named as "{frozen_vm.name}-{the vm's ip address}"
+
+* **Required:** No
+* **Importance:** Medium
+* **Type:** String
+
+.. _cluster-configuration-vsphere-frozen-vm-cluster:
+
+``vsphere_config.frozen_vm.cluster``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The vSphere cluster name, only takes effect when ``library_item`` is set and ``resource_pool`` is unset.
+Indicates to deploy a single frozen VM on the vSphere cluster from OVF template.
+
+* **Required:** No
+* **Importance:** Medium
+* **Type:** String
+
+.. _cluster-configuration-vsphere-frozen-vm-datastore:
+
+``vsphere_config.frozen_vm.datastore``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The target vSphere datastore name for storing the virtual machine files of the frozen VM to be deployed from OVF template.
+Will take effect only when ``library_item`` is set. If ``resource_pool`` is also set, this datastore must be a shared datastore among the ESXi hosts.
+
+* **Required:** No
+* **Importance:** Low
+* **Type:** String
+
+.. _cluster-configuration-vsphere-gpu-config:
+
+``vsphere_config.gpu_config``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. _cluster-configuration-vsphere-gpu-config-pci-passthrough:
+
+``vsphere_config.gpu_config.dynamic_pci_passthrough``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The switch controlling the way for binding the GPU from ESXi host to the Ray node VM.
+The default value is False, which indicates regular PCI Passthrough.
+If set to True, the Dynamic PCI passthrough (https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-esxi-host-client/GUID-2B6D43A6-9598-47C4-A2E7-5924E3367BB6.html) will be enabled for the GPU.
+The VM with Dynamic PCI passthrough GPU can still support vSphere DRS (https://www.vmware.com/products/vsphere/drs-dpm.html).
+
+* **Required:** No
+* **Importance:** Low
+* **Type:** Boolean
+
 
 .. _cluster-configuration-node-config:
 
@@ -1127,6 +1558,14 @@ A list of commands to run to set up worker nodes of this type. These commands wi
         * **Importance:** High
         * **Type:** Integer
 
+    .. tab-item:: vSphere
+
+        The number of CPUs made available by this node. If not configured, the nodes will use the same settings as the frozen VM.
+
+        * **Required:** No
+        * **Importance:** High
+        * **Type:** Integer
+
 
 .. _cluster-configuration-gpu:
 
@@ -1152,6 +1591,14 @@ A list of commands to run to set up worker nodes of this type. These commands wi
         * **Type:** Integer
 
     .. tab-item:: GCP
+
+        The number of GPUs made available by this node.
+
+        * **Required:** No
+        * **Importance:** High
+        * **Type:** Integer
+
+    .. tab-item:: vSphere
 
         The number of GPUs made available by this node.
 
@@ -1193,6 +1640,14 @@ A list of commands to run to set up worker nodes of this type. These commands wi
         * **Importance:** High
         * **Type:** Integer
 
+    .. tab-item:: vSphere
+
+        The memory in megabytes allocated for python worker heap memory on the node.
+        If not configured, the node will use the same memory settings as the frozen VM.
+
+        * **Required:** No
+        * **Importance:** High
+        * **Type:** Integer
 
 .. _cluster-configuration-object-store-memory:
 
@@ -1218,6 +1673,14 @@ A list of commands to run to set up worker nodes of this type. These commands wi
         * **Type:** Integer
 
     .. tab-item:: GCP
+
+        The memory in bytes allocated for the object store on the node.
+
+        * **Required:** No
+        * **Importance:** High
+        * **Type:** Integer
+
+    .. tab-item:: vSphere
 
         The memory in bytes allocated for the object store on the node.
 
@@ -1260,6 +1723,11 @@ Minimal configuration
         .. literalinclude:: ../../../../../python/ray/autoscaler/gcp/example-minimal.yaml
             :language: yaml
 
+    .. tab-item:: vSphere
+
+        .. literalinclude:: ../../../../../python/ray/autoscaler/vsphere/example-minimal.yaml
+            :language: yaml
+
 Full configuration
 ~~~~~~~~~~~~~~~~~~
 
@@ -1278,6 +1746,11 @@ Full configuration
     .. tab-item:: GCP
 
         .. literalinclude:: ../../../../../python/ray/autoscaler/gcp/example-full.yaml
+            :language: yaml
+
+    .. tab-item:: vSphere
+
+        .. literalinclude:: ../../../../../python/ray/autoscaler/vsphere/example-full.yaml
             :language: yaml
 
 TPU Configuration

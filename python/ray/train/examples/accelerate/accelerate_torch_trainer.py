@@ -1,16 +1,17 @@
 # __accelerate_torch_basic_example_start__
 """
-Minimal Ray Train + Accelerate example adapted from
+Minimal Ray Train and Accelerate example adapted from
 https://github.com/huggingface/accelerate/blob/main/examples/nlp_example.py
 
 Fine-tune a BERT model with Hugging Face Accelerate and Ray Train and Ray Data
 """
 
+from tempfile import TemporaryDirectory
+
 import evaluate
 import torch
 from accelerate import Accelerator
 from datasets import load_dataset
-from tempfile import TemporaryDirectory
 from torch.optim import AdamW
 from transformers import (
     AutoModelForSequenceClassification,
@@ -19,13 +20,14 @@ from transformers import (
     set_seed,
 )
 
+import ray
 import ray.train
-from ray.train import DataConfig, ScalingConfig, Checkpoint
+from ray.train import Checkpoint, DataConfig, ScalingConfig
 from ray.train.torch import TorchTrainer
 
 
 def train_func(config):
-    """Your training function that will be launched on each worker."""
+    """Your training function that launches on each worker."""
 
     # Unpack training configs
     lr = config["lr"]
@@ -116,7 +118,7 @@ def train_func(config):
         eval_metric = metric.compute()
         accelerator.print(f"epoch {epoch}:", eval_metric)
 
-        # Report Checkpoint and metrics to Ray Train
+        # Report checkpoint and metrics to Ray Train
         # ==========================================
         with TemporaryDirectory() as tmpdir:
             if accelerator.is_main_process:
@@ -151,6 +153,10 @@ if __name__ == "__main__":
         datasets=ray_datasets,
         dataset_config=DataConfig(datasets_to_split=["train", "validation"]),
         scaling_config=ScalingConfig(num_workers=4, use_gpu=True),
+        # If running in a multi-node cluster, this is where you
+        # should configure the run's persistent storage that is accessible
+        # across all worker nodes.
+        # run_config=ray.train.RunConfig(storage_path="s3://..."),
     )
 
     result = trainer.fit()

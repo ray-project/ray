@@ -3,6 +3,7 @@ import json
 import logging
 import time
 import grpc
+from itertools import chain
 
 import aiohttp.web
 
@@ -37,12 +38,12 @@ from ray._private.ray_constants import (
 from ray.dashboard.utils import async_loop_forever
 
 logger = logging.getLogger(__name__)
-routes = dashboard_optional_utils.ClassMethodRouteTable
+routes = dashboard_optional_utils.DashboardHeadRouteTable
 
 
 def gcs_node_info_to_dict(message):
     return dashboard_utils.message_to_dict(
-        message, {"nodeId"}, including_default_value_fields=True
+        message, {"nodeId"}, always_print_fields_with_no_presence=True
     )
 
 
@@ -79,7 +80,7 @@ def node_stats_to_dict(message):
         result = dashboard_utils.message_to_dict(message, decode_keys)
         result["coreWorkersStats"] = [
             dashboard_utils.message_to_dict(
-                m, decode_keys, including_default_value_fields=True
+                m, decode_keys, always_print_fields_with_no_presence=True
             )
             for m in core_workers_stats
         ]
@@ -106,6 +107,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         # head node hasn't been registered.
         self._head_node_registration_time_s = None
         self._gcs_aio_client = dashboard_head.gcs_aio_client
+        self._gcs_address = dashboard_head.gcs_address
 
     async def _update_stubs(self, change):
         if change.old:
@@ -254,14 +256,14 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             from ray.autoscaler.v2.sdk import get_cluster_status
 
             try:
-                cluster_status = get_cluster_status()
+                cluster_status = get_cluster_status(self._gcs_address)
             except Exception:
                 logger.exception("Error getting cluster status")
                 return {}
 
             per_node_resources = {}
             # TODO(rickyx): we should just return structure data rather than strings.
-            for node in cluster_status.healthy_nodes:
+            for node in chain(cluster_status.active_nodes, cluster_status.idle_nodes):
                 if not node.resource_usage:
                     continue
 

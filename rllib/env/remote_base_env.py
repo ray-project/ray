@@ -5,7 +5,7 @@ from typing import Callable, Dict, List, Optional, Set, Tuple, TYPE_CHECKING
 import ray
 from ray.util import log_once
 from ray.rllib.env.base_env import BaseEnv, _DUMMY_AGENT_ID, ASYNC_RESET_RETURN
-from ray.rllib.utils.annotations import override, PublicAPI
+from ray.rllib.utils.annotations import override, OldAPIStack
 from ray.rllib.utils.typing import AgentID, EnvID, EnvType, MultiEnvDict
 
 if TYPE_CHECKING:
@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI
+@OldAPIStack
 class RemoteBaseEnv(BaseEnv):
     """BaseEnv that executes its sub environments as @ray.remote actors.
 
@@ -269,7 +269,6 @@ class RemoteBaseEnv(BaseEnv):
         return obs, rewards, terminateds, truncateds, infos, {}
 
     @override(BaseEnv)
-    @PublicAPI
     def send_actions(self, action_dict: MultiEnvDict) -> None:
         for env_id, actions in action_dict.items():
             actor = self.actors[env_id]
@@ -285,7 +284,6 @@ class RemoteBaseEnv(BaseEnv):
             self.pending[obj_ref] = actor
 
     @override(BaseEnv)
-    @PublicAPI
     def try_reset(
         self,
         env_id: Optional[EnvID] = None,
@@ -322,14 +320,12 @@ class RemoteBaseEnv(BaseEnv):
         self.actors[env_id] = self._make_sub_env(env_id)
 
     @override(BaseEnv)
-    @PublicAPI
     def stop(self) -> None:
         if self.actors is not None:
             for actor in self.actors:
                 actor.__ray_terminate__.remote()
 
     @override(BaseEnv)
-    @PublicAPI
     def get_sub_environments(self, as_dict: bool = False) -> List[EnvType]:
         if as_dict:
             return {env_id: actor for env_id, actor in enumerate(self.actors)}
@@ -337,13 +333,11 @@ class RemoteBaseEnv(BaseEnv):
 
     @property
     @override(BaseEnv)
-    @PublicAPI
     def observation_space(self) -> gym.spaces.Dict:
         return self._observation_space
 
     @property
     @override(BaseEnv)
-    @PublicAPI
     def action_space(self) -> gym.Space:
         return self._action_space
 

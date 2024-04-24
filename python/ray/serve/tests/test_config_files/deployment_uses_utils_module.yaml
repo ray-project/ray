@@ -1,1 +1,4 @@
-import_path: ray.serve.tests.test_config_files.test_dag.hello_serve:model
+applications:
+  - name: default
+    route_prefix: /
+    import_path: ray.serve.tests.test_config_files.test_dag.hello_serve:model

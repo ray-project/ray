@@ -1,7 +1,7 @@
 from typing import List, Optional, Tuple, Union
 
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
-from ray.data._internal.sort import SortKey
+from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.table_block import TableBlockAccessor
 from ray.data.aggregate import AggregateFn, Count
 from ray.data.aggregate._aggregate import _AggregateOnKeyBase
@@ -41,7 +41,7 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
         block: Block,
         output_num_blocks: int,
         boundaries: List[KeyType],
-        key: Optional[str],
+        key: Union[str, List[str], None],
         aggs: List[AggregateFn],
     ) -> List[Union[BlockMetadata, Block]]:
         stats = BlockExecStats.builder()
@@ -74,7 +74,7 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
     @staticmethod
     def _prune_unused_columns(
         block: Block,
-        key: str,
+        key: Union[str, List[str]],
         aggs: Tuple[AggregateFn],
     ) -> Block:
         """Prune unused columns from block before aggregate."""
@@ -83,6 +83,8 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
 
         if isinstance(key, str):
             columns.add(key)
+        elif isinstance(key, list):
+            columns.update(key)
         elif callable(key):
             prune_columns = False
 

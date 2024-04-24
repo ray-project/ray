@@ -5,17 +5,15 @@ import pyarrow.fs
 import pytest
 
 import ray
-from ray.train._internal.storage import _exists_at_fs_path, _upload_to_fs_path
 from ray.train._checkpoint import (
     _CHECKPOINT_TEMP_DIR_PREFIX,
     _METADATA_FILE_NAME,
+    Checkpoint,
     _get_del_lock_path,
     _list_existing_del_locks,
-    Checkpoint,
 )
-
+from ray.train._internal.storage import _exists_at_fs_path, _upload_to_fs_path
 from ray.train.tests.test_new_persistence import _create_mock_custom_fs
-
 
 _CHECKPOINT_CONTENT_FILE = "dummy.txt"
 
@@ -169,6 +167,27 @@ def test_as_directory_lock_cleanup(checkpoint: Checkpoint):
     is_local_checkpoint = isinstance(checkpoint.filesystem, pyarrow.fs.LocalFileSystem)
     if not is_local_checkpoint:
         assert not Path(checkpoint_dir).exists()
+
+
+def test_as_directory_download_error(checkpoint: Checkpoint, monkeypatch):
+    """Errors during a checkpoint download should be raised directly when accessing
+    it with the `as_directory` context manager."""
+    if isinstance(checkpoint.filesystem, pyarrow.fs.LocalFileSystem):
+        pytest.skip(
+            "Local filesystem checkpoints don't download to a temp dir, so "
+            "there's no error handling to test."
+        )
+
+    error_text = "original error"
+
+    def to_directory_error(*args, **kwargs):
+        raise RuntimeError(error_text)
+
+    monkeypatch.setattr(checkpoint, "to_directory", to_directory_error)
+
+    with pytest.raises(RuntimeError, match=error_text):
+        with checkpoint.as_directory() as _:
+            pass
 
 
 def test_metadata(checkpoint: Checkpoint):

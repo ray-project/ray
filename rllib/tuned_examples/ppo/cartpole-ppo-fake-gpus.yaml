@@ -27,6 +27,3 @@ cartpole-ppo-fake-gpus:
         # Fake 2 GPUs.
         num_gpus: 2
         _fake_gpus: true
-        # TODO (Kourosh): Enable RLModule once LSTM is supported
-        _enable_rl_module_api: false
-        _enable_learner_api: false

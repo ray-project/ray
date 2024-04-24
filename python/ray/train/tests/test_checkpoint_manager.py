@@ -1,14 +1,11 @@
-from pathlib import Path
 import random
+from pathlib import Path
 from typing import List
 
 import pytest
 
 from ray.train import Checkpoint, CheckpointConfig
-from ray.train._internal.checkpoint_manager import (
-    _CheckpointManager,
-    _TrainingResult,
-)
+from ray.train._internal.checkpoint_manager import _CheckpointManager, _TrainingResult
 
 
 @pytest.fixture

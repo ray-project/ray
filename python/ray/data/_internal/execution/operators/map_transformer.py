@@ -1,4 +1,5 @@
 import itertools
+import time
 from abc import abstractmethod
 from enum import Enum
 from typing import Any, Callable, Dict, Iterable, List, Optional, TypeVar, Union
@@ -7,7 +8,6 @@ from ray.data._internal.block_batching.block_batching import batch_blocks
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data.block import Block, BlockAccessor, DataBatch
-from ray.data.context import DataContext
 
 # Allowed input/output data types for a MapTransformFn.
 Row = Dict[str, Any]
@@ -34,6 +34,7 @@ class MapTransformFn:
         self,
         input_type: MapTransformFnDataType,
         output_type: MapTransformFnDataType,
+        is_udf: bool = False,
     ):
         """
         Args:
@@ -44,10 +45,14 @@ class MapTransformFn:
         self._callable = callable
         self._input_type = input_type
         self._output_type = output_type
+        self._target_max_block_size = None
+        self._is_udf = is_udf
 
     @abstractmethod
     def __call__(
-        self, input: Iterable[MapTransformFnData], ctx: TaskContext
+        self,
+        input: Iterable[MapTransformFnData],
+        ctx: TaskContext,
     ) -> Iterable[MapTransformFnData]:
         ...
 
@@ -58,6 +63,9 @@ class MapTransformFn:
     @property
     def output_type(self) -> MapTransformFnDataType:
         return self._output_type
+
+    def set_target_max_block_size(self, target_max_block_size: int):
+        self._target_max_block_size = target_max_block_size
 
 
 class MapTransformer:
@@ -83,6 +91,8 @@ class MapTransformer:
         """
         self.set_transform_fns(transform_fns)
         self._init_fn = init_fn if init_fn is not None else lambda: None
+        self._target_max_block_size = None
+        self._udf_time = 0
 
     def set_transform_fns(self, transform_fns: List[MapTransformFn]) -> None:
         """Set the transform functions."""
@@ -105,6 +115,9 @@ class MapTransformer:
         """Get the transform functions."""
         return self._transform_fns
 
+    def set_target_max_block_size(self, target_max_block_size: int):
+        self._target_max_block_size = target_max_block_size
+
     def init(self) -> None:
         """Initialize the transformer.
 
@@ -112,18 +125,46 @@ class MapTransformer:
         """
         self._init_fn()
 
+    def _udf_timed_iter(
+        self, input: Iterable[MapTransformFnData]
+    ) -> Iterable[MapTransformFnData]:
+        while True:
+            try:
+                start = time.perf_counter()
+                output = next(input)
+                self._udf_time += time.perf_counter() - start
+                yield output
+            except StopIteration:
+                break
+
     def apply_transform(
-        self, input_blocks: Iterable[Block], ctx: TaskContext
+        self,
+        input_blocks: Iterable[Block],
+        ctx: TaskContext,
     ) -> Iterable[Block]:
         """Apply the transform functions to the input blocks."""
+        assert (
+            self._target_max_block_size is not None
+        ), "target_max_block_size must be set before running"
+        for transform_fn in self._transform_fns:
+            transform_fn.set_target_max_block_size(self._target_max_block_size)
+
         iter = input_blocks
         # Apply the transform functions sequentially to the input iterable.
         for transform_fn in self._transform_fns:
             iter = transform_fn(iter, ctx)
+            if transform_fn._is_udf:
+                iter = self._udf_timed_iter(iter)
         return iter
 
     def fuse(self, other: "MapTransformer") -> "MapTransformer":
         """Fuse two `MapTransformer`s together."""
+        assert self._target_max_block_size == other._target_max_block_size or (
+            self._target_max_block_size is None or other._target_max_block_size is None
+        )
+        target_max_block_size = (
+            self._target_max_block_size or other._target_max_block_size
+        )
 
         # Define them as standalone variables to avoid fused_init_fn capturing the
         # entire `MapTransformer` object.
@@ -135,7 +176,12 @@ class MapTransformer:
             other_init_fn()
 
         fused_transform_fns = self._transform_fns + other._transform_fns
-        return MapTransformer(fused_transform_fns, init_fn=fused_init_fn)
+        transformer = MapTransformer(fused_transform_fns, init_fn=fused_init_fn)
+        transformer.set_target_max_block_size(target_max_block_size)
+        return transformer
+
+    def udf_time(self) -> float:
+        return self._udf_time
 
 
 def create_map_transformer_from_block_fn(
@@ -160,11 +206,10 @@ def create_map_transformer_from_block_fn(
 class RowMapTransformFn(MapTransformFn):
     """A rows-to-rows MapTransformFn."""
 
-    def __init__(self, row_fn: MapTransformCallable[Row, Row]):
+    def __init__(self, row_fn: MapTransformCallable[Row, Row], is_udf: bool = False):
         self._row_fn = row_fn
         super().__init__(
-            MapTransformFnDataType.Row,
-            MapTransformFnDataType.Row,
+            MapTransformFnDataType.Row, MapTransformFnDataType.Row, is_udf=is_udf
         )
 
     def __call__(self, input: Iterable[Row], ctx: TaskContext) -> Iterable[Row]:
@@ -177,11 +222,12 @@ class RowMapTransformFn(MapTransformFn):
 class BatchMapTransformFn(MapTransformFn):
     """A batch-to-batch MapTransformFn."""
 
-    def __init__(self, batch_fn: MapTransformCallable[DataBatch, DataBatch]):
+    def __init__(
+        self, batch_fn: MapTransformCallable[DataBatch, DataBatch], is_udf: bool = False
+    ):
         self._batch_fn = batch_fn
         super().__init__(
-            MapTransformFnDataType.Batch,
-            MapTransformFnDataType.Batch,
+            MapTransformFnDataType.Batch, MapTransformFnDataType.Batch, is_udf=is_udf
         )
 
     def __call__(
@@ -332,9 +378,10 @@ class BuildOutputBlocksMapTransformFn(MapTransformFn):
             iter: the iterable of UDF-returned data, whose type
                 must match self._input_type.
         """
-        output_buffer = BlockOutputBuffer(
-            DataContext.get_current().target_max_block_size
-        )
+        assert (
+            self._target_max_block_size is not None
+        ), "target_max_block_size must be set before running"
+        output_buffer = BlockOutputBuffer(self._target_max_block_size)
         if self._input_type == MapTransformFnDataType.Block:
             add_fn = output_buffer.add_block
         elif self._input_type == MapTransformFnDataType.Batch:
@@ -353,23 +400,61 @@ class BuildOutputBlocksMapTransformFn(MapTransformFn):
     @classmethod
     def for_rows(cls) -> "BuildOutputBlocksMapTransformFn":
         """Return a BuildOutputBlocksMapTransformFn for row input."""
-        if getattr(cls, "_instance_for_rows", None) is None:
-            cls._instance_for_rows = cls(MapTransformFnDataType.Row)
-        return cls._instance_for_rows
+        return cls(MapTransformFnDataType.Row)
 
     @classmethod
     def for_batches(cls) -> "BuildOutputBlocksMapTransformFn":
         """Return a BuildOutputBlocksMapTransformFn for batch input."""
-        if getattr(cls, "_instance_for_batches", None) is None:
-            cls._instance_for_batches = cls(MapTransformFnDataType.Batch)
-        return cls._instance_for_batches
+        return cls(MapTransformFnDataType.Batch)
 
     @classmethod
     def for_blocks(cls) -> "BuildOutputBlocksMapTransformFn":
         """Return a BuildOutputBlocksMapTransformFn for block input."""
-        if getattr(cls, "_instance_for_blocks", None) is None:
-            cls._instance_for_blocks = cls(MapTransformFnDataType.Block)
-        return cls._instance_for_blocks
+        return cls(MapTransformFnDataType.Block)
 
     def __repr__(self) -> str:
         return f"BuildOutputBlocksMapTransformFn(input_type={self._input_type})"
+
+
+def _splitrange(n, k):
+    """Calculates array lens of np.array_split().
+
+    This is the equivalent of
+    `[len(x) for x in np.array_split(range(n), k)]`.
+    """
+    base = n // k
+    output = [base] * k
+    rem = n - sum(output)
+    for i in range(len(output)):
+        if rem > 0:
+            output[i] += 1
+            rem -= 1
+    assert rem == 0, (rem, output, n, k)
+    assert sum(output) == n, (output, n, k)
+    return output
+
+
+class ApplyAdditionalSplitToOutputBlocks(MapTransformFn):
+    """Do additional splits on output blocks."""
+
+    def __init__(self, additional_split_factor: int):
+        """
+        Args:
+          additional_output_splits: The number of additional splits, must be
+          greater than 1.
+        """
+        assert additional_split_factor > 1
+        self._additional_split_factor = additional_split_factor
+        super().__init__(MapTransformFnDataType.Block, MapTransformFnDataType.Block)
+
+    def __call__(self, blocks: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
+        for block in blocks:
+            block = BlockAccessor.for_block(block)
+            offset = 0
+            split_sizes = _splitrange(block.num_rows(), self._additional_split_factor)
+            for size in split_sizes:
+                # NOTE: copy=True is needed because this is an output block. If
+                # a block slice is put into the object store, the entire block
+                # will get serialized.
+                yield block.slice(offset, offset + size, copy=True)
+                offset += size

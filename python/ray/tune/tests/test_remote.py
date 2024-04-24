@@ -4,11 +4,10 @@ from unittest.mock import patch
 
 import ray
 import ray.train
-from ray.tune import register_trainable, run_experiments, run, choice
+from ray.tune import choice, register_trainable, run, run_experiments
+from ray.tune.experiment import Experiment, Trial
 from ray.tune.result import TIMESTEPS_TOTAL
-from ray.tune.experiment import Experiment
 from ray.tune.search.hyperopt import HyperOptSearch
-from ray.tune.experiment import Trial
 from ray.util.client.ray_client_helpers import ray_start_client_server
 
 
@@ -58,7 +57,6 @@ class RemoteTest(unittest.TestCase):
         default_kwargs.pop("run_or_experiment")
         default_kwargs.pop("_remote")
         default_kwargs.pop("progress_reporter")
-        default_kwargs.pop("_ray_trace_ctx")  # automatically added for remote
 
         self.assertDictEqual(kwargs, default_kwargs)
 
@@ -105,7 +103,8 @@ class RemoteTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

@@ -24,6 +24,7 @@ from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE,
     AUTOSCALER_METRIC_PORT,
     AUTOSCALER_UPDATE_INTERVAL_S,
+    DISABLE_LAUNCH_CONFIG_CHECK_KEY,
 )
 from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.autoscaler._private.load_metrics import LoadMetrics
@@ -101,6 +102,7 @@ BASE_READONLY_CONFIG = {
     "provider": {
         "type": "readonly",
         "use_node_id_as_ip": True,  # For emulated multi-node on laptop.
+        DISABLE_LAUNCH_CONFIG_CHECK_KEY: True,  # No launch check.
     },
     "auth": {},
     "available_node_types": {
@@ -118,8 +120,6 @@ BASE_READONLY_CONFIG = {
     "worker_setup_commands": [],
     "head_start_ray_commands": [],
     "worker_start_ray_commands": [],
-    "head_node": {},
-    "worker_nodes": {},
 }
 
 
@@ -281,7 +281,6 @@ class Monitor:
             ):
                 # A worker node has detected the cluster full of actors.
                 cluster_full = True
-            resource_load = dict(resource_message.resource_load)
             total_resources = dict(resource_message.resources_total)
             available_resources = dict(resource_message.resources_available)
 
@@ -315,7 +314,6 @@ class Monitor:
                 node_id,
                 total_resources,
                 available_resources,
-                resource_load,
                 waiting_bundles,
                 infeasible_bundles,
                 pending_placement_groups,

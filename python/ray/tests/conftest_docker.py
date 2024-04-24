@@ -2,6 +2,8 @@ import time
 import pytest
 from pytest_docker_tools import container, fetch, network, volume
 from pytest_docker_tools import wrappers
+import subprocess
+from typing import List
 
 # If you need to debug tests using fixtures in this file,
 # comment in the volume
@@ -78,7 +80,7 @@ worker_node_vol = volume()
 head_node_container_name = "gcs" + str(int(time.time()))
 
 head_node = container(
-    image="ray_ci:v1",
+    image="rayproject/ray:ha_integration",
     name=head_node_container_name,
     network="{gcs_network.name}",
     command=[
@@ -109,7 +111,7 @@ head_node = container(
 )
 
 worker_node = container(
-    image="ray_ci:v1",
+    image="rayproject/ray:ha_integration",
     network="{gcs_network.name}",
     command=[
         "ray",
@@ -141,3 +143,99 @@ worker_node = container(
 @pytest.fixture
 def docker_cluster(head_node, worker_node):
     yield (head_node, worker_node)
+
+
+def run_in_container(cmds: List[List[str]], container_id: str):
+    outputs = []
+    for cmd in cmds:
+        docker_cmd = ["docker", "exec", container_id] + cmd
+        print(f"Executing command: {docker_cmd}", time.time())
+        resp = subprocess.check_output(docker_cmd, stderr=subprocess.STDOUT)
+        output = resp.decode("utf-8").strip()
+        print(f"Output: {output}")
+        outputs.append(output)
+
+    return outputs
+
+
+IMAGE_NAME = "rayproject/ray:runtime_env_container"
+NESTED_IMAGE_NAME = "rayproject/ray:runtime_env_container_nested"
+
+
+@pytest.fixture
+def podman_docker_cluster():
+    start_container_command = [
+        "docker",
+        "run",
+        "-d",
+        "--privileged",
+        "-v",
+        "/var/run/docker.sock:/var/run/docker.sock",
+        "-v",
+        "/var/lib/containers:/var/lib/containers",
+        # For testing environment variables
+        "--env",
+        "RAY_TEST_ABC=1",
+        "--env",
+        "TEST_ABC=1",
+        IMAGE_NAME,
+        "tail",
+        "-f",
+        "/dev/null",
+    ]
+    container_id = subprocess.check_output(start_container_command).decode("utf-8")
+    container_id = container_id.strip()
+
+    # Get group id that owns the docker socket file. Add user `ray` to
+    # group to get necessary permissions for pulling an image from
+    # docker's local storage into podman
+    docker_group_id = run_in_container(
+        [["stat", "-c", "%g", "/var/run/docker.sock"]], container_id
+    )[0]
+    run_in_container(
+        [
+            ["id"],
+            ["sudo", "groupadd", "-g", docker_group_id, "docker"],
+            ["sudo", "usermod", "-aG", "docker", "ray"],
+            ["podman", "pull", f"docker-daemon:{IMAGE_NAME}"],
+        ],
+        container_id,
+    )
+
+    # Add custom file to new image tagged `runtime_env_container_nested`,
+    # which can be read by Ray actors / Serve deployments to verify the
+    # container runtime env plugin. Also add serve application that will
+    # be imported by the telemetry test.
+    serve_app = """
+from ray import serve
+@serve.deployment
+class Model:
+    def __call__(self):
+        with open("file.txt") as f:
+            return f.read().strip()
+app = Model.bind()
+"""
+
+    run_in_container(
+        [
+            ["bash", "-c", "echo helloworldalice >> /tmp/file.txt"],
+            ["bash", "-c", f"echo '{serve_app}' >> /tmp/serve_application.py"],
+            ["podman", "create", "--name", "tmp_container", IMAGE_NAME],
+            ["podman", "cp", "/tmp/file.txt", "tmp_container:/home/ray/file.txt"],
+            [
+                "podman",
+                "cp",
+                "/tmp/serve_application.py",
+                "tmp_container:/home/ray/serve_application.py",
+            ],
+            ["podman", "commit", "tmp_container", NESTED_IMAGE_NAME],
+        ],
+        container_id,
+    )
+
+    # For debugging
+    run_in_container([["podman", "image", "ls"]], container_id)
+
+    yield container_id
+
+    subprocess.check_call(["docker", "kill", container_id])

@@ -110,3 +110,6 @@ class RefBundle:
 
     def __hash__(self) -> int:
         return id(self)
+
+    def __len__(self) -> int:
+        return len(self.blocks)

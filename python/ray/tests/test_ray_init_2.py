@@ -2,6 +2,8 @@ import logging
 import os
 import sys
 import unittest.mock
+import tempfile
+import shutil
 from unittest.mock import patch
 
 import pytest
@@ -283,9 +285,11 @@ def test_non_default_ports_visible_on_init(shutdown_only):
 
 def test_get_and_write_node_ip_address(shutdown_only):
     ray.init()
-    node = ray._private.worker.global_worker.node
     node_ip = ray.util.get_node_ip_address()
-    cached_node_ip_address = node._get_cached_node_ip_address()
+    session_dir = ray._private.worker._global_node.get_session_dir_path()
+    cached_node_ip_address = ray._private.services.get_cached_node_ip_address(
+        session_dir
+    )
     assert cached_node_ip_address == node_ip
 
 
@@ -374,6 +378,73 @@ def test_driver_node_ip_address_auto_configuration(monkeypatch, ray_start_cluste
                 _get_node_id_from_node_ip(get_node_ip_address())
                 == ray.get_runtime_context().get_node_id()
             )
+
+
+@pytest.fixture
+def short_tmp_path():
+    path = tempfile.mkdtemp(dir="/tmp")
+    yield path
+    shutil.rmtree(path)
+
+
+def test_temp_dir_with_node_ip_address(ray_start_cluster, short_tmp_path):
+    cluster = ray_start_cluster
+    cluster.add_node(temp_dir=short_tmp_path)
+    ray.init(address=cluster.address)
+    assert short_tmp_path == ray._private.worker._global_node.get_temp_dir_path()
+
+
+def test_can_create_actor_in_multiple_sessions(shutdown_only):
+    """Validates a bugfix that, if you create an actor in driver, then you shutdown and
+    restart and create the actor in task, it fails.
+    https://github.com/ray-project/ray/issues/44380
+    """
+
+    # To avoid interference with other tests, we need a fresh cluster.
+    assert not ray.is_initialized()
+
+    @ray.remote
+    class A:
+        def __init__(self):
+            print("A.__init__")
+
+    @ray.remote
+    def make_actor_in_task():
+        a = A.remote()
+        return a
+
+    ray.init()
+    A.remote()
+    ray.shutdown()
+
+    ray.init()
+    ray.get(make_actor_in_task.remote())
+
+
+def test_can_create_task_in_multiple_sessions(shutdown_only):
+    """Validates a bugfix that, if you create a task in driver, then you shutdown and
+    restart and create the task in task, it hangs.
+    https://github.com/ray-project/ray/issues/44380
+    """
+
+    # To avoid interference with other tests, we need a fresh cluster.
+    assert not ray.is_initialized()
+
+    @ray.remote
+    def the_task():
+        print("the task")
+        return "the task"
+
+    @ray.remote
+    def run_task_in_task():
+        return ray.get(the_task.remote())
+
+    ray.init()
+    assert ray.get(the_task.remote()) == "the task"
+    ray.shutdown()
+
+    ray.init()
+    assert ray.get(run_task_in_task.remote()) == "the task"
 
 
 if __name__ == "__main__":

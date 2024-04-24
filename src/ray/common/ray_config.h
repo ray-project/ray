@@ -95,6 +95,8 @@ class RayConfig {
   void initialize(const std::string &config_list);
 
  private:
+  RayConfig();
+
   template <typename T>
   T ReadEnv(const std::string &name, const std::string &type_string, T default_value) {
     auto value = std::getenv(name.c_str());

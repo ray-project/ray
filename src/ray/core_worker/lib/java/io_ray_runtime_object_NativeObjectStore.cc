@@ -42,6 +42,7 @@ Status PutSerializedObject(JNIEnv *env,
       nested_ids.push_back(ObjectID::FromBinary(ref.object_id()));
     }
     status = CoreWorkerProcess::GetCoreWorker().CreateOwnedAndIncrementLocalRef(
+        /*is_experimental_mutable_object=*/false,
         native_ray_object->GetMetadata(),
         data_size,
         nested_ids,

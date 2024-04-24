@@ -9,10 +9,10 @@ import ray._private.node
 import ray._private.ray_constants as ray_constants
 import ray._private.utils
 import ray.actor
+from ray._private.async_compat import try_install_uvloop
 from ray._private.parameter import RayParams
 from ray._private.ray_logging import configure_log_file, get_worker_log_file_name
 from ray._private.runtime_env.setup_hook import load_and_execute_setup_hook
-
 
 parser = argparse.ArgumentParser(
     description=("Parse addresses for the worker to connect to.")
@@ -22,6 +22,12 @@ parser.add_argument(
     required=True,
     type=str,
     help="the auto-generated ID of the cluster",
+)
+parser.add_argument(
+    "--node-id",
+    required=True,
+    type=str,
+    help="the auto-generated ID of the node",
 )
 parser.add_argument(
     "--node-ip-address",
@@ -194,6 +200,10 @@ if __name__ == "__main__":
     else:
         raise ValueError("Unknown worker type: " + args.worker_type)
 
+    # Try installing uvloop as default event-loop implementation
+    # for asyncio
+    try_install_uvloop()
+
     raylet_ip_address = args.raylet_ip_address
     if raylet_ip_address is None:
         raylet_ip_address = args.node_ip_address
@@ -213,6 +223,7 @@ if __name__ == "__main__":
         session_name=args.session_name,
         webui=args.webui,
         cluster_id=args.cluster_id,
+        node_id=args.node_id,
     )
     node = ray._private.node.Node(
         ray_params,
@@ -236,7 +247,7 @@ if __name__ == "__main__":
         else:
             object_spilling_config = {}
         external_storage.setup_external_storage(
-            object_spilling_config, node.session_name
+            object_spilling_config, node.node_id, node.session_name
         )
 
     ray._private.worker._global_node = node
@@ -272,7 +283,7 @@ if __name__ == "__main__":
     if worker_process_setup_hook_key:
         error = load_and_execute_setup_hook(worker_process_setup_hook_key)
         if error is not None:
-            worker.core_worker.exit_worker("system", error)
+            worker.core_worker.drain_and_exit_worker("system", error)
 
     if mode == ray.WORKER_MODE:
         worker.main_loop()

@@ -30,6 +30,7 @@ namespace ray {
 namespace raylet {
 
 using rpc::GcsNodeInfo;
+using rpc::NodeSnapshot;
 
 class NodeManager;
 
@@ -80,9 +81,6 @@ class Raylet {
   void HandleAccept(const boost::system::error_code &error);
 
   friend class TestObjectManagerIntegration;
-
-  // Main event loop.
-  instrumented_io_context &main_service_;
 
   /// ID of this node.
   NodeID self_node_id_;

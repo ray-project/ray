@@ -42,7 +42,7 @@ def test_raydp_to_spark(spark):
     assert values == rows
 
 
-def test_from_spark_e2e(enable_optimizer, spark):
+def test_from_spark_e2e(spark):
     spark_df = spark.createDataFrame([(1, "a"), (2, "b"), (3, "c")], ["one", "two"])
 
     rows = [(r.one, r.two) for r in spark_df.take(3)]

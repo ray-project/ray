@@ -1,11 +1,14 @@
 from collections import Counter, defaultdict
 from copy import deepcopy
 from datetime import datetime
-from typing import Any, Dict, List, Tuple
+from enum import Enum
+from itertools import chain
+from typing import Any, Dict, List, Optional, Tuple
 
 import ray
 from ray._private.ray_constants import AUTOSCALER_NAMESPACE, AUTOSCALER_V2_ENABLED_KEY
 from ray._private.utils import binary_to_hex
+from ray._raylet import GcsClient
 from ray.autoscaler._private.autoscaler import AutoscalerSummary
 from ray.autoscaler._private.node_provider_availability_tracker import (
     NodeAvailabilityRecord,
@@ -29,14 +32,20 @@ from ray.autoscaler.v2.schema import (
     Stats,
 )
 from ray.core.generated.autoscaler_pb2 import (
+    AffinityConstraint,
+    AntiAffinityConstraint,
     AutoscalingState,
     ClusterResourceState,
     GetClusterStatusReply,
     NodeState,
     NodeStatus,
+    PlacementConstraint,
     ResourceRequest,
 )
-from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_initialized
+from ray.core.generated.autoscaler_pb2 import (
+    ResourceRequestByCount as ResourceRequestByCountProto,
+)
+from ray.experimental.internal_kv import internal_kv_get_gcs_client
 
 
 def _count_by(data: Any, key: str) -> Dict[str, int]:
@@ -53,6 +62,246 @@ def _count_by(data: Any, key: str) -> Dict[str, int]:
         key_name = getattr(item, key)
         counts[key_name] += 1
     return counts
+
+
+class ProtobufUtil:
+    """
+    A utility class for protobuf objects.
+    """
+
+    @staticmethod
+    def to_dict(proto):
+        """
+        Convert a protobuf object to a dict.
+
+        This is a slow conversion, and should only be used for debugging or
+        latency insensitve code.
+
+        Args:
+            proto: the protobuf object
+        Returns:
+            dict: the dict
+        """
+        from ray._private.protobuf_compat import message_to_dict
+
+        return message_to_dict(
+            proto,
+            preserving_proto_field_name=True,
+            always_print_fields_with_no_presence=True,
+        )
+
+    @staticmethod
+    def to_dict_list(protos):
+        """
+        Convert a list of protobuf objects to a list of dicts.
+
+        Args:
+            protos: the list of protobuf objects
+        Returns:
+            dict_list: the list of dicts
+        """
+        return [ProtobufUtil.to_dict(proto) for proto in protos]
+
+
+class ResourceRequestUtil(ProtobufUtil):
+    """
+    A utility class for resource requests, autoscaler.proto.ResourceRequest
+    """
+
+    class PlacementConstraintType(Enum):
+        """
+        The affinity type for the resource request.
+        """
+
+        ANTI_AFFINITY = "ANTI_AFFINITY"
+        AFFINITY = "AFFINITY"
+
+    @staticmethod
+    def group_by_count(
+        requests: List[ResourceRequest],
+    ) -> List[ResourceRequestByCountProto]:
+        """
+        Aggregate resource requests by shape.
+        Args:
+            requests: the list of resource requests
+        Returns:
+            resource_requests_by_count: the aggregated resource requests by count
+        """
+        resource_requests_by_count = defaultdict(int)
+        for request in requests:
+            serialized_request = request.SerializeToString()
+            resource_requests_by_count[serialized_request] += 1
+
+        results = []
+        for serialized_request, count in resource_requests_by_count.items():
+            request = ResourceRequest()
+            request.ParseFromString(serialized_request)
+            results.append(ResourceRequestByCountProto(request=request, count=count))
+
+        return results
+
+    @staticmethod
+    def ungroup_by_count(
+        requests_by_count: List[ResourceRequestByCountProto],
+    ) -> List[ResourceRequest]:
+        """
+        Flatten the resource requests by count to resource requests.
+        Args:
+            requests_by_count: the resource requests by count
+        Returns:
+            requests: the flattened resource requests
+        """
+        reqs = []
+        for r in requests_by_count:
+            reqs += [r.request] * r.count
+
+        return reqs
+
+    @staticmethod
+    def to_resource_map(
+        request: ResourceRequest,
+    ) -> Dict[str, float]:
+        """
+        Convert the resource request by count to resource map.
+        Args:
+            request: the resource request
+        Returns:
+            resource_map: the resource map
+        """
+        resource_map = defaultdict(float)
+        for k, v in request.resources_bundle.items():
+            resource_map[k] += v
+        return dict(resource_map)
+
+    @staticmethod
+    def to_resource_maps(
+        requests: List[ResourceRequest],
+    ) -> List[Dict[str, float]]:
+        """
+        Convert the resource requests by count to resource map.
+        Args:
+            requests: the resource requests
+        Returns:
+            resource_maps: list of resource map
+        """
+        return [ResourceRequestUtil.to_resource_map(r) for r in requests]
+
+    @staticmethod
+    def make(
+        resources_map: Dict[str, float],
+        constraints: Optional[List[Tuple[PlacementConstraintType, str, str]]] = None,
+    ) -> ResourceRequest:
+        """
+        Make a resource request from the given resources map.
+        Args:
+            resources_map: the resources map
+        Returns:
+            request: the resource request
+        """
+        request = ResourceRequest()
+        for resource_name, quantity in resources_map.items():
+            request.resources_bundle[resource_name] = quantity
+
+        if constraints is None:
+            return request
+
+        for constraint_type, label, value in constraints:
+            if constraint_type == ResourceRequestUtil.PlacementConstraintType.AFFINITY:
+                request.placement_constraints.append(
+                    PlacementConstraint(
+                        affinity=AffinityConstraint(label_name=label, label_value=value)
+                    )
+                )
+            elif (
+                constraint_type
+                == ResourceRequestUtil.PlacementConstraintType.ANTI_AFFINITY
+            ):
+                request.placement_constraints.append(
+                    PlacementConstraint(
+                        anti_affinity=AntiAffinityConstraint(
+                            label_name=label, label_value=value
+                        )
+                    )
+                )
+            else:
+                raise ValueError(f"Unknown constraint type: {constraint_type}")
+
+        return request
+
+    @staticmethod
+    def combine_requests_with_affinity(
+        resource_requests: List[ResourceRequest],
+    ) -> List[ResourceRequest]:
+        """
+        Combine the resource requests with affinity constraints
+        into the same request. This is so that requests with affinity
+         constraints could be considered and placed together.
+
+        It merges the resource requests with the same affinity constraints
+        into one request, and dedup the placement constraints.
+
+        This assumes following:
+            1. There's only at most 1 placement constraint, either an affinity
+            constraint OR an anti-affinity constraint.
+
+        Args:
+            resource_requests: The list of resource requests to be combined.
+        Returns:
+            A list of combined resource requests.
+        """
+
+        # Map of set of serialized affinity constraint to the list of resource requests
+        requests_by_affinity: Dict[
+            Tuple[str, str], List[ResourceRequest]
+        ] = defaultdict(list)
+        combined_requests: List[ResourceRequest] = []
+
+        for request in resource_requests:
+            assert len(request.placement_constraints) <= 1, (
+                "There should be at most 1 placement constraint, "
+                "either an affinity constraint OR an anti-affinity constraint."
+            )
+
+            if len(request.placement_constraints) == 0:
+                # No affinity constraints, just add to the combined requests.
+                combined_requests.append(request)
+                continue
+
+            constraint = request.placement_constraints[0]
+
+            if constraint.HasField("affinity"):
+                affinity = constraint.affinity
+                requests_by_affinity[
+                    (affinity.label_name, affinity.label_value)
+                ].append(request)
+            elif constraint.HasField("anti_affinity"):
+                # We don't need to combine requests with anti-affinity constraints.
+                combined_requests.append(request)
+
+        for (
+            affinity_label_name,
+            affinity_label_value,
+        ), requests in requests_by_affinity.items():
+            combined_request = ResourceRequest()
+
+            # Merge the resource bundles with the same affinity constraint.
+            for request in requests:
+                for k, v in request.resources_bundle.items():
+                    combined_request.resources_bundle[k] = (
+                        combined_request.resources_bundle.get(k, 0) + v
+                    )
+
+            # Add the placement constraint to the combined request.
+            affinity_constraint = AffinityConstraint(
+                label_name=affinity_label_name, label_value=affinity_label_value
+            )
+            combined_request.placement_constraints.append(
+                PlacementConstraint(affinity=affinity_constraint)
+            )
+
+            combined_requests.append(combined_request)
+
+        return combined_requests
 
 
 class ClusterStatusFormatter:
@@ -83,7 +332,8 @@ class ClusterStatusFormatter:
 
     @classmethod
     def _parse_autoscaler_summary(cls, data: ClusterStatus) -> AutoscalerSummary:
-        active_nodes = _count_by(data.healthy_nodes, "ray_node_type_name")
+        active_nodes = _count_by(data.active_nodes, "ray_node_type_name")
+        idle_nodes = _count_by(data.idle_nodes, "ray_node_type_name")
         pending_launches = _count_by(data.pending_launches, "ray_node_type_name")
         pending_nodes = []
         for node in data.pending_nodes:
@@ -102,7 +352,7 @@ class ClusterStatusFormatter:
 
         # From IP to node type name.
         node_type_mapping = {}
-        for node in data.healthy_nodes:
+        for node in chain(data.active_nodes, data.idle_nodes):
             node_type_mapping[node.ip_address] = node.ray_node_type_name
 
         # Transform failed launches to node_availability_summary
@@ -124,14 +374,21 @@ class ClusterStatusFormatter:
             node_availabilities=node_availabilities
         )
 
+        node_activities = {
+            node.node_id: (node.ip_address, node.node_activity)
+            for node in data.active_nodes
+        }
+
         return AutoscalerSummary(
             active_nodes=active_nodes,
+            idle_nodes=idle_nodes,
             pending_launches=pending_launches,
             pending_nodes=pending_nodes,
             failed_nodes=failed_nodes,
             pending_resources={},  # NOTE: This is not used in ray status.
             node_type_mapping=node_type_mapping,
             node_availability_summary=node_availabilities,
+            node_activities=node_activities,
         )
 
     @classmethod
@@ -177,13 +434,15 @@ class ClusterStatusFormatter:
 
         usage_by_node = {}
         node_type_mapping = {}
-        for node in data.healthy_nodes:
+        idle_time_map = {}
+        for node in chain(data.active_nodes, data.idle_nodes):
             # TODO(rickyx): we should actually add node type info here.
             # TODO(rickyx): we could also show node idle time.
             usage_by_node[node.node_id] = {
                 u.resource_name: (u.used, u.total) for u in node.resource_usage.usage
             }
             node_type_mapping[node.node_id] = node.ray_node_type_name
+            idle_time_map[node.node_id] = node.resource_usage.idle_time_ms
 
         return LoadMetricsSummary(
             usage=usage,
@@ -193,6 +452,7 @@ class ClusterStatusFormatter:
             node_types=None,  # NOTE: This is not needed in ray status.
             usage_by_node=usage_by_node,
             node_type_mapping=node_type_mapping,
+            idle_time_map=idle_time_map,
         )
 
 
@@ -201,8 +461,10 @@ class ClusterStatusParser:
     def from_get_cluster_status_reply(
         cls, proto: GetClusterStatusReply, stats: Stats
     ) -> ClusterStatus:
-        # parse healthy nodes info
-        healthy_nodes, failed_nodes = cls._parse_nodes(proto.cluster_resource_state)
+        # parse nodes info
+        active_nodes, idle_nodes, failed_nodes = cls._parse_nodes(
+            proto.cluster_resource_state
+        )
 
         # parse pending nodes info
         pending_nodes = cls._parse_pending(proto.autoscaling_state)
@@ -224,7 +486,8 @@ class ClusterStatusParser:
         stats = cls._parse_stats(proto, stats)
 
         return ClusterStatus(
-            healthy_nodes=healthy_nodes,
+            active_nodes=active_nodes,
+            idle_nodes=idle_nodes,
             pending_launches=pending_launches,
             failed_launches=failed_launches,
             pending_nodes=pending_nodes,
@@ -397,11 +660,13 @@ class ClusterStatusParser:
         Args:
             state: the cluster resource state
         Returns:
-            healthy_nodes: the list of healthy nodes (both idle and none-idle)
+            active_nodes: the list of non-idle nodes
+            idle_nodes: the list of idle nodes
             dead_nodes: the list of dead nodes
         """
-        healthy_nodes = []
+        active_nodes = []
         dead_nodes = []
+        idle_nodes = []
         for node_state in state.node_states:
             # Basic node info.
             node_id = binary_to_hex(node_state.node_id)
@@ -440,14 +705,17 @@ class ClusterStatusParser:
                 instance_id=node_state.instance_id,
                 resource_usage=node_resource_usage,
                 failure_detail=failure_detail,
+                node_activity=node_state.node_activity,
             )
 
             if node_state.status == NodeStatus.DEAD:
                 dead_nodes.append(node_info)
+            elif node_state.status == NodeStatus.IDLE:
+                idle_nodes.append(node_info)
             else:
-                healthy_nodes.append(node_info)
+                active_nodes.append(node_info)
 
-        return healthy_nodes, dead_nodes
+        return active_nodes, idle_nodes, dead_nodes
 
     @classmethod
     def _parse_launch_requests(
@@ -518,11 +786,19 @@ class ClusterStatusParser:
 cached_is_autoscaler_v2 = None
 
 
-def is_autoscaler_v2() -> bool:
+def is_autoscaler_v2(
+    fetch_from_server: bool = False, gcs_client: Optional[GcsClient] = None
+) -> bool:
     """
     Check if the autoscaler is v2 from reading GCS internal KV.
 
     If the method is called multiple times, the result will be cached in the module.
+
+    Args:
+        fetch_from_server: If True, fetch the value from the GCS server, otherwise
+            use the cached value.
+        gcs_client: The GCS client to use. If not provided, the default GCS
+            client will be used.
 
     Returns:
         is_v2: True if the autoscaler is v2, False otherwise.
@@ -530,9 +806,8 @@ def is_autoscaler_v2() -> bool:
     Raises:
         Exception: if GCS address could not be resolved (e.g. ray.init() not called)
     """
-
     # If env var is set to enable autoscaler v2, we should always return True.
-    if ray._config.enable_autoscaler_v2():
+    if ray._config.enable_autoscaler_v2() and not fetch_from_server:
         # TODO(rickyx): Once we migrate completely to v2, we should remove this.
         # While this short-circuit may allow client-server inconsistency
         # (e.g. client running v1, while server running v2), it's currently
@@ -540,20 +815,37 @@ def is_autoscaler_v2() -> bool:
         return True
 
     global cached_is_autoscaler_v2
-    if cached_is_autoscaler_v2 is not None:
+    if cached_is_autoscaler_v2 is not None and not fetch_from_server:
         return cached_is_autoscaler_v2
 
-    if not _internal_kv_initialized():
-        raise Exception(
-            "GCS address could not be resolved (e.g. ray.init() not called)"
-        )
+    if gcs_client is None:
+        gcs_client = internal_kv_get_gcs_client()
+
+    assert gcs_client, (
+        "GCS client is not available. Please initialize the global GCS client "
+        "first by calling ray.init() or explicitly calls to _initialize_internal_kv()."
+    )
 
     # See src/ray/common/constants.h for the definition of this key.
     cached_is_autoscaler_v2 = (
-        _internal_kv_get(
+        gcs_client.internal_kv_get(
             AUTOSCALER_V2_ENABLED_KEY.encode(), namespace=AUTOSCALER_NAMESPACE.encode()
         )
         == b"1"
     )
 
     return cached_is_autoscaler_v2
+
+
+def is_head_node(node_state: NodeState) -> bool:
+    """
+    Check if the node is a head node from the node state.
+
+    Args:
+        node_state: the node state
+    Returns:
+        is_head: True if the node is a head node, False otherwise.
+    """
+    # TODO: we should include this bit of information in the future.
+    # NOTE: we could use labels in the future to determine if it's a head node.
+    return "node:__internal_head__" in dict(node_state.total_resources)

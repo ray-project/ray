@@ -1,26 +1,24 @@
 import os
-import pytest
-import torch
 from tempfile import TemporaryDirectory
 
+import pytest
+import torch
+
 from ray import train
-from ray.train import Checkpoint, ScalingConfig
 from ray.air.constants import TRAINING_ITERATION
+from ray.train import Checkpoint, ScalingConfig
 from ray.train.examples.horovod.horovod_example import (
     train_func as horovod_torch_train_func,
-)
-from ray.train.examples.tf.tensorflow_mnist_example import (
-    train_func as tensorflow_mnist_train_func,
 )
 from ray.train.examples.pytorch.torch_fashion_mnist_example import (
     train_func_per_worker as fashion_mnist_train_func,
 )
-from ray.train.horovod.horovod_trainer import HorovodTrainer
-from ray.train.tests.test_tune import (
-    torch_fashion_mnist,
-    tune_tensorflow_mnist,
+from ray.train.examples.tf.tensorflow_mnist_example import (
+    train_func as tensorflow_mnist_train_func,
 )
+from ray.train.horovod.horovod_trainer import HorovodTrainer
 from ray.train.tensorflow.tensorflow_trainer import TensorflowTrainer
+from ray.train.tests.test_tune import torch_fashion_mnist, tune_tensorflow_mnist
 from ray.train.torch.torch_trainer import TorchTrainer
 
 
@@ -101,12 +99,6 @@ def test_tune_tensorflow_mnist_gpu(ray_start_4_cpus_2_gpus):
 
 
 def test_train_linear_dataset_gpu(ray_start_4_cpus_2_gpus):
-    from ray.train._internal.storage import _use_storage_context
-
-    if not _use_storage_context():
-        # TODO(justinvyu): [skipped_test]
-        pytest.skip("Skipping for now.")
-
     from ray.train.examples.pytorch.torch_regression_example import train_regression
 
     assert train_regression(num_workers=2, use_gpu=True)

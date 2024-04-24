@@ -2,7 +2,7 @@ import unittest
 
 import ray
 from ray import air
-from ray.rllib.algorithms.a2c.a2c import A2CConfig
+from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import framework_iterator
 from ray import tune
@@ -18,7 +18,7 @@ class TestGPUs(unittest.TestCase):
         actual_gpus = torch.cuda.device_count()
         print(f"Actual GPUs found (by torch): {actual_gpus}")
 
-        config = A2CConfig().rollouts(num_rollout_workers=2).environment("CartPole-v1")
+        config = PPOConfig().rollouts(num_rollout_workers=2).environment("CartPole-v1")
 
         # Expect errors when we run a config w/ num_gpus>0 w/o a GPU
         # and _fake_gpus=False.
@@ -74,7 +74,7 @@ class TestGPUs(unittest.TestCase):
                             if num_gpus == 0:
                                 print("via ray.tune.Tuner().fit()")
                                 tune.Tuner(
-                                    "A2C",
+                                    "PPO",
                                     param_space=config,
                                     run_config=air.RunConfig(
                                         stop={"training_iteration": 0}
@@ -88,7 +88,7 @@ class TestGPUs(unittest.TestCase):
 
         actual_gpus_available = torch.cuda.device_count()
 
-        config = A2CConfig().rollouts(num_rollout_workers=2).environment("CartPole-v1")
+        config = PPOConfig().rollouts(num_rollout_workers=2).environment("CartPole-v1")
 
         # Expect no errors in local mode.
         for num_gpus in [0, 0.1, 1, actual_gpus_available + 4]:
@@ -103,7 +103,7 @@ class TestGPUs(unittest.TestCase):
                     algo.stop()
                     print("via ray.tune.Tuner().fit()")
                     tune.Tuner(
-                        "A2C",
+                        "PPO",
                         param_space=config,
                         run_config=air.RunConfig(stop={"training_iteration": 0}),
                     ).fit()

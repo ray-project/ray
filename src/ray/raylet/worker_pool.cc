@@ -88,18 +88,23 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
       node_id_(node_id),
       node_address_(node_address),
       get_num_cpus_available_(get_num_cpus_available),
-      maximum_startup_concurrency_(maximum_startup_concurrency),
+      maximum_startup_concurrency_(
+          RayConfig::instance().worker_maximum_startup_concurrency() > 0
+              ?
+              // Overwrite the maximum concurrency.
+              RayConfig::instance().worker_maximum_startup_concurrency()
+              : maximum_startup_concurrency),
       gcs_client_(std::move(gcs_client)),
       native_library_path_(native_library_path),
       starting_worker_timeout_callback_(starting_worker_timeout_callback),
       ray_debugger_external(ray_debugger_external),
       first_job_registered_python_worker_count_(0),
       first_job_driver_wait_num_python_workers_(
-          std::min(num_prestarted_python_workers, maximum_startup_concurrency)),
+          std::min(num_prestarted_python_workers, maximum_startup_concurrency_)),
       num_prestart_python_workers(num_prestarted_python_workers),
       periodical_runner_(io_service),
       get_time_(get_time) {
-  RAY_CHECK(maximum_startup_concurrency > 0);
+  RAY_CHECK(maximum_startup_concurrency_ > 0);
   // We need to record so that the metric exists. This way, we report that 0
   // processes have started before a task runs on the node (as opposed to the
   // metric not existing at all).
@@ -108,15 +113,12 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
   stats::NumCachedWorkersSkippedJobMismatch.Record(0);
   stats::NumCachedWorkersSkippedDynamicOptionsMismatch.Record(0);
   stats::NumCachedWorkersSkippedRuntimeEnvironmentMismatch.Record(0);
-#ifndef _WIN32
-  // Ignore SIGCHLD signals. If we don't do this, then worker processes will
-  // become zombies instead of dying gracefully.
-  signal(SIGCHLD, SIG_IGN);
-#endif
+  // We used to ignore SIGCHLD here. The code is moved to raylet main.cc to support the
+  // subreaper feature.
   for (const auto &entry : worker_commands) {
     // Initialize the pool state for this language.
     auto &state = states_by_lang_[entry.first];
-    state.multiple_for_warning = maximum_startup_concurrency;
+    state.multiple_for_warning = maximum_startup_concurrency_;
     // Set worker command for this language.
     state.worker_command = entry.second;
     RAY_CHECK(!state.worker_command.empty()) << "Worker command must not be empty.";
@@ -335,6 +337,7 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
                                   std::to_string(worker_startup_token_counter_));
     worker_command_args.push_back("--worker-launch-time-ms=" +
                                   std::to_string(current_sys_time_ms()));
+    worker_command_args.push_back("--node-id=" + node_id_.Hex());
   } else if (language == Language::CPP) {
     worker_command_args.push_back("--startup_token=" +
                                   std::to_string(worker_startup_token_counter_));
@@ -420,8 +423,6 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
     // Support forking in gRPC.
     env.insert({"GRPC_ENABLE_FORK_SUPPORT", "True"});
     env.insert({"GRPC_POLL_STRATEGY", "poll"});
-    // Make sure only the main thread is running in Python workers.
-    env.insert({"RAY_start_python_importer_thread", "0"});
   }
 
   return {std::move(worker_command_args), std::move(env)};
@@ -1183,10 +1184,8 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
     }
   };
 
-  if (task_spec.IsActorTask()) {
-    // Code path of actor task.
-    RAY_CHECK(false) << "Direct call shouldn't reach here.";
-  }
+  // Code path of actor task.
+  RAY_CHECK(!task_spec.IsActorTask()) << "Direct call shouldn't reach here.";
 
   bool is_actor_creation = task_spec.IsActorCreationTask();
   std::vector<std::string> dynamic_options{};
@@ -1361,16 +1360,21 @@ void WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
   auto &state = GetStateForLanguage(worker->GetLanguage());
   auto it = state.worker_processes.find(worker->GetStartupToken());
   if (it != state.worker_processes.end()) {
+    const auto serialized_runtime_env =
+        it->second.runtime_env_info.serialized_runtime_env();
     if (it->second.is_pending_registration) {
       // Worker is either starting or started,
       // if it's not started, we should remove it from starting.
       it->second.is_pending_registration = false;
       if (worker->GetWorkerType() == rpc::WorkerType::WORKER) {
+        // This may add new workers to state.worker_processes
+        // and invalidate the iterator, do not use `it`
+        // after this call.
         TryPendingPopWorkerRequests(worker->GetLanguage());
       }
     }
 
-    DeleteRuntimeEnvIfPossible(it->second.runtime_env_info.serialized_runtime_env());
+    DeleteRuntimeEnvIfPossible(serialized_runtime_env);
     RemoveWorkerProcess(state, worker->GetStartupToken());
   }
   RAY_CHECK(RemoveWorker(state.registered_workers, worker));
@@ -1643,6 +1647,8 @@ const std::vector<std::string> &WorkerPool::LookupWorkerDynamicOptions(
   static std::vector<std::string> kNoDynamicOptions;
   return kNoDynamicOptions;
 }
+
+const NodeID &WorkerPool::GetNodeID() const { return node_id_; }
 
 }  // namespace raylet
 

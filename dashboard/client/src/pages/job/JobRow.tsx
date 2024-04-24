@@ -1,5 +1,5 @@
-import { Link, TableCell, TableRow, Tooltip } from "@material-ui/core";
-import { makeStyles } from "@material-ui/core/styles";
+import { Link, TableCell, TableRow, Tooltip } from "@mui/material";
+import makeStyles from "@mui/styles/makeStyles";
 import React from "react";
 import { Link as RouterLink } from "react-router-dom";
 import { CodeDialogButtonWithPreview } from "../../common/CodeDialogButton";
@@ -9,6 +9,7 @@ import { JobStatusWithIcon } from "../../common/JobStatus";
 import {
   CpuProfilingLink,
   CpuStackTraceLink,
+  MemoryProfilingButton,
 } from "../../common/ProfilingLink";
 import { UnifiedJob } from "../../type/job";
 import { useJobProgress } from "./hook/useJobProgress";
@@ -81,12 +82,7 @@ export const JobRow = ({ job }: JobRowProps) => {
       </TableCell>
       <TableCell align="center">{submission_id ?? "-"}</TableCell>
       <TableCell align="center">
-        <Tooltip
-          className={classes.overflowCell}
-          title={entrypoint}
-          arrow
-          interactive
-        >
+        <Tooltip className={classes.overflowCell} title={entrypoint} arrow>
           <div>{entrypoint}</div>
         </Tooltip>
       </TableCell>
@@ -121,13 +117,19 @@ export const JobRow = ({ job }: JobRowProps) => {
             <br />
           </React.Fragment>
         )}
+        <CpuStackTraceLink
+          pid={job.driver_info?.pid}
+          ip={job.driver_info?.node_ip_address}
+          type="Driver"
+        />
+        <br />
         <CpuProfilingLink
           pid={job.driver_info?.pid}
           ip={job.driver_info?.node_ip_address}
           type="Driver"
         />
         <br />
-        <CpuStackTraceLink
+        <MemoryProfilingButton
           pid={job.driver_info?.pid}
           ip={job.driver_info?.node_ip_address}
           type="Driver"

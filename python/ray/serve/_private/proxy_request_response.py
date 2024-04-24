@@ -1,15 +1,16 @@
-from abc import ABC, abstractmethod
-import grpc
 import logging
 import pickle
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Any, AsyncIterator, Awaitable, Callable, List, Tuple, Union
 
+import grpc
 from starlette.types import Receive, Scope, Send
-from typing import Any, List, Generator, Optional, Tuple
 
-from ray.actor import ActorHandle
+from ray.serve._private.common import StreamingHTTPRequest, gRPCRequest
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.utils import DEFAULT
-from ray.serve._private.common import gRPCRequest, StreamingHTTPRequest
+from ray.serve.grpc_util import RayServegRPCContext
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -93,10 +94,12 @@ class ASGIProxyRequest(ProxyRequest):
     def set_root_path(self, root_path: str):
         self.scope["root_path"] = root_path
 
-    def request_object(self, proxy_handle) -> StreamingHTTPRequest:
+    def request_object(
+        self, receive_asgi_messages: Callable[[str], Awaitable[bytes]]
+    ) -> StreamingHTTPRequest:
         return StreamingHTTPRequest(
             pickled_asgi_scope=pickle.dumps(self.scope),
-            http_proxy_handle=proxy_handle,
+            receive_asgi_messages=receive_asgi_messages,
         )
 
 
@@ -118,6 +121,9 @@ class gRPCProxyRequest(ProxyRequest):
         self.request_id = None
         self.method_name = "__call__"
         self.multiplexed_model_id = DEFAULT.VALUE
+        # ray_serve_grpc_context is a class implemented by us to be able to serialize
+        # the object and pass it into the deployment.
+        self.ray_serve_grpc_context = RayServegRPCContext(context)
         self.setup_variables()
 
     def setup_variables(self):
@@ -158,30 +164,38 @@ class gRPCProxyRequest(ProxyRequest):
         return self.request
 
     def send_request_id(self, request_id: str):
-        self.context.set_trailing_metadata([("request_id", request_id)])
+        # Setting the trailing metadata on the ray_serve_grpc_context object, so it's
+        # not overriding the ones set from the user and will be sent back to the
+        # client altogether.
+        self.ray_serve_grpc_context.set_trailing_metadata([("request_id", request_id)])
 
-    def send_status_code(self, status_code: grpc.StatusCode):
-        self.context.set_code(status_code)
-
-    def send_details(self, message: str):
-        self.context.set_details(message)
-
-    def request_object(self, proxy_handle: ActorHandle) -> gRPCRequest:
+    def request_object(self) -> gRPCRequest:
         return gRPCRequest(
             grpc_user_request=self.user_request,
-            grpc_proxy_handle=proxy_handle,
         )
 
 
-class ProxyResponse:
-    """ProxyResponse class to use in the common interface among proxies"""
+@dataclass(frozen=True)
+class ResponseStatus:
+    code: Union[str, grpc.StatusCode]  # Must be convertible to a string.
+    is_error: bool = False
+    message: str = ""
 
-    def __init__(
-        self,
-        status_code: str,
-        response: Optional[bytes] = None,
-        streaming_response: Optional[Generator[bytes, None, None]] = None,
-    ):
-        self.status_code = status_code
-        self.response = response
-        self.streaming_response = streaming_response
+
+# Yields protocol-specific messages followed by a final `ResponseStatus`.
+ResponseGenerator = AsyncIterator[Union[Any, ResponseStatus]]
+
+
+@dataclass(frozen=True)
+class HandlerMetadata:
+    application_name: str = ""
+    deployment_name: str = ""
+    route: str = ""
+
+
+@dataclass(frozen=True)
+class ResponseHandlerInfo:
+    response_generator: ResponseGenerator
+    metadata: HandlerMetadata
+    should_record_access_log: bool
+    should_increment_ongoing_requests: bool

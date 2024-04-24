@@ -85,6 +85,7 @@ def main(bucket_uri: str):
     )
     results = tuner.fit()
     print("Fitted:", results)
+
     del instance_killer
     print("Deleted instance killer")
     gc.collect()

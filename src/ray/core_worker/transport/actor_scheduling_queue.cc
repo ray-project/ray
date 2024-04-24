@@ -40,7 +40,7 @@ ActorSchedulingQueue::ActorSchedulingQueue(
     for (const auto &concurrency_group : concurrency_groups) {
       ss << "\t" << concurrency_group.name << " : " << concurrency_group.max_concurrency;
     }
-    RAY_LOG(INFO) << ss.str();
+    RAY_LOG(DEBUG) << ss.str();
   }
 }
 

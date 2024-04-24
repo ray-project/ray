@@ -166,7 +166,14 @@ class WorldModel(tf.keras.Model):
         self.forward_train = tf.function(
             input_signature=[
                 tf.TensorSpec(shape=[None, None] + list(self.observation_space.shape)),
-                tf.TensorSpec(shape=[None, None, self.action_space.n]),
+                tf.TensorSpec(
+                    shape=[None, None]
+                    + (
+                        [self.action_space.n]
+                        if isinstance(action_space, gym.spaces.Discrete)
+                        else list(self.action_space.shape)
+                    )
+                ),
                 tf.TensorSpec(shape=[None, None], dtype=tf.bool),
             ]
         )(self.forward_train)

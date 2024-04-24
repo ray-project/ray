@@ -1,11 +1,11 @@
 import os
+from pathlib import Path
 from typing import Dict, List
 
 import pyarrow.fs
 
-from ray.train import _use_storage_context
-from ray.tune.logger import LoggerCallback
 from ray.tune.experiment import Trial
+from ray.tune.logger import LoggerCallback
 from ray.tune.utils import flatten_dict
 
 
@@ -228,22 +228,19 @@ class CometLoggerCallback(LoggerCallback):
 
             checkpoint_root = None
 
-            if _use_storage_context():
-                if isinstance(trial.checkpoint.filesystem, pyarrow.fs.LocalFileSystem):
-                    checkpoint_root = trial.checkpoint.path
-                    # Todo: For other filesystems, we may want to use
-                    # artifact.add_remote() instead. However, this requires a full
-                    # URI. We can add this once we have a way to retrieve it.
-            else:
-                checkpoint_root = trial.checkpoint.dir_or_data
+            if isinstance(trial.checkpoint.filesystem, pyarrow.fs.LocalFileSystem):
+                checkpoint_root = trial.checkpoint.path
+                # Todo: For other filesystems, we may want to use
+                # artifact.add_remote() instead. However, this requires a full
+                # URI. We can add this once we have a way to retrieve it.
 
             # Walk through checkpoint directory and add all files to artifact
             if checkpoint_root:
                 for root, dirs, files in os.walk(checkpoint_root):
                     rel_root = os.path.relpath(root, checkpoint_root)
                     for file in files:
-                        local_file = os.path.join(checkpoint_root, rel_root, file)
-                        logical_path = os.path.join(rel_root, file)
+                        local_file = Path(checkpoint_root, rel_root, file).as_posix()
+                        logical_path = Path(rel_root, file).as_posix()
 
                         # Strip leading `./`
                         if logical_path.startswith("./"):

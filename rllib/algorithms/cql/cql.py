@@ -43,15 +43,17 @@ logger = logging.getLogger(__name__)
 class CQLConfig(SACConfig):
     """Defines a configuration class from which a CQL can be built.
 
-    Example:
-        >>> from ray.rllib.algorithms.cql import CQLConfig
-        >>> config = CQLConfig().training(gamma=0.9, lr=0.01)
-        >>> config = config.resources(num_gpus=0)
-        >>> config = config.rollouts(num_rollout_workers=4)
-        >>> print(config.to_dict())  # doctest: +SKIP
-        >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
-        >>> algo.train()  # doctest: +SKIP
+    .. testcode::
+        :skipif: True
+
+        from ray.rllib.algorithms.cql import CQLConfig
+        config = CQLConfig().training(gamma=0.9, lr=0.01)
+        config = config.resources(num_gpus=0)
+        config = config.rollouts(num_rollout_workers=4)
+        print(config.to_dict())
+        # Build a Algorithm object from the config and run 1 training iteration.
+        algo = config.build(env="CartPole-v1")
+        algo.train()
     """
 
     def __init__(self, algo_class=None):

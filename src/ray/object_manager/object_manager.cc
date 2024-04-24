@@ -780,6 +780,10 @@ void ObjectManager::FillObjectStoreStats(rpc::GetNodeStatsReply *reply) const {
   stats->set_object_store_bytes_avail(config_.object_store_memory);
   stats->set_num_local_objects(local_objects_.size());
   stats->set_consumed_bytes(plasma::plasma_store_runner->GetConsumedBytes());
+  stats->set_cumulative_created_objects(
+      plasma::plasma_store_runner->GetCumulativeCreatedObjects());
+  stats->set_cumulative_created_bytes(
+      plasma::plasma_store_runner->GetCumulativeCreatedBytes());
   stats->set_object_pulls_queued(pull_manager_->HasPullsQueued());
 }
 

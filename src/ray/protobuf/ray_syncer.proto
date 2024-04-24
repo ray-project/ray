@@ -21,6 +21,33 @@ enum MessageType {
   COMMANDS = 1;
 }
 
+message CommandsSyncMessage {
+  // Whether this node manager is requesting global GC.
+  bool should_global_gc = 1;
+  // Whether this node has detected a resource deadlock (full of actors).
+  bool cluster_full_of_actors_detected = 2;
+}
+
+message ResourceViewSyncMessage {
+  // Resource capacity currently available on this node manager.
+  map<string, double> resources_available = 1;
+  // Total resource capacity configured for this node manager.
+  map<string, double> resources_total = 2;
+  // Whether this node has object pulls queued. This can happen if
+  // the node has more pull requests than available object store
+  // memory. This is a proxy for available object store memory.
+  bool object_pulls_queued = 3;
+  // The duration in ms during which all the node's resources are idle. If the
+  // node currently has any resource being used, this will be 0.
+  int64 idle_duration_ms = 4;
+  // Whether the node is being drained.
+  bool is_draining = 5;
+  // Timestamp when the node to be drained will be force killed.
+  int64 draining_deadline_timestamp_ms = 6;
+  // Why the node is not idle.
+  repeated string node_activity = 7;
+}
+
 message RaySyncMessage {
   // The version of the message. -1 means the version is not set.
   int64 version = 1;

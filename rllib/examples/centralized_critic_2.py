@@ -1,3 +1,11 @@
+# TODO (sven): Move this example script into the new API stack.
+
+# ***********************************************************************************
+# IMPORTANT NOTE: This script is using the old API stack and will soon be replaced by
+# `ray.rllib.examples.multi_agent.pettingzoo_shared_value_function.py`!
+# ***********************************************************************************
+
+
 """An example of implementing a centralized critic with ObservationFunction.
 
 The advantage of this approach is that it's very simple and you don't have to
@@ -17,11 +25,11 @@ import os
 from ray import air, tune
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.examples.models.centralized_critic_models import (
+from ray.rllib.examples._old_api_stack.models.centralized_critic_models import (
     YetAnotherCentralizedCriticModel,
     YetAnotherTorchCentralizedCriticModel,
 )
-from ray.rllib.examples.env.two_step_game import TwoStepGame
+from ray.rllib.examples.envs.classes.two_step_game import TwoStepGame
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.test_utils import check_learning_achieved
@@ -126,8 +134,7 @@ if __name__ == "__main__":
             enable_connectors=False,
         )
         .callbacks(FillInActions)
-        # TODO (Kourosh): Lift this example to the new RLModule stack, and enable it.
-        .training(model={"custom_model": "cc_model"}, _enable_learner_api=False)
+        .training(model={"custom_model": "cc_model"})
         .multi_agent(
             policies={
                 "pol1": (None, observer_space, action_space, {}),
@@ -140,7 +147,6 @@ if __name__ == "__main__":
         )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
-        .rl_module(_enable_rl_module_api=False)
     )
 
     stop = {

@@ -1,3 +1,4 @@
+# isort: skip_file
 from lightning_exp_tracking_model_dl import DummyModel, dataloader
 
 # __lightning_experiment_tracking_comet_start__
@@ -24,7 +25,7 @@ def train_func(config):
     ptl_trainer.fit(model, train_dataloaders=dataloader)
 
 
-scaling_config = ScalingConfig(num_workers=4, use_gpu=False)
+scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
 
 assert (
     "COMET_API_KEY" in os.environ

@@ -92,17 +92,43 @@ def test_list_splits():
 
 
 def get_parquet_read_logical_op(
-    ray_remote_args: Optional[Dict[str, Any]] = None
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    **read_kwargs,
 ) -> Read:
-    datasource = ParquetDatasource()
-    reader = datasource.create_reader(paths="example://iris.parquet")
+    datasource = ParquetDatasource(paths="example://iris.parquet")
+    if "parallelism" not in read_kwargs:
+        read_kwargs["parallelism"] = 10
+    mem_size = None
+    if "mem_size" in read_kwargs:
+        mem_size = read_kwargs.pop("mem_size")
     read_op = Read(
         datasource=datasource,
-        reader=reader,
-        parallelism=10,
+        datasource_or_legacy_reader=datasource,
+        mem_size=mem_size,
         ray_remote_args=ray_remote_args,
+        **read_kwargs,
     )
     return read_op
+
+
+@ray.remote(num_cpus=0)
+class ConcurrencyCounter:
+    def __init__(self):
+        self.concurrency = 0
+        self.max_concurrency = 0
+
+    def inc(self):
+        self.concurrency += 1
+        if self.concurrency > self.max_concurrency:
+            self.max_concurrency = self.concurrency
+        return self.concurrency
+
+    def decr(self):
+        self.concurrency -= 1
+        return self.concurrency
+
+    def get_max_concurrency(self):
+        return self.max_concurrency
 
 
 if __name__ == "__main__":

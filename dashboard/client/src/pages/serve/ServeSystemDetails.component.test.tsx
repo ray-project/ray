@@ -3,6 +3,7 @@ import React from "react";
 import { ActorEnum } from "../../type/actor";
 import {
   ServeApplicationStatus,
+  ServeDeploymentStatus,
   ServeSystemActorStatus,
 } from "../../type/serve";
 import { TEST_APP_WRAPPER } from "../../util/test-utils";
@@ -24,6 +25,19 @@ describe("ServeSystemDetails", () => {
 
     render(
       <ServeSystemPreview
+        allDeployments={
+          [
+            {
+              status: ServeDeploymentStatus.HEALTHY,
+            },
+            {
+              status: ServeDeploymentStatus.UNHEALTHY,
+            },
+            {
+              status: ServeDeploymentStatus.UPDATING,
+            },
+          ] as any
+        }
         allApplications={
           [
             {
@@ -37,7 +51,7 @@ describe("ServeSystemDetails", () => {
             },
           ] as any
         }
-        httpProxies={
+        proxies={
           [
             {
               status: ServeSystemActorStatus.HEALTHY,
@@ -58,14 +72,13 @@ describe("ServeSystemDetails", () => {
       { wrapper: TEST_APP_WRAPPER },
     );
     await screen.findByText("STARTING");
-    // Controller and Proxy
+    // Controller, Proxy, and Deployment
     expect(screen.getAllByText("HEALTHY")).toHaveLength(2);
     expect(screen.getByText("STARTING")).toBeInTheDocument();
     // Applications
+    expect(screen.getByText("UNHEALTHY")).toBeInTheDocument();
     expect(screen.getByText("RUNNING")).toBeInTheDocument();
     expect(screen.getByText("DEPLOYING")).toBeInTheDocument();
-    expect(screen.getByText("UNHEALTHY")).toBeInTheDocument();
-
     expect(
       screen.getByText(/View system status and configuration/),
     ).toBeInTheDocument();

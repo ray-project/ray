@@ -1,6 +1,6 @@
 repeat-after-me-ppo-w-lstm:
     # Default case: Discrete(2) observations/actions.
-    env: ray.rllib.examples.env.repeat_after_me_env.RepeatAfterMeEnv
+    env: ray.rllib.examples.envs.classes.repeat_after_me_env.RepeatAfterMeEnv
     run: PPO
     stop:
         sampler_results/episode_reward_mean: 50
@@ -24,5 +24,3 @@ repeat-after-me-ppo-w-lstm:
             max_seq_len: 20
             fcnet_hiddens: [64]
             vf_share_layers: true
-        _enable_learner_api: false
-        _enable_rl_module_api: false

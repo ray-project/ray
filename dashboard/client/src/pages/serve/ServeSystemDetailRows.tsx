@@ -1,15 +1,10 @@
-import {
-  createStyles,
-  Link,
-  makeStyles,
-  TableCell,
-  TableRow,
-  Tooltip,
-} from "@material-ui/core";
+import { Link, TableCell, TableRow, Tooltip } from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import React from "react";
 import { Link as RouterLink } from "react-router-dom";
 import { StatusChip } from "../../components/StatusChip";
-import { ServeHttpProxy, ServeSystemActor } from "../../type/serve";
+import { ServeProxy, ServeSystemActor } from "../../type/serve";
 import { useFetchActor } from "../actor/hook/useActorDetail";
 import { convertActorStateForServeController } from "./ServeSystemActorDetailPage";
 
@@ -26,18 +21,18 @@ const useStyles = makeStyles((theme) =>
   }),
 );
 
-export type ServeHttpProxyRowProps = {
-  httpProxy: ServeHttpProxy;
+export type ServeProxyRowProps = {
+  proxy: ServeProxy;
 };
 
-export const ServeHttpProxyRow = ({ httpProxy }: ServeHttpProxyRowProps) => {
-  const { status } = httpProxy;
+export const ServeProxyRow = ({ proxy }: ServeProxyRowProps) => {
+  const { status } = proxy;
 
   return (
     <ServeSystemActorRow
-      actor={httpProxy}
-      type="httpProxy"
-      status={<StatusChip type="serveHttpProxy" status={status} />}
+      actor={proxy}
+      type="proxy"
+      status={<StatusChip type="serveProxy" status={status} />}
     />
   );
 };
@@ -71,7 +66,7 @@ export const ServeControllerRow = ({ controller }: ServeControllerRowProps) => {
 
 type ServeSystemActorRowProps = {
   actor: ServeSystemActor;
-  type: "controller" | "httpProxy";
+  type: "controller" | "proxy";
   status: React.ReactNode;
 };
 
@@ -86,8 +81,8 @@ const ServeSystemActorRow = ({
   return (
     <TableRow>
       <TableCell align="center">
-        {type === "httpProxy" ? (
-          <Link component={RouterLink} to={`httpProxies/${node_id}`}>
+        {type === "proxy" ? (
+          <Link component={RouterLink} to={`proxies/${node_id}`}>
             HTTPProxyActor:{node_id}
           </Link>
         ) : (
@@ -98,8 +93,8 @@ const ServeSystemActorRow = ({
       </TableCell>
       <TableCell align="center">{status}</TableCell>
       <TableCell align="center">
-        {type === "httpProxy" ? (
-          <Link component={RouterLink} to={`httpProxies/${node_id}`}>
+        {type === "proxy" ? (
+          <Link component={RouterLink} to={`proxies/${node_id}`}>
             Log
           </Link>
         ) : (
@@ -110,7 +105,7 @@ const ServeSystemActorRow = ({
       </TableCell>
       <TableCell align="center">
         {node_id ? (
-          <Tooltip className={classes.idCol} title={node_id} arrow interactive>
+          <Tooltip className={classes.idCol} title={node_id} arrow>
             <Link component={RouterLink} to={`/cluster/nodes/${node_id}`}>
               {node_id}
             </Link>
@@ -121,7 +116,7 @@ const ServeSystemActorRow = ({
       </TableCell>
       <TableCell align="center">
         {actor_id ? (
-          <Tooltip className={classes.idCol} title={actor_id} arrow interactive>
+          <Tooltip className={classes.idCol} title={actor_id} arrow>
             <Link component={RouterLink} to={`/actors/${actor_id}`}>
               {actor_id}
             </Link>

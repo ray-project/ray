@@ -21,6 +21,7 @@
 #include "ray/common/id.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/common.pb.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 /// Convert an unique ID to a flatbuffer string.
 ///
@@ -45,32 +46,6 @@ ID from_flatbuf(const flatbuffers::String &string);
 template <typename ID>
 const std::vector<ID> from_flatbuf(
     const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> &vector);
-
-/// Convert a flatbuffer vector of strings to an unordered_set of unique IDs.
-///
-/// @param vector The flatbuffer vector.
-/// @return The unordered set of IDs.
-template <typename ID>
-const std::unordered_set<ID> unordered_set_from_flatbuf(
-    const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> &vector);
-
-/// Convert a flatbuffer of string that concatenated
-/// unique IDs to a vector of unique IDs.
-///
-/// @param vector The flatbuffer vector.
-/// @return The vector of IDs.
-template <typename ID>
-const std::vector<ID> ids_from_flatbuf(const flatbuffers::String &string);
-
-/// Convert a vector of unique IDs to a flatbuffer string.
-/// The IDs are concatenated to a string with binary.
-///
-/// @param fbb Reference to the flatbuffer builder.
-/// @param ids The vector of IDs.
-/// @return Flatbuffer string of concatenated IDs.
-template <typename ID>
-flatbuffers::Offset<flatbuffers::String> ids_to_flatbuf(
-    flatbuffers::FlatBufferBuilder &fbb, const std::vector<ID> &ids);
 
 /// Convert an array of unique IDs to a flatbuffer vector of strings.
 ///
@@ -107,13 +82,6 @@ to_flatbuf(flatbuffers::FlatBufferBuilder &fbb, const std::unordered_set<ID> &id
 /// @return The std::string version of the flatbuffer string.
 std::string string_from_flatbuf(const flatbuffers::String &string);
 
-std::vector<std::string> string_vec_from_flatbuf(
-    const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> &flatbuf_vec);
-
-flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
-string_vec_to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
-                      const std::vector<std::string> &string_vector);
-
 template <typename ID>
 flatbuffers::Offset<flatbuffers::String> to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
                                                     ID id) {
@@ -133,44 +101,6 @@ const std::vector<ID> from_flatbuf(
     ids.push_back(from_flatbuf<ID>(*vector.Get(i)));
   }
   return ids;
-}
-
-template <typename ID>
-const std::unordered_set<ID> unordered_set_from_flatbuf(
-    const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> &vector) {
-  std::unordered_set<ID> ids;
-  for (int64_t i = 0; i < vector.Length(); i++) {
-    ids.insert(from_flatbuf<ID>(*vector.Get(i)));
-  }
-  return ids;
-}
-
-template <typename ID>
-const std::vector<ID> ids_from_flatbuf(const flatbuffers::String &string) {
-  const auto &ids = string_from_flatbuf(string);
-  std::vector<ID> ret;
-  size_t id_size = ID::Size();
-  RAY_CHECK(ids.size() % id_size == 0);
-  auto count = ids.size() / id_size;
-
-  for (size_t i = 0; i < count; ++i) {
-    auto pos = static_cast<size_t>(id_size * i);
-    const auto &id = ids.substr(pos, id_size);
-    ret.push_back(ID::FromBinary(id));
-  }
-
-  return ret;
-}
-
-template <typename ID>
-flatbuffers::Offset<flatbuffers::String> ids_to_flatbuf(
-    flatbuffers::FlatBufferBuilder &fbb, const std::vector<ID> &ids) {
-  std::string result;
-  for (const auto &id : ids) {
-    result += id.Binary();
-  }
-
-  return fbb.CreateString(result);
 }
 
 template <typename ID>
@@ -222,4 +152,22 @@ static inline std::vector<ray::ObjectID> ObjectRefsToIds(
     object_ids.push_back(ObjectRefToId(ref));
   }
   return object_ids;
+}
+
+static inline ray::rpc::ActorTableData::ActorState StringToActorState(
+    const std::string &actor_state_name) {
+  if (actor_state_name == "DEPENDENCIES_UNREADY") {
+    return ray::rpc::ActorTableData::DEPENDENCIES_UNREADY;
+  } else if (actor_state_name == "PENDING_CREATION") {
+    return ray::rpc::ActorTableData::PENDING_CREATION;
+  } else if (actor_state_name == "ALIVE") {
+    return ray::rpc::ActorTableData::ALIVE;
+  } else if (actor_state_name == "RESTARTING") {
+    return ray::rpc::ActorTableData::RESTARTING;
+  } else if (actor_state_name == "DEAD") {
+    return ray::rpc::ActorTableData::DEAD;
+  } else {
+    RAY_CHECK(false) << "Invalid actor state name:" << actor_state_name;
+    return {};
+  }
 }

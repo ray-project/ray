@@ -1,26 +1,21 @@
 import base64
+from collections import OrderedDict
 import importlib
 import io
 import zlib
 from typing import Any, Dict, Optional, Sequence, Type, Union
 
+import gymnasium as gym
 import numpy as np
 
 import ray
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.gym import try_import_gymnasium_and_gym
 from ray.rllib.utils.error import NotSerializable
 from ray.rllib.utils.spaces.flexdict import FlexDict
 from ray.rllib.utils.spaces.repeated import Repeated
 from ray.rllib.utils.spaces.simplex import Simplex
 
 NOT_SERIALIZABLE = "__not_serializable__"
-
-gym, old_gym = try_import_gymnasium_and_gym()
-
-old_gym_text_class = None
-if old_gym:
-    old_gym_text_class = getattr(old_gym.spaces, "Text", None)
 
 
 @DeveloperAPI
@@ -77,7 +72,9 @@ def _deserialize_ndarray(b64_string: str) -> np.ndarray:
     Returns:
         numpy ndarray.
     """
-    return np.load(io.BytesIO(zlib.decompress(base64.b64decode(b64_string))))
+    return np.load(
+        io.BytesIO(zlib.decompress(base64.b64decode(b64_string))), allow_pickle=True
+    )
 
 
 @DeveloperAPI
@@ -194,19 +191,6 @@ def gym_space_to_dict(space: gym.spaces.Space) -> Dict:
         return _repeated(space)
     elif isinstance(space, FlexDict):
         return _flex_dict(space)
-    # Old gym Spaces.
-    elif old_gym and isinstance(space, old_gym.spaces.Box):
-        return _box(space)
-    elif old_gym and isinstance(space, old_gym.spaces.Discrete):
-        return _discrete(space)
-    elif old_gym and isinstance(space, old_gym.spaces.MultiDiscrete):
-        return _multi_discrete(space)
-    elif old_gym and isinstance(space, old_gym.spaces.Tuple):
-        return _tuple(space)
-    elif old_gym and isinstance(space, old_gym.spaces.Dict):
-        return _dict(space)
-    elif old_gym and old_gym_text_class and isinstance(space, old_gym_text_class):
-        return _text(space)
     else:
         raise ValueError("Unknown space type for serialization, ", type(space))
 
@@ -268,7 +252,18 @@ def gym_space_from_dict(d: Dict) -> gym.spaces.Space:
         return gym.spaces.Tuple(spaces=spaces)
 
     def _dict(d: Dict) -> gym.spaces.Discrete:
-        spaces = {k: gym_space_from_dict(sp) for k, sp in d["spaces"].items()}
+        # We need to always use an OrderedDict here to cover the following two ways, by
+        # which a user might construct a Dict space originally. We need to restore this
+        # original Dict space with the exact order of keys the user intended to.
+        # - User provides an OrderedDict inside the gym.spaces.Dict constructor ->
+        #  gymnasium should NOT further sort the keys. The same (user-provided) order
+        #  must be restored.
+        # - User provides a simple dict inside the gym.spaces.Dict constructor ->
+        #  By its API definition, gymnasium automatically sorts all keys alphabetically.
+        #  The same (alphabetical) order must thus be restored.
+        spaces = OrderedDict(
+            {k: gym_space_from_dict(sp) for k, sp in d["spaces"].items()}
+        )
         return gym.spaces.Dict(spaces=spaces)
 
     def _simplex(d: Dict) -> Simplex:

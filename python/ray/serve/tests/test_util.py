@@ -1,10 +1,6 @@
+import asyncio
 import json
 import os
-import subprocess
-import sys
-import tempfile
-from copy import deepcopy
-import time
 from unittest.mock import patch
 
 import numpy as np
@@ -13,22 +9,24 @@ from fastapi.encoders import jsonable_encoder
 
 import ray
 from ray import serve
+from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray.serve._private.utils import (
     calculate_remaining_timeout,
-    get_deployment_import_path,
+    get_all_live_placement_group_names,
+    get_current_actor_id,
+    get_head_node_id,
+    is_running_in_asyncio_loop,
     merge_dict,
-    msgpack_serialize,
     msgpack_deserialize,
+    msgpack_serialize,
     override_runtime_envs_except_env_vars,
     serve_encoders,
     snake_to_camel_case,
-    dict_keys_snake_to_camel_case,
-    get_all_live_placement_group_names,
-    get_head_node_id,
-    MetricsPusher,
 )
-from ray.serve.tests.utils import MockTimer
-from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
+from ray.serve.tests.common.remote_uris import (
+    TEST_DAG_PINNED_URI,
+    TEST_DEPLOY_GROUP_PINNED_URI,
+)
 
 
 def test_serialize():
@@ -109,71 +107,6 @@ def gen_class():
         pass
 
     return A
-
-
-class TestGetDeploymentImportPath:
-    def test_invalid_inline_defined(self):
-        @serve.deployment
-        def inline_f():
-            pass
-
-        with pytest.raises(RuntimeError, match="must be importable"):
-            get_deployment_import_path(inline_f, enforce_importable=True)
-
-        with pytest.raises(RuntimeError, match="must be importable"):
-            get_deployment_import_path(gen_func(), enforce_importable=True)
-
-        @serve.deployment
-        class InlineCls:
-            pass
-
-        with pytest.raises(RuntimeError, match="must be importable"):
-            get_deployment_import_path(InlineCls, enforce_importable=True)
-
-        with pytest.raises(RuntimeError, match="must be importable"):
-            get_deployment_import_path(gen_class(), enforce_importable=True)
-
-    def test_get_import_path_basic(self):
-        d = decorated_f.options()
-
-        # CI may change the parent path, so check only that the suffix matches.
-        assert get_deployment_import_path(d).endswith(
-            "ray.serve.tests.test_util.decorated_f"
-        )
-
-    def test_get_import_path_nested_actor(self):
-        d = DecoratedActor.options(name="actor")
-
-        # CI may change the parent path, so check only that the suffix matches.
-        assert get_deployment_import_path(d).endswith(
-            "ray.serve.tests.test_util.DecoratedActor"
-        )
-
-    @pytest.mark.skipif(
-        sys.platform == "win32", reason="File path incorrect on Windows."
-    )
-    def test_replace_main(self):
-
-        temp_fname = "testcase.py"
-        expected_import_path = "testcase.main_f"
-
-        code = (
-            "from ray import serve\n"
-            "from ray.serve._private.utils import get_deployment_import_path\n"
-            "@serve.deployment\n"
-            "def main_f(*args):\n"
-            "\treturn 'reached main_f'\n"
-            "assert get_deployment_import_path(main_f, replace_main=True) == "
-            f"'{expected_import_path}'"
-        )
-
-        with tempfile.TemporaryDirectory() as dirpath:
-            full_fname = os.path.join(dirpath, temp_fname)
-
-            with open(full_fname, "w+") as f:
-                f.write(code)
-
-            subprocess.check_output(["python", full_fname])
 
 
 class TestOverrideRuntimeEnvsExceptEnvVars:
@@ -297,10 +230,7 @@ class TestOverrideRuntimeEnvsExceptEnvVars:
 
         with ray.init(
             runtime_env={
-                "py_modules": [
-                    "https://github.com/ray-project/test_dag/archive/"
-                    "445c9611151720716060b1471b29c70219ed33ef.zip"
-                ],
+                "py_modules": [TEST_DAG_PINNED_URI],
                 "env_vars": {"var1": "hello"},
             }
         ):
@@ -316,10 +246,7 @@ class TestOverrideRuntimeEnvsExceptEnvVars:
 
             @ray.remote(
                 runtime_env={
-                    "py_modules": [
-                        "https://github.com/ray-project/test_deploy_group/archive/"
-                        "67971777e225600720f91f618cdfe71fc47f60ee.zip"
-                    ],
+                    "py_modules": [TEST_DEPLOY_GROUP_PINNED_URI],
                     "env_vars": {"var2": "world"},
                 }
             )
@@ -392,151 +319,6 @@ class TestSnakeToCamelCase:
 
         assert snake_to_camel_case("double__underscore") == "doubleUnderscore"
         assert snake_to_camel_case(f"many{'_' * 30}underscore") == "manyUnderscore"
-
-
-class TestDictKeysSnakeToCamelCase:
-    def test_empty(self):
-        assert dict_keys_snake_to_camel_case({}) == {}
-
-    def test_shallow_dict(self):
-        snake_dict = {
-            "hello_world": 1,
-            "check_this": "check it out",
-            "skateboard_park": "what fun",
-            "this_is_quite_a_long_phrase": 2,
-            "-this_1_hAs_@lph@num3RiCs_In_IT": 55,
-        }
-
-        camel_dict = {
-            "helloWorld": 1,
-            "checkThis": "check it out",
-            "skateboardPark": "what fun",
-            "thisIsQuiteALongPhrase": 2,
-            "-this1HAs@lph@num3RiCsInIT": 55,
-        }
-
-        assert dict_keys_snake_to_camel_case(snake_dict) == camel_dict
-
-    def test_nested_dict(self):
-        snake_dict = {
-            "hello_world": 1,
-            "down_we_go": {
-                "alice_in_wonderland": "mad_hatter",
-                "anotherDrop": {
-                    "here_we_are": "hello",
-                    "what_aW_orld": 33,
-                    "cRAZ333_World_4ever": 1,
-                },
-                "drop_3ncore": {"well_well_well": 5},
-                "emptiness": {},
-            },
-            "another_dict": {"not_much_info": 0},
-            "this_is_quite_a_long_phrase": 2,
-            "-this_1_hAs_@lph@num3RiCs_In_IT": 55,
-        }
-
-        camel_dict = {
-            "helloWorld": 1,
-            "downWeGo": {
-                "alice_in_wonderland": "mad_hatter",
-                "anotherDrop": {
-                    "here_we_are": "hello",
-                    "what_aW_orld": 33,
-                    "cRAZ333_World_4ever": 1,
-                },
-                "drop_3ncore": {"well_well_well": 5},
-                "emptiness": {},
-            },
-            "anotherDict": {"not_much_info": 0},
-            "thisIsQuiteALongPhrase": 2,
-            "-this1HAs@lph@num3RiCsInIT": 55,
-        }
-
-        assert dict_keys_snake_to_camel_case(snake_dict) == camel_dict
-
-    def test_mixed_key_types_flat(self):
-        snake_dict = {
-            "hello_world": 1,
-            3: "check it out",
-            "skateboard_park": "what fun",
-            (1, 2): 2,
-            "-this_1_hAs_@lph@num3RiCs_In_IT": 55,
-        }
-        snake_dict_copy = deepcopy(snake_dict)
-
-        camel_dict = {
-            "helloWorld": 1,
-            3: "check it out",
-            "skateboardPark": "what fun",
-            (1, 2): 2,
-            "-this1HAs@lph@num3RiCsInIT": 55,
-        }
-
-        assert dict_keys_snake_to_camel_case(snake_dict) == camel_dict
-
-        # dict_keys_snake_to_camel_case should not mutate original dict
-        assert snake_dict == snake_dict_copy
-
-    def test_mixed_key_types_nested(self):
-        snake_dict = {
-            (0, 0): 1,
-            "down_we_go": {
-                "alice_in_wonderland": "mad_hatter",
-                "anotherDrop": {
-                    12: "hello",
-                    "what_aW_orld": 33,
-                    "cRAZ333_World_4ever": 1,
-                },
-                "drop_3ncore": {"well_well_well": 5},
-                (0, 0): {},
-            },
-            5: {"not_much_info": 0},
-            "this_is_quite_a_long_phrase": 2,
-            "-this_1_hAs_@lph@num3RiCs_In_IT": 55,
-        }
-        snake_dict_copy = deepcopy(snake_dict)
-
-        camel_dict = {
-            (0, 0): 1,
-            "downWeGo": {
-                "alice_in_wonderland": "mad_hatter",
-                "anotherDrop": {
-                    12: "hello",
-                    "what_aW_orld": 33,
-                    "cRAZ333_World_4ever": 1,
-                },
-                "drop_3ncore": {"well_well_well": 5},
-                (0, 0): {},
-            },
-            5: {"not_much_info": 0},
-            "thisIsQuiteALongPhrase": 2,
-            "-this1HAs@lph@num3RiCsInIT": 55,
-        }
-
-        assert dict_keys_snake_to_camel_case(snake_dict) == camel_dict
-
-        # dict_keys_snake_to_camel_case should not mutate original dict
-        assert snake_dict == snake_dict_copy
-
-    def test_shallow_copy(self):
-        """dict_keys_snake_to_camel_case should make shallow copies only.
-
-        However, nested dictionaries are replaced with new dictionaries.
-        """
-
-        list1 = [1, 2, 3]
-        list2 = [4, 5, "hi"]
-
-        snake_dict = {
-            "list": list1,
-            "nested": {
-                "list2": list2,
-            },
-        }
-
-        camel_dict = dict_keys_snake_to_camel_case(snake_dict)
-        assert camel_dict["list"] is list1
-        assert camel_dict["nested"]["list2"] is list2
 
 
 def test_get_head_node_id():
@@ -668,85 +450,33 @@ def test_get_all_live_placement_group_names(ray_instance):
     assert set(get_all_live_placement_group_names()) == {"pg3", "pg4", "pg5", "pg6"}
 
 
-def test_metrics_pusher_no_tasks():
-    """Test that a metrics pusher can't be started with zero tasks."""
-    metrics_pusher = MetricsPusher()
-    with pytest.raises(ValueError):
-        metrics_pusher.start()
+def test_is_running_in_asyncio_loop_false():
+    assert is_running_in_asyncio_loop() is False
 
 
-def test_metrics_pusher_basic():
-    start = 0
-    timer = MockTimer(start)
+@pytest.mark.asyncio
+async def test_is_running_in_asyncio_loop_true():
+    assert is_running_in_asyncio_loop() is True
 
-    with patch("time.time", new=timer.time), patch(
-        "time.sleep", new=timer.realistic_sleep
-    ):
-        counter = {"val": 0}
-        result = {}
-        expected_result = 20
+    async def check():
+        return is_running_in_asyncio_loop()
 
-        def task(c, res):
-            timer.realistic_sleep(0.001)
-            c["val"] += 1
-            # At 10 seconds, this task should have been called 20 times
-            if timer.time() >= 10 and "val" not in res:
-                res["val"] = c["val"]
-
-        metrics_pusher = MetricsPusher()
-        metrics_pusher.register_task(lambda: task(counter, result), 0.5)
-
-        metrics_pusher.start()
-        # This busy wait loop should run for at most a few hundred milliseconds
-        # The test should finish by then, and if the test fails this prevents
-        # an infinite loop
-        for _ in range(10000000):
-            if "val" in result:
-                assert result["val"] == expected_result
-                break
-
-        assert result["val"] == expected_result
+    # Verify that it also works in a task.
+    assert await asyncio.ensure_future(check()) is True
 
 
-def test_metrics_pusher_multiple_tasks():
-    start = 0
-    timer = MockTimer(start)
+def test_get_current_actor_id(ray_instance):
+    @ray.remote
+    class A:
+        def call_get_current_actor_id(self):
+            return get_current_actor_id()
 
-    with patch("time.time", new=timer.time), patch(
-        "time.sleep", new=timer.realistic_sleep
-    ):
-        counter = {"A": 0, "B": 0, "C": 0}
-        result = {}
-        expected_results = {"A": 35, "B": 14, "C": 10}
+    a = A.remote()
+    actor_id = ray.get(a.call_get_current_actor_id.remote())
+    assert len(actor_id) > 0
+    assert actor_id != "DRIVER"
 
-        def task(key, c, res):
-            time.sleep(0.001)
-            c[key] += 1
-            # Check for how many times this task has been called
-            # At 7 seconds, tasks A, B, C should have executed 35, 14, and 10
-            # times respectively.
-            if timer.time() >= 7 and key not in res:
-                res[key] = c[key]
-
-        metrics_pusher = MetricsPusher()
-        # Each task interval is different, and they don't divide each other.
-        metrics_pusher.register_task(lambda: task("A", counter, result), 0.2)
-        metrics_pusher.register_task(lambda: task("B", counter, result), 0.5)
-        metrics_pusher.register_task(lambda: task("C", counter, result), 0.7)
-        metrics_pusher.start()
-
-        # This busy wait loop should run for at most a few hundred milliseconds
-        # The test should finish by then, and if the test fails this prevents
-        # an infinite loop
-        for _ in range(10000000):
-            for key in result.keys():
-                assert result[key] == expected_results[key]
-            if len(result) == 3:
-                break
-
-        # Check there are three results set and all are expected.
-        for key in expected_results.keys():
-            assert result[key] == expected_results[key]
+    assert get_current_actor_id() == "DRIVER"
 
 
 if __name__ == "__main__":

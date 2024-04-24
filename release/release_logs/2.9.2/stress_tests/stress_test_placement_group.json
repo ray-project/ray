@@ -1,0 +1,17 @@
+{
+    "avg_pg_create_time_ms": 0.884080222223619,
+    "avg_pg_remove_time_ms": 0.863579004504134,
+    "perf_metrics": [
+        {
+            "perf_metric_name": "avg_pg_create_time_ms",
+            "perf_metric_type": "LATENCY",
+            "perf_metric_value": 0.884080222223619
+        },
+        {
+            "perf_metric_name": "avg_pg_remove_time_ms",
+            "perf_metric_type": "LATENCY",
+            "perf_metric_value": 0.863579004504134
+        }
+    ],
+    "success": 1
+}

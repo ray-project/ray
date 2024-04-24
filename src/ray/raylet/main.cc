@@ -14,6 +14,10 @@
 
 #include <iostream>
 
+#ifdef __linux__
+#include <stdlib.h>
+#endif
+
 #include "gflags/gflags.h"
 #include "nlohmann/json.hpp"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -25,6 +29,8 @@
 #include "ray/raylet/raylet.h"
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
+#include "ray/util/process.h"
+#include "ray/util/subreaper.h"
 
 using json = nlohmann::json;
 
@@ -50,6 +56,8 @@ DEFINE_int32(num_prestart_python_workers,
              0,
              "Number of prestarted default Python workers on raylet startup.");
 DEFINE_bool(head, false, "Whether this node is a head node.");
+/// NOTE: This value is overwritten inside worker_pool.h by
+/// worker_maximum_startup_concurrency.
 DEFINE_int32(maximum_startup_concurrency, 1, "Maximum startup concurrency.");
 DEFINE_string(static_resource_list, "", "The static resource list of this node.");
 DEFINE_string(python_worker_command, "", "Python worker command.");
@@ -120,6 +128,13 @@ int main(int argc, char *argv[]) {
   ray::RayLog::InstallTerminateHandler();
 
   gflags::ParseCommandLineFlags(&argc, &argv, true);
+#ifdef __linux__
+  // Reset LD_PRELOAD if it's loaded with ray jemalloc
+  auto ray_ld_preload = std::getenv("RAY_LD_PRELOAD");
+  if (ray_ld_preload != nullptr && std::string(ray_ld_preload) == "1") {
+    unsetenv("LD_PRELOAD");
+  }
+#endif
   const std::string raylet_socket_name = FLAGS_raylet_socket_name;
   const std::string store_socket_name = FLAGS_store_socket_name;
   const std::string node_name =
@@ -180,12 +195,50 @@ int main(int argc, char *argv[]) {
   RAY_CHECK_OK(gcs_client->Connect(main_service, cluster_id));
   std::unique_ptr<ray::raylet::Raylet> raylet;
 
+  // Enable subreaper. This is called in `AsyncGetInternalConfig` below, but MSVC does
+  // not allow a macro invocation (#ifdef) in another macro invocation (RAY_CHECK_OK),
+  // so we have to put it here.
+  auto enable_subreaper = [&]() {
+#ifdef __linux__
+    if (ray::SetThisProcessAsSubreaper()) {
+      ray::KnownChildrenTracker::instance().Enable();
+      ray::SetupSigchldHandlerRemoveKnownChildren(main_service);
+      auto runner = std::make_shared<ray::PeriodicalRunner>(main_service);
+      runner->RunFnPeriodically([runner]() { ray::KillUnknownChildren(); },
+                                /*period_ms=*/10000,
+                                "Raylet.KillUnknownChildren");
+      RAY_LOG(INFO) << "Set this process as subreaper. Will kill unknown children every "
+                       "10 seconds.";
+    } else {
+      RAY_LOG(WARNING) << "Failed to set this process as subreaper. Will not kill "
+                          "unknown children.";
+      ray::SetSigchldIgnore();
+    }
+#else
+    RAY_LOG(WARNING) << "Subreaper is not supported on this platform. Will not "
+                        "kill unknown children.";
+    ray::SetSigchldIgnore();
+#endif
+  };
+
   RAY_CHECK_OK(gcs_client->Nodes().AsyncGetInternalConfig(
       [&](::ray::Status status,
           const boost::optional<std::string> &stored_raylet_config) {
         RAY_CHECK_OK(status);
         RAY_CHECK(stored_raylet_config.has_value());
         RayConfig::instance().initialize(stored_raylet_config.get());
+
+        // Core worker tries to kill child processes when it exits. But they can't do
+        // it perfectly: if the core worker is killed by SIGKILL, the child processes
+        // leak. So in raylet we also kill child processes via Linux subreaper.
+        // Only works on Linux >= 3.4.
+        if (RayConfig::instance()
+                .kill_child_processes_on_worker_exit_with_raylet_subreaper()) {
+          enable_subreaper();
+        } else {
+          RAY_LOG(INFO) << "Raylet is not set to kill unknown children.";
+          ray::SetSigchldIgnore();
+        }
 
         // Parse the worker port list.
         std::istringstream worker_port_list_string(worker_port_list);
@@ -291,6 +344,10 @@ int main(int argc, char *argv[]) {
 
         object_manager_config.rpc_service_threads_number =
             std::min(std::max(2, num_cpus / 4), 8);
+        if (RayConfig::instance().object_manager_rpc_threads_num() != 0) {
+          object_manager_config.rpc_service_threads_number =
+              RayConfig::instance().object_manager_rpc_threads_num();
+        }
         object_manager_config.object_chunk_size =
             RayConfig::instance().object_manager_default_chunk_size();
 
