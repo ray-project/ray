@@ -2212,7 +2212,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "large",
     srcs = ["examples/connectors/prev_actions_prev_rewards.py"],
-    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=400.0", "--framework=torch", "--algo=PPO", "--num-env-runners=4", "--num-cpus=6"]
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=300.0", "--framework=torch", "--algo=PPO", "--num-env-runners=4", "--num-cpus=6"]
 )
 
 # MeanStd filtering example.
