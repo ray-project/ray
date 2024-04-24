@@ -2,6 +2,7 @@ import logging
 from typing import List, Optional
 
 import lance
+import pyarrow as pa
 from lance import LanceFragment
 
 from ray.data import ReadTask
@@ -9,15 +10,13 @@ from ray.data.block import Block, BlockMetadata
 from ray.data.datasource import Datasource
 from ray.util.annotations import DeveloperAPI
 
-import pyarrow as pa
-
 logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
 class LanceDatasource(Datasource):
     """Lance Datasource
-    Read a Lance table as a Ray Dataset
+    Read a Lance Dataset as a Ray Dataset
 
     Parameters
     ----------
