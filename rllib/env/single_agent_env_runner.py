@@ -24,6 +24,8 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_EPISODES,
+    NUM_MODULE_STEPS_SAMPLED,
+    NUM_MODULE_STEPS_SAMPLED_LIFETIME,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.spaces.space_utils import unbatch
@@ -298,24 +300,7 @@ class SingleAgentEnvRunner(EnvRunner):
             )
             obs, actions = unbatch(obs), unbatch(actions)
 
-            ts += self.num_envs
-            # Per sample cycle stats.
-            self.metrics.log_dict(
-                {
-                    NUM_ENV_STEPS_SAMPLED: self.num_envs,
-                    NUM_AGENT_STEPS_SAMPLED: {DEFAULT_AGENT_ID: self.num_envs},
-                },
-                reduce="sum",
-                reset_on_reduce=True,
-            )
-            # Lifetime stats.
-            self.metrics.log_dict(
-                {
-                    NUM_ENV_STEPS_SAMPLED_LIFETIME: self.num_envs,
-                    NUM_AGENT_STEPS_SAMPLED_LIFETIME: {DEFAULT_AGENT_ID: self.num_envs},
-                },
-                reduce="sum",
-            )
+            ts += self._increase_sampled_metrics(self.num_envs)
 
             for env_index in range(self.num_envs):
                 # TODO (simon): This might be unfortunate if a user needs to set a
@@ -502,6 +487,7 @@ class SingleAgentEnvRunner(EnvRunner):
                 actions_for_env
             )
             obs, actions = unbatch(obs), unbatch(actions)
+            ts += self._increase_sampled_metrics()
 
             for env_index in range(self.num_envs):
                 extra_model_output = {k: v[env_index] for k, v in to_env.items()}
@@ -558,22 +544,6 @@ class SingleAgentEnvRunner(EnvRunner):
                     self._make_on_episode_callback(
                         "on_episode_step", env_index, episodes
                     )
-            ts += self.num_envs
-            self.metrics.log_dict(
-                {
-                    NUM_ENV_STEPS_SAMPLED: self.num_envs,
-                    NUM_AGENT_STEPS_SAMPLED: {DEFAULT_AGENT_ID: self.num_envs},
-                },
-                reduce="sum",
-                reset_on_reduce=True,
-            )
-            self.metrics.log_dict(
-                {
-                    NUM_ENV_STEPS_SAMPLED_LIFETIME: self.num_envs,
-                    NUM_AGENT_STEPS_SAMPLED_LIFETIME: {DEFAULT_AGENT_ID: self.num_envs},
-                },
-                reduce="sum",
-            )
 
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
 
@@ -786,3 +756,27 @@ class SingleAgentEnvRunner(EnvRunner):
             return convert_to_torch_tensor(struct)
         else:
             return tree.map_structure(tf.convert_to_tensor, struct)
+
+    def _increase_sampled_metrics(self, num_steps):
+        # Per sample cycle stats.
+        self.metrics.log_dict(
+            {
+                NUM_ENV_STEPS_SAMPLED: num_steps,
+                NUM_AGENT_STEPS_SAMPLED: {DEFAULT_AGENT_ID: num_steps},
+                NUM_MODULE_STEPS_SAMPLED: {DEFAULT_MODULE_ID: num_steps},
+            },
+            reduce="sum",
+            reset_on_reduce=True,
+        )
+        # Lifetime stats.
+        self.metrics.log_dict(
+            {
+                NUM_ENV_STEPS_SAMPLED_LIFETIME: num_steps,
+                NUM_AGENT_STEPS_SAMPLED_LIFETIME: {DEFAULT_AGENT_ID: num_steps},
+                NUM_MODULE_STEPS_SAMPLED_LIFETIME: {
+                    DEFAULT_MODULE_ID: num_steps,
+                },
+            },
+            reduce="sum",
+        )
+        return num_steps

@@ -94,6 +94,7 @@ from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
     ENV_RUNNER_RESULTS,
+    ENV_RUNNER_SAMPLING_TIMER,
     EVALUATION_ITERATION_TIMER,
     EVALUATION_RESULTS,
     FAULT_TOLERANCE_STATS,
@@ -120,7 +121,6 @@ from ray.rllib.utils.metrics import (
     TIMERS,
     TRAINING_ITERATION_TIMER,
     TRAINING_STEP_TIMER,
-    SAMPLE_TIMER,
     STEPS_TRAINED_THIS_ITER_COUNTER,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
@@ -1622,7 +1622,7 @@ class Algorithm(Trainable, AlgorithmBase):
             )
 
         # Collect SampleBatches from sample workers until we have a full batch.
-        with self.metrics.log_time((TIMERS, SAMPLE_TIMER)):
+        with self.metrics.log_time((TIMERS, ENV_RUNNER_SAMPLING_TIMER)):
             if self.config.count_steps_by == "agent_steps":
                 train_batch, env_runner_metrics = synchronous_parallel_sample(
                     worker_set=self.workers,

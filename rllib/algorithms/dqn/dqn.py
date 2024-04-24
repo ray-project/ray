@@ -45,6 +45,7 @@ from ray.rllib.utils.typing import ResultDict
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
     ENV_RUNNER_RESULTS,
+    ENV_RUNNER_SAMPLING_TIMER,
     LAST_TARGET_UPDATE_TS,
     LEARNER_ADDITIONAL_UPDATE_TIMER,
     LEARNER_RESULTS,
@@ -56,6 +57,8 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_TRAINED_LIFETIME,
     NUM_EPISODES,
     NUM_EPISODES_LIFETIME,
+    NUM_MODULE_STEPS_SAMPLED,
+    NUM_MODULE_STEPS_SAMPLED_LIFETIME,
     NUM_TARGET_UPDATES,
     REPLAY_BUFFER_SAMPLE_TIMER,
     REPLAY_BUFFER_UPDATE_PRIOS_TIMER,
@@ -601,7 +604,7 @@ class DQN(Algorithm):
 
         # Run multiple sampling + storing to buffer iterations.
         for _ in range(store_weight):
-            with self.metrics.log_time((TIMERS, SAMPLE_TIMER)):
+            with self.metrics.log_time((TIMERS, ENV_RUNNER_SAMPLING_TIMER)):
                 # Sample in parallel from workers.
                 episodes, env_runner_metrics = synchronous_parallel_sample(
                     worker_set=self.workers,
@@ -612,22 +615,28 @@ class DQN(Algorithm):
                 )
             # Add the sampled experiences to the replay buffer.
             self.local_replay_buffer.add(episodes)
-
             # Reduce EnvRunner metrics over the n EnvRunners.
             self.metrics.log_n_dicts(env_runner_metrics, key=ENV_RUNNER_RESULTS)
 
+        # TODO (sven): Move into Algorithm utility method.
         # Log lifetime counts for env- and agent steps sampled.
         self.metrics.log_dict(
             {
+                NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
+                    ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED, default=0
+                ),
                 NUM_AGENT_STEPS_SAMPLED_LIFETIME: {
                     aid: self.metrics.peek(
                         ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED, aid, default=0
                     )
                     for aid in self.metrics.peek(NUM_AGENT_STEPS_SAMPLED_LIFETIME)
                 },
-                NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                    ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED, default=0
-                ),
+                NUM_MODULE_STEPS_SAMPLED_LIFETIME: {
+                    mid: self.metrics.peek(
+                        ENV_RUNNER_RESULTS, NUM_MODULE_STEPS_SAMPLED, mid, default=0
+                    )
+                    for mid in self.metrics.peek(NUM_MODULE_STEPS_SAMPLED_LIFETIME)
+                },
                 NUM_EPISODES_LIFETIME: self.metrics.peek(
                     ENV_RUNNER_RESULTS, NUM_EPISODES, default=0
                 ),

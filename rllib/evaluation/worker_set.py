@@ -455,7 +455,6 @@ class WorkerSet:
             )
             # Update the global number of environment steps for each worker.
             if "env_steps_sampled" in env_runner_states:
-                # _env_runner.global_num_env_steps_sampled =
                 _env_runner.metrics.set_value(
                     NUM_ENV_STEPS_SAMPLED_LIFETIME,
                     env_runner_states["env_steps_sampled"],
