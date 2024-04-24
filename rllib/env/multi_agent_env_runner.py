@@ -725,7 +725,10 @@ class MultiAgentEnvRunner(EnvRunner):
 
         # Perform actual gym.make call.
         self.env: MultiAgentEnv = gym.make("rllib-multi-agent-env-v0")
-        check_multiagent_environments(self.env.unwrapped)
+        try:
+            check_multiagent_environments(self.env.unwrapped)
+        except Exception as e:
+            logger.exception(e.args[0])
         self.num_envs = 1
 
         # Create the MultiAgentEnv (is-a gymnasium env).
