@@ -51,6 +51,15 @@ class LanceDatasource(Datasource):
             for batch in batches:
                 yield pa.Table.from_batches([batch])
 
+        # If the number of fragments is lower then the parallelism,
+        # set the parallelism to the min of the number of fragments
+        if parallelism > len(self.fragments):
+            parallelism = len(self.fragments)
+            logger.warning(
+                f"Reducing the parallelism to {parallelism}, as that is the"
+                "number of files"
+            )
+
         read_tasks = []
         for fragment in self.fragments:
             data_files = ", ".join(
