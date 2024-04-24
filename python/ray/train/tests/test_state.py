@@ -5,7 +5,7 @@ import pytest
 
 import ray
 from ray.cluster_utils import Cluster
-from ray.train import ScalingConfig
+from ray.train import RunConfig, ScalingConfig
 from ray.train._internal.state.schema import (
     TrainDatasetInfo,
     TrainRunInfo,
@@ -18,29 +18,18 @@ from ray.train._internal.state.state_actor import (
 )
 from ray.train.data_parallel_trainer import DataParallelTrainer
 
-STATE_TRACKING_RUNTIME_ENV = {"env_vars": {"RAY_TRAIN_ENABLE_STATE_TRACKING": "1"}}
-
 
 @pytest.fixture
-def ray_start_1_node():
+def ray_start_gpu_cluster():
     cluster = Cluster()
-    cluster.add_node(num_gpus=4, num_cpus=5)
-
-    ray.init(address=cluster.address, runtime_env=STATE_TRACKING_RUNTIME_ENV)
-
-    yield
+    cluster.add_node(num_gpus=8, num_cpus=9)
 
     ray.shutdown()
-    cluster.shutdown()
-
-
-@pytest.fixture
-def ray_start_2_nodes():
-    cluster = Cluster()
-    for _ in range(2):
-        cluster.add_node(num_gpus=2, num_cpus=3)
-
-    ray.init(address=cluster.address, runtime_env=STATE_TRACKING_RUNTIME_ENV)
+    ray.init(
+        address=cluster.address,
+        runtime_env={"env_vars": {"RAY_TRAIN_ENABLE_STATE_TRACKING": "1"}},
+        ignore_reinit_error=True,
+    )
 
     yield
 
@@ -59,7 +48,7 @@ RUN_INFO_JSON_SAMPLE = """{
         "world_rank": 0,
         "local_rank": 0,
         "node_rank": 0,
-        "node_id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "node_id": "b1e6cbed8533ae2def4e7e7ced9d19858ceb1ed8ab9ba81ab9c07825",
         "node_ip": "10.0.208.100",
         "pid": 76071,
         "gpu_ids": [0]
@@ -69,7 +58,7 @@ RUN_INFO_JSON_SAMPLE = """{
         "world_rank": 1,
         "local_rank": 1,
         "node_rank": 0,
-        "node_id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "node_id": "b1e6cbed8533ae2def4e7e7ced9d19858ceb1ed8ab9ba81ab9c07825",
         "node_ip": "10.0.208.100",
         "pid": 76072,
         "gpu_ids": [1]
@@ -95,7 +84,7 @@ def _get_run_info_sample(run_id=None, run_name=None) -> TrainRunInfo:
         world_rank=0,
         local_rank=0,
         node_rank=0,
-        node_id="ffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        node_id="b1e6cbed8533ae2def4e7e7ced9d19858ceb1ed8ab9ba81ab9c07825",
         node_ip="10.0.208.100",
         pid=76071,
         gpu_ids=[0],
@@ -106,7 +95,7 @@ def _get_run_info_sample(run_id=None, run_name=None) -> TrainRunInfo:
         world_rank=1,
         local_rank=1,
         node_rank=0,
-        node_id="ffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        node_id="b1e6cbed8533ae2def4e7e7ced9d19858ceb1ed8ab9ba81ab9c07825",
         node_ip="10.0.208.100",
         pid=76072,
         gpu_ids=[1],
@@ -145,50 +134,97 @@ def test_schema_equivalance():
 
 def test_state_actor_api():
     state_actor = get_or_create_state_actor()
-    assert not ray.get(state_actor.get_all_train_runs.remote())
+    named_actors = ray.util.list_named_actors(all_namespaces=True)
+    assert {
+        "name": TRAIN_STATE_ACTOR_NAME,
+        "namespace": TRAIN_STATE_ACTOR_NAMESPACE,
+    } in named_actors
 
-    # Register new train runs
-    run_info_1 = _get_run_info_sample(run_id="1")
-    run_info_2 = _get_run_info_sample(run_id="2")
-    ray.get(state_actor.register_train_run.remote(run_info_1))
-    ray.get(state_actor.register_train_run.remote(run_info_2))
+    # Concurrently register 100 runs
+    num_runs = 100
+    info_list = [_get_run_info_sample(run_id=str(i)) for i in range(num_runs)]
+    ray.get([state_actor.register_train_run.remote(run) for run in info_list])
 
     # Test get all runs
     train_runs = ray.get(state_actor.get_all_train_runs.remote())
-    assert train_runs.keys() == {"1", "2"}
+    assert len(train_runs) == num_runs
 
-    # Test get a single run
-    assert ray.get(state_actor.get_train_run.remote(run_id="1")) == run_info_1
-    assert ray.get(state_actor.get_train_run.remote(run_id="2")) == run_info_2
+    # Test get a single run by run_id
+    for i in range(num_runs):
+        run_info = ray.get(state_actor.get_train_run.remote(run_id=str(i)))
+        assert run_info == info_list[i]
 
 
-def test_single_node_training(ray_start_1_node, use_gpu=False):
+@pytest.mark.parametrize("gpus_per_worker", [0, 1, 2])
+def test_track_e2e_training(ray_start_gpu_cluster, gpus_per_worker):
     os.environ["RAY_TRAIN_ENABLE_STATE_TRACKING"] = "1"
+    num_workers = 4
+    run_name = "test"
+    datasets = {
+        "train": ray.data.from_items(list(range(4))),
+        "eval": ray.data.from_items(list(range(4))),
+    }
 
-    def train_func():
-        pass
+    if gpus_per_worker == 0:
+        use_gpu = False
+        resources_per_worker = {"CPU": 1}
+    else:
+        use_gpu = True
+        resources_per_worker = {"GPU": gpus_per_worker}
 
     trainer = DataParallelTrainer(
-        train_loop_per_worker=train_func,
-        scaling_config=ScalingConfig(num_workers=4, use_gpu=use_gpu),
+        train_loop_per_worker=lambda: None,
+        scaling_config=ScalingConfig(
+            num_workers=num_workers,
+            use_gpu=use_gpu,
+            resources_per_worker=resources_per_worker,
+        ),
+        run_config=RunConfig(name=run_name),
+        datasets=datasets,
     )
 
-    # Ensure the the StateActor is created on driver
-    named_actors = ray.util.list_named_actors(all_namespaces=True)
-    assert named_actors == [
-        {"name": TRAIN_STATE_ACTOR_NAME, "namespace": TRAIN_STATE_ACTOR_NAMESPACE}
-    ]
-
     trainer.fit()
 
-    state_actor = get_or_create_state_actor()
+    state_actor = ray.get_actor(
+        name=TRAIN_STATE_ACTOR_NAME, namespace=TRAIN_STATE_ACTOR_NAMESPACE
+    )
 
     runs = ray.get(state_actor.get_all_train_runs.remote())
-    assert len(runs) == 1
+    run_id = next(iter(runs.keys()))
+    run = next(iter(runs.values()))
 
-    trainer.fit()
-    runs = ray.get(state_actor.get_all_train_runs.remote())
-    assert len(runs) == 2
+    # Check Run Info
+    assert run.id == run_id
+    assert run.name == run_name
+    assert len(run.workers) == num_workers
+    assert run.controller_actor_id and run.job_id
+
+    world_ranks = [worker.world_rank for worker in run.workers]
+    local_ranks = [worker.local_rank for worker in run.workers]
+    node_ranks = [worker.node_rank for worker in run.workers]
+
+    # Ensure that the workers are sorted by global rank
+    assert world_ranks == [0, 1, 2, 3]
+    assert local_ranks == [0, 1, 2, 3]
+    assert node_ranks == [0, 0, 0, 0]
+
+    # Check GPU ids
+    gpu_ids = [worker.gpu_ids for worker in run.workers]
+    if gpus_per_worker == 0:
+        assert gpu_ids == [[], [], [], []]
+    elif gpus_per_worker == 1:
+        assert gpu_ids == [[0], [1], [2], [3]]
+    elif gpus_per_worker == 2:
+        flat_gpu_ids = set()
+        for ids in gpu_ids:
+            flat_gpu_ids.update(ids)
+        assert flat_gpu_ids == set(range(8))
+
+    # Check Datasets
+    for dataset_info in run.datasets:
+        dataset = datasets[dataset_info.name]
+        assert dataset_info.dataset_name == dataset._plan._dataset_name
+        assert dataset_info.dataset_uuid == dataset._plan._dataset_uuid
 
 
 if __name__ == "__main__":

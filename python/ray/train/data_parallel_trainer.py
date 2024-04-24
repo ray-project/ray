@@ -11,7 +11,6 @@ from ray.train._internal import session
 from ray.train._internal.backend_executor import BackendExecutor, TrialInfo
 from ray.train._internal.data_config import DataConfig
 from ray.train._internal.session import _TrainingResult, get_session
-from ray.train._internal.state.state_actor import get_or_create_state_actor
 from ray.train._internal.utils import construct_train_func, count_required_parameters
 from ray.train.constants import RAY_TRAIN_ENABLE_STATE_TRACKING
 from ray.train.trainer import BaseTrainer, GenDataset
@@ -270,6 +269,8 @@ class DataParallelTrainer(BaseTrainer):
         )
 
         if env_integer(RAY_TRAIN_ENABLE_STATE_TRACKING, 0):
+            from ray.train._internal.state.state_actor import get_or_create_state_actor
+
             get_or_create_state_actor()
 
     @PublicAPI(stability="beta")

@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 from ray._private.pydantic_compat import BaseModel, Field
 from ray.util.annotations import DeveloperAPI
@@ -27,8 +27,8 @@ class TrainDatasetInfo(BaseModel):
     name: str = Field(
         description="The key of the dataset dict specified in Ray Train Trainer."
     )
-    dataset_name: str = Field(description="The name of the dataset.")
     dataset_uuid: str = Field(description="The uuid of the dataset.")
+    dataset_name: Optional[str] = Field(description="The name of the dataset.")
 
 
 @DeveloperAPI
