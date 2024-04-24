@@ -37,8 +37,15 @@ class TorchTensorWorker:
 
 @pytest.mark.parametrize("use_gpu", [False, True])
 def test_torch_tensor_p2p(ray_start_regular_shared, use_gpu):
-    sender = TorchTensorWorker.remote()
-    receiver = TorchTensorWorker.remote()
+    if use_gpu and sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) < 1:
+        pytest.skip("Insufficient GPUs available")
+
+    actor_cls = TorchTensorWorker
+    if use_gpu:
+        actor_cls = TorchTensorWorker.options(num_gpus=1)
+
+    sender = actor_cls.remote()
+    receiver = actor_cls.remote()
 
     shape = (10,)
     dtype = torch.float16
@@ -82,15 +89,23 @@ def test_torch_tensor_p2p(ray_start_regular_shared, use_gpu):
     compiled_dag.teardown()
 
 
-def test_torch_tensor_as_dag_input(ray_start_regular_shared):
-    receiver = TorchTensorWorker.remote()
+@pytest.mark.parametrize("use_gpu", [False, True])
+def test_torch_tensor_as_dag_input(ray_start_regular_shared, use_gpu):
+    if use_gpu and sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) < 1:
+        pytest.skip("Insufficient GPUs available")
+
+    actor_cls = TorchTensorWorker
+    if use_gpu:
+        actor_cls = TorchTensorWorker.options(num_gpus=1)
+
+    receiver = actor_cls.remote()
 
     shape = (10,)
     dtype = torch.float16
 
     # Test torch.Tensor as input.
     with InputNode() as inp:
-        torch_inp = inp.with_type_hint(shape, dtype)
+        torch_inp = inp.with_type_hint(TorchTensorType(shape, dtype))
         dag = receiver.recv.bind(torch_inp)
 
     compiled_dag = dag.experimental_compile()
