@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 import os
 import subprocess
 import urllib
@@ -74,6 +76,50 @@ def test_escape_storage_uri_with_runtime_env(shutdown_only):
         assert "&" in s3_uri
         ray.init(storage=s3_uri, runtime_env={"env_vars": {"TEST_ENV": "1"}})
 
+        client = storage.get_client("foo")
+        client.put("bar", b"baz")
+
+        @ray.remote
+        def f():
+            client = storage.get_client("foo")
+            return client.get("bar")
+
+        assert ray.get(f.remote()) == b"baz"
+
+
+@pytest.mark.parametrize("char", ["", "fs"])
+def test_storage_uri_special(shutdown_only, char):
+    # Test various non-ascii characters that can appear in a URI
+    with simulate_storage("s3") as s3_uri:
+        # test that ';' can be used instead of '&'
+        s3_uri.replace("&", ";")
+        ray.init(storage=s3_uri, runtime_env={"env_vars": {"TEST_ENV": "1"}})
+        client = storage.get_client("foo")
+        client.put("bar", b"baz")
+
+        @ray.remote
+        def f():
+            client = storage.get_client("foo")
+            return client.get("bar")
+
+        assert ray.get(f.remote()) == b"baz"
+
+    # test that '$', ' ', '+' and '#' are passed through as-is
+    with simulate_storage("s3", region="$value #value +value") as s3_uri:
+        ray.init(storage=s3_uri, runtime_env={"env_vars": {"TEST_ENV": "1"}})
+        client = storage.get_client("foo")
+        client.put("bar", b"baz")
+
+        @ray.remote
+        def f():
+            client = storage.get_client("foo")
+            return client.get("bar")
+
+        assert ray.get(f.remote()) == b"baz"
+
+    # test unicode characters in URI
+    with simulate_storage("s3", region="üs-öst-2") as s3_uri:
+        ray.init(storage=s3_uri, runtime_env={"env_vars": {"TEST_ENV": "1"}})
         client = storage.get_client("foo")
         client.put("bar", b"baz")
 
