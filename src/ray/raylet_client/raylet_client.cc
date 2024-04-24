@@ -409,7 +409,6 @@ void raylet::RayletClient::GetTaskFailureCause(
 void raylet::RayletClient::RegisterMutableObjectReader(
     const ObjectID &object_id,
     int64_t num_readers,
-    int buffer_size_bytes,
     const ObjectID &reader_ref,
     const ray::rpc::ClientCallback<ray::rpc::RegisterMutableObjectReply> &callback) {
   rpc::RegisterMutableObjectRequest request;

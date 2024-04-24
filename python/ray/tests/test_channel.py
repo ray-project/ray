@@ -53,6 +53,7 @@ def test_remote_reader(ray_start_cluster, remote):
                 print("end_read finished\n")
 
     readers = [Reader.remote() for _ in range(num_readers)]
+    print(type(readers[0]))
     channel = ray_channel.Channel(readers, 1000)
 
     # All readers have received the channel.

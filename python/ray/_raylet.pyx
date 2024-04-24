@@ -3657,21 +3657,29 @@ cdef class CoreWorker:
     def experimental_channel_register_writer(self,
                                              ObjectRef writer_ref,
                                              ObjectRef reader_ref,
-                                             readers):
+                                             reader_node,
+                                             ActorID reader,
+                                             int64_t num_readers):
         cdef:
             CObjectID c_writer_ref = writer_ref.native()
-            CObjectReference c_reader_ref
-            CNodeID c_reader_node_id
+            CObjectID c_reader_ref = reader_ref.native()
+            CNodeID c_reader_node_id = CNodeID.FromHex(reader_node)
+            CActorID c_reader_actor = reader.native()
 
-        if len(readers) == 0:
+        if num_readers == 0:
             return
-        c_reader_node_id = CNodeID.FromHex(ray.get(readers[0].get_node_id.remote()))
 
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker()
                          .ExperimentalRegisterMutableObjectWriter(c_writer_ref,
                                                                   &c_reader_node_id,
                                                                   ))
+            check_status(CCoreWorkerProcess.GetCoreWorker()
+                         .ExperimentalRegisterMutableObjectReaderRemote(c_writer_ref,
+                                                                        c_reader_actor,
+                                                                        num_readers,
+                                                                        c_reader_ref
+                                                                        ))
 
     def experimental_channel_register_reader(self, ObjectRef object_ref):
         cdef:

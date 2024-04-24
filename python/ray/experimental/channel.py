@@ -121,6 +121,9 @@ class Channel:
             self._writer_node_id = _writer_node_id
             self._reader_ref = _reader_ref
 
+        if len(readers) == 0:
+            raise ValueError("There must be at least one reader.")
+
         self._readers = readers
         self._buffer_size_bytes = buffer_size_bytes
 
@@ -148,13 +151,16 @@ class Channel:
         if self._reader_ref is None:
             raise ValueError("`self._reader_ref` must be not be None")
 
+        reader_node = ray.get(self._readers[0].get_node_id.remote())
         # TODO: In C++, optionally do a sync RPC to the remote reader raylet.
         # Reader raylet allocates a local "reader ref". Reader raylet maps
         # (writer ref) -> (reader ref, num_readers).
         self._worker.core_worker.experimental_channel_register_writer(
             self._writer_ref,
             self._reader_ref,
-            self._readers,
+            reader_node,
+            self._readers[0]._actor_id,
+            len(self._readers),
         )
         self._writer_registered = True
 

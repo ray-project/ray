@@ -1464,55 +1464,48 @@ Status CoreWorker::ExperimentalRegisterMutableObjectWriter(const ObjectID &objec
 
 Status CoreWorker::ExperimentalRegisterMutableObjectReaderRemote(
     const ObjectID &object_id,
-    const NodeID &reader_node,
-    const std::vector<std::string> &worker_ids,
-    int buffer_size_bytes,
+    const ActorID &reader_actor,
     int64_t num_readers,
-    rpc::ObjectReference &reader_ref) {
-  for (const std::string &worker_id_hex : worker_ids) {
-    WorkerID worker_id = WorkerID::FromHex(worker_id_hex);
-    rpc::Address addr;
-    {
-      std::promise<void> promise;
-      RAY_CHECK(
-          gcs_client_->Workers()
-              .AsyncGet(
-                  worker_id,
-                  [&addr, &promise](Status status,
-                                    const boost::optional<rpc::WorkerTableData> &result) {
-                    RAY_CHECK(result);
-                    if (result) {
-                      addr.set_ip_address(result->worker_address().ip_address());
-                      addr.set_port(result->worker_address().port());
-                      addr.set_worker_id(result->worker_address().worker_id());
-                    }
-                    promise.set_value();
-                  })
-              .ok());
-      promise.get_future().wait();
-    }
+    const ObjectID &reader_ref) {
+  rpc::Address addr;
+  {
+    std::promise<void> promise;
+    RAY_CHECK(gcs_client_->Actors()
+                  .AsyncGet(reader_actor,
+                            [&addr, &promise](
+                                Status status,
+                                const boost::optional<rpc::ActorTableData> &result) {
+                              RAY_CHECK(result);
+                              if (result) {
+                                addr.set_ip_address(result->address().ip_address());
+                                addr.set_port(result->address().port());
+                                addr.set_worker_id(result->address().worker_id());
+                              }
+                              promise.set_value();
+                            })
+                  .ok());
+    promise.get_future().wait();
+  }
 
-    {
-      std::shared_ptr<rpc::CoreWorkerClientInterface> conn =
-          core_worker_client_pool_->GetOrConnect(addr);
+  {
+    std::shared_ptr<rpc::CoreWorkerClientInterface> conn =
+        core_worker_client_pool_->GetOrConnect(addr);
 
-      rpc::CreateMutableObjectRequest req;
-      req.set_object_id(object_id.Binary());
-      req.set_num_readers(1);
-      req.set_buffer_size_bytes(buffer_size_bytes);
-      rpc::CreateMutableObjectReply reply;
+    rpc::CreateMutableObjectRequest req;
+    req.set_object_id(object_id.Binary());
+    req.set_num_readers(num_readers);
+    req.set_reader_ref(reader_ref.Binary());
+    rpc::CreateMutableObjectReply reply;
 
-      std::promise<void> promise;
-      conn->CreateMutableObject(
-          req,
-          [&reader_ref, &promise](const Status &status,
-                                  const rpc::CreateMutableObjectReply &reply) {
-            RAY_CHECK(status.ok());
-            reader_ref = reply.reader_ref();
-            promise.set_value();
-          });
-      promise.get_future().wait();
-    }
+    std::promise<void> promise;
+    conn->CreateMutableObject(
+        req,
+        [&reader_ref, &promise](const Status &status,
+                                const rpc::CreateMutableObjectReply &reply) {
+          RAY_CHECK(status.ok());
+          promise.set_value();
+        });
+    promise.get_future().wait();
   }
 
   return Status::OK();
@@ -4115,37 +4108,15 @@ void CoreWorker::HandleKillActor(rpc::KillActorRequest request,
 void CoreWorker::HandleCreateMutableObject(rpc::CreateMutableObjectRequest request,
                                            rpc::CreateMutableObjectReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
-  ObjectID reader_id;
-  std::shared_ptr<Buffer> data;
-  Status s = CreateOwnedAndIncrementLocalRef(
-      /*is_experimental_mutable_object=*/true,
-      /*metadata=*/std::make_shared<LocalMemoryBuffer>(/*size=*/0),
-      /*data_size=*/request.buffer_size_bytes(),
-      /*contained_object_ids=*/{},
-      /*object_id=*/&reader_id,
-      /*data=*/&data,
-      /*created_by_worker=*/true,
-      /*owner_address=*/nullptr,
-      /*inline_small_object=*/true);
-  RAY_CHECK(s.ok());
-  s = SealOwned(reader_id, /*pin_object=*/true, /*owner_address=*/nullptr);
-  RAY_CHECK(s.ok());
-
-  reply->mutable_reader_ref()->set_object_id(reader_id.Binary());
-  reply->mutable_reader_ref()->mutable_owner_address()->CopyFrom(rpc_address_);
-
-  {
-    local_raylet_client_->RegisterMutableObjectReader(
-        ObjectID::FromBinary(request.object_id()),
-        request.num_readers(),
-        request.buffer_size_bytes(),
-        reader_id,
-        [send_reply_callback](const Status &status,
-                              const rpc::RegisterMutableObjectReply &r) {
-          RAY_CHECK(status.ok());
-          send_reply_callback(Status::OK(), nullptr, nullptr);
-        });
-  }
+  local_raylet_client_->RegisterMutableObjectReader(
+      ObjectID::FromBinary(request.object_id()),
+      request.num_readers(),
+      ObjectID::FromBinary(request.reader_ref()),
+      [send_reply_callback](const Status &status,
+                            const rpc::RegisterMutableObjectReply &r) {
+        RAY_CHECK(status.ok());
+        send_reply_callback(Status::OK(), nullptr, nullptr);
+      });
 }
 
 int64_t CoreWorker::GetLocalMemoryStoreBytesUsed() const {

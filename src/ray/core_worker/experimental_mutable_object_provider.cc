@@ -14,8 +14,6 @@
 
 #include "ray/core_worker/experimental_mutable_object_provider.h"
 
-#include <fstream>
-
 #include "absl/strings/str_format.h"
 
 namespace ray {
@@ -63,17 +61,10 @@ void MutableObjectProvider::RegisterWriterChannel(const ObjectID &object_id,
 }
 
 void MutableObjectProvider::RegisterReaderChannel(const ObjectID &object_id) {
-  std::ofstream f;
-  f.open("/tmp/blah", std::ofstream::app);
-
-  f << "RegisterReaderChannel begin" << std::endl;
-
   std::unique_ptr<plasma::MutableObject> object;
   RAY_CHECK_OK(plasma_->GetExperimentalMutableObject(object_id, &object));
-  f << "Got experimental object" << std::endl;
   RAY_CHECK_OK(
       object_manager_.RegisterChannel(object_id, std::move(object), /*reader=*/true));
-  f << "Registered channel" << std::endl;
   // `object` is now a nullptr.
 }
 
