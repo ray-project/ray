@@ -1112,8 +1112,7 @@ void WorkerPool::KillIdleWorker(std::shared_ptr<WorkerInterface> idle_worker,
   rpc::ExitRequest request;
   const auto &job_id = idle_worker->GetAssignedJobId();
   if (finished_jobs_.contains(job_id) &&
-      (!idle_worker->GetAncestorDetachedActorId().has_value() ||
-       idle_worker->GetAncestorDetachedActorId()->IsNil())) {
+      idle_worker->GetAncestorDetachedActorId().IsNil()) {
     RAY_LOG(INFO) << "Force exiting worker whose job has exited "
                   << idle_worker->WorkerId();
     request.set_force_exit(true);
@@ -1219,11 +1218,6 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
         it->first->GetAssignedJobId() != task_spec.JobId()) {
       skip_cached_worker_job_mismatch++;
       stats::NumCachedWorkersSkippedJobMismatch.Record(1);
-      continue;
-    }
-    if (it->first->GetAncestorDetachedActorId().has_value() &&
-        it->first->GetAncestorDetachedActorId().value() !=
-            task_spec.AncestorDetachedActorId()) {
       continue;
     }
 
@@ -1353,10 +1347,12 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
 
 void WorkerPool::PrestartDefaultCpuWorkers(ray::Language language, int64_t num_needed) {
   // default workers uses 1 cpu and doesn't support actor.
-  static const WorkerCacheKey kDefaultCpuWorkerCacheKey{/*serialized_runtime_env*/ "",
-                                                        {{"CPU", 1}},
-                                                        /*is_actor*/ false,
-                                                        /*is_gpu*/ false};
+  static const WorkerCacheKey kDefaultCpuWorkerCacheKey{
+      /*serialized_runtime_env*/ "",
+      {{"CPU", 1}},
+      /*is_actor*/ false,
+      /*is_gpu*/ false,
+      /*is_ancestor_detached_actor*/ false};
   RAY_LOG(DEBUG) << "PrestartDefaultCpuWorkers " << num_needed;
   for (int i = 0; i < num_needed; i++) {
     PopWorkerStatus status;

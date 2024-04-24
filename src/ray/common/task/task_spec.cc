@@ -205,7 +205,8 @@ int TaskSpecification::GetRuntimeEnvHash() const {
   WorkerCacheKey env = {SerializedRuntimeEnv(),
                         GetRequiredResources().GetResourceMap(),
                         IsActorCreationTask(),
-                        GetRequiredResources().Get(scheduling::ResourceID::GPU()) > 0};
+                        GetRequiredResources().Get(scheduling::ResourceID::GPU()) > 0,
+                        !(AncestorDetachedActorId().IsNil())};
   return env.IntHash();
 }
 
@@ -601,13 +602,15 @@ WorkerCacheKey::WorkerCacheKey(
     const std::string serialized_runtime_env,
     const absl::flat_hash_map<std::string, double> &required_resources,
     bool is_actor,
-    bool is_gpu)
+    bool is_gpu,
+    bool is_ancestor_detached_actor)
     : serialized_runtime_env(serialized_runtime_env),
       required_resources(RayConfig::instance().worker_resource_limits_enabled()
                              ? required_resources
                              : absl::flat_hash_map<std::string, double>{}),
       is_actor(is_actor && RayConfig::instance().isolate_workers_across_task_types()),
       is_gpu(is_gpu && RayConfig::instance().isolate_workers_across_resource_types()),
+      is_ancestor_detached_actor(is_ancestor_detached_actor),
       hash_(CalculateHash()) {}
 
 std::size_t WorkerCacheKey::CalculateHash() const {
@@ -624,6 +627,7 @@ std::size_t WorkerCacheKey::CalculateHash() const {
     boost::hash_combine(hash, serialized_runtime_env);
     boost::hash_combine(hash, is_actor);
     boost::hash_combine(hash, is_gpu);
+    boost::hash_combine(hash, is_ancestor_detached_actor);
 
     std::vector<std::pair<std::string, double>> resource_vars(required_resources.begin(),
                                                               required_resources.end());
@@ -644,7 +648,7 @@ bool WorkerCacheKey::operator==(const WorkerCacheKey &k) const {
 
 bool WorkerCacheKey::EnvIsEmpty() const {
   return IsRuntimeEnvEmpty(serialized_runtime_env) && required_resources.empty() &&
-         !is_gpu;
+         !is_gpu && !is_ancestor_detached_actor;
 }
 
 std::size_t WorkerCacheKey::Hash() const { return hash_; }
