@@ -65,7 +65,7 @@ from ray.rllib.policy.sample_batch import (
 )
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
-from ray.rllib.utils import check_env, force_list
+from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
@@ -409,9 +409,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         clip_rewards = self.config.clip_rewards
 
         if self.env is not None:
-            # Validate environment (general validation function).
-            if not self.config.disable_env_checking:
-                check_env(self.env, self.config)
             # Custom validation function given, typically a function attribute of the
             # Algorithm.
             if validate_env is not None:
@@ -634,12 +631,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         # The current weights sequence number (version). May remain None for when
         # not tracking weights versions.
         self.weights_seq_no: Optional[int] = None
-
-        logger.debug(
-            "Created rollout worker with env {} ({}), policies {}".format(
-                self.async_env, self.env, self.policy_map
-            )
-        )
 
     @override(EnvRunner)
     def assert_healthy(self):
@@ -2013,8 +2004,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
     def _get_make_sub_env_fn(
         self, env_creator, env_context, validate_env, env_wrapper, seed
     ):
-        config = self.config
-
         def _make_sub_env_local(vector_index):
             # Used to created additional environments during environment
             # vectorization.
@@ -2024,20 +2013,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             env_ctx = env_context.copy_with_overrides(vector_index=vector_index)
             # Create the sub-env.
             env = env_creator(env_ctx)
-            # Validate first.
-            if not config.disable_env_checking:
-                try:
-                    check_env(env, config)
-                except Exception as e:
-                    logger.warning(
-                        "We've added a module for checking environments that "
-                        "are used in experiments. Your env may not be set up"
-                        "correctly. You can disable env checking for now by setting "
-                        "`disable_env_checking` to True in your experiment config "
-                        "dictionary. You can run the environment checking module "
-                        "standalone by calling ray.rllib.utils.check_env(env)."
-                    )
-                    raise e
             # Custom validation function given by user.
             if validate_env is not None:
                 validate_env(env, env_ctx)

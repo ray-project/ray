@@ -29,9 +29,6 @@ config = (
             "p_crash": 0.0005,  # prob to crash during step()
             "p_crash_reset": 0.005,  # prob to crash during reset()
         },
-        # Disable env checking. Env checker doesn't handle Exceptions from
-        # user envs, and will crash rollout worker.
-        disable_env_checking=True,
     )
     .rollouts(
         num_rollout_workers=4,
