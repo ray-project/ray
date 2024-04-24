@@ -112,9 +112,9 @@ class WorkerInterface {
 
   virtual void SetJobId(const JobID &job_id) = 0;
 
-  virtual ActorID GetAncestorDetachedActorId() const = 0;
+  virtual const ActorID &GetAncestorDetachedActorId() const = 0;
 
-  virtual void SetAncestorDetachedActorId(ActorID ancestor_detached_actor_id) = 0;
+  virtual void SetAncestorDetachedActorId(const ActorID &ancestor_detached_actor_id) = 0;
 
  protected:
   virtual void SetStartupToken(StartupToken startup_token) = 0;
@@ -209,9 +209,9 @@ class Worker : public WorkerInterface {
     lifetime_allocated_instances_ = allocated_instances;
   };
 
-  ActorID GetAncestorDetachedActorId() const { return ancestor_detached_actor_id_; }
+  const ActorID &GetAncestorDetachedActorId() const { return ancestor_detached_actor_id_; }
 
-  void SetAncestorDetachedActorId(ActorID ancestor_detached_actor_id) {
+  void SetAncestorDetachedActorId(const ActorID &ancestor_detached_actor_id) {
     ancestor_detached_actor_id_ = ancestor_detached_actor_id;
   }
 

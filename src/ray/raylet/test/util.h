@@ -155,6 +155,12 @@ class MockWorker : public WorkerInterface {
 
   void SetJobId(const JobID &job_id) override { job_id_ = job_id; }
 
+  const ActorID &GetAncestorDetachedActorId() const override { return ancestor_detached_actor_id_; }
+
+  void SetAncestorDetachedActorId(const ActorID &ancestor_detached_actor_id) override {
+    ancestor_detached_actor_id_ = ancestor_detached_actor_id;
+  }
+
  protected:
   void SetStartupToken(StartupToken startup_token) override {
     RAY_CHECK(false) << "Method unused";
@@ -175,6 +181,7 @@ class MockWorker : public WorkerInterface {
   int runtime_env_hash_;
   TaskID task_id_;
   JobID job_id_;
+  ActorID ancestor_detached_actor_id_;
 };
 
 }  // namespace raylet
