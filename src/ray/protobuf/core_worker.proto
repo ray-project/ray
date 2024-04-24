@@ -431,7 +431,7 @@ message CreateMutableObjectRequest {
 }
 
 message CreateMutableObjectReply {
-  bytes reader_ref = 1;
+  ObjectReference reader_ref = 1;
 }
 
 service CoreWorkerService {

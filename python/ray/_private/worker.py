@@ -2589,6 +2589,7 @@ def get(
         Exception: An exception is raised if the task that created the object
             or that created one of the objects raised an exception.
     """
+    print("wow\n")
     worker = global_worker
     worker.check_connected()
 

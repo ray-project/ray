@@ -97,6 +97,7 @@ class Channel:
         Returns:
             Channel: A wrapper around ray.ObjectRef.
         """
+        print("In the constructor\n")
         is_creator = False
         if _writer_ref is None:
             if not isinstance(buffer_size_bytes, int):
@@ -127,6 +128,7 @@ class Channel:
         self._buffer_size_bytes = buffer_size_bytes
         self._num_readers = num_readers
 
+        print("Created self._worker\n")
         self._worker = ray._private.worker.global_worker
         self._worker.check_connected()
 
@@ -163,18 +165,32 @@ class Channel:
                 self._worker_ids,
             )
         )
+        print(
+            "ensure_registered_as_writer, reader ref is " + str(self._reader_ref) + "\n"
+        )
         self._writer_registered = True
 
     def ensure_registered_as_reader(self):
+        print("ensure_registered_as_reader A\n")
         if self._reader_registered:
+            print("ensure_registered_as_reader ret early\n")
             return
 
+        print(
+            "ensure_registered_as_reader B, reader ref is "
+            + str(self._reader_ref)
+            + ", type is "
+            + str(type(self._reader_ref))
+            + "\n"
+        )
         # We're passing in the base ref created by the writer, but we should
         # get back the local ref that we are actually going to read from.
         self._worker.core_worker.experimental_channel_register_reader(
             self._reader_ref,
         )
+        print("ensure_registered_as_reader C\n")
         self._reader_registered = True
+        print("ensure_registered_as_reader D\n")
 
     @staticmethod
     def _deserialize_reader_channel(
@@ -258,8 +274,16 @@ class Channel:
         Returns:
             Any: The deserialized value.
         """
+        print("begin_read start\n")
         self.ensure_registered_as_reader()
-        return ray.get(self._reader_ref)
+        print(
+            "done registered, self._reader_ref type is "
+            + str(type(self._reader_ref))
+            + "\n"
+        )
+        ret = ray.get(self._reader_ref)
+        print("done with ray get\n")
+        return ret
 
     def end_read(self):
         """

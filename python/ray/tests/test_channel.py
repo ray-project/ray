@@ -50,8 +50,11 @@ def test_remote_reader(ray_start_cluster, remote):
         def read(self, num_reads):
             print("here to read\n")
             for i in range(num_reads):
+                print("iteration " + str(i) + "\n")
                 self._reader_chan.begin_read()
+                print("begin_read finished\n")
                 self._reader_chan.end_read()
+                print("end_read finished\n")
 
         def get_worker_id(self):
             worker = ray.worker.global_worker
@@ -69,9 +72,9 @@ def test_remote_reader(ray_start_cluster, remote):
     channel = ray_channel.Channel(reader_node_id, 1000, worker_ids, num_readers)
     print("blah B\n")
 
+    print("Pass channel to readers, " + str(len(readers)) + "\n")
     # All readers have received the channel.
-    for reader in readers:
-        ray.get([reader.pass_channel.remote(channel)])
+    ray.get([reader.pass_channel.remote(channel) for reader in readers])
 
     # ray.get([reader.send_channel.remote(reader_channel) for reader in readers])
     for j in range(num_iterations):

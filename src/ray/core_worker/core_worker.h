@@ -735,7 +735,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::vector<std::string> &worker_ids,
       int buffer_size_bytes,
       int64_t num_readers,
-      ObjectID &reader_ref);
+      rpc::ObjectReference &reader_ref);
 
   /// Get a list of objects from the object store. Objects that failed to be retrieved
   /// will be returned as nullptrs.

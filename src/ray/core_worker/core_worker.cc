@@ -20,6 +20,8 @@
 
 #include <google/protobuf/util/json_util.h>
 
+#include <fstream>
+
 #include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_format.h"
 #include "boost/fiber/all.hpp"
@@ -1468,7 +1470,7 @@ Status CoreWorker::ExperimentalRegisterMutableObjectReaderRemote(
     const std::vector<std::string> &worker_ids,
     int buffer_size_bytes,
     int64_t num_readers,
-    ObjectID &reader_ref) {
+    rpc::ObjectReference &reader_ref) {
   for (const std::string &worker_id_hex : worker_ids) {
     WorkerID worker_id = WorkerID::FromHex(worker_id_hex);
     rpc::Address addr;
@@ -1508,7 +1510,7 @@ Status CoreWorker::ExperimentalRegisterMutableObjectReaderRemote(
           [&reader_ref, &promise](const Status &status,
                                   const rpc::CreateMutableObjectReply &reply) {
             RAY_CHECK(status.ok());
-            reader_ref = ObjectID::FromBinary(reply.reader_ref());
+            reader_ref = reply.reader_ref();
             promise.set_value();
           });
       promise.get_future().wait();
@@ -1519,7 +1521,12 @@ Status CoreWorker::ExperimentalRegisterMutableObjectReaderRemote(
 }
 
 Status CoreWorker::ExperimentalRegisterMutableObjectReader(const ObjectID &object_id) {
+  std::ofstream f;
+  f.open("/tmp/blah", std::ofstream::app);
+
+  f << "in core worker A" << std::endl;
   experimental_mutable_object_provider_->RegisterReaderChannel(object_id);
+  f << "in core worker B" << std::endl;
   return Status::OK();
 }
 
@@ -4115,29 +4122,31 @@ void CoreWorker::HandleKillActor(rpc::KillActorRequest request,
 void CoreWorker::HandleCreateMutableObject(rpc::CreateMutableObjectRequest request,
                                            rpc::CreateMutableObjectReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
-  ObjectID reader_ref;
+  ObjectID reader_id;
   std::shared_ptr<Buffer> data;
   Status s = CreateOwnedAndIncrementLocalRef(
       /*is_experimental_mutable_object=*/true,
       /*metadata=*/std::make_shared<LocalMemoryBuffer>(/*size=*/0),
       /*data_size=*/request.buffer_size_bytes(),
       /*contained_object_ids=*/{},
-      /*object_id=*/&reader_ref,
+      /*object_id=*/&reader_id,
       /*data=*/&data,
       /*created_by_worker=*/true,
       /*owner_address=*/nullptr,
       /*inline_small_object=*/true);
   RAY_CHECK(s.ok());
-  s = SealOwned(reader_ref, /*pin_object=*/true, /*owner_address=*/nullptr);
+  s = SealOwned(reader_id, /*pin_object=*/true, /*owner_address=*/nullptr);
   RAY_CHECK(s.ok());
-  reply->set_reader_ref(reader_ref.Binary());
+
+  reply->mutable_reader_ref()->set_object_id(reader_id.Binary());
+  reply->mutable_reader_ref()->mutable_owner_address()->CopyFrom(rpc_address_);
 
   {
     local_raylet_client_->RegisterMutableObjectReader(
         ObjectID::FromBinary(request.object_id()),
         request.num_readers(),
         request.buffer_size_bytes(),
-        reader_ref,
+        reader_id,
         [send_reply_callback](const Status &status,
                               const rpc::RegisterMutableObjectReply &r) {
           RAY_CHECK(status.ok());

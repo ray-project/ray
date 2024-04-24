@@ -3677,7 +3677,7 @@ cdef class CoreWorker:
                                              worker_ids):
         cdef:
             CObjectID c_writer_ref = writer_ref.native()
-            CObjectID c_reader_ref
+            CObjectReference c_reader_ref
             CNodeID c_node_id = CNodeID.FromHex(reader_node_id)
             c_vector[c_string] c_worker_ids = WorkerRefsToVector(worker_ids)
 
@@ -3695,13 +3695,14 @@ cdef class CoreWorker:
                              num_readers,
                              c_reader_ref
                              ))
-        return c_reader_ref.Binary()
+        return ObjectRef(c_reader_ref.object_id(),
+                         c_reader_ref.owner_address().SerializeAsString(),
+                         c_reader_ref.call_site())
 
-    def experimental_channel_register_reader(
-            self,
-            ObjectRef object_ref):
+    def experimental_channel_register_reader(self, object_ref):
+        print("Hello, object_ref is " + str(object_ref) + "\n")
         cdef:
-            CObjectID c_object_id = object_ref.native()
+            CObjectID c_object_id = CObjectID.FromBinary(object_ref)
 
         with nogil:
             check_status(
