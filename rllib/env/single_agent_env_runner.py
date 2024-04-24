@@ -615,14 +615,14 @@ class SingleAgentEnvRunner(EnvRunner):
             # For some metrics, log min/max as well.
             self.metrics.log_dict(
                 {
-                    "episode_length_min": episode_length,
+                    "episode_len_min": episode_length,
                     "episode_return_min": episode_return,
                 },
                 reduce="min",
             )
             self.metrics.log_dict(
                 {
-                    "episode_length_max": episode_length,
+                    "episode_len_max": episode_length,
                     "episode_return_max": episode_return,
                 },
                 reduce="max",

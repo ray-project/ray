@@ -333,7 +333,7 @@ class MultiAgentEnvRunner(EnvRunner):
 
             # Episode is done for all agents. Wrap up the old one and create a new
             # one (and reset it) to continue.
-            if self._all_agents_done(terminateds, truncateds):
+            if self._episode.is_done:
                 # We have to perform an extra env-to-module pass here, just in case
                 # the user's connector pipeline performs (permanent) transforms
                 # on each observation (including this final one here). Without such
@@ -508,6 +508,25 @@ class MultiAgentEnvRunner(EnvRunner):
                 actions_for_env[0]
             )
 
+            ts += self.num_envs
+            self.metrics.log_dict(
+                {
+                    NUM_ENV_STEPS_SAMPLED: self.num_envs,
+                    # TODO (sven): obs is not-vectorized. Support vectorized MA envs.
+                    NUM_AGENT_STEPS_SAMPLED: {str(aid): 1 for aid in obs},
+                },
+                reduce="sum",
+                reset_on_reduce=True,
+            )
+            self.metrics.log_dict(
+                {
+                    NUM_ENV_STEPS_SAMPLED_LIFETIME: self.num_envs,
+                    # TODO (sven): obs is not-vectorized. Support vectorized MA envs.
+                    NUM_AGENT_STEPS_SAMPLED_LIFETIME: {str(aid): 1 for aid in obs},
+                },
+                reduce="sum",
+            )
+
             # Add render data if needed.
             if with_render_data:
                 render_image = self.env.render()
@@ -547,7 +566,7 @@ class MultiAgentEnvRunner(EnvRunner):
             #   2. There are edge cases like, some agents terminated, all others
             #       truncated and vice versa.
             # See also `MultiAgentEpisode` for handling the `__all__`.
-            if self._all_agents_done(terminateds, truncateds, episode=_episode):
+            if _episode.is_done:
                 # Increase episode count.
                 eps += 1
 
@@ -575,24 +594,6 @@ class MultiAgentEnvRunner(EnvRunner):
 
                 # Make `on_episode_start` callback.
                 self._make_on_episode_callback("on_episode_start", _episode)
-            ts += self.num_envs
-            self.metrics.log_dict(
-                {
-                    NUM_ENV_STEPS_SAMPLED: self.num_envs,
-                    # TODO (sven): obs is not-vectorized. Support vectorized MA envs.
-                    NUM_AGENT_STEPS_SAMPLED: {str(aid): 1 for aid in obs},
-                },
-                reduce="sum",
-                reset_on_reduce=True,
-            )
-            self.metrics.log_dict(
-                {
-                    NUM_ENV_STEPS_SAMPLED_LIFETIME: self.num_envs,
-                    # TODO (sven): obs is not-vectorized. Support vectorized MA envs.
-                    NUM_AGENT_STEPS_SAMPLED_LIFETIME: {str(aid): 1 for aid in obs},
-                },
-                reduce="sum",
-            )
 
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
 
@@ -644,21 +645,21 @@ class MultiAgentEnvRunner(EnvRunner):
                     # Per-RLModule returns.
                     "module_episode_returns_mean": module_episode_returns,
                 },
-                # To mimick the old API stack behavior, we'll use window=100 here for
+                # To mimick the old API stack behavior, we'll use `window` here for
                 # these particular stats (instead of the default EMA).
                 window=self.config.metrics_num_episodes_for_smoothing,
             )
             # For some metrics, log min/max as well.
             self.metrics.log_dict(
                 {
-                    "episode_length_min": episode_length,
+                    "episode_len_min": episode_length,
                     "episode_return_min": episode_return,
                 },
                 reduce="min",
             )
             self.metrics.log_dict(
                 {
-                    "episode_length_max": episode_length,
+                    "episode_len_max": episode_length,
                     "episode_return_max": episode_return,
                 },
                 reduce="max",
@@ -669,8 +670,7 @@ class MultiAgentEnvRunner(EnvRunner):
             NUM_EPISODES,
             len(self._done_episodes_for_metrics),
             reduce="sum",
-            # Reset internal data on `reduce()` call below (not a lifetime count).
-            reset_on_reduce=True,
+            reset_on_reduce=True,  # Not a lifetime count.
         )
 
         # Now that we have logged everything, clear cache of done episodes.
@@ -871,41 +871,3 @@ class MultiAgentEnvRunner(EnvRunner):
             rl_module=self.module,
             env_index=0,
         )
-
-    def _all_agents_done(self, terminateds, truncateds, episode=None):
-        """Determines, if all agents are either terminated or truncated
-
-        Note, this is not determined by the `__all__` in an `MultiAgentEnv`
-        as this does not cover the case, if some agents are truncated and
-        all the others are terminated and vice versa.
-
-        Args:
-            terminateds: dict. A dictionary mapping an agent id to a
-                corresponding boolean indicating if the agent is terminated.
-            truncateds: dict. A dictionary mapping an agent id to a
-                corresponding boolean indicating if the agent is truncated.
-
-        Returns:
-            A boolean indicating if all agents are done.
-        """
-        episode = episode or self._episode
-
-        # CASE 1: all agents are terminated or all are truncated.
-        if terminateds["__all__"] or truncateds["__all__"]:
-            return True
-        # TODO (simon): Refactor into `MultiAgentEpisode`.
-        # Find all agents that were done at prior timesteps.
-        agents_done = [
-            agent_id
-            for agent_id, agent_eps in episode.agent_episodes.items()
-            if agent_eps.is_done
-        ]
-        # Add the agents that are done at the present timestep.
-        agents_done += [agent_id for agent_id in terminateds if terminateds[agent_id]]
-        agents_done += [agent_id for agent_id in truncateds if truncateds[agent_id]]
-        # CASE 2: some agents are truncated and the others are terminated.
-        if all(agent_id in set(agents_done) for agent_id in episode.agent_ids):
-            return True
-        # CASE 3: there are still some agents alive.
-        else:
-            return False
