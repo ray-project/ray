@@ -106,9 +106,10 @@ class PublisherTest : public ::testing::Test {
     if (max_processed_sequence_id >= 0) {
       request.set_max_processed_sequence_id(max_processed_sequence_id);
     }
-    rpc::SendReplyCallback send_reply_callback = [](Status status,
-                                                    std::function<void()> success,
-                                                    std::function<void()> failure) {};
+    rpc::SendReplyCallback send_reply_callback = [reply](Status status,
+                                                         std::function<void()> success,
+                                                         std::function<void()> failure) {
+    };
     subscriber->ConnectToSubscriber(request, reply.get(), send_reply_callback);
     subscriber->PublishIfPossible();
     return reply;
