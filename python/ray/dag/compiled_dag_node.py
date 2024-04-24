@@ -18,8 +18,8 @@ from ray.experimental.channel import (
 )
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
-from ray.experimental.torch_serializer import (
-    TorchTensor,
+from ray.dag.experimental.types import (
+    TorchTensorType,
     _TorchTensorWrapper,
     _TorchTensorSerializer,
 )
@@ -196,28 +196,15 @@ class CompiledTask:
 
         self.downstream_node_idxs = set()
         self.output_channel = None
-        self.output_tensor_meta = None
+
         self.output_wrapper_fn = None
-
-        self.process_gpu_tensors()
-
-    def set_tensor_output(self, output_tensor_meta):
-        self.output_tensor_meta = output_tensor_meta
-        self.output_wrapper_fn = lambda t: _TorchTensorWrapper(t, **output_tensor_meta)
-
-    def process_gpu_tensors(self):
-        processed_args = []
-
-        # Replace GPU tensor placeholders with the DAG node that they wrap.
-        for i, arg in enumerate(self.dag_node.get_args()):
-            if isinstance(arg, TorchTensor):
-                # Overwrite the wrapped args with the actual DAG node.
-                processed_args.append(arg.get_dag_node())
-                self.arg_idx_to_tensor_meta[i] = arg.get_tensor_meta()
-            else:
-                processed_args.append(arg)
-
-        self.dag_node._bound_args = tuple(processed_args)
+        if self.dag_node.type_hint is not None:
+            if isinstance(self.dag_node.type_hint, TorchTensorType):
+                # Wrap outputs produced by this task to indicate that it
+                # should be specially serialized.
+                self.output_wrapper_fn = lambda t: _TorchTensorWrapper(
+                    t, self.dag_node.type_hint
+                )
 
     def arg_tensor_meta(self, arg_idx) -> Dict[str, Any]:
         if arg_idx not in self.arg_idx_to_tensor_meta:
@@ -384,17 +371,6 @@ class CompiledDAG:
                 if isinstance(arg, DAGNode):
                     arg_node_idx = self.dag_node_to_idx[arg]
                     self.idx_to_task[arg_node_idx].downstream_node_idxs.add(node_idx)
-
-                maybe_tensor_meta = task.arg_tensor_meta(arg_idx)
-                if maybe_tensor_meta is not None:
-                    arg_node_idx = self.dag_node_to_idx[arg]
-                    node = self.idx_to_task[arg_node_idx]
-                    if node.output_tensor_meta is not None:
-                        assert maybe_tensor_meta == node.output_tensor_meta
-                    else:
-                        # Wrap outputs produced by this task to indicate that
-                        # it should be specially serialized.
-                        node.set_tensor_output(maybe_tensor_meta)
 
         for actor_id, task_count in self.actor_task_count.items():
             if task_count > 1:

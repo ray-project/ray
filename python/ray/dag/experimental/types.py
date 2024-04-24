@@ -1,28 +1,20 @@
-from typing import Any, Dict, Tuple
+from typing import Tuple
 
 import numpy as np
 import torch
 
-import ray
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
+class DAGNodeOutputType:
+    pass
+
+
 @PublicAPI(stability="alpha")
-class TorchTensor:
-    def __init__(
-        self, dag_node: "ray.dag.DAGNode", shape: Tuple[int], dtype: "torch.dtype"
-    ):
-        self.dag_node = dag_node
-        self.tensor_meta = {
-            "expected_shape": shape,
-            "expected_dtype": dtype,
-        }
-
-    def get_dag_node(self):
-        return self.dag_node
-
-    def get_tensor_meta(self) -> Dict[str, Any]:
-        return self.tensor_meta
+class TorchTensorType:
+    def __init__(self, shape: Tuple[int], dtype: "torch.dtype"):
+        self.shape = shape
+        self.dtype = dtype
 
 
 @DeveloperAPI
@@ -30,24 +22,23 @@ class _TorchTensorWrapper:
     def __init__(
         self,
         tensor: "torch.Tensor",
-        expected_shape: Tuple[int],
-        expected_dtype: "torch.dtype",
+        typ: TorchTensorType,
     ):
         if not isinstance(tensor, torch.Tensor):
             raise ValueError(
                 "DAG nodes wrapped with ray.experimental.TorchTensor must return a "
                 "torch.Tensor."
             )
-        if tensor.shape != expected_shape:
+        if tensor.shape != typ.shape:
             raise ValueError(
                 "DAG node wrapped with ray.experimental.TorchTensor(shape="
-                f"{expected_shape}) returned "
+                f"{typ.shape}) returned "
                 f"a torch.Tensor of the shape {tensor.shape}"
             )
-        if tensor.dtype != expected_dtype:
+        if tensor.dtype != typ.dtype:
             raise ValueError(
                 "DAG node wrapped with ray.experimental.TorchTensor(dtype="
-                f"{expected_dtype}) returned "
+                f"{typ.dtype}) returned "
                 f"a torch.Tensor of the dtype {tensor.dtype}"
             )
 

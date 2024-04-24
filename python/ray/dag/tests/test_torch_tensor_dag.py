@@ -12,7 +12,7 @@ import ray.cluster_utils
 from ray.dag import InputNode
 from ray.tests.conftest import *  # noqa
 
-from ray.experimental import TorchTensor
+from ray.dag.experimental.types import TorchTensorType
 
 
 logger = logging.getLogger(__name__)
@@ -46,7 +46,7 @@ def test_torch_tensor_p2p(ray_start_regular_shared, use_gpu):
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
         dag = sender.send.bind(shape, dtype, inp)
-        dag = TorchTensor(dag, shape, dtype)
+        dag = dag.with_type_hint(TorchTensorType(shape, dtype))
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
@@ -62,7 +62,7 @@ def test_torch_tensor_p2p(ray_start_regular_shared, use_gpu):
     # Passing tensors of the wrong shape will error.
     with InputNode() as inp:
         dag = sender.send.bind(shape, dtype, inp)
-        dag = TorchTensor(dag, (20,), dtype)
+        dag = dag.with_type_hint(TorchTensorType((20,), dtype))
         dag = receiver.recv.bind(dag)
     compiled_dag = dag.experimental_compile()
     output_channel = compiled_dag.execute(i)
@@ -73,7 +73,7 @@ def test_torch_tensor_p2p(ray_start_regular_shared, use_gpu):
     # Passing tensors of the wrong dtype will error.
     with InputNode() as inp:
         dag = sender.send.bind(shape, dtype, inp)
-        dag = TorchTensor(dag, shape, dtype=torch.float32)
+        dag = dag.with_type_hint(TorchTensorType(shape, dtype=torch.float32))
         dag = receiver.recv.bind(dag)
     compiled_dag = dag.experimental_compile()
     output_channel = compiled_dag.execute(i)
@@ -90,7 +90,7 @@ def test_torch_tensor_as_dag_input(ray_start_regular_shared):
 
     # Test torch.Tensor as input.
     with InputNode() as inp:
-        torch_inp = TorchTensor(inp, shape, dtype)
+        torch_inp = inp.with_type_hint(shape, dtype)
         dag = receiver.recv.bind(torch_inp)
 
     compiled_dag = dag.experimental_compile()
