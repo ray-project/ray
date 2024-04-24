@@ -1590,13 +1590,6 @@ py_test(
 )
 
 py_test(
-    name = "test_check_env",
-    tags = ["team:rllib", "utils"],
-    size = "small",
-    srcs = ["utils/tests/test_check_env.py"]
-)
-
-py_test(
     name = "test_check_multi_agent",
     tags = ["team:rllib", "utils"],
     size = "small",
@@ -1625,13 +1618,6 @@ py_test(
     size = "medium",
     srcs = ["tests/backward_compat/test_backward_compat.py"],
     data = glob(["tests/backward_compat/checkpoints/**"]),
-)
-
-py_test(
-    name = "tests/backward_compat/test_gym_env_apis",
-    tags = ["team:rllib", "env"],
-    size = "large",
-    srcs = ["tests/backward_compat/test_gym_env_apis.py"]
 )
 
 py_test(
