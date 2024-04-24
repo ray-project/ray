@@ -1077,14 +1077,8 @@ class Algorithm(Trainable, AlgorithmBase):
             )
             eval_results[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps
             eval_results[NUM_ENV_STEPS_SAMPLED_THIS_ITER] = env_steps
-            eval_results["timesteps_this_iter"] = eval_results.get(
-                NUM_ENV_STEPS_SAMPLED_THIS_ITER, 0
-            )
-            self._counters[
-                NUM_ENV_STEPS_SAMPLED_FOR_EVALUATION_THIS_ITER
-            ] = eval_results.get("sampler_results", {}).get(
-                "episodes_timesteps_total", 0
-            )
+            eval_results["timesteps_this_iter"] = env_steps
+            self._counters[NUM_ENV_STEPS_SAMPLED_FOR_EVALUATION_THIS_ITER] = env_steps
 
         # Compute off-policy estimates
         if not self.config.custom_evaluation_function:
