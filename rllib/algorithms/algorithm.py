@@ -3312,7 +3312,8 @@ class Algorithm(Trainable, AlgorithmBase):
             and not eval_config.ope_split_batch_by_episode
         )
         return not run_offline_evaluation and (
-            eval_config.evaluation_num_env_runners > 0 or eval_config.evaluation_interval
+            eval_config.evaluation_num_env_runners > 0
+            or eval_config.evaluation_interval
         )
 
     def _compile_iteration_results(

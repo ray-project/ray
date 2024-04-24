@@ -39,7 +39,6 @@ from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import deep_update, merge_dicts
 from ray.rllib.utils.annotations import (
-    ExperimentalAPI,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.deprecation import (
@@ -606,7 +605,9 @@ class AlgorithmConfig(_Config):
         config["custom_eval_function"] = config.pop("custom_evaluation_function", None)
         config["framework"] = config.pop("framework_str", None)
         config["num_cpus_for_driver"] = config.pop("num_cpus_for_local_worker", 1)
-        config["num_workers"] = config.pop("num_env_runners", config.pop("num_rollout_workers", 0))
+        config["num_workers"] = config.pop(
+            "num_env_runners", config.pop("num_rollout_workers", 0)
+        )
 
         # Simplify: Remove all deprecated keys that have as value `DEPRECATED_VALUE`.
         # These would be useless in the returned dict anyways.
@@ -884,8 +885,8 @@ class AlgorithmConfig(_Config):
             # Unsupported return value.
             else:
                 raise ValueError(
-                    "`AlgorithmConfig.env_runners(env_to_module_connector=..)` must return"
-                    " a ConnectorV2 object or a list thereof (to be added to a "
+                    "`AlgorithmConfig.env_runners(env_to_module_connector=..)` must "
+                    "return a ConnectorV2 object or a list thereof (to be added to a "
                     f"pipeline)! Your function returned {val_}."
                 )
 
@@ -950,8 +951,8 @@ class AlgorithmConfig(_Config):
             # Unsupported return value.
             else:
                 raise ValueError(
-                    "`AlgorithmConfig.env_runners(module_to_env_connector=..)` must return"
-                    " a ConnectorV2 object or a list thereof (to be added to a "
+                    "`AlgorithmConfig.env_runners(module_to_env_connector=..)` must "
+                    "return a ConnectorV2 object or a list thereof (to be added to a "
                     f"pipeline)! Your function returned {val_}."
                 )
 
@@ -1526,7 +1527,6 @@ class AlgorithmConfig(_Config):
         rollout_fragment_length: Optional[Union[int, str]] = NotProvided,
         batch_mode: Optional[str] = NotProvided,
         explore: Optional[bool] = NotProvided,
-
         # @OldAPIStack settings.
         exploration_config: Optional[dict] = NotProvided,  # @OldAPIStack
         create_env_on_local_worker: Optional[bool] = NotProvided,  # @OldAPIStack
@@ -1538,7 +1538,6 @@ class AlgorithmConfig(_Config):
         observation_filter: Optional[str] = NotProvided,  # @OldAPIStack
         enable_tf1_exec_eagerly: Optional[bool] = NotProvided,  # @OldAPIStack
         sampler_perf_stats_ema_coef: Optional[float] = NotProvided,  # @OldAPIStack
-
         # Deprecated args.
         num_rollout_workers=DEPRECATED_VALUE,
         num_envs_per_worker=DEPRECATED_VALUE,
@@ -3054,7 +3053,8 @@ class AlgorithmConfig(_Config):
                 if self.evaluation_duration == "auto"
                 else int(
                     math.ceil(
-                        self.evaluation_duration / (self.evaluation_num_env_runners or 1)
+                        self.evaluation_duration
+                        / (self.evaluation_num_env_runners or 1)
                     )
                 )
             )
@@ -3902,7 +3902,10 @@ class AlgorithmConfig(_Config):
         # `evaluation_parallel_to_training=True`, warn that you need
         # at least one remote eval worker for parallel training and
         # evaluation, and set `evaluation_parallel_to_training` to False.
-        if self.evaluation_num_env_runners == 0 and self.evaluation_parallel_to_training:
+        if (
+            self.evaluation_num_env_runners == 0
+            and self.evaluation_parallel_to_training
+        ):
             raise ValueError(
                 "`evaluation_parallel_to_training` can only be done if "
                 "`evaluation_num_env_runners` > 0! Try setting "
@@ -4073,7 +4076,7 @@ class AlgorithmConfig(_Config):
     # TODO (sven): Once everything is on the new API stack, we won't need this method
     #  anymore.
     def _validate_to_be_deprecated_settings(self):
-        # Env task fn will be deprecated.
+        # `env_task_fn` will be deprecated.
         if self._enable_new_api_stack and self.env_task_fn is not None:
             deprecation_warning(
                 old="AlgorithmConfig.env_task_fn",
@@ -4083,16 +4086,16 @@ class AlgorithmConfig(_Config):
                 "script for more information: "
                 "https://github.com/ray-project/ray/blob/master/rllib/examples/curriculum/curriculum_learning.py",  # noqa
             )
-        # Render_env
-        if self._enable_new_api_stack and self.render_env is not False:
-            deprecation_warning(
-                old="AlgorithmConfig.render_env",
-                help="The `render_env` setting is not supported on the new API stack! "
-                "Take a look at the new rendering example here for how to create videos "
-                "of your envs and send them to WandB: "
-                "https://github.com/ray-project/ray/blob/master/rllib/examples/metrics/",
-                ssdsd TODO ^^
-            )
+        # `render_env` will be deprecated
+        # TODO (sven): Uncomment once example is translated to new API stack.
+        # if self._enable_new_api_stack and self.render_env is not False:
+        #    deprecation_warning(
+        #        old="AlgorithmConfig.render_env",
+        #        help="The `render_env` setting is not supported on the new API stack! "
+        #        "Take a look at the new rendering example here for how to create
+        #        videos of your envs and send them to WandB: "
+        #        "https://github.com/ray-project/ray/blob/master/rllib/examples/envs/env_rendering_and_recording.py",  # noqa
+        #    )
 
         if self.preprocessor_pref not in ["rllib", "deepmind", None]:
             raise ValueError(

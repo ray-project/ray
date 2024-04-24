@@ -417,7 +417,8 @@ class DQNConfig(AlgorithmConfig):
             raise ValueError(
                 f"Your `rollout_fragment_length` ({self.rollout_fragment_length}) is "
                 f"smaller than `n_step` ({self.n_step})! "
-                f"Try setting config.env_runners(rollout_fragment_length={self.n_step})."
+                "Try setting config.env_runners(rollout_fragment_length="
+                f"{self.n_step})."
             )
 
         # TODO (simon): Find a clean solution to deal with

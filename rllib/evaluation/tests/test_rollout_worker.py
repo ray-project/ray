@@ -866,7 +866,9 @@ class TestRolloutWorker(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda _: MockVectorEnv(20, mocked_num_envs=8),
             default_policy_class=MockPolicy,
-            config=AlgorithmConfig().env_runners(num_rollout_workers=0).debugging(seed=1),
+            config=AlgorithmConfig()
+            .env_runners(num_rollout_workers=0)
+            .debugging(seed=1),
         )
         assert not hasattr(ev.env, "seed")
         ev.stop()
