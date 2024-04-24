@@ -7,6 +7,7 @@ from pathlib import Path
 
 import click
 
+from ray_release.aws import maybe_fetch_api_token
 from ray_release.buildkite.filter import filter_tests, group_tests
 from ray_release.buildkite.settings import get_pipeline_settings
 from ray_release.buildkite.step import get_step_for_test_group
@@ -69,6 +70,7 @@ def main(
         os.path.dirname(__file__), "..", "configs", global_config
     )
     init_global_config(global_config_file)
+    maybe_fetch_api_token()
     settings = get_pipeline_settings()
 
     tmpdir = None
