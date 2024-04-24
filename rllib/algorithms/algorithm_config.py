@@ -363,10 +363,6 @@ class AlgorithmConfig(_Config):
         self.use_worker_filter_stats = True
         self.enable_connectors = True
         self.sampler_perf_stats_ema_coef = None
-        # Deprecated args.
-        self.num_rollout_workers = DEPRECATED_VALUE
-        self.num_envs_per_worker = DEPRECATED_VALUE
-        self.validate_workers_after_construction = DEPRECATED_VALUE
 
         # `self.training()`
         self.gamma = 0.99
@@ -4370,6 +4366,48 @@ class AlgorithmConfig(_Config):
     @Deprecated(new="AlgorithmConfig.env_runners(..)", error=False)
     def exploration(self, *args, **kwargs):
         return self.env_runners(*args, **kwargs)
+
+    @Deprecated(new="AlgorithmConfig.num_env_runners", error=False)
+    @property
+    def num_rollout_workers(self):
+        return self.num_env_runners
+
+    @num_rollout_workers.setter
+    def num_rollout_workers(self, value):
+        deprecation_warning(
+            old="AlgorithmConfig.num_rollout_workers",
+            new="AlgorithmConfig.num_env_runners",
+            error=True,
+        )
+
+    @Deprecated(new="AlgorithmConfig.num_envs_per_env_runner", error=False)
+    @property
+    def num_envs_per_worker(self):
+        return self.num_envs_per_env_runner
+
+    @num_envs_per_worker.setter
+    def num_envs_per_worker(self, value):
+        deprecation_warning(
+            old="AlgorithmConfig.num_envs_per_worker",
+            new="AlgorithmConfig.num_envs_per_env_runner",
+            error=True,
+        )
+
+    @Deprecated(
+        new="AlgorithmConfig.validate_env_runners_after_construction",
+        error=False,
+    )
+    @property
+    def validate_workers_after_construction(self):
+        return self.validate_env_runners_after_construction
+
+    @validate_workers_after_construction.setter
+    def validate_workers_after_construction(self, value):
+        deprecation_warning(
+            old="AlgorithmConfig.validate_workers_after_construction",
+            new="AlgorithmConfig.validate_env_runners_after_construction",
+            error=True,
+        )
 
 
 class TorchCompileWhatToCompile(str, Enum):
