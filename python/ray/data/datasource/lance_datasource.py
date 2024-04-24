@@ -2,13 +2,14 @@ import logging
 from typing import List, Optional
 
 import lance
-import pyarrow as pa
 from lance import LanceFragment
 
 from ray.data import ReadTask
 from ray.data.block import Block, BlockMetadata
 from ray.data.datasource import Datasource
 from ray.util.annotations import DeveloperAPI
+
+import pyarrow as pa
 
 logger = logging.getLogger(__name__)
 
@@ -45,16 +46,10 @@ class LanceDatasource(Datasource):
         # To begin with, read one Fragment at a time
         # Each Ray Data Block contains a Pandas RecordBatch
         def _read_single_fragment(fragment: LanceFragment) -> Block:
-            # Fetch batches from the fragment
+            # Fetch table from the fragment
             batches = fragment.to_batches(columns=self.columns, filter=self.filter)
-
-            # Convert the generator of RecordBatch objects to a list
-            batches_list = list(batches)
-
-            # Convert the list of RecordBatch objects to a Table
-            table = pa.Table.from_batches(batches_list)
-
-            return table
+            for batch in batches:
+                yield pa.Table.from_batches([batch])
 
         read_tasks = []
         for fragment in self.fragments:
