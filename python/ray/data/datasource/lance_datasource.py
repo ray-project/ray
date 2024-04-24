@@ -1,11 +1,10 @@
 import logging
-from typing import TYPE_CHECKING, List, Optional, Iterator
+from typing import TYPE_CHECKING, Iterator, List, Optional
 
 import lance
-from lance import LanceFragment
-
-import pyarrow as pa
 import numpy as np
+import pyarrow as pa
+from lance import LanceFragment
 
 from ray.data import ReadTask
 from ray.data.block import BlockMetadata
@@ -47,7 +46,7 @@ class LanceDatasource(Datasource):
         self.fragments = self.lance_ds.get_fragments()
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
-        # To begin with, read one Fragment at a time
+        # Read multiple fragments in parallel
         # Each Ray Data Block contains a Pandas RecordBatch
         def _read_fragments(
             fragments: List[LanceFragment],
