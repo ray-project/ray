@@ -98,7 +98,7 @@ def synchronous_parallel_sample(
                 (
                     (lambda w: w.sample())
                     if not _return_metrics
-                    else (lambda w: (w.sample(), w.get_metrics))
+                    else (lambda w: (w.sample(), w.get_metrics()))
                 ),
                 local_worker=False,
                 healthy_only=True,
@@ -123,8 +123,8 @@ def synchronous_parallel_sample(
                 break
 
             if _return_metrics:
-                sampled_data = [s[0] for s in sampled_data]
                 stats_dicts = [s[1] for s in sampled_data]
+                sampled_data = [s[0] for s in sampled_data]
 
         # Update our counters for the stopping criterion of the while loop.
         if _return_metrics:
