@@ -2126,7 +2126,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       /*generator_backpressure_num_objects*/
                       task_options.generator_backpressure_num_objects,
                       /*enable_task_event*/ task_options.enable_task_events);
-  std::optional<ActorID> ancestor_detached_actor_id;
+  ActorID ancestor_detached_actor_id;
   if (!worker_context_.GetAncestorDetachedActorID().IsNil()) {
     ancestor_detached_actor_id = worker_context_.GetAncestorDetachedActorID();
   }
@@ -2239,7 +2239,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_creation_options.enable_task_events);
   std::string serialized_actor_handle;
   actor_handle->Serialize(&serialized_actor_handle);
-  std::optional<ActorID> ancestor_detached_actor_id;
+  ActorID ancestor_detached_actor_id;
   if (is_detached) {
     ancestor_detached_actor_id = actor_id;
   } else if (!worker_context_.GetAncestorDetachedActorID().IsNil()) {
