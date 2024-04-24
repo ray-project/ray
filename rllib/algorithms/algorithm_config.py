@@ -21,6 +21,7 @@ from packaging import version
 
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.core.rl_module import INFERENCE_ONLY
 from ray.rllib.core.rl_module.marl_module import (
     DEFAULT_MODULE_ID,
     MultiAgentRLModuleSpec,
@@ -480,6 +481,13 @@ class AlgorithmConfig(_Config):
         self.log_sys_usage = True
         self.fake_sampler = False
         self.seed = None
+        # TODO (sven): Remove these settings again in the future. We only need them
+        #  to debug a quite complex, production memory leak, possibly related to
+        #  evaluation in parallel (when `training_step` is getting called inside a
+        #  thread). It's also possible that the leak is not caused by RLlib itself,
+        #  but by Ray core, but we need more data to narrow this down.
+        self._run_training_always_in_thread = False
+        self._evaluation_parallel_to_training_wo_thread = False
 
         # `self.fault_tolerance()`
         self.ignore_worker_failures = False
@@ -2637,6 +2645,8 @@ class AlgorithmConfig(_Config):
         log_sys_usage: Optional[bool] = NotProvided,
         fake_sampler: Optional[bool] = NotProvided,
         seed: Optional[int] = NotProvided,
+        _run_training_always_in_thread: Optional[bool] = NotProvided,
+        _evaluation_parallel_to_training_wo_thread: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's debugging settings.
 
@@ -2657,6 +2667,15 @@ class AlgorithmConfig(_Config):
             seed: This argument, in conjunction with worker_index, sets the random
                 seed of each worker, so that identically configured trials will have
                 identical results. This makes experiments reproducible.
+            _run_training_always_in_thread: Runs the n `training_step()` calls per
+                iteration always in a separate thread (just as we would do with
+                `evaluation_parallel_to_training=True`, but even without evaluation
+                going on and even without evaluation workers being created in the
+                Algorithm).
+            _evaluation_parallel_to_training_wo_thread: Only relevant if
+                `evaluation_parallel_to_training` is True. Then, in order to achieve
+                parallelism, RLlib will not use a thread pool (as it usually does in
+                this situation).
 
         Returns:
             This updated AlgorithmConfig object.
@@ -2673,6 +2692,12 @@ class AlgorithmConfig(_Config):
             self.fake_sampler = fake_sampler
         if seed is not NotProvided:
             self.seed = seed
+        if _run_training_always_in_thread is not NotProvided:
+            self._run_training_always_in_thread = _run_training_always_in_thread
+        if _evaluation_parallel_to_training_wo_thread is not NotProvided:
+            self._evaluation_parallel_to_training_wo_thread = (
+                _evaluation_parallel_to_training_wo_thread
+            )
 
         return self
 
@@ -3407,6 +3432,7 @@ class AlgorithmConfig(_Config):
         single_agent_rl_module_spec: Optional[SingleAgentRLModuleSpec] = None,
         env: Optional[EnvType] = None,
         spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
+        inference_only: bool = False,
     ) -> MultiAgentRLModuleSpec:
         """Returns the MultiAgentRLModule spec based on the given policy spec dict.
 
@@ -3435,6 +3461,10 @@ class AlgorithmConfig(_Config):
                 EnvRunner. If not provided, will try to infer from `env`. Otherwise
                 from `self.observation_space` and `self.action_space`. If no
                 information on spaces can be inferred, will raise an error.
+            inference_only: If `True`, the module spec will be used in either
+                sampling or inference and can be built in its light version (if
+                available), i.e. it contains only the networks needed for acting in the
+                environment (no target or critic networks).
         """
         # TODO (Kourosh,sven): When we replace policy entirely there will be no need for
         #  this function to map policy_dict to marl_module_specs anymore. The module
@@ -3636,6 +3666,8 @@ class AlgorithmConfig(_Config):
                 module_spec.model_config_dict = (
                     self.model_config | module_spec.model_config_dict
                 )
+            # Set the `inference_only` flag for the module spec.
+            module_spec.model_config_dict[INFERENCE_ONLY] = inference_only
 
         return marl_module_spec
 
@@ -3759,7 +3791,7 @@ class AlgorithmConfig(_Config):
             A dictionary with the automatically included properties/settings of this
             `AlgorithmConfig` object into `self.model_config`.
         """
-        return MODEL_DEFAULTS
+        return MODEL_DEFAULTS | {"_inference_only": False}
 
     # -----------------------------------------------------------
     # Various validation methods for different types of settings.
@@ -4064,6 +4096,17 @@ class AlgorithmConfig(_Config):
     # TODO (sven): Once everything is on the new API stack, we won't need this method
     #  anymore.
     def _validate_to_be_deprecated_settings(self):
+        # Env task fn will be deprecated.
+        if self._enable_new_api_stack and self.env_task_fn is not None:
+            deprecation_warning(
+                old="AlgorithmConfig.env_task_fn",
+                help="The `env_task_fn` API is not supported on the new API stack! "
+                "Curriculum learning should instead be implemented solely via "
+                "custom callbacks. Check out our curriculum learning example "
+                "script for more information: "
+                "https://github.com/ray-project/ray/blob/master/rllib/examples/curriculum/curriculum_learning.py",  # noqa
+            )
+
         if self.preprocessor_pref not in ["rllib", "deepmind", None]:
             raise ValueError(
                 "`config.preprocessor_pref` must be either 'rllib', 'deepmind' or None!"

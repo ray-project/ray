@@ -177,7 +177,7 @@ Enter into the project directory, for example:
 
 .. code-block:: shell
 
-    cd ray
+  cd ray
 
 Now you can build the dashboard. From inside of your local Ray project directory enter into the dashboard client directory:
 
@@ -207,7 +207,9 @@ Enter into the ``python/`` directory inside of the Ray project directory and ins
 
   # Install Ray.
   cd python/
-  # You may need to set the following two env vars if your platform is MacOS ARM64(M1).
+  # Install required dependencies.
+  pip install -r requirements.txt
+  # You may need to set the following two env vars if you have a macOS ARM64(M1) platform.
   # See https://github.com/grpc/grpc/issues/25082 for more details.
   # export GRPC_PYTHON_BUILD_SYSTEM_OPENSSL=1
   # export GRPC_PYTHON_BUILD_SYSTEM_ZLIB=1

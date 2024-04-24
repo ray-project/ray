@@ -216,8 +216,7 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
       } else {
         // Get is_running_tasks from the core worker for the driver.
         auto client = core_worker_clients_.GetOrConnect(data.second.driver_address());
-        std::unique_ptr<rpc::NumPendingTasksRequest> request(
-            new rpc::NumPendingTasksRequest());
+        auto request = std::make_unique<rpc::NumPendingTasksRequest>();
         RAY_LOG(DEBUG) << "Send NumPendingTasksRequest to worker " << worker_id;
         client->NumPendingTasks(
             std::move(request),

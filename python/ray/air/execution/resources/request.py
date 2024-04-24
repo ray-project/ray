@@ -1,10 +1,9 @@
 import abc
 import json
 from copy import deepcopy
+from dataclasses import dataclass
 from inspect import signature
 from typing import Dict, List, Union
-
-from dataclasses import dataclass
 
 import ray
 from ray.util import placement_group
