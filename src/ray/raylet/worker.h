@@ -209,7 +209,9 @@ class Worker : public WorkerInterface {
     lifetime_allocated_instances_ = allocated_instances;
   };
 
-  const ActorID &GetAncestorDetachedActorId() const { return ancestor_detached_actor_id_; }
+  const ActorID &GetAncestorDetachedActorId() const {
+    return ancestor_detached_actor_id_;
+  }
 
   void SetAncestorDetachedActorId(const ActorID &ancestor_detached_actor_id) {
     ancestor_detached_actor_id_ = ancestor_detached_actor_id;
