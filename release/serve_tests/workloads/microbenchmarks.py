@@ -9,6 +9,7 @@ Throughput benchmarks:
     Calculate the average throughput achieved on 10 batches of requests.
 """
 import asyncio
+import click
 from functools import partial
 import json
 import logging
@@ -16,7 +17,7 @@ import logging
 import grpc
 import pandas as pd
 import requests
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from ray import serve
 from ray.serve._private.benchmarks.common import (
@@ -102,7 +103,7 @@ def convert_latencies_to_perf_metrics(name: str, latencies: pd.Series) -> List[D
     ]
 
 
-async def main():
+async def _main(output_path: Optional[str]):
     # Start and configure Serve
     serve.start(
         grpc_options=gRPCOptions(
@@ -198,8 +199,14 @@ async def main():
 
     logging.info(f"Perf metrics:\n {json.dumps(perf_metrics, indent=4)}")
     results = {"perf_metrics": perf_metrics}
-    save_test_results(results)
+    save_test_results(results, output_path=output_path)
+
+
+@click.command()
+@click.option("--output-path", "-o", type=str, default=None)
+def main(output_path: Optional[str]):
+    asyncio.run(_main(output_path))
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
