@@ -23,6 +23,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
     RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS,
+    RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_PERIOD_S,
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
     SERVE_LOGGER_NAME,
 )
@@ -164,7 +165,7 @@ class RouterMetricsManager:
             )
 
     @property
-    def curr_autoscaling_config(self) -> Optional[AutoscalingConfig]:
+    def autoscaling_config(self) -> Optional[AutoscalingConfig]:
         if self.deployment_config is None:
             return None
 
@@ -178,7 +179,7 @@ class RouterMetricsManager:
         self.deployment_config = deployment_config
 
         # Start the metrics pusher if autoscaling is enabled.
-        autoscaling_config = self.curr_autoscaling_config
+        autoscaling_config = self.autoscaling_config
         if autoscaling_config:
             self.metrics_pusher.start()
             # Optimization for autoscaling cold start time. If there are
@@ -194,7 +195,10 @@ class RouterMetricsManager:
                 self.metrics_pusher.register_or_update_task(
                     self.RECORD_METRICS_TASK_NAME,
                     self._add_autoscaling_metrics_point,
-                    min(0.5, autoscaling_config.metrics_interval_s),
+                    min(
+                        RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_PERIOD_S,
+                        autoscaling_config.metrics_interval_s,
+                    ),
                 )
                 # Push metrics to the controller periodically.
                 self.metrics_pusher.register_or_update_task(
@@ -231,7 +235,7 @@ class RouterMetricsManager:
                 sum(self.num_requests_sent_to_replicas.values())
             )
 
-    def process_finished_request(self, replica_id: ReplicaID, *args):
+    def dec_num_running_requests_for_replica(self, replica_id: ReplicaID, *args):
         with self._queries_lock:
             self.num_requests_sent_to_replicas[replica_id] -= 1
             self.num_running_requests_gauge.set(
@@ -240,7 +244,7 @@ class RouterMetricsManager:
 
     def should_send_scaled_to_zero_optimized_push(self, curr_num_replicas: int) -> bool:
         return (
-            self.curr_autoscaling_config is not None
+            self.autoscaling_config is not None
             and curr_num_replicas == 0
             and self.num_queued_requests > 0
         )
@@ -261,6 +265,11 @@ class RouterMetricsManager:
         )
 
     def _add_autoscaling_metrics_point(self):
+        """Adds metrics point for queued and running requests at replicas.
+
+        Also prunes keys in the in memory metrics store with outdated datapoints.
+        """
+
         timestamp = time.time()
         self.metrics_store.add_metrics_point(
             {QUEUED_REQUESTS_KEY: self.num_queued_requests}, timestamp
@@ -270,11 +279,14 @@ class RouterMetricsManager:
                 self.num_requests_sent_to_replicas, timestamp
             )
 
+        # Prevent in memory metrics store memory from growing
+        start_timestamp = time.time() - self.autoscaling_config.look_back_period_s
+        self.metrics_store.prune_keys_and_compact_data(start_timestamp)
+
     def _get_aggregated_requests(self):
         running_requests = dict()
-        autoscaling_config = self.curr_autoscaling_config
-        if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE and autoscaling_config:
-            look_back_period = autoscaling_config.look_back_period_s
+        if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE and self.autoscaling_config:
+            look_back_period = self.autoscaling_config.look_back_period_s
             running_requests = {
                 replica_id: self.metrics_store.window_average(
                     replica_id, time.time() - look_back_period
@@ -538,7 +550,8 @@ class Router:
                         replica_id
                     )
                     callback = partial(
-                        self._metrics_manager.process_finished_request, replica_id
+                        self._metrics_manager.dec_num_running_requests_for_replica,
+                        replica_id,
                     )
                     if isinstance(ref, (ray.ObjectRef, FakeObjectRef)):
                         ref._on_completed(callback)

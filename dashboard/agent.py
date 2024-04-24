@@ -226,7 +226,7 @@ class DashboardAgent:
             tasks.append(self.server.wait_for_termination())
         else:
 
-            async def wait_forever(self):
+            async def wait_forever():
                 while True:
                     await asyncio.sleep(3600)
 
