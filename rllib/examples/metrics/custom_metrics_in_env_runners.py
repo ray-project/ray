@@ -24,6 +24,7 @@ class EnvRenderCallback(DefaultCallbacks):
     We override the `on_episode_step` method to create a single ts render image
     and temporarily store it in the Episode object.
     """
+
     def __init__(self):
         super().__init__()
         # Per sample round (on this EnvRunner), we want to only log the best- and
@@ -76,8 +77,10 @@ class EnvRenderCallback(DefaultCallbacks):
             # Get all images of the episode.
             images = episode.get_temporary_timestep_data("render_images")
             # Create a video from the images by simply stacking them.
-            video = np.expand_dims(np.stack(images, axis=0), axis=0)#TODO: test to make sure WandB properly logs videos.
-            #video = np.stack(images, axis=0)
+            video = np.expand_dims(
+                np.stack(images, axis=0), axis=0
+            )  # TODO: test to make sure WandB properly logs videos.
+            # video = np.stack(images, axis=0)
 
             if episode_return > self.best_episode_and_return[1]:
                 self.best_episode_and_return = (video, episode_return)
@@ -128,20 +131,19 @@ if __name__ == "__main__":
     base_config = (
         get_trainable_cls(args.algo)
         .get_default_config()
-        #.environment("env", env_config={
+        # .environment("env", env_config={
         #    # Make analogous to old v4 + NoFrameskip.
         #    "frameskip": 1,
         #    "full_action_space": False,
         #    "repeat_action_probability": 0.0,
-        #})
+        # })
         .environment("CartPole-v1", env_config={"render_mode": "rgb_array"})
-        #.rollouts(rollout_fragment_length=4000)#TODO: remove: only to show that a list of videos can be uploaded per iteration (b/c now we need 2 rollouts, producing 2 videos per str-key)
+        # .rollouts(rollout_fragment_length=4000)#TODO: remove: only to show that a list of videos can be uploaded per iteration (b/c now we need 2 rollouts, producing 2 videos per str-key)
         .callbacks(EnvRenderCallback)
         .training(
             # TODO: Atari.
             model=dict(
-                {
-                },
+                {},
             ),
         )
         .debugging(

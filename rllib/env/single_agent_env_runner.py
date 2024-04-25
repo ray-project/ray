@@ -272,8 +272,11 @@ class SingleAgentEnvRunner(EnvRunner):
 
                 # RLModule forward pass: Explore or not.
                 if explore:
+                    env_steps_lifetime = self.metrics.peek(
+                        NUM_ENV_STEPS_SAMPLED_LIFETIME
+                    ) + self.metrics.peek(NUM_ENV_STEPS_SAMPLED, default=0)
                     to_env = self.module.forward_exploration(
-                        to_module, t=self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME)
+                        to_module, t=env_steps_lifetime
                     )
                 else:
                     to_env = self.module.forward_inference(to_module)
@@ -460,8 +463,11 @@ class SingleAgentEnvRunner(EnvRunner):
 
                 # RLModule forward pass: Explore or not.
                 if explore:
+                    env_steps_lifetime = self.metrics.peek(
+                        NUM_ENV_STEPS_SAMPLED_LIFETIME
+                    ) + self.metrics.peek(NUM_ENV_STEPS_SAMPLED, default=0)
                     to_env = self.module.forward_exploration(
-                        to_module, t=self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME)
+                        to_module, t=env_steps_lifetime
                     )
                 else:
                     to_env = self.module.forward_inference(to_module)
@@ -487,7 +493,7 @@ class SingleAgentEnvRunner(EnvRunner):
                 actions_for_env
             )
             obs, actions = unbatch(obs), unbatch(actions)
-            ts += self._increase_sampled_metrics()
+            ts += self._increase_sampled_metrics(self.num_envs)
 
             for env_index in range(self.num_envs):
                 extra_model_output = {k: v[env_index] for k, v in to_env.items()}
@@ -767,16 +773,5 @@ class SingleAgentEnvRunner(EnvRunner):
             },
             reduce="sum",
             reset_on_reduce=True,
-        )
-        # Lifetime stats.
-        self.metrics.log_dict(
-            {
-                NUM_ENV_STEPS_SAMPLED_LIFETIME: num_steps,
-                NUM_AGENT_STEPS_SAMPLED_LIFETIME: {DEFAULT_AGENT_ID: num_steps},
-                NUM_MODULE_STEPS_SAMPLED_LIFETIME: {
-                    DEFAULT_MODULE_ID: num_steps,
-                },
-            },
-            reduce="sum",
         )
         return num_steps

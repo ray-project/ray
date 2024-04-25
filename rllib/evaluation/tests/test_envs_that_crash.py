@@ -60,7 +60,6 @@ class TestEnvsThatCrash(unittest.TestCase):
                     "p_crash": 0.2,
                     "init_time_s": 0.3,
                 },
-                disable_env_checking=True,
             )
         )
 
@@ -99,7 +98,6 @@ class TestEnvsThatCrash(unittest.TestCase):
                     # Only crash on worker with index 1.
                     "crash_on_worker_indices": [1],
                 },
-                disable_env_checking=True,
             )
         )
 
@@ -140,8 +138,6 @@ class TestEnvsThatCrash(unittest.TestCase):
                     # Only crash on worker with index 2.
                     "crash_on_worker_indices": [2],
                 },
-                # Make sure nothing happens during pre-checks.
-                disable_env_checking=True,
             )
             .fault_tolerance(delay_between_worker_restarts_s=0)
         )
@@ -185,8 +181,6 @@ class TestEnvsThatCrash(unittest.TestCase):
                     # Crash prob=1%.
                     "p_crash": 0.01,
                 },
-                # Make sure nothing happens during pre-checks.
-                disable_env_checking=True,
             )
         )
         for multi_agent in [True]:  # TODO, False]:

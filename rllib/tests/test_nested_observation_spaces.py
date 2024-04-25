@@ -409,7 +409,7 @@ class TestNestedObservationSpaces(unittest.TestCase):
         config = (
             PPOConfig()
             .experimental(_disable_preprocessor_api=True)
-            .environment("nested", disable_env_checking=True)
+            .environment("nested")
             .rollouts(num_rollout_workers=0, rollout_fragment_length=5)
             .framework("tf")
             .training(
@@ -443,7 +443,7 @@ class TestNestedObservationSpaces(unittest.TestCase):
         config = (
             PPOConfig()
             .experimental(_disable_preprocessor_api=True)
-            .environment("nested2", disable_env_checking=True)
+            .environment("nested2")
             .rollouts(num_rollout_workers=0, rollout_fragment_length=5)
             .framework("tf")
             .training(

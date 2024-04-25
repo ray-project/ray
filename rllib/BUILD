@@ -1590,13 +1590,6 @@ py_test(
 )
 
 py_test(
-    name = "test_check_env",
-    tags = ["team:rllib", "utils"],
-    size = "small",
-    srcs = ["utils/tests/test_check_env.py"]
-)
-
-py_test(
     name = "test_check_multi_agent",
     tags = ["team:rllib", "utils"],
     size = "small",
@@ -1625,13 +1618,6 @@ py_test(
     size = "medium",
     srcs = ["tests/backward_compat/test_backward_compat.py"],
     data = glob(["tests/backward_compat/checkpoints/**"]),
-)
-
-py_test(
-    name = "tests/backward_compat/test_gym_env_apis",
-    tags = ["team:rllib", "env"],
-    size = "large",
-    srcs = ["tests/backward_compat/test_gym_env_apis.py"]
 )
 
 py_test(
@@ -2411,12 +2397,12 @@ py_test(
 
 # @OldAPIStack
 py_test(
-    name = "examples/evaluation/evaluation_parallel_to_training_211_ts_tf2",
+    name = "examples/evaluation/evaluation_parallel_to_training_211_ts_torch",
     main = "examples/evaluation/evaluation_parallel_to_training.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
-    args = ["--as-test", "--framework=tf2", "--stop-reward=30.0", "--num-cpus=6", "--evaluation-num-workers=3", "--evaluation-duration=211", "--evaluation-duration-unit=timesteps"]
+    args = ["--as-test", "--framework=torch", "--stop-reward=30.0", "--num-cpus=6", "--evaluation-num-workers=3", "--evaluation-duration=211", "--evaluation-duration-unit=timesteps"]
 )
 
 # subdirectory: gpus/

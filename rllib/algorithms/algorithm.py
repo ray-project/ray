@@ -904,10 +904,10 @@ class Algorithm(Trainable, AlgorithmBase):
         if self.config.uses_new_env_runners:
             # Synchronize EnvToModule and ModuleToEnv connector states and broadcast new
             # states back to all EnvRunners.
-            with self._timers[SYNCH_ENV_CONNECTOR_STATES_TIMER]:
+            with self.metrics.log_time((TIMERS, SYNCH_ENV_CONNECTOR_STATES_TIMER)):
                 self.workers.sync_env_runner_states(
                     config=self.config,
-                    env_steps_sampled=self._counters[NUM_ENV_STEPS_SAMPLED],
+                    env_steps_sampled=self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME),
                 )
             # Compile final ResultDict from `train_results` and `eval_results`. Note
             # that, as opposed to the old API stack, EnvRunner stats should already be
@@ -1077,14 +1077,8 @@ class Algorithm(Trainable, AlgorithmBase):
             )
             eval_results[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps
             eval_results[NUM_ENV_STEPS_SAMPLED_THIS_ITER] = env_steps
-            eval_results["timesteps_this_iter"] = eval_results.get(
-                NUM_ENV_STEPS_SAMPLED_THIS_ITER, 0
-            )
-            self._counters[
-                NUM_ENV_STEPS_SAMPLED_FOR_EVALUATION_THIS_ITER
-            ] = eval_results.get("sampler_results", {}).get(
-                "episodes_timesteps_total", 0
-            )
+            eval_results["timesteps_this_iter"] = env_steps
+            self._counters[NUM_ENV_STEPS_SAMPLED_FOR_EVALUATION_THIS_ITER] = env_steps
 
         # Compute off-policy estimates
         if not self.config.custom_evaluation_function:
@@ -2643,7 +2637,6 @@ class Algorithm(Trainable, AlgorithmBase):
                 return env_id, functools.partial(
                     _gym_env_creator,
                     env_descriptor=env_specifier,
-                    auto_wrap_old_gym_envs=config.get("auto_wrap_old_gym_envs", True),
                 )
             # All other env classes: Call c'tor directly.
             else:

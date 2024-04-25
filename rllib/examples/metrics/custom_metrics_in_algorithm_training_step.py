@@ -40,4 +40,6 @@ class CustomOnTrainResultCallback(DefaultCallbacks):
         pass
 
 
-if __name__ == "__main_"
+if __name__ == "__main__":
+    pass
+
