@@ -264,12 +264,12 @@ class TestWorkerFailures(unittest.TestCase):
 
     def _do_test_failing_fatal(self, config, fail_eval=False):
         """Test raises real error when out of workers."""
-        config.num_rollout_workers = 2
+        config.num_env_runners = 2
         config.env = "multi_agent_fault_env" if config.is_multi_agent() else "fault_env"
         # Make both worker idx=1 and 2 fail.
         config.env_config = {"bad_indices": [1, 2]}
         if fail_eval:
-            config.evaluation_num_workers = 2
+            config.evaluation_num_env_runners = 2
             config.evaluation_interval = 1
             config.evaluation_config = {
                 # Make eval worker (index 1) fail.
@@ -285,9 +285,9 @@ class TestWorkerFailures(unittest.TestCase):
 
     def _do_test_failing_ignore(self, config: AlgorithmConfig, fail_eval: bool = False):
         # Test fault handling
-        config.num_rollout_workers = 2
-        config.ignore_worker_failures = True
-        config.recreate_failed_workers = False
+        config.num_env_runners = 2
+        config.ignore_env_runner_failures = True
+        config.recreate_failed_env_runners = False
         config.env = "fault_env"
         # Make worker idx=1 fail. Other workers will be ok.
         config.environment(
@@ -296,11 +296,11 @@ class TestWorkerFailures(unittest.TestCase):
             }
         )
         if fail_eval:
-            config.evaluation_num_workers = 2
+            config.evaluation_num_env_runners = 2
             config.evaluation_interval = 1
             config.evaluation_config = {
-                "ignore_worker_failures": True,
-                "recreate_failed_workers": False,
+                "ignore_env_runner_failures": True,
+                "recreate_failed_env_runners": False,
                 "env_config": {
                     # Make worker idx=1 fail. Other workers will be ok.
                     "bad_indices": [1],
@@ -327,14 +327,14 @@ class TestWorkerFailures(unittest.TestCase):
         counter = Counter.options(name=COUNTER_NAME).remote()
 
         # Test raises real error when out of workers.
-        config.num_rollout_workers = 1
-        config.evaluation_num_workers = 1
+        config.num_env_runners = 1
+        config.evaluation_num_env_runners = 1
         config.evaluation_interval = 1
         config.env = "fault_env" if not multi_agent else "multi_agent_fault_env"
         config.evaluation_config = AlgorithmConfig.overrides(
-            recreate_failed_workers=True,
+            recreate_failed_env_runners=True,
             # 0 delay for testing purposes.
-            delay_between_worker_restarts_s=0,
+            delay_between_env_runner_restarts_s=0,
             # Make eval worker (index 1) fail.
             env_config={
                 "bad_indices": [1],
@@ -390,7 +390,7 @@ class TestWorkerFailures(unittest.TestCase):
         self._do_test_failing_fatal(
             PPOConfig()
             .experimental(_enable_new_api_stack=True)
-            .rollouts(
+            .env_runners(
                 env_runner_cls=SingleAgentEnvRunner,
                 env_to_module_connector=lambda env: FlattenObservations(),
             )
@@ -401,7 +401,7 @@ class TestWorkerFailures(unittest.TestCase):
         self._do_test_failing_fatal(
             PPOConfig()
             .experimental(_enable_new_api_stack=True)
-            .rollouts(env_runner_cls=MultiAgentEnvRunner)
+            .env_runners(env_runner_cls=MultiAgentEnvRunner)
             .multi_agent(policies={"p0"}, policy_mapping_fn=lambda *a, **k: "p0"),
         )
 
@@ -410,7 +410,7 @@ class TestWorkerFailures(unittest.TestCase):
     #    self._do_test_fault_ignore(
     #        ImpalaConfig()
     #        .experimental(_enable_new_api_stack=True)
-    #        .rollouts(env_runner_cls=ForwardHealthCheckToEnvWorker)
+    #        .env_runners(env_runner_cls=ForwardHealthCheckToEnvWorker)
     #        .resources(num_gpus=0)
     #    )
 
@@ -421,7 +421,7 @@ class TestWorkerFailures(unittest.TestCase):
             .environment(
                 env_config={"action_space": gym.spaces.Box(0, 1, (2,), np.float32)}
             )
-            .rollouts(env_runner_cls=ForwardHealthCheckToEnvWorker)
+            .env_runners(env_runner_cls=ForwardHealthCheckToEnvWorker)
             .reporting(min_sample_timesteps_per_iteration=1)
             .training(replay_buffer_config={"type": "EpisodeReplayBuffer"})
         )
@@ -430,7 +430,7 @@ class TestWorkerFailures(unittest.TestCase):
         self._do_test_failing_ignore(
             PPOConfig()
             .experimental(_enable_new_api_stack=True)
-            .rollouts(
+            .env_runners(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
             )
             .training(
@@ -444,7 +444,7 @@ class TestWorkerFailures(unittest.TestCase):
         self._do_test_failing_ignore(
             PPOConfig()
             .experimental(_enable_new_api_stack=True)
-            .rollouts(env_runner_cls=ForwardHealthCheckToEnvWorker)
+            .env_runners(env_runner_cls=ForwardHealthCheckToEnvWorker)
             .training(optimizer={})
         )
 
@@ -453,7 +453,7 @@ class TestWorkerFailures(unittest.TestCase):
         self._do_test_failing_ignore(
             PPOConfig()
             .experimental(_enable_new_api_stack=True)
-            .rollouts(env_runner_cls=ForwardHealthCheckToEnvWorker)
+            .env_runners(env_runner_cls=ForwardHealthCheckToEnvWorker)
             .training(model={"fcnet_hiddens": [4]}),
             fail_eval=True,
         )
@@ -463,9 +463,9 @@ class TestWorkerFailures(unittest.TestCase):
         config = (
             PPOConfig()
             .experimental(_enable_new_api_stack=True)
-            .rollouts(env_runner_cls=ForwardHealthCheckToEnvWorker)
+            .env_runners(env_runner_cls=ForwardHealthCheckToEnvWorker)
             .evaluation(
-                evaluation_num_workers=1,
+                evaluation_num_env_runners=1,
                 evaluation_parallel_to_training=True,
                 evaluation_duration="auto",
             )
@@ -483,7 +483,7 @@ class TestWorkerFailures(unittest.TestCase):
         config = (
             PPOConfig()
             .experimental(_enable_new_api_stack=True)
-            .rollouts(env_runner_cls=ForwardHealthCheckToEnvWorkerMultiAgent)
+            .env_runners(env_runner_cls=ForwardHealthCheckToEnvWorkerMultiAgent)
             .multi_agent(
                 policies={"main", "p0", "p1"},
                 policy_mapping_fn=(
@@ -495,7 +495,7 @@ class TestWorkerFailures(unittest.TestCase):
                 ),
             )
             .evaluation(
-                evaluation_num_workers=1,
+                evaluation_num_env_runners=1,
                 evaluation_parallel_to_training=True,
                 evaluation_duration="auto",
             )
@@ -519,9 +519,9 @@ class TestWorkerFailures(unittest.TestCase):
         config = (
             PPOConfig()
             .experimental(_enable_new_api_stack=True)
-            .rollouts(
+            .env_runners(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
-                num_rollout_workers=2,
+                num_env_runners=2,
                 rollout_fragment_length=16,
             )
             .rl_module(
@@ -542,9 +542,9 @@ class TestWorkerFailures(unittest.TestCase):
                 },
             )
             .fault_tolerance(
-                recreate_failed_workers=True,  # But recover.
+                recreate_failed_env_runners=True,  # But recover.
                 # 0 delay for testing purposes.
-                delay_between_worker_restarts_s=0,
+                delay_between_env_runner_restarts_s=0,
             )
         )
 
@@ -575,9 +575,9 @@ class TestWorkerFailures(unittest.TestCase):
         config = (
             PPOConfig()
             .experimental(_enable_new_api_stack=True)
-            .rollouts(
+            .env_runners(
                 env_runner_cls=ForwardHealthCheckToEnvWorkerMultiAgent,
-                num_rollout_workers=2,
+                num_env_runners=2,
                 rollout_fragment_length=16,
             )
             .rl_module(
@@ -598,10 +598,10 @@ class TestWorkerFailures(unittest.TestCase):
                 },
             )
             .evaluation(
-                evaluation_num_workers=1,
+                evaluation_num_env_runners=1,
                 evaluation_interval=1,
                 evaluation_config=PPOConfig.overrides(
-                    recreate_failed_workers=True,
+                    recreate_failed_env_runners=True,
                     # Restart the entire eval worker.
                     restart_failed_sub_environments=False,
                     env_config={
@@ -616,10 +616,10 @@ class TestWorkerFailures(unittest.TestCase):
             )
             .callbacks(AddModuleCallback)
             .fault_tolerance(
-                recreate_failed_workers=True,  # But recover.
+                recreate_failed_env_runners=True,  # But recover.
                 # Throwing error in constructor is a bad idea.
                 # 0 delay for testing purposes.
-                delay_between_worker_restarts_s=0,
+                delay_between_env_runner_restarts_s=0,
             )
             .multi_agent(
                 policies={"p0"},
@@ -679,9 +679,9 @@ class TestWorkerFailures(unittest.TestCase):
         config = (
             PPOConfig()
             .experimental(_enable_new_api_stack=True)
-            .rollouts(
+            .env_runners(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
-                num_rollout_workers=2,
+                num_env_runners=2,
                 rollout_fragment_length=16,
             )
             .rl_module(
@@ -693,7 +693,7 @@ class TestWorkerFailures(unittest.TestCase):
             )
             .environment(env="fault_env")
             .evaluation(
-                evaluation_num_workers=2,
+                evaluation_num_env_runners=2,
                 evaluation_interval=1,
                 evaluation_config=PPOConfig.overrides(
                     env_config={
@@ -710,9 +710,9 @@ class TestWorkerFailures(unittest.TestCase):
                 ),
             )
             .fault_tolerance(
-                recreate_failed_workers=True,  # And recover
+                recreate_failed_env_runners=True,  # And recover
                 # 0 delay for testing purposes.
-                delay_between_worker_restarts_s=0,
+                delay_between_env_runner_restarts_s=0,
             )
         )
 
@@ -750,9 +750,9 @@ class TestWorkerFailures(unittest.TestCase):
             .training(
                 replay_buffer_config={"type": "EpisodeReplayBuffer"},
             )
-            .rollouts(
+            .env_runners(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
-                num_rollout_workers=3,
+                num_env_runners=3,
                 rollout_fragment_length=16,
                 sample_timeout_s=5.0,
             )
@@ -785,10 +785,10 @@ class TestWorkerFailures(unittest.TestCase):
                 },
             )
             .fault_tolerance(
-                recreate_failed_workers=True,  # And recover
-                worker_health_probe_timeout_s=0.01,
-                worker_restore_timeout_s=5,
-                delay_between_worker_restarts_s=0,  # For testing, no delay.
+                recreate_failed_env_runners=True,  # And recover
+                env_runner_health_probe_timeout_s=0.01,
+                env_runner_restore_timeout_s=5,
+                delay_between_env_runner_restarts_s=0,  # For testing, no delay.
             )
         )
 
@@ -823,7 +823,7 @@ class TestWorkerFailures(unittest.TestCase):
             .environment(env=RandomEnv, env_config={"p_terminated": 0.0})
             .training(train_batch_size_per_learner=200)
             .evaluation(
-                evaluation_num_workers=1,
+                evaluation_num_env_runners=1,
                 evaluation_interval=1,
                 evaluation_sample_timeout_s=2.0,
             )

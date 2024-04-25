@@ -166,10 +166,8 @@ class TestCuriosity(unittest.TestCase):
             .callbacks(MyCallBack)
             # Limit horizon to make it really hard for non-curious agent to reach
             # the goal state.
-            .rollouts(num_rollout_workers=0)
-            # TODO (Kourosh): We need to provide examples on how we do curiosity with
-            # RLModule API
-            .training(lr=0.001).exploration(
+            .env_runners(
+                num_env_runners=0,
                 exploration_config={
                     "type": "Curiosity",
                     "eta": 0.2,
@@ -182,8 +180,11 @@ class TestCuriosity(unittest.TestCase):
                     "sub_exploration": {
                         "type": "StochasticSampling",
                     },
-                }
+                },
             )
+            # TODO (Kourosh): We need to provide examples on how we do curiosity with
+            # RLModule API
+            .training(lr=0.001)
         )
 
         num_iterations = 10
@@ -231,15 +232,9 @@ class TestCuriosity(unittest.TestCase):
                     "framestack": 1,  # seems to work even w/o framestacking
                 },
             )
-            .rollouts(num_envs_per_worker=4, num_rollout_workers=0)
-            .training(
-                model={
-                    "fcnet_hiddens": [256, 256],
-                    "fcnet_activation": "relu",
-                },
-                num_sgd_iter=8,
-            )
-            .exploration(
+            .env_runners(
+                num_envs_per_env_runner=4,
+                num_env_runners=0,
                 exploration_config={
                     "type": "Curiosity",
                     # For the feature NN, use a non-LSTM fcnet (same as the one
@@ -256,7 +251,14 @@ class TestCuriosity(unittest.TestCase):
                     "sub_exploration": {
                         "type": "StochasticSampling",
                     },
-                }
+                },
+            )
+            .training(
+                model={
+                    "fcnet_hiddens": [256, 256],
+                    "fcnet_activation": "relu",
+                },
+                num_sgd_iter=8,
             )
         )
 

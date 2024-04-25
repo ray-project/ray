@@ -72,7 +72,7 @@ def main(checkpoint_dir):
         .environment("open_spiel_env")
         .framework("torch")
         .callbacks(partial(AddPolicyCallback, checkpoint_dir))
-        .rollouts(
+        .env_runners(
             num_rollout_workers=1,
             num_envs_per_worker=5,
             # We will be restoring a TF2 policy.

@@ -29,7 +29,7 @@ class SACConfig(AlgorithmConfig):
 
         config = SACConfig().training(gamma=0.9, lr=0.01, train_batch_size=32)
         config = config.resources(num_gpus=0)
-        config = config.rollouts(num_rollout_workers=1)
+        config = config.env_runners(num_env_runners=1)
 
         # Build a Algorithm object from the config and run 1 training iteration.
         algo = config.build(env="CartPole-v1")
@@ -85,7 +85,9 @@ class SACConfig(AlgorithmConfig):
         self.grad_clip = None
         self.target_network_update_freq = 0
 
-        # .exploration()
+        # .env_runners()
+        self.rollout_fragment_length = "auto"
+        self.compress_observations = False
         self.exploration_config = {
             # The Exploration class to use. In the simplest case, this is the name
             # (str) of any class present in the `rllib.utils.exploration` package.
@@ -95,10 +97,6 @@ class SACConfig(AlgorithmConfig):
             "type": "StochasticSampling",
             # Add constructor kwargs here (if any).
         }
-
-        # .rollout()
-        self.rollout_fragment_length = "auto"
-        self.compress_observations = False
 
         # .training()
         self.train_batch_size = 256

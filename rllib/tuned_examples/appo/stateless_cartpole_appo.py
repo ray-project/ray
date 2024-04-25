@@ -8,7 +8,7 @@ config = (
     .experimental(_enable_new_api_stack=False)
     .environment(StatelessCartPole)
     .resources(num_gpus=0)
-    .rollouts(num_rollout_workers=1, observation_filter="MeanStdFilter")
+    .env_runners(num_env_runners=1, observation_filter="MeanStdFilter")
     .training(
         lr=0.0003,
         num_sgd_iter=6,

@@ -30,16 +30,16 @@ config = (
             "p_crash_reset": 0.005,  # prob to crash during reset()
         },
     )
-    .rollouts(
+    .env_runners(
         num_rollout_workers=4,
-        num_envs_per_worker=1,
+        num_envs_per_env_runner=1,
     )
     # Switch on resiliency (recreate any failed worker).
     .fault_tolerance(
-        recreate_failed_workers=True,
+        recreate_failed_env_runners=True,
     )
     .evaluation(
-        evaluation_num_workers=1,
+        evaluation_num_env_runners=1,
         evaluation_interval=1,
         evaluation_duration=25,
         evaluation_duration_unit="episodes",

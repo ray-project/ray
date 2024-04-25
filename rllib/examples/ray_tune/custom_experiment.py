@@ -94,7 +94,7 @@ def my_experiment(config: Dict):
 
     # Set the number of EnvRunners for collecting training data to 0 (local
     # worker only).
-    config.rollouts(num_rollout_workers=0)
+    config.env_runners(num_rollout_workers=0)
 
     eval_algo = config.build()
     # Load state from the low-lr algo into this one.
@@ -157,7 +157,7 @@ if __name__ == "__main__":
         PPOConfig()
         .experimental(_enable_new_api_stack=True)
         .environment("CartPole-v1")
-        .rollouts(
+        .env_runners(
             num_rollout_workers=0,
             env_runner_cls=SingleAgentEnvRunner,
         )

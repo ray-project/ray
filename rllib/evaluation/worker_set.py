@@ -64,7 +64,7 @@ T = TypeVar("T")
 
 def handle_remote_call_result_errors(
     results: RemoteCallResults,
-    ignore_worker_failures: bool,
+    ignore_env_runner_failures: bool,
 ) -> None:
     """Checks given results for application errors and raises them if necessary.
 
@@ -74,7 +74,7 @@ def handle_remote_call_result_errors(
     for r in results.ignore_ray_errors():
         if r.ok:
             continue
-        if ignore_worker_failures:
+        if ignore_env_runner_failures:
             logger.exception(r.get())
         else:
             raise r.get()
@@ -144,7 +144,7 @@ class WorkerSet:
         self._cls = ray.remote(**self._remote_args)(self.env_runner_cls).remote
 
         self._logdir = logdir
-        self._ignore_worker_failures = config["ignore_worker_failures"]
+        self._ignore_env_runner_failures = config.ignore_env_runner_failures
 
         # Create remote worker manager.
         # Note(jungong) : ID 0 is used by the local worker.
@@ -230,7 +230,7 @@ class WorkerSet:
         # Create a number of @ray.remote workers.
         self.add_workers(
             num_workers,
-            validate=config.validate_workers_after_construction,
+            validate=config.validate_env_runners_after_construction,
         )
 
         # If num_workers > 0 and we don't have an env on the local worker,
@@ -828,7 +828,9 @@ class WorkerSet:
             mark_healthy=mark_healthy,
         )
 
-        handle_remote_call_result_errors(remote_results, self._ignore_worker_failures)
+        handle_remote_call_result_errors(
+            remote_results, self._ignore_env_runner_failures
+        )
 
         # With application errors handled, return good results.
         remote_results = [r.get() for r in remote_results.ignore_errors()]
@@ -874,7 +876,9 @@ class WorkerSet:
             timeout_seconds=timeout_seconds,
         )
 
-        handle_remote_call_result_errors(remote_results, self._ignore_worker_failures)
+        handle_remote_call_result_errors(
+            remote_results, self._ignore_env_runner_failures
+        )
 
         remote_results = [r.get() for r in remote_results.ignore_errors()]
 
@@ -935,7 +939,9 @@ class WorkerSet:
             mark_healthy=mark_healthy,
         )
 
-        handle_remote_call_result_errors(remote_results, self._ignore_worker_failures)
+        handle_remote_call_result_errors(
+            remote_results, self._ignore_env_runner_failures
+        )
 
         return [(r.actor_id, r.get()) for r in remote_results.ignore_errors()]
 
@@ -1044,7 +1050,7 @@ class WorkerSet:
             List of IDs of the workers that were restored.
         """
         return self.__worker_manager.probe_unhealthy_actors(
-            timeout_seconds=self._remote_config.worker_health_probe_timeout_s,
+            timeout_seconds=self._remote_config.env_runner_health_probe_timeout_s,
             mark_healthy=True,
         )
 

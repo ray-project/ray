@@ -298,7 +298,7 @@ config = (
     )
     # Enable new API stack and use EnvRunner.
     .experimental(_enable_new_api_stack=True)
-    .rollouts(
+    .env_runners(
         # Every 4 agent steps a training update is performed.
         rollout_fragment_length=4,
         env_runner_cls=SingleAgentEnvRunner,
@@ -346,7 +346,7 @@ config = (
     .evaluation(
         evaluation_duration="auto",
         evaluation_interval=1,
-        evaluation_num_workers=1,
+        evaluation_num_env_runners=1,
         evaluation_parallel_to_training=True,
         evaluation_config={
             "explore": False,

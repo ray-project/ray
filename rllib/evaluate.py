@@ -234,8 +234,10 @@ def run(
         env = config.get("env")
 
     # Make sure we have evaluation workers.
-    if not config.get("evaluation_num_workers"):
-        config["evaluation_num_workers"] = config.get("num_workers", 0)
+    if not config.get(
+        "evaluation_num_workers", config.get("evaluation_num_env_runners")
+    ):
+        config["evaluation_num_env_runners"] = config.get("num_workers", 0)
     if not config.get("evaluation_duration"):
         config["evaluation_duration"] = 1
 

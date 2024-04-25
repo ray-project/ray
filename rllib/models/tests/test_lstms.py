@@ -54,9 +54,9 @@ class TestLSTMs(unittest.TestCase):
                 train_batch_size=200,
                 sgd_minibatch_size=50,
             )
-            .rollouts(
+            .env_runners(
                 rollout_fragment_length=100,
-                num_rollout_workers=1,
+                num_env_runners=1,
             )
             .experimental(
                 _disable_action_flattening=True,

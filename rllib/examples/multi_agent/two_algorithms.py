@@ -87,7 +87,7 @@ if __name__ == "__main__":
         .framework(args.framework)
         # disable filters, otherwise we would need to synchronize those
         # as well to the DQN agent
-        .rollouts(observation_filter="MeanStdFilter")
+        .env_runners(observation_filter="MeanStdFilter")
         .training(
             model={"vf_share_layers": True},
             vf_loss_coeff=0.01,
@@ -103,7 +103,7 @@ if __name__ == "__main__":
         .framework(args.framework)
         # disable filters, otherwise we would need to synchronize those
         # as well to the DQN agent
-        .rollouts(observation_filter="MeanStdFilter")
+        .env_runners(observation_filter="MeanStdFilter")
         .training(
             model={"vf_share_layers": True},
             n_step=3,

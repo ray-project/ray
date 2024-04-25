@@ -124,7 +124,7 @@ if __name__ == "__main__":
         PPOConfig()
         .environment("CartPole-v1")
         .framework(args.framework)
-        .rollouts(
+        .env_runners(
             # Force sub-envs to be ray.actor.ActorHandles, so we can step
             # through them in parallel.
             remote_worker_envs=True,

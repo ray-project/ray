@@ -6,9 +6,9 @@ config = (
     PPOConfig()
     # Enable new API stack and use EnvRunner.
     .experimental(_enable_new_api_stack=True)
-    .rollouts(
+    .env_runners(
         env_runner_cls=SingleAgentEnvRunner,
-        num_rollout_workers=1,
+        num_env_runners=1,
     )
     .environment("CartPole-v1")
     .rl_module(
@@ -25,7 +25,7 @@ config = (
         vf_loss_coeff=0.01,
     )
     .evaluation(
-        evaluation_num_workers=1,
+        evaluation_num_env_runners=1,
         evaluation_interval=1,
         evaluation_parallel_to_training=True,
     )

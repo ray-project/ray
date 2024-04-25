@@ -29,7 +29,7 @@ class TestEnvsThatCrash(unittest.TestCase):
         """Expect the env pre-checking to fail on each worker."""
         config = (
             PPOConfig()
-            .rollouts(num_rollout_workers=2, num_envs_per_worker=4)
+            .env_runners(num_env_runners=2, num_envs_per_env_runner=4)
             .environment(
                 env=CartPoleCrashing,
                 env_config={
@@ -52,7 +52,7 @@ class TestEnvsThatCrash(unittest.TestCase):
         """Expect some sub-envs to fail (and not recover)."""
         config = (
             PPOConfig()
-            .rollouts(num_rollout_workers=2, num_envs_per_worker=3)
+            .env_runners(num_env_runners=2, num_envs_per_env_runner=3)
             .environment(
                 env=CartPoleCrashing,
                 env_config={
@@ -71,7 +71,7 @@ class TestEnvsThatCrash(unittest.TestCase):
             # Pre-checking disables, so building the Algorithm is save.
             algo = config.build()
             # Expect EnvError due to the sub-env(s) crashing on the different workers
-            # and `ignore_worker_failures=False` (so the original EnvError should
+            # and `ignore_env_runner_failures=False` (so the original EnvError should
             # just be bubbled up by RLlib Algorithm and tune.Trainable during the
             # `step()` call).
             self.assertRaisesRegex(
@@ -84,11 +84,11 @@ class TestEnvsThatCrash(unittest.TestCase):
         config = (
             PPOConfig()
             .experimental(_enable_new_api_stack=True)
-            .rollouts(
-                num_rollout_workers=2,
-                num_envs_per_worker=3,
+            .env_runners(
+                num_env_runners=2,
+                num_envs_per_env_runner=3,
                 # Ignore worker failures (continue with worker #2).
-                ignore_worker_failures=True,
+                ignore_env_runner_failures=True,
             )
             .environment(
                 env=CartPoleCrashing,
@@ -120,13 +120,13 @@ class TestEnvsThatCrash(unittest.TestCase):
         config = (
             PPOConfig()
             .experimental(_enable_new_api_stack=True)
-            .rollouts(
+            .env_runners(
                 # env_runner_cls=ForwardHealthCheckToEnvWorker,
-                num_rollout_workers=2,
+                num_env_runners=2,
                 rollout_fragment_length=10,
-                num_envs_per_worker=3,
+                num_envs_per_env_runner=3,
                 # Re-create failed workers (then continue).
-                recreate_failed_workers=True,
+                recreate_failed_env_runners=True,
             )
             .training(train_batch_size=60, sgd_minibatch_size=60)
             .environment(
@@ -139,7 +139,7 @@ class TestEnvsThatCrash(unittest.TestCase):
                     "crash_on_worker_indices": [2],
                 },
             )
-            .fault_tolerance(delay_between_worker_restarts_s=0)
+            .fault_tolerance(delay_between_env_runner_restarts_s=0)
         )
         for multi_agent in [True, False]:
             if multi_agent:
@@ -164,16 +164,16 @@ class TestEnvsThatCrash(unittest.TestCase):
         """Expect sub-envs to fail (and not recover), but re-start them individually."""
         config = (
             PPOConfig()
-            .rollouts(
-                num_rollout_workers=2,
-                num_envs_per_worker=3,
+            .env_runners(
+                num_env_runners=2,
+                num_envs_per_env_runner=3,
                 # Re-start failed individual sub-envs (then continue).
                 # This means no workers will ever fail due to individual env errors
                 # (only maybe for reasons other than the env).
                 restart_failed_sub_environments=True,
                 # If the worker was affected by an error (other than the env error),
                 # allow it to be removed, but training will continue.
-                ignore_worker_failures=True,
+                ignore_env_runner_failures=True,
             )
             .environment(
                 env=CartPoleCrashing,

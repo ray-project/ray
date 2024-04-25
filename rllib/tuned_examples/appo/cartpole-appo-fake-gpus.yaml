@@ -7,7 +7,7 @@ cartpole-appo-vtrace-fake-gpus:
     config:
         # Works for both torch and tf.
         framework: torch
-        num_envs_per_worker: 5
+        num_envs_per_env_runner: 5
         num_workers: 1
         observation_filter: MeanStdFilter
         num_sgd_iter: 6

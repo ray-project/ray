@@ -35,16 +35,16 @@ config = (
             "stall_on_worker_indices": [2, 3],
         },
     )
-    .rollouts(
-        num_rollout_workers=3,
+    .env_runners(
+        num_env_runners=3,
         num_envs_per_worker=1,
     )
     # Switch on resiliency (recreate any failed worker).
     .fault_tolerance(
-        recreate_failed_workers=True,
+        recreate_failed_env_runners=True,
     )
     .evaluation(
-        evaluation_num_workers=1,
+        evaluation_num_env_runners=1,
         evaluation_interval=1,
         evaluation_duration=25,
         evaluation_duration_unit="episodes",

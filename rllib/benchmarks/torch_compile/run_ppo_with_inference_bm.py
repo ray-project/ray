@@ -50,9 +50,9 @@ def main(pargs):
             grad_clip=100,
             grad_clip_by="global_norm",
         )
-        .rollouts(
-            num_rollout_workers=1 if pargs.smoke_test else 64,
-            num_envs_per_worker=1,
+        .env_runners(
+            num_env_runners=1 if pargs.smoke_test else 64,
+            num_envs_per_env_runner=1,
             batch_mode="truncate_episodes",
             rollout_fragment_length="auto",
             create_env_on_local_worker=True,

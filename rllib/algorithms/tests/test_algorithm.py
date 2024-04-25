@@ -57,7 +57,7 @@ class TestAlgorithm(unittest.TestCase):
                 policy_map_capacity=2,
             )
             .evaluation(
-                evaluation_num_workers=1,
+                evaluation_num_env_runners=1,
                 evaluation_config=ppo.PPOConfig.overrides(num_cpus_per_worker=0.1),
             )
         )
@@ -342,7 +342,9 @@ class TestAlgorithm(unittest.TestCase):
 
         config = (
             ppo.PPOConfig()
-            .rollouts(num_rollout_workers=1, validate_workers_after_construction=False)
+            .env_runners(
+                num_env_runners=1, validate_env_runners_after_construction=False
+            )
             .environment(env="CartPole-v1")
         )
 
@@ -379,20 +381,20 @@ class TestAlgorithm(unittest.TestCase):
         algo.stop()
 
     def test_worker_validation_time(self):
-        """Tests the time taken by `validate_workers_after_construction=True`."""
+        """Tests the time taken by `validate_env_runners_after_construction=True`."""
         config = ppo.PPOConfig().environment(env="CartPole-v1")
-        config.validate_workers_after_construction = True
+        config.validate_env_runners_after_construction = True
 
         # Test, whether validating one worker takes just as long as validating
         # >> 1 workers.
-        config.num_rollout_workers = 1
+        config.num_env_runners = 1
         t0 = time.time()
         algo = config.build()
         total_time_1 = time.time() - t0
         print(f"Validating w/ 1 worker: {total_time_1}sec")
         algo.stop()
 
-        config.num_rollout_workers = 5
+        config.num_env_runners = 5
         t0 = time.time()
         algo = config.build()
         total_time_5 = time.time() - t0
@@ -417,7 +419,7 @@ class TestAlgorithm(unittest.TestCase):
             )
             .evaluation(
                 evaluation_interval=1,
-                evaluation_num_workers=1,
+                evaluation_num_env_runners=1,
                 evaluation_config=BCConfig.overrides(
                     env="CartPole-v1",
                     input_="sampler",

@@ -6,10 +6,10 @@ config = (
     PPOConfig()
     # Enable new API stack and use EnvRunner.
     .experimental(_enable_new_api_stack=True)
-    .rollouts(
+    .env_runners(
         env_runner_cls=SingleAgentEnvRunner,
-        num_rollout_workers=2,
-        num_envs_per_worker=20,
+        num_env_runners=2,
+        num_envs_per_env_runner=20,
     )
     .environment("Pendulum-v1")
     .training(
@@ -25,7 +25,7 @@ config = (
         },
     )
     .evaluation(
-        evaluation_num_workers=1,
+        evaluation_num_env_runners=1,
         evaluation_interval=1,
         evaluation_parallel_to_training=True,
     )

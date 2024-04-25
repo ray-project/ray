@@ -88,7 +88,7 @@ class DQNConfig(AlgorithmConfig):
 
         config = config.training(replay_buffer_config=replay_config)
         config = config.resources(num_gpus=0)
-        config = config.rollouts(num_rollout_workers=1)
+        config = config.env_runners(num_env_runners=1)
         config = config.environment("CartPole-v1")
         algo = DQN(config=config)
         algo.train()
@@ -122,20 +122,9 @@ class DQNConfig(AlgorithmConfig):
         super().__init__(algo_class=algo_class or DQN)
 
         # Overrides of AlgorithmConfig defaults
-        # `rollouts()`
+        # `env_runners()`
         # Set to `self.n_step`, if 'auto'.
         self.rollout_fragment_length = "auto"
-
-        # `training()`
-        self.grad_clip = 40.0
-        # Note: Only when using _enable_new_api_stack=True can the clipping mode be
-        # configured by the user. On the old API stack, RLlib will always clip by
-        # global_norm, no matter the value of `grad_clip_by`.
-        self.grad_clip_by = "global_norm"
-        self.lr = 5e-4
-        self.train_batch_size = 32
-
-        # `exploration()`
         self.exploration_config = {
             "type": "EpsilonGreedy",
             "initial_epsilon": 1.0,
@@ -145,7 +134,17 @@ class DQNConfig(AlgorithmConfig):
         # New stack uses `epsilon` as either a constant value or a scheduler
         # defined like this.
         # TODO (simon): Ensure that users can understand how to provide epsilon.
+        #  (sven): Should we add this to `self.env_runners(epsilon=..)`?
         self.epsilon = [(0, 1.0), (10000, 0.05)]
+
+        # `training()`
+        self.grad_clip = 40.0
+        # Note: Only when using _enable_new_api_stack=True can the clipping mode be
+        # configured by the user. On the old API stack, RLlib will always clip by
+        # global_norm, no matter the value of `grad_clip_by`.
+        self.grad_clip_by = "global_norm"
+        self.lr = 5e-4
+        self.train_batch_size = 32
 
         # `evaluation()`
         self.evaluation(evaluation_config=AlgorithmConfig.overrides(explore=False))
@@ -316,7 +315,7 @@ class DQNConfig(AlgorithmConfig):
                 collecting samples from the env).
                 If None, uses "natural" values of:
                 `train_batch_size` / (`rollout_fragment_length` x `num_workers` x
-                `num_envs_per_worker`).
+                `num_envs_per_env_runner`).
                 If not None, will make sure that the ratio between timesteps inserted
                 into and sampled from the buffer matches the given values.
                 Example:
@@ -324,7 +323,7 @@ class DQNConfig(AlgorithmConfig):
                 train_batch_size=250
                 rollout_fragment_length=1
                 num_workers=1 (or 0)
-                num_envs_per_worker=1
+                num_envs_per_env_runner=1
                 -> natural value = 250 / 1 = 250.0
                 -> will make sure that replay+train op will be executed 4x asoften as
                 rollout+insert op (4 * 250 = 1000).
@@ -414,7 +413,7 @@ class DQNConfig(AlgorithmConfig):
             if self.batch_mode != "complete_episodes":
                 raise ValueError(
                     "ParameterNoise Exploration requires `batch_mode` to be "
-                    "'complete_episodes'. Try setting `config.rollouts("
+                    "'complete_episodes'. Try setting `config.env_runners("
                     "batch_mode='complete_episodes')`."
                 )
 
@@ -433,7 +432,8 @@ class DQNConfig(AlgorithmConfig):
             raise ValueError(
                 f"Your `rollout_fragment_length` ({self.rollout_fragment_length}) is "
                 f"smaller than `n_step` ({self.n_step})! "
-                f"Try setting config.rollouts(rollout_fragment_length={self.n_step})."
+                "Try setting config.env_runners(rollout_fragment_length="
+                f"{self.n_step})."
             )
 
         # TODO (simon): Find a clean solution to deal with
@@ -445,7 +445,7 @@ class DQNConfig(AlgorithmConfig):
             if self.batch_mode != "complete_episodes":
                 raise ValueError(
                     "ParameterNoise Exploration requires `batch_mode` to be "
-                    "'complete_episodes'. Try setting `config.rollouts("
+                    "'complete_episodes'. Try setting `config.env_runners("
                     "batch_mode='complete_episodes')`."
                 )
             if self.noisy:
@@ -530,7 +530,7 @@ class DQNConfig(AlgorithmConfig):
 
 def calculate_rr_weights(config: AlgorithmConfig) -> List[float]:
     """Calculate the round robin weights for the rollout and train steps"""
-    if not config["training_intensity"]:
+    if not config.training_intensity:
         return [1, 1]
 
     # Calculate the "native ratio" as:
@@ -538,17 +538,17 @@ def calculate_rr_weights(config: AlgorithmConfig) -> List[float]:
     # This is to set freshly rollout-collected data in relation to
     # the data we pull from the replay buffer (which also contains old
     # samples).
-    native_ratio = config["train_batch_size"] / (
+    native_ratio = config.train_batch_size / (
         config.get_rollout_fragment_length()
-        * config["num_envs_per_worker"]
+        * config.num_envs_per_env_runner
         # Add one to workers because the local
         # worker usually collects experiences as well, and we avoid division by zero.
-        * max(config["num_workers"] + 1, 1)
+        * max(config.num_env_runners + 1, 1)
     )
 
     # Training intensity is specified in terms of
     # (steps_replayed / steps_sampled), so adjust for the native ratio.
-    sample_and_train_weight = config["training_intensity"] / native_ratio
+    sample_and_train_weight = config.training_intensity / native_ratio
     if sample_and_train_weight < 1:
         return [int(np.round(1 / sample_and_train_weight)), 1]
     else:

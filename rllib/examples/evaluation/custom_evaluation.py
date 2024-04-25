@@ -165,7 +165,7 @@ if __name__ == "__main__":
                 None if args.no_custom_eval else custom_eval_function
             ),
             # Number of eval EnvRunners to use.
-            evaluation_num_workers=2,
+            evaluation_num_env_runners=2,
             # Enable evaluation, once per training iteration.
             evaluation_interval=1,
             # Run 10 episodes each time evaluation runs (OR "auto" if parallel to
