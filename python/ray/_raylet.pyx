@@ -231,6 +231,8 @@ GRPC_STATUS_CODE_DEADLINE_EXCEEDED = CGrpcStatusCode.DEADLINE_EXCEEDED
 GRPC_STATUS_CODE_RESOURCE_EXHAUSTED = CGrpcStatusCode.RESOURCE_EXHAUSTED
 GRPC_STATUS_CODE_UNIMPLEMENTED = CGrpcStatusCode.UNIMPLEMENTED
 
+_RAY_STREAMING_GEN_NUM_EXECUTORS = int(os.environ.get("_RAY_STREAMING_GEN_NUM_EXECUTORS", "1"))
+
 logger = logging.getLogger(__name__)
 
 # The currently executing task, if any. These are used to synchronize task
@@ -4663,12 +4665,13 @@ cdef class CoreWorker:
             #       a single thread, provided that many of its use-cases are
             #       not thread-safe yet (for ex, reporting streaming generator output)
             self.event_loop_executors = [
-                ThreadPoolExecutor(max_workers=1) for _ in range(4)
+                ThreadPoolExecutor(max_workers=1) for _ in range(_RAY_STREAMING_GEN_NUM_EXECUTORS)
             ]
 
         h = hash(object_id.Hex())
+        idx = h % len(self.event_loop_executors)
 
-        return self.event_loop_executors[h % len(self.event_loop_executors)]
+        return self.event_loop_executors[idx]
 
     def reset_event_loop_executor(self, executors: typing.List[ThreadPoolExecutor]):
         self.event_loop_executors = executors
