@@ -435,7 +435,7 @@ class Test(dict):
         )
 
     def get_test_results(
-        self, limit: int = 10, refresh: bool = False
+        self, limit: int = 10, refresh: bool = False, aws_bucket: str = None
     ) -> List[TestResult]:
         """
         Get test result from test object, or s3
@@ -446,9 +446,10 @@ class Test(dict):
         if self.test_results is not None and not refresh:
             return self.test_results
 
+        bucket = aws_bucket or get_read_state_machine_aws_bucket()
         s3_client = boto3.client("s3")
         pages = s3_client.get_paginator("list_objects_v2").paginate(
-            Bucket=get_read_state_machine_aws_bucket(),
+            Bucket=bucket,
             Prefix=f"{AWS_TEST_RESULT_KEY}/{self._get_s3_name(self.get_name())}-",
         )
         files = sorted(
@@ -460,7 +461,7 @@ class Test(dict):
             TestResult.from_dict(
                 json.loads(
                     s3_client.get_object(
-                        Bucket=get_read_state_machine_aws_bucket(),
+                        Bucket=bucket,
                         Key=file["Key"],
                     )
                     .get("Body")
