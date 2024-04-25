@@ -19,37 +19,14 @@ from ray.experimental.channel import (
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 from ray.dag.experimental.types import (
+    do_register_custom_dag_serializers,
     TorchTensorType,
     _TorchTensorWrapper,
-    _TorchTensorSerializer,
 )
 
 MAX_BUFFER_SIZE = int(100 * 1e6)  # 100MB
 
 logger = logging.getLogger(__name__)
-
-
-@DeveloperAPI
-def do_register_custom_dag_serializers(self):
-    from ray.air._internal import torch_utils
-
-    default_device = torch_utils.get_devices()[0]
-    torch_tensor_serializer = _TorchTensorSerializer(default_device)
-
-    CUSTOM_SERIALIZERS = (
-        (
-            _TorchTensorWrapper,
-            torch_tensor_serializer.serialize_to_numpy,
-            torch_tensor_serializer.deserialize_from_numpy,
-        ),
-    )
-
-    for cls, serializer, deserializer in CUSTOM_SERIALIZERS:
-        ray.util.serialization.register_serializer(
-            cls, serializer=serializer, deserializer=deserializer
-        )
-
-    self._torch_tensor_serializer = torch_tensor_serializer
 
 
 @DeveloperAPI
