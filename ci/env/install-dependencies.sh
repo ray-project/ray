@@ -269,7 +269,7 @@ install_node() {
   (
     set +x # suppress set -x since it'll get very noisy here.
     . "${HOME}/.nvm/nvm.sh"
-    NODE_VERSION="18"
+    NODE_VERSION="20"
     nvm install $NODE_VERSION
     nvm use --silent $NODE_VERSION
     npm config set loglevel warn  # make NPM quieter

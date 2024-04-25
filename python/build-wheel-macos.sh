@@ -8,7 +8,7 @@ set -x
 
 DOWNLOAD_DIR=python_downloads
 
-NODE_VERSION="18"
+NODE_VERSION="20"
 
 PY_MMS=("3.9" "3.10" "3.11")
 
