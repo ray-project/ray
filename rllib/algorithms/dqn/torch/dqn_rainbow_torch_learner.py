@@ -190,8 +190,8 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
                 * loss_fn(reduction="none")(q_selected, q_selected_target)
             )
 
-        self.register_metrics(
-            module_id,
+        # Log important loss stats.
+        self.metrics.log_dict(
             {
                 QF_LOSS_KEY: total_loss,
                 TD_ERROR_KEY: td_error.squeeze(),
@@ -200,12 +200,14 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
                 QF_MAX_KEY: torch.max(q_selected),
                 QF_MIN_KEY: torch.min(q_selected),
             },
+            key=module_id,
+            window=1,  # <- single items (should not be mean/ema-reduced over time).
         )
         # If we learn a Q-value distribution store the support and average
         # probabilities.
         if self.config.num_atoms > 1:
-            self.register_metrics(
-                module_id,
+            # Log important loss stats.
+            self.metrics.log_dict(
                 {
                     ATOMS: z,
                     # The absolute difference in expectation between the actions
@@ -242,6 +244,8 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
                         dim=0,
                     ),
                 },
+                key=module_id,
+                window=1,  # <- single items (should not be mean/ema-reduced over time).
             )
 
         return total_loss

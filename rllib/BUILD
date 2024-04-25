@@ -2226,7 +2226,6 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "large",
     srcs = ["examples/connectors/prev_actions_prev_rewards.py"],
-    # TODO (sven): Move back to 400.0 when regression fixed (probably due to Learner's EMA'ing over their stats).
     args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=400.0", "--framework=torch", "--algo=PPO", "--num-env-runners=4", "--num-cpus=6"]
 )
 

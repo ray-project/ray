@@ -160,8 +160,7 @@ class APPOTfLearner(AppoLearner, ImpalaTfLearner):
         )
 
         # Register important loss stats.
-        self.register_metrics(
-            module_id,
+        self.metrics.log_dict(
             {
                 POLICY_LOSS_KEY: mean_pi_loss,
                 VF_LOSS_KEY: mean_vf_loss,
@@ -171,6 +170,8 @@ class APPOTfLearner(AppoLearner, ImpalaTfLearner):
                     self.curr_kl_coeffs_per_module[module_id]
                 ),
             },
+            key=module_id,
+            window=1,  # <- single items (should not be mean/ema-reduced over time).
         )
         # Return the total loss.
         return total_loss

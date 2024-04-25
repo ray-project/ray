@@ -116,9 +116,8 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         if config.use_kl_loss:
             total_loss += self.curr_kl_coeffs_per_module[module_id] * mean_kl_loss
 
-        # Register important loss stats.
-        self.register_metrics(
-            module_id,
+        # Log important loss stats.
+        self.metrics.log_dict(
             {
                 POLICY_LOSS_KEY: -possibly_masked_mean(surrogate_loss),
                 VF_LOSS_KEY: mean_vf_loss,
@@ -129,6 +128,8 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
                 ENTROPY_KEY: mean_entropy,
                 LEARNER_RESULTS_KL_KEY: mean_kl_loss,
             },
+            key=module_id,
+            window=1,  # <- single items (should not be mean/ema-reduced over time).
         )
         # Return the total loss.
         return total_loss

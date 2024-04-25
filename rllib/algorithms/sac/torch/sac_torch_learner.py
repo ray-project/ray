@@ -283,8 +283,8 @@ class SACTorchLearner(SACLearner, TorchLearner):
         if self.config.twin_q:
             total_loss += critic_twin_loss
 
-        self.register_metrics(
-            module_id,
+        # Log important loss stats.
+        self.metrics.log_dict(
             {
                 POLICY_LOSS_KEY: actor_loss,
                 QF_LOSS_KEY: critic_loss,
@@ -300,15 +300,18 @@ class SACTorchLearner(SACLearner, TorchLearner):
                 QF_MAX_KEY: torch.max(q_curr),
                 QF_MIN_KEY: torch.min(q_curr),
             },
+            key=module_id,
+            window=1,  # <- single items (should not be mean/ema-reduced over time).
         )
         # If twin Q networks should be used add a critic loss for the twin Q network.
         # Note, we need this in the `self.compute_gradients()` to optimize.
         if self.config.twin_q:
-            self.register_metrics(
-                module_id,
+            self.metrics.log_dict(
                 {
                     QF_TWIN_LOSS_KEY: critic_twin_loss,
                 },
+                key=module_id,
+                window=1,  # <- single items (should not be mean/ema-reduced over time).
             )
 
         return total_loss

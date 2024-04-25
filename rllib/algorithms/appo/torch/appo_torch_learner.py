@@ -163,9 +163,8 @@ class APPOTorchLearner(AppoLearner, ImpalaTorchLearner):
             + (mean_kl_loss * self.curr_kl_coeffs_per_module[module_id])
         )
 
-        # Register important loss stats.
-        self.register_metrics(
-            module_id,
+        # Log important loss stats.
+        self.metrics.log_dict(
             {
                 POLICY_LOSS_KEY: mean_pi_loss,
                 VF_LOSS_KEY: mean_vf_loss,
@@ -175,6 +174,8 @@ class APPOTorchLearner(AppoLearner, ImpalaTorchLearner):
                     self.curr_kl_coeffs_per_module[module_id]
                 ),
             },
+            key=module_id,
+            window=1,  # <- single items (should not be mean/ema-reduced over time).
         )
         # Return the total loss.
         return total_loss
