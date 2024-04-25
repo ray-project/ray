@@ -830,7 +830,7 @@ class TestWorkerFailures(unittest.TestCase):
         )
         algo = config.build()
         results = algo.train()
-        self.assertTrue(np.isnan(results["evaluation"]["episode_reward_mean"]))
+        self.assertTrue(np.isnan(results["evaluation_results"]["episode_return_mean"]))
 
 
 if __name__ == "__main__":

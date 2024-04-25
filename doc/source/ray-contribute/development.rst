@@ -135,7 +135,7 @@ To build Ray on Ubuntu, run the following commands:
                 --slave /usr/bin/g++ g++ /usr/bin/g++-9 \
                 --slave /usr/bin/gcov gcov /usr/bin/gcov-9
 
-  # Install Bazel.
+  # Install Bazelisk.
   ci/env/install-bazel.sh
 
   # Install node version manager and node 14
@@ -143,6 +143,9 @@ To build Ray on Ubuntu, run the following commands:
   nvm install 14
   nvm use 14
 
+.. note::
+  The `install-bazel.sh` script installs `bazelisk` for building Ray. 
+  If you prefer to use `bazel`, only version `5.4.1` is currently supported.
 
 For RHELv8 (Redhat EL 8.0-64 Minimal), run the following commands:
 

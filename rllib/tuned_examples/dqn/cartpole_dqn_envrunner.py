@@ -44,11 +44,16 @@ config = (
         evaluation_duration="auto",
         evaluation_config={
             "explore": False,
+            # TODO (sven): Add support for window=float(inf) and reduce=mean for
+            #  evaluation episode_return_mean reductions (identical to old stack
+            #  behavior, which does NOT use a window (100 by default) to reduce
+            #  eval episode returns.
+            "metrics_num_episodes_for_smoothing": 4,
         },
     )
 )
 
 stop = {
-    "evaluation/sampler_results/episode_reward_mean": 500.0,
-    "timesteps_total": 100000,
+    "evaluation_results/env_runner_results/episode_return_mean": 500.0,
+    "num_env_steps_sampled_lifetime": 100000,
 }

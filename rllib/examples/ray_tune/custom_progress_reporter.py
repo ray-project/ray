@@ -59,16 +59,16 @@ my_multi_agent_progress_reporter = tune.CLIReporter(
         **{
             "training_iteration": "iter",
             "time_total_s": "total time (s)",
-            "timesteps_total": "ts",
+            "num_env_steps_sampled_lifetime": "ts",
             # RLlib always sums up all agents' rewards and reports it under:
-            # result_dict[sampler_results][episode_reward_mean].
-            "sampler_results/episode_reward_mean": "combined return",
+            # result_dict[env_runner_results][episode_return_mean].
+            "env_runner_results/episode_return_mean": "combined return",
         },
         # Because RLlib sums up all returns of all agents, we would like to also
         # see the individual agents' returns. We can find these under the result dict's
-        # 'policy_reward_mean' key (then the policy ID):
+        # 'env_runner_results/module_episode_returns_mean/' key (then the policy ID):
         **{
-            f"policy_reward_mean/{pid}": f"return {pid}"
+            f"env_runner_results/module_episode_returns_mean/{pid}": f"return {pid}"
             for pid in ["policy1", "policy2", "policy3"]
         },
     },
@@ -101,7 +101,7 @@ if __name__ == "__main__":
         )
     )
 
-    stop = {"sampler_results/episode_reward_mean": 200.0}
+    stop = {"env_runner_results/episode_return_mean": 200.0}
 
     # Run the actual experiment (using Tune).
     results = tune.Tuner(
