@@ -4270,10 +4270,8 @@ void CoreWorker::HandleExit(rpc::ExitRequest request,
       [this, will_exit, force_exit]() {
         // If the worker is idle, we exit.
         if (force_exit) {
-          ForceExit(
-              rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
-              "Worker exits because it was idle (it doesn't have objects it owns while "
-              "no task or actor has been scheduled) for a long time.");
+          ForceExit(rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
+                    "Worker force exits because it's job has finished");
         } else if (will_exit) {
           Exit(rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
                "Worker exits because it was idle (it doesn't have objects it owns while "
