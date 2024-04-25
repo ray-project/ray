@@ -151,7 +151,6 @@ class Channel:
         if is_creator:
             self.ensure_registered_as_writer()
             assert self._reader_ref is not None
-        print("finished the channel construction\n")
 
     @staticmethod
     def is_local_node(node_id):

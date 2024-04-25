@@ -50,7 +50,7 @@ Status MutableObjectManager::RegisterChannel(
 
   if (!success) {
     if ((reader && channel.reader_registered) || (!reader && channel.writer_registered)) {
-      return Status::Invalid("Channel already registered");
+      return Status::OK();
     }
   }
 

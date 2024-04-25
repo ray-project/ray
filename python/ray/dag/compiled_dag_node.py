@@ -408,7 +408,6 @@ class CompiledDAG:
                     reader_handles = [
                         reader.dag_node._get_actor_handle() for reader in readers
                     ]
-                print("now here " + str(readers) + "\n")
                 fn = task.dag_node._get_remote_method("__ray_call__")
                 task.output_channel = ray.get(
                     fn.remote(
@@ -424,7 +423,6 @@ class CompiledDAG:
                 reader_handles = [
                     reader.dag_node._get_actor_handle() for reader in readers
                 ]
-                print("Yay 2! " + str(reader_handles))
                 task.output_channel = Channel(
                     reader_handles,
                     num_readers=task.num_readers,
