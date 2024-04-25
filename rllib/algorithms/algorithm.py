@@ -632,6 +632,7 @@ class Algorithm(Trainable, AlgorithmBase):
             self.workers.sync_weights(inference_only=True)
         else:
             from ray.rllib.offline.offline_data import OfflineData
+
             self.offline_data = OfflineData(self.config)
 
         # Compile, validate, and freeze an evaluation config.
