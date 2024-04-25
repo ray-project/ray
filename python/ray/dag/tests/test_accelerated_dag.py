@@ -64,7 +64,9 @@ def test_basic(ray_start_regular):
     with InputNode() as i:
         dag = a.inc.bind(i)
 
+    print("running the test\n")
     compiled_dag = dag.experimental_compile()
+    print("after compile\n")
 
     for i in range(3):
         output_channel = compiled_dag.execute(1)
@@ -101,6 +103,7 @@ def test_scatter_gather_dag(ray_start_regular, num_actors):
     actors = [Actor.remote(0) for _ in range(num_actors)]
     with InputNode() as i:
         out = [a.inc.bind(i) for a in actors]
+        print("MultiOutputNode HERE!!!!!\n")
         dag = MultiOutputNode(out)
 
     compiled_dag = dag.experimental_compile()

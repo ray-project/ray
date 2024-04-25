@@ -13,6 +13,10 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 logger = logging.getLogger(__name__)
 
 
+def _get_node_id(self):
+    return ray.get_runtime_context().get_node_id()
+
+
 def _create_channel_ref(
     self,
     buffer_size_bytes: int,
@@ -114,8 +118,8 @@ class Channel:
                 self._reader_ref = self._writer_ref
             else:
                 # Reader and writer are on different nodes.
-                self._reader_node_id = ray.get(readers[0].get_node_id.remote())
                 fn = readers[0].__ray_call__
+                self._reader_node_id = ray.get(fn.remote(_get_node_id))
                 if self.is_remote():
                     self._reader_ref = ray.get(
                         fn.remote(_create_channel_ref, buffer_size_bytes)
@@ -147,6 +151,7 @@ class Channel:
         if is_creator:
             self.ensure_registered_as_writer()
             assert self._reader_ref is not None
+        print("finished the channel construction\n")
 
     @staticmethod
     def is_local_node(node_id):

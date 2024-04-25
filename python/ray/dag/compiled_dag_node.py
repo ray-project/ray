@@ -25,7 +25,9 @@ logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-def do_allocate_channel(self, buffer_size_bytes: int, num_readers: int = 1) -> Channel:
+def do_allocate_channel(
+    self, readers: list, num_readers: int, buffer_size_bytes: int
+) -> Channel:
     """Generic actor method to allocate an output channel.
 
     Args:
@@ -36,9 +38,9 @@ def do_allocate_channel(self, buffer_size_bytes: int, num_readers: int = 1) -> C
         The allocated channel.
     """
     self._output_channel = Channel(
-        ray.runtime_context.get_runtime_context().get_node_id(),
-        buffer_size_bytes,
+        readers,
         num_readers,
+        buffer_size_bytes,
     )
     return self._output_channel
 
@@ -397,20 +399,36 @@ class CompiledDAG:
             # Create an output buffer on the actor.
             assert task.output_channel is None
             if isinstance(task.dag_node, ClassMethodNode):
+                readers = [self.idx_to_task[idx] for idx in task.downstream_node_idxs]
+                assert len(readers) == 1
+                if isinstance(readers[0].dag_node, MultiOutputNode):
+                    readers = []
+                    reader_handles = []
+                else:
+                    reader_handles = [
+                        reader.dag_node._get_actor_handle() for reader in readers
+                    ]
+                print("now here " + str(readers) + "\n")
                 fn = task.dag_node._get_remote_method("__ray_call__")
                 task.output_channel = ray.get(
                     fn.remote(
                         do_allocate_channel,
-                        buffer_size_bytes=self._buffer_size_bytes,
+                        reader_handles,
                         num_readers=task.num_readers,
+                        buffer_size_bytes=self._buffer_size_bytes,
                     )
                 )
                 self.actor_refs.add(task.dag_node._get_actor_handle())
             elif isinstance(task.dag_node, InputNode):
+                readers = [self.idx_to_task[idx] for idx in task.downstream_node_idxs]
+                reader_handles = [
+                    reader.dag_node._get_actor_handle() for reader in readers
+                ]
+                print("Yay 2! " + str(reader_handles))
                 task.output_channel = Channel(
-                    ray.runtime_context.get_runtime_context().get_node_id(),
-                    buffer_size_bytes=self._buffer_size_bytes,
+                    reader_handles,
                     num_readers=task.num_readers,
+                    buffer_size_bytes=self._buffer_size_bytes,
                 )
             else:
                 assert isinstance(task.dag_node, MultiOutputNode)

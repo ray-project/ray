@@ -16,11 +16,15 @@ class MultiOutputNode(DAGNode):
         other_args_to_resolve: Dict[str, Any] = None,
     ):
         if isinstance(args, tuple):
+            print("MultiOutputNode A\n")
             args = list(args)
         if not isinstance(args, list):
+            print("MultiOutputNode B\n")
             raise ValueError(f"Invalid input type for `args`, {type(args)}.")
         if not isinstance(args, list):
+            print("MultiOutputNode C\n")
             args = (args,)
+        print("MultiOutputNode D, args = " + str(args) + "\n")
         super().__init__(
             args,
             {},
