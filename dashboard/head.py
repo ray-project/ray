@@ -18,7 +18,7 @@ from ray.dashboard.utils import async_loop_forever
 from ray.dashboard.consts import DASHBOARD_METRIC_PORT
 from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 
-from typing import Optional, Set
+from typing import Optional, Set, Dict, Tuple, List
 
 try:
     import prometheus_client
@@ -139,6 +139,9 @@ class DashboardHead:
         self.gcs_log_subscriber = None
         self.ip = node_ip_address
         DataOrganizer.head_node_ip = self.ip
+        self.module_instances_to_event_loop_thread: Dict[
+            DashboardHeadModule, Tuple[asyncio.AbstractEventLoop, threading.Thread]
+        ] = {}
 
         if self.minimal:
             self.server, self.grpc_port = None, None
@@ -152,7 +155,7 @@ class DashboardHead:
         # be configured to expose APIs.
         self.http_server = None
 
-    async def _configure_http_server(self, modules):
+    async def _configure_http_server(self, modules_to_event_loop_and_thread):
         from ray.dashboard.http_server_head import HttpServerDashboardHead
 
         http_server = HttpServerDashboardHead(
@@ -165,7 +168,7 @@ class DashboardHead:
             self.session_name,
             self.metrics,
         )
-        await http_server.run(modules)
+        await http_server.run(modules_to_event_loop_and_thread)
         return http_server
 
     @property
@@ -208,7 +211,9 @@ class DashboardHead:
                 # https://github.com/ray-project/ray/issues/16328
                 os._exit(-1)
 
-    def _load_modules(self, modules_to_load: Optional[Set[str]] = None):
+    def _load_modules(
+        self, modules_to_load: Optional[Set[str]] = None
+    ) -> List[DashboardHeadModule]:
         """Load dashboard head modules.
 
         Args:
@@ -273,6 +278,15 @@ class DashboardHead:
 
         return metrics
 
+    def create_event_loop_and_thread_for_modules(self, modules):
+        for m in modules:
+            loop = asyncio.new_event_loop()
+            thread = threading.Thread(target=loop.run_forever)
+            thread.daemon = True
+            thread.start()
+            self.module_instances_to_event_loop_thread[m] = (loop, thread)
+        logger.error(f"{self.module_instances_to_event_loop_thread=}")
+
     async def run(self):
         gcs_address = self.gcs_address
 
@@ -323,11 +337,14 @@ class DashboardHead:
                     logger.exception(f"Error notifying coroutine {co}")
 
         modules = self._load_modules(self._modules_to_load)
+        self.create_event_loop_and_thread_for_modules(modules)
 
         http_host, http_port = self.http_host, self.http_port
         if self.serve_frontend:
             logger.info("Initialize the http server.")
-            self.http_server = await self._configure_http_server(modules)
+            self.http_server = await self._configure_http_server(
+                self.module_instances_to_event_loop_thread
+            )
             http_host, http_port = self.http_server.get_address()
             logger.info(f"http server initialized at {http_host}:{http_port}")
         else:
