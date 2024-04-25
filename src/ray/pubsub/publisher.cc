@@ -22,22 +22,24 @@ namespace pubsub {
 
 namespace pub_internal {
 
-bool BasicEntityState::Publish(std::shared_ptr<rpc::PubMessage> msg) {
-  if (subscribers_.empty()) {
-    return false;
-  }
-  for (auto &[id, subscriber] : subscribers_) {
-    subscriber->QueueMessage(msg);
-  }
-  return true;
-}
-
-bool CappedEntityState::Publish(std::shared_ptr<rpc::PubMessage> msg) {
+bool EntityState::Publish(std::shared_ptr<rpc::PubMessage> msg) {
   if (subscribers_.empty()) {
     return false;
   }
 
   const int64_t message_size = msg->ByteSizeLong();
+
+  if (message_size > max_message_size_bytes_) {
+    RAY_LOG_EVERY_N_OR_DEBUG(WARNING, 10000)
+        << "Pub/sub message exceeds max individual message "
+           "size="
+        << absl::StrCat(max_message_size_bytes_, "B, ")
+        << absl::StrCat("incoming msg size=", message_size, "B")
+        << ". Dropping this message:\n"
+        << msg->DebugString();
+    return false;
+  }
+
   while (!pending_messages_.empty()) {
     // NOTE: if atomic ref counting becomes too expensive, it should be possible
     // to implement inflight message tracking across subscribers with non-atomic
@@ -46,13 +48,13 @@ bool CappedEntityState::Publish(std::shared_ptr<rpc::PubMessage> msg) {
     auto front_msg = pending_messages_.front().lock();
     if (front_msg == nullptr) {
       // The message has no other reference.
-    } else if (total_size_ + message_size >
-               RayConfig::instance().publisher_entity_buffer_max_bytes()) {
+      // This means that it has been published to all subscribers.
+    } else if (max_buffered_bytes_ > 0 &&
+               total_size_ + message_size > max_buffered_bytes_) {
       RAY_LOG_EVERY_N_OR_DEBUG(WARNING, 10000)
           << "Pub/sub message is dropped to stay under the maximum configured buffer "
              "size="
-          << absl::StrCat(RayConfig::instance().publisher_entity_buffer_max_bytes(),
-                          "B, ")
+          << absl::StrCat(max_buffered_bytes_, "B, ")
           << absl::StrCat("incoming msg size=",
                           message_size,
                           "B, current buffer size=",
@@ -70,6 +72,9 @@ bool CappedEntityState::Publish(std::shared_ptr<rpc::PubMessage> msg) {
       break;
     }
 
+    // The first message in the queue has been published to all subscribers, or
+    // it has been dropped due to memory cap. Subtract it from memory
+    // accounting.
     pending_messages_.pop();
     total_size_ -= message_sizes_.front();
     message_sizes_.pop();
@@ -99,7 +104,20 @@ const absl::flat_hash_map<SubscriberID, SubscriberState *> &EntityState::Subscri
 }
 
 SubscriptionIndex::SubscriptionIndex(rpc::ChannelType channel_type)
-    : channel_type_(channel_type), subscribers_to_all_(CreateEntityState()) {}
+    : channel_type_(channel_type),
+      subscribers_to_all_(CreateEntityState(channel_type_)) {}
+
+int64_t SubscriptionIndex::GetNumBufferedBytes() const {
+  // TODO(swang): Some messages may get published to both subscribers listening
+  // for any message and subscribers listening for a specific key. The pubsub
+  // channels share the same message buffer, so these messages will currently
+  // be double-counted when adding up the total number of buffered bytes.
+  int64_t num_bytes_buffered = subscribers_to_all_->GetNumBufferedBytes();
+  for (const auto &[key_id, entity_state] : entities_) {
+    num_bytes_buffered += entity_state->GetNumBufferedBytes();
+  }
+  return num_bytes_buffered;
+}
 
 bool SubscriptionIndex::Publish(std::shared_ptr<rpc::PubMessage> pub_message) {
   const bool publish_to_all = subscribers_to_all_->Publish(pub_message);
@@ -121,7 +139,7 @@ bool SubscriptionIndex::AddEntry(const std::string &key_id, SubscriberState *sub
 
   auto sub_it = entities_.find(key_id);
   if (sub_it == entities_.end()) {
-    sub_it = entities_.emplace(key_id, CreateEntityState()).first;
+    sub_it = entities_.emplace(key_id, CreateEntityState(channel_type_)).first;
   }
   const bool subscriber_added = sub_it->second->AddSubscriber(subscriber);
 
@@ -229,12 +247,15 @@ bool SubscriptionIndex::CheckNoLeaks() const {
   return entities_.empty() && subscribers_to_key_id_.empty();
 }
 
-std::unique_ptr<EntityState> SubscriptionIndex::CreateEntityState() {
-  switch (channel_type_) {
+std::unique_ptr<EntityState> SubscriptionIndex::CreateEntityState(
+    rpc::ChannelType channel_type) {
+  switch (channel_type) {
   case rpc::ChannelType::RAY_ERROR_INFO_CHANNEL:
   case rpc::ChannelType::RAY_LOG_CHANNEL:
   case rpc::ChannelType::RAY_NODE_RESOURCE_USAGE_CHANNEL:
-    return std::make_unique<CappedEntityState>();
+    return std::make_unique<EntityState>(
+        RayConfig::instance().max_grpc_message_size(),
+        RayConfig::instance().publisher_entity_buffer_max_bytes());
 
   case rpc::ChannelType::WORKER_OBJECT_EVICTION:
   case rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL:
@@ -243,10 +264,11 @@ std::unique_ptr<EntityState> SubscriptionIndex::CreateEntityState() {
   case rpc::ChannelType::GCS_JOB_CHANNEL:
   case rpc::ChannelType::GCS_NODE_INFO_CHANNEL:
   case rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL:
-    return std::make_unique<BasicEntityState>();
+    return std::make_unique<EntityState>(RayConfig::instance().max_grpc_message_size(),
+                                         /*max_buffered_bytes=*/-1);
 
   default:
-    RAY_LOG(FATAL) << "Unexpected channel type: " << rpc::ChannelType_Name(channel_type_);
+    RAY_LOG(FATAL) << "Unexpected channel type: " << rpc::ChannelType_Name(channel_type);
     return nullptr;
   }
 }
@@ -254,7 +276,7 @@ std::unique_ptr<EntityState> SubscriptionIndex::CreateEntityState() {
 void SubscriberState::ConnectToSubscriber(const rpc::PubsubLongPollingRequest &request,
                                           rpc::PubsubLongPollingReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
-  auto max_processed_sequence_id = request.max_processed_sequence_id();
+  int64_t max_processed_sequence_id = request.max_processed_sequence_id();
   if (request.publisher_id().empty() ||
       publisher_id_ != PublisherID::FromBinary(request.publisher_id())) {
     // in case the publisher_id mismatches, we should ignore the
@@ -265,8 +287,6 @@ void SubscriberState::ConnectToSubscriber(const rpc::PubsubLongPollingRequest &r
   // clean up messages that have already been processed.
   while (!mailbox_.empty() &&
          mailbox_.front()->sequence_id() <= max_processed_sequence_id) {
-    RAY_LOG(DEBUG) << "removing " << max_processed_sequence_id << " : "
-                   << mailbox_.front()->sequence_id();
     mailbox_.pop_front();
   }
 
@@ -304,12 +324,24 @@ bool SubscriberState::PublishIfPossible(bool force_noop) {
   // No message should have been added to the reply.
   RAY_CHECK(long_polling_connection_->reply->pub_messages().empty());
   *long_polling_connection_->reply->mutable_publisher_id() = publisher_id_.Binary();
+  int64_t num_total_bytes = 0;
   if (!force_noop) {
     for (auto it = mailbox_.begin(); it != mailbox_.end(); it++) {
       if (long_polling_connection_->reply->pub_messages().size() >= publish_batch_size_) {
         break;
       }
+
       const rpc::PubMessage &msg = **it;
+
+      int64_t msg_size_bytes = msg.ByteSizeLong();
+      if (num_total_bytes > 0 && num_total_bytes + msg_size_bytes >
+                                     RayConfig::instance().max_grpc_message_size()) {
+        // Adding this message to the batch would put us over the serialization
+        // size threshold.
+        break;
+      }
+      num_total_bytes += msg_size_bytes;
+
       // Avoid sending empty message to the subscriber. The message might have been
       // cleared because the subscribed entity's buffer was full.
       if (msg.inner_message_case() != rpc::PubMessage::INNER_MESSAGE_NOT_SET) {
@@ -402,8 +434,11 @@ void Publisher::Publish(rpc::PubMessage pub_message) {
   // TODO(sang): Currently messages are lost if publish happens
   // before there's any subscriber for the object.
   pub_message.set_sequence_id(++next_sequence_id_);
-  subscription_index.Publish(std::make_shared<rpc::PubMessage>(std::move(pub_message)));
+
   cum_pub_message_cnt_[channel_type]++;
+  cum_pub_message_bytes_cnt_[channel_type] += pub_message.ByteSizeLong();
+
+  subscription_index.Publish(std::make_shared<rpc::PubMessage>(std::move(pub_message)));
 }
 
 void Publisher::PublishFailure(const rpc::ChannelType channel_type,
@@ -512,6 +547,16 @@ std::string Publisher::DebugString() const {
     const auto &channel_name = descriptor->FindValueByNumber(channel_type)->name();
     result << "\n" << channel_name;
     result << "\n- cumulative published messages: " << it.second;
+
+    auto bytes_count_it = cum_pub_message_bytes_cnt_.find(channel_type);
+    if (bytes_count_it != cum_pub_message_bytes_cnt_.end()) {
+      result << "\n- cumulative published bytes: " << bytes_count_it->second;
+    }
+
+    auto index_it = subscription_index_map_.find(channel_type);
+    if (index_it != subscription_index_map_.end()) {
+      result << "\n- current buffered bytes: " << index_it->second.GetNumBufferedBytes();
+    }
   }
   return result.str();
 }

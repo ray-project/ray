@@ -45,7 +45,6 @@ def get_cliff_walking_wall_policy_and_data(
         AlgorithmConfig()
         .debugging(seed=seed)
         .rollouts(batch_mode="complete_episodes")
-        .environment(disable_env_checking=True)
         .experimental(_disable_preprocessor_api=True)
     )
     config = config.to_dict()

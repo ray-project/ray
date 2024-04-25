@@ -17,6 +17,7 @@ from typing import (
     Union,
 )
 
+import gymnasium as gym
 from packaging import version
 
 import ray
@@ -48,10 +49,6 @@ from ray.rllib.utils.deprecation import (
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import NotProvided, from_config
-from ray.rllib.utils.gym import (
-    convert_old_gym_space_to_gymnasium_space,
-    try_import_gymnasium_and_gym,
-)
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.serialization import (
@@ -79,7 +76,6 @@ from ray.tune.registry import get_trainable_cls
 from ray.tune.result import TRIAL_INFO
 from ray.tune.tune import _Config
 
-gym, old_gym = try_import_gymnasium_and_gym()
 Space = gym.Space
 
 """TODO(jungong, sven): in "offline_data" we can potentially unify all input types
@@ -327,8 +323,6 @@ class AlgorithmConfig(_Config):
         self.clip_rewards = None
         self.normalize_actions = True
         self.clip_actions = False
-        self.disable_env_checking = False
-        self.auto_wrap_old_gym_envs = True
         self.action_mask_key = "action_mask"
         # Whether this env is an atari env (for atari-specific preprocessing).
         # If not specified, we will try to auto-detect this.
@@ -546,6 +540,8 @@ class AlgorithmConfig(_Config):
         self.enable_async_evaluation = DEPRECATED_VALUE
         self.custom_async_evaluation_function = DEPRECATED_VALUE
         self._enable_rl_module_api = DEPRECATED_VALUE
+        self.auto_wrap_old_gym_envs = DEPRECATED_VALUE
+        self.disable_env_checking = DEPRECATED_VALUE
 
         # The following values have moved because of the new ReplayBuffer API
         self.buffer_size = DEPRECATED_VALUE
@@ -1414,10 +1410,11 @@ class AlgorithmConfig(_Config):
         clip_rewards: Optional[Union[bool, float]] = NotProvided,
         normalize_actions: Optional[bool] = NotProvided,
         clip_actions: Optional[bool] = NotProvided,
-        disable_env_checking: Optional[bool] = NotProvided,
         is_atari: Optional[bool] = NotProvided,
-        auto_wrap_old_gym_envs: Optional[bool] = NotProvided,
         action_mask_key: Optional[str] = NotProvided,
+        # Deprecated args.
+        auto_wrap_old_gym_envs=DEPRECATED_VALUE,
+        disable_env_checking=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the config's RL-environment settings.
 
@@ -1457,24 +1454,27 @@ class AlgorithmConfig(_Config):
             clip_actions: If True, the RLlib default ModuleToEnv connector will clip
                 actions according to the env's bounds (before sending them into the
                 `env.step()` call).
-            disable_env_checking: If True, disable the environment pre-checking module.
             is_atari: This config can be used to explicitly specify whether the env is
                 an Atari env or not. If not specified, RLlib will try to auto-detect
                 this.
-            auto_wrap_old_gym_envs: Whether to auto-wrap old gym environments (using
-                the pre 0.24 gym APIs, e.g. reset() returning single obs and no info
-                dict). If True, RLlib will automatically wrap the given gym env class
-                with the gym-provided compatibility wrapper
-                (gym.wrappers.EnvCompatibility). If False, RLlib will produce a
-                descriptive error on which steps to perform to upgrade to gymnasium
-                (or to switch this flag to True).
-             action_mask_key: If observation is a dictionary, expect the value by
+            action_mask_key: If observation is a dictionary, expect the value by
                 the key `action_mask_key` to contain a valid actions mask (`numpy.int8`
                 array of zeros and ones). Defaults to "action_mask".
 
         Returns:
             This updated AlgorithmConfig object.
         """
+        if auto_wrap_old_gym_envs != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.environment(auto_wrap_old_gym_envs=..)",
+                error=True,
+            )
+        if disable_env_checking != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.environment(disable_env_checking=..)",
+                error=True,
+            )
+
         if env is not NotProvided:
             self.env = env
         if env_config is not NotProvided:
@@ -1493,12 +1493,8 @@ class AlgorithmConfig(_Config):
             self.normalize_actions = normalize_actions
         if clip_actions is not NotProvided:
             self.clip_actions = clip_actions
-        if disable_env_checking is not NotProvided:
-            self.disable_env_checking = disable_env_checking
         if is_atari is not NotProvided:
             self._is_atari = is_atari
-        if auto_wrap_old_gym_envs is not NotProvided:
-            self.auto_wrap_old_gym_envs = auto_wrap_old_gym_envs
         if action_mask_key is not NotProvided:
             self.action_mask_key = action_mask_key
 
@@ -3188,16 +3184,8 @@ class AlgorithmConfig(_Config):
             if policy_spec.policy_class is None and default_policy_class is not None:
                 policies[pid].policy_class = default_policy_class
 
-            # In case - somehow - an old gym Space made it to here, convert it
-            # to the corresponding gymnasium space.
-            if old_gym and isinstance(policy_spec.observation_space, old_gym.Space):
-                policies[
-                    pid
-                ].observation_space = convert_old_gym_space_to_gymnasium_space(
-                    policy_spec.observation_space
-                )
             # Infer observation space.
-            elif policy_spec.observation_space is None:
+            if policy_spec.observation_space is None:
                 if spaces is not None and pid in spaces:
                     obs_space = spaces[pid][0]
                 elif env_obs_space is not None:
@@ -3252,14 +3240,8 @@ class AlgorithmConfig(_Config):
 
                 policies[pid].observation_space = obs_space
 
-            # In case - somehow - an old gym Space made it to here, convert it
-            # to the corresponding gymnasium space.
-            if old_gym and isinstance(policy_spec.action_space, old_gym.Space):
-                policies[pid].action_space = convert_old_gym_space_to_gymnasium_space(
-                    policy_spec.action_space
-                )
             # Infer action space.
-            elif policy_spec.action_space is None:
+            if policy_spec.action_space is None:
                 if spaces is not None and pid in spaces:
                     act_space = spaces[pid][1]
                 elif env_act_space is not None:

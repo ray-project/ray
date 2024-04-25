@@ -16,6 +16,7 @@ from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.pre_checks.env import check_multiagent_environments
 from ray.rllib.utils.typing import EpisodeID, ModelWeights
 from ray.util.annotations import PublicAPI
 from ray.tune.registry import ENV_CREATOR, _global_registry
@@ -723,7 +724,11 @@ class MultiAgentEnvRunner(EnvRunner):
         )
 
         # Perform actual gym.make call.
-        self.env = gym.make("rllib-multi-agent-env-v0")
+        self.env: MultiAgentEnv = gym.make("rllib-multi-agent-env-v0")
+        try:
+            check_multiagent_environments(self.env.unwrapped)
+        except Exception as e:
+            logger.exception(e.args[0])
         self.num_envs = 1
 
         # Create the MultiAgentEnv (is-a gymnasium env).
