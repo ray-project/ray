@@ -95,13 +95,15 @@ class _FileDatasink(Datasink):
         """
         from pyarrow.fs import FileType
 
-        # We should skip creating directories in s3 unless the user specifically 
+        # We should skip creating directories in s3 unless the user specifically
         # overrides this behavior. PyArrow's s3fs implementation might collide
-        # with restrictive IAM permissions and skipping the create_dir call will 
-        # prevent some of these errors.  
+        # with restrictive IAM permissions and skipping the create_dir call will
+        # prevent some of these errors.
         parsed_uri = urlparse(self.path)
         is_s3_uri = parsed_uri.scheme == "s3"
-        skip_create_dir_for_s3 = is_s3_uri and not DataContext.get_current().s3_try_create_dir
+        skip_create_dir_for_s3 = (
+            is_s3_uri and not DataContext.get_current().s3_try_create_dir
+        )
 
         if self.try_create_dir and not skip_create_dir_for_s3:
             if self.filesystem.get_file_info(self.path).type is FileType.NotFound:
