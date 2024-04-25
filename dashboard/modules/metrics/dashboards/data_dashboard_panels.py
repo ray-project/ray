@@ -532,6 +532,104 @@ DATA_GRAFANA_PANELS = [
         fill=0,
         stack=False,
     ),
+    Panel(
+        id=38,
+        title="Iteration Wait Time",
+        description="Seconds spent in ray.wait()",
+        unit="seconds",
+        targets=[
+            Target(
+                expr="sum(ray_data_iter_wait_seconds{{{global_filters}}}) by (dataset)",
+                legend="Seconds: {{dataset}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=39,
+        title="Iteration Get Time",
+        description="Seconds spent in ray.get()",
+        unit="seconds",
+        targets=[
+            Target(
+                expr="sum(ray_data_iter_get_seconds{{{global_filters}}}) by (dataset)",
+                legend="Seconds: {{dataset}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=40,
+        title="Iteration Next Batch Time",
+        description="Seconds spent to create batches from blocks",
+        unit="seconds",
+        targets=[
+            Target(
+                expr="sum(ray_data_iter_next_batch_seconds{{{global_filters}}}) by (dataset)",
+                legend="Seconds: {{dataset}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=41,
+        title="Iteration Format Batch Time",
+        description="Seconds spent to format batches",
+        unit="seconds",
+        targets=[
+            Target(
+                expr="sum(ray_data_iter_format_batch_seconds{{{global_filters}}}) by (dataset)",
+                legend="Seconds: {{dataset}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=42,
+        title="Iteration Collate Batch Time",
+        description="Seconds spent to apply collate function to batches",
+        unit="seconds",
+        targets=[
+            Target(
+                expr="sum(ray_data_iter_collate_batch_seconds{{{global_filters}}}) by (dataset)",
+                legend="Seconds: {{dataset}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=43,
+        title="Iteration Finalize Batch Time",
+        description="Seconds spent to apply finalize function to batches",
+        unit="seconds",
+        targets=[
+            Target(
+                expr="sum(ray_data_iter_finalize_batch_seconds{{{global_filters}}}) by (dataset)",
+                legend="Seconds: {{dataset}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=44,
+        title="Iteration Split Coordinator Time",
+        description="Seconds spent in split coordinator to relay blocks",
+        unit="seconds",
+        targets=[
+            Target(
+                expr="sum(ray_data_iter_streaming_split_coordinator_seconds{{{global_filters}}}) by (dataset)",
+                legend="Seconds: {{dataset}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
     # Ray Data Metrics (Miscellaneous)
 ]
 

@@ -339,6 +339,34 @@ const DATA_METRICS_CONFIG: MetricsSectionConfig[] = [
         title: "Iteration User Time",
         pathParams: "orgId=1&theme=light&panelId=10",
       },
+      {
+        title: "Iteration Wait Time",
+        pathParams: "orgId=1&theme=light&panelId=38",
+      },
+      {
+        title: "Iteration Get Time",
+        pathParams: "orgId=1&theme=light&panelId=39",
+      },
+      {
+        title: "Iteration Next Batch Time",
+        pathParams: "orgId=1&theme=light&panelId=40",
+      },
+      {
+        title: "Iteration Format Batch Time",
+        pathParams: "orgId=1&theme=light&panelId=41",
+      },
+      {
+        title: "Iteration Collate Batch Time",
+        pathParams: "orgId=1&theme=light&panelId=42",
+      },
+      {
+        title: "Iteration Finalize Batch Time",
+        pathParams: "orgId=1&theme=light&panelId=43",
+      },
+      {
+        title: "Iteration Split Coordinator Time",
+        pathParams: "orgId=1&theme=light&panelId=44",
+      },
     ],
   },
   // Add metrics with `metrics_group: "misc"` here.
