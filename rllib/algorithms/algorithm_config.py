@@ -413,6 +413,11 @@ class AlgorithmConfig(_Config):
         # Cached, actual AlgorithmConfig objects derived from
         # `self.algorithm_config_overrides_per_module`.
         self._per_module_overrides: Dict[ModuleID, "AlgorithmConfig"] = {}
+        # TODO (sven): Prepare multi-agent setup for logging each agent's and each
+        #  RLModule's steps taken thus far (and passing this information into the
+        #  EnvRunner metrics and the RLModule's forward pass). Thereby, deprecate the
+        #  `count_steps_by` config setting AND - at the same time - allow users to
+        #  specify the batch size unit instead (agent- vs env steps).
         self.count_steps_by = "env_steps"
         # self.agent_to_module_mapping_fn = self.DEFAULT_AGENT_TO_MODULE_MAPPING_FN
         # Soon to be Deprecated.
@@ -2539,7 +2544,7 @@ class AlgorithmConfig(_Config):
         keep_per_episode_custom_metrics: Optional[bool] = NotProvided,
         metrics_episode_collection_timeout_s: Optional[float] = NotProvided,
         metrics_num_episodes_for_smoothing: Optional[int] = NotProvided,
-        min_time_s_per_iteration: Optional[int] = NotProvided,
+        min_time_s_per_iteration: Optional[float] = NotProvided,
         min_train_timesteps_per_iteration: Optional[int] = NotProvided,
         min_sample_timesteps_per_iteration: Optional[int] = NotProvided,
     ) -> "AlgorithmConfig":
@@ -2561,12 +2566,12 @@ class AlgorithmConfig(_Config):
                 meaning don't ever cut any "excess" episodes.
                 Set this to 1 to disable smoothing and to always report only the most
                 recently collected episode's return.
-            min_time_s_per_iteration: Minimum time to accumulate within a single
-                `train()` call. This value does not affect learning,
+            min_time_s_per_iteration: Minimum time (in sec) to accumulate within a
+                single `Algorithm.train()` call. This value does not affect learning,
                 only the number of times `Algorithm.training_step()` is called by
                 `Algorithm.train()`. If - after one such step attempt, the time taken
                 has not reached `min_time_s_per_iteration`, will perform n more
-                `training_step()` calls until the minimum time has been
+                `Algorithm.training_step()` calls until the minimum time has been
                 consumed. Set to 0 or None for no minimum time.
             min_train_timesteps_per_iteration: Minimum training timesteps to accumulate
                 within a single `train()` call. This value does not affect learning,

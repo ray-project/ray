@@ -96,13 +96,13 @@ if __name__ == "__main__":
     # iterations with each other, respectively.
     # Setting scope to "avg" will compare (using `mode`=min|max) the average
     # values over the entire run.
-    metric = "episodes_this_iter"
+    metric = "env_runner_results/num_episodes"
     # notice here `scope` is `all`, meaning for each trial,
     # all results (not just the last one) will be examined.
     best_result = results.get_best_result(metric=metric, mode="min", scope="all")
     value_best_metric = best_result.metrics_dataframe[metric].min()
     best_return_best = best_result.metrics_dataframe[
-        "sampler_results/episode_reward_mean"
+        "env_runner_results/episode_return_mean"
     ].max()
     print(
         f"Best trial was the one with lr={best_result.metrics['config']['lr']}. "
@@ -116,7 +116,7 @@ if __name__ == "__main__":
     # Get the best checkpoints from the trial, based on different metrics.
     # Checkpoint with the lowest policy loss value:
     if args.enable_new_api_stack:
-        policy_loss_key = "info/learner/default_policy/policy_loss"
+        policy_loss_key = "learner_results/default_policy/policy_loss"
     else:
         policy_loss_key = "info/learner/default_policy/learner_stats/policy_loss"
     best_result = results.get_best_result(metric=policy_loss_key, mode="min")
@@ -126,7 +126,7 @@ if __name__ == "__main__":
 
     # Checkpoint with the highest value-function loss:
     if args.enable_new_api_stack:
-        vf_loss_key = "info/learner/default_policy/vf_loss"
+        vf_loss_key = "learner_results/default_policy/vf_loss"
     else:
         vf_loss_key = "info/learner/default_policy/learner_stats/vf_loss"
     best_result = results.get_best_result(metric=vf_loss_key, mode="max")
