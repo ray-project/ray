@@ -1413,27 +1413,28 @@ async def execute_streaming_generator_async(
     Args:
         context: The context to execute streaming generator.
     """
+    worker = ray._private.worker.global_worker
+
     cdef:
         int64_t cur_generator_index = 0
+
+        CObjectID generator_id = context.generator_id
+        CoreWorker core_worker = worker.core_worker
 
     assert context.is_initialized()
     # Generator task should only have 1 return object ref,
     # which contains None or exceptions (if system error occurs).
     assert context.return_size == 1
 
-    gen = context.generator
-
     loop = asyncio.get_running_loop()
-    worker = ray._private.worker.global_worker
-    generator_id = context.generator_id
 
-    executor = worker.core_worker.get_event_loop_executor(generator_id)
+    executor = core_worker.get_event_loop_executor(generator_id)
     interrupt_signal_event = threading.Event()
 
     futures = []
     try:
         try:
-            async for output in gen:
+            async for output in context.generator:
                 # NOTE: Reporting generator output in a streaming fashion,
                 #       is done in a standalone thread-pool fully *asynchronously*
                 #       to avoid blocking the event-loop and allow it to *concurrently*
@@ -4656,7 +4657,7 @@ cdef class CoreWorker:
             for fd in function_descriptors:
                 self.fd_to_cgname_dict[fd] = cg_name
 
-    def get_event_loop_executor(self, object_id: CObjectID) -> ThreadPoolExecutor:
+    cdef get_event_loop_executor(self, CObjectID &object_id):
         if len(self.event_loop_executors) == 0:
             # NOTE: We're deliberately allocating thread-pool executor with
             #       a single thread, provided that many of its use-cases are
