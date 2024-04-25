@@ -20,7 +20,6 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
-    NUM_AGENT_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_EPISODES,
@@ -270,8 +269,11 @@ class SingleAgentEnvRunner(EnvRunner):
 
                 # RLModule forward pass: Explore or not.
                 if explore:
+                    env_steps_lifetime = self.metrics.peek(
+                        NUM_ENV_STEPS_SAMPLED_LIFETIME
+                    ) + self.metrics.peek(NUM_ENV_STEPS_SAMPLED, default=0)
                     to_env = self.module.forward_exploration(
-                        to_module, t=self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME)
+                        to_module, t=env_steps_lifetime
                     )
                 else:
                     to_env = self.module.forward_inference(to_module)
@@ -307,14 +309,6 @@ class SingleAgentEnvRunner(EnvRunner):
                 },
                 reduce="sum",
                 reset_on_reduce=True,
-            )
-            # Lifetime stats.
-            self.metrics.log_dict(
-                {
-                    NUM_ENV_STEPS_SAMPLED_LIFETIME: self.num_envs,
-                    NUM_AGENT_STEPS_SAMPLED_LIFETIME: {DEFAULT_AGENT_ID: self.num_envs},
-                },
-                reduce="sum",
             )
 
             for env_index in range(self.num_envs):
@@ -475,8 +469,11 @@ class SingleAgentEnvRunner(EnvRunner):
 
                 # RLModule forward pass: Explore or not.
                 if explore:
+                    env_steps_lifetime = self.metrics.peek(
+                        NUM_ENV_STEPS_SAMPLED_LIFETIME
+                    ) + self.metrics.peek(NUM_ENV_STEPS_SAMPLED, default=0)
                     to_env = self.module.forward_exploration(
-                        to_module, t=self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME)
+                        to_module, t=env_steps_lifetime
                     )
                 else:
                     to_env = self.module.forward_inference(to_module)
@@ -566,13 +563,6 @@ class SingleAgentEnvRunner(EnvRunner):
                 },
                 reduce="sum",
                 reset_on_reduce=True,
-            )
-            self.metrics.log_dict(
-                {
-                    NUM_ENV_STEPS_SAMPLED_LIFETIME: self.num_envs,
-                    NUM_AGENT_STEPS_SAMPLED_LIFETIME: {DEFAULT_AGENT_ID: self.num_envs},
-                },
-                reduce="sum",
             )
 
         self._done_episodes_for_metrics.extend(done_episodes_to_return)

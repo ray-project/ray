@@ -904,10 +904,10 @@ class Algorithm(Trainable, AlgorithmBase):
         if self.config.uses_new_env_runners:
             # Synchronize EnvToModule and ModuleToEnv connector states and broadcast new
             # states back to all EnvRunners.
-            with self._timers[SYNCH_ENV_CONNECTOR_STATES_TIMER]:
+            with self.metrics.log_time((TIMERS, SYNCH_ENV_CONNECTOR_STATES_TIMER)):
                 self.workers.sync_env_runner_states(
                     config=self.config,
-                    env_steps_sampled=self._counters[NUM_ENV_STEPS_SAMPLED],
+                    env_steps_sampled=self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME),
                 )
             # Compile final ResultDict from `train_results` and `eval_results`. Note
             # that, as opposed to the old API stack, EnvRunner stats should already be

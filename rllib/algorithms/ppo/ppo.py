@@ -487,7 +487,7 @@ class PPO(Algorithm):
                 #  Remove these settings below, once Learner/LearnerGroup themselves
                 #  use MetricsLogger.
                 window=1,
-                #reset_on_reduce=True,
+                # reset_on_reduce=True,
             )
             # TODO (sven): Move these counters into Learners and add
             #  module-steps and agent-steps trained and sampled.
@@ -559,7 +559,7 @@ class PPO(Algorithm):
                 #  Remove these settings below, once Learner/LearnerGroup themselves
                 #  use MetricsLogger.
                 window=1,
-                #reset_on_reduce=True,
+                # reset_on_reduce=True,
             )
 
         return self.metrics.reduce()

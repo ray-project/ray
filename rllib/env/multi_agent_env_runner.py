@@ -17,7 +17,6 @@ from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
-    NUM_AGENT_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_EPISODES,
@@ -262,8 +261,11 @@ class MultiAgentEnvRunner(EnvRunner):
 
                 # MARLModule forward pass: Explore or not.
                 if explore:
+                    env_steps_lifetime = self.metrics.peek(
+                        NUM_ENV_STEPS_SAMPLED_LIFETIME
+                    ) + self.metrics.peek(NUM_ENV_STEPS_SAMPLED, default=0)
                     to_env = self.module.forward_exploration(
-                        to_module, t=self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME)
+                        to_module, t=env_steps_lifetime
                     )
                 else:
                     to_env = self.module.forward_inference(to_module)
@@ -300,14 +302,6 @@ class MultiAgentEnvRunner(EnvRunner):
                 },
                 reduce="sum",
                 reset_on_reduce=True,
-            )
-            self.metrics.log_dict(
-                {
-                    NUM_ENV_STEPS_SAMPLED_LIFETIME: self.num_envs,
-                    # TODO (sven): obs is not-vectorized. Support vectorized MA envs.
-                    NUM_AGENT_STEPS_SAMPLED_LIFETIME: {str(aid): 1 for aid in obs},
-                },
-                reduce="sum",
             )
 
             # TODO (sven): This simple approach to re-map `to_env` from a
@@ -480,8 +474,11 @@ class MultiAgentEnvRunner(EnvRunner):
 
                 # MARLModule forward pass: Explore or not.
                 if explore:
+                    env_steps_lifetime = self.metrics.peek(
+                        NUM_ENV_STEPS_SAMPLED_LIFETIME
+                    ) + self.metrics.peek(NUM_ENV_STEPS_SAMPLED, default=0)
                     to_env = self.module.forward_exploration(
-                        to_module, t=self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME)
+                        to_module, t=env_steps_lifetime
                     )
                 else:
                     to_env = self.module.forward_inference(to_module)
@@ -518,14 +515,6 @@ class MultiAgentEnvRunner(EnvRunner):
                 },
                 reduce="sum",
                 reset_on_reduce=True,
-            )
-            self.metrics.log_dict(
-                {
-                    NUM_ENV_STEPS_SAMPLED_LIFETIME: self.num_envs,
-                    # TODO (sven): obs is not-vectorized. Support vectorized MA envs.
-                    NUM_AGENT_STEPS_SAMPLED_LIFETIME: {str(aid): 1 for aid in obs},
-                },
-                reduce="sum",
             )
 
             # Add render data if needed.
