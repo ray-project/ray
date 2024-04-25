@@ -66,12 +66,18 @@ the experiment takes considerably longer (~70sec vs ~80sec):
 |          81.7371 | 100000 |   494.68 |             494.68 |
 +------------------+--------+----------+--------------------+
 """
+from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
+from ray.rllib.utils.metrics import (
+    NUM_EPISODES,
+    NUM_ENV_STEPS_SAMPLED,
+)
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
+from ray.rllib.utils.typing import ResultDict
 from ray.tune.registry import get_trainable_cls, register_env
 
 parser = add_rllib_example_script_args(default_reward=500.0)
@@ -117,18 +123,20 @@ parser.add_argument(
 
 
 class AssertEvalCallback(DefaultCallbacks):
-    def on_train_result(self, *, algorithm, result, **kwargs):
+    def on_train_result(self, *, algorithm: Algorithm, result: ResultDict, **kwargs):
+        eval_results = result.get("evaluation_results", result.get("evaluation", {}))
+        eval_env_runner_results = eval_results.get(
+            "env_runner_results", eval_results.get("sampler_results")
+        )
         # Make sure we always run exactly the given evaluation duration,
         # no matter what the other settings are (such as
         # `evaluation_num_workers` or `evaluation_parallel_to_training`).
-        if (
-            "evaluation" in result
-            and "hist_stats" in result["evaluation"]["sampler_results"]
-        ):
-            eval_sampler_res = result["evaluation"]["sampler_results"]
-            hist_stats = eval_sampler_res["hist_stats"]
-            num_episodes_done = len(hist_stats["episode_lengths"])
-            num_timesteps_reported = result["evaluation"]["timesteps_this_iter"]
+        if eval_env_runner_results and NUM_EPISODES in eval_env_runner_results:
+            num_episodes_done = eval_env_runner_results[NUM_EPISODES]
+            if algorithm.config.uses_new_env_runners:
+                num_timesteps_reported = eval_env_runner_results[NUM_ENV_STEPS_SAMPLED]
+            else:
+                num_timesteps_reported = eval_results["timesteps_this_iter"]
 
             # We run for automatic duration (as long as training takes).
             if algorithm.config.evaluation_duration == "auto":
@@ -167,12 +175,12 @@ class AssertEvalCallback(DefaultCallbacks):
                     "Number of run evaluation timesteps: "
                     f"{num_timesteps_reported} (ok)!"
                 )
-        # Expect at least evaluation/sampler_results to be always available.
+        # Expect at least evaluation_results/env_runner_results to be always available.
         elif algorithm.config.always_attach_evaluation_results and (
-            "evaluation" not in result or "sampler_results" not in result["evaluation"]
+            not eval_env_runner_results
         ):
             raise KeyError(
-                "`evaluation->sampler_results->hist_stats` not found in result dict!"
+                "`evaluation_results->env_runner_results` not found in result dict!"
             )
 
 
@@ -215,7 +223,14 @@ if __name__ == "__main__":
             # "episodes" or "timesteps".
             evaluation_duration_unit=args.evaluation_duration_unit,
             # Switch off exploratory behavior for better (greedy) results.
-            evaluation_config={"explore": False},
+            evaluation_config={
+                "explore": False,
+                # TODO (sven): Add support for window=float(inf) and reduce=mean for
+                #  evaluation episode_return_mean reductions (identical to old stack
+                #  behavior, which does NOT use a window (100 by default) to reduce
+                #  eval episode returns.
+                "metrics_num_episodes_for_smoothing": 5,
+            },
         )
         .debugging(
             _evaluation_parallel_to_training_wo_thread=(
@@ -233,8 +248,8 @@ if __name__ == "__main__":
 
     stop = {
         "training_iteration": args.stop_iters,
-        "evaluation/sampler_results/episode_reward_mean": args.stop_reward,
-        "timesteps_total": args.stop_timesteps,
+        "evaluation_results/env_runner_results/episode_return_mean": args.stop_reward,
+        "num_env_steps_sampled_lifetime": args.stop_timesteps,
     }
 
     run_rllib_example_script_experiment(
@@ -242,6 +257,8 @@ if __name__ == "__main__":
         args,
         stop=stop,
         success_metric={
-            "evaluation/sampler_results/episode_reward_mean": args.stop_reward,
+            "evaluation_results/env_runner_results/episode_return_mean": (
+                args.stop_reward
+            ),
         },
     )

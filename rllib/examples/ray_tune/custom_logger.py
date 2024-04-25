@@ -67,8 +67,8 @@ class MyPrintLogger(Logger):
 
     def on_result(self, result: dict):
         # Define, what should happen on receiving a `result` (dict).
-        mean_return = result["sampler_results"]["episode_reward_mean"]
-        pi_loss = result["info"]["learner"]["default_policy"]["policy_loss"]
+        mean_return = result["env_runner_results"]["episode_return_mean"]
+        pi_loss = result["learner_results"]["default_policy"]["policy_loss"]
         print(f"{self.prefix} " f"Avg-return: {mean_return} " f"pi-loss: {pi_loss}")
 
     def close(self):
@@ -118,7 +118,7 @@ if __name__ == "__main__":
         )
     )
 
-    stop = {"sampler_results/episode_reward_mean": 200.0}
+    stop = {"env_runner_results/episode_return_mean": 200.0}
 
     # Run the actual experiment (using Tune).
     results = tune.Tuner(

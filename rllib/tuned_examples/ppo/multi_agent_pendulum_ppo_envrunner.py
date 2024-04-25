@@ -36,8 +36,9 @@ config = (
 )
 
 stop = {
-    "timesteps_total": 500000,
-    "episode_reward_mean": -800.0,  # divide by num_agents for actual reward per agent
+    "num_env_steps_sampled_lifetime": 500000,
+    # Divide by num_agents for actual reward per agent.
+    "env_runner_results/episode_return_mean": -800.0,
 }
 
 

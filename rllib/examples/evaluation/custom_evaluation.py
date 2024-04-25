@@ -65,9 +65,9 @@ Training iteration 1 -> evaluation round 2
 """
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.evaluation.metrics import summarize_episodes
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.examples.envs.classes.simple_corridor import SimpleCorridor
+from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS, EVALUATION_RESULTS
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
@@ -113,7 +113,7 @@ def custom_eval_function(algorithm: Algorithm, eval_workers: WorkerSet) -> Resul
 
     # Collect metrics results collected by eval workers in this list for later
     # processing.
-    rollout_metrics = []
+    env_runner_metrics = []
 
     # For demonstration purposes, run through some number of evaluation
     # rounds within this one call. Note that this function is called once per
@@ -123,18 +123,26 @@ def custom_eval_function(algorithm: Algorithm, eval_workers: WorkerSet) -> Resul
         print(f"Training iteration {algorithm.iteration} -> evaluation round {i}")
         # Sample episodes from the EnvRunners AND have them return only the thus
         # collected metrics.
-        metrics_all_workers = eval_workers.foreach_worker(
+        metrics_all_env_runners = eval_workers.foreach_worker(
             # Return only the metrics, NOT the sampled episodes (we don't need them
             # anymore).
             func=lambda worker: (worker.sample(), worker.get_metrics())[1],
             local_worker=False,
         )
-        for metrics_per_worker in metrics_all_workers:
-            rollout_metrics.extend(metrics_per_worker)
+        env_runner_metrics.extend(metrics_all_env_runners)
 
-    # You can compute metrics from the episodes manually, or use the
-    # convenient `summarize_episodes()` utility:
-    eval_results = summarize_episodes(rollout_metrics)
+    # You can compute metrics from the episodes manually, or use the Algorithm's
+    # convenient MetricsLogger to store all evaluation metrics inside the main
+    # algo.
+    algorithm.metrics.log_n_dicts(
+        env_runner_metrics, key=(EVALUATION_RESULTS, ENV_RUNNER_RESULTS)
+    )
+    eval_results = algorithm.metrics.reduce(
+        key=(EVALUATION_RESULTS, ENV_RUNNER_RESULTS)
+    )
+    # Alternatively, you could manually reduce over the n returned `env_runner_metrics`
+    # dicts, but this would be much harder as you might not know, which metrics
+    # to sum up, which ones to average over, etc..
 
     return eval_results
 
@@ -172,14 +180,19 @@ if __name__ == "__main__":
             # here is simply ignored.
             evaluation_config=AlgorithmConfig.overrides(
                 env_config={"corridor_length": args.corridor_length_training * 2},
+                # TODO (sven): Add support for window=float(inf) and reduce=mean for
+                #  evaluation episode_return_mean reductions (identical to old stack
+                #  behavior, which does NOT use a window (100 by default) to reduce
+                #  eval episode returns.
+                metrics_num_episodes_for_smoothing=5,
             ),
         )
     )
 
     stop = {
         "training_iteration": args.stop_iters,
-        "evaluation/sampler_results/episode_reward_mean": args.stop_reward,
-        "timesteps_total": args.stop_timesteps,
+        "evaluation_results/env_runner_results/episode_return_mean": args.stop_reward,
+        "num_env_steps_sampled_lifetime": args.stop_timesteps,
     }
 
     run_rllib_example_script_experiment(
@@ -187,6 +200,8 @@ if __name__ == "__main__":
         args,
         stop=stop,
         success_metric={
-            "evaluation/sampler_results/episode_reward_mean": args.stop_reward,
+            "evaluation_results/env_runner_results/episode_return_mean": (
+                args.stop_reward
+            ),
         },
     )

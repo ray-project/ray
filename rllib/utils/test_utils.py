@@ -34,11 +34,15 @@ from ray.air.integrations.wandb import WandbLoggerCallback
 from ray.rllib.common import SupportedFileType
 from ray.rllib.env.wrappers.atari_wrappers import is_atari, wrap_deepmind
 from ray.rllib.train import load_experiments_from_file
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
     DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
+    ENV_RUNNER_RESULTS,
+    EVALUATION_RESULTS,
     NUM_ENV_STEPS_SAMPLED,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_TRAINED,
 )
 from ray.rllib.utils.nested_dict import NestedDict
@@ -600,12 +604,12 @@ def check_learning_achieved(
     tune_results: "tune.ResultGrid",
     min_value: float,
     evaluation: Optional[bool] = None,
-    metric: str = "sampler_results/episode_reward_mean",
+    metric: str = f"{ENV_RUNNER_RESULTS}/episode_return_mean",
 ):
     """Throws an error if `min_reward` is not reached within tune_results.
 
     Checks the last iteration found in tune_results for its
-    "episode_reward_mean" value and compares it to `min_reward`.
+    "episode_return_mean" value and compares it to `min_reward`.
 
     Args:
         tune_results: The tune.Tuner().fit() returned results object.
@@ -621,8 +625,10 @@ def check_learning_achieved(
     # (check if at least one trial achieved some learning)
     recorded_values = []
     for _, row in tune_results.get_dataframe().iterrows():
-        if evaluation or (evaluation is None and f"evaluation/{metric}" in row):
-            recorded_values.append(row[f"evaluation/{metric}"])
+        if evaluation or (
+            evaluation is None and f"{EVALUATION_RESULTS}/{metric}" in row
+        ):
+            recorded_values.append(row[f"{EVALUATION_RESULTS}/{metric}"])
         else:
             recorded_values.append(row[metric])
     best_value = max(recorded_values)
@@ -682,6 +688,82 @@ def check_off_policyness(
     return off_policy_ness
 
 
+def check_train_results_new_api_stack(train_results: ResultDict) -> None:
+    """Checks proper structure of a Algorithm.train() returned dict.
+
+    Args:
+        train_results: The train results dict to check.
+
+    Raises:
+        AssertionError: If `train_results` doesn't have the proper structure or
+            data in it.
+    """
+    # Import these here to avoid circular dependencies.
+    from ray.rllib.core.rl_module.rl_module import DEFAULT_POLICY_ID
+    from ray.rllib.utils.metrics import (
+        ENV_RUNNER_RESULTS,
+        FAULT_TOLERANCE_STATS,
+        LEARNER_RESULTS,
+        NUM_AGENT_STEPS_SAMPLED_LIFETIME,
+        NUM_ENV_STEPS_SAMPLED_LIFETIME,
+        TIMERS,
+    )
+
+    # Assert that some keys are where we would expect them.
+    for key in [
+        ENV_RUNNER_RESULTS,
+        FAULT_TOLERANCE_STATS,
+        LEARNER_RESULTS,
+        NUM_AGENT_STEPS_SAMPLED_LIFETIME,
+        NUM_ENV_STEPS_SAMPLED_LIFETIME,
+        TIMERS,
+        "training_iteration",
+        "config",
+    ]:
+        assert (
+            key in train_results
+        ), f"'{key}' not found in `train_results` ({train_results})!"
+
+    # Make sure, `config` is an actual dict, not an AlgorithmConfig object.
+    assert isinstance(
+        train_results["config"], dict
+    ), "`config` in results not a python dict!"
+
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
+    is_multi_agent = (
+        AlgorithmConfig()
+        .update_from_dict({"policies": train_results["config"]["policies"]})
+        .is_multi_agent()
+    )
+
+    # Check in particular the "info" dict.
+    learner_results = train_results[LEARNER_RESULTS]
+
+    # Make sure we have a default_policy key if we are not in a
+    # multi-agent setup.
+    if not is_multi_agent:
+        assert len(learner_results) == 0 or DEFAULT_POLICY_ID in learner_results, (
+            f"'{DEFAULT_POLICY_ID}' not found in "
+            f"train_results['{LEARNER_RESULTS}']!"
+        )
+
+    for module_id, module_metrics in learner_results.items():
+        # The ModuleID can be __all_modules__ in multi-agent case when the new learner
+        # stack is enabled.
+        if module_id == "__all_modules__":
+            continue
+
+        # On the new API stack, policy has no LEARNER_STATS_KEY under it anymore.
+        for key, value in module_metrics.items():
+            # Min- and max-stats should be single values.
+            if key.endswith("_min") or key.endswith("_max"):
+                assert np.isscalar(value), f"'key' value not a scalar ({value})!"
+
+    return train_results
+
+
+@OldAPIStack
 def check_train_results(train_results: ResultDict):
     """Checks proper structure of a Algorithm.train() returned dict.
 
@@ -1220,8 +1302,8 @@ def run_rllib_example_script_experiment(
     `args.no_tune` is set to True) using the stopping criteria in `stop`.
 
     At the end of the experiment, if `args.as_test` is True, checks, whether the
-    Algorithm reached the `success_metric` (if None, use
-    `sampler_results/episode_reward_mean` with a minimum value of `args.stop_reward`).
+    Algorithm reached the `success_metric` (if None, use `env_runner_results/
+    episode_return_mean` with a minimum value of `args.stop_reward`).
 
     See https://github.com/ray-project/ray/tree/master/rllib/examples for an overview
     of all supported command line options.
@@ -1237,18 +1319,18 @@ def run_rllib_example_script_experiment(
             `no_tune`, `verbose`, `checkpoint_freq`, `as_test`. Optionally, for WandB
             logging: `wandb_key`, `wandb_project`, `wandb_run_name`.
         stop: An optional dict mapping ResultDict key strings (using "/" in case of
-            nesting, e.g. "sampler_results/episode_reward_mean" for referring to
-            `result_dict['sampler_results']['episode_reward_mean']` to minimum
+            nesting, e.g. "env_runner_results/episode_return_mean" for referring to
+            `result_dict['env_runner_results']['episode_return_mean']` to minimum
             values, reaching of which will stop the experiment). Default is:
             {
-            "sampler_results/episode_reward_mean": args.stop_reward,
+            "env_runner_results/episode_return_mean": args.stop_reward,
             "training_iteration": args.stop_iters,
             "timesteps_total": args.stop_timesteps,
             }
         success_metric: Only relevant if `args.as_test` is True.
             A dict mapping a single(!) ResultDict key string (using "/" in
-            case of nesting, e.g. "sampler_results/episode_reward_mean" for referring
-            to `result_dict['sampler_results']['episode_reward_mean']` to a single(!)
+            case of nesting, e.g. "env_runner_results/episode_return_mean" for referring
+            to `result_dict['env_runner_results']['episode_return_mean']` to a single(!)
             minimum value to be reached in order for the experiment to count as
             successful. If `args.as_test` is True AND this `success_metric` is not
             reached with the bounds defined by `stop`, will raise an Exception.
@@ -1266,11 +1348,12 @@ def run_rllib_example_script_experiment(
     ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
 
     # Define one or more stopping criteria.
-    stop = stop or {
-        "training_iteration": args.stop_iters,
-        "sampler_results/episode_reward_mean": args.stop_reward,
-        "timesteps_total": args.stop_timesteps,
-    }
+    if not stop:
+        stop = {
+            f"{ENV_RUNNER_RESULTS}/episode_return_mean": args.stop_reward,
+            f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": args.stop_timesteps,
+            "training_iteration": args.stop_iters,
+        }
 
     from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
     from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
@@ -1312,9 +1395,11 @@ def run_rllib_example_script_experiment(
         algo = config.build()
         for _ in range(args.stop_iters):
             results = algo.train()
-            print(f"R={results['sampler_results']['episode_reward_mean']}", end="")
-            if "evaluation" in results:
-                Reval = results["evaluation"]["sampler_results"]["episode_reward_mean"]
+            print(f"R={results[ENV_RUNNER_RESULTS]['episode_return_mean']}", end="")
+            if EVALUATION_RESULTS in results:
+                Reval = results[EVALUATION_RESULTS][ENV_RUNNER_RESULTS][
+                    "episode_return_mean"
+                ]
                 print(f" R(eval)={Reval}", end="")
             print()
             for key, value in stop.items():
@@ -1357,11 +1442,13 @@ def run_rllib_example_script_experiment(
                 **{
                     "training_iteration": "iter",
                     "time_total_s": "total time (s)",
-                    "timesteps_total": "ts",
-                    "sampler_results/episode_reward_mean": "combined return",
+                    "num_env_steps_sampled_lifetime": "ts",
+                    f"{ENV_RUNNER_RESULTS}/episode_return_mean": "combined return",
                 },
                 **{
-                    f"policy_reward_mean/{pid}": f"return {pid}"
+                    (
+                        f"{ENV_RUNNER_RESULTS}/module_episode_returns_mean/" f"{pid}"
+                    ): f"return {pid}"
                     for pid in config.policies
                 },
             },
@@ -1391,7 +1478,9 @@ def run_rllib_example_script_experiment(
     # If run as a test, check whether we reached the specified success criteria.
     if args.as_test:
         if success_metric is None:
-            success_metric = {"sampler_results/episode_reward_mean": args.stop_reward}
+            success_metric = {
+                f"{ENV_RUNNER_RESULTS}/episode_return_mean": args.stop_reward,
+            }
         # TODO (sven): Make this work for more than one metric (AND-logic?).
         metric = next(iter(success_metric.keys()))
         check_learning_achieved(
