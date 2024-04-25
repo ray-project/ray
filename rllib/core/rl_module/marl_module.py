@@ -295,7 +295,7 @@ class MultiAgentRLModule(RLModule):
 
     @override(RLModule)
     def get_state(
-        self, module_ids: Optional[Set[ModuleID]] = None
+        self, module_ids: Optional[Set[ModuleID]] = None, inference_only: bool = False
     ) -> Mapping[ModuleID, Any]:
         """Returns the state of the multi-agent module.
 
@@ -305,6 +305,9 @@ class MultiAgentRLModule(RLModule):
         Args:
             module_ids: The module IDs to get the state of. If None, the state of all
                 modules is returned.
+            inference_only: If True, only a subset of parameters that are needed for
+                inference are returned. This subset is defined in the module.
+
         Returns:
             A nested state dict with the first layer being the module ID and the second
             is the state of the module. The returned dict values are framework-specific
@@ -315,7 +318,7 @@ class MultiAgentRLModule(RLModule):
             module_ids = self._rl_modules.keys()
 
         return {
-            module_id: self._rl_modules[module_id].get_state()
+            module_id: self._rl_modules[module_id].get_state(inference_only)
             for module_id in module_ids
         }
 

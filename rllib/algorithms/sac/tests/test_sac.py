@@ -33,7 +33,6 @@ torch, _ = try_import_torch()
 
 class SimpleEnv(gym.Env):
     def __init__(self, config):
-        self._skip_env_checking = True
         if config.get("simplex_actions", False):
             self.action_space = Simplex((2,))
         else:

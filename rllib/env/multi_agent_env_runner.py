@@ -16,6 +16,7 @@ from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.pre_checks.env import check_multiagent_environments
 from ray.rllib.utils.typing import EpisodeID, ModelWeights
 from ray.util.annotations import PublicAPI
 from ray.tune.registry import ENV_CREATOR, _global_registry
@@ -642,19 +643,23 @@ class MultiAgentEnvRunner(EnvRunner):
         if weights_seq_no == 0 or self._weights_seq_no < weights_seq_no:
             self.module.set_state(weights)
 
-    def get_weights(self, modules=None) -> Dict[ModuleID, ModelWeights]:
+    def get_weights(
+        self, modules=None, inference_only: bool = False
+    ) -> Dict[ModuleID, ModelWeights]:
         """Returns the weights of our multi-agent `RLModule`.
 
         Args:
             modules: `ModuleID`s for which to return the weights. If `None`
                 weigths for all modules are returned. See for details
                 `MultiAgentRLModule.get_state()`.
+            inference_only: If True, will return only a specified subset of the
+                weights (e.g. only the weights needed for inference).
 
         Returns:
             A dictionary mapping `ModuleID`s to their corresponding weights.
         """
 
-        return self.module.get_state(module_ids=modules)
+        return self.module.get_state(module_ids=modules, inference_only=inference_only)
 
     @override(EnvRunner)
     def assert_healthy(self):
@@ -719,7 +724,11 @@ class MultiAgentEnvRunner(EnvRunner):
         )
 
         # Perform actual gym.make call.
-        self.env = gym.make("rllib-multi-agent-env-v0")
+        self.env: MultiAgentEnv = gym.make("rllib-multi-agent-env-v0")
+        try:
+            check_multiagent_environments(self.env.unwrapped)
+        except Exception as e:
+            logger.exception(e.args[0])
         self.num_envs = 1
 
         # Create the MultiAgentEnv (is-a gymnasium env).
@@ -756,7 +765,9 @@ class MultiAgentEnvRunner(EnvRunner):
                 },
             )
             ma_rlm_spec: MultiAgentRLModuleSpec = self.config.get_marl_module_spec(
-                policy_dict=policy_dict
+                policy_dict=policy_dict,
+                # Built only a light version of the module in sampling and inference.
+                inference_only=True,
             )
 
             # Build the module from its spec.

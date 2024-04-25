@@ -585,7 +585,9 @@ class LearnerGroup:
                 refs.append(ref)
             ray.get(refs)
 
-    def get_weights(self, module_ids: Optional[Set[str]] = None) -> Dict[str, Any]:
+    def get_weights(
+        self, module_ids: Optional[Set[str]] = None, inference_only: bool = False
+    ) -> Dict[str, Any]:
         """Get the weights of the MultiAgentRLModule maintained by each Learner.
 
         Args:
@@ -596,12 +598,13 @@ class LearnerGroup:
 
         """
         if self.is_local:
-            state = self._learner.get_module_state(module_ids)
+            state = self._learner.get_module_state(module_ids, inference_only)
         else:
             worker = self._worker_manager.healthy_actor_ids()[0]
             assert len(self._workers) == self._worker_manager.num_healthy_actors()
             state = self._worker_manager.foreach_actor(
-                lambda w: w.get_module_state(module_ids), remote_actor_ids=[worker]
+                lambda w: w.get_module_state(module_ids, inference_only),
+                remote_actor_ids=[worker],
             )
             state = self._get_results(state)[0]
 

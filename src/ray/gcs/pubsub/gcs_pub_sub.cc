@@ -91,7 +91,7 @@ Status GcsPublisher::PublishError(const std::string &id,
   return Status::OK();
 }
 
-std::string GcsPublisher::DebugString() const { return "GcsPublisher {}"; }
+std::string GcsPublisher::DebugString() const { return publisher_->DebugString(); }
 
 Status GcsSubscriber::SubscribeAllJobs(
     const SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
