@@ -1544,7 +1544,7 @@ def start_raylet(
     Args:
         redis_address: The address of the primary Redis server.
         gcs_address: The address of GCS server.
-        node_id: The ID of this node.
+        node_id: The hex ID of this node.
         node_ip_address: The IP address of this node.
         node_manager_port: The port to use for the node manager. If it's
             0, a random port will be used.
