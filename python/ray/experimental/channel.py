@@ -81,7 +81,6 @@ class Channel:
     def __init__(
         self,
         readers: List[Optional[ray.actor.ActorHandle]],
-        num_readers: int,
         buffer_size_bytes: int,
         _writer_node_id=None,
         _reader_node_id=None,
@@ -209,7 +208,6 @@ class Channel:
     ) -> "Channel":
         chan = Channel(
             readers,
-            len(readers),
             buffer_size_bytes,
             _writer_node_id=writer_node_id,
             _reader_node_id=reader_node_id,

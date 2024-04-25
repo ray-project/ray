@@ -25,9 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-def do_allocate_channel(
-    self, readers: list, num_readers: int, buffer_size_bytes: int
-) -> Channel:
+def do_allocate_channel(self, readers: list, buffer_size_bytes: int) -> Channel:
     """Generic actor method to allocate an output channel.
 
     Args:
@@ -39,7 +37,6 @@ def do_allocate_channel(
     """
     self._output_channel = Channel(
         readers,
-        num_readers,
         buffer_size_bytes,
     )
     return self._output_channel
@@ -413,7 +410,6 @@ class CompiledDAG:
                     fn.remote(
                         do_allocate_channel,
                         reader_handles,
-                        num_readers=task.num_readers,
                         buffer_size_bytes=self._buffer_size_bytes,
                     )
                 )
@@ -425,7 +421,6 @@ class CompiledDAG:
                 ]
                 task.output_channel = Channel(
                     reader_handles,
-                    num_readers=task.num_readers,
                     buffer_size_bytes=self._buffer_size_bytes,
                 )
             else:
