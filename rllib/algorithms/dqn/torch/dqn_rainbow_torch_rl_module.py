@@ -1,4 +1,4 @@
-from typing import Dict, List, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union
 
 from ray.rllib.algorithms.dqn.dqn_rainbow_rl_module import (
     DQNRainbowRLModule,
@@ -37,17 +37,35 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         # If we use a noisy encoder. Note, only if the observation
         # space is a flat space we can use a noisy encoder.
         self.uses_noisy_encoder = isinstance(self.encoder, TorchNoisyMLPEncoder)
-        # We do not want to train the target networks.
-        # AND sync all target nets with the actual (trained) ones.
-        self.target_encoder.requires_grad_(False)
-        self.target_encoder.load_state_dict(self.encoder.state_dict())
+        # If we have target networks we need to sync them.
+        if not self.inference_only:
+            # We do not want to train the target networks.
+            # AND sync all target nets with the actual (trained) ones.
+            self.target_encoder.requires_grad_(False)
+            self.target_encoder.load_state_dict(self.encoder.state_dict())
 
-        self.af_target.requires_grad_(False)
-        self.af_target.load_state_dict(self.af.state_dict())
+            self.af_target.requires_grad_(False)
+            self.af_target.load_state_dict(self.af.state_dict())
 
-        if self.uses_dueling:
-            self.vf_target.requires_grad_(False)
-            self.vf_target.load_state_dict(self.vf.state_dict())
+            if self.uses_dueling:
+                self.vf_target.requires_grad_(False)
+                self.vf_target.load_state_dict(self.vf.state_dict())
+
+            # Set the expected and unexpected keys for the inference-only module.
+            self._set_inference_only_state_dict_keys()
+
+    # TODO (simon): Refactor to parent method.
+    @override(TorchRLModule)
+    def get_state(self, inference_only: bool = False) -> Dict[str, Any]:
+        state_dict = self.state_dict()
+        # If this module is not for inference, but the state dict is.
+        if not self.inference_only and inference_only:
+            # Call the local hook to remove or rename the parameters.
+            return self._inference_only_get_state_hook(state_dict)
+        # Otherwise, the state dict is for checkpointing or saving the model.
+        else:
+            # Return the state dict as is.
+            return state_dict
 
     @override(RLModule)
     def _forward_inference(self, batch: Dict[str, TensorType]) -> Dict[str, TensorType]:
@@ -131,6 +149,11 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
     def _forward_train(
         self, batch: Dict[str, TensorType]
     ) -> Dict[str, TensorStructType]:
+        if self.inference_only:
+            raise RuntimeError(
+                "Trying to train a module that is not a learner module. Set the "
+                "flag `inference_only=False` when building the module."
+            )
         output = {}
 
         # Set module into training mode.
@@ -407,3 +430,32 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
                 # of the value stream, too.
                 if self.uses_dueling:
                     self.vf_target._reset_noise()
+
+    @override(TorchRLModule)
+    def _set_inference_only_state_dict_keys(self) -> None:
+        # Get the model parameters.
+        state_dict = self.state_dict()
+        # Note, these keys are only known to the learner module. Furthermore,
+        # we want this to be run once during setup and not for each worker.
+        # TODO (simon): Check, if we can also remove the value network.
+        self._inference_only_state_dict_keys["unexpected_keys"] = [
+            name for name in state_dict if "target" in name
+        ]
+
+    @override(TorchRLModule)
+    def _inference_only_get_state_hook(
+        self, state_dict: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        # If we have keys in the state dict to take care of.
+        if self._inference_only_state_dict_keys:
+            # If we have unexpected keys remove them.
+            if self._inference_only_state_dict_keys.get("unexpected_keys"):
+                for param in self._inference_only_state_dict_keys["unexpected_keys"]:
+                    del state_dict[param]
+            # If we have expected keys, rename.
+            if self._inference_only_state_dict_keys.get("expected_keys"):
+                for param in self._inference_only_state_dict_keys["expected_keys"]:
+                    state_dict[
+                        self._inference_only_state_dict_keys["expected_keys"][param]
+                    ] = state_dict.pop(param)
+        return state_dict

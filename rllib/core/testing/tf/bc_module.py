@@ -73,7 +73,7 @@ class DiscreteBCTFModule(TfRLModule):
         return self._forward_shared(batch)
 
     @override(RLModule)
-    def get_state(self) -> Mapping[str, Any]:
+    def get_state(self, inference_only: bool = False) -> Mapping[str, Any]:
         return {"policy": self.policy.get_weights()}
 
     @override(RLModule)

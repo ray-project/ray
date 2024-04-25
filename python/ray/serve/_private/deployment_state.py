@@ -2178,11 +2178,7 @@ class DeploymentState:
                 self._replicas.add(ReplicaState.STOPPING, replica)
             else:
                 logger.info(f"{replica.replica_id} is stopped.")
-                # NOTE(zcin): We need to remove the replica from in-memory metrics store
-                # here instead of _stop_replica because the replica will continue to
-                # send metrics while it's still alive.
-                if replica.replica_id in self.replica_average_ongoing_requests:
-                    del self.replica_average_ongoing_requests[replica.replica_id]
+                self._autoscaling_state_manager.on_replica_stopped(replica.replica_id)
 
     def _choose_pending_migration_replicas_to_stop(
         self,

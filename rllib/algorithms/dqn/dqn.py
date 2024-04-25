@@ -675,8 +675,6 @@ class DQN(Algorithm):
 
             # Update weights and global_vars - after learning on the local worker -
             # on all remote workers.
-            # TODO (simon): For better performance, synch only the online network
-            # weights and not the target network weights.
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
                 if self.workers.num_remote_workers() > 0:
                     # NOTE: the new API stack does not use global vars.
@@ -684,10 +682,11 @@ class DQN(Algorithm):
                         from_worker_or_learner_group=self.learner_group,
                         policies=modules_to_update,
                         global_vars=None,
+                        inference_only=True,
                     )
                 # Then we must have a local worker.
                 else:
-                    weights = self.learner_group.get_weights()
+                    weights = self.learner_group.get_weights(inference_only=True)
                     self.workers.local_worker().set_weights(weights)
 
         return train_results
