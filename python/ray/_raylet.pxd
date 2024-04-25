@@ -127,6 +127,7 @@ cdef class CoreWorker:
         object _task_id_to_future_lock
         dict _task_id_to_future
         object event_loop_executors
+        int next_executor_idx
 
     cdef _create_put_buffer(self, shared_ptr[CBuffer] &metadata,
                             size_t data_size, ObjectRef object_ref,
@@ -156,7 +157,6 @@ cdef class CoreWorker:
         self, const c_vector[CFunctionDescriptor] &c_function_descriptors)
     cdef initialize_eventloops_for_actor_concurrency_group(
         self, const c_vector[CConcurrencyGroup] &c_defined_concurrency_groups)
-    cdef get_event_loop_executor(self, const CObjectID &object_id)
     cdef python_scheduling_strategy_to_c(
         self, python_scheduling_strategy,
         CSchedulingStrategy *c_scheduling_strategy)

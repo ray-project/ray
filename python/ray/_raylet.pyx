@@ -1421,7 +1421,6 @@ async def execute_streaming_generator_async(
         int64_t cur_generator_index = 0
 
         CObjectID generator_id = context.generator_id
-        CoreWorker core_worker = worker.core_worker
 
     assert context.is_initialized()
     # Generator task should only have 1 return object ref,
@@ -1430,7 +1429,7 @@ async def execute_streaming_generator_async(
 
     loop = asyncio.get_running_loop()
 
-    executor = core_worker.get_event_loop_executor(generator_id)
+    executor = worker.core_worker.get_event_loop_executor()
     interrupt_signal_event = threading.Event()
 
     futures = []
@@ -4659,19 +4658,21 @@ cdef class CoreWorker:
             for fd in function_descriptors:
                 self.fd_to_cgname_dict[fd] = cg_name
 
-    cdef get_event_loop_executor(self, CObjectID &object_id):
+    def get_event_loop_executor(self):
         if len(self.event_loop_executors) == 0:
+            assert _RAY_STREAMING_GEN_NUM_EXECUTORS >= 1, f"Number of executors should be >= 1 (got {_RAY_STREAMING_GEN_NUM_EXECUTORS})"
+
             # NOTE: We're deliberately allocating thread-pool executor with
             #       a single thread, provided that many of its use-cases are
             #       not thread-safe yet (for ex, reporting streaming generator output)
             self.event_loop_executors = [
                 ThreadPoolExecutor(max_workers=1) for _ in range(_RAY_STREAMING_GEN_NUM_EXECUTORS)
             ]
+            self.next_executor_idx = 0
 
-        h = hash(object_id.Hex())
-        idx = h % len(self.event_loop_executors)
+        self.next_executor_idx = (self.next_executor_idx + 1) % len(self.event_loop_executors)
 
-        return self.event_loop_executors[idx]
+        return self.event_loop_executors[self.next_executor_idx]
 
     def reset_event_loop_executor(self, executors: typing.List[ThreadPoolExecutor]):
         self.event_loop_executors = executors
