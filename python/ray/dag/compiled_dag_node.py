@@ -20,6 +20,7 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 
 from ray.dag.experimental.types import (
     do_register_custom_dag_serializers,
+    _init_nccl_group,
     TorchTensorType,
     _TorchTensorWrapper,
 )
@@ -176,12 +177,18 @@ class CompiledTask:
 
         self.output_wrapper_fn = None
         if self.dag_node.type_hint is not None:
-            if isinstance(self.dag_node.type_hint, TorchTensorType):
-                # Wrap outputs produced by this task to indicate that it
-                # should be specially serialized.
-                self.output_wrapper_fn = lambda t: _TorchTensorWrapper(
-                    t, self.dag_node.type_hint
+            if not isinstance(self.dag_node.type_hint, TorchTensorType):
+                raise ValueError(
+                    "ray.dag.DAGNode.with_type_hint() "
+                    "only allows "
+                    "ray.dag.experimental.types.TorchTensorType."
                 )
+
+            # Wrap outputs produced by this task to indicate that it
+            # should be specially serialized.
+            self.output_wrapper_fn = lambda t: _TorchTensorWrapper(
+                t, self.dag_node.type_hint
+            )
 
     def arg_tensor_meta(self, arg_idx) -> Dict[str, Any]:
         if arg_idx not in self.arg_idx_to_tensor_meta:
@@ -310,6 +317,8 @@ class CompiledDAG:
         self.input_task_idx, self.output_task_idx = None, None
         self.actor_task_count.clear()
 
+        nccl_actors = set()
+
         # For each task node, set its upstream and downstream task nodes.
         # Also collect the set of tasks that produce torch.tensors.
         for node_idx, task in self.idx_to_task.items():
@@ -344,10 +353,22 @@ class CompiledDAG:
                     )
                 self.actor_task_count[actor_handle._actor_id] += 1
 
+                if (
+                    isinstance(dag_node.type_hint, TorchTensorType)
+                    and dag_node.type_hint.transport == "nccl"
+                ):
+                    nccl_actors.add(actor_handle)
+
             for arg_idx, arg in enumerate(task.args):
-                if isinstance(arg, DAGNode):
-                    arg_node_idx = self.dag_node_to_idx[arg]
-                    self.idx_to_task[arg_node_idx].downstream_node_idxs.add(node_idx)
+                if not isinstance(arg, DAGNode):
+                    continue
+
+                upstream_node_idx = self.dag_node_to_idx[arg]
+                upstream_node = self.idx_to_task[upstream_node_idx]
+                upstream_node.downstream_node_idxs.add(node_idx)
+
+        nccl_actors = list(nccl_actors)
+        _init_nccl_group(self, nccl_actors)
 
         for actor_id, task_count in self.actor_task_count.items():
             if task_count > 1:

@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, Optional, List
 
 import numpy as np
 import torch
@@ -36,9 +36,12 @@ def do_register_custom_dag_serializers(self):
 
 @PublicAPI(stability="alpha")
 class TorchTensorType(DAGNodeOutputType):
-    def __init__(self, shape: Tuple[int], dtype: "torch.dtype"):
+    def __init__(
+        self, shape: Tuple[int], dtype: "torch.dtype", transport: Optional[str] = None
+    ):
         self.shape = shape
         self.dtype = dtype
+        self.transport = transport
 
 
 @DeveloperAPI
@@ -107,3 +110,52 @@ class _TorchTensorSerializer:
         # is True. This is safe to set when deserializing np_array if the
         # upstream task has num_readers=1.
         return torch.tensor(np_array, device=self.device)
+
+
+def do_init_nccl_group(self, world_size, comm_id, rank):
+    assert ray.get_gpu_ids()
+
+    from cupy.cuda import nccl
+
+    self._ray_dag_nccl_comm = nccl.NcclCommunicator(world_size, comm_id, rank)
+
+
+@DeveloperAPI
+def do_check_has_gpu(self) -> bool:
+    return bool(ray.get_gpu_ids())
+
+
+def _init_nccl_group(
+    compiled_dag: "ray.dag.compiled_dag_node.CompiledDAG",
+    actors: List[ray.actor.ActorHandle],
+):
+    has_gpus = ray.get(
+        [actor.__ray_call__.remote(do_check_has_gpu) for actor in actors]
+    )
+    for has_gpu, actor in zip(has_gpus, actors):
+        if not has_gpu:
+            raise ValueError(
+                f"Actor {actor} returns a tensor with type hint "
+                'TorchTensor(transport="nccl") but actor does not have a '
+                "GPU assigned by Ray."
+            )
+
+    from cupy.cuda import nccl
+
+    comm_id = nccl.get_unique_id()
+    # TODO(swang): Handle timeout errors.
+    ray.get(
+        [
+            actor.__ray_call__.remote(
+                do_init_nccl_group, world_size=len(actors), comm_id=comm_id, rank=rank
+            )
+            for rank, actor in enumerate(actors)
+        ],
+        timeout=30,
+    )
+    # TODO(swang): Destroy the communicator.
+
+    compiled_dag._nccl_group = (
+        comm_id,
+        {rank: actor for rank, actor in enumerate(actors)},
+    )
