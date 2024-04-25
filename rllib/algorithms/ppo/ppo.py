@@ -483,9 +483,11 @@ class PPO(Algorithm):
                 # TODO (sven): For now, as we do NOT use MetricsLogger inside Learner
                 #  and LearnerGroup, we assume here that the
                 #  Learner/LearnerGroup-returned values are absolute (and thus require a
-                #  reduce window of just 1 (take as-is)). Remove the window setting
-                #  below, once Learner/LearnerGroup themselves use MetricsLogger.
+                #  very large reduce window (take as-is) AND resetting after reduce).
+                #  Remove these settings below, once Learner/LearnerGroup themselves
+                #  use MetricsLogger.
                 window=1,
+                #reset_on_reduce=True,
             )
             # TODO (sven): Move these counters into Learners and add
             #  module-steps and agent-steps trained and sampled.
@@ -553,9 +555,11 @@ class PPO(Algorithm):
                 # TODO (sven): For now, as we do NOT use MetricsLogger inside Learner
                 #  and LearnerGroup, we assume here that the
                 #  Learner/LearnerGroup-returned values are absolute (and thus require a
-                #  reduce window of just 1 (take as-is)). Remove the window setting
-                #  below, once Learner/LearnerGroup themselves use MetricsLogger.
+                #  very large reduce window (take as-is) AND resetting after reduce).
+                #  Remove these settings below, once Learner/LearnerGroup themselves
+                #  use MetricsLogger.
                 window=1,
+                #reset_on_reduce=True,
             )
 
         return self.metrics.reduce()
