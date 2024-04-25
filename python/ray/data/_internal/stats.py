@@ -471,6 +471,7 @@ class _StatsActor:
         self.iter_collate_batch_s.set(0, tags)
         self.iter_finalize_batch_s.set(0, tags)
         self.streaming_split_coordinator_s.set(0, tags)
+        self.streaming_exec_schedule_s.set(0, tags) # Where should this live?
 
     def register_dataset(self, dataset_tag: str, operator_tags: List[str]):
         self.datasets[dataset_tag] = {
