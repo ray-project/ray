@@ -4367,8 +4367,8 @@ class AlgorithmConfig(_Config):
     def exploration(self, *args, **kwargs):
         return self.env_runners(*args, **kwargs)
 
-    @Deprecated(new="AlgorithmConfig.num_env_runners", error=False)
     @property
+    @Deprecated(new="AlgorithmConfig.num_env_runners", error=False)
     def num_rollout_workers(self):
         return self.num_env_runners
 
@@ -4380,8 +4380,8 @@ class AlgorithmConfig(_Config):
             error=True,
         )
 
-    @Deprecated(new="AlgorithmConfig.num_envs_per_env_runner", error=False)
     @property
+    @Deprecated(new="AlgorithmConfig.num_envs_per_env_runner", error=False)
     def num_envs_per_worker(self):
         return self.num_envs_per_env_runner
 
@@ -4393,11 +4393,11 @@ class AlgorithmConfig(_Config):
             error=True,
         )
 
+    @property
     @Deprecated(
         new="AlgorithmConfig.validate_env_runners_after_construction",
         error=False,
     )
-    @property
     def validate_workers_after_construction(self):
         return self.validate_env_runners_after_construction
 
