@@ -77,6 +77,7 @@ class Channel:
     def __init__(
         self,
         readers: list,
+        num_readers: int,
         buffer_size_bytes: int,
         _writer_node_id=None,
         _reader_node_id=None,
@@ -115,9 +116,12 @@ class Channel:
                 # Reader and writer are on different nodes.
                 self._reader_node_id = ray.get(readers[0].get_node_id.remote())
                 fn = readers[0].__ray_call__
-                self._reader_ref = ray.get(
-                    fn.remote(_create_channel_ref, buffer_size_bytes)
-                )
+                if self.is_remote():
+                    self._reader_ref = ray.get(
+                        fn.remote(_create_channel_ref, buffer_size_bytes)
+                    )
+                else:
+                    self._reader_ref = self._writer_ref
 
             is_creator = True
         else:
@@ -131,6 +135,7 @@ class Channel:
             self._reader_ref = _reader_ref
 
         self._readers = readers
+        self._num_readers = num_readers
         self._buffer_size_bytes = buffer_size_bytes
 
         self._worker = ray._private.worker.global_worker
@@ -163,19 +168,17 @@ class Channel:
         # TODO: In C++, optionally do a sync RPC to the remote reader raylet.
         # Reader raylet allocates a local "reader ref". Reader raylet maps
         # (writer ref) -> (reader ref, num_readers).
-        if self.is_remote():
-            actor_id = self._readers[0]._actor_id
-            num_readers = len(self._readers)
-        else:
+        if len(self._readers) == 0:
             actor_id = ray.ActorID.nil()
-            num_readers = 1
+        else:
+            actor_id = self._readers[0]._actor_id
         self._worker.core_worker.experimental_channel_register_writer(
             self._writer_ref,
             self._reader_ref,
             self._writer_node_id,
             self._reader_node_id,
             actor_id,
-            num_readers,
+            self._num_readers,
         )
         self._writer_registered = True
 
@@ -193,6 +196,7 @@ class Channel:
     @staticmethod
     def _deserialize_reader_channel(
         readers: list,
+        num_readers: int,
         buffer_size_bytes: int,
         writer_node_id,
         reader_node_id,
@@ -201,6 +205,7 @@ class Channel:
     ) -> "Channel":
         chan = Channel(
             readers,
+            num_readers,
             buffer_size_bytes,
             _writer_node_id=writer_node_id,
             _reader_node_id=reader_node_id,
@@ -213,6 +218,7 @@ class Channel:
         assert self._reader_ref is not None
         return self._deserialize_reader_channel, (
             self._readers,
+            self._num_readers,
             self._buffer_size_bytes,
             self._writer_node_id,
             self._reader_node_id,
@@ -234,7 +240,7 @@ class Channel:
                 before we can write again.
         """
         if num_readers is None:
-            num_readers = len(self._readers)
+            num_readers = self._num_readers
         if num_readers <= 0:
             raise ValueError("``num_readers`` must be a positive integer.")
         if self.is_remote():
