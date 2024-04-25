@@ -347,20 +347,17 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
     worker_command_args.push_back("--worker-launch-time-ms=" +
                                   std::to_string(current_sys_time_ms()));
     worker_command_args.push_back("--node-id=" + node_id_.Hex());
+    worker_command_args.push_back("--runtime-env-hash=" +
+                                  std::to_string(runtime_env_hash));
   } else if (language == Language::CPP) {
     worker_command_args.push_back("--startup_token=" +
                                   std::to_string(worker_startup_token_counter_));
+    worker_command_args.push_back("--ray_runtime_env_hash=" +
+                                  std::to_string(runtime_env_hash));
   }
 
   if (serialized_runtime_env_context != "{}" && !serialized_runtime_env_context.empty()) {
     worker_command_args.push_back("--language=" + Language_Name(language));
-    if (language == Language::CPP) {
-      worker_command_args.push_back("--ray_runtime_env_hash=" +
-                                    std::to_string(runtime_env_hash));
-    } else {
-      worker_command_args.push_back("--runtime-env-hash=" +
-                                    std::to_string(runtime_env_hash));
-    }
     worker_command_args.push_back("--serialized-runtime-env-context=" +
                                   serialized_runtime_env_context);
   } else if (language == Language::PYTHON && worker_command_args.size() >= 2 &&
