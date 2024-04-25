@@ -4661,7 +4661,9 @@ cdef class CoreWorker:
             # NOTE: We're deliberately allocating thread-pool executor with
             #       a single thread, provided that many of its use-cases are
             #       not thread-safe yet (for ex, reporting streaming generator output)
-            self.event_loop_executors = [ThreadPoolExecutor(max_workers=1) for _ in range(4)]
+            self.event_loop_executors = [
+                ThreadPoolExecutor(max_workers=1) for _ in range(4)
+            ]
 
         h = hash(object_id.Hex())
 
