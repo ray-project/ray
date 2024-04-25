@@ -50,7 +50,7 @@ prometheus_client>=0.7.1
 requests
 pandas
 tensorboardX
-aiohttp>=3.7,<3.9
+aiohttp>=3.7,<3.10
 starlette
 typer
 fsspec
