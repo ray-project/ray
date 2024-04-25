@@ -1855,7 +1855,7 @@ querystring-parser==1.2.4
     #   raydp
     #   tune-sklearn
 raydp==1.7.0b20231020.dev0
-    # via -r /ray/ci/../python/requirements/ml/data-requirements.txt
+    # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
 recsim==0.2.4 ; sys_platform != "darwin" or platform_machine != "arm64"
     # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
 redis==4.4.2
