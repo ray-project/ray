@@ -26,6 +26,8 @@ from ray.rllib.utils.actor_manager import RemoteCallResults
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
+from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
+from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.offline import get_dataset_and_shards
 from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
@@ -138,9 +140,15 @@ class WorkerSet:
         }
 
         # Set the EnvRunner subclass to be used as "workers". Default: RolloutWorker.
-        self.env_runner_cls = (
-            RolloutWorker if config.env_runner_cls is None else config.env_runner_cls
-        )
+        self.env_runner_cls = config.env_runner_cls
+        if self.env_runner_cls is None:
+            if config.enable_env_runner_and_connector_v2:
+                if config.is_multi_agent():
+                    self.env_runner_cls = MultiAgentEnvRunner
+                else:
+                    self.env_runner_cls = SingleAgentEnvRunner
+            else:
+                self.env_runner_cls = RolloutWorker
         self._cls = ray.remote(**self._remote_args)(self.env_runner_cls).remote
 
         self._logdir = logdir
