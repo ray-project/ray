@@ -43,8 +43,10 @@ class DataOpTask(OpTask):
         self,
         task_index: int,
         streaming_gen: ObjectRefGenerator,
+        inputs: RefBundle,
         output_ready_callback: Callable[[RefBundle], None],
         task_done_callback: Callable[[Optional[Exception]], None],
+        task_failed_callback: Callable[[], None],
     ):
         """
         Args:
@@ -59,8 +61,10 @@ class DataOpTask(OpTask):
         # interface. So each individual operator don't need to take care of the
         # BlockMetadata.
         self._streaming_gen = streaming_gen
+        self._inputs = inputs
         self._output_ready_callback = output_ready_callback
         self._task_done_callback = task_done_callback
+        self._task_failed_callback = task_failed_callback
 
     def get_waitable(self) -> ObjectRefGenerator:
         return self._streaming_gen
@@ -97,6 +101,9 @@ class DataOpTask(OpTask):
                 try:
                     ray.get(block_ref)
                     assert False, "Above ray.get should raise an exception."
+                except ray.exceptions.RayActorError:
+                    self._task_failed_callback()
+                    break
                 except Exception as ex:
                     self._task_done_callback(ex)
                     raise ex from None
