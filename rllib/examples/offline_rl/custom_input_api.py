@@ -119,7 +119,7 @@ if __name__ == "__main__":
 
     stop = {
         "training_iteration": args.stop_iters,
-        "evaluation/sampler_results/episode_reward_mean": -600,
+        "evaluation_results/env_runner_results/episode_return_mean": -600,
     }
 
     tuner = tune.Tuner(

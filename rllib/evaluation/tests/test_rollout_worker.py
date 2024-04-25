@@ -192,18 +192,6 @@ class TestRolloutWorker(unittest.TestCase):
                 check(lr, expected_lr, rtol=0.05)
             algo.stop()
 
-    def test_no_step_on_init(self):
-        register_env("fail", lambda _: FailOnStepEnv())
-        config = PPOConfig().environment("fail").env_runners(num_env_runners=2)
-        for _ in framework_iterator(config):
-            # We expect this to fail already on Algorithm init due
-            # to the env sanity check right after env creation (inside
-            # RolloutWorker).
-            self.assertRaises(
-                Exception,
-                lambda: config.build(),
-            )
-
     def test_query_evaluators(self):
         register_env("test", lambda _: gym.make("CartPole-v1"))
         config = (
@@ -878,7 +866,9 @@ class TestRolloutWorker(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda _: MockVectorEnv(20, mocked_num_envs=8),
             default_policy_class=MockPolicy,
-            config=AlgorithmConfig().env_runners(num_rollout_workers=0).debugging(seed=1),
+            config=AlgorithmConfig()
+            .env_runners(num_env_runners=0)
+            .debugging(seed=1),
         )
         assert not hasattr(ev.env, "seed")
         ev.stop()

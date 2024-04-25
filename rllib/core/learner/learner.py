@@ -693,7 +693,9 @@ class Learner:
             if ref in param_dict and param_dict[ref] is not None
         }
 
-    def get_module_state(self, module_ids: Optional[Set[str]] = None) -> Dict[str, Any]:
+    def get_module_state(
+        self, module_ids: Optional[Set[str]] = None, inference_only: bool = False
+    ) -> Dict[str, Any]:
         """Returns the state of the underlying MultiAgentRLModule.
 
         The output should be numpy-friendly for easy serialization, not framework
@@ -707,7 +709,7 @@ class Learner:
             A dictionary that holds the state of the modules in a numpy-friendly
             format.
         """
-        module_states = self.module.get_state(module_ids)
+        module_states = self.module.get_state(module_ids, inference_only)
         return convert_to_numpy({k: v for k, v in module_states.items()})
 
     @abc.abstractmethod

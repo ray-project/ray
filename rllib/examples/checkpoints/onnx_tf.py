@@ -26,7 +26,7 @@ if __name__ == "__main__":
         ppo.PPOConfig()
         # ONNX is not supported by RLModule API yet.
         .api_stack(enable_rl_module_and_learner=False)
-        .env_runners(num_rollout_workers=1)
+        .env_runners(num_env_runners=1)
         .framework(args.framework)
     )
 

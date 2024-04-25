@@ -114,7 +114,7 @@ class TestBackwardCompatibility(unittest.TestCase):
             },
             "lr": 0.001,
             "evaluation_config": {
-                "num_envs_per_worker": 4,
+                "num_envs_per_env_runner": 4,
                 "explore": False,
             },
             "evaluation_num_env_runners": 1,

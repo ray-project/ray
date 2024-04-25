@@ -136,13 +136,15 @@ if __name__ == "__main__":
     # Make `args.stop_reward` "point" to the reward of the learned policy.
     stop = {
         "training_iteration": args.stop_iters,
-        "sampler_results/policy_reward_mean/learned": args.stop_reward,
-        "timesteps_total": args.stop_timesteps,
+        "env_runner_results/module_episode_returns_mean/learned": args.stop_reward,
+        "num_env_steps_sampled_lifetime": args.stop_timesteps,
     }
 
     run_rllib_example_script_experiment(
         base_config,
         args,
         stop=stop,
-        success_metric={"sampler_results/policy_reward_mean/learned": args.stop_reward},
+        success_metric={
+            "env_runner_results/module_episode_returns_mean/learned": args.stop_reward,
+        },
     )

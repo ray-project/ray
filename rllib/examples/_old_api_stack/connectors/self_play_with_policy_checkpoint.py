@@ -117,9 +117,11 @@ def main(checkpoint_dir):
                 metric_columns={
                     "training_iteration": "iter",
                     "time_total_s": "time_total_s",
-                    "timesteps_total": "ts",
-                    "episodes_this_iter": "train_episodes",
-                    "policy_reward_mean/main": "reward_main",
+                    "num_env_steps_sampled_lifetime": "ts",
+                    "env_runner_results/num_episodes": "train_episodes",
+                    (
+                        "env_runner_results/module_episode_returns_mean/" "main"
+                    ): "reward_main",
                 },
                 sort_by_metric=True,
             ),

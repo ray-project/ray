@@ -92,7 +92,9 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             rollout_worker = algo.workers.local_worker()
             sample_batch = rollout_worker.sample()
             sample_batch = convert_ma_batch_to_sample_batch(sample_batch)
-            expected_count = config.num_envs_per_env_runner * config.rollout_fragment_length
+            expected_count = (
+                config.num_envs_per_env_runner * config.rollout_fragment_length
+            )
             assert sample_batch.count == expected_count
             for v in sample_batch.values():
                 assert len(v) == expected_count

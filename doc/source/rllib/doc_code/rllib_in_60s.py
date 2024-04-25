@@ -9,7 +9,7 @@ config = (  # 1. Configure the algorithm,
     .env_runners(num_env_runners=2)
     .framework("torch")
     .training(model={"fcnet_hiddens": [64, 64]})
-    .evaluation(evaluation_num_workers=1)
+    .evaluation(evaluation_num_env_runners=1)
 )
 
 algo = config.build()  # 2. build the algorithm,

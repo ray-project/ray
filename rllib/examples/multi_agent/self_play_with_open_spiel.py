@@ -182,7 +182,7 @@ if __name__ == "__main__":
         config.training(num_sgd_iter=20)
 
     stop = {
-        "timesteps_total": args.stop_timesteps,
+        "num_env_steps_sampled_lifetime": args.stop_timesteps,
         "training_iteration": args.stop_iters,
         "league_size": args.min_league_size,
     }

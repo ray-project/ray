@@ -132,7 +132,7 @@ def _update_env_seed_if_necessary(
 
     # A single RL job is unlikely to have more than 10K
     # rollout workers.
-    max_num_envs_per_workers: int = 1000
+    max_num_envs_per_env_runner: int = 1000
     assert (
         worker_idx < max_num_envs_per_env_runners
     ), "Too many envs per worker. Random seeds may collide."
@@ -248,8 +248,8 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 through EnvContext so that envs can be configured per worker.
             recreated_worker: Whether this worker is a recreated one. Workers are
                 recreated by an Algorithm (via WorkerSet) in case
-                `recreate_failed_workers=True` and one of the original workers (or an
-                already recreated one) has failed. They don't differ from original
+                `recreate_failed_env_runners=True` and one of the original workers (or
+                an already recreated one) has failed. They don't differ from original
                 workers other than the value of this flag (`self.recreated_worker`).
             log_dir: Directory where logs can be placed.
             spaces: An optional space dict mapping policy IDs
@@ -631,12 +631,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         # The current weights sequence number (version). May remain None for when
         # not tracking weights versions.
         self.weights_seq_no: Optional[int] = None
-
-        logger.debug(
-            "Created rollout worker with env {} ({}), policies {}".format(
-                self.async_env, self.env, self.policy_map
-            )
-        )
 
     @override(EnvRunner)
     def assert_healthy(self):
@@ -1468,12 +1462,15 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
     def get_weights(
         self,
         policies: Optional[Container[PolicyID]] = None,
+        inference_only: bool = False,
     ) -> Dict[PolicyID, ModelWeights]:
         """Returns each policies' model weights of this worker.
 
         Args:
             policies: List of PolicyIDs to get the weights from.
                 Use None for all policies.
+            inference_only: This argument is only added for interface
+                consistency with the new api stack.
 
         Returns:
             Dict mapping PolicyIDs to ModelWeights.

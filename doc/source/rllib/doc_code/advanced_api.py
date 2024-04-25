@@ -73,7 +73,7 @@ config = AlgorithmConfig().evaluation(
     # What if number of eval workers is non-dividable by 10?
     # -> Run 7 episodes (1 per eval worker), then run 3 more episodes only using
     #    evaluation workers 1-3 (evaluation workers 4-7 remain idle during that time).
-    evaluation_num_workers=7,
+    evaluation_num_env_runners=7,
 )
 # __rllib-adv_api_evaluation_3_end__
 

@@ -53,9 +53,9 @@ class NodeFailureTests(unittest.TestCase):
             .environment("CartPole-v1")
             .env_runners(
                 num_env_runners=6,
-                recreate_failed_workers=True,
                 validate_env_runners_after_construction=True,
             )
+            .fault_tolerance(recreate_failed_env_runners=True)
             .training(
                 train_batch_size=300,
             )

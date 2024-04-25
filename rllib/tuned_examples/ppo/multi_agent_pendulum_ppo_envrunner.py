@@ -13,7 +13,13 @@ config = (
     .env_runners(
         env_runner_cls=MultiAgentEnvRunner,
         num_envs_per_env_runner=1,
-        num_env_runners=4,
+        num_env_runners=2,
+    )
+    .rl_module(
+        model_config_dict={
+            "fcnet_activation": "relu",
+            "uses_new_env_runners": True,
+        },
     )
     .training(
         train_batch_size=512,
@@ -21,10 +27,6 @@ config = (
         gamma=0.95,
         lr=0.0003,
         sgd_minibatch_size=64,
-        model={
-            "fcnet_activation": "relu",
-            "uses_new_env_runners": True,
-        },
         vf_clip_param=10.0,
     )
     .multi_agent(
@@ -34,8 +36,9 @@ config = (
 )
 
 stop = {
-    "timesteps_total": 500000,
-    "episode_reward_mean": -800.0,  # divide by num_agents for actual reward per agent
+    "num_env_steps_sampled_lifetime": 500000,
+    # Divide by num_agents for actual reward per agent.
+    "env_runner_results/episode_return_mean": -800.0,
 }
 
 
