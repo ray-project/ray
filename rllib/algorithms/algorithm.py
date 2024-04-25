@@ -616,19 +616,23 @@ class Algorithm(Trainable, AlgorithmBase):
             )
             self.config.off_policy_estimation_methods = ope_dict
 
-        # Create a set of env runner actors via a WorkerSet.
-        self.workers = WorkerSet(
-            env_creator=self.env_creator,
-            validate_env=self.validate_env,
-            default_policy_class=self.get_default_policy_class(self.config),
-            config=self.config,
-            num_workers=self.config.num_rollout_workers,
-            local_worker=True,
-            logdir=self.logdir,
-        )
+        if not self.config.input_ or not self.config._enable_new_api_stack:
+            # Create a set of env runner actors via a WorkerSet.
+            self.workers = WorkerSet(
+                env_creator=self.env_creator,
+                validate_env=self.validate_env,
+                default_policy_class=self.get_default_policy_class(self.config),
+                config=self.config,
+                num_workers=self.config.num_rollout_workers,
+                local_worker=True,
+                logdir=self.logdir,
+            )
 
-        # Ensure remote workers are initially in sync with the local worker.
-        self.workers.sync_weights(inference_only=True)
+            # Ensure remote workers are initially in sync with the local worker.
+            self.workers.sync_weights(inference_only=True)
+        else:
+            from ray.rllib.offline.offline_data import OfflineData
+            self.offline_data = OfflineData(self.config)
 
         # Compile, validate, and freeze an evaluation config.
         self.evaluation_config = self.config.get_evaluation_config_object()
