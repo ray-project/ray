@@ -1425,8 +1425,9 @@ async def execute_streaming_generator_async(
 
     loop = asyncio.get_running_loop()
     worker = ray._private.worker.global_worker
+    generator_id = context.generator_id
 
-    executor = worker.core_worker.get_event_loop_executor()
+    executor = worker.core_worker.get_event_loop_executor(generator_id)
     interrupt_signal_event = threading.Event()
 
     futures = []
@@ -3346,7 +3347,7 @@ cdef class CoreWorker:
         self.current_runtime_env = None
         self._task_id_to_future_lock = threading.Lock()
         self._task_id_to_future = {}
-        self.event_loop_executor = None
+        self.event_loop_executors = []
 
     def shutdown_driver(self):
         # If it's a worker, the core worker process should have been
@@ -4655,16 +4656,19 @@ cdef class CoreWorker:
             for fd in function_descriptors:
                 self.fd_to_cgname_dict[fd] = cg_name
 
-    def get_event_loop_executor(self) -> ThreadPoolExecutor:
-        if self.event_loop_executor is None:
+    def get_event_loop_executor(self, object_id: CObjectID) -> ThreadPoolExecutor:
+        if len(self.event_loop_executors) == 0:
             # NOTE: We're deliberately allocating thread-pool executor with
             #       a single thread, provided that many of its use-cases are
             #       not thread-safe yet (for ex, reporting streaming generator output)
-            self.event_loop_executor = ThreadPoolExecutor(max_workers=1)
-        return self.event_loop_executor
+            self.event_loop_executors = [ThreadPoolExecutor(max_workers=1) for _ in range(4)]
 
-    def reset_event_loop_executor(self, executor: ThreadPoolExecutor):
-        self.event_loop_executor = executor
+        h = hash(object_id.Hex())
+
+        return self.event_loop_executors[h % len(self.event_loop_executors)]
+
+    def reset_event_loop_executor(self, executors: typing.List[ThreadPoolExecutor]):
+        self.event_loop_executors = executors
 
     def get_event_loop(self, function_descriptor, specified_cgname):
         # __init__ will be invoked in default eventloop
@@ -4774,9 +4778,8 @@ cdef class CoreWorker:
     def stop_and_join_asyncio_threads_if_exist(self):
         event_loops = []
         threads = []
-        if self.event_loop_executor:
-            self.event_loop_executor.shutdown(
-                wait=True, cancel_futures=True)
+        for executor in self.event_loop_executors:
+            executor.shutdown(wait=True, cancel_futures=True)
         if self.eventloop_for_default_cg is not None:
             event_loops.append(self.eventloop_for_default_cg)
         if self.thread_for_default_cg is not None:
