@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Requires Linux.")
 def test_put_local_get(ray_start_regular):
-    chan = ray_channel.Channel([], 1, 1000)
+    chan = ray_channel.Channel([None], 1, 1000)
 
     num_writes = 1000
     for i in range(num_writes):
@@ -31,7 +31,7 @@ def test_errors(ray_start_regular):
     @ray.remote
     class Actor:
         def make_chan(self, do_write=True):
-            self.chan = ray_channel.Channel([], 1, 1000)
+            self.chan = ray_channel.Channel([None], 1, 1000)
             if do_write:
                 self.chan.write(b"hello", num_readers=1)
             return self.chan
@@ -61,7 +61,7 @@ def test_errors(ray_start_regular):
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Requires Linux.")
 def test_put_different_meta(ray_start_regular):
-    chan = ray_channel.Channel([], 1, 1000)
+    chan = ray_channel.Channel([None], 1, 1000)
 
     def _test(val):
         chan.write(val, num_readers=1)
@@ -88,7 +88,7 @@ def test_put_different_meta(ray_start_regular):
 @pytest.mark.skipif(sys.platform != "linux", reason="Requires Linux.")
 @pytest.mark.parametrize("num_readers", [1, 4])
 def test_put_remote_get(ray_start_regular, num_readers):
-    chan = ray_channel.Channel([], num_readers, 1000)
+    chan = ray_channel.Channel([None], num_readers, 1000)
 
     @ray.remote(num_cpus=0)
     class Reader:

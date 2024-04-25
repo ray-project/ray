@@ -402,8 +402,8 @@ class CompiledDAG:
                 readers = [self.idx_to_task[idx] for idx in task.downstream_node_idxs]
                 assert len(readers) == 1
                 if isinstance(readers[0].dag_node, MultiOutputNode):
-                    readers = []
-                    reader_handles = []
+                    readers = [None]
+                    reader_handles = [None]
                 else:
                     reader_handles = [
                         reader.dag_node._get_actor_handle() for reader in readers
