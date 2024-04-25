@@ -281,7 +281,7 @@ class Node:
                 node_id = self._ray_params.env_vars["RAY_OVERRIDE_NODE_ID_FOR_TESTING"]
                 logger.debug(
                     f"Setting node ID to {node_id} "
-                    + "based on ray_params.env_vars override"
+                    "based on ray_params.env_vars override"
                 )
                 self._node_id = node_id
             elif os.environ.get("RAY_OVERRIDE_NODE_ID_FOR_TESTING"):
