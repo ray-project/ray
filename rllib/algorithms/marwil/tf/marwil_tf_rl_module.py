@@ -13,6 +13,7 @@ from ray.rllib.utils.nested_dict import NestedDict
 
 tf1, tf, _ = try_import_tf()
 
+
 class MARWILTfRLModule(TfRLModule, MARWILRLModule):
     framework: str = "tf2"
 
@@ -39,7 +40,7 @@ class MARWILTfRLModule(TfRLModule, MARWILRLModule):
         encoder_outs = self.encoder(batch)
         if STATE_OUT in encoder_outs:
             output[STATE_OUT] = encoder_outs[STATE_OUT]
-        
+
         # Value head.
         # TODO (simon): If hps.beta = 0.0 there should be no value function.
         vf_out = self.vf(encoder_outs[ENCODER_OUT][CRITIC])
@@ -50,7 +51,7 @@ class MARWILTfRLModule(TfRLModule, MARWILRLModule):
         output[SampleBatch.ACTION_DIST_INPUTS] = action_logits
 
         return output
-    
+
     @override(RLModule)
     def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
         output = {}
@@ -59,7 +60,7 @@ class MARWILTfRLModule(TfRLModule, MARWILRLModule):
         encoder_outs = self.encoder(batch)
         if STATE_OUT in encoder_outs:
             output[STATE_OUT] = encoder_outs[STATE_OUT]
-        
+
         # Value head.
         # TODO (simon): If hps.beta = 0.0 there should be no value function.
         vf_out = self.vf(encoder_outs[ENCODER_OUT][CRITIC])
@@ -70,4 +71,3 @@ class MARWILTfRLModule(TfRLModule, MARWILRLModule):
         output[SampleBatch.ACTION_DIST_INPUTS] = action_logits
 
         return output
-    

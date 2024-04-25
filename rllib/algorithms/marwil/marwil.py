@@ -1,12 +1,9 @@
-import dataclasses
 import logging
-from typing import Callable, Optional, Type, Union
+from typing import Any, Callable, Dict, Optional, Type, Union
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.core.learner.learner import Learner, POLICY_LOSS_KEY, VF_LOSS_KEY
-from ray.rllib.algorithms.marwil.marwil_catalog import MARWILCatalog
-from ray.rllib.algorithms.marwil.marwil_learner import MARWILLearnerHyperparameters
 from ray.rllib.core.learner.learner_group_config import ModuleSpec
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.execution.rollout_ops import (
@@ -31,6 +28,7 @@ from ray.rllib.utils.typing import (
     EnvType,
     ResultDict,
 )
+from ray.tune.logger import Logger
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__file__)
@@ -123,48 +121,33 @@ class MARWILConfig(AlgorithmConfig):
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> ModuleSpec:
         if self.framework_str == "torch":
-            pass
-        elif self.framework_str == "tf2":
-            from ray.rllib.algorithms.marwil.tf.marwil_tf_rl_module import (
-                MARWILTfRLModule,
+            from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
+                PPOTorchRLModule,
             )
+            from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 
             return SingleAgentRLModuleSpec(
-                module_class=MARWILTfRLModule,
-                catalog_class=MARWILCatalog,
+                module_class=PPOTorchRLModule,
+                catalog_class=PPOCatalog,
             )
         else:
             raise ValueError(
-                f"The framework {self.framework_str} is not supported. "
-                "Use either 'torch' or 'tf2'."
+                f"The framework {self.framework_str} is not supported. " "Use 'torch'."
             )
 
     @override(AlgorithmConfig)
     def get_default_learner_class(self) -> Union[Type[Learner], str]:
         if self.framework_str == "torch":
-            pass
-        elif self.framework_str == "tf2":
-            from ray.rllib.algorithms.marwil.tf.marwil_tf_learner import MARWILTfLearner
+            from ray.rllib.algorithms.marwil.torch.marwil_torch_learner import (
+                MARWILTorchLearner,
+            )
 
-            return MARWILTfLearner
+            return MARWILTorchLearner
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. "
-                "Use either 'torch' or 'tf2'."
+                "Use either 'torch'."
             )
-
-    @override(AlgorithmConfig)
-    def get_learner_hyperparameters(self) -> MARWILLearnerHyperparameters:
-        base_hps = super().get_learner_hyperparameters()
-        return MARWILLearnerHyperparameters(
-            beta=self.beta,
-            bc_logstd_coeff=self.bc_logstd_coeff,
-            moving_average_sqd_adv_norm_update_rate=self.moving_average_sqd_adv_norm_update_rate,
-            moving_average_sqd_adv_norm_start=self.moving_average_sqd_adv_norm_start,
-            use_gae=self.use_gae,
-            grad_clip=self.grad_clip,
-            **dataclasses.asdict(base_hps),
-        )
 
     @override(AlgorithmConfig)
     def training(
@@ -271,8 +254,9 @@ class MARWILConfig(AlgorithmConfig):
             )
 
     @property
-    def _model_auto_keys(self):
-        return super()._model_auto_keys | {"beta": self.beta}
+    @override(AlgorithmConfig)
+    def _model_config_auto_includes(self) -> Dict[str, Any]:
+        return super()._model_config_auto_includes | {"vf_share_layers": False}
 
 
 class MARWIL(Algorithm):
@@ -336,7 +320,7 @@ class MARWIL(Algorithm):
 
         global_vars = {
             "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
-            # TODO (simon): CHeck if multi-agent is possible. Then add 
+            # TODO (simon): CHeck if multi-agent is possible. Then add
             # "num_grad_update_per_policy".
         }
 
@@ -375,7 +359,7 @@ class MARWIL(Algorithm):
                 and scaled_vf_loss > 100
             ):
                 logger.warning(
-                     "The magnitude of your value function loss for policy: {} is "
+                    "The magnitude of your value function loss for policy: {} is "
                     "extremely large ({}) compared to the policy loss ({}). This "
                     "can prevent the policy from learning. Consider scaling down "
                     "the VF loss by reducing vf_loss_coeff, or disabling "
@@ -386,3 +370,6 @@ class MARWIL(Algorithm):
         self.workers.local_worker().set_global_vars(global_vars)
 
         return train_results
+
+    def _training_step_new_api_stack(self) -> ResultDict:
+        return

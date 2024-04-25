@@ -79,7 +79,7 @@ class MARWILTfLearner(MARWILLearner, TfLearner):
             update_term = (
                 advantages_sqd - self.moving_avg_sqd_adv_norms_per_module[module_id]
             )
-            # TODO (simon): Check performance, if this goes into the 
+            # TODO (simon): Check performance, if this goes into the
             # `additional_update_for_module()` and is updated AFTER loss computation
             # for the next iteration.
             self.moving_avg_sqd_adv_norms_per_module.assign_add(
@@ -111,9 +111,9 @@ class MARWILTfLearner(MARWILLearner, TfLearner):
             module_id,
             {
                 POLICY_LOSS_KEY: -policy_loss,
-                LEARNER_RESULTS_MOVING_AVG_SQD_ADV_NORM_KEY: self.moving_avg_sqd_adv_norms_per_module[
-                    module_id
-                ]
+                LEARNER_RESULTS_MOVING_AVG_SQD_ADV_NORM_KEY: (
+                    self.moving_avg_sqd_adv_norms_per_module[module_id]
+                )
                 if hps.beta != 0.0
                 else None,
                 LEARNER_RESULTS_VF_EXPLAINED_VARIANCE_KEY: explained_variance(

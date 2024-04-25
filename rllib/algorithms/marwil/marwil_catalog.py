@@ -68,8 +68,8 @@ class MARWILCatalog(Catalog):
         """Usually builds the Encoder.
 
         MARWIL uses a value network and therefore the ActorCriticEncoder. Therefore
-        this method is not implemented and instead the `self.build_actor_critic_encoder()`
-        method should be used.
+        this method is not implemented and instead the
+        `self.build_actor_critic_encoder()` method should be used.
         """
         raise NotImplementedError(
             "Use MARWILCatalog.build_actor_critic_encoder()` instead for MARWIL."
