@@ -446,8 +446,8 @@ Status PythonGcsSubscriber::Close() {
   grpc::Status status = pubsub_stub_->GcsUnregisterSubscriber(&context, request, &reply);
 
   if (!status.ok()) {
-    RAY_LOG(DEBUG) << "Error while unregistering the subscriber: "
-                   << status.error_message() << " [code " << status.error_code() << "]";
+    RAY_LOG(WARNING) << "Error while unregistering the subscriber: "
+                     << status.error_message() << " [code " << status.error_code() << "]";
   }
   return Status::OK();
 }
