@@ -1,16 +1,12 @@
 import logging
-import numpy as np
-import tree
-from typing import Any, Dict, List, Optional, Type, Union
+from typing import Any, Dict, Optional, Type, Union
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.algorithms.dqn.dqn import calculate_rr_weights, DQN
+from ray.rllib.algorithms.dqn.dqn import DQN
 from ray.rllib.algorithms.sac.sac_tf_policy import SACTFPolicy
 from ray.rllib.core.learner import Learner
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import deep_update
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import (
@@ -18,19 +14,6 @@ from ray.rllib.utils.deprecation import (
     deprecation_warning,
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
-from ray.rllib.utils.metrics import (
-    ALL_MODULES,
-    LAST_TARGET_UPDATE_TS,
-    NUM_AGENT_STEPS_SAMPLED,
-    NUM_ENV_STEPS_SAMPLED,
-    NUM_AGENT_STEPS_TRAINED,
-    NUM_ENV_STEPS_TRAINED,
-    SAMPLE_TIMER,
-    SYNCH_WORKER_WEIGHTS_TIMER,
-)
-from ray.rllib.utils.replay_buffers.utils import (
-    update_priorities_in_episode_replay_buffer,
-)
 from ray.rllib.utils.typing import RLModuleSpec, ResultDict
 
 tf1, tf, tfv = try_import_tf()
@@ -449,127 +432,24 @@ class SAC(DQN):
 
     @override(DQN)
     def training_step(self) -> ResultDict:
-        # If `RolloutWorker` is used, fall back to the old stack `training step`
-        # of `DQN`.
-        if not self.config.uses_new_env_runners:
-            return super().training_step()
+        """SAC training iteration function.
 
-        # Alternate between storing and sampling and training.
-        store_weight, sample_and_train_weight = calculate_rr_weights(self.config)
-        train_results = {}
+        Each training iteration, we:
+        - Sample (MultiAgentBatch) from workers.
+        - Store new samples in replay buffer.
+        - Sample training batch (MultiAgentBatch) from replay buffer.
+        - Learn on training batch.
+        - Update remote workers' new policy weights.
+        - Update target network every `target_network_update_freq` sample steps.
+        - Return all collected metrics for the iteration.
 
-        # Run multiple sampling + storing to buffer iterations.
-        for _ in range(store_weight):
-            # Time sampling.
-            with self._timers[SAMPLE_TIMER]:
-                # Sample in parallel from workers.
-                episodes = synchronous_parallel_sample(
-                    worker_set=self.workers,
-                    sample_timeout_s=self.config.sample_timeout_s,
-                    _uses_new_env_runners=self.config.uses_new_env_runners,
-                )
-            # TODO (sven): single- vs multi-agent.
-            self._counters[NUM_AGENT_STEPS_SAMPLED] += sum(len(e) for e in episodes)
-            self._counters[NUM_ENV_STEPS_SAMPLED] += sum(len(e) for e in episodes)
-
-            # Add the sampled experiences to the replay buffer.
-            self.local_replay_buffer.add(episodes)
-
-        # Update the target network each `target_network_update_freq` steps.
-        current_ts = self._counters[
-            (
-                NUM_AGENT_STEPS_SAMPLED
-                if self.config.count_steps_by == "agent_steps"
-                else NUM_ENV_STEPS_SAMPLED
-            )
-        ]
-
-        # If enough experiences have been sampled start training.
-        if current_ts >= self.config.num_steps_sampled_before_learning_starts:
-            # Run multiple sample-from-buffer and update iterations.
-            for _ in range(sample_and_train_weight):
-                # Sample training batch from replay_buffer.
-                train_dict = self.local_replay_buffer.sample(
-                    num_items=self.config.train_batch_size,
-                    n_step=self.config.n_step,
-                    gamma=self.config.gamma,
-                )
-                train_batch = SampleBatch(train_dict)
-
-                # Convert to multi-agent batch as `LearnerGroup` depends on it.
-                train_batch = train_batch.as_multi_agent()
-
-                # TODO (sven, simon): Streamline the custom metrics reduction
-                # functions via the `Learner`'s `register_metrics()` API.
-                def reduce_fn(results: List[ResultDict]) -> ResultDict:
-                    """Reduces all metrics, but the TD-errors."""
-                    # First get the single modules' results.
-                    module_results = [
-                        v for res in results for k, v in res.items() if k != "__all__"
-                    ]
-                    # Extract the TD-errors as we want to keep them as arrays.
-                    td_errors = tree.map_structure_up_to(
-                        {"td_error": True}, lambda x: x, *module_results
-                    )
-                    # Now reduce all other results.
-                    reduced_results = tree.map_structure(
-                        lambda *x: np.mean(x), *results
-                    )
-                    # Add the TD-error arrays to the results and return.
-                    return {
-                        k: v if k == "__all__" else {**v, "td_error": td_error}
-                        for k, v, td_error in zip(
-                            reduced_results.keys(),
-                            reduced_results.values(),
-                            [None] + list(td_errors.values()),
-                        )
-                    }
-
-                # Perform an update on the buffer-sampled train batch.
-                train_results = self.learner_group.update_from_batch(
-                    train_batch,
-                    reduce_fn=reduce_fn,
-                )
-
-                self._counters[NUM_AGENT_STEPS_TRAINED] += train_batch.agent_steps()
-                self._counters[NUM_ENV_STEPS_TRAINED] += train_batch.env_steps()
-
-                # Update replay buffer priorities.
-                update_priorities_in_episode_replay_buffer(
-                    self.local_replay_buffer,
-                    self.config,
-                    train_batch,
-                    train_results,
-                )
-
-                # Update the target networks if necessary.
-                modules_to_update = set(train_results.keys()) - {ALL_MODULES}
-                additional_results = self.learner_group.additional_update(
-                    module_ids_to_update=modules_to_update,
-                    timestep=self._counters[NUM_AGENT_STEPS_SAMPLED],
-                    last_update=self._counters[LAST_TARGET_UPDATE_TS],
-                )
-                for pid, res in additional_results.items():
-                    if LAST_TARGET_UPDATE_TS in res:
-                        self._counters[LAST_TARGET_UPDATE_TS] = res[
-                            LAST_TARGET_UPDATE_TS
-                        ]
-                    train_results[pid].update(res)
-
-            # Update weights and global_vars - after learning on the local worker -
-            # on all remote workers.
-            with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-                if self.workers.num_remote_workers() > 0:
-                    # NOTE: the new API stack does not use global vars.
-                    self.workers.sync_weights(
-                        from_worker_or_learner_group=self.learner_group,
-                        policies=modules_to_update,
-                        global_vars=None,
-                        inference_only=True,
-                    )
-                # Then we must have a local worker.
-                else:
-                    weights = self.learner_group.get_weights(inference_only=True)
-                    self.workers.local_worker().set_weights(weights)
-
-        return train_results
+        Returns:
+            The results dict from executing the training iteration.
+        """
+        # New API stack (RLModule, Learner, EnvRunner, ConnectorV2).
+        if self.config.uses_new_env_runners:
+            return self._training_step_new_api_stack(with_noise_reset=False)
+        # Old and hybrid API stacks (Policy, RolloutWorker, Connector, maybe RLModule,
+        # maybe Learner).
+        else:
+            return self._training_step_old_and_hybrid_api_stack()

@@ -37,6 +37,7 @@ from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
 )
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.typing import (
     AgentID,
@@ -397,7 +398,9 @@ class WorkerSet:
         # the reference connector state.
         if self.num_healthy_remote_workers() == 0:
             if env_steps_sampled:
-                self.local_worker().global_num_env_steps_sampled = env_steps_sampled
+                self.local_worker().metrics.set_value(
+                    NUM_ENV_STEPS_SAMPLED_LIFETIME, env_steps_sampled
+                )
             return
 
         # Also early out, if we a) don't use the remote states AND b) don't want to
@@ -452,9 +455,11 @@ class WorkerSet:
             )
             # Update the global number of environment steps for each worker.
             if "env_steps_sampled" in env_runner_states:
-                _env_runner.global_num_env_steps_sampled = env_runner_states[
-                    "env_steps_sampled"
-                ]
+                # _env_runner.global_num_env_steps_sampled =
+                _env_runner.metrics.set_value(
+                    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+                    env_runner_states["env_steps_sampled"],
+                )
 
         # Broadcast updated states back to all workers (including the local one).
         if config.update_worker_filter_stats:

@@ -232,13 +232,13 @@ class TestOPE(unittest.TestCase):
         # Test OPE in DQN, during training as well as by calling evaluate()
         algo = self.config_dqn_on_cartpole.build()
         results = algo.train()
-        ope_results = results["evaluation"]["off_policy_estimator"]
+        ope_results = results["evaluation_results"]["off_policy_estimator"]
         # Check that key exists AND is not {}
         self.assertEqual(set(ope_results.keys()), {"is", "wis", "dm_fqe", "dr_fqe"})
 
         # Check algo.evaluate() manually as well
         results = algo.evaluate()
-        ope_results = results["evaluation"]["off_policy_estimator"]
+        ope_results = results["off_policy_estimator"]
         self.assertEqual(set(ope_results.keys()), {"is", "wis", "dm_fqe", "dr_fqe"})
 
     def test_is_wis_on_estimate_on_dataset(self):
@@ -258,8 +258,8 @@ class TestOPE(unittest.TestCase):
         num_actions = config.action_space.n
         algo = config.build()
 
-        evaluated_results = algo._run_one_evaluation()
-        ope_results = evaluated_results["evaluation"]["off_policy_estimator"]
+        evaluated_results = algo.evaluate()
+        ope_results = evaluated_results["off_policy_estimator"]
         policy = algo.get_policy()
 
         wis_gain, wis_ste = compute_expected_is_or_wis_estimator(

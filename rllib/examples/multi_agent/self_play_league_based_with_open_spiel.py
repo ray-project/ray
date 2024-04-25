@@ -220,7 +220,7 @@ if __name__ == "__main__":
     results = None
     if not args.from_checkpoint:
         stop = {
-            "timesteps_total": args.stop_timesteps,
+            "num_env_steps_sampled_lifetime": args.stop_timesteps,
             "training_iteration": args.stop_iters,
             "league_size": args.min_league_size,
         }
