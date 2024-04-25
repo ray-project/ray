@@ -401,6 +401,21 @@ class CompiledDAG:
                 if isinstance(readers[0].dag_node, MultiOutputNode):
                     readers = [None]
                     reader_handles = [None]
+
+                    fn = task.dag_node._get_remote_method("__ray_call__")
+
+                    def _get_node_id(self):
+                        return ray.get_runtime_context().get_node_id()
+
+                    actor_node = ray.get(fn.remote(_get_node_id))
+
+                    # The driver and all actors that write outputs must be on the same
+                    # node for now.
+                    if actor_node == _get_node_id(self):
+                        raise NotImplementedError(
+                            "The driver and all actors that write outputs must be on "
+                            "the same node for now."
+                        )
                 else:
                     reader_handles = [
                         reader.dag_node._get_actor_handle() for reader in readers
