@@ -286,8 +286,8 @@ class TestWorkerFailures(unittest.TestCase):
     def _do_test_failing_ignore(self, config: AlgorithmConfig, fail_eval: bool = False):
         # Test fault handling
         config.num_env_runners = 2
-        config.ignore_worker_failures = True
-        config.recreate_failed_workers = False
+        config.ignore_env_runner_failures = True
+        config.recreate_failed_env_runners = False
         config.env = "fault_env"
         # Make worker idx=1 fail. Other workers will be ok.
         config.environment(
@@ -299,8 +299,8 @@ class TestWorkerFailures(unittest.TestCase):
             config.evaluation_num_env_runners = 2
             config.evaluation_interval = 1
             config.evaluation_config = {
-                "ignore_worker_failures": True,
-                "recreate_failed_workers": False,
+                "ignore_env_runner_failures": True,
+                "recreate_failed_env_runners": False,
                 "env_config": {
                     # Make worker idx=1 fail. Other workers will be ok.
                     "bad_indices": [1],
@@ -332,9 +332,9 @@ class TestWorkerFailures(unittest.TestCase):
         config.evaluation_interval = 1
         config.env = "fault_env" if not multi_agent else "multi_agent_fault_env"
         config.evaluation_config = AlgorithmConfig.overrides(
-            recreate_failed_workers=True,
+            recreate_failed_env_runners=True,
             # 0 delay for testing purposes.
-            delay_between_worker_restarts_s=0,
+            delay_between_env_runner_restarts_s=0,
             # Make eval worker (index 1) fail.
             env_config={
                 "bad_indices": [1],
@@ -542,9 +542,9 @@ class TestWorkerFailures(unittest.TestCase):
                 },
             )
             .fault_tolerance(
-                recreate_failed_workers=True,  # But recover.
+                recreate_failed_env_runners=True,  # But recover.
                 # 0 delay for testing purposes.
-                delay_between_worker_restarts_s=0,
+                delay_between_env_runner_restarts_s=0,
             )
         )
 
@@ -601,7 +601,7 @@ class TestWorkerFailures(unittest.TestCase):
                 evaluation_num_env_runners=1,
                 evaluation_interval=1,
                 evaluation_config=PPOConfig.overrides(
-                    recreate_failed_workers=True,
+                    recreate_failed_env_runners=True,
                     # Restart the entire eval worker.
                     restart_failed_sub_environments=False,
                     env_config={
@@ -616,10 +616,10 @@ class TestWorkerFailures(unittest.TestCase):
             )
             .callbacks(AddModuleCallback)
             .fault_tolerance(
-                recreate_failed_workers=True,  # But recover.
+                recreate_failed_env_runners=True,  # But recover.
                 # Throwing error in constructor is a bad idea.
                 # 0 delay for testing purposes.
-                delay_between_worker_restarts_s=0,
+                delay_between_env_runner_restarts_s=0,
             )
             .multi_agent(
                 policies={"p0"},
@@ -710,9 +710,9 @@ class TestWorkerFailures(unittest.TestCase):
                 ),
             )
             .fault_tolerance(
-                recreate_failed_workers=True,  # And recover
+                recreate_failed_env_runners=True,  # And recover
                 # 0 delay for testing purposes.
-                delay_between_worker_restarts_s=0,
+                delay_between_env_runner_restarts_s=0,
             )
         )
 
@@ -785,10 +785,10 @@ class TestWorkerFailures(unittest.TestCase):
                 },
             )
             .fault_tolerance(
-                recreate_failed_workers=True,  # And recover
-                worker_health_probe_timeout_s=0.01,
-                worker_restore_timeout_s=5,
-                delay_between_worker_restarts_s=0,  # For testing, no delay.
+                recreate_failed_env_runners=True,  # And recover
+                env_runner_health_probe_timeout_s=0.01,
+                env_runner_restore_timeout_s=5,
+                delay_between_env_runner_restarts_s=0,  # For testing, no delay.
             )
         )
 

@@ -60,8 +60,8 @@ class TestCallbacks(unittest.TestCase):
             .callbacks(OnWorkersRecreatedCallbacks)
             .env_runners(num_rollout_workers=3)
             .fault_tolerance(
-                recreate_failed_workers=True,
-                delay_between_worker_restarts_s=0,
+                recreate_failed_env_runners=True,
+                delay_between_env_runner_restarts_s=0,
             )
         )
 

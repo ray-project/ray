@@ -754,7 +754,7 @@ class Impala(Algorithm):
         # state here.
         if self._aggregator_actor_manager:
             self._aggregator_actor_manager.probe_unhealthy_actors(
-                timeout_seconds=self.config.worker_health_probe_timeout_s,
+                timeout_seconds=self.config.env_runner_health_probe_timeout_s,
                 mark_healthy=True,
             )
 
@@ -867,7 +867,7 @@ class Impala(Algorithm):
             if (
                 self.config.batch_mode == "truncate_episodes"
                 and self.config.enable_connectors
-                and self.config.recreate_failed_workers
+                and self.config.recreate_failed_env_runners
             ):
                 if any(
                     SampleBatch.VF_PREDS in pb
@@ -1118,7 +1118,7 @@ class Impala(Algorithm):
         )
         handle_remote_call_result_errors(
             waiting_processed_sample_batches,
-            self.config.ignore_worker_failures,
+            self.config.ignore_env_runner_failures,
         )
 
         return [b.get() for b in waiting_processed_sample_batches.ignore_errors()]

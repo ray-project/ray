@@ -55,7 +55,7 @@ class NodeFailureTests(unittest.TestCase):
                 num_env_runners=6,
                 validate_env_runners_after_construction=True,
             )
-            .fault_tolerance(recreate_failed_workers=True)
+            .fault_tolerance(recreate_failed_env_runners=True)
             .training(
                 train_batch_size=300,
             )

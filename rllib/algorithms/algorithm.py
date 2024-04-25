@@ -1296,7 +1296,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 " too unstable, b) you have enough evaluation workers "
                 "(`config.evaluation(evaluation_num_env_runners=...)`) to cover for "
                 "occasional losses, and c) you use the `config.fault_tolerance("
-                "recreate_failed_workers=True)` setting."
+                "recreate_failed_env_runners=True)` setting."
             )
 
         if not self.config.uses_new_env_runners:
@@ -1484,7 +1484,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 " too unstable, b) you have enough evaluation workers "
                 "(`config.evaluation(evaluation_num_env_runners=...)`) to cover for "
                 "occasional losses, and c) you use the `config.fault_tolerance("
-                "recreate_failed_workers=True)` setting."
+                "recreate_failed_env_runners=True)` setting."
             )
 
         if not self.config.uses_new_env_runners:
@@ -3618,7 +3618,7 @@ class TrainIterCtx:
             self.init_agent_steps_sampled = self.algo._counters[NUM_AGENT_STEPS_SAMPLED]
             self.init_agent_steps_trained = self.algo._counters[NUM_AGENT_STEPS_TRAINED]
         self.failure_tolerance = (
-            self.algo.config.num_consecutive_worker_failures_tolerance
+            self.algo.config.num_consecutive_env_runner_failures_tolerance
         )
         return self
 
@@ -3636,7 +3636,7 @@ class TrainIterCtx:
             self.failures += 1
             if self.failures > self.failure_tolerance:
                 raise RuntimeError(
-                    "More than `num_consecutive_worker_failures_tolerance="
+                    "More than `num_consecutive_env_runner_failures_tolerance="
                     f"{self.failure_tolerance}` consecutive worker failures! "
                     "Exiting."
                 )

@@ -4451,6 +4451,19 @@ class AlgorithmConfig(_Config):
         )
 
     @property
+    @Deprecated(new="AlgorithmConfig.ignore_env_runner_failures", error=False)
+    def ignore_worker_failures(self):
+        return self.ignore_env_runner_failures
+
+    @ignore_worker_failures.setter
+    def ignore_worker_failures(self, value):
+        deprecation_warning(
+            old="AlgorithmConfig.ignore_worker_failures",
+            new="AlgorithmConfig.ignore_env_runner_failures",
+            error=True,
+        )
+
+    @property
     @Deprecated(new="AlgorithmConfig.recreate_failed_env_runners", error=False)
     def recreate_failed_workers(self):
         return self.recreate_failed_env_runners
