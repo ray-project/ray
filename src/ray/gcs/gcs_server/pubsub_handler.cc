@@ -113,16 +113,8 @@ void InternalPubSubHandler::HandleGcsUnregisterSubscriber(
     rpc::GcsUnregisterSubscriberRequest request,
     rpc::GcsUnregisterSubscriberReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  if (gcs_publisher_ == nullptr) {
-    send_reply_callback(
-        Status::NotImplemented("GCS pubsub is not yet enabled. Please enable it with "
-                               "system config `gcs_grpc_based_pubsub=True`"),
-        nullptr,
-        nullptr);
-    return;
-  }
   const auto subscriber_id = UniqueID::FromBinary(request.subscriber_id());
-  gcs_publisher_->GetPublisher()->UnregisterSubscriber(subscriber_id);
+  gcs_publisher_->GetPublisher().UnregisterSubscriber(subscriber_id);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
