@@ -636,7 +636,7 @@ class MultiAgentEnvRunner(EnvRunner):
             NUM_EPISODES,
             len(self._done_episodes_for_metrics),
             reduce="sum",
-            reset_on_reduce=True,  # Not a lifetime count.
+            clear_on_reduce=True,  # Not a lifetime count.
         )
 
         # Now that we have logged everything, clear cache of done episodes.
@@ -849,7 +849,7 @@ class MultiAgentEnvRunner(EnvRunner):
                 },
             },
             reduce="sum",
-            reset_on_reduce=True,
+            clear_on_reduce=True,
         )
         self.metrics.log_dict(
             {

@@ -129,7 +129,7 @@ class TorchLearner(Learner):
         gradients = self.compute_gradients(loss_per_module)
         postprocessed_gradients = self.postprocess_gradients(gradients)
         self.apply_gradients(postprocessed_gradients)
-        return fwd_out, loss_per_module, self._metrics
+        return fwd_out, loss_per_module
 
     @override(Learner)
     def compute_gradients(

@@ -604,7 +604,7 @@ class SingleAgentEnvRunner(EnvRunner):
             len(self._done_episodes_for_metrics),
             reduce="sum",
             # Reset internal data on `reduce()` call below (not a lifetime count).
-            reset_on_reduce=True,
+            clear_on_reduce=True,
         )
 
         # Now that we have logged everything, clear cache of done episodes.
@@ -766,7 +766,7 @@ class SingleAgentEnvRunner(EnvRunner):
                 NUM_MODULE_STEPS_SAMPLED: {DEFAULT_MODULE_ID: num_steps},
             },
             reduce="sum",
-            reset_on_reduce=True,
+            clear_on_reduce=True,
         )
         # Lifetime stats.
         self.metrics.log_dict(

@@ -6,6 +6,7 @@ import tree  # pip install dm_tree
 from ray.rllib.utils import force_tuple
 from ray.rllib.utils.metrics.stats import Stats
 from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.util.annotations import PublicAPI
 
 
@@ -55,7 +56,7 @@ class MetricsLogger:
         reduce: Optional[str] = "mean",
         window: Optional[int] = None,
         ema_coeff: Optional[float] = None,
-        reset_on_reduce: bool = False,
+        clear_on_reduce: bool = False,
     ) -> None:
         """Logs a new value under a (possibly nested) key to the logger.
 
@@ -104,8 +105,8 @@ class MetricsLogger:
             # Peeking at these returns the full list of items (no reduction set up).
             check(logger.peek("some_items"), [5.0, 6.0, 7.0])
             # If you don't want the internal list to grow indefinitely, you should set
-            # `reset_on_reduce=True`:
-            logger.log_value("some_more_items", -5.0, reduce=None, reset_on_reduce=True)
+            # `clear_on_reduce=True`:
+            logger.log_value("some_more_items", -5.0, reduce=None, clear_on_reduce=True)
             logger.log_value("some_more_items", -6.0)
             logger.log_value("some_more_items", -7.0)
             # Peeking at these returns the full list of items (no reduction set up).
@@ -123,7 +124,7 @@ class MetricsLogger:
                 "some_more_items": [-5.0, -6.0, -7.0],  # reduce=None; list as-is
             })
             # However, the `reduce()` call did empty the `some_more_items` list
-            # (b/c we set `reset_on_reduce=True`).
+            # (b/c we set `clear_on_reduce=True`).
             check(logger.peek("some_more_items"), [])
             # ... but not the "some_items" list (b/c `reduce_on_reset=False`).
             check(logger.peek("some_items"), [])
@@ -147,7 +148,7 @@ class MetricsLogger:
                 `reduce` must be "mean".
                 The reduction formula for EMA is:
                 EMA(t1) = (1.0 - ema_coeff) * EMA(t0) + ema_coeff * new_value
-            reset_on_reduce: If True, all values under `key` will be emptied after
+            clear_on_reduce: If True, all values under `key` will be emptied after
                 `self.reduce()` is called. Setting this to True is useful for cases,
                 in which the internal values list would otherwise grow indefinitely,
                 for example if reduce is None and there is no `window` provided.
@@ -155,7 +156,9 @@ class MetricsLogger:
         # No reduction (continue appending to list) AND no window.
         # -> We'll force-reset our values upon `reduce()`.
         if reduce is None and window is None:
-            reset_on_reduce = True
+            clear_on_reduce = True
+
+        value = convert_to_numpy(value)
 
         if key not in self.stats:
             self.stats[key] = Stats(
@@ -163,7 +166,7 @@ class MetricsLogger:
                 reduce=reduce,
                 window=window,
                 ema_coeff=ema_coeff,
-                reset_on_reduce=reset_on_reduce,
+                clear_on_reduce=clear_on_reduce,
             )
         else:
             self.stats[key].push(value)
@@ -176,7 +179,7 @@ class MetricsLogger:
         reduce: Optional[str] = "mean",
         window: Optional[int] = None,
         ema_coeff: Optional[float] = None,
-        reset_on_reduce: bool = False,
+        clear_on_reduce: bool = False,
     ) -> None:
         """Logs all leafs (`Stats` or simple values) of a (nested) dict to this logger.
 
@@ -247,12 +250,12 @@ class MetricsLogger:
                 `reduce` must be "mean".
                 The reduction formula for EMA is:
                 EMA(t1) = (1.0 - ema_coeff) * EMA(t0) + ema_coeff * new_value
-            reset_on_reduce: If True, all values under `key` will be emptied after
+            clear_on_reduce: If True, all values under `key` will be emptied after
                 `self.reduce()` is called. Setting this to True is useful for cases,
                 in which the internal values list would otherwise grow indefinitely,
                 for example if reduce is None and there is no `window` provided.
         """
-        stats_dict = NestedDict(stats_dict)
+        stats_dict = NestedDict(convert_to_numpy(stats_dict))
         prefix_key = force_tuple(key)
 
         for key, stat_or_value in stats_dict.items():
@@ -260,7 +263,7 @@ class MetricsLogger:
             # No reduction (continue appending to list) AND no window.
             # -> We'll force-reset our values upon `reduce()`.
             if reduce is None and window is None:
-                reset_on_reduce = True
+                clear_on_reduce = True
 
             if not isinstance(stat_or_value, Stats):
                 # `self` already has this key path -> Use c'tor options from self's
@@ -275,7 +278,7 @@ class MetricsLogger:
                         reduce=reduce,
                         window=window,
                         ema_coeff=ema_coeff,
-                        reset_on_reduce=reset_on_reduce,
+                        clear_on_reduce=clear_on_reduce,
                     )
 
             if extended_key in self.stats:
@@ -293,7 +296,7 @@ class MetricsLogger:
         reduce: Optional[str] = "mean",
         window: Optional[int] = None,
         ema_coeff: Optional[float] = None,
-        reset_on_reduce: bool = False,
+        clear_on_reduce: bool = False,
     ) -> None:
         """TODO (sven): docstr
 
@@ -316,12 +319,12 @@ class MetricsLogger:
                 `reduce` must be "mean".
                 The reduction formula for EMA is:
                 EMA(t1) = (1.0 - ema_coeff) * EMA(t0) + ema_coeff * new_value
-            reset_on_reduce: If True, all values under `key` will be emptied after
+            clear_on_reduce: If True, all values under `key` will be emptied after
                 `self.reduce()` is called. Setting this to True is useful for cases,
                 in which the internal values list would otherwise grow indefinitely,
                 for example if reduce is None and there is no `window` provided.
         """
-        stats_dicts = [NestedDict(s) for s in stats_dicts]
+        stats_dicts = [NestedDict(convert_to_numpy(s)) for s in stats_dicts]
         prefix_key = force_tuple(key)
 
         all_keys = set()
@@ -334,7 +337,7 @@ class MetricsLogger:
             # No reduction (continue appending to list) AND no window.
             # -> We'll force-reset our values upon `reduce()`.
             if reduce is None and window is None:
-                reset_on_reduce = True
+                clear_on_reduce = True
 
             available_stats = [s[key] for s in stats_dicts if key in s]
             merged_stats = None
@@ -346,7 +349,7 @@ class MetricsLogger:
                         reduce=reduce,
                         window=window,
                         ema_coeff=ema_coeff,
-                        reset_on_reduce=reset_on_reduce,
+                        clear_on_reduce=clear_on_reduce,
                     )
                 # `key` not in self yet -> Create an empty Stats entry under that key.
                 if extended_key not in self.stats:
@@ -371,7 +374,7 @@ class MetricsLogger:
         reduce: Optional[str] = "mean",
         window: Optional[int] = None,
         ema_coeff: Optional[float] = None,
-        reset_on_reduce: bool = False,
+        clear_on_reduce: bool = False,
         # throughput_key: Optional[Union[str, Tuple[str]]] = None,
         # throughput_key_of_unit_count: Optional[Union[str, Tuple[str]]] = None,
     ) -> None:
@@ -403,7 +406,7 @@ class MetricsLogger:
                 `reduce` must be "mean".
                 The reduction formula for EMA is:
                 EMA(t1) = (1.0 - ema_coeff) * EMA(t0) + ema_coeff * new_value
-            reset_on_reduce: If True, all values under `key` will be emptied after
+            clear_on_reduce: If True, all values under `key` will be emptied after
                 `self.reduce()` is called. Setting this to True is useful for cases,
                 in which the internal values list would otherwise grow indefinitely,
                 for example if reduce is None and there is no `window` provided.
@@ -411,7 +414,7 @@ class MetricsLogger:
         # No reduction (continue appending to list) AND no window.
         # -> We'll force-reset our values upon `reduce()`.
         if reduce is None and window is None:
-            reset_on_reduce = True
+            clear_on_reduce = True
 
         if key not in self.stats:
             # TODO (sven): Figure out how to best implement an additional throughput
@@ -425,7 +428,7 @@ class MetricsLogger:
                 reduce=reduce,
                 window=window,
                 ema_coeff=ema_coeff,
-                reset_on_reduce=reset_on_reduce,
+                clear_on_reduce=clear_on_reduce,
                 # on_exit=(
                 #    lambda stats: (
                 #        self.log_value(
@@ -434,7 +437,7 @@ class MetricsLogger:
                 #            reduce=reduce,
                 #            window=window,
                 #            ema_coeff=ema_coeff,
-                #            reset_on_reduce=reset_on_reduce,
+                #            clear_on_reduce=clear_on_reduce,
                 #        )
                 #    ),
                 # ),
@@ -518,14 +521,14 @@ class MetricsLogger:
         reduce: Optional[str] = "mean",
         window: Optional[int] = None,
         ema_coeff: Optional[float] = None,
-        reset_on_reduce: bool = False,
+        clear_on_reduce: bool = False,
     ) -> None:
         """Overrides the logged values under `key` with `value`.
 
         The internal values list under `key` is cleared and reset to [`value`]. If
         `key` already exists, this method will NOT alter the reduce settings. Otherwise,
         it will apply the provided reduce settings (`reduce`, `window`, `ema_coeff`,
-        and `reset_on_reduce`).
+        and `clear_on_reduce`).
 
         Args:
             key: The key to override.
@@ -550,7 +553,7 @@ class MetricsLogger:
                 The reduction formula for EMA is:
                 EMA(t1) = (1.0 - ema_coeff) * EMA(t0) + ema_coeff * new_value
                 Note that this is only applied if `key` does not exist in `self` yet.
-            reset_on_reduce: If True, all values under `key` will be emptied after
+            clear_on_reduce: If True, all values under `key` will be emptied after
                 `self.reduce()` is called. Setting this to True is useful for cases,
                 in which the internal values list would otherwise grow indefinitely,
                 for example if reduce is None and there is no `window` provided.
@@ -567,7 +570,7 @@ class MetricsLogger:
                 reduce=reduce,
                 window=window,
                 ema_coeff=ema_coeff,
-                reset_on_reduce=reset_on_reduce,
+                clear_on_reduce=clear_on_reduce,
             )
 
     def reduce(
@@ -660,7 +663,7 @@ class MetricsLogger:
             reduction and history information, if `return_stats_obj=False`.
         """
         # Create a shallow copy of `self.stats` in case we need to reset some of our
-        # stats due to this `reduce()` call (and the Stat having self.reset_on_reduce
+        # stats due to this `reduce()` call (and the Stat having self.clear_on_reduce
         # set to True).
         if key is not None:
             stats_to_return = self.stats[key].copy()

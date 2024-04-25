@@ -40,12 +40,16 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.debug import update_global_seed_if_necessary
-from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
+from ray.rllib.utils.deprecation import (
+    Deprecated,
+    DEPRECATED_VALUE,
+    deprecation_warning,
+)
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
-    NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_TRAINED,
+    NUM_MODULE_STEPS_TRAINED,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.minibatch_utils import (
@@ -1069,14 +1073,13 @@ class Learner:
         self,
         batch: MultiAgentBatch,
         *,
-        reduce_fn: Callable[[List[Dict[str, Any]]], ResultDict] = (
-            _reduce_mean_results
-        ),
         # TODO (sven): Deprecate these in favor of config attributes for only those
         #  algos that actually need (and know how) to do minibatching.
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
-    ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
+        # Deprecated args.
+        reduce_fn=DEPRECATED_VALUE,
+    ) -> ResultDict:
         """Do `num_iters` minibatch updates given a train batch.
 
         You can use this method to take more than one backward pass on the batch.
@@ -1085,25 +1088,30 @@ class Learner:
 
         Args:
             batch: A batch of training data to update from.
-            reduce_fn: reduce_fn: A function to reduce the results from a list of
-                minibatch updates. This can be any arbitrary function that takes a
-                list of dictionaries and returns a single dictionary. For example you
-                can either take an average (default) or concatenate the results (for
-                example for metrics) or be more selective about you want to report back
-                to the algorithm's training_step. If None is passed, the results will
-                not get reduced.
             minibatch_size: The size of the minibatch to use for each update.
             num_iters: The number of complete passes over all the sub-batches
                 in the input multi-agent batch.
 
         Returns:
-            A dictionary of results, in numpy format or a list of such dictionaries in
-            case `reduce_fn` is None and we have more than one minibatch pass.
+            A `ResultDict` object produced by a call to `self.metrics.reduce()`. The
+            returned dict may be arbitrarily nested and must have `Stats` objects at
+            all its leafs, allowing components further downstream (i.e. a user of this
+            Learner) to further reduce these results (for example over n parallel
+            Learners).
         """
+        if reduce_fn != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="Learner.update_from_batch(reduce_fn=..)",
+                new="Learner.metrics.[log_value|log_dict|log_time](key=..., value=..., "
+                "reduce=[mean|min|max|sum], window=..., ema_coeff=...)",
+                help="Use the new ray.rllib.utils.metrics.metrics_logger::MetricsLogger"
+                " API in your custom Learner methods for logging your custom values "
+                "and time-reducing (or parallel-reducing) them.",
+                error=True,
+            )
         return self._update_from_batch_or_episodes(
             batch=batch,
             episodes=None,
-            reduce_fn=reduce_fn,
             minibatch_size=minibatch_size,
             num_iters=num_iters,
         )
@@ -1112,15 +1120,14 @@ class Learner:
         self,
         episodes: List[EpisodeType],
         *,
-        reduce_fn: Callable[[List[Dict[str, Any]]], ResultDict] = (
-            _reduce_mean_results
-        ),
         # TODO (sven): Deprecate these in favor of config attributes for only those
         #  algos that actually need (and know how) to do minibatching.
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
         min_total_mini_batches: int = 0,
-    ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
+        # Deprecated args.
+        reduce_fn=DEPRECATED_VALUE,
+    ) -> ResultDict:
         """Do `num_iters` minibatch updates given a list of episodes.
 
         You can use this method to take more than one backward pass on the batch.
@@ -1129,13 +1136,6 @@ class Learner:
 
         Args:
             episodes: An list of episode objects to update from.
-            reduce_fn: reduce_fn: A function to reduce the results from a list of
-                minibatch updates. This can be any arbitrary function that takes a
-                list of dictionaries and returns a single dictionary. For example you
-                can either take an average (default) or concatenate the results (for
-                example for metrics) or be more selective about you want to report back
-                to the algorithm's training_step. If None is passed, the results will
-                not get reduced.
             minibatch_size: The size of the minibatch to use for each update.
             num_iters: The number of complete passes over all the sub-batches
                 in the input multi-agent batch.
@@ -1148,13 +1148,25 @@ class Learner:
                 different number of mini-batches than other Learners, causing deadlocks.
 
         Returns:
-            A dictionary of results, in numpy format or a list of such dictionaries in
-            case `reduce_fn` is None and we have more than one minibatch pass.
+            A `ResultDict` object produced by a call to `self.metrics.reduce()`. The
+            returned dict may be arbitrarily nested and must have `Stats` objects at
+            all its leafs, allowing components further downstream (i.e. a user of this
+            Learner) to further reduce these results (for example over n parallel
+            Learners).
         """
+        if reduce_fn != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="Learner.update_from_episodes(reduce_fn=..)",
+                new="Learner.metrics.[log_value|log_dict|log_time](key=..., value=..., "
+                    "reduce=[mean|min|max|sum], window=..., ema_coeff=...)",
+                help="Use the new ray.rllib.utils.metrics.metrics_logger::MetricsLogger"
+                     " API in your custom Learner methods for logging your custom values "
+                     "and time-reducing (or parallel-reducing) them.",
+                error=True,
+            )
         return self._update_from_batch_or_episodes(
             batch=None,
             episodes=episodes,
-            reduce_fn=reduce_fn,
             minibatch_size=minibatch_size,
             num_iters=num_iters,
             min_total_mini_batches=min_total_mini_batches,
@@ -1256,9 +1268,6 @@ class Learner:
         #  as well for simplicity.
         batch: Optional[MultiAgentBatch] = None,
         episodes: Optional[List[EpisodeType]] = None,
-        reduce_fn: Callable[[List[Dict[str, Any]]], ResultDict] = (
-            _reduce_mean_results
-        ),
         # TODO (sven): Deprecate these in favor of config attributes for only those
         #  algos that actually need (and know how) to do minibatching.
         minibatch_size: Optional[int] = None,
@@ -1329,14 +1338,6 @@ class Learner:
         batch = self._convert_batch_type(batch)
         batch = self._set_slicing_by_batch_id(batch, value=True)
 
-        self.metrics.log_dict(
-            {
-                NUM_AGENT_STEPS_TRAINED: batch.agent_steps(),
-                NUM_ENV_STEPS_TRAINED: batch.env_steps(),
-            },
-            key=ALL_MODULES,
-        )
-
         for tensor_minibatch in batch_iter(batch, minibatch_size, num_iters):
             # Make the actual in-graph/traced `_update` call. This should return
             # all tensor values (no numpy).
@@ -1359,13 +1360,29 @@ class Learner:
                         },
                     },
                     window=1000,
-                    reset_on_reduce=True,
+                    clear_on_reduce=True,
                 )
                 # TODO (sven): Allow window=float("inf") w/ clear_on_reduce=True to
                 #  avoid this hacky window=1000
                 a=1
 
         self._set_slicing_by_batch_id(batch, value=False)
+
+        # Log this iteration's steps trained.
+        self.metrics.log_dict(
+            {
+                **{
+                    (ALL_MODULES, NUM_ENV_STEPS_TRAINED): batch.env_steps(),
+                    (ALL_MODULES, NUM_MODULE_STEPS_TRAINED): batch.agent_steps(),
+                },
+                **{
+                    (mid, NUM_MODULE_STEPS_TRAINED): len(b)
+                    for mid, b in batch.policy_batches.items()
+                },
+            },
+            reduce="sum",
+            clear_on_reduce=True,
+        )
 
         # Reduce results across all minibatch update steps.
         return self.metrics.reduce()

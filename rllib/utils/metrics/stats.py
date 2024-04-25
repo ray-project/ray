@@ -129,7 +129,7 @@ class Stats:
         reduce: Optional[str] = "mean",
         window: Optional[int] = None,
         ema_coeff: Optional[float] = None,
-        reset_on_reduce: bool = False,
+        clear_on_reduce: bool = False,
         on_exit: Optional[Callable] = None,
     ):
         """Initializes a Stats instance.
@@ -150,7 +150,7 @@ class Stats:
                 Must be None if `ema_coeff` is not None.
                 If `window` is None (and `ema_coeff` is None), reduction must not be
                 "mean".
-                TODO (sven): Allow window=float("inf"), iff reset_on_reduce=True.
+                TODO (sven): Allow window=float("inf"), iff clear_on_reduce=True.
                 This would enable cases where we want to accumulate n data points (w/o
                 limitation, then average over these, then reset the data pool on reduce,
                 e.g. for evaluation env_runner stats, which should NOT use any window,
@@ -161,7 +161,7 @@ class Stats:
                 `reduce` must be "mean".
                 The reduction formula for EMA performed by Stats is:
                 EMA(t1) = (1.0 - ema_coeff) * EMA(t0) + ema_coeff * new_value
-            reset_on_reduce: If True, the Stats object will reset its entire values list
+            clear_on_reduce: If True, the Stats object will reset its entire values list
                 to an empty one after `self.reduce()` is called. However, it will then
                 return from the `self.reduce()` call a new Stats object with the
                 properly reduced (not completely emptied) new values. Setting this
@@ -197,7 +197,7 @@ class Stats:
         self._start_time = None
 
         # Simply store ths flag for the user of this class.
-        self._reset_on_reduce = reset_on_reduce
+        self._clear_on_reduce = clear_on_reduce
 
         # Code to execute when exiting a with-context.
         self._on_exit = on_exit
@@ -260,9 +260,9 @@ class Stats:
         """
         # Reduce everything to a single (init) value.
         self.values = self._reduced_values()[1]
-        # `reset_on_reduce` -> Return an empty new Stats object with the same option as
+        # `clear_on_reduce` -> Return an empty new Stats object with the same option as
         # `self`.
-        if self._reset_on_reduce:
+        if self._clear_on_reduce:
             return Stats.similar_to(self)
         # No reset required upon `reduce()` -> Return `self`.
         else:
@@ -362,7 +362,7 @@ class Stats:
             "reduce": self._reduce_method,
             "window": self._window,
             "ema_coeff": self._ema_coeff,
-            "reset_on_reduce": self._reset_on_reduce,
+            "clear_on_reduce": self._clear_on_reduce,
         }
 
     @staticmethod
@@ -372,7 +372,7 @@ class Stats:
             reduce=state["reduce"],
             window=state["window"],
             ema_coeff=state["ema_coeff"],
-            reset_on_reduce=state["reset_on_reduce"],
+            clear_on_reduce=state["clear_on_reduce"],
         )
 
     @staticmethod
@@ -382,7 +382,7 @@ class Stats:
             reduce=other._reduce_method,
             window=other._window,
             ema_coeff=other._ema_coeff,
-            reset_on_reduce=other._reset_on_reduce,
+            clear_on_reduce=other._clear_on_reduce,
         )
 
     def _reduced_values(self) -> Tuple[Any, Any]:

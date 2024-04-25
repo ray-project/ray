@@ -39,6 +39,7 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
+    NUM_ENV_STEPS_TRAINED,
     NUM_ENV_STEPS_TRAINED_LIFETIME,
     NUM_EPISODES,
     NUM_EPISODES_LIFETIME,
@@ -477,22 +478,11 @@ class PPO(Algorithm):
                 ),
                 num_iters=self.config.num_sgd_iter,
             )
-            self.metrics.log_dict(
-                learner_results,
-                key=LEARNER_RESULTS,
-                # TODO (sven): For now, as we do NOT use MetricsLogger inside Learner
-                #  and LearnerGroup, we assume here that the
-                #  Learner/LearnerGroup-returned values are absolute (and thus require a
-                #  reduce window of just 1 (take as-is)). Remove the window setting
-                #  below, once Learner/LearnerGroup themselves use MetricsLogger.
-                window=1,
-            )
-            # TODO (sven): Move these counters into Learners and add
-            #  module-steps and agent-steps trained and sampled.
+            self.metrics.log_n_dicts(learner_results, key=LEARNER_RESULTS)
             self.metrics.log_dict(
                 {
                     NUM_ENV_STEPS_TRAINED_LIFETIME: self.metrics.peek(
-                        ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED
+                        LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED
                     ),
                     # NUM_MODULE_STEPS_TRAINED_LIFETIME: self.metrics.peek(
                     #    LEARNER_RESULTS, NUM_MODULE_STEPS_TRAINED
@@ -504,13 +494,15 @@ class PPO(Algorithm):
         # Update weights - after learning on the local worker - on all remote
         # workers.
         with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
-            # The train results's loss keys are pids to their loss values. But we also
-            # return a total_loss key at the same level as the pid keys. So we need to
-            # subtract that to get the total set of pids to update.
-            # TODO (Kourosh): We should also not be using train_results as a message
-            #  passing medium to infer which policies to update. We could use
-            #  policies_to_train variable that is given by the user to infer this.
-            modules_to_update = set(learner_results.keys()) - {ALL_MODULES}
+            # The train results's loss keys are ModuleIDs to their loss values.
+            # But we also return a total_loss key at the same level as the ModuleID
+            # keys. So we need to subtract that to get the correct set of ModuleIDs to
+            # update.
+            # TODO (sven): We should also not be using `learner_results` as a messenger
+            #  to infer which modules to update. `policies_to_train` might also NOT work
+            #  as it might be a very large set (100s of Modules) vs a smaller Modules
+            #  set that's present in the current train batch.
+            modules_to_update = set(learner_results[0].keys()) - {ALL_MODULES}
             if self.workers.num_remote_workers() > 0:
                 self.workers.sync_weights(
                     # Sync weights from learner_group to all rollout workers.
@@ -526,9 +518,8 @@ class PPO(Algorithm):
         with self.metrics.log_time((TIMERS, LEARNER_ADDITIONAL_UPDATE_TIMER)):
             kl_dict = {}
             if self.config.use_kl_loss:
-                for module_id in modules_to_update:
-                    kl = learner_results[module_id][LEARNER_RESULTS_KL_KEY]
-                    kl_dict[module_id] = kl
+                for mid in modules_to_update:
+                    kl = self.metrics.peek(LEARNER_RESULTS, mid, LEARNER_RESULTS_KL_KEY)
                     if np.isnan(kl):
                         logger.warning(
                             f"KL divergence for Module {module_id} is non-finite, this "
@@ -540,6 +531,7 @@ class PPO(Algorithm):
                             "`kl_coeff` to 0.0 or increasing `entropy_coeff` in your "
                             "config."
                         )
+                    kl_dict[mid] = kl
 
             # triggers a special update method on RLOptimizer to update the KL values.
             additional_results = self.learner_group.additional_update(
@@ -547,16 +539,7 @@ class PPO(Algorithm):
                 sampled_kl_values=kl_dict,
                 timestep=self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME),
             )
-            self.metrics.log_dict(
-                additional_results,
-                key=LEARNER_RESULTS,
-                # TODO (sven): For now, as we do NOT use MetricsLogger inside Learner
-                #  and LearnerGroup, we assume here that the
-                #  Learner/LearnerGroup-returned values are absolute (and thus require a
-                #  reduce window of just 1 (take as-is)). Remove the window setting
-                #  below, once Learner/LearnerGroup themselves use MetricsLogger.
-                window=1,
-            )
+            self.metrics.log_n_dicts(additional_results, key=LEARNER_RESULTS)
 
         return self.metrics.reduce()
 

@@ -678,10 +678,7 @@ class DQN(Algorithm):
 
                 # Perform an update on the buffer-sampled train batch.
                 with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
-                    learner_results = self.learner_group.update_from_batch(
-                        train_batch,
-                        reduce_fn=self._reduce_fn,
-                    )
+                    learner_results = self.learner_group.update_from_batch(train_batch)
                     # Isolate TD-errors from result dicts (we should not log these, they
                     # might be very large).
                     td_errors = {
@@ -855,31 +852,3 @@ class DQN(Algorithm):
 
         # Return all collected metrics for the iteration.
         return train_results
-
-    # TODO (sven): Replace reduction fn sent to LearnerGroup entirely by
-    #  MetricsLogger. a) one MetricsLogger on each Learner worker so each
-    #  can return their own reduced results dict, then b) reduce over m
-    #  Learner workers' results dict in `training_step` using Algorithm's
-    #  own MetricsLogger.
-    @staticmethod
-    def _reduce_fn(results: List[ResultDict]) -> ResultDict:
-        """Reduces all metrics, but the TD-errors."""
-        # First get the single modules' results.
-        module_results = [
-            v for res in results for k, v in res.items() if k != ALL_MODULES
-        ]
-        # Extract the TD-errors as we want to keep them as arrays.
-        td_errors = tree.map_structure_up_to(
-            {TD_ERROR_KEY: True}, lambda x: x, *module_results
-        )
-        # Now reduce all other results.
-        reduced_results = tree.map_structure(lambda *x: np.mean(x), *results)
-        # Add the TD-error arrays to the results and return.
-        return {
-            k: v if k == ALL_MODULES else {**v, TD_ERROR_KEY: td_error}
-            for k, v, td_error in zip(
-                reduced_results.keys(),
-                reduced_results.values(),
-                [None] + list(td_errors.values()),
-            )
-        }

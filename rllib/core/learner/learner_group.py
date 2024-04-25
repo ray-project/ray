@@ -16,7 +16,6 @@ import uuid
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core.learner.learner import Learner
-from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.core.rl_module.rl_module import (
     SingleAgentRLModuleSpec,
     RLMODULE_STATE_DIR_NAME,
@@ -24,7 +23,12 @@ from ray.rllib.core.rl_module.rl_module import (
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
-from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
+from ray.rllib.utils.deprecation import (
+    Deprecated,
+    DEPRECATED_VALUE,
+    deprecation_warning,
+)
+from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.minibatch_utils import (
     ShardBatchIterator,
     ShardEpisodesIterator,
@@ -184,6 +188,13 @@ class LearnerGroup:
             self._update_request_tags = Counter()
             self._additional_update_request_tags = Counter()
 
+            # The LearnerGroupe's MetricsLogger to be used to log RLlib's built-in
+            # metrics or custom user-defined ones (e.g. custom loss values). When
+            # returning from an `update_from_...()` method call, the LearnerGroup will
+            # do a `self.metrics.reduce()` and return the resulting (reduced) dict.
+            #self.metrics = MetricsLogger()
+
+    # TODO (sven): Replace this with call to `self.metrics.peek()`?
     def get_stats(self) -> Dict[str, Any]:
         """Returns the current stats for the input queue for this learner group."""
         return {
@@ -208,14 +219,13 @@ class LearnerGroup:
         batch: MultiAgentBatch,
         *,
         async_update: bool = False,
-        reduce_fn: Optional[Callable[[List[Dict[str, Any]]], ResultDict]] = (
-            _reduce_mean_results
-        ),
-        # TODO (sven): Deprecate the following args. They should be extracted from the
-        #  LearnerHyperparameters of those specific algorithms that actually require
-        #  these settings.
+        # TODO (sven): Deprecate the following args. They should be extracted from
+        #  self.config of those specific algorithms that actually require these
+        #  settings.
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
+        # Already deprecated args.
+        reduce_fn=DEPRECATED_VALUE,
     ) -> Union[Dict[str, Any], List[Dict[str, Any]], List[List[Dict[str, Any]]]]:
         """Performs gradient based update(s) on the Learner(s), based on given batch.
 
@@ -227,13 +237,6 @@ class LearnerGroup:
                 sent asynchronously. If True, will return NOT the results from the
                 update on the given data, but all results from prior asynchronous update
                 requests that have not been returned thus far.
-            reduce_fn: An optional callable to reduce the results from a list of the
-                Learner actors into a single result. This can be any arbitrary function
-                that takes a list of dictionaries and returns a single dictionary. For
-                example, you can either take an average (default) or concatenate the
-                results (for example for metrics) or be more selective about you want to
-                report back to the algorithm's training_step. If None is passed, the
-                results will not get reduced.
             minibatch_size: The minibatch size to use for the update.
             num_iters: The number of complete passes over all the sub-batches in the
                 input multi-agent batch.
@@ -248,11 +251,20 @@ class LearnerGroup:
             results are reduced, a list of dictionaries of the reduced results from each
             call to async_update that is ready.
         """
+        if reduce_fn != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="LearnerGroup.update_from_batch(reduce_fn=..)",
+                new="Learner.metrics.[log_value|log_dict|log_time](key=..., value=..., "
+                "reduce=[mean|min|max|sum], window=..., ema_coeff=...)",
+                help="Use the new ray.rllib.utils.metrics.metrics_logger::MetricsLogger"
+                " API in your custom Learner methods for logging your custom values "
+                "and time-reducing (or parallel-reducing) them.",
+                error=True,
+            )
         return self._update(
             batch=batch,
             episodes=None,
             async_update=async_update,
-            reduce_fn=reduce_fn,
             minibatch_size=minibatch_size,
             num_iters=num_iters,
         )
@@ -262,14 +274,13 @@ class LearnerGroup:
         episodes: List[EpisodeType],
         *,
         async_update: bool = False,
-        reduce_fn: Optional[Callable[[List[Dict[str, Any]]], ResultDict]] = (
-            _reduce_mean_results
-        ),
-        # TODO (sven): Deprecate the following args. They should be extracted from the
-        #  LearnerHyperparameters of those specific algorithms that actually require
-        #  these settings.
+        # TODO (sven): Deprecate the following args. They should be extracted from
+        #  self.config of those specific algorithms that actually require these
+        #  settings.
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
+        # Already deprecated args.
+        reduce_fn=DEPRECATED_VALUE,
     ) -> Union[Dict[str, Any], List[Dict[str, Any]], List[List[Dict[str, Any]]]]:
         """Performs gradient based update(s) on the Learner(s), based on given episodes.
 
@@ -284,13 +295,6 @@ class LearnerGroup:
             minibatch_size: The minibatch size to use for the update.
             num_iters: The number of complete passes over all the sub-batches in the
                 input multi-agent batch.
-            reduce_fn: An optional callable to reduce the results from a list of the
-                Learner actors into a single result. This can be any arbitrary function
-                that takes a list of dictionaries and returns a single dictionary. For
-                example, you can either take an average (default) or concatenate the
-                results (for example for metrics) or be more selective about you want to
-                report back to the algorithm's training_step. If None is passed, the
-                results will not get reduced.
 
         Returns:
             If async_update is False, a dictionary with the reduced results of the
@@ -302,11 +306,21 @@ class LearnerGroup:
             results are reduced, a list of dictionaries of the reduced results from each
             call to async_update that is ready.
         """
+        if reduce_fn != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="LearnerGroup.update_from_episodes(reduce_fn=..)",
+                new="Learner.metrics.[log_value|log_dict|log_time](key=..., value=..., "
+                "reduce=[mean|min|max|sum], window=..., ema_coeff=...)",
+                help="Use the new ray.rllib.utils.metrics.metrics_logger::MetricsLogger"
+                " API in your custom Learner methods for logging your custom values "
+                "and time-reducing (or parallel-reducing) them.",
+                error=True,
+            )
+
         return self._update(
             batch=None,
             episodes=episodes,
             async_update=async_update,
-            reduce_fn=reduce_fn,
             minibatch_size=minibatch_size,
             num_iters=num_iters,
         )
@@ -317,9 +331,6 @@ class LearnerGroup:
         batch: Optional[MultiAgentBatch] = None,
         episodes: Optional[List[EpisodeType]] = None,
         async_update: bool = False,
-        reduce_fn: Optional[Callable[[List[Dict[str, Any]]], ResultDict]] = (
-            _reduce_mean_results
-        ),
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
     ) -> Union[Dict[str, Any], List[Dict[str, Any]], List[List[Dict[str, Any]]]]:
@@ -333,14 +344,12 @@ class LearnerGroup:
             if batch_shard is not None:
                 return learner.update_from_batch(
                     batch=batch_shard,
-                    reduce_fn=reduce_fn,
                     minibatch_size=minibatch_size,
                     num_iters=num_iters,
                 )
             else:
                 return learner.update_from_episodes(
                     episodes=episodes_shard,
-                    reduce_fn=reduce_fn,
                     minibatch_size=minibatch_size,
                     num_iters=num_iters,
                     min_total_mini_batches=min_total_mini_batches,
@@ -453,17 +462,9 @@ class LearnerGroup:
                 results = self._get_results(
                     self._worker_manager.foreach_actor(partials)
                 )
-
-        # TODO (sven): Deprecate `reduce_fn` and replace by a) a MetricsLogger on
-        #  each Learner worker producing the worker's result dict, then b) reducing
-        #  over n Learners' results dict on the Algorithm side (using the Algorithm's
-        #  MetricsLogger).
-        if reduce_fn is None:
-            return results
-        elif not async_update:
-            return reduce_fn(results)
-        else:
-            return [reduce_fn(r) for r in results]
+        # TODO: for async, only reduce over the most recently returned Learner results???
+        a=1
+        return results #self.metrics.reduce()
 
     def _get_results(self, results):
         processed_results = []
@@ -516,7 +517,8 @@ class LearnerGroup:
     def additional_update(
         self,
         *,
-        reduce_fn: Callable[[ResultDict], ResultDict] = _reduce_mean_results,
+        # Deprecated args.
+        reduce_fn=DEPRECATED_VALUE,
         **kwargs,
     ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
         """Apply additional non-gradient based updates to the Learners.
@@ -524,27 +526,33 @@ class LearnerGroup:
         For example, this could be used to do a polyak averaging update
         of a target network in off policy algorithms like SAC or DQN.
 
-        By default this is a pass through that calls `Learner.additional_update`
-
-        Args:
-            reduce_fn: See `update()` documentation for more details.
-            \*\*kwargs: Keyword arguments to pass to each Learner.
+        By default, this is a pass through that calls `Learner.additional_update`
 
         Returns:
             A list of dictionaries of results from the updates from each worker.
         """
+        if reduce_fn != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="LearnerGroup.additional_update(reduce_fn=..)",
+                new="Learner.metrics.[log_value|log_dict|log_time](key=..., value=..., "
+                "reduce=[mean|min|max|sum], window=..., ema_coeff=...)",
+                help="Use the new ray.rllib.utils.metrics.metrics_logger::MetricsLogger"
+                " API in your custom Learner methods for logging your custom values "
+                "and time-reducing (or parallel-reducing) them.",
+                error=True,
+            )
 
         if self.is_local:
-            return self._learner.additional_update(**kwargs)
+            results = [self._learner.additional_update(**kwargs)]
         else:
             results = self._worker_manager.foreach_actor(
                 [lambda w: w.additional_update(**kwargs) for _ in self._workers]
             )
             results = self._get_results(results)
-            if reduce_fn is None:
-                return results
-            # TODO (sven): Move reduce_fn to the training_step
-            return reduce_fn(results)
+
+        return results
+        #self.metrics.log_n_dicts(results)
+        #return self.metrics.reduce()
 
     def add_module(
         self,
