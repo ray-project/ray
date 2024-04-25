@@ -9,10 +9,6 @@ from ray.train._internal.state.schema import (
     TrainRunInfo,
     TrainWorkerInfo,
 )
-from ray.train._internal.state.state_actor import (
-    TRAIN_STATE_ACTOR_NAME,
-    TRAIN_STATE_ACTOR_NAMESPACE,
-)
 from ray.train._internal.utils import check_for_failure
 from ray.train._internal.worker_group import WorkerGroup
 
@@ -25,11 +21,8 @@ class TrainRunStateManager:
     This manager class is created on the train controller layer for each run.
     """
 
-    def __init__(self, worker_group: WorkerGroup) -> None:
-        self.state_actor = ray.get_actor(
-            name=TRAIN_STATE_ACTOR_NAME, namespace=TRAIN_STATE_ACTOR_NAMESPACE
-        )
-        self.worker_group = worker_group
+    def __init__(self, state_actor) -> None:
+        self.state_actor = state_actor
 
     def register_train_run(
         self,
@@ -38,8 +31,15 @@ class TrainRunStateManager:
         run_name: str,
         controller_actor_id: str,
         datasets: Dict[str, Dataset],
+        worker_group: WorkerGroup,
     ) -> None:
         """Collect Train Run Info and report to StateActor."""
+
+        if not self.state_actor:
+            logger.warning(
+                "Unable to register train run since `TrainStateActor` is not started."
+            )
+            return
 
         def collect_train_worker_info():
             train_context = ray.train.get_context()
@@ -57,8 +57,8 @@ class TrainRunStateManager:
             )
 
         futures = [
-            self.worker_group.execute_single_async(index, collect_train_worker_info)
-            for index in range(len(self.worker_group))
+            worker_group.execute_single_async(index, collect_train_worker_info)
+            for index in range(len(worker_group))
         ]
         success, exception = check_for_failure(futures)
 

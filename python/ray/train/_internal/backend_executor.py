@@ -199,8 +199,9 @@ class BackendExecutor:
 
         if self.state_tracking_enabled:
             from ray.train._internal.state import TrainRunStateManager
+            from ray.train._internal.state.state_actor import get_state_actor
 
-            self.state_manager = TrainRunStateManager(worker_group=self.worker_group)
+            self.state_manager = TrainRunStateManager(state_actor=get_state_actor())
 
     def _create_placement_group(self):
         """Creates a placement group if it does not exist.
@@ -545,6 +546,7 @@ class BackendExecutor:
                 job_id=core_context.get_job_id(),
                 controller_actor_id=core_context.get_actor_id(),
                 datasets=datasets,
+                worker_group=self.worker_group,
             )
 
         # Run the training function asynchronously in its own thread.

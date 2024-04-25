@@ -6,6 +6,7 @@ import pytest
 import ray
 from ray.cluster_utils import Cluster
 from ray.train import RunConfig, ScalingConfig
+from ray.train._internal.backend_executor import BackendExecutor
 from ray.train._internal.state.schema import (
     TrainDatasetInfo,
     TrainRunInfo,
@@ -16,6 +17,9 @@ from ray.train._internal.state.state_actor import (
     TRAIN_STATE_ACTOR_NAMESPACE,
     get_or_create_state_actor,
 )
+from ray.train._internal.state.state_manager import TrainRunStateManager
+from ray.train._internal.worker_group import WorkerGroup
+from ray.train.backend import Backend, BackendConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
 
 
@@ -155,6 +159,63 @@ def test_state_actor_api():
         assert run_info == info_list[i]
 
 
+class TestConfig(BackendConfig):
+    @property
+    def backend_cls(self):
+        return TestBackend
+
+
+class TestBackend(Backend):
+    def on_start(self, worker_group: WorkerGroup, backend_config: TestConfig):
+        pass
+
+    def on_shutdown(self, worker_group: WorkerGroup, backend_config: TestConfig):
+        pass
+
+
+def test_state_manager(ray_start_gpu_cluster):
+    os.environ["RAY_TRAIN_ENABLE_STATE_TRACKING"] = "0"
+    e = BackendExecutor(
+        backend_config=TestConfig(), num_workers=4, resources_per_worker={"GPU": 1}
+    )
+    e.start()
+
+    # No errors raised if TrainStateActor is not started
+    state_manager = TrainRunStateManager(state_actor=None)
+    state_manager.register_train_run(
+        run_id="run_id",
+        run_name="run_name",
+        job_id="0000000001",
+        controller_actor_id="3abd1972a19148d78acc78dd9414736e",
+        datasets={},
+        worker_group=e.worker_group,
+    )
+
+    # Register 100 runs with 10 TrainRunStateManagers
+    state_actor = get_or_create_state_actor()
+    for i in range(10):
+        state_manager = TrainRunStateManager(state_actor=state_actor)
+        for j in range(10):
+            run_id = i * 10 + j
+            state_manager.register_train_run(
+                run_id=str(run_id),
+                run_name="run_name",
+                job_id="0000000001",
+                controller_actor_id="3abd1972a19148d78acc78dd9414736e",
+                datasets={
+                    "train": ray.data.from_items(list(range(4))),
+                    "eval": ray.data.from_items(list(range(4))),
+                },
+                worker_group=e.worker_group,
+            )
+
+    runs = ray.get(state_actor.get_all_train_runs.remote())
+    assert len(runs) == 100
+
+    for i in range(100):
+        assert ray.get(state_actor.get_train_run.remote(run_id=str(i)))
+
+
 @pytest.mark.parametrize("gpus_per_worker", [0, 1, 2])
 def test_track_e2e_training(ray_start_gpu_cluster, gpus_per_worker):
     os.environ["RAY_TRAIN_ENABLE_STATE_TRACKING"] = "1"
@@ -174,12 +235,12 @@ def test_track_e2e_training(ray_start_gpu_cluster, gpus_per_worker):
 
     trainer = DataParallelTrainer(
         train_loop_per_worker=lambda: None,
+        run_config=RunConfig(name=run_name),
         scaling_config=ScalingConfig(
             num_workers=num_workers,
             use_gpu=use_gpu,
             resources_per_worker=resources_per_worker,
         ),
-        run_config=RunConfig(name=run_name),
         datasets=datasets,
     )
 

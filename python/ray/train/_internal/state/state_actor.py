@@ -13,9 +13,6 @@ class TrainStateActor:
     def __init__(self):
         self._run_infos: Dict[str, TrainRunInfo] = {}
 
-    def ready(self):
-        pass
-
     def register_train_run(self, run_info: TrainRunInfo) -> None:
         # Register a new train run.
         self._run_infos[run_info.id] = run_info
@@ -47,5 +44,16 @@ def get_or_create_state_actor():
         ).remote()
 
     # Ensure the state actor is ready
-    ray.get(state_actor.ready.remote())
+    ray.get(state_actor.__ray_ready__.remote())
     return state_actor
+
+
+def get_state_actor():
+    """Get the `TrainStateActor` if exists, otherwise return None."""
+    try:
+        return ray.get_actor(
+            name=TRAIN_STATE_ACTOR_NAME,
+            namespace=TRAIN_STATE_ACTOR_NAMESPACE,
+        )
+    except ValueError:
+        return None
