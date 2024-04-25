@@ -694,7 +694,7 @@ grpcio-status==1.48.2
     # via google-api-core
 gsutil==5.27
     # via -r /ray/ci/../python/requirements/docker/ray-docker-requirements.txt
-gunicorn==20.1.0
+gunicorn==22.0.0
     # via mlflow
 gym==0.26.2
     # via
