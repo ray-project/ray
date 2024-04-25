@@ -981,8 +981,8 @@ class Impala(Algorithm):
     def place_processed_samples_on_learner_thread_queue(self) -> None:
         """Place processed samples on the learner queue for training.
 
-        NOTE: This method is called if self.config.enable_rl_module_and_learner is False.
-
+        NOTE: This method is called if self.config.enable_rl_module_and_learner is
+        False.
         """
         for i, batch in enumerate(self.batches_to_place_on_learner):
             try:
@@ -1008,7 +1008,8 @@ class Impala(Algorithm):
     def process_trained_results(self) -> ResultDict:
         """Process training results that are outputed by the learner thread.
 
-        NOTE: This method is called if self.config.enable_rl_module_and_learner is False.
+        NOTE: This method is called if self.config.enable_rl_module_and_learner is
+        False.
 
         Returns:
             Aggregated results from the learner thread after an update is completed.

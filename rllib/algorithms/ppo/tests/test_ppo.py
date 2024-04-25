@@ -272,7 +272,8 @@ class TestPPO(unittest.TestCase):
             .environment(
                 "FrozenLake-v1",
                 env_config={"is_slippery": False, "map_name": "4x4"},
-            ).env_runners(
+            )
+            .env_runners(
                 # Run locally.
                 num_env_runners=0,
             )

@@ -474,9 +474,8 @@ class TestAlgorithmConfig(unittest.TestCase):
         # This is the case where we ask the algorithm to use its default
         # MultiAgentRLModuleSpec, but the MultiAgentRLModuleSpec has not defined its
         # SingleAgentRLmoduleSpecs.
-        config = (
-            MultiAgentAlgoConfigWithNoSingleAgentSpec()
-            .api_stack(enable_rl_module_and_learner=True)
+        config = MultiAgentAlgoConfigWithNoSingleAgentSpec().api_stack(
+            enable_rl_module_and_learner=True
         )
 
         self.assertRaisesRegex(

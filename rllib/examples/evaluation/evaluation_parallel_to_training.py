@@ -152,7 +152,8 @@ class AssertEvalCallback(DefaultCallbacks):
                 # fetch.
                 assert (
                     num_timesteps_reported == 0
-                    or num_timesteps_reported >= algorithm.config.evaluation_num_env_runners
+                    or num_timesteps_reported
+                    >= algorithm.config.evaluation_num_env_runners
                 )
             # We count in episodes.
             elif algorithm.config.evaluation_duration_unit == "episodes":

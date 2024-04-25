@@ -34,7 +34,9 @@ class LearningRateSchedule:
         self._lr_schedule = None
         # Disable any scheduling behavior related to learning if Learner API is active.
         # Schedules are handled by Learner class.
-        if lr_schedule is None or self.config.get("enable_rl_module_and_learner", False):
+        if lr_schedule is None or self.config.get(
+            "enable_rl_module_and_learner", False
+        ):
             self.cur_lr = tf1.get_variable("lr", initializer=lr, trainable=False)
         else:
             self._lr_schedule = PiecewiseSchedule(

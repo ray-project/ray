@@ -161,7 +161,10 @@ class EagerTFPolicyV2(Policy):
             "enable_rl_module_and_learner", False
         ), "This is a helper method for the new learner API."
 
-        if self.config.get("enable_rl_module_and_learner", False) and self.model.is_stateful():
+        if (
+            self.config.get("enable_rl_module_and_learner", False)
+            and self.model.is_stateful()
+        ):
             # Note that this is a temporary workaround to fit the old sampling stack
             # to RL Modules.
             ret = {}
@@ -213,8 +216,8 @@ class EagerTFPolicyV2(Policy):
         Returns:
             A single loss tensor or a list of loss tensors.
         """
-        # Under the new enable_rl_module_and_learner the loss function still gets called in
-        # order to initialize the view requirements of the sample batches that are
+        # Under the new enable_rl_module_and_learner the loss function still gets called
+        # in order to initialize the view requirements of the sample batches that are
         # returned by the sampler. In this case, we don't actually want to compute any
         # loss, however
         # if we access the keys that are needed for a forward_train pass, then the

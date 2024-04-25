@@ -134,9 +134,9 @@ def _update_env_seed_if_necessary(
     # rollout workers.
     max_num_envs_per_env_runner: int = 1000
     assert (
-        worker_idx < max_num_envs_per_env_runners
+        worker_idx < max_num_envs_per_env_runner
     ), "Too many envs per worker. Random seeds may collide."
-    computed_seed: int = worker_idx * max_num_envs_per_env_runners + vector_idx + seed
+    computed_seed: int = worker_idx * max_num_envs_per_env_runner + vector_idx + seed
 
     # Gymnasium.env.
     # This will silently fail for most Farama-foundation gymnasium environments.
@@ -1860,9 +1860,9 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 new_policy = policy
 
             # Maybe torch compile an RLModule.
-            if self.config.get("enable_rl_module_and_learner", False) and self.config.get(
-                "torch_compile_worker"
-            ):
+            if self.config.get(
+                "enable_rl_module_and_learner", False
+            ) and self.config.get("torch_compile_worker"):
                 if self.config.framework_str != "torch":
                     raise ValueError("Attempting to compile a non-torch RLModule.")
                 rl_module = getattr(new_policy, "model", None)

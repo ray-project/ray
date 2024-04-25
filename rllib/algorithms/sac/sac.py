@@ -347,7 +347,9 @@ class SACConfig(AlgorithmConfig):
         # Validate that we use the corresponding `EpisodeReplayBuffer` when using
         # episodes.
         # TODO (sven, simon): Implement the multi-agent case for replay buffers.
-        if self.enable_env_runner_and_connector_v2 and self.replay_buffer_config["type"] not in [
+        if self.enable_env_runner_and_connector_v2 and self.replay_buffer_config[
+            "type"
+        ] not in [
             "EpisodeReplayBuffer",
             "PrioritizedEpisodeReplayBuffer",
         ]:

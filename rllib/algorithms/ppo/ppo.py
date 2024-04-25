@@ -434,7 +434,9 @@ class PPO(Algorithm):
                     worker_set=self.workers,
                     max_agent_steps=self.config.total_train_batch_size,
                     sample_timeout_s=self.config.sample_timeout_s,
-                    _uses_new_env_runners=self.config.enable_env_runner_and_connector_v2,
+                    _uses_new_env_runners=(
+                        self.config.enable_env_runner_and_connector_v2
+                    ),
                     _return_metrics=True,
                 )
             else:
@@ -442,7 +444,9 @@ class PPO(Algorithm):
                     worker_set=self.workers,
                     max_env_steps=self.config.total_train_batch_size,
                     sample_timeout_s=self.config.sample_timeout_s,
-                    _uses_new_env_runners=self.config.enable_env_runner_and_connector_v2,
+                    _uses_new_env_runners=(
+                        self.config.enable_env_runner_and_connector_v2
+                    ),
                     _return_metrics=True,
                 )
             # Return early if all our workers failed.

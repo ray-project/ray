@@ -250,8 +250,8 @@ class TorchPolicyV2(Policy):
         Returns:
             Loss tensor given the input batch.
         """
-        # Under the new enable_rl_module_and_learner the loss function still gets called in
-        # order to initialize the view requirements of the sample batches that are
+        # Under the new enable_rl_module_and_learner the loss function still gets called
+        # in order to initialize the view requirements of the sample batches that are
         # returned by
         # the sampler. In this case, we don't actually want to compute any loss, however
         # if we access the keys that are needed for a forward_train pass, then the
@@ -330,7 +330,10 @@ class TorchPolicyV2(Policy):
             "enable_rl_module_and_learner", False
         ), "This is a helper method for the new learner API."
 
-        if self.config.get("enable_rl_module_and_learner", False) and self.model.is_stateful():
+        if (
+            self.config.get("enable_rl_module_and_learner", False)
+            and self.model.is_stateful()
+        ):
             # Note that this is a temporary workaround to fit the old sampling stack
             # to RL Modules.
             ret = {}
@@ -754,7 +757,9 @@ class TorchPolicyV2(Policy):
                 shuffle=False,
                 batch_divisibility_req=self.batch_divisibility_req,
                 view_requirements=self.view_requirements,
-                _enable_new_api_stack=self.config.get("enable_rl_module_and_learner", False),
+                _enable_new_api_stack=self.config.get(
+                    "enable_rl_module_and_learner", False
+                ),
                 padding="last"
                 if self.config.get("enable_rl_module_and_learner", False)
                 else "zero",
@@ -781,7 +786,9 @@ class TorchPolicyV2(Policy):
                 shuffle=False,
                 batch_divisibility_req=self.batch_divisibility_req,
                 view_requirements=self.view_requirements,
-                _enable_new_api_stack=self.config.get("enable_rl_module_and_learner", False),
+                _enable_new_api_stack=self.config.get(
+                    "enable_rl_module_and_learner", False
+                ),
                 padding="last"
                 if self.config.get("enable_rl_module_and_learner", False)
                 else "zero",
@@ -911,7 +918,9 @@ class TorchPolicyV2(Policy):
                 shuffle=False,
                 batch_divisibility_req=self.batch_divisibility_req,
                 view_requirements=self.view_requirements,
-                _enable_new_api_stack=self.config.get("enable_rl_module_and_learner", False),
+                _enable_new_api_stack=self.config.get(
+                    "enable_rl_module_and_learner", False
+                ),
                 padding="last"
                 if self.config.get("enable_rl_module_and_learner", False)
                 else "zero",
@@ -1028,7 +1037,10 @@ class TorchPolicyV2(Policy):
                 optim_state_dict = convert_to_numpy(o.state_dict())
                 state["_optimizer_variables"].append(optim_state_dict)
         # Add exploration state.
-        if not self.config.get("enable_rl_module_and_learner", False) and self.exploration:
+        if (
+            not self.config.get("enable_rl_module_and_learner", False)
+            and self.exploration
+        ):
             # This is not compatible with RLModules, which have a method
             # `forward_exploration` to specify custom exploration behavior.
             state["_exploration_state"] = self.exploration.get_state()

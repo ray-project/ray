@@ -33,7 +33,6 @@ from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.wrappers.atari_wrappers import is_atari
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
 from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListCollector
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
@@ -614,7 +613,9 @@ class AlgorithmConfig(_Config):
         config["custom_eval_function"] = config.pop("custom_evaluation_function", None)
         config["framework"] = config.pop("framework_str", None)
         config["num_cpus_for_driver"] = config.pop("num_cpus_for_local_worker", 1)
-        config["num_workers"] = config.pop("num_env_runners", config.pop("num_rollout_workers", 0))
+        config["num_workers"] = config.pop(
+            "num_env_runners", config.pop("num_rollout_workers", 0)
+        )
 
         # Simplify: Remove all deprecated keys that have as value `DEPRECATED_VALUE`.
         # These would be useless in the returned dict anyways.
@@ -894,8 +895,8 @@ class AlgorithmConfig(_Config):
             # Unsupported return value.
             else:
                 raise ValueError(
-                    "`AlgorithmConfig.env_runners(env_to_module_connector=..)` must return"
-                    " a ConnectorV2 object or a list thereof (to be added to a "
+                    "`AlgorithmConfig.env_runners(env_to_module_connector=..)` must "
+                    "return a ConnectorV2 object or a list thereof (to be added to a "
                     f"pipeline)! Your function returned {val_}."
                 )
 
@@ -960,8 +961,8 @@ class AlgorithmConfig(_Config):
             # Unsupported return value.
             else:
                 raise ValueError(
-                    "`AlgorithmConfig.env_runners(module_to_env_connector=..)` must return"
-                    " a ConnectorV2 object or a list thereof (to be added to a "
+                    "`AlgorithmConfig.env_runners(module_to_env_connector=..)` must "
+                    "return a ConnectorV2 object or a list thereof (to be added to a "
                     f"pipeline)! Your function returned {val_}."
                 )
 
@@ -1409,7 +1410,6 @@ class AlgorithmConfig(_Config):
 
         return self
 
-
     def api_stack(
         self,
         enable_rl_module_and_learner: Optional[str] = NotProvided,
@@ -1580,7 +1580,6 @@ class AlgorithmConfig(_Config):
         rollout_fragment_length: Optional[Union[int, str]] = NotProvided,
         batch_mode: Optional[str] = NotProvided,
         explore: Optional[bool] = NotProvided,
-
         # @OldAPIStack settings.
         exploration_config: Optional[dict] = NotProvided,  # @OldAPIStack
         create_env_on_local_worker: Optional[bool] = NotProvided,  # @OldAPIStack
@@ -1592,7 +1591,6 @@ class AlgorithmConfig(_Config):
         observation_filter: Optional[str] = NotProvided,  # @OldAPIStack
         enable_tf1_exec_eagerly: Optional[bool] = NotProvided,  # @OldAPIStack
         sampler_perf_stats_ema_coef: Optional[float] = NotProvided,  # @OldAPIStack
-
         # Deprecated args.
         num_rollout_workers=DEPRECATED_VALUE,
         num_envs_per_worker=DEPRECATED_VALUE,
@@ -3133,7 +3131,8 @@ class AlgorithmConfig(_Config):
                 if self.evaluation_duration == "auto"
                 else int(
                     math.ceil(
-                        self.evaluation_duration / (self.evaluation_num_env_runners or 1)
+                        self.evaluation_duration
+                        / (self.evaluation_num_env_runners or 1)
                     )
                 )
             )
@@ -3981,7 +3980,10 @@ class AlgorithmConfig(_Config):
         # `evaluation_parallel_to_training=True`, warn that you need
         # at least one remote eval worker for parallel training and
         # evaluation, and set `evaluation_parallel_to_training` to False.
-        if self.evaluation_num_env_runners == 0 and self.evaluation_parallel_to_training:
+        if (
+            self.evaluation_num_env_runners == 0
+            and self.evaluation_parallel_to_training
+        ):
             raise ValueError(
                 "`evaluation_parallel_to_training` can only be done if "
                 "`evaluation_num_env_runners` > 0! Try setting "
@@ -4071,7 +4073,8 @@ class AlgorithmConfig(_Config):
                     "API stack! Try setting "
                     "`config.api_stack(enable_rl_module_and_learner=True)`."
                 )
-            # Early out. The rest of this method is only for enable_rl_module_and_learner=True.
+            # Early out. The rest of this method is only for
+            # `enable_rl_module_and_learner=True`.
             return
 
         # New API stack (RLModule, Learner APIs) only works with connectors.

@@ -342,7 +342,9 @@ class TestAlgorithm(unittest.TestCase):
 
         config = (
             ppo.PPOConfig()
-            .env_runners(num_env_runners=1, validate_env_runners_after_construction=False)
+            .env_runners(
+                num_env_runners=1, validate_env_runners_after_construction=False
+            )
             .environment(env="CartPole-v1")
         )
 
