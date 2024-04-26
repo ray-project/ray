@@ -9,7 +9,7 @@ In the project directory, you can run:
 ``npm ci``
 ~~~~~~~~~~~~~~~
 
-Installed based on package-lock.json
+Once you run this command, all the dependencies listed in your package.json are installed based on the versions in package-lock.json
 
 ``npm start``
 ~~~~~~~~~~~~~
