@@ -1,14 +1,15 @@
 import logging
-from typing import TYPE_CHECKING, List, Dict, Optional, Iterator
+from typing import TYPE_CHECKING, Dict, Iterator, List, Optional
+
+import lance
+import numpy as np
+import pyarrow as pa
+from lance import LanceFragment
+
 from ray.data import ReadTask
 from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource
 from ray.util.annotations import DeveloperAPI
-import lance
-
-import pyarrow as pa
-import numpy as np
-from lance import LanceFragment
 
 logger = logging.getLogger(__name__)
 
