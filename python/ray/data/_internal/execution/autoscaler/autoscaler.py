@@ -1,14 +1,17 @@
 import math
 from abc import ABCMeta, abstractmethod
-from typing import Dict, List
+import time
+from typing import TYPE_CHECKING, Dict, List
 
-from ray.actor import ActorHandle
 from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
 )
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
-from ray.data._internal.execution.resource_manager import ResourceManager
-from ray.data._internal.execution.streaming_executor_state import Topology
+
+if TYPE_CHECKING:
+    from ray.data._internal.execution.interfaces import PhysicalOperator
+    from ray.data._internal.execution.resource_manager import ResourceManager
+    from ray.data._internal.execution.streaming_executor_state import OpState, Topology
 
 
 class ActorPoolAutoscalingHandler(metaclass=ABCMeta):
@@ -23,7 +26,13 @@ class ActorPoolAutoscalingHandler(metaclass=ABCMeta):
     def actor_pool_current_size(self) -> int: ...
 
     @abstractmethod
-    def actor_pool_current_utilization(self) -> float: ...
+    def num_running_actors(self) -> int: ...
+
+    @abstractmethod
+    def max_tasks_in_flight_per_actor(self) -> int: ...
+
+    @abstractmethod
+    def num_in_flight_tasks(self) -> int: ...
 
     @abstractmethod
     def scale_up_actor_pool(self, num_actors: int) -> int: ...
@@ -36,8 +45,8 @@ class Autoscaler(metaclass=ABCMeta):
 
     def __init__(
         self,
-        topology: Topology,
-        resource_manager: ResourceManager,
+        topology: "Topology",
+        resource_manager: "ResourceManager",
         execution_id: str,
     ):
         self._topology = topology
@@ -48,43 +57,78 @@ class Autoscaler(metaclass=ABCMeta):
     def try_trigger_scaling(self):
         pass
 
+    @abstractmethod
+    def on_executor_shutdown(self):
+        pass
+
 
 class DefaultAutoscaler(Autoscaler):
 
-    DEFAULT_SCALING_UP_THRESHOLD: float = 0.8
-    DEFAULT_SCALING_DOWN_THRESHOLD: float = 0.5
+    DEFAULT_ACTOR_POOL_SCALING_UP_THRESHOLD: float = 0.8
+    DEFAULT_ACTOR_POOL_SCALING_DOWN_THRESHOLD: float = 0.5
+
+    # Min number of seconds between two autoscaling requests.
+    MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS = 20
 
     def __init__(
         self,
-        topology: Topology,
-        resource_manager: ResourceManager,
+        topology: "Topology",
+        resource_manager: "ResourceManager",
         execution_id: str,
     ):
+        self._last_request_time = 0
         super().__init__(topology, resource_manager, execution_id)
 
     def try_trigger_scaling(self):
         self._try_scale_up_cluster()
+        self._try_scale_up_or_down_actor_pool()
+
+    def _actor_pool_should_scale_up(self, op: "PhysicalOperator", op_state: "OpState"):
+        if op._inputs_complete and op.internal_queue_size() == 0:
+            return False
+        assert isinstance(op, ActorPoolAutoscalingHandler)
+        actor_pool = op
+        if actor_pool.actor_pool_current_size() >= actor_pool.actor_pool_max_size():
+            return False
+        free_slots = (
+            actor_pool.max_tasks_in_flight_per_actor()
+            * actor_pool.actor_pool_current_size()
+            - actor_pool.num_in_flight_tasks()
+        )
+        # TODO: under_resource_limits
+        if op_state.num_queued() <= free_slots:
+            return False
+        util = actor_pool.num_running_actors() / actor_pool.actor_pool_current_size()
+        return util > self.DEFAULT_ACTOR_POOL_SCALING_UP_THRESHOLD
+
+    def _actor_pool_should_scale_down(
+        self, op: "PhysicalOperator", op_state: "OpState"
+    ):
+        if op._inputs_complete and op.internal_queue_size() == 0:
+            return True
+        assert isinstance(op, ActorPoolAutoscalingHandler)
+        actor_pool = op
+        if actor_pool.actor_pool_current_size() <= actor_pool.actor_pool_min_size():
+            return False
+        util = (
+            actor_pool.num_running_actors() / actor_pool.actor_pool_current_size()
+        )
+        return util < self.DEFAULT_ACTOR_POOL_SCALING_DOWN_THRESHOLD
 
     def _try_scale_up_or_down_actor_pool(self):
-        for op, _ in self._topology.items():
+        for op, state in self._topology.items():
             if not isinstance(op, ActorPoolAutoscalingHandler):
                 continue
-            # Scale up if the current utilization is above the threshold and we have not
-            # reached the max size.
-            while (
-                op.actor_pool_current_utilization() > self.DEFAULT_SCALING_UP_THRESHOLD
-                and op.actor_pool_current_size() < op.actor_pool_max_size()
-            ):
-                op.scale_up_actor_pool(1)
+            while self._actor_pool_should_scale_up(
+                op, state
+            ) and not self._actor_pool_should_scale_down(op, state):
+                if op.scale_up_actor_pool(1) == 0:
+                    break
 
             # self._kill_inactive_workers_if_done()
-            # Scale down if the current utilization is below the threshold and we have not
-            # reached the min size.
-            while (
-                op.actor_pool_current_utilization()
-                < self.DEFAULT_SCALING_DOWN_THRESHOLD
-                and op.actor_pool_current_size() > op.actor_pool_min_size()
-            ):
+            while self._actor_pool_should_scale_down(
+                op, state
+            ) and not self._actor_pool_should_scale_up(op, state):
                 if op.scale_down_actor_pool(1) == 0:
                     break
 
@@ -105,6 +149,11 @@ class DefaultAutoscaler(Autoscaler):
             topology: The execution state of the in-progress workload for which we wish to
                 request more resources.
         """
+        now = time.time()
+        if now - self._last_request_time < self.MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS:
+            return
+        self._last_request_time = now
+
         # Get resource usage for all ops + additional resources needed to launch one more
         # task for each ready op.
         resource_request = []
@@ -130,6 +179,9 @@ class DefaultAutoscaler(Autoscaler):
 
         # Make autoscaler resource request.
         actor = get_or_create_autoscaling_requester_actor()
-        actor.request_resources.remote(resource_request, execution_id)
+        actor.request_resources.remote(resource_request, self._execution_id)
 
-    def
+    def on_executor_shutdown(self):
+        # Make request for zero resources to autoscaler for this execution.
+        actor = get_or_create_autoscaling_requester_actor()
+        actor.request_resources.remote({}, self._execution_id)

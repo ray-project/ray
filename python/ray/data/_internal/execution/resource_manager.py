@@ -419,9 +419,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             )
             # Calculate the minimum amount of resources to reserve.
             # 1. Make sure the reserved resources are at least to allow one task.
-            min_reserved = op.incremental_resource_usage(
-                consider_autoscaling=False
-            ).copy()
+            min_reserved = op.incremental_resource_usage().copy()
             # 2. To ensure that all GPUs are utilized, reserve enough resource budget
             # to launch one task for each worker.
             if (

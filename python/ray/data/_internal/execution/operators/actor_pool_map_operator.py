@@ -5,7 +5,9 @@ from typing import Any, Dict, Iterator, List, Optional, Union
 
 import ray
 from ray.data._internal.compute import ActorPoolStrategy
-from ray.data._internal.execution.autoscaler.autoscaler import ActorPoolAutoscalingHandler
+from ray.data._internal.execution.autoscaler.autoscaler import (
+    ActorPoolAutoscalingHandler,
+)
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
@@ -51,7 +53,7 @@ class ActorPoolMapOperator(MapOperator, ActorPoolAutoscalingHandler):
         map_transformer: MapTransformer,
         input_op: PhysicalOperator,
         target_max_block_size: Optional[int],
-        autoscaling_config: "AutoscalingConfig",
+        comute_strategy: ActorPoolStrategy,
         name: str = "ActorPoolMap",
         min_rows_per_bundle: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
@@ -62,7 +64,7 @@ class ActorPoolMapOperator(MapOperator, ActorPoolAutoscalingHandler):
             transform_fn: The function to apply to each ref bundle input.
             init_fn: The callable class to instantiate on each actor.
             input_op: Operator generating input data for this op.
-            autoscaling_policy: A policy controlling when the actor pool should be
+            compute_strategy: A policy controlling when the actor pool should be
                 scaled up and scaled down.
             name: The name of this operator.
             target_max_block_size: The target maximum number of bytes to
@@ -96,10 +98,12 @@ class ActorPoolMapOperator(MapOperator, ActorPoolAutoscalingHandler):
             )
         self._min_rows_per_bundle = min_rows_per_bundle
 
-        # Create autoscaling policy from compute strategy.
-        self._autoscaling_config = autoscaling_config
+        # Create autoscaling config from compute strategy.
+        self._autoscaling_config = AutoscalingConfig.from_compute_strategy(
+            comute_strategy
+        )
         # A pool of running actors on which we can execute mapper tasks.
-        self._actor_pool = _ActorPool(autoscaling_config.max_tasks_in_flight)
+        self._actor_pool = _ActorPool(self._autoscaling_config.max_tasks_in_flight)
         # A queue of bundles awaiting dispatch to actors.
         self._bundle_queue = collections.deque()
         # Cached actor class.
@@ -136,18 +140,6 @@ class ActorPoolMapOperator(MapOperator, ActorPoolAutoscalingHandler):
 
     def should_add_input(self) -> bool:
         return self._actor_pool.num_free_slots() > 0
-
-    # Called by streaming executor periodically to trigger autoscaling.
-    def notify_resource_usage(
-        self, input_queue_size: int, under_resource_limits: bool
-    ) -> None:
-        free_slots = self._actor_pool.num_free_slots()
-        if input_queue_size > free_slots and under_resource_limits:
-            # Try to scale up if work remains in the work queue.
-            self._scale_up_if_needed()
-        else:
-            # Try to remove any idle actors.
-            self._scale_down_if_needed()
 
     def _start_actor(self):
         """Start a new actor and add it to the actor pool as a pending actor."""
@@ -228,39 +220,6 @@ class ActorPoolMapOperator(MapOperator, ActorPoolAutoscalingHandler):
                 lambda: _task_done_callback(actor_to_return),
             )
 
-        # Needed in the bulk execution path for triggering autoscaling. This is a
-        # no-op in the streaming execution case.
-        if self._bundle_queue:
-            # Try to scale up if work remains in the work queue.
-            self._scale_up_if_needed()
-        else:
-            # Only try to scale down if the work queue has been fully consumed.
-            self._scale_down_if_needed()
-
-    def _scale_up_if_needed(self):
-        """Try to scale up the pool if the autoscaling policy allows it."""
-        while self._autoscaling_config.should_scale_up(
-            num_total_workers=self._actor_pool.num_total_actors(),
-            num_running_workers=self._actor_pool.num_running_actors(),
-        ):
-            self._start_actor()
-
-    def _scale_down_if_needed(self):
-        """Try to scale down the pool if the autoscaling policy allows it."""
-        # Kill inactive workers if there's no more work to do.
-        self._kill_inactive_workers_if_done()
-
-        while self._autoscaling_policy.should_scale_down(
-            num_total_workers=self._actor_pool.num_total_actors(),
-            num_idle_workers=self._actor_pool.num_idle_actors(),
-        ):
-            killed = self._actor_pool.kill_inactive_actor()
-            if not killed:
-                # This scaledown is best-effort, only killing an inactive worker if an
-                # inactive worker exists. If there are no inactive workers to kill, we
-                # break out of the scale-down loop.
-                break
-
     def all_inputs_done(self):
         # Call base implementation to handle any leftover bundles. This may or may not
         # trigger task dispatch.
@@ -269,9 +228,6 @@ class ActorPoolMapOperator(MapOperator, ActorPoolAutoscalingHandler):
         # Mark inputs as done so future task dispatch will kill all inactive workers
         # once the bundle queue is exhausted.
         self._inputs_done = True
-
-        # Try to scale pool down.
-        self._scale_down_if_needed()
 
     def _kill_inactive_workers_if_done(self):
         if self._inputs_done and not self._bundle_queue:
@@ -325,27 +281,10 @@ class ActorPoolMapOperator(MapOperator, ActorPoolAutoscalingHandler):
             gpu=self._ray_remote_args.get("num_gpus", 0) * num_active_workers,
         )
 
-    def incremental_resource_usage(
-        self, consider_autoscaling=True
-    ) -> ExecutionResources:
-        # We would only have nonzero incremental CPU/GPU resources if a new task would
-        # require scale-up to run.
-        if consider_autoscaling and self._autoscaling_policy.should_scale_up(
-            num_total_workers=self._actor_pool.num_total_actors(),
-            num_running_workers=self._actor_pool.num_running_actors(),
-        ):
-            # A new task would trigger scale-up, so we include the actor resouce
-            # requests in the incremental resources.
-            num_cpus = self._ray_remote_args.get("num_cpus", 0)
-            num_gpus = self._ray_remote_args.get("num_gpus", 0)
-        else:
-            # A new task wouldn't trigger scale-up, so we consider the incremental
-            # compute resources to be 0.
-            num_cpus = 0
-            num_gpus = 0
+    def incremental_resource_usage(self) -> ExecutionResources:
         return ExecutionResources(
-            cpu=num_cpus,
-            gpu=num_gpus,
+            cpu=0,
+            gpu=0,
             object_store_memory=self._metrics.obj_store_mem_max_pending_output_per_task
             or 0,
         )
@@ -378,17 +317,23 @@ class ActorPoolMapOperator(MapOperator, ActorPoolAutoscalingHandler):
 
     # === Override methods of ActorPoolAutoscalingHandler ===
 
-    def actor_pool_current_size(self) -> int:
-        return self._actor_pool.num_total_actors()
-
     def actor_pool_min_size(self) -> int:
         return self._autoscaling_config.min_workers
 
     def actor_pool_max_size(self) -> int:
         return self._autoscaling_config.max_workers
 
-    def actor_pool_current_utilization(self) -> float:
-        return self._actor_pool.num_active_actors() / self._actor_pool.num_total_actors()
+    def actor_pool_current_size(self) -> int:
+        return self._actor_pool.num_total_actors()
+
+    def num_running_actors(self) -> int:
+        return self._actor_pool.num_running_actors()
+
+    def max_tasks_in_flight_per_actor(self) -> int:
+        return self._autoscaling_config.max_tasks_in_flight
+
+    def num_in_flight_tasks(self) -> int:
+        return sum(self._actor_pool._num_tasks_in_flight.values())
 
     def scale_up_actor_pool(self, num_actors: int) -> int:
         for _ in range(num_actors):
@@ -452,12 +397,6 @@ class AutoscalingConfig:
     # TODO(Clark): Have this informed by the prefetch_batches configuration, once async
     # prefetching has been ported to this new actor pool.
     max_tasks_in_flight: int = DEFAULT_MAX_TASKS_IN_FLIGHT
-    # Minimum ratio of ready workers to the total number of workers. If the pool is
-    # above this ratio, it will be allowed to be scaled up.
-    ready_to_total_workers_ratio: float = 0.8
-    # Maximum ratio of idle workers to the total number of workers. If the pool goes
-    # above this ratio, the pool will be scaled down.
-    idle_to_total_workers_ratio: float = 0.5
 
     def __post_init__(self):
         if self.min_workers < 1:
@@ -484,7 +423,6 @@ class AutoscalingConfig:
             max_workers=compute_strategy.max_size,
             max_tasks_in_flight=compute_strategy.max_tasks_in_flight_per_actor
             or DEFAULT_MAX_TASKS_IN_FLIGHT,
-            ready_to_total_workers_ratio=compute_strategy.ready_to_total_workers_ratio,
         )
 
 
