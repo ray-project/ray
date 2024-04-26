@@ -486,6 +486,7 @@ class OpRuntimeMetrics:
             assert meta.exec_stats and meta.exec_stats.wall_time_s
             self.block_generation_time += meta.exec_stats.wall_time_s
             assert meta.num_rows is not None
+
             self.rows_task_outputs_generated += meta.num_rows
             trace_allocation(block_ref, "operator_output")
 
