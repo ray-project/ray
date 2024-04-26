@@ -151,6 +151,39 @@ class SerializationContext:
             DynamicObjectRefGenerator, object_ref_generator_reducer
         )
 
+        import types
+        from pathlib import Path
+        
+        def try_make_relative(dir_path, file_path):
+            try:
+                relative_path = Path(file_path).relative_to(Path(dir_path))
+                return str(relative_path)
+            except ValueError:
+                return str(file_path)
+
+        orig = pickle.CloudPickler.dispatch[types.CodeType]
+        def hack_codetype_reducer(obj):
+            """
+            Hack to change co_filename in serialized CodeType.
+            If the co_filename is subpath of the working directory in the SCRIPT_MODE
+            worker, we make it relative to the working directory.
+            """
+            # breakpoint()
+            logger.error("hack_codetype_reducer")
+            ctor, data = orig(obj)
+            co_filename = try_make_relative(
+                "/home/ray/default", obj.co_filename # POC overriding hardcoded workspace path
+            )
+            # Index of the co_filename in the data tuple for CodeType.
+            # This is pure hack. See _code_reduce in cloudpickle/cloudpickle.py
+            idx = 11 if hasattr(obj, "co_nmeta") else 10
+            lst = list(data)
+            lst[idx] = co_filename
+            data = tuple(lst)
+            return ctor, data
+
+        self._register_cloudpickle_reducer(types.CodeType, hack_codetype_reducer)
+
         serialization_addons.apply(self)
 
     def _register_cloudpickle_reducer(self, cls, reducer):

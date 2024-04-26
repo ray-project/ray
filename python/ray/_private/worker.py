@@ -2326,6 +2326,9 @@ def connect(
         runtime_env.pop("excludes", None)
         job_config.set_runtime_env(runtime_env)
 
+        # invoke reducers
+        ray._private.worker.global_worker.get_serialization_context()
+
     if mode == SCRIPT_MODE:
         # Add the directory containing the script that is running to the Python
         # paths of the workers. Also add the current directory. Note that this
