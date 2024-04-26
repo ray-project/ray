@@ -53,7 +53,7 @@ class ActorPoolMapOperator(MapOperator, ActorPoolAutoscalingHandler):
         map_transformer: MapTransformer,
         input_op: PhysicalOperator,
         target_max_block_size: Optional[int],
-        comute_strategy: ActorPoolStrategy,
+        compute_strategy: ActorPoolStrategy,
         name: str = "ActorPoolMap",
         min_rows_per_bundle: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
@@ -64,8 +64,7 @@ class ActorPoolMapOperator(MapOperator, ActorPoolAutoscalingHandler):
             transform_fn: The function to apply to each ref bundle input.
             init_fn: The callable class to instantiate on each actor.
             input_op: Operator generating input data for this op.
-            compute_strategy: A policy controlling when the actor pool should be
-                scaled up and scaled down.
+            compute_strategy: ComputeStrategy used for this operator.
             name: The name of this operator.
             target_max_block_size: The target maximum number of bytes to
                 include in an output block.
@@ -100,7 +99,7 @@ class ActorPoolMapOperator(MapOperator, ActorPoolAutoscalingHandler):
 
         # Create autoscaling config from compute strategy.
         self._autoscaling_config = AutoscalingConfig.from_compute_strategy(
-            comute_strategy
+            compute_strategy
         )
         # A pool of running actors on which we can execute mapper tasks.
         self._actor_pool = _ActorPool(self._autoscaling_config.max_tasks_in_flight)
@@ -228,12 +227,6 @@ class ActorPoolMapOperator(MapOperator, ActorPoolAutoscalingHandler):
         # Mark inputs as done so future task dispatch will kill all inactive workers
         # once the bundle queue is exhausted.
         self._inputs_done = True
-
-    def _kill_inactive_workers_if_done(self):
-        if self._inputs_done and not self._bundle_queue:
-            # No more tasks will be submitted, so we kill all current and future
-            # inactive workers.
-            self._actor_pool.kill_all_inactive_actors()
 
     def shutdown(self):
         # We kill all actors in the pool on shutdown, even if they are busy doing work.
@@ -551,7 +544,10 @@ class _ActorPool:
 
     def num_running_actors(self) -> int:
         """Return the number of running actors in the pool."""
-        return len(self._num_tasks_in_flight)
+        return sum(
+            1 if tasks_in_flight != 0 else 0
+            for _, tasks_in_flight in self._num_tasks_in_flight.items()
+        )
 
     def num_idle_actors(self) -> int:
         """Return the number of idle actors in the pool."""

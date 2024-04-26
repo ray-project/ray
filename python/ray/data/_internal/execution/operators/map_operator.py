@@ -160,7 +160,7 @@ class MapOperator(OneToOneOperator, ABC):
                 map_transformer,
                 input_op,
                 target_max_block_size=target_max_block_size,
-                comute_strategy=compute_strategy,
+                compute_strategy=compute_strategy,
                 name=name,
                 min_rows_per_bundle=min_rows_per_bundle,
                 ray_remote_args=ray_remote_args,
