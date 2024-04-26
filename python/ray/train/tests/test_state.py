@@ -6,7 +6,6 @@ import pytest
 import ray
 from ray.cluster_utils import Cluster
 from ray.train import RunConfig, ScalingConfig
-from ray.train._internal.backend_executor import BackendExecutor
 from ray.train._internal.state.schema import (
     TrainDatasetInfo,
     TrainRunInfo,
@@ -174,11 +173,7 @@ class TestBackend(Backend):
 
 
 def test_state_manager(ray_start_gpu_cluster):
-    os.environ["RAY_TRAIN_ENABLE_STATE_TRACKING"] = "0"
-    e = BackendExecutor(
-        backend_config=TestConfig(), num_workers=4, resources_per_worker={"GPU": 1}
-    )
-    e.start()
+    worker_group = WorkerGroup(num_workers=4, resources_per_worker={"GPU": 1})
 
     # No errors raised if TrainStateActor is not started
     state_manager = TrainRunStateManager(state_actor=None)
@@ -188,7 +183,7 @@ def test_state_manager(ray_start_gpu_cluster):
         job_id="0000000001",
         controller_actor_id="3abd1972a19148d78acc78dd9414736e",
         datasets={},
-        worker_group=e.worker_group,
+        worker_group=worker_group,
     )
 
     # Register 100 runs with 10 TrainRunStateManagers
@@ -206,14 +201,16 @@ def test_state_manager(ray_start_gpu_cluster):
                     "train": ray.data.from_items(list(range(4))),
                     "eval": ray.data.from_items(list(range(4))),
                 },
-                worker_group=e.worker_group,
+                worker_group=worker_group,
             )
 
     runs = ray.get(state_actor.get_all_train_runs.remote())
     assert len(runs) == 100
 
     for i in range(100):
-        assert ray.get(state_actor.get_train_run.remote(run_id=str(i)))
+        run_id = str(i)
+        run_info = ray.get(state_actor.get_train_run.remote(run_id=run_id))
+        assert run_info and run_info.id == run_id
 
 
 @pytest.mark.parametrize("gpus_per_worker", [0, 1, 2])

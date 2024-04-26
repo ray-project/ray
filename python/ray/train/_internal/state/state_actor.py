@@ -3,6 +3,7 @@ import threading
 from typing import Dict, Optional
 
 import ray
+from ray.actor import ActorHandle
 from ray.train._internal.state.schema import TrainRunInfo
 
 logger = logging.getLogger(__name__)
@@ -32,7 +33,7 @@ TRAIN_STATE_ACTOR_NAMESPACE = "_train_state_actor"
 _state_actor_lock: threading.RLock = threading.RLock()
 
 
-def get_or_create_state_actor():
+def get_or_create_state_actor() -> ActorHandle:
     """Get or create a `TrainStateActor` on the head node."""
     with _state_actor_lock:
         state_actor = TrainStateActor.options(
@@ -48,7 +49,7 @@ def get_or_create_state_actor():
     return state_actor
 
 
-def get_state_actor():
+def get_state_actor() -> Optional[ActorHandle]:
     """Get the `TrainStateActor` if exists, otherwise return None."""
     try:
         return ray.get_actor(
