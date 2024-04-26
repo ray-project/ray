@@ -1676,8 +1676,8 @@ class AlgorithmConfig(_Config):
                 2. These fragments are concatenated and we perform an epoch of SGD.
                 When using multiple envs per worker, the fragment size is multiplied by
                 `num_envs_per_env_runner`. This is since we are collecting steps from
-                multiple envs in parallel. For example, if num_envs_per_env_runner=5, then
-                EnvRunners will return experiences in chunks of 5*100 = 500 steps.
+                multiple envs in parallel. For example, if num_envs_per_env_runner=5,
+                then EnvRunners will return experiences in chunks of 5*100 = 500 steps.
                 The dataflow here can vary per algorithm. For example, PPO further
                 divides the train batch into minibatches for multi-epoch SGD.
                 Set `rollout_fragment_length` to "auto" to have RLlib compute an exact
@@ -1699,8 +1699,8 @@ class AlgorithmConfig(_Config):
                 batch of at least `rollout_fragment_length * num_envs_per_env_runner` in
                 size. Episodes will not be truncated, but multiple episodes
                 may be packed within one batch to meet the (minimum) batch size.
-                Note that when `num_envs_per_env_runner > 1`, episode steps will be buffered
-                until the episode completes, and hence batches may contain
+                Note that when `num_envs_per_env_runner > 1`, episode steps will be
+                buffered until the episode completes, and hence batches may contain
                 significant amounts of off-policy data.
             explore: Default exploration behavior, iff `explore=None` is passed into
                 compute_action(s). Set to False for no exploration behavior (e.g.,

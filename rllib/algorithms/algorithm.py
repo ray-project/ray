@@ -1428,7 +1428,8 @@ class Algorithm(Trainable, AlgorithmBase):
                 units_per_healthy_remote_worker = (
                     1
                     if unit == "episodes"
-                    else eval_cfg.rollout_fragment_length * eval_cfg.num_envs_per_env_runner
+                    else eval_cfg.rollout_fragment_length
+                    * eval_cfg.num_envs_per_env_runner
                 )
                 # Select proper number of evaluation workers for this round.
                 selected_eval_worker_ids = [
