@@ -122,6 +122,10 @@ DEFAULT_BATCH_SIZE = 1024
 # streaming generator backpressure.
 DEFAULT_MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER = 2
 
+# Default value for whether or not to try to create directories for write
+# calls if the URI is an S3 URI.
+DEFAULT_S3_TRY_CREATE_DIR = False
+
 
 def _execution_options_factory() -> "ExecutionOptions":
     # Lazily import to avoid circular dependencies.
@@ -216,6 +220,8 @@ class DataContext:
             always written to the Ray Data log file.
         print_on_execution_start: If ``True``, print execution information when
             execution starts.
+        s3_try_create_dir: If ``True``, try to create directories on S3 when a write
+            call is made with a S3 URI.
     """
 
     target_max_block_size: int = DEFAULT_TARGET_MAX_BLOCK_SIZE
@@ -260,6 +266,7 @@ class DataContext:
         DEFAULT_LOG_INTERNAL_STACK_TRACE_TO_STDOUT
     )
     print_on_execution_start: bool = True
+    s3_try_create_dir: bool = DEFAULT_S3_TRY_CREATE_DIR
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to

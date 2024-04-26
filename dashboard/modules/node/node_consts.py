@@ -1,6 +1,5 @@
 from ray._private.ray_constants import env_integer
 
-
 NODE_STATS_UPDATE_INTERVAL_SECONDS = 5
 UPDATE_NODES_INTERVAL_SECONDS = 5
 # Until the head node is registered,
