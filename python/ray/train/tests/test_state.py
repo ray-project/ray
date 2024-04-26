@@ -18,7 +18,6 @@ from ray.train._internal.state.state_actor import (
 )
 from ray.train._internal.state.state_manager import TrainRunStateManager
 from ray.train._internal.worker_group import WorkerGroup
-from ray.train.backend import Backend, BackendConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
 
 
@@ -156,20 +155,6 @@ def test_state_actor_api():
     for i in range(num_runs):
         run_info = ray.get(state_actor.get_train_run.remote(run_id=str(i)))
         assert run_info == info_list[i]
-
-
-class TestConfig(BackendConfig):
-    @property
-    def backend_cls(self):
-        return TestBackend
-
-
-class TestBackend(Backend):
-    def on_start(self, worker_group: WorkerGroup, backend_config: TestConfig):
-        pass
-
-    def on_shutdown(self, worker_group: WorkerGroup, backend_config: TestConfig):
-        pass
 
 
 def test_state_manager(ray_start_gpu_cluster):
