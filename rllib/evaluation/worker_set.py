@@ -26,8 +26,6 @@ from ray.rllib.utils.actor_manager import RemoteCallResults
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
-from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
-from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.offline import get_dataset_and_shards
 from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
@@ -144,8 +142,14 @@ class WorkerSet:
         if self.env_runner_cls is None:
             if config.enable_env_runner_and_connector_v2:
                 if config.is_multi_agent():
+                    from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
+
                     self.env_runner_cls = MultiAgentEnvRunner
                 else:
+                    from ray.rllib.env.single_agent_env_runner import (
+                        SingleAgentEnvRunner,
+                    )
+
                     self.env_runner_cls = SingleAgentEnvRunner
             else:
                 self.env_runner_cls = RolloutWorker
