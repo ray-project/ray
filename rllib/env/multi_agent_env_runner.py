@@ -500,17 +500,6 @@ class MultiAgentEnvRunner(EnvRunner):
             )
             ts += self._increase_sampled_metrics(self.num_envs, obs, _episode)
 
-            ts += self.num_envs
-            self.metrics.log_dict(
-                {
-                    NUM_ENV_STEPS_SAMPLED: self.num_envs,
-                    # TODO (sven): obs is not-vectorized. Support vectorized MA envs.
-                    NUM_AGENT_STEPS_SAMPLED: {str(aid): 1 for aid in obs},
-                },
-                reduce="sum",
-                reset_on_reduce=True,
-            )
-
             # Add render data if needed.
             if with_render_data:
                 render_image = self.env.render()
