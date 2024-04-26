@@ -2753,8 +2753,8 @@ class AlgorithmConfig(_Config):
         delay_between_env_runner_restarts_s: Optional[float] = NotProvided,
         restart_failed_sub_environments: Optional[bool] = NotProvided,
         num_consecutive_env_runner_failures_tolerance: Optional[int] = NotProvided,
-        env_runner_health_probe_timeout_s: int = NotProvided,
-        env_runner_restore_timeout_s: int = NotProvided,
+        env_runner_health_probe_timeout_s: Optional[float] = NotProvided,
+        env_runner_restore_timeout_s: Optional[float] = NotProvided,
         # Deprecated args.
         recreate_failed_workers=DEPRECATED_VALUE,
         max_num_worker_restarts=DEPRECATED_VALUE,
@@ -2790,9 +2790,9 @@ class AlgorithmConfig(_Config):
                 failures, the EnvRunner itself is NOT affected and won't throw any
                 errors as the flawed sub-environment is silently restarted under the
                 hood.
-            env_runner_health_probe_timeout_s: Max amount of time we should spend
-                waiting for health probe calls to finish. Health pings are very cheap,
-                so the default is 1 minute.
+            env_runner_health_probe_timeout_s: Max amount of time (in seconds) we should
+                spend waiting for health probe calls to finish. Health pings are very
+                cheap, so the default is 1 minute.
             env_runner_restore_timeout_s: Max amount of time we should wait to restore
                 states on recovered EnvRunner actors. Default is 30 mins.
 

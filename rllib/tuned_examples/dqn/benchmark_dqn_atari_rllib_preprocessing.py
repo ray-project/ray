@@ -1,7 +1,6 @@
 import gymnasium as gym
 
 from ray.rllib.algorithms.dqn.dqn import DQNConfig
-from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
 from ray.tune import Stopper
 from ray import train, tune
@@ -290,11 +289,13 @@ config = (
         clip_rewards=True,
     )
     # Enable new API stack and use EnvRunner.
-    .api_stack(enable_rl_module_and_learner=True)
+    .api_stack(
+        enable_rl_module_and_learner=True,
+        enable_env_runner_and_connector_v2=True,
+    )
     .env_runners(
         # Every 4 agent steps a training update is performed.
         rollout_fragment_length=4,
-        env_runner_cls=SingleAgentEnvRunner,
         num_rollout_workers=1,
     )
     .resources(

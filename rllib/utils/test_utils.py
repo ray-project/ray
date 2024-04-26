@@ -1355,30 +1355,17 @@ def run_rllib_example_script_experiment(
             "training_iteration": args.stop_iters,
         }
 
-    from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
-    from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
-
     # Enhance the `base_config`, based on provided `args`.
     config = (
         # Set the framework.
         base_config.framework(args.framework)
         # Enable the new API stack?
-        .api_stack(enable_rl_module_and_learner=args.enable_new_api_stack)
-        # Define EnvRunner/RolloutWorker scaling and behavior.
-        .env_runners(
-            num_env_runners=args.num_env_runners,
-            # Set up the correct env-runner to use depending on
-            # old-stack/new-stack and multi-agent settings.
-            env_runner_cls=(
-                None
-                if not args.enable_new_api_stack
-                else (
-                    SingleAgentEnvRunner
-                    if args.num_agents == 0
-                    else MultiAgentEnvRunner
-                )
-            ),
+        .api_stack(
+            enable_rl_module_and_learner=args.enable_new_api_stack,
+            enable_env_runner_and_connector_v2=args.enable_new_api_stack,
         )
+        # Define EnvRunner/RolloutWorker scaling and behavior.
+        .env_runners(num_env_runners=args.num_env_runners)
         # Define compute resources used.
         .resources(
             # Old stack.

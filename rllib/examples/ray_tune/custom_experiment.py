@@ -43,7 +43,6 @@ from typing import Dict
 import numpy as np
 from ray import train, tune
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.utils.framework import try_import_torch
 
 torch, _ = try_import_torch()
@@ -155,12 +154,12 @@ def my_experiment(config: Dict):
 if __name__ == "__main__":
     base_config = (
         PPOConfig()
-        .api_stack(enable_rl_module_and_learner=True)
-        .environment("CartPole-v1")
-        .env_runners(
-            num_rollout_workers=0,
-            env_runner_cls=SingleAgentEnvRunner,
+        .api_stack(
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
         )
+        .environment("CartPole-v1")
+        .env_runners(num_env_runners=0)
     )
     # Convert to a plain dict for Tune. Note that this is usually not needed, you can
     # pass into the below Tune Tuner any instantiated RLlib AlgorithmConfig object.

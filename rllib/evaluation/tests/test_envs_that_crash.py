@@ -121,7 +121,6 @@ class TestEnvsThatCrash(unittest.TestCase):
             PPOConfig()
             .api_stack(enable_rl_module_and_learner=True)
             .env_runners(
-                # env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_env_runners=2,
                 rollout_fragment_length=10,
                 num_envs_per_env_runner=3,
