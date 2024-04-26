@@ -11,6 +11,7 @@ k8s-ecosystem/pyspy
 k8s-ecosystem/volcano
 k8s-ecosystem/kubeflow
 k8s-ecosystem/kueue
+k8s-ecosystem/istio
 ```
 
 * {ref}`kuberay-ingress`
@@ -19,3 +20,4 @@ k8s-ecosystem/kueue
 * {ref}`kuberay-volcano`
 * {ref}`kuberay-kubeflow-integration`
 * {ref}`kuberay-kueue`
+* {ref}`kuberay-istio`

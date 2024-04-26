@@ -58,8 +58,8 @@ class TestPPO(unittest.TestCase):
             ppo.PPOConfig()
             .experimental(_enable_new_api_stack=True)
             .environment("CartPole-v1")
-            .rollouts(
-                num_rollout_workers=0,
+            .env_runners(
+                num_env_runners=0,
             )
             .training(
                 gamma=0.99,
@@ -106,8 +106,8 @@ class TestPPO(unittest.TestCase):
             ppo.PPOConfig()
             .experimental(_enable_new_api_stack=True)
             .environment("CartPole-v1")
-            .rollouts(
-                num_rollout_workers=0,
+            .env_runners(
+                num_env_runners=0,
             )
             .training(
                 gamma=0.99,
@@ -144,9 +144,10 @@ class TestPPO(unittest.TestCase):
             ppo.PPOConfig()
             .experimental(_enable_new_api_stack=True)
             .environment("CartPole-v1")
-            .rollouts(
-                num_rollout_workers=0,
+            .env_runners(
+                num_env_runners=0,
                 rollout_fragment_length=50,
+                exploration_config={},
             )
             .training(
                 gamma=0.99,
@@ -157,7 +158,6 @@ class TestPPO(unittest.TestCase):
                 ),
                 kl_coeff=initial_kl_coeff,
             )
-            .exploration(exploration_config={})
             .environment("multi_agent_cartpole")
             .multi_agent(
                 policies={"p0", "p1"},

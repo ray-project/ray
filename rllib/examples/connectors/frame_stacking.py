@@ -111,14 +111,14 @@ if __name__ == "__main__":
             },
             clip_rewards=True,
         )
-        .rollouts(
+        .env_runners(
             # ... new EnvRunner and our frame stacking env-to-module connector.
             env_to_module_connector=(
                 None
                 if args.use_gym_wrapper_framestacking
                 else _make_env_to_module_connector
             ),
-            num_envs_per_worker=1 if args.num_agents > 0 else 2,
+            num_envs_per_env_runner=1 if args.num_agents > 0 else 2,
         )
         .training(
             # Use our frame stacking learner connector.

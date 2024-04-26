@@ -465,7 +465,7 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
             PPOConfig()
             .framework("torch")
             .environment(env="CartPole-v1")
-            .rollouts(create_env_on_local_worker=True)
+            .env_runners(create_env_on_local_worker=True)
         )
 
         env = gym.make("CartPole-v1")

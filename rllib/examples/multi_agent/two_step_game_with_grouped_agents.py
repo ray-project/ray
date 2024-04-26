@@ -75,7 +75,7 @@ if __name__ == "__main__":
         get_trainable_cls(args.algo)
         .get_default_config()
         .environment("grouped_twostep")
-        .rollouts(
+        .env_runners(
             env_to_module_connector=lambda env: (
                 AddObservationsFromEpisodesToBatch(),
                 FlattenObservations(multi_agent=True),

@@ -5,9 +5,10 @@ from typing import Any, Optional, TYPE_CHECKING
 import numpy as np
 
 from ray.rllib.utils import deprecation_warning
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.replay_buffers import (
     EpisodeReplayBuffer,
@@ -19,6 +20,7 @@ from ray.rllib.utils.replay_buffers import (
 from ray.rllib.policy.sample_batch import concat_samples, MultiAgentBatch, SampleBatch
 from ray.rllib.utils.typing import ResultDict, SampleBatchType, AlgorithmConfigDict
 from ray.util import log_once
+from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -26,6 +28,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+@DeveloperAPI
 def update_priorities_in_episode_replay_buffer(
     replay_buffer: EpisodeReplayBuffer,
     config: "AlgorithmConfig",
@@ -37,12 +40,14 @@ def update_priorities_in_episode_replay_buffer(
 
         # The `ResultDict` will be multi-agent.
         for module_id, result_dict in train_results.items():
-            # Skip the `"__all__"` key.
-            if module_id == "__all__":
+            # Skip the `"__all__"` keys.
+            if module_id in ["__all__", ALL_MODULES]:
                 continue
 
+            from ray.rllib.algorithms.dqn.dqn_rainbow_learner import TD_ERROR_KEY
+
             # Get the TD-error from the results.
-            td_error = result_dict.get("td_error", None)
+            td_error = result_dict.get(TD_ERROR_KEY, None)
 
             # Warn once, if we have no TD-errors to update priorities.
             if td_error is None:
@@ -63,7 +68,7 @@ def update_priorities_in_episode_replay_buffer(
             replay_buffer.update_priorities(td_error)
 
 
-@DeveloperAPI
+@OldAPIStack
 def update_priorities_in_replay_buffer(
     replay_buffer: ReplayBuffer,
     config: AlgorithmConfigDict,

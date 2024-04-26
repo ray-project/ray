@@ -57,7 +57,7 @@ if __name__ == "__main__":
         DQNConfig()
         .environment("CartPole-v1")
         .framework(framework=args.framework)
-        .rollouts(num_rollout_workers=4)
+        .env_runners(num_env_runners=4)
         .training(
             model=dict(use_lstm=True, lstm_cell_size=64, max_seq_len=20),
             replay_buffer_config=replay_buffer_config,
@@ -65,7 +65,7 @@ if __name__ == "__main__":
     )
 
     stop_config = {
-        "timesteps_total": args.stop_timesteps,
+        "num_env_steps_sampled_lifetime": args.stop_timesteps,
         "training_iteration": args.stop_iters,
     }
 

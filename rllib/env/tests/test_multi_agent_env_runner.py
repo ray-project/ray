@@ -100,7 +100,7 @@ class TestMultiAgentEnvRunner(unittest.TestCase):
                 MultiAgentCartPole,
                 env_config={"num_agents": 2},
             )
-            .rollouts(env_runner_cls=MultiAgentEnvRunner)
+            .env_runners(env_runner_cls=MultiAgentEnvRunner)
             # TODO (sven, simon): Setup is still for `Policy`, change as soon
             #  as we have switched fully to the new stack.
             .multi_agent(

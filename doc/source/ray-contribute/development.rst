@@ -135,7 +135,7 @@ To build Ray on Ubuntu, run the following commands:
                 --slave /usr/bin/g++ g++ /usr/bin/g++-9 \
                 --slave /usr/bin/gcov gcov /usr/bin/gcov-9
 
-  # Install Bazel.
+  # Install Bazelisk.
   ci/env/install-bazel.sh
 
   # Install node version manager and node 14
@@ -143,6 +143,9 @@ To build Ray on Ubuntu, run the following commands:
   nvm install 14
   nvm use 14
 
+.. note::
+  The `install-bazel.sh` script installs `bazelisk` for building Ray. 
+  If you prefer to use `bazel`, only version `5.4.1` is currently supported.
 
 For RHELv8 (Redhat EL 8.0-64 Minimal), run the following commands:
 
@@ -340,7 +343,7 @@ the moment, we have configured a ``.pre-commit-config.yaml`` which runs all the 
 opt-in, with any formatting changes made by ``scripts/format.sh`` expected to be caught by
 ``pre-commit`` as well. To start using ``pre-commit``:
 
-.. code-block: shell
+.. code-block:: shell
 
    pip install pre-commit
    pre-commit install
@@ -349,7 +352,7 @@ This will install pre-commit into the current environment, and enable pre-commit
 you commit new code changes with git. To temporarily skip pre-commit checks, use the ``-n`` or
 ``--no-verify`` flag when committing:
 
-.. code-block: shell
+.. code-block:: shell
 
    git commit -n
 

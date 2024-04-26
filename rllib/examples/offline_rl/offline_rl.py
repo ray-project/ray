@@ -53,7 +53,7 @@ if __name__ == "__main__":
     config = (
         cql.CQLConfig()
         .framework(framework="torch")
-        .rollouts(num_rollout_workers=0)
+        .env_runners(num_rollout_workers=0)
         .training(
             n_step=3,
             bc_iters=0,
@@ -87,7 +87,7 @@ if __name__ == "__main__":
             }
         )
         .evaluation(
-            evaluation_num_workers=1,
+            evaluation_num_env_runners=1,
             evaluation_interval=1,
             evaluation_duration=10,
             evaluation_parallel_to_training=False,
