@@ -114,10 +114,10 @@ class TestBackwardCompatibility(unittest.TestCase):
             },
             "lr": 0.001,
             "evaluation_config": {
-                "num_envs_per_worker": 4,
+                "num_envs_per_env_runner": 4,
                 "explore": False,
             },
-            "evaluation_num_workers": 1,
+            "evaluation_num_env_runners": 1,
             "multiagent": {
                 "policies": {
                     "policy1": PolicySpec(),
@@ -128,7 +128,7 @@ class TestBackwardCompatibility(unittest.TestCase):
         }
         algo = DQN(config=config)
         self.assertTrue(algo.config.lr == 0.001)
-        self.assertTrue(algo.config.evaluation_num_workers == 1)
+        self.assertTrue(algo.config.evaluation_num_env_runners == 1)
         self.assertTrue(list(algo.config.policies.keys()) == ["policy1"])
         self.assertTrue(algo.config.explore is True)
         self.assertTrue(algo.evaluation_config.explore is False)

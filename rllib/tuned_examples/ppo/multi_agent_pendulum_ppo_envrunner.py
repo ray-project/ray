@@ -10,10 +10,10 @@ config = (
     PPOConfig()
     .experimental(_enable_new_api_stack=True)
     .environment("multi_agent_pendulum")
-    .rollouts(
+    .env_runners(
         env_runner_cls=MultiAgentEnvRunner,
-        num_envs_per_worker=1,
-        num_rollout_workers=2,
+        num_envs_per_env_runner=1,
+        num_env_runners=2,
     )
     .rl_module(
         model_config_dict={
@@ -36,8 +36,9 @@ config = (
 )
 
 stop = {
-    "timesteps_total": 500000,
-    "episode_reward_mean": -800.0,  # divide by num_agents for actual reward per agent
+    "num_env_steps_sampled_lifetime": 500000,
+    # Divide by num_agents for actual reward per agent.
+    "env_runner_results/episode_return_mean": -800.0,
 }
 
 

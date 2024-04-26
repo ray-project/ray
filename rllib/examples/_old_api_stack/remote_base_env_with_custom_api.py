@@ -115,7 +115,7 @@ if __name__ == "__main__":
         .framework(args.framework)
         # Set up our own callbacks.
         .callbacks(TaskSettingCallback)
-        .rollouts(
+        .env_runners(
             # Force sub-envs to be ray.actor.ActorHandles, so we can step
             # through them in parallel.
             remote_worker_envs=True,
@@ -132,8 +132,8 @@ if __name__ == "__main__":
 
     stop = {
         "training_iteration": args.stop_iters,
-        "timesteps_total": args.stop_timesteps,
-        "episode_reward_mean": args.stop_reward,
+        "num_env_steps_sampled_lifetime": args.stop_timesteps,
+        "env_runner_results/episode_return_mean": args.stop_reward,
     }
 
     results = tune.Tuner(

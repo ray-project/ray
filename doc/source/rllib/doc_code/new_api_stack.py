@@ -16,7 +16,7 @@ config = (
     # Note that this step will be fully automated in the next release.
     # Set the `env_runner_cls` to `SingleAgentEnvRunner` for single-agent setups and
     # `MultiAgentEnvRunner` for multi-agent cases.
-    .rollouts(env_runner_cls=SingleAgentEnvRunner)
+    .env_runners(env_runner_cls=SingleAgentEnvRunner)
     # We are using a simple 1-CPU setup here for learning. However, as the new stack
     # supports arbitrary scaling on the learner axis, feel free to set
     # `num_learner_workers` to the number of available GPUs for multi-GPU training (and
@@ -61,7 +61,7 @@ config = (
     # Note that this step will be fully automated in the next release.
     # Set the `env_runner_cls` to `SingleAgentEnvRunner` for single-agent setups and
     # `MultiAgentEnvRunner` for multi-agent cases.
-    .rollouts(env_runner_cls=MultiAgentEnvRunner)
+    .env_runners(env_runner_cls=MultiAgentEnvRunner)
     # We are using a simple 1-CPU setup here for learning. However, as the new stack
     # supports arbitrary scaling on the learner axis, feel free to set
     # `num_learner_workers` to the number of available GPUs for multi-GPU training (and
@@ -108,7 +108,7 @@ config = (
     # to utilize all of the new API stack's classes, you also have to specify the
     # EnvRunner (replaces RolloutWorker) to use.
     # Note that this step will be fully automated in the next release.
-    .rollouts(env_runner_cls=SingleAgentEnvRunner)
+    .env_runners(env_runner_cls=SingleAgentEnvRunner)
     # We are using a simple 1-CPU setup here for learning. However, as the new stack
     # supports arbitrary scaling on the learner axis, feel free to set
     # `num_learner_workers` to the number of available GPUs for multi-GPU training (and

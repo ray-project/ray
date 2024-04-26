@@ -10,7 +10,7 @@ cartpole-appo-w-rl-modules-and-learner:
 
         # Works for both torch and tf.
         framework: torch
-        num_envs_per_worker: 5
+        num_envs_per_env_runner: 5
         num_workers: 1
         num_gpus: 0
         observation_filter: MeanStdFilter

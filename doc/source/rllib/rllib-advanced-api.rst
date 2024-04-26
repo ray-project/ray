@@ -85,16 +85,16 @@ training loop.
                     lambda env: env.set_task(task)))
 
     num_gpus = 0
-    num_workers = 2
+    num_env_runners = 2
 
     ray.init()
     tune.Tuner(
         tune.with_resources(train_fn, resources=tune.PlacementGroupFactory(
-            [{"CPU": 1}, {"GPU": num_gpus}] + [{"CPU": 1}] * num_workers
+            [{"CPU": 1}, {"GPU": num_gpus}] + [{"CPU": 1}] * num_env_runners
         ),)
         param_space={
             "num_gpus": num_gpus,
-            "num_workers": num_workers,
+            "num_env_runners": num_env_runners,
         },
     ).fit()
 
@@ -211,13 +211,13 @@ actions from distributions (stochastically or deterministically).
 The setup can be done using built-in Exploration classes
 (see `this package <https://github.com/ray-project/ray/blob/master/rllib/utils/exploration/>`__),
 which are specified (and further configured) inside
-``AlgorithmConfig().exploration(..)``.
+``AlgorithmConfig().env_runners(..)``.
 Besides using one of the available classes, one can sub-class any of
 these built-ins, add custom behavior to it, and use that new class in
 the config instead.
 
 Every policy has-an Exploration object, which is created from the AlgorithmConfig’s
-``.exploration(exploration_config=...)`` method, which specifies the class to use through the
+``.env_runners(exploration_config=...)`` method, which specifies the class to use through the
 special “type” key, as well as constructor arguments through all other keys,
 e.g.:
 
@@ -332,12 +332,12 @@ take values of either ``"episodes"`` (default) or ``"timesteps"``.
 
 Note: When using ``evaluation_duration_unit=timesteps`` and your ``evaluation_duration``
 setting isn't divisible by the number of evaluation workers (configurable with
-``evaluation_num_workers``), RLlib rounds up the number of time-steps specified to
+``evaluation_num_env_runners``), RLlib rounds up the number of time-steps specified to
 the nearest whole number of time-steps that is divisible by the number of evaluation
 workers.
 Also, when using ``evaluation_duration_unit=episodes`` and your
 ``evaluation_duration`` setting isn't divisible by the number of evaluation workers
-(configurable with ``evaluation_num_workers``), RLlib runs the remainder of episodes
+(configurable with ``evaluation_num_env_runners``), RLlib runs the remainder of episodes
 on the first n evaluation EnvRunners and leave the remaining workers idle for that time.
 
 For example:
@@ -405,10 +405,10 @@ do:
 
 
 The level of parallelism within the evaluation step is determined by the
-``evaluation_num_workers`` setting. Set this to larger values if you want the desired
+``evaluation_num_env_runners`` setting. Set this to larger values if you want the desired
 evaluation episodes or time-steps to run as much in parallel as possible.
 For example, if your ``evaluation_duration=10``, ``evaluation_duration_unit=episodes``,
-and ``evaluation_num_workers=10``, each evaluation ``EnvRunner``
+and ``evaluation_num_env_runners=10``, each evaluation ``EnvRunner``
 only has to run one episode in each evaluation step.
 
 In case you observe occasional failures in your (evaluation) EnvRunners during
@@ -418,7 +418,7 @@ of such environment behavior:
 
 Note that with or without parallel evaluation, all
 :ref:`fault tolerance settings <rllib-scaling-guide>`, such as
-``ignore_worker_failures`` or ``recreate_failed_workers`` are respected and applied
+``ignore_env_runner_failures`` or ``recreate_failed_env_runners`` are respected and applied
 to the failed evaluation workers.
 
 Here's an example:

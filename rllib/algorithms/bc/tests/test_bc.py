@@ -24,7 +24,7 @@ class TestBC(unittest.TestCase):
         """Test whether BC can be built with all frameworks.
 
         And learns from a historic-data file (while being evaluated on an
-        actual env using evaluation_num_workers > 0).
+        actual env using evaluation_num_env_runners > 0).
         """
         rllib_dir = Path(__file__).parents[3]
         print("rllib_dir={}".format(rllib_dir))
@@ -36,7 +36,7 @@ class TestBC(unittest.TestCase):
             bc.BCConfig()
             .evaluation(
                 evaluation_interval=3,
-                evaluation_num_workers=1,
+                evaluation_num_env_runners=1,
                 evaluation_duration=5,
                 evaluation_parallel_to_training=True,
                 evaluation_config=bc.BCConfig.overrides(input_="sampler"),

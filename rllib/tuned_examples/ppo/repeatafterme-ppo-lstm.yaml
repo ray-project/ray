@@ -15,7 +15,7 @@ repeat-after-me-ppo-w-lstm:
         gamma: 0.9
         lr: 0.0003
         num_workers: 0
-        num_envs_per_worker: 20
+        num_envs_per_env_runner: 20
         num_sgd_iter: 5
         entropy_coeff: 0.00001
         model:

@@ -590,6 +590,12 @@ message GcsSubscriberCommandBatchReply {
   GcsStatus status = 100;
 }
 
+message GcsUnregisterSubscriberRequest {
+  bytes subscriber_id = 1;
+}
+
+message GcsUnregisterSubscriberReply {}
+
 /// This supports subscribing updates from GCS with long poll, and registering /
 /// de-registering subscribers.
 service InternalPubSubGcsService {
@@ -603,6 +609,10 @@ service InternalPubSubGcsService {
   /// A batch of subscribe / unsubscribe requests sent by the subscriber.
   rpc GcsSubscriberCommandBatch(GcsSubscriberCommandBatchRequest)
       returns (GcsSubscriberCommandBatchReply);
+  /// Unregister a subscriber from GCS, removing all subscriptions as well as the
+  /// subscriber itself.
+  rpc GcsUnregisterSubscriber(GcsUnregisterSubscriberRequest)
+      returns (GcsUnregisterSubscriberReply);
 }
 
 message GetAllResourceUsageRequest {}

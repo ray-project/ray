@@ -6,7 +6,7 @@ config = (
     .environment(env="CartPole-v1")
     .framework(framework="torch")
     .experimental(_enable_new_api_stack=True)
-    .rollouts(
+    .env_runners(
         env_runner_cls=SingleAgentEnvRunner,
         num_rollout_workers=0,
     )
@@ -40,15 +40,20 @@ config = (
     .evaluation(
         evaluation_interval=1,
         evaluation_parallel_to_training=True,
-        evaluation_num_workers=1,
+        evaluation_num_env_runners=1,
         evaluation_duration="auto",
         evaluation_config={
             "explore": False,
+            # TODO (sven): Add support for window=float(inf) and reduce=mean for
+            #  evaluation episode_return_mean reductions (identical to old stack
+            #  behavior, which does NOT use a window (100 by default) to reduce
+            #  eval episode returns.
+            "metrics_num_episodes_for_smoothing": 4,
         },
     )
 )
 
 stop = {
-    "evaluation/sampler_results/episode_reward_mean": 500.0,
-    "timesteps_total": 100000,
+    "evaluation_results/env_runner_results/episode_return_mean": 500.0,
+    "num_env_steps_sampled_lifetime": 100000,
 }

@@ -14,12 +14,12 @@ register_env(
 config = (
     PPOConfig()
     .environment("cartpole_truncated")
-    .rollouts(num_envs_per_worker=10)
+    .env_runners(num_envs_per_env_runner=10)
     # For evaluation, use the "real" CartPole-v1 env (up to 500 steps).
     .evaluation(
         evaluation_config=PPOConfig.overrides(env="CartPole-v1"),
         evaluation_interval=1,
-        evaluation_num_workers=1,
+        evaluation_num_env_runners=1,
     )
 )
 

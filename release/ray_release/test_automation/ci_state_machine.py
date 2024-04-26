@@ -1,3 +1,5 @@
+import os
+
 from ray_release.test_automation.state_machine import (
     TestStateMachine,
     WEEKLY_RELEASE_BLOCKER_TAG,
@@ -31,8 +33,12 @@ class CITestStateMachine(TestStateMachine):
         change = (from_state, to_state)
         if change == (TestState.PASSING, TestState.CONSITENTLY_FAILING):
             self._create_github_issue()
+            if os.environ.get("RAYCI_DISABLE_CI_TEST_BISECT") != "true":
+                self._trigger_bisect()
         elif change == (TestState.FAILING, TestState.CONSITENTLY_FAILING):
             self._create_github_issue()
+            if os.environ.get("RAYCI_DISABLE_CI_TEST_BISECT") != "true":
+                self._trigger_bisect()
         elif change == (TestState.CONSITENTLY_FAILING, TestState.PASSING):
             self._close_github_issue()
         elif change == (TestState.CONSITENTLY_FAILING, TestState.FLAKY):

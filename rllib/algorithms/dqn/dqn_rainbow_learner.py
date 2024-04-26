@@ -1,12 +1,14 @@
 import abc
 
-from typing import Any, Dict
+from typing import Any, Dict, TYPE_CHECKING
 
-from ray.rllib.algorithms.dqn.dqn import DQNConfig
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import LAST_TARGET_UPDATE_TS, NUM_TARGET_UPDATES
 from ray.rllib.utils.typing import ModuleID
+
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.dqn.dqn import DQNConfig
 
 # Now, this is double defined: In `SACRLModule` and here. I would keep it here
 # or push it into the `Learner` as these are recurring keys in RL.
@@ -31,7 +33,7 @@ class DQNRainbowLearner(Learner):
         self,
         *,
         module_id: ModuleID,
-        config: DQNConfig,
+        config: "DQNConfig",
         timestep: int,
         last_update: int,
         **kwargs
@@ -57,7 +59,7 @@ class DQNRainbowLearner(Learner):
 
     @abc.abstractmethod
     def _update_module_target_networks(
-        self, module_id: ModuleID, config: DQNConfig
+        self, module_id: ModuleID, config: "DQNConfig"
     ) -> None:
         """Update the target Q network(s) of each module with the current Q network.
 

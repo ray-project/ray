@@ -88,8 +88,8 @@ class TestPPO(unittest.TestCase):
                 entropy_coeff=[[0, 0.1], [256, 0.0]],  # 256=2x128,
                 train_batch_size=128,
             )
-            .rollouts(
-                num_rollout_workers=1,
+            .env_runners(
+                num_env_runners=1,
                 # Test with compression.
                 # compress_observations=True,
                 enable_connectors=True,
@@ -142,9 +142,9 @@ class TestPPO(unittest.TestCase):
                 "FrozenLake-v1",
                 env_config={"is_slippery": False, "map_name": "4x4"},
             )
-            .rollouts(
+            .env_runners(
                 # Run locally.
-                num_rollout_workers=0,
+                num_env_runners=0,
             )
         )
         obs = np.array(0)
@@ -183,8 +183,8 @@ class TestPPO(unittest.TestCase):
             ppo.PPOConfig()
             .experimental(_enable_new_api_stack=True)
             .environment("Pendulum-v1")
-            .rollouts(
-                num_rollout_workers=1,
+            .env_runners(
+                num_env_runners=1,
             )
             .rl_module(
                 model_config_dict={
