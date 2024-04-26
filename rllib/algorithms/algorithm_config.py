@@ -527,8 +527,6 @@ class AlgorithmConfig(_Config):
         # TODO: Remove, once all deprecation_warning calls upon using these keys
         #  have been removed.
         # === Deprecated keys ===
-        self._enable_new_api_stack = DEPRECATED_VALUE
-        self.evaluation_num_workers = DEPRECATED_VALUE
         self.simple_optimizer = DEPRECATED_VALUE
         self.monitor = DEPRECATED_VALUE
         self.evaluation_num_episodes = DEPRECATED_VALUE
@@ -4461,10 +4459,24 @@ class AlgorithmConfig(_Config):
     def exploration(self, *args, **kwargs):
         return self.env_runners(*args, **kwargs)
 
-    @Deprecated(new="AlgorithmConfig.enable_env_runner_and_connector_v2", error=True)
     @property
+    @Deprecated(new="AlgorithmConfig._enable_new_api_stack", error=False)
+    def _enable_new_api_stack(self):
+        return self.enable_rl_module_and_learner
+
+    @_enable_new_api_stack.setter
+    def _enable_new_api_stack(self, value):
+        deprecation_warning(
+            old="AlgorithmConfig._enable_new_api_stack",
+            new="AlgorithmConfig.enable_rl_module_and_learner",
+            error=False,
+        )
+        self.enable_rl_module_and_learner = value
+
+    @property
+    @Deprecated(new="AlgorithmConfig.enable_env_runner_and_connector_v2", error=True)
     def uses_new_env_runners(self):
-        return None
+        pass
 
     @property
     @Deprecated(new="AlgorithmConfig.num_env_runners", error=False)
@@ -4479,6 +4491,20 @@ class AlgorithmConfig(_Config):
             error=False,
         )
         self.num_env_runners = value
+
+    @property
+    @Deprecated(new="AlgorithmConfig.evaluation_num_workers", error=False)
+    def evaluation_num_workers(self):
+        return self.evaluation_num_env_runners
+
+    @evaluation_num_workers.setter
+    def evaluation_num_workers(self, value):
+        deprecation_warning(
+            old="AlgorithmConfig.evaluation_num_workers",
+            new="AlgorithmConfig.evaluation_num_env_runners",
+            error=False,
+        )
+        self.evaluation_num_env_runners = value
 
     @property
     @Deprecated(new="AlgorithmConfig.num_envs_per_env_runner", error=False)

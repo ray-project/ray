@@ -795,7 +795,7 @@ class Algorithm(Trainable, AlgorithmBase):
 
             # Sync the weights from the learner group to the rollout workers.
             weights = self.learner_group.get_weights(
-                inference_only=self.config.uses_new_env_runners
+                inference_only=self.config.enable_env_runner_and_connector_v2
             )
             local_worker.set_weights(weights)
             self.workers.sync_weights(inference_only=True)
@@ -1053,7 +1053,7 @@ class Algorithm(Trainable, AlgorithmBase):
         else:
             pass
 
-        if self.config.uses_new_env_runners:
+        if self.config.enable_env_runner_and_connector_v2:
             # Lifetime eval counters.
             self.metrics.log_dict(
                 {
@@ -1171,7 +1171,7 @@ class Algorithm(Trainable, AlgorithmBase):
 
         env_runner_results = env_runner.get_metrics()
 
-        if not self.config.uses_new_env_runners:
+        if not self.config.enable_env_runner_and_connector_v2:
             env_runner_results = summarize_episodes(
                 env_runner_results,
                 env_runner_results,
@@ -1299,7 +1299,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 "recreate_failed_env_runners=True)` setting."
             )
 
-        if not self.config.uses_new_env_runners:
+        if not self.config.enable_env_runner_and_connector_v2:
             env_runner_results = summarize_episodes(
                 all_metrics,
                 all_metrics,
@@ -1488,7 +1488,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 "recreate_failed_env_runners=True)` setting."
             )
 
-        if not self.config.uses_new_env_runners:
+        if not self.config.enable_env_runner_and_connector_v2:
             env_runner_results = summarize_episodes(
                 all_metrics,
                 all_metrics,
@@ -1623,7 +1623,9 @@ class Algorithm(Trainable, AlgorithmBase):
                     worker_set=self.workers,
                     max_agent_steps=self.config.train_batch_size,
                     sample_timeout_s=self.config.sample_timeout_s,
-                    _uses_new_env_runners=self.config.uses_new_env_runners,
+                    _uses_new_env_runners=(
+                        self.config.enable_env_runner_and_connector_v2
+                    ),
                     _return_metrics=True,
                 )
             else:
@@ -1631,7 +1633,9 @@ class Algorithm(Trainable, AlgorithmBase):
                     worker_set=self.workers,
                     max_env_steps=self.config.train_batch_size,
                     sample_timeout_s=self.config.sample_timeout_s,
-                    _uses_new_env_runners=self.config.uses_new_env_runners,
+                    _uses_new_env_runners=(
+                        self.config.enable_env_runner_and_connector_v2
+                    ),
                     _return_metrics=True,
                 )
         train_batch = train_batch.as_multi_agent()
@@ -2444,7 +2448,7 @@ class Algorithm(Trainable, AlgorithmBase):
             self.learner_group.load_state(learner_state_dir)
             # Make also sure, all training EnvRunners get the just loaded weights.
             weights = self.learner_group.get_weights(
-                inference_only=self.config.uses_new_env_runners
+                inference_only=self.config.enable_env_runner_and_connector_v2
             )
             self.workers.local_worker().set_weights(weights)
             self.workers.sync_weights(inference_only=True)
@@ -2867,7 +2871,7 @@ class Algorithm(Trainable, AlgorithmBase):
             state["local_replay_buffer"] = self.local_replay_buffer.get_state()
 
         # New API stack: Save entire MetricsLogger state.
-        if self.config.uses_new_env_runners:
+        if self.config.enable_env_runner_and_connector_v2:
             state["metrics_logger"] = self.metrics.get_state()
         # Old API stack: Save only counters.
         else:
@@ -3208,7 +3212,7 @@ class Algorithm(Trainable, AlgorithmBase):
         # To make the old stack forward compatible with the new API stack metrics
         # structure, we add everything under the new key (EVALUATION_RESULTS) as well as
         # the old one ("evaluation").
-        if not self.config.uses_new_env_runners:
+        if not self.config.enable_env_runner_and_connector_v2:
             self.evaluation_metrics["evaluation"] = eval_results
 
         return self.evaluation_metrics
@@ -3315,7 +3319,7 @@ class Algorithm(Trainable, AlgorithmBase):
             env_steps += batch.env_steps()
             all_metrics.append(metrics)
 
-        if not self.config.uses_new_env_runners:
+        if not self.config.enable_env_runner_and_connector_v2:
             eval_results = summarize_episodes(
                 all_metrics,
                 all_metrics,
@@ -3600,7 +3604,7 @@ class TrainIterCtx:
         self.time_start = time.time()
         self.sampled = 0
         self.trained = 0
-        if self.algo.config.uses_new_env_runners:
+        if self.algo.config.enable_env_runner_and_connector_v2:
             self.init_env_steps_sampled = self.algo.metrics.peek(
                 NUM_ENV_STEPS_SAMPLED_LIFETIME
             )
@@ -3646,7 +3650,7 @@ class TrainIterCtx:
             return False
 
         # Stopping criteria.
-        if self.algo.config.uses_new_env_runners:
+        if self.algo.config.enable_env_runner_and_connector_v2:
             if self.algo.config.count_steps_by == "agent_steps":
                 self.sampled = (
                     sum(
