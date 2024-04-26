@@ -2695,6 +2695,7 @@ class AlgorithmConfig(_Config):
 
     def fault_tolerance(
         self,
+        ignore_env_runner_failures: Optional[bool] = NotProvided,
         recreate_failed_env_runners: Optional[bool] = NotProvided,
         max_num_env_runner_restarts: Optional[int] = NotProvided,
         delay_between_env_runner_restarts_s: Optional[float] = NotProvided,
@@ -2703,6 +2704,7 @@ class AlgorithmConfig(_Config):
         env_runner_health_probe_timeout_s: int = NotProvided,
         env_runner_restore_timeout_s: int = NotProvided,
         # Deprecated args.
+        ignore_worker_failures=DEPRECATED_VALUE,
         recreate_failed_workers=DEPRECATED_VALUE,
         max_num_worker_restarts=DEPRECATED_VALUE,
         delay_between_worker_restarts_s=DEPRECATED_VALUE,
@@ -2713,6 +2715,9 @@ class AlgorithmConfig(_Config):
         """Sets the config's fault tolerance settings.
 
         Args:
+            ignore_env_runner_failures: Whether to ignore any EnvRunner failures
+                and continue running with the remaining EnvRunners. This setting will
+                be ignored, if `recreate_failed_env_runners=True`.
             recreate_failed_env_runners: Whether - upon an EnvRunner failure - RLlib
                 will try to recreate the lost EnvRunner as an identical copy of the
                 failed one. The new EnvRunner will only differ from the failed one in
@@ -2746,6 +2751,12 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
+        if ignore_worker_failures != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.fault_tolerance(ignore_worker_failures)",
+                new="AlgorithmConfig.fault_tolerance(ignore_env_runner_failures)",
+                error=True,
+            )
         if recreate_failed_workers != DEPRECATED_VALUE:
             deprecation_warning(
                 old="AlgorithmConfig.fault_tolerance(recreate_failed_workers)",
@@ -2787,6 +2798,8 @@ class AlgorithmConfig(_Config):
                 error=True,
             )
 
+        if ignore_env_runner_failures is not NotProvided:
+            self.ignore_env_runner_failures = ignore_env_runner_failures
         if recreate_failed_env_runners is not NotProvided:
             self.recreate_failed_env_runners = recreate_failed_env_runners
         if max_num_env_runner_restarts is not NotProvided:
@@ -4434,8 +4447,9 @@ class AlgorithmConfig(_Config):
         deprecation_warning(
             old="AlgorithmConfig.num_rollout_workers",
             new="AlgorithmConfig.num_env_runners",
-            error=True,
+            error=False,
         )
+        self.num_env_runners = value
 
     @property
     @Deprecated(new="AlgorithmConfig.num_envs_per_env_runner", error=False)
@@ -4447,8 +4461,9 @@ class AlgorithmConfig(_Config):
         deprecation_warning(
             old="AlgorithmConfig.num_envs_per_worker",
             new="AlgorithmConfig.num_envs_per_env_runner",
-            error=True,
+            error=False,
         )
+        self.num_envs_per_env_runner = value
 
     @property
     @Deprecated(new="AlgorithmConfig.ignore_env_runner_failures", error=False)
@@ -4460,8 +4475,9 @@ class AlgorithmConfig(_Config):
         deprecation_warning(
             old="AlgorithmConfig.ignore_worker_failures",
             new="AlgorithmConfig.ignore_env_runner_failures",
-            error=True,
+            error=False,
         )
+        self.ignore_env_runner_failures = value
 
     @property
     @Deprecated(new="AlgorithmConfig.recreate_failed_env_runners", error=False)
@@ -4473,8 +4489,9 @@ class AlgorithmConfig(_Config):
         deprecation_warning(
             old="AlgorithmConfig.recreate_failed_workers",
             new="AlgorithmConfig.recreate_failed_env_runners",
-            error=True,
+            error=False,
         )
+        self.recreate_failed_env_runners = value
 
     @property
     @Deprecated(new="AlgorithmConfig.max_num_env_runner_restarts", error=False)
@@ -4486,8 +4503,9 @@ class AlgorithmConfig(_Config):
         deprecation_warning(
             old="AlgorithmConfig.max_num_worker_restarts",
             new="AlgorithmConfig.max_num_env_runner_restarts",
-            error=True,
+            error=False,
         )
+        self.max_num_env_runner_restarts = value
 
     @property
     @Deprecated(new="AlgorithmConfig.delay_between_env_runner_restarts_s", error=False)
@@ -4499,8 +4517,9 @@ class AlgorithmConfig(_Config):
         deprecation_warning(
             old="AlgorithmConfig.delay_between_worker_restarts_s",
             new="AlgorithmConfig.delay_between_env_runner_restarts_s",
-            error=True,
+            error=False,
         )
+        self.delay_between_env_runner_restarts_s = value
 
     @property
     @Deprecated(
@@ -4514,8 +4533,9 @@ class AlgorithmConfig(_Config):
         deprecation_warning(
             old="AlgorithmConfig.num_consecutive_worker_failures_tolerance",
             new="AlgorithmConfig.num_consecutive_env_runner_failures_tolerance",
-            error=True,
+            error=False,
         )
+        self.num_consecutive_env_runner_failures_tolerance = value
 
     @property
     @Deprecated(new="AlgorithmConfig.env_runner_health_probe_timeout_s", error=False)
@@ -4527,8 +4547,9 @@ class AlgorithmConfig(_Config):
         deprecation_warning(
             old="AlgorithmConfig.worker_health_probe_timeout_s",
             new="AlgorithmConfig.env_runner_health_probe_timeout_s",
-            error=True,
+            error=False,
         )
+        self.env_runner_health_probe_timeout_s = value
 
     @property
     @Deprecated(new="AlgorithmConfig.env_runner_restore_timeout_s", error=False)
@@ -4540,8 +4561,9 @@ class AlgorithmConfig(_Config):
         deprecation_warning(
             old="AlgorithmConfig.worker_restore_timeout_s",
             new="AlgorithmConfig.env_runner_restore_timeout_s",
-            error=True,
+            error=False,
         )
+        self.env_runner_restore_timeout_s = value
 
     @property
     @Deprecated(
@@ -4556,8 +4578,9 @@ class AlgorithmConfig(_Config):
         deprecation_warning(
             old="AlgorithmConfig.validate_workers_after_construction",
             new="AlgorithmConfig.validate_env_runners_after_construction",
-            error=True,
+            error=False,
         )
+        self.validate_env_runners_after_construction = value
 
 
 class TorchCompileWhatToCompile(str, Enum):

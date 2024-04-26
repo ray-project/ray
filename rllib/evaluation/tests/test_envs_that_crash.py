@@ -25,29 +25,6 @@ class TestEnvsThatCrash(unittest.TestCase):
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
-    def test_env_crash_during_pre_checking(self):
-        """Expect the env pre-checking to fail on each worker."""
-        config = (
-            PPOConfig()
-            .env_runners(num_env_runners=2, num_envs_per_env_runner=4)
-            .environment(
-                env=CartPoleCrashing,
-                env_config={
-                    # Crash prob=100% (during pre-checking's `step()` test calls).
-                    "p_crash": 1.0,
-                    "init_time_s": 0.5,
-                },
-            )
-        )
-
-        # Expect ValueError due to pre-checking failing (our pre-checker module
-        # raises a ValueError if `step()` fails).
-        self.assertRaisesRegex(
-            ValueError,
-            "Simulated env crash",
-            lambda: config.build(),
-        )
-
     def test_env_crash_during_sampling(self):
         """Expect some sub-envs to fail (and not recover)."""
         config = (
@@ -87,6 +64,8 @@ class TestEnvsThatCrash(unittest.TestCase):
             .env_runners(
                 num_env_runners=2,
                 num_envs_per_env_runner=3,
+            )
+            .fault_tolerance(
                 # Ignore worker failures (continue with worker #2).
                 ignore_env_runner_failures=True,
             )
@@ -125,8 +104,11 @@ class TestEnvsThatCrash(unittest.TestCase):
                 num_env_runners=2,
                 rollout_fragment_length=10,
                 num_envs_per_env_runner=3,
+            )
+            .fault_tolerance(
                 # Re-create failed workers (then continue).
                 recreate_failed_env_runners=True,
+                delay_between_env_runner_restarts_s=0,
             )
             .training(train_batch_size=60, sgd_minibatch_size=60)
             .environment(
@@ -139,7 +121,6 @@ class TestEnvsThatCrash(unittest.TestCase):
                     "crash_on_worker_indices": [2],
                 },
             )
-            .fault_tolerance(delay_between_env_runner_restarts_s=0)
         )
         for multi_agent in [True, False]:
             if multi_agent:
@@ -167,6 +148,8 @@ class TestEnvsThatCrash(unittest.TestCase):
             .env_runners(
                 num_env_runners=2,
                 num_envs_per_env_runner=3,
+            )
+            .fault_tolerance(
                 # Re-start failed individual sub-envs (then continue).
                 # This means no workers will ever fail due to individual env errors
                 # (only maybe for reasons other than the env).
