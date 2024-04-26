@@ -497,5 +497,6 @@ service CoreWorkerService {
   rpc AssignObjectOwner(AssignObjectOwnerRequest) returns (AssignObjectOwnerReply);
   // Get the number of pending tasks.
   rpc NumPendingTasks(NumPendingTasksRequest) returns (NumPendingTasksReply);
-  rpc RegisterMutableObjectReader(RegisterMutableObjectReaderRequest) returns (RegisterMutableObjectReaderReply);
+  rpc RegisterMutableObjectReader(RegisterMutableObjectReaderRequest)
+      returns (RegisterMutableObjectReaderReply);
 }
