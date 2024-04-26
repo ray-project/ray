@@ -1338,14 +1338,18 @@ class Node:
         assert self._gcs_client is None
 
         self.start_gcs_server()
+        ray.__tick__("after_start_gcs_server")
         assert self.get_gcs_client() is not None
         self._write_cluster_info_to_kv()
+        ray.__tick__("after_write_cluster_info_to_kv")
 
         if not self._ray_params.no_monitor:
             self.start_monitor()
+            ray.__tick__("after_start_monitor")
 
         if self._ray_params.ray_client_server_port:
             self.start_ray_client_server()
+            ray.__tick__("after_start_ray_client_server")
 
         if self._ray_params.include_dashboard is None:
             # Default
@@ -1357,6 +1361,7 @@ class Node:
             include_dashboard=self._ray_params.include_dashboard,
             raise_on_failure=raise_on_api_server_failure,
         )
+        ray.__tick__("after_start_api_server")
 
     def start_ray_processes(self):
         """Start all of the processes on the node."""
