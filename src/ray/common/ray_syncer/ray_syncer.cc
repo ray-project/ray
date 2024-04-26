@@ -120,8 +120,8 @@ void RayServerBidiReactor::OnCancel() {
 
 void RayServerBidiReactor::OnDone() {
   io_context_.dispatch(
-      [this]() {
-        cleanup_cb_(GetRemoteNodeID(), false);
+      [this, cleanup_cb = cleanup_cb_, remote_node_id = GetRemoteNodeID()]() {
+        cleanup_cb(remote_node_id, false);
         delete this;
       },
       "");

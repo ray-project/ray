@@ -40,10 +40,23 @@ Acquiring an up-to-date head node
   \[7/7\] Starting the Ray runtime
   New status: up-to-date
 
-Useful commands
-  Monitor autoscaling with
-    ray exec .+ 'tail -n 100 -f /tmp/ray/session_latest/logs/monitor\*'
-  Connect to a terminal on the cluster head:
+Useful commands:
+  To terminate the cluster:
+    ray down .+
+
+  To retrieve the IP address of the cluster head:
+    ray get-head-ip .+
+
+  To port-forward the cluster's Ray Dashboard to the local machine:
+    ray dashboard .+
+
+  To submit a job to the cluster, port-forward the Ray Dashboard in another terminal and run:
+    ray job submit --address .+
+
+  To connect to a terminal on the cluster head for debugging:
     ray attach .+
-  Get a remote shell to the cluster manually:
-    ssh .+
+
+  To monitor autoscaling:
+    ray exec .+ 'tail -n 100 -f /tmp/ray/session_latest/logs/monitor\*'
+
+

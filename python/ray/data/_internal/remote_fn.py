@@ -18,12 +18,12 @@ def cached_remote_fn(fn: Any, **ray_remote_args) -> Any:
     """
     if fn not in CACHED_FUNCTIONS:
         default_ray_remote_args = {
-            "retry_exceptions": True,
             # Use the default scheduling strategy for all tasks so that we will
             # not inherit a placement group from the caller, if there is one.
             # The caller of this function may override the scheduling strategy
             # as needed.
             "scheduling_strategy": "DEFAULT",
+            "max_retries": -1,
         }
         CACHED_FUNCTIONS[fn] = ray.remote(
             **{**default_ray_remote_args, **ray_remote_args}

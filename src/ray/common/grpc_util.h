@@ -158,6 +158,8 @@ inline grpc::ChannelArguments CreateDefaultChannelArguments() {
     arguments.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS,
                      ::RayConfig::instance().grpc_client_keepalive_timeout_ms());
   }
+  arguments.SetInt(GRPC_ARG_CLIENT_IDLE_TIMEOUT_MS,
+                   ::RayConfig::instance().grpc_client_idle_timeout_ms());
   return arguments;
 }
 

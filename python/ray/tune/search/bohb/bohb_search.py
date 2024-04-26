@@ -3,13 +3,18 @@
 import copy
 import logging
 import math
+from typing import Dict, List, Optional, Union
 
 # use cloudpickle instead of pickle to make BOHB obj
 # pickleable
 from ray import cloudpickle
-from typing import Dict, List, Optional, Union
-
 from ray.tune.result import DEFAULT_METRIC
+from ray.tune.search import (
+    UNDEFINED_METRIC_MODE,
+    UNDEFINED_SEARCH_SPACE,
+    UNRESOLVED_SEARCH_SPACE,
+    Searcher,
+)
 from ray.tune.search.sample import (
     Categorical,
     Domain,
@@ -19,12 +24,6 @@ from ray.tune.search.sample import (
     Normal,
     Quantized,
     Uniform,
-)
-from ray.tune.search import (
-    UNRESOLVED_SEARCH_SPACE,
-    UNDEFINED_METRIC_MODE,
-    UNDEFINED_SEARCH_SPACE,
-    Searcher,
 )
 from ray.tune.search.variant_generator import parse_spec_vars
 from ray.tune.utils.util import flatten_dict, unflatten_list_dict

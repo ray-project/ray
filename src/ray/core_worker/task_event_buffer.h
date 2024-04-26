@@ -94,6 +94,8 @@ class TaskStatusEvent : public TaskEvent {
 
     TaskStateUpdate(uint32_t pid) : pid_(pid) {}
 
+    TaskStateUpdate(bool is_debugger_paused) : is_debugger_paused_(is_debugger_paused) {}
+
    private:
     friend class TaskStatusEvent;
 
@@ -109,6 +111,8 @@ class TaskStatusEvent : public TaskEvent {
     const std::string actor_repr_name_ = "";
     /// Worker's pid if it's a RUNNING status change.
     const absl::optional<uint32_t> pid_ = absl::nullopt;
+    /// Is the task is paused by the debugger.
+    const absl::optional<bool> is_debugger_paused_ = absl::nullopt;
   };
 
   explicit TaskStatusEvent(

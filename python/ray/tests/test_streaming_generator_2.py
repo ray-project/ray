@@ -7,6 +7,10 @@ import gc
 
 import ray
 from ray.experimental.state.api import list_actors
+from ray._private.test_utils import (
+    wait_for_condition,
+    SignalActor,
+)
 
 RECONSTRUCTION_CONFIG = {
     "health_check_failure_threshold": 10,
@@ -20,15 +24,28 @@ RECONSTRUCTION_CONFIG = {
 }
 
 
-def assert_no_leak():
-    gc.collect()
-    core_worker = ray._private.worker.global_worker.core_worker
-    ref_counts = core_worker.get_all_reference_counts()
-    print(ref_counts)
-    for rc in ref_counts.values():
-        assert rc["local"] == 0
-        assert rc["submitted"] == 0
-    assert core_worker.get_memory_store_size() == 0
+def assert_no_leak(filter_refs=None):
+    if filter_refs is None:
+        filter_refs = []
+    filter_refs = [ref.hex().encode("utf-8") for ref in filter_refs]
+
+    def check():
+        gc.collect()
+        core_worker = ray._private.worker.global_worker.core_worker
+        ref_counts = core_worker.get_all_reference_counts()
+
+        num_in_memory_objects = core_worker.get_memory_store_size()
+        for k, rc in ref_counts.items():
+            if k in filter_refs:
+                num_in_memory_objects -= 1
+                continue
+            if rc["local"] != 0:
+                return False
+            if rc["submitted"] != 0:
+                return False
+        return num_in_memory_objects <= 0
+
+    wait_for_condition(check)
 
 
 @pytest.mark.parametrize("delay", [True])
@@ -52,7 +69,7 @@ def test_reconstruction(monkeypatch, ray_start_cluster, delay):
         node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
         cluster.wait_for_nodes()
 
-    @ray.remote(num_returns="streaming", max_retries=2)
+    @ray.remote(max_retries=2)
     def dynamic_generator(num_returns):
         for i in range(num_returns):
             yield np.ones(1_000_000, dtype=np.int8) * i
@@ -62,7 +79,7 @@ def test_reconstruction(monkeypatch, ray_start_cluster, delay):
         return x[0]
 
     # Test recovery of all dynamic objects through re-execution.
-    gen = ray.get(dynamic_generator.remote(10))
+    gen = dynamic_generator.remote(10)
     refs = []
 
     for i in range(5):
@@ -133,7 +150,7 @@ def test_reconstruction_retry_failed(ray_start_cluster, failure_type):
     node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
     cluster.wait_for_nodes()
 
-    @ray.remote(num_returns="streaming")
+    @ray.remote
     def dynamic_generator(num_returns, signal_actor):
         for i in range(num_returns):
             if i == 3:
@@ -150,7 +167,7 @@ def test_reconstruction_retry_failed(ray_start_cluster, failure_type):
     def fetch(x):
         return x[0]
 
-    gen = ray.get(dynamic_generator.remote(10, signal))
+    gen = dynamic_generator.remote(10, signal)
     refs = []
 
     for i in range(5):
@@ -197,7 +214,7 @@ def test_generator_max_returns(monkeypatch, shutdown_only):
             "2",
         )
 
-        @ray.remote(num_returns="streaming")
+        @ray.remote
         def generator_task():
             for _ in range(3):
                 yield 1
@@ -224,7 +241,7 @@ def test_return_yield_mix(shutdown_only):
             yield i
             return
 
-    generator = g.options(num_returns="streaming").remote()
+    generator = g.remote()
     result = []
     for ref in generator:
         result.append(ray.get(ref))
@@ -252,7 +269,7 @@ def test_task_name_not_changed_for_iteration(shutdown_only):
             assert task_name == asyncio.current_task().get_name()
 
     a = A.remote()
-    for obj_ref in a.gen.options(num_returns="streaming").remote():
+    for obj_ref in a.gen.remote():
         print(ray.get(obj_ref))
 
 
@@ -269,7 +286,7 @@ def test_async_actor_concurrent(shutdown_only):
     a = A.remote()
 
     async def co():
-        async for ref in a.gen.options(num_returns="streaming").remote():
+        async for ref in a.gen.remote():
             print(await ref)
 
     async def main():
@@ -280,38 +297,33 @@ def test_async_actor_concurrent(shutdown_only):
     assert 4.5 < time.time() - s < 6.5
 
 
-def test_no_memory_store_obj_leak(shutdown_only):
+def test_no_memory_store_obj_leak(ray_start_regular):
     """Fixes https://github.com/ray-project/ray/issues/38089
 
     Verify there's no leak from in-memory object store when
     using a streaming generator.
     """
-    ray.init()
 
     @ray.remote
-    def f():
+    def f(signal=None):
         for _ in range(10):
             yield 1
+        if signal is not None:
+            signal.send.remote()
 
-    for _ in range(10):
-        for ref in f.options(num_returns="streaming").remote():
-            del ref
+    for _ in range(2):
+        gen = f.remote()
+        for _ in range(10):
+            for ref in gen:
+                del ref
 
-        time.sleep(0.2)
+        del gen
+        assert_no_leak()
 
-    core_worker = ray._private.worker.global_worker.core_worker
-    assert core_worker.get_memory_store_size() == 0
-    assert_no_leak()
-
-    for _ in range(10):
-        for ref in f.options(num_returns="streaming").remote():
-            break
-
-        time.sleep(0.2)
-
-    del ref
-    core_worker = ray._private.worker.global_worker.core_worker
-    assert core_worker.get_memory_store_size() == 0
+    signal = SignalActor.remote()
+    gen = f.remote(signal)
+    ray.get(signal.wait.remote())
+    del gen
     assert_no_leak()
 
 
@@ -388,7 +400,7 @@ def test_python_object_leak(shutdown_only):
 
     def verify_generator(actor, fail):
         for _ in range(100):
-            for ref in actor.gen.options(num_returns="streaming").remote(fail=fail):
+            for ref in actor.gen.remote(fail=fail):
                 try:
                     ray.get(ref)
                 except Exception:
@@ -418,6 +430,104 @@ def test_python_object_leak(shutdown_only):
     verify_generator(AsyncActor.remote(), True)
     verify_generator(AsyncActor.remote(), False)
     assert len(list_actors()) == 12
+
+
+@pytest.mark.parametrize("delay", [True, False])
+@pytest.mark.parametrize("actor_task", [True, False])
+def test_reconstruction_generator_out_of_scope(
+    monkeypatch, ray_start_cluster, delay, actor_task
+):
+    with monkeypatch.context() as m:
+        if delay:
+            m.setenv(
+                "RAY_testing_asio_delay_us",
+                "CoreWorkerService.grpc_server."
+                "ReportGeneratorItemReturns=10000:1000000",
+            )
+        cluster = ray_start_cluster
+        # Head node with no resources.
+        cluster.add_node(
+            num_cpus=0,
+            _system_config=RECONSTRUCTION_CONFIG,
+            enable_object_reconstruction=True,
+        )
+        ray.init(address=cluster.address)
+        # Node to place the initial object.
+        node_to_kill = cluster.add_node(
+            num_cpus=1, num_gpus=1, object_store_memory=10**8
+        )
+        cluster.wait_for_nodes()
+
+    @ray.remote(num_cpus=0, num_gpus=1, max_restarts=-1, max_task_retries=2)
+    class Actor:
+        def dynamic_generator(self, num_returns):
+            for i in range(num_returns):
+                print("yield", i)
+                yield np.ones(1_000_000, dtype=np.int8) * i
+
+    @ray.remote(num_returns="streaming", max_retries=2)
+    def dynamic_generator(num_returns):
+        for i in range(num_returns):
+            print("yield", i)
+            yield np.ones(1_000_000, dtype=np.int8) * i
+
+    @ray.remote
+    def dependent_task(x):
+        return x
+
+    @ray.remote
+    def fetch(x):
+        return x[0]
+
+    # Test recovery of all dynamic objects through re-execution.
+    if actor_task:
+        actor = Actor.remote()
+        gen = actor.dynamic_generator.options(num_returns="streaming").remote(2)
+    else:
+        gen = ray.get(dynamic_generator.remote(2))
+    refs = []
+
+    for ref in gen:
+        ref = dependent_task.remote(ref)
+        refs.append(ref)
+    del gen
+
+    for i, ref in enumerate(refs):
+        assert ray.get(fetch.remote(ref)) == i
+
+    cluster.remove_node(node_to_kill, allow_graceful=False)
+    node_to_kill = cluster.add_node(num_cpus=1, num_gpus=1, object_store_memory=10**8)
+
+    for i, ref in enumerate(refs):
+        assert ray.get(fetch.remote(ref)) == i
+    refs = []
+    del ref
+
+    assert_no_leak()
+
+    # Test that when the generator task stays in the in-scope lineage, we still
+    # clean up the unconsumed objects' values. The lineage (task and stream
+    # metadata) gets cleaned up later, once all of the references are out of
+    # scope.
+    if actor_task:
+        actor = Actor.remote()
+        gen = actor.dynamic_generator.options(num_returns="streaming").remote(2)
+    else:
+        gen = ray.get(dynamic_generator.remote(2))
+
+    ref = dependent_task.remote(next(gen))
+    del gen
+
+    assert ray.get(fetch.remote(ref)) == 0
+
+    cluster.remove_node(node_to_kill, allow_graceful=False)
+    node_to_kill = cluster.add_node(num_cpus=1, num_gpus=1, object_store_memory=10**8)
+
+    assert ray.get(fetch.remote(ref)) == 0
+    assert_no_leak(filter_refs=[ref])
+
+    del ref
+    assert_no_leak()
 
 
 if __name__ == "__main__":

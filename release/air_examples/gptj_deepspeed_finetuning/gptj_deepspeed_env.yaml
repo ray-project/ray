@@ -10,7 +10,7 @@ python:
     - "accelerate==0.16.0"
     - "transformers==4.26.0"
     - "torch>=1.12.0"
-    - "deepspeed==0.9.2"
+    - "deepspeed==0.12.3"
     - myst-parser==0.15.2
     - myst-nb==0.13.1
     - jupytext==1.13.6

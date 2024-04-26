@@ -27,17 +27,13 @@ from ray.util.client.ray_client_helpers import connect_to_client_or_not
 from ray.util.placement_group import placement_group, remove_placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
-try:
-    import pytest_timeout
-except ImportError:
-    pytest_timeout = None
-
 
 def get_ray_status_output(address):
     gcs_client = ray._raylet.GcsClient(address=address)
     internal_kv._initialize_internal_kv(gcs_client)
     status = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_STATUS)
     error = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_ERROR)
+    print(debug_status(status, error, address=address))
     return {
         "demand": debug_status(status, error, address=address)
         .split("Demands:")[1]
@@ -705,7 +701,6 @@ def test_placement_group_local_resource_view(monkeypatch, ray_start_cluster):
         # Increase broadcasting interval so that node resource will arrive
         # at raylet after local resource all being allocated.
         m.setenv("RAY_raylet_report_resources_period_milliseconds", "2000")
-        m.setenv("RAY_grpc_based_resource_broadcast", "true")
         cluster = ray_start_cluster
 
         cluster.add_node(num_cpus=16, object_store_memory=1e9)

@@ -30,7 +30,6 @@
 #include "ray/common/ray_config.h"
 #include "ray/stats/metric.h"
 #include "ray/stats/metric_exporter.h"
-#include "ray/stats/metric_exporter_client.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -41,7 +40,6 @@ namespace stats {
 
 // TODO(sang) Put all states and logic into a singleton class Stats.
 static std::shared_ptr<IOServicePool> metrics_io_service_pool;
-static std::shared_ptr<MetricExporterClient> exporter;
 static absl::Mutex stats_mutex;
 
 /// Initialize stats for a process.
@@ -55,22 +53,19 @@ static absl::Mutex stats_mutex;
 /// \param global_tags[in] Tags that will be appended to all metrics in this process.
 /// \param metrics_agent_port[in] The port to export metrics at each node.
 /// \param worker_id[in] The worker ID of the current component.
-/// \param exporter_to_use[in] The exporter client you will use for this process' metrics.
-static inline void Init(const TagsType &global_tags,
-                        const int metrics_agent_port,
-                        const WorkerID &worker_id,
-                        std::shared_ptr<MetricExporterClient> exporter_to_use = nullptr,
-                        int64_t metrics_report_batch_size =
-                            RayConfig::instance().metrics_report_batch_size()) {
+static inline void Init(
+    const TagsType &global_tags,
+    const int metrics_agent_port,
+    const WorkerID &worker_id,
+    int64_t metrics_report_batch_size = RayConfig::instance().metrics_report_batch_size(),
+    int64_t max_grpc_payload_size = RayConfig::instance().agent_max_grpc_message_size()) {
   absl::MutexLock lock(&stats_mutex);
   if (StatsConfig::instance().IsInitialized()) {
     RAY_CHECK(metrics_io_service_pool != nullptr);
-    RAY_CHECK(exporter != nullptr);
     return;
   }
 
   RAY_CHECK(metrics_io_service_pool == nullptr);
-  RAY_CHECK(exporter == nullptr);
   bool disable_stats = !RayConfig::instance().enable_metrics_collection();
   StatsConfig::instance().SetIsDisableStats(disable_stats);
   if (disable_stats) {
@@ -84,14 +79,6 @@ static inline void Init(const TagsType &global_tags,
   instrumented_io_context *metrics_io_service = metrics_io_service_pool->Get();
   RAY_CHECK(metrics_io_service != nullptr);
 
-  // Default exporter is a metrics agent exporter.
-  if (exporter_to_use == nullptr) {
-    std::shared_ptr<MetricExporterClient> stdout_exporter(new StdoutExporterClient());
-    exporter.reset(new MetricsAgentExporter(stdout_exporter));
-  } else {
-    exporter = exporter_to_use;
-  }
-
   // Set interval.
   StatsConfig::instance().SetReportInterval(absl::Milliseconds(std::max(
       RayConfig::instance().metrics_report_interval_ms(), static_cast<uint64_t>(1000))));
@@ -103,9 +90,13 @@ static inline void Init(const TagsType &global_tags,
   opencensus::stats::DeltaProducer::Get()->SetHarvestInterval(
       StatsConfig::instance().GetHarvestInterval());
 
-  MetricPointExporter::Register(exporter, metrics_report_batch_size);
-  OpenCensusProtoExporter::Register(
-      metrics_agent_port, (*metrics_io_service), "127.0.0.1", worker_id, RayConfig::instance().metrics_report_batch_size());
+  OpenCensusProtoExporter::Register(metrics_agent_port,
+                                    (*metrics_io_service),
+                                    "127.0.0.1",
+                                    worker_id,
+                                    metrics_report_batch_size,
+                                    max_grpc_payload_size);
+
   StatsConfig::instance().SetGlobalTags(global_tags);
   for (auto &f : StatsConfig::instance().PopInitializers()) {
     f();
@@ -125,7 +116,6 @@ static inline void Shutdown() {
   opencensus::stats::DeltaProducer::Get()->Shutdown();
   opencensus::stats::StatsExporter::Shutdown();
   metrics_io_service_pool = nullptr;
-  exporter = nullptr;
   StatsConfig::instance().SetIsInitialized(false);
   RAY_LOG(INFO) << "Stats module has shutdown.";
 }

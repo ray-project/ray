@@ -1,3 +1,9 @@
+
+.. include:: /_includes/rllib/we_are_hiring.rst
+
+.. include:: /_includes/rllib/new_api_stack.rst
+
+
 .. _evaluation-reference-docs:
 
 Sampling the Environment or offline data
@@ -238,17 +244,6 @@ Synchronous Sampler API
 
     SyncSampler
 
-
-Asynchronous Sampler API
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. currentmodule:: ray.rllib.evaluation.sampler
-
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    AsyncSampler
 
 
 .. _offline-reference-docs:

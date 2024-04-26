@@ -11,6 +11,7 @@ https://arxiv.org/pdf/2010.02193.pdf
 D. Hafner's (author) original code repo (for JAX):
 https://github.com/danijar/dreamerv3
 """
+
 import unittest
 
 import gymnasium as gym
@@ -55,13 +56,6 @@ class TestDreamerV3(unittest.TestCase):
                 num_gpus_per_learner_worker=0,
             )
         )
-
-        # TODO (sven): Add a `get_model_config` utility to AlgorithmConfig
-        #  that - for now - merges the user provided model_dict (which only
-        #  contains settings that only affect the model, e.g. model_size)
-        #  with the AlgorithmConfig-wide settings that are relevant for the model
-        #  (e.g. `batch_size_B`).
-        # config.get_model_config()
 
         num_iterations = 2
 
@@ -196,7 +190,6 @@ class TestDreamerV3(unittest.TestCase):
             # of parameters to RLlib's implementation.
             for model_size in ["XS", "S", "M", "L", "XL"]:
                 config.model_size = model_size
-                config.training(model={"model_size": model_size})
 
                 # Atari and CartPole spaces.
                 for obs_space, num_actions, env_name in [

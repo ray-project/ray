@@ -83,10 +83,16 @@
 .+\.py.*AWSNodeProvider: Set tag ray-runtime-config=.+ on \['.+'\]  \[LogTimer=.+\]
 .+\.py.*AWSNodeProvider: Set tag ray-file-mounts-contents=.+ on \['.+'\]  \[LogTimer=.+\]
 .+\.py.*New status: up-to-date
-.+\.py.*Useful commands
-.+\.py.*Monitor autoscaling with
-.+\.py.*  ray exec .+ 'tail -n 100 -f .+
-.+\.py.*Connect to a terminal on the cluster head:
+.+\.py.*Useful commands:
+.+\.py.*To terminate the cluster:
+.+\.py.*  ray down .+
+.+\.py.*To retrieve the IP address of the cluster head:
+.+\.py.*  ray get-head-ip .+
+.+\.py.*To port-forward the cluster's Ray Dashboard to the local machine:
+.+\.py.*  ray dashboard .+
+.+\.py.*To submit a job to the cluster, port-forward the Ray Dashboard in another terminal and run:
+.+\.py.*  ray job submit --address .+
+.+\.py.*To connect to a terminal on the cluster head for debugging:
 .+\.py.*  ray attach .+
-.+\.py.*Get a remote shell to the cluster manually:
-.+\.py.*  ssh.+\.pem.+
+.+\.py.*To monitor autoscaling:
+.+\.py.*  ray exec .+ 'tail -n 100 -f /tmp/ray/session_latest/logs/monitor\*'

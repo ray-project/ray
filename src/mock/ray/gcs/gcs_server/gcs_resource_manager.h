@@ -41,12 +41,6 @@ class MockGcsResourceManager : public GcsResourceManager {
                            nullptr) {}
 
   MOCK_METHOD(void,
-              HandleGetResources,
-              (rpc::GetResourcesRequest request,
-               rpc::GetResourcesReply *reply,
-               rpc::SendReplyCallback send_reply_callback),
-              (override));
-  MOCK_METHOD(void,
               HandleGetAllAvailableResources,
               (rpc::GetAllAvailableResourcesRequest request,
                rpc::GetAllAvailableResourcesReply *reply,

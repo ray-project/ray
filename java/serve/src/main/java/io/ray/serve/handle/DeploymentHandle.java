@@ -4,7 +4,6 @@ import io.ray.runtime.metric.Count;
 import io.ray.runtime.metric.Metrics;
 import io.ray.serve.api.Serve;
 import io.ray.serve.common.Constants;
-import io.ray.serve.context.ContextUtil;
 import io.ray.serve.context.RequestContext;
 import io.ray.serve.deployment.DeploymentId;
 import io.ray.serve.generated.RequestMetadata;
@@ -79,13 +78,15 @@ public class DeploymentHandle implements Serializable {
    * @return ObjectRef
    */
   public DeploymentResponse remote(Object... parameters) {
-    RequestContext requestContext = ContextUtil.getRequestContext();
+    RequestContext requestContext = RequestContext.get();
     RayServeMetrics.execute(() -> requestCounter.inc(1.0));
     RequestMetadata.Builder requestMetadata = RequestMetadata.newBuilder();
     requestMetadata.setRequestId(requestContext.getRequestId());
     requestMetadata.setEndpoint(deploymentId.getName());
     requestMetadata.setCallMethod(
         handleOptions != null ? handleOptions.getMethodName() : Constants.CALL_METHOD);
+    requestMetadata.setRoute(requestContext.getRoute());
+    requestMetadata.setMultiplexedModelId(requestContext.getMultiplexedModelId());
     return new DeploymentResponse(
         getOrCreateRouter().assignRequest(requestMetadata.build(), parameters));
   }
@@ -99,7 +100,7 @@ public class DeploymentHandle implements Serializable {
       if (router != null) {
         return router;
       }
-      router = new Router(Serve.getGlobalClient().getController(), deploymentId.getName());
+      router = new Router(Serve.getGlobalClient().getController(), deploymentId);
     }
     return router;
   }

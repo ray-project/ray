@@ -25,8 +25,6 @@ import io.ray.serve.util.CollectionUtil;
 import io.ray.serve.util.MessageFormatter;
 import io.ray.serve.util.ServeProtoUtil;
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -76,9 +74,7 @@ public class Serve {
             .orElse(Integer.valueOf(System.getProperty(RayServeConfig.PROXY_HTTP_PORT, "8000")));
     PyActorHandle controllerAvatar =
         Ray.actor(
-                PyActorClass.of("ray.serve._private.controller", "ServeControllerAvatar"),
-                Constants.SERVE_CONTROLLER_NAME,
-                httpPort)
+                PyActorClass.of("ray.serve._private.controller", "ServeControllerAvatar"), httpPort)
             .setName(Constants.SERVE_CONTROLLER_NAME + "_AVATAR")
             .setLifetime(ActorLifetime.DETACHED)
             .setMaxRestarts(-1)
@@ -114,8 +110,7 @@ public class Serve {
       }
     }
 
-    ServeControllerClient client =
-        new ServeControllerClient(controller, Constants.SERVE_CONTROLLER_NAME);
+    ServeControllerClient client = new ServeControllerClient(controller);
     setGlobalClient(client);
     LOGGER.info("Started Serve in namespace {}", Constants.SERVE_NAMESPACE);
     return client;
@@ -160,20 +155,17 @@ public class Serve {
    *
    * @param deploymentName deployment name
    * @param replicaTag replica tag
-   * @param controllerName the controller actor's name
    * @param servableObject the servable object of the specified replica.
    * @param config
    */
   public static void setInternalReplicaContext(
       String deploymentName,
       String replicaTag,
-      String controllerName,
       Object servableObject,
       Map<String, String> config,
       String appName) {
     INTERNAL_REPLICA_CONTEXT =
-        new ReplicaContext(
-            deploymentName, replicaTag, controllerName, servableObject, config, appName);
+        new ReplicaContext(deploymentName, replicaTag, servableObject, config, appName);
   }
 
   /**
@@ -262,14 +254,8 @@ public class Serve {
       init();
     }
 
-    // When running inside of a replica, _INTERNAL_REPLICA_CONTEXT is set to ensure that the correct
-    // instance is connected to.
-    String controllerName =
-        INTERNAL_REPLICA_CONTEXT != null
-            ? INTERNAL_REPLICA_CONTEXT.getInternalControllerName()
-            : Constants.SERVE_CONTROLLER_NAME;
-
-    Optional<BaseActorHandle> optional = Ray.getActor(controllerName, Constants.SERVE_NAMESPACE);
+    Optional<BaseActorHandle> optional =
+        Ray.getActor(Constants.SERVE_CONTROLLER_NAME, Constants.SERVE_NAMESPACE);
     Preconditions.checkState(
         optional.isPresent(),
         MessageFormatter.format(
@@ -277,10 +263,10 @@ public class Serve {
                 + "Please call `serve.start() to start one."));
     LOGGER.info(
         "Got controller handle with name `{}` in namespace `{}`.",
-        controllerName,
+        Constants.SERVE_CONTROLLER_NAME,
         Constants.SERVE_NAMESPACE);
 
-    ServeControllerClient client = new ServeControllerClient(optional.get(), controllerName);
+    ServeControllerClient client = new ServeControllerClient(optional.get());
 
     setGlobalClient(client);
     return client;
@@ -313,35 +299,6 @@ public class Serve {
         deploymentRoute.getDeploymentInfo().getReplicaConfig(),
         deploymentRoute.getDeploymentInfo().getVersion(),
         deploymentRoute.getRoute());
-  }
-
-  /**
-   * Returns a dictionary of all active deployments.
-   *
-   * <p>Dictionary maps deployment name to Deployment objects.
-   *
-   * @return
-   * @deprecated {@value Constants#MIGRATION_MESSAGE}
-   */
-  @Deprecated
-  public static Map<String, Deployment> listDeployments() {
-    LOGGER.warn(Constants.MIGRATION_MESSAGE);
-    Map<String, DeploymentRoute> infos = getGlobalClient().listDeployments();
-    if (infos == null || infos.size() == 0) {
-      return Collections.emptyMap();
-    }
-    Map<String, Deployment> deployments = new HashMap<>(infos.size());
-    for (Map.Entry<String, DeploymentRoute> entry : infos.entrySet()) {
-      deployments.put(
-          entry.getKey(),
-          new Deployment(
-              entry.getKey(),
-              entry.getValue().getDeploymentInfo().getDeploymentConfig(),
-              entry.getValue().getDeploymentInfo().getReplicaConfig(),
-              entry.getValue().getDeploymentInfo().getVersion(),
-              entry.getValue().getRoute()));
-    }
-    return deployments;
   }
 
   /**

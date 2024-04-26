@@ -1,5 +1,7 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
+.. include:: /_includes/rllib/new_api_stack.rst
+
 Sample Collections and Trajectory Views
 =======================================
 
@@ -81,7 +83,7 @@ of each episode (arrow heads). This way, RLlib makes sure that the
 
 To trigger a single rollout, RLlib calls ``RolloutWorker.sample()``, which returns
 a SampleBatch or MultiAgentBatch object representing all the data collected during that
-rollout. These batches are then usually further concatenated (from the ``num_workers``
+rollout. These batches are then usually further concatenated (from the ``num_env_runners``
 parallelized RolloutWorkers) to form a final train batch. The size of that train batch is determined
 by the ``train_batch_size`` config parameter. Train batches are usually sent to the Policy's
 ``learn_on_batch`` method, which handles loss- and gradient calculations, and optimizer stepping.
@@ -232,7 +234,7 @@ object and what each of these properties controls.
   True by default. If False, the column will not be available inside the train batch (arriving in the
   Policy's loss function).
   RLlib will automatically switch this to False for a given column, if it detects during
-  Policy initialization that that column is not accessed inside the loss function (see below).
+  Policy initialization that that column isn't accessed inside the loss function (see below).
 
 How does RLlib determine, which Views are required?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

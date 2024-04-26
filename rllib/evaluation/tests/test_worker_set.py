@@ -4,7 +4,7 @@ import unittest
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.examples.policy.random_policy import RandomPolicy
+from ray.rllib.examples._old_api_stack.policy.random_policy import RandomPolicy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 
 
@@ -22,7 +22,7 @@ class TestWorkerSet(unittest.TestCase):
         ws = WorkerSet(
             env_creator=lambda _: gym.make("CartPole-v1"),
             default_policy_class=RandomPolicy,
-            config=AlgorithmConfig().rollouts(num_rollout_workers=2),
+            config=AlgorithmConfig().env_runners(num_env_runners=2),
             num_workers=2,
         )
 
@@ -51,7 +51,7 @@ class TestWorkerSet(unittest.TestCase):
         ws = WorkerSet(
             env_creator=lambda _: gym.make("CartPole-v1"),
             default_policy_class=RandomPolicy,
-            config=AlgorithmConfig().rollouts(num_rollout_workers=2),
+            config=AlgorithmConfig().env_runners(num_env_runners=2),
             num_workers=2,
         )
 
@@ -73,7 +73,7 @@ class TestWorkerSet(unittest.TestCase):
         ws = WorkerSet(
             env_creator=lambda _: gym.make("CartPole-v1"),
             default_policy_class=RandomPolicy,
-            config=AlgorithmConfig().rollouts(num_rollout_workers=2),
+            config=AlgorithmConfig().env_runners(num_env_runners=2),
             num_workers=2,
         )
 

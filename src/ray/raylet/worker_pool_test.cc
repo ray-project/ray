@@ -687,6 +687,28 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerSyncsOfMultipleLanguages) {
   ASSERT_EQ(worker_pool_->PopWorkerSync(java_task_spec), java_worker);
 }
 
+TEST_F(WorkerPoolDriverRegisteredTest, StartWorkerWithNodeIdArg) {
+  auto task_id = TaskID::FromRandom(JOB_ID);
+  TaskSpecification task_spec = ExampleTaskSpec(
+      ActorID::Nil(), Language::PYTHON, JOB_ID, ActorID::Nil(), {}, task_id);
+  ASSERT_NE(worker_pool_->PopWorkerSync(task_spec), nullptr);
+  const auto real_command =
+      worker_pool_->GetWorkerCommand(worker_pool_->LastStartedWorkerProcess());
+
+  std::ostringstream stringStream;
+  stringStream << "--node-id=" << worker_pool_->GetNodeID();
+  std::string expected_node_id_arg = stringStream.str();
+
+  bool node_id_arg_found = false;
+  for (const auto &arg : real_command) {
+    if (arg.find(expected_node_id_arg) != std::string::npos) {
+      node_id_arg_found = true;
+      break;
+    }
+  }
+  ASSERT_TRUE(node_id_arg_found);
+}
+
 TEST_F(WorkerPoolDriverRegisteredTest, StartWorkerWithDynamicOptionsCommand) {
   std::vector<std::string> actor_jvm_options;
   actor_jvm_options.insert(

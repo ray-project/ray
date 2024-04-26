@@ -406,6 +406,28 @@ def test_asyncio_actor_shutdown_when_non_async_method_mixed(ray_start_regular_sh
         ray.get([a.ping.remote() for _ in range(10000)])
 
 
+def test_asyncio_actor_argument_collision(ray_start_regular_shared):
+    """Regression test for https://github.com/ray-project/ray/issues/41272."""
+
+    @ray.remote
+    class A:
+        async def hi_async(self, task_id: str, specified_cgname: str):
+            return f"Hi from async: {task_id}! cgname: {specified_cgname}."
+
+        def hi_sync(self, task_id: str, *, specified_cgname: str):
+            return f"Hi from sync: {task_id}! cgname: {specified_cgname}."
+
+    a = A.remote()
+    assert (
+        ray.get(a.hi_async.remote(task_id="TEST", specified_cgname="test2"))
+        == "Hi from async: TEST! cgname: test2."
+    )
+    assert (
+        ray.get(a.hi_sync.remote(task_id="TEST", specified_cgname="test2"))
+        == "Hi from sync: TEST! cgname: test2."
+    )
+
+
 if __name__ == "__main__":
     import pytest
 

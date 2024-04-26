@@ -7,8 +7,8 @@ REQUIREMENTS="$3"
 ECR="$4"
 
 DATAPLANE_S3_BUCKET="ray-release-automation-results"
-DATAPLANE_FILENAME="dataplane_20230718.tgz"
-DATAPLANE_DIGEST="a3ad426b05f5cf1981fe684ccbffc1dded5e1071a99184d1072b7fc7b4daf8bc"
+DATAPLANE_FILENAME="dataplane_20240311.tar.gz"
+DATAPLANE_DIGEST="7b92d447f9da352cf55a92ec865224a212b07a6e86949da4025a826aba4bb3a3"
 
 # download dataplane build file
 aws s3api get-object --bucket "${DATAPLANE_S3_BUCKET}" \

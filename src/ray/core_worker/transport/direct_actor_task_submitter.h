@@ -17,6 +17,7 @@
 #include <boost/asio/thread_pool.hpp>
 #include <boost/thread.hpp>
 #include <list>
+#include <optional>
 #include <queue>
 #include <set>
 #include <utility>
@@ -35,6 +36,7 @@
 #include "ray/core_worker/transport/dependency_resolver.h"
 #include "ray/core_worker/transport/out_of_order_actor_submit_queue.h"
 #include "ray/core_worker/transport/sequential_actor_submit_queue.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray {
@@ -61,6 +63,10 @@ class CoreWorkerDirectActorTaskSubmitterInterface {
 
   virtual void CheckTimeoutTasks() = 0;
 
+  /// Mark that the corresponding actor is preempted (e.g., spot preemption).
+  /// If called, preempted = true will be set in the death cause upon actor death.
+  virtual void SetPreempted(const ActorID &actor_id) = 0;
+
   virtual ~CoreWorkerDirectActorTaskSubmitterInterface() {}
 };
 
@@ -82,6 +88,13 @@ class CoreWorkerDirectActorTaskSubmitter
         io_service_(io_service) {
     next_queueing_warn_threshold_ =
         ::RayConfig::instance().actor_excess_queueing_warn_threshold();
+  }
+
+  void SetPreempted(const ActorID &actor_id) {
+    absl::MutexLock lock(&mu_);
+    if (auto iter = client_queues_.find(actor_id); iter != client_queues_.end()) {
+      iter->second.preempted = true;
+    }
   }
 
   /// Add an actor queue. This should be called whenever a reference to an
@@ -229,6 +242,22 @@ class CoreWorkerDirectActorTaskSubmitter
   void RetryCancelTask(TaskSpecification task_spec, bool recursive, int64_t milliseconds);
 
  private:
+  struct PendingTaskWaitingForDeathInfo {
+    int64_t deadline_ms;
+    TaskSpecification task_spec;
+    ray::Status status;
+    rpc::RayErrorInfo timeout_error_info;
+    bool actor_preempted = false;
+
+    PendingTaskWaitingForDeathInfo(int64_t deadline_ms,
+                                   TaskSpecification task_spec,
+                                   ray::Status status,
+                                   rpc::RayErrorInfo timeout_error_info)
+        : deadline_ms(deadline_ms),
+          task_spec(std::move(task_spec)),
+          status(std::move(status)),
+          timeout_error_info(std::move(timeout_error_info)) {}
+  };
   /// A helper function to get task finisher without holding mu_
   /// We should use this function when access
   /// - FailOrRetryPendingTask
@@ -263,6 +292,8 @@ class CoreWorkerDirectActorTaskSubmitter
     /// indicate that the actor is not yet created. This is used to drop stale
     /// messages from the GCS.
     int64_t num_restarts = -1;
+    /// Whether this actor exits by spot preemption.
+    bool preempted = false;
     /// The RPC client. We use shared_ptr to enable shared_from_this for
     /// pending client callbacks.
     std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client = nullptr;
@@ -277,10 +308,16 @@ class CoreWorkerDirectActorTaskSubmitter
     /// failed using the death_info in notification. For 2) we'll never receive a DEAD
     /// notification, in this case we'll wait for a fixed timeout value and then mark it
     /// as failed.
-    /// pair key: timestamp in ms when this task should be considered as timeout.
-    /// pair value: task specification, and associated task execution status.
-    std::deque<std::pair<int64_t, std::pair<TaskSpecification, Status>>>
-        wait_for_death_info_tasks;
+    ///
+    /// Invariants: tasks are ordered by the field `deadline_ms`.
+    ///
+    /// If we got an actor dead notification, the error_info from that death cause is
+    /// used.
+    /// If a task timed out, it's possible that the Actor is not dead yet, so we use
+    /// `timeout_error_info`. One special case is when the actor is preempted, where
+    /// the actor may not be dead *just yet* but we want to treat it as dead. In this
+    /// case we hard code an error info.
+    std::deque<std::shared_ptr<PendingTaskWaitingForDeathInfo>> wait_for_death_info_tasks;
 
     /// A force-kill request that should be sent to the actor once an RPC
     /// client to the actor is available.
@@ -313,6 +350,9 @@ class CoreWorkerDirectActorTaskSubmitter
     }
   };
 
+  /// Fail the task with the timeout error, or the preempted error.
+  void FailTaskWithError(const PendingTaskWaitingForDeathInfo &task);
+
   /// Push a task to a remote actor via the given client.
   /// Note, this function doesn't return any error status code. If an error occurs while
   /// sending the request, this task will be treated as failed.
@@ -340,9 +380,14 @@ class CoreWorkerDirectActorTaskSubmitter
   /// Resend all previously-received, out-of-order, received tasks for an actor.
   /// When sending these tasks, the tasks will have the flag skip_execution=true.
   ///
+  /// This is useful because we want the replies to be in-order. For the out of order
+  /// completed tasks we resend them to the new restarted actor with skip_execution=True
+  /// and expect those tasks replies to fill the seqno.
+  ///
   /// \param[in] actor_id Actor ID.
   /// \return Void.
-  void ResendOutOfOrderTasks(const ActorID &actor_id) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void ResendOutOfOrderCompletedTasks(const ActorID &actor_id)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Disconnect the RPC client for an actor.
   void DisconnectRpcClient(ClientQueue &queue) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);

@@ -8,7 +8,6 @@ from starlette.responses import RedirectResponse
 import ray
 from ray import serve
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
-from ray.serve.drivers import DAGDriver
 
 
 def test_path_validation(serve_instance):
@@ -57,18 +56,19 @@ def test_routes_endpoint(serve_instance):
         def __call__(self, *args):
             return "D2"
 
-    dag = DAGDriver.bind({"/D1": D1.bind(), "/hello/world": D2.bind()})
-    serve.run(dag)
+    serve.run(D1.bind(), name="app1", route_prefix="/D1")
+    serve.run(D2.bind(), name="app2", route_prefix="/hello/world")
 
     routes = requests.get("http://localhost:8000/-/routes").json()
 
-    assert len(routes) == 1, routes
-    assert "/" in routes, routes
+    assert len(routes) == 2, routes
 
-    assert requests.get("http://localhost:8000/D1").json() == "D1"
+    assert requests.get("http://localhost:8000/D1").text == "D1"
     assert requests.get("http://localhost:8000/D1").status_code == 200
-    assert requests.get("http://localhost:8000/hello/world").json() == "D2"
+    assert requests.get("http://localhost:8000/hello/world").text == "D2"
     assert requests.get("http://localhost:8000/hello/world").status_code == 200
+    assert requests.get("http://localhost:8000/not_exist").status_code == 404
+    assert requests.get("http://localhost:8000/").status_code == 404
 
 
 def test_deployment_without_route(serve_instance):
@@ -160,27 +160,6 @@ def test_path_prefixing_1(serve_instance):
     check_req("/hello/world/") == "3"
     check_req("/hello/world/again/") == "4"
     check_req("/hello/world/again/hi") == '"hi"'
-
-
-def test_multi_dag_with_wrong_route(serve_instance):
-    @serve.deployment
-    class D1:
-        def __call__(self, *args):
-            return "D1"
-
-    @serve.deployment
-    class D2:
-        def __call__(self, *args):
-            return "D2"
-
-    dag = DAGDriver.bind({"/D1": D1.bind(), "/hello/world": D2.bind()})
-
-    serve.run(dag)
-
-    assert requests.get("http://localhost:8000/D1").status_code == 200
-    assert requests.get("http://localhost:8000/hello/world").status_code == 200
-    assert requests.get("http://localhost:8000/not_exist").status_code == 404
-    assert requests.get("http://localhost:8000/").status_code == 404
 
 
 @pytest.mark.parametrize("base_path", ["", "subpath"])

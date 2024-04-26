@@ -43,9 +43,8 @@ This is fixed by added custom filename mappings in `source/conf.py` (look for "a
 #### Deployment Handles
 
 :::{note}
-Ray 2.7 introduces a new {mod}`DeploymentHandle <ray.serve.handle.DeploymentHandle>` API that will replace the existing `RayServeHandle` and `RayServeSyncHandle` APIs.
-Existing code will continue to work, but you are encouraged to opt-in to the new API to avoid breakages in the future.
-To opt into the new API, you can either use `handle.options(use_new_handle_api=True)` on each handle or set it globally via environment variable: `export RAY_SERVE_ENABLE_NEW_HANDLE_API=1`.
+The deprecated `RayServeHandle` and `RayServeSyncHandle` APIs have been fully removed as of Ray 2.10.
+See the [model composition guide](serve-model-composition) for how to update code to use the {mod}`DeploymentHandle <ray.serve.handle.DeploymentHandle>` API instead.
 :::
 
 ```{eval-rst}
@@ -57,8 +56,6 @@ To opt into the new API, you can either use `handle.options(use_new_handle_api=T
    serve.handle.DeploymentHandle
    serve.handle.DeploymentResponse
    serve.handle.DeploymentResponseGenerator
-   serve.handle.RayServeHandle
-   serve.handle.RayServeSyncHandle
 ```
 
 ### Running Applications
@@ -100,6 +97,8 @@ To opt into the new API, you can either use `handle.options(use_new_handle_api=T
    serve.get_multiplexed_model_id
    serve.get_app_handle
    serve.get_deployment_handle
+   serve.grpc_util.RayServegRPCContext
+   serve.exceptions.BackPressureError
 ```
 
 (serve-cli)=
@@ -237,7 +236,7 @@ Content-Type: application/json
                     "deployment_config": {
                         "name": "Translator",
                         "num_replicas": 1,
-                        "max_concurrent_queries": 100,
+                        "max_ongoing_requests": 100,
                         "user_config": {
                             "language": "german"
                         },
@@ -275,7 +274,7 @@ Content-Type: application/json
                     "deployment_config": {
                         "name": "Summarizer",
                         "num_replicas": 1,
-                        "max_concurrent_queries": 100,
+                        "max_ongoing_requests": 100,
                         "user_config": null,
                         "graceful_shutdown_wait_loop_s": 2.0,
                         "graceful_shutdown_timeout_s": 20.0,
@@ -362,7 +361,8 @@ Content-Type: application/json
    schema.ReplicaDetails
 ```
 
-## Metrics API
+## Observability
+
 ```{eval-rst}
 .. autosummary::
    :nosignatures:
@@ -371,4 +371,5 @@ Content-Type: application/json
    metrics.Counter
    metrics.Histogram
    metrics.Gauge
+   schema.LoggingConfig
 ```

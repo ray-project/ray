@@ -1,11 +1,5 @@
-import {
-  Grid,
-  makeStyles,
-  Switch,
-  Tab,
-  TableContainer,
-  Tabs,
-} from "@material-ui/core";
+import { Grid, Switch, Tab, TableContainer, Tabs } from "@mui/material";
+import makeStyles from "@mui/styles/makeStyles";
 import React from "react";
 import { Link } from "react-router-dom";
 import { formatDateFromTimeMs } from "../../common/formatUtils";
@@ -184,7 +178,11 @@ const NodeDetailPage = () => {
             <Grid container spacing={2}>
               <Grid item xs>
                 <div className={classes.label}>Logs</div>{" "}
-                <Link to={`/logs/${encodeURIComponent(nodeDetail.logUrl)}`}>
+                <Link
+                  to={`/logs/?nodeId=${encodeURIComponent(
+                    nodeDetail.raylet.nodeId,
+                  )}`}
+                >
                   log
                 </Link>
               </Grid>

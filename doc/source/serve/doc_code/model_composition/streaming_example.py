@@ -16,12 +16,11 @@ class Streamer:
 
 @serve.deployment
 class Caller:
-    def __init__(self, streamer):
-        self._streamer: DeploymentHandle = streamer.options(
+    def __init__(self, streamer: DeploymentHandle):
+        self._streamer = streamer.options(
             # Must set `stream=True` on the handle, then the output will be a
             # response generator.
             stream=True,
-            use_new_handle_api=True,
         )
 
     async def __call__(self, limit: int) -> AsyncGenerator[int, None]:
@@ -35,7 +34,6 @@ app = Caller.bind(Streamer.bind())
 
 handle: DeploymentHandle = serve.run(app).options(
     stream=True,
-    use_new_handle_api=True,
 )
 
 # Response generator can also be used as a regular generator in a sync context.

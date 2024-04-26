@@ -16,10 +16,8 @@ app = FastAPI()
 @serve.deployment(num_replicas=1)
 @serve.ingress(app)
 class APIIngress:
-    def __init__(self, object_detection_handle) -> None:
-        self.handle: DeploymentHandle = object_detection_handle.options(
-            use_new_handle_api=True,
-        )
+    def __init__(self, object_detection_handle: DeploymentHandle):
+        self.handle = object_detection_handle
 
     @app.get(
         "/detect",
@@ -41,6 +39,7 @@ class ObjectDetection:
     def __init__(self):
         self.model = torch.hub.load("ultralytics/yolov5", "yolov5s")
         self.model.cuda()
+        self.model.to(torch.device(0))
 
     def detect(self, image_url: str):
         result_im = self.model(image_url)

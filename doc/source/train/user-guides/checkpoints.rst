@@ -21,7 +21,7 @@ Saving checkpoints during training
 ----------------------------------
 
 The :class:`Checkpoint <ray.train.Checkpoint>` is a lightweight interface provided
-by Ray Train that represents a *directory* that exists at on local or remote storage.
+by Ray Train that represents a *directory* that exists on local or remote storage.
 
 For example, a checkpoint could point to a directory in cloud storage:
 ``s3://my-bucket/my-checkpoint-dir``.
@@ -146,7 +146,8 @@ Here are a few examples of saving checkpoints with different training frameworks
         evaluation. If users want to keep the best 3 checkpoints according to ``eval_loss``, they
         should align the saving and evaluation frequency. Below are two examples of valid configurations:
 
-        .. code-block:: python
+        .. testcode::
+            :skipif: True
 
             args = TrainingArguments(
                 ...,

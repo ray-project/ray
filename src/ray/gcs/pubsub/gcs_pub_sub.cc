@@ -91,7 +91,7 @@ Status GcsPublisher::PublishError(const std::string &id,
   return Status::OK();
 }
 
-std::string GcsPublisher::DebugString() const { return "GcsPublisher {}"; }
+std::string GcsPublisher::DebugString() const { return publisher_->DebugString(); }
 
 Status GcsSubscriber::SubscribeAllJobs(
     const SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
@@ -283,15 +283,6 @@ Status PythonGcsPublisher::PublishLogs(const std::string &key_id,
   message->set_channel_type(rpc::RAY_LOG_CHANNEL);
   message->set_key_id(key_id);
   message->mutable_log_batch_message()->MergeFrom(log_batch);
-  return DoPublishWithRetries(request, -1, -1);
-}
-
-Status PythonGcsPublisher::PublishFunctionKey(
-    const rpc::PythonFunction &python_function) {
-  rpc::GcsPublishRequest request;
-  auto *message = request.add_pub_messages();
-  message->set_channel_type(rpc::RAY_PYTHON_FUNCTION_CHANNEL);
-  message->mutable_python_function_message()->MergeFrom(python_function);
   return DoPublishWithRetries(request, -1, -1);
 }
 

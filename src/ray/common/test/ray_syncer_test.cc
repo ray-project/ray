@@ -924,8 +924,8 @@ TEST_F(SyncerReactorTest, TestReactorFailure) {
   auto [node_s, node_c] = GetNodeID();
   ASSERT_TRUE(s != nullptr);
   ASSERT_TRUE(c != nullptr);
+  *s->disconnected_ = true;
   s->Finish(grpc::Status::CANCELLED);
-  s->disconnected_ = true;
   auto c_cleanup = client_cleanup.get_future().get();
   ASSERT_EQ(node_s, c_cleanup.first);
   ASSERT_EQ(true, c_cleanup.second);

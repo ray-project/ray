@@ -3,8 +3,10 @@ from typing import Type, Union, Dict, Tuple
 import numpy as np
 from ray.rllib.algorithms import AlgorithmConfig
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.examples.env.cliff_walking_wall_env import CliffWalkingWallEnv
-from ray.rllib.examples.policy.cliff_walking_wall_policy import CliffWalkingWallPolicy
+from ray.rllib.examples.envs.classes.cliff_walking_wall_env import CliffWalkingWallEnv
+from ray.rllib.examples._old_api_stack.policy.cliff_walking_wall_policy import (
+    CliffWalkingWallPolicy,
+)
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.offline.estimators import (
     DirectMethod,
@@ -42,8 +44,7 @@ def get_cliff_walking_wall_policy_and_data(
     config = (
         AlgorithmConfig()
         .debugging(seed=seed)
-        .rollouts(batch_mode="complete_episodes")
-        .environment(disable_env_checking=True)
+        .env_runners(batch_mode="complete_episodes")
         .experimental(_disable_preprocessor_api=True)
     )
     config = config.to_dict()

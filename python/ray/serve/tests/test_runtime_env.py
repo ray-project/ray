@@ -27,7 +27,7 @@ class Test:
 
 handle = serve.run(Test.bind())
 try:
-    ray.get(handle.remote())
+    handle.remote().result()
     assert False, "Should not get here"
 except FileNotFoundError:
     pass
@@ -53,7 +53,7 @@ def test_working_dir_basic(ray_start, tmp_dir, ray_shutdown):
     handle = serve.run(Test.bind())
     print("Deployed")
 
-    assert ray.get(handle.remote()) == "world"
+    assert handle.remote().result() == "world"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
@@ -75,7 +75,7 @@ class Test:
         return open("hello").read()
 
 handle = serve.run(Test.bind(), name="app")
-assert ray.get(handle.remote()) == "world"
+assert handle.remote().result() == "world"
 """
 
     run_string_as_driver(driver1)

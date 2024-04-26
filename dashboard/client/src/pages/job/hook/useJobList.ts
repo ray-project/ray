@@ -1,6 +1,5 @@
-import { useContext, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import useSWR from "swr";
-import { GlobalContext } from "../../../App";
 import { API_REFRESH_INTERVAL_MS } from "../../../common/constants";
 import { getJobList } from "../../../service/job";
 
@@ -8,7 +7,6 @@ export const useJobList = () => {
   const [page, setPage] = useState({ pageSize: 10, pageNo: 1 });
   const [msg, setMsg] = useState("Loading the job list...");
   const [isRefreshing, setRefresh] = useState(true);
-  const { ipLogMap } = useContext(GlobalContext);
   const [filter, setFilter] = useState<
     {
       key: "job_id" | "status";
@@ -59,6 +57,5 @@ export const useJobList = () => {
     page,
     originalJobs: jobList,
     setPage: (key: string, val: number) => setPage({ ...page, [key]: val }),
-    ipLogMap,
   };
 };

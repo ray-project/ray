@@ -1,4 +1,5 @@
 import argparse
+import os
 
 from benchmark import Benchmark
 
@@ -30,5 +31,6 @@ if __name__ == "__main__":
         # This should only read Parquet metadata.
         ray.data.read_parquet(files).count()
 
-    benchmark = Benchmark("parquet-metadata-resolution")
-    benchmark.run_fn("read-metadata", _trigger_parquet_metadata_load)
+    benchmark = Benchmark("parquet_metadata_resolution")
+    benchmark.run_fn("read_metadata", _trigger_parquet_metadata_load)
+    benchmark.write_result(os.environ["TEST_OUTPUT_JSON"])

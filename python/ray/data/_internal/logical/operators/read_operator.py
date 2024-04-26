@@ -13,10 +13,32 @@ class Read(AbstractMap):
         datasource_or_legacy_reader: Union[Datasource, Reader],
         parallelism: int,
         mem_size: Optional[int],
+        num_outputs: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        concurrency: Optional[int] = None,
     ):
-        super().__init__(f"Read{datasource.get_name()}", None, ray_remote_args)
+        super().__init__(
+            f"Read{datasource.get_name()}",
+            None,
+            num_outputs,
+            ray_remote_args=ray_remote_args,
+        )
         self._datasource = datasource
         self._datasource_or_legacy_reader = datasource_or_legacy_reader
         self._parallelism = parallelism
         self._mem_size = mem_size
+        self._concurrency = concurrency
+        self._detected_parallelism = None
+
+    def set_detected_parallelism(self, parallelism: int):
+        """
+        Set the true parallelism that should be used during execution. This
+        should be specified by the user or detected by the optimizer.
+        """
+        self._detected_parallelism = parallelism
+
+    def get_detected_parallelism(self) -> int:
+        """
+        Get the true parallelism that should be used during execution.
+        """
+        return self._detected_parallelism

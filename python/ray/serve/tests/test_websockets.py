@@ -8,7 +8,6 @@ from starlette.responses import StreamingResponse
 from websockets.exceptions import ConnectionClosed
 from websockets.sync.client import connect
 
-import ray
 from ray import serve
 
 
@@ -70,12 +69,12 @@ def test_client_disconnect(serve_instance):
                 self._disconnected.set()
 
     h = serve.run(WebSocketServer.bind())
-    wait_ref = h.wait_for_disconnect.remote()
+    wait_response = h.wait_for_disconnect.remote()
 
     with connect("ws://localhost:8000"):
         print("Client connected.")
 
-    ray.get(wait_ref)
+    wait_response.result()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Hanging on Windows.")

@@ -11,7 +11,7 @@ from starlette.responses import StreamingResponse
 import ray
 from ray import serve
 from ray._private.test_utils import SignalActor
-from ray.serve.handle import RayServeHandle
+from ray.serve.handle import DeploymentHandle
 
 
 @ray.remote
@@ -255,38 +255,32 @@ def test_proxy_from_streaming_handle(
         @serve.deployment
         @serve.ingress(app)
         class SimpleGenerator:
-            def __init__(self, handle: RayServeHandle):
+            def __init__(self, handle: DeploymentHandle):
                 self._h = handle.options(stream=True)
 
             @app.get("/")
             def stream_hi(self, request: Request) -> StreamingResponse:
-                async def consume_obj_ref_gen():
-                    if use_async:
-                        obj_ref_gen = await self._h.hi_gen_async.remote()
-                    else:
-                        obj_ref_gen = await self._h.hi_gen_sync.remote()
-                    async for obj_ref in obj_ref_gen:
-                        yield await obj_ref
+                if use_async:
+                    gen = self._h.hi_gen_async.remote()
+                else:
+                    gen = self._h.hi_gen_sync.remote()
 
-                return StreamingResponse(consume_obj_ref_gen(), media_type="text/plain")
+                return StreamingResponse(gen, media_type="text/plain")
 
     else:
 
         @serve.deployment
         class SimpleGenerator:
-            def __init__(self, handle: RayServeHandle):
+            def __init__(self, handle: DeploymentHandle):
                 self._h = handle.options(stream=True)
 
             def __call__(self, request: Request) -> StreamingResponse:
-                async def consume_obj_ref_gen():
-                    if use_async:
-                        obj_ref_gen = await self._h.hi_gen_async.remote()
-                    else:
-                        obj_ref_gen = await self._h.hi_gen_sync.remote()
-                    async for obj_ref in obj_ref_gen:
-                        yield await obj_ref
+                if use_async:
+                    gen = self._h.hi_gen_async.remote()
+                else:
+                    gen = self._h.hi_gen_sync.remote()
 
-                return StreamingResponse(consume_obj_ref_gen(), media_type="text/plain")
+                return StreamingResponse(gen, media_type="text/plain")
 
     serve.run(SimpleGenerator.bind(Streamer.bind()))
 

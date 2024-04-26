@@ -2,6 +2,13 @@
 
 # Managed Kubernetes services
 
+```{toctree}
+:hidden:
+
+aws-eks-gpu-cluster
+gcp-gke-gpu-cluster
+```
+
 The KubeRay operator and Ray can run on any cloud or on-prem Kubernetes cluster.
 The simplest way to provision a remote Kubernetes cluster is to use a cloud-based managed service.
 We collect a few helpful links for users who are getting started with a managed Kubernetes service.

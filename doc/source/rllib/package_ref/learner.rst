@@ -1,31 +1,67 @@
+
+.. include:: /_includes/rllib/we_are_hiring.rst
+
+.. include:: /_includes/rllib/new_api_stack.rst
+
+.. include:: /_includes/rllib/new_api_stack_component.rst
+
 .. _learner-reference-docs:
+
+
+LearnerGroup API
+================
+
+Configuring a LearnerGroup and Learner Workers
+----------------------------------------------
+
+.. currentmodule:: ray.rllib.algorithms.algorithm_config
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    AlgorithmConfig.resources
+    AlgorithmConfig.rl_module
+    AlgorithmConfig.training
+
+
+Constructing a LearnerGroup
+---------------------------
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    AlgorithmConfig.build_learner_group
+
+
+.. currentmodule:: ray.rllib.core.learner.learner_group
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    LearnerGroup
+
+
 
 Learner API
 ===========
 
-Learner specifications and configurations
------------------------------------------
+
+Constructing a Learner
+----------------------
+
+.. currentmodule:: ray.rllib.algorithms.algorithm_config
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    AlgorithmConfig.build_learner
+
 
 .. currentmodule:: ray.rllib.core.learner.learner
-
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    FrameworkHyperparameters
-    LearnerHyperparameters
-
-TorchLearner configurations
-+++++++++++++++++++++++++++
-
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    TorchCompileWhatToCompile
-
-Constructor
------------
 
 .. autosummary::
     :nosignatures:
@@ -43,7 +79,8 @@ Performing Updates
     :nosignatures:
     :toctree: doc/
 
-    Learner.update
+    Learner.update_from_batch
+    Learner.update_from_episodes
     Learner._update
     Learner.additional_update
     Learner.additional_update_for_module
@@ -133,36 +170,3 @@ Managing Results
     Learner.register_metric
     Learner.register_metrics
     Learner._check_result
-
-
-
-LearnerGroup API
-================
-
-Configuring a LearnerGroup
---------------------------
-
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    LearnerSpec
-
-.. currentmodule:: ray.rllib.core.learner.learner_group
-    
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    LearnerGroup
-
-
-
-
-
-
-
-
-
-
-

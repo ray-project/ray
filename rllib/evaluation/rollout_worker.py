@@ -39,7 +39,7 @@ from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.wrappers.atari_wrappers import is_atari, wrap_deepmind
 from ray.rllib.evaluation.metrics import RolloutMetrics
-from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
+from ray.rllib.evaluation.sampler import SyncSampler
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.preprocessors import Preprocessor
 from ray.rllib.offline import (
@@ -65,8 +65,8 @@ from ray.rllib.policy.sample_batch import (
 )
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
-from ray.rllib.utils import check_env, force_list
-from ray.rllib.utils.annotations import DeveloperAPI, override
+from ray.rllib.utils import force_list
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.error import ERR_MSG_NO_GPUS, HOWTO_CHANGE_CONFIG
@@ -112,7 +112,7 @@ logger = logging.getLogger(__name__)
 _global_worker: Optional["RolloutWorker"] = None
 
 
-@DeveloperAPI
+@OldAPIStack
 def get_global_worker() -> "RolloutWorker":
     """Returns a handle to the active rollout worker in this process."""
 
@@ -132,11 +132,11 @@ def _update_env_seed_if_necessary(
 
     # A single RL job is unlikely to have more than 10K
     # rollout workers.
-    max_num_envs_per_workers: int = 1000
+    max_num_envs_per_env_runner: int = 1000
     assert (
-        worker_idx < max_num_envs_per_workers
+        worker_idx < max_num_envs_per_env_runner
     ), "Too many envs per worker. Random seeds may collide."
-    computed_seed: int = worker_idx * max_num_envs_per_workers + vector_idx + seed
+    computed_seed: int = worker_idx * max_num_envs_per_env_runner + vector_idx + seed
 
     # Gymnasium.env.
     # This will silently fail for most Farama-foundation gymnasium environments.
@@ -155,7 +155,7 @@ def _update_env_seed_if_necessary(
             )
 
 
-@DeveloperAPI
+@OldAPIStack
 class RolloutWorker(ParallelIteratorWorker, EnvRunner):
     """Common experience collection class.
 
@@ -248,8 +248,8 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 through EnvContext so that envs can be configured per worker.
             recreated_worker: Whether this worker is a recreated one. Workers are
                 recreated by an Algorithm (via WorkerSet) in case
-                `recreate_failed_workers=True` and one of the original workers (or an
-                already recreated one) has failed. They don't differ from original
+                `recreate_failed_env_runners=True` and one of the original workers (or
+                an already recreated one) has failed. They don't differ from original
                 workers other than the value of this flag (`self.recreated_worker`).
             log_dir: Directory where logs can be placed.
             spaces: An optional space dict mapping policy IDs
@@ -295,7 +295,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         EnvRunner.__init__(self, config=config)
 
         self.num_workers = (
-            num_workers if num_workers is not None else self.config.num_rollout_workers
+            num_workers if num_workers is not None else self.config.num_env_runners
         )
         # In case we are reading from distributed datasets, store the shards here
         # and pick our shard by our worker-index.
@@ -356,7 +356,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             worker_index=self.worker_index
         )
         self.total_rollout_fragment_length: int = (
-            configured_rollout_fragment_length * self.config.num_envs_per_worker
+            configured_rollout_fragment_length * self.config.num_envs_per_env_runner
         )
         self.preprocessing_enabled: bool = not config._disable_preprocessor_api
         self.last_batch: Optional[SampleBatchType] = None
@@ -409,9 +409,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         clip_rewards = self.config.clip_rewards
 
         if self.env is not None:
-            # Validate environment (general validation function).
-            if not self.config.disable_env_checking:
-                check_env(self.env, self.config)
             # Custom validation function given, typically a function attribute of the
             # Algorithm.
             if validate_env is not None:
@@ -569,11 +566,11 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         # further clones of self.env and creates a RLlib BaseEnv (which is
         # vectorized under the hood).
         else:
-            # Always use vector env for consistency even if num_envs_per_worker=1.
+            # Always use vector env for consistency even if num_envs_per_env_runner=1.
             self.async_env: BaseEnv = convert_to_base_env(
                 self.env,
                 make_env=self.make_sub_env_fn,
-                num_envs=self.config.num_envs_per_worker,
+                num_envs=self.config.num_envs_per_env_runner,
                 remote_envs=self.config.remote_worker_envs,
                 remote_env_batch_wait_ms=self.config.remote_env_batch_wait_ms,
                 worker=self,
@@ -608,23 +605,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
 
         if self.env is None:
             self.sampler = None
-        elif self.config.sample_async:
-            self.sampler = AsyncSampler(
-                worker=self,
-                env=self.async_env,
-                clip_rewards=clip_rewards,
-                rollout_fragment_length=rollout_fragment_length_for_sampler,
-                count_steps_by=self.config.count_steps_by,
-                callbacks=self.callbacks,
-                multiple_episodes_in_batch=pack,
-                normalize_actions=self.config.normalize_actions,
-                clip_actions=self.config.clip_actions,
-                observation_fn=self.config.observation_fn,
-                sample_collector_class=self.config.sample_collector,
-                render=render,
-            )
-            # Start the Sampler thread.
-            self.sampler.start()
         else:
             self.sampler = SyncSampler(
                 worker=self,
@@ -651,12 +631,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         # The current weights sequence number (version). May remain None for when
         # not tracking weights versions.
         self.weights_seq_no: Optional[int] = None
-
-        logger.debug(
-            "Created rollout worker with env {} ({}), policies {}".format(
-                self.async_env, self.env, self.policy_map
-            )
-        )
 
     @override(EnvRunner)
     def assert_healthy(self):
@@ -1488,12 +1462,15 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
     def get_weights(
         self,
         policies: Optional[Container[PolicyID]] = None,
+        inference_only: bool = False,
     ) -> Dict[PolicyID, ModelWeights]:
         """Returns each policies' model weights of this worker.
 
         Args:
             policies: List of PolicyIDs to get the weights from.
                 Use None for all policies.
+            inference_only: This argument is only added for interface
+                consistency with the new api stack.
 
         Returns:
             Dict mapping PolicyIDs to ModelWeights.
@@ -1648,10 +1625,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         if self.env is not None:
             self.async_env.stop()
 
-        # In case we have-an AsyncSampler, kill its sampling thread.
-        if hasattr(self, "sampler") and isinstance(self.sampler, AsyncSampler):
-            self.sampler.shutdown = True
-
         # Close all policies' sessions (if tf static graph).
         for policy in self.policy_map.cache.values():
             sess = policy.get_session()
@@ -1691,17 +1664,14 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         """Returns the kwargs dict used to create this worker."""
         return self._original_kwargs
 
-    @DeveloperAPI
     def get_host(self) -> str:
         """Returns the hostname of the process running this evaluator."""
         return platform.node()
 
-    @DeveloperAPI
     def get_node_ip(self) -> str:
         """Returns the IP address of the node that this worker runs on."""
         return ray.util.get_node_ip_address()
 
-    @DeveloperAPI
     def find_free_port(self) -> int:
         """Finds a free port on the node that this worker runs on."""
         from ray.air._internal.util import find_free_port
@@ -1971,8 +1941,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         # A callable returning an InputReader object to use.
         if isinstance(self.config.input_, FunctionType):
             return self.config.input_
-        # Use RLlib's Sampler classes (SyncSampler or AsynchSampler, depending
-        # on `config.sample_async` setting).
+        # Use RLlib's Sampler classes (SyncSampler).
         elif self.config.input_ == "sampler":
             return lambda ioctx: ioctx.default_sampler_input()
         # Ray Dataset input -> Use `config.input_config` to construct DatasetReader.
@@ -2035,8 +2004,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
     def _get_make_sub_env_fn(
         self, env_creator, env_context, validate_env, env_wrapper, seed
     ):
-        config = self.config
-
         def _make_sub_env_local(vector_index):
             # Used to created additional environments during environment
             # vectorization.
@@ -2046,20 +2013,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             env_ctx = env_context.copy_with_overrides(vector_index=vector_index)
             # Create the sub-env.
             env = env_creator(env_ctx)
-            # Validate first.
-            if not config.disable_env_checking:
-                try:
-                    check_env(env, config)
-                except Exception as e:
-                    logger.warning(
-                        "We've added a module for checking environments that "
-                        "are used in experiments. Your env may not be set up"
-                        "correctly. You can disable env checking for now by setting "
-                        "`disable_env_checking` to True in your experiment config "
-                        "dictionary. You can run the environment checking module "
-                        "standalone by calling ray.rllib.utils.check_env(env)."
-                    )
-                    raise e
             # Custom validation function given by user.
             if validate_env is not None:
                 validate_env(env, env_ctx)

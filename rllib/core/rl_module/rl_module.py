@@ -16,13 +16,7 @@ if TYPE_CHECKING:
     from ray.rllib.core.models.catalog import Catalog
 
 import ray
-from ray.rllib.utils.annotations import (
-    ExperimentalAPI,
-    OverrideToImplementCustomLogic_CallToSuperRecommended,
-)
-from ray.rllib.utils.typing import ViewRequirementsDict
-from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
-from ray.rllib.core.models.base import STATE_IN, STATE_OUT
+from ray.rllib.core.columns import Columns
 from ray.rllib.policy.policy import get_gym_space_from_struct_of_tensors
 from ray.rllib.policy.view_requirement import ViewRequirement
 
@@ -34,18 +28,22 @@ from ray.rllib.core.models.specs.checker import (
 )
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.utils.annotations import (
+    ExperimentalAPI,
+    OverrideToImplementCustomLogic,
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
+)
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.typing import SampleBatchType
 from ray.rllib.utils.serialization import (
     gym_space_from_dict,
     gym_space_to_dict,
     serialize_type,
     deserialize_type,
 )
+from ray.rllib.utils.typing import SampleBatchType, ViewRequirementsDict
 
 
-ModuleID = str
 RLMODULE_METADATA_FILE_NAME = "rl_module_metadata.json"
 RLMODULE_METADATA_SPEC_CLASS_KEY = "module_spec_class"
 RLMODULE_METADATA_SPEC_KEY = "module_spec_dict"
@@ -149,19 +147,43 @@ class SingleAgentRLModuleSpec:
         )
         return spec
 
-    def update(self, other) -> None:
-        """Updates this spec with the given other spec. Works like dict.update()."""
+    def update(self, other, override: bool = True) -> None:
+        """Updates this spec with the given other spec. Works like dict.update().
+
+        Args:
+            other: The other SingleAgentRLModule spec to update this one from.
+            override: Whether to update all properties in `self` with those of `other.
+                If False, only update those properties in `self` that are not None.
+        """
         if not isinstance(other, SingleAgentRLModuleSpec):
             raise ValueError("Can only update with another SingleAgentRLModuleSpec.")
 
         # If the field is None in the other, keep the current field, otherwise update
         # with the new value.
-        self.module_class = other.module_class or self.module_class
-        self.observation_space = other.observation_space or self.observation_space
-        self.action_space = other.action_space or self.action_space
-        self.model_config_dict = other.model_config_dict or self.model_config_dict
-        self.catalog_class = other.catalog_class or self.catalog_class
-        self.load_state_path = other.load_state_path or self.load_state_path
+        if override:
+            self.module_class = other.module_class or self.module_class
+            self.observation_space = other.observation_space or self.observation_space
+            self.action_space = other.action_space or self.action_space
+            self.model_config_dict = other.model_config_dict or self.model_config_dict
+            self.catalog_class = other.catalog_class or self.catalog_class
+            self.load_state_path = other.load_state_path or self.load_state_path
+        # Only override, if the field is None in `self`.
+        else:
+            self.module_class = self.module_class or other.module_class
+            self.observation_space = self.observation_space or other.observation_space
+            self.action_space = self.action_space or other.action_space
+            self.model_config_dict = self.model_config_dict or other.model_config_dict
+            self.catalog_class = self.catalog_class or other.catalog_class
+            self.load_state_path = self.load_state_path or other.load_state_path
+
+    def as_multi_agent(self) -> "MultiAgentRLModuleSpec":
+        """Returns a MultiAgentRLModuleSpec (`self` under DEFAULT_POLICY_ID key)."""
+        from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+
+        return MultiAgentRLModuleSpec(
+            module_specs={DEFAULT_POLICY_ID: self},
+            load_state_path=self.load_state_path,
+        )
 
 
 @ExperimentalAPI
@@ -335,11 +357,11 @@ class RLModule(abc.ABC):
         config: The config for the RLModule.
 
     Abstract Methods:
-        :py:meth:`~forward_train`: Forward pass during training.
+        :py:meth:`~_forward_train`: Forward pass during training.
 
-        :py:meth:`~forward_exploration`: Forward pass during training for exploration.
+        :py:meth:`~_forward_exploration`: Forward pass during training for exploration.
 
-        :py:meth:`~forward_inference`: Forward pass during inference.
+        :py:meth:`~_forward_inference`: Forward pass during inference.
 
 
     Note:
@@ -352,9 +374,28 @@ class RLModule(abc.ABC):
     """
 
     framework: str = None
+    inference_only: bool = None
 
     def __init__(self, config: RLModuleConfig):
         self.config = config
+
+        from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
+
+        if isinstance(self, MultiAgentRLModule) or not hasattr(
+            self.config, "model_config_dict"
+        ):
+            # A MARL module is always a learner module b/c it only contains
+            # the single-agent modules. Each of the contained modules can be
+            # single.
+            self.inference_only = False
+        else:
+            # By default, each module is a learner module and contains all
+            # building blocks, such as target networks or critic networks
+            # used in the training process.
+            self.inference_only = self.config.model_config_dict.get(
+                "_inference_only", False
+            )
+
         # Make sure, `setup()` is only called once, no matter what. In some cases
         # of multiple inheritance (and with our __post_init__ functionality in place,
         # this might get called twice.
@@ -466,7 +507,7 @@ class RLModule(abc.ABC):
 
     @OverrideToImplementCustomLogic
     def get_initial_state(self) -> Any:
-        """Returns the initial state of the module.
+        """Returns the initial state of the RLModule.
 
         This can be used for recurrent models.
         """
@@ -474,9 +515,9 @@ class RLModule(abc.ABC):
 
     @OverrideToImplementCustomLogic
     def is_stateful(self) -> bool:
-        """Returns True if the initial state is empty.
+        """Returns False if the initial state is an empty dict (or None).
 
-        By default, RLlib assumes that the module is not recurrent if the initial
+        By default, RLlib assumes that the module is non-recurrent if the initial
         state is an empty dict and recurrent otherwise.
         This behavior can be overridden by implementing this method.
         """
@@ -512,8 +553,8 @@ class RLModule(abc.ABC):
             space = get_gym_space_from_struct_of_tensors(init_state, batched_input=True)
             max_seq_len = self.config.model_config_dict["max_seq_len"]
             assert max_seq_len is not None
-            defaults[STATE_IN] = ViewRequirement(
-                data_col=STATE_OUT,
+            defaults[Columns.STATE_IN] = ViewRequirement(
+                data_col=Columns.STATE_OUT,
                 shift=-1,
                 used_for_compute_actions=True,
                 used_for_training=True,
@@ -523,7 +564,7 @@ class RLModule(abc.ABC):
 
             if self.config.model_config_dict["lstm_use_prev_action"]:
                 defaults[SampleBatch.PREV_ACTIONS] = ViewRequirement(
-                    data_col=SampleBatch.ACTIONS,
+                    data_col=Columns.ACTIONS,
                     shift=-1,
                     used_for_compute_actions=True,
                     used_for_training=True,
@@ -531,14 +572,14 @@ class RLModule(abc.ABC):
 
             if self.config.model_config_dict["lstm_use_prev_reward"]:
                 defaults[SampleBatch.PREV_REWARDS] = ViewRequirement(
-                    data_col=SampleBatch.REWARDS,
+                    data_col=Columns.REWARDS,
                     shift=-1,
                     used_for_compute_actions=True,
                     used_for_training=True,
                 )
 
-            defaults[STATE_OUT] = ViewRequirement(
-                data_col=STATE_OUT,
+            defaults[Columns.STATE_OUT] = ViewRequirement(
+                data_col=Columns.STATE_OUT,
                 used_for_compute_actions=False,
                 used_for_training=True,
                 space=space,
@@ -548,24 +589,28 @@ class RLModule(abc.ABC):
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def output_specs_inference(self) -> SpecType:
-        """Returns the output specs of the forward_inference method.
+        """Returns the output specs of the `forward_inference()` method.
 
         Override this method to customize the output specs of the inference call.
-        The default implementation requires the forward_inference to return a dict that
-        has `action_dist` key and its value is an instance of `Distribution`.
-        This assumption must always hold.
+        The default implementation requires the `forward_inference()` method to return
+        a dict that has `action_dist` key and its value is an instance of
+        `Distribution`.
         """
+        # TODO (sven): We should probably change this to [ACTION_DIST_INPUTS], b/c this
+        #  is what most algos will do.
         return {"action_dist": Distribution}
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def output_specs_exploration(self) -> SpecType:
-        """Returns the output specs of the forward_exploration method.
+        """Returns the output specs of the `forward_exploration()` method.
 
-        Override this method to customize the output specs of the inference call.
-        The default implementation requires the forward_exploration to reutn a dict
-        that has `action_dist` key and its value is an instance of
-        `Distribution`. This assumption must always hold.
+        Override this method to customize the output specs of the exploration call.
+        The default implementation requires the `forward_exploration()` method to return
+        a dict that has `action_dist` key and its value is an instance of
+        `Distribution`.
         """
+        # TODO (sven): We should probably change this to [ACTION_DIST_INPUTS], b/c this
+        #  is what most algos will do.
         return {"action_dist": Distribution}
 
     def output_specs_train(self) -> SpecType:
@@ -586,7 +631,7 @@ class RLModule(abc.ABC):
 
     def _default_input_specs(self) -> SpecType:
         """Returns the default input specs."""
-        return [SampleBatch.OBS]
+        return [Columns.OBS]
 
     @check_input_specs("_input_specs_inference")
     @check_output_specs("_output_specs_inference")
@@ -628,7 +673,7 @@ class RLModule(abc.ABC):
 
         Returns:
             The output of the forward pass. This output should comply with the
-            ouptut_specs_exploration().
+            output_specs_exploration().
         """
         return self._forward_exploration(batch, **kwargs)
 
@@ -649,7 +694,7 @@ class RLModule(abc.ABC):
 
         Returns:
             The output of the forward pass. This output should comply with the
-            ouptut_specs_train().
+            output_specs_train().
         """
         return self._forward_train(batch, **kwargs)
 
@@ -657,30 +702,36 @@ class RLModule(abc.ABC):
     def _forward_train(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
         """Forward-pass during training. See forward_train for details."""
 
-    @abc.abstractmethod
-    def get_state(self) -> Mapping[str, Any]:
+    @OverrideToImplementCustomLogic
+    def get_state(self, inference_only: bool = False) -> Mapping[str, Any]:
         """Returns the state dict of the module."""
+        return {}
 
-    @abc.abstractmethod
+    @OverrideToImplementCustomLogic
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
         """Sets the state dict of the module."""
+        pass
 
+    @OverrideToImplementCustomLogic
     def save_state(self, dir: Union[str, pathlib.Path]) -> None:
         """Saves the weights of this RLModule to the directory dir.
 
         Args:
             dir: The directory to save the checkpoint to.
-
         """
-        raise NotImplementedError
+        pass
 
-    def load_state(self, dir: Union[str, pathlib.Path]) -> None:
+    @OverrideToImplementCustomLogic
+    def load_state(
+        self,
+        dir: Union[str, pathlib.Path],
+    ) -> None:
         """Loads the weights of an RLModule from the directory dir.
 
         Args:
             dir: The directory to load the checkpoint from.
         """
-        raise NotImplementedError
+        pass
 
     def _module_metadata(
         self,

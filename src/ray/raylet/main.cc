@@ -29,6 +29,8 @@
 #include "ray/raylet/raylet.h"
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
+#include "ray/util/process.h"
+#include "ray/util/subreaper.h"
 
 using json = nlohmann::json;
 
@@ -39,6 +41,7 @@ DEFINE_int32(node_manager_port, -1, "The port of node manager.");
 DEFINE_int32(metrics_agent_port, -1, "The port of metrics agent.");
 DEFINE_int32(metrics_export_port, 1, "The port at which metrics are exposed.");
 DEFINE_int32(runtime_env_agent_port, 1, "The port of runtime env agent.");
+DEFINE_string(node_id, "", "The id of this node.");
 DEFINE_string(node_ip_address, "", "The ip address of this node.");
 DEFINE_string(gcs_address, "", "The address of the GCS server, including IP and port.");
 DEFINE_int32(min_worker_port,
@@ -141,6 +144,8 @@ int main(int argc, char *argv[]) {
   const int node_manager_port = static_cast<int>(FLAGS_node_manager_port);
   const int metrics_agent_port = static_cast<int>(FLAGS_metrics_agent_port);
   const int runtime_env_agent_port = static_cast<int>(FLAGS_runtime_env_agent_port);
+  RAY_CHECK_NE(FLAGS_node_id, "") << "Expected node ID.";
+  const std::string node_id = FLAGS_node_id;
   const std::string node_ip_address = FLAGS_node_ip_address;
   const int min_worker_port = static_cast<int>(FLAGS_min_worker_port);
   const int max_worker_port = static_cast<int>(FLAGS_max_worker_port);
@@ -193,12 +198,50 @@ int main(int argc, char *argv[]) {
   RAY_CHECK_OK(gcs_client->Connect(main_service, cluster_id));
   std::unique_ptr<ray::raylet::Raylet> raylet;
 
+  // Enable subreaper. This is called in `AsyncGetInternalConfig` below, but MSVC does
+  // not allow a macro invocation (#ifdef) in another macro invocation (RAY_CHECK_OK),
+  // so we have to put it here.
+  auto enable_subreaper = [&]() {
+#ifdef __linux__
+    if (ray::SetThisProcessAsSubreaper()) {
+      ray::KnownChildrenTracker::instance().Enable();
+      ray::SetupSigchldHandlerRemoveKnownChildren(main_service);
+      auto runner = std::make_shared<ray::PeriodicalRunner>(main_service);
+      runner->RunFnPeriodically([runner]() { ray::KillUnknownChildren(); },
+                                /*period_ms=*/10000,
+                                "Raylet.KillUnknownChildren");
+      RAY_LOG(INFO) << "Set this process as subreaper. Will kill unknown children every "
+                       "10 seconds.";
+    } else {
+      RAY_LOG(WARNING) << "Failed to set this process as subreaper. Will not kill "
+                          "unknown children.";
+      ray::SetSigchldIgnore();
+    }
+#else
+    RAY_LOG(WARNING) << "Subreaper is not supported on this platform. Will not "
+                        "kill unknown children.";
+    ray::SetSigchldIgnore();
+#endif
+  };
+
   RAY_CHECK_OK(gcs_client->Nodes().AsyncGetInternalConfig(
       [&](::ray::Status status,
           const boost::optional<std::string> &stored_raylet_config) {
         RAY_CHECK_OK(status);
         RAY_CHECK(stored_raylet_config.has_value());
         RayConfig::instance().initialize(stored_raylet_config.get());
+
+        // Core worker tries to kill child processes when it exits. But they can't do
+        // it perfectly: if the core worker is killed by SIGKILL, the child processes
+        // leak. So in raylet we also kill child processes via Linux subreaper.
+        // Only works on Linux >= 3.4.
+        if (RayConfig::instance()
+                .kill_child_processes_on_worker_exit_with_raylet_subreaper()) {
+          enable_subreaper();
+        } else {
+          RAY_LOG(INFO) << "Raylet is not set to kill unknown children.";
+          ray::SetSigchldIgnore();
+        }
 
         // Parse the worker port list.
         std::istringstream worker_port_list_string(worker_port_list);
@@ -304,6 +347,10 @@ int main(int argc, char *argv[]) {
 
         object_manager_config.rpc_service_threads_number =
             std::min(std::max(2, num_cpus / 4), 8);
+        if (RayConfig::instance().object_manager_rpc_threads_num() != 0) {
+          object_manager_config.rpc_service_threads_number =
+              RayConfig::instance().object_manager_rpc_threads_num();
+        }
         object_manager_config.object_chunk_size =
             RayConfig::instance().object_manager_default_chunk_size();
 
@@ -321,11 +368,9 @@ int main(int argc, char *argv[]) {
             {ray::stats::SessionNameKey, session_name}};
         ray::stats::Init(global_tags, metrics_agent_port, WorkerID::Nil());
 
-        ray::NodeID raylet_node_id{
-            (!RayConfig::instance().OVERRIDE_NODE_ID_FOR_TESTING().empty())
-                ? ray::NodeID::FromHex(
-                      RayConfig::instance().OVERRIDE_NODE_ID_FOR_TESTING())
-                : ray::NodeID::FromRandom()};
+        RAY_LOG(INFO) << "Setting node ID to: " << node_id;
+        ray::NodeID raylet_node_id = ray::NodeID::FromHex(node_id);
+
         node_manager_config.AddDefaultLabels(raylet_node_id.Hex());
         // Initialize the node manager.
         raylet = std::make_unique<ray::raylet::Raylet>(main_service,

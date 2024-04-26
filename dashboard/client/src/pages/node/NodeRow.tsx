@@ -1,16 +1,17 @@
 import {
   Box,
-  createStyles,
   IconButton,
-  makeStyles,
+  Link,
   TableCell,
   TableRow,
   Tooltip,
-} from "@material-ui/core";
+} from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import { sortBy } from "lodash";
 import React, { useState } from "react";
 import { RiArrowDownSLine, RiArrowRightSLine } from "react-icons/ri";
-import { Link } from "react-router-dom";
+import { Link as RouterLink } from "react-router-dom";
 import useSWR from "swr";
 import { CodeDialogButtonWithPreview } from "../../common/CodeDialogButton";
 import { API_REFRESH_INTERVAL_MS } from "../../common/constants";
@@ -18,6 +19,7 @@ import { NodeLink } from "../../common/links";
 import {
   CpuProfilingLink,
   CpuStackTraceLink,
+  MemoryProfilingButton,
 } from "../../common/ProfilingLink";
 import rowStyles from "../../common/RowStyles";
 import PercentageBar from "../../components/PercentageBar";
@@ -95,7 +97,6 @@ export const NodeRow = ({
     disk,
     networkSpeed = [0, 0],
     raylet,
-    logUrl,
     logicalResources,
   } = node;
 
@@ -127,7 +128,7 @@ export const NodeRow = ({
         <StatusChip type="node" status={raylet.state} />
       </TableCell>
       <TableCell align="center">
-        <Tooltip title={raylet.nodeId} arrow interactive>
+        <Tooltip title={raylet.nodeId} arrow>
           <div>
             <NodeLink
               nodeId={raylet.nodeId}
@@ -145,8 +146,8 @@ export const NodeRow = ({
       <TableCell>
         {raylet.state !== "DEAD" && (
           <Link
-            to={`/logs/${encodeURIComponent(logUrl)}`}
-            style={{ textDecoration: "none" }}
+            component={RouterLink}
+            to={`/logs/?nodeId=${encodeURIComponent(raylet.nodeId)}`}
           >
             Log
           </Link>
@@ -237,7 +238,11 @@ type WorkerRowProps = {
 export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
   const classes = rowStyles();
 
-  const { ip, mem, logUrl } = node;
+  const {
+    ip,
+    mem,
+    raylet: { nodeId },
+  } = node;
   const {
     pid,
     cpuPercent: cpu = 0,
@@ -248,8 +253,8 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
 
   const coreWorker = coreWorkerStats.length ? coreWorkerStats[0] : undefined;
   const workerLogUrl =
-    `/logs/${encodeURIComponent(logUrl)}` +
-    (coreWorker ? `?fileName=${coreWorker.workerId}` : "");
+    `/logs/?nodeId=${encodeURIComponent(nodeId)}` +
+    (coreWorker ? `&fileName=${coreWorker.workerId}` : "");
 
   return (
     <TableRow>
@@ -262,25 +267,22 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
       </TableCell>
       <TableCell align="center">
         {coreWorker && (
-          <Tooltip title={coreWorker.workerId} arrow interactive>
+          <Tooltip title={coreWorker.workerId} arrow>
             <span className={classes.idCol}>{coreWorker.workerId}</span>
           </Tooltip>
         )}
       </TableCell>
       <TableCell align="center">{pid}</TableCell>
       <TableCell>
-        <Link
-          to={workerLogUrl}
-          target="_blank"
-          style={{ textDecoration: "none" }}
-        >
+        <Link component={RouterLink} to={workerLogUrl} target="_blank">
           Log
         </Link>
         <br />
-        <CpuStackTraceLink pid={pid} ip={ip} type="" />
-        <br />
         <CpuProfilingLink pid={pid} ip={ip} type="" />
         <br />
+        <CpuStackTraceLink pid={pid} ip={ip} type="" />
+        <br />
+        <MemoryProfilingButton pid={pid} ip={ip} />
       </TableCell>
       <TableCell>
         <PercentageBar num={Number(cpu)} total={100}>
@@ -297,10 +299,10 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
         )}
       </TableCell>
       <TableCell>
-        <WorkerGpuRow worker={worker} node={node} />
+        <WorkerGpuRow workerPID={pid} gpus={node.gpus} />
       </TableCell>
       <TableCell>
-        <WorkerGRAM worker={worker} node={node} />
+        <WorkerGRAM workerPID={pid} gpus={node.gpus} />
       </TableCell>
       <TableCell>N/A</TableCell>
       <TableCell>N/A</TableCell>

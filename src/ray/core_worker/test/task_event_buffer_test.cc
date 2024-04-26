@@ -16,6 +16,9 @@
 
 #include <google/protobuf/util/message_differencer.h>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/types/optional.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
@@ -61,11 +64,19 @@ class TaskEventBufferTest : public ::testing::Test {
     return task_ids;
   }
 
-  std::unique_ptr<TaskEvent> GenStatusTaskEvent(TaskID task_id,
-                                                int32_t attempt_num,
-                                                int64_t running_ts = 1) {
-    return std::make_unique<TaskStatusEvent>(
-        task_id, JobID::FromInt(0), attempt_num, rpc::TaskStatus::RUNNING, running_ts);
+  std::unique_ptr<TaskEvent> GenStatusTaskEvent(
+      TaskID task_id,
+      int32_t attempt_num,
+      int64_t running_ts = 1,
+      absl::optional<const TaskStatusEvent::TaskStateUpdate> state_update =
+          absl::nullopt) {
+    return std::make_unique<TaskStatusEvent>(task_id,
+                                             JobID::FromInt(0),
+                                             attempt_num,
+                                             rpc::TaskStatus::RUNNING,
+                                             running_ts,
+                                             nullptr,
+                                             state_update);
   }
 
   std::unique_ptr<TaskEvent> GenProfileTaskEvent(TaskID task_id, int32_t attempt_num) {
@@ -508,6 +519,22 @@ TEST_F(TaskEventBufferTestLimitProfileEvents, TestLimitProfileEventsPerTask) {
   ASSERT_EQ(task_event_buffer_->GetTotalNumProfileTaskEventsDropped(),
             num_total_profile_events - num_profile_events_per_task);
   ASSERT_EQ(task_event_buffer_->GetTotalNumStatusTaskEventsDropped(), 0);
+}
+
+TEST_F(TaskEventBufferTest, TestIsDebuggerPausedFlag) {
+  // Generate the event
+  auto task_id = RandomTaskId();
+  TaskStatusEvent::TaskStateUpdate state_update(true);
+  auto task_event = GenStatusTaskEvent(task_id, 0, 1, state_update);
+
+  // Convert to rpc
+  rpc::TaskEventData expected_data;
+  expected_data.set_num_profile_events_dropped(0);
+  auto event = expected_data.add_events_by_task();
+  task_event->ToRpcTaskEvents(event);
+
+  // Verify the flag is set
+  ASSERT_TRUE(event->state_updates().is_debugger_paused());
 }
 
 TEST_F(TaskEventBufferTest, TestGracefulDestruction) {

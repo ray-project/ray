@@ -33,7 +33,7 @@ class Actor(FaultAwareApply):
         self.count = 0
         self.maybe_crash = maybe_crash
         self.config = {
-            "recreate_failed_workers": True,
+            "recreate_failed_env_runners": True,
         }
 
     def _maybe_crash(self):
@@ -366,7 +366,7 @@ class TestActorManager(unittest.TestCase):
 
         manager.foreach_actor_async(lambda w: w.ping(), tag="pingpong")
         manager.foreach_actor_async(lambda w: w.call(), tag="call")
-        time.sleep(1)
+        time.sleep(2)
         results_ping_pong = manager.fetch_ready_async_reqs(
             tags="pingpong", timeout_seconds=5
         )

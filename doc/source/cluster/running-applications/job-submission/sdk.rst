@@ -48,13 +48,14 @@ Let's start with a sample script that can be run locally. The following script u
     ray.init()
     print(ray.get(hello_world.remote()))
 
-SDK calls are made via a ``JobSubmissionClient`` object.  To initialize the client, provide the Ray cluster head node address and the port used by the Ray Dashboard (``8265`` by default). For this example, we'll use a local Ray cluster, but the same example will work for remote Ray cluster addresses.
+SDK calls are made via a ``JobSubmissionClient`` object.  To initialize the client, provide the Ray cluster head node address and the port used by the Ray Dashboard (``8265`` by default). For this example, we'll use a local Ray cluster, but the same example will work for remote Ray cluster addresses; see 
+:ref:`Using a Remote Cluster <jobs-remote-cluster>` for details on setting up port forwarding.
 
 .. code-block:: python
 
     from ray.job_submission import JobSubmissionClient
 
-    # If using a remote cluster, replace 127.0.0.1 with the head node's IP address.
+    # If using a remote cluster, replace 127.0.0.1 with the head node's IP address or set up port forwarding.
     client = JobSubmissionClient("http://127.0.0.1:8265")
     job_id = client.submit_job(
         # Entrypoint shell command to execute
@@ -183,14 +184,18 @@ Using the Python SDK, the syntax looks something like this:
 For full details, see the :ref:`API Reference <ray-job-submission-sdk-ref>`.
 
 
+.. _ray-job-cpu-gpu-resources:
+
 Specifying CPU and GPU resources
 --------------------------------
 
-We recommend doing heavy computation within Ray tasks, actors, or Ray libraries, not directly in the top level of your entrypoint script.
+By default, the job entrypoint script always runs on the head node. We recommend doing heavy computation within Ray tasks, actors, or Ray libraries, not directly in the top level of your entrypoint script.
 No extra configuration is needed to do this.
 
 However, if you need to do computation directly in the entrypoint script and would like to reserve CPU and GPU resources for the entrypoint script, you may specify the ``entrypoint_num_cpus``, ``entrypoint_num_gpus``, ``entrypoint_memory`` and ``entrypoint_resources`` arguments to ``submit_job``.  These arguments function
 identically to the ``num_cpus``, ``num_gpus``, ``resources``, and ``_memory`` arguments to ``@ray.remote()`` decorator for tasks and actors as described in :ref:`resource-requirements`.
+
+If any of these arguments are specified, the entrypoint script will be scheduled on a node with at least the specified resources, instead of the head node, which is the default.  For example, the following code will schedule the entrypoint script on a node with at least 1 GPU:
 
 .. code-block:: python
 

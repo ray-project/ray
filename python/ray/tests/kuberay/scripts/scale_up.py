@@ -1,19 +1,25 @@
 import ray
-from ray._private import test_utils
+from ray._private.test_utils import wait_for_condition
 
 
-@test_utils.wait_for_stdout(
-    strings_to_match=["Adding 1 node(s) of type small-group."], timeout_s=15
-)
 def main():
-    """Submits CPU request.
-    Wait 15 sec for autoscaler scale-up event to get emitted to stdout.
-
-    The autoscaler update interval is 5 sec, so it should be enough to wait 5 seconds.
-    An extra ten seconds are added to the timeout as a generous buffer against
-    flakiness.
-    """
+    """Submits CPU request"""
     ray.autoscaler.sdk.request_resources(num_cpus=2)
+    from ray.autoscaler.v2.sdk import get_cluster_status
+    from ray.autoscaler.v2.utils import ClusterStatusFormatter
+
+    gcs_address = ray.get_runtime_context().gcs_address
+
+    def verify():
+        cluster_resources = ray.cluster_resources()
+
+        cluster_status = get_cluster_status(gcs_address)
+        print(ClusterStatusFormatter.format(cluster_status, verbose=True))
+        assert cluster_resources.get("CPU", 0) == 2, cluster_resources
+
+        return True
+
+    wait_for_condition(verify, timeout=60, retry_interval_ms=2000)
 
 
 if __name__ == "__main__":

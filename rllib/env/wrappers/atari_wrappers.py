@@ -2,7 +2,7 @@ from collections import deque
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
-from typing import Union
+from typing import Optional, Union
 
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.images import rgb2gray, resize
@@ -44,6 +44,158 @@ def get_wrapper_by_cls(env, cls):
             currentenv = currentenv.env
         else:
             return None
+
+
+@PublicAPI
+class ClipRewardEnv(gym.RewardWrapper):
+    def __init__(self, env):
+        gym.RewardWrapper.__init__(self, env)
+
+    def reward(self, reward):
+        """Bin reward to {+1, 0, -1} by its sign."""
+        return np.sign(reward)
+
+
+@PublicAPI
+class EpisodicLifeEnv(gym.Wrapper):
+    def __init__(self, env):
+        """Make end-of-life == end-of-episode, but only reset on true game over.
+        Done by DeepMind for the DQN and co. since it helps value estimation.
+        """
+        gym.Wrapper.__init__(self, env)
+        self.lives = 0
+        self.was_real_terminated = True
+
+    def step(self, action):
+        obs, reward, terminated, truncated, info = self.env.step(action)
+        self.was_real_terminated = terminated
+        # check current lives, make loss of life terminal,
+        # then update lives to handle bonus lives
+        lives = self.env.unwrapped.ale.lives()
+        if lives < self.lives and lives > 0:
+            # for Qbert sometimes we stay in lives == 0 condtion for a few fr
+            # so its important to keep lives > 0, so that we only reset once
+            # the environment advertises `terminated`.
+            terminated = True
+        self.lives = lives
+        return obs, reward, terminated, truncated, info
+
+    def reset(self, **kwargs):
+        """Reset only when lives are exhausted.
+        This way all states are still reachable even though lives are episodic,
+        and the learner need not know about any of this behind-the-scenes.
+        """
+        if self.was_real_terminated:
+            obs, info = self.env.reset(**kwargs)
+        else:
+            # no-op step to advance from terminal/lost life state
+            obs, _, _, _, info = self.env.step(0)
+        self.lives = self.env.unwrapped.ale.lives()
+        return obs, info
+
+
+@PublicAPI
+class FireResetEnv(gym.Wrapper):
+    def __init__(self, env):
+        """Take action on reset.
+
+        For environments that are fixed until firing."""
+        gym.Wrapper.__init__(self, env)
+        assert env.unwrapped.get_action_meanings()[1] == "FIRE"
+        assert len(env.unwrapped.get_action_meanings()) >= 3
+
+    def reset(self, **kwargs):
+        self.env.reset(**kwargs)
+        obs, _, terminated, truncated, _ = self.env.step(1)
+        if terminated or truncated:
+            self.env.reset(**kwargs)
+        obs, _, terminated, truncated, info = self.env.step(2)
+        if terminated or truncated:
+            self.env.reset(**kwargs)
+        return obs, info
+
+    def step(self, ac):
+        return self.env.step(ac)
+
+
+@PublicAPI
+class FrameStack(gym.Wrapper):
+    def __init__(self, env, k):
+        """Stack k last frames."""
+        gym.Wrapper.__init__(self, env)
+        self.k = k
+        self.frames = deque([], maxlen=k)
+        shp = env.observation_space.shape
+        self.observation_space = spaces.Box(
+            low=np.repeat(env.observation_space.low, repeats=k, axis=-1),
+            high=np.repeat(env.observation_space.high, repeats=k, axis=-1),
+            shape=(shp[0], shp[1], shp[2] * k),
+            dtype=env.observation_space.dtype,
+        )
+
+    def reset(self, *, seed=None, options=None):
+        ob, infos = self.env.reset(seed=seed, options=options)
+        for _ in range(self.k):
+            self.frames.append(ob)
+        return self._get_ob(), infos
+
+    def step(self, action):
+        ob, reward, terminated, truncated, info = self.env.step(action)
+        self.frames.append(ob)
+        return self._get_ob(), reward, terminated, truncated, info
+
+    def _get_ob(self):
+        assert len(self.frames) == self.k
+        return np.concatenate(self.frames, axis=2)
+
+
+@PublicAPI
+class FrameStackTrajectoryView(gym.ObservationWrapper):
+    def __init__(self, env):
+        """No stacking. Trajectory View API takes care of this."""
+        gym.Wrapper.__init__(self, env)
+        shp = env.observation_space.shape
+        assert shp[2] == 1
+        self.observation_space = spaces.Box(
+            low=0, high=255, shape=(shp[0], shp[1]), dtype=env.observation_space.dtype
+        )
+
+    def observation(self, observation):
+        return np.squeeze(observation, axis=-1)
+
+
+@PublicAPI
+class MaxAndSkipEnv(gym.Wrapper):
+    def __init__(self, env, skip=4):
+        """Return only every `skip`-th frame"""
+        gym.Wrapper.__init__(self, env)
+        # most recent raw observations (for max pooling across time steps)
+        self._obs_buffer = np.zeros(
+            (2,) + env.observation_space.shape, dtype=env.observation_space.dtype
+        )
+        self._skip = skip
+
+    def step(self, action):
+        """Repeat action, sum reward, and max over last observations."""
+        total_reward = 0.0
+        terminated = truncated = info = None
+        for i in range(self._skip):
+            obs, reward, terminated, truncated, info = self.env.step(action)
+            if i == self._skip - 2:
+                self._obs_buffer[0] = obs
+            if i == self._skip - 1:
+                self._obs_buffer[1] = obs
+            total_reward += reward
+            if terminated or truncated:
+                break
+        # Note that the observation on the terminated|truncated=True frame
+        # doesn't matter
+        max_frame = self._obs_buffer.max(axis=0)
+
+        return max_frame, total_reward, terminated, truncated, info
+
+    def reset(self, **kwargs):
+        return self.env.reset(**kwargs)
 
 
 @PublicAPI
@@ -135,109 +287,20 @@ class NoopResetEnv(gym.Wrapper):
 
 
 @PublicAPI
-class ClipRewardEnv(gym.RewardWrapper):
-    def __init__(self, env):
-        gym.RewardWrapper.__init__(self, env)
-
-    def reward(self, reward):
-        """Bin reward to {+1, 0, -1} by its sign."""
-        return np.sign(reward)
-
-
-@PublicAPI
-class FireResetEnv(gym.Wrapper):
-    def __init__(self, env):
-        """Take action on reset.
-
-        For environments that are fixed until firing."""
-        gym.Wrapper.__init__(self, env)
-        assert env.unwrapped.get_action_meanings()[1] == "FIRE"
-        assert len(env.unwrapped.get_action_meanings()) >= 3
-
-    def reset(self, **kwargs):
-        self.env.reset(**kwargs)
-        obs, _, terminated, truncated, _ = self.env.step(1)
-        if terminated or truncated:
-            self.env.reset(**kwargs)
-        obs, _, terminated, truncated, info = self.env.step(2)
-        if terminated or truncated:
-            self.env.reset(**kwargs)
-        return obs, info
-
-    def step(self, ac):
-        return self.env.step(ac)
-
-
-@PublicAPI
-class EpisodicLifeEnv(gym.Wrapper):
-    def __init__(self, env):
-        """Make end-of-life == end-of-episode, but only reset on true game over.
-        Done by DeepMind for the DQN and co. since it helps value estimation.
-        """
-        gym.Wrapper.__init__(self, env)
-        self.lives = 0
-        self.was_real_terminated = True
-
-    def step(self, action):
-        obs, reward, terminated, truncated, info = self.env.step(action)
-        self.was_real_terminated = terminated
-        # check current lives, make loss of life terminal,
-        # then update lives to handle bonus lives
-        lives = self.env.unwrapped.ale.lives()
-        if lives < self.lives and lives > 0:
-            # for Qbert sometimes we stay in lives == 0 condtion for a few fr
-            # so its important to keep lives > 0, so that we only reset once
-            # the environment advertises `terminated`.
-            terminated = True
-        self.lives = lives
-        return obs, reward, terminated, truncated, info
-
-    def reset(self, **kwargs):
-        """Reset only when lives are exhausted.
-        This way all states are still reachable even though lives are episodic,
-        and the learner need not know about any of this behind-the-scenes.
-        """
-        if self.was_real_terminated:
-            obs, info = self.env.reset(**kwargs)
-        else:
-            # no-op step to advance from terminal/lost life state
-            obs, _, _, _, info = self.env.step(0)
-        self.lives = self.env.unwrapped.ale.lives()
-        return obs, info
-
-
-@PublicAPI
-class MaxAndSkipEnv(gym.Wrapper):
-    def __init__(self, env, skip=4):
-        """Return only every `skip`-th frame"""
-        gym.Wrapper.__init__(self, env)
-        # most recent raw observations (for max pooling across time steps)
-        self._obs_buffer = np.zeros(
-            (2,) + env.observation_space.shape, dtype=env.observation_space.dtype
+class NormalizedImageEnv(gym.ObservationWrapper):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.observation_space = gym.spaces.Box(
+            -1.0,
+            1.0,
+            shape=self.observation_space.shape,
+            dtype=np.float32,
         )
-        self._skip = skip
 
-    def step(self, action):
-        """Repeat action, sum reward, and max over last observations."""
-        total_reward = 0.0
-        terminated = truncated = info = None
-        for i in range(self._skip):
-            obs, reward, terminated, truncated, info = self.env.step(action)
-            if i == self._skip - 2:
-                self._obs_buffer[0] = obs
-            if i == self._skip - 1:
-                self._obs_buffer[1] = obs
-            total_reward += reward
-            if terminated or truncated:
-                break
-        # Note that the observation on the terminated|truncated=True frame
-        # doesn't matter
-        max_frame = self._obs_buffer.max(axis=0)
-
-        return max_frame, total_reward, terminated, truncated, info
-
-    def reset(self, **kwargs):
-        return self.env.reset(**kwargs)
+    # Divide by scale and center around 0.0, such that observations are in the range
+    # of -1.0 and 1.0.
+    def observation(self, observation):
+        return (observation.astype(np.float32) / 128.0) - 1.0
 
 
 @PublicAPI
@@ -258,63 +321,56 @@ class WarpFrame(gym.ObservationWrapper):
 
 
 @PublicAPI
-class FrameStack(gym.Wrapper):
-    def __init__(self, env, k):
-        """Stack k last frames."""
-        gym.Wrapper.__init__(self, env)
-        self.k = k
-        self.frames = deque([], maxlen=k)
-        shp = env.observation_space.shape
-        self.observation_space = spaces.Box(
-            low=0,
-            high=255,
-            shape=(shp[0], shp[1], shp[2] * k),
-            dtype=env.observation_space.dtype,
-        )
+def wrap_atari_for_new_api_stack(
+    env: gym.Env,
+    dim: int = 64,
+    frameskip: int = 4,
+    framestack: Optional[int] = None,
+    # TODO (sven): Add option to NOT grayscale, in which case framestack must be None
+    #  (b/c we are using the 3 color channels already as stacking frames).
+) -> gym.Env:
+    """Wraps `env` for new-API-stack-friendly RLlib Atari experiments.
 
-    def reset(self, *, seed=None, options=None):
-        ob, infos = self.env.reset(seed=seed, options=options)
-        for _ in range(self.k):
-            self.frames.append(ob)
-        return self._get_ob(), infos
+    Note that we assume reward clipping is done outside the wrapper.
 
-    def step(self, action):
-        ob, reward, terminated, truncated, info = self.env.step(action)
-        self.frames.append(ob)
-        return self._get_ob(), reward, terminated, truncated, info
+    Args:
+        env: The env object to wrap.
+        dim: Dimension to resize observations to (dim x dim).
+        frameskip: Whether to skip n frames and max over them (keep brightest pixels).
+        framestack: Whether to stack the last n (grayscaled) frames. Note that this
+            step happens after(!) a possible frameskip step, meaning that if
+            frameskip=4 and framestack=2, we would perform the following over this
+            trajectory:
+            actual env timesteps: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 -> ...
+            frameskip:            ( max ) ( max ) ( max   ) ( max     )
+            framestack:           ( stack       ) (stack              )
 
-    def _get_ob(self):
-        assert len(self.frames) == self.k
-        return np.concatenate(self.frames, axis=2)
-
-
-@PublicAPI
-class FrameStackTrajectoryView(gym.ObservationWrapper):
-    def __init__(self, env):
-        """No stacking. Trajectory View API takes care of this."""
-        gym.Wrapper.__init__(self, env)
-        shp = env.observation_space.shape
-        assert shp[2] == 1
-        self.observation_space = spaces.Box(
-            low=0, high=255, shape=(shp[0], shp[1]), dtype=env.observation_space.dtype
-        )
-
-    def observation(self, observation):
-        return np.squeeze(observation, axis=-1)
-
-
-@PublicAPI
-class ScaledFloatFrame(gym.ObservationWrapper):
-    def __init__(self, env):
-        gym.ObservationWrapper.__init__(self, env)
-        self.observation_space = gym.spaces.Box(
-            low=0, high=1, shape=env.observation_space.shape, dtype=np.float32
-        )
-
-    def observation(self, observation):
-        # careful! This undoes the memory optimization, use
-        # with smaller replay buffers only.
-        return np.array(observation).astype(np.float32) / 255.0
+    Returns:
+        The wrapped gym.Env.
+    """
+    # Time limit.
+    env = gym.wrappers.TimeLimit(env, max_episode_steps=108000)
+    # Grayscale + resize.
+    env = WarpFrame(env, dim=dim)
+    # Normalize the image.
+    env = NormalizedImageEnv(env)
+    # Frameskip: Take max over these n frames.
+    if frameskip > 1:
+        assert env.spec is not None
+        env = MaxAndSkipEnv(env, skip=frameskip)
+    # Send n noop actions into env after reset to increase variance in the
+    # "start states" of the trajectories. These dummy steps are NOT included in the
+    # sampled data used for learning.
+    env = NoopResetEnv(env, noop_max=30)
+    # Each life is one episode.
+    env = EpisodicLifeEnv(env)
+    # Some envs only start playing after pressing fire. Unblock those.
+    if "FIRE" in env.unwrapped.get_action_meanings():
+        env = FireResetEnv(env)
+    # Framestack.
+    if framestack:
+        env = FrameStack(env, k=framestack)
+    return env
 
 
 @PublicAPI
@@ -336,7 +392,6 @@ def wrap_deepmind(env, dim=84, framestack=True, noframeskip=False):
     if "FIRE" in env.unwrapped.get_action_meanings():
         env = FireResetEnv(env)
     env = WarpFrame(env, dim)
-    # env = ScaledFloatFrame(env)  # TODO: use for dqn?
     # env = ClipRewardEnv(env)  # reward clipping is handled by policy eval
     # 4x image framestacking.
     if framestack is True:

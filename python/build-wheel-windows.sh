@@ -5,12 +5,7 @@ set -euxo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)"
 WORKSPACE_DIR="${ROOT_DIR}/.."
 
-PY_VERSIONS=("3.7"
-             "3.8"
-             "3.9"
-             "3.10"
-             "3.11"
-             )
+PY_VERSIONS=("3.8" "3.9" "3.10" "3.11")
 
 bazel_preclean() {
   "${WORKSPACE_DIR}"/ci/run/bazel.py preclean "mnemonic(\"Genrule\", deps(//:*))"
@@ -94,8 +89,23 @@ build_wheel_windows() {
   uninstall_ray || ray_uninstall_status=1
 
   local local_dir="python/dist"
+  {
+    echo "build --announce_rc";  
+    echo "build --config=ci";
+    echo "startup --output_user_root=c:/raytmp";
+    echo "build --remote_cache=${BUILDKITE_BAZEL_CACHE_URL}";
+  } >> ~/.bazelrc
+
+  if [[ "$BUILDKITE_PIPELINE_ID" == "0189942e-0876-4b8f-80a4-617f988ec59b" ]]; then
+    # Do not upload cache results for premerge pipeline
+    echo "build --remote_upload_local_results=false" >> ~/.bazelrc
+  fi
+
   for pyversion in "${PY_VERSIONS[@]}"; do
-    if [ -z "${pyversion}" ]; then continue; fi
+    if [[ "${BUILD_ONE_PYTHON_ONLY:-}" != "" && "${pyversion}" != "${BUILD_ONE_PYTHON_ONLY}" ]]; then
+      continue
+    fi
+
     bazel_preclean
     git clean -q -f -f -x -d -e "${local_dir}" -e python/ray/dashboard/client
     git checkout -q -f -- .

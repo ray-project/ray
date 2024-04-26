@@ -287,6 +287,7 @@ def training_function(kwargs: dict):
         torch_dtype=torch.bfloat16,
         # `use_cache=True` is incompatible with gradient checkpointing.
         use_cache=False,
+        use_flash_attention_2=True,
     )
     print(f"Done loading model in {time.time() - s} seconds.")
 
@@ -399,7 +400,7 @@ def training_function(kwargs: dict):
                 s_fwd = time.time()
                 outputs = model(**batch)
                 loss = outputs.loss
-                loss_sum += loss
+                loss_sum += loss.item()
                 e_fwd = time.time()
                 fwd_time = e_fwd - s_fwd
                 fwd_time_sum += fwd_time
@@ -487,7 +488,7 @@ def training_function(kwargs: dict):
             "learning_rate": lr_scheduler.get_lr()[0],
         }
 
-        with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+        with tempfile.TemporaryDirectory(dir=args.output_dir) as temp_checkpoint_dir:
             accelerator.print(f"Saving the model locally at {temp_checkpoint_dir}")
             accelerator.wait_for_everyone()
 
@@ -637,7 +638,10 @@ def parse_args():
     parser.add_argument("--lr", type=float, default=5e-6, help="Learning rate to use.")
 
     parser.add_argument(
-        "--ctx-len", type=int, default=512, help="Learning rate to use."
+        "--ctx-len",
+        type=int,
+        default=512,
+        help="Maximum context length for the model input sequences.",
     )
 
     parser.add_argument(

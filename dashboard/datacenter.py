@@ -150,7 +150,9 @@ class DataOrganizer:
 
         if not get_summary:
             # Merge actors to node physical stats
-            node_info["actors"] = DataSource.node_actors.get(node_id, {})
+            node_info["actors"] = await DataOrganizer._get_all_actors(
+                DataSource.node_actors.get(node_id, {})
+            )
             # Update workers to node physical stats
             node_info["workers"] = DataSource.node_workers.get(node_id, [])
 
@@ -189,9 +191,13 @@ class DataOrganizer:
 
     @classmethod
     async def get_all_actors(cls):
+        return await cls._get_all_actors(DataSource.actors)
+
+    @staticmethod
+    async def _get_all_actors(actors):
         result = {}
-        for index, (actor_id, actor) in enumerate(DataSource.actors.items()):
-            result[actor_id] = await cls._get_actor(actor)
+        for index, (actor_id, actor) in enumerate(actors.items()):
+            result[actor_id] = await DataOrganizer._get_actor(actor)
             # There can be thousands of actors including dead ones. Processing
             # them all can take many seconds, which blocks all other requests
             # to the dashboard. The ideal solution might be to implement
@@ -238,4 +244,5 @@ class DataOrganizer:
 
         actor["gpus"] = actor_process_gpu_stats
         actor["processStats"] = actor_process_stats
+        actor["mem"] = node_physical_stats.get("mem", [])
         return actor

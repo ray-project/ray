@@ -1,44 +1,43 @@
 import copy
 import json
+import logging
+import os
 import time
 import traceback
-import uuid
 import warnings
 from collections import defaultdict, deque
 from datetime import datetime
 from functools import partial
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union, Tuple, Set
-
-import logging
-import os
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 import ray
 from ray.air import ResourceRequest
 from ray.air.constants import TIME_THIS_ITER_S
-from ray.air.execution import ResourceManager, PlacementGroupResourceManager
+from ray.air.execution import PlacementGroupResourceManager, ResourceManager
 from ray.air.execution._internal import RayActorManager, TrackedActor
-from ray.train import CheckpointConfig
-from ray.train._internal.session import _FutureTrainingResult
-from ray.train._internal.storage import StorageContext
 from ray.exceptions import RayActorError, RayTaskError
-from ray.tune.error import _AbortTrialExecution, _TuneStopTrialError, _TuneRestoreError
+from ray.train import CheckpointConfig
+from ray.train._internal.session import _FutureTrainingResult, _TrainingResult
+from ray.train._internal.storage import StorageContext
+from ray.tune.callback import Callback, CallbackList
+from ray.tune.error import TuneError, _AbortTrialExecution, _TuneStopTrialError
 from ray.tune.execution.class_cache import _ActorClassCache
 from ray.tune.execution.experiment_state import (
     _ExperimentCheckpointManager,
-    _experiment_checkpoint_exists,
     _find_newest_experiment_checkpoint,
 )
-from ray.tune.experiment.trial import (
-    _change_working_directory,
-    _noop_logger_creator,
-    _TrialInfo,
-    _Location,
-    _get_trainable_kwargs,
-)
-from ray.tune.experiment import Experiment
 from ray.tune.execution.insufficient_resources_manager import (
     _InsufficientResourcesManager,
+)
+from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.tune.experiment import Experiment, Trial
+from ray.tune.experiment.trial import (
+    _change_working_directory,
+    _get_trainable_kwargs,
+    _Location,
+    _noop_logger_creator,
+    _TrialInfo,
 )
 from ray.tune.result import (
     DEBUG_METRICS,
@@ -46,25 +45,21 @@ from ray.tune.result import (
     DONE,
     RESULT_DUPLICATE,
     SHOULD_CHECKPOINT,
+    STDERR_FILE,
+    STDOUT_FILE,
+    TRIAL_INFO,
 )
-from ray.tune.result import TRIAL_INFO, STDOUT_FILE, STDERR_FILE
-from ray.tune import TuneError
-from ray.tune.callback import Callback, CallbackList
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
-from ray.tune.stopper import NoopStopper, Stopper
 from ray.tune.search import BasicVariantGenerator, SearchAlgorithm
-from ray.tune.experiment import Trial
-from ray.tune.utils.log import _dedup_logs
+from ray.tune.stopper import NoopStopper, Stopper
+from ray.tune.tune_config import ResumeConfig
+from ray.tune.utils import flatten_dict, warn_if_slow
+from ray.tune.utils.log import Verbosity, _dedup_logs, has_verbosity
 from ray.tune.utils.object_cache import _ObjectCache
 from ray.tune.utils.resource_updater import _ResourceUpdater
-from ray.tune.utils import warn_if_slow, flatten_dict
-from ray.tune.utils.log import Verbosity, has_verbosity
-from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncoder
-from ray.tune.web_server import TuneServer
-from ray.util.annotations import DeveloperAPI, Deprecated
+from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
-
 
 logger = logging.getLogger(__name__)
 
@@ -81,8 +76,7 @@ class TuneController:
         placeholder_resolvers: Optional[Dict[Tuple, Any]] = None,
         scheduler: Optional[TrialScheduler] = None,
         stopper: Optional[Stopper] = None,
-        resume: Union[str, bool] = False,
-        server_port: Optional[int] = None,
+        resume_config: Optional[ResumeConfig] = None,
         fail_fast: bool = False,
         checkpoint_period: Union[str, int] = None,
         callbacks: Optional[List[Callback]] = None,
@@ -205,11 +199,6 @@ class TuneController:
             int(os.environ.get("TUNE_PRINT_ALL_TRIAL_ERRORS", "1"))
         )
 
-        self._server = None
-        self._server_port = server_port
-        if server_port is not None:
-            self._server = TuneServer(self, self._server_port)
-
         self._trials: List[Trial] = []
         self._live_trials: Set[Trial] = set()  # Set of non-terminated trials
         self._cached_trial_decisions = {}
@@ -221,7 +210,6 @@ class TuneController:
         self._stopper = stopper or NoopStopper()
 
         self._start_time = time.time()
-        self._last_checkpoint_time = -float("inf")
 
         self._session_str = datetime.fromtimestamp(self._start_time).strftime(
             "%Y-%m-%d_%H-%M-%S"
@@ -235,20 +223,16 @@ class TuneController:
         self._checkpoint_manager = self._create_checkpoint_manager()
 
         self._resumed = False
-        resume_config = self._checkpoint_manager.resume(resume_type=resume)
 
-        if resume_config:
+        if resume_config is not None:
+            # Use the metadata file to restore TuneController state
             try:
-                self.resume(
-                    resume_unfinished=resume_config.resume_unfinished,
-                    resume_errored=resume_config.resume_errored,
-                    restart_errored=resume_config.restart_errored,
-                )
+                self.resume(resume_config=resume_config)
                 self._resumed = True
             except Exception as e:
                 if has_verbosity(Verbosity.V3_TRIAL_DETAILS):
                     logger.error(str(e))
-                logger.exception("Runner restore failed.")
+                logger.exception("Failed to restore the run state.")
                 if self._fail_fast:
                     raise
                 logger.info("Restarting experiment.")
@@ -311,11 +295,6 @@ class TuneController:
         """Calls ``on_experiment_end`` method in callbacks."""
         self._callbacks.on_experiment_end(trials=self._trials)
 
-    @Deprecated("Use `TrialRunner.experiment_state_path` instead.")
-    @property
-    def checkpoint_file(self) -> str:
-        return self.experiment_state_path
-
     @property
     def experiment_state_file_name(self) -> str:
         return self.CKPT_FILE_TMPL.format(self._session_str)
@@ -323,9 +302,10 @@ class TuneController:
     @property
     def experiment_state_path(self) -> str:
         """Returns the local experiment checkpoint path."""
-        return os.path.join(
-            self._storage.experiment_local_path, self.experiment_state_file_name
-        )
+        return Path(
+            self._storage.experiment_driver_staging_path,
+            self.experiment_state_file_name,
+        ).as_posix()
 
     @property
     def experiment_path(self) -> str:
@@ -338,15 +318,8 @@ class TuneController:
             sync_every_n_trial_checkpoints=self._trial_checkpoint_config.num_to_keep,
         )
 
-    @classmethod
-    def checkpoint_exists(cls, directory: str) -> bool:
-        if not os.path.exists(directory):
-            return False
-
-        return _experiment_checkpoint_exists(directory)
-
     def save_to_dir(self):
-        """Save TuneController state to the local experiment directory.
+        """Save TuneController state to the local staging experiment directory.
 
         This includes:
         - trial states
@@ -354,8 +327,6 @@ class TuneController:
         - the searcher state
         - the callback states
         """
-        experiment_dir = self._storage.experiment_local_path
-
         # Get state from trial executor and runner
         runner_state = {
             # Trials
@@ -363,73 +334,64 @@ class TuneController:
             # Experiment data
             "runner_data": self.__getstate__(),
             # Metadata
-            "stats": {
-                "start_time": self._start_time,
-                "timestamp": self._last_checkpoint_time,
-            },
+            "stats": {"start_time": self._start_time},
         }
 
-        tmp_file_name = os.path.join(
-            experiment_dir, f".tmp_experiment_state_{uuid.uuid4()}"
+        driver_staging_path = self._storage.experiment_driver_staging_path
+        os.makedirs(driver_staging_path, exist_ok=True)
+        with open(
+            Path(driver_staging_path, self.experiment_state_file_name),
+            "w",
+        ) as f:
+            json.dump(runner_state, f, cls=TuneFunctionEncoder)
+
+        self._search_alg.save_to_dir(driver_staging_path, session_str=self._session_str)
+        self._callbacks.save_to_dir(driver_staging_path, session_str=self._session_str)
+
+    def checkpoint(self, force: bool = False, wait: bool = False):
+        self._checkpoint_manager.sync_up_experiment_state(
+            save_fn=self.save_to_dir, force=force, wait=wait
         )
 
-        with open(tmp_file_name, "w") as f:
-            json.dump(runner_state, f, indent=2, cls=TuneFunctionEncoder)
+    def _requeue_restored_trials(
+        self, trials: List[Trial], resume_config: ResumeConfig
+    ):
+        # Set trial statuses according to the resume configuration
+        for trial in sorted(
+            trials, key=lambda t: t.run_metadata.last_result_time, reverse=True
+        ):
+            if trial.status == Trial.ERROR:
+                resume_type = resume_config.errored
+            elif trial.status == Trial.TERMINATED:
+                resume_type = resume_config.finished
+            else:  # Unfinished (PENDING, RUNNING, PAUSED)
+                resume_type = resume_config.unfinished
 
-        os.replace(
-            tmp_file_name,
-            os.path.join(experiment_dir, self.experiment_state_file_name),
-        )
+            trial_to_add = None
+            if resume_type == ResumeConfig.ResumeType.RESUME:
+                # Keep trial ID on resume
+                trial_to_add = trial
+                trial_to_add.run_metadata.error_filename = None
+                trial_to_add.run_metadata.pickled_error_filename = None
+                trial_to_add.set_status(Trial.PENDING)
+            elif resume_type == ResumeConfig.ResumeType.RESTART:
+                trial_to_add = trial.reset()
+                trial_to_add.restore_path = None
+            elif resume_type == ResumeConfig.ResumeType.SKIP:
+                trial_to_add = trial
+                if trial_to_add.status != Trial.ERROR:
+                    # Set the status to terminated to skip it.
+                    # Keep errored trial status as ERROR.
+                    trial_to_add.set_status(Trial.TERMINATED)
+            else:
+                raise ValueError(f"Unknown resume type: {resume_type}")
+            assert trial_to_add is not None
 
-        self._search_alg.save_to_dir(experiment_dir, session_str=self._session_str)
-        self._callbacks.save_to_dir(experiment_dir, session_str=self._session_str)
+            self.add_trial(trial_to_add)
 
-    def restore_from_dir(self) -> List[Trial]:
-        """Restore TrialRunner state from local experiment directory.
-
-        This method will restore the trial runner state, the searcher state,
-        and the callback states. It will then parse the trial states
-        and return them as a list of Trial objects.
-        """
-        experiment_dir = self._storage.experiment_local_path
-
-        # Find newest state file
-        newest_state_path = _find_newest_experiment_checkpoint(experiment_dir)
-
-        if not newest_state_path:
-            raise ValueError(
-                f"Tried to resume experiment from directory "
-                f"`{experiment_dir}`, but no "
-                f"experiment checkpoint data was found."
-            )
-
-        # Set checkpoint file to load
-        logger.warning(
-            f"Attempting to resume experiment from {experiment_dir}. "
-            "This will ignore any new changes to the specification."
-        )
-        logger.info(
-            "Using the newest experiment state file found within the "
-            f"experiment directory: {Path(newest_state_path).name}"
-        )
-
-        # Actually load data
-        with open(newest_state_path, "r") as f:
-            runner_state = json.load(f, cls=TuneFunctionDecoder)
-
-        # 1. Restore trial runner state
-        self.__setstate__(runner_state["runner_data"])
-
-        # 2. Restore search algorithm and callback state
-        if self._search_alg.has_checkpoint(experiment_dir):
-            self._search_alg.restore_from_dir(experiment_dir)
-
-        if self._callbacks.can_restore(experiment_dir):
-            self._callbacks.restore_from_dir(experiment_dir)
-
-        # 3. Load trials
+    def _restore_trials(self, experiment_state: Dict) -> List[Trial]:
         trials = []
-        for trial_json_state, trial_runtime_metadata in runner_state["trial_data"]:
+        for trial_json_state, trial_runtime_metadata in experiment_state["trial_data"]:
             trial = Trial.from_json_state(trial_json_state)
             trial.restore_run_metadata(trial_runtime_metadata)
 
@@ -441,6 +403,7 @@ class TuneController:
             new_storage.storage_filesystem = self._storage.storage_filesystem
             new_storage.storage_fs_path = self._storage.storage_fs_path
             new_storage.experiment_dir_name = self._storage.experiment_dir_name
+
             # ATTN: `trial.set_storage` is used intentionally, since it
             # also updates the absolute paths and filesystem of tracked checkpoints.
             trial.set_storage(new_storage)
@@ -453,69 +416,56 @@ class TuneController:
 
             trials.append(trial)
 
+        # NOTE: The restored run should reuse the same driver staging directory.
+        self._storage._timestamp = trials[0].storage._timestamp
+
         return trials
 
-    def checkpoint(self, force: bool = False, wait: bool = False):
-        """Saves execution state to the local experiment path.
-
-        Overwrites the current session checkpoint, which starts when self
-        is instantiated. Throttle depends on self._checkpoint_period.
-
-        Also automatically saves the search algorithm to the local
-        checkpoint dir.
-
-        Args:
-            force: Forces a checkpoint despite checkpoint_period.
-            wait: Wait until syncing to cloud has finished.
-
-        """
-        with warn_if_slow(
-            "experiment_checkpoint",
-            message="Checkpointing the experiment state took "
-            "{duration:.3f} s, which may be a performance "
-            "bottleneck. Please ensure the "
-            "`TUNE_GLOBAL_CHECKPOINT_S` environment variable is "
-            "something significantly higher than this duration "
-            "to ensure compute time is mostly spent on the main "
-            "training loop.",
-            # No backlog warning if forced checkpoint as we wait
-            # for previous sync to finish.
-            disable=self._checkpoint_manager.auto_checkpoint_enabled or force or wait,
-        ):
-            self._checkpoint_manager.checkpoint(
-                save_fn=self.save_to_dir, force=force, wait=wait
-            )
-
-    def resume(
-        self,
-        resume_unfinished: bool = True,
-        resume_errored: bool = False,
-        restart_errored: bool = False,
-    ):
+    def resume(self, resume_config: ResumeConfig):
         """Resumes all checkpointed trials from previous run.
 
         Requires user to manually re-register their objects. Also stops
         all ongoing trials.
         """
-        trials = self.restore_from_dir()
+        # 1. Restore TuneController state
+        # Find newest state file
+        newest_state_path = _find_newest_experiment_checkpoint(
+            self._storage.experiment_fs_path, fs=self._storage.storage_filesystem
+        )
 
-        # Set trial statuses according to the resume configuration
-        for trial in sorted(
-            trials, key=lambda t: t.run_metadata.last_result_time, reverse=True
-        ):
-            trial_to_add = trial
-            if trial.status == Trial.ERROR:
-                if resume_errored:
-                    # Keep trial ID on resume
-                    trial_to_add.run_metadata.error_filename = None
-                    trial_to_add.run_metadata.pickled_error_filename = None
-                    trial_to_add.set_status(Trial.PENDING)
-                elif restart_errored:
-                    trial_to_add = trial.reset()
-                    trial_to_add.restore_path = None
-            elif trial.status != Trial.TERMINATED and not resume_unfinished:
-                trial_to_add.status = Trial.TERMINATED
-            self.add_trial(trial_to_add)
+        if newest_state_path is None:
+            raise ValueError(
+                f"Tried to resume experiment from directory "
+                f"'{self._storage.experiment_fs_path}', but no "
+                f"experiment state file of the form '{TuneController.CKPT_FILE_TMPL}' "
+                "was found. This is expected if you are launching a new experiment."
+            )
+
+        logger.info(
+            "Restoring the run from the latest experiment state file: "
+            f"{Path(newest_state_path).name}"
+        )
+        with self._storage.storage_filesystem.open_input_stream(newest_state_path) as f:
+            experiment_state = json.loads(f.readall(), cls=TuneFunctionDecoder)
+
+        self.__setstate__(experiment_state["runner_data"])
+
+        # 2. Get the trial states that the run left off at.
+        trials = self._restore_trials(experiment_state)
+
+        # 3. Restore search algorithm and callback state
+        # Download the search algorithm and callback state to the driver staging dir.
+        self._checkpoint_manager.sync_down_experiment_state()
+
+        driver_staging_dir = self._storage.experiment_driver_staging_path
+        if self._search_alg.has_checkpoint(driver_staging_dir):
+            self._search_alg.restore_from_dir(driver_staging_dir)
+
+        if self._callbacks.can_restore(driver_staging_dir):
+            self._callbacks.restore_from_dir(driver_staging_dir)
+
+        # 4. Re-queue trials as needed, depending on their status.
+        self._requeue_restored_trials(trials, resume_config)
 
     def update_max_pending_trials(self, max_pending_trials: Optional[int] = None):
         self._max_pending_trials = max_pending_trials or _get_max_pending_trials(
@@ -751,13 +701,6 @@ class TuneController:
             raise e
 
         self._iteration += 1
-
-        if self._server:
-            with warn_if_slow("server"):
-                self._process_stop_requests()
-
-            if self.is_finished():
-                self._server.shutdown()
 
         with warn_if_slow("on_step_end"):
             self.on_step_end()
@@ -1052,6 +995,7 @@ class TuneController:
                 f"Invalid trainable: {trial.trainable_name}. If you passed "
                 f"a string, make sure the trainable was registered before."
             )
+            trial.handle_error(exception)
             self._schedule_trial_stop(trial, exception=exception)
             return
 
@@ -1388,7 +1332,9 @@ class TuneController:
             self._process_trial_failure(trial, exception=exception)
 
     def _process_trial_failure(
-        self, trial: Trial, exception: Optional[Union[TuneError, RayTaskError]] = None
+        self,
+        trial: Trial,
+        exception: Union[TuneError, RayTaskError, RayActorError],
     ):
         """Handle trial failure.
 
@@ -1399,6 +1345,7 @@ class TuneController:
             exception: Exception prior to invoking this method.
         """
         self._has_errored = True
+        trial.handle_error(exception)
         if trial.status == Trial.RUNNING and trial.should_recover():
             self._try_recover(trial, exc=exception)
             self._callbacks.on_trial_recover(
@@ -1431,9 +1378,6 @@ class TuneController:
 
         self._set_trial_status(trial, Trial.ERROR if exception else Trial.TERMINATED)
         trial.set_location(_Location())
-
-        if exception:
-            trial.handle_error(exc=exception)
 
         if trial not in self._trial_to_actor:
             logger.debug(f"Will not STOP trial actor as it is not live: {trial}")
@@ -1777,7 +1721,7 @@ class TuneController:
         # actor event manager when it is ready.
         return trial.temporary_state.saving_to
 
-    def _on_saving_result(self, trial, checkpoint_value: Union[ray.ObjectRef, str]):
+    def _on_saving_result(self, trial, checkpoint_value: _TrainingResult):
         with warn_if_slow("process_trial_save"):
             self._process_trial_save(trial, checkpoint_value)
 
@@ -1788,9 +1732,7 @@ class TuneController:
 
         self._maybe_execute_queued_decision(trial, after_save=True)
 
-    def _process_trial_save(
-        self, trial: Trial, checkpoint_value: Union[ray.ObjectRef, str]
-    ):
+    def _process_trial_save(self, trial: Trial, checkpoint_value: _TrainingResult):
         """Processes a trial save.
 
         Acts on the decision cached during the last `_process_trial` call.
@@ -1825,6 +1767,7 @@ class TuneController:
                 trial.on_checkpoint(checkpoint_value)
 
                 self._checkpoint_manager.on_trial_checkpoint(trial)
+
                 self._mark_trial_to_checkpoint(trial)
         except Exception:
             logger.exception(
@@ -1883,7 +1826,9 @@ class TuneController:
         self._schedule_trial_train(trial)
         self._live_trials.add(trial)
 
-    def _try_recover(self, trial: Trial, exc: Union[TuneError, RayTaskError]):
+    def _try_recover(
+        self, trial: Trial, exc: Union[TuneError, RayTaskError, RayActorError]
+    ):
         """Tries to recover trial.
 
         Notifies SearchAlgorithm and Scheduler if failure to recover.
@@ -1896,8 +1841,6 @@ class TuneController:
         # Resetting this, in case that the trial is in saving status when it crashes.
         if trial.is_saving:
             trial.temporary_state.saving_to = None
-        if trial.is_restoring and exc:
-            exc = _TuneRestoreError(exc)
         self._schedule_trial_stop(trial, exception=exc)
 
         logger.debug("Trial %s: Notifying Scheduler and requeueing.", trial)
@@ -1965,7 +1908,9 @@ class TuneController:
         extra_config[STDOUT_FILE] = stdout_file
         extra_config[STDERR_FILE] = stderr_file
 
-        logger_creator = partial(_noop_logger_creator, logdir=trial.local_path)
+        logger_creator = partial(
+            _noop_logger_creator, logdir=trial.storage.trial_working_directory
+        )
 
         self._resetting_trials.add(trial)
         self._schedule_trial_task(
@@ -1993,6 +1938,7 @@ class TuneController:
 
             exception = _AbortTrialExecution(info)
 
+            trial.handle_error(exception)
             self._schedule_trial_stop(trial, exception=exception)
             return
 
@@ -2040,7 +1986,6 @@ class TuneController:
             "_trials",
             "_live_trials",
             "_stop_queue",
-            "_server",
             "_search_alg",
             "_placeholder_resolvers",
             "_scheduler_alg",
@@ -2070,12 +2015,9 @@ class TuneController:
             "_actor_cache",
         ]:
             del state[k]
-        state["launch_web_server"] = bool(self._server)
         return state
 
     def __setstate__(self, state):
-        launch_web_server = state.pop("launch_web_server")
-
         # Use session_str from previous checkpoint if does not exist
         session_str = state.pop("_session_str")
         self.__dict__.setdefault("_session_str", session_str)
@@ -2085,9 +2027,6 @@ class TuneController:
 
         self.__dict__.update(state)
         self._checkpoint_manager = self._create_checkpoint_manager()
-
-        if launch_web_server:
-            self._server = TuneServer(self, self._server_port)
 
 
 class _TrialExecutorWrapper:
@@ -2182,14 +2121,14 @@ def _get_max_pending_trials(search_alg: SearchAlgorithm) -> int:
     if not isinstance(search_alg, BasicVariantGenerator):
         return 1
 
-    # Use a minimum of 16 to trigger fast autoscaling
-    # Scale up to at most the number of available cluster CPUs
-    cluster_cpus = ray.cluster_resources().get("CPU", 1.0)
-    max_pending_trials = min(
-        max(search_alg.total_samples, 16), max(16, int(cluster_cpus * 1.1))
-    )
+    # Allow up to at least 200 pending trials to trigger fast autoscaling
+    min_autoscaling_rate = 200
 
-    if max_pending_trials > 128:
+    # Allow more pending trials for larger clusters (based on number of CPUs)
+    cluster_cpus = ray.cluster_resources().get("CPU", 1.0)
+    max_pending_trials = max(min_autoscaling_rate, int(cluster_cpus * 1.1))
+
+    if max_pending_trials > min_autoscaling_rate:
         logger.warning(
             f"The maximum number of pending trials has been "
             f"automatically set to the number of available "
@@ -2199,7 +2138,7 @@ def _get_max_pending_trials(search_alg: SearchAlgorithm) -> int:
             f"of trials, this could lead to scheduling overhead. "
             f"In this case, consider setting the "
             f"`TUNE_MAX_PENDING_TRIALS_PG` environment variable "
-            f"to the desired maximum number of concurrent trials."
+            f"to the desired maximum number of concurrent pending trials."
         )
 
     return max_pending_trials
