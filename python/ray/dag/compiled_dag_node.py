@@ -411,7 +411,7 @@ class CompiledDAG:
 
                     # The driver and all actors that write outputs must be on the same
                     # node for now.
-                    if actor_node == _get_node_id(self):
+                    if actor_node != _get_node_id(self):
                         raise NotImplementedError(
                             "The driver and all actors that write outputs must be on "
                             "the same node for now."
