@@ -1389,7 +1389,7 @@ def run_rllib_example_script_experiment(
                 ]
                 print(f" R(eval)={Reval}", end="")
             print()
-            for key, value in stop.items():
+            for key, threshold in stop.items():
                 val = results
                 for k in key.split("/"):
                     try:
@@ -1397,8 +1397,8 @@ def run_rllib_example_script_experiment(
                     except KeyError:
                         val = None
                         break
-                if val is not None and val >= value:
-                    print(f"Stop criterium ({key}={value}) fulfilled!")
+                if val is not None and not np.isnan(val) and val >= threshold:
+                    print(f"Stop criterium ({key}={threshold}) fulfilled!")
                     return results
         ray.shutdown()
         return results
