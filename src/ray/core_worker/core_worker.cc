@@ -1500,8 +1500,7 @@ Status CoreWorker::ExperimentalRegisterMutableObjectReaderRemote(
     std::promise<void> promise;
     conn->CreateMutableObject(
         req,
-        [&reader_ref, &promise](const Status &status,
-                                const rpc::CreateMutableObjectReply &reply) {
+        [&promise](const Status &status, const rpc::CreateMutableObjectReply &reply) {
           RAY_CHECK(status.ok());
           promise.set_value();
         });
