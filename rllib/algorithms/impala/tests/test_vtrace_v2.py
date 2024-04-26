@@ -84,7 +84,7 @@ class TestVtraceRLModule(unittest.TestCase):
         values = value_fn_space_w_time.sample()
         # this is supposed to be the value function at the last timestep of each
         # trajectory in the batch. In IMPALA its bootstrapped at training time
-        cls.bootstrap_value = np.array(value_fn_space.sample() + 1.0)
+        cls.bootstrap_values = np.array(value_fn_space.sample() + 1.0)
 
         # discount factor used at all of the timesteps
         discounts = [0.9 for _ in range(trajectory_len * batch_size)]
@@ -117,7 +117,7 @@ class TestVtraceRLModule(unittest.TestCase):
             log_rhos=log_rhos,
             rewards=cls.rewards_time_major,
             values=cls.values_time_major,
-            bootstrap_value=cls.bootstrap_value,
+            bootstrap_value=cls.bootstrap_values,
             clip_rho_threshold=cls.clip_rho_threshold,
             clip_pg_rho_threshold=cls.clip_pg_rho_threshold,
         )
@@ -133,7 +133,7 @@ class TestVtraceRLModule(unittest.TestCase):
             discounts=tf.convert_to_tensor(self.discounts_time_major),
             rewards=tf.convert_to_tensor(self.rewards_time_major),
             values=tf.convert_to_tensor(self.values_time_major),
-            bootstrap_value=tf.convert_to_tensor(self.bootstrap_value),
+            bootstrap_values=tf.convert_to_tensor(self.bootstrap_values),
             clip_rho_threshold=self.clip_rho_threshold,
             clip_pg_rho_threshold=self.clip_pg_rho_threshold,
         )
@@ -150,7 +150,7 @@ class TestVtraceRLModule(unittest.TestCase):
             discounts=convert_to_torch_tensor(self.discounts_time_major),
             rewards=convert_to_torch_tensor(self.rewards_time_major),
             values=convert_to_torch_tensor(self.values_time_major),
-            bootstrap_value=convert_to_torch_tensor(self.bootstrap_value),
+            bootstrap_values=convert_to_torch_tensor(self.bootstrap_values),
             clip_rho_threshold=self.clip_rho_threshold,
             clip_pg_rho_threshold=self.clip_pg_rho_threshold,
         )

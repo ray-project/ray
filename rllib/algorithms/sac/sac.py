@@ -1,9 +1,11 @@
 import logging
-from typing import Type, Dict, Any, Optional, Union
+from typing import Any, Dict, Optional, Type, Union
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dqn.dqn import DQN
 from ray.rllib.algorithms.sac.sac_tf_policy import SACTFPolicy
+from ray.rllib.core.learner import Learner
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils import deep_update
 from ray.rllib.utils.annotations import override
@@ -12,6 +14,7 @@ from ray.rllib.utils.deprecation import (
     deprecation_warning,
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
+from ray.rllib.utils.typing import RLModuleSpec, ResultDict
 
 tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
@@ -26,7 +29,7 @@ class SACConfig(AlgorithmConfig):
 
         config = SACConfig().training(gamma=0.9, lr=0.01, train_batch_size=32)
         config = config.resources(num_gpus=0)
-        config = config.rollouts(num_rollout_workers=1)
+        config = config.env_runners(num_env_runners=1)
 
         # Build a Algorithm object from the config and run 1 training iteration.
         algo = config.build(env="CartPole-v1")
@@ -82,7 +85,9 @@ class SACConfig(AlgorithmConfig):
         self.grad_clip = None
         self.target_network_update_freq = 0
 
-        # .exploration()
+        # .env_runners()
+        self.rollout_fragment_length = "auto"
+        self.compress_observations = False
         self.exploration_config = {
             # The Exploration class to use. In the simplest case, this is the name
             # (str) of any class present in the `rllib.utils.exploration` package.
@@ -92,10 +97,6 @@ class SACConfig(AlgorithmConfig):
             "type": "StochasticSampling",
             # Add constructor kwargs here (if any).
         }
-
-        # .rollout()
-        self.rollout_fragment_length = "auto"
-        self.compress_observations = False
 
         # .training()
         self.train_batch_size = 256
@@ -167,7 +168,10 @@ class SACConfig(AlgorithmConfig):
                 This is the inverse of reward scale, and will be optimized
                 automatically.
             n_step: N-step target updates. If >1, sars' tuples in trajectories will be
-                postprocessed to become sa[discounted sum of R][s t+n] tuples.
+                postprocessed to become sa[discounted sum of R][s t+n] tuples. An
+                integer will be interpreted as a fixed n-step value. In case of a tuple
+                the n-step value will be drawn for each sample in the train batch from
+                a uniform distribution over the  interval defined by the 'n-step'-tuple.
             store_buffer_in_checkpoints: Set this to True, if you want the contents of
                 your buffer(s) to be stored in any saved checkpoints as well.
                 Warnings will be created if:
@@ -302,15 +306,23 @@ class SACConfig(AlgorithmConfig):
         super().validate()
 
         # Check rollout_fragment_length to be compatible with n_step.
+        if isinstance(self.n_step, tuple):
+            min_rollout_fragment_length = self.n_step[1]
+        else:
+            min_rollout_fragment_length = self.n_step
+
         if (
             not self.in_evaluation
             and self.rollout_fragment_length != "auto"
-            and self.rollout_fragment_length < self.n_step
+            and self.rollout_fragment_length
+            < min_rollout_fragment_length  # (self.n_step or 1)
         ):
             raise ValueError(
                 f"Your `rollout_fragment_length` ({self.rollout_fragment_length}) is "
-                f"smaller than `n_step` ({self.n_step})! "
-                f"Try setting config.rollouts(rollout_fragment_length={self.n_step})."
+                f"smaller than needed for `n_step` ({self.n_step})! If `n_step` is "
+                f"an integer try setting `rollout_fragment_length={self.n_step}`. If "
+                "`n_step` is a tuple, try setting "
+                f"`rollout_fragment_length={self.n_step[1]}`."
             )
 
         if self.use_state_preprocessor != DEPRECATED_VALUE:
@@ -332,12 +344,56 @@ class SACConfig(AlgorithmConfig):
             )
             try_import_tfp(error=True)
 
+        # Validate that we use the corresponding `EpisodeReplayBuffer` when using
+        # episodes.
+        # TODO (sven, simon): Implement the multi-agent case for replay buffers.
+        if self.uses_new_env_runners and self.replay_buffer_config["type"] not in [
+            "EpisodeReplayBuffer",
+            "PrioritizedEpisodeReplayBuffer",
+        ]:
+            raise ValueError(
+                "When using the new `EnvRunner API` the replay buffer must be of type "
+                "`EpisodeReplayBuffer`."
+            )
+
     @override(AlgorithmConfig)
     def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
         if self.rollout_fragment_length == "auto":
-            return self.n_step
+            return self.n_step[1] if isinstance(self.n_step, tuple) else self.n_step
         else:
             return self.rollout_fragment_length
+
+    @override(AlgorithmConfig)
+    def get_default_rl_module_spec(self) -> RLModuleSpec:
+        from ray.rllib.algorithms.sac.sac_catalog import SACCatalog
+
+        if self.framework_str == "torch":
+            from ray.rllib.algorithms.sac.torch.sac_torch_rl_module import (
+                SACTorchRLModule,
+            )
+
+            return SingleAgentRLModuleSpec(
+                module_class=SACTorchRLModule, catalog_class=SACCatalog
+            )
+        else:
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. " "Use `torch`."
+            )
+
+    @override(AlgorithmConfig)
+    def get_default_learner_class(self) -> Union[Type["Learner"], str]:
+        if self.framework_str == "torch":
+            from ray.rllib.algorithms.sac.torch.sac_torch_learner import SACTorchLearner
+
+            return SACTorchLearner
+        else:
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. " "Use `torch`."
+            )
+
+    @property
+    def _model_config_auto_includes(self):
+        return super()._model_config_auto_includes | {"twin_q": self.twin_q}
 
 
 class SAC(DQN):
@@ -371,3 +427,27 @@ class SAC(DQN):
             return SACTorchPolicy
         else:
             return SACTFPolicy
+
+    @override(DQN)
+    def training_step(self) -> ResultDict:
+        """SAC training iteration function.
+
+        Each training iteration, we:
+        - Sample (MultiAgentBatch) from workers.
+        - Store new samples in replay buffer.
+        - Sample training batch (MultiAgentBatch) from replay buffer.
+        - Learn on training batch.
+        - Update remote workers' new policy weights.
+        - Update target network every `target_network_update_freq` sample steps.
+        - Return all collected metrics for the iteration.
+
+        Returns:
+            The results dict from executing the training iteration.
+        """
+        # New API stack (RLModule, Learner, EnvRunner, ConnectorV2).
+        if self.config.uses_new_env_runners:
+            return self._training_step_new_api_stack(with_noise_reset=False)
+        # Old and hybrid API stacks (Policy, RolloutWorker, Connector, maybe RLModule,
+        # maybe Learner).
+        else:
+            return self._training_step_old_and_hybrid_api_stack()

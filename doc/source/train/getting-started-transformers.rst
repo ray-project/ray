@@ -22,7 +22,7 @@ For reference, the final code follows:
     from ray.train.torch import TorchTrainer
     from ray.train import ScalingConfig
 
-    def train_func(config):
+    def train_func():
         # Your Transformers training code here.
 
     scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
@@ -122,7 +122,7 @@ Compare a Hugging Face Transformers training script with and without Ray Train.
             # [1] Encapsulate data preprocessing, training, and evaluation
             # logic in a training function
             # ============================================================
-            def train_func(config):
+            def train_func():
                 # Datasets
                 dataset = load_dataset("yelp_review_full")
                 tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
@@ -203,18 +203,9 @@ Compare a Hugging Face Transformers training script with and without Ray Train.
 Set up a training function
 --------------------------
 
-First, update your training code to support distributed training.
-You can begin by wrapping your code in a :ref:`training function <train-overview-training-function>`:
+.. include:: ./common/torch-configure-train_func.rst
 
-.. testcode::
-    :skipif: True
-
-    def train_func(config):
-        # Your Transformers training code here.
-
-This function executes on each distributed training worker. Ray Train sets up the distributed
-process group on each worker before entering this function.
-
+Ray Train sets up the distributed process group on each worker before entering this function. 
 Put all the logic into this function, including dataset construction and preprocessing,
 model initialization, transformers trainer definition and more.
 
@@ -237,7 +228,7 @@ To persist your checkpoints and monitor training progress, add a
      import transformers
      from ray.train.huggingface.transformers import RayTrainReportCallback
 
-     def train_func(config):
+     def train_func():
          ...
          trainer = transformers.Trainer(...)
     +    trainer.add_callback(RayTrainReportCallback())
@@ -261,7 +252,7 @@ your configurations and enable Ray Data Integration.
      import transformers
      import ray.train.huggingface.transformers
 
-     def train_func(config):
+     def train_func():
          ...
          trainer = transformers.Trainer(...)
     +    trainer = ray.train.huggingface.transformers.prepare_trainer(trainer)
@@ -278,7 +269,7 @@ Next steps
 After you have converted your Hugging Face Transformers training script to use Ray Train:
 
 * See :ref:`User Guides <train-user-guides>` to learn more about how to perform specific tasks.
-* Browse the :ref:`Examples <train-examples>` for end-to-end examples of how to use Ray Train.
+* Browse the :doc:`Examples <examples>` for end-to-end examples of how to use Ray Train.
 * Dive into the :ref:`API Reference <train-api>` for more details on the classes and methods used in this tutorial.
 
 
@@ -384,7 +375,7 @@ native Transformers training code.
 
             # [1] Define the full training function
             # =====================================
-            def train_func(config):
+            def train_func():
                 MODEL_NAME = "gpt2"
                 model_config = AutoConfig.from_pretrained(MODEL_NAME)
                 model = AutoModelForCausalLM.from_config(model_config)

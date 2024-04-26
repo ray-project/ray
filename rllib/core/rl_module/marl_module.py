@@ -14,10 +14,6 @@ from typing import (
     Union,
 )
 
-from ray.util.annotations import PublicAPI
-from ray.rllib.utils.annotations import override, ExperimentalAPI
-from ray.rllib.utils.nested_dict import NestedDict
-
 from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.core.rl_module.rl_module import (
@@ -28,12 +24,21 @@ from ray.rllib.core.rl_module.rl_module import (
 )
 
 # TODO (Kourosh): change this to module_id later to enforce consistency
-from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
+from ray.rllib.utils.annotations import (
+    ExperimentalAPI,
+    override,
+    OverrideToImplementCustomLogic,
+)
+from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.serialization import serialize_type, deserialize_type
-from ray.rllib.utils.typing import T
+from ray.rllib.utils.typing import ModuleID, T
+from ray.util.annotations import PublicAPI
 
-ModuleID = str
+
+# TODO (sven): This will replace all occurrences of DEFAULT_POLICY_ID on the new API
+#  stack.
+DEFAULT_MODULE_ID = "default_policy"
 
 
 @PublicAPI(stability="alpha")
@@ -69,12 +74,40 @@ class MultiAgentRLModule(RLModule):
         """
         super().__init__(config or MultiAgentRLModuleConfig())
 
+    @override(RLModule)
     def setup(self):
         """Sets up the underlying RLModules."""
         self._rl_modules = {}
         self.__check_module_configs(self.config.modules)
+        # Make sure all individual RLModules have the same framework OR framework=None.
+        framework = None
         for module_id, module_spec in self.config.modules.items():
             self._rl_modules[module_id] = module_spec.build()
+            if framework is None:
+                framework = self._rl_modules[module_id].framework
+            else:
+                assert self._rl_modules[module_id].framework in [None, framework]
+        self.framework = framework
+
+    @OverrideToImplementCustomLogic
+    @override(RLModule)
+    def get_initial_state(self) -> Any:
+        # TODO (sven): Replace by call to `self.foreach_module`, but only if this method
+        #  supports returning dicts.
+        ret = {}
+        for module_id, module in self._rl_modules.items():
+            ret[module_id] = module.get_initial_state()
+        return ret
+
+    @OverrideToImplementCustomLogic
+    @override(RLModule)
+    def is_stateful(self) -> bool:
+        initial_state = self.get_initial_state()
+        assert isinstance(initial_state, dict), (
+            "The initial state of an RLModule must be a dict, but is "
+            f"{type(initial_state)} instead."
+        )
+        return bool(any(sa_init_state for sa_init_state in initial_state.values()))
 
     @classmethod
     def __check_module_configs(cls, module_configs: Dict[ModuleID, Any]):
@@ -173,6 +206,10 @@ class MultiAgentRLModule(RLModule):
             for module_id, module in self._rl_modules.items()
         ]
 
+    def __contains__(self, item) -> bool:
+        """Returns whether the given `item` (ModuleID) is present in self."""
+        return item in self._rl_modules
+
     def __getitem__(self, module_id: ModuleID) -> RLModule:
         """Returns the module with the given module ID.
 
@@ -258,7 +295,7 @@ class MultiAgentRLModule(RLModule):
 
     @override(RLModule)
     def get_state(
-        self, module_ids: Optional[Set[ModuleID]] = None
+        self, module_ids: Optional[Set[ModuleID]] = None, inference_only: bool = False
     ) -> Mapping[ModuleID, Any]:
         """Returns the state of the multi-agent module.
 
@@ -268,6 +305,9 @@ class MultiAgentRLModule(RLModule):
         Args:
             module_ids: The module IDs to get the state of. If None, the state of all
                 modules is returned.
+            inference_only: If True, only a subset of parameters that are needed for
+                inference are returned. This subset is defined in the module.
+
         Returns:
             A nested state dict with the first layer being the module ID and the second
             is the state of the module. The returned dict values are framework-specific
@@ -278,7 +318,7 @@ class MultiAgentRLModule(RLModule):
             module_ids = self._rl_modules.keys()
 
         return {
-            module_id: self._rl_modules[module_id].get_state()
+            module_id: self._rl_modules[module_id].get_state(inference_only)
             for module_id in module_ids
         }
 
@@ -361,7 +401,10 @@ class MultiAgentRLModule(RLModule):
 
     @classmethod
     @override(RLModule)
-    def from_checkpoint(cls, checkpoint_dir_path: Union[str, pathlib.Path]) -> None:
+    def from_checkpoint(
+        cls,
+        checkpoint_dir_path: Union[str, pathlib.Path],
+    ) -> None:
         path = pathlib.Path(checkpoint_dir_path)
         metadata_path = path / RLMODULE_METADATA_FILE_NAME
         marl_module = cls._from_metadata_file(metadata_path)
@@ -374,7 +417,7 @@ class MultiAgentRLModule(RLModule):
     def _run_forward_pass(
         self,
         forward_fn_name: str,
-        batch: NestedDict[Any],
+        batch: Union[NestedDict[Any], Dict[ModuleID, Any]],
         **kwargs,
     ) -> Dict[ModuleID, Mapping[ModuleID, Any]]:
         """This is a helper method that runs the forward pass for the given module.
@@ -393,12 +436,16 @@ class MultiAgentRLModule(RLModule):
             mapping from module ID to the output of the forward pass.
         """
 
-        module_ids = list(batch.shallow_keys())
-        for module_id in module_ids:
-            self._check_module_exists(module_id)
+        # if isinstance(batch, NestedDict):
+        #    module_ids = list(batch.shallow_keys())
+        # else:
+        #    module_ids = list(batch.keys())
 
         outputs = {}
-        for module_id in module_ids:
+        for module_id in (
+            batch.shallow_keys() if isinstance(batch, NestedDict) else batch.keys()
+        ):
+            self._check_module_exists(module_id)
             rl_module = self._rl_modules[module_id]
             forward_fn = getattr(rl_module, forward_fn_name)
             outputs[module_id] = forward_fn(batch[module_id], **kwargs)
@@ -417,7 +464,6 @@ class MultiAgentRLModule(RLModule):
 @dataclass
 class MultiAgentRLModuleSpec:
     """A utility spec class to make it constructing MARL modules easier.
-
 
     Users can extend this class to modify the behavior of base class. For example to
     share neural networks across the modules, the build method can be overriden to
@@ -463,9 +509,7 @@ class MultiAgentRLModuleSpec:
         return MultiAgentRLModuleConfig(modules=self.module_specs)
 
     @OverrideToImplementCustomLogic
-    def build(
-        self, module_id: Optional[ModuleID] = None
-    ) -> Union[SingleAgentRLModuleSpec, "MultiAgentRLModule"]:
+    def build(self, module_id: Optional[ModuleID] = None) -> RLModule:
         """Builds either the multi-agent module or the single-agent module.
 
         If module_id is None, it builds the multi-agent module. Otherwise, it builds
@@ -484,9 +528,11 @@ class MultiAgentRLModuleSpec:
         """
         self._check_before_build()
 
+        # ModuleID provided, return single-agent RLModule.
         if module_id:
             return self.module_specs[module_id].build()
 
+        # Return MultiAgentRLModule.
         module_config = self.get_marl_config()
         module = self.marl_module_class(module_config)
         return module
@@ -494,20 +540,20 @@ class MultiAgentRLModuleSpec:
     def add_modules(
         self,
         module_specs: Dict[ModuleID, SingleAgentRLModuleSpec],
-        overwrite: bool = True,
+        override: bool = True,
     ) -> None:
         """Add new module specs to the spec or updates existing ones.
 
         Args:
             module_specs: The mapping for the module_id to the single-agent module
                 specs to be added to this multi-agent module spec.
-            overwrite: Whether to overwrite the existing module specs if they already
-                exist. If False, they will be updated only.
+            override: Whether to override the existing module specs if they already
+                exist. If False, they are only updated.
         """
         if self.module_specs is None:
             self.module_specs = {}
         for module_id, module_spec in module_specs.items():
-            if overwrite or module_id not in self.module_specs:
+            if override or module_id not in self.module_specs:
                 self.module_specs[module_id] = module_spec
             else:
                 self.module_specs[module_id].update(module_spec)
@@ -564,7 +610,11 @@ class MultiAgentRLModuleSpec:
             },
         )
 
-    def update(self, other: "MultiAgentRLModuleSpec", overwrite=False) -> None:
+    def update(
+        self,
+        other: Union["MultiAgentRLModuleSpec", SingleAgentRLModuleSpec],
+        override=False,
+    ) -> None:
         """Updates this spec with the other spec.
 
         Traverses this MultiAgentRLModuleSpec's module_specs and updates them with
@@ -572,18 +622,23 @@ class MultiAgentRLModuleSpec:
 
         Args:
             other: The other spec to update this spec with.
-            overwrite: Whether to overwrite the existing module specs if they already
-                exist. If False, they will be updated only.
+            override: Whether to override the existing module specs if they already
+                exist. If False, they are only updated.
         """
-        assert type(other) is MultiAgentRLModuleSpec
-
-        if isinstance(other.module_specs, dict):
-            self.add_modules(other.module_specs, overwrite=overwrite)
+        if isinstance(other, SingleAgentRLModuleSpec):
+            for mid, spec in self.module_specs.items():
+                self.module_specs[mid].update(other, override=False)
+        elif isinstance(other.module_specs, dict):
+            self.add_modules(other.module_specs, override=override)
         else:
             if not self.module_specs:
                 self.module_specs = other.module_specs
             else:
                 self.module_specs.update(other.module_specs)
+
+    def as_multi_agent(self) -> "MultiAgentRLModuleSpec":
+        """Returns self to match `SingleAgentRLModuleSpec.as_multi_agent()`."""
+        return self
 
 
 @ExperimentalAPI

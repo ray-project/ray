@@ -27,6 +27,11 @@ ProfileEvent::ProfileEvent(TaskEventBuffer &task_event_buffer,
                            const std::string &event_name)
     : task_event_buffer_(task_event_buffer) {
   const auto &task_spec = worker_context.GetCurrentTask();
+  if (task_spec && !task_spec->EnableTaskEvents()) {
+    event_ = nullptr;
+    return;
+  }
+
   if (worker_context.GetWorkerType() == rpc::WorkerType::DRIVER &&
       RayConfig::instance().task_events_skip_driver_for_test()) {
     return;

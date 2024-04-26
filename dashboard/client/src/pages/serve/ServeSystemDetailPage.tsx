@@ -1,12 +1,16 @@
-import { createStyles, makeStyles, Typography } from "@material-ui/core";
-import { Alert } from "@material-ui/lab";
+import { Alert, Typography } from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import React from "react";
 import { Outlet } from "react-router-dom";
 import Loading from "../../components/Loading";
 import { MainNavPageInfo } from "../layout/mainNavContext";
-import { useServeApplications } from "./hook/useServeApplications";
+import { useServeDeployments } from "./hook/useServeApplications";
+import {
+  SERVE_SYSTEM_METRICS_CONFIG,
+  ServeMetricsSection,
+} from "./ServeMetricsSection";
 import { ServeSystemDetails } from "./ServeSystemDetails";
-
 const useStyles = makeStyles((theme) =>
   createStyles({
     root: {
@@ -15,6 +19,9 @@ const useStyles = makeStyles((theme) =>
     serveInstanceWarning: {
       marginBottom: theme.spacing(2),
     },
+    section: {
+      marginTop: theme.spacing(4),
+    },
   }),
 );
 
@@ -22,7 +29,7 @@ export const ServeSystemDetailPage = () => {
   const classes = useStyles();
 
   const { serveDetails, proxies, proxiesPage, setProxiesPage, error } =
-    useServeApplications();
+    useServeDeployments();
 
   if (error) {
     return <Typography color="error">{error.toString()}</Typography>;
@@ -53,6 +60,10 @@ export const ServeSystemDetailPage = () => {
           setPage={setProxiesPage}
         />
       )}
+      <ServeMetricsSection
+        className={classes.section}
+        metricsConfig={SERVE_SYSTEM_METRICS_CONFIG}
+      />
     </div>
   );
 };

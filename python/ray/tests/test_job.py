@@ -96,44 +96,6 @@ assert ray.get(lib.task.remote()) == {}
         subprocess.check_call([sys.executable, v2_driver])
 
 
-def test_export_queue_isolation(call_ray_start):
-    address = call_ray_start
-    driver_template = """
-import ray
-import ray.experimental.internal_kv as kv
-ray.init(address="{}")
-
-@ray.remote
-def f():
-    pass
-
-ray.get(f.remote())
-
-count = 0
-for k in kv._internal_kv_list(""):
-    if b"IsolatedExports:" + ray.get_runtime_context().job_id.binary() in k:
-        count += 1
-
-# Check exports aren't shared across the 5 jobs.
-assert count < 5, count
-"""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        os.makedirs(os.path.join(tmpdir, "v1"))
-        v1_driver = os.path.join(tmpdir, "v1", "driver.py")
-        with open(v1_driver, "w") as f:
-            f.write(driver_template.format(address))
-
-        try:
-            subprocess.check_call([sys.executable, v1_driver])
-        except Exception:
-            # Ignore the first run, since it runs extra exports.
-            pass
-
-        # Further runs do not increase the num exports count.
-        for _ in range(5):
-            subprocess.check_call([sys.executable, v1_driver])
-
-
 def test_job_observability(ray_start_regular):
     driver_template = """
 import ray

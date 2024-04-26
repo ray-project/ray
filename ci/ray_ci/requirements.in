@@ -1,4 +1,0 @@
-click
-colorama; platform_system == "Windows"
-pytest
-pyyaml

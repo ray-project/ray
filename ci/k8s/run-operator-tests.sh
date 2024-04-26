@@ -6,7 +6,7 @@ set -euo pipefail
 
 echo "--- Build image"
 bazel run //ci/ray_ci:build_in_docker -- docker \
-    --python-version 3.8 --platform cpu --canonical-tag kuberay-test
+    --platform cpu --canonical-tag kuberay-test
 docker tag rayproject/ray:kuberay-test ray-ci:kuberay-test
 
 echo "--- Setup k8s environment"
@@ -47,5 +47,15 @@ bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... kuberay \
     --network host \
     --test-env=RAY_IMAGE=docker.io/library/ray-ci:kuberay-test \
     --test-env=PULL_POLICY=Never \
+    --test-env=KUBECONFIG=/tmp/rayci-kubeconfig \
+    "--test-env=KUBECONFIG_BASE64=$(base64 -w0 "$HOME/.kube/config")"
+
+# Test for autoscaler v2.
+bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... kuberay \
+    --build-name k8sbuild \
+    --network host \
+    --test-env=RAY_IMAGE=docker.io/library/ray-ci:kuberay-test \
+    --test-env=PULL_POLICY=Never \
+    --test-env=AUTOSCALER_V2=True \
     --test-env=KUBECONFIG=/tmp/rayci-kubeconfig \
     "--test-env=KUBECONFIG_BASE64=$(base64 -w0 "$HOME/.kube/config")"

@@ -178,7 +178,7 @@ def test_compatible_with_dataclasses():
         pip={
             "packages": ["tensorflow", "requests"],
             "pip_check": False,
-            "pip_version": "==22.0.2;python_version=='3.8.11'",
+            "pip_version": "==23.3.2;python_version=='3.9.16'",
         },
         env_vars={"FOO": "BAR"},
         config=config,

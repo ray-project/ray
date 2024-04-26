@@ -2,12 +2,13 @@ import argparse
 import os
 
 import ray
+from ray._private.test_utils import get_ray_default_worker_file_path
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--image", type=str, help="The docker image to use for Ray worker")
 args = parser.parse_args()
 
-worker_pth = "/home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/workers/default_worker.py"  # noqa
+worker_pth = get_ray_default_worker_file_path()
 
 
 @ray.remote(runtime_env={"container": {"image": args.image, "worker_path": worker_pth}})

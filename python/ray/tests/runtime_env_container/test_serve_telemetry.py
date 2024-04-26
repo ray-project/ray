@@ -4,7 +4,7 @@ import subprocess
 
 import ray
 from ray import serve
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_condition, get_ray_default_worker_file_path
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve.context import _get_global_client
 from ray.serve.schema import ServeDeploySchema
@@ -18,7 +18,7 @@ parser = argparse.ArgumentParser(
 )
 parser.add_argument("--image", type=str, help="The docker image to use for Ray worker")
 args = parser.parse_args()
-worker_pth = "/home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/workers/default_worker.py"  # noqa
+worker_pth = get_ray_default_worker_file_path()
 
 os.environ["RAY_USAGE_STATS_ENABLED"] = "1"
 os.environ["RAY_USAGE_STATS_REPORT_URL"] = "http://127.0.0.1:8000/telemetry"

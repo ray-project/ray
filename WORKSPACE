@@ -32,9 +32,9 @@ hedron_compile_commands_setup()
 
 http_archive(
     name = "rules_python",
-    sha256 = "94750828b18044533e98a129003b6a68001204038dc4749f40b195b24c38f49f",
-    strip_prefix = "rules_python-0.21.0",
-    url = "https://github.com/bazelbuild/rules_python/releases/download/0.21.0/rules_python-0.21.0.tar.gz",
+    sha256 = "c68bdc4fbec25de5b5493b8819cfc877c4ea299c0dcb15c244c5a00208cde311",
+    strip_prefix = "rules_python-0.31.0",
+    url = "https://github.com/bazelbuild/rules_python/releases/download/0.31.0/rules_python-0.31.0.tar.gz",
 )
 
 load("@rules_python//python:repositories.bzl", "python_register_toolchains")
@@ -58,22 +58,26 @@ pip_parse(
     requirements_lock = "//release:requirements_buildkite.txt",
 )
 
-pip_parse(
-    name = "py_deps_ray_ci",
-    python_interpreter_target = python39,
-    requirements_lock = "//ci/ray_ci:requirements.txt",
-)
-
 load("@py_deps_buildkite//:requirements.bzl", install_py_deps_buildkite = "install_deps")
-load("@py_deps_ray_ci//:requirements.bzl", install_py_deps_ray_ci = "install_deps")
 
 install_py_deps_buildkite()
-
-install_py_deps_ray_ci()
 
 register_toolchains("//:python_toolchain")
 
 register_execution_platforms(
     "@local_config_platform//:host",
     "//:hermetic_python_platform",
+)
+
+http_archive(
+    name = "crane_linux_x86_64",
+    build_file_content = """
+filegroup(
+    name = "file",
+    srcs = glob(["**"]),
+    visibility = ["//visibility:public"],
+)
+""",
+    sha256 = "daa629648e1d1d10fc8bde5e6ce4176cbc0cd48a32211b28c3fd806e0fa5f29b",
+    urls = ["https://github.com/google/go-containerregistry/releases/download/v0.19.0/go-containerregistry_Linux_x86_64.tar.gz"]
 )

@@ -24,6 +24,7 @@
 
 #include "ray/common/buffer.h"
 #include "ray/common/status.h"
+#include "ray/object_manager/common.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/util/visibility.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -31,8 +32,22 @@
 namespace plasma {
 
 using ray::Buffer;
+using ray::PlasmaObjectHeader;
 using ray::SharedMemoryBuffer;
 using ray::Status;
+
+struct MutableObject {
+  MutableObject(uint8_t *base_ptr, const PlasmaObject &object_info)
+      : header(
+            reinterpret_cast<PlasmaObjectHeader *>(base_ptr + object_info.header_offset)),
+        buffer(std::make_shared<SharedMemoryBuffer>(base_ptr + object_info.data_offset,
+                                                    object_info.allocated_size)),
+        allocated_size(object_info.allocated_size) {}
+
+  PlasmaObjectHeader *header;
+  std::shared_ptr<SharedMemoryBuffer> buffer;
+  const int64_t allocated_size;
+};
 
 /// Object buffer data structure.
 struct ObjectBuffer {
@@ -82,46 +97,8 @@ class PlasmaClientInterface {
                      std::vector<ObjectBuffer> *object_buffers,
                      bool is_from_worker) = 0;
 
-  /// Experimental method for mutable objects. Acquires a write lock on the
-  /// object that prevents readers from reading until we are done writing. Does
-  /// not protect against concurrent writers.
-  ///
-  /// \param[in] object_id The ID of the object.
-  /// \param[in] data_size The size of the object to write. This overwrites the
-  /// current data size.
-  /// \param[in] metadata A pointer to the object metadata buffer to copy. This
-  /// will overwrite the current metadata.
-  /// \param[in] metadata_size The number of bytes to copy from the metadata
-  /// pointer.
-  /// \param[in] num_readers The number of readers that must read and release
-  /// \param[out] data The mutable object buffer in plasma that can be written to.
-  virtual Status ExperimentalMutableObjectWriteAcquire(const ObjectID &object_id,
-                                                       int64_t data_size,
-                                                       const uint8_t *metadata,
-                                                       int64_t metadata_size,
-                                                       int64_t num_readers,
-                                                       std::shared_ptr<Buffer> *data) = 0;
-
-  /// Experimental method for mutable objects. Releases a write lock on the
-  /// object, allowing readers to read. This is the equivalent of "Seal" for
-  /// normal objects.
-  ///
-  /// \param[in] object_id The ID of the object.
-  virtual Status ExperimentalMutableObjectWriteRelease(const ObjectID &object_id) = 0;
-
-  /// Experimental method for mutable objects. Sets the error bit, causing all
-  /// future readers and writers to raise an error on acquire.
-  ///
-  /// \param[in] object_id The ID of the object.
-  virtual Status ExperimentalMutableObjectSetError(const ObjectID &object_id) = 0;
-
-  /// Experimental method for mutable objects. Releases the objects, allowing them
-  /// to be written again. If the caller did not previously Get the objects,
-  /// then this first blocks until the latest value is available to read, then
-  /// releases the value.
-  ///
-  /// \param[in] object_id The ID of the object.
-  virtual Status ExperimentalMutableObjectReadRelease(const ObjectID &object_id) = 0;
+  virtual Status GetExperimentalMutableObject(
+      const ObjectID &object_id, std::unique_ptr<MutableObject> *mutable_object) = 0;
 
   /// Seal an object in the object store. The object will be immutable after
   /// this
@@ -243,19 +220,6 @@ class PlasmaClient : public PlasmaClientInterface {
                                 plasma::flatbuf::ObjectSource source,
                                 int device_num = 0);
 
-  Status ExperimentalMutableObjectWriteAcquire(const ObjectID &object_id,
-                                               int64_t data_size,
-                                               const uint8_t *metadata,
-                                               int64_t metadata_size,
-                                               int64_t num_readers,
-                                               std::shared_ptr<Buffer> *data);
-
-  Status ExperimentalMutableObjectWriteRelease(const ObjectID &object_id);
-
-  Status ExperimentalMutableObjectSetError(const ObjectID &object_id);
-
-  Status ExperimentalMutableObjectReadRelease(const ObjectID &object_id);
-
   /// Create an object in the Plasma Store. Any metadata for this object must be
   /// be passed in when the object is created.
   ///
@@ -310,6 +274,16 @@ class PlasmaClient : public PlasmaClientInterface {
              int64_t timeout_ms,
              std::vector<ObjectBuffer> *object_buffers,
              bool is_from_worker);
+
+  /// Get an experimental mutable object.
+  ///
+  /// \param[in] object_id The ID of the object.
+  /// \param[in] mutable_object Struct containing pointers for the object
+  /// header, which is used to synchronize with other writers and readers, and
+  /// the object data and metadata, which is read by the application.
+  /// \return The return status.
+  Status GetExperimentalMutableObject(const ObjectID &object_id,
+                                      std::unique_ptr<MutableObject> *mutable_object);
 
   /// Tell Plasma that the client no longer needs the object. This should be
   /// called after Get() or Create() when the client is done with the object.

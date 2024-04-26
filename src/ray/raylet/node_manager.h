@@ -324,14 +324,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param required_object_refs The objects that the client is blocked waiting for.
   /// \param current_task_id The task that is blocked.
   /// \param ray_get Whether the task is blocked in a `ray.get` call.
-  /// \param mark_worker_blocked Whether to mark the worker as blocked. This
-  ///                            should be False for direct calls.
   /// \return Void.
   void AsyncResolveObjects(const std::shared_ptr<ClientConnection> &client,
                            const std::vector<rpc::ObjectReference> &required_object_refs,
                            const TaskID &current_task_id,
-                           bool ray_get,
-                           bool mark_worker_blocked);
+                           bool ray_get);
 
   /// Handle end of a blocking object get. This could be a task assigned to a
   /// worker, an out-of-band task (e.g., a thread created by the application),
@@ -341,12 +338,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   ///
   /// \param client The client that is executing the unblocked task.
   /// \param current_task_id The task that is unblocked.
-  /// \param worker_was_blocked Whether we previously marked the worker as
-  ///                           blocked in AsyncResolveObjects().
   /// \return Void.
   void AsyncResolveObjectsFinish(const std::shared_ptr<ClientConnection> &client,
-                                 const TaskID &current_task_id,
-                                 bool was_blocked);
+                                 const TaskID &current_task_id);
 
   /// Handle a direct call task that is blocked. Note that this callback may
   /// arrive after the worker lease has been returned to the node manager.
@@ -577,11 +571,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                                     rpc::FormatGlobalMemoryInfoReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a `RequestObjectSpillage` request.
-  void HandleRequestObjectSpillage(rpc::RequestObjectSpillageRequest request,
-                                   rpc::RequestObjectSpillageReply *reply,
-                                   rpc::SendReplyCallback send_reply_callback) override;
-
   /// Handle a `ReleaseUnusedBundles` request.
   void HandleReleaseUnusedBundles(rpc::ReleaseUnusedBundlesRequest request,
                                   rpc::ReleaseUnusedBundlesReply *reply,
@@ -700,6 +689,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Creates a AgentManager that creates and manages a runtime env agent.
   std::unique_ptr<AgentManager> CreateRuntimeEnvAgentManager(
       const NodeID &self_node_id, const NodeManagerConfig &config);
+
+  /// If Node Manager already knows this (worker, node) is dead, return true.
+  /// Otherwise returns false.
+  bool IsWorkerDead(const WorkerID &worker_id, const NodeID &node_id) const;
 
   /// ID of this node.
   NodeID self_node_id_;

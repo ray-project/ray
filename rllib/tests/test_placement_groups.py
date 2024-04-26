@@ -39,7 +39,7 @@ class TestPlacementGroups(unittest.TestCase):
                 model={"fcnet_hiddens": [10]}, lr=tune.grid_search([0.1, 0.01, 0.001])
             )
             .environment("CartPole-v1")
-            .rollouts(num_rollout_workers=2)
+            .env_runners(num_env_runners=2)
             .framework("tf")
         )
 
@@ -71,8 +71,8 @@ class TestPlacementGroups(unittest.TestCase):
     def test_default_resource_request(self):
         config = (
             PPOConfig()
-            .rollouts(
-                num_rollout_workers=2,
+            .env_runners(
+                num_env_runners=2,
             )
             .training(
                 model={"fcnet_hiddens": [10]}, lr=tune.grid_search([0.1, 0.01, 0.001])
@@ -99,7 +99,7 @@ class TestPlacementGroups(unittest.TestCase):
             PPOConfig()
             .training(model={"fcnet_hiddens": [10]})
             .environment("CartPole-v1")
-            .rollouts(num_rollout_workers=0)
+            .env_runners(num_env_runners=0)
         )
 
         try:

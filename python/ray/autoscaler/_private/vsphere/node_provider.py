@@ -277,9 +277,15 @@ class VsphereNodeProvider(NodeProvider):
                     "The cluster name must be provided when deploying a single frozen"
                     " VM from OVF"
                 )
-            node_config[
-                "host_id"
-            ] = self.get_pyvmomi_sdk_provider().get_host_id_in_cluster(cluster_name)
+
+            host_id = self.get_pyvmomi_sdk_provider().get_host_id_of_datastore_cluster(
+                datastore_name, cluster_name
+            )
+            if not host_id:
+                raise ValueError("No available host to be assigned")
+
+            logger.info("Found a host {}".format(host_id))
+            node_config["host_id"] = host_id
             resource_pool_id = (
                 self.get_pyvmomi_sdk_provider().get_resource_pool_id_in_cluster(
                     cluster_name

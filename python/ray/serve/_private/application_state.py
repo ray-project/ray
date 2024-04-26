@@ -18,11 +18,14 @@ from ray.serve._private.common import (
     DeploymentStatusInfo,
     DeploymentStatusTrigger,
     EndpointInfo,
-    EndpointTag,
     TargetCapacityDirection,
 )
 from ray.serve._private.config import DeploymentConfig
-from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.constants import (
+    NEW_DEFAULT_MAX_ONGOING_REQUESTS,
+    RAY_SERVE_ENABLE_TASK_EVENTS,
+    SERVE_LOGGER_NAME,
+)
 from ray.serve._private.deploy_utils import (
     deploy_args_to_deployment_info,
     get_app_code_version,
@@ -38,6 +41,7 @@ from ray.serve._private.utils import (
     check_obj_ref_ready_nowait,
     override_runtime_envs_except_env_vars,
 )
+from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray.serve.schema import DeploymentDetails, ServeApplicationSchema
@@ -55,6 +59,14 @@ class BuildAppStatus(Enum):
     IN_PROGRESS = 2
     SUCCEEDED = 3
     FAILED = 4
+
+
+class APIType(Enum):
+    """Tracks the type of API that an application originates from."""
+
+    UNKNOWN = 0
+    IMPERATIVE = 1
+    DECLARATIVE = 2
 
 
 @dataclass
@@ -103,6 +115,7 @@ class ApplicationTargetState:
     target_capacity: Optional[float]
     target_capacity_direction: Optional[TargetCapacityDirection]
     deleting: bool
+    api_type: APIType
 
 
 class ApplicationState:
@@ -149,6 +162,7 @@ class ApplicationState:
             target_capacity=None,
             target_capacity_direction=None,
             deleting=False,
+            api_type=APIType.UNKNOWN,
         )
         self._save_checkpoint_func = save_checkpoint_func
 
@@ -190,6 +204,10 @@ class ApplicationState:
     def ingress_deployment(self) -> Optional[str]:
         return self._ingress_deployment_name
 
+    @property
+    def api_type(self) -> APIType:
+        return self._target_state.api_type
+
     def recover_target_state_from_checkpoint(
         self, checkpoint_data: ApplicationTargetState
     ):
@@ -198,16 +216,19 @@ class ApplicationState:
         )
         self._set_target_state(
             checkpoint_data.deployment_infos,
-            checkpoint_data.code_version,
-            checkpoint_data.config,
-            checkpoint_data.target_capacity,
-            checkpoint_data.target_capacity_direction,
-            checkpoint_data.deleting,
+            api_type=checkpoint_data.api_type,
+            code_version=checkpoint_data.code_version,
+            target_config=checkpoint_data.config,
+            target_capacity=checkpoint_data.target_capacity,
+            target_capacity_direction=checkpoint_data.target_capacity_direction,
+            deleting=checkpoint_data.deleting,
         )
 
     def _set_target_state(
         self,
         deployment_infos: Optional[Dict[str, DeploymentInfo]],
+        *,
+        api_type: APIType,
         code_version: str,
         target_config: Optional[ServeApplicationSchema],
         target_capacity: Optional[float] = None,
@@ -223,7 +244,6 @@ class ApplicationState:
         When a request to delete the application has been received, this should be
             ({}, True)
         """
-
         if deleting:
             self._update_status(ApplicationStatus.DELETING)
         else:
@@ -243,6 +263,7 @@ class ApplicationState:
             target_capacity,
             target_capacity_direction,
             deleting,
+            api_type=api_type,
         )
 
         # Checkpoint ahead, so that if the controller crashes before we
@@ -257,17 +278,33 @@ class ApplicationState:
 
         Wipes the target deployment infos, code version, and config.
         """
-        self._set_target_state(dict(), None, None, None, None, True)
+        self._set_target_state(
+            deployment_infos=dict(),
+            api_type=self._target_state.api_type,
+            code_version=None,
+            target_config=None,
+            deleting=True,
+        )
 
     def _clear_target_state_and_store_config(
-        self, target_config: Optional[ServeApplicationSchema]
+        self,
+        target_config: Optional[ServeApplicationSchema],
     ):
-        """Clears the target state and stores the config."""
+        """Clears the target state and stores the config.
 
-        self._set_target_state(None, None, target_config, None, None, False)
+        NOTE: this currently assumes that this method is *only* called when managing
+        apps deployed with the declarative API.
+        """
+        self._set_target_state(
+            deployment_infos=None,
+            api_type=APIType.DECLARATIVE,
+            code_version=None,
+            target_config=target_config,
+            deleting=False,
+        )
 
     def _delete_deployment(self, name):
-        id = EndpointTag(name, self._name)
+        id = DeploymentID(name=name, app_name=self._name)
         self._endpoint_state.delete_endpoint(id)
         self._deployment_state_manager.delete_deployment(id)
 
@@ -275,7 +312,7 @@ class ApplicationState:
         """Delete the application"""
         if self._status != ApplicationStatus.DELETING:
             logger.info(
-                f"Deleting application '{self._name}'",
+                f"Deleting app '{self._name}'.",
                 extra={"log_to_stderr": False},
             )
         self._set_target_state_deleting()
@@ -300,7 +337,7 @@ class ApplicationState:
                 f'Invalid route prefix "{route_prefix}", it must start with "/"'
             )
 
-        deployment_id = DeploymentID(deployment_name, self._name)
+        deployment_id = DeploymentID(name=deployment_name, app_name=self._name)
 
         self._deployment_state_manager.deploy(deployment_id, deployment_info)
 
@@ -323,11 +360,11 @@ class ApplicationState:
         else:
             self._endpoint_state.delete_endpoint(deployment_id)
 
-    def deploy(self, deployment_infos: Dict[str, DeploymentInfo]):
-        """Deploy application from list of deployment infos.
+    def deploy_app(self, deployment_infos: Dict[str, DeploymentInfo]):
+        """(Re-)deploy the application from list of deployment infos.
 
-        This function should only be called if the app is being deployed
-        through serve.run instead of from a config.
+        This function should only be called to deploy an app from an
+        imperative API (i.e., `serve.run` or Java API).
 
         Raises: RayServeException if there is more than one route prefix
             or docs path.
@@ -338,25 +375,29 @@ class ApplicationState:
 
         self._set_target_state(
             deployment_infos=deployment_infos,
+            api_type=APIType.IMPERATIVE,
             code_version=None,
             target_config=None,
             target_capacity=None,
             target_capacity_direction=None,
         )
 
-    def deploy_config(
+    def apply_app_config(
         self,
         config: ServeApplicationSchema,
         target_capacity: Optional[float],
         target_capacity_direction: Optional[TargetCapacityDirection],
         deployment_time: int,
     ) -> None:
-        """Deploys an application config.
+        """Apply the config to the application.
 
         If the code version matches that of the current live deployments
         then it only applies the updated config to the deployment state
         manager. If the code version doesn't match, this will re-build
         the application.
+
+        This function should only be called to (re-)deploy an app from
+        the declarative API (i.e., through the REST API).
         """
 
         self._deployment_timestamp = deployment_time
@@ -373,6 +414,7 @@ class ApplicationState:
                 self._set_target_state(
                     # Code version doesn't change.
                     code_version=self._target_state.code_version,
+                    api_type=APIType.DECLARATIVE,
                     # Everything else must reflect the new config.
                     deployment_infos=overrided_infos,
                     target_config=config,
@@ -411,9 +453,10 @@ class ApplicationState:
                 ServeUsageTag.APP_CONTAINER_RUNTIME_ENV_USED.record("1")
 
             # Kick off new build app task
-            logger.info(f"Building application '{self._name}'.")
+            logger.info(f"Importing and building app '{self._name}'.")
             build_app_obj_ref = build_serve_application.options(
-                runtime_env=config.runtime_env
+                runtime_env=config.runtime_env,
+                enable_task_events=RAY_SERVE_ENABLE_TASK_EVENTS,
             ).remote(
                 config.import_path,
                 config.deployment_names,
@@ -454,38 +497,18 @@ class ApplicationState:
         if self._target_state.deleting:
             return ApplicationStatus.DELETING, ""
 
-        num_healthy_deployments = 0
-        num_autoscaling_deployments = 0
-        num_updating_deployments = 0
-        num_manually_scaling_deployments = 0
-        unhealthy_deployment_names = []
-
-        for deployment_status in self.get_deployments_statuses():
-            if deployment_status.status == DeploymentStatus.UNHEALTHY:
-                unhealthy_deployment_names.append(deployment_status.name)
-            elif deployment_status.status == DeploymentStatus.HEALTHY:
-                num_healthy_deployments += 1
-            elif (
-                deployment_status.status_trigger == DeploymentStatusTrigger.AUTOSCALING
-            ):
-                num_autoscaling_deployments += 1
-            elif deployment_status.status == DeploymentStatus.UPDATING:
-                num_updating_deployments += 1
-            elif (
-                deployment_status.status
-                in [DeploymentStatus.UPSCALING, DeploymentStatus.DOWNSCALING]
-                and deployment_status.status_trigger
-                == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
-            ):
-                num_manually_scaling_deployments += 1
-            else:
-                raise RuntimeError(
-                    "Found deployment with unexpected status "
-                    f"{deployment_status.status} and status trigger "
-                    f"{deployment_status.status_trigger}."
-                )
-
-        if len(unhealthy_deployment_names):
+        # Get the lowest rank, i.e. highest priority, deployment status info object
+        # The deployment status info with highest priority determines the corresponding
+        # application status to set.
+        lowest_rank_status = min(
+            self.get_deployments_statuses(), key=lambda info: info.rank
+        )
+        if lowest_rank_status.status == DeploymentStatus.UNHEALTHY:
+            unhealthy_deployment_names = [
+                s.name
+                for s in self.get_deployments_statuses()
+                if s.status == DeploymentStatus.UNHEALTHY
+            ]
             status_msg = f"The deployments {unhealthy_deployment_names} are UNHEALTHY."
             if self._status in [
                 ApplicationStatus.DEPLOYING,
@@ -494,17 +517,16 @@ class ApplicationState:
                 return ApplicationStatus.DEPLOY_FAILED, status_msg
             else:
                 return ApplicationStatus.UNHEALTHY, status_msg
-        elif num_updating_deployments + num_manually_scaling_deployments > 0:
-            # If deployments are UPDATING or UPSCALING/DOWNSCALING
-            # with status trigger CONFIG_UPDATE_STARTED, then
-            # application is still DEPLOYING
+        elif lowest_rank_status.status == DeploymentStatus.UPDATING:
+            return ApplicationStatus.DEPLOYING, ""
+        elif (
+            lowest_rank_status.status
+            in [DeploymentStatus.UPSCALING, DeploymentStatus.DOWNSCALING]
+            and lowest_rank_status.status_trigger
+            == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+        ):
             return ApplicationStatus.DEPLOYING, ""
         else:
-            # If all deployments are HEALTHY or autoscaling, then
-            # application is RUNNING
-            assert num_healthy_deployments + num_autoscaling_deployments == len(
-                self.target_deployments
-            )
             return ApplicationStatus.RUNNING, ""
 
     def _reconcile_build_app_task(self) -> Tuple[Tuple, BuildAppStatus, str]:
@@ -533,7 +555,7 @@ class ApplicationState:
         try:
             args, err = ray.get(self._build_app_task_info.obj_ref)
             if err is None:
-                logger.info(f"Built application '{self._name}' successfully.")
+                logger.info(f"Imported and built app '{self._name}' successfully.")
             else:
                 return (
                     None,
@@ -674,6 +696,7 @@ class ApplicationState:
             self._set_target_state(
                 deployment_infos=infos,
                 code_version=self._build_app_task_info.code_version,
+                api_type=self._target_state.api_type,
                 target_config=self._build_app_task_info.config,
                 target_capacity=self._build_app_task_info.target_capacity,
                 target_capacity_direction=(
@@ -702,7 +725,7 @@ class ApplicationState:
     def get_deployments_statuses(self) -> List[DeploymentStatusInfo]:
         """Return all deployment status information"""
         deployments = [
-            DeploymentID(deployment, self._name)
+            DeploymentID(name=deployment, app_name=self._name)
             for deployment in self.target_deployments
         ]
         return self._deployment_state_manager.get_deployment_statuses(deployments)
@@ -728,7 +751,7 @@ class ApplicationState:
         """
         details = {
             deployment_name: self._deployment_state_manager.get_deployment_details(
-                DeploymentID(deployment_name, self._name)
+                DeploymentID(name=deployment_name, app_name=self._name)
             )
             for deployment_name in self.target_deployments
         }
@@ -778,14 +801,14 @@ class ApplicationStateManager:
                 app_state.recover_target_state_from_checkpoint(checkpoint_data)
                 self._application_states[app_name] = app_state
 
-    def delete_application(self, name: str) -> None:
+    def delete_app(self, name: str) -> None:
         """Delete application by name"""
         if name not in self._application_states:
             return
         self._application_states[name].delete()
 
-    def apply_deployment_args(self, name: str, deployment_args: List[Dict]) -> None:
-        """Apply list of deployment arguments to application target state.
+    def deploy_app(self, name: str, deployment_args: List[Dict]) -> None:
+        """Deploy the specified app to the list of deployment arguments.
 
         This function should only be called if the app is being deployed
         through serve.run instead of from a config.
@@ -832,32 +855,52 @@ class ApplicationStateManager:
             )
             for params in deployment_args
         }
-        self._application_states[name].deploy(deployment_infos)
+        self._application_states[name].deploy_app(deployment_infos)
 
-    def deploy_config(
+    def apply_app_configs(
         self,
-        name: str,
-        app_config: ServeApplicationSchema,
+        app_configs: List[ServeApplicationSchema],
+        *,
         deployment_time: float = 0,
         target_capacity: Optional[float] = None,
         target_capacity_direction: Optional[TargetCapacityDirection] = None,
-    ) -> None:
-        """Deploy application from config."""
+    ):
+        """Declaratively apply the list of application configs.
 
-        if name not in self._application_states:
-            self._application_states[name] = ApplicationState(
-                name,
-                self._deployment_state_manager,
-                endpoint_state=self._endpoint_state,
-                save_checkpoint_func=self._save_checkpoint_func,
+        The applications will be reconciled to match the target state of the config.
+
+        Any applications previously deployed declaratively that are *not* present in
+        the list will be deleted.
+        """
+        for app_config in app_configs:
+            if app_config.name not in self._application_states:
+                logger.info(f"Deploying new app '{app_config.name}'.")
+                self._application_states[app_config.name] = ApplicationState(
+                    app_config.name,
+                    self._deployment_state_manager,
+                    endpoint_state=self._endpoint_state,
+                    save_checkpoint_func=self._save_checkpoint_func,
+                )
+
+            self._application_states[app_config.name].apply_app_config(
+                app_config,
+                target_capacity,
+                target_capacity_direction,
+                deployment_time=deployment_time,
             )
+
+        # Delete all apps that were previously deployed via the declarative API
+        # but are not in the config being applied.
+        existing_apps = {
+            name
+            for name, app_state in self._application_states.items()
+            if app_state.api_type == APIType.DECLARATIVE
+        }
+        apps_in_config = {app_config.name for app_config in app_configs}
+        for app_to_delete in existing_apps - apps_in_config:
+            self.delete_app(app_to_delete)
+
         ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
-        self._application_states[name].deploy_config(
-            app_config,
-            target_capacity,
-            target_capacity_direction,
-            deployment_time=deployment_time,
-        )
 
     def get_deployments(self, app_name: str) -> List[str]:
         """Return all deployment names by app name"""
@@ -1053,19 +1096,39 @@ def override_deployment_info(
 
     # Override options for each deployment listed in the config.
     for options in deployment_override_options:
+        if "max_concurrent_queries" in options or "max_ongoing_requests" in options:
+            options["max_ongoing_requests"] = options.get(
+                "max_ongoing_requests"
+            ) or options.get("max_concurrent_queries")
+
         deployment_name = options["name"]
         info = deployment_infos[deployment_name]
+        original_options = info.deployment_config.dict()
+        original_options["user_configured_option_names"].update(set(options))
 
-        if (
-            info.deployment_config.autoscaling_config is not None
-            and info.deployment_config.max_concurrent_queries
-            < info.deployment_config.autoscaling_config.target_num_ongoing_requests_per_replica  # noqa: E501
-        ):
-            logger.warning(
-                "Autoscaling will never happen, "
-                "because 'max_concurrent_queries' is less than "
-                "'target_num_ongoing_requests_per_replica' now."
+        # Override `max_ongoing_requests` and `autoscaling_config` if
+        # `num_replicas="auto"`
+        if options.get("num_replicas") == "auto":
+            options["num_replicas"] = None
+            if (
+                "max_ongoing_requests"
+                not in original_options["user_configured_option_names"]
+            ):
+                options["max_ongoing_requests"] = NEW_DEFAULT_MAX_ONGOING_REQUESTS
+
+            new_config = AutoscalingConfig.default().dict()
+            # If `autoscaling_config` is specified, its values override
+            # the default `num_replicas="auto"` configuration
+            autoscaling_config = (
+                options.get("autoscaling_config")
+                or info.deployment_config.autoscaling_config
             )
+            if autoscaling_config:
+                new_config.update(autoscaling_config)
+
+            options["autoscaling_config"] = AutoscalingConfig(**new_config)
+
+            ServeUsageTag.AUTO_NUM_REPLICAS_USED.record("1")
 
         # What to pass to info.update
         override_options = dict()
@@ -1107,19 +1170,32 @@ def override_deployment_info(
             app_runtime_env, override_actor_options.get("runtime_env", {})
         )
         override_actor_options.update({"runtime_env": merged_env})
-        replica_config.update_ray_actor_options(override_actor_options)
-        replica_config.update_placement_group_options(
-            override_placement_group_bundles, override_placement_group_strategy
+
+        replica_config.update(
+            ray_actor_options=override_actor_options,
+            placement_group_bundles=override_placement_group_bundles,
+            placement_group_strategy=override_placement_group_strategy,
+            max_replicas_per_node=override_max_replicas_per_node,
         )
-        replica_config.update_max_replicas_per_node(override_max_replicas_per_node)
         override_options["replica_config"] = replica_config
 
         # Override deployment config options
-        original_options = info.deployment_config.dict()
         options.pop("name", None)
         original_options.update(options)
         override_options["deployment_config"] = DeploymentConfig(**original_options)
         deployment_infos[deployment_name] = info.update(**override_options)
+
+        deployment_config = deployment_infos[deployment_name].deployment_config
+        if (
+            deployment_config.autoscaling_config is not None
+            and deployment_config.max_ongoing_requests
+            < deployment_config.autoscaling_config.get_target_ongoing_requests()
+        ):
+            logger.warning(
+                "Autoscaling will never happen, "
+                "because 'max_ongoing_requests' is less than "
+                "'target_ongoing_requests' now."
+            )
 
     # Overwrite ingress route prefix
     app_route_prefix = config_dict.get("route_prefix", DEFAULT.VALUE)

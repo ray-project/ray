@@ -8,11 +8,6 @@ import pytest
 import ray
 import ray.cluster_utils
 
-try:
-    import pytest_timeout
-except ImportError:
-    pytest_timeout = None
-
 
 def test_actor_deletion_with_gpus(shutdown_only):
     ray.init(num_cpus=1, num_gpus=1, object_store_memory=int(150 * 1024 * 1024))

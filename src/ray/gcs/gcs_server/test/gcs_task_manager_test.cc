@@ -284,6 +284,18 @@ class GcsTaskManagerMemoryLimitedTest : public GcsTaskManagerTest {
   }
 };
 
+class GcsTaskManagerProfileEventsLimitTest : public GcsTaskManagerTest {
+ public:
+  GcsTaskManagerProfileEventsLimitTest() : GcsTaskManagerTest() {
+    RayConfig::instance().initialize(
+        R"(
+{
+  "task_events_max_num_profile_events_per_task": 10
+}
+  )");
+  }
+};
+
 class GcsTaskManagerDroppedTaskAttemptsLimit : public GcsTaskManagerTest {
  public:
   GcsTaskManagerDroppedTaskAttemptsLimit() : GcsTaskManagerTest() {
@@ -1023,6 +1035,35 @@ TEST_F(GcsTaskManagerDroppedTaskAttemptsLimit, TestDroppedTaskAttemptsLimit) {
   EXPECT_EQ(job_summary.dropped_task_attempts_.size(), 5);
   EXPECT_EQ(job_summary.num_dropped_task_attempts_evicted_, 5);
   EXPECT_EQ(job_summary.NumTaskAttemptsDropped(), 10);
+}
+
+TEST_F(GcsTaskManagerProfileEventsLimitTest, TestProfileEventsNoLeak) {
+  auto task = GenTaskIDs(1)[0];
+
+  // Keep generating profile events and make sure the number of profile events
+  // is bounded.
+  for (int i = 0; i < 100; i++) {
+    auto events = GenTaskEvents({task},
+                                /* attempt_number */ 0,
+                                /* job_id */ 0,
+                                GenProfileEvents("event", 1, 1));
+    auto events_data = Mocker::GenTaskEventsData(events);
+    SyncAddTaskEventData(events_data);
+  }
+
+  // Assert on the profile events in the buffer.
+  {
+    auto reply = SyncGetTaskEvents({});
+    EXPECT_EQ(reply.events_by_task_size(), 1);
+    EXPECT_EQ(reply.events_by_task().begin()->profile_events().events().size(),
+              RayConfig::instance().task_events_max_num_profile_events_per_task());
+
+    // assert on the profile events dropped counter.
+    EXPECT_EQ(reply.num_profile_task_events_dropped(),
+              100 - RayConfig::instance().task_events_max_num_profile_events_per_task());
+    EXPECT_EQ(task_manager->GetTotalNumProfileTaskEventsDropped(),
+              100 - RayConfig::instance().task_events_max_num_profile_events_per_task());
+  }
 }
 
 TEST_F(GcsTaskManagerMemoryLimitedTest, TestLimitGcPriorityBased) {

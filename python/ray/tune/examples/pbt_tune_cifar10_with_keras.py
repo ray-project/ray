@@ -17,8 +17,14 @@ import argparse
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.datasets import cifar10
-from tensorflow.keras.layers import Input, Dense, Dropout, Flatten
-from tensorflow.keras.layers import Convolution2D, MaxPooling2D
+from tensorflow.keras.layers import (
+    Convolution2D,
+    Dense,
+    Dropout,
+    Flatten,
+    Input,
+    MaxPooling2D,
+)
 from tensorflow.keras.models import Model, load_model
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 
@@ -229,6 +235,7 @@ if __name__ == "__main__":
             num_samples=4,
             metric="mean_accuracy",
             mode="max",
+            reuse_actors=True,
         ),
         param_space=space,
     )

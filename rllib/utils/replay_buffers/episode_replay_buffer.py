@@ -8,6 +8,7 @@ from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.base import ReplayBufferInterface
 from ray.rllib.utils.typing import SampleBatchType
+from ray.rllib.utils import force_list
 
 
 class EpisodeReplayBuffer(ReplayBufferInterface):
@@ -41,6 +42,20 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
     observation of the episode, the final reward received, a dummy action
     (repeat the previous action), as well as either terminated=True or truncated=True.
     """
+
+    __slots__ = (
+        "capacity",
+        "batch_size_B",
+        "batch_length_T",
+        "episodes",
+        "episode_id_to_index",
+        "num_episodes_evicted",
+        "_indices",
+        "_num_timesteps",
+        "_num_timesteps_added",
+        "sampled_timesteps",
+        "rng",
+    )
 
     def __init__(
         self,
@@ -105,8 +120,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
 
         Then adds these episodes to the internal deque.
         """
-        if isinstance(episodes, SingleAgentEpisode):
-            episodes = [episodes]
+        episodes = force_list(episodes)
 
         for eps in episodes:
             # Make sure we don't change what's coming in from the user.

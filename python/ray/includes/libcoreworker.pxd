@@ -88,7 +88,10 @@ cdef extern from "ray/core_worker/context.h" nogil:
 
 cdef extern from "ray/core_worker/generator_waiter.h" nogil:
     cdef cppclass CGeneratorBackpressureWaiter "ray::core::GeneratorBackpressureWaiter": # noqa
-        CGeneratorBackpressureWaiter(int64_t generator_backpressure_num_objects) # noqa
+        CGeneratorBackpressureWaiter(
+                int64_t generator_backpressure_num_objects,
+                (CRayStatus() nogil) check_signals)
+        CRayStatus WaitAllObjectsReported()
 
 cdef extern from "ray/core_worker/core_worker.h" nogil:
     cdef cppclass CActorHandle "ray::core::ActorHandle":
@@ -99,6 +102,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_string ExtensionData() const
         int MaxPendingCalls() const
         int MaxTaskRetries() const
+        c_bool EnableTaskEvents() const
 
     cdef cppclass CCoreWorker "ray::core::CoreWorker":
         void ConnectToRaylet()
@@ -162,11 +166,11 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CObjectID& return_id,
             shared_ptr[CRayObject] *return_object,
             const CObjectID& generator_id)
-        void DelObjectRefStream(const CObjectID &generator_id)
+        void AsyncDelObjectRefStream(const CObjectID &generator_id)
         CRayStatus TryReadObjectRefStream(
             const CObjectID &generator_id,
             CObjectReference *object_ref_out)
-        c_bool IsFinished(const CObjectID &generator_id) const
+        c_bool StreamingGeneratorIsFinished(const CObjectID &generator_id) const
         pair[CObjectReference, c_bool] PeekObjectRefStream(
             const CObjectID &generator_id)
         CObjectID AllocateDynamicReturnId(
@@ -244,25 +248,26 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                   const CAddress &owner_address,
                                   shared_ptr[CBuffer] *data,
                                   c_bool created_by_worker)
-        CRayStatus ExperimentalMutableObjectWriteAcquire(
+        CRayStatus ExperimentalChannelWriteAcquire(
                                   const CObjectID &object_id,
                                   const shared_ptr[CBuffer] &metadata,
                                   uint64_t data_size,
                                   int64_t num_readers,
                                   shared_ptr[CBuffer] *data)
-        CRayStatus ExperimentalMutableObjectWriteRelease(
+        CRayStatus ExperimentalChannelWriteRelease(
                                   const CObjectID &object_id)
-        CRayStatus ExperimentalMutableObjectSetError(
+        CRayStatus ExperimentalChannelSetError(
                                   const CObjectID &object_id)
         CRayStatus SealOwned(const CObjectID &object_id, c_bool pin_object,
                              const unique_ptr[CAddress] &owner_address)
         CRayStatus SealExisting(const CObjectID &object_id, c_bool pin_object,
                                 const CObjectID &generator_id,
                                 const unique_ptr[CAddress] &owner_address)
-        CRayStatus ExperimentalMutableObjectReadRelease(
+        CRayStatus ExperimentalChannelRegisterWriter(const CObjectID &object_id)
+        CRayStatus ExperimentalChannelRegisterReader(const CObjectID &object_id)
+        CRayStatus ExperimentalChannelReadRelease(
                     const c_vector[CObjectID] &object_ids)
         CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
-                       c_bool is_experimental_mutable_object,
                        c_vector[shared_ptr[CRayObject]] *results)
         CRayStatus GetIfLocal(
             const c_vector[CObjectID] &ids,
@@ -311,7 +316,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         int64_t GetNumLeasesRequested() const
 
-        unordered_map[c_string, c_vector[int64_t]] GetActorCallStats() const
+        int64_t GetLocalMemoryStoreBytesUsed() const
 
         void RecordTaskLogStart(
             const CTaskID &task_id,

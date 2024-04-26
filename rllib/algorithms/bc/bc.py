@@ -171,7 +171,7 @@ class BC(MARWIL):
                 self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
 
             # Updating the policy.
-            train_results = self.learner_group.update(train_batch)
+            train_results = self.learner_group.update_from_batch(batch=train_batch)
 
             # Synchronize weights.
             # As the results contain for each policy the loss and in addition the

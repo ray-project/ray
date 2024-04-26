@@ -1,13 +1,13 @@
+import { SearchOutlined } from "@mui/icons-material";
 import {
   Button,
-  createStyles,
   InputAdornment,
   LinearProgress,
-  makeStyles,
   Switch,
   TextField,
-} from "@material-ui/core";
-import { SearchOutlined } from "@material-ui/icons";
+} from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import React, { useState } from "react";
 import LogVirtualView from "../../components/LogView/LogVirtualView";
 
@@ -81,31 +81,6 @@ export const LogViewer = ({
               }}
             />
             <TextField
-              className={classes.search}
-              label="Line Number"
-              InputProps={{
-                onChange: ({ target: { value } }) => {
-                  setSearch({ ...search, lineNumber: value });
-                },
-                type: "",
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <SearchOutlined />
-                  </InputAdornment>
-                ),
-              }}
-            />
-            <TextField
-              className={classes.search}
-              label="Font Size"
-              InputProps={{
-                onChange: ({ target: { value } }) => {
-                  setSearch({ ...search, fontSize: Number(value) });
-                },
-                type: "",
-              }}
-            />
-            <TextField
               id="datetime-local"
               label="Start Time"
               type="datetime-local"
@@ -160,11 +135,7 @@ export const LogViewer = ({
                   variant="contained"
                   component="a"
                   href={downloadUrl}
-                  download={
-                    path.startsWith("/logs/")
-                      ? path.substring("/logs/".length)
-                      : path
-                  }
+                  download={path}
                 >
                   Download log file
                 </Button>

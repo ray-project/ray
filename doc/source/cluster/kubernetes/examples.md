@@ -11,6 +11,8 @@ examples/stable-diffusion-rayservice
 examples/mobilenet-rayservice
 examples/text-summarizer-rayservice
 examples/rayjob-batch-inference-example
+examples/rayjob-kueue-priority-scheduling
+examples/rayjob-kueue-gang-scheduling
 ```
 
 
@@ -22,3 +24,5 @@ This section presents example Ray workloads to try out on your Kubernetes cluste
 - {ref}`kuberay-stable-diffusion-rayservice-example`
 - {ref}`kuberay-text-summarizer-rayservice-example`
 - {ref}`kuberay-batch-inference-example`
+- {ref}`kuberay-kueue-priority-scheduling-example`
+- {ref}`kuberay-kueue-gang-scheduling-example`

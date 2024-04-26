@@ -113,11 +113,8 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
   stats::NumCachedWorkersSkippedJobMismatch.Record(0);
   stats::NumCachedWorkersSkippedDynamicOptionsMismatch.Record(0);
   stats::NumCachedWorkersSkippedRuntimeEnvironmentMismatch.Record(0);
-#ifndef _WIN32
-  // Ignore SIGCHLD signals. If we don't do this, then worker processes will
-  // become zombies instead of dying gracefully.
-  signal(SIGCHLD, SIG_IGN);
-#endif
+  // We used to ignore SIGCHLD here. The code is moved to raylet main.cc to support the
+  // subreaper feature.
   for (const auto &entry : worker_commands) {
     // Initialize the pool state for this language.
     auto &state = states_by_lang_[entry.first];
@@ -340,6 +337,7 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
                                   std::to_string(worker_startup_token_counter_));
     worker_command_args.push_back("--worker-launch-time-ms=" +
                                   std::to_string(current_sys_time_ms()));
+    worker_command_args.push_back("--node-id=" + node_id_.Hex());
   } else if (language == Language::CPP) {
     worker_command_args.push_back("--startup_token=" +
                                   std::to_string(worker_startup_token_counter_));
@@ -425,8 +423,6 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
     // Support forking in gRPC.
     env.insert({"GRPC_ENABLE_FORK_SUPPORT", "True"});
     env.insert({"GRPC_POLL_STRATEGY", "poll"});
-    // Make sure only the main thread is running in Python workers.
-    env.insert({"RAY_start_python_importer_thread", "0"});
   }
 
   return {std::move(worker_command_args), std::move(env)};
@@ -1651,6 +1647,8 @@ const std::vector<std::string> &WorkerPool::LookupWorkerDynamicOptions(
   static std::vector<std::string> kNoDynamicOptions;
   return kNoDynamicOptions;
 }
+
+const NodeID &WorkerPool::GetNodeID() const { return node_id_; }
 
 }  // namespace raylet
 

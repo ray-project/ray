@@ -1,5 +1,9 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
+.. include:: /_includes/rllib/new_api_stack.rst
+
+.. include:: /_includes/rllib/new_api_stack_component.rst
+
 .. |tensorflow| image:: images/tensorflow.png
     :class: inline-figure
     :width: 16
@@ -229,19 +233,23 @@ Updates
 
         .. testcode::
 
-            # This is a blocking update
-            results = learner_group.update(DUMMY_BATCH)
+            # This is a blocking update.
+            results = learner_group.update_from_batch(batch=DUMMY_BATCH)
 
             # This is a non-blocking update. The results are returned in a future
-            # call to `async_update`
-            _ = learner_group.async_update(DUMMY_BATCH)
+            # call to `update_from_batch(..., async_update=True)`
+            _ = learner_group.update_from_batch(batch=DUMMY_BATCH, async_update=True)
 
             # Artificially wait for async request to be done to get the results
-            # in the next call to `LearnerGroup.async_update()`.
+            # in the next call to
+            # `LearnerGroup.update_from_batch(..., async_update=True)`.
             time.sleep(5)
-            results = learner_group.async_update(DUMMY_BATCH)
+            results = learner_group.update_from_batch(
+                batch=DUMMY_BATCH, async_update=True
+            )
             # `results` is a list of results dict. The items in the list represent the different
-            # remote results from the different calls to `async_update()`.
+            # remote results from the different calls to
+            # `update_from_batch(..., async_update=True)`.
             assert len(results) > 0
             # Each item is a results dict, already reduced over the n Learner workers.
             assert isinstance(results[0], dict), results[0]
@@ -256,8 +264,8 @@ Updates
 
         .. testcode::
 
-            # This is a blocking update.
-            result = learner.update(DUMMY_BATCH)
+            # This is a blocking update (given a training batch).
+            result = learner.update_from_batch(batch=DUMMY_BATCH)
 
             # This is an additional non-gradient based update.
             learner_group.additional_update(**ADDITIONAL_UPDATE_KWARGS)

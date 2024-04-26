@@ -1,13 +1,13 @@
 import argparse
 import json
 
-# For compatibility under py2 to consider unicode as str
-from ray.tune.utils.serialization import TuneFunctionEncoder
-
 from ray.train import CheckpointConfig
-from ray.tune import TuneError
+from ray.tune.error import TuneError
 from ray.tune.experiment import Trial
 from ray.tune.resources import json_to_resources
+
+# For compatibility under py2 to consider unicode as str
+from ray.tune.utils.serialization import TuneFunctionEncoder
 from ray.tune.utils.util import SafeFallbackEncoder
 
 
@@ -77,15 +77,6 @@ def _make_parser(parser_creator=None, **kwargs):
         "--checkpoint-at-end",
         action="store_true",
         help="Whether to checkpoint at the end of the experiment. Default is False.",
-    )
-    parser.add_argument(
-        "--sync-on-checkpoint",
-        action="store_true",
-        help="Enable sync-down of trial checkpoint to guarantee "
-        "recoverability. If unset, checkpoint syncing from worker "
-        "to driver is asynchronous, so unset this only if synchronous "
-        "checkpointing is too slow and trial restoration failures "
-        "can be tolerated.",
     )
     parser.add_argument(
         "--keep-checkpoints-num",

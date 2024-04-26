@@ -4,7 +4,7 @@ import threading
 import numpy as np
 import tree  # pip install dm_tree
 
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.numpy import SMALL_NUMBER
 from ray.rllib.utils.typing import TensorStructType
@@ -14,7 +14,7 @@ from ray.rllib.utils.deprecation import deprecation_warning
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
+@OldAPIStack
 class Filter:
     """Processes input, possibly statefully."""
 
@@ -46,7 +46,7 @@ class Filter:
         pass
 
 
-@DeveloperAPI
+@OldAPIStack
 class NoFilter(Filter):
     is_concurrent = True
 
@@ -77,7 +77,7 @@ class NoFilter(Filter):
 
 
 # http://www.johndcook.com/blog/standard_deviation/
-@DeveloperAPI
+@OldAPIStack
 class RunningStat:
     def __init__(self, shape=()):
         self.num_pushes = 0
@@ -151,7 +151,7 @@ class RunningStat:
             self.std_array / (self.num_pushes - 1)
             if self.num_pushes > 1
             else np.square(self.mean_array)
-        )
+        ).astype(np.float32)
 
     @property
     def std(self):
@@ -177,7 +177,7 @@ class RunningStat:
         return running_stats
 
 
-@DeveloperAPI
+@OldAPIStack
 class MeanStdFilter(Filter):
     """Keeps track of a running mean for seen states"""
 
@@ -312,10 +312,8 @@ class MeanStdFilter(Filter):
         self.demean = other.demean
         self.destd = other.destd
         self.clip = other.clip
-        # TODO: Remove these safe-guards if not needed anymore.
         self.running_stats = tree.map_structure(
-            lambda rs: rs.copy(),
-            other.running_stats if hasattr(other, "running_stats") else other.rs,
+            lambda rs: rs.copy(), other.running_stats
         )
         self.buffer = tree.map_structure(lambda b: b.copy(), other.buffer)
 
@@ -359,7 +357,7 @@ class MeanStdFilter(Filter):
             return _helper(x, self.running_stats, self.buffer, self.shape)
 
 
-@DeveloperAPI
+@OldAPIStack
 class ConcurrentMeanStdFilter(MeanStdFilter):
     is_concurrent = True
 
@@ -408,7 +406,7 @@ class ConcurrentMeanStdFilter(MeanStdFilter):
         )
 
 
-@DeveloperAPI
+@OldAPIStack
 def get_filter(filter_config, shape):
     # TODO(rliaw): move this into filter manager
     if filter_config == "MeanStdFilter":

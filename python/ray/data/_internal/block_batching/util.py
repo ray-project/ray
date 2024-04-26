@@ -22,19 +22,20 @@ logger = logging.getLogger(__name__)
 def _calculate_ref_hits(refs: List[ObjectRef[Any]]) -> Tuple[int, int, int]:
     """Given a list of object references, returns how many are already on the local
     node, how many require fetching from another node, and how many have unknown
-    locations."""
+    locations. If `DataContext.get_current().enable_get_object_locations_for_metrics` is
+    False, this will return `(-1, -1, -1)` as getting object locations is disabled."""
     current_node_id = ray.get_runtime_context().get_node_id()
 
     ctx = ray.data.context.DataContext.get_current()
     if ctx.enable_get_object_locations_for_metrics:
         locs = ray.experimental.get_object_locations(refs)
-    else:
-        locs = {}
-    nodes: List[List[str]] = [loc["node_ids"] for loc in locs.values()]
-    hits = sum(current_node_id in node_ids for node_ids in nodes)
-    unknowns = sum(1 for node_ids in nodes if not node_ids)
-    misses = len(nodes) - hits - unknowns
-    return hits, misses, unknowns
+        nodes: List[List[str]] = [loc["node_ids"] for loc in locs.values()]
+        hits = sum(current_node_id in node_ids for node_ids in nodes)
+        unknowns = sum(1 for node_ids in nodes if not node_ids)
+        misses = len(nodes) - hits - unknowns
+        return hits, misses, unknowns
+
+    return -1, -1, -1
 
 
 def resolve_block_refs(
