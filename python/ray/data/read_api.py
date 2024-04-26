@@ -54,7 +54,7 @@ from ray.data.datasource import (
     Datasource,
     ImageDatasource,
     JSONDatasource,
-    LanceDBDatasource,
+    LanceDatasource,
     MongoDatasource,
     NumpyDatasource,
     ParquetBaseDatasource,
@@ -2903,12 +2903,15 @@ def from_torch(
 
 @PublicAPI
 def read_lance(
-    *,
     uri: str,
+    *,
     columns: Optional[List[str]] = None,
     filter: Optional[str] = None,
+    storage_options: Optional[Dict[str, str]] = None,
     parallelism: int = -1,
     ray_remote_args: Optional[Dict[str, Any]] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
 ) -> Dataset:
     """
     Create a :class:`~ray.data.Dataset` from a Lance dataset. The dataset to read from
@@ -2945,13 +2948,16 @@ def read_lance(
     Returns:
         A :class:`~ray.data.Dataset` the Lance dataset from the results of executing the read.
     """  # noqa: E501
-    datasource = LanceDBDatasource(uri=uri, columns=columns, filter=filter)
+    datasource = LanceDatasource(uri=uri, columns=columns, filter=filter)
 
-    dataset = read_datasource(
-        datasource=datasource, parallelism=parallelism, ray_remote_args=ray_remote_args
+    return read_datasource(
+        datasource=datasource,
+        parallelism=parallelism,
+        storage_options=storage_options,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_locks=override_num_blocks,
     )
-
-    return dataset
 
 
 def _get_datasource_or_legacy_reader(
