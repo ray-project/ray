@@ -1,12 +1,12 @@
 import os
-import pytest
-from pytest_lazyfixture import lazy_fixture
 
 import lance
 import pyarrow as pa
+import pytest
+from pytest_lazyfixture import lazy_fixture
+from read_api import read_lance
 
 from ray.data.datasource.path_util import _unwrap_protocol
-from read_api import read_lance
 
 
 @pytest.mark.parametrize(
@@ -49,18 +49,18 @@ def test_lance_read_basic(fs, data_path):
     assert ds.size_bytes() > 0
     assert ds.schema() is not None
 
-    ### todo: brentb input_files test
+    # todo: brentb input_files test
     # input_files = ds.input_files()
     # assert len(input_files) == 2, input_files
     # assert ".lance" in str(input_files)
 
     assert (
         " ".join(str(ds).split())
-        == "Dataset( num_rows=6, schema={one: int64, two: string, three: int64, four: string} )"
+        == "Dataset( num_rows=6, schema={one: int64, two: string, three: int64, four: string} )"  # noqa: E501
     ), ds
     assert (
         " ".join(repr(ds).split())
-        == "Dataset( num_rows=6, schema={one: int64, two: string, three: int64, four: string} )"
+        == "Dataset( num_rows=6, schema={one: int64, two: string, three: int64, four: string} )"  # noqa: E501
     ), ds
 
     # Forces a data read.
