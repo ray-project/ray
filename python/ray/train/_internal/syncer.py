@@ -184,7 +184,7 @@ class Syncer(abc.ABC):
 
     This class handles data transfer for two cases:
 
-    1. Synchronizing data such as experiment checkpoints from the driver to
+    1. Synchronizing data such as experiment state snapshots from the driver to
        cloud storage.
     2. Synchronizing data such as trial checkpoints from remote trainables to
        cloud storage.
@@ -283,7 +283,7 @@ class Syncer(abc.ABC):
         """
         pass
 
-    def wait(self):
+    def wait(self, timeout: Optional[float] = None):
         """Wait for asynchronous sync command to finish.
 
         You should implement this method if you spawn asynchronous syncing
@@ -415,7 +415,7 @@ class _BackgroundSyncer(Syncer):
         self, local_dir: str, remote_dir: str, exclude: Optional[List] = None
     ) -> bool:
         if self._should_continue_existing_sync():
-            logger.warning(
+            logger.debug(
                 f"Last sync still in progress, "
                 f"skipping sync up of {local_dir} to {remote_dir}"
             )
@@ -466,10 +466,10 @@ class _BackgroundSyncer(Syncer):
     def _delete_command(self, uri: str) -> Tuple[Callable, Dict]:
         raise NotImplementedError
 
-    def wait(self):
+    def wait(self, timeout: Optional[float] = None):
         if self._sync_process:
             try:
-                self._sync_process.wait(timeout=self.sync_timeout)
+                self._sync_process.wait(timeout=timeout or self.sync_timeout)
             except Exception as e:
                 raise e
             finally:

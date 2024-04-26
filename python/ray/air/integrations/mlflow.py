@@ -3,13 +3,12 @@ from types import ModuleType
 from typing import Dict, Optional, Union
 
 import ray
-from ray.air import session
-from ray.air._internal.mlflow import _MLflowLoggerUtil
 from ray.air._internal import usage as air_usage
+from ray.air._internal.mlflow import _MLflowLoggerUtil
 from ray.air.constants import TRAINING_ITERATION
+from ray.tune.experiment import Trial
 from ray.tune.logger import LoggerCallback
 from ray.tune.result import TIMESTEPS_TOTAL
-from ray.tune.experiment import Trial
 from ray.util.annotations import PublicAPI
 
 try:
@@ -148,13 +147,14 @@ def setup_mlflow(
         )
 
     try:
+        train_context = ray.train.get_context()
+
         # Do a try-catch here if we are not in a train session
-        _session = session._get_session(warn=False)
-        if _session and rank_zero_only and session.get_world_rank() != 0:
+        if rank_zero_only and train_context.get_world_rank() != 0:
             return _NoopModule()
 
-        default_trial_id = session.get_trial_id()
-        default_trial_name = session.get_trial_name()
+        default_trial_id = train_context.get_trial_id()
+        default_trial_name = train_context.get_trial_name()
 
     except RuntimeError:
         default_trial_id = None

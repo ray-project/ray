@@ -3,7 +3,7 @@ import uuid
 from collections import defaultdict
 from typing import List
 
-from ray.autoscaler.v2.instance_manager.instance_storage import (
+from ray.autoscaler.v2.instance_manager.instance_manager import (
     InstanceUpdatedSubscriber,
 )
 from ray.autoscaler.v2.instance_manager.node_provider import ICloudInstanceProvider

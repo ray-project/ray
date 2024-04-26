@@ -118,7 +118,7 @@ class _TrainSession:
         local_world_size: int,
         world_size: int,
         trial_info: Optional[TrialInfo] = None,
-        dataset_shard: Optional[Dataset] = None,
+        dataset_shard: Optional[Dict[str, Dataset]] = None,
         metadata: Dict[str, Any] = None,
         checkpoint: Optional[Checkpoint] = None,
         detailed_autofilled_metrics: bool = False,
@@ -168,6 +168,13 @@ class _TrainSession:
         self.local_ip = self.get_current_ip()
 
         self.accelerator = None
+        self._state = {}
+
+    def get_state(self, key: str) -> Any:
+        return self._state.get(key)
+
+    def set_state(self, key: str, value: Any):
+        self._state[key] = value
 
     def get_current_ip(self):
         self.local_ip = ray.util.get_node_ip_address()
@@ -210,19 +217,19 @@ class _TrainSession:
         self.loaded_checkpoint = loaded_checkpoint
 
         # Reset state
+        self._state = {}
         self.ignore_report = False
         self.training_started = False
         self._first_report = True
 
-        # Change the working directory to the local trial directory.
-        # -> All workers on the same node share a working directory.
-        os.makedirs(storage.trial_local_path, exist_ok=True)
+        # Change the working directory to a special trial folder.
+        # This is to ensure that all Ray Train workers have a common working directory.
+        os.makedirs(storage.trial_working_directory, exist_ok=True)
         if bool(int(os.environ.get(RAY_CHDIR_TO_TRIAL_DIR, "1"))):
             logger.debug(
-                "Switching the working directory to the trial directory: "
-                f"{storage.trial_local_path}"
+                f"Changing the working directory to: {storage.trial_working_directory}"
             )
-            os.chdir(storage.trial_local_path)
+            os.chdir(storage.trial_working_directory)
 
     def pause_reporting(self):
         """Ignore all future ``session.report()`` calls."""

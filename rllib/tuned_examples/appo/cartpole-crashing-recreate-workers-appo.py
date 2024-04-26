@@ -7,7 +7,7 @@ The environment we use here is configured to crash with a certain probability on
 `step()` and/or `reset()` call.
 """
 from ray.rllib.algorithms.appo import APPOConfig
-from ray.rllib.examples.env.cartpole_crashing import CartPoleCrashing
+from ray.rllib.examples.envs.classes.cartpole_crashing import CartPoleCrashing
 from ray import tune
 
 tune.register_env("env", lambda cfg: CartPoleCrashing(cfg))
@@ -28,25 +28,21 @@ config = (
             "p_crash_reset": 0.005,  # prob to crash during reset()
             "crash_on_worker_indices": [1, 2],
         },
-        # Disable env checking. Env checker doesn't handle Exceptions from
-        # user envs, and will crash rollout worker.
-        disable_env_checking=True,
     )
-    .rollouts(
-        num_rollout_workers=3,
-        num_envs_per_worker=1,
+    .env_runners(
+        num_env_runners=3,
+        num_envs_per_env_runner=1,
     )
     # Switch on resiliency (recreate any failed worker).
     .fault_tolerance(
-        recreate_failed_workers=True,
+        recreate_failed_env_runners=True,
     )
     .evaluation(
-        evaluation_num_workers=1,
+        evaluation_num_env_runners=1,
         evaluation_interval=1,
         evaluation_duration=25,
         evaluation_duration_unit="episodes",
         evaluation_parallel_to_training=True,
-        enable_async_evaluation=True,
         evaluation_config=APPOConfig.overrides(
             explore=False,
             env_config={

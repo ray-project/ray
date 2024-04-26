@@ -1,0 +1,13 @@
+{# This page is a template used for all Ray library example pages. #}
+
+<!-- prettier-ignore -->
+{% extends "!layout.html" %}
+{%- block extrahead -%}
+{% include 'extrahead.html' %}
+{{ super() }}
+{% endblock %}
+
+<!-- prettier-ignore -->
+{% block body %}
+{{ render_library_examples() }}
+{% endblock %}

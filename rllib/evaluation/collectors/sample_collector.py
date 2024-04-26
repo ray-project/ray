@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Union
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
-from ray.rllib.utils.annotations import PublicAPI
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.typing import AgentID, EnvID, EpisodeID, PolicyID, TensorType
 
 if TYPE_CHECKING:
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 # fmt: off
 # __sphinx_doc_begin__
-@PublicAPI
+@OldAPIStack
 class SampleCollector(metaclass=ABCMeta):
     """Collects samples for all policies and agents from a multi-agent env.
 

@@ -15,7 +15,7 @@ from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModuleSpec,
     MultiAgentRLModule,
 )
-from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.test_utils import check, framework_iterator
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -51,7 +51,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
         config = (
             PPOConfig()
             .experimental(_enable_new_api_stack=True)
-            .rollouts(rollout_fragment_length=4)
+            .env_runners(rollout_fragment_length=4)
             .environment(MultiAgentCartPole, env_config={"num_agents": num_agents})
             .training(num_sgd_iter=1, train_batch_size=8, sgd_minibatch_size=8)
             .multi_agent(policies=policies, policy_mapping_fn=policy_mapping_fn)
@@ -72,7 +72,10 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
                     module_class=module_class,
                     observation_space=env.observation_space[0],
                     action_space=env.action_space[0],
-                    model_config_dict={"fcnet_hiddens": [32 * (i + 1)]},
+                    # If we want to use this externally created module in the algorithm,
+                    # we need to provide the same config as the algorithm.
+                    model_config_dict=config.model_config
+                    | {"fcnet_hiddens": [32 * (i + 1)]},
                     catalog_class=PPOCatalog,
                 )
             marl_module_spec = MultiAgentRLModuleSpec(module_specs=module_specs)
@@ -113,7 +116,10 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
                     module_class=module_class,
                     observation_space=env.observation_space[0],
                     action_space=env.action_space[0],
-                    model_config_dict={"fcnet_hiddens": [32 * (i + 1)]},
+                    # If we want to use this externally created module in the algorithm,
+                    # we need to provide the same config as the algorithm.
+                    model_config_dict=config.model_config
+                    | {"fcnet_hiddens": [32 * (i + 1)]},
                     catalog_class=PPOCatalog,
                 )
             marl_module_spec = MultiAgentRLModuleSpec(module_specs=module_specs)
@@ -126,7 +132,9 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
                 module_class=module_class,
                 observation_space=env.observation_space[0],
                 action_space=env.action_space[0],
-                model_config_dict={"fcnet_hiddens": [64]},
+                # Note, we need to pass in the default model config for the algorithm
+                # to be able to use this module later.
+                model_config_dict=config.model_config | {"fcnet_hiddens": [64]},
                 catalog_class=PPOCatalog,
             ).build()
 
@@ -181,7 +189,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
         config = (
             PPOConfig()
             .experimental(_enable_new_api_stack=True)
-            .rollouts(rollout_fragment_length=4)
+            .env_runners(rollout_fragment_length=4)
             .environment("CartPole-v1")
             .training(num_sgd_iter=1, train_batch_size=8, sgd_minibatch_size=8)
             .resources(**scaling_config)
@@ -194,7 +202,9 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
                 module_class=module_class,
                 observation_space=env.observation_space,
                 action_space=env.action_space,
-                model_config_dict={"fcnet_hiddens": [32]},
+                # If we want to use this externally created module in the algorithm,
+                # we need to provide the same config as the algorithm.
+                model_config_dict=config.model_config | {"fcnet_hiddens": [32]},
                 catalog_class=PPOCatalog,
             )
             module = module_spec.build()
@@ -248,7 +258,10 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
                     module_class=module_class,
                     observation_space=env.observation_space[0],
                     action_space=env.action_space[0],
-                    model_config_dict={"fcnet_hiddens": [32 * (i + 1)]},
+                    # Note, we need to pass in the default model config for the
+                    # algorithm to be able to use this module later.
+                    model_config_dict=config.model_config
+                    | {"fcnet_hiddens": [32 * (i + 1)]},
                     catalog_class=PPOCatalog,
                 )
             marl_module_spec = MultiAgentRLModuleSpec(module_specs=module_specs)
@@ -261,7 +274,9 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
                 module_class=module_class,
                 observation_space=env.observation_space[0],
                 action_space=env.action_space[0],
-                model_config_dict={"fcnet_hiddens": [64]},
+                # Note, we need to pass in the default model config for the algorithm
+                # to be able to use this module later.
+                model_config_dict=config.model_config | {"fcnet_hiddens": [64]},
                 catalog_class=PPOCatalog,
             ).build()
 

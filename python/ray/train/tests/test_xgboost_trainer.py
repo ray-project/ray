@@ -96,7 +96,7 @@ def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):
     result = trainer.fit()
     checkpoint = result.checkpoint
     xgb_model = XGBoostTrainer.get_model(checkpoint)
-    assert get_num_trees(xgb_model) == 5
+    assert xgb_model.num_boosted_rounds() == 5
 
     trainer = XGBoostTrainer(
         scaling_config=scale_config,
@@ -108,7 +108,7 @@ def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):
     )
     result = trainer.fit()
     model = XGBoostTrainer.get_model(result.checkpoint)
-    assert get_num_trees(model) == 10
+    assert model.num_boosted_rounds() == 10
 
 
 @pytest.mark.parametrize(
@@ -158,22 +158,19 @@ def test_tune(ray_start_8_cpus):
     trainer = XGBoostTrainer(
         scaling_config=scale_config,
         label_column="target",
-        params={**params, **{"max_depth": 1}},
+        params={**params, "max_depth": 1},
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
     )
 
-    tune.run(
-        trainer.as_trainable(),
-        config={"params": {"max_depth": tune.randint(2, 4)}},
-        num_samples=2,
+    tuner = tune.Tuner(
+        trainer,
+        param_space={"params": {"max_depth": tune.grid_search([2, 4])}},
     )
-
-    # Make sure original Trainer is not affected.
-    assert trainer.params["max_depth"] == 1
+    results = tuner.fit()
+    assert sorted([r.config["params"]["max_depth"] for r in results]) == [2, 4]
 
 
 def test_validation(ray_start_4_cpus):
-    train_dataset = ray.data.from_pandas(train_df)
     valid_dataset = ray.data.from_pandas(test_df)
     with pytest.raises(KeyError, match=TRAIN_DATASET_KEY):
         XGBoostTrainer(
@@ -181,43 +178,6 @@ def test_validation(ray_start_4_cpus):
             label_column="target",
             params=params,
             datasets={"valid": valid_dataset},
-        )
-    with pytest.raises(KeyError, match="dmatrix_params"):
-        XGBoostTrainer(
-            scaling_config=ScalingConfig(num_workers=2),
-            label_column="target",
-            params=params,
-            dmatrix_params={"data": {}},
-            datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
-        )
-
-
-def test_distributed_data_loading(ray_start_4_cpus):
-    """Checks that XGBoostTrainer does distributed data loading for Datasets."""
-
-    class DummyXGBoostTrainer(XGBoostTrainer):
-        def _train(self, params, dtrain, **kwargs):
-            assert dtrain.distributed
-            return super()._train(params=params, dtrain=dtrain, **kwargs)
-
-    train_dataset = ray.data.from_pandas(train_df)
-
-    trainer = DummyXGBoostTrainer(
-        scaling_config=ScalingConfig(num_workers=2),
-        label_column="target",
-        params=params,
-        datasets={TRAIN_DATASET_KEY: train_dataset},
-    )
-
-    assert trainer.dmatrix_params[TRAIN_DATASET_KEY]["distributed"]
-    trainer.fit()
-
-
-def test_xgboost_trainer_resources():
-    """`trainer_resources` is not allowed in the scaling config"""
-    with pytest.raises(ValueError):
-        XGBoostTrainer._validate_scaling_config(
-            ScalingConfig(trainer_resources={"something": 1})
         )
 
 

@@ -10,7 +10,7 @@ from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dqn import DQN
 from ray.rllib.algorithms.ppo import PPO
-from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.utils.checkpoints import get_checkpoint_info
 from ray.rllib.utils.test_utils import framework_iterator
@@ -114,10 +114,10 @@ class TestBackwardCompatibility(unittest.TestCase):
             },
             "lr": 0.001,
             "evaluation_config": {
-                "num_envs_per_worker": 4,
+                "num_envs_per_env_runner": 4,
                 "explore": False,
             },
-            "evaluation_num_workers": 1,
+            "evaluation_num_env_runners": 1,
             "multiagent": {
                 "policies": {
                     "policy1": PolicySpec(),
@@ -128,7 +128,7 @@ class TestBackwardCompatibility(unittest.TestCase):
         }
         algo = DQN(config=config)
         self.assertTrue(algo.config.lr == 0.001)
-        self.assertTrue(algo.config.evaluation_num_workers == 1)
+        self.assertTrue(algo.config.evaluation_num_env_runners == 1)
         self.assertTrue(list(algo.config.policies.keys()) == ["policy1"])
         self.assertTrue(algo.config.explore is True)
         self.assertTrue(algo.evaluation_config.explore is False)

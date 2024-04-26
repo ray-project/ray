@@ -1,6 +1,5 @@
 import json
 import logging
-from abc import ABC
 from copy import deepcopy
 from typing import Any, Dict, List, Optional
 from zlib import crc32
@@ -79,8 +78,8 @@ class DeploymentVersion:
         changed.
         """
         return (
-            self.deployment_config.max_concurrent_queries
-            != new_version.deployment_config.max_concurrent_queries
+            self.deployment_config.max_ongoing_requests
+            != new_version.deployment_config.max_ongoing_requests
         )
 
     def compute_hashes(self):
@@ -199,12 +198,3 @@ class DeploymentVersion:
 
 def _serialize(json_object):
     return str.encode(json.dumps(json_object, sort_keys=True))
-
-
-class VersionedReplica(ABC):
-    @property
-    def version(self) -> DeploymentVersion:
-        pass
-
-    def update_state(self, state):
-        pass

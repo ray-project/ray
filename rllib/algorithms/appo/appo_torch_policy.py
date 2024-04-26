@@ -79,7 +79,16 @@ class APPOTorchPolicy(
             # that base.__init__ will use the make_model() call.
             VTraceOptimizer.__init__(self)
 
-        LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
+        lr_schedule_additional_args = []
+        if config.get("_separate_vf_optimizer"):
+            lr_schedule_additional_args = (
+                [config["_lr_vf"][0][1], config["_lr_vf"]]
+                if isinstance(config["_lr_vf"], (list, tuple))
+                else [config["_lr_vf"], None]
+            )
+        LearningRateSchedule.__init__(
+            self, config["lr"], config["lr_schedule"], *lr_schedule_additional_args
+        )
 
         TorchPolicyV2.__init__(
             self,

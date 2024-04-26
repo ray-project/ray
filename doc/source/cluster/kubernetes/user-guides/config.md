@@ -182,6 +182,8 @@ See {ref}`this guide <docker-images>` to learn more about the official Ray image
 For dynamic dependency management geared towards iteration and developement,
 you can also use {ref}`Runtime Environments <runtime-environments>`.
 
+For `kuberay-operator` versions 1.1.0 and later, the Ray container image must have `wget` installed in it.
+
 #### metadata.name and metadata.generateName
 The KubeRay operator will ignore the values of `metadata.name` and `metadata.generateName` set by users.
 The KubeRay operator will generate a `generateName` automatically to avoid name conflicts.

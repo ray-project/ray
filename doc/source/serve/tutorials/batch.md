@@ -1,3 +1,7 @@
+---
+orphan: true
+---
+
 (serve-batch-tutorial)=
 
 # Serve a Text Generator with Request Batching

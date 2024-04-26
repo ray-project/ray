@@ -23,7 +23,7 @@ inside of Ray Train:
     from ray.train.torch import TorchTrainer
     from ray.train import ScalingConfig
 
-    def train_func(config):
+    def train_func():
         # Training code and native experiment tracking library calls go here.
 
     scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
@@ -56,7 +56,7 @@ The following examples uses Weights & Biases (W&B) and MLflow but it's adaptable
             # This ensures that all ray worker processes have `WANDB_API_KEY` set.
             ray.init(runtime_env={"env_vars": {"WANDB_API_KEY": "your_api_key"}})
 
-            def train_func(config):
+            def train_func():
                 # Step 1 and 2
                 if train.get_context().get_world_rank() == 0:
                     wandb.init(
@@ -91,7 +91,7 @@ The following examples uses Weights & Biases (W&B) and MLflow but it's adaptable
             # Run the following on the head node:
             # $ databricks configure --token
             # mv ~/.databrickscfg YOUR_SHARED_STORAGE_PATH
-            # This function assumes `databricks_config_file` in config
+            # This function assumes `databricks_config_file` is specified in the Trainer's `train_loop_config`.
             def train_func(config):
                 # Step 1 and 2
                 os.environ["DATABRICKS_CONFIG_FILE"] = config["databricks_config_file"]
@@ -123,7 +123,7 @@ The following examples uses Weights & Biases (W&B) and MLflow but it's adaptable
         :skipif: True
 
         from ray import train
-        def train_func(config):
+        def train_func():
             ...
             if train.get_context().get_world_rank() == 0:
                 # Add your logging logic only for rank0 worker.
@@ -245,7 +245,7 @@ Refer to the tracking libraries' documentation for semantics.
 ..
     .. testcode::
 
-       def train_func(config):
+       def train_func():
             if ray.train.get_context().get_world_rank() == 0:
                    wandb.init(..., config={"ray_train_persistent_storage_path": "TODO: fill in when API stablizes"})
 
@@ -263,7 +263,7 @@ Refer to the tracking libraries' documentation for semantics.
         from ray.train import ScalingConfig, RunConfig, FailureConfig
         from ray.train.torch import TorchTrainer
 
-        def train_func(config):
+        def train_func():
             if ray.train.get_context().get_world_rank() == 0:
                 wandb.init(id=ray.train.get_context().get_trial_id())
             ...

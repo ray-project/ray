@@ -17,10 +17,10 @@ steps:
       - ./ci/ci.sh compile_pip_dependencies
       - cp -f ./python/requirements_compiled.txt /artifact-mount/
     soft_fail: true
-    job_env: oss-ci-base_build
+    job_env: oss-ci-base_build-py3.11
     depends_on:
       - forge
-      - oss-ci-base_build
+      - oss-ci-base_build-multipy
 
   # test
   - label: doc tests
@@ -50,47 +50,7 @@ steps:
         "./java/test.sh"
     depends_on: [ "corebuild", "forge" ]
 
-  - label: "flaky :windows: tests"
-    tags: skip-on-premerge
-    job_env: WINDOWS
-    mount_windows_artifacts: true
-    instance_type: windows
-    commands:
-      - bash ci/ray_ci/windows/install_tools.sh
-      - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... //python/ray/tests/... core
-        --run-flaky-tests
-        --build-name windowsbuild
-        --operating-system windows
-        --test-env=CI="1"
-        --test-env=RAY_CI_POST_WHEEL_TESTS="1"
-        --test-env=USERPROFILE
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... serverless
-        --skip-ray-installation
-        --run-flaky-tests
-        --build-name windowsbuild
-        --operating-system windows
-        --test-env=CI="1"
-        --test-env=RAY_CI_POST_WHEEL_TESTS="1"
-        --test-env=USERPROFILE
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... serve
-        --skip-ray-installation
-        --run-flaky-tests
-        --build-name windowsbuild
-        --operating-system windows
-        --test-env=CI="1"
-        --test-env=RAY_CI_POST_WHEEL_TESTS="1"
-        --test-env=USERPROFILE
-    depends_on: windowsbuild
-    soft_fail: true
-
   # bot
-  - label: ":robot_face: CI state machine bot"
-    tags: skip-on-premerge
-    if: build.branch == "master" && build.env("RAYCI_CONTINUOUS_BUILD") == "1"
-    instance_type: small
-    commands:
-      - bazel run //ci/ray_ci/automation:state_machine_bot -- --production
-
   - label: ":robot_face: CI weekly green metric"
     tags: skip-on-premerge
     if: build.branch == "master" && build.env("RAYCI_CONTINUOUS_BUILD") == "1"

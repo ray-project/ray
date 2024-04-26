@@ -702,7 +702,7 @@ def get_metric_check_condition(
 
     def f():
         for metric_pattern in metrics_to_check:
-            _, metric_names, metric_samples = fetch_prometheus([prom_addr])
+            _, _, metric_samples = fetch_prometheus([prom_addr])
             for metric_sample in metric_samples:
                 if metric_pattern.matches(metric_sample):
                     break
@@ -1107,7 +1107,7 @@ def fetch_raw_prometheus(prom_addresses):
 
 def fetch_prometheus(prom_addresses):
     components_dict = {}
-    metric_names = set()
+    metric_descriptors = {}
     metric_samples = []
 
     for address in prom_addresses:
@@ -1115,14 +1115,13 @@ def fetch_prometheus(prom_addresses):
             components_dict[address] = set()
 
     for address, response in fetch_raw_prometheus(prom_addresses):
-        for line in response.split("\n"):
-            for family in text_string_to_metric_families(line):
-                for sample in family.samples:
-                    metric_names.add(sample.name)
-                    metric_samples.append(sample)
-                    if "Component" in sample.labels:
-                        components_dict[address].add(sample.labels["Component"])
-    return components_dict, metric_names, metric_samples
+        for metric in text_string_to_metric_families(response):
+            for sample in metric.samples:
+                metric_descriptors[sample.name] = metric
+                metric_samples.append(sample)
+                if "Component" in sample.labels:
+                    components_dict[address].add(sample.labels["Component"])
+    return components_dict, metric_descriptors, metric_samples
 
 
 def fetch_prometheus_metrics(prom_addresses: List[str]) -> Dict[str, List[Any]]:
@@ -2159,3 +2158,29 @@ def get_ray_default_worker_file_path():
         f"/home/ray/anaconda3/lib/python{py_version}/"
         "site-packages/ray/_private/workers/default_worker.py"
     )
+
+
+def close_common_connections(pid):
+    """
+    Closes ipv4 connections between the current process and another process specified by
+    its PID.
+    """
+    current_process = psutil.Process()
+    current_connections = current_process.connections(kind="inet")
+    try:
+        other_process = psutil.Process(pid)
+        other_connections = other_process.connections(kind="inet")
+    except psutil.NoSuchProcess:
+        print(f"No process with PID {pid} found.")
+        return
+    # Finding common connections based on matching addresses and ports.
+    common_connections = []
+    for conn1 in current_connections:
+        for conn2 in other_connections:
+            if conn1.laddr == conn2.raddr and conn1.raddr == conn2.laddr:
+                common_connections.append((conn1.fd, conn1.laddr, conn1.raddr))
+    # Closing the FDs.
+    for fd, laddr, raddr in common_connections:
+        if fd != -1:  # FD is -1 if it's not accessible or if it's a pseudo FD.
+            os.close(fd)
+            print(f"Closed FD: {fd}, laddr: {laddr}, raddr: {raddr}")

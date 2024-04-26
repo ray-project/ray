@@ -6,13 +6,12 @@ import pytest
 from ray import train
 from ray.train.base_trainer import TrainingFailedError
 from ray.train.data_parallel_trainer import DataParallelTrainer
-
 from ray.train.tests.test_new_persistence import (
     TestConstants,
-    train_fn,
     _assert_storage_contents,
     _get_local_inspect_dir,
     _resume_from_checkpoint,
+    train_fn,
 )
 
 

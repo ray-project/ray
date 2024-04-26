@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import React from "react";
 
+import { TEST_APP_WRAPPER } from "../../util/test-utils";
 import { MetadataContentField } from "./MetadataSection";
 
 const CONTENT_VALUE = "test_string";
@@ -17,6 +18,26 @@ describe("MetadataContentField", () => {
         content={{ value: CONTENT_VALUE }}
         label="test-label"
       />,
+      { wrapper: TEST_APP_WRAPPER },
+    );
+
+    expect(screen.getByText(CONTENT_VALUE)).toBeInTheDocument();
+    expect(screen.getByText(CONTENT_VALUE)).not.toHaveAttribute("href");
+    expect(screen.queryByLabelText(COPY_BUTTON_LABEL)).not.toBeInTheDocument();
+    expect(
+      screen.getByTestId("metadata-content-for-test-label"),
+    ).toBeInTheDocument();
+  });
+
+  it("renders the content string if link is undefined", () => {
+    expect.assertions(4);
+
+    render(
+      <MetadataContentField
+        content={{ value: CONTENT_VALUE, link: undefined }}
+        label="test-label"
+      />,
+      { wrapper: TEST_APP_WRAPPER },
     );
 
     expect(screen.getByText(CONTENT_VALUE)).toBeInTheDocument();
@@ -35,6 +56,7 @@ describe("MetadataContentField", () => {
         content={{ value: CONTENT_VALUE, link: LINK_VALUE }}
         label="test-label"
       />,
+      { wrapper: TEST_APP_WRAPPER },
     );
 
     expect(screen.getByText(CONTENT_VALUE)).toBeInTheDocument();
@@ -52,6 +74,7 @@ describe("MetadataContentField", () => {
         content={{ value: CONTENT_VALUE, copyableValue: COPYABLE_VALUE }}
         label="test-label"
       />,
+      { wrapper: TEST_APP_WRAPPER },
     );
     expect(screen.getByText(CONTENT_VALUE)).toBeInTheDocument();
     expect(screen.getByText(CONTENT_VALUE)).not.toHaveAttribute("href");
@@ -66,7 +89,10 @@ describe("MetadataContentField", () => {
 
     const CUSTOM_TEST_ID = "custom-test-id";
     const customElement = <p data-testid={CUSTOM_TEST_ID}>Test</p>;
-    render(<MetadataContentField content={customElement} label="test-label" />);
+    render(
+      <MetadataContentField content={customElement} label="test-label" />,
+      { wrapper: TEST_APP_WRAPPER },
+    );
 
     expect(screen.queryByLabelText(COPY_BUTTON_LABEL)).not.toBeInTheDocument();
     expect(screen.getByTestId(CUSTOM_TEST_ID)).toBeInTheDocument();

@@ -17,7 +17,7 @@ from ray.rllib.connectors.agent.mean_std_filter import (
     MeanStdObservationFilterAgentConnector,
     ConcurrentMeanStdObservationFilterAgentConnector,
 )
-from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.connectors.agent.synced_filter import SyncedFilterAgentConnector
 
 if TYPE_CHECKING:
@@ -44,7 +44,7 @@ def __clip_rewards(config: "AlgorithmConfig"):
     return config.clip_rewards or config.is_atari
 
 
-@PublicAPI(stability="alpha")
+@OldAPIStack
 def get_agent_connectors_from_config(
     ctx: ConnectorContext,
     config: "AlgorithmConfig",
@@ -78,7 +78,7 @@ def get_agent_connectors_from_config(
     return AgentConnectorPipeline(ctx, connectors)
 
 
-@PublicAPI(stability="alpha")
+@OldAPIStack
 def get_action_connectors_from_config(
     ctx: ConnectorContext,
     config: "AlgorithmConfig",
@@ -98,7 +98,7 @@ def get_action_connectors_from_config(
     return ActionConnectorPipeline(ctx, connectors)
 
 
-@PublicAPI(stability="alpha")
+@OldAPIStack
 def create_connectors_for_policy(policy: "Policy", config: "AlgorithmConfig"):
     """Util to create agent and action connectors for a Policy.
 
@@ -120,7 +120,7 @@ def create_connectors_for_policy(policy: "Policy", config: "AlgorithmConfig"):
     logger.info(policy.action_connectors.__str__(indentation=4))
 
 
-@PublicAPI(stability="alpha")
+@OldAPIStack
 def restore_connectors_for_policy(
     policy: "Policy", connector_config: Tuple[str, Tuple[Any]]
 ) -> Connector:
@@ -136,7 +136,7 @@ def restore_connectors_for_policy(
 
 
 # We need this filter selection mechanism temporarily to remain compatible to old API
-@DeveloperAPI
+@OldAPIStack
 def get_synced_filter_connector(ctx: ConnectorContext):
     filter_specifier = ctx.config.get("observation_filter")
     if filter_specifier == "MeanStdFilter":
@@ -149,7 +149,7 @@ def get_synced_filter_connector(ctx: ConnectorContext):
         raise Exception("Unknown observation_filter: " + str(filter_specifier))
 
 
-@DeveloperAPI
+@OldAPIStack
 def maybe_get_filters_for_syncing(rollout_worker, policy_id):
     # As long as the historic filter synchronization mechanism is in
     # place, we need to put filters into self.filters so that they get

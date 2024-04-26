@@ -91,7 +91,7 @@ def deploy_args_to_deployment_info(
 
     return DeploymentInfo(
         actor_name=DeploymentID(
-            deployment_name, app_name
+            name=deployment_name, app_name=app_name
         ).to_replica_actor_class_name(),
         version=version,
         deployment_config=deployment_config,

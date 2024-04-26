@@ -5,6 +5,7 @@ import pytest
 
 import ray
 import ray._private.ray_constants as ray_constants
+from ray.cluster_utils import Cluster
 from ray.train._internal.worker_group import Worker, WorkerGroup, WorkerMetadata
 
 
@@ -32,6 +33,29 @@ def ray_start_2_cpus_and_neuron_core_accelerator():
     ray.shutdown()
 
 
+@pytest.fixture
+def ray_start_2_cpus_and_10kb_memory():
+    address_info = ray.init(num_cpus=2, _memory=10_000)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
+@pytest.fixture
+def ray_start_5_nodes_with_memory():
+    cluster = Cluster()
+    for _ in range(4):
+        cluster.add_node(num_cpus=4, memory=500)
+    cluster.add_node(num_cpus=4, memory=2_000)
+
+    ray.init(address=cluster.address)
+
+    yield
+
+    ray.shutdown()
+    cluster.shutdown()
+
+
 def test_worker_creation(ray_start_2_cpus):
     assert ray.available_resources()["CPU"] == 2
     wg = WorkerGroup(num_workers=2)
@@ -44,12 +68,33 @@ def test_worker_creation(ray_start_2_cpus):
 
 def test_worker_creation_num_cpus(ray_start_2_cpus):
     assert ray.available_resources()["CPU"] == 2
-    wg = WorkerGroup(num_cpus_per_worker=2)
+    wg = WorkerGroup(resources_per_worker={"CPU": 2})
     time.sleep(1)
     assert len(wg.workers) == 1
     # Make sure both CPUs are being used by the actor.
     assert "CPU" not in ray.available_resources()
     wg.shutdown()
+
+
+def test_worker_creation_with_memory(ray_start_5_nodes_with_memory):
+    resources_per_worker = {"memory": 1_000}
+    wg = WorkerGroup(num_workers=2, resources_per_worker=resources_per_worker)
+    assert len(wg.workers) == 2
+
+    nodes = ray.nodes()
+    large_node = [node for node in nodes if node["Resources"]["memory"] == 2_000][0]
+    large_node_id = large_node["NodeID"]
+
+    def validate_scheduling():
+        resources = ray.get_runtime_context().get_assigned_resources()
+        assert resources == resources_per_worker, "Resources should include memory."
+
+        node_id = ray.get_runtime_context().get_node_id()
+        assert (
+            node_id == large_node_id
+        ), "Workers should be scheduled on the large node."
+
+    wg.execute(validate_scheduling)
 
 
 def test_worker_shutdown(ray_start_2_cpus):
@@ -79,7 +124,7 @@ def test_worker_restart(ray_start_2_cpus):
 
 def test_worker_with_gpu_ids(ray_start_2_cpus_and_gpus):
     num_gpus = 2
-    wg = WorkerGroup(num_workers=2, num_gpus_per_worker=1)
+    wg = WorkerGroup(num_workers=2, resources_per_worker={"GPU": 1})
     assert len(wg.workers) == 2
     time.sleep(1)
     assert ray_constants.GPU not in ray.available_resources()
@@ -98,7 +143,7 @@ def test_worker_with_neuron_core_accelerator_ids(
 ):
     num_nc = 2
     wg = WorkerGroup(
-        num_workers=2, additional_resources_per_worker={ray_constants.NEURON_CORES: 1}
+        num_workers=2, resources_per_worker={ray_constants.NEURON_CORES: 1}
     )
     assert len(wg.workers) == 2
     time.sleep(1)
@@ -271,10 +316,13 @@ def test_bad_resources(ray_start_2_cpus):
         WorkerGroup(num_workers=-1)
 
     with pytest.raises(ValueError):
-        WorkerGroup(num_cpus_per_worker=-1)
+        WorkerGroup(resources_per_worker={"CPU": -1})
 
     with pytest.raises(ValueError):
-        WorkerGroup(num_gpus_per_worker=-1)
+        WorkerGroup(resources_per_worker={"GPU": -1})
+
+    with pytest.raises(ValueError):
+        WorkerGroup(resources_per_worker={"memory": -1})
 
 
 def test_placement_group(ray_start_2_cpus):

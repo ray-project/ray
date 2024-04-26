@@ -10,7 +10,7 @@ from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
 from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
-from ray.rllib.utils.annotations import DeveloperAPI, override
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.framework import get_variable, try_import_tf
 from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.rllib.utils.tf_utils import make_tf_callable
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 tf1, tf, tfv = try_import_tf()
 
 
-@DeveloperAPI
+@OldAPIStack
 class LearningRateSchedule:
     """Mixin for TFPolicy that adds a learning rate schedule."""
 
@@ -72,7 +72,7 @@ class LearningRateSchedule:
             return tf.keras.optimizers.Adam(self.cur_lr)
 
 
-@DeveloperAPI
+@OldAPIStack
 class EntropyCoeffSchedule:
     """Mixin for TFPolicy that adds entropy coeff decay."""
 
@@ -130,7 +130,7 @@ class EntropyCoeffSchedule:
                 self.entropy_coeff.assign(new_val, read_value=False)
 
 
-@DeveloperAPI
+@OldAPIStack
 class KLCoeffMixin:
     """Assigns the `update_kl()` and other KL-related methods to a TFPolicy.
 
@@ -205,7 +205,7 @@ class KLCoeffMixin:
         super().set_state(state)
 
 
-@DeveloperAPI
+@OldAPIStack
 class TargetNetworkMixin:
     """Assign the `update_target` method to the policy.
 
@@ -281,7 +281,7 @@ class TargetNetworkMixin:
             self.update_target(self.config.get("tau", 1.0))
 
 
-@DeveloperAPI
+@OldAPIStack
 class ValueNetworkMixin:
     """Assigns the `_value()` method to a TFPolicy.
 
@@ -362,7 +362,7 @@ class ValueNetworkMixin:
         return self._cached_extra_action_fetches
 
 
-@DeveloperAPI
+@OldAPIStack
 class GradStatsMixin:
     def __init__(self):
         pass

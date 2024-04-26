@@ -60,8 +60,8 @@ class TestImpalaLearner(unittest.TestCase):
             ImpalaConfig()
             .experimental(_enable_new_api_stack=True)
             .environment("CartPole-v1")
-            .rollouts(
-                num_rollout_workers=0,
+            .env_runners(
+                num_env_runners=0,
                 rollout_fragment_length=frag_length,
             )
             .resources(num_gpus=0)

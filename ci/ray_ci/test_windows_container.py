@@ -44,7 +44,7 @@ def test_install_ray() -> None:
 
 
 def test_get_run_command() -> None:
-    container = WindowsContainer("test")
+    container = WindowsContainer("test", volumes=["/hi:/hello"])
     envs = []
     for env in _DOCKER_ENV:
         envs.extend(["--env", env])
@@ -56,8 +56,12 @@ def test_get_run_command() -> None:
         "-i",
         "--rm",
         "--volume",
-        f"{artifact_mount_host}:" f"{artifact_mount_container}",
+        f"{artifact_mount_host}:{artifact_mount_container}",
     ] + envs + [
+        "--volume",
+        "/hi:/hello",
+        "--workdir",
+        "C:\\rayci",
         "029272617770.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp:unknown-test",
         "bash",
         "-c",
