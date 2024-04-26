@@ -1039,19 +1039,31 @@ def start(
         "they are forcefully terminated after the grace period. "
     ),
 )
+@click.option(
+    "--port", required=False, type=int, help="The port of the cluster to stop"
+)
 @add_click_logging_options
 @PublicAPI
-def stop(force: bool, grace_period: int):
+def stop(force: bool, grace_period: int, port: int):
     """Stop Ray processes manually on the local machine."""
     is_linux = sys.platform.startswith("linux")
     total_procs_found = 0
     total_procs_stopped = 0
     procs_not_gracefully_killed = []
+    address = (
+        services.canonicalize_bootstrap_address_or_die(f"localhost:{port}")
+        if port is not None
+        else None
+    )
 
     def kill_procs(
-        force: bool, grace_period: int, processes_to_kill: List[str]
+        force: bool,
+        grace_period: int,
+        processes_to_kill: List[str],
+        proc_arg_filters: List[str] = None,
     ) -> Tuple[int, int, List[psutil.Process]]:
-        """Find all processes from `processes_to_kill` and terminate them.
+        """Find all processes from `processes_to_kill` that match the list of optional
+        process argument filters given and terminate them.
 
         Unless `force` is specified, it gracefully kills processes. If
         processes are not cleaned within `grace_period`, it force kill all
@@ -1085,10 +1097,19 @@ def stop(force: bool, grace_period: int):
             found = []
             for candidate in process_infos:
                 proc, proc_cmd, proc_args = candidate
-                corpus = (
-                    proc_cmd if filter_by_cmd else subprocess.list2cmdline(proc_args)
+                proc_args_cmdline = subprocess.list2cmdline(proc_args)
+                corpus = proc_cmd if filter_by_cmd else proc_args_cmdline
+                matches_arg_filter = (
+                    True
+                    if proc_arg_filters is None
+                    else all(
+                        [
+                            arg_filter in proc_args_cmdline
+                            for arg_filter in proc_arg_filters
+                        ]
+                    )
                 )
-                if keyword in corpus:
+                if keyword in corpus and matches_arg_filter:
                     found.append(candidate)
             for proc, proc_cmd, proc_args in found:
                 proc_string = str(subprocess.list2cmdline(proc_args))
@@ -1153,6 +1174,20 @@ def stop(force: bool, grace_period: int):
         psutil.wait_procs(alive, timeout=2)
         return total_found, total_stopped, alive
 
+    # Make sure use isn't trying to kill multiple processes at once unintentionally
+    if len(services.find_gcs_addresses()) > 1 and port is None:
+        if cli_logger.interactive:
+            confirm_kill_all_clusters = cli_logger.confirm(
+                False,
+                ray_constants.RAY_STOP_MULTIPLE_CLUSTERS_WARNING,
+                _default=True,
+                _timeout_s=10,
+            )
+            if not confirm_kill_all_clusters:
+                sys.exit(0)
+        else:
+            cli_logger.print(ray_constants.RAY_STOP_MULTIPLE_CLUSTERS_WARNING)
+
     # Process killing procedure: we put processes into 3 buckets.
     # Bucket 1: raylet
     # Bucket 2: all other processes, e.g. dashboard, runtime env agents
@@ -1172,8 +1207,25 @@ def stop(force: bool, grace_period: int):
 
     buckets = [[processes_to_kill[0]], processes_to_kill[1:-1], [processes_to_kill[-1]]]
 
-    for bucket in buckets:
-        found, stopped, alive = kill_procs(force, grace_period / len(buckets), bucket)
+    # Add additional filters to buckets if we only wanted to kill processes on
+    # a single port
+    if address is not None:
+        url = address.split(":")[0]
+        generic_port_filter = [f"--gcs-address={address}"]
+        gcs_port_filter = [f"--node-ip-address={url}", f"--gcs_server_port={port}"]
+
+        bucket_port_filters = [
+            generic_port_filter,
+            generic_port_filter,
+            gcs_port_filter,
+        ]
+    else:
+        bucket_port_filters = [None] * len(buckets)
+
+    for bucket, port_filters in zip(buckets, bucket_port_filters):
+        found, stopped, alive = kill_procs(
+            force, grace_period / len(buckets), bucket, port_filters
+        )
         total_procs_found += found
         total_procs_stopped += stopped
         procs_not_gracefully_killed.extend(alive)
