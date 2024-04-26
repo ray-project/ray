@@ -544,10 +544,7 @@ class _ActorPool:
 
     def num_running_actors(self) -> int:
         """Return the number of running actors in the pool."""
-        return sum(
-            1 if tasks_in_flight != 0 else 0
-            for _, tasks_in_flight in self._num_tasks_in_flight.items()
-        )
+        return len(self._num_tasks_in_flight)
 
     def num_idle_actors(self) -> int:
         """Return the number of idle actors in the pool."""
