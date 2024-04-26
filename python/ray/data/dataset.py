@@ -3611,7 +3611,7 @@ class Dataset:
 
     @ConsumptionAPI
     def iter_rows(
-        self, *, prefetch_batches: int = 0, prefetch_blocks: int = 0
+        self, *, prefetch_batches: int = 1, prefetch_blocks: int = 0
     ) -> Iterable[Dict[str, Any]]:
         """Return an iterable over the rows in this dataset.
 
