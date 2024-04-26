@@ -2,7 +2,7 @@ import math
 import time
 from typing import TYPE_CHECKING, Dict
 
-from .autoscaler import Autoscaler, ActorPoolAutoscalingHandler
+from .autoscaler import ActorPoolAutoscalingHandler, Autoscaler
 from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
 )
