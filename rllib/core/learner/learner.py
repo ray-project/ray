@@ -8,7 +8,6 @@ import pathlib
 from typing import (
     Any,
     Callable,
-    DefaultDict,
     Dict,
     List,
     Hashable,
@@ -24,7 +23,6 @@ import ray
 from ray.rllib.connectors.learner.learner_connector_pipeline import (
     LearnerConnectorPipeline,
 )
-from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModule,
     MultiAgentRLModuleSpec,
@@ -1158,10 +1156,10 @@ class Learner:
             deprecation_warning(
                 old="Learner.update_from_episodes(reduce_fn=..)",
                 new="Learner.metrics.[log_value|log_dict|log_time](key=..., value=..., "
-                    "reduce=[mean|min|max|sum], window=..., ema_coeff=...)",
+                "reduce=[mean|min|max|sum], window=..., ema_coeff=...)",
                 help="Use the new ray.rllib.utils.metrics.metrics_logger::MetricsLogger"
-                     " API in your custom Learner methods for logging your custom values "
-                     "and time-reducing (or parallel-reducing) them.",
+                " API in your custom Learner methods for logging your custom values "
+                "and time-reducing (or parallel-reducing) them.",
                 error=True,
             )
         return self._update_from_batch_or_episodes(
@@ -1352,7 +1350,7 @@ class Learner:
                         (mid, self.TOTAL_LOSS_KEY): loss,
                         **{
                             (mid, f"{optim_name}_lr"): convert_to_numpy(
-                            self._get_optimizer_lr(optimizer)
+                                self._get_optimizer_lr(optimizer)
                             )
                             for optim_name, optimizer in (
                                 self.get_optimizers_for_module(module_id=mid)
@@ -1364,7 +1362,7 @@ class Learner:
                 )
                 # TODO (sven): Allow window=float("inf") w/ clear_on_reduce=True to
                 #  avoid this hacky window=1000
-                a=1
+                a = 1
 
         self._set_slicing_by_batch_id(batch, value=False)
 
@@ -1566,7 +1564,7 @@ class Learner:
                 "(variables)!"
             )
 
-    #def _check_result(self, result: Dict[str, Any]) -> None:
+    # def _check_result(self, result: Dict[str, Any]) -> None:
     #    """Checks whether the result has the correct format.
 
     #    All the keys should be referencing the module ids that got updated. There is a

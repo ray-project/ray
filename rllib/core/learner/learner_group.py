@@ -28,7 +28,6 @@ from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
     deprecation_warning,
 )
-from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.minibatch_utils import (
     ShardBatchIterator,
     ShardEpisodesIterator,
@@ -37,7 +36,6 @@ from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import (
     EpisodeType,
     ModuleID,
-    ResultDict,
     RLModuleSpec,
     T,
 )
@@ -187,12 +185,6 @@ class LearnerGroup:
             # requests that were sent to the workers at the same time.
             self._update_request_tags = Counter()
             self._additional_update_request_tags = Counter()
-
-            # The LearnerGroupe's MetricsLogger to be used to log RLlib's built-in
-            # metrics or custom user-defined ones (e.g. custom loss values). When
-            # returning from an `update_from_...()` method call, the LearnerGroup will
-            # do a `self.metrics.reduce()` and return the resulting (reduced) dict.
-            #self.metrics = MetricsLogger()
 
     # TODO (sven): Replace this with call to `self.metrics.peek()`?
     def get_stats(self) -> Dict[str, Any]:
@@ -462,9 +454,10 @@ class LearnerGroup:
                 results = self._get_results(
                     self._worker_manager.foreach_actor(partials)
                 )
-        # TODO: for async, only reduce over the most recently returned Learner results???
-        a=1
-        return results #self.metrics.reduce()
+        # TODO: for async, only reduce over the most recently returned Learner
+        #  results???
+        a = 1
+        return results
 
     def _get_results(self, results):
         processed_results = []
@@ -551,8 +544,6 @@ class LearnerGroup:
             results = self._get_results(results)
 
         return results
-        #self.metrics.log_n_dicts(results)
-        #return self.metrics.reduce()
 
     def add_module(
         self,

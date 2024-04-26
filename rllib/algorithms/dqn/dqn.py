@@ -12,7 +12,6 @@ https://docs.ray.io/en/master/rllib-algorithms.html#deep-q-networks-dqn-rainbow-
 import logging
 from typing import Any, Callable, Dict, List, Optional, Type, Union
 import numpy as np
-import tree
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
