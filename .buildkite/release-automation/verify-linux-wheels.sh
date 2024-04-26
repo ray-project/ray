@@ -4,11 +4,18 @@ set -euo pipefail
 
 set -x
 
-export PYTHON_VERSION="${PYTHON_VERSION:-3.8}"
-export RAY_VERSION="${RAY_VERSION:-2.9.1}"
-export RAY_HASH="${RAY_HASH:-cfbf98c315cfb2710c56039a3c96477d196de049}"
+export PYTHON_VERSION="${PYTHON_VERSION}"
+if [[ -z "$RAY_VERSION" ]]; then
+    echo "RAY_VERSION environment variable is not set"
+    exit 1
+fi
+if [[ -z "$BUILDKITE_COMMIT" ]]; then
+    echo "BUILDKITE_COMMIT environment variable is not set"
+    exit 1
+fi
 
-export PATH="/root/miniconda3/bin:$PATH"
+export PATH="/usr/local/bin/miniconda3/bin:$PATH"
+source "/usr/local/bin/miniconda3/etc/profile.d/conda.sh"
 
 conda create -n rayio python="${PYTHON_VERSION}" -y
 
@@ -21,7 +28,7 @@ pip install \
 
 (
     cd release/util
-    python sanity_check.py
+    python sanity_check.py --ray_version="$RAY_VERSION" --ray_commit="$BUILDKITE_COMMIT"
 )
 
 (

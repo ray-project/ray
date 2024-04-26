@@ -1,7 +1,7 @@
 import numpy as np
 
-from ray.util.annotations import PublicAPI
 from ray.tune.stopper.stopper import Stopper
+from ray.util.annotations import PublicAPI
 
 
 @PublicAPI

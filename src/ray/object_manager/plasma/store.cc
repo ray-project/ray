@@ -246,6 +246,9 @@ void PlasmaStore::ProcessGetRequest(const std::shared_ptr<Client> &client,
                                     const std::vector<ObjectID> &object_ids,
                                     int64_t timeout_ms,
                                     bool is_from_worker) {
+  for (const auto &object_id : object_ids) {
+    RAY_LOG(DEBUG) << "Adding get request " << object_id;
+  }
   get_request_queue_.AddRequest(client, object_ids, timeout_ms, is_from_worker);
 }
 

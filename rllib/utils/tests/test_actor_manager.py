@@ -33,7 +33,7 @@ class Actor(FaultAwareApply):
         self.count = 0
         self.maybe_crash = maybe_crash
         self.config = {
-            "recreate_failed_workers": True,
+            "recreate_failed_env_runners": True,
         }
 
     def _maybe_crash(self):

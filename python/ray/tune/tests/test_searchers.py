@@ -1,14 +1,15 @@
 import contextlib
-from copy import deepcopy
-import numpy as np
 import os
-from packaging.version import Version
-import pandas
-import pytest
 import shutil
 import tempfile
 import unittest
+from copy import deepcopy
 from unittest.mock import patch
+
+import numpy as np
+import pandas
+import pytest
+from packaging.version import Version
 
 import ray
 from ray import train, tune
@@ -77,13 +78,14 @@ class InvalidValuesTest(unittest.TestCase):
             yield
 
         assert not any(
-            "Trial Runner checkpointing failed: Can't pickle local object" in x
+            "Experiment state snapshotting failed: Can't pickle local object" in x
             for x in buffer
         ), "Searcher checkpointing failed (unable to serialize)."
 
     def testAxManualSetup(self):
-        from ray.tune.search.ax import AxSearch
         from ax.service.ax_client import AxClient
+
+        from ray.tune.search.ax import AxSearch
 
         config = self.config.copy()
         config["mixed_list"] = [1, tune.uniform(2, 3), 4]
@@ -196,8 +198,9 @@ class InvalidValuesTest(unittest.TestCase):
         self.assertCorrectExperimentOutput(out)
 
     def testNevergrad(self):
-        from ray.tune.search.nevergrad import NevergradSearch
         import nevergrad as ng
+
+        from ray.tune.search.nevergrad import NevergradSearch
 
         np.random.seed(2020)  # At least one nan, inf, -inf and float
 
@@ -213,14 +216,16 @@ class InvalidValuesTest(unittest.TestCase):
         self.assertCorrectExperimentOutput(out)
 
     def testNevergradWithRequiredOptimizerKwargs(self):
-        from ray.tune.search.nevergrad import NevergradSearch
         import nevergrad as ng
+
+        from ray.tune.search.nevergrad import NevergradSearch
 
         NevergradSearch(optimizer=ng.optimizers.CM, optimizer_kwargs=dict(budget=16))
 
     def testOptuna(self):
-        from ray.tune.search.optuna import OptunaSearch
         from optuna.samplers import RandomSampler
+
+        from ray.tune.search.optuna import OptunaSearch
 
         np.random.seed(1000)  # At least one nan, inf, -inf and float
 
@@ -237,8 +242,9 @@ class InvalidValuesTest(unittest.TestCase):
         self.assertCorrectExperimentOutput(out)
 
     def testOptunaReportTooOften(self):
-        from ray.tune.search.optuna import OptunaSearch
         from optuna.samplers import RandomSampler
+
+        from ray.tune.search.optuna import OptunaSearch
 
         searcher = OptunaSearch(
             sampler=RandomSampler(seed=1234),
@@ -254,23 +260,6 @@ class InvalidValuesTest(unittest.TestCase):
         searcher.on_trial_result("trial_1", {"training_iteration": 3, "metric": 1})
 
         searcher.on_trial_complete("trial_1", {"training_iteration": 4, "metric": 1})
-
-    def testSkopt(self):
-        from ray.tune.search.skopt import SkOptSearch
-
-        np.random.seed(1234)  # At least one nan, inf, -inf and float
-
-        with self.check_searcher_checkpoint_errors_scope():
-            out = tune.run(
-                _invalid_objective,
-                search_alg=SkOptSearch(),
-                config=self.config,
-                metric="_metric",
-                mode="max",
-                num_samples=8,
-                reuse_actors=False,
-            )
-        self.assertCorrectExperimentOutput(out)
 
     def testZOOpt(self):
         self.skipTest(
@@ -361,8 +350,9 @@ class AddEvaluatedPointTest(unittest.TestCase):
         searcher_copy.suggest("1")
 
     def testOptuna(self):
-        from ray.tune.search.optuna import OptunaSearch
         from optuna.trial import TrialState
+
+        from ray.tune.search.optuna import OptunaSearch
 
         searcher = OptunaSearch(
             space=self.space,
@@ -447,25 +437,6 @@ class AddEvaluatedPointTest(unittest.TestCase):
         self.run_add_evaluated_point(point, searcher, get_len_X, get_len_y)
         self.run_add_evaluated_trials(searcher, get_len_X, get_len_y)
 
-    def testSkOpt(self):
-        from ray.tune.search.skopt import SkOptSearch
-
-        searcher = SkOptSearch(
-            space=self.space,
-            metric="metric",
-            mode="max",
-        )
-
-        point = {
-            self.param_name: self.valid_value,
-        }
-
-        get_len_X = lambda s: len(s._skopt_opt.Xi)  # noqa E731
-        get_len_y = lambda s: len(s._skopt_opt.yi)  # noqa E731
-
-        self.run_add_evaluated_point(point, searcher, get_len_X, get_len_y)
-        self.run_add_evaluated_trials(searcher, get_len_X, get_len_y)
-
 
 class SaveRestoreCheckpointTest(unittest.TestCase):
     """
@@ -527,8 +498,9 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
             assert "not_completed" in searcher._live_trial_mapping
 
     def testAx(self):
-        from ray.tune.search.ax import AxSearch
         from ax.service.ax_client import AxClient
+
+        from ray.tune.search.ax import AxSearch
 
         converted_config = AxSearch.convert_search_space(self.config)
         client = AxClient()
@@ -601,8 +573,9 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         self._restore(searcher)
 
     def testNevergrad(self):
-        from ray.tune.search.nevergrad import NevergradSearch
         import nevergrad as ng
+
+        from ray.tune.search.nevergrad import NevergradSearch
 
         searcher = NevergradSearch(
             space=self.config,
@@ -626,15 +599,6 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         self._restore(searcher)
 
         assert "not_completed" in searcher._ot_trials
-
-    def testSkopt(self):
-        from ray.tune.search.skopt import SkOptSearch
-
-        searcher = SkOptSearch(space=self.config, metric=self.metric_name, mode="max")
-        self._save(searcher)
-
-        searcher = SkOptSearch()
-        self._restore(searcher)
 
     def testZOOpt(self):
         from ray.tune.search.zoopt import ZOOptSearch
@@ -679,8 +643,9 @@ class MultiObjectiveTest(unittest.TestCase):
         ray.shutdown()
 
     def testOptuna(self):
-        from ray.tune.search.optuna import OptunaSearch
         from optuna.samplers import RandomSampler
+
+        from ray.tune.search.optuna import OptunaSearch
 
         np.random.seed(1000)
 

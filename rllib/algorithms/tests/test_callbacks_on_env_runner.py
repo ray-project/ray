@@ -30,15 +30,15 @@ class EpisodeAndSampleCallbacks(DefaultCallbacks):
 
 
 class OnEnvironmentCreatedCallback(DefaultCallbacks):
-    def on_environment_created(self, *, worker, sub_environment, env_context, **kwargs):
+    def on_environment_created(self, *, env_runner, env, env_context, **kwargs):
         # Create a vector-index-sum property per remote worker.
-        if not hasattr(worker, "sum_sub_env_vector_indices"):
-            worker.sum_sub_env_vector_indices = 0
+        if not hasattr(env_runner, "sum_sub_env_vector_indices"):
+            env_runner.sum_sub_env_vector_indices = 0
         # Add the sub-env's vector index to the counter.
-        worker.sum_sub_env_vector_indices += env_context.vector_index
+        env_runner.sum_sub_env_vector_indices += env_context.vector_index
         print(
-            f"sub-env {sub_environment} created; "
-            f"worker={worker.worker_index}; "
+            f"sub-env {env} created; "
+            f"worker={env_runner.worker_index}; "
             f"vector-idx={env_context.vector_index}"
         )
 
@@ -74,7 +74,7 @@ class TestCallbacks(unittest.TestCase):
             PPOConfig()
             .experimental(_enable_new_api_stack=True)
             .environment("CartPole-v1")
-            .rollouts(
+            .env_runners(
                 num_rollout_workers=0,
                 batch_mode="truncate_episodes",
                 env_runner_cls=SingleAgentEnvRunner,
@@ -117,7 +117,7 @@ class TestCallbacks(unittest.TestCase):
             PPOConfig()
             .experimental(_enable_new_api_stack=True)
             .environment("CartPole-v1")
-            .rollouts(
+            .env_runners(
                 batch_mode="complete_episodes",
                 env_runner_cls=SingleAgentEnvRunner,
                 num_rollout_workers=0,
@@ -159,7 +159,7 @@ class TestCallbacks(unittest.TestCase):
         config = (
             PPOConfig()
             .experimental(_enable_new_api_stack=True)
-            .rollouts(env_runner_cls=SingleAgentEnvRunner)
+            .env_runners(env_runner_cls=SingleAgentEnvRunner)
             .callbacks(OnEpisodeCreatedCallback)
         )
         self.assertRaises(ValueError, lambda: config.validate())

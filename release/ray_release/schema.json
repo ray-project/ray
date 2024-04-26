@@ -15,6 +15,9 @@
 				"working_dir": {
 					"type": "string"
 				},
+				"repeated_run": {
+					"type": "integer"
+				},
 				"env": {
 					"type": "string"
 				},

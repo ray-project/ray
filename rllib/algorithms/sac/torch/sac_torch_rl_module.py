@@ -25,6 +25,29 @@ torch, nn = try_import_torch()
 class SACTorchRLModule(TorchRLModule, SACRLModule):
     framework: str = "torch"
 
+    @override(SACRLModule)
+    def setup(self):
+        super().setup()
+
+        # If not an inference-only module (e.g., for evaluation), set up the
+        # parameter names to be removed or renamed when syncing from the state dict
+        # when synching.
+        if not self.inference_only:
+            # Set the expected and unexpected keys for the inference-only module.
+            self._set_inference_only_state_dict_keys()
+
+    @override(TorchRLModule)
+    def get_state(self, inference_only: bool = False) -> Dict[str, Any]:
+        state_dict = self.state_dict()
+        # If this module is not for inference, but the state dict is.
+        if not self.inference_only and inference_only:
+            # Call the local hook to remove or rename the parameters.
+            return self._inference_only_get_state_hook(state_dict)
+        # Otherwise, the state dict is for checkpointing or saving the model.
+        else:
+            # Return the state dict as is.
+            return state_dict
+
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Dict[str, Any]:
         output = {}
@@ -38,15 +61,19 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
         return output
 
     @override(RLModule)
-    def _forward_exploration(self, batch: NestedDict) -> Dict[str, Any]:
+    def _forward_exploration(self, batch: NestedDict, **kwargs) -> Dict[str, Any]:
         return self._forward_inference(batch)
 
     @override(RLModule)
     def _forward_train(self, batch: NestedDict) -> Dict[str, Any]:
+        if self.inference_only:
+            raise RuntimeError(
+                "Trying to train a module that is not a learner module. Set the "
+                "flag `inference_only=False` when building the module."
+            )
         output = {}
 
         # SAC needs also Q function values and action logits for next observations.
-        # TODO (simon): Check, if we need to override the Encoder input_sp
         batch_curr = {SampleBatch.OBS: batch[SampleBatch.OBS]}
         batch_next = {SampleBatch.OBS: batch[SampleBatch.NEXT_OBS]}
 
@@ -57,12 +84,11 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
         pi_encoder_next_outs = self.pi_encoder(batch_next)
 
         # Q-network forward pass.
+        # TODO (simon): Use here `_qf_forward_train` instead of the helper.
         batch_curr.update({SampleBatch.ACTIONS: batch[SampleBatch.ACTIONS]})
-        output[QF_PREDS] = self._qf_forward_train_helper(
-            batch_curr, self.qf_encoder, self.qf
-        )[QF_PREDS]
+        output[QF_PREDS] = self._qf_forward_train(batch_curr)[QF_PREDS]
         # If necessary make a forward pass through the twin Q network.
-        if self.config.model_config_dict["twin_q"]:
+        if self.twin_q:
             output[QF_TWIN_PREDS] = self._qf_forward_train_helper(
                 batch_curr, self.qf_twin_encoder, self.qf_twin
             )[QF_PREDS]
@@ -103,7 +129,7 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
         """
         return (
             self._qf_forward_train_helper(batch, self.qf_twin_encoder, self.qf_twin)
-            if self.config.model_config_dict["twin_q"]
+            if self.twin_q
             else {}
         )
 
@@ -117,7 +143,7 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
             self._qf_forward_train_helper(
                 batch, self.qf_target_twin_encoder, self.qf_target_twin
             )
-            if self.config.model_config_dict["twin_q"]
+            if self.twin_q
             else {}
         )
 
@@ -133,7 +159,7 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
                 (self.qf_target_twin_encoder, self.qf_twin_encoder),
                 (self.qf_target_twin, self.qf_twin),
             ]
-            if self.config.model_config_dict["twin_q"]
+            if self.twin_q
             else []
         )
 
@@ -170,3 +196,32 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
 
         # Return Q values.
         return output
+
+    @override(TorchRLModule)
+    def _set_inference_only_state_dict_keys(self) -> None:
+        # Get the model parameters.
+        state_dict = self.state_dict()
+        # Note, these keys are only known to the learner module. Furthermore,
+        # we want this to be run once during setup and not for each worker.
+        # TODO (simon): Check, if we can also remove the value network.
+        self._inference_only_state_dict_keys["unexpected_keys"] = [
+            name for name in state_dict if "qf" in name
+        ]
+
+    @override(TorchRLModule)
+    def _inference_only_get_state_hook(
+        self, state_dict: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        # If we have keys in the state dict to take care of.
+        if self._inference_only_state_dict_keys:
+            # If we have unexpected keys remove them.
+            if self._inference_only_state_dict_keys.get("unexpected_keys"):
+                for param in self._inference_only_state_dict_keys["unexpected_keys"]:
+                    del state_dict[param]
+            # If we have expected keys, rename.
+            if self._inference_only_state_dict_keys.get("expected_keys"):
+                for param in self._inference_only_state_dict_keys["expected_keys"]:
+                    state_dict[
+                        self._inference_only_state_dict_keys["expected_keys"][param]
+                    ] = state_dict.pop(param)
+        return state_dict

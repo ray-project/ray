@@ -96,26 +96,26 @@ class TestAlgorithmConfig(unittest.TestCase):
         """Tests the proper auto-computation of the `rollout_fragment_length`."""
         config = (
             AlgorithmConfig()
-            .rollouts(
-                num_rollout_workers=4,
-                num_envs_per_worker=3,
+            .env_runners(
+                num_env_runners=4,
+                num_envs_per_env_runner=3,
                 rollout_fragment_length="auto",
             )
             .training(train_batch_size=2456)
         )
-        # 2456 / 3 * 4 -> 204.666 -> 204 or 205 (depending on worker index).
-        # Actual train batch size: 2454 (off by only 2)
+        # 2456 / (3 * 4) -> 204.666 -> 204 or 205 (depending on worker index).
+        # Actual train batch size: 2457 (off by only 1).
         self.assertTrue(config.get_rollout_fragment_length(worker_index=0) == 205)
         self.assertTrue(config.get_rollout_fragment_length(worker_index=1) == 205)
         self.assertTrue(config.get_rollout_fragment_length(worker_index=2) == 205)
-        self.assertTrue(config.get_rollout_fragment_length(worker_index=3) == 204)
+        self.assertTrue(config.get_rollout_fragment_length(worker_index=3) == 205)
         self.assertTrue(config.get_rollout_fragment_length(worker_index=4) == 204)
 
         config = (
             AlgorithmConfig()
-            .rollouts(
-                num_rollout_workers=3,
-                num_envs_per_worker=2,
+            .env_runners(
+                num_env_runners=3,
+                num_envs_per_env_runner=2,
                 rollout_fragment_length="auto",
             )
             .training(train_batch_size=4000)
@@ -129,8 +129,8 @@ class TestAlgorithmConfig(unittest.TestCase):
 
         config = (
             AlgorithmConfig()
-            .rollouts(
-                num_rollout_workers=12,
+            .env_runners(
+                num_env_runners=12,
                 rollout_fragment_length="auto",
             )
             .training(train_batch_size=1342)
@@ -174,7 +174,7 @@ class TestAlgorithmConfig(unittest.TestCase):
             .experimental(_enable_new_api_stack=True)
             .environment("CartPole-v1")
             .framework("torch")
-            .rollouts(enable_connectors=True)
+            .env_runners(enable_connectors=True)
         )
 
         self.assertEqual(config.rl_module_spec.module_class, PPOTorchRLModule)
@@ -233,7 +233,7 @@ class TestAlgorithmConfig(unittest.TestCase):
             PPOConfig()
             .experimental(_enable_new_api_stack=True)
             .environment("CartPole-v1")
-            .rollouts(enable_connectors=True)
+            .env_runners(enable_connectors=True)
             .framework("tf2")
         )
 
@@ -308,13 +308,13 @@ class TestAlgorithmConfig(unittest.TestCase):
                     module_class=expected_module_class,
                     observation_space=env.observation_space,
                     action_space=env.action_space,
-                    model_config_dict=AlgorithmConfig().model,
+                    model_config_dict=AlgorithmConfig().model_config,
                 ),
                 "p2": SingleAgentRLModuleSpec(
                     module_class=expected_module_class,
                     observation_space=env.observation_space,
                     action_space=env.action_space,
-                    model_config_dict=AlgorithmConfig().model,
+                    model_config_dict=AlgorithmConfig().model_config,
                 ),
             },
         )

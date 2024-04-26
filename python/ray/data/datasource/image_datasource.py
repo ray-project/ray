@@ -84,7 +84,7 @@ class ImageDatasource(FileBasedDatasource):
 
         if self.size is not None:
             height, width = self.size
-            image = image.resize((width, height))
+            image = image.resize((width, height), resample=Image.BILINEAR)
         if self.mode is not None:
             image = image.convert(self.mode)
 

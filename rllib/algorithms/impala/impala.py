@@ -71,7 +71,7 @@ class ImpalaConfig(AlgorithmConfig):
         config = ImpalaConfig()
         config = config.training(lr=0.0003, train_batch_size=512)
         config = config.resources(num_gpus=0)
-        config = config.rollouts(num_rollout_workers=1)
+        config = config.env_runners(num_env_runners=1)
         # Build a Algorithm object from the config and run 1 training iteration.
         algo = config.build(env="CartPole-v1")
         algo.train()
@@ -89,7 +89,7 @@ class ImpalaConfig(AlgorithmConfig):
             lr=tune.grid_search([0.0001, 0.0002]), grad_clip=20.0
         )
         config = config.resources(num_gpus=0)
-        config = config.rollouts(num_rollout_workers=1)
+        config = config.env_runners(num_env_runners=1)
         # Set the config object's env.
         config = config.environment(env="CartPole-v1")
         # Run with tune.
@@ -151,7 +151,7 @@ class ImpalaConfig(AlgorithmConfig):
         self.rollout_fragment_length = 50
         self.train_batch_size = 500
         self._minibatch_size = "auto"
-        self.num_rollout_workers = 2
+        self.num_env_runners = 2
         self.num_gpus = 1
         self.lr = 0.0005
         self.min_time_s_per_iteration = 10
@@ -402,12 +402,12 @@ class ImpalaConfig(AlgorithmConfig):
             raise ValueError("`entropy_coeff` must be >= 0.0")
 
         # Check whether worker to aggregation-worker ratio makes sense.
-        if self.num_aggregation_workers > self.num_rollout_workers:
+        if self.num_aggregation_workers > self.num_env_runners:
             raise ValueError(
                 "`num_aggregation_workers` must be smaller than or equal "
-                "`num_rollout_workers`! Aggregation makes no sense otherwise."
+                "`num_env_runners`! Aggregation makes no sense otherwise."
             )
-        elif self.num_aggregation_workers > self.num_rollout_workers / 2:
+        elif self.num_aggregation_workers > self.num_env_runners / 2:
             logger.warning(
                 "`num_aggregation_workers` should be significantly smaller "
                 "than `num_workers`! Try setting it to 0.5*`num_workers` or "
@@ -754,7 +754,7 @@ class Impala(Algorithm):
         # state here.
         if self._aggregator_actor_manager:
             self._aggregator_actor_manager.probe_unhealthy_actors(
-                timeout_seconds=self.config.worker_health_probe_timeout_s,
+                timeout_seconds=self.config.env_runner_health_probe_timeout_s,
                 mark_healthy=True,
             )
 
@@ -803,7 +803,7 @@ class Impala(Algorithm):
                     "GPU": cf.num_gpus_per_worker,
                     **cf.custom_resources_per_worker,
                 }
-                for _ in range(cf.num_rollout_workers)
+                for _ in range(cf.num_env_runners)
             ]
             + (
                 [
@@ -815,7 +815,7 @@ class Impala(Algorithm):
                         "GPU": eval_config.num_gpus_per_worker,
                         **eval_config.custom_resources_per_worker,
                     }
-                    for _ in range(cf.evaluation_num_workers)
+                    for _ in range(cf.evaluation_num_env_runners)
                 ]
                 if cf.evaluation_interval
                 else []
@@ -867,7 +867,7 @@ class Impala(Algorithm):
             if (
                 self.config.batch_mode == "truncate_episodes"
                 and self.config.enable_connectors
-                and self.config.recreate_failed_workers
+                and self.config.recreate_failed_env_runners
             ):
                 if any(
                     SampleBatch.VF_PREDS in pb
@@ -984,16 +984,17 @@ class Impala(Algorithm):
         NOTE: This method is called if self.config._enable_new_api_stack is False.
 
         """
-        while self.batches_to_place_on_learner:
-            batch = self.batches_to_place_on_learner[0]
+        for i, batch in enumerate(self.batches_to_place_on_learner):
             try:
-                # Setting block = True prevents the learner thread,
-                # the main thread, and the gpu loader threads from
-                # thrashing when there are more samples than the
-                # learner can reasonable process.
-                # see https://github.com/ray-project/ray/pull/26581#issuecomment-1187877674  # noqa
-                self._learner_thread.inqueue.put(batch, block=True)
-                self.batches_to_place_on_learner.pop(0)
+                self._learner_thread.inqueue.put(
+                    batch,
+                    # Setting block = True for the very last item in our list prevents
+                    # the learner thread, this main thread, and the GPU loader threads
+                    # from thrashing when there are more samples than the learner can
+                    # reasonably process.
+                    # see https://github.com/ray-project/ray/pull/26581#issuecomment-1187877674  # noqa
+                    block=i == len(self.batches_to_place_on_learner) - 1,
+                )
                 self._counters["num_samples_added_to_queue"] += (
                     batch.agent_steps()
                     if self.config.count_steps_by == "agent_steps"
@@ -1001,6 +1002,8 @@ class Impala(Algorithm):
                 )
             except queue.Full:
                 self._counters["num_times_learner_queue_full"] += 1
+
+        self.batches_to_place_on_learner.clear()
 
     def process_trained_results(self) -> ResultDict:
         """Process training results that are outputed by the learner thread.
@@ -1115,7 +1118,7 @@ class Impala(Algorithm):
         )
         handle_remote_call_result_errors(
             waiting_processed_sample_batches,
-            self.config.ignore_worker_failures,
+            self.config.ignore_env_runner_failures,
         )
 
         return [b.get() for b in waiting_processed_sample_batches.ignore_errors()]
@@ -1147,7 +1150,7 @@ class Impala(Algorithm):
             self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] = 0
             self._counters[NUM_SYNCH_WORKER_WEIGHTS] += 1
             weights = self.learner_group.get_weights(policy_ids)
-            if self.config.num_rollout_workers == 0:
+            if self.config.num_env_runners == 0:
                 worker = self.workers.local_worker()
                 worker.set_weights(weights)
             else:
@@ -1208,13 +1211,13 @@ class Impala(Algorithm):
             weights = local_worker.get_weights(policy_ids)
             if self.config.policy_states_are_swappable:
                 local_worker.unlock()
-            weights = ray.put(weights)
+            weights_ref = ray.put(weights)
 
             self._learner_thread.policy_ids_updated.clear()
             self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] = 0
             self._counters[NUM_SYNCH_WORKER_WEIGHTS] += 1
             self.workers.foreach_worker(
-                func=lambda w: w.set_weights(ray.get(weights), global_vars),
+                func=lambda w: w.set_weights(ray.get(weights_ref), global_vars),
                 local_worker=False,
                 remote_worker_ids=list(workers_that_need_updates),
                 timeout_seconds=0,  # Don't wait for the workers to finish.
@@ -1229,8 +1232,10 @@ class Impala(Algorithm):
         return {}
 
     @override(Algorithm)
-    def _compile_iteration_results(self, *args, **kwargs):
-        result = super()._compile_iteration_results(*args, **kwargs)
+    def _compile_iteration_results_old_and_hybrid_api_stacks(self, *args, **kwargs):
+        result = super()._compile_iteration_results_old_and_hybrid_api_stacks(
+            *args, **kwargs
+        )
         if not self.config._enable_new_api_stack:
             result = self._learner_thread.add_learner_metrics(
                 result, overwrite_learner_info=False

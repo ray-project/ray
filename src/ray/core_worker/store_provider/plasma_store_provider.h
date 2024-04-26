@@ -148,7 +148,6 @@ class CoreWorkerPlasmaStoreProvider {
 
   Status Get(const absl::flat_hash_set<ObjectID> &object_ids,
              int64_t timeout_ms,
-             bool is_experimental_mutable_object,
              const WorkerContext &ctx,
              absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
              bool *got_exception);
@@ -164,6 +163,19 @@ class CoreWorkerPlasmaStoreProvider {
   /// successful.
   Status GetIfLocal(const std::vector<ObjectID> &ids,
                     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results);
+
+  /// Get an experimental mutable object. The object must be
+  /// local to this node.
+  ///
+  /// \param[in] object_id The object to get.
+  /// \param[out] mutable_object Metadata needed to read and write the mutable
+  /// object. Keeping the returned pointer in scope will pin the object in the
+  /// object store.
+  ///
+  /// \return Status OK if we got the mutable object. Can fail if the object
+  /// was not local or is not mutable.
+  Status GetExperimentalMutableObject(
+      const ObjectID &object_id, std::unique_ptr<plasma::MutableObject> *mutable_object);
 
   Status Contains(const ObjectID &object_id, bool *has_object);
 
@@ -181,45 +193,6 @@ class CoreWorkerPlasmaStoreProvider {
   absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> UsedObjectsList() const;
 
   std::string MemoryUsageString();
-
-  /// Experimental method for mutable objects. Acquires a write lock on the
-  /// object that prevents readers from reading until we are done writing. Does
-  /// not protect against concurrent writers.
-  ///
-  /// \param[in] object_id The ID of the object.
-  /// \param[in] metadata The metadata of the object. This overwrites the
-  /// current metadata.
-  /// \param[in] data_size The size of the object to write. This overwrites the
-  /// current data size.
-  /// \param[in] num_readers The number of readers that must read and release
-  /// the object before the caller can write again.
-  /// \param[out] data The mutable object buffer in plasma that can be written to.
-  Status ExperimentalMutableObjectWriteAcquire(const ObjectID &object_id,
-                                               const std::shared_ptr<Buffer> &metadata,
-                                               uint64_t data_size,
-                                               int64_t num_readers,
-                                               std::shared_ptr<Buffer> *data);
-
-  /// Experimental method for mutable objects. Releases a write lock on the
-  /// object, allowing readers to read. This is the equivalent of "Seal" for
-  /// normal objects.
-  ///
-  /// \param[in] object_id The ID of the object.
-  Status ExperimentalMutableObjectWriteRelease(const ObjectID &object_id);
-
-  /// Experimental method for mutable objects. Sets the error bit, causing all
-  /// future readers and writers to raise an error on acquire.
-  ///
-  /// \param[in] object_id The ID of the object.
-  Status ExperimentalMutableObjectSetError(const ObjectID &object_id);
-
-  /// Experimental method for mutable objects. Releases the objects, allowing them
-  /// to be written again. If the caller did not previously Get the objects,
-  /// then this first blocks until the latest value is available to read, then
-  /// releases the value.
-  ///
-  /// \param[in] object_id The ID of the object.
-  Status ExperimentalMutableObjectReadRelease(const ObjectID &object_id);
 
  private:
   /// Ask the raylet to fetch a set of objects and then attempt to get them
@@ -242,7 +215,6 @@ class CoreWorkerPlasmaStoreProvider {
       absl::flat_hash_set<ObjectID> &remaining,
       const std::vector<ObjectID> &batch_ids,
       int64_t timeout_ms,
-      bool send_fetch_or_reconstruct_ipc,
       bool fetch_only,
       const TaskID &task_id,
       absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,

@@ -1,9 +1,11 @@
 import os
+import uuid
 from pathlib import Path
 
 import pyarrow.fs
 import pytest
 
+import ray
 import ray.cloudpickle as ray_pickle
 from ray.train import Checkpoint, SyncConfig
 from ray.train._internal.storage import (
@@ -14,7 +16,7 @@ from ray.train._internal.storage import (
 from ray.train.tests.test_new_persistence import _resolve_storage_type
 
 
-@pytest.fixture(params=[None, "nfs", "cloud", "custom_fs"])
+@pytest.fixture(params=["nfs", "cloud", "custom_fs"])
 def storage(request, tmp_path) -> StorageContext:
     storage_type = request.param
     with _resolve_storage_type(storage_type, tmp_path) as (
@@ -23,7 +25,7 @@ def storage(request, tmp_path) -> StorageContext:
     ):
         yield StorageContext(
             storage_path=storage_path,
-            experiment_dir_name="exp_name",
+            experiment_dir_name=f"storage_type={storage_type}-{uuid.uuid4().hex}",
             storage_filesystem=storage_filesystem,
             trial_dir_name="trial_name",
             sync_config=SyncConfig(
@@ -32,11 +34,12 @@ def storage(request, tmp_path) -> StorageContext:
         )
 
 
-@pytest.fixture(autouse=True)
-def local_path(tmp_path, monkeypatch):
-    local_dir = str(tmp_path / "ray_results")
-    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", local_dir)
-    yield local_dir
+@pytest.fixture(autouse=True, scope="module")
+def ray_init():
+    # NOTE: This is needed to set the `/tmp/ray/session_*` directory.
+    ray.init()
+    yield
+    ray.shutdown()
 
 
 def test_custom_fs_validation(tmp_path):
@@ -100,12 +103,6 @@ def test_storage_path_inputs():
     StorageContext(storage_path=Path(path), experiment_dir_name=exp_name)
 
 
-def test_no_syncing_needed(local_path):
-    """Tests that we don't create a syncer if no syncing is needed."""
-    storage = StorageContext(storage_path=local_path, experiment_dir_name="test_dir")
-    assert storage.syncer is None
-
-
 def test_storage_validation_marker(storage: StorageContext):
     # A marker should have been created at initialization
     storage._check_validation_file()
@@ -162,26 +159,18 @@ def test_persist_current_checkpoint(storage: StorageContext, tmp_path):
 
 def test_persist_artifacts(storage: StorageContext):
     """Tests typical `StorageContext.persist_artifacts(force=True/False)` usage."""
-    trial_local_path = Path(storage.trial_local_path)
-    trial_local_path.mkdir(parents=True)
-    trial_local_path.joinpath("1.txt").touch()
+    trial_working_dir = Path(storage.trial_working_directory)
+    trial_working_dir.mkdir(parents=True)
+    trial_working_dir.joinpath("1.txt").touch()
 
     storage.persist_artifacts()
-
-    if not storage.syncer:
-        # No syncing is needed -- pass early if storage_path == storage_local_path
-        assert _list_at_fs_path(storage.storage_filesystem, storage.trial_fs_path) == [
-            "1.txt"
-        ]
-        return
-
     storage.syncer.wait()
 
     assert sorted(
         _list_at_fs_path(storage.storage_filesystem, storage.trial_fs_path)
     ) == ["1.txt"]
 
-    trial_local_path.joinpath("2.txt").touch()
+    trial_working_dir.joinpath("2.txt").touch()
 
     # A new sync should not be triggered because sync_period is 1000 seconds
     storage.persist_artifacts()
@@ -202,11 +191,6 @@ def test_persist_artifacts(storage: StorageContext):
 
 def test_persist_artifacts_failures(storage: StorageContext):
     """Tests `StorageContext.persist_artifacts` edge cases (empty directory)."""
-    if not storage.syncer:
-        # Should be a no-op if storage_path == storage_local_path (no syncing needed)
-        storage.persist_artifacts()
-        return
-
     # Uploading before the trial directory has been created should fail
     with pytest.raises(FileNotFoundError):
         storage.persist_artifacts()

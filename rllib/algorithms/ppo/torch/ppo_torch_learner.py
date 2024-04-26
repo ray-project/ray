@@ -9,15 +9,14 @@ from ray.rllib.algorithms.ppo.ppo import (
     PPOConfig,
 )
 from ray.rllib.algorithms.ppo.ppo_learner import PPOLearner
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY_KEY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
-from ray.rllib.core.models.base import ENCODER_OUT, CRITIC
 from ray.rllib.evaluation.postprocessing import Postprocessing
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.utils.torch_utils import convert_to_torch_tensor, explained_variance
+from ray.rllib.utils.torch_utils import explained_variance
 from ray.rllib.utils.typing import ModuleID, TensorType
 
 torch, nn = try_import_torch()
@@ -54,7 +53,6 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
                 return torch.sum(data_[batch["loss_mask"]]) / num_valid
 
         else:
-
             possibly_masked_mean = torch.mean
 
         action_dist_class_train = (
@@ -65,15 +63,14 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         )
 
         curr_action_dist = action_dist_class_train.from_logits(
-            fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+            fwd_out[Columns.ACTION_DIST_INPUTS]
         )
         prev_action_dist = action_dist_class_exploration.from_logits(
-            batch[SampleBatch.ACTION_DIST_INPUTS]
+            batch[Columns.ACTION_DIST_INPUTS]
         )
 
         logp_ratio = torch.exp(
-            curr_action_dist.logp(batch[SampleBatch.ACTIONS])
-            - batch[SampleBatch.ACTION_LOGP]
+            curr_action_dist.logp(batch[Columns.ACTIONS]) - batch[Columns.ACTION_LOGP]
         )
 
         # Only calculate kl loss if necessary (kl-coeff > 0.0).
@@ -94,7 +91,7 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
 
         # Compute a value function loss.
         if config.use_critic:
-            value_fn_out = fwd_out[SampleBatch.VF_PREDS]
+            value_fn_out = fwd_out[Columns.VF_PREDS]
             vf_loss = torch.pow(value_fn_out - batch[Postprocessing.VALUE_TARGETS], 2.0)
             vf_loss_clipped = torch.clamp(vf_loss, 0, config.vf_clip_param)
             mean_vf_loss = possibly_masked_mean(vf_loss_clipped)
@@ -166,23 +163,3 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
             results.update({LEARNER_RESULTS_CURR_KL_COEFF_KEY: curr_var.item()})
 
         return results
-
-    @override(PPOLearner)
-    def _compute_values(self, batch):
-        values = {}
-        for module_id, sa_batch in batch.policy_batches.items():
-            infos = sa_batch.pop(SampleBatch.INFOS, None)
-            sa_batch = convert_to_torch_tensor(sa_batch, device=self._device)
-            if infos is not None:
-                sa_batch[SampleBatch.INFOS] = infos
-
-            module = self.module[module_id].unwrapped()
-
-            # Shared encoder.
-            encoder_outs = module.encoder(sa_batch)
-            # Value head.
-            vf_out = module.vf(encoder_outs[ENCODER_OUT][CRITIC])
-            # Squeeze out last dimension (single node value head).
-            values[module_id] = vf_out.squeeze(-1)
-
-        return values

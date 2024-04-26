@@ -4,8 +4,8 @@ import unittest
 import ray
 from ray import air
 from ray import tune
-from ray.rllib.examples.env.random_env import RandomEnv
-from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
+from ray.rllib.examples.envs.classes.random_env import RandomEnv
+from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.tf.attention_net import GTrXLNet
 from ray.rllib.utils.test_utils import framework_iterator
@@ -16,7 +16,7 @@ class TestAttentionNets(unittest.TestCase):
     config = {
         "env": StatelessCartPole,
         "gamma": 0.99,
-        "num_envs_per_worker": 20,
+        "num_envs_per_env_runner": 20,
         "framework": "tf",
     }
 

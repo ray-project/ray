@@ -10,9 +10,10 @@ import threading
 from typing import Dict, Optional
 from datetime import datetime
 
-from google.protobuf.json_format import MessageToDict, Parse
+from google.protobuf.json_format import Parse
 
 from ray.core.generated.event_pb2 import Event
+from ray._private.protobuf_compat import message_to_dict
 
 global_logger = logging.getLogger(__name__)
 
@@ -91,9 +92,9 @@ class EventLoggerAdapter:
 
         self.logger.info(
             json.dumps(
-                MessageToDict(
+                message_to_dict(
                     event,
-                    including_default_value_fields=True,
+                    always_print_fields_with_no_presence=True,
                     preserving_proto_field_name=True,
                     use_integers_for_enums=False,
                 )

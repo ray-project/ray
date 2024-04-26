@@ -13,6 +13,7 @@ from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
     run_string_as_driver_stdout_stderr,
 )
+from ray.autoscaler.v2.utils import is_autoscaler_v2
 
 
 def test_dedup_logs():
@@ -198,7 +199,10 @@ time.sleep(15)
     out_str, err_str = run_string_as_driver_stdout_stderr(script)
     print(out_str, err_str)
     assert "Tip:" in out_str, (out_str, err_str)
-    assert "Error: No available node types can fulfill" in out_str, (out_str, err_str)
+    assert "No available node types can fulfill" in out_str, (
+        out_str,
+        err_str,
+    )
 
 
 @pytest.mark.parametrize(
@@ -239,10 +243,17 @@ time.sleep(25)
 
     print(out_str, err_str)
     assert "Tip:" in out_str, (out_str, err_str)
-    assert "Warning: The following resource request cannot" in out_str, (
-        out_str,
-        err_str,
-    )
+
+    if is_autoscaler_v2():
+        assert "No available node types can fulfill resource requests" in out_str, (
+            out_str,
+            err_str,
+        )
+    else:
+        assert "Warning: The following resource request cannot" in out_str, (
+            out_str,
+            err_str,
+        )
 
 
 # TODO(rickyx): Remove this after migration
@@ -254,13 +265,6 @@ time.sleep(25)
             "resources": {"node:x": 1},
             "env_vars": {
                 "RAY_enable_autoscaler_v2": "0",
-            },
-        },
-        {
-            "num_cpus": 1,
-            "resources": {"node:x": 1},
-            "env_vars": {
-                "RAY_enable_autoscaler_v2": "1",
             },
         },
     ],

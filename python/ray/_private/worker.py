@@ -439,9 +439,6 @@ class Worker:
         # This event is checked regularly by all of the threads so that they
         # know when to exit.
         self.threads_stopped = threading.Event()
-        # Index of the current session. This number will
-        # increment every time when `ray.shutdown` is called.
-        self._session_index = 0
         # If this is set, the next .remote call should drop into the
         # debugger, at the specified breakpoint ID.
         self.debugger_breakpoint = b""
@@ -537,11 +534,11 @@ class Worker:
         return self.core_worker.should_capture_child_tasks_in_placement_group()
 
     @property
-    def current_session_and_job(self):
+    def current_cluster_and_job(self):
         """Get the current session index and job id as pair."""
-        assert isinstance(self._session_index, int)
+        assert isinstance(self.node.cluster_id, ray.ClusterID)
         assert isinstance(self.current_job_id, ray.JobID)
-        return self._session_index, self.current_job_id
+        return self.node.cluster_id, self.current_job_id
 
     @property
     def runtime_env(self):
@@ -718,7 +715,7 @@ class Worker:
         value: Any,
         object_ref: Optional["ray.ObjectRef"] = None,
         owner_address: Optional[str] = None,
-        _is_experimental_mutable_object: bool = False,
+        _is_experimental_channel: bool = False,
     ):
         """Put value in the local object store with object reference `object_ref`.
 
@@ -734,7 +731,7 @@ class Worker:
             object_ref: The object ref of the value to be
                 put. If None, one will be generated.
             owner_address: The serialized address of object's owner.
-            _is_experimental_mutable_object: An experimental flag for mutable
+            _is_experimental_channel: An experimental flag for mutable
                 objects. If True, then the returned object will not have a
                 valid value. The object must be written to using the
                 ray.experimental.channel API before readers can read.
@@ -774,7 +771,7 @@ class Worker:
 
         # If the object is mutable, then the raylet should never read the
         # object. Instead, clients will keep the object pinned.
-        pin_object = not _is_experimental_mutable_object
+        pin_object = not _is_experimental_channel
 
         # This *must* be the first place that we construct this python
         # ObjectRef because an entry with 0 local references is created when
@@ -788,7 +785,7 @@ class Worker:
                 object_ref=object_ref,
                 pin_object=pin_object,
                 owner_address=owner_address,
-                _is_experimental_mutable_object=_is_experimental_mutable_object,
+                _is_experimental_channel=_is_experimental_channel,
             ),
             # The initial local reference is already acquired internally.
             skip_adding_local_ref=True,
@@ -814,7 +811,6 @@ class Worker:
         self,
         object_refs: list,
         timeout: Optional[float] = None,
-        _is_experimental_mutable_object: bool = False,
     ):
         """Get the values in the object store associated with the IDs.
 
@@ -831,10 +827,6 @@ class Worker:
             list: List of deserialized objects
             bytes: UUID of the debugger breakpoint we should drop
                 into or b"" if there is no breakpoint.
-            _is_experimental_mutable_object: An experimental flag for mutable
-                objects. If True, then wait until there is a value available to
-                read. The object must also already be local, or else the get
-                call will hang.
         """
         # Make sure that the values are object refs.
         for object_ref in object_refs:
@@ -849,7 +841,6 @@ class Worker:
             object_refs,
             self.current_task_id,
             timeout_ms,
-            _is_experimental_mutable_object,
         )
         debugger_breakpoint = b""
         for data, metadata in data_metadata_pairs:
@@ -940,7 +931,7 @@ class Worker:
 
     def get_accelerator_ids_for_accelerator_resource(
         self, resource_name: str, resource_regex: str
-    ) -> List[str]:
+    ) -> Union[List[str], List[int]]:
         """Get the accelerator IDs that are assigned to the given accelerator resource.
 
         Args:
@@ -948,7 +939,8 @@ class Worker:
             resource_regex: The regex of the resource.
 
         Returns:
-            (List[str]) The IDs that are assigned to the given resource.
+            (List[str]) The IDs that are assigned to the given resource pre-configured.
+            (List[int]) The IDs that are assigned to the given resource.
         """
         resource_ids = self.core_worker.resource_ids()
         assigned_ids = set()
@@ -981,12 +973,12 @@ class Worker:
                     )
                 if max_accelerators:
                     assigned_ids = original_ids[:max_accelerators]
-        return [str(assigned_id) for assigned_id in assigned_ids]
+        return list(assigned_ids)
 
 
 @PublicAPI
 @client_mode_hook
-def get_gpu_ids():
+def get_gpu_ids() -> Union[List[int], List[str]]:
     """Get the IDs of the GPUs that are available to the worker.
 
     If the CUDA_VISIBLE_DEVICES environment variable was set when the worker
@@ -999,12 +991,9 @@ def get_gpu_ids():
     """
     worker = global_worker
     worker.check_connected()
-    return [
-        int(i)
-        for i in worker.get_accelerator_ids_for_accelerator_resource(
-            ray_constants.GPU, f"^{ray_constants.GPU}_group_[0-9A-Za-z]+$"
-        )
-    ]
+    return worker.get_accelerator_ids_for_accelerator_resource(
+        ray_constants.GPU, f"^{ray_constants.GPU}_group_[0-9A-Za-z]+$"
+    )
 
 
 @Deprecated(
@@ -1651,10 +1640,11 @@ def init(
         # handler. We still spawn a reaper process in case the atexit handler
         # isn't called.
         _global_node = ray._private.node.Node(
+            ray_params=ray_params,
             head=True,
             shutdown_at_exit=False,
             spawn_reaper=True,
-            ray_params=ray_params,
+            ray_init_cluster=True,
         )
     else:
         # In this case, we are connecting to an existing cluster.
@@ -2153,18 +2143,13 @@ def listen_error_messages(worker, threads_stopped):
                 continue
 
             error_message = error_data["error_message"]
-            if error_data["type"] == ray_constants.TASK_PUSH_ERROR:
-                # TODO(ekl) remove task push errors entirely now that we have
-                # the separate unhandled exception handler.
-                pass
-            else:
-                print_to_stdstream(
-                    {
-                        "lines": [error_message],
-                        "pid": "raylet",
-                        "is_err": False,
-                    }
-                )
+            print_to_stdstream(
+                {
+                    "lines": [error_message],
+                    "pid": "raylet",
+                    "is_err": False,
+                }
+            )
     except (OSError, ConnectionError) as e:
         logger.error(f"listen_error_messages: {e}")
 
@@ -2393,7 +2378,7 @@ def connect(
         runtime_env_hash,
         startup_token,
         session_name,
-        node.cluster_id,
+        node.cluster_id.hex(),
         "" if mode != SCRIPT_MODE else entrypoint,
         worker_launch_time_ms,
         worker_launched_time_ms,
@@ -2475,8 +2460,6 @@ def disconnect(exiting_interpreter=False):
             worker.logger_thread.join()
         worker.threads_stopped.clear()
 
-        worker._session_index += 1
-
         for leftover in stdout_deduplicator.flush():
             print_worker_logs(leftover, sys.stdout)
         for leftover in stderr_deduplicator.flush():
@@ -2491,19 +2474,6 @@ def disconnect(exiting_interpreter=False):
         ray_actor = None  # This can occur during program termination
     if ray_actor is not None:
         ray_actor._ActorClassMethodMetadata.reset_cache()
-
-
-def start_import_thread():
-    """Start the import thread if the worker is connected."""
-    worker = global_worker
-    worker.check_connected()
-
-    assert _mode() not in (
-        RESTORE_WORKER_MODE,
-        SPILL_WORKER_MODE,
-    ), "import thread can not be used in IO workers."
-    if worker.import_thread and ray._raylet.Config.start_python_importer_thread():
-        worker.import_thread.start()
 
 
 @contextmanager

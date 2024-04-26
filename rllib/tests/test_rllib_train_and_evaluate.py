@@ -8,7 +8,7 @@ from unittest import mock
 import ray
 from ray import air, tune
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.test_utils import framework_iterator
 from ray.tune.registry import get_trainable_cls
 
@@ -183,7 +183,7 @@ def learn_test_multi_agent_plus_evaluate(algo: str):
             .get_default_config()
             .environment(MultiAgentCartPole)
             .framework(fw)
-            .rollouts(num_rollout_workers=1)
+            .env_runners(num_env_runners=1)
             .multi_agent(
                 policies={"pol0", "pol1"},
                 policy_mapping_fn=policy_fn,
@@ -298,14 +298,14 @@ class TestCLISmokeTests(unittest.TestCase):
 
     def test_yaml_run(self):
         assert os.popen(
-            f"python {rllib_dir}/scripts.py train file tuned_examples/simple_q/"
-            f"cartpole-simpleq-test.yaml"
+            f"python {rllib_dir}/scripts.py train file tuned_examples/ppo/"
+            f"cartpole-ppo.yaml"
         ).read()
 
     def test_python_run(self):
         assert os.popen(
-            f"python {rllib_dir}/scripts.py train file tuned_examples/simple_q/"
-            f"cartpole_simpleq_test.py "
+            f"python {rllib_dir}/scripts.py train file tuned_examples/ppo/"
+            f"cartpole_ppo_envrunner.py "
             f"--stop={'timesteps_total': 50000, 'episode_reward_mean': 200}"
         ).read()
 

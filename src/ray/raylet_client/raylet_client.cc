@@ -111,8 +111,7 @@ raylet::RayletClient::RayletClient(
     NodeID *raylet_id,
     int *port,
     const std::string &serialized_job_config,
-    StartupToken startup_token,
-    const std::string &entrypoint)
+    StartupToken startup_token)
     : grpc_client_(std::move(grpc_client)), worker_id_(worker_id) {
   conn_ = std::make_unique<raylet::RayletConnection>(io_service, raylet_socket, -1, -1);
 
@@ -129,8 +128,7 @@ raylet::RayletClient::RayletClient(
                                             language,
                                             fbb.CreateString(ip_address),
                                             /*port=*/0,
-                                            fbb.CreateString(serialized_job_config),
-                                            fbb.CreateString(entrypoint));
+                                            fbb.CreateString(serialized_job_config));
   fbb.Finish(message);
   // Register the process ID with the raylet.
   // NOTE(swang): If raylet exits and we are registered as a worker, we will get killed.
@@ -193,11 +191,30 @@ Status raylet::RayletClient::Disconnect(
   return Status::OK();
 }
 
-Status raylet::RayletClient::AnnounceWorkerPort(int port) {
+Status raylet::RayletClient::AnnounceWorkerPortForWorker(int port) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateAnnounceWorkerPort(fbb, port);
+  auto message = protocol::CreateAnnounceWorkerPort(fbb, port, fbb.CreateString(""));
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::AnnounceWorkerPort, &fbb);
+}
+
+Status raylet::RayletClient::AnnounceWorkerPortForDriver(int port,
+                                                         const std::string &entrypoint) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message =
+      protocol::CreateAnnounceWorkerPort(fbb, port, fbb.CreateString(entrypoint));
+  fbb.Finish(message);
+  std::vector<uint8_t> reply;
+  RAY_RETURN_NOT_OK(conn_->AtomicRequestReply(MessageType::AnnounceWorkerPort,
+                                              MessageType::AnnounceWorkerPortReply,
+                                              &reply,
+                                              &fbb));
+  auto reply_message =
+      flatbuffers::GetRoot<protocol::AnnounceWorkerPortReply>(reply.data());
+  if (reply_message->success()) {
+    return Status::OK();
+  }
+  return Status::Invalid(string_from_flatbuf(*reply_message->failure_reason()));
 }
 
 Status raylet::RayletClient::ActorCreationTaskDone() {
@@ -333,15 +350,6 @@ void raylet::RayletClient::RequestWorkerLease(
   request->set_backlog_size(backlog_size);
   request->set_is_selected_based_on_locality(is_selected_based_on_locality);
   grpc_client_->RequestWorkerLease(*request, callback);
-}
-
-/// Spill objects to external storage.
-void raylet::RayletClient::RequestObjectSpillage(
-    const ObjectID &object_id,
-    const rpc::ClientCallback<rpc::RequestObjectSpillageReply> &callback) {
-  rpc::RequestObjectSpillageRequest request;
-  request.set_object_id(object_id.Binary());
-  grpc_client_->RequestObjectSpillage(request, callback);
 }
 
 std::shared_ptr<grpc::Channel> raylet::RayletClient::GetChannel() const {
