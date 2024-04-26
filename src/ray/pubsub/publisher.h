@@ -374,7 +374,6 @@ class Publisher : public PublisherInterface {
 
   /// Remove the subscriber. Once the subscriber is removed, messages won't be published
   /// to it anymore.
-  /// TODO(sang): Currently, clients don't send a RPC to unregister themselves.
   ///
   /// \param subscriber_id The node id of the subscriber to unsubscribe.
   /// \return True if erased. False otherwise.

@@ -109,6 +109,15 @@ void InternalPubSubHandler::HandleGcsSubscriberCommandBatch(
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
+void InternalPubSubHandler::HandleGcsUnregisterSubscriber(
+    rpc::GcsUnregisterSubscriberRequest request,
+    rpc::GcsUnregisterSubscriberReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  const auto subscriber_id = UniqueID::FromBinary(request.subscriber_id());
+  gcs_publisher_->GetPublisher().UnregisterSubscriber(subscriber_id);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
 void InternalPubSubHandler::RemoveSubscriberFrom(const std::string &sender_id) {
   auto iter = sender_to_subscribers_.find(sender_id);
   if (iter == sender_to_subscribers_.end()) {
