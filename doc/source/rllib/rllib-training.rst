@@ -72,11 +72,11 @@ For more advanced evaluation functionality, refer to `Customized Evaluation Duri
     Each algorithm has specific hyperparameters that can be set with ``--config``,
     see the `algorithms documentation <rllib-algorithms.html>`__ for more information.
     For instance, you can train the A2C algorithm on 8 workers by specifying
-    `num_workers: 8` in a JSON string passed to ``--config``:
+    `num_env_runners: 8` in a JSON string passed to ``--config``:
 
     .. code-block:: bash
 
-        rllib train --env=PongDeterministic-v4 --run=A2C --config '{"num_workers": 8}'
+        rllib train --env=PongDeterministic-v4 --run=A2C --config '{"num_env_runners": 8}'
 
 Running Tuned Examples
 ----------------------
@@ -305,9 +305,8 @@ the following categories:
 - :ref:`training options <rllib-config-train>`,
 - :ref:`environment options <rllib-config-env>`,
 - :ref:`deep learning framework options <rllib-config-framework>`,
-- :ref:`rollout worker options <rllib-config-rollouts>`,
+- :ref:`env runner options <rllib-config-rollouts>`,
 - :ref:`evaluation options <rllib-config-evaluation>`,
-- :ref:`exploration options <rllib-config-exploration>`,
 - :ref:`options for training with offline data <rllib-config-offline_data>`,
 - :ref:`options for training multiple agents <rllib-config-multi_agent>`,
 - :ref:`reporting options <rllib-config-reporting>`,
@@ -372,15 +371,6 @@ Specifying Evaluation Options
     :noindex:
 
 
-.. _rllib-config-exploration:
-
-Specifying Exploration Options
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.exploration
-    :noindex:
-
-
 .. _rllib-config-offline_data:
 
 Specifying Offline Data Options
@@ -440,16 +430,16 @@ Specifying Callback Options
 Specifying Resources
 ~~~~~~~~~~~~~~~~~~~~
 
-You can control the degree of parallelism used by setting the ``num_workers``
+You can control the degree of parallelism used by setting the ``num_env_runners``
 hyperparameter for most algorithms. The Algorithm will construct that many
 "remote worker" instances (`see RolloutWorker class <https://github.com/ray-project/ray/blob/master/rllib/evaluation/rollout_worker.py>`__)
-that are constructed as ray.remote actors, plus exactly one "local worker", a ``RolloutWorker`` object that isn't a
+that are constructed as ray.remote actors, plus exactly one "local worker", an ``EnvRunner`` object that isn't a
 ray actor, but lives directly inside the Algorithm.
 For most algorithms, learning updates are performed on the local worker and sample collection from
 one or more environments is performed by the remote workers (in parallel).
-For example, setting ``num_workers=0`` will only create the local worker, in which case both
+For example, setting ``num_env_runners=0`` will only create the local worker, in which case both
 sample collection and training will be done by the local worker.
-On the other hand, setting ``num_workers=5`` will create the local worker (responsible for training updates)
+On the other hand, setting ``num_env_runners=5`` will create the local worker (responsible for training updates)
 and 5 remote workers (responsible for sample collection).
 
 Since learning is most of the time done on the local worker, it may help to provide one or more GPUs
@@ -469,7 +459,7 @@ the same GPU. To do this for an amount of ``n`` GPUS:
 
     gpu_count = n
     num_gpus = 0.0001 # Driver GPU
-    num_gpus_per_worker = (gpu_count - num_gpus) / num_workers
+    num_gpus_per_worker = (gpu_count - num_gpus) / num_env_runners
 
 .. Original image: https://docs.google.com/drawings/d/14QINFvx3grVyJyjAnjggOCEVN-Iq6pYVJ3jA2S6j8z0/edit?usp=sharing
 .. image:: images/rllib-config.svg
@@ -499,25 +489,25 @@ RLlib Scaling Guide
 
 Here are some rules of thumb for scaling training with RLlib.
 
-1. If the environment is slow and cannot be replicated (e.g., since it requires interaction with physical systems), then you should use a sample-efficient off-policy algorithm such as :ref:`DQN <dqn>` or :ref:`SAC <sac>`. These algorithms default to ``num_workers: 0`` for single-process operation. Make sure to set ``num_gpus: 1`` if you want to use a GPU. Consider also batch RL training with the `offline data <rllib-offline.html>`__ API.
+1. If the environment is slow and cannot be replicated (e.g., since it requires interaction with physical systems), then you should use a sample-efficient off-policy algorithm such as :ref:`DQN <dqn>` or :ref:`SAC <sac>`. These algorithms default to ``num_env_runners: 0`` for single-process operation. Make sure to set ``num_gpus: 1`` if you want to use a GPU. Consider also batch RL training with the `offline data <rllib-offline.html>`__ API.
 
 2. If the environment is fast and the model is small (most models for RL are), use time-efficient algorithms such as :ref:`PPO <ppo>`, or :ref:`IMPALA <impala>`.
-These can be scaled by increasing ``num_workers`` to add rollout workers. It may also make sense to enable `vectorization <rllib-env.html#vectorized>`__ for
+These can be scaled by increasing ``num_env_runners`` to add rollout workers. It may also make sense to enable `vectorization <rllib-env.html#vectorized>`__ for
 inference. Make sure to set ``num_gpus: 1`` if you want to use a GPU. If the learner becomes a bottleneck, multiple GPUs can be used for learning by setting
 ``num_gpus > 1``.
 
-3. If the model is compute intensive (e.g., a large deep residual network) and inference is the bottleneck, consider allocating GPUs to workers by setting ``num_gpus_per_worker: 1``. If you only have a single GPU, consider ``num_workers: 0`` to use the learner GPU for inference. For efficient use of GPU time, use a small number of GPU workers and a large number of `envs per worker <rllib-env.html#vectorized>`__.
+3. If the model is compute intensive (e.g., a large deep residual network) and inference is the bottleneck, consider allocating GPUs to workers by setting ``num_gpus_per_worker: 1``. If you only have a single GPU, consider ``num_env_runners: 0`` to use the learner GPU for inference. For efficient use of GPU time, use a small number of GPU workers and a large number of `envs per worker <rllib-env.html#vectorized>`__.
 
 4. Finally, if both model and environment are compute intensive, then enable `remote worker envs <rllib-env.html#vectorized>`__ with `async batching <rllib-env.html#vectorized>`__ by setting ``remote_worker_envs: True`` and optionally ``remote_env_batch_wait_ms``. This batches inference on GPUs in the rollout workers while letting envs run asynchronously in separate actors, similar to the `SEED <https://ai.googleblog.com/2020/03/massively-scaling-reinforcement.html>`__ architecture. The number of workers and number of envs per worker should be tuned to maximize GPU utilization.
 
-In case you are using lots of workers (``num_workers >> 10``) and you observe worker failures for whatever reasons, which normally interrupt your RLlib training runs, consider using
-the config settings ``ignore_worker_failures=True``, ``recreate_failed_workers=True``, or ``restart_failed_sub_environments=True``:
+In case you are using lots of workers (``num_env_runners >> 10``) and you observe worker failures for whatever reasons, which normally interrupt your RLlib training runs, consider using
+the config settings ``ignore_env_runner_failures=True``, ``recreate_failed_env_runners=True``, or ``restart_failed_sub_environments=True``:
 
-``ignore_worker_failures``: When set to True, your Algorithm will not crash due to a single worker error but continue for as long as there is at least one functional worker remaining.
-``recreate_failed_workers``: When set to True, your Algorithm will attempt to replace/recreate any failed worker(s) with newly created one(s). This way, your number of workers will never decrease, even if some of them fail from time to time.
+``ignore_env_runner_failures``: When set to True, your Algorithm will not crash due to a single worker error but continue for as long as there is at least one functional worker remaining.
+``recreate_failed_env_runners``: When set to True, your Algorithm will attempt to replace/recreate any failed worker(s) with newly created one(s). This way, your number of workers will never decrease, even if some of them fail from time to time.
 ``restart_failed_sub_environments``: When set to True and there is a failure in one of the vectorized sub-environments in one of your workers, the worker will try to recreate only the failed sub-environment and re-integrate the newly created one into your vectorized env stack on that worker.
 
-Note that only one of ``ignore_worker_failures`` or ``recreate_failed_workers`` may be set to True (they are mutually exclusive settings). However,
+Note that only one of ``ignore_env_runner_failures`` or ``recreate_failed_env_runners`` may be set to True (they are mutually exclusive settings). However,
 you can combine each of these with the ``restart_failed_sub_environments=True`` setting.
 Using these options will make your training runs much more stable and more robust against occasional OOM or other similar "once in a while" errors on your workers
 themselves or inside your environments.
@@ -534,7 +524,7 @@ The ``"monitor": true`` config can be used to save Gym episode videos to the res
 .. code-block:: bash
 
     rllib train --env=PongDeterministic-v4 \
-        --run=A2C --config '{"num_workers": 2, "monitor": true}'
+        --run=A2C --config '{"num_env_runners": 2, "monitor": true}'
 
     # videos will be saved in the ~/ray_results/<experiment> dir, for example
     openaigym.video.0.31401.video000000.meta.json
@@ -593,10 +583,10 @@ For example, the following two commands are about equivalent:
 .. code-block:: bash
 
     rllib train --env=PongDeterministic-v4 \
-        --run=A2C --config '{"num_workers": 2, "log_level": "DEBUG"}'
+        --run=A2C --config '{"num_env_runners": 2, "log_level": "DEBUG"}'
 
     rllib train --env=PongDeterministic-v4 \
-        --run=A2C --config '{"num_workers": 2}' -vv
+        --run=A2C --config '{"num_env_runners": 2}' -vv
 
 The default log level is ``WARN``. We strongly recommend using at least ``INFO``
 level logging for development.

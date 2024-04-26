@@ -182,7 +182,7 @@ class MultiAgentEpisode:
         # via the `module_for()` API even before the agent has entered the episode
         # (and has its SingleAgentEpisode created), we store all aldeary done mappings
         # in this dict here.
-        self._agent_to_module_mapping: Dict[AgentID, ModuleID] = {}
+        self._agent_to_module_mapping: Dict[AgentID, ModuleID] = agent_module_ids or {}
 
         # Lookback buffer length is not provided. Interpret all provided data as
         # lookback buffer.

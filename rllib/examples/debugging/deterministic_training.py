@@ -39,7 +39,7 @@ if __name__ == "__main__":
             env_config={"param_server": "param-server"},
         )
         .framework(args.framework)
-        .rollouts(
+        .env_runners(
             num_rollout_workers=1,
             num_envs_per_worker=2,
             rollout_fragment_length=50,

@@ -25,6 +25,7 @@ from ray.rllib.utils.metrics import (
     NUM_MODULE_STEPS_SAMPLED_LIFETIME,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
+from ray.rllib.utils.pre_checks.env import check_multiagent_environments
 from ray.rllib.utils.typing import EpisodeID, ModelWeights, ResultDict
 from ray.util.annotations import PublicAPI
 from ray.tune.registry import ENV_CREATOR, _global_registry
@@ -117,7 +118,7 @@ class MultiAgentEnvRunner(EnvRunner):
                 `forward_inference()` method. If None (default), will use the `explore`
                 boolean setting from `self.config` passed into this EnvRunner's
                 constructor. You can change this setting in your config via
-                `config.exploration(explore=True|False)`.
+                `config.env_runners(explore=True|False)`.
             random_actions: If True, actions will be sampled randomly (from the action
                 space of the environment). If False (default), actions or action
                 distribution parameters are computed by the RLModule.
@@ -263,8 +264,11 @@ class MultiAgentEnvRunner(EnvRunner):
 
                 # MARLModule forward pass: Explore or not.
                 if explore:
+                    env_steps_lifetime = self.metrics.peek(
+                        NUM_ENV_STEPS_SAMPLED_LIFETIME
+                    ) + self.metrics.peek(NUM_ENV_STEPS_SAMPLED, default=0)
                     to_env = self.module.forward_exploration(
-                        to_module, t=self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME)
+                        to_module, t=env_steps_lifetime
                     )
                 else:
                     to_env = self.module.forward_inference(to_module)
@@ -463,8 +467,11 @@ class MultiAgentEnvRunner(EnvRunner):
 
                 # MARLModule forward pass: Explore or not.
                 if explore:
+                    env_steps_lifetime = self.metrics.peek(
+                        NUM_ENV_STEPS_SAMPLED_LIFETIME
+                    ) + self.metrics.peek(NUM_ENV_STEPS_SAMPLED, default=0)
                     to_env = self.module.forward_exploration(
-                        to_module, t=self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME)
+                        to_module, t=env_steps_lifetime
                     )
                 else:
                     to_env = self.module.forward_inference(to_module)
@@ -492,6 +499,17 @@ class MultiAgentEnvRunner(EnvRunner):
                 actions_for_env[0]
             )
             ts += self._increase_sampled_metrics(self.num_envs, obs, _episode)
+
+            ts += self.num_envs
+            self.metrics.log_dict(
+                {
+                    NUM_ENV_STEPS_SAMPLED: self.num_envs,
+                    # TODO (sven): obs is not-vectorized. Support vectorized MA envs.
+                    NUM_AGENT_STEPS_SAMPLED: {str(aid): 1 for aid in obs},
+                },
+                reduce="sum",
+                reset_on_reduce=True,
+            )
 
             # Add render data if needed.
             if with_render_data:
@@ -761,7 +779,11 @@ class MultiAgentEnvRunner(EnvRunner):
         )
 
         # Perform actual gym.make call.
-        self.env = gym.make("rllib-multi-agent-env-v0")
+        self.env: MultiAgentEnv = gym.make("rllib-multi-agent-env-v0")
+        try:
+            check_multiagent_environments(self.env.unwrapped)
+        except Exception as e:
+            logger.exception(e.args[0])
         self.num_envs = 1
 
         # Create the MultiAgentEnv (is-a gymnasium env).

@@ -90,7 +90,7 @@ if __name__ == "__main__":
     config = (
         PPOConfig()
         .experimental(_enable_new_api_stack=True)
-        .rollouts(env_runner_cls=MultiAgentEnvRunner)
+        .env_runners(env_runner_cls=MultiAgentEnvRunner)
         .environment("env")
         .multi_agent(
             # Define 3 policies. Note that in our simple setup, they are all configured

@@ -690,8 +690,14 @@ RAY_CONFIG(float, max_task_args_memory_fraction, 0.7)
 /// The maximum number of objects to publish for each publish calls.
 RAY_CONFIG(int, publish_batch_size, 5000)
 
-/// Maximum size in bytes of buffered messages per entity, in Ray publisher.
-RAY_CONFIG(int, publisher_entity_buffer_max_bytes, 10 << 20)
+/// Maximum size in bytes of buffered messages per pubsub channel.  Large
+/// applications (1k+ nodes, 100k+ tasks or actors) may see memory pressure in
+/// the GCS due to high system-level pubsub traffic. Reducing this config value
+/// can help reduce memory pressure, at the cost of dropping some published
+/// messages (e.g., worker logs printed to driver stdout). See
+/// src/ray/pubsub/publisher.cc for the current pubsub channels that are
+/// subject to this cap.
+RAY_CONFIG(int, publisher_entity_buffer_max_bytes, 1 << 30)
 
 /// The maximum command batch size.
 RAY_CONFIG(int64_t, max_command_batch_size, 2000)

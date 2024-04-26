@@ -76,7 +76,7 @@ class TestPPO(unittest.TestCase):
             ppo.PPOConfig()
             # Enable new API stack and use EnvRunner.
             .experimental(_enable_new_api_stack=True)
-            .rollouts(
+            .env_runners(
                 env_runner_cls=SingleAgentEnvRunner,
                 num_rollout_workers=0,
             )
@@ -92,7 +92,7 @@ class TestPPO(unittest.TestCase):
             .callbacks(MyCallbacks)
             .evaluation(
                 # Also test evaluation with remote workers.
-                evaluation_num_workers=2,
+                evaluation_num_env_runners=2,
                 evaluation_duration=3,
                 evaluation_duration_unit="episodes",
                 evaluation_parallel_to_training=True,

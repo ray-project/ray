@@ -1312,7 +1312,7 @@ def run_rllib_example_script_experiment(
         base_config: The AlgorithmConfig object to use for this experiment. This base
             config will be automatically "extended" based on some of the provided
             `args`. For example, `args.num_env_runners` is used to set
-            `config.num_rollout_workers`, etc..
+            `config.num_env_runners`, etc..
         args: A argparse.Namespace object, ideally returned by calling
             `args = add_rllib_example_script_args()`. It must have the following
             properties defined: `stop_iters`, `stop_reward`, `stop_timesteps`,
@@ -1365,8 +1365,8 @@ def run_rllib_example_script_experiment(
         # Enable the new API stack?
         .experimental(_enable_new_api_stack=args.enable_new_api_stack)
         # Define EnvRunner/RolloutWorker scaling and behavior.
-        .rollouts(
-            num_rollout_workers=args.num_env_runners,
+        .env_runners(
+            num_env_runners=args.num_env_runners,
             # Set up the correct env-runner to use depending on
             # old-stack/new-stack and multi-agent settings.
             env_runner_cls=(
@@ -1616,7 +1616,7 @@ def check_reproducibilty(
                 # new API
                 num_gpus_per_learner_worker=int(os.environ.get("RLLIB_NUM_GPUS", "0")),
             )
-            .rollouts(num_rollout_workers=num_workers, num_envs_per_worker=2)
+            .env_runners(num_rollout_workers=num_workers, num_envs_per_worker=2)
         )
 
         for fw in framework_iterator(algo_config, **fw_kwargs):

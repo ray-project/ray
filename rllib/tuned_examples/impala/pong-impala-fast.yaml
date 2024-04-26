@@ -15,7 +15,7 @@ pong-impala-fast:
         rollout_fragment_length: 50
         train_batch_size: 1000
         num_workers: 128
-        num_envs_per_worker: 5
+        num_envs_per_env_runner: 5
         broadcast_interval: 5
         max_sample_requests_in_flight_per_worker: 1
         num_multi_gpu_tower_stacks: 4

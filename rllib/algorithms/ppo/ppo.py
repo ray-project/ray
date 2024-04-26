@@ -75,7 +75,7 @@ class PPOConfig(AlgorithmConfig):
         config = config.training(gamma=0.9, lr=0.01, kl_coeff=0.3,
             train_batch_size=128)
         config = config.resources(num_gpus=0)
-        config = config.rollouts(num_rollout_workers=1)
+        config = config.env_runners(num_env_runners=1)
 
         # Build a Algorithm object from the config and run 1 training iteration.
         algo = config.build(env="CartPole-v1")
@@ -141,7 +141,7 @@ class PPOConfig(AlgorithmConfig):
         self.grad_clip = None
 
         # Override some of AlgorithmConfig's default values with PPO-specific values.
-        self.num_rollout_workers = 2
+        self.num_env_runners = 2
         self.model["vf_share_layers"] = False
         # __sphinx_doc_end__
         # fmt: on
@@ -522,7 +522,7 @@ class PPO(Algorithm):
                     kl = self.metrics.peek(LEARNER_RESULTS, mid, LEARNER_RESULTS_KL_KEY)
                     if np.isnan(kl):
                         logger.warning(
-                            f"KL divergence for Module {module_id} is non-finite, this "
+                            f"KL divergence for Module {mid} is non-finite, this "
                             "will likely destabilize your model and the training "
                             "process. Action(s) in a specific state have near-zero "
                             "probability. This can happen naturally in deterministic "

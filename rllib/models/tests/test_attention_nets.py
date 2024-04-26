@@ -16,7 +16,7 @@ class TestAttentionNets(unittest.TestCase):
     config = {
         "env": StatelessCartPole,
         "gamma": 0.99,
-        "num_envs_per_worker": 20,
+        "num_envs_per_env_runner": 20,
         "framework": "tf",
     }
 

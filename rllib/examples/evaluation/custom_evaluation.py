@@ -165,7 +165,7 @@ if __name__ == "__main__":
                 None if args.no_custom_eval else custom_eval_function
             ),
             # Number of eval EnvRunners to use.
-            evaluation_num_workers=2,
+            evaluation_num_env_runners=2,
             # Enable evaluation, once per training iteration.
             evaluation_interval=1,
             # Run 10 episodes each time evaluation runs (OR "auto" if parallel to
@@ -180,6 +180,11 @@ if __name__ == "__main__":
             # here is simply ignored.
             evaluation_config=AlgorithmConfig.overrides(
                 env_config={"corridor_length": args.corridor_length_training * 2},
+                # TODO (sven): Add support for window=float(inf) and reduce=mean for
+                #  evaluation episode_return_mean reductions (identical to old stack
+                #  behavior, which does NOT use a window (100 by default) to reduce
+                #  eval episode returns.
+                metrics_num_episodes_for_smoothing=5,
             ),
         )
     )

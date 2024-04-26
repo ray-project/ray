@@ -5,10 +5,10 @@ config = (
     SACConfig()
     # Enable new API stack and use EnvRunner.
     .experimental(_enable_new_api_stack=True)
-    .rollouts(
+    .env_runners(
         rollout_fragment_length=1,
         env_runner_cls=SingleAgentEnvRunner,
-        num_rollout_workers=0,
+        num_env_runners=0,
     )
     .environment(env="Pendulum-v1")
     .rl_module(

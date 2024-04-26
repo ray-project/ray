@@ -82,7 +82,7 @@ class DreamerV3EnvRunner(EnvRunner):
                 "GymV26Environment-v0",
                 env_id=self.config.env,
                 wrappers=wrappers,
-                num_envs=self.config.num_envs_per_worker,
+                num_envs=self.config.num_envs_per_env_runner,
                 asynchronous=self.config.remote_worker_envs,
                 make_kwargs=dict(
                     self.config.env_config, **{"render_mode": "rgb_array"}
@@ -104,7 +104,7 @@ class DreamerV3EnvRunner(EnvRunner):
             self.env = gym.vector.make(
                 "dmc_env-v0",
                 wrappers=[ActionClip],
-                num_envs=self.config.num_envs_per_worker,
+                num_envs=self.config.num_envs_per_env_runner,
                 asynchronous=self.config.remote_worker_envs,
                 **dict(self.config.env_config),
             )
@@ -127,11 +127,11 @@ class DreamerV3EnvRunner(EnvRunner):
             # Create the vectorized gymnasium env.
             self.env = gym.vector.make(
                 "dreamerv3-custom-env-v0",
-                num_envs=self.config.num_envs_per_worker,
+                num_envs=self.config.num_envs_per_env_runner,
                 asynchronous=False,  # self.config.remote_worker_envs,
             )
         self.num_envs = self.env.num_envs
-        assert self.num_envs == self.config.num_envs_per_worker
+        assert self.num_envs == self.config.num_envs_per_env_runner
 
         # Create our RLModule to compute actions with.
         policy_dict, _ = self.config.get_multi_agent_setup(env=self.env)

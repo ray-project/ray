@@ -84,7 +84,7 @@ if __name__ == "__main__":
     config = (
         PPOConfig()
         .experimental(_enable_new_api_stack=True)
-        .rollouts(env_runner_cls=SingleAgentEnvRunner)
+        .env_runners(env_runner_cls=SingleAgentEnvRunner)
         .environment("CartPole-v1")
         # Setting up a custom logger config.
         # ----------------------------------

@@ -66,9 +66,12 @@ the experiment takes considerably longer (~70sec vs ~80sec):
 |          81.7371 | 100000 |   494.68 |             494.68 |
 +------------------+--------+----------+--------------------+
 """
+from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EVALUATION_RESULTS,
     NUM_EPISODES,
     NUM_ENV_STEPS_SAMPLED,
 )
@@ -76,6 +79,7 @@ from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
+from ray.rllib.utils.typing import ResultDict
 from ray.tune.registry import get_trainable_cls, register_env
 
 parser = add_rllib_example_script_args(default_reward=500.0)
@@ -99,12 +103,11 @@ parser.add_argument(
     help="Whether to  NOT run evaluation parallel to training, but in sequence.",
 )
 parser.add_argument(
-    "--evaluation-num-workers",
+    "--evaluation-num-env-runners",
     type=int,
     default=2,
-    help="The number of evaluation workers to setup. "
-    "0 for a single local evaluation worker. Note that for values >0, no"
-    "local evaluation worker will be created (b/c not needed).",
+    help="The number of evaluation EnvRunners to setup. "
+    "0 for a single local evaluation EnvRunner.",
 )
 parser.add_argument(
     "--evaluation-interval",
@@ -121,20 +124,24 @@ parser.add_argument(
 
 
 class AssertEvalCallback(DefaultCallbacks):
-    def on_train_result(self, *, algorithm, result, **kwargs):
-        eval_results = result.get("evaluation_results", result.get("evaluation", {}))
-        env_runner_results = eval_results.get(
-            "env_runner_results", eval_results.get("sampler_results")
+    def on_train_result(self, *, algorithm: Algorithm, result: ResultDict, **kwargs):
+        # The eval results can be found inside the main `result` dict
+        # (old API stack: "evaluation").
+        eval_results = result.get(EVALUATION_RESULTS, result.get("evaluation", {}))
+        # In there, there is a sub-key: ENV_RUNNER_RESULTS
+        # (old API stack: "sampler_results")
+        eval_env_runner_results = eval_results.get(
+            ENV_RUNNER_RESULTS, eval_results.get("sampler_results")
         )
         # Make sure we always run exactly the given evaluation duration,
         # no matter what the other settings are (such as
-        # `evaluation_num_workers` or `evaluation_parallel_to_training`).
-        if env_runner_results and NUM_EPISODES in env_runner_results:
-            num_episodes_done = env_runner_results[NUM_EPISODES]
-            num_timesteps_reported = env_runner_results.get(
-                NUM_ENV_STEPS_SAMPLED,
-                env_runner_results.get("episodes_timesteps_total"),
-            )
+        # `evaluation_num_env_runners` or `evaluation_parallel_to_training`).
+        if eval_env_runner_results and NUM_EPISODES in eval_env_runner_results:
+            num_episodes_done = eval_env_runner_results[NUM_EPISODES]
+            if algorithm.config.uses_new_env_runners:
+                num_timesteps_reported = eval_env_runner_results[NUM_ENV_STEPS_SAMPLED]
+            else:
+                num_timesteps_reported = eval_results["timesteps_this_iter"]
 
             # We run for automatic duration (as long as training takes).
             if algorithm.config.evaluation_duration == "auto":
@@ -145,7 +152,8 @@ class AssertEvalCallback(DefaultCallbacks):
                 # fetch.
                 assert (
                     num_timesteps_reported == 0
-                    or num_timesteps_reported >= algorithm.config.evaluation_num_workers
+                    or num_timesteps_reported
+                    >= algorithm.config.evaluation_num_env_runners
                 )
             # We count in episodes.
             elif algorithm.config.evaluation_duration_unit == "episodes":
@@ -175,7 +183,7 @@ class AssertEvalCallback(DefaultCallbacks):
                 )
         # Expect at least evaluation_results/env_runner_results to be always available.
         elif algorithm.config.always_attach_evaluation_results and (
-            not env_runner_results
+            not eval_env_runner_results
         ):
             raise KeyError(
                 "`evaluation_results->env_runner_results` not found in result dict!"
@@ -208,7 +216,7 @@ if __name__ == "__main__":
             ),
             # Use two evaluation workers. Must be >0, otherwise,
             # evaluation will run on a local worker and block (no parallelism).
-            evaluation_num_workers=args.evaluation_num_workers,
+            evaluation_num_env_runners=args.evaluation_num_env_runners,
             # Evaluate every other training iteration (together
             # with every other call to Algorithm.train()).
             evaluation_interval=args.evaluation_interval,
@@ -223,8 +231,8 @@ if __name__ == "__main__":
             # Switch off exploratory behavior for better (greedy) results.
             evaluation_config={
                 "explore": False,
-                # TODO (sven): Add support for windoe=float(inf) and reduce=mean for
-                #  evaluation episdode_return_mean reductions (identical to old stack
+                # TODO (sven): Add support for window=float(inf) and reduce=mean for
+                #  evaluation episode_return_mean reductions (identical to old stack
                 #  behavior, which does NOT use a window (100 by default) to reduce
                 #  eval episode returns.
                 "metrics_num_episodes_for_smoothing": 5,

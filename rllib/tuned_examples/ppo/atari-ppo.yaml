@@ -27,7 +27,7 @@ atari-ppo:
         sgd_minibatch_size: 500
         num_sgd_iter: 10
         num_workers: 10
-        num_envs_per_worker: 5
+        num_envs_per_env_runner: 5
         batch_mode: truncate_episodes
         observation_filter: NoFilter
         model:

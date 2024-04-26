@@ -96,7 +96,7 @@ if __name__ == "__main__":
         )
         # How many RolloutWorkers (each with n environment copies:
         # `num_envs_per_worker`)?
-        .rollouts(
+        .env_runners(
             num_rollout_workers=args.num_workers,
             # This setting should not really matter as it does not affect the
             # number of GPUs reserved for each worker.

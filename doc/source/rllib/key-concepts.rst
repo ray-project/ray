@@ -113,7 +113,7 @@ The following figure shows *synchronous sampling*, the simplest of `these patter
     Synchronous Sampling (e.g., A2C, PG, PPO)
 
 RLlib uses `Ray actors <actors.html>`__ to scale training from a single core to many thousands of cores in a cluster.
-You can `configure the parallelism <rllib-training.html#specifying-resources>`__ used for training by changing the ``num_workers`` parameter.
+You can `configure the parallelism <rllib-training.html#specifying-resources>`__ used for training by changing the ``num_env_runners`` parameter.
 Check out our `scaling guide <rllib-training.html#scaling-guide>`__ for more details here.
 
 
@@ -161,7 +161,7 @@ Here is an example of creating a set of rollout workers and using them gather ex
     workers = WorkerSet(
         policy_class=CustomPolicy,
         env_creator=lambda c: gym.make("CartPole-v1"),
-        num_workers=10)
+        num_env_runners=10)
 
     while True:
         # Gather a batch of samples.
@@ -368,7 +368,7 @@ From a high level, we can use rollout workers to collect experiences from the en
 their ``sample()`` method and we can train their policies by calling their ``learn_on_batch()`` method.
 By default, in RLlib, we create a set of workers that can be used for sampling and training.
 We create a ``WorkerSet`` object inside of ``setup`` which is called when an RLlib algorithm is created. The ``WorkerSet`` has a ``local_worker``
-and ``remote_workers`` if ``num_workers > 0`` in the experiment config. In RLlib we typically use ``local_worker``
+and ``remote_workers`` if ``num_env_runners > 0`` in the experiment config. In RLlib we typically use ``local_worker``
 for training and ``remote_workers`` for sampling.
 
 
