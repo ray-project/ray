@@ -55,14 +55,14 @@ class MutableObjectProvider {
   /// Handles an RPC request from another note to register a mutable object on this node.
   /// The remote node writes the object and this node reads the object. This node is
   /// notified of writes to the object via HandlePushMutableObject().
-  /// \param[in] object_id The ID of the object on the remote note.
+  /// \param[in] writer_object_id The ID of the object on the remote note.
   /// \param[in] num_readers The number of readers on this node.
-  /// \param[in] local_object_id The ID of the corresponding object on this node. When
+  /// \param[in] reader_object_id The ID of the corresponding object on this node. When
   /// this node is notified of a write via HandlePushMutableObject(), the
-  /// `local_object_id` object is updated with the write.
-  void HandleRegisterMutableObject(const ObjectID &object_id,
+  /// `reader_object_id` object is updated with the write.
+  void HandleRegisterMutableObject(const ObjectID &writer_object_id,
                                    int64_t num_readers,
-                                   const ObjectID &local_object_id);
+                                   const ObjectID &reader_object_id);
 
   /// RPC callback for when a writer pushes a mutable object over the network to a reader
   /// on this node.

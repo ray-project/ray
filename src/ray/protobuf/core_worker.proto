@@ -424,14 +424,17 @@ message ReportGeneratorItemReturnsReply {
   int64 total_num_object_consumed = 1;
 }
 
-message CreateMutableObjectRequest {
-  bytes object_id = 1;
+message RegisterMutableObjectReaderRequest {
+  // The object ID of the mutable object on the remote node (where the object is written).
+  bytes writer_object_id = 1;
+  // The number of readers of the mutable object on this local node.
   int64 num_readers = 2;
-  bytes reader_ref = 3;
+  // The object ID of the corresponding mutable object on this local node.
+  bytes reader_object_id = 3;
 }
 
-message CreateMutableObjectReply {
-  ObjectReference reader_ref = 1;
+message RegisterMutableObjectReaderReply {
+  // Empty for now.
 }
 
 service CoreWorkerService {
@@ -494,5 +497,5 @@ service CoreWorkerService {
   rpc AssignObjectOwner(AssignObjectOwnerRequest) returns (AssignObjectOwnerReply);
   // Get the number of pending tasks.
   rpc NumPendingTasks(NumPendingTasksRequest) returns (NumPendingTasksReply);
-  rpc CreateMutableObject(CreateMutableObjectRequest) returns (CreateMutableObjectReply);
+  rpc RegisterMutableObjectReader(RegisterMutableObjectReaderRequest) returns (RegisterMutableObjectReaderReply);
 }

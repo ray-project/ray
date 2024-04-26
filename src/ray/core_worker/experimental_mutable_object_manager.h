@@ -161,7 +161,7 @@ class MutableObjectManager {
 
   /// Sets the error bit on all channels, causing all future readers and writers to raise
   /// an error on acquire.
-  Status SetError();
+  Status SetErrorAll();
 
  private:
   Channel *GetChannel(const ObjectID &object_id);

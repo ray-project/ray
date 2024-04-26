@@ -347,9 +347,9 @@ message DrainRayletReply {
 }
 
 message RegisterMutableObjectRequest {
-  bytes object_id = 1;
+  bytes writer_object_id = 1;
   int64 num_readers = 2;
-  bytes reader_ref = 3;
+  bytes reader_object_id = 3;
 }
 
 message RegisterMutableObjectReply {
@@ -357,7 +357,7 @@ message RegisterMutableObjectReply {
 }
 
 message PushMutableObjectRequest {
-  bytes object_id = 1;
+  bytes writer_object_id = 1;
   uint64 data_size = 2;
   uint64 metadata_size = 3;
   bytes data = 4;

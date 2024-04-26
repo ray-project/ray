@@ -158,9 +158,9 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
   virtual void RemoteCancelTask(const RemoteCancelTaskRequest &request,
                                 const ClientCallback<RemoteCancelTaskReply> &callback) {}
 
-  virtual void CreateMutableObject(
-      const CreateMutableObjectRequest &request,
-      const ClientCallback<CreateMutableObjectReply> &callback) {}
+  virtual void RegisterMutableObjectReader(
+      const RegisterMutableObjectReaderRequest &request,
+      const ClientCallback<RegisterMutableObjectReaderReply> &callback) {}
 
   virtual void GetCoreWorkerStats(
       const GetCoreWorkerStatsRequest &request,
@@ -291,7 +291,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
                          override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
-                         CreateMutableObject,
+                         RegisterMutableObjectReader,
                          grpc_client_,
                          /*method_timeout_ms*/ -1,
                          override)

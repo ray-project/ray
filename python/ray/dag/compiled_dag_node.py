@@ -25,7 +25,9 @@ logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-def do_allocate_channel(self, readers: list, buffer_size_bytes: int) -> Channel:
+def do_allocate_channel(
+    self, readers: List[Optional["ray.actor.ActorHandle"]], buffer_size_bytes: int
+) -> Channel:
     """Generic actor method to allocate an output channel.
 
     Args:
@@ -397,7 +399,9 @@ class CompiledDAG:
                 readers = [self.idx_to_task[idx] for idx in task.downstream_node_idxs]
                 assert len(readers) == 1
                 if isinstance(readers[0].dag_node, MultiOutputNode):
-                    readers = [None]
+                    # This node is a multi-output node, which means that it will only be
+                    # read by the driver, not an actor. Thus, we handle this case by
+                    # setting `reader_handles` to `[None]`.
                     reader_handles = [None]
 
                     fn = task.dag_node._get_remote_method("__ray_call__")

@@ -13,7 +13,7 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 logger = logging.getLogger(__name__)
 
 
-def _get_node_id(self):
+def _get_node_id(self) -> "ray.NodeID":
     return ray.get_runtime_context().get_node_id()
 
 
@@ -52,25 +52,6 @@ def _create_channel_ref(
     return object_ref
 
 
-# 1. Writer creates chan = Channel().
-#    - writer allocates writer ref.
-#    - if writer node ID != reader node ID:
-#      - TODO:
-#      - writer sends RPC to remote reader raylet. Pass writer ref, buffer_size_bytes,
-#        num readers.
-#      - reader raylet allocates a local "reader ref". Reader raylet maps
-#        (writer ref) -> (reader ref, num_readers).
-#      - writer waits for reply. store reader ref.
-# 3. As long as reader ref is set, chan can be serialized. Otherwise, throw error.
-# 4. Serialize chan and pass to readers.
-# 5. Reader deserializes chan.
-# -- dag.compile() --
-# 6. On first read, reader calls chan.ensure_registered_as_reader().
-#    - expect that reader ref is already created locally.
-#    - reader calls ExperimentalRegisterMutableObjectReader(reader ref)
-# TODO: Handle failures if channel writer is remote.
-
-
 @PublicAPI(stability="alpha")
 class Channel:
     """
@@ -82,8 +63,8 @@ class Channel:
         self,
         readers: List[Optional[ray.actor.ActorHandle]],
         buffer_size_bytes: int,
-        _writer_node_id=None,
-        _reader_node_id=None,
+        _writer_node_id: Optional["ray.NodeID"] = None,
+        _reader_node_id: Optional["ray.NodeID"] = None,
         _writer_ref: Optional["ray.ObjectRef"] = None,
         _reader_ref: Optional["ray.ObjectRef"] = None,
     ):
@@ -114,13 +95,21 @@ class Channel:
             self._writer_ref = _create_channel_ref(self, buffer_size_bytes)
 
             if readers[0] is None:
-                # Reader and writer are on the same node.
+                # Reader is the driver. We assume that the reader and the writer are on
+                # the same node.
                 self._reader_node_id = self._writer_node_id
                 self._reader_ref = self._writer_ref
             else:
                 # Reader and writer are on different nodes.
                 fn = readers[0].__ray_call__
                 self._reader_node_id = ray.get(fn.remote(_get_node_id))
+                for reader in readers:
+                    fn = reader.__ray_call__
+                    reader_node_id = ray.get(fn.remote(_get_node_id))
+                    if reader_node_id != self._reader_node_id:
+                        raise NotImplementedError(
+                            "All readers must be on the same node for now."
+                        )
                 if self.is_remote():
                     self._reader_ref = ray.get(
                         fn.remote(_create_channel_ref, buffer_size_bytes)
@@ -130,9 +119,13 @@ class Channel:
 
             is_creator = True
         else:
-            # TODO: better error messages.
-            assert _writer_node_id is not None
-            assert _reader_ref is not None
+            assert (
+                _writer_node_id is not None
+            ), "_writer_node_id must also be passed to the constructor when "
+            "_writer_ref is."
+            assert (
+                _reader_ref is not None
+            ), "_reader_ref must also be passed to the constructor when _writer_ref is."
 
             self._writer_ref = _writer_ref
             self._writer_node_id = _writer_node_id
@@ -141,6 +134,9 @@ class Channel:
 
         self._readers = readers
         self._buffer_size_bytes = buffer_size_bytes
+        self._num_readers = len(self._readers)
+        if self.is_remote():
+            self._num_readers = 1
 
         self._worker = ray._private.worker.global_worker
         self._worker.check_connected()
@@ -164,14 +160,16 @@ class Channel:
             return
 
         if not self.is_local_node(self._writer_node_id):
-            raise ValueError("TODO")
+            raise ValueError(
+                "`ensure_registered_as_writer()` must only be called on the node that "
+                "the writer is on."
+            )
 
-        if self._reader_ref is None:
-            raise ValueError("`self._reader_ref` must be not be None")
+        assert (
+            self._reader_ref
+        ), "`self._reader_ref` must be not be None when registering a writer, because "
+        "it should have been initialized in the constructor."
 
-        # TODO: In C++, optionally do a sync RPC to the remote reader raylet.
-        # Reader raylet allocates a local "reader ref". Reader raylet maps
-        # (writer ref) -> (reader ref, num_readers).
         if len(self._readers) == 1 and self._readers[0] is None:
             actor_id = ray.ActorID.nil()
         else:
@@ -190,8 +188,6 @@ class Channel:
         if self._reader_registered:
             return
 
-        # We're passing in the base ref created by the writer, but we should
-        # get back the local ref that we are actually going to read from.
         self._worker.core_worker.experimental_channel_register_reader(
             self._reader_ref,
         )
@@ -227,7 +223,7 @@ class Channel:
             self._reader_ref,
         )
 
-    def write(self, value: Any, num_readers: Optional[int] = None):
+    def write(self, value: Any):
         """
         Write a value to the channel.
 
@@ -237,16 +233,7 @@ class Channel:
 
         Args:
             value: The value to write.
-            num_readers: The number of readers that must read and release the value
-                before we can write again.
         """
-        if num_readers is None:
-            num_readers = len(self._readers)
-        if num_readers <= 0:
-            raise ValueError("``num_readers`` must be a positive integer.")
-        if self.is_remote():
-            num_readers = 1
-
         self.ensure_registered_as_writer()
 
         try:
@@ -265,7 +252,7 @@ class Channel:
             self._worker.core_worker.experimental_channel_put_serialized(
                 serialized_value,
                 self._writer_ref,
-                num_readers,
+                self._num_readers,
             )
         except IOError:
             pass

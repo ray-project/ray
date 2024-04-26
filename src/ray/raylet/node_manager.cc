@@ -783,12 +783,12 @@ void NodeManager::HandleRegisterMutableObject(
     rpc::RegisterMutableObjectRequest request,
     rpc::RegisterMutableObjectReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  ObjectID object_id = ObjectID::FromBinary(request.object_id());
+  ObjectID writer_object_id = ObjectID::FromBinary(request.writer_object_id());
   int64_t num_readers = request.num_readers();
-  ObjectID reader_ref = ObjectID::FromBinary(request.reader_ref());
+  ObjectID reader_object_id = ObjectID::FromBinary(request.reader_object_id());
 
   mutable_object_provider_->HandleRegisterMutableObject(
-      object_id, num_readers, reader_ref);
+      writer_object_id, num_readers, reader_object_id);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

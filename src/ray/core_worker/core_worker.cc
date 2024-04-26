@@ -380,6 +380,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
 #if defined(__APPLE__) || defined(__linux__)
   // TODO(jhumphri): Combine with implementation in NodeManager.
+  // TODO(jhumphri): Pool these connections with the other clients in CoreWorker connected
+  // to the raylet.
   auto raylet_channel_client_factory = [this](const NodeID &node_id) {
     auto node_info = gcs_client_->Nodes().Get(node_id);
     RAY_CHECK(node_info) << "No GCS info for node " << node_id;
@@ -1463,10 +1465,10 @@ Status CoreWorker::ExperimentalRegisterMutableObjectWriter(const ObjectID &objec
 }
 
 Status CoreWorker::ExperimentalRegisterMutableObjectReaderRemote(
-    const ObjectID &object_id,
+    const ObjectID &writer_object_id,
     const ActorID &reader_actor,
     int64_t num_readers,
-    const ObjectID &reader_ref) {
+    const ObjectID &reader_object_id) {
   rpc::Address addr;
   {
     std::promise<void> promise;
@@ -1493,16 +1495,17 @@ Status CoreWorker::ExperimentalRegisterMutableObjectReaderRemote(
     std::shared_ptr<rpc::CoreWorkerClientInterface> conn =
         core_worker_client_pool_->GetOrConnect(addr);
 
-    rpc::CreateMutableObjectRequest req;
-    req.set_object_id(object_id.Binary());
+    rpc::RegisterMutableObjectReaderRequest req;
+    req.set_writer_object_id(writer_object_id.Binary());
     req.set_num_readers(num_readers);
-    req.set_reader_ref(reader_ref.Binary());
-    rpc::CreateMutableObjectReply reply;
+    req.set_reader_object_id(reader_object_id.Binary());
+    rpc::RegisterMutableObjectReaderReply reply;
 
     std::promise<void> promise;
-    conn->CreateMutableObject(
+    conn->RegisterMutableObjectReader(
         req,
-        [&promise](const Status &status, const rpc::CreateMutableObjectReply &reply) {
+        [&promise](const Status &status,
+                   const rpc::RegisterMutableObjectReaderReply &reply) {
           RAY_CHECK(status.ok());
           promise.set_value();
         });
@@ -4106,13 +4109,14 @@ void CoreWorker::HandleKillActor(rpc::KillActorRequest request,
   }
 }
 
-void CoreWorker::HandleCreateMutableObject(rpc::CreateMutableObjectRequest request,
-                                           rpc::CreateMutableObjectReply *reply,
-                                           rpc::SendReplyCallback send_reply_callback) {
+void CoreWorker::HandleRegisterMutableObjectReader(
+    rpc::RegisterMutableObjectReaderRequest request,
+    rpc::RegisterMutableObjectReaderReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
   local_raylet_client_->RegisterMutableObjectReader(
-      ObjectID::FromBinary(request.object_id()),
+      ObjectID::FromBinary(request.writer_object_id()),
       request.num_readers(),
-      ObjectID::FromBinary(request.reader_ref()),
+      ObjectID::FromBinary(request.reader_object_id()),
       [send_reply_callback](const Status &status,
                             const rpc::RegisterMutableObjectReply &r) {
         RAY_CHECK(status.ok());

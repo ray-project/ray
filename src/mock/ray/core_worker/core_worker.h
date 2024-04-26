@@ -118,9 +118,9 @@ class MockCoreWorker : public CoreWorker {
                rpc::SendReplyCallback send_reply_callback),
               (override));
   MOCK_METHOD(void,
-              HandleCreateMutableObject,
-              (rpc::CreateMutableObjectRequest request,
-               rpc::CreateMutableObjectReply *reply,
+              HandleRegisterMutableObjectReader,
+              (rpc::RegisterMutableObjectReaderRequest request,
+               rpc::RegisterMutableObjectReaderReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
   MOCK_METHOD(void,

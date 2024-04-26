@@ -336,7 +336,7 @@ Status MutableObjectManager::SetErrorInternal(const ObjectID &object_id) {
   return Status::OK();
 }
 
-Status MutableObjectManager::SetError() {
+Status MutableObjectManager::SetErrorAll() {
   absl::ReaderMutexLock guard(&destructor_lock_);
 
   Status ret = Status::OK();

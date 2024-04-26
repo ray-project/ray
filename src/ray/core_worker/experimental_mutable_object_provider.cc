@@ -30,7 +30,7 @@ MutableObjectProvider::MutableObjectProvider(
 
 MutableObjectProvider::~MutableObjectProvider() {
   io_service_.stop();
-  RAY_CHECK(object_manager_.SetError().code() == StatusCode::OK);
+  RAY_CHECK(object_manager_.SetErrorAll().code() == StatusCode::OK);
 
   RAY_CHECK(io_thread_.joinable());
   io_thread_.join();
@@ -68,23 +68,25 @@ void MutableObjectProvider::RegisterReaderChannel(const ObjectID &object_id) {
   // `object` is now a nullptr.
 }
 
-void MutableObjectProvider::HandleRegisterMutableObject(const ObjectID &object_id,
-                                                        int64_t num_readers,
-                                                        const ObjectID &local_object_id) {
+void MutableObjectProvider::HandleRegisterMutableObject(
+    const ObjectID &writer_object_id,
+    int64_t num_readers,
+    const ObjectID &reader_object_id) {
   absl::MutexLock guard(&remote_writer_object_to_local_reader_lock_);
 
-  if (remote_writer_object_to_local_reader_.count(object_id)) {
+  if (remote_writer_object_to_local_reader_.count(writer_object_id)) {
     // Channel already exists.
-    remote_writer_object_to_local_reader_[object_id].num_readers += num_readers;
+    remote_writer_object_to_local_reader_[writer_object_id].num_readers += num_readers;
   } else {
     // Channel does not exist.
     LocalReaderInfo info;
     info.num_readers = num_readers;
-    info.local_object_id = local_object_id;
-    bool success = remote_writer_object_to_local_reader_.insert({object_id, info}).second;
+    info.local_object_id = reader_object_id;
+    bool success =
+        remote_writer_object_to_local_reader_.insert({writer_object_id, info}).second;
     RAY_CHECK(success);
 
-    RegisterReaderChannel(local_object_id);
+    RegisterReaderChannel(reader_object_id);
   }
 }
 
@@ -92,9 +94,9 @@ void MutableObjectProvider::HandlePushMutableObject(
     const rpc::PushMutableObjectRequest &request, rpc::PushMutableObjectReply *reply) {
   LocalReaderInfo info;
   {
-    const ObjectID object_id = ObjectID::FromBinary(request.object_id());
+    const ObjectID writer_object_id = ObjectID::FromBinary(request.writer_object_id());
     absl::MutexLock guard(&remote_writer_object_to_local_reader_lock_);
-    auto it = remote_writer_object_to_local_reader_.find(object_id);
+    auto it = remote_writer_object_to_local_reader_.find(writer_object_id);
     RAY_CHECK(it != remote_writer_object_to_local_reader_.end());
     info = it->second;
   }

@@ -24,7 +24,7 @@ def test_put_local_get(ray_start_regular):
     num_writes = 1000
     for i in range(num_writes):
         val = i.to_bytes(8, "little")
-        chan.write(val, num_readers=1)
+        chan.write(val)
         assert chan.begin_read() == val
         chan.end_read()
 
@@ -39,7 +39,7 @@ def test_errors(ray_start_regular):
         def make_chan(self, do_write=True):
             self.chan = ray_channel.Channel([None], 1000)
             if do_write:
-                self.chan.write(b"hello", num_readers=1)
+                self.chan.write(b"hello")
             return self.chan
 
     a = Actor.remote()
@@ -73,7 +73,7 @@ def test_put_different_meta(ray_start_regular):
     chan = ray_channel.Channel([None], 1000)
 
     def _test(val):
-        chan.write(val, num_readers=1)
+        chan.write(val)
 
         read_val = chan.begin_read()
         if isinstance(val, np.ndarray):
@@ -133,12 +133,12 @@ def test_put_remote_get(ray_start_regular, num_readers):
     done = [reader.read.remote(chan, num_writes) for reader in readers]
     for i in range(num_writes):
         val = i.to_bytes(8, "little")
-        chan.write(val, num_readers=num_readers)
+        chan.write(val)
 
     # Test different data size.
     for i in range(num_writes):
         val = i.to_bytes(100, "little")
-        chan.write(val, num_readers=num_readers)
+        chan.write(val)
 
     # Test different metadata.
     for val in [
@@ -146,7 +146,7 @@ def test_put_remote_get(ray_start_regular, num_readers):
         "hello again",
         1000,
     ]:
-        chan.write(val, num_readers=num_readers)
+        chan.write(val)
 
     ray.get(done)
 

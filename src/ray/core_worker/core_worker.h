@@ -726,13 +726,31 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] object_ids The IDs of the objects.
   Status ExperimentalChannelReadRelease(const std::vector<ObjectID> &object_ids);
 
+  /// Experimental method for mutable objects. Registers a writer channel.
+  ///
+  /// \param[in] object_id The ID of the object.
+  /// \param[in] node_id If non-NULL, sends each write to the readers on node `node_id`.
   Status ExperimentalRegisterMutableObjectWriter(const ObjectID &object_id,
                                                  const NodeID *node_id);
+
+  /// Experimental method for mutable objects. Registers a reader channel.
+  ///
+  /// \param[in] object_id The ID of the object.
   Status ExperimentalRegisterMutableObjectReader(const ObjectID &object_id);
-  Status ExperimentalRegisterMutableObjectReaderRemote(const ObjectID &object_id,
+
+  /// Experimental method for mutable objects. Registers a mapping from a mutable object
+  /// that is written to on this node to the corresponding mutable object that is read on
+  /// the node that `reader_actor` is on.
+  ///
+  /// \param[in] writer_object_id The ID of the object that is written on this node.
+  /// \param[in] reader_actor The actor that reads the object.
+  /// \param[in] num_readers The total number of readers.
+  /// \param[in] reader_object_id The ID of the corresponding object that is read on the
+  /// remote node.
+  Status ExperimentalRegisterMutableObjectReaderRemote(const ObjectID &writer_object_id,
                                                        const ActorID &reader_actor,
                                                        int64_t num_readers,
-                                                       const ObjectID &reader_ref);
+                                                       const ObjectID &reader_object_id);
 
   /// Get a list of objects from the object store. Objects that failed to be retrieved
   /// will be returned as nullptrs.
@@ -1264,9 +1282,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                rpc::SendReplyCallback send_reply_callback) override;
 
   /// Creates a new mutable object.
-  void HandleCreateMutableObject(rpc::CreateMutableObjectRequest request,
-                                 rpc::CreateMutableObjectReply *reply,
-                                 rpc::SendReplyCallback send_reply_callback) override;
+  void HandleRegisterMutableObjectReader(
+      rpc::RegisterMutableObjectReaderRequest request,
+      rpc::RegisterMutableObjectReaderReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Get statistics from core worker.
   void HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request,
