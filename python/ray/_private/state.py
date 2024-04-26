@@ -800,6 +800,11 @@ class GlobalState:
             node_ip_address
         )
 
+    def get_node(self, node_id: str):
+        """Get the node information for a node id."""
+        self._check_connected()
+        return self.global_state_accessor.get_node(node_id)
+
     def get_draining_nodes(self) -> Dict[str, int]:
         """Get all the hex ids of nodes that are being drained
         and the corresponding draining deadline timestamps in ms.

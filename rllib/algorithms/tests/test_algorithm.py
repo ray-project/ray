@@ -57,7 +57,7 @@ class TestAlgorithm(unittest.TestCase):
                 policy_map_capacity=2,
             )
             .evaluation(
-                evaluation_num_workers=1,
+                evaluation_num_env_runners=1,
                 evaluation_config=ppo.PPOConfig.overrides(num_cpus_per_worker=0.1),
             )
         )
@@ -287,7 +287,7 @@ class TestAlgorithm(unittest.TestCase):
             .reporting(min_sample_timesteps_per_iteration=100)
             .callbacks(callbacks_class=AssertEvalCallback)
         )
-        for _ in framework_iterator(config, frameworks=("tf", "torch")):
+        for _ in framework_iterator(config, frameworks=("torch", "tf")):
             algo = config.build()
             # Should always see latest available eval results.
             r0 = algo.train()
@@ -313,7 +313,7 @@ class TestAlgorithm(unittest.TestCase):
             .callbacks(callbacks_class=AssertEvalCallback)
         )
 
-        for _ in framework_iterator(frameworks=("tf", "torch")):
+        for _ in framework_iterator(frameworks=("torch", "tf")):
             # Setup algorithm w/o evaluation worker set and still call
             # evaluate() -> Expect error.
             algo_wo_env_on_local_worker = config.build()
@@ -331,8 +331,7 @@ class TestAlgorithm(unittest.TestCase):
             config.create_env_on_local_worker = True
             algo_w_env_on_local_worker = config.build()
             results = algo_w_env_on_local_worker.evaluate()
-            assert "evaluation" in results
-            assert "episode_reward_mean" in results["evaluation"]
+            assert "episode_reward_mean" in results
             algo_w_env_on_local_worker.stop()
             config.create_env_on_local_worker = False
 
@@ -343,7 +342,9 @@ class TestAlgorithm(unittest.TestCase):
 
         config = (
             ppo.PPOConfig()
-            .rollouts(num_rollout_workers=1, validate_workers_after_construction=False)
+            .env_runners(
+                num_env_runners=1, validate_env_runners_after_construction=False
+            )
             .environment(env="CartPole-v1")
         )
 
@@ -380,20 +381,20 @@ class TestAlgorithm(unittest.TestCase):
         algo.stop()
 
     def test_worker_validation_time(self):
-        """Tests the time taken by `validate_workers_after_construction=True`."""
+        """Tests the time taken by `validate_env_runners_after_construction=True`."""
         config = ppo.PPOConfig().environment(env="CartPole-v1")
-        config.validate_workers_after_construction = True
+        config.validate_env_runners_after_construction = True
 
         # Test, whether validating one worker takes just as long as validating
         # >> 1 workers.
-        config.num_rollout_workers = 1
+        config.num_env_runners = 1
         t0 = time.time()
         algo = config.build()
         total_time_1 = time.time() - t0
         print(f"Validating w/ 1 worker: {total_time_1}sec")
         algo.stop()
 
-        config.num_rollout_workers = 5
+        config.num_env_runners = 5
         t0 = time.time()
         algo = config.build()
         total_time_5 = time.time() - t0
@@ -418,7 +419,7 @@ class TestAlgorithm(unittest.TestCase):
             )
             .evaluation(
                 evaluation_interval=1,
-                evaluation_num_workers=1,
+                evaluation_num_env_runners=1,
                 evaluation_config=BCConfig.overrides(
                     env="CartPole-v1",
                     input_="sampler",

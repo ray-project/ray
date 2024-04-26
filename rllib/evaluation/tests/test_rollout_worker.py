@@ -103,7 +103,7 @@ class TestRolloutWorker(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v1"),
             default_policy_class=MockPolicy,
-            config=AlgorithmConfig().rollouts(num_rollout_workers=0),
+            config=AlgorithmConfig().env_runners(num_env_runners=0),
         )
         batch = convert_ma_batch_to_sample_batch(ev.sample())
         for key in [
@@ -140,8 +140,8 @@ class TestRolloutWorker(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v1"),
             default_policy_class=MockPolicy,
-            config=AlgorithmConfig().rollouts(
-                rollout_fragment_length=fragment_len, num_rollout_workers=0
+            config=AlgorithmConfig().env_runners(
+                rollout_fragment_length=fragment_len, num_env_runners=0
             ),
         )
         batch1 = convert_ma_batch_to_sample_batch(ev.sample())
@@ -160,7 +160,7 @@ class TestRolloutWorker(unittest.TestCase):
         config = (
             PPOConfig()
             .environment("CartPole-v1")
-            .rollouts(num_envs_per_worker=1)
+            .env_runners(num_envs_per_env_runner=1)
             # lr = 0.1 - [(0.1 - 0.000001) / 100000] * ts
             .training(lr_schedule=[[0, 0.1], [100000, 0.000001]])
         )
@@ -197,9 +197,9 @@ class TestRolloutWorker(unittest.TestCase):
         config = (
             PPOConfig()
             .environment("test")
-            .rollouts(
-                num_rollout_workers=2,
-                num_envs_per_worker=2,
+            .env_runners(
+                num_env_runners=2,
+                num_envs_per_env_runner=2,
                 create_env_on_local_worker=True,
             )
             .training(train_batch_size=20, sgd_minibatch_size=5, num_sgd_iter=1)
@@ -242,7 +242,7 @@ class TestRolloutWorker(unittest.TestCase):
                     )
                 }
             )
-            .rollouts(num_rollout_workers=0, batch_mode="complete_episodes")
+            .env_runners(num_env_runners=0, batch_mode="complete_episodes")
             .environment(
                 action_space=action_space, normalize_actions=False, clip_actions=True
             ),
@@ -274,7 +274,7 @@ class TestRolloutWorker(unittest.TestCase):
                 clip_actions=False,
                 action_space=action_space,
             )
-            .rollouts(batch_mode="complete_episodes", num_rollout_workers=0)
+            .env_runners(batch_mode="complete_episodes", num_env_runners=0)
             .multi_agent(
                 policies={
                     "default_policy": PolicySpec(
@@ -299,8 +299,8 @@ class TestRolloutWorker(unittest.TestCase):
                 )
             ),
             default_policy_class=RandomPolicy,
-            config=AlgorithmConfig().rollouts(
-                num_rollout_workers=0, batch_mode="complete_episodes"
+            config=AlgorithmConfig().env_runners(
+                num_env_runners=0, batch_mode="complete_episodes"
             )
             # Should not be a problem as RandomPolicy abides to bounds.
             .environment(
@@ -334,7 +334,7 @@ class TestRolloutWorker(unittest.TestCase):
                     )
                 }
             )
-            .rollouts(num_rollout_workers=0, batch_mode="complete_episodes")
+            .env_runners(num_env_runners=0, batch_mode="complete_episodes")
             .environment(
                 action_space=action_space, normalize_actions=True, clip_actions=False
             ),
@@ -399,8 +399,8 @@ class TestRolloutWorker(unittest.TestCase):
                         env_creator=lambda _: env,
                         default_policy_class=MockPolicy,
                         config=AlgorithmConfig()
-                        .rollouts(
-                            num_rollout_workers=0,
+                        .env_runners(
+                            num_env_runners=0,
                             rollout_fragment_length=1,
                         )
                         .environment(
@@ -464,7 +464,7 @@ class TestRolloutWorker(unittest.TestCase):
                 }
             )
             .environment(action_space=action_space, clip_actions=False)
-            .rollouts(batch_mode="complete_episodes", num_rollout_workers=0),
+            .env_runners(batch_mode="complete_episodes", num_env_runners=0),
         )
         ev.sample()
         ev.stop()
@@ -473,7 +473,7 @@ class TestRolloutWorker(unittest.TestCase):
         # Clipping: True (clip between -1.0 and 1.0).
         config = (
             AlgorithmConfig()
-            .rollouts(num_rollout_workers=0, batch_mode="complete_episodes")
+            .env_runners(num_env_runners=0, batch_mode="complete_episodes")
             .environment(clip_rewards=True)
         )
         ev = RolloutWorker(
@@ -509,7 +509,7 @@ class TestRolloutWorker(unittest.TestCase):
             ),
             default_policy_class=MockPolicy,
             config=AlgorithmConfig()
-            .rollouts(num_rollout_workers=0, batch_mode="complete_episodes")
+            .env_runners(num_env_runners=0, batch_mode="complete_episodes")
             .environment(clip_rewards=2.0),
         )
         sample = convert_ma_batch_to_sample_batch(ev2.sample())
@@ -524,7 +524,7 @@ class TestRolloutWorker(unittest.TestCase):
             env_creator=lambda _: MockEnv2(episode_length=10),
             default_policy_class=MockPolicy,
             config=AlgorithmConfig()
-            .rollouts(num_rollout_workers=0, batch_mode="complete_episodes")
+            .env_runners(num_env_runners=0, batch_mode="complete_episodes")
             .environment(clip_rewards=False),
         )
         sample = convert_ma_batch_to_sample_batch(ev2.sample())
@@ -541,18 +541,18 @@ class TestRolloutWorker(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv(episode_length=10),
             default_policy_class=MockPolicy,
-            config=AlgorithmConfig().rollouts(
+            config=AlgorithmConfig().env_runners(
                 rollout_fragment_length=100,
-                num_rollout_workers=0,
+                num_env_runners=0,
                 batch_mode="complete_episodes",
             ),
         )
         remote_ev = ray.remote(RolloutWorker).remote(
             env_creator=lambda _: MockEnv(episode_length=10),
             default_policy_class=MockPolicy,
-            config=AlgorithmConfig().rollouts(
+            config=AlgorithmConfig().env_runners(
                 rollout_fragment_length=100,
-                num_rollout_workers=0,
+                num_env_runners=0,
                 batch_mode="complete_episodes",
             ),
         )
@@ -571,10 +571,10 @@ class TestRolloutWorker(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda cfg: MockEnv(episode_length=20, config=cfg),
             default_policy_class=MockPolicy,
-            config=AlgorithmConfig().rollouts(
+            config=AlgorithmConfig().env_runners(
                 rollout_fragment_length=2,
-                num_envs_per_worker=8,
-                num_rollout_workers=0,
+                num_envs_per_env_runner=8,
+                num_env_runners=0,
                 batch_mode="truncate_episodes",
             ),
         )
@@ -603,10 +603,10 @@ class TestRolloutWorker(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv(episode_length=8),
             default_policy_class=MockPolicy,
-            config=AlgorithmConfig().rollouts(
+            config=AlgorithmConfig().env_runners(
                 rollout_fragment_length=4,
-                num_envs_per_worker=4,
-                num_rollout_workers=0,
+                num_envs_per_env_runner=4,
+                num_env_runners=0,
                 batch_mode="truncate_episodes",
             ),
         )
@@ -629,9 +629,9 @@ class TestRolloutWorker(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=(lambda _: VectorizedMockEnv(episode_length=20, num_envs=8)),
             default_policy_class=MockPolicy,
-            config=AlgorithmConfig().rollouts(
+            config=AlgorithmConfig().env_runners(
                 rollout_fragment_length=10,
-                num_rollout_workers=0,
+                num_env_runners=0,
                 batch_mode="truncate_episodes",
             ),
         )
@@ -656,9 +656,9 @@ class TestRolloutWorker(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=(lambda _: MockVectorEnv(20, mocked_num_envs=4)),
             default_policy_class=MockPolicy,
-            config=AlgorithmConfig().rollouts(
+            config=AlgorithmConfig().env_runners(
                 rollout_fragment_length=10,
-                num_rollout_workers=0,
+                num_env_runners=0,
                 batch_mode="truncate_episodes",
             ),
         )
@@ -682,7 +682,7 @@ class TestRolloutWorker(unittest.TestCase):
         ev_env_steps = RolloutWorker(
             env_creator=lambda _: MockEnv(10),
             default_policy_class=MockPolicy,
-            config=AlgorithmConfig().rollouts(
+            config=AlgorithmConfig().env_runners(
                 rollout_fragment_length=15,
                 num_rollout_workers=0,
                 batch_mode="truncate_episodes",
@@ -699,7 +699,7 @@ class TestRolloutWorker(unittest.TestCase):
             env_creator=lambda _: MultiAgentCartPole({"num_agents": 4}),
             default_policy_class=MockPolicy,
             config=AlgorithmConfig()
-            .rollouts(
+            .env_runners(
                 num_rollout_workers=0,
                 batch_mode="truncate_episodes",
                 rollout_fragment_length=301,
@@ -724,7 +724,7 @@ class TestRolloutWorker(unittest.TestCase):
             env_creator=lambda _: MultiAgentCartPole({"num_agents": 4}),
             default_policy_class=MockPolicy,
             config=AlgorithmConfig()
-            .rollouts(
+            .env_runners(
                 num_rollout_workers=0,
                 rollout_fragment_length=301,
             )
@@ -752,7 +752,7 @@ class TestRolloutWorker(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv(10),
             default_policy_class=MockPolicy,
-            config=AlgorithmConfig().rollouts(
+            config=AlgorithmConfig().env_runners(
                 rollout_fragment_length=5,
                 num_rollout_workers=0,
                 batch_mode="complete_episodes",
@@ -766,7 +766,7 @@ class TestRolloutWorker(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv(10),
             default_policy_class=MockPolicy,
-            config=AlgorithmConfig().rollouts(
+            config=AlgorithmConfig().env_runners(
                 rollout_fragment_length=15,
                 num_rollout_workers=0,
                 batch_mode="complete_episodes",
@@ -785,7 +785,7 @@ class TestRolloutWorker(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v1"),
             default_policy_class=MockPolicy,
-            config=AlgorithmConfig().rollouts(
+            config=AlgorithmConfig().env_runners(
                 num_rollout_workers=0,
                 observation_filter="ConcurrentMeanStdFilter",
             ),
@@ -802,7 +802,7 @@ class TestRolloutWorker(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v1"),
             default_policy_class=MockPolicy,
-            config=AlgorithmConfig().rollouts(
+            config=AlgorithmConfig().env_runners(
                 observation_filter="ConcurrentMeanStdFilter",
                 num_rollout_workers=0,
             ),
@@ -821,7 +821,7 @@ class TestRolloutWorker(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v1"),
             default_policy_class=MockPolicy,
-            config=AlgorithmConfig().rollouts(
+            config=AlgorithmConfig().env_runners(
                 observation_filter="ConcurrentMeanStdFilter",
                 num_rollout_workers=0,
             ),
@@ -852,7 +852,7 @@ class TestRolloutWorker(unittest.TestCase):
             default_policy_class=MockPolicy,
             config=AlgorithmConfig()
             .python_environment(extra_python_environs_for_driver=extra_envs)
-            .rollouts(num_rollout_workers=0),
+            .env_runners(num_rollout_workers=0),
         )
         self.assertTrue("env_key_1" in os.environ)
         self.assertTrue("env_key_2" in os.environ)
@@ -866,7 +866,9 @@ class TestRolloutWorker(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda _: MockVectorEnv(20, mocked_num_envs=8),
             default_policy_class=MockPolicy,
-            config=AlgorithmConfig().rollouts(num_rollout_workers=0).debugging(seed=1),
+            config=AlgorithmConfig()
+            .env_runners(num_rollout_workers=0)
+            .debugging(seed=1),
         )
         assert not hasattr(ev.env, "seed")
         ev.stop()
@@ -876,7 +878,7 @@ class TestRolloutWorker(unittest.TestCase):
             env_creator=lambda _: MockEnv2(100),
             default_policy_class=MockPolicy,
             config=AlgorithmConfig()
-            .rollouts(num_envs_per_worker=3, num_rollout_workers=0)
+            .env_runners(num_envs_per_env_runner=3, num_rollout_workers=0)
             .debugging(seed=1),
         )
         # Make sure we can properly sample from the wrapped env.
@@ -911,7 +913,7 @@ class TestRolloutWorker(unittest.TestCase):
             env_creator=lambda _: MockMultiAgentEnv(),
             default_policy_class=MockPolicy,
             config=AlgorithmConfig()
-            .rollouts(num_envs_per_worker=3, num_rollout_workers=0)
+            .env_runners(num_envs_per_env_runner=3, num_rollout_workers=0)
             .multi_agent(policies={"policy_1", "policy_2"})
             .debugging(seed=1),
         )
@@ -926,7 +928,7 @@ class TestRolloutWorker(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda _: BasicMultiAgent(10),
             default_policy_class=MockPolicy,
-            config=AlgorithmConfig().rollouts(
+            config=AlgorithmConfig().env_runners(
                 rollout_fragment_length=5,
                 batch_mode="complete_episodes",
                 num_rollout_workers=0,
@@ -958,7 +960,7 @@ class TestRolloutWorker(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda _: NoTrainingEnv(10, True),
             default_policy_class=MockPolicy,
-            config=AlgorithmConfig().rollouts(
+            config=AlgorithmConfig().env_runners(
                 rollout_fragment_length=5,
                 batch_mode="complete_episodes",
                 num_rollout_workers=0,
@@ -973,7 +975,7 @@ class TestRolloutWorker(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda _: NoTrainingEnv(10, False),
             default_policy_class=MockPolicy,
-            config=AlgorithmConfig().rollouts(
+            config=AlgorithmConfig().env_runners(
                 rollout_fragment_length=5,
                 batch_mode="complete_episodes",
                 num_rollout_workers=0,

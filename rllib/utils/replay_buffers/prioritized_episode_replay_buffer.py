@@ -9,12 +9,11 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from ray.rllib.core.columns import Columns
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.execution.segment_tree import MinSegmentTree, SumSegmentTree
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import force_list
 from ray.rllib.utils.replay_buffers.episode_replay_buffer import EpisodeReplayBuffer
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import SampleBatchType
 from ray.rllib.utils.spaces.space_utils import batch
+from ray.rllib.utils.typing import SampleBatchType
 
 
 class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
@@ -112,8 +111,6 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
 
         # Pull a sample from the buffer using an `n-step` of 3.
         sample = buffer.sample(num_items=256, gamma=0.95, n_step=3)
-
-
     """
 
     def __init__(
@@ -203,9 +200,6 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         new_episode_ids = []
         for eps in episodes:
             new_episode_ids.append(eps.id_)
-            # We subtract a single timestep per episode b/c each sample consists
-            # of a transition from `o_t` to `o_(t+n)`, so the first timestep is
-            # never sampled.
             self._num_timesteps += len(eps)
             self._num_timesteps_added += len(eps)
 
@@ -224,7 +218,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             # we subtract it again.
             # TODO (sven, simon): Should we just treat such an episode chunk
             # as a new episode?
-            if eps_evicted_idxs[-1] in new_episode_ids:
+            if eps_evicted_ids[-1] in new_episode_ids:
                 len_to_subtract = len(
                     episodes[new_episode_ids.index(eps_evicted_idxs[-1])]
                 )
@@ -536,7 +530,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         if include_infos:
             ret.update(
                 {
-                    SampleBatch.INFOS: infos,
+                    Columns.INFOS: infos,
                 }
             )
         # Include extra model outputs, if necessary.

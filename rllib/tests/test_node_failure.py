@@ -51,11 +51,11 @@ class NodeFailureTests(unittest.TestCase):
         config = (
             PPOConfig()
             .environment("CartPole-v1")
-            .rollouts(
-                num_rollout_workers=6,
-                recreate_failed_workers=True,
-                validate_workers_after_construction=True,
+            .env_runners(
+                num_env_runners=6,
+                validate_env_runners_after_construction=True,
             )
+            .fault_tolerance(recreate_failed_env_runners=True)
             .training(
                 train_batch_size=300,
             )
