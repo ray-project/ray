@@ -150,6 +150,7 @@ class DreamerV3Config(AlgorithmConfig):
         self.remote_worker_envs = True
         # Dreamer only runs on the new API stack.
         self.enable_rl_module_and_learner = True
+        self.enable_env_runner_and_connector_v2 = True
         # __sphinx_doc_end__
         # fmt: on
 
