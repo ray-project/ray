@@ -201,6 +201,50 @@ def test_remote_reader(ray_start_cluster, remote):
         print(end - start, 10_000 / (end - start))
 
 
+@pytest.mark.parametrize("remote", [True, False])
+def test_remote_reader_close(ray_start_cluster, remote):
+    num_readers = 10
+    num_writes = 1000
+
+    cluster = ray_start_cluster
+    if remote:
+        # This node is for the driver.
+        cluster.add_node(num_cpus=0)
+        ray.init(address=cluster.address)
+        # This node is for the Reader actors.
+        cluster.add_node(num_cpus=num_readers)
+    else:
+        # This node is for both the driver and the Reader actors.
+        cluster.add_node(num_cpus=num_readers)
+        ray.init(address=cluster.address)
+
+    @ray.remote(num_cpus=1)
+    class Reader:
+        def __init__(self):
+            pass
+
+        def get_node_id(self) -> str:
+            return ray.get_runtime_context().get_node_id()
+
+        def pass_channel(self, channel):
+            self._reader_chan = channel
+
+        def read(self, num_reads):
+            try:
+                self._reader_chan.begin_read()
+            except IOError:
+                pass
+
+    readers = [Reader.remote() for _ in range(num_readers)]
+    channel = ray_channel.Channel(readers, 1000)
+
+    # All readers have received the channel.
+    ray.get([reader.pass_channel.remote(channel) for reader in readers])
+
+    channel.close()
+    ray.get([reader.read.remote(num_writes) for reader in readers])
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
