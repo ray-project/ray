@@ -81,7 +81,7 @@ def test_iter_batches_no_spilling_upon_no_transformation(shutdown_only):
     # The object store is about 300MB.
     ctx = ray.init(num_cpus=1, object_store_memory=300e6)
     # The size of dataset is 500*(80*80*4)*8B, about 100MB.
-    ds = ray.data.range_tensor(500, shape=(80, 80, 4), parallelism=100)
+    ds = ray.data.range_tensor(500, shape=(80, 80, 4), override_num_blocks=100)
     check_no_spill(ctx, ds)
 
 
@@ -89,7 +89,7 @@ def test_torch_iteration(shutdown_only):
     # The object store is about 400MB.
     ctx = ray.init(num_cpus=1, object_store_memory=400e6)
     # The size of dataset is 500*(80*80*4)*8B, about 100MB.
-    ds = ray.data.range_tensor(500, shape=(80, 80, 4), parallelism=100)
+    ds = ray.data.range_tensor(500, shape=(80, 80, 4), override_num_blocks=100)
 
     # to_torch
     check_to_torch_no_spill(ctx, ds)
@@ -101,9 +101,9 @@ def test_tf_iteration(shutdown_only):
     # The object store is about 800MB.
     ctx = ray.init(num_cpus=1, object_store_memory=800e6)
     # The size of dataset is 500*(80*80*4)*8B, about 100MB.
-    ds = ray.data.range_tensor(500, shape=(80, 80, 4), parallelism=100).add_column(
-        "label", lambda x: 1
-    )
+    ds = ray.data.range_tensor(
+        500, shape=(80, 80, 4), override_num_blocks=100
+    ).add_column("label", lambda x: 1)
 
     # to_tf
     check_to_tf_no_spill(ctx, ds.map(lambda x: x))
@@ -115,7 +115,7 @@ def test_iter_batches_no_spilling_upon_prior_transformation(shutdown_only):
     # The object store is about 500MB.
     ctx = ray.init(num_cpus=1, object_store_memory=500e6)
     # The size of dataset is 500*(80*80*4)*8B, about 100MB.
-    ds = ray.data.range_tensor(500, shape=(80, 80, 4), parallelism=100)
+    ds = ray.data.range_tensor(500, shape=(80, 80, 4), override_num_blocks=100)
 
     check_no_spill(ctx, ds.map_batches(lambda x: x))
 
@@ -124,7 +124,7 @@ def test_iter_batches_no_spilling_upon_post_transformation(shutdown_only):
     # The object store is about 500MB.
     ctx = ray.init(num_cpus=1, object_store_memory=500e6)
     # The size of dataset is 500*(80*80*4)*8B, about 100MB.
-    ds = ray.data.range_tensor(500, shape=(80, 80, 4), parallelism=100)
+    ds = ray.data.range_tensor(500, shape=(80, 80, 4), override_num_blocks=100)
 
     check_no_spill(ctx, ds.map_batches(lambda x: x, batch_size=5))
 
@@ -133,7 +133,7 @@ def test_iter_batches_no_spilling_upon_transformations(shutdown_only):
     # The object store is about 700MB.
     ctx = ray.init(num_cpus=1, object_store_memory=700e6)
     # The size of dataset is 500*(80*80*4)*8B, about 100MB.
-    ds = ray.data.range_tensor(500, shape=(80, 80, 4), parallelism=100)
+    ds = ray.data.range_tensor(500, shape=(80, 80, 4), override_num_blocks=100)
 
     check_no_spill(
         ctx,
@@ -146,7 +146,7 @@ def test_global_bytes_spilled(shutdown_only):
     ctx = ray.init(object_store_memory=90e6)
     # The size of dataset is 500*(80*80*4)*8B, about 100MB.
     ds = (
-        ray.data.range_tensor(500, shape=(80, 80, 4), parallelism=100)
+        ray.data.range_tensor(500, shape=(80, 80, 4), override_num_blocks=100)
         .materialize()
         .map_batches(lambda x: x)
         .materialize()
@@ -165,7 +165,9 @@ def test_no_global_bytes_spilled(shutdown_only):
     # The object store is about 200MB.
     ctx = ray.init(object_store_memory=200e6)
     # The size of dataset is 500*(80*80*4)*8B, about 100MB.
-    ds = ray.data.range_tensor(500, shape=(80, 80, 4), parallelism=100).materialize()
+    ds = ray.data.range_tensor(
+        500, shape=(80, 80, 4), override_num_blocks=100
+    ).materialize()
 
     check_no_spill(ctx, ds)
     assert ds._get_stats_summary().global_bytes_spilled == 0

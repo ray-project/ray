@@ -14,110 +14,142 @@
 
 #include "ray/object_manager/common.h"
 
+#include "absl/strings/str_format.h"
+
 namespace ray {
 
 void PlasmaObjectHeader::Init() {
-#ifdef __linux__
-  // wr_mut is shared between writer and readers.
-  pthread_mutexattr_t mutex_attr;
-  pthread_mutexattr_init(&mutex_attr);
-  pthread_mutexattr_setpshared(&mutex_attr, PTHREAD_PROCESS_SHARED);
-  pthread_mutexattr_settype(&mutex_attr, PTHREAD_MUTEX_ERRORCHECK);
-  pthread_mutex_init(&wr_mut, &mutex_attr);
+#if defined(__APPLE__) || defined(__linux__)
+  memset(unique_name, 0, sizeof(unique_name));
 
-  sem_init(&rw_semaphore, PTHREAD_PROCESS_SHARED, 1);
+  semaphores_created = SemaphoresCreationLevel::kUnitialized;
 
-  // Condition is shared between writer and readers.
-  pthread_condattr_t cond_attr;
-  pthread_condattr_init(&cond_attr);
-  pthread_condattr_setpshared(&cond_attr, PTHREAD_PROCESS_SHARED);
-  pthread_cond_init(&cond, &cond_attr);
-#endif
+  pid_t pid = getpid();
+  std::string name =
+      absl::StrCat(pid, "-", absl::ToInt64Nanoseconds(absl::Now() - absl::UnixEpoch()));
+  RAY_CHECK_LE(name.size(), PSEMNAMLEN);
+  memcpy(unique_name, name.c_str(), name.size());
+#endif  // defined(__APPLE__) || defined(__linux__)
+
+  version = 0;
+  is_sealed = false;
+  has_error = false;
+  num_readers = 0;
+  num_read_acquires_remaining = 0;
+  num_read_releases_remaining = 0;
+  data_size = 0;
+  metadata_size = 0;
 }
-
-void PlasmaObjectHeader::Destroy() {
-#ifdef __linux__
-  RAY_CHECK(pthread_mutex_destroy(&wr_mut) == 0);
-  RAY_CHECK(pthread_cond_destroy(&cond) == 0);
-  RAY_CHECK(sem_destroy(&rw_semaphore) == 0);
-#endif
-}
-
-#ifdef __linux__
 
 void PrintPlasmaObjectHeader(const PlasmaObjectHeader *header) {
-  RAY_LOG(DEBUG) << "PlasmaObjectHeader: \n"
-                 << "version: " << header->version << "\n"
-                 << "num_readers: " << header->num_readers << "\n"
-                 << "num_read_acquires_remaining: " << header->num_read_acquires_remaining
-                 << "\n"
-                 << "num_read_releases_remaining: " << header->num_read_releases_remaining
-                 << "\n"
-                 << "data_size: " << header->data_size << "\n"
-                 << "metadata_size: " << header->metadata_size << "\n";
+  std::string print;
+  absl::StrAppend(&print, "PlasmaObjectHeader: \n");
+#if defined(__APPLE__) || defined(__linux__)
+  absl::StrAppend(&print,
+                  "semaphores_created: ",
+                  header->semaphores_created.load(std::memory_order_relaxed),
+                  "\n");
+  absl::StrAppend(&print, "unique_name: ", header->unique_name, "\n");
+#endif  // defined(__APPLE__) || defined(__linux__)
+  absl::StrAppend(&print, "version: ", header->version, "\n");
+  absl::StrAppend(&print, "num_readers: ", header->num_readers, "\n");
+  absl::StrAppend(
+      &print, "num_read_acquires_remaining: ", header->num_read_acquires_remaining, "\n");
+  absl::StrAppend(
+      &print, "num_read_releases_remaining: ", header->num_read_releases_remaining, "\n");
+  absl::StrAppend(&print, "data_size: ", header->data_size, "\n");
+  absl::StrAppend(&print, "metadata_size: ", header->metadata_size, "\n");
+  RAY_LOG(DEBUG) << print;
 }
 
-void PlasmaObjectHeader::WriteAcquire(int64_t write_version,
-                                      uint64_t write_data_size,
-                                      uint64_t write_metadata_size,
-                                      int64_t write_num_readers) {
-  RAY_LOG(DEBUG) << "WriteAcquire. version: " << write_version << ", data size "
-                 << write_data_size << ", metadata size " << write_metadata_size
-                 << ", num readers: " << write_num_readers;
-  sem_wait(&rw_semaphore);
-  RAY_CHECK(pthread_mutex_lock(&wr_mut) == 0);
-  PrintPlasmaObjectHeader(this);
+Status PlasmaObjectHeader::CheckHasError() const {
+  // We do an acquire load so that no loads/stores are reordered before the load to
+  // `has_error`. This acquire load pairs with the release store in `SetErrorUnlocked()`.
+  if (has_error.load(std::memory_order_acquire)) {
+    return Status::IOError("Channel closed.");
+  }
+  return Status::OK();
+}
 
-  RAY_CHECK(num_read_acquires_remaining == 0);
-  RAY_CHECK(num_read_releases_remaining == 0);
-  RAY_CHECK(write_version == version + 1)
-      << "Write version " << write_version
-      << " is more than 1 greater than current version " << version
-      << ". Are you sure this is the only writer?";
+#if defined(__APPLE__) || defined(__linux__)
 
-  version = write_version;
+Status PlasmaObjectHeader::TryToAcquireSemaphore(sem_t *sem) const {
+  // Check `has_error` first to avoid blocking forever on the semaphore.
+  RAY_RETURN_NOT_OK(CheckHasError());
+  RAY_CHECK_EQ(sem_wait(sem), 0);
+  // Check `has_error` again so that no more than one thread is ever in the critical
+  // section after `SetErrorUnlocked()` has been called. One thread could be in the
+  // critical section when that is called, but no additional thread will enter the
+  // critical section.
+  Status s = CheckHasError();
+  if (!s.ok()) {
+    RAY_CHECK_EQ(sem_post(sem), 0);
+  }
+  return s;
+}
+
+void PlasmaObjectHeader::SetErrorUnlocked(Semaphores &sem) {
+  RAY_CHECK(sem.header_sem);
+  RAY_CHECK(sem.object_sem);
+
+  // We do a store release so that no loads/stores are reordered after the store to
+  // `has_error`. This store release pairs with the acquire load in `CheckHasError()`.
+  has_error.store(true, std::memory_order_release);
+  // Increment `sem.object_sem` once to potentially unblock the writer. There will never
+  // be more than one writer.
+  RAY_CHECK_EQ(sem_post(sem.object_sem), 0);
+
+  // Increment `header_sem` to unblock any readers and/or the writer.
+  RAY_CHECK_EQ(sem_post(sem.header_sem), 0);
+}
+
+Status PlasmaObjectHeader::WriteAcquire(Semaphores &sem,
+                                        uint64_t write_data_size,
+                                        uint64_t write_metadata_size,
+                                        int64_t write_num_readers) {
+  RAY_CHECK(sem.object_sem);
+  RAY_CHECK(sem.header_sem);
+
+  RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.object_sem));
+  RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem));
+
+  RAY_CHECK_EQ(num_read_acquires_remaining, 0);
+  RAY_CHECK_EQ(num_read_releases_remaining, 0);
+
+  version++;
   is_sealed = false;
   data_size = write_data_size;
   metadata_size = write_metadata_size;
   num_readers = write_num_readers;
 
-  RAY_LOG(DEBUG) << "WriteAcquire done";
-  PrintPlasmaObjectHeader(this);
-  RAY_CHECK(pthread_mutex_unlock(&wr_mut) == 0);
+  RAY_CHECK_EQ(sem_post(sem.header_sem), 0);
+  return Status::OK();
 }
 
-void PlasmaObjectHeader::WriteRelease(int64_t write_version) {
-  RAY_LOG(DEBUG) << "WriteRelease Waiting. version: " << write_version;
-  RAY_CHECK(pthread_mutex_lock(&wr_mut) == 0);
-  RAY_LOG(DEBUG) << "WriteRelease " << write_version;
-  PrintPlasmaObjectHeader(this);
+Status PlasmaObjectHeader::WriteRelease(Semaphores &sem) {
+  RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem));
 
-  RAY_CHECK(version == write_version)
-      << "Write version " << write_version << " no longer matches current version "
-      << version << ". Are you sure this is the only writer?";
-
-  version = write_version;
   is_sealed = true;
-  RAY_CHECK(num_readers != 0) << num_readers;
+  RAY_CHECK(num_readers) << num_readers;
   num_read_acquires_remaining = num_readers;
   num_read_releases_remaining = num_readers;
 
-  RAY_LOG(DEBUG) << "WriteRelease done, num_readers: " << num_readers;
-  PrintPlasmaObjectHeader(this);
-  RAY_CHECK(pthread_mutex_unlock(&wr_mut) == 0);
-  // Signal to all readers.
-  RAY_CHECK(pthread_cond_broadcast(&cond) == 0);
+  RAY_CHECK_EQ(sem_post(sem.header_sem), 0);
+  return Status::OK();
 }
 
-bool PlasmaObjectHeader::ReadAcquire(int64_t version_to_read, int64_t *version_read) {
-  RAY_LOG(DEBUG) << "ReadAcquire waiting version " << version_to_read;
-  RAY_CHECK(pthread_mutex_lock(&wr_mut) == 0);
-  RAY_LOG(DEBUG) << "ReadAcquire " << version_to_read;
-  PrintPlasmaObjectHeader(this);
+Status PlasmaObjectHeader::ReadAcquire(Semaphores &sem,
+                                       int64_t version_to_read,
+                                       int64_t *version_read) {
+  RAY_CHECK(sem.header_sem);
+
+  RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem));
 
   // Wait for the requested version (or a more recent one) to be sealed.
   while (version < version_to_read || !is_sealed) {
-    RAY_CHECK(pthread_cond_wait(&cond, &wr_mut) == 0);
+    RAY_CHECK_EQ(sem_post(sem.header_sem), 0);
+    sched_yield();
+    RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem));
   }
 
   bool success = false;
@@ -132,48 +164,64 @@ bool PlasmaObjectHeader::ReadAcquire(int64_t version_to_read, int64_t *version_r
       // succeeds.
       num_read_acquires_remaining--;
       success = true;
-    } else if (version > version_to_read) {
-      RAY_LOG(WARNING) << "Version " << version << " already exceeds version to read "
-                       << version_to_read;
-    } else {
-      RAY_LOG(WARNING) << "Version " << version << " already has " << num_readers
-                       << "readers";
     }
   }
 
-  RAY_LOG(DEBUG) << "ReadAcquire done";
-  PrintPlasmaObjectHeader(this);
-
-  RAY_CHECK(pthread_mutex_unlock(&wr_mut) == 0);
-  // Signal to other readers that they may read.
-  RAY_CHECK(pthread_cond_signal(&cond) == 0);
-  return success;
+  RAY_CHECK_EQ(sem_post(sem.header_sem), 0);
+  if (!success) {
+    return Status::Invalid(
+        "Reader missed a value. Are you sure there are num_readers many readers?");
+  }
+  return Status::OK();
 }
 
-void PlasmaObjectHeader::ReadRelease(int64_t read_version) {
-  bool all_readers_done = false;
-  RAY_LOG(DEBUG) << "ReadRelease Waiting" << read_version;
-  RAY_CHECK(pthread_mutex_lock(&wr_mut) == 0);
-  PrintPlasmaObjectHeader(this);
+Status PlasmaObjectHeader::ReadRelease(Semaphores &sem, int64_t read_version) {
+  RAY_CHECK(sem.object_sem);
+  RAY_CHECK(sem.header_sem);
 
-  RAY_LOG(DEBUG) << "ReadRelease " << read_version << " version is currently " << version;
-  RAY_CHECK(version == read_version) << "Version " << version << " modified from version "
-                                     << read_version << " at read start";
+  bool all_readers_done = false;
+  RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem));
+
+  RAY_CHECK_EQ(version, read_version)
+      << "Version " << version << " modified from version " << read_version
+      << " at read start";
 
   if (num_readers != -1) {
     num_read_releases_remaining--;
-    RAY_CHECK(num_read_releases_remaining >= 0);
-    if (num_read_releases_remaining == 0) {
-      all_readers_done = true;
-    }
+    RAY_CHECK_GE(num_read_releases_remaining, 0);
+    all_readers_done = !num_read_releases_remaining;
   }
 
-  PrintPlasmaObjectHeader(this);
-  RAY_LOG(DEBUG) << "ReadRelease done";
-  RAY_CHECK(pthread_mutex_unlock(&wr_mut) == 0);
+  RAY_CHECK_EQ(sem_post(sem.header_sem), 0);
   if (all_readers_done) {
-    sem_post(&rw_semaphore);
+    RAY_CHECK_EQ(sem_post(sem.object_sem), 0);
   }
+  return Status::OK();
+}
+
+#else  // defined(__APPLE__) || defined(__linux__)
+
+Status PlasmaObjectHeader::TryToAcquireSemaphore(sem_t *sem) const {
+  return Status::NotImplemented("Not supported on Windows.");
+}
+
+void PlasmaObjectHeader::SetErrorUnlocked(Semaphores &sem) {}
+
+Status PlasmaObjectHeader::WriteAcquire(Semaphores &sem,
+                                        uint64_t write_data_size,
+                                        uint64_t write_metadata_size,
+                                        int64_t write_num_readers) {
+  return Status::NotImplemented("Not supported on Windows.");
+}
+
+Status PlasmaObjectHeader::WriteRelease(Semaphores &sem) {
+  return Status::NotImplemented("Not supported on Windows.");
+}
+
+Status PlasmaObjectHeader::ReadAcquire(Semaphores &sem,
+                                       int64_t version_to_read,
+                                       int64_t *version_read) {
+  return Status::NotImplemented("Not supported on Windows.");
 }
 
 #endif

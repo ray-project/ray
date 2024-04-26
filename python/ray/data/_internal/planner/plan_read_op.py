@@ -2,6 +2,7 @@ from typing import Iterable, List, Optional
 
 import ray
 import ray.cloudpickle as cloudpickle
+from ray.data._internal.compute import TaskPoolStrategy
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
@@ -14,12 +15,17 @@ from ray.data._internal.execution.operators.map_transformer import (
     MapTransformFn,
 )
 from ray.data._internal.logical.operators.read_operator import Read
-from ray.data._internal.util import _warn_on_high_parallelism
+from ray.data._internal.util import _warn_on_high_parallelism, call_with_retry
 from ray.data.block import Block
 from ray.data.context import DataContext
 from ray.data.datasource.datasource import ReadTask
 
 TASK_SIZE_WARN_THRESHOLD_BYTES = 100000
+
+# Transient errors that can occur during longer reads. Trigger retry when these occur.
+READ_FILE_RETRY_ON_ERRORS = ["AWS Error NETWORK_CONNECTION", "AWS Error ACCESS_DENIED"]
+READ_FILE_MAX_ATTEMPTS = 10
+READ_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
 
 
 # Defensively compute the size of the block as the max size reported by the
@@ -78,8 +84,17 @@ def plan_read_op(op: Read) -> PhysicalOperator:
     )
 
     def do_read(blocks: Iterable[ReadTask], _: TaskContext) -> Iterable[Block]:
+        """Yield from read tasks, with retry logic upon transient read errors."""
         for read_task in blocks:
-            yield from read_task()
+            read_fn_name = read_task._read_fn.__name__
+
+            yield from call_with_retry(
+                f=read_task,
+                description=f"read file {read_fn_name}",
+                match=READ_FILE_RETRY_ON_ERRORS,
+                max_attempts=READ_FILE_MAX_ATTEMPTS,
+                max_backoff_s=READ_FILE_RETRY_MAX_BACKOFF_SECONDS,
+            )
 
     # Create a MapTransformer for a read operator
     transform_fns: List[MapTransformFn] = [
@@ -94,6 +109,7 @@ def plan_read_op(op: Read) -> PhysicalOperator:
         inputs,
         name=op.name,
         target_max_block_size=None,
+        compute_strategy=TaskPoolStrategy(op._concurrency),
         ray_remote_args=op._ray_remote_args,
     )
 

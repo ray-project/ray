@@ -23,6 +23,9 @@ class MockDbApiEntry:
     def getIdleTimeMillisSinceLastNotebookExecution(self):
         return (time.time() - self.created_time) * 1000
 
+    def registerBackgroundSparkJobGroup(self, job_group_id):
+        self.registered_job_groups.append(job_group_id)
+
 
 class TestDatabricksHook:
     @classmethod
@@ -52,12 +55,19 @@ class TestDatabricksHook:
         monkeypatch.setattr(
             "ray.util.spark.databricks_hook.get_db_entry_point", lambda: db_api_entry
         )
+        monkeypatch.setattr(
+            "ray.util.spark.databricks_hook.get_databricks_display_html_function",
+            lambda: lambda x: print(x),
+        )
         try:
             setup_ray_cluster(
                 max_worker_nodes=2,
+                num_cpus_worker_node=1,
+                num_gpus_worker_node=0,
                 head_node_options={"include_dashboard": False},
             )
             cluster = ray.util.spark.cluster_init._active_ray_cluster
+            assert db_api_entry.registered_job_groups == [cluster.spark_job_group_id]
             assert not cluster.is_shutdown
             time.sleep(35)
             assert cluster.is_shutdown

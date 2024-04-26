@@ -204,7 +204,7 @@ class VTraceOptimizer:
             if self.config["opt_type"] == "adam":
                 return (
                     torch.optim.Adam(params=policy_params, lr=self.cur_lr),
-                    torch.optim.Adam(params=value_params, lr=self.config["_lr_vf"]),
+                    torch.optim.Adam(params=value_params, lr=self.cur_lr2),
                 )
             else:
                 raise NotImplementedError
@@ -246,7 +246,16 @@ class ImpalaTorchPolicy(
             VTraceOptimizer.__init__(self)
             # Need to initialize learning rate variable before calling
             # TorchPolicyV2.__init__.
-            LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
+            lr_schedule_additional_args = []
+            if config.get("_separate_vf_optimizer"):
+                lr_schedule_additional_args = (
+                    [config["_lr_vf"][0][1], config["_lr_vf"]]
+                    if isinstance(config["_lr_vf"], (list, tuple))
+                    else [config["_lr_vf"], None]
+                )
+            LearningRateSchedule.__init__(
+                self, config["lr"], config["lr_schedule"], *lr_schedule_additional_args
+            )
             EntropyCoeffSchedule.__init__(
                 self, config["entropy_coeff"], config["entropy_coeff_schedule"]
             )

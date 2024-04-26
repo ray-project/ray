@@ -157,6 +157,7 @@ BLACK_EXCLUDES=(
     `'python/ray/thirdparty_files/*|'`
     `'python/ray/_private/thirdparty/*|'`
     `'python/ray/serve/tests/test_config_files/syntax_error\.py|'`
+    `'python/ray/serve/_private/benchmarks/streaming/_grpc/test_server_pb2_grpc\.py|'`
     `'doc/external/*'
 )
 
@@ -207,7 +208,7 @@ format_frontend() {
     local filenames
     # shellcheck disable=SC2207
     filenames=($(find "${folder}"/src -name "*.ts" -or -name "*.tsx"))
-    "${folder}/"node_modules/.bin/eslint --max-warnings 0 "${filenames[@]}"
+    "${folder}/"node_modules/.bin/eslint --fix --max-warnings 0 "${filenames[@]}"
     "${folder}/"node_modules/.bin/prettier -w "${filenames[@]}"
     "${folder}/"node_modules/.bin/prettier --check "${folder}/"public/index.html
   )

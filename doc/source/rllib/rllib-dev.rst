@@ -1,5 +1,7 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
+.. include:: /_includes/rllib/new_api_stack.rst
+
 How To Contribute to RLlib
 ==========================
 
@@ -8,7 +10,7 @@ Development Install
 
 You can develop RLlib locally without needing to compile Ray by using the `setup-dev.py <https://github.com/ray-project/ray/blob/master/python/ray/setup-dev.py>`__ script.
 This sets up symlinks between the ``ray/rllib`` dir in your local git clone and the respective directory bundled with the pip-installed ``ray`` package. This way, every change you make in the source files in your local git clone will immediately be reflected in your installed ``ray`` as well.
-However if you have installed ray from source using `these instructions <https://docs.ray.io/en/master/ray-overview/installation.html>`__ then do not use this, as these steps should have already created this symlink.
+However if you have installed ray from source using `these instructions <https://docs.ray.io/en/master/ray-overview/installation.html>`__ then don't use this, as these steps should have already created this symlink.
 When using this script, make sure that your git branch is in sync with the installed Ray binaries (i.e., you are up-to-date on `master <https://github.com/ray-project/ray>`__ and have the latest `wheel <https://docs.ray.io/en/master/installation.html>`__ installed.)
 
 .. code-block:: bash
@@ -53,8 +55,8 @@ Contributing Algorithms
 These are the guidelines for merging new algorithms (`rllib/algorithms <https://github.com/ray-project/ray/tree/master/rllib/algorithms>`__) into RLlib:
 
 * Contributed algorithms:
-    - must subclass Algorithm and implement the ``step()`` method
-    - must include a lightweight test (`example <https://github.com/ray-project/ray/blob/6bb110393008c9800177490688c6ed38b2da52a9/test/jenkins_tests/run_multi_node_tests.sh#L45>`__) to ensure the algorithm runs
+    - must subclass Algorithm and implement the ``training_step()`` method
+    - must include a lightweight test to ensure the algorithm runs
     - should include tuned hyperparameter examples and documentation
     - should offer functionality not present in existing algorithms
 
@@ -66,40 +68,6 @@ These are the guidelines for merging new algorithms (`rllib/algorithms <https://
 
 Both integrated and contributed algorithms ship with the ``ray`` PyPI package, and are tested as part of Ray's automated tests. The main difference between contributed and fully integrated algorithms is that the latter will be maintained by the Ray team to a much greater extent with respect to bugs and integration with RLlib features.
 
-How to add an algorithm to ``rllib/algorithms``
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-It takes just two changes to add an algorithm to `algorithms <https://github.com/ray-project/ray/tree/master/rllib/algorithms>`__. A minimal example can be found `here <https://github.com/ray-project/ray/tree/master/rllib/algorithms/random_agent/random_agent.py>`__.
-First, subclass `Algorithm <https://github.com/ray-project/ray/commits/master/rllib/algorithms/algorithm.py>`__ and implement the ``_init`` and ``step`` methods:
-
-.. literalinclude:: ../../../rllib/algorithms/random_agent/random_agent.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
-
-Second, register the algorithm with a name in `rllib/algorithms/registry.py <https://github.com/ray-project/ray/blob/master/rllib/algorithms/registry.py>`__.
-
-.. code-block:: python
-
-    def _import_random_agent():
-        from ray.rllib.algorithms.random_agent.random_agent import RandomAgent
-        return RandomAgent
-
-    def _import_random_agent_2():
-        from ray.rllib.algorithms.random_agent_2.random_agent_2 import RandomAgent2
-        return RandomAgent2
-
-    ALGORITHMS = {
-        "RandomAgent": _import_random_agent,
-        "RandomAgent2": _import_random_agent_2,
-        # ...
-    }
-
-After registration, you can run and visualize training progress using ``rllib train``:
-
-.. code-block:: bash
-
-    rllib train --run=RandomAgent --env=CartPole-v1
-    tensorboard --logdir=~/ray_results
 
 Debugging your Algorithms
 -------------------------

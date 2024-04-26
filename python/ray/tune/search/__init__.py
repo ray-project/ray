@@ -1,13 +1,11 @@
-from ray.tune.search.search_algorithm import SearchAlgorithm
-from ray.tune.search.searcher import Searcher
+from ray._private.utils import get_function_args
+from ray.tune.search.basic_variant import BasicVariantGenerator
 from ray.tune.search.concurrency_limiter import ConcurrencyLimiter
 from ray.tune.search.repeater import Repeater
-
-from ray.tune.search.basic_variant import BasicVariantGenerator
-from ray.tune.search.variant_generator import grid_search
+from ray.tune.search.search_algorithm import SearchAlgorithm
 from ray.tune.search.search_generator import SearchGenerator
-
-from ray._private.utils import get_function_args
+from ray.tune.search.searcher import Searcher
+from ray.tune.search.variant_generator import grid_search
 from ray.util import PublicAPI
 
 
@@ -19,12 +17,6 @@ def _import_ax_search():
     from ray.tune.search.ax.ax_search import AxSearch
 
     return AxSearch
-
-
-def _import_skopt_search():
-    from ray.tune.search.skopt.skopt_search import SkOptSearch
-
-    return SkOptSearch
 
 
 def _import_hyperopt_search():
@@ -43,6 +35,12 @@ def _import_bohb_search():
     from ray.tune.search.bohb.bohb_search import TuneBOHB
 
     return TuneBOHB
+
+
+def _import_nevergrad_search():
+    from ray.tune.search.nevergrad.nevergrad_search import NevergradSearch
+
+    return NevergradSearch
 
 
 def _import_optuna_search():
@@ -67,10 +65,10 @@ SEARCH_ALG_IMPORT = {
     "variant_generator": _import_variant_generator,
     "random": _import_variant_generator,
     "ax": _import_ax_search,
-    "skopt": _import_skopt_search,
     "hyperopt": _import_hyperopt_search,
     "bayesopt": _import_bayesopt_search,
     "bohb": _import_bohb_search,
+    "nevergrad": _import_nevergrad_search,
     "optuna": _import_optuna_search,
     "zoopt": _import_zoopt_search,
     "hebo": _import_hebo_search,

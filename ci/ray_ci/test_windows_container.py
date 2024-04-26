@@ -4,6 +4,7 @@ from unittest import mock
 from typing import List
 
 from ci.ray_ci.windows_container import WindowsContainer
+from ci.ray_ci.container import _DOCKER_ENV
 
 
 def test_install_ray() -> None:
@@ -14,7 +15,13 @@ def test_install_ray() -> None:
 
     with mock.patch(
         "subprocess.check_call", side_effect=_mock_subprocess
-    ), mock.patch.dict("os.environ", {"BUILDKITE_BAZEL_CACHE_URL": "http://hi.com"}):
+    ), mock.patch.dict(
+        "os.environ",
+        {
+            "BUILDKITE_BAZEL_CACHE_URL": "http://hi.com",
+            "BUILDKITE_PIPELINE_ID": "w00t",
+        },
+    ):
         WindowsContainer("hi").install_ray()
         image = (
             "029272617770.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp:unknown-hi"
@@ -26,21 +33,35 @@ def test_install_ray() -> None:
             f"BASE_IMAGE={image}",
             "--build-arg",
             "BUILDKITE_BAZEL_CACHE_URL=http://hi.com",
+            "--build-arg",
+            "BUILDKITE_PIPELINE_ID=w00t",
             "-t",
             image,
             "-f",
-            "c:\\workdir\\ci\\ray_ci\\windows\\tests.env.Dockerfile",
-            "c:\\workdir",
+            "C:\\workdir\\ci\\ray_ci\\windows\\tests.env.Dockerfile",
+            "C:\\workdir",
         ]
 
 
 def test_get_run_command() -> None:
-    container = WindowsContainer("test")
+    container = WindowsContainer("test", volumes=["/hi:/hello"])
+    envs = []
+    for env in _DOCKER_ENV:
+        envs.extend(["--env", env])
+
+    artifact_mount_host, artifact_mount_container = container.get_artifact_mount()
     assert container.get_run_command(["hi", "hello"]) == [
         "docker",
         "run",
         "-i",
         "--rm",
+        "--volume",
+        f"{artifact_mount_host}:{artifact_mount_container}",
+    ] + envs + [
+        "--volume",
+        "/hi:/hello",
+        "--workdir",
+        "C:\\rayci",
         "029272617770.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp:unknown-test",
         "bash",
         "-c",

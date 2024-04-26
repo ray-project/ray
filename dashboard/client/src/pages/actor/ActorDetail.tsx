@@ -1,4 +1,4 @@
-import { makeStyles } from "@material-ui/core";
+import makeStyles from "@mui/styles/makeStyles";
 import React from "react";
 import { Outlet } from "react-router-dom";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
@@ -8,6 +8,7 @@ import { generateNodeLink } from "../../common/links";
 import {
   CpuProfilingLink,
   CpuStackTraceLink,
+  MemoryProfilingButton,
 } from "../../common/ProfilingLink";
 import { Section } from "../../common/Section";
 import Loading from "../../components/Loading";
@@ -204,6 +205,12 @@ const ActorDetailPage = () => {
                 />
                 <br />
                 <CpuProfilingLink
+                  pid={actorDetail.pid}
+                  ip={actorDetail.address?.ipAddress}
+                  type=""
+                />
+                <br />
+                <MemoryProfilingButton
                   pid={actorDetail.pid}
                   ip={actorDetail.address?.ipAddress}
                   type=""

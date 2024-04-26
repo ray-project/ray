@@ -400,8 +400,8 @@ ray_cc_library(
     linkopts = PLASMA_LINKOPTS,
     deps = [
         ":plasma_client",
-        "//src/ray/common:network",
         ":stats_lib",
+        "//src/ray/common:network",
     ],
 )
 
@@ -582,12 +582,10 @@ ray_cc_library(
     name = "stats_lib",
     srcs = [
         "src/ray/stats/metric_exporter.cc",
-        "src/ray/stats/metric_exporter_client.cc",
     ],
     hdrs = [
         "src/ray/stats/metric.h",
         "src/ray/stats/metric_exporter.h",
-        "src/ray/stats/metric_exporter_client.h",
         "src/ray/stats/stats.h",
         "src/ray/stats/tag_defs.h",
     ],
@@ -746,7 +744,6 @@ ray_cc_library(
         ],
         exclude = [
             "src/ray/core_worker/**/*_test.cc",
-            "src/ray/core_worker/mock_worker.cc",
         ],
     ),
     hdrs = glob([
@@ -775,51 +772,24 @@ ray_cc_library(
     ],
 )
 
+# This header is used to wrap some internal codes so we can reduce suspicious
+# symbols export.
 ray_cc_library(
-    name = "mock_worker_lib",
-    srcs = ["src/ray/core_worker/test/mock_worker.cc"],
-    hdrs = glob([
-        "src/ray/core_worker/test/*.h",
-    ]),
+    name = "exported_internal",
+    srcs =
+        [
+            "src/ray/internal/internal.cc",
+        ],
+    hdrs =
+        [
+            "src/ray/internal/internal.h",
+        ],
+    copts = COPTS,
+    strip_include_prefix = "src",
     deps = [
         ":core_worker_lib",
     ],
-)
-
-ray_cc_binary(
-    name = "mock_worker",
-    deps = [
-        ":mock_worker_lib",
-    ],
-)
-
-ray_cc_test(
-    name = "core_worker_test",
-    size = "small",
-    srcs = ["src/ray/core_worker/test/core_worker_test.cc"],
-    args = [
-        "$(location raylet)",
-        "$(location mock_worker)",
-        "$(location gcs_server)",
-        "$(location redis-cli)",
-        "$(location redis-server)",
-    ],
-    data = [
-        "//:gcs_server",
-        "//:mock_worker",
-        "//:raylet",
-        "//:redis-cli",
-        "//:redis-server",
-    ],
-    tags = ["team:core", "manual"],
-    deps = [
-        ":core_worker_lib",
-        ":gcs",
-        "//src/ray/protobuf:runtime_env_common_cc_proto",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_googletest//:gtest",
-    ],
+    alwayslink = 1,
 )
 
 ray_cc_test(
@@ -1256,6 +1226,27 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "mutable_object_test",
+    srcs = [
+        "src/ray/object_manager/plasma/test/mutable_object_test.cc",
+    ],
+    tags = [
+        "no_windows",
+        "team:core",
+    ],
+    target_compatible_with = [
+        "@platforms//os:linux",
+    ],
+    deps = [
+        ":core_worker_lib",
+        ":plasma_store_server_lib",
+        "@com_google_absl//absl/random",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
     name = "object_lifecycle_manager_test",
     srcs = [
         "src/ray/object_manager/plasma/test/object_lifecycle_manager_test.cc",
@@ -1314,7 +1305,10 @@ ray_cc_test(
     name = "worker_pool_test",
     size = "small",
     srcs = ["src/ray/raylet/worker_pool_test.cc"],
-    tags = ["team:core", "no_tsan"],
+    tags = [
+        "no_tsan",
+        "team:core",
+    ],
     deps = [
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
@@ -1472,24 +1466,9 @@ ray_cc_test(
     size = "small",
     srcs = ["src/ray/stats/stats_test.cc"],
     tags = [
+        "no_tsan",
         "stats",
         "team:core",
-        "no_tsan",
-    ],
-    deps = [
-        ":stats_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "metric_exporter_client_test",
-    size = "small",
-    srcs = ["src/ray/stats/metric_exporter_client_test.cc"],
-    tags = [
-        "stats",
-        "team:core",
-        "no_tsan",
     ],
     deps = [
         ":stats_lib",
@@ -1564,7 +1543,11 @@ ray_cc_test(
         "//:redis-cli",
         "//:redis-server",
     ],
-    tags = ["team:core", "no_tsan"],
+    tags = [
+        "no_tsan",
+        "no_windows",
+        "team:core",
+    ],
     deps = [
         ":gcs_server_lib",
         ":gcs_test_util_lib",
@@ -1610,7 +1593,10 @@ ray_cc_test(
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_health_check_manager_test.cc",
     ],
-    tags = ["team:core"],
+    tags = [
+        "no_windows",
+        "team:core",
+    ],
     deps = [
         ":gcs_server_lib",
         "@com_google_googletest//:gtest_main",
@@ -1671,7 +1657,10 @@ ray_cc_test(
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_placement_group_manager_test.cc",
     ],
-    tags = ["team:core", "no_tsan"],
+    tags = [
+        "no_tsan",
+        "team:core",
+    ],
     deps = [
         ":gcs_server_lib",
         ":gcs_server_test_util",
@@ -1687,7 +1676,10 @@ ray_cc_test(
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_placement_group_scheduler_test.cc",
     ],
-    tags = ["team:core", "no_tsan"],
+    tags = [
+        "no_tsan",
+        "team:core",
+    ],
     deps = [
         ":gcs_server_lib",
         ":gcs_server_test_util",
@@ -1734,7 +1726,10 @@ ray_cc_test(
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_actor_manager_test.cc",
     ],
-    tags = ["team:core", "no_tsan"],
+    tags = [
+        "no_tsan",
+        "team:core",
+    ],
     deps = [
         ":gcs_server_lib",
         ":gcs_server_test_util",
@@ -1955,7 +1950,10 @@ ray_cc_test(
         "//:redis-cli",
         "//:redis-server",
     ],
-    tags = ["team:core", "no_tsan"],
+    tags = [
+        "no_tsan",
+        "team:core",
+    ],
     deps = [
         ":gcs_client_lib",
         ":gcs_server_lib",
@@ -1977,7 +1975,10 @@ ray_cc_test(
         "//:redis-cli",
         "//:redis-server",
     ],
-    tags = ["team:core"],
+    tags = [
+        "no_windows",
+        "team:core",
+    ],
     deps = [
         ":gcs_client_lib",
         ":gcs_server_lib",
@@ -2224,7 +2225,10 @@ ray_cc_test(
         "//:redis-server",
     ],
     env = {"REDIS_CHAOS": "1"},
-    tags = ["team:core"],
+    tags = [
+        "no_windows",
+        "team:core",
+    ],
     target_compatible_with = [
         "@platforms//os:linux",
     ],
@@ -2355,6 +2359,7 @@ pyx_library(
     ),
     deps = [
         "//:core_worker_lib",
+        "//:exported_internal",
         "//:gcs_server_lib",
         "//:global_state_accessor_lib",
         "//:raylet_lib",
@@ -2389,6 +2394,7 @@ ray_cc_binary(
     visibility = ["//java:__subpackages__"],
     deps = [
         "//:core_worker_lib",
+        "//:exported_internal",
         "//:global_state_accessor_lib",
         "//:src/ray/ray_exported_symbols.lds",
         "//:src/ray/ray_version_script.lds",

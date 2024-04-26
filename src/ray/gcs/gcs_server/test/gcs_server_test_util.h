@@ -236,8 +236,7 @@ struct GcsServerMocker {
     }
 
     // Trigger reply to CommitBundleResources.
-    bool GrantCommitBundleResources(bool success = true,
-                                    const Status &status = Status::OK()) {
+    bool GrantCommitBundleResources(const Status &status = Status::OK()) {
       rpc::CommitBundleResourcesReply reply;
       if (commit_callbacks.size() == 0) {
         return false;
@@ -288,6 +287,7 @@ struct GcsServerMocker {
     void DrainRaylet(
         const rpc::autoscaler::DrainNodeReason &reason,
         const std::string &reason_message,
+        int64_t deadline_timestamp_ms,
         const rpc::ClientCallback<rpc::DrainRayletReply> &callback) override {
       rpc::DrainRayletReply reply;
       reply.set_is_accepted(true);

@@ -217,8 +217,8 @@ def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
 
     Returns:
         Any: A new struct with the same structure as `x`, but with all
-            values converted to torch Tensor types. This does not convert possibly
-            nested elements that are None because torch has no representation for that.
+        values converted to torch Tensor types. This does not convert possibly
+        nested elements that are None because torch has no representation for that.
     """
 
     def mapping(item):
@@ -310,7 +310,7 @@ def explained_variance(y: TensorType, pred: TensorType) -> TensorType:
     y_var = torch.var(y, dim=[0])
     diff_var = torch.var(y - pred, dim=[0])
     min_ = torch.tensor([-1.0]).to(pred.device)
-    return torch.max(min_, 1 - (diff_var / y_var + SMALL_NUMBER))[0]
+    return torch.max(min_, 1 - (diff_var / (y_var + SMALL_NUMBER)))[0]
 
 
 @PublicAPI

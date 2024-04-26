@@ -88,7 +88,7 @@ void CallbackReply::ParseAsStringArrayOrScanArray(redisReply *redis_reply) {
       // Parse as a scan array
       RAY_CHECK(REDIS_REPLY_STRING == cursor_entry->type);
       std::string cursor_str(cursor_entry->str, cursor_entry->len);
-      next_scan_cursor_reply_ = std::stoi(cursor_str);
+      next_scan_cursor_reply_ = std::stoull(cursor_str);
       const auto scan_array_size = array_entry->elements;
       string_array_reply_.reserve(scan_array_size);
       for (size_t i = 0; i < scan_array_size; ++i) {
@@ -447,7 +447,6 @@ std::vector<std::string> ResolveDNS(const std::string &address, int port) {
 
 Status RedisContext::Connect(const std::string &address,
                              int port,
-                             bool sharding,
                              const std::string &password,
                              bool enable_ssl) {
   // Connect to the leader of the Redis cluster:
@@ -490,7 +489,8 @@ Status RedisContext::Connect(const std::string &address,
   // Connect to async context
   std::unique_ptr<redisAsyncContext, RedisContextDeleter> async_context;
   {
-    auto resp = ConnectWithRetries<redisAsyncContext>(address, port, redisAsyncConnect);
+    auto resp =
+        ConnectWithRetries<redisAsyncContext>(ip_addresses[0], port, redisAsyncConnect);
     RAY_CHECK_OK(resp.first);
     async_context = std::move(resp.second);
   }
@@ -531,7 +531,7 @@ Status RedisContext::Connect(const std::string &address,
     // Connect to the true leader.
     RAY_LOG(INFO) << "Redis cluster leader is " << ip << ":" << port
                   << ". Reconnect to it.";
-    return Connect(ip, port, sharding, password, enable_ssl);
+    return Connect(ip, port, password, enable_ssl);
   } else {
     RAY_LOG(INFO) << "Redis cluster leader is " << ip_addresses[0] << ":" << port;
     freeReplyObject(redis_reply);
@@ -570,8 +570,6 @@ void RedisContext::RunArgvAsync(std::vector<std::string> args,
                                                  std::move(args));
   request_context->Run();
 }
-
-void RedisContext::FreeRedisReply(void *reply) { return freeReplyObject(reply); }
 
 }  // namespace gcs
 

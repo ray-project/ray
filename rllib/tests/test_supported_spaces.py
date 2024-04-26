@@ -44,11 +44,8 @@ class TestSupportedSpacesAPPO(unittest.TestCase):
 
     def test_appo(self):
         config = (
-            APPOConfig()
-            .resources(num_gpus=0)
-            .training(vtrace=False, model={"fcnet_hiddens": [10]})
+            APPOConfig().resources(num_gpus=0).training(model={"fcnet_hiddens": [10]})
         )
-        config.training(vtrace=True)
         check_supported_spaces("APPO", config)
 
 
@@ -74,7 +71,7 @@ class TestSupportedSpacesPPO(unittest.TestCase):
     def test_ppo(self):
         config = (
             PPOConfig()
-            .rollouts(num_rollout_workers=2, rollout_fragment_length=50)
+            .env_runners(num_env_runners=2, rollout_fragment_length=50)
             .training(
                 train_batch_size=100,
                 num_sgd_iter=1,
@@ -103,7 +100,7 @@ class TestSupportedSpacesPPONoPreprocessorGPU(unittest.TestCase):
         # obscure errors.
         config = (
             PPOConfig()
-            .rollouts(num_rollout_workers=2, rollout_fragment_length=50)
+            .env_runners(num_env_runners=2, rollout_fragment_length=50)
             .training(
                 train_batch_size=100,
                 num_sgd_iter=1,

@@ -254,6 +254,8 @@ NodeResources LocalResourceManager::ToNodeResources() const {
   node_resources.total = local_resources_.total.ToNodeResourceSet();
   node_resources.labels = local_resources_.labels;
   node_resources.is_draining = is_local_node_draining_;
+  node_resources.draining_deadline_timestamp_ms =
+      local_node_draining_deadline_timestamp_ms_;
   return node_resources;
 }
 
@@ -327,6 +329,8 @@ void LocalResourceManager::PopulateResourceViewSyncMessage(
   }
 
   resource_view_sync_message.set_is_draining(IsLocalNodeDraining());
+  resource_view_sync_message.set_draining_deadline_timestamp_ms(
+      local_node_draining_deadline_timestamp_ms_);
 
   for (const auto &iter : last_idle_times_) {
     if (iter.second == absl::nullopt) {
@@ -440,8 +444,10 @@ void LocalResourceManager::RecordMetrics() const {
   }
 }
 
-void LocalResourceManager::SetLocalNodeDraining() {
+void LocalResourceManager::SetLocalNodeDraining(int64_t draining_deadline_timestamp_ms) {
+  RAY_CHECK_GE(draining_deadline_timestamp_ms, 0);
   is_local_node_draining_ = true;
+  local_node_draining_deadline_timestamp_ms_ = draining_deadline_timestamp_ms;
   OnResourceOrStateChanged();
 }
 

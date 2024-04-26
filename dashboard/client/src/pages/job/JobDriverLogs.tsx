@@ -62,6 +62,7 @@ export const JobDriverLogs = ({ job }: JobDriverLogsProps) => {
             },
       ]}
       otherLogsLink={link}
+      contextKey="job-driver"
     />
   );
 };

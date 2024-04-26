@@ -194,11 +194,12 @@ if __name__ == "__main__":
     check_raylet_task = None
     if sys.platform not in ["win32", "cygwin"]:
 
-        def parent_dead_callback():
+        def parent_dead_callback(msg):
             agent._logger.info(
                 "Raylet is dead! Exiting Runtime Env Agent. "
                 f"addr: {args.node_ip_address}, "
-                f"port: {args.runtime_env_agent_port}"
+                f"port: {args.runtime_env_agent_port}\n"
+                f"{msg}"
             )
 
         # No need to await this task.

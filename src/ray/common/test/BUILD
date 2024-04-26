@@ -45,6 +45,7 @@ ray_cc_test(
     tags = [
         "no_tsan",
         "no_ubsan",
+        "no_windows",
         "team:core",
     ],
     deps = [
@@ -166,7 +167,7 @@ ray_cc_test(
     srcs = [
         "memory_monitor_test.cc",
     ],
-    tags = ["team:core"],
+    tags = ["team:core", "no_windows"],
     target_compatible_with = [
         "@platforms//os:linux",
     ],

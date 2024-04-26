@@ -2,6 +2,7 @@ import atexit
 import logging
 import ssl
 import time
+from collections import OrderedDict
 from enum import Enum
 
 from pyVim.connect import Disconnect, SmartStubAdapter, VimSessionOrientedStub
@@ -19,6 +20,7 @@ class ObjectType(Enum):
     VirtualMachine = "VirtualMachine"
     Datastore = "Datastore"
     ClusterComputeResource = "ClusterComputeResource"
+    HostSystem = "HostSystem"
 
 
 class KeyType(Enum):
@@ -36,6 +38,8 @@ def get_object_type(vimtype):
         return ObjectType.Datastore
     elif vimtype == [vim.ClusterComputeResource]:
         return ObjectType.ClusterComputeResource
+    elif vimtype == [vim.HostSystem]:
+        return ObjectType.HostSystem
     else:
         raise ValueError("Invalid Object Type")
 
@@ -73,20 +77,17 @@ class PyvmomiSdkProvider:
 
         # Instance parameters
         self.timeout = 0
-        self.cached = {
-            KeyType.Name: {
-                ObjectType.ResourcePool: {},
-                ObjectType.VirtualMachine: {},
-                ObjectType.Datastore: {},
-                ObjectType.ClusterComputeResource: {},
-            },
-            KeyType.ObjectID: {
-                ObjectType.ResourcePool: {},
-                ObjectType.VirtualMachine: {},
-                ObjectType.Datastore: {},
-                ObjectType.ClusterComputeResource: {},
-            },
-        }
+
+        # Add cache to cache all fetched object
+        # The format of key is "KeyType.Name-ObjectType-Name"
+        # Or "KeyType.ObjectID-ObjectType-ObjectID"
+        # Two examples as followed:
+        # 1) Name-HostSystem-pek2-hs1-d0202.eng.vmware.com
+        # 2) ObjectID-HostSystem-host-12
+        self.cached = OrderedDict()
+
+        # The max size of self.cached
+        self.cache_size = 500
 
         # Connect using a session oriented connection
         # Ref. https://github.com/vmware/pyvmomi/issues/347
@@ -114,48 +115,69 @@ class PyvmomiSdkProvider:
         return vim.ServiceInstance("ServiceInstance", session_stub)
 
     def get_obj_from_cache(self, vimtype, name, obj_id):
+        """
+        The function is used to read pyvmomi object from cache
+        """
         object_type = get_object_type(vimtype)
         if name:
-            object_cache = self.cached[KeyType.Name][object_type]
-            obj = object_cache.get(name)
+            key = str(KeyType.Name) + "-" + str(object_type) + "-" + name
+            obj = self.cached.get(key)
             if check_obj_validness(obj):
                 if obj.name != name:
                     # example: If someone has changed the VM name on the vSphere side,
                     # then create another VM with the same name. Then this cache item
                     # will be dirty because it still points to the previous VM obj.
-                    object_cache.pop(name)
-                    object_cache[obj.name] = obj
+                    self.cached.pop(key)
+                    new_key = KeyType.Name + "-" + object_type + "-" + obj.name
+                    self.cached[new_key] = obj
                     return None
                 return obj
             if obj:
-                object_cache.pop(name)
+                self.cached.pop(key)
         elif obj_id:
-            object_cache = self.cached[KeyType.ObjectID][object_type]
-            obj = object_cache.get(obj_id)
+            key = str(KeyType.ObjectID) + "-" + str(object_type) + "-" + obj_id
+            obj = self.cached.get(key)
             if check_obj_validness(obj):
                 return obj
             if obj:
-                object_cache.pop(obj_id)
+                self.cached.pop(key)
         return None
 
     def put_obj_in_cache(self, vimtype, obj):
+        """
+        The function is used to save pyvmomi object into cache
+        """
+        if len(self.cached) + 2 > self.cache_size:
+            self.cached.popitem(last=False)
+            self.cached.popitem(last=False)
+
         object_type = get_object_type(vimtype)
-        self.cached[KeyType.Name][object_type][obj.name] = obj
-        self.cached[KeyType.ObjectID][object_type][obj._moId] = obj
+        key_1 = str(KeyType.Name) + "-" + str(object_type) + "-" + str(obj.name)
+        key_2 = str(KeyType.ObjectID) + "-" + str(object_type) + "-" + obj._moId
+        self.cached[key_1] = obj
+        self.cached[key_2] = obj
 
     def get_pyvmomi_obj(self, vimtype, name=None, obj_id=None):
         """
         This function will return the vSphere object.
-        The argument for `vimtype` can be "vim.VM", "vim.Host", "vim.Datastore", etc.
+        The argument for `vimtype` can be "vim.VirtualMachine", "vim.HostSystem",
+        "vim.Datastore", etc.
         Then either the name or the object id need to be provided.
         To check all such object information, you can go to the managed object board
         page of your vCenter Server, such as: https://<your_vc_ip/mob
         """
         if not name and not obj_id:
             # Raise runtime error because this is not user fault
-            raise RuntimeError("Either name or obj id must be provided")
+            object_type = get_object_type(vimtype)
+            raise ValueError(
+                f"Either name or obj id must be provided for {object_type}"
+            )
         if self.pyvmomi_sdk_client is None:
-            raise RuntimeError("Must init pyvmomi_sdk_client first")
+            raise ValueError("Must init pyvmomi_sdk_client first")
+
+        cached_obj = self.get_obj_from_cache(vimtype, name, obj_id)
+        if cached_obj:
+            return cached_obj
 
         cached_obj = self.get_obj_from_cache(vimtype, name, obj_id)
         if cached_obj:
@@ -183,6 +205,10 @@ class PyvmomiSdkProvider:
         )
 
     def ensure_connect(self):
+        """
+        When the connection of pyvmomi idles for a while, it may no longer valid.
+        The function is used to fix this issue
+        """
         try:
             _ = self.pyvmomi_sdk_client.RetrieveContent()
         except vim.fault.NotAuthenticated:
@@ -193,10 +219,16 @@ class PyvmomiSdkProvider:
             raise RuntimeError(f"failed to ensure the connect, exception: {e}")
 
     def name_to_id(self, vimtype, name):
+        """
+        The function is used to convert the name of vsphere obj to ID
+        """
         obj = self.get_pyvmomi_obj(vimtype, name)
         return obj._moId
 
     def power_on_vm(self, vm_name):
+        """
+        The function is used to power on vm
+        """
         vm = self.get_pyvmomi_obj([vim.VirtualMachine], vm_name)
         if vm.runtime.powerState == vim.VirtualMachinePowerState.poweredOff:
             logger.debug(f"Frozen VM {vm._moId} is off. Powering it ON")
@@ -204,6 +236,9 @@ class PyvmomiSdkProvider:
             logger.debug(f"VM {vm_name} is power on. Done.")
 
     def power_off_vm(self, vm_name):
+        """
+        The function is used to power off vm
+        """
         vm_obj = self.get_pyvmomi_obj([vim.VirtualMachine], vm_name)
         logger.debug(f"power_off_vm: {vm_name}...")
         time.sleep(10)
@@ -214,16 +249,23 @@ class PyvmomiSdkProvider:
             logger.debug(f"VM {vm_name} is power off. Done.")
 
     def is_vm_power_on(self, vm_id):
+        """
+        The function is used to judge whether vm is power on
+        """
         vm = self.get_pyvmomi_obj([vim.VirtualMachine], obj_id=vm_id)
         return vm.runtime.powerState == vim.VirtualMachinePowerState.poweredOn
 
     def is_vm_power_off(self, vm_id):
+        """
+        The function is used to judge whether vm is power off
+        """
         vm = self.get_pyvmomi_obj([vim.VirtualMachine], obj_id=vm_id)
         return vm.runtime.powerState == vim.VirtualMachinePowerState.poweredOff
 
     def wait_until_vm_is_frozen(self, vm_name):
-        """The function waits until a VM goes into the frozen state."""
-
+        """
+        The function waits until a VM goes into the frozen state.
+        """
         vm = self.get_pyvmomi_obj([vim.VirtualMachine], vm_name)
         start = time.time()
 
@@ -238,7 +280,9 @@ class PyvmomiSdkProvider:
         raise RuntimeError("VM {} didn't go into frozen state".format(vm.name))
 
     def get_vm_external_ip(self, vm_id):
-        # Return the external IP of the VM
+        """
+        The function Return the external IP of the VM
+        """
         # Fetch vSphere VM object
         vm = self.get_pyvmomi_obj([vim.VirtualMachine], obj_id=vm_id)
         if vm.guest.net:
@@ -251,6 +295,36 @@ class PyvmomiSdkProvider:
         logger.warning(f"External IPv4 address of VM {vm.name} is not available")
         return None
 
+    def get_host_id_of_datastore_cluster(self, datastore_name, cluster_name):
+        """
+        The function return the host id of first common host in cluster and datastore
+        """
+        cluster = self.get_pyvmomi_obj([vim.ClusterComputeResource], cluster_name)
+        cluster_host_ids = [host._moId for host in cluster.host]
+
+        datastore = self.get_pyvmomi_obj([vim.Datastore], datastore_name)
+        datastore_host_ids = [host.key._moId for host in datastore.host]
+
+        common = set(cluster_host_ids) & set(datastore_host_ids)
+
+        return common.pop() if common else None
+
+    def get_resource_pool_id_in_cluster(self, cluster_name):
+        """
+        The function return the id of main resoure pool in cluster.
+        Each cluster has implict resource pool
+        """
+        cluster = self.get_pyvmomi_obj([vim.ClusterComputeResource], cluster_name)
+        return cluster.resourcePool._moId
+
+    def get_cluster_id_of_resource_pool(self, resource_pool_name):
+        """
+        The function return the id of resouce pool's parent cluster
+        """
+        resource_pool_obj = self.get_pyvmomi_obj([vim.ResourcePool], resource_pool_name)
+        cluster = resource_pool_obj.parent.parent
+        return cluster._moId
+
     def instance_clone_vm(
         self,
         source_vm_name,
@@ -258,6 +332,9 @@ class PyvmomiSdkProvider:
         target_resource_pool_name,
         target_datastore_name,
     ):
+        """
+        The function is used to instant clone vm from frozen-vm
+        """
         # If resource pool is not provided, then the resource pool
         # of the source VM will also be the resource pool of the target VM.
         resource_pool = (

@@ -26,6 +26,8 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     import pyarrow
 
+    from ray.data.datasource.parquet_datasource import _ParquetFileFragmentMetaData
+
 
 logger = logging.getLogger(__name__)
 
@@ -293,7 +295,7 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
         schema: Optional[Union[type, "pyarrow.lib.Schema"]],
         *,
         num_fragments: int,
-        prefetched_metadata: Optional[List["pyarrow.parquet.FileMetaData"]],
+        prefetched_metadata: Optional[List["_ParquetFileFragmentMetaData"]],
     ) -> BlockMetadata:
         if (
             prefetched_metadata is not None
@@ -304,10 +306,7 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
             # BlockMetadata.
             block_metadata = BlockMetadata(
                 num_rows=sum(m.num_rows for m in prefetched_metadata),
-                size_bytes=sum(
-                    sum(m.row_group(i).total_byte_size for i in range(m.num_row_groups))
-                    for m in prefetched_metadata
-                ),
+                size_bytes=sum(m.total_byte_size for m in prefetched_metadata),
                 schema=schema,
                 input_files=paths,
                 exec_stats=None,
@@ -332,6 +331,9 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
         from ray.data.datasource.parquet_datasource import (
             FRAGMENTS_PER_META_FETCH,
             PARALLELIZE_META_FETCH_THRESHOLD,
+            RETRY_EXCEPTIONS_FOR_META_FETCH_TASK,
+            RETRY_MAX_ATTEMPTS_FOR_META_FETCH_TASK,
+            RETRY_MAX_BACKOFF_S_FOR_META_FETCH_TASK,
             _fetch_metadata,
             _fetch_metadata_serialization_wrapper,
             _SerializedFragment,
@@ -341,10 +343,20 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
             # Wrap Parquet fragments in serialization workaround.
             fragments = [_SerializedFragment(fragment) for fragment in fragments]
             # Fetch Parquet metadata in parallel using Ray tasks.
+
+            def fetch_func(fragments):
+                return _fetch_metadata_serialization_wrapper(
+                    fragments,
+                    # Ensure that retry settings are propagated to remote tasks.
+                    retry_match=RETRY_EXCEPTIONS_FOR_META_FETCH_TASK,
+                    retry_max_attempts=RETRY_MAX_ATTEMPTS_FOR_META_FETCH_TASK,
+                    retry_max_interval=RETRY_MAX_BACKOFF_S_FOR_META_FETCH_TASK,
+                )
+
             return list(
                 _fetch_metadata_parallel(
                     fragments,
-                    _fetch_metadata_serialization_wrapper,
+                    fetch_func,
                     FRAGMENTS_PER_META_FETCH,
                     **ray_remote_args,
                 )
@@ -529,7 +541,7 @@ def _fetch_metadata_parallel(
     **ray_remote_args,
 ) -> Iterator[Meta]:
     """Fetch file metadata in parallel using Ray tasks."""
-    remote_fetch_func = cached_remote_fn(fetch_func, num_cpus=0.5)
+    remote_fetch_func = cached_remote_fn(fetch_func)
     if ray_remote_args:
         remote_fetch_func = remote_fetch_func.options(**ray_remote_args)
     # Choose a parallelism that results in a # of metadata fetches per task that

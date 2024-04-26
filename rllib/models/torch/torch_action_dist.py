@@ -10,7 +10,7 @@ from ray.rllib.models.action_dist import (
     MultiActionDistributionMixIn,
 )
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-from ray.rllib.utils.annotations import override, DeveloperAPI, ExperimentalAPI
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import SMALL_NUMBER, MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
@@ -19,7 +19,7 @@ from ray.rllib.utils.typing import TensorType, List, Union, Tuple, ModelConfigDi
 torch, nn = try_import_torch()
 
 
-@DeveloperAPI
+@OldAPIStack
 class TorchDistributionWrapper(ActionDistribution):
     """Wrapper class for torch.distributions."""
 
@@ -60,7 +60,7 @@ class TorchDistributionWrapper(ActionDistribution):
         return self.logp(self.last_sample)
 
 
-@DeveloperAPI
+@OldAPIStack
 class TorchCategorical(TorchDistributionWrapper):
     """Wrapper class for PyTorch Categorical distribution."""
 
@@ -90,7 +90,7 @@ class TorchCategorical(TorchDistributionWrapper):
         return action_space.n
 
 
-@DeveloperAPI
+@OldAPIStack
 def get_torch_categorical_class_with_temperature(t: float):
     """TorchCategorical distribution class that has customized default temperature."""
 
@@ -101,7 +101,7 @@ def get_torch_categorical_class_with_temperature(t: float):
     return TorchCategoricalWithTemperature
 
 
-@DeveloperAPI
+@OldAPIStack
 class TorchMultiCategorical(TorchDistributionWrapper):
     """MultiCategorical distribution for MultiDiscrete action spaces."""
 
@@ -194,7 +194,7 @@ class TorchMultiCategorical(TorchDistributionWrapper):
             return np.sum(action_space.nvec)
 
 
-@ExperimentalAPI
+@OldAPIStack
 class TorchSlateMultiCategorical(TorchCategorical):
     """MultiCategorical distribution for MultiDiscrete action spaces.
 
@@ -237,7 +237,7 @@ class TorchSlateMultiCategorical(TorchCategorical):
         return torch.ones_like(self.inputs[:, 0])
 
 
-@DeveloperAPI
+@OldAPIStack
 class TorchDiagGaussian(TorchDistributionWrapper):
     """Wrapper class for PyTorch Normal distribution."""
 
@@ -288,7 +288,7 @@ class TorchDiagGaussian(TorchDistributionWrapper):
         return np.prod(action_space.shape, dtype=np.int32) * 2
 
 
-@DeveloperAPI
+@OldAPIStack
 class TorchSquashedGaussian(TorchDistributionWrapper):
     """A tanh-squashed Gaussian distribution defined by: mean, std, low, high.
 
@@ -394,7 +394,7 @@ class TorchSquashedGaussian(TorchDistributionWrapper):
         return np.prod(action_space.shape, dtype=np.int32) * 2
 
 
-@DeveloperAPI
+@OldAPIStack
 class TorchBeta(TorchDistributionWrapper):
     """
     A Beta distribution is defined on the interval [0, 1] and parameterized by
@@ -454,7 +454,7 @@ class TorchBeta(TorchDistributionWrapper):
         return np.prod(action_space.shape, dtype=np.int32) * 2
 
 
-@DeveloperAPI
+@OldAPIStack
 class TorchDeterministic(TorchDistributionWrapper):
     """Action distribution that returns the input values directly.
 
@@ -482,7 +482,7 @@ class TorchDeterministic(TorchDistributionWrapper):
         return np.prod(action_space.shape, dtype=np.int32)
 
 
-@DeveloperAPI
+@OldAPIStack
 class TorchMultiActionDistribution(
     MultiActionDistributionMixIn, TorchDistributionWrapper
 ):
@@ -562,7 +562,7 @@ class TorchMultiActionDistribution(
         return functools.reduce(lambda a, b: a + b, flat_logps)
 
 
-@DeveloperAPI
+@OldAPIStack
 class TorchDirichlet(TorchDistributionWrapper):
     """Dirichlet distribution for continuous actions that are between
     [0,1] and sum to 1.

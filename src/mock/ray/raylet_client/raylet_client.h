@@ -110,6 +110,7 @@ class MockRayletClientInterface : public RayletClientInterface {
               DrainRaylet,
               (const rpc::autoscaler::DrainNodeReason &reason,
                const std::string &reason_message,
+               int64_t draining_deadline_timestamp_ms,
                const rpc::ClientCallback<rpc::DrainRayletReply> &callback),
               (override));
 };

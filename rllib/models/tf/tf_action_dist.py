@@ -11,7 +11,7 @@ from ray.rllib.models.action_dist import (
 )
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils import MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT, SMALL_NUMBER
-from ray.rllib.utils.annotations import override, DeveloperAPI, ExperimentalAPI
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.typing import TensorType, List, Union, Tuple, ModelConfigDict
@@ -20,7 +20,7 @@ tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
 
 
-@DeveloperAPI
+@OldAPIStack
 class TFActionDistribution(ActionDistribution):
     """TF-specific extensions for building action distributions."""
 
@@ -51,7 +51,7 @@ class TFActionDistribution(ActionDistribution):
         return self.sampled_action_logp_op
 
 
-@DeveloperAPI
+@OldAPIStack
 class Categorical(TFActionDistribution):
     """Categorical distribution for discrete action spaces."""
 
@@ -102,7 +102,7 @@ class Categorical(TFActionDistribution):
         return action_space.n
 
 
-@DeveloperAPI
+@OldAPIStack
 def get_categorical_class_with_temperature(t: float):
     """Categorical distribution class that has customized default temperature."""
 
@@ -113,7 +113,7 @@ def get_categorical_class_with_temperature(t: float):
     return CategoricalWithTemperature
 
 
-@DeveloperAPI
+@OldAPIStack
 class MultiCategorical(TFActionDistribution):
     """MultiCategorical distribution for MultiDiscrete action spaces."""
 
@@ -209,7 +209,7 @@ class MultiCategorical(TFActionDistribution):
             return np.sum(action_space.nvec)
 
 
-@ExperimentalAPI
+@OldAPIStack
 class SlateMultiCategorical(Categorical):
     """MultiCategorical distribution for MultiDiscrete action spaces.
 
@@ -252,7 +252,7 @@ class SlateMultiCategorical(Categorical):
         return tf.ones_like(self.inputs[:, 0])
 
 
-@DeveloperAPI
+@OldAPIStack
 class GumbelSoftmax(TFActionDistribution):
     """GumbelSoftmax distr. (for differentiable sampling in discr. actions
 
@@ -324,7 +324,7 @@ class GumbelSoftmax(TFActionDistribution):
         return action_space.n
 
 
-@DeveloperAPI
+@OldAPIStack
 class DiagGaussian(TFActionDistribution):
     """Action distribution where each vector element is a gaussian.
 
@@ -396,7 +396,7 @@ class DiagGaussian(TFActionDistribution):
         return np.prod(action_space.shape, dtype=np.int32) * 2
 
 
-@DeveloperAPI
+@OldAPIStack
 class SquashedGaussian(TFActionDistribution):
     """A tanh-squashed Gaussian distribution defined by: mean, std, low, high.
 
@@ -495,7 +495,7 @@ class SquashedGaussian(TFActionDistribution):
         return np.prod(action_space.shape, dtype=np.int32) * 2
 
 
-@DeveloperAPI
+@OldAPIStack
 class Beta(TFActionDistribution):
     """
     A Beta distribution is defined on the interval [0, 1] and parameterized by
@@ -551,7 +551,7 @@ class Beta(TFActionDistribution):
         return np.prod(action_space.shape, dtype=np.int32) * 2
 
 
-@DeveloperAPI
+@OldAPIStack
 class Deterministic(TFActionDistribution):
     """Action distribution that returns the input values directly.
 
@@ -579,7 +579,7 @@ class Deterministic(TFActionDistribution):
         return np.prod(action_space.shape, dtype=np.int32)
 
 
-@DeveloperAPI
+@OldAPIStack
 class MultiActionDistribution(MultiActionDistributionMixIn, TFActionDistribution):
     """Action distribution that operates on a set of actions.
 
@@ -641,7 +641,7 @@ class MultiActionDistribution(MultiActionDistributionMixIn, TFActionDistribution
         return functools.reduce(lambda a, b: a + b, flat_logps)
 
 
-@DeveloperAPI
+@OldAPIStack
 class Dirichlet(TFActionDistribution):
     """Dirichlet distribution for continuous actions that are between
     [0,1] and sum to 1.

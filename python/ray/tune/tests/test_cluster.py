@@ -1,19 +1,19 @@
-import time
 import os
+import sys
+import time
+from unittest.mock import MagicMock
 
 import pytest
-import sys
-from unittest.mock import MagicMock
 
 import ray
 from ray import tune
-from ray.train import CheckpointConfig
 from ray.cluster_utils import Cluster
+from ray.train import CheckpointConfig
 from ray.train._internal.storage import StorageContext
 from ray.tune.error import TuneError
-from ray.tune.search import BasicVariantGenerator
-from ray.tune.experiment import Trial
 from ray.tune.execution.tune_controller import TuneController
+from ray.tune.experiment import Trial
+from ray.tune.search import BasicVariantGenerator
 
 
 def _check_trial_running(trial):

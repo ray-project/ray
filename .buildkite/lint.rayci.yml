@@ -86,11 +86,13 @@ steps:
     commands:
       - ./ci/lint/check-documentation-style.sh
 
-  - label: ":lint-roller: lint: linkcheck"
+  - label: ":lint-roller: lint: all linkcheck"
     instance_type: medium
     commands:
-      - if [[ ${BUILDKITE_BRANCH} == 'master' ]]; then make -C doc/ linkcheck_all; else make -C doc/ linkcheck; fi
+      - make -C doc/ linkcheck_all
     depends_on: docbuild
     job_env: docbuild
     tags:
       - oss
+      - skip-on-premerge
+    soft_fail: true

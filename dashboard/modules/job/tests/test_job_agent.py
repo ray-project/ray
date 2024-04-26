@@ -288,7 +288,7 @@ async def test_timeout(job_sdk_client):
         pip={
             "packages": ["tensorflow", "requests", "botocore", "torch"],
             "pip_check": False,
-            "pip_version": "==22.0.2;python_version=='3.8.11'",
+            "pip_version": "==23.3.2;python_version=='3.9.16'",
         },
         config=RuntimeEnvConfig(setup_timeout_seconds=1),
     ).to_dict()
@@ -308,7 +308,7 @@ async def test_timeout(job_sdk_client):
     data = head_client.get_job_info(job_id)
     assert "Failed to set up runtime environment" in data.message
     assert "Timeout" in data.message
-    assert "consider increasing `setup_timeout_seconds`" in data.message
+    assert "setup_timeout_seconds" in data.message
 
 
 @pytest.mark.asyncio

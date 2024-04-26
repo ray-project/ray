@@ -1,6 +1,6 @@
 import logging
-import os
 import shutil
+from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Iterator, Optional, Type
 
@@ -78,9 +78,12 @@ class RayTrainReportCallback(TrainerCallback):
 
             # Copy ckpt files and construct a Ray Train Checkpoint
             source_ckpt_path = transformers.trainer.get_last_checkpoint(args.output_dir)
-            target_ckpt_path = os.path.join(tmpdir, self.CHECKPOINT_NAME)
-            shutil.copytree(source_ckpt_path, target_ckpt_path)
-            checkpoint = Checkpoint.from_directory(tmpdir)
+            if source_ckpt_path is not None:
+                target_ckpt_path = Path(tmpdir, self.CHECKPOINT_NAME).as_posix()
+                shutil.copytree(source_ckpt_path, target_ckpt_path)
+                checkpoint = Checkpoint.from_directory(tmpdir)
+            else:
+                checkpoint = None
 
             # Report latest metrics and checkpoint to Ray Train
             ray.train.report(metrics=metrics, checkpoint=checkpoint)

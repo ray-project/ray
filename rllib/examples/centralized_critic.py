@@ -1,3 +1,10 @@
+# TODO (sven): Move this example script into the new API stack.
+
+# ***********************************************************************************
+# IMPORTANT NOTE: This script is using the old API stack and will soon be replaced by
+# `ray.rllib.examples.multi_agent.pettingzoo_shared_value_function.py`!
+# ***********************************************************************************
+
 """An example of customizing PPO to leverage a centralized critic.
 
 Here the model and policy are hard-coded to implement a centralized critic
@@ -14,8 +21,8 @@ modifies the environment.
 """
 
 import argparse
-import numpy as np
 from gymnasium.spaces import Discrete
+import numpy as np
 import os
 
 import ray
@@ -27,8 +34,8 @@ from ray.rllib.algorithms.ppo.ppo_tf_policy import (
 )
 from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
 from ray.rllib.evaluation.postprocessing import compute_advantages, Postprocessing
-from ray.rllib.examples.env.two_step_game import TwoStepGame
-from ray.rllib.examples.models.centralized_critic_models import (
+from ray.rllib.examples.envs.classes.two_step_game import TwoStepGame
+from ray.rllib.examples._old_api_stack.models.centralized_critic_models import (
     CentralizedCriticModel,
     TorchCentralizedCriticModel,
 )
@@ -259,11 +266,9 @@ if __name__ == "__main__":
 
     config = (
         PPOConfig()
-        # TODO (Kourosh): Lift this example to the new RLModule stack, and enable it.
-        .experimental(_enable_new_api_stack=False)
         .environment(TwoStepGame)
         .framework(args.framework)
-        .rollouts(batch_mode="complete_episodes", num_rollout_workers=0)
+        .env_runners(batch_mode="complete_episodes", num_env_runners=0)
         .training(model={"custom_model": "cc_model"})
         .multi_agent(
             policies={
@@ -292,8 +297,8 @@ if __name__ == "__main__":
 
     stop = {
         "training_iteration": args.stop_iters,
-        "timesteps_total": args.stop_timesteps,
-        "episode_reward_mean": args.stop_reward,
+        "num_env_steps_sampled_lifetime": args.stop_timesteps,
+        "env_runner_results/episode_return_mean": args.stop_reward,
     }
 
     tuner = tune.Tuner(

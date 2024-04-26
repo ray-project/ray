@@ -1,0 +1,504 @@
+{% extends "!layout.html" %}
+
+<!-- prettier-ignore -->
+{%- block extrahead -%}
+{% include 'extrahead.html' %}
+{{ super() }}
+{% endblock %}
+
+
+{% block body %}
+<div class="main-content">
+  <div class="centered-heading">
+    <h1>Welcome to Ray</h1>
+    <p>
+      An open source framework to build and scale your ML and Python
+      applications easily
+    </p>
+  </div>
+
+  <div class="heading-buttons">
+    <a href="{{ pathto('ray-overview/getting-started') }}">
+      <div class="header-button">
+        <i class="ri-play-line"></i>
+        <span>Get started with Ray</span>
+      </div>
+    </a>
+    <a href="{{ pathto('ray-overview/installation') }}">
+      <div class="header-button">
+        <i class="ri-install-line"></i>
+        <span>Install Ray</span>
+      </div>
+    </a>
+    <a href="{{ pathto('ray-overview/examples') }}">
+      <div class="header-button">
+        <i class="ri-code-block"></i>
+        <span>Ray Example Gallery</span>
+      </div>
+    </a>
+  </div>
+
+  <div class="clicky-tab-widget">
+    <h3>Scale with Ray</h3>
+
+    <div class="clicky-tab-side-by-side">
+      <div class="nav flex-column nav-pills" id="v-pills-tab">
+        <a class="nav-link active" id="v-pills-batch-tab">Batch inference</a>
+        <a class="nav-link" id="v-pills-training-tab">Model training</a>
+        <a class="nav-link" id="v-pills-tuning-tab">Hyperparameter tuning</a>
+        <a class="nav-link" id="v-pills-serving-tab">Model serving</a>
+        <a class="nav-link" id="v-pills-rl-tab">Reinforcement learning</a>
+      </div>
+
+      <div class="tab-area">
+        <div class="tab-content" id="v-pills-tabContent">
+          <!-- prettier-ignore -->
+          <div class="tab-pane fade show active no-copybutton" id="v-pills-data">
+            {{ pygments_highlight_python('''
+  from typing import Dict
+  import numpy as np
+
+  import ray
+
+  # Step 1: Create a Ray Dataset from in-memory Numpy arrays.
+  ds = ray.data.from_numpy(np.asarray(["Complete this", "for me"]))
+
+  # Step 2: Define a Predictor class for inference.
+  class HuggingFacePredictor:
+      def __init__(self):
+          from transformers import pipeline
+          # Initialize a pre-trained GPT2 Huggingface pipeline.
+          self.model = pipeline("text-generation", model="gpt2")
+
+      # Logic for inference on 1 batch of data.
+      def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, list]:
+          # Get the predictions from the input batch.
+          predictions = self.model(
+              list(batch["data"]), max_length=20, num_return_sequences=1)
+          # `predictions` is a list of length-one lists. For example:
+          # [[{"generated_text": "output_1"}], ..., [{"generated_text": "output_2"}]]
+          # Modify the output to get it into the following format instead:
+          # ["output_1", "output_2"]
+          batch["output"] = [sequences[0]["generated_text"] for sequences in predictions]
+          return batch
+
+  # Use 2 parallel actors for inference. Each actor predicts on a
+  # different partition of data.
+  scale = ray.data.ActorPoolStrategy(size=2)
+  # Step 3: Map the Predictor over the Dataset to get predictions.
+  predictions = ds.map_batches(HuggingFacePredictor, compute=scale)
+  # Step 4: Show one prediction output.
+  predictions.show(limit=1)
+            ''') }}
+            <div class="tab-pane-links">
+              <a href="{{ pathto('data/data') }}" target="_blank">Learn more about Ray Data</a>
+              <a href="{{ pathto('data/examples') }}" target="_blank">Examples</a>
+            </div>
+          </div>
+
+          <!-- prettier-ignore -->
+          <div class="tab-pane fade no-copybutton" id="v-pills-training">
+          {{ pygments_highlight_python('''
+  from ray.train import ScalingConfig
+  from ray.train.torch import TorchTrainer
+
+  # Step 1: Set up PyTorch model training as you normally would.
+  def train_func():
+      model = ...
+      train_dataset = ...
+      for epoch in range(num_epochs):
+          ...  # model training logic
+
+  # Step 2: Set up Ray\'s PyTorch Trainer to run on 32 GPUs.
+  trainer = TorchTrainer(
+      train_loop_per_worker=train_func,
+      scaling_config=ScalingConfig(num_workers=32, use_gpu=True),
+      datasets={"train": train_dataset},
+  )
+
+  # Step 3: Run distributed model training on 32 GPUs.
+  result = trainer.fit()
+          ''') }}
+            <div class="tab-pane-links">
+              <a href="{{ pathto('train/train') }}" target="_blank">Learn more about Ray Train</a>
+              <a href="{{ pathto('train/examples') }}" target="_blank">Examples</a>
+            </div>
+          </div>
+
+          <!-- prettier-ignore -->
+          <div class="tab-pane fade no-copybutton" id="v-pills-tuning">
+          {{ pygments_highlight_python('''
+  from ray import tune
+  from ray.train import ScalingConfig
+  from ray.train.lightgbm import LightGBMTrainer
+
+  train_dataset, eval_dataset = ...
+
+  # Step 1: Set up Ray\'s LightGBM Trainer to train on 64 CPUs.
+  trainer = LightGBMTrainer(
+      ...
+      scaling_config=ScalingConfig(num_workers=64),
+      datasets={"train": train_dataset, "eval": eval_dataset},
+  )
+
+  # Step 2: Set up Ray Tuner to run 1000 trials.
+  tuner = tune.Tuner(
+      trainer=trainer,
+      param_space=hyper_param_space,
+      tune_config=tune.TuneConfig(num_samples=1000),
+  )
+
+  # Step 3: Run distributed HPO with 1000 trials; each trial runs on 64 CPUs.
+  result_grid = tuner.fit()
+          ''') }}
+            <div class="tab-pane-links">
+              <a href="{{ pathto('tune/index') }}" target="_blank">Learn more about Ray Tune</a>
+              <a href="{{ pathto('tune/examples/index') }}" target="_blank">Examples</a>
+            </div>
+          </div>
+
+          <!-- prettier-ignore -->
+          <div class="tab-pane fade no-copybutton" id="v-pills-serving">
+          {{ pygments_highlight_python('''
+  from io import BytesIO
+  from fastapi import FastAPI
+  from fastapi.responses import Response
+  import torch
+
+  from ray import serve
+  from ray.serve.handle import DeploymentHandle
+
+
+  app = FastAPI()
+
+
+  @serve.deployment(num_replicas=1)
+  @serve.ingress(app)
+  class APIIngress:
+      def __init__(self, diffusion_model_handle: DeploymentHandle) -> None:
+          self.handle = diffusion_model_handle
+
+      @app.get(
+          "/imagine",
+          responses={200: {"content": {"image/png": {}}}},
+          response_class=Response,
+      )
+      async def generate(self, prompt: str, img_size: int = 512):
+          assert len(prompt), "prompt parameter cannot be empty"
+
+          image = await self.handle.generate.remote(prompt, img_size=img_size)
+          file_stream = BytesIO()
+          image.save(file_stream, "PNG")
+          return Response(content=file_stream.getvalue(), media_type="image/png")
+
+
+  @serve.deployment(
+      ray_actor_options={"num_gpus": 1},
+      autoscaling_config={"min_replicas": 0, "max_replicas": 2},
+  )
+  class StableDiffusionV2:
+      def __init__(self):
+          from diffusers import EulerDiscreteScheduler, StableDiffusionPipeline
+
+          model_id = "stabilityai/stable-diffusion-2"
+
+          scheduler = EulerDiscreteScheduler.from_pretrained(
+              model_id, subfolder="scheduler"
+          )
+          self.pipe = StableDiffusionPipeline.from_pretrained(
+              model_id, scheduler=scheduler, revision="fp16", torch_dtype=torch.float16
+          )
+          self.pipe = self.pipe.to("cuda")
+
+      def generate(self, prompt: str, img_size: int = 512):
+          assert len(prompt), "prompt parameter cannot be empty"
+
+          with torch.autocast("cuda"):
+              image = self.pipe(prompt, height=img_size, width=img_size).images[0]
+              return image
+
+
+  entrypoint = APIIngress.bind(StableDiffusionV2.bind())
+          ''') }}
+            <div class="tab-pane-links">
+              <a href="{{ pathto('serve/index') }}" target="_blank">Learn more about Ray Serve</a>
+              <a href="{{ pathto('serve/examples') }}" target="_blank">Examples</a>
+            </div>
+          </div>
+          <!-- prettier-ignore -->
+
+          <div class="tab-pane fade no-copybutton" id="v-pills-rl">
+          {{ pygments_highlight_python('''
+  from ray.rllib.algorithms.ppo import PPOConfig
+
+  # Step 1: Configure PPO to run 64 parallel workers to collect samples from the env.
+  ppo_config = (
+      PPOConfig()
+      .environment(env="Taxi-v3")
+      .rollouts(num_rollout_workers=64)
+      .framework("torch")
+      .training(model=rnn_lage)
+  )
+
+  # Step 2: Build the PPO algorithm.
+  ppo_algo = ppo_config.build()
+
+  # Step 3: Train and evaluate PPO.
+  for _ in range(5):
+      print(ppo_algo.train())
+
+  ppo_algo.evaluate()
+          ''') }}
+            <div class="tab-pane-links">
+              <a href="{{ pathto('rllib/index') }}" target="_blank">Learn more about Ray RLlib</a>
+              <a href="{{ pathto('rllib/rllib-examples') }}" target="_blank">Examples</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card-area">
+    <h3>Beyond the basics</h3>
+    <div class="card-row">
+      <div class="link-card">
+        <div class="link-card-icon-label">
+          <div class="card-icon">
+            <svg
+              width="32"
+              height="32"
+              viewBox="0 0 32 32"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <g clip-path="url(#clip0_129_1153)">
+                <path
+                  d="M28 7H4C3.44772 7 3 7.44772 3 8V11C3 11.5523 3.44772 12 4 12H28C28.5523 12 29 11.5523 29 11V8C29 7.44772 28.5523 7 28 7Z"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+                <path
+                  d="M27 12V24C27 24.2652 26.8946 24.5196 26.7071 24.7071C26.5196 24.8946 26.2652 25 26 25H6C5.73478 25 5.48043 24.8946 5.29289 24.7071C5.10536 24.5196 5 24.2652 5 24V12"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+                <path
+                  d="M13 17H19"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </g>
+              <defs>
+                <clipPath id="clip0_129_1153">
+                  <rect width="32" height="32" fill="white" />
+                </clipPath>
+              </defs>
+            </svg>
+          </div>
+          <h4>Ray Libraries</h4>
+        </div>
+        <div class="card-text-area">
+          <p>
+            Scale the entire ML pipeline from data ingest to model serving with
+            high-level Python APIs that integrate with popular ecosystem
+            frameworks.
+          </p>
+          <a
+            href="{{ pathto('ray-overview/getting-started') }}"
+            target="_blank"
+          >
+            Learn more
+          </a>
+        </div>
+      </div>
+
+      <div class="link-card">
+        <div class="link-card-icon-label">
+          <div class="card-icon">
+            <svg
+              width="32"
+              height="32"
+              viewBox="0 0 32 32"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <g clip-path="url(#clip0_129_1163)">
+                <path
+                  d="M13.0003 15.8675C12.2009 14.4208 11.8692 12.762 12.0509 11.1192C12.2325 9.47632 12.9185 7.93006 14.0147 6.69294C15.1108 5.45582 16.5632 4.58859 18.1722 4.21046C19.7812 3.83233 21.4679 3.96186 23.0003 4.58125L18.0003 10L18.7078 13.2925L22.0003 14L27.4191 9C28.0385 10.5324 28.168 12.2191 27.7899 13.8281C27.4117 15.4371 26.5445 16.8895 25.3074 17.9857C24.0703 19.0818 22.524 19.7678 20.8811 19.9495C19.2383 20.1311 17.5795 19.7994 16.1328 19L9.12532 27.125C8.56174 27.6886 7.79735 28.0052 7.00032 28.0052C6.20329 28.0052 5.43891 27.6886 4.87532 27.125C4.31174 26.5614 3.99512 25.797 3.99512 25C3.99512 24.203 4.31174 23.4386 4.87532 22.875L13.0003 15.8675Z"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </g>
+              <defs>
+                <clipPath id="clip0_129_1163">
+                  <rect width="32" height="32" fill="white" />
+                </clipPath>
+              </defs>
+            </svg>
+          </div>
+          <h4>Ray Core</h4>
+        </div>
+        <div class="card-text-area">
+          <p>
+            Scale generic Python code with simple, foundational primitives that
+            enable a high degree of control for building distributed
+            applications or custom platforms.
+          </p>
+          <a href="{{ pathto('ray-core/walkthrough') }}" target="_blank">
+            Learn more
+          </a>
+        </div>
+      </div>
+
+      <div class="link-card">
+        <div class="link-card-icon-label">
+          <div class="card-icon">
+            <svg
+              width="32"
+              height="32"
+              viewBox="0 0 32 32"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <g clip-path="url(#clip0_129_1171)">
+                <path
+                  d="M14 23H4C3.46957 23 2.96086 22.7893 2.58579 22.4142C2.21071 22.0391 2 21.5304 2 21V12C2 11.4696 2.21071 10.9609 2.58579 10.5858C2.96086 10.2107 3.46957 10 4 10H14"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+                <path
+                  d="M14 27H8"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+                <path
+                  d="M26 9H22"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+                <path
+                  d="M26 13H22"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+                <path
+                  d="M29 5H19C18.4477 5 18 5.44772 18 6V26C18 26.5523 18.4477 27 19 27H29C29.5523 27 30 26.5523 30 26V6C30 5.44772 29.5523 5 29 5Z"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+                <path
+                  d="M11 23V27"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+                <path
+                  id="link-card-icon-filled"
+                  d="M24 24C24.8284 24 25.5 23.3284 25.5 22.5C25.5 21.6716 24.8284 21 24 21C23.1716 21 22.5 21.6716 22.5 22.5C22.5 23.3284 23.1716 24 24 24Z"
+                />
+              </g>
+              <defs>
+                <clipPath id="clip0_129_1171">
+                  <rect width="32" height="32" fill="white" />
+                </clipPath>
+              </defs>
+            </svg>
+          </div>
+          <h4>Ray Clusters</h4>
+        </div>
+        <div class="card-text-area">
+          <p>
+            Deploy a Ray cluster on AWS, GCP, Azure, or Kubernetes 
+            to seamlessly scale workloads for production.
+          </p>
+          <a href="{{ pathto('cluster/getting-started') }}" target="_blank">
+            Learn more
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="links-grid-wrapper">
+    <h3>Getting involved</h3>
+    <div class="links-grid">
+      <b>Join the community</b>
+      <b>Get support</b>
+      <b>Contribute to Ray</b>
+      <a
+        class="community-box"
+        href="https://www.meetup.com/Bay-Area-Ray-Meetup/"
+        target="_blank"
+      >
+        <i class="ri-team-line"></i>
+        <p>Attend community events</p>
+      </a>
+      <a
+        class="community-box"
+        href="https://docs.google.com/forms/d/e/1FAIpQLSfAcoiLCHOguOm8e7Jnn-JJdZaCxPGjgVCvFijHB5PLaQLeig/viewform"
+        target="_blank"
+      >
+        <i class="ri-slack-line"></i>
+        <p>Find community on Slack</p>
+      </a>
+      <a
+        class="community-box"
+        href="./ray-contribute/getting-involved.html"
+        target="_blank"
+      >
+        <i class="ri-send-plane-2-line"></i>
+        <p>Contributor's guide</p>
+      </a>
+
+      <a
+        class="community-box"
+        href="https://share.hsforms.com/1Ee3Gh8c9TY69ZQib-yZJvgc7w85"
+        target="_blank"
+      >
+        <i class="ri-send-plane-2-line"></i>
+        <p>Subscribe to the newsletter</p>
+      </a>
+      <a class="community-box" href="https://discuss.ray.io/" target="_blank">
+        <i class="ri-chat-4-line"></i>
+        <p>Ask questions on the forum</p>
+      </a>
+      <a
+        class="community-box"
+        href="https://github.com/ray-project/ray/pulls"
+        target="_blank"
+      >
+        <i class="ri-github-line"></i>
+        <p>Create pull requests</p>
+      </a>
+
+      <a
+        class="community-box"
+        href="https://twitter.com/raydistributed"
+        target="_blank"
+      >
+        <i class="ri-twitter-line"></i>
+        <p>Follow us on Twitter</p>
+      </a>
+      <a
+        class="community-box"
+        href="https://github.com/ray-project/ray/issues/new/choose"
+        target="_blank"
+      >
+        <i class="ri-github-line"></i>
+        <p>Open an issue</p>
+      </a>
+    </div>
+  </div>
+</div>
+
+{{ super() }} {% endblock %}

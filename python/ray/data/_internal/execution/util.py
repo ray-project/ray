@@ -34,13 +34,16 @@ def make_ref_bundles(simple_data: List[List[Any]]) -> List["RefBundle"]:
     return output
 
 
-def memory_string(num_bytes: int) -> str:
+memory_units = ["B", "KB", "MB", "GB", "TB", "PB"]
+
+
+def memory_string(num_bytes: float) -> str:
     """Return a human-readable memory string for the given amount of bytes."""
-    if num_bytes >= 1024 * 1024 * 1024:
-        mem = str(round(num_bytes / (1024 * 1024 * 1024), 2)) + " GiB"
-    else:
-        mem = str(round(num_bytes / (1024 * 1024), 2)) + " MiB"
-    return mem
+    k = 0
+    while num_bytes >= 1024 and k < len(memory_units) - 1:
+        num_bytes /= 1024
+        k += 1
+    return f"{num_bytes:.1f}{memory_units[k]}"
 
 
 def locality_string(locality_hits: int, locality_misses) -> str:

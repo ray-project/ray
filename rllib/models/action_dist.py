@@ -5,11 +5,11 @@ import tree  # pip install dm_tree
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.spaces.space_utils import flatten_space
-from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils.annotations import override, OldAPIStack
 from ray.rllib.utils.typing import TensorType, List, Tuple, Union, ModelConfigDict
 
 
-@DeveloperAPI
+@OldAPIStack
 class ActionDistribution:
     """The policy action distribution of an agent.
 
@@ -20,7 +20,6 @@ class ActionDistribution:
 
     framework: str
 
-    @DeveloperAPI
     def __init__(self, inputs: List[TensorType], model: ModelV2):
         """Initializes an ActionDist object.
 
@@ -34,12 +33,10 @@ class ActionDistribution:
         self.inputs = inputs
         self.model = model
 
-    @DeveloperAPI
     def sample(self) -> TensorType:
         """Draw a sample from the action distribution."""
         raise NotImplementedError
 
-    @DeveloperAPI
     def deterministic_sample(self) -> TensorType:
         """
         Get the deterministic "sampling" output from the distribution.
@@ -48,22 +45,18 @@ class ActionDistribution:
         """
         raise NotImplementedError
 
-    @DeveloperAPI
     def sampled_action_logp(self) -> TensorType:
         """Returns the log probability of the last sampled action."""
         raise NotImplementedError
 
-    @DeveloperAPI
     def logp(self, x: TensorType) -> TensorType:
         """The log-likelihood of the action distribution."""
         raise NotImplementedError
 
-    @DeveloperAPI
     def kl(self, other: "ActionDistribution") -> TensorType:
         """The KL-divergence between two action distributions."""
         raise NotImplementedError
 
-    @DeveloperAPI
     def entropy(self) -> TensorType:
         """The entropy of the action distribution."""
         raise NotImplementedError
@@ -85,7 +78,7 @@ class ActionDistribution:
         return self.entropy()
 
     @classmethod
-    @DeveloperAPI
+    @OldAPIStack
     def required_model_output_shape(
         cls, action_space: gym.Space, model_config: ModelConfigDict
     ) -> Union[int, np.ndarray]:
@@ -106,7 +99,7 @@ class ActionDistribution:
         raise NotImplementedError
 
 
-@DeveloperAPI
+@OldAPIStack
 class MultiActionDistributionMixIn(ActionDistribution):
     """Action distribution that operates on multiple, possibly nested actions."""
 

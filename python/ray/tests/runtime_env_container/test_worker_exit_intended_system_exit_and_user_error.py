@@ -5,13 +5,13 @@ import argparse
 import ray
 from ray._private.state_api_test_utils import verify_failed_task
 from ray.util.state import list_workers
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_condition, get_ray_default_worker_file_path
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--image", type=str, help="The docker image to use for Ray worker")
 args = parser.parse_args()
-worker_pth = "/home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/workers/default_worker.py"  # noqa
+worker_pth = get_ray_default_worker_file_path()
 
 
 ray.init(num_cpus=1)

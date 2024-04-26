@@ -9,15 +9,11 @@ See `appo_[tf|torch]_policy.py` for the definition of the policy loss.
 Detailed documentation:
 https://docs.ray.io/en/master/rllib-algorithms.html#appo
 """
-import dataclasses
+
 from typing import Optional, Type
 import logging
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.algorithms.appo.appo_learner import (
-    AppoLearnerHyperparameters,
-    LEARNER_RESULTS_KL_KEY,
-)
 from ray.rllib.algorithms.impala.impala import Impala, ImpalaConfig
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.policy import Policy
@@ -36,6 +32,12 @@ from ray.rllib.utils.typing import (
 logger = logging.getLogger(__name__)
 
 
+LEARNER_RESULTS_KL_KEY = "mean_kl_loss"
+LEARNER_RESULTS_CURR_KL_COEFF_KEY = "curr_kl_coeff"
+OLD_ACTION_DIST_KEY = "old_action_dist"
+OLD_ACTION_DIST_LOGITS_KEY = "old_action_dist_logits"
+
+
 class APPOConfig(ImpalaConfig):
     """Defines a configuration class from which an APPO Algorithm can be built.
 
@@ -44,7 +46,7 @@ class APPOConfig(ImpalaConfig):
         from ray.rllib.algorithms.appo import APPOConfig
         config = APPOConfig().training(lr=0.01, grad_clip=30.0, train_batch_size=50)
         config = config.resources(num_gpus=0)
-        config = config.rollouts(num_rollout_workers=1)
+        config = config.env_runners(num_env_runners=1)
         config = config.environment("CartPole-v1")
 
         # Build an Algorithm object from the config and run 1 training iteration.
@@ -97,7 +99,7 @@ class APPOConfig(ImpalaConfig):
         self.kl_target = 0.01
 
         # Override some of ImpalaConfig's default values with APPO-specific values.
-        self.num_rollout_workers = 2
+        self.num_env_runners = 2
         self.rollout_fragment_length = 50
         self.train_batch_size = 500
         self.min_time_s_per_iteration = 10
@@ -255,20 +257,10 @@ class APPOConfig(ImpalaConfig):
 
         return SingleAgentRLModuleSpec(module_class=RLModule, catalog_class=APPOCatalog)
 
-    @override(ImpalaConfig)
-    def get_learner_hyperparameters(self) -> AppoLearnerHyperparameters:
-        base_hps = super().get_learner_hyperparameters()
-        return AppoLearnerHyperparameters(
-            use_kl_loss=self.use_kl_loss,
-            kl_target=self.kl_target,
-            kl_coeff=self.kl_coeff,
-            clip_param=self.clip_param,
-            tau=self.tau,
-            target_update_frequency_ts=(
-                self.train_batch_size * self.num_sgd_iter * self.target_update_frequency
-            ),
-            **dataclasses.asdict(base_hps),
-        )
+    @property
+    @override(AlgorithmConfig)
+    def _model_config_auto_includes(self):
+        return super()._model_config_auto_includes | {"vf_share_layers": False}
 
 
 class APPO(Impala):
@@ -278,8 +270,8 @@ class APPO(Impala):
 
         # After init: Initialize target net.
 
-        # TODO(avnishn):
-        # does this need to happen in __init__? I think we can move it to setup()
+        # TODO(avnishn): Does this need to happen in __init__? I think we can move it
+        #  to setup()
         if not self.config._enable_new_api_stack:
             self.workers.local_worker().foreach_policy_to_train(
                 lambda p, _: p.update_target()
@@ -307,9 +299,11 @@ class APPO(Impala):
         else:
             last_update = self._counters[LAST_TARGET_UPDATE_TS]
             cur_ts = self._counters[
-                NUM_AGENT_STEPS_SAMPLED
-                if self.config.count_steps_by == "agent_steps"
-                else NUM_ENV_STEPS_SAMPLED
+                (
+                    NUM_AGENT_STEPS_SAMPLED
+                    if self.config.count_steps_by == "agent_steps"
+                    else NUM_ENV_STEPS_SAMPLED
+                )
             ]
             target_update_freq = (
                 self.config.num_sgd_iter * self.config.minibatch_buffer_size

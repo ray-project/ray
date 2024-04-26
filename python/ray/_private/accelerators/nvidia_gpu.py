@@ -2,7 +2,6 @@ import re
 import os
 import logging
 from typing import Optional, List, Tuple
-import ray._private.thirdparty.pynvml as pynvml
 
 from ray._private.accelerators.accelerator import AcceleratorManager
 
@@ -45,6 +44,8 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
 
     @staticmethod
     def get_current_node_num_accelerators() -> int:
+        import ray._private.thirdparty.pynvml as pynvml
+
         try:
             pynvml.nvmlInit()
         except pynvml.NVMLError:
@@ -55,6 +56,8 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
 
     @staticmethod
     def get_current_node_accelerator_type() -> Optional[str]:
+        import ray._private.thirdparty.pynvml as pynvml
+
         try:
             pynvml.nvmlInit()
         except pynvml.NVMLError:
@@ -63,10 +66,11 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
         cuda_device_type = None
         if device_count > 0:
             handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+            device_name = pynvml.nvmlDeviceGetName(handle)
+            if isinstance(device_name, bytes):
+                device_name = device_name.decode("utf-8")
             cuda_device_type = (
-                NvidiaGPUAcceleratorManager._gpu_name_to_accelerator_type(
-                    pynvml.nvmlDeviceGetName(handle)
-                )
+                NvidiaGPUAcceleratorManager._gpu_name_to_accelerator_type(device_name)
             )
         pynvml.nvmlShutdown()
         return cuda_device_type

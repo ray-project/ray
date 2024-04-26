@@ -8,8 +8,7 @@ With this guide, you can:
 * Independently scale and configure each of your ML models and business logic steps
 
 :::{note}
-{mod}`DeploymentHandle <ray.serve.handle.DeploymentHandle>` is now the default handle API.
-You can continue using the legacy `RayServeHandle` and `RayServeSyncHandle` APIs using `handle.options(use_new_handle_api=False)` or `export RAY_SERVE_ENABLE_NEW_HANDLE_API=0`, but this support will be removed in a future version.
+The deprecated `RayServeHandle` and `RayServeSyncHandle` APIs have been fully removed as of Ray 2.10.
 :::
 
 ## Compose deployments using DeploymentHandles
@@ -36,9 +35,9 @@ This example has two deployments:
 :linenos: true
 ```
 
-In line 44, the `LanguageClassifier` deployment takes in the `spanish_responder` and `french_responder` as constructor arguments. At runtime, Ray Serve converts these arguments into `DeploymentHandles`. `LanguageClassifier` can then call the `spanish_responder` and `french_responder`'s deployment methods using this handle.
+In line 42, the `LanguageClassifier` deployment takes in the `spanish_responder` and `french_responder` as constructor arguments. At runtime, Ray Serve converts these arguments into `DeploymentHandles`. `LanguageClassifier` can then call the `spanish_responder` and `french_responder`'s deployment methods using this handle.
 
-For example, the `LanguageClassifier`'s `__call__` method uses the HTTP request's values to decide whether to respond in Spanish or French. It then forwards the request's name to the `spanish_responder` or the `french_responder` on lines 20 and 23 using the `DeploymentHandle`s. The format of the calls is as follows:
+For example, the `LanguageClassifier`'s `__call__` method uses the HTTP request's values to decide whether to respond in Spanish or French. It then forwards the request's name to the `spanish_responder` or the `french_responder` on lines 19 and 21 using the `DeploymentHandle`s. The format of the calls is as follows:
 
 ```python
 response: DeploymentResponse = self.spanish_responder.say_hello.remote(name)
@@ -54,7 +53,7 @@ This call returns a `DeploymentResponse` object, which is a reference to the res
 This pattern allows the call to execute asynchronously.
 To get the actual result, `await` the response.
 `await` blocks until the asynchronous call executes and then returns the result.
-In this example, line 23 calls `await response` and returns the resulting string.
+In this example, line 25 calls `await response` and returns the resulting string.
 
 (serve-model-composition-await-warning)=
 :::{warning}

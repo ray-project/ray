@@ -66,7 +66,7 @@ def test_auto_transfer_data_from_host_to_device(
 
 def test_auto_transfer_correct_device(ray_start_4_cpus_2_gpus):
     """Tests that auto_transfer uses the right device for the cuda stream."""
-    import pynvml
+    import ray._private.thirdparty.pynvml as pynvml
 
     pynvml.nvmlInit()
 

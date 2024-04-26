@@ -23,6 +23,7 @@ from ray.data._internal.numpy_support import (
     convert_udf_returns_to_numpy,
     is_valid_udf_return,
 )
+from ray.data._internal.row import TableRow
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
 from ray.data._internal.util import _truncated_repr, find_partitions
 from ray.data.block import (
@@ -34,7 +35,6 @@ from ray.data.block import (
     U,
 )
 from ray.data.context import DataContext
-from ray.data.row import TableRow
 
 try:
     import pyarrow
@@ -45,7 +45,7 @@ except ImportError:
 if TYPE_CHECKING:
     import pandas
 
-    from ray.data._internal.sort import SortKey
+    from ray.data._internal.planner.exchange.sort_task_spec import SortKey
     from ray.data.aggregate import AggregateFn
 
 
@@ -140,7 +140,7 @@ class ArrowBlockBuilder(TableBlockBuilder):
             ):
                 from ray.data.extensions.tensor_extension import ArrowTensorArray
 
-                columns[col_name] = ArrowTensorArray.from_numpy(col)
+                columns[col_name] = ArrowTensorArray.from_numpy(col, col_name)
         return pyarrow.Table.from_pydict(columns)
 
     @staticmethod
@@ -207,7 +207,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
             col = convert_udf_returns_to_numpy(col)
             # Use Arrow's native *List types for 1-dimensional ndarrays.
             if col.dtype.type is np.object_ or col.ndim > 1:
-                col = ArrowTensorArray.from_numpy(col)
+                col = ArrowTensorArray.from_numpy(col, col_name)
             new_batch[col_name] = col
         return pa.Table.from_pydict(new_batch)
 
@@ -247,6 +247,10 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return view
 
     def random_shuffle(self, random_seed: Optional[int]) -> "pyarrow.Table":
+        # TODO(swang): Creating this np.array index can add a lot of memory
+        # pressure when there are a large number of small rows. Investigate
+        # random shuffling in place to reduce memory pressure.
+        # See https://github.com/ray-project/ray/issues/42146.
         random = np.random.RandomState(random_seed)
         return self.take(random.permutation(self.num_rows()))
 
@@ -556,6 +560,8 @@ class ArrowBlockAccessor(TableBlockAccessor):
         if len(blocks) == 0:
             ret = ArrowBlockAccessor._empty_table()
         else:
+            # Handle blocks of different types.
+            blocks = TableBlockAccessor.normalize_block_types(blocks, "arrow")
             concat_and_sort = get_concat_and_sort_transform(DataContext.get_current())
             ret = concat_and_sort(blocks, sort_key)
         return ret, ArrowBlockAccessor(ret).get_metadata(None, exec_stats=stats.build())
@@ -595,6 +601,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
             if key is not None
             else (lambda r: (0,))
         )
+
+        # Handle blocks of different types.
+        blocks = TableBlockAccessor.normalize_block_types(blocks, "arrow")
 
         iter = heapq.merge(
             *[
