@@ -59,7 +59,7 @@ config = (
         env_config={"parrot_shriek_range": gym.spaces.Box(-5.0, 5.0, (1,))},
     )
     # Parallelize environment rollouts.
-    .rollouts(num_rollout_workers=3)
+    .env_runners(num_rollout_workers=3)
 )
 algo = config.build()
 

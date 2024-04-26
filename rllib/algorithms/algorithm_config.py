@@ -39,7 +39,6 @@ from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import deep_update, merge_dicts
 from ray.rllib.utils.annotations import (
-    ExperimentalAPI,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.deprecation import (
@@ -130,7 +129,7 @@ class AlgorithmConfig(_Config):
         config = (PPOConfig().training(gamma=0.9, lr=0.01)
                 .environment(env="CartPole-v1")
                 .resources(num_gpus=0)
-                .rollouts(num_rollout_workers=0)
+                .env_runners(num_env_runners=0)
                 .callbacks(MemoryTrackingCallbacks)
             )
         # A config object can be used to construct the respective Algorithm.
@@ -223,7 +222,7 @@ class AlgorithmConfig(_Config):
             config = (
                 PPOConfig()
                 .evaluation(
-                    evaluation_num_workers=1,
+                    evaluation_num_env_runners=1,
                     evaluation_interval=1,
                     evaluation_config=AlgorithmConfig.overrides(explore=False),
                 )
@@ -250,7 +249,14 @@ class AlgorithmConfig(_Config):
 
         return config_overrides
 
-    def __init__(self, algo_class=None):
+    def __init__(self, algo_class: Optional[type] = None):
+        """Initializes an AlgorithmConfig instance.
+
+        Args:
+            algo_class: An optional Algorithm class that this config class belongs to.
+                Used (if provided) to build a respective Algorithm instance from this
+                config.
+        """
         # Define all settings and their default values.
 
         # Define the default RLlib Algorithm class that this AlgorithmConfig will be
@@ -318,22 +324,20 @@ class AlgorithmConfig(_Config):
         self.env_config = {}
         self.observation_space = None
         self.action_space = None
-        self.env_task_fn = None
-        self.render_env = False
         self.clip_rewards = None
         self.normalize_actions = True
         self.clip_actions = False
-        self.action_mask_key = "action_mask"
-        # Whether this env is an atari env (for atari-specific preprocessing).
-        # If not specified, we will try to auto-detect this.
         self._is_atari = None
+        # Deprecated settings:
+        self.env_task_fn = None
+        self.render_env = False
+        self.action_mask_key = "action_mask"
 
-        # TODO (sven): Rename this method into `AlgorithmConfig.sampling()`
-        # `self.rollouts()`
+        # `self.env_runners()`
         self.env_runner_cls = None
-        # TODO (sven): Rename into `num_env_runner_workers`.
-        self.num_rollout_workers = 0
-        self.num_envs_per_worker = 1
+        self.num_env_runners = 0
+        self.num_envs_per_env_runner = 1
+        self.validate_env_runners_after_construction = True
         self.sample_timeout_s = 60.0
         self.create_env_on_local_worker = False
         self._env_to_module_connector = None
@@ -347,16 +351,8 @@ class AlgorithmConfig(_Config):
         self.rollout_fragment_length = 200
         # TODO (sven): Rename into `sample_mode`.
         self.batch_mode = "truncate_episodes"
-        # TODO (sven): Rename into `validate_env_runner_workers_after_construction`.
-        self.validate_workers_after_construction = True
         self.compress_observations = False
-        # TODO (sven): Rename into `env_runner_perf_stats_ema_coef`.
-        self.sampler_perf_stats_ema_coef = None
-        # TODO (sven): Deprecate this setting. Connectors should always be enabled
-        #  on new stack.
-        self.enable_connectors = True
-
-        # TODO (sven): Deprecate together with old API stack.
+        # @OldAPIStack
         self.remote_worker_envs = False
         self.remote_env_batch_wait_ms = 0
         self.enable_tf1_exec_eagerly = False
@@ -365,7 +361,8 @@ class AlgorithmConfig(_Config):
         self.observation_filter = "NoFilter"
         self.update_worker_filter_stats = True
         self.use_worker_filter_stats = True
-        # TODO (sven): End: deprecate.
+        self.enable_connectors = True
+        self.sampler_perf_stats_ema_coef = None
 
         # `self.training()`
         self.gamma = 0.99
@@ -413,6 +410,11 @@ class AlgorithmConfig(_Config):
         # Cached, actual AlgorithmConfig objects derived from
         # `self.algorithm_config_overrides_per_module`.
         self._per_module_overrides: Dict[ModuleID, "AlgorithmConfig"] = {}
+        # TODO (sven): Prepare multi-agent setup for logging each agent's and each
+        #  RLModule's steps taken thus far (and passing this information into the
+        #  EnvRunner metrics and the RLModule's forward pass). Thereby, deprecate the
+        #  `count_steps_by` config setting AND - at the same time - allow users to
+        #  specify the batch size unit instead (agent- vs env steps).
         self.count_steps_by = "env_steps"
         # self.agent_to_module_mapping_fn = self.DEFAULT_AGENT_TO_MODULE_MAPPING_FN
         # Soon to be Deprecated.
@@ -445,7 +447,7 @@ class AlgorithmConfig(_Config):
         self.evaluation_config = None
         self.off_policy_estimation_methods = {}
         self.ope_split_batch_by_episode = True
-        self.evaluation_num_workers = 0
+        self.evaluation_num_env_runners = 0
         self.custom_evaluation_function = None
         self.always_attach_evaluation_results = True
         # TODO: Set this flag still in the config or - much better - in the
@@ -484,24 +486,24 @@ class AlgorithmConfig(_Config):
         self._evaluation_parallel_to_training_wo_thread = False
 
         # `self.fault_tolerance()`
-        self.ignore_worker_failures = False
-        self.recreate_failed_workers = False
-        # By default restart failed worker a thousand times.
+        self.ignore_env_runner_failures = False
+        self.recreate_failed_env_runners = False
+        # By default, restart failed worker a thousand times.
         # This should be enough to handle normal transient failures.
         # This also prevents infinite number of restarts in case
         # the worker or env has a bug.
-        self.max_num_worker_restarts = 1000
+        self.max_num_env_runner_restarts = 1000
         # Small delay between worker restarts. In case rollout or
         # evaluation workers have remote dependencies, this delay can be
         # adjusted to make sure we don't flood them with re-connection
         # requests, and allow them enough time to recover.
         # This delay also gives Ray time to stream back error logging
         # and exceptions.
-        self.delay_between_worker_restarts_s = 60.0
+        self.delay_between_env_runner_restarts_s = 60.0
         self.restart_failed_sub_environments = False
-        self.num_consecutive_worker_failures_tolerance = 100
-        self.worker_health_probe_timeout_s = 60
-        self.worker_restore_timeout_s = 1800
+        self.num_consecutive_env_runner_failures_tolerance = 100
+        self.env_runner_health_probe_timeout_s = 60
+        self.env_runner_restore_timeout_s = 1800
 
         # `self.rl_module()`
         self._model_config_dict = {}
@@ -523,6 +525,7 @@ class AlgorithmConfig(_Config):
         # TODO: Remove, once all deprecation_warning calls upon using these keys
         #  have been removed.
         # === Deprecated keys ===
+        self.evaluation_num_workers = DEPRECATED_VALUE
         self.simple_optimizer = DEPRECATED_VALUE
         self.monitor = DEPRECATED_VALUE
         self.evaluation_num_episodes = DEPRECATED_VALUE
@@ -603,7 +606,9 @@ class AlgorithmConfig(_Config):
         config["custom_eval_function"] = config.pop("custom_evaluation_function", None)
         config["framework"] = config.pop("framework_str", None)
         config["num_cpus_for_driver"] = config.pop("num_cpus_for_local_worker", 1)
-        config["num_workers"] = config.pop("num_rollout_workers", 0)
+        config["num_workers"] = config.pop(
+            "num_env_runners", config.pop("num_rollout_workers", 0)
+        )
 
         # Simplify: Remove all deprecated keys that have as value `DEPRECATED_VALUE`.
         # These would be useless in the returned dict anyways.
@@ -710,7 +715,7 @@ class AlgorithmConfig(_Config):
                     continue
                 if isinstance(value, dict) and "type" in value:
                     value["type"] = deserialize_type(value["type"])
-                self.exploration(exploration_config=value)
+                self.env_runners(exploration_config=value)
             elif key == "model":
                 # Resolve possible classpath.
                 if isinstance(value, dict) and value.get("custom_model"):
@@ -725,7 +730,7 @@ class AlgorithmConfig(_Config):
             elif key == "sample_collector":
                 # Resolve possible classpath.
                 value = deserialize_type(value)
-                self.rollouts(sample_collector=value)
+                self.env_runners(sample_collector=value)
             # Set the property named `key` to `value`.
             else:
                 setattr(self, key, value)
@@ -881,8 +886,8 @@ class AlgorithmConfig(_Config):
             # Unsupported return value.
             else:
                 raise ValueError(
-                    "`AlgorithmConfig.rollouts(env_to_module_connector=..)` must return"
-                    " a ConnectorV2 object or a list thereof (to be added to a "
+                    "`AlgorithmConfig.env_runners(env_to_module_connector=..)` must "
+                    "return a ConnectorV2 object or a list thereof (to be added to a "
                     f"pipeline)! Your function returned {val_}."
                 )
 
@@ -947,8 +952,8 @@ class AlgorithmConfig(_Config):
             # Unsupported return value.
             else:
                 raise ValueError(
-                    "`AlgorithmConfig.rollouts(module_to_env_connector=..)` must return"
-                    " a ConnectorV2 object or a list thereof (to be added to a "
+                    "`AlgorithmConfig.env_runners(module_to_env_connector=..)` must "
+                    "return a ConnectorV2 object or a list thereof (to be added to a "
                     f"pipeline)! Your function returned {val_}."
                 )
 
@@ -1426,8 +1431,8 @@ class AlgorithmConfig(_Config):
                 gymnasium env, a PyBullet env, or a fully qualified classpath to an Env
                 class, e.g. "ray.rllib.examples.envs.classes.random_env.RandomEnv".
             env_config: Arguments dict passed to the env creator as an EnvContext
-                object (which is a dict plus the properties: num_rollout_workers,
-                worker_index, vector_index, and remote).
+                object (which is a dict plus the properties: `num_env_runners`,
+                `worker_index`, `vector_index`, and `remote`).
             observation_space: The observation space for the Policies of this Algorithm.
             action_space: The action space for the Policies of this Algorithm.
             env_task_fn: A callable taking the last train results, the base env and the
@@ -1435,7 +1440,7 @@ class AlgorithmConfig(_Config):
                 The env must be a `TaskSettableEnv` sub-class for this to work.
                 See `examples/curriculum_learning.py` for an example.
             render_env: If True, try to render the environment on the local worker or on
-                worker 1 (if num_rollout_workers > 0). For vectorized envs, this usually
+                worker 1 (if num_env_runners > 0). For vectorized envs, this usually
                 means that only the first sub-environment will be rendered.
                 In order for this to work, your env will have to implement the
                 `render()` method which either:
@@ -1500,16 +1505,14 @@ class AlgorithmConfig(_Config):
 
         return self
 
-    def rollouts(
+    def env_runners(
         self,
         *,
         env_runner_cls: Optional[type] = NotProvided,
-        num_rollout_workers: Optional[int] = NotProvided,
-        num_envs_per_worker: Optional[int] = NotProvided,
+        num_env_runners: Optional[int] = NotProvided,
+        num_envs_per_env_runner: Optional[int] = NotProvided,
+        validate_env_runners_after_construction: Optional[bool] = NotProvided,
         sample_timeout_s: Optional[float] = NotProvided,
-        create_env_on_local_worker: Optional[bool] = NotProvided,
-        sample_collector: Optional[Type[SampleCollector]] = NotProvided,
-        enable_connectors: Optional[bool] = NotProvided,
         env_to_module_connector: Optional[
             Callable[[EnvType], Union["ConnectorV2", List["ConnectorV2"]]]
         ] = NotProvided,
@@ -1521,16 +1524,25 @@ class AlgorithmConfig(_Config):
         episode_lookback_horizon: Optional[int] = NotProvided,
         use_worker_filter_stats: Optional[bool] = NotProvided,
         update_worker_filter_stats: Optional[bool] = NotProvided,
+        compress_observations: Optional[bool] = NotProvided,
         rollout_fragment_length: Optional[Union[int, str]] = NotProvided,
         batch_mode: Optional[str] = NotProvided,
-        remote_worker_envs: Optional[bool] = NotProvided,
-        remote_env_batch_wait_ms: Optional[float] = NotProvided,
-        validate_workers_after_construction: Optional[bool] = NotProvided,
-        preprocessor_pref: Optional[str] = NotProvided,
-        observation_filter: Optional[str] = NotProvided,
-        compress_observations: Optional[bool] = NotProvided,
-        enable_tf1_exec_eagerly: Optional[bool] = NotProvided,
-        sampler_perf_stats_ema_coef: Optional[float] = NotProvided,
+        explore: Optional[bool] = NotProvided,
+        # @OldAPIStack settings.
+        exploration_config: Optional[dict] = NotProvided,  # @OldAPIStack
+        create_env_on_local_worker: Optional[bool] = NotProvided,  # @OldAPIStack
+        sample_collector: Optional[Type[SampleCollector]] = NotProvided,  # @OldAPIStack
+        enable_connectors: Optional[bool] = NotProvided,  # @OldAPIStack
+        remote_worker_envs: Optional[bool] = NotProvided,  # @OldAPIStack
+        remote_env_batch_wait_ms: Optional[float] = NotProvided,  # @OldAPIStack
+        preprocessor_pref: Optional[str] = NotProvided,  # @OldAPIStack
+        observation_filter: Optional[str] = NotProvided,  # @OldAPIStack
+        enable_tf1_exec_eagerly: Optional[bool] = NotProvided,  # @OldAPIStack
+        sampler_perf_stats_ema_coef: Optional[float] = NotProvided,  # @OldAPIStack
+        # Deprecated args.
+        num_rollout_workers=DEPRECATED_VALUE,
+        num_envs_per_worker=DEPRECATED_VALUE,
+        validate_workers_after_construction=DEPRECATED_VALUE,
         ignore_worker_failures=DEPRECATED_VALUE,
         recreate_failed_workers=DEPRECATED_VALUE,
         restart_failed_sub_environments=DEPRECATED_VALUE,
@@ -1544,13 +1556,13 @@ class AlgorithmConfig(_Config):
         Args:
             env_runner_cls: The EnvRunner class to use for environment rollouts (data
                 collection).
-            num_rollout_workers: Number of rollout worker actors to create for
-                parallel sampling. Setting this to 0 will force rollouts to be done in
-                the local worker (driver process or the Algorithm's actor when using
-                Tune).
-            num_envs_per_worker: Number of environments to evaluate vector-wise per
-                worker. This enables model inference batching, which can improve
-                performance for inference bottlenecked workloads.
+            num_env_runners: Number of EnvRunner actors to create for parallel sampling.
+                Setting this to 0 will force sampling to be done in the local
+                EnvRunner (main process or the Algorithm's actor when using Tune).
+            num_envs_per_env_runner: Number of environments to step through
+                (vector-wise) per EnvRunner. This enables batching when computing
+                actions through RLModule inference, which can improve performance
+                for inference-bottlenecked workloads.
             sample_timeout_s: The timeout in seconds for calling `sample()` on remote
                 EnvRunner workers. Results (episode list) from workers that take longer
                 than this time are discarded. Only used by algorithms that sample
@@ -1561,7 +1573,7 @@ class AlgorithmConfig(_Config):
                 be used to collect and retrieve environment-, model-, and sampler data.
                 Override the SampleCollector base class to implement your own
                 collection/buffering/retrieval logic.
-            create_env_on_local_worker: When `num_rollout_workers` > 0, the driver
+            create_env_on_local_worker: When `num_env_runners` > 0, the driver
                 (local_worker; worker-idx=0) does not need an environment. This is
                 because it doesn't have to sample (done by remote_workers;
                 worker_indices > 0) nor evaluate (done by evaluation workers;
@@ -1642,6 +1654,10 @@ class AlgorithmConfig(_Config):
                 Note that when `num_envs_per_worker > 1`, episode steps will be buffered
                 until the episode completes, and hence batches may contain
                 significant amounts of off-policy data.
+            explore: Default exploration behavior, iff `explore=None` is passed into
+                compute_action(s). Set to False for no exploration behavior (e.g.,
+                for evaluation).
+            exploration_config: A dict specifying the Exploration object's config.
             remote_worker_envs: If using num_envs_per_worker > 1, whether to create
                 those new envs in remote processes instead of in the same worker.
                 This adds overheads, but can make sense if your envs can take much
@@ -1651,8 +1667,8 @@ class AlgorithmConfig(_Config):
                 polling environments. 0 (continue when at least one env is ready) is
                 a reasonable default, but optimal value could be obtained by measuring
                 your environment step / reset and model inference perf.
-            validate_workers_after_construction: Whether to validate that each created
-                remote worker is healthy after its construction process.
+            validate_env_runners_after_construction: Whether to validate that each
+                created remote EnvRunner is healthy after its construction process.
             preprocessor_pref: Whether to use "rllib" or "deepmind" preprocessors by
                 default. Set to None for using no preprocessor. In this case, the
                 model will have to handle possibly complex observations from the
@@ -1673,16 +1689,42 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
+        if num_rollout_workers != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.env_runners(num_rollout_workers)",
+                new="AlgorithmConfig.env_runners(num_env_runners)",
+                error=False,
+            )
+            self.num_env_runners = num_rollout_workers
+        if num_envs_per_worker != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.env_runners(num_envs_per_worker)",
+                new="AlgorithmConfig.env_runners(num_envs_per_env_runner)",
+                error=False,
+            )
+            self.num_envs_per_env_runner = num_envs_per_worker
+        if validate_workers_after_construction != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.env_runners(validate_workers_after_construction)",
+                new="AlgorithmConfig.env_runners(validate_env_runners_after_"
+                "construction)",
+                error=False,
+            )
+            self.validate_env_runners_after_construction = (
+                validate_workers_after_construction
+            )
+
         if env_runner_cls is not NotProvided:
             self.env_runner_cls = env_runner_cls
-        if num_rollout_workers is not NotProvided:
-            self.num_rollout_workers = num_rollout_workers
-        if num_envs_per_worker is not NotProvided:
-            if num_envs_per_worker <= 0:
+        if num_env_runners is not NotProvided:
+            self.num_env_runners = num_env_runners
+        if num_envs_per_env_runner is not NotProvided:
+            if num_envs_per_env_runner <= 0:
                 raise ValueError(
-                    f"`num_envs_per_worker` ({num_envs_per_worker}) must be larger 0!"
+                    f"`num_envs_per_env_runner` ({num_envs_per_env_runner}) must be "
+                    "larger 0!"
                 )
-            self.num_envs_per_worker = num_envs_per_worker
+            self.num_envs_per_env_runner = num_envs_per_env_runner
         if sample_timeout_s is not NotProvided:
             self.sample_timeout_s = sample_timeout_s
         if sample_collector is not NotProvided:
@@ -1726,13 +1768,26 @@ class AlgorithmConfig(_Config):
                     "complete_episodes]!"
                 )
             self.batch_mode = batch_mode
+        if explore is not NotProvided:
+            self.explore = explore
+        if exploration_config is not NotProvided:
+            # Override entire `exploration_config` if `type` key changes.
+            # Update, if `type` key remains the same or is not specified.
+            new_exploration_config = deep_update(
+                {"exploration_config": self.exploration_config},
+                {"exploration_config": exploration_config},
+                False,
+                ["exploration_config"],
+                ["exploration_config"],
+            )
+            self.exploration_config = new_exploration_config["exploration_config"]
         if remote_worker_envs is not NotProvided:
             self.remote_worker_envs = remote_worker_envs
         if remote_env_batch_wait_ms is not NotProvided:
             self.remote_env_batch_wait_ms = remote_env_batch_wait_ms
-        if validate_workers_after_construction is not NotProvided:
-            self.validate_workers_after_construction = (
-                validate_workers_after_construction
+        if validate_env_runners_after_construction is not NotProvided:
+            self.validate_env_runners_after_construction = (
+                validate_env_runners_after_construction
             )
         if preprocessor_pref is not NotProvided:
             self.preprocessor_pref = preprocessor_pref
@@ -1750,63 +1805,54 @@ class AlgorithmConfig(_Config):
         # Deprecated settings.
         if synchronize_filter != DEPRECATED_VALUE:
             deprecation_warning(
-                old="AlgorithmConfig.rollouts(synchronize_filter=..)",
-                new="AlgorithmConfig.rollouts(update_worker_filter_stats=..)",
-                error=False,
+                old="AlgorithmConfig.env_runners(synchronize_filter=..)",
+                new="AlgorithmConfig.env_runners(update_worker_filter_stats=..)",
+                error=True,
             )
-            self.update_worker_filter_stats = synchronize_filter
         if ignore_worker_failures != DEPRECATED_VALUE:
             deprecation_warning(
                 old="ignore_worker_failures is deprecated, and will soon be a no-op",
-                error=False,
+                error=True,
             )
-            self.ignore_worker_failures = ignore_worker_failures
         if recreate_failed_workers != DEPRECATED_VALUE:
             deprecation_warning(
-                old="AlgorithmConfig.rollouts(recreate_failed_workers=..)",
+                old="AlgorithmConfig.env_runners(recreate_failed_workers=..)",
                 new="AlgorithmConfig.fault_tolerance(recreate_failed_workers=..)",
-                error=False,
+                error=True,
             )
-            self.recreate_failed_workers = recreate_failed_workers
         if restart_failed_sub_environments != DEPRECATED_VALUE:
             deprecation_warning(
-                old="AlgorithmConfig.rollouts(restart_failed_sub_environments=..)",
+                old="AlgorithmConfig.env_runners(restart_failed_sub_environments=..)",
                 new=(
                     "AlgorithmConfig.fault_tolerance("
                     "restart_failed_sub_environments=..)"
                 ),
-                error=False,
+                error=True,
             )
-            self.restart_failed_sub_environments = restart_failed_sub_environments
         if num_consecutive_worker_failures_tolerance != DEPRECATED_VALUE:
             deprecation_warning(
                 old=(
-                    "AlgorithmConfig.rollouts("
+                    "AlgorithmConfig.env_runners("
                     "num_consecutive_worker_failures_tolerance=..)"
                 ),
                 new=(
                     "AlgorithmConfig.fault_tolerance("
                     "num_consecutive_worker_failures_tolerance=..)"
                 ),
-                error=False,
-            )
-            self.num_consecutive_worker_failures_tolerance = (
-                num_consecutive_worker_failures_tolerance
+                error=True,
             )
         if worker_health_probe_timeout_s != DEPRECATED_VALUE:
             deprecation_warning(
-                old="AlgorithmConfig.rollouts(worker_health_probe_timeout_s=..)",
+                old="AlgorithmConfig.env_runners(worker_health_probe_timeout_s=..)",
                 new="AlgorithmConfig.fault_tolerance(worker_health_probe_timeout_s=..)",
-                error=False,
+                error=True,
             )
-            self.worker_health_probe_timeout_s = worker_health_probe_timeout_s
         if worker_restore_timeout_s != DEPRECATED_VALUE:
             deprecation_warning(
-                old="AlgorithmConfig.rollouts(worker_restore_timeout_s=..)",
+                old="AlgorithmConfig.env_runners(worker_restore_timeout_s=..)",
                 new="AlgorithmConfig.fault_tolerance(worker_restore_timeout_s=..)",
-                error=False,
+                error=True,
             )
-            self.worker_restore_timeout_s = worker_restore_timeout_s
 
         return self
 
@@ -1827,8 +1873,6 @@ class AlgorithmConfig(_Config):
             Callable[["RLModule"], Union["ConnectorV2", List["ConnectorV2"]]]
         ] = NotProvided,
         add_default_connectors_to_learner_pipeline: Optional[bool] = NotProvided,
-        # Deprecated arg.
-        _enable_learner_api: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the training related configuration.
 
@@ -1958,12 +2002,6 @@ class AlgorithmConfig(_Config):
             self.max_requests_in_flight_per_sampler_worker = (
                 max_requests_in_flight_per_sampler_worker
             )
-        if _enable_learner_api is not NotProvided:
-            deprecation_warning(
-                old="AlgorithmConfig.training(_enable_learner_api=True|False)",
-                new="AlgorithmConfig.experimental(_enable_new_api_stack=True|False)",
-                error=True,
-            )
         if learner_class is not NotProvided:
             self._learner_class = learner_class
         if learner_connector is not NotProvided:
@@ -2000,41 +2038,6 @@ class AlgorithmConfig(_Config):
 
         return self
 
-    # TODO (sven): Deprecate this method. Move `explore` setting into `rollouts()`.
-    #  `exploration_config` should no longer be used on the new API stack.
-    def exploration(
-        self,
-        *,
-        explore: Optional[bool] = NotProvided,
-        exploration_config: Optional[dict] = NotProvided,
-    ) -> "AlgorithmConfig":
-        """Sets the config's exploration settings.
-
-        Args:
-            explore: Default exploration behavior, iff `explore=None` is passed into
-                compute_action(s). Set to False for no exploration behavior (e.g.,
-                for evaluation).
-            exploration_config: A dict specifying the Exploration object's config.
-
-        Returns:
-            This updated AlgorithmConfig object.
-        """
-        if explore is not NotProvided:
-            self.explore = explore
-        if exploration_config is not NotProvided:
-            # Override entire `exploration_config` if `type` key changes.
-            # Update, if `type` key remains the same or is not specified.
-            new_exploration_config = deep_update(
-                {"exploration_config": self.exploration_config},
-                {"exploration_config": exploration_config},
-                False,
-                ["exploration_config"],
-                ["exploration_config"],
-            )
-            self.exploration_config = new_exploration_config["exploration_config"]
-
-        return self
-
     def evaluation(
         self,
         *,
@@ -2049,13 +2052,12 @@ class AlgorithmConfig(_Config):
         ] = NotProvided,
         off_policy_estimation_methods: Optional[Dict] = NotProvided,
         ope_split_batch_by_episode: Optional[bool] = NotProvided,
-        evaluation_num_workers: Optional[int] = NotProvided,
+        evaluation_num_env_runners: Optional[int] = NotProvided,
         custom_evaluation_function: Optional[Callable] = NotProvided,
         always_attach_evaluation_results: Optional[bool] = NotProvided,
         # Deprecated args.
         evaluation_num_episodes=DEPRECATED_VALUE,
-        enable_async_evaluation=DEPRECATED_VALUE,
-        custom_async_evaluation_function=DEPRECATED_VALUE,
+        evaluation_num_workers=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the config's evaluation settings.
 
@@ -2067,8 +2069,8 @@ class AlgorithmConfig(_Config):
                 `evaluation_interval`. The unit for the duration can be set via
                 `evaluation_duration_unit` to either "episodes" (default) or
                 "timesteps". If using multiple evaluation workers (EnvRunners) in the
-                `evaluation_num_workers > 1` setting, the amount of episodes/timesteps
-                to run will be split amongst these.
+                `evaluation_num_env_runners > 1` setting, the amount of
+                episodes/timesteps to run will be split amongst these.
                 A special value of "auto" can be used in case
                 `evaluation_parallel_to_training=True`. This is the recommended way when
                 trying to save as much time on evaluation as possible. The Algorithm
@@ -2127,12 +2129,13 @@ class AlgorithmConfig(_Config):
                 case of bandits you should make this False to see improvements in ope
                 evaluation speed. In case of bandits, it is ok to not split by episode,
                 since each record is one timestep already. The default is True.
-            evaluation_num_workers: Number of parallel workers to use for evaluation.
-                Note that this is set to zero by default, which means evaluation will
-                be run in the algorithm process (only if evaluation_interval is not 0 or
-                None). If you increase this, it will increase the Ray resource usage of
-                the algorithm since evaluation workers are created separately from
-                rollout workers (used to sample data for training).
+            evaluation_num_env_runners: Number of parallel EnvRunners to use for
+                evaluation. Note that this is set to zero by default, which means
+                evaluation will be run in the algorithm process (only if
+                `evaluation_interval` is not 0 or None). If you increase this, it will
+                increase the Ray resource usage of the algorithm since evaluation
+                workers are created separately from those EnvRunners used to sample data
+                for training.
             custom_evaluation_function: Customize the evaluation method. This must be a
                 function of signature (algo: Algorithm, eval_workers: WorkerSet) ->
                 metrics: dict. See the Algorithm.evaluate() method to see the default
@@ -2151,22 +2154,15 @@ class AlgorithmConfig(_Config):
                 old="AlgorithmConfig.evaluation(evaluation_num_episodes=..)",
                 new="AlgorithmConfig.evaluation(evaluation_duration=.., "
                 "evaluation_duration_unit='episodes')",
+                error=True,
+            )
+        if evaluation_num_workers != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.evaluation(evaluation_num_workers=..)",
+                new="AlgorithmConfig.evaluation(evaluation_num_env_runners=..)",
                 error=False,
             )
-            evaluation_duration = evaluation_num_episodes
-        elif enable_async_evaluation != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="AlgorithmConfig.evaluation(enable_async_evaluation=...)",
-                new="AlgorithmConfig.evaluation(evaluation_parallel_to_training=...)",
-                error=True,
-            )
-        elif custom_async_evaluation_function != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="AlgorithmConfig.evaluation(custom_async_evaluation_function=...)",
-                new="AlgorithmConfig.evaluation(evaluation_parallel_to_training=True,"
-                " custom_evaluation_function=...)",
-                error=True,
-            )
+            self.evaluation_num_env_runners = evaluation_num_workers
 
         if evaluation_interval is not NotProvided:
             self.evaluation_interval = evaluation_interval
@@ -2201,8 +2197,8 @@ class AlgorithmConfig(_Config):
                 )
         if off_policy_estimation_methods is not NotProvided:
             self.off_policy_estimation_methods = off_policy_estimation_methods
-        if evaluation_num_workers is not NotProvided:
-            self.evaluation_num_workers = evaluation_num_workers
+        if evaluation_num_env_runners is not NotProvided:
+            self.evaluation_num_env_runners = evaluation_num_env_runners
         if custom_evaluation_function is not NotProvided:
             self.custom_evaluation_function = custom_evaluation_function
         if always_attach_evaluation_results is not NotProvided:
@@ -2299,13 +2295,13 @@ class AlgorithmConfig(_Config):
                     raise ValueError(
                         msg.format(
                             "parallelism",
-                            "config.evaluation(evaluation_num_workers=..)",
+                            "config.evaluation(evaluation_num_env_runners=..)",
                         )
                     )
                 else:
                     raise ValueError(
                         msg.format(
-                            "parallelism", "config.rollouts(num_rollout_workers=..)"
+                            "parallelism", "config.env_runners(num_env_runners=..)"
                         )
                     )
             self.input_config = input_config
@@ -2539,7 +2535,7 @@ class AlgorithmConfig(_Config):
         keep_per_episode_custom_metrics: Optional[bool] = NotProvided,
         metrics_episode_collection_timeout_s: Optional[float] = NotProvided,
         metrics_num_episodes_for_smoothing: Optional[int] = NotProvided,
-        min_time_s_per_iteration: Optional[int] = NotProvided,
+        min_time_s_per_iteration: Optional[float] = NotProvided,
         min_train_timesteps_per_iteration: Optional[int] = NotProvided,
         min_sample_timesteps_per_iteration: Optional[int] = NotProvided,
     ) -> "AlgorithmConfig":
@@ -2561,12 +2557,12 @@ class AlgorithmConfig(_Config):
                 meaning don't ever cut any "excess" episodes.
                 Set this to 1 to disable smoothing and to always report only the most
                 recently collected episode's return.
-            min_time_s_per_iteration: Minimum time to accumulate within a single
-                `train()` call. This value does not affect learning,
+            min_time_s_per_iteration: Minimum time (in sec) to accumulate within a
+                single `Algorithm.train()` call. This value does not affect learning,
                 only the number of times `Algorithm.training_step()` is called by
                 `Algorithm.train()`. If - after one such step attempt, the time taken
                 has not reached `min_time_s_per_iteration`, will perform n more
-                `training_step()` calls until the minimum time has been
+                `Algorithm.training_step()` calls until the minimum time has been
                 consumed. Set to 0 or None for no minimum time.
             min_train_timesteps_per_iteration: Minimum training timesteps to accumulate
                 within a single `train()` call. This value does not affect learning,
@@ -2699,68 +2695,119 @@ class AlgorithmConfig(_Config):
 
     def fault_tolerance(
         self,
-        recreate_failed_workers: Optional[bool] = NotProvided,
-        max_num_worker_restarts: Optional[int] = NotProvided,
-        delay_between_worker_restarts_s: Optional[float] = NotProvided,
+        recreate_failed_env_runners: Optional[bool] = NotProvided,
+        max_num_env_runner_restarts: Optional[int] = NotProvided,
+        delay_between_env_runner_restarts_s: Optional[float] = NotProvided,
         restart_failed_sub_environments: Optional[bool] = NotProvided,
-        num_consecutive_worker_failures_tolerance: Optional[int] = NotProvided,
-        worker_health_probe_timeout_s: int = NotProvided,
-        worker_restore_timeout_s: int = NotProvided,
+        num_consecutive_env_runner_failures_tolerance: Optional[int] = NotProvided,
+        env_runner_health_probe_timeout_s: int = NotProvided,
+        env_runner_restore_timeout_s: int = NotProvided,
+        # Deprecated args.
+        recreate_failed_workers=DEPRECATED_VALUE,
+        max_num_worker_restarts=DEPRECATED_VALUE,
+        delay_between_worker_restarts_s=DEPRECATED_VALUE,
+        num_consecutive_worker_failures_tolerance=DEPRECATED_VALUE,
+        worker_health_probe_timeout_s=DEPRECATED_VALUE,
+        worker_restore_timeout_s=DEPRECATED_VALUE,
     ):
         """Sets the config's fault tolerance settings.
 
         Args:
-            recreate_failed_workers: Whether - upon a worker failure - RLlib will try to
-                recreate the lost worker as an identical copy of the failed one. The new
-                worker will only differ from the failed one in its
-                `self.recreated_worker=True` property value. It will have the same
+            recreate_failed_env_runners: Whether - upon an EnvRunner failure - RLlib
+                will try to recreate the lost EnvRunner as an identical copy of the
+                failed one. The new EnvRunner will only differ from the failed one in
+                its `self.recreated_worker=True` property value. It will have the same
                 `worker_index` as the original one. If True, the
-                `ignore_worker_failures` setting will be ignored.
-            max_num_worker_restarts: The maximum number of times a worker is allowed to
-                be restarted (if `recreate_failed_workers` is True).
-            delay_between_worker_restarts_s: The delay (in seconds) between two
-                consecutive worker restarts (if `recreate_failed_workers` is True).
+                `ignore_env_runner_failures` setting will be ignored.
+            max_num_env_runner_restarts: The maximum number of times any EnvRunner
+                is allowed to be restarted (if `recreate_failed_env_runners` is True).
+            delay_between_env_runner_restarts_s: The delay (in seconds) between two
+                consecutive EnvRunner restarts (if `recreate_failed_env_runners` is
+                True).
             restart_failed_sub_environments: If True and any sub-environment (within
                 a vectorized env) throws any error during env stepping, the
                 Sampler will try to restart the faulty sub-environment. This is done
                 without disturbing the other (still intact) sub-environment and without
                 the EnvRunner crashing.
-            num_consecutive_worker_failures_tolerance: The number of consecutive times
-                a rollout worker (or evaluation worker) failure is tolerated before
+            num_consecutive_env_runner_failures_tolerance: The number of consecutive
+                times an EnvRunner failure (also for evaluation) is tolerated before
                 finally crashing the Algorithm. Only useful if either
-                `ignore_worker_failures` or `recreate_failed_workers` is True.
+                `ignore_env_runner_failures` or `recreate_failed_env_runners` is True.
                 Note that for `restart_failed_sub_environments` and sub-environment
-                failures, the worker itself is NOT affected and won't throw any errors
-                as the flawed sub-environment is silently restarted under the hood.
-            worker_health_probe_timeout_s: Max amount of time we should spend waiting
-                for health probe calls to finish. Health pings are very cheap, so the
-                default is 1 minute.
-            worker_restore_timeout_s: Max amount of time we should wait to restore
-                states on recovered worker actors. Default is 30 mins.
+                failures, the EnvRunner itself is NOT affected and won't throw any
+                errors as the flawed sub-environment is silently restarted under the
+                hood.
+            env_runner_health_probe_timeout_s: Max amount of time we should spend
+                waiting for health probe calls to finish. Health pings are very cheap,
+                so the default is 1 minute.
+            env_runner_restore_timeout_s: Max amount of time we should wait to restore
+                states on recovered EnvRunner actors. Default is 30 mins.
 
         Returns:
             This updated AlgorithmConfig object.
         """
-        if recreate_failed_workers is not NotProvided:
-            self.recreate_failed_workers = recreate_failed_workers
-        if max_num_worker_restarts is not NotProvided:
-            self.max_num_worker_restarts = max_num_worker_restarts
-        if delay_between_worker_restarts_s is not NotProvided:
-            self.delay_between_worker_restarts_s = delay_between_worker_restarts_s
+        if recreate_failed_workers != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.fault_tolerance(recreate_failed_workers)",
+                new="AlgorithmConfig.fault_tolerance(recreate_failed_env_runners)",
+                error=True,
+            )
+        if max_num_worker_restarts != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.fault_tolerance(max_num_worker_restarts)",
+                new="AlgorithmConfig.fault_tolerance(max_num_env_runner_restarts)",
+                error=True,
+            )
+        if delay_between_worker_restarts_s != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.fault_tolerance(delay_between_worker_restarts_s)",
+                new="AlgorithmConfig.fault_tolerance(delay_between_env_runner_"
+                "restarts_s)",
+                error=True,
+            )
+        if num_consecutive_worker_failures_tolerance != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.fault_tolerance(num_consecutive_worker_"
+                "failures_tolerance)",
+                new="AlgorithmConfig.fault_tolerance(num_consecutive_env_runner_"
+                "failures_tolerance)",
+                error=True,
+            )
+        if worker_health_probe_timeout_s != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.fault_tolerance(worker_health_probe_timeout_s)",
+                new="AlgorithmConfig.fault_tolerance("
+                "env_runner_health_probe_timeout_s)",
+                error=True,
+            )
+        if worker_restore_timeout_s != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.fault_tolerance(worker_restore_timeout_s)",
+                new="AlgorithmConfig.fault_tolerance(env_runner_restore_timeout_s)",
+                error=True,
+            )
+
+        if recreate_failed_env_runners is not NotProvided:
+            self.recreate_failed_env_runners = recreate_failed_env_runners
+        if max_num_env_runner_restarts is not NotProvided:
+            self.max_num_env_runner_restarts = max_num_env_runner_restarts
+        if delay_between_env_runner_restarts_s is not NotProvided:
+            self.delay_between_env_runner_restarts_s = (
+                delay_between_env_runner_restarts_s
+            )
         if restart_failed_sub_environments is not NotProvided:
             self.restart_failed_sub_environments = restart_failed_sub_environments
-        if num_consecutive_worker_failures_tolerance is not NotProvided:
-            self.num_consecutive_worker_failures_tolerance = (
-                num_consecutive_worker_failures_tolerance
+        if num_consecutive_env_runner_failures_tolerance is not NotProvided:
+            self.num_consecutive_env_runner_failures_tolerance = (
+                num_consecutive_env_runner_failures_tolerance
             )
-        if worker_health_probe_timeout_s is not NotProvided:
-            self.worker_health_probe_timeout_s = worker_health_probe_timeout_s
-        if worker_restore_timeout_s is not NotProvided:
-            self.worker_restore_timeout_s = worker_restore_timeout_s
+        if env_runner_health_probe_timeout_s is not NotProvided:
+            self.env_runner_health_probe_timeout_s = env_runner_health_probe_timeout_s
+        if env_runner_restore_timeout_s is not NotProvided:
+            self.env_runner_restore_timeout_s = env_runner_restore_timeout_s
 
         return self
 
-    @ExperimentalAPI
     def rl_module(
         self,
         *,
@@ -2962,7 +3009,7 @@ class AlgorithmConfig(_Config):
 
         Uses the simple formula:
         `rollout_fragment_length` = `total_train_batch_size` /
-        (`num_envs_per_worker` * `num_rollout_workers`)
+        (`num_envs_per_worker` * `num_env_runners`)
 
         If result is a fraction AND `worker_index` is provided, will make
         those workers add additional timesteps, such that the overall batch size (across
@@ -2984,12 +3031,12 @@ class AlgorithmConfig(_Config):
             # -> 512 / 40 -> 12.8 -> diff=32 (12 * 40 = 480)
             # -> worker 1: 13, workers 2: 12
             rollout_fragment_length = self.total_train_batch_size / (
-                self.num_envs_per_worker * (self.num_rollout_workers or 1)
+                self.num_envs_per_worker * (self.num_env_runners or 1)
             )
             if int(rollout_fragment_length) != rollout_fragment_length:
                 diff = self.total_train_batch_size - int(
                     rollout_fragment_length
-                ) * self.num_envs_per_worker * (self.num_rollout_workers or 1)
+                ) * self.num_envs_per_worker * (self.num_env_runners or 1)
                 if ((worker_index - 1) * self.num_envs_per_worker) >= diff:
                     return int(rollout_fragment_length)
                 else:
@@ -3059,7 +3106,8 @@ class AlgorithmConfig(_Config):
                 if self.evaluation_duration == "auto"
                 else int(
                     math.ceil(
-                        self.evaluation_duration / (self.evaluation_num_workers or 1)
+                        self.evaluation_duration
+                        / (self.evaluation_num_env_runners or 1)
                     )
                 )
             )
@@ -3326,7 +3374,7 @@ class AlgorithmConfig(_Config):
         dependent on rollout_fragment_length (synchronous sampling, on-policy PG algos).
 
         If rollout_fragment_length != "auto", makes sure that the product of
-        `rollout_fragment_length` x `num_rollout_workers` x `num_envs_per_worker`
+        `rollout_fragment_length` x `num_env_runners` x `num_envs_per_worker`
         roughly (10%) matches the provided `train_batch_size`. Otherwise, errors with
         asking the user to set rollout_fragment_length to `auto` or to a matching
         value.
@@ -3344,7 +3392,7 @@ class AlgorithmConfig(_Config):
             and self.total_train_batch_size > 0
         ):
             min_batch_size = (
-                max(self.num_rollout_workers, 1)
+                max(self.num_env_runners, 1)
                 * self.num_envs_per_worker
                 * self.rollout_fragment_length
             )
@@ -3357,14 +3405,14 @@ class AlgorithmConfig(_Config):
                 0.1 * self.total_train_batch_size
             ):
                 suggested_rollout_fragment_length = self.total_train_batch_size // (
-                    self.num_envs_per_worker * (self.num_rollout_workers or 1)
+                    self.num_envs_per_worker * (self.num_env_runners or 1)
                 )
                 raise ValueError(
                     "Your desired `total_train_batch_size` "
                     f"({self.total_train_batch_size}={self.num_learner_workers} "
                     f"learners x {self.train_batch_size_per_learner}) "
                     "or a value 10% off of that cannot be achieved with your other "
-                    f"settings (num_rollout_workers={self.num_rollout_workers}; "
+                    f"settings (num_env_runners={self.num_env_runners}; "
                     f"num_envs_per_worker={self.num_envs_per_worker}; "
                     f"rollout_fragment_length={self.rollout_fragment_length})! "
                     "Try setting `rollout_fragment_length` to 'auto' OR to a value of "
@@ -3892,25 +3940,28 @@ class AlgorithmConfig(_Config):
                 "instead."
             )
 
-        # If `evaluation_num_workers` > 0, warn if `evaluation_interval` is 0 or
+        # If `evaluation_num_env_runners` > 0, warn if `evaluation_interval` is 0 or
         # None.
-        if self.evaluation_num_workers > 0 and not self.evaluation_interval:
+        if self.evaluation_num_env_runners > 0 and not self.evaluation_interval:
             logger.warning(
-                f"You have specified {self.evaluation_num_workers} "
+                f"You have specified {self.evaluation_num_env_runners} "
                 "evaluation workers, but your `evaluation_interval` is 0 or None! "
                 "Therefore, evaluation will not occur automatically with each"
                 " call to `Algorithm.train()`. Instead, you will have to call "
                 "`Algorithm.evaluate()` manually in order to trigger an "
                 "evaluation run."
             )
-        # If `evaluation_num_workers=0` and
+        # If `evaluation_num_env_runners=0` and
         # `evaluation_parallel_to_training=True`, warn that you need
         # at least one remote eval worker for parallel training and
         # evaluation, and set `evaluation_parallel_to_training` to False.
-        if self.evaluation_num_workers == 0 and self.evaluation_parallel_to_training:
+        if (
+            self.evaluation_num_env_runners == 0
+            and self.evaluation_parallel_to_training
+        ):
             raise ValueError(
                 "`evaluation_parallel_to_training` can only be done if "
-                "`evaluation_num_workers` > 0! Try setting "
+                "`evaluation_num_env_runners` > 0! Try setting "
                 "`config.evaluation_parallel_to_training` to False."
             )
 
@@ -3956,15 +4007,15 @@ class AlgorithmConfig(_Config):
             self.input_config["num_cpus_per_read_task"] = self.num_cpus_per_worker
             if self.in_evaluation:
                 # If using dataset for evaluation, the parallelism gets set to
-                # evaluation_num_workers for backward compatibility and num_cpus gets
-                # set to num_cpus_per_worker from rollout worker. User only needs to
-                # set evaluation_num_workers.
-                self.input_config["parallelism"] = self.evaluation_num_workers or 1
+                # evaluation_num_env_runners for backward compatibility and num_cpus
+                # gets set to num_cpus_per_worker from rollout worker. User only needs
+                # to set evaluation_num_env_runners.
+                self.input_config["parallelism"] = self.evaluation_num_env_runners or 1
             else:
                 # If using dataset for training, the parallelism and num_cpus gets set
                 # based on rollout worker parameters. This is for backwards
-                # compatibility for now. User only needs to set num_rollout_workers.
-                self.input_config["parallelism"] = self.num_rollout_workers or 1
+                # compatibility for now. User only needs to set num_env_runners.
+                self.input_config["parallelism"] = self.num_env_runners or 1
 
     def _validate_new_api_stack_settings(self):
         """Checks, whether settings related to the new API stack make sense."""
@@ -4005,7 +4056,7 @@ class AlgorithmConfig(_Config):
             raise ValueError(
                 "The new API stack (RLModule and Learner APIs) only works with "
                 "connectors! Please enable connectors via "
-                "`config.rollouts(enable_connectors=True)`."
+                "`config.env_runners(enable_connectors=True)`."
             )
 
         # LR-schedule checking.
@@ -4078,7 +4129,7 @@ class AlgorithmConfig(_Config):
     # TODO (sven): Once everything is on the new API stack, we won't need this method
     #  anymore.
     def _validate_to_be_deprecated_settings(self):
-        # Env task fn will be deprecated.
+        # `env_task_fn` will be deprecated.
         if self._enable_new_api_stack and self.env_task_fn is not None:
             deprecation_warning(
                 old="AlgorithmConfig.env_task_fn",
@@ -4088,6 +4139,16 @@ class AlgorithmConfig(_Config):
                 "script for more information: "
                 "https://github.com/ray-project/ray/blob/master/rllib/examples/curriculum/curriculum_learning.py",  # noqa
             )
+        # `render_env` will be deprecated
+        # TODO (sven): Uncomment once example is translated to new API stack.
+        # if self._enable_new_api_stack and self.render_env is not False:
+        #    deprecation_warning(
+        #        old="AlgorithmConfig.render_env",
+        #        help="The `render_env` setting is not supported on the new API stack! "
+        #        "Take a look at the new rendering example here for how to create
+        #        videos of your envs and send them to WandB: "
+        #        "https://github.com/ray-project/ray/blob/master/rllib/examples/envs/env_rendering_and_recording.py",  # noqa
+        #    )
 
         if self.preprocessor_pref not in ["rllib", "deepmind", None]:
             raise ValueError(
@@ -4246,7 +4307,7 @@ class AlgorithmConfig(_Config):
         elif key == "num_cpus_for_driver":
             key = "num_cpus_for_local_worker"
         elif key == "num_workers":
-            key = "num_rollout_workers"
+            key = "num_env_runners"
 
         # Deprecated keys.
         if warn_deprecated:
@@ -4355,19 +4416,148 @@ class AlgorithmConfig(_Config):
                 "speed as with static-graph mode."
             )
 
-    @property
-    @Deprecated(
-        old="AlgorithmConfig.multiagent['[some key]']",
-        new="AlgorithmConfig.[some key]",
-        error=True,
-    )
-    def multiagent(self):
-        pass
+    @Deprecated(new="AlgorithmConfig.env_runners(..)", error=False)
+    def rollouts(self, *args, **kwargs):
+        return self.env_runners(*args, **kwargs)
+
+    @Deprecated(new="AlgorithmConfig.env_runners(..)", error=False)
+    def exploration(self, *args, **kwargs):
+        return self.env_runners(*args, **kwargs)
 
     @property
-    @Deprecated(new="AlgorithmConfig.rollouts(num_rollout_workers=..)", error=True)
-    def num_workers(self):
-        pass
+    @Deprecated(new="AlgorithmConfig.num_env_runners", error=False)
+    def num_rollout_workers(self):
+        return self.num_env_runners
+
+    @num_rollout_workers.setter
+    def num_rollout_workers(self, value):
+        deprecation_warning(
+            old="AlgorithmConfig.num_rollout_workers",
+            new="AlgorithmConfig.num_env_runners",
+            error=True,
+        )
+
+    @property
+    @Deprecated(new="AlgorithmConfig.num_envs_per_env_runner", error=False)
+    def num_envs_per_worker(self):
+        return self.num_envs_per_env_runner
+
+    @num_envs_per_worker.setter
+    def num_envs_per_worker(self, value):
+        deprecation_warning(
+            old="AlgorithmConfig.num_envs_per_worker",
+            new="AlgorithmConfig.num_envs_per_env_runner",
+            error=True,
+        )
+
+    @property
+    @Deprecated(new="AlgorithmConfig.ignore_env_runner_failures", error=False)
+    def ignore_worker_failures(self):
+        return self.ignore_env_runner_failures
+
+    @ignore_worker_failures.setter
+    def ignore_worker_failures(self, value):
+        deprecation_warning(
+            old="AlgorithmConfig.ignore_worker_failures",
+            new="AlgorithmConfig.ignore_env_runner_failures",
+            error=True,
+        )
+
+    @property
+    @Deprecated(new="AlgorithmConfig.recreate_failed_env_runners", error=False)
+    def recreate_failed_workers(self):
+        return self.recreate_failed_env_runners
+
+    @recreate_failed_workers.setter
+    def recreate_failed_workers(self, value):
+        deprecation_warning(
+            old="AlgorithmConfig.recreate_failed_workers",
+            new="AlgorithmConfig.recreate_failed_env_runners",
+            error=True,
+        )
+
+    @property
+    @Deprecated(new="AlgorithmConfig.max_num_env_runner_restarts", error=False)
+    def max_num_worker_restarts(self):
+        return self.max_num_env_runner_restarts
+
+    @max_num_worker_restarts.setter
+    def max_num_worker_restarts(self, value):
+        deprecation_warning(
+            old="AlgorithmConfig.max_num_worker_restarts",
+            new="AlgorithmConfig.max_num_env_runner_restarts",
+            error=True,
+        )
+
+    @property
+    @Deprecated(new="AlgorithmConfig.delay_between_env_runner_restarts_s", error=False)
+    def delay_between_worker_restarts_s(self):
+        return self.delay_between_env_runner_restarts_s
+
+    @delay_between_worker_restarts_s.setter
+    def delay_between_worker_restarts_s(self, value):
+        deprecation_warning(
+            old="AlgorithmConfig.delay_between_worker_restarts_s",
+            new="AlgorithmConfig.delay_between_env_runner_restarts_s",
+            error=True,
+        )
+
+    @property
+    @Deprecated(
+        new="AlgorithmConfig.num_consecutive_env_runner_failures_tolerance", error=False
+    )
+    def num_consecutive_worker_failures_tolerance(self):
+        return self.num_consecutive_env_runner_failures_tolerance
+
+    @num_consecutive_worker_failures_tolerance.setter
+    def num_consecutive_worker_failures_tolerance(self, value):
+        deprecation_warning(
+            old="AlgorithmConfig.num_consecutive_worker_failures_tolerance",
+            new="AlgorithmConfig.num_consecutive_env_runner_failures_tolerance",
+            error=True,
+        )
+
+    @property
+    @Deprecated(new="AlgorithmConfig.env_runner_health_probe_timeout_s", error=False)
+    def worker_health_probe_timeout_s(self):
+        return self.env_runner_health_probe_timeout_s
+
+    @worker_health_probe_timeout_s.setter
+    def worker_health_probe_timeout_s(self, value):
+        deprecation_warning(
+            old="AlgorithmConfig.worker_health_probe_timeout_s",
+            new="AlgorithmConfig.env_runner_health_probe_timeout_s",
+            error=True,
+        )
+
+    @property
+    @Deprecated(new="AlgorithmConfig.env_runner_restore_timeout_s", error=False)
+    def worker_restore_timeout_s(self):
+        return self.env_runner_restore_timeout_s
+
+    @worker_restore_timeout_s.setter
+    def worker_restore_timeout_s(self, value):
+        deprecation_warning(
+            old="AlgorithmConfig.worker_restore_timeout_s",
+            new="AlgorithmConfig.env_runner_restore_timeout_s",
+            error=True,
+        )
+
+    @property
+    @Deprecated(
+        new="AlgorithmConfig.validate_env_runners_after_construction",
+        error=False,
+    )
+    def validate_workers_after_construction(self):
+        return self.validate_env_runners_after_construction
+
+    @validate_workers_after_construction.setter
+    def validate_workers_after_construction(self, value):
+        deprecation_warning(
+            old="AlgorithmConfig.validate_workers_after_construction",
+            new="AlgorithmConfig.validate_env_runners_after_construction",
+            error=True,
+        )
 
 
 class TorchCompileWhatToCompile(str, Enum):
