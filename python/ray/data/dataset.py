@@ -2416,8 +2416,8 @@ class Dataset:
                 Call this method to return a specific number of rows.
         """
         output = []
-        for row in self.iter_rows():
-            output.append(row)
+        for batch in self.iter_batch(batch_size=None, batch_format="pyarrow"):
+            output.extend(batch.to_pylist())
             if limit is not None and len(output) > limit:
                 raise ValueError(
                     f"The dataset has more than the given limit of {limit} records."
