@@ -54,7 +54,7 @@ class MetricsLogger:
         value: Any,
         *,
         reduce: Optional[str] = "mean",
-        window: Optional[int] = None,
+        window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
     ) -> None:
@@ -177,7 +177,7 @@ class MetricsLogger:
         *,
         key: Optional[Union[str, Tuple[str]]] = None,
         reduce: Optional[str] = "mean",
-        window: Optional[int] = None,
+        window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
     ) -> None:
@@ -294,7 +294,7 @@ class MetricsLogger:
         *,
         key: Optional[Union[str, Tuple[str]]] = None,
         reduce: Optional[str] = "mean",
-        window: Optional[int] = None,
+        window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
     ) -> None:
@@ -372,7 +372,7 @@ class MetricsLogger:
         key: Union[str, Tuple[str]],
         *,
         reduce: Optional[str] = "mean",
-        window: Optional[int] = None,
+        window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
         # throughput_key: Optional[Union[str, Tuple[str]]] = None,
@@ -519,7 +519,7 @@ class MetricsLogger:
         value: Any,
         *,
         reduce: Optional[str] = "mean",
-        window: Optional[int] = None,
+        window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
     ) -> None:

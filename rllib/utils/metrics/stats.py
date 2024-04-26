@@ -1,6 +1,6 @@
 import random
 import time
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 import numpy as np
 
@@ -127,7 +127,7 @@ class Stats:
         self,
         init_value: Optional[Any] = None,
         reduce: Optional[str] = "mean",
-        window: Optional[int] = None,
+        window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
         on_exit: Optional[Callable] = None,
@@ -170,15 +170,23 @@ class Stats:
                 is no `window` provided.
         """
         # Thus far, we only support mean, max, min, and sum.
-        assert reduce in [None, "mean", "min", "max", "sum"]
+        if reduce not in [None, "mean", "min", "max", "sum"]:
+            raise ValueError("`reduce` must be one of `mean|min|max|sum` or None!")
         # One or both window and ema_coeff must be None.
-        assert (
-            window is None or ema_coeff is None
-        ), "Only one of `window` or `ema_coeff` can be specified!"
-        if ema_coeff is not None:
-            assert (
-                reduce == "mean"
-            ), "`ema_coeff` arg only allowed (not None) when `reduce=mean`!"
+        if window is not None and ema_coeff is not None:
+            raise ValueError("Only one of `window` or `ema_coeff` can be specified!")
+        # If `ema_coeff` is provided, `reduce` must be "mean".
+        if ema_coeff is not None and reduce != "mean":
+            raise ValueError(
+                "`ema_coeff` arg only allowed (not None) when `reduce=mean`!"
+            )
+        # If `window` is explicitly set to inf, `clear_on_reduce` must be True.
+        # Otherwise, we risk a memory leak.
+        if window == float("inf") and not clear_on_reduce:
+            raise ValueError(
+                "When using an infinite window (float('inf'), `clear_on_reduce` must "
+                "be set to True!"
+            )
 
         # If reduce=mean AND window=ema_coeff=None, we use EMA by default with a coeff
         # of 0.01 (we do NOT support infinite window sizes for mean as that would mean
@@ -300,8 +308,8 @@ class Stats:
         # values (to make sure none gets a specific weight over the other when it
         # comes to the actual reduction step).
         else:
-            # Slice, then merge.
-            if self._window is not None:
+            # Slice by some finite window, then merge.
+            if self._window is not None and self._window != float("inf"):
                 self.values = self.values[-self._window :]
                 for o in others:
                     self.values += o.values[-self._window :]
@@ -395,7 +403,7 @@ class Stats:
         # No reduction method. Return list as-is OR reduce list to len=window.
         if self._reduce_method is None:
             # No window -> return all internal values.
-            if self._window is None:
+            if self._window is None or self._window == float("inf"):
                 return self.values, self.values
             # Window -> return shortened internal values list.
             else:
@@ -415,7 +423,9 @@ class Stats:
         else:
             reduce_meth = getattr(np, self._reduce_method)
             values = (
-                self.values if self._window is None else self.values[-self._window :]
+                self.values
+                if self._window is None or self._window == float("inf")
+                else self.values[-self._window :]
             )
             reduced = reduce_meth(values)
             # Convert from numpy to primitive python types.
@@ -425,9 +435,11 @@ class Stats:
                 else:
                     reduced = float(reduced)
 
-            # For window=None (infinite window) and reduce != mean, we don't have to
+            # For window=None|inf (infinite window) and reduce != mean, we don't have to
             # keep any values, except the last (reduced) one.
-            if self._window is None and self._reduce_method != "mean":
+            if (
+                self._window is None or self._window == float("inf")
+            ) and self._reduce_method != "mean":
                 new_values = [reduced]
             # In all other cases, keep the values that were also used for the reduce
             # operation.

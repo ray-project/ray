@@ -1357,12 +1357,9 @@ class Learner:
                             )
                         },
                     },
-                    window=1000,
+                    window=float("inf"),  # <- infinite window (we clear on `reduce()`).
                     clear_on_reduce=True,
                 )
-                # TODO (sven): Allow window=float("inf") w/ clear_on_reduce=True to
-                #  avoid this hacky window=1000
-                a = 1
 
         self._set_slicing_by_batch_id(batch, value=False)
 

@@ -443,11 +443,11 @@ class LearnerGroup:
                     else:
                         self._ts_dropped += factor * sum(len(e) for e in episodes)
                 # NOTE: There is a strong assumption here that the requests launched to
-                # learner workers will return at the same time, since they are have a
-                # barrier inside of themselves for gradient aggregation. Therefore
-                # results should be a list of lists where each inner list should be the
-                # length of the number of learner workers, if results from an
-                # non-blocking update are ready.
+                # learner workers will return at the same time, since they have a
+                # barrier inside for gradient aggregation. Therefore, results should be
+                # a list of lists where each inner list should be the length of the
+                # number of learner workers, if results from an non-blocking update are
+                # ready.
                 results = self._get_async_results(results)
 
             else:
