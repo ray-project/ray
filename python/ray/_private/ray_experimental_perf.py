@@ -108,7 +108,7 @@ def main(results=None):
     ray.kill(reader)
 
     readers = [ChannelReader.remote() for _ in range(n_cpu)]
-    chans = [ray_channel.Channel(readers, 1000) for _ in range(n_cpu)]
+    chans = [ray_channel.Channel([readers[i]], 1000) for i in range(n_cpu)]
     ray.get([reader.ready.remote() for reader in readers])
     for chan, reader in zip(chans, readers):
         reader.read.remote([chan])
