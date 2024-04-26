@@ -706,11 +706,11 @@ class Dataset:
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """  # noqa: E501
 
-        def fn(batch):
+        def drop_columns(batch):
             return batch.drop(columns=cols)
 
         return self.map_batches(
-            fn,
+            drop_columns,
             batch_format="pandas",
             zero_copy_batch=True,
             compute=compute,
@@ -1894,15 +1894,17 @@ class Dataset:
                 ds = ray.data.from_items([{"number": i} for i in range(1, 10)])
                 aggregation = AggregateFn(
                     init=lambda column: 1,
+                    # Apply this to each row to produce a partial aggregate result
                     accumulate_row=lambda a, row: a * row["number"],
-                    merge = lambda a1, a2: a1 + a2,
+                    # Apply this to merge partial aggregate results into a final result
+                    merge=lambda a1, a2: a1 * a2,
                     name="prod"
                 )
                 print(ds.aggregate(aggregation))
 
             .. testoutput::
 
-                {'prod': 45}
+                {'prod': 362880}
 
         Time complexity: O(dataset size / parallelism)
 
@@ -4398,7 +4400,7 @@ class Dataset:
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(10, parallelism=2)
+            >>> ds = ray.data.range(10, override_num_blocks=2)
             >>> refs = ds.to_pandas_refs()
             >>> len(refs)
             2
@@ -4426,7 +4428,7 @@ class Dataset:
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(10, parallelism=2)
+            >>> ds = ray.data.range(10, override_num_blocks=2)
             >>> refs = ds.to_numpy_refs()
             >>> len(refs)
             2
@@ -4461,7 +4463,7 @@ class Dataset:
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(10, parallelism=2)
+            >>> ds = ray.data.range(10, override_num_blocks=2)
             >>> refs = ds.to_arrow_refs()
             >>> len(refs)
             2
@@ -4568,7 +4570,6 @@ class Dataset:
         output._set_uuid(copy._get_uuid())
         return output
 
-    @ConsumptionAPI(pattern="timing information.", insert_after=True)
     def stats(self) -> str:
         """Returns a string containing execution timing information.
 
@@ -4599,7 +4600,9 @@ class Dataset:
             * Tasks per node: 20 min, 20 max, 20 mean; 1 nodes used
 
         """
-        if self._write_ds is not None and self._write_ds._plan.has_computed_output():
+        if self._current_executor:
+            return self._current_executor.get_stats().to_summary().to_string()
+        elif self._write_ds is not None and self._write_ds._plan.has_computed_output():
             return self._write_ds.stats()
         return self._get_stats_summary().to_string()
 
@@ -4629,6 +4632,7 @@ class Dataset:
         self._synchronize_progress_bar()
         return blocks
 
+    @DeveloperAPI
     def has_serializable_lineage(self) -> bool:
         """Whether this dataset's lineage is able to be serialized for storage and
         later deserialized, possibly on a different cluster.

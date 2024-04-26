@@ -76,7 +76,7 @@ def test_read_write_mongo(ray_start_regular_shared, start_mongo):
         database=foo_db,
         collection=foo_collection,
         schema=schema,
-        parallelism=2,
+        override_num_blocks=2,
     )
     assert ds._block_num_rows() == [3, 2]
     assert str(ds) == (
@@ -90,7 +90,7 @@ def test_read_write_mongo(ray_start_regular_shared, start_mongo):
         uri=mongo_url,
         database=foo_db,
         collection=foo_collection,
-        parallelism=2,
+        override_num_blocks=2,
     )
     assert ds._block_num_rows() == [3, 2]
     assert str(ds) == (
@@ -108,7 +108,7 @@ def test_read_write_mongo(ray_start_regular_shared, start_mongo):
         database=foo_db,
         collection=foo_collection,
         pipeline=[{"$match": {"int_field": {"$gte": 0, "$lt": 3}}}],
-        parallelism=2,
+        override_num_blocks=2,
     )
     assert ds._block_num_rows() == [2, 1]
     assert str(ds) == (
@@ -140,7 +140,7 @@ def test_read_write_mongo(ray_start_regular_shared, start_mongo):
         uri=mongo_url,
         database=foo_db,
         collection=foo_collection,
-        parallelism=1000,
+        override_num_blocks=1000,
     )
     assert str(ds) == (
         "Dataset(\n"
@@ -200,7 +200,7 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
         database=foo_db,
         collection=foo_collection,
         schema=schema,
-        parallelism=2,
+        override_num_blocks=2,
     ).materialize()
     assert ds._block_num_rows() == [3, 2]
     assert str(ds) == (
@@ -218,7 +218,7 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
         uri=mongo_url,
         database=foo_db,
         collection=foo_collection,
-        parallelism=2,
+        override_num_blocks=2,
     ).materialize()
     assert ds._block_num_rows() == [3, 2]
     assert str(ds) == (
@@ -252,7 +252,7 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
         uri=mongo_url,
         database=foo_db,
         collection=foo_collection,
-        parallelism=1000,
+        override_num_blocks=1000,
     )
     assert str(ds) == (
         "Dataset(\n"
@@ -269,7 +269,7 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
         database=foo_db,
         collection=foo_collection,
         pipeline=[{"$match": {"int_field": {"$gte": 0, "$lt": 3}}}],
-        parallelism=2,
+        override_num_blocks=2,
     )
     assert ds._block_num_rows() == [2, 1]
     assert str(ds) == (

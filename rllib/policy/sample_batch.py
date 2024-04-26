@@ -9,6 +9,7 @@ from typing import List, Optional
 import numpy as np
 import tree  # pip install dm_tree
 
+from ray.rllib.core.columns import Columns
 from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI, PublicAPI
 from ray.rllib.utils.compression import pack, unpack, is_compressed
 from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
@@ -110,70 +111,43 @@ class SampleBatch(dict):
     # action based on the reset-observation and so on. This scheme is derived from
     # RLlib's sampling logic.
 
-    # Outputs from interacting with the environment:
+    # The following fields have all been moved to `Columns` and are only left here
+    # for backward compatibility.
+    OBS = Columns.OBS
+    ACTIONS = Columns.ACTIONS
+    REWARDS = Columns.REWARDS
+    TERMINATEDS = Columns.TERMINATEDS
+    TRUNCATEDS = Columns.TRUNCATEDS
+    INFOS = Columns.INFOS
+    SEQ_LENS = Columns.SEQ_LENS
+    T = Columns.T
+    ACTION_DIST_INPUTS = Columns.ACTION_DIST_INPUTS
+    ACTION_PROB = Columns.ACTION_PROB
+    ACTION_LOGP = Columns.ACTION_LOGP
+    VF_PREDS = Columns.VF_PREDS
+    VALUES_BOOTSTRAPPED = Columns.VALUES_BOOTSTRAPPED
+    EPS_ID = Columns.EPS_ID
+    NEXT_OBS = Columns.NEXT_OBS
 
-    # Observation that we compute SampleBatch.ACTIONS from.
-    OBS = "obs"
-    # Action computed/sampled by the RLModule.
-    ACTIONS = "actions"
-    # Action actually sent to the (gymnasium) env. Note that we usually do not store
-    # this information anywhere (e.g. in Single/MultiAgentEpisodes), but normally only
-    # keep the RLModule-computed or connector-sampled actions around.
-    ACTIONS_FOR_ENV = "actions_sent_to_env"
-    # Reward returned after stepping.
-    REWARDS = "rewards"
+    # Action distribution object.
+    ACTION_DIST = "action_dist"
     # Action chosen before SampleBatch.ACTIONS.
     PREV_ACTIONS = "prev_actions"
     # Reward received before SampleBatch.REWARDS.
     PREV_REWARDS = "prev_rewards"
-    # Is the episode finished after stepping via SampleBatch.ACTIONS?
-    TERMINATEDS = "terminateds"
-    # Is the episode truncated (e.g. time limit) after stepping via SampleBatch.ACTIONS?
-    TRUNCATEDS = "truncateds"
-    # Infos returned after stepping with SampleBatch.ACTIONS
-    INFOS = "infos"
-
-    # Observation returned after stepping with SampleBatch.ACTIONS.
-    NEXT_OBS = "new_obs"
-
-    # Additional keys filled by RLlib to manage the data above:
-
-    SEQ_LENS = "seq_lens"  # Groups rows into sequences by defining their length.
-    T = "t"  # Timestep counter
-    EPS_ID = "eps_id"  # Uniquely identifies an episode
     ENV_ID = "env_id"  # An env ID (e.g. the index for a vectorized sub-env).
     AGENT_INDEX = "agent_index"  # Uniquely identifies an agent within an episode.
-
     # Uniquely identifies a sample batch. This is important to distinguish RNN
     # sequences from the same episode when multiple sample batches are
     # concatenated (fusing sequences across batches can be unsafe).
     UNROLL_ID = "unroll_id"
 
-    # Algorithm-specific keys:
-
-    # Extra action fetches keys.
-    ACTION_DIST_INPUTS = "action_dist_inputs"
-    ACTION_PROB = "action_prob"
-    ACTION_LOGP = "action_logp"
-    ACTION_DIST = "action_dist"
-
-    # Value function predictions emitted by the behaviour policy.
-    VF_PREDS = "vf_preds"
-    # Values one ts beyond the last ts taken. These are usually calculated via the value
-    # function network using the final observation (and in case of an RNN: the last
-    # returned internal state).
-    VALUES_BOOTSTRAPPED = "values_bootstrapped"
-
     # RE 3
     # This is only computed and used when RE3 exploration strategy is enabled.
     OBS_EMBEDS = "obs_embeds"
-
     # Decision Transformer
     RETURNS_TO_GO = "returns_to_go"
     ATTENTION_MASKS = "attention_masks"
-
-    # Deprecated keys:
-
     # Do not set this key directly. Instead, the values under this key are
     # auto-computed via the values of the TERMINATEDS and TRUNCATEDS keys.
     DONES = "dones"
@@ -742,7 +716,9 @@ class SampleBatch(dict):
 
         # Exclude INFOs from regular array slicing as the data under this column might
         # be a list (not good for `tree.map_structure` call).
-        infos = self.get(SampleBatch.INFOS)
+        # Furthermore, slicing does not work when the data in the column is
+        # singular (not a list or array).
+        infos = self.pop(SampleBatch.INFOS, None)
         data = tree.map_structure(lambda value: value[start:stop], self)
         if infos is not None:
             data[SampleBatch.INFOS] = infos[start:stop]

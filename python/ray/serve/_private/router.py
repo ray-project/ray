@@ -5,19 +5,25 @@ import time
 from collections import defaultdict
 from contextlib import contextmanager
 from functools import partial
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, DefaultDict, Dict, List, Optional, Tuple, Union
 
 import ray
-from ray._private.utils import load_class
 from ray.actor import ActorHandle
 from ray.dag.py_obj_scanner import _PyObjScanner
-from ray.serve._private.common import DeploymentID, RequestMetadata, RunningReplicaInfo
+from ray.serve._private.common import (
+    DeploymentHandleSource,
+    DeploymentID,
+    ReplicaID,
+    RequestMetadata,
+    RunningReplicaInfo,
+)
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     HANDLE_METRIC_PUSH_INTERVAL_S,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
-    RAY_SERVE_ENABLE_STRICT_MAX_CONCURRENT_QUERIES,
+    RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS,
+    RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_PERIOD_S,
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
     SERVE_LOGGER_NAME,
 )
@@ -26,13 +32,17 @@ from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
 from ray.serve._private.replica_scheduler import (
     PendingRequest,
     PowerOfTwoChoicesReplicaScheduler,
+    ReplicaScheduler,
 )
-from ray.serve._private.utils import inside_ray_client_context
+from ray.serve._private.utils import FakeObjectRef, inside_ray_client_context
 from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import BackPressureError
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+QUEUED_REQUESTS_KEY = "queued"
 
 
 class RouterMetricsManager:
@@ -45,30 +55,56 @@ class RouterMetricsManager:
         self,
         deployment_id: DeploymentID,
         handle_id: str,
-        event_loop: asyncio.BaseEventLoop,
+        self_actor_id: str,
+        handle_source: DeploymentHandleSource,
         controller_handle: ActorHandle,
         router_requests_counter: metrics.Counter,
         queued_requests_gauge: metrics.Gauge,
+        running_requests_gauge: metrics.Gauge,
     ):
-        self._deployment_id = deployment_id
         self._handle_id = handle_id
-        self._event_loop = event_loop
+        self._deployment_id = deployment_id
+        self._self_actor_id = self_actor_id
+        self._handle_source = handle_source
         self._controller_handle = controller_handle
+        self._self_actor_id = self_actor_id
 
         # Exported metrics
         self.num_router_requests = router_requests_counter
         self.num_router_requests.set_default_tags(
-            {"deployment": deployment_id.name, "application": deployment_id.app}
+            {
+                "deployment": deployment_id.name,
+                "application": deployment_id.app_name,
+                "handle": self._handle_id,
+                "actor_id": self._self_actor_id,
+            }
         )
 
         self.num_queued_requests = 0
         self.num_queued_requests_gauge = queued_requests_gauge
         self.num_queued_requests_gauge.set_default_tags(
-            {"deployment": deployment_id.name, "application": deployment_id.app}
+            {
+                "deployment": deployment_id.name,
+                "application": deployment_id.app_name,
+                "handle": self._handle_id,
+                "actor_id": self._self_actor_id,
+            }
         )
+        self.num_queued_requests_gauge.set(0)
 
         # Track queries sent to replicas for the autoscaling algorithm.
-        self.num_requests_sent_to_replicas = defaultdict(int)
+        self.num_requests_sent_to_replicas: DefaultDict[ReplicaID, int] = defaultdict(
+            int
+        )
+        self.num_running_requests_gauge = running_requests_gauge
+        self.num_running_requests_gauge.set_default_tags(
+            {
+                "deployment": deployment_id.name,
+                "application": deployment_id.app_name,
+                "handle": self._handle_id,
+                "actor_id": self._self_actor_id,
+            }
+        )
         # We use Ray object ref callbacks to update state when tracking
         # number of requests running on replicas. The callbacks will be
         # called from a C++ thread into the router's async event loop,
@@ -76,7 +112,7 @@ class RouterMetricsManager:
         # this thread-safe lock.
         self._queries_lock = threading.Lock()
         # Regularly aggregate and push autoscaling metrics to controller
-        self.metrics_pusher = MetricsPusher(event_loop)
+        self.metrics_pusher = MetricsPusher()
         self.metrics_store = InMemoryMetricsStore()
         self.deployment_config: Optional[DeploymentConfig] = None
 
@@ -117,7 +153,7 @@ class RouterMetricsManager:
         in memory as the deployment upscales and downscales over time.
         """
 
-        running_replica_set = {replica.replica_tag for replica in running_replicas}
+        running_replica_set = {replica.replica_id for replica in running_replicas}
         with self._queries_lock:
             self.num_requests_sent_to_replicas = defaultdict(
                 int,
@@ -129,7 +165,7 @@ class RouterMetricsManager:
             )
 
     @property
-    def curr_autoscaling_config(self) -> Optional[AutoscalingConfig]:
+    def autoscaling_config(self) -> Optional[AutoscalingConfig]:
         if self.deployment_config is None:
             return None
 
@@ -143,7 +179,7 @@ class RouterMetricsManager:
         self.deployment_config = deployment_config
 
         # Start the metrics pusher if autoscaling is enabled.
-        autoscaling_config = self.curr_autoscaling_config
+        autoscaling_config = self.autoscaling_config
         if autoscaling_config:
             self.metrics_pusher.start()
             # Optimization for autoscaling cold start time. If there are
@@ -159,7 +195,10 @@ class RouterMetricsManager:
                 self.metrics_pusher.register_or_update_task(
                     self.RECORD_METRICS_TASK_NAME,
                     self._add_autoscaling_metrics_point,
-                    min(0.5, autoscaling_config.metrics_interval_s),
+                    min(
+                        RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_PERIOD_S,
+                        autoscaling_config.metrics_interval_s,
+                    ),
                 )
                 # Push metrics to the controller periodically.
                 self.metrics_pusher.register_or_update_task(
@@ -189,17 +228,23 @@ class RouterMetricsManager:
         self.num_queued_requests -= 1
         self.num_queued_requests_gauge.set(self.num_queued_requests)
 
-    def inc_num_running_requests_for_replica(self, replica_tag: str):
+    def inc_num_running_requests_for_replica(self, replica_id: ReplicaID):
         with self._queries_lock:
-            self.num_requests_sent_to_replicas[replica_tag] += 1
+            self.num_requests_sent_to_replicas[replica_id] += 1
+            self.num_running_requests_gauge.set(
+                sum(self.num_requests_sent_to_replicas.values())
+            )
 
-    def process_finished_request(self, replica_tag, *args):
+    def dec_num_running_requests_for_replica(self, replica_id: ReplicaID, *args):
         with self._queries_lock:
-            self.num_requests_sent_to_replicas[replica_tag] -= 1
+            self.num_requests_sent_to_replicas[replica_id] -= 1
+            self.num_running_requests_gauge.set(
+                sum(self.num_requests_sent_to_replicas.values())
+            )
 
     def should_send_scaled_to_zero_optimized_push(self, curr_num_replicas: int) -> bool:
         return (
-            self.curr_autoscaling_config is not None
+            self.autoscaling_config is not None
             and curr_num_replicas == 0
             and self.num_queued_requests > 0
         )
@@ -211,24 +256,37 @@ class RouterMetricsManager:
         """
 
         self._controller_handle.record_handle_metrics.remote(
-            **self._get_aggregated_requests(), send_timestamp=time.time()
+            send_timestamp=time.time(),
+            deployment_id=self._deployment_id,
+            handle_id=self._handle_id,
+            actor_id=self._self_actor_id,
+            handle_source=self._handle_source,
+            **self._get_aggregated_requests(),
         )
 
     def _add_autoscaling_metrics_point(self):
+        """Adds metrics point for queued and running requests at replicas.
+
+        Also prunes keys in the in memory metrics store with outdated datapoints.
+        """
+
         timestamp = time.time()
         self.metrics_store.add_metrics_point(
-            {"queued": self.num_queued_requests}, timestamp
+            {QUEUED_REQUESTS_KEY: self.num_queued_requests}, timestamp
         )
         if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
             self.metrics_store.add_metrics_point(
                 self.num_requests_sent_to_replicas, timestamp
             )
 
+        # Prevent in memory metrics store memory from growing
+        start_timestamp = time.time() - self.autoscaling_config.look_back_period_s
+        self.metrics_store.prune_keys_and_compact_data(start_timestamp)
+
     def _get_aggregated_requests(self):
         running_requests = dict()
-        autoscaling_config = self.curr_autoscaling_config
-        if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE and autoscaling_config:
-            look_back_period = autoscaling_config.look_back_period_s
+        if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE and self.autoscaling_config:
+            look_back_period = self.autoscaling_config.look_back_period_s
             running_requests = {
                 replica_id: self.metrics_store.window_average(
                     replica_id, time.time() - look_back_period
@@ -240,20 +298,15 @@ class RouterMetricsManager:
             }
 
         return {
-            "deployment_id": self._deployment_id,
-            "handle_id": self._handle_id,
             "queued_requests": self.num_queued_requests,
             "running_requests": running_requests,
         }
 
-    def shutdown(self):
+    async def shutdown(self):
         """Shutdown metrics manager gracefully."""
 
         if self.metrics_pusher:
-            fut = asyncio.run_coroutine_threadsafe(
-                self.metrics_pusher.graceful_shutdown(), loop=self._event_loop
-            )
-            fut.result()
+            await self.metrics_pusher.graceful_shutdown()
 
 
 class Router:
@@ -265,11 +318,13 @@ class Router:
         self_node_id: str,
         self_actor_id: str,
         self_availability_zone: Optional[str],
+        handle_source: DeploymentHandleSource,
         event_loop: asyncio.BaseEventLoop = None,
         _prefer_local_node_routing: bool = False,
-        _router_cls: Optional[str] = None,
         enable_queue_len_cache: bool = RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
-        enable_strict_max_concurrent_queries: bool = RAY_SERVE_ENABLE_STRICT_MAX_CONCURRENT_QUERIES,  # noqa: E501
+        enable_strict_max_ongoing_requests: bool = RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS,  # noqa: E501
+        *,
+        replica_scheduler: Optional[ReplicaScheduler] = None,
     ):
         """Used to assign requests to downstream replicas for a deployment.
 
@@ -284,20 +339,16 @@ class Router:
             # Streaming ObjectRefGenerators are not supported in Ray Client, so we need
             # to override the behavior.
             self._enable_queue_len_cache = False
-            self._enable_strict_max_concurrent_queries = False
+            self._enable_strict_max_ongoing_requests = False
         else:
             self._enable_queue_len_cache = enable_queue_len_cache
-            self._enable_strict_max_concurrent_queries = (
-                enable_strict_max_concurrent_queries
+            self._enable_strict_max_ongoing_requests = (
+                enable_strict_max_ongoing_requests
             )
 
-        if _router_cls:
-            self._replica_scheduler = load_class(_router_cls)(
-                event_loop=event_loop, deployment_id=deployment_id
-            )
-        else:
-            self._replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
-                event_loop,
+        if replica_scheduler is None:
+            replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
+                self._event_loop,
                 deployment_id,
                 _prefer_local_node_routing,
                 RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
@@ -307,10 +358,7 @@ class Router:
                 use_replica_queue_len_cache=enable_queue_len_cache,
             )
 
-        logger.info(
-            f"Using router {self._replica_scheduler.__class__}.",
-            extra={"log_to_stderr": False},
-        )
+        self._replica_scheduler = replica_scheduler
 
         # The config for the deployment this router sends requests to will be broadcast
         # by the controller. That means it is not available until we get the first
@@ -328,18 +376,19 @@ class Router:
                     deployment_id,
                 ): self.update_deployment_config,
             },
-            call_in_event_loop=event_loop,
+            call_in_event_loop=self._event_loop,
         )
 
         self._metrics_manager = RouterMetricsManager(
             deployment_id,
             handle_id,
-            event_loop,
+            self_actor_id,
+            handle_source,
             controller_handle,
             metrics.Counter(
                 "serve_num_router_requests",
                 description="The number of requests processed by the router.",
-                tag_keys=("deployment", "route", "application"),
+                tag_keys=("deployment", "route", "application", "handle", "actor_id"),
             ),
             metrics.Gauge(
                 "serve_deployment_queued_queries",
@@ -347,7 +396,15 @@ class Router:
                     "The current number of queries to this deployment waiting"
                     " to be assigned to a replica."
                 ),
-                tag_keys=("deployment", "application"),
+                tag_keys=("deployment", "application", "handle", "actor_id"),
+            ),
+            metrics.Gauge(
+                "serve_num_ongoing_requests_at_replicas",
+                description=(
+                    "The current number of requests to this deployment that "
+                    "have been submitted to a replica."
+                ),
+                tag_keys=("deployment", "application", "handle", "actor_id"),
             ),
         )
 
@@ -375,7 +432,9 @@ class Router:
             _DeploymentResponseBase,
         )
 
-        scanner = _PyObjScanner(source_type=_DeploymentResponseBase)
+        scanner = _PyObjScanner(
+            source_type=(_DeploymentResponseBase, ray.ObjectRef, ray.ObjectRefGenerator)
+        )
 
         try:
             responses = []
@@ -391,6 +450,13 @@ class Router:
                 elif isinstance(obj, DeploymentResponse):
                     responses.append(obj)
 
+                # This is no-op replacing the object with itself. The purpose is to make
+                # sure both object refs and object ref generator are not getting pinned
+                # to memory by the scanner and cause memory leak.
+                # See: https://github.com/ray-project/ray/issues/43248
+                elif isinstance(obj, (ray.ObjectRef, ray.ObjectRefGenerator)):
+                    replacement_table[obj] = obj
+
             # Gather `DeploymentResponse` object refs concurrently.
             if len(responses) > 0:
                 obj_refs = await asyncio.gather(
@@ -405,7 +471,7 @@ class Router:
 
     async def schedule_and_send_request(
         self, pr: PendingRequest
-    ) -> Tuple[Union[ray.ObjectRef, ray.ObjectRefGenerator], str]:
+    ) -> Tuple[Union[ray.ObjectRef, ray.ObjectRefGenerator], ReplicaID]:
         """Choose a replica for the request and send it.
 
         This will block indefinitely if no replicas are available to handle the
@@ -416,7 +482,7 @@ class Router:
         # If the queue len cache is disabled or we're sending a request to Java,
         # then directly send the query and hand the response back. The replica will
         # never reject requests in this code path.
-        if not self._enable_strict_max_concurrent_queries or replica.is_cross_language:
+        if not self._enable_strict_max_ongoing_requests or replica.is_cross_language:
             return replica.send_request(pr), replica.replica_id
 
         while True:
@@ -470,7 +536,7 @@ class Router:
                 request_args, request_kwargs = await self._resolve_deployment_responses(
                     request_args, request_kwargs
                 )
-                ref, replica_tag = await self.schedule_and_send_request(
+                ref, replica_id = await self.schedule_and_send_request(
                     PendingRequest(
                         args=list(request_args),
                         kwargs=request_kwargs,
@@ -481,12 +547,13 @@ class Router:
                 # Keep track of requests that have been sent out to replicas
                 if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
                     self._metrics_manager.inc_num_running_requests_for_replica(
-                        replica_tag
+                        replica_id
                     )
                     callback = partial(
-                        self._metrics_manager.process_finished_request, replica_tag
+                        self._metrics_manager.dec_num_running_requests_for_replica,
+                        replica_id,
                     )
-                    if isinstance(ref, ray.ObjectRef):
+                    if isinstance(ref, (ray.ObjectRef, FakeObjectRef)):
                         ref._on_completed(callback)
                     else:
                         ref.completed()._on_completed(callback)
@@ -502,4 +569,6 @@ class Router:
                 raise
 
     def shutdown(self):
-        self._metrics_manager.shutdown()
+        asyncio.run_coroutine_threadsafe(
+            self._metrics_manager.shutdown(), loop=self._event_loop
+        ).result()

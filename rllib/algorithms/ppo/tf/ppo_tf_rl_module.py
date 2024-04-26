@@ -3,11 +3,11 @@ from typing import Any, Dict
 import tree  # pip install dm_tree
 
 from ray.rllib.algorithms.ppo.ppo_rl_module import PPORLModule
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import ACTOR, CRITIC
-from ray.rllib.core.models.tf.encoder import ENCODER_OUT, STATE_OUT
+from ray.rllib.core.models.tf.encoder import ENCODER_OUT
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.nested_dict import NestedDict
@@ -24,13 +24,11 @@ class PPOTfRLModule(TfRLModule, PPORLModule):
 
         # Encoder forward pass.
         encoder_outs = self.encoder(batch)
-        if STATE_OUT in encoder_outs:
-            output[STATE_OUT] = encoder_outs[STATE_OUT]
+        if Columns.STATE_OUT in encoder_outs:
+            output[Columns.STATE_OUT] = encoder_outs[Columns.STATE_OUT]
 
         # Pi head.
-        output[SampleBatch.ACTION_DIST_INPUTS] = self.pi(
-            encoder_outs[ENCODER_OUT][ACTOR]
-        )
+        output[Columns.ACTION_DIST_INPUTS] = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
 
         return output
 
@@ -51,16 +49,18 @@ class PPOTfRLModule(TfRLModule, PPORLModule):
 
         # Shared encoder
         encoder_outs = self.encoder(batch)
-        if STATE_OUT in encoder_outs:
-            output[STATE_OUT] = encoder_outs[STATE_OUT]
+        if Columns.STATE_OUT in encoder_outs:
+            output[Columns.STATE_OUT] = encoder_outs[Columns.STATE_OUT]
 
         # Value head
-        vf_out = self.vf(encoder_outs[ENCODER_OUT][CRITIC])
-        output[SampleBatch.VF_PREDS] = tf.squeeze(vf_out, axis=-1)
+        if not self.inference_only:
+            # Only, if this is a learner module we have a value function head.
+            vf_out = self.vf(encoder_outs[ENCODER_OUT][CRITIC])
+            output[Columns.VF_PREDS] = tf.squeeze(vf_out, axis=-1)
 
         # Policy head
         action_logits = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
-        output[SampleBatch.ACTION_DIST_INPUTS] = action_logits
+        output[Columns.ACTION_DIST_INPUTS] = action_logits
 
         return output
 
@@ -70,26 +70,26 @@ class PPOTfRLModule(TfRLModule, PPORLModule):
 
         # Shared encoder.
         encoder_outs = self.encoder(batch)
-        if STATE_OUT in encoder_outs:
-            output[STATE_OUT] = encoder_outs[STATE_OUT]
+        if Columns.STATE_OUT in encoder_outs:
+            output[Columns.STATE_OUT] = encoder_outs[Columns.STATE_OUT]
 
         # Value head.
         vf_out = self.vf(encoder_outs[ENCODER_OUT][CRITIC])
         # Squeeze out last dim (value function node).
-        output[SampleBatch.VF_PREDS] = tf.squeeze(vf_out, axis=-1)
+        output[Columns.VF_PREDS] = tf.squeeze(vf_out, axis=-1)
 
         # Policy head.
         action_logits = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
-        output[SampleBatch.ACTION_DIST_INPUTS] = action_logits
+        output[Columns.ACTION_DIST_INPUTS] = action_logits
 
         return output
 
     @override(PPORLModule)
     def _compute_values(self, batch, device=None):
-        infos = batch.pop(SampleBatch.INFOS, None)
+        infos = batch.pop(Columns.INFOS, None)
         batch = tree.map_structure(lambda s: tf.convert_to_tensor(s), batch)
         if infos is not None:
-            batch[SampleBatch.INFOS] = infos
+            batch[Columns.INFOS] = infos
 
         # Separate vf-encoder.
         if hasattr(self.encoder, "critic_encoder"):

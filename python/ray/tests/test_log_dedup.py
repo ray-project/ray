@@ -82,8 +82,8 @@ def test_dedup_logs_multiple_processes():
         "lines": [
             "hello world\x1b[32m [repeated 3x across cluster] (Ray deduplicates "
             "logs by default. Set RAY_DEDUP_LOGS=0 to disable log deduplication, or "
-            "see https://docs.ray.io/en/master/ray-observability/"
-            "ray-logging.html#log-deduplication for more options.)\x1b[0m"
+            "see https://docs.ray.io/en/master/ray-observability/user-guides/"
+            "configure-logging.html#log-deduplication for more options.)\x1b[0m"
         ],
     } in out4
     assert {

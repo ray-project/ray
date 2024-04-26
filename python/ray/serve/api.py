@@ -16,7 +16,11 @@ from ray.serve._private.config import (
     ReplicaConfig,
     handle_num_replicas_auto,
 )
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve._private.constants import (
+    DEFAULT_MAX_ONGOING_REQUESTS,
+    SERVE_DEFAULT_APP_NAME,
+    SERVE_LOGGER_NAME,
+)
 from ray.serve._private.deployment_graph_build import build as pipeline_build
 from ray.serve._private.deployment_graph_build import (
     get_and_validate_ingress_deployment,
@@ -51,11 +55,11 @@ from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
 from ray.serve.multiplex import _ModelMultiplexWrapper
 from ray.serve.schema import LoggingConfig, ServeInstanceDetails, ServeStatus
-from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 from ray.serve._private import api as _private_api  # isort:skip
 
-logger = logging.getLogger(__file__)
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 @PublicAPI(stability="stable")
@@ -153,9 +157,6 @@ def get_replica_context() -> ReplicaContext:
                     # Prints "MyDeployment"
                     print(serve.get_replica_context().deployment)
 
-                    # Prints "MyDeployment#<replica_tag>"
-                    print(serve.get_replica_context().replica_tag)
-
     """
     internal_replica_context = _get_internal_replica_context()
     if internal_replica_context is None:
@@ -251,11 +252,12 @@ def deployment(
     num_replicas: Default[Optional[Union[int, str]]] = DEFAULT.VALUE,
     route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
     ray_actor_options: Default[Dict] = DEFAULT.VALUE,
-    placement_group_bundles: Optional[List[Dict[str, float]]] = DEFAULT.VALUE,
-    placement_group_strategy: Optional[str] = DEFAULT.VALUE,
+    placement_group_bundles: Default[List[Dict[str, float]]] = DEFAULT.VALUE,
+    placement_group_strategy: Default[str] = DEFAULT.VALUE,
     max_replicas_per_node: Default[int] = DEFAULT.VALUE,
     user_config: Default[Optional[Any]] = DEFAULT.VALUE,
     max_concurrent_queries: Default[int] = DEFAULT.VALUE,
+    max_ongoing_requests: Default[int] = DEFAULT.VALUE,
     max_queued_requests: Default[int] = DEFAULT.VALUE,
     autoscaling_config: Default[Union[Dict, AutoscalingConfig, None]] = DEFAULT.VALUE,
     graceful_shutdown_wait_loop_s: Default[float] = DEFAULT.VALUE,
@@ -298,12 +300,15 @@ def deployment(
             actors and tasks created by the replica actor will be scheduled in the
             placement group by default (`placement_group_capture_child_tasks` is set
             to True).
+            This cannot be set together with max_replicas_per_node.
         placement_group_strategy: Strategy to use for the replica placement group
             specified via `placement_group_bundles`. Defaults to `PACK`.
         user_config: Config to pass to the reconfigure method of the deployment. This
             can be updated dynamically without restarting the replicas of the
             deployment. The user_config must be fully JSON-serializable.
-        max_concurrent_queries: Maximum number of queries that are sent to a
+        max_concurrent_queries: [DEPRECATED] Maximum number of queries that are sent to
+            a replica of this deployment without receiving a response. Defaults to 100.
+        max_ongoing_requests: Maximum number of requests that are sent to a
             replica of this deployment without receiving a response. Defaults to 100.
         max_queued_requests: [EXPERIMENTAL] Maximum number of requests to this
             deployment that will be queued at each *caller* (proxy or DeploymentHandle).
@@ -323,21 +328,48 @@ def deployment(
         max_replicas_per_node: The max number of replicas of this deployment that can
             run on a single node. Valid values are None (default, no limit)
             or an integer in the range of [1, 100].
+            This cannot be set together with placement_group_bundles.
 
     Returns:
         `Deployment`
     """
 
+    if autoscaling_config not in [DEFAULT.VALUE, None]:
+        if (
+            isinstance(autoscaling_config, dict)
+            and "target_num_ongoing_requests_per_replica" in autoscaling_config
+        ) or (
+            isinstance(autoscaling_config, AutoscalingConfig)
+            and "target_num_ongoing_requests_per_replica"
+            in autoscaling_config.dict(exclude_unset=True)
+        ):
+            logger.warning(
+                "DeprecationWarning: `target_num_ongoing_requests_per_replica` in "
+                "`autoscaling_config` has been deprecated and replaced by "
+                "`target_ongoing_requests`. "
+                "`target_num_ongoing_requests_per_replica` will be removed in a future "
+                "version."
+            )
+
+    if max_ongoing_requests is None:
+        raise ValueError("`max_ongoing_requests` must be non-null, got None.")
+    elif max_ongoing_requests is DEFAULT.VALUE:
+        if max_concurrent_queries is None:
+            max_ongoing_requests = DEFAULT_MAX_ONGOING_REQUESTS
+        else:
+            max_ongoing_requests = max_concurrent_queries
+    if num_replicas == "auto":
+        num_replicas = None
+        max_ongoing_requests, autoscaling_config = handle_num_replicas_auto(
+            max_ongoing_requests, autoscaling_config
+        )
+
+        ServeUsageTag.AUTO_NUM_REPLICAS_USED.record("1")
+
     # NOTE: The user_configured_option_names should be the first thing that's
     # defined in this function. It depends on the locals() dictionary storing
     # only the function args/kwargs.
     # Create list of all user-configured options from keyword args
-    if num_replicas == "auto":
-        num_replicas = None
-        max_concurrent_queries, autoscaling_config = handle_num_replicas_auto(
-            max_concurrent_queries, autoscaling_config
-        )
-
     user_configured_option_names = [
         option
         for option, value in locals().items()
@@ -370,13 +402,20 @@ def deployment(
             "deprecated. To specify a route prefix for an application, pass it into "
             "`serve.run` instead."
         )
+
+    if max_concurrent_queries is not DEFAULT.VALUE:
+        logger.warning(
+            "DeprecationWarning: `max_concurrent_queries` in `@serve.deployment` has "
+            "been deprecated and replaced by `max_ongoing_requests`."
+        )
+
     if isinstance(logging_config, LoggingConfig):
         logging_config = logging_config.dict()
 
     deployment_config = DeploymentConfig.from_default(
         num_replicas=num_replicas if num_replicas is not None else 1,
         user_config=user_config,
-        max_concurrent_queries=max_concurrent_queries,
+        max_ongoing_requests=max_ongoing_requests,
         max_queued_requests=max_queued_requests,
         autoscaling_config=autoscaling_config,
         graceful_shutdown_wait_loop_s=graceful_shutdown_wait_loop_s,
@@ -424,22 +463,6 @@ def deployment(
     # This handles both parametrized and non-parametrized usage of the
     # decorator. See the @serve.batch code for more details.
     return decorator(_func_or_class) if callable(_func_or_class) else decorator
-
-
-@Deprecated
-def get_deployment(name: str) -> Deployment:
-    raise ValueError(
-        "serve.get_deployment is fully deprecated. Use serve.get_app_handle() to get a "
-        "handle to a running Serve application."
-    )
-
-
-@Deprecated
-def list_deployments() -> Dict[str, Deployment]:
-    raise ValueError(
-        "serve.list_deployments() is fully deprecated. Use serve.status() to get a "
-        "list of all active applications and deployments."
-    )
 
 
 @PublicAPI(stability="stable")
@@ -514,7 +537,7 @@ def _run(
         # deploy_application returns; the application state manager will
         # need another reconcile iteration to create it.
         client._wait_for_deployment_created(ingress.name, name)
-        handle = client.get_handle(ingress.name, name, missing_ok=True)
+        handle = client.get_handle(ingress.name, name, check_exists=False)
         return handle
 
 
@@ -523,7 +546,7 @@ def run(
     target: Application,
     blocking: bool = False,
     name: str = SERVE_DEFAULT_APP_NAME,
-    route_prefix: str = DEFAULT.VALUE,
+    route_prefix: Optional[str] = DEFAULT.VALUE,
     logging_config: Optional[Union[Dict, LoggingConfig]] = None,
 ) -> DeploymentHandle:
     """Run an application and return a handle to its ingress deployment.
@@ -542,9 +565,10 @@ def run(
             will loop and log status until Ctrl-C'd.
         name: Application name. If not provided, this will be the only
             application running on the cluster (it will delete all others).
-        route_prefix: Route prefix for HTTP requests. If not provided, it will use
-            route_prefix of the ingress deployment. If specified neither as an argument
-            nor in the ingress deployment, the route prefix will default to '/'.
+        route_prefix: Route prefix for HTTP requests. Defaults to '/'.
+            If `None` is passed, the application will not be exposed over HTTP
+            (this may be useful if you only want the application to be exposed via
+            gRPC or a `DeploymentHandle`).
         logging_config: Application logging config. If provided, the config will
             be applied to all deployments which doesn't have logging config.
 
@@ -557,6 +581,7 @@ def run(
         route_prefix=route_prefix,
         logging_config=logging_config,
     )
+    logger.info(f"Deployed app '{name}' successfully.")
 
     if blocking:
         try:
@@ -564,7 +589,7 @@ def run(
                 # Block, letting Ray print logs to the terminal.
                 time.sleep(10)
         except KeyboardInterrupt:
-            logger.info("Got KeyboardInterrupt, release blocking...")
+            logger.warning("Got KeyboardInterrupt, exiting...")
     return handle
 
 
@@ -807,13 +832,17 @@ def get_app_handle(name: str) -> DeploymentHandle:
         raise RayServeException(f"Application '{name}' does not exist.")
 
     ServeUsageTag.SERVE_GET_APP_HANDLE_API_USED.record("1")
-    return client.get_handle(ingress, name)
+    # There is no need to check if the deployment exists since the
+    # deployment name was just fetched from the controller
+    return client.get_handle(ingress, name, check_exists=False)
 
 
 @DeveloperAPI
 def get_deployment_handle(
     deployment_name: str,
     app_name: Optional[str] = None,
+    _check_exists: bool = True,
+    _record_telemetry: bool = True,
 ) -> DeploymentHandle:
     """Get a handle to a deployment by name.
 
@@ -900,5 +929,7 @@ def get_deployment_handle(
         else:
             app_name = internal_replica_context.app_name
 
-    ServeUsageTag.SERVE_GET_DEPLOYMENT_HANDLE_API_USED.record("1")
-    return client.get_handle(deployment_name, app_name)
+    if _record_telemetry:
+        ServeUsageTag.SERVE_GET_DEPLOYMENT_HANDLE_API_USED.record("1")
+
+    return client.get_handle(deployment_name, app_name, check_exists=_check_exists)

@@ -9,9 +9,9 @@ import numpy as np
 import ray
 from ray import train
 from ray.air.config import DatasetConfig, ScalingConfig
-from ray.data import Dataset, DataIterator, Preprocessor
-from ray.train.data_parallel_trainer import DataParallelTrainer
+from ray.data import DataIterator, Dataset, Preprocessor
 from ray.train import DataConfig
+from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.util.annotations import Deprecated, DeveloperAPI
 
 MAKE_LOCAL_DATA_ITERATOR_DEPRECATION_MSG = """
@@ -169,8 +169,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Generate a synthetic dataset of ~10GiB of float64 data. The dataset is sharded
-    # into 100 blocks (parallelism=100).
-    ds = ray.data.range_tensor(50000, shape=(80, 80, 4), parallelism=100)
+    # into 100 blocks (override_num_blocks=100).
+    ds = ray.data.range_tensor(50000, shape=(80, 80, 4), override_num_blocks=100)
 
     # An example preprocessing chain that just scales all values by 4.0 in two stages.
     ds = ds.map_batches(lambda df: df * 2, batch_format="pandas")

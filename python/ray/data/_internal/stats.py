@@ -1,8 +1,9 @@
 import collections
+import logging
 import threading
 import time
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 from uuid import uuid4
 
@@ -11,7 +12,6 @@ import numpy as np
 import ray
 from ray.actor import ActorHandle
 from ray.data._internal.block_list import BlockList
-from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
 from ray.data._internal.util import capfirst
 from ray.data.block import BlockMetadata
@@ -20,7 +20,7 @@ from ray.util.annotations import DeveloperAPI
 from ray.util.metrics import Gauge
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
-logger = DatasetLogger(__name__)
+logger = logging.getLogger(__name__)
 
 STATS_ACTOR_NAME = "datasets_stats_actor"
 STATS_ACTOR_NAMESPACE = "_dataset_stats_actor"
@@ -159,52 +159,91 @@ class _StatsActor:
         # Everything is a gauge because we need to reset all of
         # a dataset's metrics to 0 after each finishes execution.
         op_tags_keys = ("dataset", "operator")
-        self.bytes_spilled = Gauge(
+
+        # TODO(scottjlee): move these overvie metrics as fields in a
+        # separate dataclass, similar to OpRuntimeMetrics.
+        self.spilled_bytes = Gauge(
             "data_spilled_bytes",
             description="""Bytes spilled by dataset operators.
                 DataContext.enable_get_object_locations_for_metrics
                 must be set to True to report this metric""",
             tag_keys=op_tags_keys,
         )
-        self.bytes_allocated = Gauge(
+        self.allocated_bytes = Gauge(
             "data_allocated_bytes",
             description="Bytes allocated by dataset operators",
             tag_keys=op_tags_keys,
         )
-        self.bytes_freed = Gauge(
+        self.freed_bytes = Gauge(
             "data_freed_bytes",
             description="Bytes freed by dataset operators",
             tag_keys=op_tags_keys,
         )
-        self.bytes_current = Gauge(
+        self.current_bytes = Gauge(
             "data_current_bytes",
             description="Bytes currently in memory store used by dataset operators",
             tag_keys=op_tags_keys,
         )
-        self.cpu_usage = Gauge(
+        self.cpu_usage_cores = Gauge(
             "data_cpu_usage_cores",
             description="CPUs allocated to dataset operators",
             tag_keys=op_tags_keys,
         )
-        self.gpu_usage = Gauge(
+        self.gpu_usage_cores = Gauge(
             "data_gpu_usage_cores",
             description="GPUs allocated to dataset operators",
             tag_keys=op_tags_keys,
         )
-        self.bytes_outputted = Gauge(
+        self.output_bytes = Gauge(
             "data_output_bytes",
             description="Bytes outputted by dataset operators",
             tag_keys=op_tags_keys,
         )
-        self.rows_outputted = Gauge(
+        self.output_rows = Gauge(
             "data_output_rows",
             description="Rows outputted by dataset operators",
             tag_keys=op_tags_keys,
         )
-        self.block_generation_time = Gauge(
-            "data_block_generation_seconds",
-            description="Time spent generating blocks.",
-            tag_keys=op_tags_keys,
+
+        # === Metrics from OpRuntimeMetrics ===
+        # Inputs-related metrics
+        self.execution_metrics_inputs = (
+            self._create_prometheus_metrics_for_execution_metrics(
+                metrics_group="inputs",
+                tag_keys=op_tags_keys,
+            )
+        )
+
+        # Outputs-related metrics
+        self.execution_metrics_outputs = (
+            self._create_prometheus_metrics_for_execution_metrics(
+                metrics_group="outputs",
+                tag_keys=op_tags_keys,
+            )
+        )
+
+        # Task-related metrics
+        self.execution_metrics_tasks = (
+            self._create_prometheus_metrics_for_execution_metrics(
+                metrics_group="tasks",
+                tag_keys=op_tags_keys,
+            )
+        )
+
+        # Object store memory-related metrics
+        self.execution_metrics_obj_store_memory = (
+            self._create_prometheus_metrics_for_execution_metrics(
+                metrics_group="obj_store_memory",
+                tag_keys=op_tags_keys,
+            )
+        )
+
+        # Miscellaneous metrics
+        self.execution_metrics_misc = (
+            self._create_prometheus_metrics_for_execution_metrics(
+                metrics_group="misc",
+                tag_keys=op_tags_keys,
+            )
         )
 
         iter_tag_keys = ("dataset",)
@@ -223,6 +262,22 @@ class _StatsActor:
             description="Seconds spent in iterator initialization code",
             tag_keys=iter_tag_keys,
         )
+
+    def _create_prometheus_metrics_for_execution_metrics(
+        self, metrics_group: str, tag_keys: Tuple[str, ...]
+    ) -> Dict[str, Gauge]:
+        metrics = {}
+        for field in fields(OpRuntimeMetrics):
+            if not field.metadata.get("metrics_group") == metrics_group:
+                continue
+            metric_name = f"data_{field.name}"
+            metric_description = field.metadata.get("description")
+            metrics[field.name] = Gauge(
+                metric_name,
+                description=metric_description,
+                tag_keys=tag_keys,
+            )
+        return metrics
 
     def record_start(self, stats_uuid):
         self.start_time[stats_uuid] = time.perf_counter()
@@ -279,13 +334,32 @@ class _StatsActor:
     ):
         for stats, operator_tag in zip(op_metrics, operator_tags):
             tags = self._create_tags(dataset_tag, operator_tag)
-            self.bytes_spilled.set(stats.get("obj_store_mem_spilled", 0), tags)
-            self.bytes_freed.set(stats.get("obj_store_mem_freed", 0), tags)
-            self.bytes_outputted.set(stats.get("bytes_task_outputs_generated", 0), tags)
-            self.rows_outputted.set(stats.get("rows_task_outputs_generated", 0), tags)
-            self.cpu_usage.set(stats.get("cpu_usage", 0), tags)
-            self.gpu_usage.set(stats.get("gpu_usage", 0), tags)
-            self.block_generation_time.set(stats.get("block_generation_time", 0), tags)
+
+            self.spilled_bytes.set(stats.get("obj_store_mem_spilled", 0), tags)
+            self.freed_bytes.set(stats.get("obj_store_mem_freed", 0), tags)
+            self.current_bytes.set(stats.get("obj_store_mem_used", 0), tags)
+            self.output_bytes.set(stats.get("bytes_task_outputs_generated", 0), tags)
+            self.output_rows.set(stats.get("rows_task_outputs_generated", 0), tags)
+            self.cpu_usage_cores.set(stats.get("cpu_usage", 0), tags)
+            self.gpu_usage_cores.set(stats.get("gpu_usage", 0), tags)
+
+            for field_name, prom_metric in self.execution_metrics_inputs.items():
+                prom_metric.set(stats.get(field_name, 0), tags)
+
+            for field_name, prom_metric in self.execution_metrics_outputs.items():
+                prom_metric.set(stats.get(field_name, 0), tags)
+
+            for field_name, prom_metric in self.execution_metrics_tasks.items():
+                prom_metric.set(stats.get(field_name, 0), tags)
+
+            for (
+                field_name,
+                prom_metric,
+            ) in self.execution_metrics_obj_store_memory.items():
+                prom_metric.set(stats.get(field_name, 0), tags)
+
+            for field_name, prom_metric in self.execution_metrics_misc.items():
+                prom_metric.set(stats.get(field_name, 0), tags)
 
         # This update is called from a dataset's executor,
         # so all tags should contain the same dataset
@@ -304,15 +378,29 @@ class _StatsActor:
     def clear_execution_metrics(self, dataset_tag: str, operator_tags: List[str]):
         for operator_tag in operator_tags:
             tags = self._create_tags(dataset_tag, operator_tag)
-            self.bytes_spilled.set(0, tags)
-            self.bytes_allocated.set(0, tags)
-            self.bytes_freed.set(0, tags)
-            self.bytes_current.set(0, tags)
-            self.bytes_outputted.set(0, tags)
-            self.rows_outputted.set(0, tags)
-            self.cpu_usage.set(0, tags)
-            self.gpu_usage.set(0, tags)
-            self.block_generation_time.set(0, tags)
+            self.spilled_bytes.set(0, tags)
+            self.allocated_bytes.set(0, tags)
+            self.freed_bytes.set(0, tags)
+            self.current_bytes.set(0, tags)
+            self.output_bytes.set(0, tags)
+            self.output_rows.set(0, tags)
+            self.cpu_usage_cores.set(0, tags)
+            self.gpu_usage_cores.set(0, tags)
+
+            for prom_metric in self.execution_metrics_inputs.values():
+                prom_metric.set(0, tags)
+
+            for prom_metric in self.execution_metrics_outputs.values():
+                prom_metric.set(0, tags)
+
+            for prom_metric in self.execution_metrics_tasks.values():
+                prom_metric.set(0, tags)
+
+            for prom_metric in self.execution_metrics_obj_store_memory.values():
+                prom_metric.set(0, tags)
+
+            for prom_metric in self.execution_metrics_misc.values():
+                prom_metric.set(0, tags)
 
     def clear_iteration_metrics(self, dataset_tag: str):
         tags = self._create_tags(dataset_tag)
@@ -320,8 +408,9 @@ class _StatsActor:
         self.iter_user_s.set(0, tags)
         self.iter_initialize_s.set(0, tags)
 
-    def register_dataset(self, dataset_tag: str, operator_tags: List[str]):
+    def register_dataset(self, job_id: str, dataset_tag: str, operator_tags: List[str]):
         self.datasets[dataset_tag] = {
+            "job_id": job_id,
             "state": "RUNNING",
             "progress": 0,
             "total": 0,
@@ -340,8 +429,10 @@ class _StatsActor:
     def update_dataset(self, dataset_tag, state):
         self.datasets[dataset_tag].update(state)
 
-    def get_datasets(self):
-        return self.datasets
+    def get_datasets(self, job_id: Optional[str] = None):
+        if not job_id:
+            return self.datasets
+        return {k: v for k, v in self.datasets.items() if v["job_id"] == job_id}
 
     def _create_tags(self, dataset_tag: str, operator_tag: Optional[str] = None):
         tags = {"dataset": dataset_tag}
@@ -464,8 +555,9 @@ class _StatsManager:
                                 )
                                 iter_stats_inactivity = 0
                             except Exception:
-                                logger.get_logger(log_to_stdout=False).exception(
-                                    "Error occurred during remote call to _StatsActor."
+                                logger.debug(
+                                    "Error occurred during remote call to _StatsActor.",
+                                    exc_info=True,
                                 )
                                 return
                         else:
@@ -474,7 +566,7 @@ class _StatsManager:
                                 iter_stats_inactivity
                                 >= _StatsManager.UPDATE_THREAD_INACTIVITY_LIMIT
                             ):
-                                logger.get_logger(log_to_stdout=False).info(
+                                logger.debug(
                                     "Terminating StatsManager thread due to inactivity."
                                 )
                                 return
@@ -540,7 +632,11 @@ class _StatsManager:
     # Other methods
 
     def register_dataset_to_stats_actor(self, dataset_tag, operator_tags):
-        self._stats_actor().register_dataset.remote(dataset_tag, operator_tags)
+        self._stats_actor().register_dataset.remote(
+            ray.get_runtime_context().get_job_id(),
+            dataset_tag,
+            operator_tags,
+        )
 
     def get_dataset_id_from_stats_actor(self) -> str:
         try:
@@ -631,6 +727,9 @@ class DatasetStats:
         self.global_bytes_restored: int = 0
         self.dataset_bytes_spilled: int = 0
 
+        # Streaming split coordinator stats (dataset level)
+        self.streaming_split_coordinator_s: Timer = Timer()
+
     @property
     def stats_actor(self):
         return _get_or_create_stats_actor()
@@ -677,6 +776,7 @@ class DatasetStats:
             self.iter_user_s,
             self.iter_initialize_s,
             self.iter_total_s,
+            self.streaming_split_coordinator_s,
             self.iter_blocks_local,
             self.iter_blocks_remote,
             self.iter_unknown_location,
@@ -684,6 +784,11 @@ class DatasetStats:
         stats_summary_parents = []
         if self.parents is not None:
             stats_summary_parents = [p.to_summary() for p in self.parents]
+        streaming_exec_schedule_s = (
+            self.streaming_exec_schedule_s.get()
+            if self.streaming_exec_schedule_s
+            else 0
+        )
         return DatasetStatsSummary(
             operators_stats,
             iter_stats,
@@ -696,7 +801,16 @@ class DatasetStats:
             self.global_bytes_spilled,
             self.global_bytes_restored,
             self.dataset_bytes_spilled,
+            streaming_exec_schedule_s,
         )
+
+    def runtime_metrics(self) -> str:
+        """Generate a string representing the runtime metrics of a Dataset. This is
+        a high level summary of the time spent in Ray Data code broken down by operator.
+        It also includes the time spent in the scheduler. Times are shown as the total
+        time for each operator and percentages of time are shown as a fraction of the
+        total time for the whole dataset."""
+        return self.to_summary().runtime_metrics()
 
 
 @DeveloperAPI
@@ -713,6 +827,7 @@ class DatasetStatsSummary:
     global_bytes_spilled: int
     global_bytes_restored: int
     dataset_bytes_spilled: int
+    streaming_exec_schedule_s: float
 
     def to_string(
         self,
@@ -770,7 +885,8 @@ class DatasetStatsSummary:
                 else:
                     already_printed.add(operator_uuid)
                     out += str(operators_stats_summary)
-        if DataContext.get_current().verbose_stats_logs and self.extra_metrics:
+        verbose_stats_logs = DataContext.get_current().verbose_stats_logs
+        if verbose_stats_logs and self.extra_metrics:
             indent = (
                 "\t"
                 if operators_stats_summary and operators_stats_summary.is_sub_operator
@@ -793,6 +909,76 @@ class DatasetStatsSummary:
                 out += "\nDataset memory:\n"
                 out += "* Spilled to disk: {}MB\n".format(dataset_mb_spilled)
 
+            # For throughput, we compute both an observed Ray Data dataset throughput
+            # and an estimated single node dataset throughput.
+
+            # The observed dataset throughput is computed by dividing the total number
+            # of rows produced by the total wall time of the dataset (i.e. from start to
+            # finish how long did the dataset take to be processed). With the recursive
+            # nature of the DatasetStatsSummary, we use get_total_wall_time to determine
+            # the total wall time (this finds the difference between the earliest start
+            # and latest end for any block in any operator).
+
+            # The estimated single node dataset throughput is computed by dividing the
+            # total number of rows produced the sum of the wall times across all blocks
+            # of all operators. This assumes that on a single node the work done would
+            # be equivalent, with no concurrency.
+            output_num_rows = self.operators_stats[-1].output_num_rows
+            total_num_out_rows = output_num_rows["sum"] if output_num_rows else 0
+            wall_time = self.get_total_wall_time()
+            total_time_all_blocks = self.get_total_time_all_blocks()
+            if total_num_out_rows and wall_time and total_time_all_blocks:
+                out += "\n"
+                out += "Dataset throughput:\n"
+                out += (
+                    "\t* Ray Data throughput:"
+                    f" {total_num_out_rows / wall_time} "
+                    "rows/s\n"
+                )
+                out += (
+                    "\t* Estimated single node throughput:"
+                    f" {total_num_out_rows / total_time_all_blocks} "
+                    "rows/s\n"
+                )
+        if verbose_stats_logs and add_global_stats:
+            out += "\n" + self.runtime_metrics()
+
+        return out
+
+    @staticmethod
+    def _collect_dataset_stats_summaries(
+        curr: "DatasetStatsSummary",
+    ) -> List["DatasetStatsSummary"]:
+        summs = []
+        # TODO: Do operators ever have multiple parents? Do we need to deduplicate?
+        for p in curr.parents:
+            if p and p.parents:
+                summs.extend(DatasetStatsSummary._collect_dataset_stats_summaries(p))
+        return summs + [curr]
+
+    @staticmethod
+    def _find_start_and_end(summ: "DatasetStatsSummary") -> Tuple[float, float]:
+        earliest_start = min(ops.earliest_start_time for ops in summ.operators_stats)
+        latest_end = max(ops.latest_end_time for ops in summ.operators_stats)
+        return earliest_start, latest_end
+
+    def runtime_metrics(self) -> str:
+        total_wall_time = self.get_total_wall_time()
+
+        def fmt_line(name: str, time: float) -> str:
+            return f"* {name}: {fmt(time)} ({time / total_wall_time * 100:.3f}%)\n"
+
+        summaries = DatasetStatsSummary._collect_dataset_stats_summaries(self)
+        out = "Runtime Metrics:\n"
+        for summ in summaries:
+            if len(summ.operators_stats) > 0:
+                earliest_start, latest_end = DatasetStatsSummary._find_start_and_end(
+                    summ
+                )
+                op_total_time = latest_end - earliest_start
+                out += fmt_line(summ.base_name, op_total_time)
+        out += fmt_line("Scheduling", self.streaming_exec_schedule_s)
+        out += fmt_line("Total", total_wall_time)
         return out
 
     def __repr__(self, level=0) -> str:
@@ -828,10 +1014,33 @@ class DatasetStatsSummary:
         )
 
     def get_total_wall_time(self) -> float:
-        parent_wall_times = [p.get_total_wall_time() for p in self.parents]
-        parent_max_wall_time = max(parent_wall_times) if parent_wall_times else 0
-        return parent_max_wall_time + sum(
-            ss.wall_time.get("max", 0) for ss in self.operators_stats
+        """Calculate the total wall time for the dataset, this is done by finding
+        the earliest start time and latest end time for any block in any operator.
+        The wall time is the difference of these two times.
+        """
+        start_ends = [
+            DatasetStatsSummary._find_start_and_end(summ)
+            for summ in DatasetStatsSummary._collect_dataset_stats_summaries(self)
+            if len(summ.operators_stats) > 0
+        ]
+        if len(start_ends) == 0:
+            return 0
+        else:
+            earliest_start = min(start_end[0] for start_end in start_ends)
+            latest_end = max(start_end[1] for start_end in start_ends)
+            return latest_end - earliest_start
+
+    def get_total_time_all_blocks(self) -> float:
+        """Calculate the sum of the wall times across all blocks of all operators."""
+        summaries = DatasetStatsSummary._collect_dataset_stats_summaries(self)
+        return sum(
+            (
+                sum(
+                    ops.wall_time.get("sum", 0) if ops.wall_time else 0
+                    for ops in summ.operators_stats
+                )
+            )
+            for summ in summaries
         )
 
     def get_total_cpu_time(self) -> float:
@@ -863,6 +1072,8 @@ class OperatorStatsSummary:
     # overall runtime of the operator, pulled from the stats actor, whereas the
     # computed walltimes in `self.wall_time` are calculated on a operator level.
     time_total_s: float
+    earliest_start_time: float
+    latest_end_time: float
     # String summarizing high-level statistics from executing the operator
     block_execution_summary_str: str
     # The fields below are dicts with stats aggregated across blocks
@@ -870,6 +1081,7 @@ class OperatorStatsSummary:
     # {"min": ..., "max": ..., "mean": ..., "sum": ...}
     wall_time: Optional[Dict[str, float]] = None
     cpu_time: Optional[Dict[str, float]] = None
+    udf_time: Optional[Dict[str, float]] = None
     # memory: no "sum" stat
     memory: Optional[Dict[str, float]] = None
     output_num_rows: Optional[Dict[str, float]] = None
@@ -898,18 +1110,20 @@ class OperatorStatsSummary:
         exec_stats = [m.exec_stats for m in block_metas if m.exec_stats is not None]
         rounded_total = 0
         time_total_s = 0
+        earliest_start_time, latest_end_time = 0, 0
+
+        if exec_stats:
+            # Calculate the total execution time of operator as
+            # the difference between the latest end time and
+            # the earliest start time of all blocks in the operator.
+            earliest_start_time = min(s.start_time_s for s in exec_stats)
+            latest_end_time = max(s.end_time_s for s in exec_stats)
+            time_total_s = latest_end_time - earliest_start_time
 
         if is_sub_operator:
             exec_summary_str = "{} blocks produced\n".format(len(exec_stats))
         else:
             if exec_stats:
-                # Calculate the total execution time of operator as
-                # the difference between the latest end time and
-                # the earliest start time of all blocks in the operator.
-                earliest_start_time = min(s.start_time_s for s in exec_stats)
-                latest_end_time = max(s.end_time_s for s in exec_stats)
-                time_total_s = latest_end_time - earliest_start_time
-
                 rounded_total = round(time_total_s, 2)
                 if rounded_total <= 0:
                     # Handle -0.0 case.
@@ -937,7 +1151,7 @@ class OperatorStatsSummary:
                 len(task_rows), exec_summary_str
             )
 
-        wall_time_stats = None
+        wall_time_stats, cpu_stats, memory_stats, udf_stats = None, None, None, None
         if exec_stats:
             wall_time_stats = {
                 "min": min([e.wall_time_s for e in exec_stats]),
@@ -945,9 +1159,6 @@ class OperatorStatsSummary:
                 "mean": np.mean([e.wall_time_s for e in exec_stats]),
                 "sum": sum([e.wall_time_s for e in exec_stats]),
             }
-
-        cpu_stats, memory_stats = None, None
-        if exec_stats:
             cpu_stats = {
                 "min": min([e.cpu_time_s for e in exec_stats]),
                 "max": max([e.cpu_time_s for e in exec_stats]),
@@ -962,6 +1173,13 @@ class OperatorStatsSummary:
                 "min": min(memory_stats_mb),
                 "max": max(memory_stats_mb),
                 "mean": int(np.mean(memory_stats_mb)),
+            }
+
+            udf_stats = {
+                "min": min([e.udf_time_s for e in exec_stats]),
+                "max": max([e.udf_time_s for e in exec_stats]),
+                "mean": np.mean([e.udf_time_s for e in exec_stats]),
+                "sum": sum([e.udf_time_s for e in exec_stats]),
             }
 
         output_num_rows_stats = None
@@ -1004,9 +1222,12 @@ class OperatorStatsSummary:
             operator_name=operator_name,
             is_sub_operator=is_sub_operator,
             time_total_s=time_total_s,
+            earliest_start_time=earliest_start_time,
+            latest_end_time=latest_end_time,
             block_execution_summary_str=exec_summary_str,
             wall_time=wall_time_stats,
             cpu_time=cpu_stats,
+            udf_time=udf_stats,
             memory=memory_stats,
             output_num_rows=output_num_rows_stats,
             output_size_bytes=output_size_bytes_stats,
@@ -1043,6 +1264,16 @@ class OperatorStatsSummary:
                 fmt(cpu_stats["max"]),
                 fmt(cpu_stats["mean"]),
                 fmt(cpu_stats["sum"]),
+            )
+
+        udf_stats = self.udf_time
+        if udf_stats:
+            out += indent
+            out += "* UDF time: {} min, {} max, {} mean, {} total\n".format(
+                fmt(udf_stats["min"]),
+                fmt(udf_stats["max"]),
+                fmt(udf_stats["mean"]),
+                fmt(udf_stats["sum"]),
             )
 
         memory_stats = self.memory
@@ -1098,6 +1329,31 @@ class OperatorStatsSummary:
                 node_count_stats["max"],
                 node_count_stats["mean"],
                 node_count_stats["count"],
+            )
+        if output_num_rows_stats and self.time_total_s and wall_time_stats:
+            # For throughput, we compute both an observed Ray Data operator throughput
+            # and an estimated single node operator throughput.
+
+            # The observed Ray Data operator throughput is computed by dividing the
+            # total number of rows produced by the wall time of the operator,
+            # time_total_s.
+
+            # The estimated single node operator throughput is computed by dividing the
+            # total number of rows produced by the the sum of the wall times across all
+            # blocks of the operator. This assumes that on a single node the work done
+            # would be equivalent, with no concurrency.
+            total_num_out_rows = output_num_rows_stats["sum"]
+            out += indent
+            out += "* Operator throughput:\n"
+            out += (
+                indent + "\t* Ray Data throughput:"
+                f" {total_num_out_rows / self.time_total_s} "
+                "rows/s\n"
+            )
+            out += (
+                indent + "\t* Estimated single node throughput:"
+                f" {total_num_out_rows / wall_time_stats['sum']} "
+                "rows/s\n"
             )
         return out
 
@@ -1161,6 +1417,8 @@ class IterStatsSummary:
     initialize_time: Timer
     # Total time taken by Dataset iterator, in seconds
     total_time: Timer
+    # Time spent in streaming split coordinator
+    streaming_split_coord_time: Timer
     # Num of blocks that are in local object store
     iter_blocks_local: int
     # Num of blocks that are in remote node and have to fetch locally
@@ -1253,6 +1511,9 @@ class IterStatsSummary:
                 out += "    * Num blocks unknown location: {}\n".format(
                     self.iter_unknown_location
                 )
+            if self.streaming_split_coord_time.get() != 0:
+                out += "Streaming split coordinator overhead time: "
+                out += f"{fmt(self.streaming_split_coord_time.get())}\n"
 
         return out
 

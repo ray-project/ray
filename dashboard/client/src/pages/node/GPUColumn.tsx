@@ -1,4 +1,5 @@
-import { Box, makeStyles, Tooltip, Typography } from "@material-ui/core";
+import { Box, Tooltip, Typography } from "@mui/material";
+import makeStyles from "@mui/styles/makeStyles";
 import React from "react";
 import { RightPaddedTypography } from "../../common/CustomTypography";
 import UsageBar from "../../common/UsageBar";

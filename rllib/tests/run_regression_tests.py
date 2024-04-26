@@ -193,7 +193,7 @@ if __name__ == "__main__":
         # long learning tests such as sac and ddpg on the pendulum environment.
         if args.override_mean_reward != 0.0:
             exp["stop"][
-                "sampler_results/episode_reward_mean"
+                "env_runner_results/episode_return_mean"
             ] = args.override_mean_reward
 
         # Checkpoint settings.
@@ -201,11 +201,6 @@ if __name__ == "__main__":
             checkpoint_frequency=args.checkpoint_freq,
             checkpoint_at_end=args.checkpoint_freq > 0,
         )
-
-        # QMIX does not support tf yet -> skip.
-        if exp["run"] == "QMIX" and args.framework != "torch":
-            print(f"Skipping framework='{args.framework}' for QMIX.")
-            continue
 
         # Always run with eager-tracing when framework=tf2, if not in local-mode
         # and unless the yaml explicitly tells us to disable eager tracing.
@@ -269,18 +264,18 @@ if __name__ == "__main__":
                 # If we have evaluation workers, use their rewards.
                 # This is useful for offline learning tests, where
                 # we evaluate against an actual environment.
-                check_eval = exp["config"].get("evaluation_interval", None) is not None
+                check_eval = bool(exp["config"].get("evaluation_interval"))
                 reward_mean = (
-                    t.last_result["evaluation"]["sampler_results"][
-                        "episode_reward_mean"
+                    t.last_result["evaluation_results"]["env_runner_results"][
+                        "episode_return_mean"
                     ]
                     if check_eval
                     else (
                         # Some algos don't store sampler results under `sampler_results`
                         # e.g. ARS. Need to keep this logic around for now.
-                        t.last_result["sampler_results"]["episode_reward_mean"]
-                        if "sampler_results" in t.last_result
-                        else t.last_result["episode_reward_mean"]
+                        t.last_result["env_runner_results"]["episode_return_mean"]
+                        if "env_runner_results" in t.last_result
+                        else t.last_result["episode_return_mean"]
                     )
                 )
 
@@ -289,13 +284,15 @@ if __name__ == "__main__":
                 # not, use `episode_reward_mean`.
                 if check_eval:
                     min_reward = t.stopping_criterion.get(
-                        "evaluation/sampler_results/episode_reward_mean",
-                        t.stopping_criterion.get("sampler_results/episode_reward_mean"),
+                        "evaluation_results/env_runner_results/episode_return_mean",
+                        t.stopping_criterion.get(
+                            "env_runner_results/episode_return_mean"
+                        ),
                     )
                 # Otherwise, expect `episode_reward_mean` to be set.
                 else:
                     min_reward = t.stopping_criterion.get(
-                        "sampler_results/episode_reward_mean"
+                        "env_runner_results/episode_return_mean"
                     )
 
                 # If min reward not defined, always pass.

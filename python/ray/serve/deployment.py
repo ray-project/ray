@@ -1,6 +1,5 @@
 import inspect
 import logging
-import warnings
 from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -12,12 +11,13 @@ from ray.serve._private.config import (
     ReplicaConfig,
     handle_num_replicas_auto,
 )
-from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.constants import DEFAULT_MAX_ONGOING_REQUESTS, SERVE_LOGGER_NAME
+from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import DEFAULT, Default
 from ray.serve.config import AutoscalingConfig
 from ray.serve.context import _get_global_client
 from ray.serve.schema import DeploymentSchema, LoggingConfig, RayActorOptionsSchema
-from ray.util.annotations import Deprecated, PublicAPI
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -183,8 +183,18 @@ class Deployment:
 
     @property
     def max_concurrent_queries(self) -> int:
+        """[DEPRECATED] Max number of requests a replica can handle at once."""
+
+        logger.warning(
+            "DeprecationWarning: `max_concurrent_queries` is deprecated, please use "
+            "`max_ongoing_requests` instead."
+        )
+        return self._deployment_config.max_ongoing_requests
+
+    @property
+    def max_ongoing_requests(self) -> int:
         """Max number of requests a replica can handle at once."""
-        return self._deployment_config.max_concurrent_queries
+        return self._deployment_config.max_ongoing_requests
 
     @property
     def max_queued_requests(self) -> int:
@@ -312,11 +322,12 @@ class Deployment:
         num_replicas: Default[Optional[Union[int, str]]] = DEFAULT.VALUE,
         route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
         ray_actor_options: Default[Optional[Dict]] = DEFAULT.VALUE,
-        placement_group_bundles: Optional[List[Dict[str, float]]] = DEFAULT.VALUE,
-        placement_group_strategy: Optional[str] = DEFAULT.VALUE,
-        max_replicas_per_node: Optional[int] = DEFAULT.VALUE,
+        placement_group_bundles: Default[List[Dict[str, float]]] = DEFAULT.VALUE,
+        placement_group_strategy: Default[str] = DEFAULT.VALUE,
+        max_replicas_per_node: Default[int] = DEFAULT.VALUE,
         user_config: Default[Optional[Any]] = DEFAULT.VALUE,
         max_concurrent_queries: Default[int] = DEFAULT.VALUE,
+        max_ongoing_requests: Default[int] = DEFAULT.VALUE,
         max_queued_requests: Default[int] = DEFAULT.VALUE,
         autoscaling_config: Default[
             Union[Dict, AutoscalingConfig, None]
@@ -338,13 +349,22 @@ class Deployment:
         Refer to the `@serve.deployment` decorator docs for available arguments.
         """
 
-        # Modify max_concurrent_queries and autoscaling_config if
+        # Modify max_ongoing_requests and autoscaling_config if
         # `num_replicas="auto"`
+        if max_ongoing_requests is None:
+            raise ValueError("`max_ongoing_requests` must be non-null, got None.")
+        elif max_ongoing_requests is DEFAULT.VALUE:
+            if max_concurrent_queries is None:
+                max_ongoing_requests = DEFAULT_MAX_ONGOING_REQUESTS
+            else:
+                max_ongoing_requests = max_concurrent_queries
         if num_replicas == "auto":
             num_replicas = None
-            max_concurrent_queries, autoscaling_config = handle_num_replicas_auto(
-                max_concurrent_queries, autoscaling_config
+            max_ongoing_requests, autoscaling_config = handle_num_replicas_auto(
+                max_ongoing_requests, autoscaling_config
             )
+
+            ServeUsageTag.AUTO_NUM_REPLICAS_USED.record("1")
 
         # NOTE: The user_configured_option_names should be the first thing that's
         # defined in this method. It depends on the locals() dictionary storing
@@ -393,14 +413,20 @@ class Deployment:
                 "into `serve.run` instead."
             )
 
+        if not _internal and max_concurrent_queries is not DEFAULT.VALUE:
+            logger.warning(
+                "DeprecationWarning: `max_concurrent_queries` in `@serve.deployment` "
+                "has been deprecated and replaced by `max_ongoing_requests`."
+            )
+
         elif num_replicas not in [DEFAULT.VALUE, None]:
             new_deployment_config.num_replicas = num_replicas
 
         if user_config is not DEFAULT.VALUE:
             new_deployment_config.user_config = user_config
 
-        if max_concurrent_queries is not DEFAULT.VALUE:
-            new_deployment_config.max_concurrent_queries = max_concurrent_queries
+        if max_ongoing_requests is not DEFAULT.VALUE:
+            new_deployment_config.max_ongoing_requests = max_ongoing_requests
 
         if max_queued_requests is not DEFAULT.VALUE:
             new_deployment_config.max_queued_requests = max_queued_requests
@@ -438,6 +464,18 @@ class Deployment:
 
         if autoscaling_config is not DEFAULT.VALUE:
             new_deployment_config.autoscaling_config = autoscaling_config
+            if (
+                new_deployment_config.autoscaling_config
+                and "target_num_ongoing_requests_per_replica"
+                in new_deployment_config.autoscaling_config.dict(exclude_unset=True)
+            ):
+                logger.warning(
+                    "DeprecationWarning: `target_num_ongoing_requests_per_replica` in "
+                    "`autoscaling_config` has been deprecated and replaced by "
+                    "`target_ongoing_requests`. Note that "
+                    "`target_num_ongoing_requests_per_replica` will be removed in a "
+                    "future version."
+                )
 
         if graceful_shutdown_wait_loop_s is not DEFAULT.VALUE:
             new_deployment_config.graceful_shutdown_wait_loop_s = (
@@ -478,68 +516,6 @@ class Deployment:
             route_prefix=route_prefix,
             _internal=True,
         )
-
-    @Deprecated(
-        message=(
-            "This was intended for use with the `serve.build` Python API "
-            "(which has been deprecated). Use `.options()` instead."
-        )
-    )
-    def set_options(
-        self,
-        func_or_class: Optional[Callable] = None,
-        name: Default[str] = DEFAULT.VALUE,
-        version: Default[str] = DEFAULT.VALUE,
-        num_replicas: Default[Optional[int]] = DEFAULT.VALUE,
-        route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
-        ray_actor_options: Default[Optional[Dict]] = DEFAULT.VALUE,
-        user_config: Default[Optional[Any]] = DEFAULT.VALUE,
-        max_concurrent_queries: Default[int] = DEFAULT.VALUE,
-        autoscaling_config: Default[
-            Union[Dict, AutoscalingConfig, None]
-        ] = DEFAULT.VALUE,
-        graceful_shutdown_wait_loop_s: Default[float] = DEFAULT.VALUE,
-        graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
-        health_check_period_s: Default[float] = DEFAULT.VALUE,
-        health_check_timeout_s: Default[float] = DEFAULT.VALUE,
-        _internal: bool = False,
-    ) -> None:
-        """Overwrite this deployment's options in-place.
-
-        Only those options passed in will be updated, all others will remain
-        unchanged.
-
-        Refer to the @serve.deployment decorator docstring for all non-private
-        arguments.
-        """
-        if not _internal:
-            warnings.warn(
-                "`.set_options()` is deprecated. "
-                "Use `.options()` or an application builder function instead."
-            )
-
-        validated = self.options(
-            func_or_class=func_or_class,
-            name=name,
-            version=version,
-            route_prefix=route_prefix,
-            num_replicas=num_replicas,
-            ray_actor_options=ray_actor_options,
-            user_config=user_config,
-            max_concurrent_queries=max_concurrent_queries,
-            autoscaling_config=autoscaling_config,
-            graceful_shutdown_wait_loop_s=graceful_shutdown_wait_loop_s,
-            graceful_shutdown_timeout_s=graceful_shutdown_timeout_s,
-            health_check_period_s=health_check_period_s,
-            health_check_timeout_s=health_check_timeout_s,
-            _internal=_internal,
-        )
-
-        self._name = validated._name
-        self._version = validated._version
-        self._route_prefix = validated._route_prefix
-        self._deployment_config = validated._deployment_config
-        self._replica_config = validated._replica_config
 
     def __eq__(self, other):
         return all(
@@ -590,7 +566,8 @@ def deployment_to_schema(
         "num_replicas": None
         if d._deployment_config.autoscaling_config
         else d.num_replicas,
-        "max_concurrent_queries": d.max_concurrent_queries,
+        "max_concurrent_queries": d.max_ongoing_requests,
+        "max_ongoing_requests": d.max_ongoing_requests,
         "max_queued_requests": d.max_queued_requests,
         "user_config": d.user_config,
         "autoscaling_config": d._deployment_config.autoscaling_config,
@@ -658,7 +635,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
     deployment_config = DeploymentConfig.from_default(
         num_replicas=s.num_replicas,
         user_config=s.user_config,
-        max_concurrent_queries=s.max_concurrent_queries,
+        max_ongoing_requests=s.max_ongoing_requests or s.max_concurrent_queries,
         max_queued_requests=s.max_queued_requests,
         autoscaling_config=s.autoscaling_config,
         graceful_shutdown_wait_loop_s=s.graceful_shutdown_wait_loop_s,

@@ -2,19 +2,18 @@ import logging
 from typing import Optional
 
 import ray
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import OldAPIStack
 
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
+@OldAPIStack
 class FilterManager:
     """Manages filters and coordination across remote evaluators that expose
     `get_filters` and `sync_filters`.
     """
 
     @staticmethod
-    @DeveloperAPI
     def synchronize(
         local_filters,
         worker_set,

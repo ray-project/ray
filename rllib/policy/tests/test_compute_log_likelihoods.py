@@ -70,7 +70,7 @@ def do_test_log_likelihood(
 ):
     config = config.copy(copy_frozen=False)
     # Run locally.
-    config.num_rollout_workers = 0
+    config.num_env_runners = 0
     # Env setup.
     if continuous:
         config.env = "Pendulum-v1"
@@ -159,7 +159,7 @@ class TestComputeLogLikelihood(unittest.TestCase):
         """Tests, whether DQN correctly computes logp in soft-q mode."""
         config = dqn.DQNConfig()
         # Soft-Q for DQN.
-        config.exploration(exploration_config={"type": "SoftQ", "temperature": 0.5})
+        config.env_runners(exploration_config={"type": "SoftQ", "temperature": 0.5})
         config.debugging(seed=42)
         do_test_log_likelihood(dqn.DQN, config)
 

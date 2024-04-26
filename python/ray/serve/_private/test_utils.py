@@ -1,6 +1,7 @@
 import asyncio
 import threading
 import time
+from copy import copy, deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import grpc
@@ -12,7 +13,7 @@ import ray
 import ray.util.state as state_api
 from ray import serve
 from ray.actor import ActorHandle
-from ray.serve._private.common import DeploymentID, DeploymentStatus
+from ray.serve._private.common import ApplicationStatus, DeploymentID, DeploymentStatus
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve._private.deployment_state import ALL_REPLICA_STATES, ReplicaState
 from ray.serve._private.proxy import DRAINING_MESSAGE
@@ -100,6 +101,99 @@ class MockKVStore:
         return False
 
 
+class MockClusterNodeInfoCache:
+    def __init__(self):
+        self.alive_node_ids = set()
+        self.total_resources_per_node = dict()
+        self.available_resources_per_node = dict()
+        self.draining_nodes = dict()
+        self.node_labels = dict()
+
+    def get_alive_node_ids(self):
+        return self.alive_node_ids
+
+    def get_draining_nodes(self):
+        return self.draining_nodes
+
+    def get_active_node_ids(self):
+        return self.alive_node_ids - set(self.draining_nodes)
+
+    def get_node_az(self, node_id):
+        return None
+
+    def get_available_resources_per_node(self):
+        return self.available_resources_per_node
+
+    def get_total_resources_per_node(self):
+        return self.total_resources_per_node
+
+    def add_node(self, node_id: str, resources: Dict = None, labels: Dict = None):
+        self.alive_node_ids.add(node_id)
+        self.total_resources_per_node[node_id] = deepcopy(resources) or {}
+        self.available_resources_per_node[node_id] = deepcopy(resources) or {}
+        self.node_labels[node_id] = labels or {}
+
+    def set_available_resources_per_node(self, node_id: str, resources: Dict):
+        self.available_resources_per_node[node_id] = deepcopy(resources)
+
+
+class FakeRemoteFunction:
+    def remote(self):
+        pass
+
+
+class MockActorHandle:
+    def __init__(self, **kwargs):
+        self._options = kwargs
+        self._actor_id = "fake_id"
+        self.initialize_and_get_metadata_called = False
+        self.is_allocated_called = False
+
+    @property
+    def initialize_and_get_metadata(self):
+        self.initialize_and_get_metadata_called = True
+        # return a mock object so that we can call `remote()` on it.
+        return FakeRemoteFunction()
+
+    @property
+    def is_allocated(self):
+        self.is_allocated_called = True
+        return FakeRemoteFunction()
+
+
+class MockActorClass:
+    def __init__(self):
+        self._init_args = ()
+        self._options = dict()
+
+    def options(self, **kwargs):
+        res = copy(self)
+
+        for k, v in kwargs.items():
+            res._options[k] = v
+
+        return res
+
+    def remote(self, *args) -> MockActorHandle:
+        return MockActorHandle(init_args=args, **self._options)
+
+
+class MockPlacementGroup:
+    def __init__(
+        self,
+        bundles: List[Dict[str, float]],
+        strategy: str = "PACK",
+        name: str = "",
+        lifetime: Optional[str] = None,
+        _soft_target_node_id: Optional[str] = None,
+    ):
+        self._bundles = bundles
+        self._strategy = strategy
+        self._name = name
+        self._lifetime = lifetime
+        self._soft_target_node_id = _soft_target_node_id
+
+
 def check_ray_stopped():
     try:
         requests.get("http://localhost:52365/api/ray/version")
@@ -112,34 +206,20 @@ def check_ray_started():
     return requests.get("http://localhost:52365/api/ray/version").status_code == 200
 
 
-def check_telemetry_recorded(storage_handle, key, expected_value):
-    report = ray.get(storage_handle.get_report.remote())
-    assert report["extra_usage_tags"][key] == expected_value
-    return True
-
-
-def check_telemetry_not_recorded(storage_handle, key):
-    report = ray.get(storage_handle.get_report.remote())
-    assert (
-        ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.get_value_from_report(
-            report
-        )
-        is None
-    )
-
-
-def check_deployment_status(name, expected_status) -> DeploymentStatus:
-    app_status = serve.status().applications[SERVE_DEFAULT_APP_NAME]
+def check_deployment_status(
+    name: str, expected_status: DeploymentStatus, app_name=SERVE_DEFAULT_APP_NAME
+) -> bool:
+    app_status = serve.status().applications[app_name]
     assert app_status.deployments[name].status == expected_status
     return True
 
 
-def get_num_running_replicas(
+def get_num_alive_replicas(
     deployment_name: str, app_name: str = SERVE_DEFAULT_APP_NAME
 ) -> int:
     """Get the replicas currently running for the given deployment."""
 
-    dep_id = DeploymentID(deployment_name, app_name)
+    dep_id = DeploymentID(name=deployment_name, app_name=app_name)
     actors = state_api.list_actors(
         filters=[
             ("class_name", "=", dep_id.to_replica_actor_class_name()),
@@ -154,7 +234,7 @@ def check_num_replicas_gte(
 ) -> int:
     """Check if num replicas is >= target."""
 
-    assert get_num_running_replicas(name, app_name) >= target
+    assert get_num_alive_replicas(name, app_name) >= target
     return True
 
 
@@ -163,7 +243,7 @@ def check_num_replicas_eq(
 ) -> int:
     """Check if num replicas is == target."""
 
-    assert get_num_running_replicas(name, app_name) == target
+    assert get_num_alive_replicas(name, app_name) == target
     return True
 
 
@@ -172,7 +252,16 @@ def check_num_replicas_lte(
 ) -> int:
     """Check if num replicas is <= target."""
 
-    assert get_num_running_replicas(name, app_name) <= target
+    assert get_num_alive_replicas(name, app_name) <= target
+    return True
+
+
+def check_apps_running(apps: List):
+    status = serve.status()
+
+    for app_name in apps:
+        assert status.applications[app_name].status == ApplicationStatus.RUNNING
+
     return True
 
 
@@ -267,6 +356,16 @@ def start_telemetry_app():
     storage = TelemetryStorage.remote()
     serve.run(receiver_app, name="telemetry", route_prefix=TELEMETRY_ROUTE_PREFIX)
     return storage
+
+
+def check_telemetry(
+    tag: ServeUsageTag, expected: Any, storage_actor_name: str = STORAGE_ACTOR_NAME
+):
+    storage_handle = ray.get_actor(storage_actor_name, namespace=SERVE_NAMESPACE)
+    report = ray.get(storage_handle.get_report.remote())
+    print(report["extra_usage_tags"])
+    assert tag.get_value_from_report(report) == expected
+    return True
 
 
 def ping_grpc_list_applications(channel, app_names, test_draining=False):
@@ -414,50 +513,89 @@ class FakeGrpcContext:
 class FakeGauge:
     def __init__(self, name: str = None, tag_keys: Tuple[str] = None):
         self.name = name
-        self.value = 0
-        if tag_keys:
-            self.tags = {key: None for key in tag_keys}
-        else:
-            self.tags = dict()
+        self.values = dict()
+
+        self.tags = tag_keys or ()
+        self.default_tags = dict()
 
     def set_default_tags(self, tags: Dict[str, str]):
         for key, tag in tags.items():
             assert key in self.tags
-            self.tags[key] = tag
+            self.default_tags[key] = tag
 
     def set(self, value: Union[int, float], tags: Dict[str, str] = None):
-        self.value = value
-        if tags:
-            self.tags.update(tags)
+        merged_tags = self.default_tags.copy()
+        merged_tags.update(tags or {})
+        assert set(merged_tags.keys()) == set(self.tags)
 
-    def get_value(self):
-        return self.value
+        d = self.values
+        for tag in self.tags[:-1]:
+            tag_value = merged_tags[tag]
+            if tag_value not in d:
+                d[tag_value] = dict()
+            d = d[tag_value]
 
-    def get_tags(self):
-        return self.tags
+        d[merged_tags[self.tags[-1]]] = value
+
+    def get_value(self, tags: Dict[str, str]):
+        value = self.values
+        for tag in self.tags:
+            tag_value = tags[tag]
+            value = value.get(tag_value)
+            if value is None:
+                return
+
+        return value
 
 
 class FakeCounter:
     def __init__(self, name: str = None, tag_keys: Tuple[str] = None):
         self.name = name
-        self.count: int = 0
-        if tag_keys:
-            self.tags = {key: None for key in tag_keys}
-        else:
-            self.tags = dict()
+        self.counts = dict()
+
+        self.tags = tag_keys or ()
+        self.default_tags = dict()
 
     def set_default_tags(self, tags: Dict[str, str]):
         for key, tag in tags.items():
             assert key in self.tags
-            self.tags[key] = tag
+            self.default_tags[key] = tag
 
     def inc(self, value: Union[int, float] = 1.0, tags: Dict[str, str] = None):
-        self.count += value
-        if tags:
-            self.tags.update(tags)
+        merged_tags = self.default_tags.copy()
+        merged_tags.update(tags or {})
+        assert set(merged_tags.keys()) == set(self.tags)
 
-    def get_count(self) -> int:
-        return self.count
+        d = self.counts
+        for tag in self.tags[:-1]:
+            tag_value = merged_tags[tag]
+            if tag_value not in d:
+                d[tag_value] = dict()
+            d = d[tag_value]
+
+        key = merged_tags[self.tags[-1]]
+        d[key] = d.get(key, 0) + value
+
+    def get_count(self, tags: Dict[str, str]) -> int:
+        value = self.counts
+        for tag in self.tags:
+            tag_value = tags[tag]
+            value = value.get(tag_value)
+            if value is None:
+                return
+
+        return value
 
     def get_tags(self):
         return self.tags
+
+
+@ray.remote
+def get_node_id():
+    return ray.get_runtime_context().get_node_id()
+
+
+def check_num_alive_nodes(target: int):
+    alive_nodes = [node for node in ray.nodes() if node["Alive"]]
+    assert len(alive_nodes) == target
+    return True

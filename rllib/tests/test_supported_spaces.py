@@ -71,7 +71,7 @@ class TestSupportedSpacesPPO(unittest.TestCase):
     def test_ppo(self):
         config = (
             PPOConfig()
-            .rollouts(num_rollout_workers=2, rollout_fragment_length=50)
+            .env_runners(num_env_runners=2, rollout_fragment_length=50)
             .training(
                 train_batch_size=100,
                 num_sgd_iter=1,
@@ -100,7 +100,7 @@ class TestSupportedSpacesPPONoPreprocessorGPU(unittest.TestCase):
         # obscure errors.
         config = (
             PPOConfig()
-            .rollouts(num_rollout_workers=2, rollout_fragment_length=50)
+            .env_runners(num_env_runners=2, rollout_fragment_length=50)
             .training(
                 train_batch_size=100,
                 num_sgd_iter=1,

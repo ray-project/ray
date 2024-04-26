@@ -508,7 +508,7 @@ class GlobalState:
             logger.warning(
                 "No profiling events found. Ray profiling must be enabled "
                 "by setting RAY_PROFILING=1, and make sure "
-                "RAY_task_events_report_interval_ms is a positive value (default 1000)."
+                "RAY_task_events_report_interval_ms=0."
             )
 
         if filename is not None:
@@ -800,6 +800,11 @@ class GlobalState:
             node_ip_address
         )
 
+    def get_node(self, node_id: str):
+        """Get the node information for a node id."""
+        self._check_connected()
+        return self.global_state_accessor.get_node(node_id)
+
     def get_draining_nodes(self) -> Dict[str, int]:
         """Get all the hex ids of nodes that are being drained
         and the corresponding draining deadline timestamps in ms.
@@ -918,8 +923,7 @@ def timeline(filename=None):
     """Return a list of profiling events that can viewed as a timeline.
 
     Ray profiling must be enabled by setting the RAY_PROFILING=1 environment
-    variable prior to starting Ray, and RAY_task_events_report_interval_ms set
-    to be positive (default 1000)
+    variable prior to starting Ray, and set RAY_task_events_report_interval_ms=0
 
     To view this information as a timeline, simply dump it as a json file by
     passing in "filename" or using using json.dump, and then load go to

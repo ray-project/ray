@@ -19,7 +19,7 @@ import os
 algorithms_and_configs = {
     "DQN": (
         DQNConfig()
-        .exploration(explore=False)
+        .env_runners(explore=False)
         .training(num_steps_sampled_before_learning_starts=0)
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
     ),
@@ -28,10 +28,10 @@ algorithms_and_configs = {
         # explore is set to None for PPO in favor of RLModule API support.
         PPOConfig()
         .training(num_sgd_iter=5, train_batch_size=1000)
-        .rollouts(num_rollout_workers=2)
+        .env_runners(num_env_runners=2)
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
         .evaluation(
-            evaluation_num_workers=1,
+            evaluation_num_env_runners=1,
             evaluation_interval=1,
             evaluation_config=PPOConfig.overrides(
                 # Define a (slightly different mapping function to test, whether eval
@@ -47,7 +47,7 @@ algorithms_and_configs = {
     ),
     "SAC": (
         SACConfig()
-        .exploration(explore=False)
+        .env_runners(explore=False)
         .training(num_steps_sampled_before_learning_starts=0)
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
     ),

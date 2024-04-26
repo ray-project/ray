@@ -16,7 +16,7 @@ Use individual libraries for ML workloads. Click on the dropdowns for your workl
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Data: Scalable Datasets for ML
 :animate: fade-in-slide-down
 
-Scale offline inference and training ingest with [Ray Data](data_key_concepts) --
+Scale offline inference and training ingest with [Ray Data](data_quickstart) --
 a data processing library designed for ML.
 
 To learn more, see [Offline batch inference](batch_inference_overview) and
@@ -303,7 +303,7 @@ pip install -U "ray[rllib]" tensorflow  # or torch
 ```
 ````
 
-```{literalinclude} ../../../rllib/examples/documentation/rllib_on_ray_readme.py
+```{literalinclude} ../rllib/doc_code/rllib_on_ray_readme.py
 :end-before: __quick_start_end__
 :language: python
 :start-after: __quick_start_begin__

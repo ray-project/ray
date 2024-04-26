@@ -26,7 +26,7 @@ def test_large_tensor_creation(ray_start_regular_shared):
     """Tests that large tensor read task creation can complete successfully without
     hanging."""
     start_time = time.time()
-    ray.data.range_tensor(1000, parallelism=1000, shape=(80, 80, 100, 100))
+    ray.data.range_tensor(1000, override_num_blocks=1000, shape=(80, 80, 100, 100))
     end_time = time.time()
 
     # Should not take more than 20 seconds.
@@ -36,7 +36,7 @@ def test_large_tensor_creation(ray_start_regular_shared):
 def test_tensors_basic(ray_start_regular_shared):
     # Create directly.
     tensor_shape = (3, 5)
-    ds = ray.data.range_tensor(6, shape=tensor_shape, parallelism=6)
+    ds = ray.data.range_tensor(6, shape=tensor_shape, override_num_blocks=6)
     assert str(ds) == (
         "Dataset(num_rows=6, schema={data: numpy.ndarray(shape=(3, 5), dtype=int64)})"
     )
@@ -200,7 +200,7 @@ def test_tensors_basic(ray_start_regular_shared):
         return arr
 
     res = (
-        ray.data.range(10, parallelism=2)
+        ray.data.range(10, override_num_blocks=2)
         .map_batches(mapper, batch_format="numpy")
         .take()
     )
@@ -210,7 +210,9 @@ def test_tensors_basic(ray_start_regular_shared):
 def test_batch_tensors(ray_start_regular_shared):
     import torch
 
-    ds = ray.data.from_items([torch.tensor([0, 0]) for _ in range(40)], parallelism=40)
+    ds = ray.data.from_items(
+        [torch.tensor([0, 0]) for _ in range(40)], override_num_blocks=40
+    )
     res = (
         "MaterializedDataset(\n"
         "   num_blocks=40,\n"
@@ -298,7 +300,9 @@ def test_tensors_sort(ray_start_regular_shared):
 
 def test_tensors_inferred_from_map(ray_start_regular_shared):
     # Test map.
-    ds = ray.data.range(10, parallelism=10).map(lambda _: {"data": np.ones((4, 4))})
+    ds = ray.data.range(10, override_num_blocks=10).map(
+        lambda _: {"data": np.ones((4, 4))}
+    )
     ds = ds.materialize()
     assert str(ds) == (
         "MaterializedDataset(\n"
@@ -309,7 +313,7 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     )
 
     # Test map_batches.
-    ds = ray.data.range(16, parallelism=4).map_batches(
+    ds = ray.data.range(16, override_num_blocks=4).map_batches(
         lambda _: {"data": np.ones((3, 4, 4))}, batch_size=2
     )
     ds = ds.materialize()
@@ -322,7 +326,7 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     )
 
     # Test flat_map.
-    ds = ray.data.range(10, parallelism=10).flat_map(
+    ds = ray.data.range(10, override_num_blocks=10).flat_map(
         lambda _: [{"data": np.ones((4, 4))}, {"data": np.ones((4, 4))}]
     )
     ds = ds.materialize()
@@ -335,7 +339,7 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     )
 
     # Test map_batches ndarray column.
-    ds = ray.data.range(16, parallelism=4).map_batches(
+    ds = ray.data.range(16, override_num_blocks=4).map_batches(
         lambda _: pd.DataFrame({"a": [np.ones((4, 4))] * 3}), batch_size=2
     )
     ds = ds.materialize()
@@ -347,7 +351,7 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
         ")"
     )
 
-    ds = ray.data.range(16, parallelism=4).map_batches(
+    ds = ray.data.range(16, override_num_blocks=4).map_batches(
         lambda _: pd.DataFrame({"a": [np.ones((2, 2)), np.ones((3, 3))]}),
         batch_size=2,
     )

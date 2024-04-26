@@ -15,6 +15,7 @@ These tests should:
 - Assert how errors from the trainable/Trainer get propagated to the user.
 - Assert how errors from the Tune driver get propagated to the user.
 """
+
 import gc
 import threading
 import time
@@ -28,13 +29,12 @@ from ray._private.test_utils import wait_for_condition
 from ray._raylet import GcsClient
 from ray.cluster_utils import Cluster
 from ray.core.generated import autoscaler_pb2
+from ray.tests.conftest import *  # noqa
 from ray.train import Checkpoint, FailureConfig, RunConfig, ScalingConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.train.trainer import BaseTrainer, TrainingFailedError
-from ray.tune import Tuner, TuneConfig, TuneError
-
-from ray.tests.conftest import *  # noqa
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
+from ray.train.trainer import BaseTrainer, TrainingFailedError
+from ray.tune import TuneConfig, TuneError, Tuner
 
 
 @pytest.fixture
@@ -165,13 +165,9 @@ def test_trainable_error_with_trainer(ray_start_4_cpus, tmp_path, fail_fast):
         # The cause of the error should be the trainable error
         assert isinstance(exc_info.value.__cause__, _TestSpecificError)
 
-        # TODO(justinvyu): Re-enable after fixing the Trainer.restore(...) error
-        # message to give the correct path. Currently it recommends the local path.
-        # Since the trainable failed, we should get a message about restore + setting
-        # FailureConfig for retry on runtime errors for a new run.
-        # assert TrainingFailedError._RESTORE_MSG.format(
-        #     trainer_cls_name="FailingTrainer", path=str(tmp_path / name)
-        # ) in str(exc_info.value)
+        assert TrainingFailedError._RESTORE_MSG.format(
+            trainer_cls_name="FailingTrainer", path=str(tmp_path / name)
+        ) in str(exc_info.value)
         assert TrainingFailedError._FAILURE_CONFIG_MSG in str(exc_info.value)
 
     elif fail_fast == "raise":
@@ -198,7 +194,7 @@ def test_driver_error_with_tuner(ray_start_4_cpus, error_on):
         tuner.fit()
 
     # TODO(ml-team): Assert the cause error type once driver error propagation is fixed
-    assert "_TestSpecificError" in str(exc_info.value.__cause__)
+    assert "_TestSpecificError" in str(exc_info.value)
 
 
 @pytest.mark.parametrize("error_on", ["on_trial_result"])

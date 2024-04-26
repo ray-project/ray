@@ -9,6 +9,8 @@ import ray
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray._private.utils import get_or_create_event_loop
+from ray.serve._private.common import DeploymentID, ReplicaID
+from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import SERVE_MULTIPLEXED_MODEL_ID
 from ray.serve.context import _get_internal_replica_context
 from ray.serve.handle import DeploymentHandle
@@ -19,28 +21,30 @@ from ray.serve.multiplex import _ModelMultiplexWrapper
 def start_serve_with_context():
     serve.start()
     ray.serve.context._set_internal_replica_context(
-        app_name="fake_app",
-        deployment="fake_deployment",
-        replica_tag="fake_replica_tag",
+        replica_id=ReplicaID(
+            "fake_replica_id",
+            deployment_id=DeploymentID(name="fake_deployment", app_name="fake_app"),
+        ),
         servable_object=None,
+        _deployment_config=DeploymentConfig(),
     )
-    yield
-    serve.shutdown()
-    ray.serve.context._set_request_context()
-    ray.shutdown()
+    try:
+        yield
+    finally:
+        serve.shutdown()
+        ray.serve.context._set_request_context()
+        ray.shutdown()
 
 
+@pytest.mark.asyncio
 class TestMultiplexWrapper:
-    def test_failed_to_get_replica_context(self):
+    async def test_failed_to_get_replica_context(self):
         async def model_load_func(model_id: str):
             return model_id
 
-        with pytest.raises(
-            RuntimeError, match="Fail to retrieve serve replica context"
-        ):
+        with pytest.raises(RuntimeError, match="can only be used within a deployment"):
             _ModelMultiplexWrapper(model_load_func, None, max_num_models_per_replica=2)
 
-    @pytest.mark.asyncio
     async def test_push_model_ids_info(self, start_serve_with_context):
         async def model_load_func(model_id: str):
             return model_id
@@ -54,7 +58,7 @@ class TestMultiplexWrapper:
         multiplexer._push_model_ids_info()
         assert multiplexer._push_multiplexed_replica_info is False
 
-    def test_collect_model_ids(self):
+    async def test_collect_model_ids(self):
         multiplexer = _ModelMultiplexWrapper(None, None, max_num_models_per_replica=1)
         multiplexer.models = {"1": "1", "2": "2"}
         assert sorted(multiplexer._get_loading_and_loaded_model_ids()) == ["1", "2"]
@@ -65,7 +69,6 @@ class TestMultiplexWrapper:
             "3",
         ]
 
-    @pytest.mark.asyncio
     async def test_multiplex_wrapper(self, start_serve_with_context):
         """Test multiplex wrapper with LRU caching."""
 
@@ -106,7 +109,6 @@ class TestMultiplexWrapper:
         assert multiplexer._push_multiplexed_replica_info
         assert multiplexer.models == {"2": "2", "4": "4"}
 
-    @pytest.mark.asyncio
     async def test_bad_call_multiplexed_func(self, start_serve_with_context):
         """Test bad call to multiplexed function"""
 
@@ -121,7 +123,6 @@ class TestMultiplexWrapper:
         with pytest.raises(TypeError):
             await multiplexer.load_model()
 
-    @pytest.mark.asyncio
     async def test_unload_model_call_del(self, start_serve_with_context):
         class MyModel:
             def __init__(self, model_id):
@@ -145,7 +146,6 @@ class TestMultiplexWrapper:
         with pytest.raises(Exception, match="1 is dead"):
             await multiplexer.load_model("2")
 
-    @pytest.mark.asyncio
     async def test_push_model_ids_info_after_unload_model(self):
         """
         Push the model ids info right after the model is unloaded, even though
@@ -177,7 +177,6 @@ class TestMultiplexWrapper:
         assert multiplexer._push_multiplexed_replica_info
         signal.send.remote()
 
-    @pytest.mark.asyncio
     async def test_load_models_concurrently(self, start_serve_with_context):
         """
         Test load models concurrently. models info should include loading models and
@@ -308,10 +307,10 @@ def test_multiplexed_replica_info(serve_instance):
 
         async def __call__(self, model_id: str):
             _ = await self.get_model(model_id)
-            return _get_internal_replica_context().replica_tag
+            return _get_internal_replica_context().replica_id
 
     handle = serve.run(MyModel.bind())
-    replica_tag = handle.remote("model1").result()
+    replica_id = handle.remote("model1").result()
 
     def check_replica_information(
         model_ids: List[str],
@@ -319,7 +318,7 @@ def test_multiplexed_replica_info(serve_instance):
         replica_scheduler = handle._get_or_create_router()[0]._replica_scheduler
         for replica in replica_scheduler.curr_replicas.values():
             if (
-                replica.replica_id != replica_tag
+                replica.replica_id != replica_id
                 or model_ids != replica.multiplexed_model_ids
             ):
                 return False
@@ -440,7 +439,7 @@ def test_multiplexed_multiple_replicas(serve_instance):
     """Test multiplexed traffic can be sent to multiple replicas"""
     signal = SignalActor.remote()
 
-    @serve.deployment(num_replicas=2, max_concurrent_queries=1)
+    @serve.deployment(num_replicas=2, max_ongoing_requests=1)
     class Model:
         @serve.multiplexed(max_num_models_per_replica=2)
         async def get_model(self, tag):

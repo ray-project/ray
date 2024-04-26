@@ -1,3 +1,4 @@
+import tree
 import unittest
 
 import numpy as np
@@ -9,7 +10,7 @@ from ray.rllib.utils.replay_buffers.prioritized_episode_replay_buffer import (
 
 class TestPrioritizedEpisodeReplayBuffer(unittest.TestCase):
     @staticmethod
-    def _get_episode(episode_len=None, id_=None):
+    def _get_episode(episode_len=None, id_=None, with_extra_model_outs=False):
         eps = SingleAgentEpisode(id_=id_, observations=[0.0], infos=[{}])
         ts = np.random.randint(1, 200) if episode_len is None else episode_len
         for t in range(ts):
@@ -18,6 +19,9 @@ class TestPrioritizedEpisodeReplayBuffer(unittest.TestCase):
                 action=int(t),
                 reward=0.1 * (t + 1),
                 infos={},
+                extra_model_outputs={k: k for k in range(2)}
+                if with_extra_model_outs
+                else None,
             )
         eps.is_terminated = np.random.random() > 0.5
         eps.is_truncated = False if eps.is_terminated else np.random.random() > 0.8
@@ -196,7 +200,7 @@ class TestPrioritizedEpisodeReplayBuffer(unittest.TestCase):
 
         # Now test a random n-step sampling.
         for _ in range(1000):
-            sample = buffer.sample(batch_size_B=16, n_step=None, beta=1.0)
+            sample = buffer.sample(batch_size_B=16, n_step=(1, 5), beta=1.0)
             (
                 obs,
                 actions,
@@ -239,6 +243,133 @@ class TestPrioritizedEpisodeReplayBuffer(unittest.TestCase):
 
             # Ensure that there is variation in the n-steps.
             self.assertTrue(np.var(n_steps) > 0.0)
+
+    def test_infos_and_extra_model_outputs(self):
+        # Define replay buffer (alpha=0.8)
+        buffer = PrioritizedEpisodeReplayBuffer(capacity=10000, alpha=0.8)
+
+        # Fill the buffer with episodes.
+        for _ in range(200):
+            episode = self._get_episode(with_extra_model_outs=True)
+            buffer.add(episode)
+
+        # Now test a sampling with infos and extra model outputs (beta=0.7).
+        for _ in range(1000):
+            sample = buffer.sample(
+                batch_size_B=16,
+                n_step=1,
+                beta=0.7,
+                include_infos=True,
+                include_extra_model_outputs=True,
+            )
+            (
+                obs,
+                actions,
+                rewards,
+                next_obs,
+                is_terminated,
+                is_truncated,
+                weights,
+                n_steps,
+                infos,
+                # Note, each extra model output gets extracted
+                # to its own column.
+                extra_model_outs_0,
+                extra_model_outs_1,
+            ) = (
+                sample["obs"],
+                sample["actions"],
+                sample["rewards"],
+                sample["new_obs"],
+                sample["terminateds"],
+                sample["truncateds"],
+                sample["weights"],
+                sample["n_steps"],
+                sample["infos"],
+                sample[0],
+                sample[1],
+            )
+
+            # Make sure terminated and truncated are never both True.
+            assert not np.any(np.logical_and(is_truncated, is_terminated))
+
+            # All fields have same shape.
+            assert (
+                obs.shape
+                == rewards.shape
+                == actions.shape
+                == next_obs.shape
+                == is_truncated.shape
+                == is_terminated.shape
+                == weights.shape
+                == n_steps.shape
+                # Note, infos will be a list of dicitonaries.
+                == (len(infos),)
+                == extra_model_outs_0.shape
+                == extra_model_outs_1.shape
+            )
+
+    def test_sample_with_keys(self):
+        # Define replay buffer (alpha=1.0).
+        buffer = PrioritizedEpisodeReplayBuffer(capacity=10000, alpha=0.8)
+
+        # Fill the buffer with episodes.
+        for _ in range(200):
+            episode = self._get_episode(with_extra_model_outs=True)
+            buffer.add(episode)
+
+        # Now test a sampling with infos and extra model outputs (nbeta=0.7).
+        for _ in range(1000):
+            sample = buffer.sample_with_keys(
+                batch_size_B=16,
+                n_step=1,
+                beta=0.7,
+                include_infos=True,
+                include_extra_model_outputs=True,
+            )
+
+        (
+            obs,
+            actions,
+            rewards,
+            next_obs,
+            is_terminated,
+            is_truncated,
+            weights,
+            n_steps,
+            infos,
+            # Note, each extra model output gets extracted
+            # to its own column.
+            extra_model_outs_0,
+            extra_model_outs_1,
+        ) = (
+            sample["obs"],
+            sample["actions"],
+            sample["rewards"],
+            sample["new_obs"],
+            sample["terminateds"],
+            sample["truncateds"],
+            sample["weights"],
+            sample["n_steps"],
+            sample["infos"],
+            sample[0],
+            sample[1],
+        )
+
+        # All fields have same shape.
+        assert (
+            len(tree.flatten(obs))
+            == len(tree.flatten(rewards))
+            == len(tree.flatten(actions))
+            == len(tree.flatten(next_obs))
+            == len(tree.flatten(is_terminated))
+            == len(tree.flatten(is_truncated))
+            == len(tree.flatten(weights))
+            == len(tree.flatten(n_steps))
+            == sum([len(eps_infos) for eps_infos in infos.values()])
+            == len(tree.flatten(extra_model_outs_0))
+            == len(tree.flatten(extra_model_outs_1))
+        )
 
     def test_update_priorities(self):
         # Define replay buffer (alpha=1.0).

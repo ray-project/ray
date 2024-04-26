@@ -178,10 +178,10 @@ class FaultAwareApply:
             return func(self, *args, **kwargs)
         except Exception as e:
             # Actor should be recreated by Ray.
-            if self.config.recreate_failed_workers:
+            if self.config.recreate_failed_env_runners:
                 logger.exception(f"Worker exception caught during `apply()`: {e}")
                 # Small delay to allow logs messages to propagate.
-                time.sleep(self.config.delay_between_worker_restarts_s)
+                time.sleep(self.config.delay_between_env_runner_restarts_s)
                 # Kill this worker so Ray Core can restart it.
                 sys.exit(1)
             # Actor should be left dead.
@@ -580,7 +580,7 @@ class FaultTolerantActorManager:
             healthy_only: If True, applies func on known healthy actors only.
             remote_actor_ids: Apply func on a selected set of remote actors.
             timeout_seconds: Ray.get() timeout. Default is None.
-                Note(jungong) : setting timeout_seconds to 0 effectively makes all the
+                Setting this to 0.0 effectively makes all the
                 remote calls fire-and-forget, while setting timeout_seconds to None
                 make them synchronous calls.
             return_obj_refs: whether to return ObjectRef instead of actual results.
@@ -601,11 +601,13 @@ class FaultTolerantActorManager:
                 func, remote_actor_ids
             )
 
+        # Send out remote requests.
         remote_calls = self._call_actors(
             func=func,
             remote_actor_ids=remote_actor_ids,
         )
 
+        # Collect remote request results (if available given timeout and/or errors).
         _, remote_results = self._fetch_result(
             remote_actor_ids=remote_actor_ids,
             remote_calls=remote_calls,

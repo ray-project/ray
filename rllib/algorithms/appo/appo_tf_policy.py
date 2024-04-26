@@ -380,7 +380,7 @@ def get_appo_tf_policy(name: str, base: type) -> type:
                     self, sample_batch, other_agent_batches, episode
                 )
             else:
-                # Add the SampleBatch.VALUES_BOOTSTRAPPED column, which we'll need
+                # Add the Columns.VALUES_BOOTSTRAPPED column, which we'll need
                 # inside the loss for vtrace calculations.
                 sample_batch = compute_bootstrap_value(sample_batch, self)
 

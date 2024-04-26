@@ -39,17 +39,19 @@ class RuntimeEnvConfig(dict):
             This flag is set to `True` by default.
     """
 
-    known_fields: Set[str] = {"setup_timeout_seconds", "eager_install"}
+    known_fields: Set[str] = {"setup_timeout_seconds", "eager_install", "log_files"}
 
     _default_config: Dict = {
         "setup_timeout_seconds": DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS,
         "eager_install": True,
+        "log_files": [],
     }
 
     def __init__(
         self,
         setup_timeout_seconds: int = DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS,
         eager_install: bool = True,
+        log_files: Optional[List[str]] = None,
     ):
         super().__init__()
         if not isinstance(setup_timeout_seconds, int):
@@ -69,6 +71,20 @@ class RuntimeEnvConfig(dict):
                 f"eager_install must be a boolean. got {type(eager_install)}"
             )
         self["eager_install"] = eager_install
+
+        if log_files is not None:
+            if not isinstance(log_files, list):
+                raise TypeError(
+                    "log_files must be a list of strings or None, got "
+                    f"{log_files} with type {type(log_files)}."
+                )
+            for file_name in log_files:
+                if not isinstance(file_name, str):
+                    raise TypeError("Each item in log_files must be a string.")
+        else:
+            log_files = self._default_config["log_files"]
+
+        self["log_files"] = log_files
 
     @staticmethod
     def parse_and_validate_runtime_env_config(
@@ -102,6 +118,8 @@ class RuntimeEnvConfig(dict):
         runtime_env_config = ProtoRuntimeEnvConfig()
         runtime_env_config.setup_timeout_seconds = self["setup_timeout_seconds"]
         runtime_env_config.eager_install = self["eager_install"]
+        if self["log_files"] is not None:
+            runtime_env_config.log_files.extend(self["log_files"])
         return runtime_env_config
 
     @classmethod
@@ -117,6 +135,7 @@ class RuntimeEnvConfig(dict):
         return cls(
             setup_timeout_seconds=setup_timeout_seconds,
             eager_install=runtime_env_config.eager_install,
+            log_files=list(runtime_env_config.log_files),
         )
 
     def to_dict(self) -> Dict:

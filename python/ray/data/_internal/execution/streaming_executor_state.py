@@ -3,6 +3,7 @@
 This is split out from streaming_executor.py to facilitate better unit testing.
 """
 
+import logging
 import math
 import threading
 import time
@@ -11,7 +12,6 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 import ray
-from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
 )
@@ -34,8 +34,9 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.progress_bar import ProgressBar
+from ray.data.context import DataContext
 
-logger = DatasetLogger(__name__)
+logger = logging.getLogger(__name__)
 
 # Holds the full execution state of the streaming topology. It's a dict mapping each
 # operator to tracked streaming exec state.
@@ -197,7 +198,9 @@ class OpState:
         """
         is_all_to_all = isinstance(self.op, AllToAllOperator)
         # Only show 1:1 ops when in verbose progress mode.
-        enabled = verbose_progress or is_all_to_all
+        enabled = is_all_to_all or (
+            DataContext.get_current().enable_progress_bars and verbose_progress
+        )
         self.progress_bar = ProgressBar(
             "- " + self.op.name,
             self.op.num_outputs_total(),
@@ -232,7 +235,7 @@ class OpState:
         self.outqueue.append(ref)
         self.num_completed_tasks += 1
         if self.progress_bar:
-            self.progress_bar.update(1, self.op._estimated_output_blocks)
+            self.progress_bar.update(1, self.op.num_outputs_total())
 
     def refresh_progress_bar(self, resource_manager: ResourceManager) -> None:
         """Update the console with the latest operator progress."""
@@ -436,14 +439,14 @@ def process_completed_tasks(
                                 " Ignoring this exception with remaining"
                                 f" max_errored_blocks={remaining}."
                             )
-                            logger.get_logger().warning(error_message, exc_info=e)
+                            logger.error(error_message, exc_info=e)
                         else:
                             error_message += (
                                 " Dataset execution will now abort."
                                 " To ignore this exception and continue, set"
                                 " DataContext.max_errored_blocks."
                             )
-                            logger.get_logger().error(error_message)
+                            logger.error(error_message)
                             raise e from None
                 else:
                     assert isinstance(task, MetadataOpTask)
@@ -678,7 +681,7 @@ def _execution_allowed(op: PhysicalOperator, resource_manager: ResourceManager) 
     # only bottleneck and this wouldn't impact downstream memory limits. This avoids
     # stalling the execution for memory bottlenecks that occur upstream.
     # See for more context: https://github.com/ray-project/ray/pull/32673
-    global_limits_sans_memory = ExecutionResources(
+    global_limits_sans_memory = ExecutionResources.for_limits(
         cpu=global_limits.cpu, gpu=global_limits.gpu
     )
     global_ok_sans_memory = new_usage.satisfies_limit(global_limits_sans_memory)

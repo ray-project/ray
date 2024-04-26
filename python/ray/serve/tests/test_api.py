@@ -335,41 +335,6 @@ def test_run_get_ingress_node(serve_instance):
     assert handle.remote().result() == "got f"
 
 
-class TestSetOptions:
-    def test_set_options_basic(self):
-        @serve.deployment(
-            num_replicas=4,
-            max_concurrent_queries=3,
-            ray_actor_options={"num_cpus": 2},
-            health_check_timeout_s=17,
-        )
-        def f():
-            pass
-
-        f.set_options(
-            num_replicas=9,
-            version="efgh",
-            ray_actor_options={"num_gpus": 3},
-        )
-
-        assert f.num_replicas == 9
-        assert f.max_concurrent_queries == 3
-        assert f.version == "efgh"
-        assert f.ray_actor_options == {"num_cpus": 1, "num_gpus": 3}
-        assert f._deployment_config.health_check_timeout_s == 17
-
-    def test_set_options_validation(self):
-        @serve.deployment
-        def f():
-            pass
-
-        with pytest.raises(TypeError):
-            f.set_options(init_args=-4)
-
-        with pytest.raises(ValueError):
-            f.set_options(max_concurrent_queries=-4)
-
-
 def test_deploy_application_basic(serve_instance):
     """Test deploy multiple applications"""
 
@@ -458,7 +423,7 @@ def test_deployment_name_with_app_name(serve_instance):
 
     serve.run(g.bind())
     deployment_info = ray.get(controller._all_running_replicas.remote())
-    assert DeploymentID("g", SERVE_DEFAULT_APP_NAME) in deployment_info
+    assert DeploymentID(name="g") in deployment_info
 
     @serve.deployment
     def f():
@@ -466,7 +431,7 @@ def test_deployment_name_with_app_name(serve_instance):
 
     serve.run(f.bind(), route_prefix="/f", name="app1")
     deployment_info = ray.get(controller._all_running_replicas.remote())
-    assert DeploymentID("f", "app1") in deployment_info
+    assert DeploymentID(name="f", app_name="app1") in deployment_info
 
 
 def test_deploy_application_with_same_name(serve_instance):
@@ -483,7 +448,7 @@ def test_deploy_application_with_same_name(serve_instance):
     assert handle.remote().result() == "got model"
     assert requests.get("http://127.0.0.1:8000/").text == "got model"
     deployment_info = ray.get(controller._all_running_replicas.remote())
-    assert DeploymentID("Model", "app") in deployment_info
+    assert DeploymentID(name="Model", app_name="app") in deployment_info
 
     # After deploying a new app with the same name, no Model replicas should be running
     @serve.deployment
@@ -495,10 +460,10 @@ def test_deploy_application_with_same_name(serve_instance):
     assert handle.remote().result() == "got model1"
     assert requests.get("http://127.0.0.1:8000/").text == "got model1"
     deployment_info = ray.get(controller._all_running_replicas.remote())
-    assert DeploymentID("Model1", "app") in deployment_info
+    assert DeploymentID(name="Model1", app_name="app") in deployment_info
     assert (
-        DeploymentID("Model", "app") not in deployment_info
-        or deployment_info[DeploymentID("Model", "app")] == []
+        DeploymentID(name="Model", app_name="app") not in deployment_info
+        or deployment_info[DeploymentID(name="Model", app_name="app")] == []
     )
 
     # Redeploy with same app to update route prefix
@@ -798,6 +763,34 @@ def test_no_slash_route_prefix(serve_instance):
         serve.run(f.bind(), route_prefix="no_slash")
 
 
+def test_mutually_exclusive_max_replicas_per_node_and_placement_group_bundles():
+    with pytest.raises(
+        ValueError,
+        match=(
+            "Setting max_replicas_per_node is not allowed when "
+            "placement_group_bundles is provided."
+        ),
+    ):
+
+        @serve.deployment(max_replicas_per_node=3, placement_group_bundles=[{"CPU": 1}])
+        def f():
+            pass
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "Setting max_replicas_per_node is not allowed when "
+            "placement_group_bundles is provided."
+        ),
+    ):
+
+        @serve.deployment
+        def g():
+            pass
+
+        g.options(max_replicas_per_node=3, placement_group_bundles=[{"CPU": 1}])
+
+
 def test_status_basic(serve_instance):
     # Before Serve is started, serve.status() should have an empty list of applications
     assert len(serve.status().applications) == 0
@@ -1007,6 +1000,56 @@ def test_deployment_handle_nested_in_obj(serve_instance):
     handle_wrapper = HandleWrapper(f.bind())
     h = serve.run(MyDriver.bind(handle_wrapper))
     assert h.remote().result() == "hi"
+
+
+def test_max_ongoing_requests_none(serve_instance):
+    """We should not allow setting `max_ongoing_requests` to None. To maintain backwards
+    compatibility, we SHOULD allow setting `max_concurrent_queries` to None.
+    """
+
+    def get_max_ongoing_requests():
+        details = serve_instance.get_serve_details()
+        return details["applications"]["default"]["deployments"]["A"][
+            "deployment_config"
+        ]["max_ongoing_requests"]
+
+    class A:
+        pass
+
+    with pytest.raises(ValueError):
+        serve.deployment(max_ongoing_requests=None)(A).bind()
+    with pytest.raises(ValueError):
+        serve.deployment(A).options(max_ongoing_requests=None).bind()
+    with pytest.raises(ValueError):
+        serve.deployment(max_ongoing_requests=None, max_concurrent_queries=None)(
+            A
+        ).bind()
+
+    with pytest.raises(ValueError):
+        serve.deployment(max_ongoing_requests=None, max_concurrent_queries=7)(A).bind()
+
+    with pytest.raises(ValueError):
+        serve.deployment(A).options(
+            max_ongoing_requests=None, max_concurrent_queries=7
+        ).bind()
+
+    serve.run(serve.deployment(max_concurrent_queries=None)(A).bind())
+    assert get_max_ongoing_requests() == 100
+
+    serve.run(serve.deployment(A).options(max_concurrent_queries=None).bind())
+    assert get_max_ongoing_requests() == 100
+
+    serve.run(
+        serve.deployment(max_ongoing_requests=8, max_concurrent_queries=None)(A).bind()
+    )
+    assert get_max_ongoing_requests() == 8
+
+    serve.run(
+        serve.deployment(A)
+        .options(max_ongoing_requests=12, max_concurrent_queries=None)
+        .bind()
+    )
+    assert get_max_ongoing_requests() == 12
 
 
 if __name__ == "__main__":
