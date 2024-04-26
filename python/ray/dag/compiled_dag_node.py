@@ -86,8 +86,6 @@ def do_exec_compiled_task(
             try:
                 res = self._input_reader.begin_read()
             except BlockingIOError:
-                pass
-            if res is None:
                 break
 
             for idx, output in zip(input_channel_idxs, res):
@@ -114,7 +112,7 @@ def do_exec_compiled_task(
             try:
                 self._input_reader.end_read()
             except BlockingIOError:
-                pass
+                break
 
     except Exception:
         logging.exception("Compiled DAG task exited with exception")

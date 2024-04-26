@@ -160,7 +160,8 @@ class MutableObjectProvider {
   // Maps the remote node object ID (i.e., the object ID that the remote node writes to)
   // to the corresponding local object ID (i.e., the object ID that the local node reads
   // from) and the number of readers.
-  std::unordered_map<ObjectID, LocalReaderInfo> remote_writer_object_to_local_reader_;
+  std::unordered_map<ObjectID, LocalReaderInfo> remote_writer_object_to_local_reader_
+      ABSL_GUARDED_BY(remote_writer_object_to_local_reader_lock_);
 
   // Creates a function for each object. This function waits for changes on the object and
   // then sends those changes to a remote node via RPC.

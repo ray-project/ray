@@ -41,7 +41,10 @@ class MutableObjectManager {
 
     // WriteAcquire() sets this to true. WriteRelease() sets this to false.
     bool written = false;
-    bool read = false;
+    // ReadAcquire() sets this to true. ReadRelease() sets this to false. This is used by
+    // the destructor to determine if the channel lock must be unlocked. This is necessary
+    // if a reader exits after calling ReadAcquire() and before calling ReadRelease().
+    bool reading = false;
 
     // This mutex protects `next_version_to_read`.
     std::unique_ptr<absl::Mutex> lock;
@@ -202,6 +205,13 @@ class MutableObjectManager {
   // of the mutable object.
   absl::flat_hash_map<ObjectID, PlasmaObjectHeader::Semaphores> semaphores_;
 
+  // This lock ensures that the destructor does not start tearing down the manager and
+  // freeing the memory until all readers and writers are outside the Acquire()/Release()
+  // functions. Without this lock, readers and writers still inside those methods could
+  // see inconsistent state or access freed memory.
+  //
+  // The calling threads are all readers and writers, along with the thread that calls the
+  // destructor.
   absl::Mutex destructor_lock_;
 };
 

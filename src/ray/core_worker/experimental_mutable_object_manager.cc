@@ -84,8 +84,8 @@ MutableObjectManager::~MutableObjectManager() {
     DestroySemaphores(object_id);
   }
   for (const auto &[_, channel] : channels_) {
-    if (channel.read) {
-      channel.lock->Unlock();
+    if (channel.reading) {
+      // channel.lock->Unlock();
     }
   }
   channels_.clear();
@@ -260,11 +260,11 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
   // This lock ensures that there is only one reader at a time. The lock is released in
   // `ReadRelease()`.
   channel->lock->Lock();
-  channel->read = true;
+  channel->reading = true;
 
   PlasmaObjectHeader::Semaphores sem;
   if (!GetSemaphores(object_id, sem)) {
-    channel->read = false;
+    channel->reading = false;
     return Status::IOError("Channel has not been registered (cannot get semaphores)");
   }
   int64_t version_read = 0;
@@ -310,7 +310,7 @@ Status MutableObjectManager::ReadRelease(const ObjectID &object_id)
 
   // This lock ensures that there is only one reader at a time. The lock is acquired in
   // `ReadAcquire()`.
-  channel->read = false;
+  channel->reading = false;
   channel->lock->Unlock();
   return Status::OK();
 }

@@ -1487,6 +1487,8 @@ Status CoreWorker::ExperimentalRegisterMutableObjectReaderRemote(
     promise.get_future().wait();
   }
 
+  // TODO(jhumphri): Support case where there are readers on multiple different nodes.
+  // Currently, this code only supports the case where all readers are on a single node.
   {
     std::shared_ptr<rpc::CoreWorkerClientInterface> conn =
         core_worker_client_pool_->GetOrConnect(addr);
