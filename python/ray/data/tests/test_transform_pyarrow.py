@@ -394,6 +394,93 @@ def test_pyarrow(ray_start_regular_shared):
     ).take() == [{"b": 2}, {"b": 20}]
 
 
+class UnsupportedType:
+    pass
+
+
+def _create_datasset(op, data):
+    ds = ray.data.range(2, override_num_blocks=2)
+
+    if op == "map":
+
+        def map(x):
+            return {
+                "id": x["id"],
+                "my_data": data[x["id"]],
+            }
+
+        ds = ds.map(map)
+    else:
+        assert op == "map_batches"
+
+        def map_batches(x):
+            return {
+                "id": x["id"],
+                "my_data": data[x["id"][0]],
+            }
+
+        ds = ds.map_batches(map_batches, batch_size=None)
+
+    # Needed for the map_batches case to trigger the error,
+    # because the error happens when merging the blocks.
+    ds = ds.map_batches(lambda x: x, batch_size=2)
+    return ds
+
+
+@pytest.mark.parametrize(
+    "op, data",
+    [
+        ("map", [UnsupportedType(), 1]),
+        ("map_batches", [[None], [1]]),
+        ("map_batches", [[{"a": 1}], [{"a": 2}]]),
+    ],
+)
+def test_fallback_to_pandas_on_incompatible_data(
+    op,
+    data,
+    ray_start_regular_shared,
+):
+    # Test if the first UDF output is incompatible with Arrow,
+    # Ray Data will fall back to using Pandas.
+    ds = _create_datasset(op, data)
+    ds = ds.materialize()
+    block = ray.get(ds.get_internal_block_refs()[0])
+    assert isinstance(block, pd.DataFrame)
+
+
+@pytest.mark.parametrize(
+    "op, data",
+    [
+        ("map", [1, 2**100]),
+        ("map", [1, UnsupportedType()]),
+        ("map", [np.array([1]), np.array([2**100])]),
+        ("map_batches", [[1], [None]]),
+    ],
+)
+def test_pyarrow_conversion_error_detailed_info(
+    ray_start_regular_shared,
+    op,
+    data,
+):
+    # Ray Data infers the block type (arrow or pandas) and the block schema
+    # based on the first UDF output.
+    # In one of the following cases, an error will be raised:
+    # * The first UDF output is compatible with Arrow, but the second is not.
+    # * Both UDF outputs are compatible with Arrow, but the second has a different
+    #   schema.
+    # Check that we'll raise an ArrowConversionError with detailed information
+    # about the incompatible data.
+    ds = _create_datasset(op, data)
+
+    with pytest.raises(Exception) as e:
+        ds.materialize()
+
+    error_msg = str(e.value)
+    expected_msg = "ArrowConversionError: Error converting data to Arrow:"
+    assert expected_msg in error_msg, error_msg
+    assert "'my_data'" in error_msg, error_msg
+
+
 if __name__ == "__main__":
     import sys
 
