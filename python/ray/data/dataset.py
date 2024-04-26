@@ -706,11 +706,11 @@ class Dataset:
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """  # noqa: E501
 
-        def fn(batch):
+        def drop_columns(batch):
             return batch.drop(columns=cols)
 
         return self.map_batches(
-            fn,
+            drop_columns,
             batch_format="pandas",
             zero_copy_batch=True,
             compute=compute,
@@ -1894,15 +1894,17 @@ class Dataset:
                 ds = ray.data.from_items([{"number": i} for i in range(1, 10)])
                 aggregation = AggregateFn(
                     init=lambda column: 1,
+                    # Apply this to each row to produce a partial aggregate result
                     accumulate_row=lambda a, row: a * row["number"],
-                    merge = lambda a1, a2: a1 + a2,
+                    # Apply this to merge partial aggregate results into a final result
+                    merge=lambda a1, a2: a1 * a2,
                     name="prod"
                 )
                 print(ds.aggregate(aggregation))
 
             .. testoutput::
 
-                {'prod': 45}
+                {'prod': 362880}
 
         Time complexity: O(dataset size / parallelism)
 

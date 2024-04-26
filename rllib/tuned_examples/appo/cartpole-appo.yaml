@@ -7,7 +7,7 @@ cartpole-appo:
     config:
         # Works for both torch and tf.
         framework: torch
-        num_envs_per_worker: 5
+        num_envs_per_env_runner: 5
         num_workers: 4
         num_gpus: 0
         observation_filter: MeanStdFilter

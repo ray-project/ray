@@ -19,10 +19,10 @@ import os
 
 import ray
 from ray import air, tune
-from ray.rllib.examples.env.parametric_actions_cartpole import (
+from ray.rllib.examples.envs.classes.parametric_actions_cartpole import (
     ParametricActionsCartPoleNoEmbeddings,
 )
-from ray.rllib.examples.models.parametric_actions_model import (
+from ray.rllib.examples._old_api_stack.models.parametric_actions_model import (
     ParametricActionsModelThatLearnsEmbeddings,
 )
 from ray.rllib.models import ModelCatalog
@@ -82,8 +82,8 @@ if __name__ == "__main__":
 
     stop = {
         "training_iteration": args.stop_iters,
-        "timesteps_total": args.stop_timesteps,
-        "episode_reward_mean": args.stop_reward,
+        "num_env_steps_sampled_lifetime": args.stop_timesteps,
+        "env_runner_results/episode_return_mean": args.stop_reward,
     }
 
     results = tune.Tuner(

@@ -33,7 +33,7 @@ def save_and_train(algo_cfg: AlgorithmConfig, env: str, tmpdir):
     """
     algo_cfg = (
         algo_cfg.experimental(_enable_new_api_stack=True)
-        .rollouts(num_rollout_workers=0)
+        .env_runners(num_env_runners=0)
         # setting min_time_s_per_iteration=0 and min_sample_timesteps_per_iteration=1
         # to make sure that we get results as soon as sampling/training is done at
         # least once
@@ -69,7 +69,7 @@ def load_and_train(algo_cfg: AlgorithmConfig, env: str, tmpdir):
     """
     algo_cfg = (
         algo_cfg.experimental(_enable_new_api_stack=True)
-        .rollouts(num_rollout_workers=0)
+        .env_runners(num_env_runners=0)
         # setting min_time_s_per_iteration=0 and min_sample_timesteps_per_iteration=1
         # to make sure that we get results as soon as sampling/training is done at
         # least once

@@ -25,7 +25,7 @@ def do_test_explorations(config, dummy_obs, prev_a=None, expected_mean_action=No
                 if local_config._enable_new_api_stack:
                     # TODO(Artur): Support Random exploration with RL Modules.
                     continue
-                local_config.exploration(exploration_config={"type": "Random"})
+                local_config.env_runners(exploration_config={"type": "Random"})
             print("exploration={}".format(exploration or "default"))
 
             algo = local_config.build()
@@ -81,7 +81,7 @@ class TestExplorations(unittest.TestCase):
 
     def test_dqn(self):
         config = (
-            dqn.DQNConfig().environment("CartPole-v1").rollouts(num_rollout_workers=0)
+            dqn.DQNConfig().environment("CartPole-v1").env_runners(num_env_runners=0)
         )
         do_test_explorations(
             config,
@@ -92,7 +92,7 @@ class TestExplorations(unittest.TestCase):
         config = (
             impala.ImpalaConfig()
             .environment("CartPole-v1")
-            .rollouts(num_rollout_workers=0)
+            .env_runners(num_env_runners=0)
             .resources(num_gpus=0)
         )
         do_test_explorations(
@@ -103,7 +103,7 @@ class TestExplorations(unittest.TestCase):
 
     def test_ppo_discr(self):
         config = (
-            ppo.PPOConfig().environment("CartPole-v1").rollouts(num_rollout_workers=0)
+            ppo.PPOConfig().environment("CartPole-v1").env_runners(num_env_runners=0)
         )
         do_test_explorations(
             config,
@@ -113,7 +113,7 @@ class TestExplorations(unittest.TestCase):
 
     def test_ppo_cont(self):
         config = (
-            ppo.PPOConfig().environment("Pendulum-v1").rollouts(num_rollout_workers=0)
+            ppo.PPOConfig().environment("Pendulum-v1").env_runners(num_env_runners=0)
         )
         do_test_explorations(
             config,
@@ -124,7 +124,7 @@ class TestExplorations(unittest.TestCase):
 
     def test_sac(self):
         config = (
-            sac.SACConfig().environment("Pendulum-v1").rollouts(num_rollout_workers=0)
+            sac.SACConfig().environment("Pendulum-v1").env_runners(num_env_runners=0)
         )
         do_test_explorations(
             config,

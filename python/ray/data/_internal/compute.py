@@ -21,8 +21,6 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 U = TypeVar("U")
 
-DEFAULT_MAX_TASKS_IN_FLIGHT_PER_ACTOR = 2
-
 
 # Block transform function applied by task and actor pools.
 BlockTransform = Union[

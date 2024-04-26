@@ -19,7 +19,7 @@ save_dir = "saved_models"
 analysis = tune.Tuner(
     "PPO",
     run_config=air.RunConfig(
-        stop={"timesteps_total": train_steps},
+        stop={"num_env_steps_sampled_lifetime": train_steps},
         local_dir=save_dir,
         checkpoint_config=air.CheckpointConfig(
             checkpoint_at_end=True,
