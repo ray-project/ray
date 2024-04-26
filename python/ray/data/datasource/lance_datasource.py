@@ -1,20 +1,19 @@
 import logging
-from typing import TYPE_CHECKING, Iterator, List, Dict, Optional
-
-import lance
-import numpy as np
-import pyarrow as pa
-from lance import LanceFragment
-
+from typing import TYPE_CHECKING, List, Dict, Optional, Iterator
 from ray.data import ReadTask
 from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource
 from ray.util.annotations import DeveloperAPI
+import lance
+
+import pyarrow as pa
+import numpy as np
+from lance import LanceFragment
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     import pyarrow
-
-logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
@@ -57,14 +56,6 @@ class LanceDatasource(Datasource):
                 batches = fragment.to_batches(columns=self.columns, filter=self.filter)
                 for batch in batches:
                     yield pa.Table.from_batches([batch])
-
-        # Set the parallelism to the min of the number of fragments
-        if parallelism > len(self.fragments):
-            parallelism = len(self.fragments)
-            logger.warning(
-                f"Reducing the parallelism to {parallelism}, as that is the "
-                "number of files"
-            )
 
         read_tasks = []
         for fragments in np.array_split(self.fragments, parallelism):
