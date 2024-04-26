@@ -355,7 +355,8 @@ class RuntimeContext(object):
             res: sum(amt for _, amt in mapping)
             for res, mapping in resource_id_map.items()
         }
-        return pasre_pg_formatted_resources_to_original(resource_map)
+        result = pasre_pg_formatted_resources_to_original(resource_map)
+        return result
 
     def get_runtime_env_string(self):
         """Get the runtime env string used for the current driver or worker.
@@ -400,18 +401,6 @@ class RuntimeContext(object):
         self.worker.check_connected()
         return self.worker.gcs_client.address
 
-    def _get_actor_call_stats(self):
-        """Get the current worker's task counters.
-
-        Returns:
-            A dictionary keyed by the function name. The values are
-            dictionaries with form ``{"pending": 0, "running": 1,
-            "finished": 2}``.
-        """
-        worker = self.worker
-        worker.check_connected()
-        return worker.core_worker.get_actor_call_stats()
-
     @Deprecated(message="Use get_accelerator_ids() instead", warning=True)
     def get_resource_ids(self) -> Dict[str, List[str]]:
         return self.get_accelerator_ids()
@@ -435,7 +424,7 @@ class RuntimeContext(object):
                 accelerator_resource_name,
                 f"^{accelerator_resource_name}_group_[0-9A-Za-z]+$",
             )
-            ids_dict[accelerator_resource_name] = accelerator_ids
+            ids_dict[accelerator_resource_name] = [str(id) for id in accelerator_ids]
         return ids_dict
 
 

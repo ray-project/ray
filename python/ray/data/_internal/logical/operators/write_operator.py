@@ -1,6 +1,5 @@
 from typing import Any, Dict, Optional, Union
 
-from ray.data._internal.compute import TaskPoolStrategy
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators.map_operator import AbstractMap
 from ray.data.datasource.datasink import Datasink
@@ -15,16 +14,22 @@ class Write(AbstractMap):
         input_op: LogicalOperator,
         datasink_or_legacy_datasource: Union[Datasink, Datasource],
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        concurrency: Optional[int] = None,
         **write_args,
     ):
+        if isinstance(datasink_or_legacy_datasource, Datasink):
+            min_rows_per_bundled_input = (
+                datasink_or_legacy_datasource.num_rows_per_write
+            )
+        else:
+            min_rows_per_bundled_input = None
+
         super().__init__(
             "Write",
             input_op,
+            min_rows_per_bundled_input=min_rows_per_bundled_input,
             ray_remote_args=ray_remote_args,
         )
         self._datasink_or_legacy_datasource = datasink_or_legacy_datasource
         self._write_args = write_args
-        # Always use task to write.
-        self._compute = TaskPoolStrategy()
-        # Take the input blocks unchanged while writing.
-        self._min_rows_per_block = float("inf")
+        self._concurrency = concurrency

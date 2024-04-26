@@ -55,9 +55,9 @@ def _configure_system():
         platform.system() == "Linux"
         and "Microsoft".lower() in platform.release().lower()
     ):
-        import ray._private.compat  # noqa: E402
+        from ray._private import compat  # noqa: E402
 
-        ray._private.compat.patch_psutil()
+        compat.patch_psutil()
 
     # Expose ray ABI symbols which may be dependent by other shared
     # libraries such as _streaming.so. See BUILD.bazel:_raylet
@@ -99,6 +99,7 @@ from ray._raylet import (  # noqa: E402,F401
     UniqueID,
     Language,
     PlacementGroupID,
+    ClusterID,
 )
 
 _config = _Config()

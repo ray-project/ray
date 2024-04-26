@@ -15,14 +15,19 @@ class Read(AbstractMap):
         mem_size: Optional[int],
         num_outputs: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        concurrency: Optional[int] = None,
     ):
         super().__init__(
-            f"Read{datasource.get_name()}", None, num_outputs, ray_remote_args
+            f"Read{datasource.get_name()}",
+            None,
+            num_outputs,
+            ray_remote_args=ray_remote_args,
         )
         self._datasource = datasource
         self._datasource_or_legacy_reader = datasource_or_legacy_reader
         self._parallelism = parallelism
         self._mem_size = mem_size
+        self._concurrency = concurrency
         self._detected_parallelism = None
 
     def set_detected_parallelism(self, parallelism: int):

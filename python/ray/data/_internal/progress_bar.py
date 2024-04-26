@@ -1,10 +1,11 @@
 import threading
+import warnings
 from typing import Any, List, Optional
 
 import ray
 from ray.experimental import tqdm_ray
 from ray.types import ObjectRef
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated
 
 try:
     import tqdm
@@ -19,7 +20,7 @@ _canceled_threads = set()
 _canceled_threads_lock = threading.Lock()
 
 
-@PublicAPI
+@Deprecated
 def set_progress_bars(enabled: bool) -> bool:
     """Set whether progress bars are enabled.
 
@@ -32,6 +33,12 @@ def set_progress_bars(enabled: bool) -> bool:
         Whether progress bars were previously enabled.
     """
     from ray.data import DataContext
+
+    warnings.warn(
+        "`set_progress_bars` is deprecated. Set "
+        "`ray.data.DataContext.get_current().enable_progress_bars` instead.",
+        DeprecationWarning,
+    )
 
     ctx = DataContext.get_current()
     old_value = ctx.enable_progress_bars
@@ -58,7 +65,11 @@ class ProgressBar:
             if ctx.use_ray_tqdm:
                 self._bar = tqdm_ray.tqdm(total=total, position=position)
             else:
-                self._bar = tqdm.tqdm(total=total, position=position)
+                self._bar = tqdm.tqdm(
+                    total=total,
+                    position=position,
+                    dynamic_ncols=True,
+                )
             self._bar.set_description(self._desc)
         else:
             global needs_warning

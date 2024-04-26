@@ -38,7 +38,7 @@ class Partitioning:
     their dataset file paths.
 
     For example, to read a dataset with
-    `Hive-style partitions <https://athena.guide/articles/hive-style-partitioning/>`_:
+    `Hive-style partitions <https://athena.guide/articles/hive-style-partitioning>`_:
 
         >>> import ray
         >>> from ray.data.datasource.partitioning import Partitioning

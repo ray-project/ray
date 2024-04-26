@@ -8,6 +8,10 @@ USAGE_STATS_FILE = "usage_stats.json"
 
 USAGE_STATS_ENABLED_ENV_VAR = "RAY_USAGE_STATS_ENABLED"
 
+USAGE_STATS_SOURCE_ENV_VAR = "RAY_USAGE_STATS_SOURCE"
+
+USAGE_STATS_SOURCE_OSS = "OSS"
+
 USAGE_STATS_ENABLED_FOR_CLI_MESSAGE = (
     "Usage stats collection is enabled. To disable this, add `--disable-usage-stats` "
     "to the command that starts the cluster, or run the following command:"

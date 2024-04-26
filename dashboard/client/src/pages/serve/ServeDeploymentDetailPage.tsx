@@ -1,8 +1,7 @@
 import {
+  Autocomplete,
   Box,
-  createStyles,
-  InputAdornment,
-  makeStyles,
+  Pagination,
   Table,
   TableBody,
   TableCell,
@@ -12,8 +11,9 @@ import {
   TextField,
   TextFieldProps,
   Typography,
-} from "@material-ui/core";
-import { Autocomplete, Pagination } from "@material-ui/lab";
+} from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import React, { ReactElement } from "react";
 import { Outlet, useParams } from "react-router-dom";
 import { CodeDialogButton } from "../../common/CodeDialogButton";
@@ -27,6 +27,7 @@ import { HelpInfo } from "../../components/Tooltip";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useServeDeploymentDetails } from "./hook/useServeApplications";
 import { ServeReplicaRow } from "./ServeDeploymentRow";
+import { ServeEntityLogViewer } from "./ServeEntityLogViewer";
 
 const useStyles = makeStyles((theme) =>
   createStyles({
@@ -38,6 +39,9 @@ const useStyles = makeStyles((theme) =>
     },
     helpInfo: {
       marginLeft: theme.spacing(1),
+    },
+    logSection: {
+      marginTop: theme.spacing(4),
     },
   }),
 );
@@ -182,9 +186,6 @@ export const ServeDeploymentDetailPage = () => {
                 onChange: ({ target: { value } }) => {
                   setPage("pageSize", Math.min(Number(value), 500) || 10);
                 },
-                endAdornment: (
-                  <InputAdornment position="end">Per Page</InputAdornment>
-                ),
               }}
             />
           </div>
@@ -236,6 +237,13 @@ export const ServeDeploymentDetailPage = () => {
             </TableBody>
           </Table>
         </TableContainer>
+      </CollapsibleSection>
+      <CollapsibleSection
+        title="Logs"
+        startExpanded
+        className={classes.logSection}
+      >
+        <ServeEntityLogViewer deployments={[deployment]} />
       </CollapsibleSection>
     </div>
   );

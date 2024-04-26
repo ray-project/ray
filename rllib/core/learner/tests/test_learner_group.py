@@ -17,7 +17,7 @@ from ray.rllib.core.testing.utils import (
     add_module_to_learner_or_learner_group,
 )
 from ray.rllib.core.testing.testing_learner import BaseTestingAlgorithmConfig
-from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.sample_batch import (
     DEFAULT_POLICY_ID,
     SampleBatch,
@@ -395,8 +395,8 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
         config = BaseTestingAlgorithmConfig().update_from_dict(config_overrides)
         learner_group = config.build_learner_group(env=env)
         rl_module_spec = config.get_default_rl_module_spec()
-        rl_module_spec.observation_space = env.observation_space
-        rl_module_spec.action_space = env.action_space
+        rl_module_spec.observation_space = env.observation_space[0]
+        rl_module_spec.action_space = env.action_space[0]
 
         learner_group.add_module(module_id="0", module_spec=rl_module_spec)
         learner_group.add_module(module_id="1", module_spec=rl_module_spec)

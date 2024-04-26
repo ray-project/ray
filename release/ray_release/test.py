@@ -3,6 +3,7 @@ import os
 import platform
 import json
 import time
+from itertools import chain
 from typing import Optional, List, Dict
 from dataclasses import dataclass
 
@@ -10,13 +11,18 @@ import boto3
 from botocore.exceptions import ClientError
 from github import Repository
 
+from ray_release.aws import s3_put_rayci_test_data
 from ray_release.configs.global_config import get_global_config
 from ray_release.result import (
     ResultStatus,
     Result,
 )
 from ray_release.logger import logger
-from ray_release.util import dict_hash
+from ray_release.util import (
+    dict_hash,
+    get_read_state_machine_aws_bucket,
+    get_write_state_machine_aws_bucket,
+)
 
 AWS_TEST_KEY = "ray_tests"
 AWS_TEST_RESULT_KEY = "ray_test_results"
@@ -25,6 +31,14 @@ DEFAULT_PYTHON_VERSION = tuple(
 )
 DATAPLANE_ECR_REPO = "anyscale/ray"
 DATAPLANE_ECR_ML_REPO = "anyscale/ray-ml"
+
+MACOS_TEST_PREFIX = "darwin://"
+LINUX_TEST_PREFIX = "linux://"
+WINDOWS_TEST_PREFIX = "windows://"
+MACOS_BISECT_DAILY_RATE_LIMIT = 3
+LINUX_BISECT_DAILY_RATE_LIMIT = 0  # linux bisect is disabled
+WINDOWS_BISECT_DAILY_RATE_LIMIT = 0  # windows bisect is disabled
+BISECT_DAILY_RATE_LIMIT = 10
 
 
 def _convert_env_list_to_dict(env_list: List[str]) -> Dict[str, str]:
@@ -51,20 +65,35 @@ class TestState(enum.Enum):
     PASSING = "passing"
 
 
+class TestType(enum.Enum):
+    """
+    Type of the test
+    """
+
+    RELEASE_TEST = "release_test"
+    MACOS_TEST = "macos_test"
+    LINUX_TEST = "linux_test"
+    WINDOWS_TEST = "windows_test"
+
+
 @dataclass
 class TestResult:
     status: str
     commit: str
+    branch: str
     url: str
     timestamp: int
+    pull_request: str
 
     @classmethod
     def from_result(cls, result: Result):
         return cls(
             status=result.status,
             commit=os.environ.get("BUILDKITE_COMMIT", ""),
+            branch=os.environ.get("BUILDKITE_BRANCH", ""),
             url=result.buildkite_url,
             timestamp=int(time.time() * 1000),
+            pull_request=os.environ.get("BUILDKITE_PULL_REQUEST", ""),
         )
 
     @classmethod
@@ -86,8 +115,10 @@ class TestResult:
         return cls(
             status=result["status"],
             commit=result["commit"],
+            branch=result.get("branch", ""),
             url=result["url"],
             timestamp=result["timestamp"],
+            pull_request=result.get("pull_request", ""),
         )
 
     def is_failing(self) -> bool:
@@ -120,16 +151,26 @@ class Test(dict):
         )
 
     @classmethod
+    def gen_from_name(cls, name: str):
+        tests = [
+            test
+            for test in Test.gen_from_s3(cls._get_s3_name(name))
+            if test["name"] == name
+        ]
+        return tests[0] if tests else None
+
+    @classmethod
     def gen_from_s3(cls, prefix: str):
         """
         Obtain all tests whose names start with the given prefix from s3
         """
-        bucket = get_global_config()["state_machine_aws_bucket"]
+        bucket = get_read_state_machine_aws_bucket()
         s3_client = boto3.client("s3")
-        files = s3_client.list_objects_v2(
+        pages = s3_client.get_paginator("list_objects_v2").paginate(
             Bucket=bucket,
             Prefix=f"{AWS_TEST_KEY}/{prefix}",
-        ).get("Contents", [])
+        )
+        files = chain.from_iterable([page.get("Contents", []) for page in pages])
 
         return [
             Test(
@@ -177,6 +218,26 @@ class Test(dict):
         """
         return self["cluster"].get("byod") is not None
 
+    def get_test_type(self) -> TestType:
+        test_name = self.get_name()
+        if test_name.startswith(MACOS_TEST_PREFIX):
+            return TestType.MACOS_TEST
+        if test_name.startswith(LINUX_TEST_PREFIX):
+            return TestType.LINUX_TEST
+        if test_name.startswith(WINDOWS_TEST_PREFIX):
+            return TestType.WINDOWS_TEST
+        return TestType.RELEASE_TEST
+
+    def get_bisect_daily_rate_limit(self) -> int:
+        test_type = self.get_test_type()
+        if test_type == TestType.MACOS_TEST:
+            return MACOS_BISECT_DAILY_RATE_LIMIT
+        if test_type == TestType.LINUX_TEST:
+            return LINUX_BISECT_DAILY_RATE_LIMIT
+        if test_type == TestType.WINDOWS_TEST:
+            return WINDOWS_BISECT_DAILY_RATE_LIMIT
+        return BISECT_DAILY_RATE_LIMIT
+
     def get_byod_type(self) -> Optional[str]:
         """
         Returns the type of the BYOD cluster.
@@ -215,12 +276,13 @@ class Test(dict):
         """
         return self["name"]
 
-    def _get_s3_name(self) -> str:
+    @classmethod
+    def _get_s3_name(cls, test_name: str) -> str:
         """
         Returns the name of the test for s3. Since '/' is not allowed in s3 key,
         replace it with '_'.
         """
-        return self["name"].replace("/", "_")
+        return test_name.replace("/", "_")
 
     def get_oncall(self) -> str:
         """
@@ -228,7 +290,7 @@ class Test(dict):
         """
         return self["team"]
 
-    def update_from_s3(self) -> None:
+    def update_from_s3(self, force_branch_bucket: bool = True) -> None:
         """
         Update test object with data fields that exist only on s3
         """
@@ -236,8 +298,8 @@ class Test(dict):
             data = (
                 boto3.client("s3")
                 .get_object(
-                    Bucket=get_global_config()["state_machine_aws_bucket"],
-                    Key=f"{AWS_TEST_KEY}/{self._get_s3_name()}.json",
+                    Bucket=get_read_state_machine_aws_bucket(),
+                    Key=f"{AWS_TEST_KEY}/{self._get_s3_name(self.get_name())}.json",
                 )
                 .get("Body")
                 .read()
@@ -373,7 +435,7 @@ class Test(dict):
         )
 
     def get_test_results(
-        self, limit: int = 10, refresh: bool = False
+        self, limit: int = 10, refresh: bool = False, aws_bucket: str = None
     ) -> List[TestResult]:
         """
         Get test result from test object, or s3
@@ -384,20 +446,22 @@ class Test(dict):
         if self.test_results is not None and not refresh:
             return self.test_results
 
+        bucket = aws_bucket or get_read_state_machine_aws_bucket()
         s3_client = boto3.client("s3")
+        pages = s3_client.get_paginator("list_objects_v2").paginate(
+            Bucket=bucket,
+            Prefix=f"{AWS_TEST_RESULT_KEY}/{self._get_s3_name(self.get_name())}-",
+        )
         files = sorted(
-            s3_client.list_objects_v2(
-                Bucket=get_global_config()["state_machine_aws_bucket"],
-                Prefix=f"{AWS_TEST_RESULT_KEY}/{self._get_s3_name()}-",
-            ).get("Contents", []),
-            key=lambda file: int(file["LastModified"].strftime("%s")),
+            chain.from_iterable([page.get("Contents", []) for page in pages]),
+            key=lambda file: int(file["LastModified"].timestamp()),
             reverse=True,
         )[:limit]
         self.test_results = [
             TestResult.from_dict(
                 json.loads(
                     s3_client.get_object(
-                        Bucket=get_global_config()["state_machine_aws_bucket"],
+                        Bucket=bucket,
                         Key=file["Key"],
                     )
                     .get("Body")
@@ -419,10 +483,10 @@ class Test(dict):
         """
         Persist test result object to s3
         """
-        boto3.client("s3").put_object(
-            Bucket=get_global_config()["state_machine_aws_bucket"],
+        s3_put_rayci_test_data(
+            Bucket=get_write_state_machine_aws_bucket(),
             Key=f"{AWS_TEST_RESULT_KEY}/"
-            f"{self._get_s3_name()}-{int(time.time() * 1000)}.json",
+            f"{self._get_s3_name(self.get_name())}-{int(time.time() * 1000)}.json",
             Body=json.dumps(test_result.__dict__),
         )
 
@@ -430,9 +494,9 @@ class Test(dict):
         """
         Persist test object to s3
         """
-        boto3.client("s3").put_object(
-            Bucket=get_global_config()["state_machine_aws_bucket"],
-            Key=f"{AWS_TEST_KEY}/{self._get_s3_name()}.json",
+        s3_put_rayci_test_data(
+            Bucket=get_write_state_machine_aws_bucket(),
+            Key=f"{AWS_TEST_KEY}/{self._get_s3_name(self.get_name())}.json",
             Body=json.dumps(self),
         )
 

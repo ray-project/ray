@@ -1,3 +1,4 @@
+import os
 from ray._private.ray_constants import env_integer, env_bool
 
 DASHBOARD_LOG_FILENAME = "dashboard.log"
@@ -64,6 +65,9 @@ CANDIDATE_AGENT_NUMBER = max(env_integer("CANDIDATE_AGENT_NUMBER", 1), 1)
 WAIT_AVAILABLE_AGENT_TIMEOUT = 10
 TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS = 0.1
 RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR = "RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES"
+RAY_STREAM_RUNTIME_ENV_LOG_TO_JOB_DRIVER_LOG_ENV_VAR = (
+    "RAY_STREAM_RUNTIME_ENV_LOG_TO_JOB_DRIVER_LOG"
+)
 
 # The max time to wait for the JobSupervisor to start before failing the job.
 DEFAULT_JOB_START_TIMEOUT_SECONDS = 60 * 15
@@ -79,6 +83,12 @@ AVAILABLE_COMPONENT_NAMES_FOR_METRICS = {
     "dashboard",
     "gcs",
 }
+METRICS_INPUT_ROOT = os.path.join(
+    os.path.dirname(__file__), "modules", "metrics", "export"
+)
+PROMETHEUS_CONFIG_INPUT_PATH = os.path.join(
+    METRICS_INPUT_ROOT, "prometheus", "prometheus.yml"
+)
 PARENT_HEALTH_CHECK_BY_PIPE = env_bool(
     "RAY_enable_pipe_based_agent_to_parent_health_check", False
 )

@@ -8,8 +8,12 @@ from unittest import mock
 from typing import List, Optional
 
 from ci.ray_ci.linux_tester_container import LinuxTesterContainer
-from ci.ray_ci.utils import chunk_into_n
+from ci.ray_ci.utils import chunk_into_n, ci_init
 from ci.ray_ci.container import _DOCKER_ECR_REPO, _RAYCI_BUILD_ID
+from ray_release.configs.global_config import get_global_config
+
+
+ci_init()
 
 
 class MockPopen:
@@ -23,6 +27,55 @@ class MockPopen:
 
     def wait(self) -> int:
         return 1 if "bad_test" in self.test_targets or not self.test_targets else 0
+
+
+@mock.patch("ci.ray_ci.tester_container.TesterContainer._upload_build_info")
+@mock.patch("ci.ray_ci.tester_container.TesterContainer.upload_test_results")
+@mock.patch("ci.ray_ci.tester_container.TesterContainer.move_test_state")
+def test_persist_test_results(
+    mock_upload_build_info, mock_upload_test_result, mock_move_test_state
+) -> None:
+    container = LinuxTesterContainer("team", skip_ray_installation=True)
+    with mock.patch.dict(
+        os.environ,
+        {
+            "BUILDKITE_BRANCH": "master",
+            "BUILDKITE_PIPELINE_ID": "w00t",
+        },
+    ):
+        container._persist_test_results("team", "log_dir")
+        assert not mock_upload_build_info.called
+        assert not mock_move_test_state.called
+    with mock.patch.dict(
+        os.environ,
+        {
+            "BUILDKITE_BRANCH": "non-master",
+            "BUILDKITE_PIPELINE_ID": get_global_config()["ci_pipeline_postmerge"][0],
+        },
+    ):
+        container._persist_test_results("team", "log_dir")
+        assert not mock_upload_build_info.called
+        assert not mock_move_test_state.called
+    with mock.patch.dict(
+        os.environ,
+        {
+            "BUILDKITE_BRANCH": "non-master",
+            "BUILDKITE_PIPELINE_ID": get_global_config()["ci_pipeline_premerge"][0],
+        },
+    ):
+        container._persist_test_results("team", "log_dir")
+        assert mock_upload_build_info.called
+        assert mock_move_test_state.called
+    with mock.patch.dict(
+        os.environ,
+        {
+            "BUILDKITE_BRANCH": "master",
+            "BUILDKITE_PIPELINE_ID": get_global_config()["ci_pipeline_postmerge"][0],
+        },
+    ):
+        container._persist_test_results("team", "log_dir")
+        assert mock_upload_build_info.called
+        assert mock_move_test_state.called
 
 
 def test_enough_gpus() -> None:
@@ -110,7 +163,14 @@ def test_ray_installation() -> None:
     def _mock_subprocess(inputs: List[str], env, stdout, stderr) -> None:
         install_ray_cmds.append(inputs)
 
-    with mock.patch("subprocess.check_call", side_effect=_mock_subprocess):
+    with mock.patch(
+        "subprocess.check_call", side_effect=_mock_subprocess
+    ), mock.patch.dict(
+        "os.environ",
+        {
+            "BUILDKITE_PIPELINE_ID": "w00t",
+        },
+    ):
         LinuxTesterContainer("team", build_type="debug")
         docker_image = f"{_DOCKER_ECR_REPO}:{_RAYCI_BUILD_ID}-team"
         assert install_ray_cmds[-1] == [
@@ -122,6 +182,8 @@ def test_ray_installation() -> None:
             f"BASE_IMAGE={docker_image}",
             "--build-arg",
             "BUILD_TYPE=debug",
+            "--build-arg",
+            "BUILDKITE_PIPELINE_ID=w00t",
             "-t",
             docker_image,
             "-f",
@@ -185,19 +247,19 @@ def test_get_test_results() -> None:
         json.dumps(log)
         for log in [
             {
-                "id": {"testResult": {"label": "//ray/ci:test"}},
+                "id": {"testResult": {"label": "//ray/ci:test", "run": "1"}},
                 "testResult": {"status": "FAILED"},
             },
             {
-                "id": {"testResult": {"label": "//ray/ci:reef"}},
+                "id": {"testResult": {"label": "//ray/ci:reef", "run": "1"}},
                 "testResult": {"status": "FAILED"},
             },
             {
-                "id": {"testResult": {"label": "//ray/ci:test"}},
+                "id": {"testResult": {"label": "//ray/ci:test", "run": "2"}},
                 "testResult": {"status": "FAILED"},
             },
             {
-                "id": {"testResult": {"label": "//ray/ci:test"}},
+                "id": {"testResult": {"label": "//ray/ci:test", "run": "1"}},
                 "testResult": {"status": "PASSED"},
             },
         ]
@@ -206,8 +268,7 @@ def test_get_test_results() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         with open(os.path.join(tmp, "bazel_log"), "w") as f:
             f.write("\n".join(_BAZEL_LOGS))
-        container = LinuxTesterContainer("docker_tag", skip_ray_installation=True)
-        results = container._get_test_and_results("manu", tmp)
+        results = LinuxTesterContainer.get_test_and_results("manu", tmp)
         results.sort(key=lambda x: x[0].get_name())
 
         test, result = results[0]
@@ -219,6 +280,11 @@ def test_get_test_results() -> None:
         assert test.get_name() == f"{platform.system().lower()}://ray/ci:test"
         assert test.get_oncall() == "manu"
         assert result.is_passing()
+
+        test, result = results[2]
+        assert test.get_name() == f"{platform.system().lower()}://ray/ci:test"
+        assert test.get_oncall() == "manu"
+        assert result.is_failing()
 
 
 if __name__ == "__main__":

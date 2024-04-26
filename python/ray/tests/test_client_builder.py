@@ -114,8 +114,6 @@ def test_connect_to_cluster(ray_start_regular_shared):
         assert client_context.python_version == python_version
         assert client_context.ray_version == ray.__version__
         assert client_context.ray_commit == ray.__commit__
-        protocol_version = ray.util.client.CURRENT_PROTOCOL_VERSION
-        assert client_context.protocol_version == protocol_version
 
     server.stop(0)
     subprocess.check_output("ray stop --force", shell=True)

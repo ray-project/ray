@@ -17,7 +17,7 @@ app = FastAPI()
 @serve.ingress(app)
 class APIIngress:
     def __init__(self, object_detection_handle: DeploymentHandle):
-        self.handle = object_detection_handle.options(use_new_handle_api=True)
+        self.handle = object_detection_handle
 
     @app.get(
         "/detect",

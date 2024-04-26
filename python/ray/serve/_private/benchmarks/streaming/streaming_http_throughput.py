@@ -8,7 +8,7 @@ from starlette.responses import StreamingResponse
 
 from ray import serve
 from ray.serve._private.benchmarks.common import run_throughput_benchmark
-from ray.serve.handle import DeploymentHandle, RayServeHandle
+from ray.serve.handle import DeploymentHandle
 
 
 @serve.deployment(ray_actor_options={"num_cpus": 0})
@@ -28,13 +28,10 @@ class Downstream:
 
 @serve.deployment(ray_actor_options={"num_cpus": 0})
 class Intermediate:
-    def __init__(self, downstream: RayServeHandle):
+    def __init__(self, downstream: DeploymentHandle):
         logging.getLogger("ray.serve").setLevel(logging.WARNING)
 
-        self._h: DeploymentHandle = downstream.options(
-            stream=True,
-            use_new_handle_api=True,
-        )
+        self._h = downstream.options(stream=True)
 
     async def stream(self):
         async for token in self._h.stream.remote():

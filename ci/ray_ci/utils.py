@@ -1,5 +1,7 @@
 import base64
+import io
 import logging
+import os
 import subprocess
 import sys
 import tempfile
@@ -9,10 +11,21 @@ from typing import List
 from math import ceil
 
 import ci.ray_ci.bazel_sharding as bazel_sharding
+from ray_release.bazel import bazel_runfile
+from ray_release.test import Test, TestState
+from ray_release.configs.global_config import init_global_config
 
-
-POSTMERGE_PIPELINE = "0189e759-8c96-4302-b6b5-b4274406bf89"
+GLOBAL_CONFIG_FILE = (
+    os.environ.get("RAYCI_GLOBAL_CONFIG") or "ci/ray_ci/oss_config.yaml"
+)
 RAY_VERSION = "3.0.0.dev0"
+
+
+def ci_init() -> None:
+    """
+    Initialize global config
+    """
+    init_global_config(bazel_runfile(GLOBAL_CONFIG_FILE))
 
 
 def chunk_into_n(list: List[str], n: int) -> List[List[str]]:
@@ -75,6 +88,67 @@ def docker_pull(image: str) -> None:
         stderr=sys.stderr,
         check=True,
     )
+
+
+def get_flaky_test_names(prefix: str) -> List[str]:
+    """
+    Query all flaky tests with specified prefix.
+
+    Args:
+        prefix: A prefix to filter by.
+
+    Returns:
+        List[str]: List of test names.
+    """
+    tests = Test.gen_from_s3(prefix)
+    # Filter tests by test state
+    state = TestState.FLAKY
+    test_names = [t.get_name() for t in tests if t.get_state() == state]
+
+    # Remove prefixes.
+    for i in range(len(test_names)):
+        test = test_names[i]
+        if test.startswith(prefix):
+            test_names[i] = test[len(prefix) :]
+
+    return test_names
+
+
+def filter_tests(
+    input: io.TextIOBase, output: io.TextIOBase, prefix: str, state_filter: str
+):
+    """
+    Filter flaky tests from list of test targets.
+
+    Args:
+        input: Input stream, each test name in one line.
+        output: Output stream, each test name in one line.
+        prefix: Prefix to query tests with.
+        state_filter: Options to filter tests: "flaky" or "-flaky" tests.
+    """
+    # Valid prefix check
+    if prefix not in ["darwin:", "linux:", "windows:"]:
+        raise ValueError("Prefix must be one of 'darwin:', 'linux:', or 'windows:'.")
+
+    # Valid filter choices check
+    if state_filter not in ["flaky", "-flaky"]:
+        raise ValueError("Filter option must be one of 'flaky' or '-flaky'.")
+
+    # Obtain all existing tests with specified test state
+    flaky_tests = set(get_flaky_test_names(prefix))
+
+    # Filter these test from list of test targets based on user condition.
+    for t in input:
+        t = t.strip()
+        if not t:
+            continue
+
+        hit = t in flaky_tests
+        if state_filter == "-flaky":
+            hit = not hit
+
+        if hit:
+            output.write(f"{t}\n")
 
 
 logger = logging.getLogger()

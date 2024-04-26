@@ -82,9 +82,6 @@ class Raylet {
 
   friend class TestObjectManagerIntegration;
 
-  // Main event loop.
-  instrumented_io_context &main_service_;
-
   /// ID of this node.
   NodeID self_node_id_;
   /// Information of this node.

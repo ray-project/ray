@@ -6,7 +6,6 @@ import sys
 import pytest
 import warnings
 
-from ray._private.test_utils import SignalActor
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.state import list_tasks
 from ray._private.test_utils import wait_for_condition
@@ -148,119 +147,6 @@ def test_get_assigned_resources(ray_start_10_cpus):
 
     result = check.options(num_cpus=2).remote()
     assert ray.get(result)["CPU"] == 2.0
-
-
-def test_actor_stats_normal_task(ray_start_regular):
-    # Because it works at the core worker level, this API works for tasks.
-    @ray.remote
-    def func():
-        return ray.get_runtime_context()._get_actor_call_stats()
-
-    assert ray.get(func.remote())["func"] == {
-        "pending": 0,
-        "running": 1,
-        "finished": 0,
-    }
-
-
-def test_actor_stats_sync_actor(ray_start_regular):
-    signal = SignalActor.remote()
-
-    @ray.remote
-    class SyncActor:
-        def run(self):
-            return ray.get_runtime_context()._get_actor_call_stats()
-
-        def wait_signal(self):
-            ray.get(signal.wait.remote())
-            return ray.get_runtime_context()._get_actor_call_stats()
-
-    actor = SyncActor.remote()
-    counts = ray.get(actor.run.remote())
-    assert counts == {
-        "SyncActor.run": {"pending": 0, "running": 1, "finished": 0},
-        "SyncActor.__init__": {"pending": 0, "running": 0, "finished": 1},
-    }
-
-    ref = actor.wait_signal.remote()
-    other_refs = [actor.run.remote() for _ in range(3)] + [
-        actor.wait_signal.remote() for _ in range(5)
-    ]
-    ray.wait(other_refs, timeout=1)
-    signal.send.remote()
-    counts = ray.get(ref)
-    assert counts == {
-        "SyncActor.run": {
-            "pending": 3,
-            "running": 0,
-            "finished": 1,  # from previous run
-        },
-        "SyncActor.wait_signal": {
-            "pending": 5,
-            "running": 1,
-            "finished": 0,
-        },
-        "SyncActor.__init__": {"pending": 0, "running": 0, "finished": 1},
-    }
-
-
-def test_actor_stats_threaded_actor(ray_start_regular):
-    signal = SignalActor.remote()
-
-    @ray.remote
-    class ThreadedActor:
-        def func(self):
-            ray.get(signal.wait.remote())
-            return ray.get_runtime_context()._get_actor_call_stats()
-
-    actor = ThreadedActor.options(max_concurrency=3).remote()
-    refs = [actor.func.remote() for _ in range(6)]
-    ready, _ = ray.wait(refs, timeout=1)
-    assert len(ready) == 0
-    signal.send.remote()
-    results = ray.get(refs)
-    assert max(result["ThreadedActor.func"]["running"] for result in results) > 1
-    assert max(result["ThreadedActor.func"]["pending"] for result in results) > 1
-
-
-def test_actor_stats_async_actor(ray_start_regular):
-    signal = SignalActor.remote()
-
-    @ray.remote
-    class AysncActor:
-        async def func(self):
-            await signal.wait.remote()
-            return ray.get_runtime_context()._get_actor_call_stats()
-
-    actor = AysncActor.options(max_concurrency=3).remote()
-    refs = [actor.func.remote() for _ in range(6)]
-    ready, _ = ray.wait(refs, timeout=1)
-    assert len(ready) == 0
-    signal.send.remote()
-    results = ray.get(refs)
-    assert max(result["AysncActor.func"]["running"] for result in results) == 3
-    assert max(result["AysncActor.func"]["pending"] for result in results) == 3
-
-
-def test_actor_stats_async_actor_generator(ray_start_regular):
-    signal = SignalActor.remote()
-
-    @ray.remote
-    class AysncActor:
-        async def func(self):
-            await signal.wait.remote()
-            yield ray.get_runtime_context()._get_actor_call_stats()
-
-    actor = AysncActor.options(max_concurrency=3).remote()
-    gens = [actor.func.remote() for _ in range(6)]
-    time.sleep(1)
-    signal.send.remote()
-    results = []
-    for gen in gens:
-        for ref in gen:
-            results.append(ray.get(ref))
-    assert max(result["AysncActor.func"]["running"] for result in results) == 3
-    assert max(result["AysncActor.func"]["pending"] for result in results) == 3
 
 
 # Use default filterwarnings behavior for this test

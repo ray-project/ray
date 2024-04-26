@@ -1,0 +1,27 @@
+version: 1
+disable_existing_loggers: False
+
+formatters:
+    ray:
+        format: "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s"
+
+filters:
+    console_filter:
+        (): ray.data._internal.logging.HiddenRecordFilter
+
+handlers:
+    file:
+        class: ray.data._internal.logging.SessionFileHandler
+        formatter: ray
+        filename: ray-data.log
+    console:
+        class: ray._private.log.PlainRayHandler
+        formatter: ray
+        level: INFO
+        filters: [console_filter]
+
+loggers:
+    ray.data:
+        level: DEBUG
+        handlers: [file, console]
+        propagate: False

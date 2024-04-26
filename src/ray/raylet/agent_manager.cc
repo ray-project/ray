@@ -93,8 +93,8 @@ void AgentManager::StartAgent() {
              "Read the log `cat "
              "/tmp/ray/session_latest/logs/{dashboard_agent|runtime_env_agent}.log`. "
              "You can find the log file structure here "
-             "https://docs.ray.io/en/master/ray-observability/"
-             "ray-logging.html#logging-directory-structure.\n"
+             "https://docs.ray.io/en/master/ray-observability/user-guides/"
+             "configure-logging.html#logging-directory-structure.\n"
              "- The agent is killed by the OS (e.g., out of memory).";
       ShutdownRayletGracefully();
       // If the process is not terminated within 10 seconds, forcefully kill raylet

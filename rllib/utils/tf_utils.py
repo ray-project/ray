@@ -8,6 +8,7 @@ from gymnasium.spaces import Discrete, MultiDiscrete
 
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.numpy import SMALL_NUMBER
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.typing import (
     LocalOptimizer,
@@ -94,7 +95,7 @@ def explained_variance(y: TensorType, pred: TensorType) -> TensorType:
     """
     _, y_var = tf.nn.moments(y, axes=[0])
     _, diff_var = tf.nn.moments(y - pred, axes=[0])
-    return tf.maximum(-1.0, 1 - (diff_var / y_var))
+    return tf.maximum(-1.0, 1 - (diff_var / (y_var + SMALL_NUMBER)))
 
 
 @PublicAPI

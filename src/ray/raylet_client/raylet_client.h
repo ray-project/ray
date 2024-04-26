@@ -194,6 +194,7 @@ class RayletClientInterface : public PinObjectsInterface,
   virtual void DrainRaylet(
       const rpc::autoscaler::DrainNodeReason &reason,
       const std::string &reason_message,
+      int64_t deadline_timestamp_ms,
       const rpc::ClientCallback<rpc::DrainRayletReply> &callback) = 0;
 
   virtual std::shared_ptr<grpc::Channel> GetChannel() const = 0;
@@ -259,7 +260,6 @@ class RayletClient : public RayletClientInterface {
   /// provided by driver will be passed to Raylet.
   /// \param startup_token The startup token of the process assigned to
   /// it during startup as a command line argument.
-  /// \param entrypoint The entrypoint of the job.
   RayletClient(instrumented_io_context &io_service,
                std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
                const std::string &raylet_socket,
@@ -273,8 +273,7 @@ class RayletClient : public RayletClientInterface {
                NodeID *raylet_id,
                int *port,
                const std::string &serialized_job_config,
-               StartupToken startup_token,
-               const std::string &entrypoint);
+               StartupToken startup_token);
 
   /// Connect to the raylet via grpc only.
   ///
@@ -297,9 +296,16 @@ class RayletClient : public RayletClientInterface {
 
   /// Tell the raylet which port this worker's gRPC server is listening on.
   ///
-  /// \param The port.
+  /// \param port The port.
   /// \return ray::Status.
-  Status AnnounceWorkerPort(int port);
+  Status AnnounceWorkerPortForWorker(int port);
+
+  /// Tell the raylet this driver and its job is ready to run, with port and entrypoint.
+  ///
+  /// \param port The port.
+  /// \param entrypoint The entrypoint of the driver's job.
+  /// \return ray::Status.
+  Status AnnounceWorkerPortForDriver(int port, const std::string &entrypoint);
 
   /// Tell the raylet that the client has finished executing a task.
   ///
@@ -384,14 +390,6 @@ class RayletClient : public RayletClientInterface {
   /// \return ray::Status.
   ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids, bool local_only);
 
-  /// Ask the raylet to spill an object to external storage.
-  /// \param object_id The ID of the object to be spilled.
-  /// \param callback Callback that will be called after raylet completes the
-  /// object spilling (or it fails).
-  void RequestObjectSpillage(
-      const ObjectID &object_id,
-      const rpc::ClientCallback<rpc::RequestObjectSpillageReply> &callback);
-
   std::shared_ptr<grpc::Channel> GetChannel() const override;
 
   /// Implements WorkerLeaseInterface.
@@ -464,6 +462,7 @@ class RayletClient : public RayletClientInterface {
 
   void DrainRaylet(const rpc::autoscaler::DrainNodeReason &reason,
                    const std::string &reason_message,
+                   int64_t deadline_timestamp_ms,
                    const rpc::ClientCallback<rpc::DrainRayletReply> &callback) override;
 
   void GetSystemConfig(

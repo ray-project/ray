@@ -81,6 +81,13 @@ class RuntimeEnvContext:
             passthrough_args[0] = default_worker_path
 
         if sys.platform == "win32":
+
+            def quote(s):
+                s = s.replace("&", "%26")
+                return s
+
+            passthrough_args = [quote(s) for s in passthrough_args]
+
             cmd = [*self.command_prefix, *executable, *passthrough_args]
             logger.debug(f"Exec'ing worker with command: {cmd}")
             subprocess.Popen(cmd, shell=True).wait()
