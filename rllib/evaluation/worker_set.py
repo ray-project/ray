@@ -414,7 +414,6 @@ class WorkerSet:
         if config.use_worker_filter_stats:
             connector_states = self.foreach_worker(
                 lambda w: (w._env_to_module.get_state(), w._module_to_env.get_state()),
-                healthy_only=True,
                 local_worker=False,
                 timeout_seconds=config.sync_filters_on_rollout_workers_timeout_s,
             )
@@ -466,7 +465,6 @@ class WorkerSet:
             self.foreach_worker(
                 _update,
                 local_worker=True,
-                healthy_only=True,
                 timeout_seconds=config.sync_filters_on_rollout_workers_timeout_s,
             )
         # Update only the local_worker. Why don't we use `from_worker` here (assuming
@@ -485,7 +483,7 @@ class WorkerSet:
         from_worker_or_learner_group: Optional[Union[EnvRunner, "LearnerGroup"]] = None,
         to_worker_indices: Optional[List[int]] = None,
         global_vars: Optional[Dict[str, TensorType]] = None,
-        timeout_seconds: Optional[int] = 0,
+        timeout_seconds: Optional[float] = 0.0,
         inference_only: Optional[bool] = False,
     ) -> None:
         """Syncs model weights from the given weight source to all remote workers.
@@ -542,10 +540,6 @@ class WorkerSet:
                 func=_set_weights,
                 local_worker=False,  # Do not sync back to local worker.
                 remote_worker_ids=to_worker_indices,
-                # We can only sync to healthy remote workers.
-                # Restored workers need to have local work state synced over first,
-                # before they will have all the policies to receive these weights.
-                healthy_only=True,
                 timeout_seconds=timeout_seconds,
             )
 
@@ -757,7 +751,8 @@ class WorkerSet:
         """Calls `stop` on all rollout workers (including the local one)."""
         try:
             # Make sure we stop all workers, include the ones that were just
-            # restarted / recovered.
+            # restarted / recovered or that are tagged unhealthy (at least, we should
+            # try).
             self.foreach_worker(
                 lambda w: w.stop(), healthy_only=False, local_worker=True
             )
@@ -785,12 +780,11 @@ class WorkerSet:
         func: Callable[[EnvRunner], T],
         *,
         local_worker: bool = True,
-        # TODO(jungong) : switch to True once Algorithm is migrated.
-        healthy_only: bool = False,
+        healthy_only: bool = True,
         remote_worker_ids: List[int] = None,
-        timeout_seconds: Optional[int] = None,
+        timeout_seconds: Optional[float] = None,
         return_obj_refs: bool = False,
-        mark_healthy: bool = False,
+        mark_healthy: bool = True,
     ) -> List[T]:
         """Calls the given function with each EnvRunner as its argument.
 
@@ -803,7 +797,13 @@ class WorkerSet:
             return_obj_refs: whether to return ObjectRef instead of actual results.
                 Note, for fault tolerance reasons, these returned ObjectRefs should
                 never be resolved with ray.get() outside of this WorkerSet.
-            mark_healthy: Whether to mark the worker as healthy based on call results.
+            mark_healthy: Whether to mark all those workers healthy again that are
+                currently marked unhealthy AND that returned results from the remote
+                call (within the given `timeout_seconds`).
+                Note that workers are NOT set unhealthy, if they simply time out
+                (only if they return a RayActorError).
+                Also not that this setting is ignored if `healthy_only=True` (b/c this
+                setting only affects workers that are currently tagged as unhealthy).
 
         Returns:
              The list of return values of all calls to `func([worker])`.
@@ -846,7 +846,7 @@ class WorkerSet:
         # TODO(jungong) : switch to True once Algorithm is migrated.
         healthy_only: bool = False,
         remote_worker_ids: List[int] = None,
-        timeout_seconds: Optional[int] = None,
+        timeout_seconds: Optional[float] = None,
     ) -> List[T]:
         """Calls the given function with each EnvRunner and its ID as its arguments.
 
@@ -917,9 +917,9 @@ class WorkerSet:
     def fetch_ready_async_reqs(
         self,
         *,
-        timeout_seconds: Optional[int] = 0,
+        timeout_seconds: Optional[float] = 0.0,
         return_obj_refs: bool = False,
-        mark_healthy: bool = False,
+        mark_healthy: bool = True,
     ) -> List[Tuple[int, T]]:
         """Get esults from outstanding asynchronous requests that are ready.
 
@@ -927,7 +927,15 @@ class WorkerSet:
             timeout_seconds: Time to wait for results. Default is 0, meaning
                 those requests that are already ready.
             return_obj_refs: Whether to return ObjectRef instead of actual results.
-            mark_healthy: Whether to mark the worker as healthy based on call results.
+            mark_healthy: Whether to mark all those workers healthy again that are
+                currently marked unhealthy AND that returned results from the remote
+                call (within the given `timeout_seconds`).
+                Note that workers are NOT set unhealthy, if they simply time out
+                (only if they return a RayActorError).
+                Also not that this setting is ignored if `healthy_only=True` was set
+                in the preceding `self.foreach_worker_asyn()` call, b/c the
+                `mark_healthy` setting only affects workers that are currently tagged as
+                unhealthy.
 
         Returns:
             A list of results successfully returned from outstanding remote calls,
@@ -1051,7 +1059,6 @@ class WorkerSet:
         """
         return self.__worker_manager.probe_unhealthy_actors(
             timeout_seconds=self._remote_config.env_runner_health_probe_timeout_s,
-            mark_healthy=True,
         )
 
     # TODO (sven): Deprecate once ARS/ES have been moved to `rllib_contrib`.

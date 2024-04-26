@@ -502,7 +502,7 @@ class AlgorithmConfig(_Config):
         self.delay_between_env_runner_restarts_s = 60.0
         self.restart_failed_sub_environments = False
         self.num_consecutive_env_runner_failures_tolerance = 100
-        self.env_runner_health_probe_timeout_s = 60
+        self.env_runner_health_probe_timeout_s = 30
         self.env_runner_restore_timeout_s = 1800
 
         # `self.rl_module()`
@@ -2742,9 +2742,11 @@ class AlgorithmConfig(_Config):
                 failures, the EnvRunner itself is NOT affected and won't throw any
                 errors as the flawed sub-environment is silently restarted under the
                 hood.
-            env_runner_health_probe_timeout_s: Max amount of time we should spend
-                waiting for health probe calls to finish. Health pings are very cheap,
-                so the default is 1 minute.
+            env_runner_health_probe_timeout_s: Max amount of time in seconds, we should
+                spend waiting for EnvRunner health probe calls
+                (`EnvRunner.ping.remote()`) to respond. Health pings are very cheap,
+                however, we perform the health check via a blocking `ray.get()`, so the
+                default value should not be too long.
             env_runner_restore_timeout_s: Max amount of time we should wait to restore
                 states on recovered EnvRunner actors. Default is 30 mins.
 
