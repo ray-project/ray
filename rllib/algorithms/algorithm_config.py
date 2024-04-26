@@ -2695,6 +2695,7 @@ class AlgorithmConfig(_Config):
 
     def fault_tolerance(
         self,
+        ignore_env_runner_failures: Optional[bool] = NotProvided,
         recreate_failed_env_runners: Optional[bool] = NotProvided,
         max_num_env_runner_restarts: Optional[int] = NotProvided,
         delay_between_env_runner_restarts_s: Optional[float] = NotProvided,
@@ -2703,6 +2704,7 @@ class AlgorithmConfig(_Config):
         env_runner_health_probe_timeout_s: int = NotProvided,
         env_runner_restore_timeout_s: int = NotProvided,
         # Deprecated args.
+        ignore_worker_failures=DEPRECATED_VALUE,
         recreate_failed_workers=DEPRECATED_VALUE,
         max_num_worker_restarts=DEPRECATED_VALUE,
         delay_between_worker_restarts_s=DEPRECATED_VALUE,
@@ -2713,6 +2715,9 @@ class AlgorithmConfig(_Config):
         """Sets the config's fault tolerance settings.
 
         Args:
+            ignore_env_runner_failures: Whether to ignore any EnvRunner failures
+                and continue running with the remaining EnvRunners. This setting will
+                be ignored, if `recreate_failed_env_runners=True`.
             recreate_failed_env_runners: Whether - upon an EnvRunner failure - RLlib
                 will try to recreate the lost EnvRunner as an identical copy of the
                 failed one. The new EnvRunner will only differ from the failed one in
@@ -2746,6 +2751,12 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
+        if ignore_worker_failures != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.fault_tolerance(ignore_worker_failures)",
+                new="AlgorithmConfig.fault_tolerance(ignore_env_runner_failures)",
+                error=True,
+            )
         if recreate_failed_workers != DEPRECATED_VALUE:
             deprecation_warning(
                 old="AlgorithmConfig.fault_tolerance(recreate_failed_workers)",
@@ -2787,6 +2798,8 @@ class AlgorithmConfig(_Config):
                 error=True,
             )
 
+        if ignore_env_runner_failures is not NotProvided:
+            self.ignore_env_runner_failures = ignore_env_runner_failures
         if recreate_failed_env_runners is not NotProvided:
             self.recreate_failed_env_runners = recreate_failed_env_runners
         if max_num_env_runner_restarts is not NotProvided:
