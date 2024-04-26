@@ -634,6 +634,7 @@ class AlgorithmConfig(_Config):
             "min_train_timesteps_per_reporting",
             "min_sample_timesteps_per_reporting",
             "input_evaluation",
+            "_enable_new_api_stack",
         ]:
             if config.get(dep_k) == DEPRECATED_VALUE:
                 config.pop(dep_k, None)

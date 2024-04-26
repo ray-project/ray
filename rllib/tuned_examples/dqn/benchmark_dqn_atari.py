@@ -236,8 +236,8 @@ benchmark_envs = {
 for env in benchmark_envs.keys():
     tune.register_env(
         env,
-        lambda ctx: AtariPreprocessing(
-            gym.make(env, **ctx), grayscale_newaxis=True, screen_size=84, noop_max=0
+        lambda ctx, e=env: AtariPreprocessing(
+            gym.make(e, **ctx), grayscale_newaxis=True, screen_size=84, noop_max=0
         ),
     )
 

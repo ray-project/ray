@@ -236,7 +236,7 @@ for env in benchmark_envs:
         env,
         # Use the RLlib atari wrapper to squeeze images to 84x84.
         # Note, the default of this wrapper is `framestack=4`.
-        lambda ctx: wrap_atari_for_new_api_stack(gym.make(env, **ctx), dim=84),
+        lambda ctx, e=env: wrap_atari_for_new_api_stack(gym.make(e, **ctx), dim=84),
     )
 
 
