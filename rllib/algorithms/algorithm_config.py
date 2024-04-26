@@ -366,10 +366,6 @@ class AlgorithmConfig(_Config):
         self.use_worker_filter_stats = True
         self.enable_connectors = True
         self.sampler_perf_stats_ema_coef = None
-        # Deprecated args.
-        self.num_rollout_workers = DEPRECATED_VALUE
-        self.num_envs_per_worker = DEPRECATED_VALUE
-        self.validate_workers_after_construction = DEPRECATED_VALUE
 
         # `self.training()`
         self.gamma = 0.99
@@ -1679,8 +1675,8 @@ class AlgorithmConfig(_Config):
                 1. RLlib collects 10 fragments of 100 steps each from rollout workers.
                 2. These fragments are concatenated and we perform an epoch of SGD.
                 When using multiple envs per worker, the fragment size is multiplied by
-                `num_envs_per_worker`. This is since we are collecting steps from
-                multiple envs in parallel. For example, if num_envs_per_worker=5, then
+                `num_envs_per_env_runner`. This is since we are collecting steps from
+                multiple envs in parallel. For example, if num_envs_per_env_runner=5, then
                 EnvRunners will return experiences in chunks of 5*100 = 500 steps.
                 The dataflow here can vary per algorithm. For example, PPO further
                 divides the train batch into minibatches for multi-epoch SGD.
@@ -1692,7 +1688,7 @@ class AlgorithmConfig(_Config):
                 env- or agent-steps) and depends on the `count_steps_by` setting,
                 adjustable via `AlgorithmConfig.multi_agent(count_steps_by=..)`:
                 1) "truncate_episodes": Each call to `EnvRunner.sample()` will return a
-                batch of at most `rollout_fragment_length * num_envs_per_worker` in
+                batch of at most `rollout_fragment_length * num_envs_per_env_runner` in
                 size. The batch will be exactly `rollout_fragment_length * num_envs`
                 in size if postprocessing does not change batch sizes. Episodes
                 may be truncated in order to meet this size requirement.
@@ -1700,17 +1696,17 @@ class AlgorithmConfig(_Config):
                 variance as the future return must now be estimated at truncation
                 boundaries.
                 2) "complete_episodes": Each call to `EnvRunner.sample()` will return a
-                batch of at least `rollout_fragment_length * num_envs_per_worker` in
+                batch of at least `rollout_fragment_length * num_envs_per_env_runner` in
                 size. Episodes will not be truncated, but multiple episodes
                 may be packed within one batch to meet the (minimum) batch size.
-                Note that when `num_envs_per_worker > 1`, episode steps will be buffered
+                Note that when `num_envs_per_env_runner > 1`, episode steps will be buffered
                 until the episode completes, and hence batches may contain
                 significant amounts of off-policy data.
             explore: Default exploration behavior, iff `explore=None` is passed into
                 compute_action(s). Set to False for no exploration behavior (e.g.,
                 for evaluation).
             exploration_config: A dict specifying the Exploration object's config.
-            remote_worker_envs: If using num_envs_per_worker > 1, whether to create
+            remote_worker_envs: If using num_envs_per_env_runner > 1, whether to create
                 those new envs in remote processes instead of in the same worker.
                 This adds overheads, but can make sense if your envs can take much
                 time to step / reset (e.g., for StarCraft). Use this cautiously;
@@ -3034,7 +3030,7 @@ class AlgorithmConfig(_Config):
 
         Uses the simple formula:
         `rollout_fragment_length` = `total_train_batch_size` /
-        (`num_envs_per_worker` * `num_env_runners`)
+        (`num_envs_per_env_runner` * `num_env_runners`)
 
         If result is a fraction AND `worker_index` is provided, will make
         those workers add additional timesteps, such that the overall batch size (across
@@ -3056,13 +3052,13 @@ class AlgorithmConfig(_Config):
             # -> 512 / 40 -> 12.8 -> diff=32 (12 * 40 = 480)
             # -> worker 1: 13, workers 2: 12
             rollout_fragment_length = self.total_train_batch_size / (
-                self.num_envs_per_worker * (self.num_env_runners or 1)
+                self.num_envs_per_env_runner * (self.num_env_runners or 1)
             )
             if int(rollout_fragment_length) != rollout_fragment_length:
                 diff = self.total_train_batch_size - int(
                     rollout_fragment_length
-                ) * self.num_envs_per_worker * (self.num_env_runners or 1)
-                if ((worker_index - 1) * self.num_envs_per_worker) >= diff:
+                ) * self.num_envs_per_env_runner * (self.num_env_runners or 1)
+                if ((worker_index - 1) * self.num_envs_per_env_runner) >= diff:
                     return int(rollout_fragment_length)
                 else:
                     return int(rollout_fragment_length) + 1
@@ -3399,7 +3395,7 @@ class AlgorithmConfig(_Config):
         dependent on rollout_fragment_length (synchronous sampling, on-policy PG algos).
 
         If rollout_fragment_length != "auto", makes sure that the product of
-        `rollout_fragment_length` x `num_env_runners` x `num_envs_per_worker`
+        `rollout_fragment_length` x `num_env_runners` x `num_envs_per_env_runner`
         roughly (10%) matches the provided `train_batch_size`. Otherwise, errors with
         asking the user to set rollout_fragment_length to `auto` or to a matching
         value.
@@ -3418,7 +3414,7 @@ class AlgorithmConfig(_Config):
         ):
             min_batch_size = (
                 max(self.num_env_runners, 1)
-                * self.num_envs_per_worker
+                * self.num_envs_per_env_runner
                 * self.rollout_fragment_length
             )
             batch_size = min_batch_size
@@ -3430,7 +3426,7 @@ class AlgorithmConfig(_Config):
                 0.1 * self.total_train_batch_size
             ):
                 suggested_rollout_fragment_length = self.total_train_batch_size // (
-                    self.num_envs_per_worker * (self.num_env_runners or 1)
+                    self.num_envs_per_env_runner * (self.num_env_runners or 1)
                 )
                 raise ValueError(
                     "Your desired `total_train_batch_size` "
@@ -3438,7 +3434,7 @@ class AlgorithmConfig(_Config):
                     f"learners x {self.train_batch_size_per_learner}) "
                     "or a value 10% off of that cannot be achieved with your other "
                     f"settings (num_env_runners={self.num_env_runners}; "
-                    f"num_envs_per_worker={self.num_envs_per_worker}; "
+                    f"num_envs_per_env_runner={self.num_envs_per_env_runner}; "
                     f"rollout_fragment_length={self.rollout_fragment_length})! "
                     "Try setting `rollout_fragment_length` to 'auto' OR to a value of "
                     f"{suggested_rollout_fragment_length}."
@@ -3944,12 +3940,13 @@ class AlgorithmConfig(_Config):
         if (
             self.is_multi_agent()
             and self.enable_env_runner_and_connector_v2
-            and self.num_envs_per_worker > 1
+            and self.num_envs_per_env_runner > 1
         ):
             raise ValueError(
-                "For now, using env vectorization (`config.num_envs_per_worker > 1`) "
-                "in combination with multi-agent AND the new EnvRunners is not "
-                "supported! Try setting `config.num_envs_per_worker = 1`."
+                "For now, using env vectorization "
+                "(`config.num_envs_per_env_runner > 1`) in combination with "
+                "multi-agent AND the new EnvRunners is not supported! Try setting "
+                "`config.num_envs_per_env_runner = 1`."
             )
 
     def _validate_evaluation_settings(self):

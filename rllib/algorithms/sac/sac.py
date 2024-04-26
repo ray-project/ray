@@ -217,7 +217,7 @@ class SACConfig(AlgorithmConfig):
                 collecting samples from the env).
                 If None, uses "natural" values of:
                 `train_batch_size` / (`rollout_fragment_length` x `num_workers` x
-                `num_envs_per_worker`).
+                `num_envs_per_env_runner`).
                 If not None, will make sure that the ratio between timesteps inserted
                 into and sampled from th buffer matches the given values.
                 Example:
@@ -225,7 +225,7 @@ class SACConfig(AlgorithmConfig):
                 train_batch_size=250
                 rollout_fragment_length=1
                 num_workers=1 (or 0)
-                num_envs_per_worker=1
+                num_envs_per_env_runner=1
                 -> natural value = 250 / 1 = 250.0
                 -> will make sure that replay+train op will be executed 4x asoften as
                 rollout+insert op (4 * 250 = 1000).

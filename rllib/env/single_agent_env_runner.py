@@ -704,7 +704,7 @@ class SingleAgentEnvRunner(EnvRunner):
             env_ctx = EnvContext(
                 env_ctx,
                 worker_index=self.worker_index,
-                num_workers=self.config.num_rollout_workers,
+                num_workers=self.config.num_env_runners,
                 remote=self.config.remote_worker_envs,
             )
 
@@ -730,12 +730,12 @@ class SingleAgentEnvRunner(EnvRunner):
         self.env: gym.Wrapper = gym.wrappers.VectorListInfo(
             gym.vector.make(
                 "rllib-single-agent-env-v0",
-                num_envs=self.config.num_envs_per_worker,
+                num_envs=self.config.num_envs_per_env_runner,
                 asynchronous=self.config.remote_worker_envs,
             )
         )
         self.num_envs: int = self.env.num_envs
-        assert self.num_envs == self.config.num_envs_per_worker
+        assert self.num_envs == self.config.num_envs_per_env_runner
 
         # Set the flag to reset all envs upon the next `sample()` call.
         self._needs_initial_reset = True

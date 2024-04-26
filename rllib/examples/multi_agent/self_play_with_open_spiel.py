@@ -125,8 +125,8 @@ if __name__ == "__main__":
             )
         )
         .env_runners(
-            num_rollout_workers=args.num_env_runners,
-            num_envs_per_worker=1 if args.enable_new_api_stack else 5,
+            num_env_runners=args.num_env_runners,
+            num_envs_per_env_runner=1 if args.enable_new_api_stack else 5,
         )
         .resources(
             num_learner_workers=args.num_gpus,

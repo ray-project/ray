@@ -83,8 +83,8 @@ config = (
     PPOConfig()
     .environment("pistonball", env_config={"local_ratio": 0.5}, clip_rewards=True)
     .env_runners(
-        num_rollout_workers=15 if not args.as_test else 2,
-        num_envs_per_worker=1,
+        num_env_runners=15 if not args.as_test else 2,
+        num_envs_per_env_runner=1,
         observation_filter="NoFilter",
         rollout_fragment_length="auto",
     )

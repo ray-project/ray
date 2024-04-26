@@ -1572,7 +1572,7 @@ def check_reproducibilty(
         num_gpus: int(os.environ.get("RLLIB_NUM_GPUS", "0"))
         num_workers: 0 (only local workers) or
                      4 ((1) local workers + (4) remote workers)
-        num_envs_per_worker: 2
+        num_envs_per_env_runner: 2
 
     Args:
         algo_class: Algorithm class to test.
@@ -1603,7 +1603,7 @@ def check_reproducibilty(
                 # new API
                 num_gpus_per_learner_worker=int(os.environ.get("RLLIB_NUM_GPUS", "0")),
             )
-            .env_runners(num_rollout_workers=num_workers, num_envs_per_worker=2)
+            .env_runners(num_env_runners=num_workers, num_envs_per_env_runner=2)
         )
 
         for fw in framework_iterator(algo_config, **fw_kwargs):

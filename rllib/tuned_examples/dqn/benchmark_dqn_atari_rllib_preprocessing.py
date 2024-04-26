@@ -296,7 +296,7 @@ config = (
     .env_runners(
         # Every 4 agent steps a training update is performed.
         rollout_fragment_length=4,
-        num_rollout_workers=1,
+        num_env_runners=1,
     )
     .resources(
         # We have a train/sample ratio of 1:1 and a batch of 32.

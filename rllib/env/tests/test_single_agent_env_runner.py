@@ -18,7 +18,7 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
         config = (
             AlgorithmConfig().environment("CartPole-v1")
             # Vectorize x2 and by default, rollout 64 timesteps per individual env.
-            .env_runners(num_envs_per_worker=2, rollout_fragment_length=64)
+            .env_runners(num_envs_per_env_runner=2, rollout_fragment_length=64)
         )
         env_runner = SingleAgentEnvRunner(config=config)
 
@@ -64,8 +64,8 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
                 AlgorithmConfig().environment("CartPole-v1")
                 # Vectorize x2 and by default, rollout 64 timesteps per individual env.
                 .env_runners(
-                    num_rollout_workers=5,
-                    num_envs_per_worker=5,
+                    num_env_runners=5,
+                    num_envs_per_env_runner=5,
                     rollout_fragment_length=10,
                     remote_worker_envs=envs_parallel,
                 )
@@ -73,7 +73,7 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
 
             array = [
                 remote_class.remote(config=config)
-                for _ in range(config.num_rollout_workers)
+                for _ in range(config.num_env_runners)
             ]
             # Sample in parallel.
             results = [a.sample.remote(random_actions=True) for a in array]
@@ -83,7 +83,7 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
                 # Assert length of all fragments is  `rollout_fragment_length`.
                 self.assertEqual(
                     sum(len(e) for e in episodes),
-                    config.num_envs_per_worker * config.rollout_fragment_length,
+                    config.num_envs_per_env_runner * config.rollout_fragment_length,
                 )
 
 

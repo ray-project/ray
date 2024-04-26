@@ -554,9 +554,9 @@ class Impala(Algorithm):
 
     == Overview of data flow in IMPALA ==
     1. Policy evaluation in parallel across `num_workers` actors produces
-       batches of size `rollout_fragment_length * num_envs_per_worker`.
+       batches of size `rollout_fragment_length * num_envs_per_env_runner`.
     2. If enabled, the replay buffer stores and produces batches of size
-       `rollout_fragment_length * num_envs_per_worker`.
+       `rollout_fragment_length * num_envs_per_env_runner`.
     3. If enabled, the minibatch ring buffer stores and replays batches of
        size `train_batch_size` up to `num_sgd_iter` times per batch.
     4. The learner thread executes data parallel SGD across `num_gpus` GPUs

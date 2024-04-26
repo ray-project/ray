@@ -303,7 +303,7 @@ config = (
     .env_runners(
         # Every 4 agent steps a training update is performed.
         rollout_fragment_length=4,
-        num_rollout_workers=1,
+        num_env_runners=1,
         env_to_module_connector=_make_env_to_module_connector,
     )
     # TODO (simon): Adjust to new model_config_dict.

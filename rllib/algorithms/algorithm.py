@@ -1428,7 +1428,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 units_per_healthy_remote_worker = (
                     1
                     if unit == "episodes"
-                    else eval_cfg.rollout_fragment_length * eval_cfg.num_envs_per_worker
+                    else eval_cfg.rollout_fragment_length * eval_cfg.num_envs_per_env_runner
                 )
                 # Select proper number of evaluation workers for this round.
                 selected_eval_worker_ids = [
@@ -2692,7 +2692,7 @@ class Algorithm(Trainable, AlgorithmBase):
             "\n\nYou can adjust the resource requests of RLlib Algorithms by calling "
             "`AlgorithmConfig.resources("
             "num_gpus=.., num_cpus_per_worker=.., num_gpus_per_worker=.., ..)` or "
-            "`AgorithmConfig.env_runners(num_rollout_workers=..)`. See "
+            "`AgorithmConfig.env_runners(num_env_runners=..)`. See "
             "the `ray.rllib.algorithms.algorithm_config.AlgorithmConfig` classes "
             "(each Algorithm has its own subclass of this class) for more info.\n\n"
             f"The config of this Algorithm is: {config}"
@@ -3287,7 +3287,7 @@ class Algorithm(Trainable, AlgorithmBase):
         # In case all the remote evaluation workers die during a round of
         # evaluation, we need to stop.
         units_per_healthy_remote_worker = (
-            eval_cfg.rollout_fragment_length * eval_cfg.num_envs_per_worker
+            eval_cfg.rollout_fragment_length * eval_cfg.num_envs_per_env_runner
         )
         # Select proper number of evaluation workers for this round.
         selected_eval_worker_ids = [

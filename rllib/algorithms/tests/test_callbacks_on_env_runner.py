@@ -123,7 +123,7 @@ class TestCallbacks(unittest.TestCase):
             .environment("CartPole-v1")
             .env_runners(
                 batch_mode="complete_episodes",
-                num_rollout_workers=0,
+                num_env_runners=0,
             )
             .callbacks(EpisodeAndSampleCallbacks)
             .training(

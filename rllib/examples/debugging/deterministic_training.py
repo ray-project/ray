@@ -40,8 +40,8 @@ if __name__ == "__main__":
         )
         .framework(args.framework)
         .env_runners(
-            num_rollout_workers=1,
-            num_envs_per_worker=2,
+            num_env_runners=1,
+            num_envs_per_env_runner=2,
             rollout_fragment_length=50,
         )
         .resources(
