@@ -2216,7 +2216,7 @@ py_test(
 py_test(
     name = "examples/connectors/prev_actions_prev_rewards_multi_agent_ppo",
     main = "examples/connectors/prev_actions_prev_rewards.py",
-    tags = ["team:rllib", "exclusive", "examples"],
+    tags = ["team:rllib", "exclusive", "examples", "examples_use_all_core"],
     size = "large",
     srcs = ["examples/connectors/prev_actions_prev_rewards.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=400.0", "--framework=torch", "--algo=PPO", "--num-env-runners=4", "--num-cpus=6"]
@@ -2644,8 +2644,8 @@ py_test(
 py_test(
     name = "examples/multi_agent/multi_agent_cartpole",
     main = "examples/multi_agent/multi_agent_cartpole.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
+    tags = ["team:rllib", "exclusive", "examples", "examples_use_all_core"],
+    size = "large",
     srcs = ["examples/multi_agent/multi_agent_cartpole.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=600.0", "--num-cpus=4"]
 )
@@ -2876,8 +2876,8 @@ py_test(
 py_test(
     name = "examples/action_masking_tf2",
     main = "examples/action_masking.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
+    tags = ["team:rllib", "exclusive", "examples", "examples_use_all_core"],
+    size = "large",
     srcs = ["examples/action_masking.py"],
     args = ["--stop-iter=2", "--framework=tf2"]
 )
