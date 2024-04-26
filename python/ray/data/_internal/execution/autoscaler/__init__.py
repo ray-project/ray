@@ -1,4 +1,5 @@
 from .autoscaler import Autoscaler
+from .autoscaling_actor_pool import AutoscalingActorPool
 from .default_autoscaler import DefaultAutoscaler
 
 
@@ -10,4 +11,5 @@ __all__ = [
     "Autoscaler",
     "DefaultAutoscaler",
     "create_autoscaler",
+    "AutoscalingActorPool",
 ]

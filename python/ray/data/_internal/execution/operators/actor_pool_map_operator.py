@@ -1,13 +1,11 @@
 import collections
 import logging
-from dataclasses import dataclass
-from typing import Any, Dict, Iterator, List, Optional, Union
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import ray
+from ray.actor import ActorHandle
 from ray.data._internal.compute import ActorPoolStrategy
-from ray.data._internal.execution.autoscaler.autoscaler import (
-    ActorPoolAutoscalingHandler,
-)
+from ray.data._internal.execution.autoscaler import AutoscalingActorPool
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
@@ -34,7 +32,7 @@ DEFAULT_MAX_TASKS_IN_FLIGHT = 4
 DEFAULT_WAIT_FOR_MIN_ACTORS_SEC = 60 * 10
 
 
-class ActorPoolMapOperator(MapOperator, ActorPoolAutoscalingHandler):
+class ActorPoolMapOperator(MapOperator):
     """A MapOperator implementation that executes tasks on an actor pool.
 
     This class manages the state of a pool of actors used for task execution, as well
@@ -97,12 +95,7 @@ class ActorPoolMapOperator(MapOperator, ActorPoolAutoscalingHandler):
             )
         self._min_rows_per_bundle = min_rows_per_bundle
 
-        # Create autoscaling config from compute strategy.
-        self._autoscaling_config = AutoscalingConfig.from_compute_strategy(
-            compute_strategy
-        )
-        # A pool of running actors on which we can execute mapper tasks.
-        self._actor_pool = _ActorPool(self._autoscaling_config.max_tasks_in_flight)
+        self._actor_pool = _ActorPool(compute_strategy, self._start_actor)
         # A queue of bundles awaiting dispatch to actors.
         self._bundle_queue = collections.deque()
         # Cached actor class.
@@ -119,8 +112,7 @@ class ActorPoolMapOperator(MapOperator, ActorPoolAutoscalingHandler):
 
         # Create the actor workers and add them to the pool.
         self._cls = ray.remote(**self._ray_remote_args)(_MapWorker)
-        for _ in range(self._autoscaling_config.min_workers):
-            self._start_actor()
+        self._actor_pool.scale_up(self._actor_pool.min_size())
         refs = self._actor_pool.get_pending_actor_refs()
 
         # We synchronously wait for the initial number of actors to start. This avoids
@@ -165,7 +157,7 @@ class ActorPoolMapOperator(MapOperator, ActorPoolAutoscalingHandler):
             res_ref,
             lambda: _task_done_callback(res_ref),
         )
-        self._actor_pool.add_pending_actor(actor, res_ref)
+        return actor, res_ref
 
     def _add_bundled_input(self, bundle: RefBundle):
         self._bundle_queue.append(bundle)
@@ -236,7 +228,7 @@ class ActorPoolMapOperator(MapOperator, ActorPoolAutoscalingHandler):
         # Warn if the user specified a batch or block size that prevents full
         # parallelization across the actor pool. We only know this information after
         # execution has completed.
-        min_workers = self._autoscaling_config.min_workers
+        min_workers = self._actor_pool.min_size()
         if len(self._output_metadata) < min_workers:
             # The user created a stream that has too few blocks to begin with.
             logger.warning(
@@ -260,7 +252,7 @@ class ActorPoolMapOperator(MapOperator, ActorPoolAutoscalingHandler):
         return base
 
     def base_resource_usage(self) -> ExecutionResources:
-        min_workers = self._autoscaling_config.min_workers
+        min_workers = self._actor_pool.min_size()
         return ExecutionResources(
             cpu=self._ray_remote_args.get("num_cpus", 0) * min_workers,
             gpu=self._ray_remote_args.get("num_gpus", 0) * min_workers,
@@ -268,7 +260,7 @@ class ActorPoolMapOperator(MapOperator, ActorPoolAutoscalingHandler):
 
     def current_processor_usage(self) -> ExecutionResources:
         # Both pending and running actors count towards our current resource usage.
-        num_active_workers = self._actor_pool.num_total_actors()
+        num_active_workers = self._actor_pool.current_size()
         return ExecutionResources(
             cpu=self._ray_remote_args.get("num_cpus", 0) * num_active_workers,
             gpu=self._ray_remote_args.get("num_gpus", 0) * num_active_workers,
@@ -310,37 +302,8 @@ class ActorPoolMapOperator(MapOperator, ActorPoolAutoscalingHandler):
             ray_remote_args["max_task_retries"] = -1
         return ray_remote_args
 
-    # === Override methods of ActorPoolAutoscalingHandler ===
-
-    def actor_pool_min_size(self) -> int:
-        return self._autoscaling_config.min_workers
-
-    def actor_pool_max_size(self) -> int:
-        return self._autoscaling_config.max_workers
-
-    def actor_pool_current_size(self) -> int:
-        return self._actor_pool.num_total_actors()
-
-    def num_running_actors(self) -> int:
-        return self._actor_pool.num_running_actors()
-
-    def max_tasks_in_flight_per_actor(self) -> int:
-        return self._autoscaling_config.max_tasks_in_flight
-
-    def num_in_flight_tasks(self) -> int:
-        return sum(self._actor_pool._num_tasks_in_flight.values())
-
-    def scale_up_actor_pool(self, num_actors: int) -> int:
-        for _ in range(num_actors):
-            self._start_actor()
-        return num_actors
-
-    def scale_down_actor_pool(self, num_actors: int) -> int:
-        num_killed = 0
-        for _ in range(num_actors):
-            if self._actor_pool.kill_inactive_actor():
-                num_killed += 1
-        return num_killed
+    def get_autoscaling_actor_pools(self) -> List[AutoscalingActorPool]:
+        return [self._actor_pool]
 
 
 class _MapWorker:
@@ -378,50 +341,7 @@ class _MapWorker:
         return f"MapWorker({self.src_fn_name})"
 
 
-# TODO(Clark): Promote this to a public config once we deprecate the legacy compute
-# strategies.
-@dataclass
-class AutoscalingConfig:
-    """Configuration for an autoscaling actor pool."""
-
-    # Minimum number of workers in the actor pool.
-    min_workers: int
-    # Maximum number of workers in the actor pool.
-    max_workers: int
-    # Maximum number of tasks that can be in flight for a single worker.
-    # TODO(Clark): Have this informed by the prefetch_batches configuration, once async
-    # prefetching has been ported to this new actor pool.
-    max_tasks_in_flight: int = DEFAULT_MAX_TASKS_IN_FLIGHT
-
-    def __post_init__(self):
-        if self.min_workers < 1:
-            raise ValueError("min_workers must be >= 1, got: ", self.min_workers)
-        if self.max_workers is not None and self.min_workers > self.max_workers:
-            raise ValueError(
-                "min_workers must be <= max_workers, got: ",
-                self.min_workers,
-                self.max_workers,
-            )
-        if self.max_tasks_in_flight < 1:
-            raise ValueError(
-                "max_tasks_in_flight must be >= 1, got: ",
-                self.max_tasks_in_flight,
-            )
-
-    @classmethod
-    def from_compute_strategy(cls, compute_strategy: ActorPoolStrategy):
-        """Convert a legacy ActorPoolStrategy to an AutoscalingConfig."""
-        # TODO(Clark): Remove this once the legacy compute strategies are deprecated.
-        assert isinstance(compute_strategy, ActorPoolStrategy)
-        return cls(
-            min_workers=compute_strategy.min_size,
-            max_workers=compute_strategy.max_size,
-            max_tasks_in_flight=compute_strategy.max_tasks_in_flight_per_actor
-            or DEFAULT_MAX_TASKS_IN_FLIGHT,
-        )
-
-
-class _ActorPool:
+class _ActorPool(AutoscalingActorPool):
     """A pool of actors for map task execution.
 
     This class is in charge of tracking the number of in-flight tasks per actor,
@@ -429,8 +349,20 @@ class _ActorPool:
     actors when the operator is done submitting work to the pool.
     """
 
-    def __init__(self, max_tasks_in_flight: int = DEFAULT_MAX_TASKS_IN_FLIGHT):
-        self._max_tasks_in_flight = max_tasks_in_flight
+    def __init__(
+        self,
+        compute_strategy: ActorPoolStrategy,
+        create_actor_fn: Callable[[], Tuple[ActorHandle, ObjectRef]],
+    ):
+        self._min_size: int = compute_strategy.min_size
+        self._max_size: int = compute_strategy.max_size
+        self._max_tasks_in_flight: int = compute_strategy.max_tasks_in_flight_per_actor or DEFAULT_MAX_TASKS_IN_FLIGHT
+        self._create_actor_fn = create_actor_fn
+        assert self._min_size >= 1
+        assert self._max_size >= self._min_size
+        assert self._max_tasks_in_flight >= 1
+        assert self._create_actor_fn is not None
+
         # Number of tasks in flight per actor.
         self._num_tasks_in_flight: Dict[ray.actor.ActorHandle, int] = {}
         # Node id of each ready actor.
@@ -443,6 +375,57 @@ class _ActorPool:
         # Track locality matching stats.
         self._locality_hits: int = 0
         self._locality_misses: int = 0
+
+    # === Overriding methods of AutoscalingActorPool ===
+
+    def min_size(self) -> int:
+        """Min size of the actor pool."""
+        return self._min_size
+
+    def max_size(self) -> int:
+        """Max size of the actor pool."""
+        return self._max_size
+
+    def current_size(self) -> int:
+        """Current size of the actor pool."""
+        return self.num_pending_actors() + self.num_running_actors()
+
+    def num_running_actors(self) -> int:
+        """Number of running actors."""
+        return len(self._num_tasks_in_flight)
+
+    def num_busy_actors(self) -> int:
+        """Number of actors with in-flight tasks."""
+        return self.current_size() - self.num_idle_actors()
+
+    def num_pending_actors(self) -> int:
+        """Number of actors pending creation."""
+        return len(self._pending_actors)
+
+    def max_tasks_in_flight_per_actor(self) -> int:
+        """Max number of in-flight tasks per actor."""
+        return self._max_tasks_in_flight
+
+    def current_in_flight_tasks(self) -> int:
+        """Number of current in-flight tasks."""
+        return sum(num for _, num in self._num_tasks_in_flight.items())
+
+    def scale_up(self, num_actors: int) -> int:
+        """Scale up the actor pool by the given number of actors."""
+        for _ in range(num_actors):
+            actor, ready_ref = self._create_actor_fn()
+            self.add_pending_actor(actor, ready_ref)
+        return num_actors
+
+    def scale_down(self, num_actors: int) -> int:
+        """Scale down the actor pool by the given number of actors."""
+        num_killed = 0
+        for _ in range(num_actors):
+            if self.kill_inactive_actor():
+                num_killed += 1
+        return num_killed
+
+    # === End of overriding methods ===
 
     def add_pending_actor(self, actor: ray.actor.ActorHandle, ready_ref: ray.ObjectRef):
         """Adds a pending actor to the pool.
@@ -536,26 +519,12 @@ class _ActorPool:
     def get_pending_actor_refs(self) -> List[ray.ObjectRef]:
         return list(self._pending_actors.keys())
 
-    def num_total_actors(self) -> int:
-        """Return the total number of actors managed by this pool, including pending
-        actors
-        """
-        return self.num_pending_actors() + self.num_running_actors()
-
-    def num_running_actors(self) -> int:
-        """Return the number of running actors in the pool."""
-        return len(self._num_tasks_in_flight)
-
     def num_idle_actors(self) -> int:
         """Return the number of idle actors in the pool."""
         return sum(
             1 if tasks_in_flight == 0 else 0
             for tasks_in_flight in self._num_tasks_in_flight.values()
         )
-
-    def num_pending_actors(self) -> int:
-        """Return the number of pending actors in the pool."""
-        return len(self._pending_actors)
 
     def num_free_slots(self) -> int:
         """Return the number of free slots for task execution."""

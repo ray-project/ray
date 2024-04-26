@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, Iterator, List, Optional, Union
 
 import ray
+from ray.data._internal.execution.autoscaler.autoscaling_actor_pool import AutoscalingActorPool
 from .ref_bundle import RefBundle
 from ray._raylet import ObjectRefGenerator
 from ray.data._internal.execution.interfaces.execution_options import (
@@ -419,3 +420,6 @@ class PhysicalOperator(Operator):
         if self._in_task_submission_backpressure != in_backpressure:
             self._metrics.on_toggle_task_submission_backpressure(in_backpressure)
             self._in_task_submission_backpressure = in_backpressure
+
+    def get_autoscaling_actor_pools(self) -> List[AutoscalingActorPool]:
+        return []

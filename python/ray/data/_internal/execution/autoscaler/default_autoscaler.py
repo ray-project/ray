@@ -2,7 +2,8 @@ import math
 import time
 from typing import TYPE_CHECKING, Dict
 
-from .autoscaler import ActorPoolAutoscalingHandler, Autoscaler
+from .autoscaler import Autoscaler
+from .autoscaling_actor_pool import AutoscalingActorPool
 from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
 )
@@ -35,52 +36,61 @@ class DefaultAutoscaler(Autoscaler):
         self._try_scale_up_cluster()
         self._try_scale_up_or_down_actor_pool()
 
-    def _actor_pool_should_scale_up(self, op: "PhysicalOperator", op_state: "OpState"):
+    def _actor_pool_util(self, actor_pool: AutoscalingActorPool):
+        if actor_pool.current_size() == 0:
+            return 0
+        else:
+            return actor_pool.num_running_actors() / actor_pool.current_size()
+
+    def _actor_pool_should_scale_up(
+        self,
+        actor_pool: AutoscalingActorPool,
+        op: "PhysicalOperator",
+        op_state: "OpState",
+    ):
         if op._inputs_complete and op.internal_queue_size() == 0:
             return False
-        assert isinstance(op, ActorPoolAutoscalingHandler)
-        actor_pool = op
-        if actor_pool.actor_pool_current_size() >= actor_pool.actor_pool_max_size():
+        if actor_pool.current_size() >= actor_pool.max_size():
             return False
         free_slots = (
-            actor_pool.max_tasks_in_flight_per_actor()
-            * actor_pool.actor_pool_current_size()
-            - actor_pool.num_in_flight_tasks()
+            actor_pool.max_tasks_in_flight_per_actor() * actor_pool.current_size()
+            - actor_pool.current_in_flight_tasks()
         )
         # TODO: under_resource_limits
         if op_state.num_queued() <= free_slots:
             return False
-        util = actor_pool.num_running_actors() / actor_pool.actor_pool_current_size()
+        util = self._actor_pool_util(actor_pool)
         return util > self.DEFAULT_ACTOR_POOL_SCALING_UP_THRESHOLD
 
     def _actor_pool_should_scale_down(
-        self, op: "PhysicalOperator", op_state: "OpState"
+        self,
+        actor_pool: AutoscalingActorPool,
+        op: "PhysicalOperator",
+        op_state: "OpState",
     ):
         if op._inputs_complete and op.internal_queue_size() == 0:
             return True
-        assert isinstance(op, ActorPoolAutoscalingHandler)
-        actor_pool = op
-        if actor_pool.actor_pool_current_size() <= actor_pool.actor_pool_min_size():
+        if actor_pool.current_size() <= actor_pool.min_size():
             return False
-        util = actor_pool.num_running_actors() / actor_pool.actor_pool_current_size()
+        util = self._actor_pool_util(actor_pool)
         return util < self.DEFAULT_ACTOR_POOL_SCALING_DOWN_THRESHOLD
 
     def _try_scale_up_or_down_actor_pool(self):
         for op, state in self._topology.items():
-            if not isinstance(op, ActorPoolAutoscalingHandler):
-                continue
-            while self._actor_pool_should_scale_up(
-                op, state
-            ) and not self._actor_pool_should_scale_down(op, state):
-                if op.scale_up_actor_pool(1) == 0:
-                    break
+            actor_pools = op.get_autoscaling_actor_pools()
+            for actor_pool in actor_pools:
+                while self._actor_pool_should_scale_up(
+                    actor_pool, op, state
+                ) and not self._actor_pool_should_scale_down(actor_pool, op, state):
+                    if actor_pool.scale_up(1) == 0:
+                        break
 
-            # self._kill_inactive_workers_if_done()
-            while self._actor_pool_should_scale_down(
-                op, state
-            ) and not self._actor_pool_should_scale_up(op, state):
-                if op.scale_down_actor_pool(1) == 0:
-                    break
+                # self._kill_inactive_workers_if_done()
+                while self._actor_pool_should_scale_down(
+                    actor_pool, op, state
+                ) and not self._actor_pool_should_scale_up(actor_pool, op, state):
+                    if actor_pool.scale_down(1) == 0:
+                        break
 
     def _try_scale_up_cluster(self):
         """Try to scale up the cluster to accomodate the provided in-progress workload.
