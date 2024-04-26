@@ -267,7 +267,7 @@ class Channel:
                 self._writer_ref,
                 num_readers,
             )
-        except BlockingIOError:
+        except IOError:
             pass
 
     def begin_read(self) -> Any:
@@ -306,7 +306,7 @@ class Channel:
             self.ensure_registered_as_reader()
             # TODO: Also close on the reader ref?
             self._worker.core_worker.experimental_channel_set_error(self._writer_ref)
-        except BlockingIOError:
+        except IOError:
             logger.info("Could not close channel")
 
 

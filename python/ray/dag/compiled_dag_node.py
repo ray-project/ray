@@ -85,7 +85,7 @@ def do_exec_compiled_task(
             res = None
             try:
                 res = self._input_reader.begin_read()
-            except BlockingIOError:
+            except IOError:
                 break
 
             for idx, output in zip(input_channel_idxs, res):
@@ -111,7 +111,7 @@ def do_exec_compiled_task(
 
             try:
                 self._input_reader.end_read()
-            except BlockingIOError:
+            except IOError:
                 break
 
     except Exception:

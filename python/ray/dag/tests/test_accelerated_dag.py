@@ -255,7 +255,7 @@ def test_dag_fault_tolerance_sys_exit(ray_start_regular_shared):
         assert results == [i + 1] * 4
         output_channels.end_read()
 
-    with pytest.raises(BlockingIOError, match="Channel closed."):
+    with pytest.raises(IOError, match="Channel closed."):
         for i in range(99):
             output_channels = compiled_dag.execute(1)
             output_channels.begin_read()
