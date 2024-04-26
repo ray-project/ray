@@ -19,6 +19,7 @@ from ray.experimental.channel import (
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 from ray.dag.experimental.types import (
+    DAGNodeOutputType,
     do_register_custom_dag_serializers,
     _init_nccl_group,
     TorchTensorType,
@@ -31,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-def do_allocate_channel(self, buffer_size_bytes: int, num_readers: int = 1) -> Channel:
+def do_allocate_channel(self, buffer_size_bytes: int, readers: List["ray.actor.ActorHandle"], typ: Optional[DAGNodeOutputType]) -> Channel:
     """Generic actor method to allocate an output channel.
 
     Args:
@@ -41,7 +42,12 @@ def do_allocate_channel(self, buffer_size_bytes: int, num_readers: int = 1) -> C
     Returns:
         The allocated channel.
     """
-    self._output_channel = Channel(buffer_size_bytes, num_readers)
+    num_readers = len(readers)
+    if typ is None:
+        self._output_channel = Channel(buffer_size_bytes, num_readers)
+    else:
+        assert isinstance(typ, TorchTensorType)
+        self._output_channel = Channel(buffer_size_bytes, num_readers)
     return self._output_channel
 
 
@@ -172,7 +178,7 @@ class CompiledTask:
         self.dag_node = dag_node
         self.arg_idx_to_tensor_meta: Dict[int, Dict[str, Any]] = {}
 
-        self.downstream_node_idxs = set()
+        self.downstream_node_idxs : Dict[int, "ray.actor.ActorHandle"] = {}
         self.output_channel = None
 
         self.output_wrapper_fn = None
@@ -202,6 +208,10 @@ class CompiledTask:
     @property
     def num_readers(self) -> int:
         return len(self.downstream_node_idxs)
+
+    @property
+    def readers(self) -> List["ray.actor.ActorHandle"]:
+        return list(self.downstream_node_idxs.values())
 
     def __str__(self) -> str:
         return f"""
@@ -365,7 +375,10 @@ class CompiledDAG:
 
                 upstream_node_idx = self.dag_node_to_idx[arg]
                 upstream_node = self.idx_to_task[upstream_node_idx]
-                upstream_node.downstream_node_idxs.add(node_idx)
+                downstream_actor_handle = None
+                if isinstance(task.dag_node, ClassMethodNode):
+                    downstream_actor_handle = task.dag_node._get_actor_handle()
+                upstream_node.downstream_node_idxs[node_idx] = downstream_actor_handle
 
         nccl_actors = list(nccl_actors)
         _init_nccl_group(self, nccl_actors)
@@ -450,7 +463,8 @@ class CompiledDAG:
                     fn.remote(
                         do_allocate_channel,
                         buffer_size_bytes=self._buffer_size_bytes,
-                        num_readers=task.num_readers,
+                        readers=task.readers,
+                        typ=task.dag_node.type_hint,
                     )
                 )
                 self.actor_refs.add(task.dag_node._get_actor_handle())

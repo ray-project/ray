@@ -1,10 +1,11 @@
-from typing import Tuple, Optional, List
+from typing import Tuple, Optional, List, Dict
+import torch
 
 import numpy as np
-import torch
 
 import ray.util.serialization
 from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.collective.collective_group import nccl_util
 
 
 class DAGNodeOutputType:
@@ -70,6 +71,7 @@ class _TorchTensorWrapper:
             )
 
         self.tensor = tensor
+        self.typ = typ
 
 
 @DeveloperAPI
@@ -112,12 +114,114 @@ class _TorchTensorSerializer:
         return torch.tensor(np_array, device=self.device)
 
 
-def do_init_nccl_group(self, world_size, comm_id, rank):
+class NcclGroup:
+    def __init__(self,
+            world_size: int,
+            comm_id: int,
+            rank: Optional[int],
+            actor_handles_to_ranks: Dict[ray.actor.ActorHandle, int],
+            cuda_stream: Optional[int],
+            ):
+        self._rank : Optional[int] = rank
+        if rank is not None:
+            from cupy.cuda import nccl
+
+            self._comm = nccl.NcclCommunicator(world_size, comm_id, rank)
+        else:
+            # Driver does not have a rank.
+            self._comm = None
+        self._actor_handles_to_ranks = actor_handles_to_ranks
+
+        self._cuda_stream = cuda_stream
+
+        # TODO(swang): Serialize and pass a handle to the reader actor.
+
+    def get_peer_rank(self, actor: ray.actor.ActorHandle) -> int:
+        return self._actor_handles_to_ranks[actor]
+
+    def get_self_rank(self, actor: ray.actor.ActorHandle) -> int:
+        return self._rank
+
+    def send(self, value: torch.Tensor, peer_rank: int):
+        self._comm.send(
+                nccl_util.get_tensor_ptr(value),
+                value.numel(),
+                nccl_util.get_nccl_tensor_dtype(value),
+                peer_rank,
+                self._cuda_stream,
+                )
+
+
+    def recv(self, buf: torch.Tensor, peer_rank: int):
+        self._comm.recv(
+                nccl_util.get_tensor_ptr(buf),
+                buf.numel(),
+                nccl_util.get_nccl_tensor_dtype(buf),
+                rank,
+                self._cuda_stream,
+                )
+
+
+@DeveloperAPI
+class TorchTensorNcclChannel:
+    def __init__(self,
+            readers: List[ray.actor.ActorHandle],
+            nccl_group: NcclGroup,
+            device: "torch.device",
+            typ: TorchTensorType,
+            ):
+        self._writer_rank = self._nccl_group.get_rank()
+        self._reader_ranks : List[int] = [nccl_group.get_peer_rank(reader) for reader in readers]
+        self._nccl_group = nccl_group
+
+        if self._device.type != "cuda":
+            raise ValueError(f"Actor's default device has type \"{self.device.type}\", need \"cuda\"")
+        self._device = device
+
+        assert typ.transport == "nccl"
+        self._typ = typ
+
+    def write(self, value: torch.Tensor, readers: Optional[List[ray.actor.ActorHandle]] = None):
+        if value.shape != self._typ.shape:
+            raise ValueError(f"torch.Tensor has shape {value.shape}, expected {self._typ.shape}")
+        if value.dtype != self._typ.dtype:
+            raise ValueError(f"torch.Tensor has shape {value.shape}, expected {self._typ.shape}")
+        if value.device != self._device:
+            raise ValueError(f"torch.Tensor must be on the default device: {self._device}")
+
+        if readers is not None:
+            raise NotImplementedError("TorchTensorNcclChannel.write() not supported for dynamically passed readers.")
+
+        # TODO: If there are multiple readers, can replace with a broadcast.
+        for rank in self._reader_ranks:
+            self.comm.send(
+                    nccl_util.get_tensor_ptr(value),
+                    buf.numel(),
+                    nccl_util.get_nccl_tensor_dtype(value),
+                    rank,
+                    self._torch_stream_ptr,
+                    )
+
+    @staticmethod
+    def begin_read(self) -> torch.Tensor:
+        # TODO(swang): Perform the NCCL recv. Pass in the source actor.
+        buf = torch.zeros(self._typ.shape, dtype=self._typ.dtype, device=self._device)
+        self._nccl_group.recv(buf, self._writer_rank)
+
+    def end_read(self) -> None:
+        return
+
+
+def do_init_nccl_group(self, world_size, comm_id, rank, actor_handles_to_ranks):
     assert ray.get_gpu_ids()
 
-    from cupy.cuda import nccl
-
-    self._ray_dag_nccl_comm = nccl.NcclCommunicator(world_size, comm_id, rank)
+    self._ray_dag_nccl_group = NcclGroup(
+            world_size,
+            comm_id,
+            rank,
+            actor_handles_to_ranks,
+            torch.cuda.current_stream().cuda_stream,
+            )
 
 
 @DeveloperAPI
@@ -140,22 +244,33 @@ def _init_nccl_group(
                 "GPU assigned by Ray."
             )
 
-    from cupy.cuda import nccl
+    actor_handles_to_ranks = {
+            actor: rank for rank, actor in enumerate(actors)}
 
+    from cupy.cuda import nccl
     comm_id = nccl.get_unique_id()
+
     # TODO(swang): Handle timeout errors.
+    world_size = len(actors)
     ray.get(
         [
             actor.__ray_call__.remote(
-                do_init_nccl_group, world_size=len(actors), comm_id=comm_id, rank=rank
+                do_init_nccl_group,
+                world_size,
+                comm_id,
+                rank,
+                actor_handles_to_ranks,
             )
-            for rank, actor in enumerate(actors)
+            for actor, rank in actor_handles_to_ranks.items()
         ],
         timeout=30,
     )
+
     # TODO(swang): Destroy the communicator.
 
-    compiled_dag._nccl_group = (
-        comm_id,
-        {rank: actor for rank, actor in enumerate(actors)},
-    )
+    compiled_dag._ray_dag_nccl_group = NcclGroup(
+            world_size,
+            comm_id,
+            rank=None,
+            actor_handles_to_ranks=actor_handles_to_ranks,
+            cuda_stream=None)
