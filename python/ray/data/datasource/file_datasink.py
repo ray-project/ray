@@ -96,9 +96,16 @@ class _FileDatasink(Datasink):
         from pyarrow.fs import FileType
 
         # We should skip creating directories in s3 unless the user specifically
-        # overrides this behavior. PyArrow's s3fs implementation might collide
-        # with restrictive IAM permissions and skipping the create_dir call will
-        # prevent some of these errors.
+        # overrides this behavior. PyArrow's s3fs implementation for create_dir
+        # will attempt to check if the parent directory exists before trying to
+        # create the directory (with recursive=True it will try to do this to
+        # all of the directories until the root of the bucket). An IAM Policy that
+        # restricts access to a subset of prefixes within the bucket might cause
+        # the creation of the directory to fail even if the permissions should
+        # allow the data can be written to the specified path. For example if a
+        # a policy only allows users to write blobs prefixed with s3://bucket/foo
+        # a call to create_dir for s3://bucket/foo/bar will fail even though it
+        # should not.
         parsed_uri = urlparse(self.path)
         is_s3_uri = parsed_uri.scheme == "s3"
         skip_create_dir_for_s3 = (
