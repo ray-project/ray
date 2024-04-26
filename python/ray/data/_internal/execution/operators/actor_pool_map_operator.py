@@ -282,6 +282,8 @@ class ActorPoolMapOperator(MapOperator, ActorPoolAutoscalingHandler):
         )
 
     def incremental_resource_usage(self) -> ExecutionResources:
+        # Submitting tasks to existing actors doesn't require additional
+        # CPU/GPU resources.
         return ExecutionResources(
             cpu=0,
             gpu=0,
