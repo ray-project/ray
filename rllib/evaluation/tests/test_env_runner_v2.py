@@ -58,9 +58,9 @@ class TestEnvRunnerV2(unittest.TestCase):
                 # Specifically ask for a batch of 200 samples.
                 train_batch_size=200,
             )
-            .rollouts(
-                num_envs_per_worker=1,
-                num_rollout_workers=0,
+            .env_runners(
+                num_envs_per_env_runner=1,
+                num_env_runners=0,
                 # Enable EnvRunnerV2.
                 enable_connectors=True,
             )
@@ -85,9 +85,9 @@ class TestEnvRunnerV2(unittest.TestCase):
                 # Specifically ask for a batch of 200 samples.
                 train_batch_size=200,
             )
-            .rollouts(
-                num_envs_per_worker=1,
-                num_rollout_workers=0,
+            .env_runners(
+                num_envs_per_env_runner=1,
+                num_env_runners=0,
                 # Enable EnvRunnerV2.
                 enable_connectors=True,
             )
@@ -150,9 +150,9 @@ class TestEnvRunnerV2(unittest.TestCase):
             PPOConfig()
             .framework("torch")
             .environment("env_under_test")
-            .rollouts(
-                num_envs_per_worker=1,
-                num_rollout_workers=0,
+            .env_runners(
+                num_envs_per_env_runner=1,
+                num_env_runners=0,
                 # Enable EnvRunnerV2.
                 enable_connectors=True,
                 rollout_fragment_length=100,
@@ -217,9 +217,9 @@ class TestEnvRunnerV2(unittest.TestCase):
                 # Specifically ask for a batch of 200 samples.
                 train_batch_size=200,
             )
-            .rollouts(
-                num_envs_per_worker=1,
-                num_rollout_workers=0,
+            .env_runners(
+                num_envs_per_env_runner=1,
+                num_env_runners=0,
                 # Enable EnvRunnerV2.
                 enable_connectors=True,
             )
@@ -291,9 +291,9 @@ class TestEnvRunnerV2(unittest.TestCase):
             .callbacks(
                 callbacks_class=AddActionConnectorCallbacks,
             )
-            .rollouts(
-                num_envs_per_worker=1,
-                num_rollout_workers=0,
+            .env_runners(
+                num_envs_per_env_runner=1,
+                num_env_runners=0,
                 # Enable EnvRunnerV2.
                 enable_connectors=True,
             )
@@ -314,9 +314,9 @@ class TestEnvRunnerV2(unittest.TestCase):
                 # Specifically ask for a batch of 200 samples.
                 train_batch_size=200,
             )
-            .rollouts(
-                num_envs_per_worker=1,
-                num_rollout_workers=0,
+            .env_runners(
+                num_envs_per_env_runner=1,
+                num_env_runners=0,
                 # Enable EnvRunnerV2.
                 enable_connectors=True,
             )
@@ -370,9 +370,9 @@ class TestEnvRunnerV2(unittest.TestCase):
                 # Specifically ask for a batch of 200 samples.
                 train_batch_size=200,
             )
-            .rollouts(
-                num_envs_per_worker=1,
-                num_rollout_workers=0,
+            .env_runners(
+                num_envs_per_env_runner=1,
+                num_env_runners=0,
                 # Enable EnvRunnerV2.
                 enable_connectors=True,
             )
@@ -429,9 +429,9 @@ class TestEnvRunnerV2(unittest.TestCase):
                 # Specifically ask for a batch of 200 samples.
                 train_batch_size=200,
             )
-            .rollouts(
-                num_envs_per_worker=1,
-                num_rollout_workers=0,
+            .env_runners(
+                num_envs_per_env_runner=1,
+                num_env_runners=0,
                 # Enable EnvRunnerV2.
                 enable_connectors=True,
             )

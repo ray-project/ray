@@ -22,7 +22,7 @@ class TestWorkerSet(unittest.TestCase):
         ws = WorkerSet(
             env_creator=lambda _: gym.make("CartPole-v1"),
             default_policy_class=RandomPolicy,
-            config=AlgorithmConfig().rollouts(num_rollout_workers=2),
+            config=AlgorithmConfig().env_runners(num_env_runners=2),
             num_workers=2,
         )
 
@@ -51,7 +51,7 @@ class TestWorkerSet(unittest.TestCase):
         ws = WorkerSet(
             env_creator=lambda _: gym.make("CartPole-v1"),
             default_policy_class=RandomPolicy,
-            config=AlgorithmConfig().rollouts(num_rollout_workers=2),
+            config=AlgorithmConfig().env_runners(num_env_runners=2),
             num_workers=2,
         )
 
@@ -73,7 +73,7 @@ class TestWorkerSet(unittest.TestCase):
         ws = WorkerSet(
             env_creator=lambda _: gym.make("CartPole-v1"),
             default_policy_class=RandomPolicy,
-            config=AlgorithmConfig().rollouts(num_rollout_workers=2),
+            config=AlgorithmConfig().env_runners(num_env_runners=2),
             num_workers=2,
         )
 

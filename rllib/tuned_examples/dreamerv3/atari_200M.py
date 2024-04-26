@@ -26,10 +26,10 @@ config = (
         # if you don't have enough CPUs.
         num_cpus_for_local_worker=8 * (num_gpus or 1),
     )
-    .rollouts(
+    .env_runners(
         # If we use >1 GPU and increase the batch size accordingly, we should also
         # increase the number of envs per worker.
-        num_envs_per_worker=8 * (num_gpus or 1),
+        num_envs_per_env_runner=8 * (num_gpus or 1),
         remote_worker_envs=True,
     )
     .environment(

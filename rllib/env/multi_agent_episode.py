@@ -1,5 +1,6 @@
 from collections import defaultdict
 import copy
+import time
 from typing import (
     Any,
     Callable,
@@ -181,7 +182,7 @@ class MultiAgentEpisode:
         # via the `module_for()` API even before the agent has entered the episode
         # (and has its SingleAgentEpisode created), we store all aldeary done mappings
         # in this dict here.
-        self._agent_to_module_mapping: Dict[AgentID, ModuleID] = {}
+        self._agent_to_module_mapping: Dict[AgentID, ModuleID] = agent_module_ids or {}
 
         # Lookback buffer length is not provided. Interpret all provided data as
         # lookback buffer.
@@ -277,6 +278,10 @@ class MultiAgentEpisode:
             [] if render_images is None else render_images
         )
 
+        # Keep timer stats on deltas between steps.
+        self._start_time = None
+        self._last_step_time = None
+
         # Validate ourselves.
         self.validate()
 
@@ -331,6 +336,12 @@ class MultiAgentEpisode:
                 observation=agent_obs,
                 infos=infos.get(agent_id),
             )
+
+        # Validate our data.
+        self.validate()
+
+        # Start the timer for this episode.
+        self._start_time = time.perf_counter()
 
     def add_env_step(
         self,
@@ -387,12 +398,21 @@ class MultiAgentEpisode:
         # Increase (global) env step by one.
         self.env_t += 1
 
-        # TODO (sven, simon): Will there still be an `__all__` that is
-        #  terminated or truncated?
-        # TODO (simon): Maybe allow user to not provide this and then `__all__` is
-        #  False?
+        # Find out, whether this episode is terminated/truncated (for all agents).
+        # Case 1: all agents are terminated or all are truncated.
         self.is_terminated = terminateds.get("__all__", False)
         self.is_truncated = truncateds.get("__all__", False)
+        # Find all agents that were done at prior timesteps and add the agents that are
+        # done at the present timestep.
+        agents_done = set(
+            [aid for aid, sa_eps in self.agent_episodes.items() if sa_eps.is_done]
+            + [aid for aid in terminateds if terminateds[aid]]
+            + [aid for aid in truncateds if truncateds[aid]]
+        )
+        # Case 2: Some agents are truncated and the others are terminated -> Declare
+        # this episode as terminated.
+        if all(aid in set(agents_done) for aid in self.agent_ids):
+            self.is_terminated = True
 
         # Note that we store the render images into the `MultiAgentEpisode`
         # instead of storing them into each `SingleAgentEpisode`.
@@ -615,6 +635,14 @@ class MultiAgentEpisode:
             # (they should be empty at this point anyways).
             if _terminated or _truncated:
                 self._del_hanging(agent_id)
+
+        # Validate our data.
+        self.validate()
+
+        # Step time stats.
+        self._last_step_time = time.perf_counter()
+        if self._start_time is None:
+            self._start_time = self._last_step_time
 
     def validate(self) -> None:
         """Validates the episode's data.
@@ -1802,6 +1830,12 @@ class MultiAgentEpisode:
             their single agent episodes are done or not.
         """
         return set(self.get_observations(-1).keys())
+
+    def get_duration_s(self) -> float:
+        """Returns the duration of this Episode (chunk) in seconds."""
+        if self._last_step_time is None:
+            return 0.0
+        return self._last_step_time - self._start_time
 
     def env_steps(self) -> int:
         """Returns the number of environment steps.

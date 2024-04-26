@@ -70,7 +70,7 @@ def my_experiment(config: Dict):
         # Add the phase to the result dict.
         train_results["phase"] = 1
         train.report(train_results)
-        phase_high_lr_time = train_results["timesteps_total"]
+        phase_high_lr_time = train_results["num_env_steps_sampled_lifetime"]
     checkpoint_training_high_lr = algo_high_lr.save()
     algo_high_lr.stop()
 
@@ -84,7 +84,7 @@ def my_experiment(config: Dict):
         # Add the phase to the result dict.
         train_results["phase"] = 2
         # keep time moving forward
-        train_results["timesteps_total"] += phase_high_lr_time
+        train_results["num_env_steps_sampled_lifetime"] += phase_high_lr_time
         train.report(train_results)
 
     checkpoint_training_low_lr = algo_low_lr.save()
@@ -94,7 +94,7 @@ def my_experiment(config: Dict):
 
     # Set the number of EnvRunners for collecting training data to 0 (local
     # worker only).
-    config.rollouts(num_rollout_workers=0)
+    config.env_runners(num_rollout_workers=0)
 
     eval_algo = config.build()
     # Load state from the low-lr algo into this one.
@@ -157,7 +157,7 @@ if __name__ == "__main__":
         PPOConfig()
         .experimental(_enable_new_api_stack=True)
         .environment("CartPole-v1")
-        .rollouts(
+        .env_runners(
             num_rollout_workers=0,
             env_runner_cls=SingleAgentEnvRunner,
         )

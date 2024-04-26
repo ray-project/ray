@@ -45,8 +45,8 @@ c = config.critic_lr
     )
     # If we use >1 GPU and increase the batch size accordingly, we should also
     # increase the number of envs per worker.
-    .rollouts(
-        num_envs_per_worker=8 * (num_gpus or 1), remote_worker_envs=True
+    .env_runners(
+        num_envs_per_env_runner=8 * (num_gpus or 1), remote_worker_envs=True
     ).reporting(
         metrics_num_episodes_for_smoothing=(num_gpus or 1),
         report_images_and_videos=False,

@@ -19,7 +19,7 @@ atari-impala:
         rollout_fragment_length: 50
         train_batch_size: 500
         num_workers: 128
-        num_envs_per_worker: 5
+        num_envs_per_env_runner: 5
         clip_rewards: True
         lr_schedule: [
             [0, 0.0005],

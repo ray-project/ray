@@ -14,9 +14,6 @@ if TYPE_CHECKING:
 _default_context: "Optional[DataContext]" = None
 _context_lock = threading.Lock()
 
-# An estimate of what fraction of the object store a Dataset can use without too high
-# a risk of triggering spilling. This is used to generate user warnings only.
-ESTIMATED_SAFE_MEMORY_FRACTION = 0.25
 
 # We chose 128MiB for default: With streaming execution and num_cpus many concurrent
 # tasks, the memory footprint will be about 2 * num_cpus * target_max_block_size ~= RAM

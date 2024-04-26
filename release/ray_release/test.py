@@ -32,6 +32,14 @@ DEFAULT_PYTHON_VERSION = tuple(
 DATAPLANE_ECR_REPO = "anyscale/ray"
 DATAPLANE_ECR_ML_REPO = "anyscale/ray-ml"
 
+MACOS_TEST_PREFIX = "darwin://"
+LINUX_TEST_PREFIX = "linux://"
+WINDOWS_TEST_PREFIX = "windows://"
+MACOS_BISECT_DAILY_RATE_LIMIT = 3
+LINUX_BISECT_DAILY_RATE_LIMIT = 0  # linux bisect is disabled
+WINDOWS_BISECT_DAILY_RATE_LIMIT = 0  # windows bisect is disabled
+BISECT_DAILY_RATE_LIMIT = 10
+
 
 def _convert_env_list_to_dict(env_list: List[str]) -> Dict[str, str]:
     env_dict = {}
@@ -55,6 +63,17 @@ class TestState(enum.Enum):
     FLAKY = "flaky"
     CONSITENTLY_FAILING = "consistently_failing"
     PASSING = "passing"
+
+
+class TestType(enum.Enum):
+    """
+    Type of the test
+    """
+
+    RELEASE_TEST = "release_test"
+    MACOS_TEST = "macos_test"
+    LINUX_TEST = "linux_test"
+    WINDOWS_TEST = "windows_test"
 
 
 @dataclass
@@ -199,6 +218,26 @@ class Test(dict):
         """
         return self["cluster"].get("byod") is not None
 
+    def get_test_type(self) -> TestType:
+        test_name = self.get_name()
+        if test_name.startswith(MACOS_TEST_PREFIX):
+            return TestType.MACOS_TEST
+        if test_name.startswith(LINUX_TEST_PREFIX):
+            return TestType.LINUX_TEST
+        if test_name.startswith(WINDOWS_TEST_PREFIX):
+            return TestType.WINDOWS_TEST
+        return TestType.RELEASE_TEST
+
+    def get_bisect_daily_rate_limit(self) -> int:
+        test_type = self.get_test_type()
+        if test_type == TestType.MACOS_TEST:
+            return MACOS_BISECT_DAILY_RATE_LIMIT
+        if test_type == TestType.LINUX_TEST:
+            return LINUX_BISECT_DAILY_RATE_LIMIT
+        if test_type == TestType.WINDOWS_TEST:
+            return WINDOWS_BISECT_DAILY_RATE_LIMIT
+        return BISECT_DAILY_RATE_LIMIT
+
     def get_byod_type(self) -> Optional[str]:
         """
         Returns the type of the BYOD cluster.
@@ -237,6 +276,7 @@ class Test(dict):
         """
         return self["name"]
 
+    @classmethod
     def _get_s3_name(cls, test_name: str) -> str:
         """
         Returns the name of the test for s3. Since '/' is not allowed in s3 key,
@@ -395,7 +435,7 @@ class Test(dict):
         )
 
     def get_test_results(
-        self, limit: int = 10, refresh: bool = False
+        self, limit: int = 10, refresh: bool = False, aws_bucket: str = None
     ) -> List[TestResult]:
         """
         Get test result from test object, or s3
@@ -406,9 +446,10 @@ class Test(dict):
         if self.test_results is not None and not refresh:
             return self.test_results
 
+        bucket = aws_bucket or get_read_state_machine_aws_bucket()
         s3_client = boto3.client("s3")
         pages = s3_client.get_paginator("list_objects_v2").paginate(
-            Bucket=get_read_state_machine_aws_bucket(),
+            Bucket=bucket,
             Prefix=f"{AWS_TEST_RESULT_KEY}/{self._get_s3_name(self.get_name())}-",
         )
         files = sorted(
@@ -420,7 +461,7 @@ class Test(dict):
             TestResult.from_dict(
                 json.loads(
                     s3_client.get_object(
-                        Bucket=get_read_state_machine_aws_bucket(),
+                        Bucket=bucket,
                         Key=file["Key"],
                     )
                     .get("Body")

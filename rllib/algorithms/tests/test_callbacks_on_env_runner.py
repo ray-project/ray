@@ -74,7 +74,7 @@ class TestCallbacks(unittest.TestCase):
             PPOConfig()
             .experimental(_enable_new_api_stack=True)
             .environment("CartPole-v1")
-            .rollouts(
+            .env_runners(
                 num_rollout_workers=0,
                 batch_mode="truncate_episodes",
                 env_runner_cls=SingleAgentEnvRunner,
@@ -117,7 +117,7 @@ class TestCallbacks(unittest.TestCase):
             PPOConfig()
             .experimental(_enable_new_api_stack=True)
             .environment("CartPole-v1")
-            .rollouts(
+            .env_runners(
                 batch_mode="complete_episodes",
                 env_runner_cls=SingleAgentEnvRunner,
                 num_rollout_workers=0,
@@ -159,7 +159,7 @@ class TestCallbacks(unittest.TestCase):
         config = (
             PPOConfig()
             .experimental(_enable_new_api_stack=True)
-            .rollouts(env_runner_cls=SingleAgentEnvRunner)
+            .env_runners(env_runner_cls=SingleAgentEnvRunner)
             .callbacks(OnEpisodeCreatedCallback)
         )
         self.assertRaises(ValueError, lambda: config.validate())
