@@ -130,8 +130,20 @@ class RayTaskError(RayError):
         self.traceback_str = traceback_str
         self.actor_repr = actor_repr
         self._actor_id = actor_id
-        # TODO(edoakes): should we handle non-serializable exception objects?
         self.cause = cause
+
+        try:
+            pickle.dumps(cause)
+        except (pickle.PicklingError, TypeError) as e:
+            err_msg = (
+                "The original cause of RayTaskError"
+                f" ({self.cause.__class__}) is not serializable: {e}."
+                " Overwriting the cause to RayError."
+            )
+            logger.warning(err_msg)
+            self.cause = RayError(err_msg)
+            self.args = (function_name, traceback_str, self.cause, proctitle, pid, ip)
+
         assert traceback_str is not None
 
     def make_dual_exception_type(self) -> Type:

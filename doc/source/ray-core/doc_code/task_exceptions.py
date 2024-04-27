@@ -35,6 +35,32 @@ except ray.exceptions.RayTaskError as e:
     # Exception: the real error
 
 # __task_exceptions_end__
+# __unserializable_exceptions_begin__
+
+import threading
+
+class UnserializableException(Exception):
+    def __init__(self):
+        self.lock = threading.Lock()
+
+@ray.remote
+def raise_unserializable_error():
+    raise UnserializableException
+
+try:
+    ray.get(raise_unserializable_error.remote())
+except ray.exceptions.RayTaskError as e:
+    print(e)
+    # ray::raise_unserializable_error() (pid=222813, ip=172.31.5.154)
+    #   File "/home/ubuntu/ray/tmp~/main.py", line 25, in raise_unserializable_error
+    #     raise UnserializableException
+    # UnserializableException
+    print(type(e.cause))
+    # <class 'ray.exceptions.RayError'>
+    print(e.cause)
+    # The original cause of RayTaskError (<class '__main__.UnserializableException'>) is not serializable: cannot pickle '_thread.lock' object. Overwriting the cause to RayError.
+
+# __unserializable_exceptions_end__
 # __catch_user_exceptions_begin__
 
 class MyException(Exception):
