@@ -184,7 +184,7 @@ TEST(MutableObjectProvider, HandlePushMutableObject) {
   provider.HandleRegisterMutableObject(object_id, /*num_readers=*/1, local_object_id);
 
   ray::rpc::PushMutableObjectRequest request;
-  request.set_object_id(object_id.Binary());
+  request.set_writer_object_id(object_id.Binary());
   request.set_data_size(0);
   request.set_metadata_size(0);
 
