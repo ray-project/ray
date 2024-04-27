@@ -101,7 +101,6 @@ def synchronous_parallel_sample(
                     else (lambda w: (w.sample(), w.get_metrics()))
                 ),
                 local_worker=False,
-                healthy_only=True,
                 timeout_seconds=sample_timeout_s,
             )
             # Nothing was returned (maybe all workers are stalling) or no healthy

@@ -307,9 +307,6 @@ class TestWorkerFailures(unittest.TestCase):
                     "evaluation": True,
                 },
             }
-
-        print(config)
-
         algo = config.build()
         algo.train()
 

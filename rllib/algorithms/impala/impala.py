@@ -755,7 +755,6 @@ class Impala(Algorithm):
         if self._aggregator_actor_manager:
             self._aggregator_actor_manager.probe_unhealthy_actors(
                 timeout_seconds=self.config.env_runner_health_probe_timeout_s,
-                mark_healthy=True,
             )
 
         if self.config.enable_rl_module_and_learner:
@@ -909,10 +908,7 @@ class Impala(Algorithm):
             # local worker. Otherwise just return an empty list.
             if self.workers.num_healthy_remote_workers() > 0:
                 # Perform asynchronous sampling on all (remote) rollout workers.
-                self.workers.foreach_worker_async(
-                    lambda worker: worker.sample(),
-                    healthy_only=True,
-                )
+                self.workers.foreach_worker_async(lambda worker: worker.sample())
                 sample_batches: List[
                     Tuple[int, ObjectRef]
                 ] = self.workers.fetch_ready_async_reqs(
