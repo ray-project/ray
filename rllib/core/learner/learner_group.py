@@ -187,12 +187,12 @@ class LearnerGroup:
             self._update_request_tags = Counter()
             self._additional_update_request_tags = Counter()
 
-            # A special MetricsLogger object (not exposed to the user) for reducing
-            # the n results dicts returned by our n Learner workers in case we are on
-            # the old or hybrid API stack.
-            self._metrics_logger_old_and_hybrid_stack: Optional[MetricsLogger] = None
-            if self.config.enable_env_runner_and_connector_v2:
-                self._metrics_logger_old_and_hybrid_stack = MetricsLogger()
+        # A special MetricsLogger object (not exposed to the user) for reducing
+        # the n results dicts returned by our n Learner workers in case we are on
+        # the old or hybrid API stack.
+        self._metrics_logger_old_and_hybrid_stack: Optional[MetricsLogger] = None
+        if not self.config.enable_env_runner_and_connector_v2:
+            self._metrics_logger_old_and_hybrid_stack = MetricsLogger()
 
     # TODO (sven): Replace this with call to `self.metrics.peek()`?
     def get_stats(self) -> Dict[str, Any]:
@@ -257,8 +257,9 @@ class LearnerGroup:
                 new="Learner.metrics.[log_value|log_dict|log_time](key=..., value=..., "
                 "reduce=[mean|min|max|sum], window=..., ema_coeff=...)",
                 help="Use the new ray.rllib.utils.metrics.metrics_logger::MetricsLogger"
-                " API in your custom Learner methods for logging your custom values "
-                "and time-reducing (or parallel-reducing) them.",
+                " API in your custom Learner methods for logging and time-reducing any "
+                "custom metrics. The central `MetricsLogger` instance is available "
+                "under `self.metrics` within your custom Learner.",
                 error=True,
             )
         return self._update(
@@ -312,8 +313,9 @@ class LearnerGroup:
                 new="Learner.metrics.[log_value|log_dict|log_time](key=..., value=..., "
                 "reduce=[mean|min|max|sum], window=..., ema_coeff=...)",
                 help="Use the new ray.rllib.utils.metrics.metrics_logger::MetricsLogger"
-                " API in your custom Learner methods for logging your custom values "
-                "and time-reducing (or parallel-reducing) them.",
+                " API in your custom Learner methods for logging and time-reducing any "
+                "custom metrics. The central `MetricsLogger` instance is available "
+                "under `self.metrics` within your custom Learner.",
                 error=True,
             )
 
@@ -334,6 +336,7 @@ class LearnerGroup:
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
     ) -> Union[Dict[str, Any], List[Dict[str, Any]], List[List[Dict[str, Any]]]]:
+
         # Define function to be called on all Learner actors (or the local learner).
         def _learner_update(
             learner: Learner,
@@ -462,9 +465,16 @@ class LearnerGroup:
                 results = self._get_results(
                     self._worker_manager.foreach_actor(partials)
                 )
-        # TODO: for async, only reduce over the most recently returned Learner
-        #  results???
-        a = 1
+
+        # If we are on the old or hybrid API stacks (no EnvRunners), we need to emulate
+        # the old behavior of returning an already reduced dict (as if we had a
+        # reduce_fn).
+        if not self.config.enable_env_runner_and_connector_v2:
+            self._metrics_logger_old_and_hybrid_stack.log_n_dicts(results)
+            results = self._metrics_logger_old_and_hybrid_stack.reduce(
+                return_stats_obj=False
+            )
+
         return results
 
     def _get_results(self, results):
@@ -558,7 +568,9 @@ class LearnerGroup:
         # reduce_fn).
         if not self.config.enable_env_runner_and_connector_v2:
             self._metrics_logger_old_and_hybrid_stack.log_n_dicts(results)
-            results = self._metrics_logger_old_and_hybrid_stack.reduce()
+            results = self._metrics_logger_old_and_hybrid_stack.reduce(
+                return_stats_obj=False
+            )
 
         return results
 
