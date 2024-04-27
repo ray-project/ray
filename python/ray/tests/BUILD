@@ -284,7 +284,6 @@ py_test_module_list(
     "test_annotations.py",
     "test_args.py",
     "test_asyncio_cluster.py",
-    "test_channel.py",
     "test_concurrency_group.py",
     "test_component_failures.py",
     "test_cross_language.py",
@@ -308,6 +307,15 @@ py_test_module_list(
   ],
   size = "small",
   tags = ["exclusive", "small_size_python_tests", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
+    "test_channel.py",
+  ],
+  size = "medium",
+  tags = ["exclusive", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
