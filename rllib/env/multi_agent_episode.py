@@ -1704,50 +1704,80 @@ class MultiAgentEpisode:
         return list(
             {
                 "id_": self.id_,
-                "agent_ids": self.agent_ids,
+                "agent_to_module_mapping_fn": self.agent_to_module_mapping_fn,
+                "_agent_to_module_mapping": self._agent_to_module_mapping,
+                "observation_space": self.observation_space,
+                "action_space": self.action_space,
+                "env_t_started": self.env_t_started,
+                "env_t": self.env_t,
+                "agent_t_started": self.agent_t_started,
+                # TODO (simon): Check, if we can store the `InfinitelyLookbackBuffer`
                 "env_t_to_agent_t": self.env_t_to_agent_t,
-                "global_actions_t": self.global_actions_t,
-                "partial_rewards_t": self.partial_rewards_t,
-                "partial_rewards": self.partial_rewards,
+                "_hanging_actions_end": self._hanging_actions_end,
+                "_hanging_extra_model_outputs_end": self._hanging_extra_model_outputs_end,
+                "_hanging_rewards_end": self._hanging_rewards_end,
+                "_hanging_actions_begin": self._hanging_actions_begin,
+                "_hanging_extra_model_outputs_begin": self._hanging_extra_model_outputs_begin,
+                "_hanging_rewards_begin": self._hanging_rewards_begin,
+                "is_terminated": self.is_terminated,
+                "is_truncated": self.is_truncated,
                 "agent_episodes": list(
                     {
                         agent_id: agent_eps.get_state()
                         for agent_id, agent_eps in self.agent_episodes.items()
                     }.items()
                 ),
-                "env_t_started": self.env_t_started,
-                "env_t": self.env_t,
-                "ts_carriage_return": self.ts_carriage_return,
-                "is_terminated": self.is_terminated,
-                "is_truncated": self.is_truncated,
+                "render_images": self.render_images,
+                "_start_time": self._start_time,
+                "_last_step_time": self._last_step_time,
             }.items()
         )
 
     @staticmethod
-    def from_state(state) -> None:
+    def from_state(state) -> "MultiAgentEpisode":
         """Creates a multi-agent episode from a state dictionary.
 
         See `MultiAgentEpisode.get_state()` for creating a state for
         a `MultiAgentEpisode` pickable state. For recreating a
         `MultiAgentEpisode` from a state, this state has to be complete,
         i.e. all data must have been stored in the state.
+
+        Args:
+            state: A list of tuples containing all data required to recreate
+                a `MultiAgentEpisode`. See `MultiAgentEpisode.get_state()`.
+
+        Returns:
+            A `MultiAgentEpisode` instance created from the state data.
         """
-        # TODO (simon): Add the agent caches.
-        episode = MultiAgentEpisode(id=state[0][1])
-        episode._agent_ids = state[1][1]
-        episode.env_t_to_agent_t = state[2][1]
-        episode.global_actions_t = state[3][1]
-        episode.partial_rewards_t = state[4][1]
-        episode.partial_rewards = state[5][1]
+        # Create an empty `MultiAgentEpisode` instance.
+        episode = MultiAgentEpisode(id_=state[0][1])
+        # Fill the instance with the state data.
+        episode.agent_to_module_mapping_fn = state[1][1]
+        episode._agent_to_module_mapping = state[2][1]
+        episode.observation_space = state[3][1]
+        episode.action_space = state[4][1]
+        episode.env_t_started = state[5][1]
+        episode.env_t = state[6][1]
+        episode.agent_t_started = state[7][1]
+        episode.env_t_to_agent_t = state[8][1]
+        episode._hanging_actions_end = state[9][1]
+        episode._hanging_extra_model_outputs_end = state[10][1]
+        episode._hanging_rewards_end = state[11][1]
+        episode._hanging_actions_begin = state[12][1]
+        episode._hanging_extra_model_outputs_begin = state[13][1]
+        episode._hanging_rewards_begin = state[14][1]
+        episode.is_terminated = state[15][1]
+        episode.is_truncated = state[16][1]
         episode.agent_episodes = {
             agent_id: SingleAgentEpisode.from_state(agent_state)
-            for agent_id, agent_state in state[6][1]
+            for agent_id, agent_state in state[17][1]
         }
-        episode.env_t_started = state[7][1]
-        episode.env_t = state[8][1]
-        episode.ts_carriage_return = state[9][1]
-        episode.is_terminated = state[10][1]
-        episode.is_trcunated = state[11][1]
+        episode.render_images = state[18][1]
+        episode._start_time = state[19][1]
+        episode._last_step_time = state[20][1]
+        # Validate the episode.
+        episode.validate()
+
         return episode
 
     def get_sample_batch(self) -> MultiAgentBatch:
