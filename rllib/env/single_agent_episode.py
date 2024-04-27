@@ -1642,7 +1642,75 @@ class SingleAgentEpisode:
             episode instance records.
         """
         return self.env_steps()
+    
+    def get_state(self) -> list:
+        """Returns the pickable state of an episode.
 
+        The data in the episode is stored into a dictionary. Note that episodes
+        can also be generated from states (see `self.from_state()`).
+
+        Returns:
+            A list containing all the data from the episode in tuples.
+        """
+        return list(
+            {
+                "id_": self.id_,
+                "agent_id": self.agent_id,
+                "module_id": self.module_id,
+                "multi_agent_episode_id": self.multi_agent_episode_id,
+                # TODO (simon): Check, if we need to have a `get_state` method for
+                #  `InfiniteLookbackBuffer` and call it here.
+                "observations": self.observations,
+                "actions": self.actions,
+                "rewards": self.rewards,
+                "infos": self.infos,
+                "is_terminated": self.is_terminated,
+                "is_truncated": self.is_truncated,
+                "t_started": self.t_started,
+                "t": self.t,
+                "_observation_space": self._observation_space,
+                "_action_space": self._action_space,
+                "_start_time": self._start_time,
+                "_last_step_time": self._last_step_time,
+                "_temporary_timestep_data": self._temporary_timestep_data,
+                **self.extra_model_outputs,
+            }.items()
+        )
+    
+    @staticmethod
+    def from_state(state: Dict[str, Any]) -> "SingleAgentEpisode":
+        """Creates a new `SingleAgentEpisode` instance from a state dict.
+
+        Args:
+            state: The state dict, as returned by `self.get_state()`.
+
+        Returns:
+            A new `SingleAgentEpisode` instance with the data from the state dict.
+        """
+        # Create an empy episode instance.
+        episode = SingleAgentEpisode(id_=state[0][1])
+        # Load all the data from the state dict into the episode.
+        episode.agent_id = state[1][1]
+        episode.module_id = state[2][1]
+        episode.multi_agent_episode_id = state[3][1]
+        episode.observations = state[4][1]
+        episode.actions = state[5][1]
+        episode.rewards = state[6][1]
+        episode.infos = state[7][1]
+        episode.is_terminated = state[8][1]
+        episode.is_truncated = state[9][1]
+        episode.t_started = state[10][1]
+        episode.t = state[11][1]
+        episode._observation_space = state[12][1]
+        episode._action_space = state[13][1]
+        episode._start_time = state[14][1]
+        episode._last_step_time = state[15][1]
+        episode._temporary_timestep_data = state[16][1]
+        episode.extra_model_outputs = {k: v for k, v in state[17:]}
+        # Validate the episode.
+        episode.validate()
+
+        return episode
     @property
     def observation_space(self):
         return self._observation_space
