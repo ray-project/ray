@@ -248,14 +248,11 @@ class Channel:
             )
             raise TypeError(msg) from e
 
-        try:
-            self._worker.core_worker.experimental_channel_put_serialized(
-                serialized_value,
-                self._writer_ref,
-                self._num_readers,
-            )
-        except IOError:
-            pass
+        self._worker.core_worker.experimental_channel_put_serialized(
+            serialized_value,
+            self._writer_ref,
+            self._num_readers,
+        )
 
     def begin_read(self) -> Any:
         """
@@ -283,50 +280,16 @@ class Channel:
 
     def close(self) -> None:
         """
-        Close this channel by setting the error bit on the object.
+        Close this channel by setting the error bit on both the writer_ref and the
+        reader_ref.
 
         Does not block. Any existing values in the channel may be lost after the
         channel is closed.
         """
-        logger.debug(f"Setting error bit on channel: {self._writer_ref}")
-        if not self.is_local_node(self._writer_node_id):
-            raise ValueError(
-                "`close()` must only be called on the node that the writer is on."
-            )
-        try:
-            self._worker.core_worker.experimental_channel_set_error(self._writer_ref)
-        except IOError:
-            logger.info("Could not close channel")
-
-        if self.is_remote():
-            # The writer and readers are on different nodes, so we must also close the
-            # channel on the reader node.
-            assert (
-                self._readers[0] is not None
-            ), "There must be at least one reader specified, since the writer and "
-            "readers are on different nodes."
-            fn = self._readers[0].__ray_call__
-            ray.get(
-                fn.options(concurrency_group="_ray_system").remote(
-                    set_error, [self._reader_ref]
-                )
-            )
-
-
-# Sets an error on the reader channel on a remote node.
-def set_error(self, reader_ref: ["ray.ObjectRef"]):
-    assert len(reader_ref) == 1
-
-    # The reader channel may not have been registered yet, so do it now.
-    ray._private.worker.global_worker.core_worker.experimental_channel_register_reader(
-        reader_ref[0],
-    )
-    try:
-        ray._private.worker.global_worker.core_worker.experimental_channel_set_error(
-            reader_ref[0]
-        )
-    except IOError:
-        pass
+        self._worker.core_worker.experimental_channel_set_error(self._writer_ref)
+        if self.is_local_node(self._reader_node_id):
+            self.ensure_registered_as_reader()
+        self._worker.core_worker.experimental_channel_set_error(self._reader_ref)
 
 
 # Interfaces for channel I/O.

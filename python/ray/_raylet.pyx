@@ -3649,10 +3649,12 @@ cdef class CoreWorker:
     def experimental_channel_set_error(self, ObjectRef object_ref):
         cdef:
             CObjectID c_object_id = object_ref.native()
+            CRayStatus status
 
         with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker()
-                         .ExperimentalChannelSetError(c_object_id))
+            status = (CCoreWorkerProcess.GetCoreWorker()
+                      .ExperimentalChannelSetError(c_object_id))
+        return status.ok()
 
     def experimental_channel_register_writer(self,
                                              ObjectRef writer_ref,

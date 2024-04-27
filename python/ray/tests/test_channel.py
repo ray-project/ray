@@ -204,7 +204,6 @@ def test_remote_reader(ray_start_cluster, remote):
 @pytest.mark.parametrize("remote", [True, False])
 def test_remote_reader_close(ray_start_cluster, remote):
     num_readers = 10
-    num_writes = 1000
 
     cluster = ray_start_cluster
     if remote:
@@ -229,11 +228,14 @@ def test_remote_reader_close(ray_start_cluster, remote):
         def pass_channel(self, channel):
             self._reader_chan = channel
 
-        def read(self, num_reads):
+        def read(self):
             try:
                 self._reader_chan.begin_read()
             except IOError:
                 pass
+
+        def close(self):
+            self._reader_chan.close()
 
     readers = [Reader.remote() for _ in range(num_readers)]
     channel = ray_channel.Channel(readers, 1000)
@@ -241,8 +243,15 @@ def test_remote_reader_close(ray_start_cluster, remote):
     # All readers have received the channel.
     ray.get([reader.pass_channel.remote(channel) for reader in readers])
 
-    channel.close()
-    ray.get([reader.read.remote(num_writes) for reader in readers])
+    reads = [
+        reader.read.options(concurrency_group="_ray_system").remote()
+        for reader in readers
+    ]
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(reads, timeout=1.0)
+
+    ray.get([reader.close.remote() for reader in readers])
+    ray.get(reads)
 
 
 if __name__ == "__main__":
