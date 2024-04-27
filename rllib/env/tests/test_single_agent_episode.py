@@ -652,22 +652,27 @@ class TestSingelAgentEpisode(unittest.TestCase):
         # Assert that the episode is now at the same state as before.
         self.assertEqual(episode_2.id_, episode.id_)
         self.assertEqual(episode_2.agent_id, episode.agent_id)
-        self.assertEqual(episode_2.multi_agent_episode_id, episode.multi_agent_episode_id)
-        self.assertEqual(episode_2.t, episode.t)
-        self.assertEqual(episode_2.t_started, episode.t_started)
-        self.assertIsNone(np.testing.assert_array_almost_equal(episode_2.observations[5], episode.observations[5]))
-        self.assertEqual(episode_2.actions[5], episode.actions[5])
-        self.assertEqual(episode_2.rewards[5], episode.rewards[5])
-        self.assertDictEqual(episode_2.infos[5], episode.infos[5])
-        self.assertEqual(episode_2.is_terminated, episode.is_terminated)
-        self.assertEqual(episode_2.is_truncated, episode.is_truncated)
-        self.assertEqual(type(episode_2._observation_space), type(episode._observation_space))
+        self.assertEqual(
+            episode_2.multi_agent_episode_id, episode.multi_agent_episode_id
+        )
+        check(episode_2.t, episode.t)
+        check(episode_2.t_started, episode.t_started)
+        check(episode_2.observations[5], episode.observations[5])
+        check(episode_2.actions[5], episode.actions[5])
+        check(episode_2.rewards[5], episode.rewards[5])
+        check(episode_2.infos[5], episode.infos[5])
+        check(episode_2.is_terminated, episode.is_terminated)
+        check(episode_2.is_truncated, episode.is_truncated)
+        self.assertEqual(
+            type(episode_2._observation_space), type(episode._observation_space)
+        )
         self.assertEqual(type(episode_2._action_space), type(episode._action_space))
-        self.assertEqual(episode_2._start_time, episode._start_time)
-        self.assertEqual(episode_2._last_step_time, episode._last_step_time)
-        self.assertDictEqual(episode_2._temporary_timestep_data, episode._temporary_timestep_data)
+        check(episode_2._start_time, episode._start_time)
+        check(episode_2._last_step_time, episode._last_step_time)
+        check(
+            episode_2._temporary_timestep_data, episode._temporary_timestep_data
+        )
         self.assertDictEqual(episode_2.extra_model_outputs, episode.extra_model_outputs)
-
 
     def _create_episode(self, num_data, t_started=None, len_lookback_buffer=0):
         # Sample 100 values and initialize episode with observations and infos.
