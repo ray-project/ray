@@ -217,6 +217,11 @@ if __name__ == "__main__":
         # which assumes a working event loop. Ref:
         # https://github.com/grpc/grpc/blob/master/src/python/grpcio/grpc/_cython/_cygrpc/aio/common.pyx.pxi#L174-L188
         loop = ray._private.utils.get_or_create_event_loop()
+        # AsyncIO debug mode. Major use case is to log(warning) when a coroutine slower
+        # than 100ms. Enabling this prints stack traces of the never-awaited
+        # coroutines and never-retrieved exceptions to the logs. Ref:
+        # https://docs.python.org/3/library/asyncio-dev.html#asyncio-debug-mode
+        loop.set_debug(dashboard_consts.RAY_DASHBOARD_HEAD_ASYNCIO_DEBUG_MODE)
         dashboard = Dashboard(
             host=args.host,
             port=args.port,

@@ -92,3 +92,6 @@ PROMETHEUS_CONFIG_INPUT_PATH = os.path.join(
 PARENT_HEALTH_CHECK_BY_PIPE = env_bool(
     "RAY_enable_pipe_based_agent_to_parent_health_check", False
 )
+RAY_DASHBOARD_HEAD_ASYNCIO_DEBUG_MODE = env_bool(
+    "RAY_DASHBOARD_HEAD_ASYNCIO_DEBUG_MODE", False
+)
