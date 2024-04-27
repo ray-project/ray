@@ -11,11 +11,11 @@ import unittest
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.env.env_runner_group import EnvRunnerGroup
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.postprocessing import compute_advantages
-from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.examples.envs.classes.mock_env import (
     MockEnv,
     MockEnv2,
@@ -482,7 +482,7 @@ class TestRolloutWorker(unittest.TestCase):
             config=config,
         )
         sample = convert_ma_batch_to_sample_batch(ev.sample())
-        ws = WorkerSet._from_existing(
+        ws = EnvRunnerGroup._from_existing(
             local_worker=ev,
             remote_workers=[],
         )
@@ -528,7 +528,7 @@ class TestRolloutWorker(unittest.TestCase):
             .environment(clip_rewards=False),
         )
         sample = convert_ma_batch_to_sample_batch(ev2.sample())
-        ws2 = WorkerSet._from_existing(
+        ws2 = EnvRunnerGroup._from_existing(
             local_worker=ev2,
             remote_workers=[],
         )
@@ -556,7 +556,7 @@ class TestRolloutWorker(unittest.TestCase):
                 batch_mode="complete_episodes",
             ),
         )
-        ws = WorkerSet._from_existing(
+        ws = EnvRunnerGroup._from_existing(
             local_worker=ev,
             remote_workers=[remote_ev],
         )
@@ -578,7 +578,7 @@ class TestRolloutWorker(unittest.TestCase):
                 batch_mode="truncate_episodes",
             ),
         )
-        ws = WorkerSet._from_existing(
+        ws = EnvRunnerGroup._from_existing(
             local_worker=ev,
             remote_workers=[],
         )
@@ -610,7 +610,7 @@ class TestRolloutWorker(unittest.TestCase):
                 batch_mode="truncate_episodes",
             ),
         )
-        ws = WorkerSet._from_existing(
+        ws = EnvRunnerGroup._from_existing(
             local_worker=ev,
             remote_workers=[],
         )
@@ -635,7 +635,7 @@ class TestRolloutWorker(unittest.TestCase):
                 batch_mode="truncate_episodes",
             ),
         )
-        ws = WorkerSet._from_existing(
+        ws = EnvRunnerGroup._from_existing(
             local_worker=ev,
             remote_workers=[],
         )
@@ -662,7 +662,7 @@ class TestRolloutWorker(unittest.TestCase):
                 batch_mode="truncate_episodes",
             ),
         )
-        ws = WorkerSet._from_existing(
+        ws = EnvRunnerGroup._from_existing(
             local_worker=ev,
             remote_workers=[],
         )

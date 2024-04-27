@@ -1805,7 +1805,7 @@ def test_ckpt_restore(
     tf2=False,
     replay_buffer=False,
     run_restored_algorithm=True,
-    eval_workerset=False,
+    eval_env_runner_group=False,
 ):
     """Test that after an algorithm is trained, its checkpoint can be restored.
 
@@ -1820,6 +1820,8 @@ def test_ckpt_restore(
         object_store: Whether to test checkpointing with objects from the object store.
         replay_buffer: Whether to test checkpointing with replay buffers.
         run_restored_algorithm: Whether to run the restored algorithm after restoring.
+        eval_env_runner_group: Whether to also inspect the eval EnvRunnerGroup of the
+            Algorithm.
 
     """
     # config = algorithms_and_configs[algo_name].to_dict()
@@ -1875,9 +1877,9 @@ def test_ckpt_restore(
             ]._storage[42 : 42 + 42]
             check(data, new_data)
 
-        # Check, whether the eval worker sets have the same policies and
+        # Check, whether the eval EnvRunnerGroup has the same policies and
         # `policy_mapping_fn`.
-        if eval_workerset:
+        if eval_env_runner_group:
             eval_mapping_src = inspect.getsource(
                 alg1.evaluation_workers.local_worker().policy_mapping_fn
             )
