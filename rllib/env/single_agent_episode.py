@@ -1642,7 +1642,7 @@ class SingleAgentEpisode:
             episode instance records.
         """
         return self.env_steps()
-    
+
     def get_state(self) -> list:
         """Returns the pickable state of an episode.
 
@@ -1676,7 +1676,7 @@ class SingleAgentEpisode:
                 **self.extra_model_outputs,
             }.items()
         )
-    
+
     @staticmethod
     def from_state(state: Dict[str, Any]) -> "SingleAgentEpisode":
         """Creates a new `SingleAgentEpisode` instance from a state dict.
@@ -1711,6 +1711,7 @@ class SingleAgentEpisode:
         episode.validate()
 
         return episode
+
     @property
     def observation_space(self):
         return self._observation_space

@@ -1711,13 +1711,17 @@ class MultiAgentEpisode:
                 "env_t_started": self.env_t_started,
                 "env_t": self.env_t,
                 "agent_t_started": self.agent_t_started,
-                # TODO (simon): Check, if we can store the `InfinitelyLookbackBuffer`
+                # TODO (simon): Check, if we can store the `InfiniteLookbackBuffer`
                 "env_t_to_agent_t": self.env_t_to_agent_t,
                 "_hanging_actions_end": self._hanging_actions_end,
-                "_hanging_extra_model_outputs_end": self._hanging_extra_model_outputs_end,
+                "_hanging_extra_model_outputs_end": (
+                    self._hanging_extra_model_outputs_end
+                ),
                 "_hanging_rewards_end": self._hanging_rewards_end,
                 "_hanging_actions_begin": self._hanging_actions_begin,
-                "_hanging_extra_model_outputs_begin": self._hanging_extra_model_outputs_begin,
+                "_hanging_extra_model_outputs_begin": (
+                    self._hanging_extra_model_outputs_begin
+                ),
                 "_hanging_rewards_begin": self._hanging_rewards_begin,
                 "is_terminated": self.is_terminated,
                 "is_truncated": self.is_truncated,

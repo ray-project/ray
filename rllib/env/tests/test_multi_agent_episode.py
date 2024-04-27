@@ -3331,8 +3331,12 @@ class TestMultiAgentEpisode(unittest.TestCase):
 
         # Assert that the two episodes are identical.
         self.assertEqual(episode_2.id_, episode.id_)
-        self.assertEqual(episode_2.agent_to_module_mapping_fn, episode.agent_to_module_mapping_fn)
-        self.assertEqual(type(episode_2.observation_space), type(episode.observation_space))
+        self.assertEqual(
+            episode_2.agent_to_module_mapping_fn, episode.agent_to_module_mapping_fn
+        )
+        self.assertEqual(
+            type(episode_2.observation_space), type(episode.observation_space)
+        )
         self.assertEqual(type(episode_2.action_space), type(episode.action_space))
         check(episode_2.env_t_started, episode.env_t_started)
         check(episode_2.env_t, episode.env_t)
@@ -3340,23 +3344,31 @@ class TestMultiAgentEpisode(unittest.TestCase):
         self.assertEqual(episode_2.env_t_to_agent_t, episode.env_t_to_agent_t)
         for agent_id, env_t_to_agent_t in episode_2.env_t_to_agent_t.items():
             check(env_t_to_agent_t.data, episode.env_t_to_agent_t[agent_id].data)
-            check(env_t_to_agent_t.lookback, episode.env_t_to_agent_t[agent_id].lookback)            
+            check(
+                env_t_to_agent_t.lookback, episode.env_t_to_agent_t[agent_id].lookback
+            )
         check(episode_2._hanging_actions_end, episode._hanging_actions_end)
-        check(episode_2._hanging_extra_model_outputs_end, episode._hanging_extra_model_outputs_end)
+        check(
+            episode_2._hanging_extra_model_outputs_end,
+            episode._hanging_extra_model_outputs_end,
+        )
         check(episode_2._hanging_rewards_end, episode._hanging_rewards_end)
         check(episode_2._hanging_actions_begin, episode._hanging_actions_begin)
-        check(episode_2._hanging_extra_model_outputs_begin, episode._hanging_extra_model_outputs_begin)
+        check(
+            episode_2._hanging_extra_model_outputs_begin,
+            episode._hanging_extra_model_outputs_begin,
+        )
         check(episode_2._hanging_rewards_begin, episode._hanging_rewards_begin)
         check(episode_2.is_terminated, episode.is_terminated)
         check(episode_2.is_truncated, episode.is_truncated)
-        self.assertSetEqual(set(episode_2.agent_episodes.keys()), set(episode.agent_episodes.keys()))
+        self.assertSetEqual(
+            set(episode_2.agent_episodes.keys()), set(episode.agent_episodes.keys())
+        )
         for agent_id, agent_eps in episode_2.agent_episodes.items():
             self.assertEqual(agent_eps.id_, episode.agent_episodes[agent_id].id_)
         check(episode_2.render_images, episode.render_images)
         check(episode_2._start_time, episode._start_time)
         check(episode_2._last_step_time, episode._last_step_time)
-
-
 
     def test_get_sample_batch(self):
         # TODO (simon): Revisit this test and the MultiAgentEpisode.episode_concat API.
