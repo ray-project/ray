@@ -2,9 +2,11 @@ from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, Iterator, List, Optional, Union
 
 import ray
-from ray.data._internal.execution.autoscaler.autoscaling_actor_pool import AutoscalingActorPool
 from .ref_bundle import RefBundle
 from ray._raylet import ObjectRefGenerator
+from ray.data._internal.execution.autoscaler.autoscaling_actor_pool import (
+    AutoscalingActorPool,
+)
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,

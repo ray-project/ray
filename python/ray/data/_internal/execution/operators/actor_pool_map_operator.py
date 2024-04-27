@@ -356,7 +356,10 @@ class _ActorPool(AutoscalingActorPool):
     ):
         self._min_size: int = compute_strategy.min_size
         self._max_size: int = compute_strategy.max_size
-        self._max_tasks_in_flight: int = compute_strategy.max_tasks_in_flight_per_actor or DEFAULT_MAX_TASKS_IN_FLIGHT
+        self._max_tasks_in_flight: int = (
+            compute_strategy.max_tasks_in_flight_per_actor
+            or DEFAULT_MAX_TASKS_IN_FLIGHT
+        )
         self._create_actor_fn = create_actor_fn
         assert self._min_size >= 1
         assert self._max_size >= self._min_size
