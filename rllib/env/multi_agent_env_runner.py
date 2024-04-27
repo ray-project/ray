@@ -3,6 +3,7 @@ import logging
 
 from collections import defaultdict
 from functools import partial
+import numpy as np
 from typing import DefaultDict, Dict, List, Optional
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -624,36 +625,17 @@ class MultiAgentEnvRunner(EnvRunner):
                         module_episode_returns[sa_eps.module_id] += return_eps2
                 del self._ongoing_episodes_for_metrics[eps.id_]
 
-            # Log general episode metrics.
-            self.metrics.log_dict(
-                {
-                    "episode_len_mean": episode_length,
-                    "episode_return_mean": episode_return,
-                    "episode_duration_sec_mean": episode_duration_s,
-                    # Per-agent returns.
-                    "agent_episode_returns_mean": agent_episode_returns,
-                    # Per-RLModule returns.
-                    "module_episode_returns_mean": module_episode_returns,
-                },
-                # To mimick the old API stack behavior, we'll use `window` here for
-                # these particular stats (instead of the default EMA).
-                window=self.config.metrics_num_episodes_for_smoothing,
+            self._log_episode_metrics(
+                episode_length,
+                episode_return,
+                episode_duration_s,
+                agent_episode_returns,
+                module_episode_returns,
             )
-            # For some metrics, log min/max as well.
-            self.metrics.log_dict(
-                {
-                    "episode_len_min": episode_length,
-                    "episode_return_min": episode_return,
-                },
-                reduce="min",
-            )
-            self.metrics.log_dict(
-                {
-                    "episode_len_max": episode_length,
-                    "episode_return_max": episode_return,
-                },
-                reduce="max",
-            )
+
+        # If no episodes at all, log NaN stats.
+        if len(self._done_episodes_for_metrics) == 0:
+            self._log_episode_metrics(np.nan, np.nan, np.nan)
 
         # Log num episodes counter for this iteration.
         self.metrics.log_value(
@@ -758,7 +740,7 @@ class MultiAgentEnvRunner(EnvRunner):
             env_ctx = EnvContext(
                 env_ctx,
                 worker_index=self.worker_index,
-                num_workers=self.config.num_rollout_workers,
+                num_workers=self.config.num_env_runners,
                 remote=self.config.remote_worker_envs,
             )
 
@@ -864,4 +846,42 @@ class MultiAgentEnvRunner(EnvRunner):
             env=self.env,
             rl_module=self.module,
             env_index=0,
+        )
+
+    def _log_episode_metrics(self, length, ret, sec, agents=None, modules=None):
+        # Log general episode metrics.
+        self.metrics.log_dict(
+            {
+                "episode_len_mean": length,
+                "episode_return_mean": ret,
+                "episode_duration_sec_mean": sec,
+                **(
+                    {
+                        # Per-agent returns.
+                        "agent_episode_returns_mean": agents,
+                        # Per-RLModule returns.
+                        "module_episode_returns_mean": modules,
+                    }
+                    if agents is not None
+                    else {}
+                ),
+            },
+            # To mimick the old API stack behavior, we'll use `window` here for
+            # these particular stats (instead of the default EMA).
+            window=self.config.metrics_num_episodes_for_smoothing,
+        )
+        # For some metrics, log min/max as well.
+        self.metrics.log_dict(
+            {
+                "episode_len_min": length,
+                "episode_return_min": ret,
+            },
+            reduce="min",
+        )
+        self.metrics.log_dict(
+            {
+                "episode_len_max": length,
+                "episode_return_max": ret,
+            },
+            reduce="max",
         )

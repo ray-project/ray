@@ -138,9 +138,21 @@ class WorkerSet:
         }
 
         # Set the EnvRunner subclass to be used as "workers". Default: RolloutWorker.
-        self.env_runner_cls = (
-            RolloutWorker if config.env_runner_cls is None else config.env_runner_cls
-        )
+        self.env_runner_cls = config.env_runner_cls
+        if self.env_runner_cls is None:
+            if config.enable_env_runner_and_connector_v2:
+                if config.is_multi_agent():
+                    from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
+
+                    self.env_runner_cls = MultiAgentEnvRunner
+                else:
+                    from ray.rllib.env.single_agent_env_runner import (
+                        SingleAgentEnvRunner,
+                    )
+
+                    self.env_runner_cls = SingleAgentEnvRunner
+            else:
+                self.env_runner_cls = RolloutWorker
         self._cls = ray.remote(**self._remote_args)(self.env_runner_cls).remote
 
         self._logdir = logdir
@@ -239,7 +251,7 @@ class WorkerSet:
         if (
             local_worker
             and self.__worker_manager.num_actors() > 0
-            and not config.uses_new_env_runners
+            and not config.enable_env_runner_and_connector_v2
             and not config.create_env_on_local_worker
             and (not config.observation_space or not config.action_space)
         ):

@@ -1,6 +1,5 @@
 import time
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
-from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.tune.schedulers.pb2 import PB2
 from ray import train, tune
 
@@ -70,11 +69,13 @@ for env, stop_criteria in benchmark_envs.items():
         PPOConfig()
         .environment(env=env)
         # Enable new API stack and use EnvRunner.
-        .experimental(_enable_new_api_stack=True)
+        .api_stack(
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
+        )
         .env_runners(
             rollout_fragment_length=1,
-            env_runner_cls=SingleAgentEnvRunner,
-            num_rollout_workers=num_rollout_workers,
+            num_env_runners=num_rollout_workers,
             # TODO (sven, simon): Add resources.
         )
         .resources(

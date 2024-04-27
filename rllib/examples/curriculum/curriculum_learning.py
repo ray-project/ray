@@ -214,7 +214,7 @@ if __name__ == "__main__":
             model={"vf_share_layers": True},
         )
         .env_runners(
-            num_envs_per_worker=5,
+            num_envs_per_env_runner=5,
             env_to_module_connector=lambda env: [
                 AddObservationsFromEpisodesToBatch(),
                 FlattenObservations(),

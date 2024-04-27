@@ -112,7 +112,7 @@ class EagerTFPolicyV2(Policy):
 
         # If using default make_model(), dist_class will get updated when
         # the model is created next.
-        if self.config.get("_enable_new_api_stack", False):
+        if self.config.get("enable_rl_module_and_learner", False):
             self.model = self.make_rl_module()
             self.dist_class = None
         else:
@@ -121,7 +121,7 @@ class EagerTFPolicyV2(Policy):
 
         self._init_view_requirements()
 
-        if self.config.get("_enable_new_api_stack", False):
+        if self.config.get("enable_rl_module_and_learner", False):
             self.exploration = None
         else:
             self.exploration = self._create_exploration()
@@ -158,10 +158,13 @@ class EagerTFPolicyV2(Policy):
     @override(Policy)
     def maybe_remove_time_dimension(self, input_dict: Dict[str, TensorType]):
         assert self.config.get(
-            "_enable_new_api_stack", False
+            "enable_rl_module_and_learner", False
         ), "This is a helper method for the new learner API."
 
-        if self.config.get("_enable_new_api_stack", False) and self.model.is_stateful():
+        if (
+            self.config.get("enable_rl_module_and_learner", False)
+            and self.model.is_stateful()
+        ):
             # Note that this is a temporary workaround to fit the old sampling stack
             # to RL Modules.
             ret = {}
@@ -213,15 +216,15 @@ class EagerTFPolicyV2(Policy):
         Returns:
             A single loss tensor or a list of loss tensors.
         """
-        # Under the new _enable_new_api_stack the loss function still gets called in
-        # order to initialize the view requirements of the sample batches that are
+        # Under the new enable_rl_module_and_learner the loss function still gets called
+        # in order to initialize the view requirements of the sample batches that are
         # returned by the sampler. In this case, we don't actually want to compute any
         # loss, however
         # if we access the keys that are needed for a forward_train pass, then the
         # sampler will include those keys in the sample batches it returns. This means
         # that the correct sample batch keys will be available when using the learner
         # group API.
-        if self.config.get("_enable_new_api_stack", False):
+        if self.config.get("enable_rl_module_and_learner", False):
             for k in model.input_specs_train():
                 train_batch[k]
             return None
@@ -442,7 +445,7 @@ class EagerTFPolicyV2(Policy):
             return dist_class
 
     def _init_view_requirements(self):
-        if self.config.get("_enable_new_api_stack", False):
+        if self.config.get("enable_rl_module_and_learner", False):
             # Maybe update view_requirements, e.g. for recurrent case.
             self.view_requirements = self.model.update_default_view_requirements(
                 self.view_requirements
@@ -458,7 +461,7 @@ class EagerTFPolicyV2(Policy):
             self.view_requirements[SampleBatch.INFOS].used_for_training = False
 
     def maybe_initialize_optimizer_and_loss(self):
-        if not self.config.get("_enable_new_api_stack", False):
+        if not self.config.get("enable_rl_module_and_learner", False):
             optimizers = force_list(self.optimizer())
             if self.exploration:
                 # Policies with RLModules don't have an exploration object.
@@ -509,7 +512,7 @@ class EagerTFPolicyV2(Policy):
                 timestep=timestep, explore=explore, tf_sess=self.get_session()
             )
 
-        if self.config.get("_enable_new_api_stack"):
+        if self.config.get("enable_rl_module_and_learner"):
             # For recurrent models, we need to add a time dimension.
             seq_lens = input_dict.get("seq_lens", None)
             if seq_lens is None:
@@ -627,7 +630,7 @@ class EagerTFPolicyV2(Policy):
             action_dist = self.dist_class(dist_inputs, self.model)
         # Default log-likelihood calculation.
         else:
-            if self.config.get("_enable_new_api_stack", False):
+            if self.config.get("enable_rl_module_and_learner", False):
                 if in_training:
                     output = self.model.forward_train(input_batch)
                     action_dist_cls = self.model.get_train_action_dist_cls()
@@ -783,7 +786,7 @@ class EagerTFPolicyV2(Policy):
         state["global_timestep"] = state["global_timestep"].numpy()
         # In the new Learner API stack, the optimizers live in the learner.
         state["_optimizer_variables"] = []
-        if not self.config.get("_enable_new_api_stack", False):
+        if not self.config.get("enable_rl_module_and_learner", False):
             if self._optimizer and len(self._optimizer.variables()) > 0:
                 state["_optimizer_variables"] = self._optimizer.variables()
 

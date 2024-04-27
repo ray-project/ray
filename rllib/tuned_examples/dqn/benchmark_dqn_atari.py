@@ -4,7 +4,6 @@ from gymnasium.wrappers import AtariPreprocessing
 from ray.rllib.algorithms.dqn.dqn import DQNConfig
 from ray.rllib.connectors.env_to_module.frame_stacking import FrameStackingEnvToModule
 from ray.rllib.connectors.learner.frame_stacking import FrameStackingLearner
-from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.tune import Stopper
 from ray import train, tune
 
@@ -237,8 +236,8 @@ benchmark_envs = {
 for env in benchmark_envs.keys():
     tune.register_env(
         env,
-        lambda ctx: AtariPreprocessing(
-            gym.make(env, **ctx), grayscale_newaxis=True, screen_size=84, noop_max=0
+        lambda ctx, e=env: AtariPreprocessing(
+            gym.make(e, **ctx), grayscale_newaxis=True, screen_size=84, noop_max=0
         ),
     )
 
@@ -297,12 +296,14 @@ config = (
         clip_rewards=True,
     )
     # Enable new API stack and use EnvRunner.
-    .experimental(_enable_new_api_stack=True)
+    .api_stack(
+        enable_rl_module_and_learner=True,
+        enable_env_runner_and_connector_v2=True,
+    )
     .env_runners(
         # Every 4 agent steps a training update is performed.
         rollout_fragment_length=4,
-        env_runner_cls=SingleAgentEnvRunner,
-        num_rollout_workers=1,
+        num_env_runners=1,
         env_to_module_connector=_make_env_to_module_connector,
     )
     # TODO (simon): Adjust to new model_config_dict.

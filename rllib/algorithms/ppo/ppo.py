@@ -332,7 +332,7 @@ class PPOConfig(AlgorithmConfig):
         # we subsample a batch of `sgd_minibatch_size` from the train-batch for
         # each `num_sgd_iter`).
         if (
-            not self._enable_new_api_stack
+            not self.enable_rl_module_and_learner
             and self.sgd_minibatch_size > self.train_batch_size
         ):
             raise ValueError(
@@ -342,7 +342,7 @@ class PPOConfig(AlgorithmConfig):
                 f"is iterated over (used for updating the policy) {self.num_sgd_iter} "
                 "times."
             )
-        elif self._enable_new_api_stack:
+        elif self.enable_rl_module_and_learner:
             mbs = self.mini_batch_size_per_learner or self.sgd_minibatch_size
             tbs = self.train_batch_size_per_learner or self.train_batch_size
             if isinstance(mbs, int) and isinstance(tbs, int) and mbs > tbs:
@@ -370,7 +370,7 @@ class PPOConfig(AlgorithmConfig):
             )
 
         # Entropy coeff schedule checking.
-        if self._enable_new_api_stack:
+        if self.enable_rl_module_and_learner:
             if self.entropy_coeff_schedule is not None:
                 raise ValueError(
                     "`entropy_coeff_schedule` is deprecated and must be None! Use the "
@@ -418,7 +418,7 @@ class PPO(Algorithm):
     @override(Algorithm)
     def training_step(self):
         # New API stack (RLModule, Learner, EnvRunner, ConnectorV2).
-        if self.config.uses_new_env_runners:
+        if self.config.enable_env_runner_and_connector_v2:
             return self._training_step_new_api_stack()
         # Old and hybrid API stacks (Policy, RolloutWorker, Connector, maybe RLModule,
         # maybe Learner).
@@ -434,7 +434,9 @@ class PPO(Algorithm):
                     worker_set=self.workers,
                     max_agent_steps=self.config.total_train_batch_size,
                     sample_timeout_s=self.config.sample_timeout_s,
-                    _uses_new_env_runners=self.config.uses_new_env_runners,
+                    _uses_new_env_runners=(
+                        self.config.enable_env_runner_and_connector_v2
+                    ),
                     _return_metrics=True,
                 )
             else:
@@ -442,7 +444,9 @@ class PPO(Algorithm):
                     worker_set=self.workers,
                     max_env_steps=self.config.total_train_batch_size,
                     sample_timeout_s=self.config.sample_timeout_s,
-                    _uses_new_env_runners=self.config.uses_new_env_runners,
+                    _uses_new_env_runners=(
+                        self.config.enable_env_runner_and_connector_v2
+                    ),
                     _return_metrics=True,
                 )
             # Return early if all our workers failed.
@@ -584,7 +588,7 @@ class PPO(Algorithm):
             train_batch = standardize_fields(train_batch, ["advantages"])
 
         # Perform a train step on the collected batch.
-        if self.config._enable_new_api_stack:
+        if self.config.enable_rl_module_and_learner:
             mini_batch_size_per_learner = (
                 self.config.mini_batch_size_per_learner
                 or self.config.sgd_minibatch_size
@@ -600,7 +604,7 @@ class PPO(Algorithm):
         else:
             train_results = multi_gpu_train_one_step(self, train_batch)
 
-        if self.config._enable_new_api_stack:
+        if self.config.enable_rl_module_and_learner:
             # The train results's loss keys are pids to their loss values. But we also
             # return a total_loss key at the same level as the pid keys. So we need to
             # subtract that to get the total set of pids to update.
@@ -626,7 +630,7 @@ class PPO(Algorithm):
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
             if self.workers.num_remote_workers() > 0:
                 from_worker_or_learner_group = None
-                if self.config._enable_new_api_stack:
+                if self.config.enable_rl_module_and_learner:
                     # sync weights from learner_group to all rollout workers
                     from_worker_or_learner_group = self.learner_group
                 self.workers.sync_weights(
@@ -634,11 +638,11 @@ class PPO(Algorithm):
                     policies=policies_to_update,
                     global_vars=global_vars,
                 )
-            elif self.config._enable_new_api_stack:
+            elif self.config.enable_rl_module_and_learner:
                 weights = self.learner_group.get_weights()
                 self.workers.local_worker().set_weights(weights)
 
-        if self.config._enable_new_api_stack:
+        if self.config.enable_rl_module_and_learner:
             kl_dict = {}
             if self.config.use_kl_loss:
                 for pid in policies_to_update:

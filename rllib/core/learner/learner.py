@@ -299,7 +299,7 @@ class Learner:
             return
 
         # Build learner connector pipeline used on this Learner worker.
-        if self.config.uses_new_env_runners:
+        if self.config.enable_env_runner_and_connector_v2:
             # TODO (sven): Figure out which space to provide here. For now,
             #  it doesn't matter, as the default connector piece doesn't use
             #  this information anyway.

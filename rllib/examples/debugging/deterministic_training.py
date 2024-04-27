@@ -40,8 +40,8 @@ if __name__ == "__main__":
         )
         .framework(args.framework)
         .env_runners(
-            num_rollout_workers=1,
-            num_envs_per_worker=2,
+            num_env_runners=1,
+            num_envs_per_env_runner=2,
             rollout_fragment_length=50,
         )
         .resources(
@@ -89,7 +89,7 @@ if __name__ == "__main__":
         check(results1["hist_stats"], results2["hist_stats"])
         # As well as training behavior (minibatch sequence during SGD
         # iterations).
-        if config._enable_new_api_stack:
+        if config.enable_rl_module_and_learner:
             check(
                 results1["info"][LEARNER_INFO][DEFAULT_POLICY_ID],
                 results2["info"][LEARNER_INFO][DEFAULT_POLICY_ID],
