@@ -923,7 +923,7 @@ Reading Iceberg
 ~~~~~~~~~~~~~~~
 
 To read data from Iceberg, call :func:`~ray.data.read_iceberg` and specify the catalog ID, namespace (database), and table.
-To read from Iceberg, install the `Python Client for Iceberg <https://py.iceberg.apache.org/>`_.
+Please install the `Python Client for Iceberg <https://py.iceberg.apache.org/>`_ to use this function.
 
 .. code-block:: console
 
@@ -942,7 +942,7 @@ To read from Iceberg, install the `Python Client for Iceberg <https://py.iceberg
         catalog_kwargs={"name": "default", "type": "glue"},
     )
 
-Writes are currently not supported, but might be soon as PyIceberg upgrades to support partitioned writes, etc.
+Writes are currently not supported.
 
 Creating synthetic data
 =======================
