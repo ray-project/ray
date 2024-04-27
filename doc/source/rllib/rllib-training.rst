@@ -220,7 +220,7 @@ These functions return values for each worker as a list.
 You can also access just the "master" copy of the algorithm state through
 ``Algorithm.get_policy()`` or ``Algorithm.workers.local_worker()``,
 but note that updates here may not be immediately reflected in
-your rollout workers (if you have configured ``num_rollout_workers > 0``).
+your rollout workers (if you have configured ``num_env_runners > 0``).
 Here's a quick example of how to access state of a model:
 
 .. literalinclude:: ./doc_code/getting_started.py

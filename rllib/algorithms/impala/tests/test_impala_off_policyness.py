@@ -23,7 +23,7 @@ class TestIMPALAOffPolicyNess(unittest.TestCase):
     def test_impala_off_policyness(self):
         config = (
             impala.ImpalaConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .environment("CartPole-v1")
             .resources(num_gpus=0)
             .env_runners(num_env_runners=4)

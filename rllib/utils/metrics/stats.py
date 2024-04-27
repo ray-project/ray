@@ -421,7 +421,8 @@ class Stats:
             return mean_value, [mean_value]
         # Do non-EMA reduction (possibly using a window).
         else:
-            reduce_meth = getattr(np, self._reduce_method)
+            # Use the numpy "nan"-prefix to ignore NaN's in our value lists.
+            reduce_meth = getattr(np, "nan" + self._reduce_method)
             values = (
                 self.values
                 if self._window is None or self._window == float("inf")

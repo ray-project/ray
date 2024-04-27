@@ -101,7 +101,7 @@ if __name__ == "__main__":
         )
         .framework(args.framework)
         # Use a vectorized env with 2 sub-envs.
-        .env_runners(num_envs_per_worker=2, num_rollout_workers=1)
+        .env_runners(num_envs_per_env_runner=2, num_env_runners=1)
         .evaluation(
             # Evaluate once per training iteration.
             evaluation_interval=1,

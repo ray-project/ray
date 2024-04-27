@@ -56,7 +56,7 @@ class TestPPO(unittest.TestCase):
     def test_loss(self):
         config = (
             ppo.PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .environment("CartPole-v1")
             .env_runners(
                 num_env_runners=0,
@@ -104,7 +104,7 @@ class TestPPO(unittest.TestCase):
         """Tests saving and loading the state of the PPO Learner Group."""
         config = (
             ppo.PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .environment("CartPole-v1")
             .env_runners(
                 num_env_runners=0,
@@ -142,7 +142,7 @@ class TestPPO(unittest.TestCase):
         initial_kl_coeff = 0.01
         config = (
             ppo.PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .environment("CartPole-v1")
             .env_runners(
                 num_env_runners=0,

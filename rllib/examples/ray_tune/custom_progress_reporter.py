@@ -45,7 +45,6 @@ You should see something similar to the following in your console output:
 """
 from ray import air, tune
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 
 
@@ -89,8 +88,10 @@ if __name__ == "__main__":
 
     config = (
         PPOConfig()
-        .experimental(_enable_new_api_stack=True)
-        .env_runners(env_runner_cls=MultiAgentEnvRunner)
+        .api_stack(
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
+        )
         .environment("env")
         .multi_agent(
             # Define 3 policies. Note that in our simple setup, they are all configured
