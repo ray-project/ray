@@ -28,6 +28,7 @@ from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
     deprecation_warning,
 )
+from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.minibatch_utils import (
     ShardBatchIterator,
     ShardEpisodesIterator,
@@ -185,6 +186,13 @@ class LearnerGroup:
             # requests that were sent to the workers at the same time.
             self._update_request_tags = Counter()
             self._additional_update_request_tags = Counter()
+
+            # A special MetricsLogger object (not exposed to the user) for reducing
+            # the n results dicts returned by our n Learner workers in case we are on
+            # the old or hybrid API stack.
+            self._metrics_logger_old_and_hybrid_stack: Optional[MetricsLogger] = None
+            if self.config.enable_env_runner_and_connector_v2:
+                self._metrics_logger_old_and_hybrid_stack = MetricsLogger()
 
     # TODO (sven): Replace this with call to `self.metrics.peek()`?
     def get_stats(self) -> Dict[str, Any]:
@@ -519,10 +527,12 @@ class LearnerGroup:
         For example, this could be used to do a polyak averaging update
         of a target network in off policy algorithms like SAC or DQN.
 
-        By default, this is a pass through that calls `Learner.additional_update`
+        By default, this is a pass through that calls all Learner workers'
+        `additional_update(**kwargs)` method.
 
         Returns:
-            A list of dictionaries of results from the updates from each worker.
+            A list of dictionaries of results returned by the
+            `Learner.additional_update()` calls.
         """
         if reduce_fn != DEPRECATED_VALUE:
             deprecation_warning(
@@ -542,6 +552,13 @@ class LearnerGroup:
                 [lambda w: w.additional_update(**kwargs) for _ in self._workers]
             )
             results = self._get_results(results)
+
+        # If we are on the old or hybrid API stacks (no EnvRunners), we need to emulate
+        # the old behavior of returning an already reduced dict (as if we had a
+        # reduce_fn).
+        if not self.config.enable_env_runner_and_connector_v2:
+            self._metrics_logger_old_and_hybrid_stack.log_n_dicts(results)
+            results = self._metrics_logger_old_and_hybrid_stack.reduce()
 
         return results
 
