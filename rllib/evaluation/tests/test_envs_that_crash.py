@@ -60,7 +60,7 @@ class TestEnvsThatCrash(unittest.TestCase):
         """Expect some sub-envs on one worker to fail (and not recover), but ignore."""
         config = (
             PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .env_runners(
                 num_env_runners=2,
                 num_envs_per_env_runner=3,
@@ -98,9 +98,8 @@ class TestEnvsThatCrash(unittest.TestCase):
         """Expect some sub-envs to fail (and not recover), but re-create worker."""
         config = (
             PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .env_runners(
-                # env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_env_runners=2,
                 rollout_fragment_length=10,
                 num_envs_per_env_runner=3,

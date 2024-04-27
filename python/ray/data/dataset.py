@@ -647,7 +647,7 @@ class Dataset:
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
 
-        def process_batch(batch: "pandas.DataFrame") -> "pandas.DataFrame":
+        def add_column(batch: "pandas.DataFrame") -> "pandas.DataFrame":
             batch.loc[:, col] = fn(batch)
             return batch
 
@@ -655,7 +655,7 @@ class Dataset:
             raise ValueError("`fn` must be callable, got {}".format(fn))
 
         return self.map_batches(
-            process_batch,
+            add_column,
             batch_format="pandas",  # TODO(ekl) we should make this configurable.
             compute=compute,
             concurrency=concurrency,
@@ -761,11 +761,11 @@ class Dataset:
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """  # noqa: E501
 
-        def fn(batch):
+        def select_columns(batch):
             return BlockAccessor.for_block(batch).select(columns=cols)
 
         return self.map_batches(
-            fn,
+            select_columns,
             batch_format="pandas",
             zero_copy_batch=True,
             compute=compute,
@@ -1119,7 +1119,7 @@ class Dataset:
         if seed is not None:
             random.seed(seed)
 
-        def process_batch(batch):
+        def random_sample(batch):
             if isinstance(batch, list):
                 return [row for row in batch if random.random() <= fraction]
             if isinstance(batch, pa.Table):
@@ -1135,7 +1135,7 @@ class Dataset:
                 )
             raise ValueError(f"Unsupported batch type: {type(batch)}")
 
-        return self.map_batches(process_batch, batch_format=None)
+        return self.map_batches(random_sample, batch_format=None)
 
     @ConsumptionAPI
     def streaming_split(
@@ -3611,7 +3611,7 @@ class Dataset:
 
     @ConsumptionAPI
     def iter_rows(
-        self, *, prefetch_batches: int = 0, prefetch_blocks: int = 0
+        self, *, prefetch_batches: int = 1, prefetch_blocks: int = 0
     ) -> Iterable[Dict[str, Any]]:
         """Return an iterable over the rows in this dataset.
 
