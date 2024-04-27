@@ -4,7 +4,6 @@ import unittest
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.utils.test_utils import framework_iterator
 
 
@@ -72,12 +71,14 @@ class TestCallbacks(unittest.TestCase):
     def test_episode_and_sample_callbacks_batch_mode_truncate_episodes(self):
         config = (
             PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            )
             .environment("CartPole-v1")
             .env_runners(
-                num_rollout_workers=0,
+                num_env_runners=0,
                 batch_mode="truncate_episodes",
-                env_runner_cls=SingleAgentEnvRunner,
             )
             .callbacks(EpisodeAndSampleCallbacks)
             .training(
@@ -115,12 +116,14 @@ class TestCallbacks(unittest.TestCase):
     def test_episode_and_sample_callbacks_batch_mode_complete_episodes(self):
         config = (
             PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            )
             .environment("CartPole-v1")
             .env_runners(
                 batch_mode="complete_episodes",
-                env_runner_cls=SingleAgentEnvRunner,
-                num_rollout_workers=0,
+                num_env_runners=0,
             )
             .callbacks(EpisodeAndSampleCallbacks)
             .training(
@@ -158,8 +161,10 @@ class TestCallbacks(unittest.TestCase):
         """Tests, whw"""
         config = (
             PPOConfig()
-            .experimental(_enable_new_api_stack=True)
-            .env_runners(env_runner_cls=SingleAgentEnvRunner)
+            .api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            )
             .callbacks(OnEpisodeCreatedCallback)
         )
         self.assertRaises(ValueError, lambda: config.validate())

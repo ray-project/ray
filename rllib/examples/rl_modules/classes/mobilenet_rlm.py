@@ -56,7 +56,7 @@ class MobileNetTorchPPORLModule(PPOTorchRLModule):
 
 config = (
     PPOConfig()
-    .experimental(_enable_new_api_stack=True)
+    .api_stack(enable_rl_module_and_learner=True)
     .rl_module(
         rl_module_spec=SingleAgentRLModuleSpec(module_class=MobileNetTorchPPORLModule)
     )
@@ -73,7 +73,7 @@ config = (
             ),
         },
     )
-    .env_runners(num_rollout_workers=0)
+    .env_runners(num_env_runners=0)
     # The following training settings make it so that a training iteration is very
     # quick. This is just for the sake of this example. PPO will not learn properly
     # with these settings!

@@ -58,7 +58,7 @@ class TestImpalaLearner(unittest.TestCase):
         """
         config = (
             ImpalaConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .environment("CartPole-v1")
             .env_runners(
                 num_env_runners=0,

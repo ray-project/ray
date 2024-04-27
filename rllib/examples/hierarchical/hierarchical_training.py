@@ -86,7 +86,7 @@ if __name__ == "__main__":
             param_space=(
                 PPOConfig()
                 .environment(WindyMazeEnv)
-                .env_runners(num_rollout_workers=0)
+                .env_runners(num_env_runners=0)
                 .framework(args.framework)
             ).to_dict(),
         ).fit()
@@ -103,7 +103,7 @@ if __name__ == "__main__":
             PPOConfig()
             .environment(HierarchicalWindyMazeEnv)
             .framework(args.framework)
-            .env_runners(num_rollout_workers=0)
+            .env_runners(num_env_runners=0)
             .training(entropy_coeff=0.01)
             .multi_agent(
                 policies={

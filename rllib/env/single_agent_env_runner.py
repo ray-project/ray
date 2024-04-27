@@ -4,6 +4,7 @@ import tree
 
 from collections import defaultdict
 from functools import partial
+import numpy as np
 from typing import DefaultDict, Dict, List, Optional
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -587,36 +588,13 @@ class SingleAgentEnvRunner(EnvRunner):
                     episode_duration_s += eps2.get_duration_s()
                 del self._ongoing_episodes_for_metrics[eps.id_]
 
-            # Log general episode metrics.
-            self.metrics.log_dict(
-                {
-                    "episode_len_mean": episode_length,
-                    "episode_return_mean": episode_return,
-                    "episode_duration_sec_mean": episode_duration_s,
-                    # Per-agent returns.
-                    "agent_episode_returns_mean": {DEFAULT_AGENT_ID: episode_return},
-                    # Per-RLModule returns.
-                    "module_episode_returns_mean": {DEFAULT_MODULE_ID: episode_return},
-                },
-                # To mimick the old API stack behavior, we'll use `window` here for
-                # these particular stats (instead of the default EMA).
-                window=self.config.metrics_num_episodes_for_smoothing,
+            self._log_episode_metrics(
+                episode_length, episode_return, episode_duration_s
             )
-            # For some metrics, log min/max as well.
-            self.metrics.log_dict(
-                {
-                    "episode_len_min": episode_length,
-                    "episode_return_min": episode_return,
-                },
-                reduce="min",
-            )
-            self.metrics.log_dict(
-                {
-                    "episode_len_max": episode_length,
-                    "episode_return_max": episode_return,
-                },
-                reduce="max",
-            )
+
+        # If no episodes at all, log NaN stats.
+        if len(self._done_episodes_for_metrics) == 0:
+            self._log_episode_metrics(np.nan, np.nan, np.nan)
 
         # Log num episodes counter for this iteration.
         self.metrics.log_value(
@@ -704,7 +682,7 @@ class SingleAgentEnvRunner(EnvRunner):
             env_ctx = EnvContext(
                 env_ctx,
                 worker_index=self.worker_index,
-                num_workers=self.config.num_rollout_workers,
+                num_workers=self.config.num_env_runners,
                 remote=self.config.remote_worker_envs,
             )
 
@@ -730,12 +708,12 @@ class SingleAgentEnvRunner(EnvRunner):
         self.env: gym.Wrapper = gym.wrappers.VectorListInfo(
             gym.vector.make(
                 "rllib-single-agent-env-v0",
-                num_envs=self.config.num_envs_per_worker,
+                num_envs=self.config.num_envs_per_env_runner,
                 asynchronous=self.config.remote_worker_envs,
             )
         )
         self.num_envs: int = self.env.num_envs
-        assert self.num_envs == self.config.num_envs_per_worker
+        assert self.num_envs == self.config.num_envs_per_env_runner
 
         # Set the flag to reset all envs upon the next `sample()` call.
         self._needs_initial_reset = True
@@ -776,3 +754,35 @@ class SingleAgentEnvRunner(EnvRunner):
             return convert_to_torch_tensor(struct)
         else:
             return tree.map_structure(tf.convert_to_tensor, struct)
+
+    def _log_episode_metrics(self, length, ret, sec):
+        # Log general episode metrics.
+        self.metrics.log_dict(
+            {
+                "episode_len_mean": length,
+                "episode_return_mean": ret,
+                "episode_duration_sec_mean": sec,
+                # Per-agent returns.
+                "agent_episode_returns_mean": {DEFAULT_AGENT_ID: ret},
+                # Per-RLModule returns.
+                "module_episode_returns_mean": {DEFAULT_MODULE_ID: ret},
+            },
+            # To mimick the old API stack behavior, we'll use `window` here for
+            # these particular stats (instead of the default EMA).
+            window=self.config.metrics_num_episodes_for_smoothing,
+        )
+        # For some metrics, log min/max as well.
+        self.metrics.log_dict(
+            {
+                "episode_len_min": length,
+                "episode_return_min": ret,
+            },
+            reduce="min",
+        )
+        self.metrics.log_dict(
+            {
+                "episode_len_max": length,
+                "episode_return_max": ret,
+            },
+            reduce="max",
+        )

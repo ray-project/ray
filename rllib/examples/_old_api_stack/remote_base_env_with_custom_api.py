@@ -120,11 +120,11 @@ if __name__ == "__main__":
             # through them in parallel.
             remote_worker_envs=True,
             # How many RolloutWorkers (each with n environment copies:
-            # `num_envs_per_worker`)?
-            num_rollout_workers=args.num_workers,
+            # `num_envs_per_env_runner`)?
+            num_env_runners=args.num_workers,
             # This setting should not really matter as it does not affect the
             # number of GPUs reserved for each worker.
-            num_envs_per_worker=args.num_envs_per_worker,
+            num_envs_per_env_runner=args.num_envs_per_env_runner,
         )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
