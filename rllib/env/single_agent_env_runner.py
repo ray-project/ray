@@ -578,10 +578,6 @@ class SingleAgentEnvRunner(EnvRunner):
                 episode_length, episode_return, episode_duration_s
             )
 
-        # If no episodes at all, log NaN stats.
-        if len(self._done_episodes_for_metrics) == 0:
-            self._log_episode_metrics(np.nan, np.nan, np.nan)
-
         # Log num episodes counter for this iteration.
         self.metrics.log_value(
             NUM_EPISODES,

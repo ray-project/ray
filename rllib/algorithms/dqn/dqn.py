@@ -637,33 +637,6 @@ class DQN(Algorithm):
             ENV_RUNNER_RESULTS, NUM_MODULE_STEPS_SAMPLED, default={}
         ), key=NUM_MODULE_STEPS_SAMPLED_LIFETIME, reduce="sum")
 
-
-        # TODO (sven): Move into Algorithm utility method.
-        # Log lifetime counts for env- and agent steps sampled.
-        #self.metrics.log_dict(
-        #    {
-        #        NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-        #            ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED, default=0
-        #        ),
-        #        NUM_AGENT_STEPS_SAMPLED_LIFETIME: {
-        #            aid: self.metrics.peek(
-        #                ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED, aid, default=0
-        #            )
-        #            for aid in self.metrics.peek(NUM_AGENT_STEPS_SAMPLED_LIFETIME)
-        #        },
-        #        NUM_MODULE_STEPS_SAMPLED_LIFETIME: {
-        #            mid: self.metrics.peek(
-        #                ENV_RUNNER_RESULTS, NUM_MODULE_STEPS_SAMPLED, mid, default=0
-        #            )
-        #            for mid in self.metrics.peek(NUM_MODULE_STEPS_SAMPLED_LIFETIME)
-        #        },
-        #        NUM_EPISODES_LIFETIME: self.metrics.peek(
-        #            ENV_RUNNER_RESULTS, NUM_EPISODES, default=0
-        #        ),
-        #    },
-        #    reduce="sum",
-        #)
-
         if self.config.count_steps_by == "agent_steps":
             current_ts = sum(
                 self.metrics.peek(NUM_AGENT_STEPS_SAMPLED_LIFETIME).values()
@@ -705,8 +678,13 @@ class DQN(Algorithm):
                     for res in learner_results:
                         for mid, m_res in res.items():
                             if TD_ERROR_KEY in m_res:
-                                td_errors[mid].extend(convert_to_numpy(m_res.pop(TD_ERROR_KEY).peek()))
-                    td_errors = {mid: {TD_ERROR_KEY: np.concatenate(s, axis=0)} for mid, s in td_errors.items()}
+                                td_errors[mid].extend(
+                                    convert_to_numpy(m_res.pop(TD_ERROR_KEY).peek())
+                                )
+                    td_errors = {
+                        mid: {TD_ERROR_KEY: np.concatenate(s, axis=0)}
+                        for mid, s in td_errors.items()
+                    }
                     self.metrics.log_n_dicts(learner_results, key=LEARNER_RESULTS)
                     self.metrics.log_value(
                         NUM_ENV_STEPS_TRAINED_LIFETIME,
@@ -715,10 +693,15 @@ class DQN(Algorithm):
                         ),
                         reduce="sum",
                     ) 
-                    self.metrics.log_dict({
-                        (mid, NUM_MODULE_STEPS_TRAINED_LIFETIME): stats[NUM_MODULE_STEPS_TRAINED]
-                        for mid, stats in self.metrics.peek(LEARNER_RESULTS).items()
-                    }, reduce="sum")
+                    self.metrics.log_dict(
+                        {
+                            (LEARNER_RESULTS, mid, NUM_MODULE_STEPS_TRAINED_LIFETIME): (
+                                stats[NUM_MODULE_STEPS_TRAINED]
+                            )
+                            for mid, stats in self.metrics.peek(LEARNER_RESULTS).items()
+                        },
+                        reduce="sum",
+                    )
                     # TODO (sven): Uncomment this once agent steps are available in the
                     #  Learner stats.
                     # self.metrics.log_dict(self.metrics.peek(
