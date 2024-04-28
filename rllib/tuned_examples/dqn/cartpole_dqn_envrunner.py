@@ -1,15 +1,14 @@
 from ray.rllib.algorithms.dqn import DQNConfig
-from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 
 config = (
     DQNConfig()
     .environment(env="CartPole-v1")
     .framework(framework="torch")
-    .experimental(_enable_new_api_stack=True)
-    .env_runners(
-        env_runner_cls=SingleAgentEnvRunner,
-        num_rollout_workers=0,
+    .api_stack(
+        enable_rl_module_and_learner=True,
+        enable_env_runner_and_connector_v2=True,
     )
+    .env_runners(num_env_runners=0)
     .resources(
         num_learner_workers=0,
     )

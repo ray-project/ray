@@ -11,7 +11,6 @@ from ray.rllib.core.learner.learner import (
     LEARNER_RESULTS_CURR_LR_KEY,
 )
 
-from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.metrics import LEARNER_RESULTS
 from ray.rllib.utils.test_utils import (
@@ -75,11 +74,11 @@ class TestPPO(unittest.TestCase):
         config = (
             ppo.PPOConfig()
             # Enable new API stack and use EnvRunner.
-            .experimental(_enable_new_api_stack=True)
-            .env_runners(
-                env_runner_cls=SingleAgentEnvRunner,
-                num_rollout_workers=0,
+            .api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
             )
+            .env_runners(num_env_runners=0)
             .training(
                 num_sgd_iter=2,
                 # Setup lr schedule for testing lr-scheduling correctness.

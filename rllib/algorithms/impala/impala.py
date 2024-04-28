@@ -130,8 +130,8 @@ class ImpalaConfig(AlgorithmConfig):
         self.num_aggregation_workers = 0
 
         self.grad_clip = 40.0
-        # Note: Only when using _enable_new_api_stack=True can the clipping mode be
-        # configured by the user. On the old API stack, RLlib will always clip by
+        # Note: Only when using enable_rl_module_and_learner=True can the clipping mode
+        # be configured by the user. On the old API stack, RLlib will always clip by
         # global_norm, no matter the value of `grad_clip_by`.
         self.grad_clip_by = "global_norm"
 
@@ -231,7 +231,7 @@ class ImpalaConfig(AlgorithmConfig):
                 each SGD iteration. If "auto", will use the same value as
                 `train_batch_size`.
                 Note that this setting only has an effect if
-                `_enable_new_api_stack=True` and it must be a multiple of
+                `enable_rl_module_and_learner=True` and it must be a multiple of
                 `rollout_fragment_length` or `sequence_length` and smaller than or equal
                 to `train_batch_size`.
             num_sgd_iter: Number of passes to make over each train batch.
@@ -366,13 +366,13 @@ class ImpalaConfig(AlgorithmConfig):
 
         # New stack w/ EnvRunners does NOT support aggregation workers yet or a mixin
         # replay buffer.
-        if self.uses_new_env_runners:
+        if self.enable_env_runner_and_connector_v2:
             if self.num_aggregation_workers > 0:
                 raise ValueError(
                     "Aggregation workers not supported on new API stack w/ new "
                     "EnvRunner API! Set `config.num_aggregation_workers = 0` or "
                     "disable the new API stack via "
-                    "`config.experimental(_enable_new_api_stack=False)`."
+                    "`config.api_stack(enable_rl_module_and_learner=False)`."
                 )
             if self.replay_ratio != 0.0:
                 raise ValueError(
@@ -387,7 +387,7 @@ class ImpalaConfig(AlgorithmConfig):
             )
 
         # Entropy coeff schedule checking.
-        if self._enable_new_api_stack:
+        if self.enable_rl_module_and_learner:
             if self.entropy_coeff_schedule is not None:
                 raise ValueError(
                     "`entropy_coeff_schedule` is deprecated and must be None! Use the "
@@ -428,7 +428,7 @@ class ImpalaConfig(AlgorithmConfig):
             )
         # Learner API specific checks.
         if (
-            self._enable_new_api_stack
+            self.enable_rl_module_and_learner
             and self._minibatch_size != "auto"
             and not (
                 (self.minibatch_size % self.rollout_fragment_length == 0)
@@ -458,7 +458,7 @@ class ImpalaConfig(AlgorithmConfig):
         return (
             (
                 self.train_batch_size_per_learner
-                if self.uses_new_env_runners
+                if self.enable_env_runner_and_connector_v2
                 else self.train_batch_size
             )
             if self._minibatch_size == "auto"
@@ -554,9 +554,9 @@ class Impala(Algorithm):
 
     == Overview of data flow in IMPALA ==
     1. Policy evaluation in parallel across `num_workers` actors produces
-       batches of size `rollout_fragment_length * num_envs_per_worker`.
+       batches of size `rollout_fragment_length * num_envs_per_env_runner`.
     2. If enabled, the replay buffer stores and produces batches of size
-       `rollout_fragment_length * num_envs_per_worker`.
+       `rollout_fragment_length * num_envs_per_env_runner`.
     3. If enabled, the minibatch ring buffer stores and replays batches of
        size `train_batch_size` up to `num_sgd_iter` times per batch.
     4. The learner thread executes data parallel SGD across `num_gpus` GPUs
@@ -656,7 +656,7 @@ class Impala(Algorithm):
         # update of the learner group
         self._results = {}
 
-        if not self.config._enable_new_api_stack:
+        if not self.config.enable_rl_module_and_learner:
             # Create and start the learner thread.
             self._learner_thread = make_learner_thread(
                 self.workers.local_worker(), self.config
@@ -667,7 +667,7 @@ class Impala(Algorithm):
     def training_step(self) -> ResultDict:
         # First, check, whether our learner thread is still healthy.
         if (
-            not self.config._enable_new_api_stack
+            not self.config.enable_rl_module_and_learner
             and not self._learner_thread.is_alive()
         ):
             raise RuntimeError("The learner thread died while training!")
@@ -706,7 +706,7 @@ class Impala(Algorithm):
         self.concatenate_batches_and_pre_queue(batches)
         # Using the Learner API. Call `update()` on our LearnerGroup object with
         # all collected batches.
-        if self.config._enable_new_api_stack:
+        if self.config.enable_rl_module_and_learner:
             train_results = self.learn_on_processed_samples()
             module_ids_to_update = set(train_results.keys()) - {ALL_MODULES}
             additional_results = self.learner_group.additional_update(
@@ -734,7 +734,7 @@ class Impala(Algorithm):
 
         # Sync worker weights (only those policies that were actually updated).
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-            if self.config._enable_new_api_stack:
+            if self.config.enable_rl_module_and_learner:
                 if train_results:
                     pids = list(set(train_results.keys()) - {ALL_MODULES})
                     self.update_workers_from_learner_group(
@@ -755,10 +755,9 @@ class Impala(Algorithm):
         if self._aggregator_actor_manager:
             self._aggregator_actor_manager.probe_unhealthy_actors(
                 timeout_seconds=self.config.env_runner_health_probe_timeout_s,
-                mark_healthy=True,
             )
 
-        if self.config._enable_new_api_stack:
+        if self.config.enable_rl_module_and_learner:
             if train_results:
                 # Store the most recent result and return it if no new result is
                 # available. This keeps backwards compatibility with the old
@@ -821,9 +820,9 @@ class Impala(Algorithm):
                 else []
             )
         )
-        # TODO(avnishn): Remove this once we have a way to extend placement group
-        # factories.
-        if cf._enable_new_api_stack:
+        # TODO (avnishn): Remove this once we have a way to extend placement group
+        #  factories.
+        if cf.enable_rl_module_and_learner:
             # Resources for the Algorithm.
             learner_bundles = cls._get_learner_bundles(cf)
 
@@ -909,10 +908,7 @@ class Impala(Algorithm):
             # local worker. Otherwise just return an empty list.
             if self.workers.num_healthy_remote_workers() > 0:
                 # Perform asynchronous sampling on all (remote) rollout workers.
-                self.workers.foreach_worker_async(
-                    lambda worker: worker.sample(),
-                    healthy_only=True,
-                )
+                self.workers.foreach_worker_async(lambda worker: worker.sample())
                 sample_batches: List[
                     Tuple[int, ObjectRef]
                 ] = self.workers.fetch_ready_async_reqs(
@@ -981,8 +977,8 @@ class Impala(Algorithm):
     def place_processed_samples_on_learner_thread_queue(self) -> None:
         """Place processed samples on the learner queue for training.
 
-        NOTE: This method is called if self.config._enable_new_api_stack is False.
-
+        NOTE: This method is called if self.config.enable_rl_module_and_learner is
+        False.
         """
         for i, batch in enumerate(self.batches_to_place_on_learner):
             try:
@@ -1008,7 +1004,8 @@ class Impala(Algorithm):
     def process_trained_results(self) -> ResultDict:
         """Process training results that are outputed by the learner thread.
 
-        NOTE: This method is called if self.config._enable_new_api_stack is False.
+        NOTE: This method is called if self.config.enable_rl_module_and_learner is
+        False.
 
         Returns:
             Aggregated results from the learner thread after an update is completed.
@@ -1236,7 +1233,7 @@ class Impala(Algorithm):
         result = super()._compile_iteration_results_old_and_hybrid_api_stacks(
             *args, **kwargs
         )
-        if not self.config._enable_new_api_stack:
+        if not self.config.enable_rl_module_and_learner:
             result = self._learner_thread.add_learner_metrics(
                 result, overwrite_learner_info=False
             )
