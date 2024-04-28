@@ -416,7 +416,7 @@ class RLModule(abc.ABC):
         def init_decorator(previous_init):
             def new_init(self, *args, **kwargs):
                 previous_init(self, *args, **kwargs)
-                if type(self) == cls:
+                if type(self) is cls:
                     self.__post_init__()
 
             return new_init
@@ -458,7 +458,7 @@ class RLModule(abc.ABC):
         therefore, the subclass should call super.__init__() in its constructor. This
         abstraction can be used to create any component that your RLModule needs.
         """
-        pass
+        return None
 
     @OverrideToImplementCustomLogic
     def get_train_action_dist_cls(self) -> Type[Distribution]:
@@ -710,7 +710,7 @@ class RLModule(abc.ABC):
     @OverrideToImplementCustomLogic
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
         """Sets the state dict of the module."""
-        pass
+        return None
 
     @OverrideToImplementCustomLogic
     def save_state(self, dir: Union[str, pathlib.Path]) -> None:
@@ -719,7 +719,7 @@ class RLModule(abc.ABC):
         Args:
             dir: The directory to save the checkpoint to.
         """
-        pass
+        return None
 
     @OverrideToImplementCustomLogic
     def load_state(
@@ -731,7 +731,7 @@ class RLModule(abc.ABC):
         Args:
             dir: The directory to load the checkpoint from.
         """
-        pass
+        return None
 
     def _module_metadata(
         self,

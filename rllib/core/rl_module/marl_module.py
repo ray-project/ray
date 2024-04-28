@@ -14,7 +14,6 @@ from typing import (
     Union,
 )
 
-from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,

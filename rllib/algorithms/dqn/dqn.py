@@ -25,11 +25,7 @@ from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
-from ray.rllib.policy.sample_batch import (
-    DEFAULT_POLICY_ID,
-    MultiAgentBatch,
-    SampleBatch,
-)
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.execution.train_ops import (
     train_one_step,
     multi_gpu_train_one_step,
