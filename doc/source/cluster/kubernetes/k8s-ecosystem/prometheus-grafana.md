@@ -46,47 +46,49 @@ kubectl get all -n prometheus-system
         org_role: Viewer
   ```
 * In my environment (with Ray version 2.9.0+), the Ray dashboard encountered a cross-origin issue when embedding Grafana charts. This problem was resolved after modifying the grafana.ini configuration file. Below is the complete configuration file:
-```shell
-[root@controller-node-1 helm-chart]# kubectl get cm -n grafana  grafana -o yaml 
-apiVersion: v1
-data:
-  grafana.ini: |
-    [analytics]
-    check_for_updates = true
-    [grafana_net]
-    url = https://grafana.net
-    [log]
-    mode = console
-    [paths]
-    data = /var/lib/grafana/
-    logs = /var/log/grafana
-    plugins = /var/lib/grafana/plugins
-    provisioning = /etc/grafana/provisioning
-    [server]
-    domain = ''
+  ```shell
+  [root@controller-node-1 helm-chart]# kubectl get cm -n grafana grafana -o yaml
+  ```
+  ```yaml
+  apiVersion: v1
+  data:
+    grafana.ini: |
+      [analytics]
+      check_for_updates = true
+      [grafana_net]
+      url = https://grafana.net
+      [log]
+      mode = console
+      [paths]
+      data = /var/lib/grafana/
+      logs = /var/log/grafana
+      plugins = /var/lib/grafana/plugins
+      provisioning = /etc/grafana/provisioning
+      [server]
+      domain = ''
 
-    [live]
-    allowed_origins = *
-    [security]
-    allow_embedding = true
-    cookie_samesite = disabled
-    [auth.anonymous]
-    enabled = true
-    org_role = Viewer
-kind: ConfigMap
-metadata:
-  annotations:
-    meta.helm.sh/release-name: grafana
-    meta.helm.sh/release-namespace: grafana
-  labels:
-    app.kubernetes.io/instance: grafana
-    app.kubernetes.io/managed-by: Helm
-    app.kubernetes.io/name: grafana
-    app.kubernetes.io/version: 10.4.0
-    helm.sh/chart: grafana-7.3.7
-  name: grafana
-  namespace: grafana
-```
+      [live]
+      allowed_origins = *
+      [security]
+      allow_embedding = true
+      cookie_samesite = disabled
+      [auth.anonymous]
+      enabled = true
+      org_role = Viewer
+  kind: ConfigMap
+  metadata:
+    annotations:
+      meta.helm.sh/release-name: grafana
+      meta.helm.sh/release-namespace: grafana
+    labels:
+      app.kubernetes.io/instance: grafana
+      app.kubernetes.io/managed-by: Helm
+      app.kubernetes.io/name: grafana
+      app.kubernetes.io/version: 10.4.0
+      helm.sh/chart: grafana-7.3.7
+    name: grafana
+    namespace: grafana
+  ```
 
 ## Step 3: Install a KubeRay operator
 
