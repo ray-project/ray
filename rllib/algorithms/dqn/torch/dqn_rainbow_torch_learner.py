@@ -263,8 +263,6 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
     def _update_module_target_networks(
         self, module_id: ModuleID, config: DQNConfig
     ) -> None:
-        super()._update_module_target_networks(module_id, config)
-
         module = self.module[module_id]
 
         # Note, we have pairs of encoder and head networks.

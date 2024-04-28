@@ -35,7 +35,6 @@ class DQNRainbowLearner(Learner):
         module_id: ModuleID,
         config: "DQNConfig",
         timestep: int,
-        last_update: int,
         **kwargs
     ) -> Dict[str, Any]:
         """Updates the target Q Networks."""
@@ -47,13 +46,22 @@ class DQNRainbowLearner(Learner):
 
         # TODO (Sven): APPO uses `config.target_update_frequency`. Can we
         #  choose a standard here?
-        if (timestep - last_update) >= config.target_network_update_freq:
-            self._update_module_target_networks(module_id, config, timestep)
+        last_update_ts_key = (module_id, LAST_TARGET_UPDATE_TS)
+        if (
+            timestep - self.metrics.peek(last_update_ts_key, default=0)
+            >= config.target_network_update_freq
+        ):
+            self._update_module_target_networks(module_id, config)
+            # Increase lifetime target network update counter by one.
+            self.metrics.log_value((module_id, NUM_TARGET_UPDATES), 1, reduce="sum")
+            # Update the (single-value -> window=1) last updated timestep metric.
+            self.metrics.log_value(last_update_ts_key, timestep, window=1)
 
         return results
 
+    @abc.abstractmethod
     def _update_module_target_networks(
-        self, module_id: ModuleID, config: "DQNConfig", timestep: int
+        self, module_id: ModuleID, config: "DQNConfig"
     ) -> None:
         """Update the target Q network(s) of each module with the current Q network.
 
@@ -62,15 +70,7 @@ class DQNRainbowLearner(Learner):
         Args:
             module_id: The module ID whose target Q network(s) should be updated.
             config: The `AlgorithmConfig` specific in the given `module_id`.
-            timestep: The current timestep to update the "last target update" metric
-                from.
         """
-        # Increase target network update counter.
-        # TODO (sven): Support multi-agent for DQN (make this metric per-module).
-        self.metrics.log_value(NUM_TARGET_UPDATES, 1, reduce="sum")
-        # Update the (single-value) last updated timestep metric.
-        # TODO (sven): Support multi-agent for DQN (make this metric per-module).
-        self.metrics.log_value(LAST_TARGET_UPDATE_TS, timestep, window=1)
 
     @abc.abstractmethod
     def _reset_noise(self) -> None:

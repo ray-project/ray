@@ -1,7 +1,8 @@
 from typing import Dict, Mapping
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
-# from ray.rllib.algorithms.dqn.dqn_tf_policy import PRIO_WEIGHTS
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.dqn.torch.dqn_rainbow_torch_learner import DQNRainbowTorchLearner
+from ray.rllib.algorithms.dqn.dqn_tf_policy import PRIO_WEIGHTS
 from ray.rllib.algorithms.sac.sac import SACConfig
 from ray.rllib.algorithms.sac.sac_learner import (
     LOGPS_KEY,
@@ -19,7 +20,6 @@ from ray.rllib.algorithms.sac.sac_learner import (
 from ray.rllib.core.learner.learner import (
     POLICY_LOSS_KEY,
 )
-from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
@@ -30,7 +30,7 @@ from ray.rllib.utils.typing import ModuleID, ParamDict, TensorType
 torch, nn = try_import_torch()
 
 
-class SACTorchLearner(SACLearner, TorchLearner):
+class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
     """Implements `torch`-specific SAC loss logic on top of `SACLearner`
 
     This ' Learner' class implements the loss in its
@@ -39,7 +39,7 @@ class SACTorchLearner(SACLearner, TorchLearner):
     """
 
     # TODO (simon): Set different learning rates for optimizers.
-    @override(TorchLearner)
+    @override(DQNRainbowTorchLearner)
     def configure_optimizers_for_module(
         self, module_id: ModuleID, config: AlgorithmConfig = None, hps=None
     ) -> None:
@@ -100,7 +100,7 @@ class SACTorchLearner(SACLearner, TorchLearner):
             lr_or_lr_schedule=self.config.lr,
         )
 
-    @override(TorchLearner)
+    @override(DQNRainbowTorchLearner)
     def compute_loss_for_module(
         self,
         *,
@@ -297,7 +297,7 @@ class SACTorchLearner(SACLearner, TorchLearner):
 
         return total_loss
 
-    @override(TorchLearner)
+    @override(DQNRainbowTorchLearner)
     def compute_gradients(
         self, loss_per_module: Dict[str, TensorType], **kwargs
     ) -> ParamDict:
@@ -325,22 +325,3 @@ class SACTorchLearner(SACLearner, TorchLearner):
             )
 
         return grads
-
-    @override(SACLearner)
-    def _update_module_target_networks(
-        self, module_id: ModuleID, config: SACConfig
-    ) -> None:
-        module = self.module[module_id]
-
-        # Note, we have pairs of encoder and head networks.
-        target_current_network_pairs = module.get_target_network_pairs()
-        for target_network, current_network in target_current_network_pairs:
-            # Get the current parameters from the Q network.
-            current_state_dict = current_network.state_dict()
-            # Use here Polyak averaging.
-            new_state_dict = {
-                k: config.tau * current_state_dict[k] + (1 - config.tau) * v
-                for k, v in target_network.state_dict().items()
-            }
-            # Apply the new parameters to the target Q network.
-            target_network.load_state_dict(new_state_dict)

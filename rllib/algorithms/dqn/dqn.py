@@ -740,11 +740,6 @@ class DQN(Algorithm):
                     additional_results = self.learner_group.additional_update(
                         module_ids_to_update=modules_to_update,
                         timestep=current_ts,
-                        last_update=self.metrics.peek(
-                            # TODO (sven): Support multi-agent in DQN/SAC.
-                            (LEARNER_RESULTS, DEFAULT_POLICY_ID, LAST_TARGET_UPDATE_TS),
-                            default=0,
-                        ),
                     )
                     # Add the additional results to the training results, if any.
                     self.metrics.log_n_dicts(additional_results, key=LEARNER_RESULTS)
