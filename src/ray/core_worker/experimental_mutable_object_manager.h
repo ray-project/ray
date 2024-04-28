@@ -157,7 +157,6 @@ class MutableObjectManager {
   ///
   /// \param[in] object_id The ID of the object.
   Status SetError(const ObjectID &object_id);
-  Status SetErrorInternal(const ObjectID &object_id);
 
   /// Sets the error bit on all channels, causing all future readers and writers to raise
   /// an error on acquire.
@@ -184,6 +183,11 @@ class MutableObjectManager {
   // Closes, unlinks, and destroys the named semaphores for the object. Note that the
   // destructor calls this method for all remaining objects.
   void DestroySemaphores(const ObjectID &object_id);
+
+  // Internal method used to set the error bit on `object_id`. The destructor lock must be
+  // held before calling this method.
+  Status SetErrorInternal(const ObjectID &object_id)
+      ABSL_SHARED_LOCKS_REQUIRED(destructor_lock_);
 
   FRIEND_TEST(MutableObjectTest, TestBasic);
   FRIEND_TEST(MutableObjectTest, TestMultipleReaders);
