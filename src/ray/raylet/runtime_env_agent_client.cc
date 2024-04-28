@@ -274,7 +274,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   template <typename T>
   using TryInvokeOnce = std::function<void(SuccCallback<T>, FailCallback)>;
 
-  void Suicide() {
+  void ExitImmediately() {
     RAY_LOG(ERROR)
         << "The raylet exited immediately because the runtime env agent timed out when "
            "Raylet try to connect to it. This can happen because the runtime env agent "
@@ -295,10 +295,10 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   /// Note that retry only happens on network errors. Application errors returned by the
   /// server are not retried.
   ///
-  /// If the retries took so long and exceeded deadline, Raylet suicides. Note the check
-  /// happens after `try_invoke_once` returns. This means if you have a successful but
-  /// very long connection (e.g. runtime env agent is busy downloading from s3), you are
-  /// safe.
+  /// If the retries took so long and exceeded deadline, Raylet exits immediately. Note
+  /// the check happens after `try_invoke_once` returns. This means if you have a
+  /// successful but very long connection (e.g. runtime env agent is busy downloading
+  /// from s3), you are safe.
   ///
   /// @tparam T the return type on success.
   /// @param try_invoke_once
@@ -319,7 +319,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
                        << agent_register_timeout_ms_ << "ms. Status: " << status
                        << ", address: " << this->address_ << ", port: " << this->port_str_
                        << ", Suiciding...";
-        Suicide();
+        ExitImmediately();
       } else {
         RAY_LOG(INFO) << "Runtime Env Agent network error: " << status
                       << ", the server may be still starting or is already failed. "

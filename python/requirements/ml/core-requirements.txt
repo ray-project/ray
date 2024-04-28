@@ -8,8 +8,8 @@ xgboost==1.7.6
 lightgbm==3.3.5
 
 # Huggingface
-transformers==4.19.1  # TODO(ml-team): This should be upgraded.
-accelerate==0.20.3
+transformers==4.36.2
+accelerate==0.28.0
 
 # DL libraries
 -r dl-cpu-requirements.txt

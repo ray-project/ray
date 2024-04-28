@@ -6,7 +6,7 @@ This guide shows you how to manage and interact with Ray clusters on Kubernetes.
 
 ## Preparation
 
-* Install [kubectl](https://kubernetes.io/docs/tasks/tools/#kubectl) (>= 1.19), [Helm](https://helm.sh/docs/intro/install/) (>= v3.4), and [Kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installation).
+* Install [kubectl](https://kubernetes.io/docs/tasks/tools/#kubectl) (>= 1.23), [Helm](https://helm.sh/docs/intro/install/) (>= v3.4), and [Kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installation).
 * Make sure your Kubernetes cluster has at least 4 CPU and 4 GB RAM.
 
 ## Step 1: Create a Kubernetes cluster
@@ -14,7 +14,7 @@ This guide shows you how to manage and interact with Ray clusters on Kubernetes.
 This step creates a local Kubernetes cluster using [Kind](https://kind.sigs.k8s.io/). If you already have a Kubernetes cluster, you can skip this step.
 
 ```sh
-kind create cluster --image=kindest/node:v1.23.0
+kind create cluster --image=kindest/node:v1.26.0
 ```
 
 (kuberay-operator-deploy)=
@@ -26,8 +26,8 @@ Deploy the KubeRay operator with the [Helm chart repository](https://github.com/
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
 helm repo update
 
-# Install both CRDs and KubeRay operator v1.1.0-rc.0.
-helm install kuberay-operator kuberay/kuberay-operator --version 1.1.0-rc.0
+# Install both CRDs and KubeRay operator v1.1.0.
+helm install kuberay-operator kuberay/kuberay-operator --version 1.1.0
 
 # Confirm that the operator is running in the namespace `default`.
 kubectl get pods
@@ -46,14 +46,14 @@ Once the KubeRay operator is running, we are ready to deploy a RayCluster. To do
   :::{tab-item} ARM64 (Apple Silicon)
   ```sh
   # Deploy a sample RayCluster CR from the KubeRay Helm chart repo:
-  helm install raycluster kuberay/ray-cluster --version 1.1.0-rc.0 --set 'image.tag=2.9.0-aarch64'
+  helm install raycluster kuberay/ray-cluster --version 1.1.0 --set 'image.tag=2.9.0-aarch64'
   ```
   :::
 
   :::{tab-item} x86-64 (Intel/Linux)
   ```sh
   # Deploy a sample RayCluster CR from the KubeRay Helm chart repo:
-  helm install raycluster kuberay/ray-cluster --version 1.1.0-rc.0
+  helm install raycluster kuberay/ray-cluster --version 1.1.0
   ```
   :::
 

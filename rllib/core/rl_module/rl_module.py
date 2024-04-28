@@ -147,19 +147,34 @@ class SingleAgentRLModuleSpec:
         )
         return spec
 
-    def update(self, other) -> None:
-        """Updates this spec with the given other spec. Works like dict.update()."""
+    def update(self, other, override: bool = True) -> None:
+        """Updates this spec with the given other spec. Works like dict.update().
+
+        Args:
+            other: The other SingleAgentRLModule spec to update this one from.
+            override: Whether to update all properties in `self` with those of `other.
+                If False, only update those properties in `self` that are not None.
+        """
         if not isinstance(other, SingleAgentRLModuleSpec):
             raise ValueError("Can only update with another SingleAgentRLModuleSpec.")
 
         # If the field is None in the other, keep the current field, otherwise update
         # with the new value.
-        self.module_class = other.module_class or self.module_class
-        self.observation_space = other.observation_space or self.observation_space
-        self.action_space = other.action_space or self.action_space
-        self.model_config_dict = other.model_config_dict or self.model_config_dict
-        self.catalog_class = other.catalog_class or self.catalog_class
-        self.load_state_path = other.load_state_path or self.load_state_path
+        if override:
+            self.module_class = other.module_class or self.module_class
+            self.observation_space = other.observation_space or self.observation_space
+            self.action_space = other.action_space or self.action_space
+            self.model_config_dict = other.model_config_dict or self.model_config_dict
+            self.catalog_class = other.catalog_class or self.catalog_class
+            self.load_state_path = other.load_state_path or self.load_state_path
+        # Only override, if the field is None in `self`.
+        else:
+            self.module_class = self.module_class or other.module_class
+            self.observation_space = self.observation_space or other.observation_space
+            self.action_space = self.action_space or other.action_space
+            self.model_config_dict = self.model_config_dict or other.model_config_dict
+            self.catalog_class = self.catalog_class or other.catalog_class
+            self.load_state_path = self.load_state_path or other.load_state_path
 
     def as_multi_agent(self) -> "MultiAgentRLModuleSpec":
         """Returns a MultiAgentRLModuleSpec (`self` under DEFAULT_POLICY_ID key)."""
@@ -359,9 +374,28 @@ class RLModule(abc.ABC):
     """
 
     framework: str = None
+    inference_only: bool = None
 
     def __init__(self, config: RLModuleConfig):
         self.config = config
+
+        from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
+
+        if isinstance(self, MultiAgentRLModule) or not hasattr(
+            self.config, "model_config_dict"
+        ):
+            # A MARL module is always a learner module b/c it only contains
+            # the single-agent modules. Each of the contained modules can be
+            # single.
+            self.inference_only = False
+        else:
+            # By default, each module is a learner module and contains all
+            # building blocks, such as target networks or critic networks
+            # used in the training process.
+            self.inference_only = self.config.model_config_dict.get(
+                "_inference_only", False
+            )
+
         # Make sure, `setup()` is only called once, no matter what. In some cases
         # of multiple inheritance (and with our __post_init__ functionality in place,
         # this might get called twice.
@@ -669,7 +703,7 @@ class RLModule(abc.ABC):
         """Forward-pass during training. See forward_train for details."""
 
     @OverrideToImplementCustomLogic
-    def get_state(self) -> Mapping[str, Any]:
+    def get_state(self, inference_only: bool = False) -> Mapping[str, Any]:
         """Returns the state dict of the module."""
         return {}
 

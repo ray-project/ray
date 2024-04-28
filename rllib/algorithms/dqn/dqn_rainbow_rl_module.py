@@ -39,6 +39,8 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         self.uses_double_q: bool = self.config.model_config_dict.get("double_q")
         # If we use noisy layers.
         self.uses_noisy: bool = self.config.model_config_dict.get("noisy")
+        # If we use a noisy encoder.
+        self.uses_noisy_encoder: bool = False
         # The number of atoms for a distribution support.
         self.num_atoms: int = self.config.model_config_dict.get("num_atoms")
         # If distributional learning is requested configure the support.
@@ -59,19 +61,26 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         # Note further, by using the base encoder the correct encoder
         # is chosen for the observation space used.
         self.encoder = catalog.build_encoder(framework=self.framework)
-        # Build the same encoder for the target network(s).
-        self.target_encoder = catalog.build_encoder(framework=self.framework)
+        # If not an inference-only module (e.g., for evaluation), set up the
+        # target networks and state dict keys to be taken care of when syncing.
+        if not self.inference_only or self.framework != "torch":
+            # Build the same encoder for the target network(s).
+            self.target_encoder = catalog.build_encoder(framework=self.framework)
+            # Holds the parameter names to be removed or renamed when synching
+            # from the learner to the inference module.
+            self._inference_only_state_dict_keys = {}
 
         # Build heads.
         self.af = catalog.build_af_head(framework=self.framework)
         if self.uses_dueling:
             # If in a dueling setting setup the value function head.
             self.vf = catalog.build_vf_head(framework=self.framework)
-        # Implement the same heads for the target network(s).
-        self.af_target = catalog.build_af_head(framework=self.framework)
-        if self.uses_dueling:
-            # If in a dueling setting setup the target value function head.
-            self.vf_target = catalog.build_vf_head(framework=self.framework)
+        if not self.inference_only or self.framework != "torch":
+            # Implement the same heads for the target network(s).
+            self.af_target = catalog.build_af_head(framework=self.framework)
+            if self.uses_dueling:
+                # If in a dueling setting setup the target value function head.
+                self.vf_target = catalog.build_vf_head(framework=self.framework)
 
         # Define the action distribution for sampling the exploit action
         # during exploration.
@@ -93,7 +102,7 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
 
     @override(RLModule)
     def input_specs_exploration(self) -> SpecType:
-        return [Columns.OBS, Columns.T]
+        return [Columns.OBS]
 
     @override(RLModule)
     def input_specs_inference(self) -> SpecType:

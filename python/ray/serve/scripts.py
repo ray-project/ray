@@ -276,9 +276,7 @@ def _generate_config_from_file_or_import_path(
         "a function that returns one. If a function is used, arguments can be "
         "passed to it in 'key=val' format after the import path, for example:\n\n"
         "serve deploy main:app model_path='/path/to/model.pkl' num_replicas=5\n\n"
-        "This command supports different 'providers'. By default, it uses a 'local'"
-        "provider that makes a REST API request to a running Ray cluster. "
-        "Not all arguments are supported by all providers."
+        "This command makes a REST API request to a running Ray cluster."
     ),
 )
 @click.argument("config_or_import_path")
@@ -303,9 +301,8 @@ def _generate_config_from_file_or_import_path(
     default=None,
     required=False,
     help=(
-        "Directory containing files that your application(s) will run in. When using "
-        "the 'local' provider, this must be a remote URI to a .zip file (e.g., S3 "
-        "bucket). Other providers may support local paths. This overrides the "
+        "Directory containing files that your application(s) will run in. This must "
+        "be a remote URI to a .zip file (e.g., S3 bucket). This overrides the "
         "working_dir in --runtime-env if both are specified."
     ),
 )
@@ -322,7 +319,7 @@ def _generate_config_from_file_or_import_path(
     default=os.environ.get("RAY_DASHBOARD_ADDRESS", "http://localhost:8265"),
     required=False,
     type=str,
-    help=RAY_DASHBOARD_ADDRESS_HELP_STR + " Only used by the 'local' provider.",
+    help=RAY_DASHBOARD_ADDRESS_HELP_STR,
 )
 def deploy(
     config_or_import_path: str,

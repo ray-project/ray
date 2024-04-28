@@ -6,7 +6,10 @@ from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.algorithms.impala import ImpalaConfig
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.algorithms.sac import SACConfig
-from ray.rllib.examples.env.multi_agent import MultiAgentCartPole, MultiAgentMountainCar
+from ray.rllib.examples.envs.classes.multi_agent import (
+    MultiAgentCartPole,
+    MultiAgentMountainCar,
+)
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.test_utils import check_train_results, framework_iterator
 from ray.tune.registry import register_env
@@ -64,7 +67,7 @@ class TestSupportedMultiAgentPolicyGradient(unittest.TestCase):
             "PPO",
             (
                 PPOConfig()
-                .rollouts(num_rollout_workers=1, rollout_fragment_length=10)
+                .env_runners(num_env_runners=1, rollout_fragment_length=10)
                 .training(num_sgd_iter=1, train_batch_size=10, sgd_minibatch_size=1)
             ),
         )
@@ -95,7 +98,7 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
             (
                 SACConfig()
                 .environment(normalize_actions=False)
-                .rollouts(num_rollout_workers=0)
+                .env_runners(num_env_runners=0)
                 .training(replay_buffer_config={"capacity": 1000})
             ),
         )

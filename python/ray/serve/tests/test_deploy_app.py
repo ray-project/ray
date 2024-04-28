@@ -30,7 +30,11 @@ from ray.serve._private.test_utils import (
     check_num_replicas_lte,
 )
 from ray.serve.context import _get_global_client
-from ray.serve.schema import ServeDeploySchema, ServeInstanceDetails
+from ray.serve.schema import (
+    ServeApplicationSchema,
+    ServeDeploySchema,
+    ServeInstanceDetails,
+)
 from ray.serve.tests.common.remote_uris import (
     TEST_DAG_PINNED_URI,
     TEST_RUNTIME_ENV_PINNED_URI,
@@ -1208,6 +1212,167 @@ def test_redeploy_old_config_after_failed_deployment(
     client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
 
     wait_for_condition(check_application_running)
+
+
+def test_deploy_does_not_affect_dynamic_apps(client: ServeControllerClient):
+    """
+    Deploy a set of apps via the declarative API (REST API) and then a dynamic
+    app via the imperative API (`serve.run`).
+
+    Check that applying a new config via the declarative API does not affect
+    the app deployed using the imperative API.
+    """
+
+    config = ServeDeploySchema(
+        applications=[
+            ServeApplicationSchema(
+                name="declarative-app-1",
+                route_prefix="/app-1",
+                import_path="ray.serve.tests.test_config_files.world.DagNode",
+            ),
+        ],
+    )
+    client.deploy_apps(config)
+
+    def check_application_running(
+        name: str, route_prefix: str, *, msg: str = "wonderful world"
+    ):
+        status = serve.status().applications[name]
+        assert status.status == "RUNNING"
+        assert requests.post(f"http://localhost:8000{route_prefix}/").text == msg
+        return True
+
+    wait_for_condition(
+        check_application_running, name="declarative-app-1", route_prefix="/app-1"
+    )
+
+    # Now `serve.run` a dynamic app.
+    @serve.deployment
+    class D:
+        def __call__(self, *args) -> str:
+            return "Hello!"
+
+    serve.run(D.bind(), name="dynamic-app", route_prefix="/dynamic")
+    wait_for_condition(
+        check_application_running,
+        name="dynamic-app",
+        route_prefix="/dynamic",
+        msg="Hello!",
+    )
+
+    # Add a new app via declarative API.
+    # Existing declarative app and dynamic app should not be affected.
+    config.applications.append(
+        ServeApplicationSchema(
+            name="declarative-app-2",
+            route_prefix="/app-2",
+            import_path="ray.serve.tests.test_config_files.world.DagNode",
+        ),
+    )
+    client.deploy_apps(config)
+
+    wait_for_condition(
+        check_application_running, name="declarative-app-2", route_prefix="/app-2"
+    )
+    wait_for_condition(
+        check_application_running, name="declarative-app-1", route_prefix="/app-1"
+    )
+    wait_for_condition(
+        check_application_running,
+        name="dynamic-app",
+        route_prefix="/dynamic",
+        msg="Hello!",
+    )
+
+    # Delete one of the apps via declarative API.
+    # Other declarative app and dynamic app should not be affected.
+    config.applications.pop(0)
+    client.deploy_apps(config)
+
+    wait_for_condition(
+        check_application_running, name="declarative-app-2", route_prefix="/app-2"
+    )
+    wait_for_condition(
+        check_application_running,
+        name="dynamic-app",
+        route_prefix="/dynamic",
+        msg="Hello!",
+    )
+
+    wait_for_condition(lambda: "declarative-app-1" not in serve.status().applications)
+
+    # Now overwrite the declarative app with a dynamic app with the same name.
+    # On subsequent declarative apply, that app should not be affected.
+    serve.run(D.bind(), name="declarative-app-2", route_prefix="/app-2")
+    wait_for_condition(
+        check_application_running,
+        name="declarative-app-2",
+        route_prefix="/app-2",
+        msg="Hello!",
+    )
+
+    config.applications = [
+        ServeApplicationSchema(
+            name="declarative-app-1",
+            route_prefix="/app-1",
+            import_path="ray.serve.tests.test_config_files.world.DagNode",
+        ),
+    ]
+    client.deploy_apps(config)
+
+    wait_for_condition(
+        check_application_running,
+        name="declarative-app-1",
+        route_prefix="/app-1",
+    )
+    wait_for_condition(
+        check_application_running,
+        name="dynamic-app",
+        route_prefix="/dynamic",
+        msg="Hello!",
+    )
+    wait_for_condition(
+        check_application_running,
+        name="declarative-app-2",
+        route_prefix="/app-2",
+        msg="Hello!",
+    )
+
+    # Verify that the controller does not delete the dynamic apps on recovery.
+    ray.kill(client._controller, no_restart=False)
+    wait_for_condition(
+        check_application_running,
+        name="dynamic-app",
+        route_prefix="/dynamic",
+        msg="Hello!",
+    )
+    wait_for_condition(
+        check_application_running,
+        name="declarative-app-2",
+        route_prefix="/app-2",
+        msg="Hello!",
+    )
+
+    # Now overwrite the dynamic app with a declarative one and check that it gets
+    # deleted upon another apply that doesn't include it.
+    config.applications = [
+        ServeApplicationSchema(
+            name="declarative-app-2",
+            route_prefix="/app-2",
+            import_path="ray.serve.tests.test_config_files.world.DagNode",
+        ),
+    ]
+    client.deploy_apps(config)
+    wait_for_condition(
+        check_application_running,
+        name="declarative-app-2",
+        route_prefix="/app-2",
+    )
+
+    config.applications = []
+    client.deploy_apps(config)
+
+    wait_for_condition(lambda: "declarative-app-2" not in serve.status().applications)
 
 
 def test_change_route_prefix(client: ServeControllerClient):

@@ -112,7 +112,7 @@ def check_memory_leaks(
             results_per_category["policy"].extend(test)
 
         # Testing this only makes sense if the learner API is disabled.
-        if not policy.config.get("_enable_new_api_stack", False):
+        if not policy.config.get("enable_rl_module_and_learner", False):
             # Call `learn_on_batch()` n times.
             dummy_batch = policy._get_dummy_batch_from_view_requirements(batch_size=16)
 
@@ -172,7 +172,9 @@ def check_memory_leaks(
         if test:
             results_per_category["rollout_worker"].extend(test)
 
-    if "learner" in to_check and algorithm.config.get("_enable_new_api_stack", False):
+    if "learner" in to_check and algorithm.config.get(
+        "enable_rl_module_and_learner", False
+    ):
         learner_group = algorithm.learner_group
         assert learner_group._is_local, (
             "This test will miss leaks hidden in remote "

@@ -1,14 +1,16 @@
 import {
+  Alert,
+  AlertProps,
   Button,
-  createStyles,
-  makeStyles,
+  Link,
   Menu,
   MenuItem,
   Paper,
   TextField,
   Tooltip,
-} from "@material-ui/core";
-import { Alert, AlertProps } from "@material-ui/lab";
+} from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import React, { useContext, useEffect, useState } from "react";
 import { RiExternalLinkLine } from "react-icons/ri";
 
@@ -438,6 +440,7 @@ export const Metrics = () => {
               onChange={({ target: { value } }) => {
                 setTimeRangeOption(value as TimeRangeOptions);
               }}
+              variant="standard"
             >
               {Object.entries(TimeRangeOptions).map(([key, value]) => (
                 <MenuItem key={key} value={value}>
@@ -496,7 +499,7 @@ const useMetricsSectionStyles = makeStyles((theme) =>
       overflow: "hidden",
       [theme.breakpoints.up("md")]: {
         // Calculate max width based on 1/3 of the total width minus padding between cards
-        width: `calc((100% - ${theme.spacing(3)}px * 2) / 3)`,
+        width: `calc((100% - ${theme.spacing(3)} * 2) / 3)`,
       },
     },
     grafanaEmbed: {
@@ -540,8 +543,8 @@ const MetricsSection = ({
             <Paper
               key={pathParams}
               className={classes.chart}
-              elevation={1}
               variant="outlined"
+              elevation={0}
             >
               <iframe
                 key={title}
@@ -586,13 +589,13 @@ export const GrafanaNotRunningAlert = ({
       <br />
       Time-series charts are hidden because either Prometheus or Grafana server
       is not detected. Follow{" "}
-      <a
+      <Link
         href="https://docs.ray.io/en/latest/cluster/metrics.html"
         target="_blank"
         rel="noreferrer"
       >
         these instructions
-      </a>{" "}
+      </Link>{" "}
       to set them up and refresh this page.
     </Alert>
   ) : null;

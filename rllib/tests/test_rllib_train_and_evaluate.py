@@ -8,7 +8,7 @@ from unittest import mock
 import ray
 from ray import air, tune
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.test_utils import framework_iterator
 from ray.tune.registry import get_trainable_cls
 
@@ -96,7 +96,7 @@ def learn_test_plus_evaluate(algo: str, env="CartPole-v1"):
         # call rllib train here to see if the RLModule API is enabled.
         algo_cls = get_trainable_cls(algo)
         config = algo_cls.get_default_config()
-        if config._enable_new_api_stack:
+        if config.enable_rl_module_and_learner:
             eval_ = ', \\"evaluation_config\\": {}'
         else:
             eval_ = ', \\"evaluation_config\\": {\\"explore\\": false}'
@@ -183,7 +183,7 @@ def learn_test_multi_agent_plus_evaluate(algo: str):
             .get_default_config()
             .environment(MultiAgentCartPole)
             .framework(fw)
-            .rollouts(num_rollout_workers=1)
+            .env_runners(num_env_runners=1)
             .multi_agent(
                 policies={"pol0", "pol1"},
                 policy_mapping_fn=policy_fn,

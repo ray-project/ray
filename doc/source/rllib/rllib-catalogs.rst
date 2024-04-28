@@ -244,7 +244,7 @@ The following examples showcase such modifications:
         Note that, if you only want to inject your Encoder into a single :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, the recommended workflow is to inherit
         from an existing RL Module and place the Encoder there.
 
-        .. literalinclude:: ../../../rllib/examples/catalog/mobilenet_v2_encoder.py
+        .. literalinclude:: ../../../rllib/examples/catalogs/mobilenet_v2_encoder.py
            :language: python
            :start-after: __sphinx_doc_begin__
            :end-before: __sphinx_doc_end__
@@ -257,7 +257,7 @@ The following examples showcase such modifications:
         - How to write a custom :py:class:`~ray.rllib.models.distributions.Distribution`
         - How to inject the custom action distribution into a :py:class:`~ray.rllib.core.models.catalog.Catalog`
 
-        .. literalinclude:: ../../../rllib/examples/catalog/custom_action_distribution.py
+        .. literalinclude:: ../../../rllib/examples/catalogs/custom_action_distribution.py
            :language: python
            :start-after: __sphinx_doc_begin__
            :end-before: __sphinx_doc_end__
@@ -281,7 +281,7 @@ The following are typical requirements and steps for writing a new Catalog:
 - Does the Algorithm need a special tokenizer? Overwrite :py:meth:`~ray.rllib.core.models.catalog.Catalog.get_tokenizer_config`.
 - Does the Algorithm not need an Encoder at all? Overwrite :py:meth:`~ray.rllib.core.models.catalog.Catalog._determine_components_hook`.
 
-The following example shows our implementation of a Catalog for PPO that follows the above steps:
+The following example shows the implementation of a Catalog for the PPO algorithm based on the preceeding steps:
 
 .. dropdown:: **Catalog for PPORLModules**
 
