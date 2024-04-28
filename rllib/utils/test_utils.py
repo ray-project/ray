@@ -112,7 +112,7 @@ def add_rllib_example_script_args(
     parser.add_argument(
         "--num-env-runners",
         type=int,
-        default=2,
+        default=None,
         help="The number of (remote) EnvRunners to use for the experiment.",
     )
     parser.add_argument(
@@ -1283,7 +1283,7 @@ def run_learning_tests_from_yaml_or_py(
 #  - example scripts
 def run_rllib_example_script_experiment(
     base_config: "AlgorithmConfig",
-    args: argparse.Namespace,
+    args: Optional[argparse.Namespace] = None,
     *,
     stop: Optional[Dict] = None,
     success_metric: Optional[Dict] = None,
@@ -1344,6 +1344,10 @@ def run_rllib_example_script_experiment(
         The last ResultDict from a --no-tune run OR the tune.Tuner.fit()
         results.
     """
+    if args is None:
+        parser = add_rllib_example_script_args()
+        args = parser.parse_args()
+
     # Initialize Ray.
     ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
 
@@ -1356,31 +1360,35 @@ def run_rllib_example_script_experiment(
         }
 
     # Enhance the `base_config`, based on provided `args`.
-    config = (
-        # Set the framework.
-        base_config.framework(args.framework)
-        # Enable the new API stack?
-        .api_stack(
-            enable_rl_module_and_learner=args.enable_new_api_stack,
-            enable_env_runner_and_connector_v2=args.enable_new_api_stack,
+    # Set the framework.
+    config = base_config.framework(args.framework)
+    # Enable the new API stack?
+    if args.enable_new_api_stack:
+        config.api_stack(
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
         )
-        # Define EnvRunner/RolloutWorker scaling and behavior.
-        .env_runners(num_env_runners=args.num_env_runners)
-        # Define compute resources used.
-        .resources(
-            # Old stack.
-            num_gpus=0 if args.enable_new_api_stack else args.num_gpus,
-            # New stack.
+    # Define compute resources used.
+    if config.enable_rl_module_and_learner:
+        config.resources(
+            num_gpus=0,
             num_learner_workers=args.num_gpus,
-            num_gpus_per_learner_worker=1 if torch.cuda.is_available() else 0,
+            num_gpus_per_learner_worker=(
+                1 if torch.cuda.is_available() and args.num_gpus > 0
+                else 0
+            ),
             num_cpus_for_local_worker=1,
         )
-    )
+    else:
+        config.resources(num_gpus=args.num_gpus, num_cpus_for_local_worker=1)
+    # Define EnvRunner/RolloutWorker scaling and behavior.
+    if args.num_env_runners is not None:
+        config.env_runners(num_env_runners=args.num_env_runners)
 
     # Run the experiment w/o Tune (directly operate on the RLlib Algorithm object).
     if args.no_tune:
         algo = config.build()
-        for _ in range(args.stop_iters):
+        for _ in range(stop.get("training_iteration", args.stop_iters)):
             results = algo.train()
             print(f"R={results[ENV_RUNNER_RESULTS]['episode_return_mean']}", end="")
             if EVALUATION_RESULTS in results:
@@ -1464,16 +1472,25 @@ def run_rllib_example_script_experiment(
 
     # If run as a test, check whether we reached the specified success criteria.
     if args.as_test:
+        # Success metric not provided, try extracting it from `stop`.
         if success_metric is None:
-            success_metric = {
-                f"{ENV_RUNNER_RESULTS}/episode_return_mean": args.stop_reward,
-            }
+            for try_it in [
+                f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/episode_return_mean",
+                f"{ENV_RUNNER_RESULTS}/episode_return_mean",
+            ]:
+                if try_it in stop:
+                    success_metric = {try_it: stop[try_it]}
+                    break
+            if success_metric is None:
+                success_metric = {
+                    f"{ENV_RUNNER_RESULTS}/episode_return_mean": args.stop_reward,
+                }
         # TODO (sven): Make this work for more than one metric (AND-logic?).
         metric = next(iter(success_metric.keys()))
         check_learning_achieved(
             tune_results=results,
-            min_value=success_metric[metric],
             metric=metric,
+            min_value=success_metric[metric],
         )
     ray.shutdown()
     return results

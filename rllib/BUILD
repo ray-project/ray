@@ -287,9 +287,8 @@ py_test(
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/dqn/cartpole_dqn_envrunner.py"],
-    args = ["--dir=tuned_examples/dqn"]
+    srcs = ["tuned_examples/dqn/cartpole_dqn_envrunner.py"],
+    args = ["--as-test"]
 )
 
 py_test(
@@ -358,24 +357,21 @@ py_test(
 # PPO
 # w/ new EnvRunner
 py_test(
-    name = "learning_tests_cartpole_ppo_w_env_runner",
+    name = "learning_tests_cartpole_ppo_envrunner",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "no_tf_static_graph"],
     size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/ppo/cartpole_ppo_envrunner.py"],
-    args = ["--dir=tuned_examples/ppo"]
+    srcs = ["tuned_examples/ppo/cartpole_ppo_envrunner.py"],
+    args = ["--as-test"]
 )
 
-# TODO (sven): Remove the torch only flag for this test (tf2 is still very slow for EnvRunner and we need to debug this further).
 py_test(
-    name = "learning_tests_pendulum_ppo_w_env_runner",
+    name = "learning_tests_pendulum_ppo_envrunner",
     main = "tests/run_regression_tests.py",
     tags = ["torch_only", "team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
     size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/ppo/pendulum_ppo_envrunner.py"],
-    args = ["--dir=tuned_examples/ppo"]
+    srcs = ["tuned_examples/ppo/pendulum_ppo_envrunner.py"],
+    args = ["--as-test"]
 )
 
 # w/o EnvRunner (using RolloutWorker)
@@ -445,9 +441,8 @@ py_test(
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_pendulum", "learning_tests_continuous"],
     size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/sac/pendulum_sac_envrunner.py"],
-    args = ["--dir=tuned_examples/sac"]
+    srcs = ["tuned_examples/sac/pendulum_sac_envrunner.py"],
+    args = ["--as-test"]
 )
 
 py_test(
