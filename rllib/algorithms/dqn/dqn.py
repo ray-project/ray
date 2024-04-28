@@ -24,11 +24,7 @@ from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
-from ray.rllib.policy.sample_batch import (
-    DEFAULT_POLICY_ID,
-    MultiAgentBatch,
-    SampleBatch,
-)
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.execution.train_ops import (
     train_one_step,
     multi_gpu_train_one_step,
@@ -53,8 +49,6 @@ from ray.rllib.utils.metrics import (
     LEARNER_UPDATE_TIMER,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_SAMPLED_LIFETIME,
-    NUM_AGENT_STEPS_TRAINED,
-    NUM_AGENT_STEPS_TRAINED_LIFETIME,
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_TRAINED,
@@ -624,18 +618,26 @@ class DQN(Algorithm):
             # Reduce EnvRunner metrics over the n EnvRunners.
             self.metrics.log_n_dicts(env_runner_metrics, key=ENV_RUNNER_RESULTS)
 
-        self.metrics.log_value(NUM_ENV_STEPS_SAMPLED_LIFETIME, self.metrics.peek(
-            ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED, default=0
-        ), reduce="sum")
-        self.metrics.log_value(NUM_EPISODES_LIFETIME, self.metrics.peek(
-            ENV_RUNNER_RESULTS, NUM_EPISODES, default=0
-        ), reduce="sum")
-        self.metrics.log_dict(self.metrics.peek(
-            ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED, default={}
-        ), key=NUM_AGENT_STEPS_SAMPLED_LIFETIME, reduce="sum")
-        self.metrics.log_dict(self.metrics.peek(
-            ENV_RUNNER_RESULTS, NUM_MODULE_STEPS_SAMPLED, default={}
-        ), key=NUM_MODULE_STEPS_SAMPLED_LIFETIME, reduce="sum")
+        self.metrics.log_value(
+            NUM_ENV_STEPS_SAMPLED_LIFETIME,
+            self.metrics.peek(ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED, default=0),
+            reduce="sum",
+        )
+        self.metrics.log_value(
+            NUM_EPISODES_LIFETIME,
+            self.metrics.peek(ENV_RUNNER_RESULTS, NUM_EPISODES, default=0),
+            reduce="sum",
+        )
+        self.metrics.log_dict(
+            self.metrics.peek(ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED, default={}),
+            key=NUM_AGENT_STEPS_SAMPLED_LIFETIME,
+            reduce="sum",
+        )
+        self.metrics.log_dict(
+            self.metrics.peek(ENV_RUNNER_RESULTS, NUM_MODULE_STEPS_SAMPLED, default={}),
+            key=NUM_MODULE_STEPS_SAMPLED_LIFETIME,
+            reduce="sum",
+        )
 
         if self.config.count_steps_by == "agent_steps":
             current_ts = sum(
@@ -692,7 +694,7 @@ class DQN(Algorithm):
                             LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED
                         ),
                         reduce="sum",
-                    ) 
+                    )
                     self.metrics.log_dict(
                         {
                             (LEARNER_RESULTS, mid, NUM_MODULE_STEPS_TRAINED_LIFETIME): (

@@ -1,8 +1,9 @@
 from typing import Dict, Mapping
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.dqn.torch.dqn_rainbow_torch_learner import DQNRainbowTorchLearner
-from ray.rllib.algorithms.dqn.dqn_tf_policy import PRIO_WEIGHTS
+from ray.rllib.algorithms.dqn.torch.dqn_rainbow_torch_learner import (
+    DQNRainbowTorchLearner,
+)
 from ray.rllib.algorithms.sac.sac import SACConfig
 from ray.rllib.algorithms.sac.sac_learner import (
     LOGPS_KEY,

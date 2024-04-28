@@ -1,4 +1,3 @@
-import copy
 from typing import Any, Dict, Optional, Tuple, Union
 
 import tree  # pip install dm_tree
@@ -282,7 +281,7 @@ class MetricsLogger:
             if extended_key in self.stats:
                 self.stats[extended_key].merge(stat_or_value, shuffle=False)
             # Use incoming Stats object's values, but create a new Stats object (around
-            # these values) to not mess with the original Stats object. 
+            # these values) to not mess with the original Stats object.
             else:
                 self.stats[extended_key] = Stats.similar_to(
                     stat_or_value, init_value=stat_or_value.values

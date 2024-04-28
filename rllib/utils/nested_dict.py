@@ -264,22 +264,22 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
 
     def __delitem__(self, k: SeqStrType) -> None:
         """Deletes item at `k`."""
-        ks, ns = [], []
+        keys, ns = [], []
         data_ptr = self._data
-        for k in _flatten_index(k):
+        for key in _flatten_index(k):
             if isinstance(data_ptr, NestedDict):
                 data_ptr = data_ptr._data
-            if k not in data_ptr:
-                raise KeyError(str(ks + [k]))
-            ks.append(k)
+            if key not in data_ptr:
+                raise KeyError(str(keys + [key]))
+            keys.append(key)
             ns.append(data_ptr)
-            data_ptr = data_ptr[k]
+            data_ptr = data_ptr[key]
 
-        del ns[-1][ks[-1]]
+        del ns[-1][keys[-1]]
 
-        for i in reversed(range(len(ks) - 1)):
+        for i in reversed(range(len(keys) - 1)):
             if not ns[i + 1]:
-                del ns[i][ks[i]]
+                del ns[i][keys[i]]
 
     def __len__(self) -> int:
         """Returns the length of the NestedDict.

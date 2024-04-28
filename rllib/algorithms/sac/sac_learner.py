@@ -1,14 +1,11 @@
-import abc
 import numpy as np
 
-from typing import Any, Dict
+from typing import Dict
 
 from ray.rllib.algorithms.dqn.dqn_rainbow_learner import DQNRainbowLearner
-from ray.rllib.algorithms.sac.sac import SACConfig
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
-from ray.rllib.utils.metrics import LAST_TARGET_UPDATE_TS, NUM_TARGET_UPDATES
 from ray.rllib.utils.typing import ModuleID, TensorType
 
 # Now, this is double defined: In `SACRLModule` and here. I would keep it here

@@ -30,12 +30,7 @@ TD_ERROR_MEAN_KEY = "td_error_mean"
 class DQNRainbowLearner(Learner):
     @override(Learner)
     def additional_update_for_module(
-        self,
-        *,
-        module_id: ModuleID,
-        config: "DQNConfig",
-        timestep: int,
-        **kwargs
+        self, *, module_id: ModuleID, config: "DQNConfig", timestep: int, **kwargs
     ) -> Dict[str, Any]:
         """Updates the target Q Networks."""
         results = super().additional_update_for_module(

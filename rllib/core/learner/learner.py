@@ -20,7 +20,6 @@ from typing import (
 )
 
 import ray
-import tree
 from ray.rllib.connectors.learner.learner_connector_pipeline import (
     LearnerConnectorPipeline,
 )
@@ -47,6 +46,7 @@ from ray.rllib.utils.deprecation import (
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
+    LEARNER_RESULTS,
     NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_TRAINED,
     NUM_MODULE_STEPS_TRAINED,
@@ -1391,7 +1391,7 @@ class Learner:
 
         # Reduce results across all minibatch update steps.
         return self.metrics.reduce()
-        
+
     def _set_slicing_by_batch_id(
         self, batch: MultiAgentBatch, *, value: bool
     ) -> MultiAgentBatch:
@@ -1639,7 +1639,7 @@ class Learner:
 
     def _log_steps_trained_metrics(self, episodes):
         # Logs this iteration's steps trained, based on given `episodes`.
-        env_steps = sum(len(s) for e in episodes)
+        env_steps = sum(len(e) for e in episodes)
         log_dict = defaultdict(dict)
         for sa_episode in self._learner_connector.single_agent_episode_iterator(
             episodes, agents_that_stepped_only=False
