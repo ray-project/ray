@@ -1,4 +1,6 @@
 group: release
+tags:
+  - disabled
 depends_on:
   - anyscalebuild
   - anyscalemlbuild

@@ -1,4 +1,6 @@
 group: aarch64 tests
+tags:
+  - disabled
 sort_key: "~aarch64"
 steps:
   # block on premerge

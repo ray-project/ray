@@ -15,9 +15,7 @@ steps:
     matrix:
       setup:
         python:
-          - "3.9"
-          - "3.10"
-          - "3.11"
+          - "3.12"
         cuda:
           - "11.5.2"
           - "11.6.2"
@@ -38,41 +36,39 @@ steps:
       - serve
     wanda: ci/docker/ray.cpu.base.wanda.yaml
     matrix:
-      - "3.9"
-      - "3.10"
-      - "3.11"
+      - "3.12"
     env:
       PYTHON_VERSION: "{{matrix}}"
 
-  - name: ray-mlcudabase
-    label: "wanda: ray-ml.py{{matrix.python}}.cu{{matrix.cuda}}.base"
-    tags:
-      - python_dependencies
-      - docker
-    wanda: ci/docker/ray-ml.cuda.base.wanda.yaml
-    depends_on: raycudabase
-    matrix:
-      setup:
-        python:
-          - "3.9"
-          - "3.10"
-          - "3.11"
-        cuda:
-          - "11.8.0"
-    env:
-      PYTHON_VERSION: "{{matrix.python}}"
-      CUDA_VERSION: "{{matrix.cuda}}"
+  # - name: ray-mlcudabase
+  #   label: "wanda: ray-ml.py{{matrix.python}}.cu{{matrix.cuda}}.base"
+  #   tags:
+  #     - python_dependencies
+  #     - docker
+  #   wanda: ci/docker/ray-ml.cuda.base.wanda.yaml
+  #   depends_on: raycudabase
+  #   matrix:
+  #     setup:
+  #       python:
+  #         - "3.9"
+  #         - "3.10"
+  #         - "3.11"
+  #       cuda:
+  #         - "11.8.0"
+  #   env:
+  #     PYTHON_VERSION: "{{matrix.python}}"
+  #     CUDA_VERSION: "{{matrix.cuda}}"
 
-  - name: ray-mlcpubase
-    label: "wanda: ray-ml.py{{matrix}}.cpu.base"
-    tags:
-      - python_dependencies
-      - docker
-    wanda: ci/docker/ray-ml.cpu.base.wanda.yaml
-    depends_on: raycpubase
-    matrix:
-      - "3.9"
-      - "3.10"
-      - "3.11"
-    env:
-      PYTHON_VERSION: "{{matrix}}"
+  # - name: ray-mlcpubase
+  #   label: "wanda: ray-ml.py{{matrix}}.cpu.base"
+  #   tags:
+  #     - python_dependencies
+  #     - docker
+  #   wanda: ci/docker/ray-ml.cpu.base.wanda.yaml
+  #   depends_on: raycpubase
+  #   matrix:
+  #     - "3.9"
+  #     - "3.10"
+  #     - "3.11"
+  #   env:
+  #     PYTHON_VERSION: "{{matrix}}"

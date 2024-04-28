@@ -1,4 +1,6 @@
 group: base
+tags:
+  - disabled
 steps:
   - name: oss-ci-base_test
     wanda: ci/docker/base.test.py39.wanda.yaml

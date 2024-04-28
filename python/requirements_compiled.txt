@@ -374,7 +374,7 @@ cryptography==38.0.1
     #   trustme
 cycler==0.12.1
     # via matplotlib
-cython==0.29.32
+cython==0.29.37
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   gpy

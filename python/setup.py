@@ -27,7 +27,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_PYTHONS = [(3, 8), (3, 9), (3, 10), (3, 11)]
+SUPPORTED_PYTHONS = [(3, 9), (3, 10), (3, 11), (3, 12)]
 # When the bazel version is updated, make sure to update it
 # in WORKSPACE file as well.
 
@@ -766,12 +766,12 @@ setuptools.setup(
         "ray distributed parallel machine-learning hyperparameter-tuning"
         "reinforcement-learning deep-learning serving python"
     ),
-    python_requires=">=3.8",
+    python_requires=">=3.9",
     classifiers=[
-        "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
     ],
     packages=setup_spec.get_packages(),
     cmdclass={"build_ext": build_ext},

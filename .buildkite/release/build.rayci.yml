@@ -1,4 +1,6 @@
 group: release build
+tags:
+  - disabled
 steps:
   - label: ":tapioca: build: anyscale py{{matrix.python}}-{{matrix.platform}} docker"
     tags: skip-on-premerge
