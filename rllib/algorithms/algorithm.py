@@ -790,7 +790,6 @@ class Algorithm(Trainable, AlgorithmBase):
                 )
                 self.workers.foreach_worker(
                     lambda w: w.set_is_policy_to_train(policies_to_train),
-                    healthy_only=True,
                 )
 
             # Sync the weights from the learner group to the rollout workers.
@@ -1255,10 +1254,9 @@ class Algorithm(Trainable, AlgorithmBase):
                     func=functools.partial(
                         _env_runner_remote, num=_num, round=_round, iter=algo_iteration
                     ),
-                    healthy_only=True,
                 )
                 results = self.evaluation_workers.fetch_ready_async_reqs(
-                    mark_healthy=True, return_obj_refs=False, timeout_seconds=0.01
+                    return_obj_refs=False, timeout_seconds=0.01
                 )
                 for wid, (env_s, ag_s, metrics, iter) in results:
                     if iter != self.iteration:
@@ -1270,10 +1268,9 @@ class Algorithm(Trainable, AlgorithmBase):
             else:
                 self.evaluation_workers.foreach_worker_async(
                     func=lambda w: (w.sample(), w.get_metrics(), algo_iteration),
-                    healthy_only=True,
                 )
                 results = self.evaluation_workers.fetch_ready_async_reqs(
-                    mark_healthy=True, return_obj_refs=False, timeout_seconds=0.01
+                    return_obj_refs=False, timeout_seconds=0.01
                 )
                 for wid, (batch, metrics, iter) in results:
                     if iter != self.iteration:
@@ -1398,10 +1395,9 @@ class Algorithm(Trainable, AlgorithmBase):
                     func=functools.partial(
                         _env_runner_remote, num=_num, round=_round, iter=algo_iteration
                     ),
-                    healthy_only=True,
                 )
                 results = self.evaluation_workers.fetch_ready_async_reqs(
-                    mark_healthy=True, return_obj_refs=False, timeout_seconds=0.01
+                    return_obj_refs=False, timeout_seconds=0.01
                 )
                 # Make sure we properly time out if we have not received any results
                 # for more than `time_out` seconds.
@@ -1444,7 +1440,7 @@ class Algorithm(Trainable, AlgorithmBase):
                     remote_worker_ids=selected_eval_worker_ids,
                 )
                 results = self.evaluation_workers.fetch_ready_async_reqs(
-                    mark_healthy=True, return_obj_refs=False, timeout_seconds=0.01
+                    return_obj_refs=False, timeout_seconds=0.01
                 )
                 # Make sure we properly time out if we have not received any results
                 # for more than `time_out` seconds.
@@ -1531,16 +1527,16 @@ class Algorithm(Trainable, AlgorithmBase):
     @OverrideToImplementCustomLogic
     @DeveloperAPI
     def restore_workers(self, workers: WorkerSet) -> None:
-        """Try syncing previously failed and restarted workers with local, if necessary.
+        """Try bringing back unhealthy EnvRunners and - if successful - sync with local.
 
         Algorithms that use custom EnvRunners may override this method to
-        disable default, and create custom restoration logics. Note that "restoring"
+        disable the default, and create custom restoration logics. Note that "restoring"
         does not include the actual restarting process, but merely what should happen
         after such a restart of a (previously failed) worker.
 
         Args:
-            workers: The WorkerSet to restore. This may be Rollout or Evaluation
-                workers.
+            workers: The WorkerSet to restore. This may be the training or the
+                evaluation WorkerSet.
         """
         # If `workers` is None, or
         # 1. `workers` (WorkerSet) does not have a local worker, and
@@ -1577,9 +1573,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 remote_worker_ids=restored,
                 # Don't update the local_worker, b/c it's the one we are synching from.
                 local_worker=False,
-                timeout_seconds=self.config.worker_restore_timeout_s,
-                # Bring back actor after successful state syncing.
-                mark_healthy=True,
+                timeout_seconds=self.config.env_runner_restore_timeout_s,
             )
 
             # Fire the callback for re-created workers.
@@ -2279,7 +2273,7 @@ class Algorithm(Trainable, AlgorithmBase):
             )
 
         # Update all EnvRunner workers.
-        self.workers.foreach_worker(fn, local_worker=True, healthy_only=True)
+        self.workers.foreach_worker(fn, local_worker=True)
 
         # Update each Learner's `policies_to_train` information, but only
         # if the arg is explicitly provided here.
@@ -2292,11 +2286,7 @@ class Algorithm(Trainable, AlgorithmBase):
 
         # Update the evaluation worker set's workers, if required.
         if evaluation_workers and self.evaluation_workers is not None:
-            self.evaluation_workers.foreach_worker(
-                fn,
-                local_worker=True,
-                healthy_only=True,
-            )
+            self.evaluation_workers.foreach_worker(fn, local_worker=True)
 
     @OldAPIStack
     def export_policy_model(
@@ -2901,7 +2891,6 @@ class Algorithm(Trainable, AlgorithmBase):
             self.workers.foreach_worker(
                 lambda w: w.set_state(ray.get(remote_state_ref)),
                 local_worker=False,
-                healthy_only=False,
             )
             if self.evaluation_workers:
                 # Avoid `state` being pickled into the remote function below.
@@ -2915,10 +2904,8 @@ class Algorithm(Trainable, AlgorithmBase):
 
                 # If evaluation workers are used, also restore the policies
                 # there in case they are used for evaluation purpose.
-                self.evaluation_workers.foreach_worker(
-                    _setup_eval_worker,
-                    healthy_only=False,
-                )
+                self.evaluation_workers.foreach_worker(_setup_eval_worker)
+
         # If necessary, restore replay data as well.
         if self.local_replay_buffer is not None:
             # TODO: Experimental functionality: Restore contents of replay
@@ -3312,7 +3299,7 @@ class Algorithm(Trainable, AlgorithmBase):
 
         # Collect the evaluation results.
         eval_results = self.evaluation_workers.fetch_ready_async_reqs(
-            mark_healthy=True, return_obj_refs=False, timeout_seconds=time_out
+            return_obj_refs=False, timeout_seconds=time_out
         )
         for wid, (batch, metrics, iter) in eval_results:
             # Skip results from an older iteration.

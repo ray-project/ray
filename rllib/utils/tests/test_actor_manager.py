@@ -165,7 +165,7 @@ class TestActorManager(unittest.TestCase):
 
         results1 = []
         for _ in range(10):
-            manager.probe_unhealthy_actors(mark_healthy=True)
+            manager.probe_unhealthy_actors()
             results1.extend(
                 manager.foreach_actor(lambda w: w.call(), timeout_seconds=0)
             )
@@ -230,7 +230,7 @@ class TestActorManager(unittest.TestCase):
 
         results = []
         for _ in range(10):
-            manager.probe_unhealthy_actors(mark_healthy=True)
+            manager.probe_unhealthy_actors()
             results.extend(manager.foreach_actor(lambda w: w.call()))
             # Wait for actors to recover.
             wait_for_restore()
@@ -251,9 +251,9 @@ class TestActorManager(unittest.TestCase):
 
         # Wait for actors to recover.
         wait_for_restore()
-        manager.probe_unhealthy_actors()
+        manager.probe_unhealthy_actors(mark_healthy=False)
 
-        # Restored actors are not marked healthy if we just do probing.
+        # Restored actors were not marked healthy (`mark_healthy=False` above).
         # Only 2 healthy actors.
         self.assertEqual(manager.num_healthy_actors(), 2)
 
@@ -355,7 +355,7 @@ class TestActorManager(unittest.TestCase):
         manager.set_actor_state(2, False)
 
         # These actors are actually healthy.
-        manager.probe_unhealthy_actors(mark_healthy=True)
+        manager.probe_unhealthy_actors()
         # Both actors are now healthy.
         self.assertEqual(len(manager.healthy_actor_ids()), 4)
 
