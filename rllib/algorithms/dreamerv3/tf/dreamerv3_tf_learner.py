@@ -13,10 +13,10 @@ import gymnasium as gym
 
 from ray.rllib.algorithms.dreamerv3.dreamerv3 import DreamerV3Config
 from ray.rllib.algorithms.dreamerv3.dreamerv3_learner import DreamerV3Learner
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import ParamDict
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
@@ -160,7 +160,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
                 gradient_tape.gradient(
                     # Take individual loss term from the registered metrics for
                     # the main module.
-                    self._metrics[DEFAULT_POLICY_ID][component.upper() + "_L_total"],
+                    self._metrics[DEFAULT_MODULE_ID][component.upper() + "_L_total"],
                     self.filter_param_dict_for_optimizer(
                         self._params, self.get_optimizer(optimizer_name=component)
                     ),
