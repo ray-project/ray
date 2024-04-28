@@ -9,6 +9,7 @@ Detailed documentation:
 https://docs.ray.io/en/master/rllib-algorithms.html#deep-q-networks-dqn-rainbow-parametric-dqn
 """  # noqa: E501
 
+from collections import defaultdict
 import logging
 from typing import Any, Callable, Dict, List, Optional, Type, Union
 import numpy as np
@@ -35,6 +36,7 @@ from ray.rllib.execution.train_ops import (
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils import deep_update
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.replay_buffers.utils import (
     update_priorities_in_episode_replay_buffer,
     update_priorities_in_replay_buffer,
@@ -617,31 +619,45 @@ class DQN(Algorithm):
             # Reduce EnvRunner metrics over the n EnvRunners.
             self.metrics.log_n_dicts(env_runner_metrics, key=ENV_RUNNER_RESULTS)
 
+        self.metrics.log_value(NUM_ENV_STEPS_SAMPLED_LIFETIME, self.metrics.peek(
+            ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED, default=0
+        ))
+        self.metrics.log_value(NUM_EPISODES_LIFETIME, self.metrics.peek(
+            ENV_RUNNER_RESULTS, NUM_EPISODES, default=0
+        ))
+        self.metrics.log_dict(self.metrics.peek(
+            ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED, default={}
+        ), key=NUM_AGENT_STEPS_SAMPLED_LIFETIME)
+        self.metrics.log_dict(self.metrics.peek(
+            ENV_RUNNER_RESULTS, NUM_MODULE_STEPS_SAMPLED, default={}
+        ), key=NUM_MODULE_STEPS_SAMPLED_LIFETIME)
+
+
         # TODO (sven): Move into Algorithm utility method.
         # Log lifetime counts for env- and agent steps sampled.
-        self.metrics.log_dict(
-            {
-                NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                    ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED, default=0
-                ),
-                NUM_AGENT_STEPS_SAMPLED_LIFETIME: {
-                    aid: self.metrics.peek(
-                        ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED, aid, default=0
-                    )
-                    for aid in self.metrics.peek(NUM_AGENT_STEPS_SAMPLED_LIFETIME)
-                },
-                NUM_MODULE_STEPS_SAMPLED_LIFETIME: {
-                    mid: self.metrics.peek(
-                        ENV_RUNNER_RESULTS, NUM_MODULE_STEPS_SAMPLED, mid, default=0
-                    )
-                    for mid in self.metrics.peek(NUM_MODULE_STEPS_SAMPLED_LIFETIME)
-                },
-                NUM_EPISODES_LIFETIME: self.metrics.peek(
-                    ENV_RUNNER_RESULTS, NUM_EPISODES, default=0
-                ),
-            },
-            reduce="sum",
-        )
+        #self.metrics.log_dict(
+        #    {
+        #        NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
+        #            ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED, default=0
+        #        ),
+        #        NUM_AGENT_STEPS_SAMPLED_LIFETIME: {
+        #            aid: self.metrics.peek(
+        #                ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED, aid, default=0
+        #            )
+        #            for aid in self.metrics.peek(NUM_AGENT_STEPS_SAMPLED_LIFETIME)
+        #        },
+        #        NUM_MODULE_STEPS_SAMPLED_LIFETIME: {
+        #            mid: self.metrics.peek(
+        #                ENV_RUNNER_RESULTS, NUM_MODULE_STEPS_SAMPLED, mid, default=0
+        #            )
+        #            for mid in self.metrics.peek(NUM_MODULE_STEPS_SAMPLED_LIFETIME)
+        #        },
+        #        NUM_EPISODES_LIFETIME: self.metrics.peek(
+        #            ENV_RUNNER_RESULTS, NUM_EPISODES, default=0
+        #        ),
+        #    },
+        #    reduce="sum",
+        #)
 
         if self.config.count_steps_by == "agent_steps":
             current_ts = sum(
@@ -680,22 +696,13 @@ class DQN(Algorithm):
                     learner_results = self.learner_group.update_from_batch(train_batch)
                     # Isolate TD-errors from result dicts (we should not log these, they
                     # might be very large).
-                    td_errors = {
-                        mid: {TD_ERROR_KEY: res.pop(TD_ERROR_KEY)}
-                        for mid, res in learner_results.items()
-                        if TD_ERROR_KEY in res
-                    }
-                    self.metrics.log_dict(
-                        learner_results,
-                        key=LEARNER_RESULTS,
-                        # TODO (sven): For now, as we do NOT use MetricsLogger inside
-                        #  Learner and LearnerGroup, we assume here that the
-                        #  Learner/LearnerGroup-returned values are absolute (and thus
-                        #  require a reduce window of just 1 (take as-is)). Remove the
-                        #  window setting below, once Learner/LearnerGroup themselves
-                        #  use MetricsLogger.
-                        window=1,
-                    )
+                    td_errors = defaultdict(list)
+                    for res in learner_results:
+                        for mid, m_res in res.items():
+                            if TD_ERROR_KEY in m_res:
+                                td_errors[mid].extend(convert_to_numpy(m_res.pop(TD_ERROR_KEY).peek()))
+                    td_errors = {mid: {TD_ERROR_KEY: np.concatenate(s, axis=0)} for mid, s in td_errors.items()}
+                    self.metrics.log_n_dicts(learner_results, key=LEARNER_RESULTS)
                     # TODO (sven): Move these counters into Learners and add
                     #  module-steps and agent-steps trained and sampled.
                     self.metrics.log_dict(
@@ -719,7 +726,7 @@ class DQN(Algorithm):
 
                 # Update the target networks, if necessary.
                 with self.metrics.log_time((TIMERS, LEARNER_ADDITIONAL_UPDATE_TIMER)):
-                    modules_to_update = set(learner_results.keys()) - {ALL_MODULES}
+                    modules_to_update = set(learner_results[0].keys()) - {ALL_MODULES}
                     additional_results = self.learner_group.additional_update(
                         module_ids_to_update=modules_to_update,
                         timestep=current_ts,
@@ -730,24 +737,7 @@ class DQN(Algorithm):
                         ),
                     )
                     # Add the additional results to the training results, if any.
-                    self.metrics.log_dict(
-                        additional_results,
-                        key=LEARNER_RESULTS,
-                        # TODO (sven): For now, as we do NOT use MetricsLogger inside
-                        #  Learner and LearnerGroup, we assume here that the Learner/
-                        #  LearnerGroup-returned values are absolute (and thus require a
-                        #  reduce window of just 1 (take as-is)). Remove the window
-                        #  setting below, once Learner/LearnerGroup themselves use
-                        #  MetricsLogger.
-                        window=1,
-                    )
-                    # TODO (sven): Move this count increase into Learner
-                    #  `additional_update()` once MetricsLogger is present in Learner.
-                    self.metrics.log_value(
-                        (LEARNER_RESULTS, NUM_TARGET_UPDATES),
-                        value=additional_results[DEFAULT_POLICY_ID][NUM_TARGET_UPDATES],
-                        reduce="sum",
-                    )
+                    self.metrics.log_n_dicts(additional_results, key=LEARNER_RESULTS)
 
             # Update weights and global_vars - after learning on the local worker -
             # on all remote workers.

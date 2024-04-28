@@ -3131,13 +3131,16 @@ class Algorithm(Trainable, AlgorithmBase):
         return from_config(ReplayBuffer, config["replay_buffer_config"])
 
     def _run_one_training_iteration(self) -> Tuple[ResultDict, "TrainIterCtx"]:
-        """Runs one training iteration (self.iteration will be +1 after this).
+        """Runs one training iteration (`self.iteration` will be +1 after this).
 
-        Calls `self.training_step()` repeatedly until the minimum time (sec),
-        sample- or training steps have been reached.
+        Calls `self.training_step()` repeatedly until the configured minimum time (sec),
+        minimum sample- or minimum training steps have been reached.
 
         Returns:
-            The results dict from the training iteration.
+            The ResultDict from the last call to `training_step()`. Note that even
+            though we only return the last ResultDict, the user stil has full control
+            over the history and reduce behavior of individual metrics at the time these
+            metrics are logged with `self.metrics.log_...()`.
         """
         with self._timers[TRAINING_ITERATION_TIMER]:
             # In case we are training (in a thread) parallel to evaluation,

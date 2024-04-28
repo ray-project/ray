@@ -186,9 +186,9 @@ class MetricsLogger:
         Traverses through all leafs of `stats_dict` and - if a path cannot be found in
         this logger yet, will add the `Stats` found at the leaf under that new key.
         If a path already exists, will merge the found leaf (`Stats`) with the ones
-        already logged before to `self`. This way, `stats_dict` does NOT have to have
+        already logged before. This way, `stats_dict` does NOT have to have
         the same structure as what has already been logged to `self`, but can be used to
-        log values under entirely new keys/key paths.
+        log values under new keys or nested key paths.
 
         .. testcode::
             from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
@@ -255,7 +255,8 @@ class MetricsLogger:
                 in which the internal values list would otherwise grow indefinitely,
                 for example if reduce is None and there is no `window` provided.
         """
-        stats_dict = NestedDict(convert_to_numpy(stats_dict))
+        #stats_dict = NestedDict(convert_to_numpy(stats_dict))
+        stats_dict = NestedDict(stats_dict)
         prefix_key = force_tuple(key)
 
         for key, stat_or_value in stats_dict.items():
@@ -281,12 +282,15 @@ class MetricsLogger:
                         clear_on_reduce=clear_on_reduce,
                     )
 
+            # Merge existing Stats with incoming one.
             if extended_key in self.stats:
-                # Merge existing Stats with incoming one.
                 self.stats[extended_key].merge(stat_or_value, shuffle=False)
+            # Use incoming Stats object's values, but create a new Stats object (around
+            # these values) to not mess with the original Stats object. 
             else:
-                # Make a copy to not mess with the incoming stats objects.
-                self.stats[extended_key] = copy.deepcopy(stat_or_value)
+                self.stats[extended_key] = Stats.similar_to(
+                    stat_or_value, init_value=stat_or_value.values
+                )
 
     def log_n_dicts(
         self,

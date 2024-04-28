@@ -100,35 +100,6 @@ class SACTorchLearner(SACLearner, TorchLearner):
         )
 
     @override(TorchLearner)
-    def compute_gradients(
-        self, loss_per_module: Dict[str, TensorType], **kwargs
-    ) -> ParamDict:
-        for optim in self._optimizer_parameters:
-            optim.zero_grad(set_to_none=True)
-
-        grads = {}
-
-        # Calculate gradients for each loss by its optimizer.
-        # TODO (sven): Maybe we rename to `actor`, `critic`. We then also
-        # need to either add to or change in the `Learner` constants.
-        for component in (
-            ["qf", "policy", "alpha"] + ["qf_twin"] if self.config.twin_q else []
-        ):
-            self._metrics[DEFAULT_POLICY_ID][component + "_loss"].backward(
-                retain_graph=True
-            )
-            grads.update(
-                {
-                    pid: p.grad
-                    for pid, p in self.filter_param_dict_for_optimizer(
-                        self._params, self.get_optimizer(optimizer_name=component)
-                    ).items()
-                }
-            )
-
-        return grads
-
-    @override(TorchLearner)
     def compute_loss_for_module(
         self,
         *,
@@ -283,12 +254,21 @@ class SACTorchLearner(SACLearner, TorchLearner):
         if self.config.twin_q:
             total_loss += critic_twin_loss
 
-        # Log important loss stats.
+        # Log the TD-error with reduce=None, such that - in case we have n parallel
+        # Learners - we will re-concatenate the produced TD-error tensors to yield
+        # a 1:1 representation of the original batch.
+        self.metrics.log_value(
+            key=(module_id, TD_ERROR_KEY),
+            value=td_error,
+            reduce=None,
+            clear_on_reduce=True,
+        )
+        # Log other important loss stats (reduce=mean (default), but with window=1
+        # in order to keep them history free).
         self.metrics.log_dict(
             {
                 POLICY_LOSS_KEY: actor_loss,
                 QF_LOSS_KEY: critic_loss,
-                TD_ERROR_KEY: td_error,
                 "alpha_loss": alpha_loss,
                 "alpha_value": alpha,
                 # TODO (Sven): Do we really need this? We have alpha.
@@ -315,6 +295,35 @@ class SACTorchLearner(SACLearner, TorchLearner):
             )
 
         return total_loss
+
+    @override(TorchLearner)
+    def compute_gradients(
+        self, loss_per_module: Dict[str, TensorType], **kwargs
+    ) -> ParamDict:
+        for optim in self._optimizer_parameters:
+            optim.zero_grad(set_to_none=True)
+
+        grads = {}
+
+        # Calculate gradients for each loss by its optimizer.
+        # TODO (sven): Maybe we rename to `actor`, `critic`. We then also
+        # need to either add to or change in the `Learner` constants.
+        for component in (
+            ["qf", "policy", "alpha"] + ["qf_twin"] if self.config.twin_q else []
+        ):
+            self.metrics.peek(DEFAULT_POLICY_ID, component + "_loss").backward(
+                retain_graph=True
+            )
+            grads.update(
+                {
+                    pid: p.grad
+                    for pid, p in self.filter_param_dict_for_optimizer(
+                        self._params, self.get_optimizer(optimizer_name=component)
+                    ).items()
+                }
+            )
+
+        return grads
 
     @override(SACLearner)
     def _update_module_target_networks(

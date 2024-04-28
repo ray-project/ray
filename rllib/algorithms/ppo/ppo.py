@@ -28,7 +28,6 @@ from ray.rllib.execution.train_ops import (
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
-from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     ENV_RUNNER_SAMPLING_TIMER,
@@ -48,6 +47,8 @@ from ray.rllib.utils.metrics import (
     TIMERS,
     ALL_MODULES,
 )
+from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.typing import ResultDict
 from ray.util.debug import log_once
@@ -523,7 +524,9 @@ class PPO(Algorithm):
             kl_dict = {}
             if self.config.use_kl_loss:
                 for mid in modules_to_update:
-                    kl = self.metrics.peek(LEARNER_RESULTS, mid, LEARNER_RESULTS_KL_KEY)
+                    kl = convert_to_numpy(
+                        self.metrics.peek(LEARNER_RESULTS, mid, LEARNER_RESULTS_KL_KEY)
+                    )
                     if np.isnan(kl):
                         logger.warning(
                             f"KL divergence for Module {mid} is non-finite, this "

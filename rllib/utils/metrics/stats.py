@@ -5,6 +5,10 @@ from typing import Any, Callable, Dict, Optional, Tuple, Union
 import numpy as np
 
 from ray.rllib.utils import force_list
+from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.numpy import convert_to_numpy
+
+torch, _ = try_import_torch()
 
 
 class Stats:
@@ -320,6 +324,10 @@ class Stats:
             if shuffle:
                 random.shuffle(self.values)
 
+    def numpy(self):
+        """Converts all of self's internal values to numpy (if a tensor)."""
+        self.values = convert_to_numpy(self.values)
+
     def __len__(self) -> int:
         """Returns the length of the internal values list."""
         return len(self.values)
@@ -363,6 +371,9 @@ class Stats:
 
     def __sub__(self, other):
         return float(self) - float(other)
+
+    def __format__(self, fmt):
+        return f"{float(self):{fmt}}"
 
     def get_state(self) -> Dict[str, Any]:
         return {
@@ -408,12 +419,12 @@ class Stats:
             # Window -> return shortened internal values list.
             else:
                 return self.values[-self._window :], self.values[-self._window :]
+
+        # Special case: Internal values list is empty -> return NaN.
+        if len(self.values) == 0:
+            return float("nan"), []
         # Do EMA (always a "mean" reduction).
         elif self._ema_coeff is not None:
-            # Special case: Internal values list is empty -> return NaN.
-            if len(self.values) == 0:
-                return float("nan"), []
-
             # Perform EMA reduction over all values in internal values list.
             mean_value = self.values[0]
             for v in self.values[1:]:
@@ -421,16 +432,25 @@ class Stats:
             return mean_value, [mean_value]
         # Do non-EMA reduction (possibly using a window).
         else:
-            # Use the numpy "nan"-prefix to ignore NaN's in our value lists.
-            reduce_meth = getattr(np, "nan" + self._reduce_method)
             values = (
                 self.values
                 if self._window is None or self._window == float("inf")
                 else self.values[-self._window :]
             )
-            reduced = reduce_meth(values)
-            # Convert from numpy to primitive python types.
-            if reduced.shape == ():
+            # Use the numpy/torch "nan"-prefix to ignore NaN's in our value lists.
+            if torch.is_tensor(values[0]):
+                reduce_meth = getattr(torch, "nan" + self._reduce_method)
+                reduce_in = torch.stack(values)
+                if self._reduce_method == "mean":
+                    reduce_in = reduce_in.float()
+                reduced = reduce_meth(reduce_in)
+            else:
+                reduce_meth = getattr(np, "nan" + self._reduce_method)
+                reduced = reduce_meth(values)
+
+            # Convert from numpy to primitive python types, if original `values` are
+            # python types.
+            if reduced.shape == () and isinstance(self.values[0], (int, float)):
                 if reduced.dtype in [np.int32, np.int64, np.int8, np.int16]:
                     reduced = int(reduced)
                 else:
@@ -441,6 +461,10 @@ class Stats:
             if (
                 self._window is None or self._window == float("inf")
             ) and self._reduce_method != "mean":
+                # TODO (sven): What if out values are torch tensors? In this case, we
+                #  would have to do reduction using `torch` above (not numpy) and only
+                #  then return the python primitive AND put the reduced new torch
+                #  tensor in `new_values`.
                 new_values = [reduced]
             # In all other cases, keep the values that were also used for the reduce
             # operation.

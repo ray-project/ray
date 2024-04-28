@@ -20,6 +20,7 @@ from typing import (
 )
 
 import ray
+import tree
 from ray.rllib.connectors.learner.learner_connector_pipeline import (
     LearnerConnectorPipeline,
 )
@@ -1381,7 +1382,7 @@ class Learner:
 
         # Reduce results across all minibatch update steps.
         return self.metrics.reduce()
-
+        
     def _set_slicing_by_batch_id(
         self, batch: MultiAgentBatch, *, value: bool
     ) -> MultiAgentBatch:

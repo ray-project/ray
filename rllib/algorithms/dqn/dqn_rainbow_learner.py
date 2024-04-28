@@ -46,20 +46,14 @@ class DQNRainbowLearner(Learner):
         )
 
         # TODO (Sven): APPO uses `config.target_update_frequency`. Can we
-        # choose a standard here?
+        #  choose a standard here?
         if (timestep - last_update) >= config.target_network_update_freq:
-            self._update_module_target_networks(module_id, config)
-            results[NUM_TARGET_UPDATES] = 1
-            results[LAST_TARGET_UPDATE_TS] = timestep
-        else:
-            results[NUM_TARGET_UPDATES] = 0
-            results[LAST_TARGET_UPDATE_TS] = last_update
+            self._update_module_target_networks(module_id, config, timestep)
 
         return results
 
-    @abc.abstractmethod
     def _update_module_target_networks(
-        self, module_id: ModuleID, config: "DQNConfig"
+        self, module_id: ModuleID, config: "DQNConfig", timestep: int
     ) -> None:
         """Update the target Q network(s) of each module with the current Q network.
 
@@ -68,7 +62,15 @@ class DQNRainbowLearner(Learner):
         Args:
             module_id: The module ID whose target Q network(s) should be updated.
             config: The `AlgorithmConfig` specific in the given `module_id`.
+            timestep: The current timestep to update the "last target update" metric
+                from.
         """
+        # Increase target network update counter.
+        # TODO (sven): Support multi-agent for DQN (make this metric per-module).
+        self.metrics.log_value(NUM_TARGET_UPDATES, 1, reduce="sum")
+        # Update the (single-value) last updated timestep metric.
+        # TODO (sven): Support multi-agent for DQN (make this metric per-module).
+        self.metrics.log_value(LAST_TARGET_UPDATE_TS, timestep, window=1)
 
     @abc.abstractmethod
     def _reset_noise(self) -> None:
