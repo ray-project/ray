@@ -169,4 +169,3 @@ Managing Results
     Learner.compile_results
     Learner.register_metric
     Learner.register_metrics
-    Learner._check_result
