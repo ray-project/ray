@@ -153,7 +153,7 @@ class MetricsLogger:
         """
         # No reduction (continue appending to list) AND no window.
         # -> We'll force-reset our values upon `reduce()`.
-        if reduce is None and window is None:
+        if reduce is None and (window is None or window == float("inf")):
             clear_on_reduce = True
 
         if key not in self.stats:
@@ -258,7 +258,7 @@ class MetricsLogger:
             extended_key = prefix_key + key
             # No reduction (continue appending to list) AND no window.
             # -> We'll force-reset our values upon `reduce()`.
-            if reduce is None and window is None:
+            if reduce is None and (window is None or window == float("inf")):
                 clear_on_reduce = True
 
             if not isinstance(stat_or_value, Stats):
@@ -335,7 +335,7 @@ class MetricsLogger:
 
             # No reduction (continue appending to list) AND no window.
             # -> We'll force-reset our values upon `reduce()`.
-            if reduce is None and window is None:
+            if reduce is None and (window is None or window == float("inf")):
                 clear_on_reduce = True
 
             available_stats = [s[key] for s in stats_dicts if key in s]
@@ -412,7 +412,7 @@ class MetricsLogger:
         """
         # No reduction (continue appending to list) AND no window.
         # -> We'll force-reset our values upon `reduce()`.
-        if reduce is None and window is None:
+        if reduce is None and (window is None or window == float("inf")):
             clear_on_reduce = True
 
         if key not in self.stats:

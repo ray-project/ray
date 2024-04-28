@@ -1278,8 +1278,6 @@ class Learner:
 
         # Call the learner connector.
         if self._learner_connector is not None and episodes is not None:
-            # Log all timesteps (env, agent, modules) based on given episodes.
-            self._log_steps_trained_metrics(episodes)
             # Call the learner connector pipeline.
             batch = self._learner_connector(
                 rl_module=self.module,
@@ -1294,9 +1292,27 @@ class Learner:
                     module_id: SampleBatch(module_data)
                     for module_id, module_data in batch.items()
                 },
-                # NUM_ENV_STEPS_TRAINED have already been logged above.
-                env_steps=self.metrics.peek(ALL_MODULES, NUM_ENV_STEPS_TRAINED),
+                env_steps=sum(len(e) for e in episodes),
             )
+
+        # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
+        # found in this batch. If not, throw an error.
+        unknown_module_ids = set(batch.policy_batches.keys()) - set(self.module.keys())
+        if len(unknown_module_ids) > 0:
+            raise ValueError(
+                "Batch contains one or more ModuleIDs that are not in this Learner! "
+                f"Found IDs: {unknown_module_ids}"
+            )
+
+        # Filter out those RLModules from the final train batch that should not be
+        # updated.
+        for module_id in list(batch.policy_batches.keys()):
+            if not self.should_module_be_updated(module_id, batch):
+                del batch.policy_batches[module_id]
+
+        # Log all timesteps (env, agent, modules) based on given episodes.
+        if self._learner_connector is not None and episodes is not None:
+            self._log_steps_trained_metrics(episodes, batch)
         # TODO (sven): Possibly remove this if-else block entirely. We might be in a
         #  world soon where we always learn from episodes, never from an incoming batch.
         else:
@@ -1316,21 +1332,6 @@ class Learner:
                 reduce="sum",
                 clear_on_reduce=True,
             )
-
-        # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
-        # found in this batch. If not, throw an error.
-        unknown_module_ids = set(batch.policy_batches.keys()) - set(self.module.keys())
-        if len(unknown_module_ids) > 0:
-            raise ValueError(
-                "Batch contains one or more ModuleIDs that are not in this Learner! "
-                f"Found IDs: {unknown_module_ids}"
-            )
-
-        # Filter out those RLModules from the final train batch that should not be
-        # updated.
-        for module_id in list(batch.policy_batches.keys()):
-            if not self.should_module_be_updated(module_id, batch):
-                del batch.policy_batches[module_id]
 
         if minibatch_size and self._learner_connector is not None:
             batch_iter = partial(
@@ -1633,19 +1634,24 @@ class Learner:
     def _get_clip_function() -> Callable:
         """Returns the gradient clipping function to use, given the framework."""
 
-    def _log_steps_trained_metrics(self, episodes):
+    def _log_steps_trained_metrics(self, episodes, batch):
         # Logs this iteration's steps trained, based on given `episodes`.
         env_steps = sum(len(e) for e in episodes)
         log_dict = defaultdict(dict)
         for sa_episode in self._learner_connector.single_agent_episode_iterator(
             episodes, agents_that_stepped_only=False
         ):
-            _len = len(sa_episode)
             mid = (
                 sa_episode.module_id
                 if sa_episode.module_id is not None
                 else DEFAULT_MODULE_ID
             )
+            # Do not log steps trained for those ModuleIDs that should not be updated.
+            if mid != ALL_MODULES and mid not in batch.policy_batches:
+                continue
+
+            _len = len(sa_episode)
+
             # TODO (sven): Decide, whether agent_ids should be part of LEARNER_RESULTS.
             #  Currently and historically, only ModuleID keys and ALL_MODULES were used
             #  and expected. Does it make sense to include e.g. agent steps trained?

@@ -13,6 +13,8 @@ from typing import (
 )
 import uuid
 
+import tree  # pip install dm_tree
+
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core.learner.learner import Learner
@@ -470,8 +472,17 @@ class LearnerGroup:
         # the old behavior of returning an already reduced dict (as if we had a
         # reduce_fn).
         if not self.config.enable_env_runner_and_connector_v2:
+            # If we are doing an ansync update, we operate on a list (different async
+            # requests that now have results ready) of lists (n Learner workers) here.
+            if async_update:
+                results = tree.flatten_up_to(
+                    [[None] * len(r) for r in results], results
+                )
             self._metrics_logger_old_and_hybrid_stack.log_n_dicts(results)
             results = self._metrics_logger_old_and_hybrid_stack.reduce(
+                # We are returning to a client (Algorithm) that does NOT make any
+                # use of MetricsLogger (or Stats) -> Convert all values to non-Stats
+                # primitives.
                 return_stats_obj=False
             )
 

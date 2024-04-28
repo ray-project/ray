@@ -164,7 +164,9 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
                 gradient_tape.gradient(
                     # Take individual loss term from the registered metrics for
                     # the main module.
-                    self._metrics[DEFAULT_POLICY_ID][component.upper() + "_L_total"],
+                    self.metrics.peek(
+                        DEFAULT_POLICY_ID, component.upper() + "_L_total"
+                    ),
                     self.filter_param_dict_for_optimizer(
                         self._params, self.get_optimizer(optimizer_name=component)
                     ),

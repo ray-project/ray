@@ -186,7 +186,7 @@ class TfLearner(Learner):
     def _load_optimizer_from_hparams(
         self, path: pathlib.Path, optim_name: str
     ) -> "tf.keras.optimizers.Optimizer":
-        """Load an optimizer from the hyperparameters saved at path/optim_name_hparams.json.
+        """Load an optimizer from the hyperparameters saved at path/[name]_hparams.json.
 
         Args:
             path: The path to the directory to load the hyperparameters from.
@@ -432,7 +432,7 @@ class TfLearner(Learner):
             postprocessed_gradients = self.postprocess_gradients(gradients)
             self.apply_gradients(postprocessed_gradients)
 
-            return fwd_out, loss_per_module, dict(self._metrics)
+            return fwd_out, loss_per_module
 
         return self._strategy.run(helper, args=(batch,))
 
