@@ -35,7 +35,7 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
     """Implements `torch`-specific SAC loss logic on top of `SACLearner`
 
     This ' Learner' class implements the loss in its
-    `self.compute_loss_for_module()` method. In addition it updates
+    `self.compute_loss_for_module()` method. In addition, it updates
     target networks in its inherited method `_update_module_target_networks`.
     """
 

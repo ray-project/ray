@@ -23,16 +23,13 @@ import ray
 from ray.rllib.connectors.learner.learner_connector_pipeline import (
     LearnerConnectorPipeline,
 )
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModule,
     MultiAgentRLModuleSpec,
 )
 from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
-from ray.rllib.policy.sample_batch import (
-    DEFAULT_POLICY_ID,
-    MultiAgentBatch,
-    SampleBatch,
-)
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
@@ -46,8 +43,6 @@ from ray.rllib.utils.deprecation import (
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
-    LEARNER_RESULTS,
-    NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_TRAINED,
     NUM_MODULE_STEPS_TRAINED,
 )
@@ -600,7 +595,7 @@ class Learner:
 
     def get_optimizer(
         self,
-        module_id: ModuleID = DEFAULT_POLICY_ID,
+        module_id: ModuleID = DEFAULT_MODULE_ID,
         optimizer_name: str = DEFAULT_OPTIMIZER,
     ) -> Optimizer:
         """Returns the optimizer object, configured under the given module_id and name.
@@ -611,7 +606,7 @@ class Learner:
 
         Args:
             module_id: The ModuleID for which to return the configured optimizer.
-                If not provided, will assume DEFAULT_POLICY_ID.
+                If not provided, will assume DEFAULT_MODULE_ID.
             optimizer_name: The name of the optimizer (registered under `module_id` via
                 `self.register_optimizer()`) to return. If not provided, will assume
                 DEFAULT_OPTIMIZER.
@@ -926,6 +921,7 @@ class Learner:
             from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
                 PPOTorchRLModule
             )
+            from ray.rllib.core import DEFAULT_MODULE_ID
             from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 
             env = gym.make("CartPole-v1")
@@ -990,7 +986,7 @@ class Learner:
                 if i % 10 == 0:
                     learner.additional_update(
                         timestep=i,
-                        sampled_kl_values={"default_policy": 0.5}
+                        sampled_kl_values={DEFAULT_MODULE_ID: 0.5}
                     )
 
         Args:
@@ -1299,7 +1295,7 @@ class Learner:
                     for module_id, module_data in batch.items()
                 },
                 # NUM_ENV_STEPS_TRAINED have already been logged above.
-                env_steps=self.metrics.peek(LEARNER_RESULTS, NUM_ENV_STEPS_TRAINED),
+                env_steps=self.metrics.peek(ALL_MODULES, NUM_ENV_STEPS_TRAINED),
             )
         # TODO (sven): Possibly remove this if-else block entirely. We might be in a
         #  world soon where we always learn from episodes, never from an incoming batch.
@@ -1645,9 +1641,32 @@ class Learner:
             episodes, agents_that_stepped_only=False
         ):
             _len = len(sa_episode)
-            log_dict[sa_episode.module_id][NUM_MODULE_STEPS_TRAINED] += _len
-            log_dict[ALL_MODULES][NUM_MODULE_STEPS_TRAINED] += _len
-            log_dict[sa_episode.agent_id][NUM_AGENT_STEPS_TRAINED] += _len
+            mid = (
+                sa_episode.module_id
+                if sa_episode.module_id is not None
+                else DEFAULT_MODULE_ID
+            )
+            # TODO (sven): Decide, whether agent_ids should be part of LEARNER_RESULTS.
+            #  Currently and historically, only ModuleID keys and ALL_MODULES were used
+            #  and expected. Does it make sense to include e.g. agent steps trained?
+            #  I'm not sure atm.
+            # aid = (
+            #    sa_episode.agent_id if sa_episode.agent_id is not None
+            #    else DEFAULT_AGENT_ID
+            # )
+            if NUM_MODULE_STEPS_TRAINED not in log_dict[mid]:
+                log_dict[mid][NUM_MODULE_STEPS_TRAINED] = _len
+            else:
+                log_dict[mid][NUM_MODULE_STEPS_TRAINED] += _len
+            # TODO (sven): See above.
+            # if NUM_AGENT_STEPS_TRAINED not in log_dict[aid]:
+            #    log_dict[aid][NUM_AGENT_STEPS_TRAINED] = _len
+            # else:
+            #    log_dict[aid][NUM_AGENT_STEPS_TRAINED] += _len
+            if NUM_MODULE_STEPS_TRAINED not in log_dict[ALL_MODULES]:
+                log_dict[ALL_MODULES][NUM_MODULE_STEPS_TRAINED] = _len
+            else:
+                log_dict[ALL_MODULES][NUM_MODULE_STEPS_TRAINED] += _len
 
         # Log env steps (all modules).
         self.metrics.log_value(
@@ -1657,7 +1676,7 @@ class Learner:
             clear_on_reduce=True,
         )
         # Log per-module steps trained (plus all modules) and per-agent steps trained.
-        self.metrics.log_dict(log_dict, reduce="sum", clear_on_reduce=True)
+        self.metrics.log_dict(dict(log_dict), reduce="sum", clear_on_reduce=True)
 
     @Deprecated(
         new="self.metrics.[log_value|log_dict|log_time](key=..., value=..., "
