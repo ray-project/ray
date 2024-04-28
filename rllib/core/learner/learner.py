@@ -47,6 +47,7 @@ from ray.rllib.utils.deprecation import (
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
+    NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_TRAINED,
     NUM_MODULE_STEPS_TRAINED,
 )
@@ -1281,19 +1282,43 @@ class Learner:
 
         # Call the learner connector.
         if self._learner_connector is not None and episodes is not None:
+            # Log all timesteps (env, agent, modules) based on given episodes.
+            self._log_steps_trained_metrics(episodes)
+            # Call the learner connector pipeline.
             batch = self._learner_connector(
                 rl_module=self.module,
                 data=batch,
                 episodes=episodes,
                 shared_data={},
             )
+            # Convert to a batch.
             # TODO (sven): Try to not require MultiAgentBatch anymore.
             batch = MultiAgentBatch(
                 {
                     module_id: SampleBatch(module_data)
                     for module_id, module_data in batch.items()
                 },
-                env_steps=sum(len(e) for e in episodes),
+                # NUM_ENV_STEPS_TRAINED have already been logged above.
+                env_steps=self.metrics.peek(LEARNER_RESULTS, NUM_ENV_STEPS_TRAINED),
+            )
+        # TODO (sven): Possibly remove this if-else block entirely. We might be in a
+        #  world soon where we always learn from episodes, never from an incoming batch.
+        else:
+            self.metrics.log_dict(
+                {
+                    (ALL_MODULES, NUM_ENV_STEPS_TRAINED): batch.env_steps(),
+                    (ALL_MODULES, NUM_MODULE_STEPS_TRAINED): batch.agent_steps(),
+                },
+                reduce="sum",
+                clear_on_reduce=True,
+            )
+            self.metrics.log_dict(
+                {
+                    (mid, NUM_MODULE_STEPS_TRAINED): len(b)
+                    for mid, b in batch.policy_batches.items()
+                },
+                reduce="sum",
+                clear_on_reduce=True,
             )
 
         # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
@@ -1363,22 +1388,6 @@ class Learner:
                 )
 
         self._set_slicing_by_batch_id(batch, value=False)
-
-        # Log this iteration's steps trained.
-        self.metrics.log_dict(
-            {
-                **{
-                    (ALL_MODULES, NUM_ENV_STEPS_TRAINED): batch.env_steps(),
-                    (ALL_MODULES, NUM_MODULE_STEPS_TRAINED): batch.agent_steps(),
-                },
-                **{
-                    (mid, NUM_MODULE_STEPS_TRAINED): len(b)
-                    for mid, b in batch.policy_batches.items()
-                },
-            },
-            reduce="sum",
-            clear_on_reduce=True,
-        )
 
         # Reduce results across all minibatch update steps.
         return self.metrics.reduce()
@@ -1562,38 +1571,6 @@ class Learner:
                 "(variables)!"
             )
 
-    # def _check_result(self, result: Dict[str, Any]) -> None:
-    #    """Checks whether the result has the correct format.
-
-    #    All the keys should be referencing the module ids that got updated. There is a
-    #    special key `ALL_MODULES` that hold any extra information that is not specific
-    #    to a module.
-
-    #    Args:
-    #        result: The result of the update.
-
-    #    Raises:
-    #        ValueError: If the result are not in the correct format.
-    #    """
-    #    if not isinstance(result, dict):
-    #        raise ValueError(
-    #            f"The result of the update must be a dictionary. Got: {type(result)}"
-    #        )
-
-    #    if ALL_MODULES not in result:
-    #        raise ValueError(
-    #            f"The result of the update must have a key {ALL_MODULES} "
-    #            "that holds any extra information that is not specific to a module."
-    #        )
-
-    #    for key in result:
-    #        if key != ALL_MODULES:
-    #            if key not in self.module.keys():
-    #                raise ValueError(
-    #                    f"The key {key} in the result of the update is not a valid "
-    #                    f"module id. Valid module ids are: {list(self.module.keys())}."
-    #                )
-
     def _check_is_built(self):
         if self.module is None:
             raise ValueError(
@@ -1659,6 +1636,28 @@ class Learner:
     @abc.abstractmethod
     def _get_clip_function() -> Callable:
         """Returns the gradient clipping function to use, given the framework."""
+
+    def _log_steps_trained_metrics(self, episodes):
+        # Logs this iteration's steps trained, based on given `episodes`.
+        env_steps = sum(len(s) for e in episodes)
+        log_dict = defaultdict(dict)
+        for sa_episode in self._learner_connector.single_agent_episode_iterator(
+            episodes, agents_that_stepped_only=False
+        ):
+            _len = len(sa_episode)
+            log_dict[sa_episode.module_id][NUM_MODULE_STEPS_TRAINED] += _len
+            log_dict[ALL_MODULES][NUM_MODULE_STEPS_TRAINED] += _len
+            log_dict[sa_episode.agent_id][NUM_AGENT_STEPS_TRAINED] += _len
+
+        # Log env steps (all modules).
+        self.metrics.log_value(
+            (ALL_MODULES, NUM_ENV_STEPS_TRAINED),
+            env_steps,
+            reduce="sum",
+            clear_on_reduce=True,
+        )
+        # Log per-module steps trained (plus all modules) and per-agent steps trained.
+        self.metrics.log_dict(log_dict, reduce="sum", clear_on_reduce=True)
 
     @Deprecated(
         new="self.metrics.[log_value|log_dict|log_time](key=..., value=..., "

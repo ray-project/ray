@@ -204,10 +204,10 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
         self.metrics.log_dict(
             {
                 QF_LOSS_KEY: total_loss,
-                TD_ERROR_MEAN_KEY: torch.mean(td_error),
                 QF_MEAN_KEY: torch.mean(q_selected),
                 QF_MAX_KEY: torch.max(q_selected),
                 QF_MIN_KEY: torch.min(q_selected),
+                TD_ERROR_MEAN_KEY: torch.mean(td_error),
             },
             key=module_id,
             window=1,  # <- single items (should not be mean/ema-reduced over time).

@@ -324,9 +324,10 @@ class Stats:
             if shuffle:
                 random.shuffle(self.values)
 
-    def numpy(self):
+    def numpy(self) -> "Stats":
         """Converts all of self's internal values to numpy (if a tensor)."""
         self.values = convert_to_numpy(self.values)
+        return self
 
     def __len__(self) -> int:
         """Returns the length of the internal values list."""
@@ -450,7 +451,7 @@ class Stats:
 
             # Convert from numpy to primitive python types, if original `values` are
             # python types.
-            if reduced.shape == () and isinstance(self.values[0], (int, float)):
+            if reduced.shape == () and isinstance(values[0], (int, float)):
                 if reduced.dtype in [np.int32, np.int64, np.int8, np.int16]:
                     reduced = int(reduced)
                 else:

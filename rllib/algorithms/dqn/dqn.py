@@ -53,13 +53,18 @@ from ray.rllib.utils.metrics import (
     LEARNER_UPDATE_TIMER,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_SAMPLED_LIFETIME,
+    NUM_AGENT_STEPS_TRAINED,
+    NUM_AGENT_STEPS_TRAINED_LIFETIME,
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
+    NUM_ENV_STEPS_TRAINED,
     NUM_ENV_STEPS_TRAINED_LIFETIME,
     NUM_EPISODES,
     NUM_EPISODES_LIFETIME,
     NUM_MODULE_STEPS_SAMPLED,
     NUM_MODULE_STEPS_SAMPLED_LIFETIME,
+    NUM_MODULE_STEPS_TRAINED,
+    NUM_MODULE_STEPS_TRAINED_LIFETIME,
     NUM_TARGET_UPDATES,
     REPLAY_BUFFER_SAMPLE_TIMER,
     REPLAY_BUFFER_UPDATE_PRIOS_TIMER,
@@ -621,16 +626,16 @@ class DQN(Algorithm):
 
         self.metrics.log_value(NUM_ENV_STEPS_SAMPLED_LIFETIME, self.metrics.peek(
             ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED, default=0
-        ))
+        ), reduce="sum")
         self.metrics.log_value(NUM_EPISODES_LIFETIME, self.metrics.peek(
             ENV_RUNNER_RESULTS, NUM_EPISODES, default=0
-        ))
+        ), reduce="sum")
         self.metrics.log_dict(self.metrics.peek(
             ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED, default={}
-        ), key=NUM_AGENT_STEPS_SAMPLED_LIFETIME)
+        ), key=NUM_AGENT_STEPS_SAMPLED_LIFETIME, reduce="sum")
         self.metrics.log_dict(self.metrics.peek(
             ENV_RUNNER_RESULTS, NUM_MODULE_STEPS_SAMPLED, default={}
-        ), key=NUM_MODULE_STEPS_SAMPLED_LIFETIME)
+        ), key=NUM_MODULE_STEPS_SAMPLED_LIFETIME, reduce="sum")
 
 
         # TODO (sven): Move into Algorithm utility method.
@@ -703,17 +708,22 @@ class DQN(Algorithm):
                                 td_errors[mid].extend(convert_to_numpy(m_res.pop(TD_ERROR_KEY).peek()))
                     td_errors = {mid: {TD_ERROR_KEY: np.concatenate(s, axis=0)} for mid, s in td_errors.items()}
                     self.metrics.log_n_dicts(learner_results, key=LEARNER_RESULTS)
-                    # TODO (sven): Move these counters into Learners and add
-                    #  module-steps and agent-steps trained and sampled.
-                    self.metrics.log_dict(
-                        {
-                            NUM_ENV_STEPS_TRAINED_LIFETIME: train_batch.env_steps(),
-                            # NUM_MODULE_STEPS_TRAINED_LIFETIME: self.metrics.peek(
-                            #    LEARNER_RESULTS, NUM_MODULE_STEPS_TRAINED
-                            # ),
-                        },
+                    self.metrics.log_value(
+                        NUM_ENV_STEPS_TRAINED_LIFETIME,
+                        self.metrics.peek(
+                            LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED
+                        ),
                         reduce="sum",
-                    )
+                    ) 
+                    self.metrics.log_dict({
+                        (mid, NUM_MODULE_STEPS_TRAINED_LIFETIME): stats[NUM_MODULE_STEPS_TRAINED]
+                        for mid, stats in self.metrics.peek(LEARNER_RESULTS).items()
+                    }, reduce="sum")
+                    # TODO (sven): Uncomment this once agent steps are available in the
+                    #  Learner stats.
+                    # self.metrics.log_dict(self.metrics.peek(
+                    #   LEARNER_RESULTS, NUM_AGENT_STEPS_TRAINED, default={}
+                    # ), key=NUM_AGENT_STEPS_TRAINED_LIFETIME, reduce="sum")
 
                 # Update replay buffer priorities.
                 with self.metrics.log_time((TIMERS, REPLAY_BUFFER_UPDATE_PRIOS_TIMER)):

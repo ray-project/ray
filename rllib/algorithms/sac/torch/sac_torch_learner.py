@@ -12,6 +12,7 @@ from ray.rllib.algorithms.sac.sac_learner import (
     QF_PREDS,
     QF_TWIN_LOSS_KEY,
     QF_TWIN_PREDS,
+    TD_ERROR_MEAN_KEY,
     TD_ERROR_KEY,
     SACLearner,
 )
@@ -271,7 +272,6 @@ class SACTorchLearner(SACLearner, TorchLearner):
                 QF_LOSS_KEY: critic_loss,
                 "alpha_loss": alpha_loss,
                 "alpha_value": alpha,
-                # TODO (Sven): Do we really need this? We have alpha.
                 "log_alpha_value": torch.log(alpha),
                 "target_entropy": self.target_entropy[module_id],
                 "actions_curr_policy": torch.mean(actions_curr),
@@ -279,6 +279,7 @@ class SACTorchLearner(SACLearner, TorchLearner):
                 QF_MEAN_KEY: torch.mean(q_curr),
                 QF_MAX_KEY: torch.max(q_curr),
                 QF_MIN_KEY: torch.min(q_curr),
+                TD_ERROR_MEAN_KEY: torch.mean(td_error),
             },
             key=module_id,
             window=1,  # <- single items (should not be mean/ema-reduced over time).

@@ -6,7 +6,6 @@ import tree  # pip install dm_tree
 from ray.rllib.utils import force_tuple
 from ray.rllib.utils.metrics.stats import Stats
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.utils.numpy import convert_to_numpy
 from ray.util.annotations import PublicAPI
 
 
@@ -158,8 +157,6 @@ class MetricsLogger:
         if reduce is None and window is None:
             clear_on_reduce = True
 
-        value = convert_to_numpy(value)
-
         if key not in self.stats:
             self.stats[key] = Stats(
                 value,
@@ -255,7 +252,6 @@ class MetricsLogger:
                 in which the internal values list would otherwise grow indefinitely,
                 for example if reduce is None and there is no `window` provided.
         """
-        #stats_dict = NestedDict(convert_to_numpy(stats_dict))
         stats_dict = NestedDict(stats_dict)
         prefix_key = force_tuple(key)
 
@@ -328,7 +324,7 @@ class MetricsLogger:
                 in which the internal values list would otherwise grow indefinitely,
                 for example if reduce is None and there is no `window` provided.
         """
-        stats_dicts = [NestedDict(convert_to_numpy(s)) for s in stats_dicts]
+        stats_dicts = [NestedDict(s) for s in stats_dicts]
         prefix_key = force_tuple(key)
 
         all_keys = set()
@@ -582,6 +578,7 @@ class MetricsLogger:
         key: Optional[Union[str, Tuple[str]]] = None,
         *,
         return_stats_obj: bool = True,
+        convert_tensors_to_numpy: bool = True,
     ) -> Dict:
         """Reduces all logged values based on their settings and returns a result dict.
 
@@ -659,12 +656,16 @@ class MetricsLogger:
                 objects. This is the default as it enables users to continue using
                 (and further logging) the results of this call inside another
                 (downstream) MetricsLogger object.
+            convert_tensors_to_numpy: Whether to convert all tensor types to numpy
+                arrays inside the returned `Stats` leafs.
 
         Returns:
             A (nested) dict matching the structure of `self.stats` (contains all ever
             logged keys to this MetricsLogger) with the leafs being (reduced) Stats
             objects if `return_stats_obj=True` or primitive values, carrying no
             reduction and history information, if `return_stats_obj=False`.
+            If `convert_tensors_to_numpy=True`, will make sure that any tensor types
+            in the `Stats`' internal values lists are converted to numpy arrays.
         """
         # Create a shallow copy of `self.stats` in case we need to reset some of our
         # stats due to this `reduce()` call (and the Stat having self.clear_on_reduce
@@ -676,19 +677,22 @@ class MetricsLogger:
 
         # Reduce all stats according to each of their reduce-settings.
         for sub_key, stat in stats_to_return.items():
-            # In case we reset the Stats upon `reduce`, we get returned a new empty
-            # Stats object here (same settings as existing one) and can now re-assign
-            # it to `self.stats[key]` (while we return from this method the properly
-            # reduced, but not emptied/reset new Stats).
+            # In case we clear the Stats upon `reduce`, we get returned a new empty
+            # `Stats` object from `stat.reduce()` with the same settings as existing one
+            # and can now re-assign it to `self.stats[key]` (while we return from this
+            # method the properly reduced, but not cleared/emptied new `Stats`).
             if key is not None:
                 self.stats[key][sub_key] = stat.reduce()
             else:
                 self.stats[sub_key] = stat.reduce()
 
         # Return reduced values as dict (not NestedDict).
-        # TODO (sven): Maybe we want to change that to NestedDict, but we would like to
-        #  asses to what extend we need to expose NestedDict to the user.
         stats_to_return = stats_to_return.asdict()
+
+        if convert_tensors_to_numpy:
+            stats_to_return = tree.map_structure(
+                lambda s: s.numpy() if isinstance(s, Stats) else s, stats_to_return
+            )
 
         if return_stats_obj:
             return stats_to_return
