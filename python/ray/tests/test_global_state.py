@@ -85,6 +85,46 @@ def test_available_resources_per_node(ray_start_cluster_head):
     wait_for_condition(lambda: available_resources_per_node_check2)
 
 
+def test_total_resources_per_node(ray_start_cluster_head):
+    cluster = ray_start_cluster_head
+
+    @ray.remote
+    def get_node_id():
+        return ray.get_runtime_context().get_node_id()
+
+    head_node_id = ray.get(get_node_id.remote())
+
+    worker_node = cluster.add_node(num_cpus=3, resources={"worker": 1})
+
+    @ray.remote(num_cpus=1, resources={"worker": 1})
+    class Actor:
+        def ping(self):
+            return ray.get_runtime_context().get_node_id()
+
+    actor = Actor.remote()
+    worker_node_id = ray.get(actor.ping.remote())
+
+    def total_resources_per_node_check1():
+        total_resources_per_node = ray._private.state.total_resources_per_node()
+        assert len(total_resources_per_node) == 2
+        assert total_resources_per_node[head_node_id]["CPU"] == 1
+        assert total_resources_per_node[worker_node_id]["CPU"] == 3
+        assert total_resources_per_node[worker_node_id].get("worker", 0) == 1
+
+    wait_for_condition(lambda: total_resources_per_node_check1)
+
+    cluster.remove_node(worker_node)
+    cluster.wait_for_nodes()
+
+    def total_resources_per_node_check2():
+        # Make sure worker node is not returned
+        total_resources_per_node = ray._private.state.total_resources_per_node()
+        assert len(total_resources_per_node) == 1
+        assert total_resources_per_node[head_node_id]["CPU"] == 1
+
+    wait_for_condition(lambda: total_resources_per_node_check2)
+
+
 def test_add_remove_cluster_resources(ray_start_cluster_head):
     """Tests that Global State API is consistent with actual cluster."""
     cluster = ray_start_cluster_head

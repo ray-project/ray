@@ -731,18 +731,17 @@ class GlobalState:
         """
         self._check_connected()
 
-        resources = defaultdict(int)
-        nodes = self.node_table()
-        for node in nodes:
-            # Only count resources from latest entries of live nodes.
-            if node["Alive"]:
-                for key, value in node["Resources"].items():
-                    resources[key] += value
-        return dict(resources)
+        # Calculate total resources.
+        total_resources = defaultdict(int)
+        for node_total_resources in self.total_resources_per_node().values():
+            for resource_id, value in node_total_resources.items():
+                total_resources[resource_id] += value
+
+        return dict(total_resources)
 
     def _live_node_ids(self):
         """Returns a set of node IDs corresponding to nodes still alive."""
-        return {node["NodeID"] for node in self.node_table() if (node["Alive"])}
+        return {node_id for node_id in self.total_resources_per_node().keys()}
 
     def available_resources_per_node(self):
         """Returns a dictionary mapping node id to avaiable resources."""
@@ -763,6 +762,23 @@ class GlobalState:
             available_resources_by_id[node_id] = dynamic_resources
 
         return available_resources_by_id
+
+    def total_resources_per_node(self):
+        self._check_connected()
+        total_resources_by_node = {}
+
+        all_total_resources = self.global_state_accessor.get_all_total_resources()
+        for node_total_resources in all_total_resources:
+            message = gcs_pb2.TotalResources.FromString(node_total_resources)
+            # Calculate total resources for this node.
+            node_resources = {}
+            for resource_id, capacity in message.resources_total.items():
+                node_resources[resource_id] = capacity
+            # Update total resources for this node.
+            node_id = ray._private.utils.binary_to_hex(message.node_id)
+            total_resources_by_node[node_id] = node_resources
+
+        return total_resources_by_node
 
     def available_resources(self):
         """Get the current available cluster resources.
@@ -886,10 +902,13 @@ def node_ids():
         List of the node resource ids.
     """
     node_ids = []
-    for node in nodes():
-        for k, v in node["Resources"].items():
-            if k.startswith(NODE_ID_PREFIX) and k != HEAD_NODE_RESOURCE_NAME:
-                node_ids.append(k)
+    for node_total_resources in state.total_resources_per_node().values():
+        for resource_id in node_total_resources.keys():
+            if (
+                resource_id.startswith(NODE_ID_PREFIX)
+                and resource_id != HEAD_NODE_RESOURCE_NAME
+            ):
+                node_ids.append(resource_id)
     return node_ids
 
 
