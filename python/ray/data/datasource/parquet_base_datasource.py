@@ -64,7 +64,8 @@ class ParquetBaseDatasource(FileBasedDatasource):
         table = pq.read_table(f, use_threads=use_threads, **self.read_table_args)
         stop = time.time()
         self.read_file_latency.observe((stop - start) * 1000)
-        self.pyarrow_table_size_metric.observe(table.nbytes / 1024 / 1024) # Measured in MB
+        if table and table.nbytes:
+            self.pyarrow_table_size_metric.observe(table.nbytes / 1024 / 1024) # Measured in MB
         self.calculate_nulls(table)
         yield table
 

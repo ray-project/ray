@@ -305,9 +305,9 @@ def prefetch_batches_locally(
                 )
             except StopIteration:
                 pass
-        if block_size_metric:
+        if block_size_metric and metadata.size_bytes:
             block_size_metric.observe(metadata.size_bytes / 1024 / 1024) # In MB
-        if block_num_files_metric:
+        if block_num_files_metric and metadata.input_files:
             block_num_files_metric.observe(len(metadata.input_files)) 
 
         yield block_ref

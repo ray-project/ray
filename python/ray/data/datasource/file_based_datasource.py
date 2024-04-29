@@ -287,7 +287,8 @@ class FileBasedDatasource(Datasource):
                 continue
 
             for file_size in file_sizes:
-                self.raw_file_size.observe(file_size / 1024 / 1024) # In MB
+                if file_size:
+                    self.raw_file_size.observe(file_size / 1024 / 1024) # In MB
 
             meta = self._meta_provider(
                 read_paths,
