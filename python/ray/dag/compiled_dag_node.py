@@ -24,6 +24,8 @@ from ray.dag.experimental.types import (
     _init_nccl_group,
     TorchTensorType,
     _TorchTensorWrapper,
+    TorchTensorNcclChannel,
+    _get_or_create_ray_dag_context,
 )
 
 MAX_BUFFER_SIZE = int(100 * 1e6)  # 100MB
@@ -43,11 +45,14 @@ def do_allocate_channel(self, buffer_size_bytes: int, readers: List["ray.actor.A
         The allocated channel.
     """
     num_readers = len(readers)
-    if typ is None:
-        self._output_channel = Channel(buffer_size_bytes, num_readers)
+    if isinstance(typ, TorchTensorType) and typ.transport == "nccl":
+        assert ray.get_gpu_ids(), "NCCL actor has no GPUs assigned"
+        self._output_channel = TorchTensorNcclChannel(
+                ray.get_runtime_context().current_actor,
+                readers, typ)
     else:
-        assert isinstance(typ, TorchTensorType)
         self._output_channel = Channel(buffer_size_bytes, num_readers)
+    self._output_channel._init(_get_or_create_ray_dag_context(self))
     return self._output_channel
 
 
@@ -96,6 +101,7 @@ def do_exec_compiled_task(
         # Add placeholders for input channels.
         for idx, inp in enumerate(inputs):
             if isinstance(inp, Channel):
+                inp._init(_get_or_create_ray_dag_context(self))
                 input_channels.append(inp)
                 input_channel_idxs.append(idx)
                 resolved_inputs.append(None)
@@ -367,6 +373,7 @@ class CompiledDAG:
                     isinstance(dag_node.type_hint, TorchTensorType)
                     and dag_node.type_hint.transport == "nccl"
                 ):
+                    # Add all writers to the NCCL group.
                     nccl_actors.add(actor_handle)
 
             for arg_idx, arg in enumerate(task.args):
@@ -380,8 +387,17 @@ class CompiledDAG:
                     downstream_actor_handle = task.dag_node._get_actor_handle()
                 upstream_node.downstream_node_idxs[node_idx] = downstream_actor_handle
 
+                if (
+                    isinstance(upstream_node.dag_node.type_hint, TorchTensorType)
+                    and upstream_node.dag_node.type_hint.transport == "nccl"
+                ):
+                    # Add all readers to the NCCL group.
+                    nccl_actors.add(downstream_actor_handle)
+
         nccl_actors = list(nccl_actors)
-        _init_nccl_group(self, nccl_actors)
+        if None in nccl_actors:
+            raise ValueError("Driver cannot participate in the NCCL group.")
+        _init_nccl_group(nccl_actors)
 
         for actor_id, task_count in self.actor_task_count.items():
             if task_count > 1:

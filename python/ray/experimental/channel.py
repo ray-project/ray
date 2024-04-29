@@ -95,6 +95,9 @@ class Channel:
         self._writer_registered = False
         self._reader_registered = False
 
+    def _init(self, channel_context: "ChannelContext"):
+        pass
+
     def ensure_registered_as_writer(self):
         if self._writer_registered:
             return
