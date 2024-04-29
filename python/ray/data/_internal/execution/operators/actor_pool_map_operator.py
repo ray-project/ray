@@ -382,46 +382,36 @@ class _ActorPool(AutoscalingActorPool):
     # === Overriding methods of AutoscalingActorPool ===
 
     def min_size(self) -> int:
-        """Min size of the actor pool."""
         return self._min_size
 
     def max_size(self) -> int:
-        """Max size of the actor pool."""
         return self._max_size
 
     def current_size(self) -> int:
-        """Current size of the actor pool."""
         return self.num_pending_actors() + self.num_running_actors()
 
     def num_running_actors(self) -> int:
-        """Number of running actors."""
         return len(self._num_tasks_in_flight)
 
     def num_busy_actors(self) -> int:
-        """Number of actors with in-flight tasks."""
         return self.current_size() - self.num_idle_actors()
 
     def num_pending_actors(self) -> int:
-        """Number of actors pending creation."""
         return len(self._pending_actors)
 
     def max_tasks_in_flight_per_actor(self) -> int:
-        """Max number of in-flight tasks per actor."""
         return self._max_tasks_in_flight
 
     def current_in_flight_tasks(self) -> int:
-        """Number of current in-flight tasks."""
         return sum(num for _, num in self._num_tasks_in_flight.items())
 
     def scale_up(self, num_actors: int) -> int:
-        """Scale up the actor pool by the given number of actors."""
         for _ in range(num_actors):
             actor, ready_ref = self._create_actor_fn()
             self.add_pending_actor(actor, ready_ref)
         return num_actors
 
     def scale_down(self, num_actors: int) -> int:
-        """Scale down the actor pool by the given number of actors."""
         num_killed = 0
         for _ in range(num_actors):
             if self.kill_inactive_actor():

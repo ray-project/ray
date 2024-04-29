@@ -424,4 +424,5 @@ class PhysicalOperator(Operator):
             self._in_task_submission_backpressure = in_backpressure
 
     def get_autoscaling_actor_pools(self) -> List[AutoscalingActorPool]:
+        """Return a list of `AutoscalingActorPool`s managed by this operator."""
         return []

@@ -115,7 +115,9 @@ class StreamingExecutor(Executor, threading.Thread):
         self._resource_manager = ResourceManager(self._topology, self._options)
         self._backpressure_policies = get_backpressure_policies(self._topology)
         self._autoscaler = create_autoscaler(
-            self._topology, self._resource_manager, self._execution_id
+            self._topology,
+            self._resource_manager,
+            self._execution_id,
         )
 
         self._has_op_completed = {op: False for op in self._topology}

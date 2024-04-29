@@ -48,7 +48,7 @@ class DefaultAutoscaler(Autoscaler):
         if actor_pool.current_size() == 0:
             return 0
         else:
-            return actor_pool.num_running_actors() / actor_pool.current_size()
+            return actor_pool.num_busy_actors() / actor_pool.current_size()
 
     def _actor_pool_should_scale_up(
         self,
@@ -60,8 +60,11 @@ class DefaultAutoscaler(Autoscaler):
         # Do not scale up, if the op is completed or no more inputs are coming.
         if op.completed() or (op._inputs_complete and op.internal_queue_size() == 0):
             return False
-        # Do not scale up, if the actor pool is already at max size.
-        if actor_pool.current_size() >= actor_pool.max_size():
+        if actor_pool.current_size() < actor_pool.min_size():
+            # Scale up, if the actor pool is below min size.
+            return True
+        elif actor_pool.current_size() >= actor_pool.max_size():
+            # Do not scale up, if the actor pool is already at max size.
             return False
         # Do not scale up, if the op still has enough resources to run.
         if op_scheduling_status.under_resource_limits:
@@ -85,8 +88,11 @@ class DefaultAutoscaler(Autoscaler):
         # Scale down, if the op is completed or no more inputs are coming.
         if op.completed() or (op._inputs_complete and op.internal_queue_size()) == 0:
             return True
-        # Do not scale down, if the actor pool is already at min size.
-        if actor_pool.current_size() <= actor_pool.min_size():
+        if actor_pool.current_size() > actor_pool.max_size():
+            # Scale down, if the actor pool is above max size.
+            return True
+        elif actor_pool.current_size() <= actor_pool.min_size():
+            # Do not scale down, if the actor pool is already at min size.
             return False
         # Determine whether to scale down based on the actor pool utilization.
         util = self._actor_pool_util(actor_pool)

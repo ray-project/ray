@@ -5,7 +5,12 @@ from ray.util.annotations import DeveloperAPI
 
 @DeveloperAPI
 class AutoscalingActorPool(metaclass=ABCMeta):
-    """Abstract interface of an autoscaling actor pool."""
+    """Abstract interface of an autoscaling actor pool.
+
+    A `PhysicalOperator` can manage one or more `AutoscalingActorPool`s.
+    `Autoscaler` is responsible for deciding autoscaling of these actor
+    pools.
+    """
 
     @abstractmethod
     def min_size(self) -> int:
@@ -49,10 +54,18 @@ class AutoscalingActorPool(metaclass=ABCMeta):
 
     @abstractmethod
     def scale_up(self, num_actors: int) -> int:
-        """Scale up the actor pool by the given number of actors."""
+        """Scale up the actor pool by the given number of actors.
+
+        Returns:
+            The number of actors actually added.
+        """
         ...
 
     @abstractmethod
     def scale_down(self, num_actors: int) -> int:
-        """Scale down the actor pool by the given number of actors."""
+        """Scale down the actor pool by the given number of actors.
+
+        Returns:
+            The number of actors actually removed.
+        """
         ...
