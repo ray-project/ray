@@ -36,7 +36,7 @@ class ParquetBaseDatasource(FileBasedDatasource):
             "data_read_null_percentage",
             boundaries=[0.00001, 1],
             description=("Coverage of input data (percentage of null to filled values in columns)"),
-            tag_keys=("column_name"),
+            tag_keys=("column_name",),
         )
         self.pyarrow_table_size_metric = Histogram(
             "data_pyarrow_decompressed_size",
