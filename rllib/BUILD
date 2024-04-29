@@ -971,10 +971,10 @@ py_test(
 )
 
 py_test(
-    name = "envs/tests/test_env_runner_group",
+    name = "env/tests/test_env_runner_group",
     tags = ["team:rllib", "evaluation", "exclusive"],
     size = "small",
-    srcs = ["envs/tests/test_env_runner_group.py"]
+    srcs = ["env/tests/test_env_runner_group.py"]
 )
 
 py_test(
