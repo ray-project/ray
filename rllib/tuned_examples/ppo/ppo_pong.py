@@ -3,7 +3,6 @@ import gymnasium as gym
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.connectors.env_to_module.frame_stacking import FrameStackingEnvToModule
 from ray.rllib.connectors.learner.frame_stacking import FrameStackingLearner
-from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
 from ray import tune
 
@@ -30,15 +29,12 @@ tune.register_env("env", _env_creator)
 
 num_gpus = 8
 
-stop = {
-    "sampler_results/episode_reward_mean": 20.0,
-    "timesteps_total": 5000000,
-    "time_total_s": 1200,
-}
-
 config = (
     PPOConfig()
-    .experimental(_enable_new_api_stack=True)
+    .api_stack(
+        enable_rl_module_and_learner=True,
+        enable_env_runner_and_connector_v2=True,
+    )
     .environment(
         "env",
         env_config={
@@ -49,10 +45,9 @@ config = (
         },
         clip_rewards=True,
     )
-    .rollouts(
+    .env_runners(
+        num_env_runners=95,
         env_to_module_connector=_make_env_to_module_connector,
-        num_rollout_workers=95,
-        env_runner_cls=SingleAgentEnvRunner,
     )
     .resources(
         num_gpus=0,
@@ -71,12 +66,24 @@ config = (
         lr=0.00015 * num_gpus,
         grad_clip=100.0,
         grad_clip_by="global_norm",
-        model={
-            "vf_share_layers": True,
-            "conv_filters": [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
-            "conv_activation": "relu",
-            "post_fcnet_hiddens": [256],
-            "uses_new_env_runners": True,
-        },
     )
+    .rl_module(model_config_dict={
+        "vf_share_layers": True,
+        "conv_filters": [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
+        "conv_activation": "relu",
+        "post_fcnet_hiddens": [256],
+        "uses_new_env_runners": True,
+    })
 )
+
+stop = {
+    "env_runner_results/episode_return_mean": 20.0,
+    "num_env_steps_sampled_lifetime": 5000000,
+    "time_total_s": 1200,
+}
+
+
+if __name__ == "__main__":
+    from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
+
+    run_rllib_example_script_experiment(config, stop=stop)
