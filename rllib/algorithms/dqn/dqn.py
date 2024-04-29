@@ -726,7 +726,7 @@ class DQN(Algorithm):
                         module_ids_to_update=modules_to_update,
                         timestep=current_ts,
                     )
-                    # Add the additional results to the training results, if any.
+                    # log the additional results as well.
                     self.metrics.log_n_dicts(additional_results, key=LEARNER_RESULTS)
 
             # Update weights and global_vars - after learning on the local worker -

@@ -998,22 +998,20 @@ class Learner:
         Returns:
             A dictionary of results from the update
         """
-        results_all_modules = {}
         module_ids = (
             module_ids_to_update
             if module_ids_to_update is not None
             else self.module.keys()
         )
         for module_id in module_ids:
-            module_results = self.additional_update_for_module(
+            self.additional_update_for_module(
                 module_id=module_id,
                 config=self.config.get_config_for_module(module_id),
                 timestep=timestep,
                 **kwargs,
             )
-            results_all_modules[module_id] = module_results
 
-        return results_all_modules
+        return self.metrics.reduce()
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def additional_update_for_module(
@@ -1371,7 +1369,7 @@ class Learner:
             for mid, loss in loss_per_module.items():
                 self.metrics.log_value(
                     key=(mid, self.TOTAL_LOSS_KEY),
-                    value=convert_to_numpy(loss),
+                    value=loss,
                     window=float("inf"),  # <- infinite window (we clear on `reduce()`).
                     clear_on_reduce=True,
                 )
