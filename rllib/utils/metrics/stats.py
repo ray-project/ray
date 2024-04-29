@@ -5,9 +5,10 @@ from typing import Any, Callable, Dict, Optional, Tuple, Union
 import numpy as np
 
 from ray.rllib.utils import force_list
-from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
 
+_, tf, _ = try_import_tf()
 torch, _ = try_import_torch()
 
 
@@ -439,12 +440,15 @@ class Stats:
                 else self.values[-self._window :]
             )
             # Use the numpy/torch "nan"-prefix to ignore NaN's in our value lists.
-            if torch.is_tensor(values[0]):
+            if torch and torch.is_tensor(values[0]):
                 reduce_meth = getattr(torch, "nan" + self._reduce_method)
                 reduce_in = torch.stack(values)
                 if self._reduce_method == "mean":
                     reduce_in = reduce_in.float()
                 reduced = reduce_meth(reduce_in)
+            elif tf and tf.is_tensor(values[0]):
+                reduce_meth = getattr(tf, "reduce_" + self._reduce_method)
+                reduced = reduce_meth(values)
             else:
                 reduce_meth = getattr(np, "nan" + self._reduce_method)
                 reduced = reduce_meth(values)
