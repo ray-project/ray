@@ -185,12 +185,9 @@ Updates
 
     import time
 
+    from ray.rllib.core import DEFAULT_MODULE_ID
     from ray.rllib.evaluation.postprocessing import Postprocessing
-    from ray.rllib.policy.sample_batch import (
-        DEFAULT_POLICY_ID,
-        SampleBatch,
-        MultiAgentBatch,
-    )
+    from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 
     DUMMY_BATCH = {
         SampleBatch.OBS: np.array(
@@ -221,7 +218,7 @@ Updates
     DUMMY_BATCH = default_batch.as_multi_agent()
     ADDITIONAL_UPDATE_KWARGS = {
         "timestep": 0,
-        "sampled_kl_values": {DEFAULT_POLICY_ID: 1e-4},
+        "sampled_kl_values": {DEFAULT_MODULE_ID: 1e-4},
     }
 
     learner.build() # needs to be called on the learner before calling any functions

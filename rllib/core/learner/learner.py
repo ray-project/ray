@@ -24,17 +24,14 @@ import ray
 from ray.rllib.connectors.learner.learner_connector_pipeline import (
     LearnerConnectorPipeline,
 )
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModule,
     MultiAgentRLModuleSpec,
 )
 from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
-from ray.rllib.policy.sample_batch import (
-    DEFAULT_POLICY_ID,
-    MultiAgentBatch,
-    SampleBatch,
-)
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
@@ -620,7 +617,7 @@ class Learner:
 
     def get_optimizer(
         self,
-        module_id: ModuleID = DEFAULT_POLICY_ID,
+        module_id: ModuleID = DEFAULT_MODULE_ID,
         optimizer_name: str = DEFAULT_OPTIMIZER,
     ) -> Optimizer:
         """Returns the optimizer object, configured under the given module_id and name.
@@ -631,7 +628,7 @@ class Learner:
 
         Args:
             module_id: The ModuleID for which to return the configured optimizer.
-                If not provided, will assume DEFAULT_POLICY_ID.
+                If not provided, will assume DEFAULT_MODULE_ID.
             optimizer_name: The name of the optimizer (registered under `module_id` via
                 `self.register_optimizer()`) to return. If not provided, will assume
                 DEFAULT_OPTIMIZER.

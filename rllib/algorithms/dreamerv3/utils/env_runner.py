@@ -16,13 +16,13 @@ import numpy as np
 import tree  # pip install dm_tree
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.wrappers.atari_wrappers import NoopResetEnv, MaxAndSkipEnv
 from ray.rllib.env.wrappers.dm_control_wrapper import DMCEnv
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.evaluation.metrics import RolloutMetrics
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
@@ -145,7 +145,7 @@ class DreamerV3EnvRunner(EnvRunner):
         # weight-synched each iteration).
         else:
             # TODO (sven): DreamerV3 is currently single-agent only.
-            self.module = self.marl_module_spec.build()[DEFAULT_POLICY_ID]
+            self.module = self.marl_module_spec.build()[DEFAULT_MODULE_ID]
 
         self._needs_initial_reset = True
         self._episodes = [None for _ in range(self.num_envs)]
@@ -514,7 +514,7 @@ class DreamerV3EnvRunner(EnvRunner):
         if self.module is None:
             assert self.config.share_module_between_env_runner_and_learner
         else:
-            self.module.set_state(weights[DEFAULT_POLICY_ID])
+            self.module.set_state(weights[DEFAULT_MODULE_ID])
 
     @override(EnvRunner)
     def assert_healthy(self):
