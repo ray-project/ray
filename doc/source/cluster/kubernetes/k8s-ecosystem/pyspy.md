@@ -42,7 +42,7 @@ kubectl apply -f ray-cluster.py-spy.yaml
 ### Step 4: Forward the dashboard port
 
 ```bash
-kubectl port-forward --address 0.0.0.0 svc/raycluster-py-spy-head-svc 8265:8265
+kubectl port-forward svc/raycluster-py-spy-head-svc 8265:8265
 ```
 
 ### Step 5: Run a sample job within the head Pod
