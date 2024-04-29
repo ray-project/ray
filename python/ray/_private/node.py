@@ -73,7 +73,6 @@ class Node:
             ray_init_cluster: Whether it's a cluster created by ray.init()
         """
         ray.__tick__("node:__init__")
-        ray.__sum__()
 
         if shutdown_at_exit:
             if connect_only:
@@ -1120,6 +1119,7 @@ class Node:
             self.all_processes[ray_constants.PROCESS_TYPE_DASHBOARD] = [
                 process_info,
             ]
+            ray.__tick__("[before_webui_url_kv_put]")
             self.get_gcs_client().internal_kv_put(
                 b"webui:url",
                 self._webui_url.encode(),
