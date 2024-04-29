@@ -10,7 +10,6 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray.exceptions import RaySystemError
 from ray.dag import InputNode, MultiOutputNode
 from ray.tests.conftest import *  # noqa
 from ray._private.utils import (
@@ -27,7 +26,6 @@ if sys.platform != "linux" and sys.platform != "darwin":
 @ray.remote
 class Actor:
     def __init__(self, init_value, fail_after=None, sys_exit=False):
-        print("__init__ PID", os.getpid())
         self.i = init_value
         self.fail_after = fail_after
         self.sys_exit = sys_exit
@@ -253,7 +251,7 @@ def test_dag_fault_tolerance_sys_exit(ray_start_regular_shared):
         assert results == [i + 1] * 4
         output_channels.end_read()
 
-    with pytest.raises(RaySystemError, match="Channel closed."):
+    with pytest.raises(IOError, match="Channel closed."):
         for i in range(99):
             output_channels = compiled_dag.execute(1)
             output_channels.begin_read()

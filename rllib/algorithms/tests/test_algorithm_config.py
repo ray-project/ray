@@ -10,8 +10,8 @@ from ray.rllib.algorithms.ppo.tf.ppo_tf_learner import PPOTfLearner
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec, RLModule
 from ray.rllib.core.rl_module.marl_module import (
-    MultiAgentRLModuleSpec,
     MultiAgentRLModule,
+    MultiAgentRLModuleSpec,
 )
 from ray.rllib.utils.test_utils import check
 
@@ -171,7 +171,7 @@ class TestAlgorithmConfig(unittest.TestCase):
     def test_rl_module_api(self):
         config = (
             PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .environment("CartPole-v1")
             .framework("torch")
             .env_runners(enable_connectors=True)
@@ -231,7 +231,7 @@ class TestAlgorithmConfig(unittest.TestCase):
     def test_learner_api(self):
         config = (
             PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .environment("CartPole-v1")
             .env_runners(enable_connectors=True)
             .framework("tf2")
@@ -360,7 +360,7 @@ class TestAlgorithmConfig(unittest.TestCase):
         ########################################
         # This is the simplest case where we have to construct the marl module based on
         # the default specs only.
-        config = SingleAgentAlgoConfig().experimental(_enable_new_api_stack=True)
+        config = SingleAgentAlgoConfig().api_stack(enable_rl_module_and_learner=True)
 
         spec, expected = self._get_expected_marl_spec(config, DiscreteBCTorchModule)
         self._assertEqualMARLSpecs(spec, expected)
@@ -376,7 +376,7 @@ class TestAlgorithmConfig(unittest.TestCase):
         # algorithm to assign a specific type of RLModule class to certain module_ids.
         config = (
             SingleAgentAlgoConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .rl_module(
                 rl_module_spec=MultiAgentRLModuleSpec(
                     module_specs={
@@ -395,7 +395,7 @@ class TestAlgorithmConfig(unittest.TestCase):
         # RLModule class to ALL module_ids.
         config = (
             SingleAgentAlgoConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .rl_module(
                 rl_module_spec=SingleAgentRLModuleSpec(module_class=CustomRLModule1),
             )
@@ -414,7 +414,7 @@ class TestAlgorithmConfig(unittest.TestCase):
         # RLModule class to ALL module_ids.
         config = (
             SingleAgentAlgoConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .rl_module(
                 rl_module_spec=MultiAgentRLModuleSpec(
                     module_specs=SingleAgentRLModuleSpec(module_class=CustomRLModule1)
@@ -437,7 +437,7 @@ class TestAlgorithmConfig(unittest.TestCase):
         # in the multi-agent scenario.
         config = (
             SingleAgentAlgoConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .rl_module(
                 rl_module_spec=MultiAgentRLModuleSpec(
                     marl_module_class=CustomMARLModule1,
@@ -474,8 +474,8 @@ class TestAlgorithmConfig(unittest.TestCase):
         # This is the case where we ask the algorithm to use its default
         # MultiAgentRLModuleSpec, but the MultiAgentRLModuleSpec has not defined its
         # SingleAgentRLmoduleSpecs.
-        config = MultiAgentAlgoConfigWithNoSingleAgentSpec().experimental(
-            _enable_new_api_stack=True
+        config = MultiAgentAlgoConfigWithNoSingleAgentSpec().api_stack(
+            enable_rl_module_and_learner=True
         )
 
         self.assertRaisesRegex(
@@ -488,7 +488,7 @@ class TestAlgorithmConfig(unittest.TestCase):
         # This is the case where we ask the algorithm to use its default
         # MultiAgentRLModuleSpec, and the MultiAgentRLModuleSpec has defined its
         # SingleAgentRLmoduleSpecs.
-        config = MultiAgentAlgoConfig().experimental(_enable_new_api_stack=True)
+        config = MultiAgentAlgoConfig().api_stack(enable_rl_module_and_learner=True)
 
         spec, expected = self._get_expected_marl_spec(
             config, DiscreteBCTorchModule, expected_marl_module_class=CustomMARLModule1

@@ -174,7 +174,7 @@ if __name__ == "__main__":
         .offline_data(input_=_input)
         # Use n worker processes to listen on different ports.
         .env_runners(
-            num_rollout_workers=args.num_workers,
+            num_env_runners=args.num_workers,
             # Connectors are not compatible with the external env.
             enable_connectors=False,
         )
@@ -186,7 +186,7 @@ if __name__ == "__main__":
     # Disable RLModules because they need connectors
     # TODO (Sven): Deprecate ExternalEnv (via EnvRunner path) and reenable connectors
     #  and RL Modules here.
-    config.experimental(_enable_new_api_stack=False)
+    config.api_stack(enable_rl_module_and_learner=False)
 
     # DQN.
     if args.run == "DQN" or args.run == "APEX" or args.run == "R2D2":

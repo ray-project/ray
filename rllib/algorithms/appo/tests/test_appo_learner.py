@@ -8,8 +8,9 @@ import ray.rllib.algorithms.appo as appo
 from ray.rllib.algorithms.appo.tf.appo_tf_learner import (
     LEARNER_RESULTS_CURR_KL_COEFF_KEY,
 )
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
-from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import framework_iterator
@@ -56,7 +57,7 @@ class TestAPPOTfLearner(unittest.TestCase):
         """Test that appo_policy_rlm loss matches the appo learner loss."""
         config = (
             appo.APPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .environment("CartPole-v1")
             .env_runners(
                 num_env_runners=0,
@@ -104,7 +105,7 @@ class TestAPPOTfLearner(unittest.TestCase):
         initial_kl_coeff = 0.01
         config = (
             appo.APPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .environment("CartPole-v1")
             # Asynchronous Algo, make sure we have some results after 1 iteration.
             .reporting(min_time_s_per_iteration=10)
@@ -131,9 +132,9 @@ class TestAPPOTfLearner(unittest.TestCase):
             # a asynchronous algorithm and results are returned asynchronously.
             while True:
                 results = algo.train()
-                if results.get("info", {}).get(LEARNER_INFO, {}).get(DEFAULT_POLICY_ID):
+                if results.get("info", {}).get(LEARNER_INFO, {}).get(DEFAULT_MODULE_ID):
                     break
-            curr_kl_coeff = results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][
+            curr_kl_coeff = results["info"][LEARNER_INFO][DEFAULT_MODULE_ID][
                 LEARNER_RESULTS_CURR_KL_COEFF_KEY
             ]
             self.assertNotEqual(curr_kl_coeff, initial_kl_coeff)

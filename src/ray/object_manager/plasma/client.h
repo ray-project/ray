@@ -97,6 +97,7 @@ class PlasmaClientInterface {
                      std::vector<ObjectBuffer> *object_buffers,
                      bool is_from_worker) = 0;
 
+  virtual Status ExperimentalMutableObjectRegisterWriter(const ObjectID &object_id) = 0;
   virtual Status GetExperimentalMutableObject(
       const ObjectID &object_id, std::unique_ptr<MutableObject> *mutable_object) = 0;
 
@@ -274,6 +275,13 @@ class PlasmaClient : public PlasmaClientInterface {
              int64_t timeout_ms,
              std::vector<ObjectBuffer> *object_buffers,
              bool is_from_worker);
+
+  /// Register an experimental mutable object writer. The writer is on a different node
+  /// and wants to write to this node.
+  ///
+  /// \param[in] object_id The ID of the object.
+  /// \return The return status.
+  Status ExperimentalMutableObjectRegisterWriter(const ObjectID &object_id);
 
   /// Get an experimental mutable object.
   ///

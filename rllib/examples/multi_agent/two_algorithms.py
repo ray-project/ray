@@ -82,7 +82,7 @@ if __name__ == "__main__":
     # Construct two independent Algorithm configs
     ppo_config = (
         PPOConfig()
-        .experimental(_enable_new_api_stack=False)
+        .api_stack(enable_rl_module_and_learner=False)
         .environment("multi_agent_cartpole")
         .framework(args.framework)
         # disable filters, otherwise we would need to synchronize those

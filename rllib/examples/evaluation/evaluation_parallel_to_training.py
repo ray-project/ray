@@ -138,7 +138,7 @@ class AssertEvalCallback(DefaultCallbacks):
         # `evaluation_num_env_runners` or `evaluation_parallel_to_training`).
         if eval_env_runner_results and NUM_EPISODES in eval_env_runner_results:
             num_episodes_done = eval_env_runner_results[NUM_EPISODES]
-            if algorithm.config.uses_new_env_runners:
+            if algorithm.config.enable_env_runner_and_connector_v2:
                 num_timesteps_reported = eval_env_runner_results[NUM_ENV_STEPS_SAMPLED]
             else:
                 num_timesteps_reported = eval_results["timesteps_this_iter"]

@@ -10,13 +10,13 @@ from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModuleSpec,
     MultiAgentRLModule,
 )
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.test_utils import check, framework_iterator
 from ray.rllib.utils.numpy import convert_to_numpy
 
@@ -50,7 +50,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
 
         config = (
             PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .env_runners(rollout_fragment_length=4)
             .environment(MultiAgentCartPole, env_config={"num_agents": num_agents})
             .training(num_sgd_iter=1, train_batch_size=8, sgd_minibatch_size=8)
@@ -89,7 +89,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
                 module_specs=module_specs,
                 load_state_path=marl_checkpoint_path,
             )
-            config = config.experimental(_enable_new_api_stack=True).rl_module(
+            config = config.api_stack(enable_rl_module_and_learner=True).rl_module(
                 rl_module_spec=marl_module_spec_from_checkpoint,
             )
 
@@ -155,7 +155,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
                 module_specs=module_specs,
                 load_state_path=marl_checkpoint_path,
             )
-            config = config.experimental(_enable_new_api_stack=True).rl_module(
+            config = config.api_stack(enable_rl_module_and_learner=True).rl_module(
                 rl_module_spec=marl_module_spec_from_checkpoint,
             )
 
@@ -188,7 +188,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
 
         config = (
             PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .env_runners(rollout_fragment_length=4)
             .environment("CartPole-v1")
             .training(num_sgd_iter=1, train_batch_size=8, sgd_minibatch_size=8)
@@ -221,7 +221,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
                 load_state_path=module_ckpt_path,
             )
 
-            config = config.experimental(_enable_new_api_stack=True).rl_module(
+            config = config.api_stack(enable_rl_module_and_learner=True).rl_module(
                 rl_module_spec=module_to_load_spec,
             )
 
@@ -231,7 +231,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             algo_module_weights = algo.learner_group.get_weights()
 
             check(
-                algo_module_weights[DEFAULT_POLICY_ID],
+                algo_module_weights[DEFAULT_MODULE_ID],
                 convert_to_numpy(module.get_state()),
             )
             algo.train()
@@ -300,7 +300,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
                     "policy_0",
                 },
             )
-            config = config.experimental(_enable_new_api_stack=True).rl_module(
+            config = config.api_stack(enable_rl_module_and_learner=True).rl_module(
                 rl_module_spec=marl_module_spec_from_checkpoint,
             )
 

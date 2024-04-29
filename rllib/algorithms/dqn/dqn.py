@@ -19,16 +19,13 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dqn.dqn_rainbow_learner import TD_ERROR_KEY
 from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.algorithms.dqn.dqn_torch_policy import DQNTorchPolicy
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.learner import Learner
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
-from ray.rllib.policy.sample_batch import (
-    DEFAULT_POLICY_ID,
-    MultiAgentBatch,
-    SampleBatch,
-)
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.execution.train_ops import (
     train_one_step,
     multi_gpu_train_one_step,
@@ -139,8 +136,8 @@ class DQNConfig(AlgorithmConfig):
 
         # `training()`
         self.grad_clip = 40.0
-        # Note: Only when using _enable_new_api_stack=True can the clipping mode be
-        # configured by the user. On the old API stack, RLlib will always clip by
+        # Note: Only when using enable_rl_module_and_learner=True can the clipping mode
+        # be configured by the user. On the old API stack, RLlib will always clip by
         # global_norm, no matter the value of `grad_clip_by`.
         self.grad_clip_by = "global_norm"
         self.lr = 5e-4
@@ -407,7 +404,7 @@ class DQNConfig(AlgorithmConfig):
         super().validate()
 
         if (
-            not self._enable_new_api_stack
+            not self.enable_rl_module_and_learner
             and self.exploration_config["type"] == "ParameterNoise"
         ):
             if self.batch_mode != "complete_episodes":
@@ -417,7 +414,7 @@ class DQNConfig(AlgorithmConfig):
                     "batch_mode='complete_episodes')`."
                 )
 
-        if not self.uses_new_env_runners and not self.in_evaluation:
+        if not self.enable_env_runner_and_connector_v2 and not self.in_evaluation:
             validate_buffer_config(self)
 
         if self.td_error_loss_fn not in ["huber", "mse"]:
@@ -439,7 +436,7 @@ class DQNConfig(AlgorithmConfig):
         # TODO (simon): Find a clean solution to deal with
         # configuration configs when using the new API stack.
         if (
-            not self._enable_new_api_stack
+            not self.enable_rl_module_and_learner
             and self.exploration_config["type"] == "ParameterNoise"
         ):
             if self.batch_mode != "complete_episodes":
@@ -462,7 +459,7 @@ class DQNConfig(AlgorithmConfig):
         )
 
         if (
-            self.uses_new_env_runners
+            self.enable_env_runner_and_connector_v2
             and not isinstance(self.replay_buffer_config["type"], str)
             and not issubclass(self.replay_buffer_config["type"], EpisodeReplayBuffer)
         ):
@@ -588,7 +585,7 @@ class DQN(Algorithm):
             The results dict from executing the training iteration.
         """
         # New API stack (RLModule, Learner, EnvRunner, ConnectorV2).
-        if self.config.uses_new_env_runners:
+        if self.config.enable_env_runner_and_connector_v2:
             return self._training_step_new_api_stack(with_noise_reset=True)
         # Old and hybrid API stacks (Policy, RolloutWorker, Connector, maybe RLModule,
         # maybe Learner).
@@ -720,7 +717,7 @@ class DQN(Algorithm):
                         timestep=current_ts,
                         last_update=self.metrics.peek(
                             # TODO (sven): Support multi-agent in DQN/SAC.
-                            (LEARNER_RESULTS, DEFAULT_POLICY_ID, LAST_TARGET_UPDATE_TS),
+                            (LEARNER_RESULTS, DEFAULT_MODULE_ID, LAST_TARGET_UPDATE_TS),
                             default=0,
                         ),
                     )
@@ -740,7 +737,7 @@ class DQN(Algorithm):
                     #  `additional_update()` once MetricsLogger is present in Learner.
                     self.metrics.log_value(
                         (LEARNER_RESULTS, NUM_TARGET_UPDATES),
-                        value=additional_results[DEFAULT_POLICY_ID][NUM_TARGET_UPDATES],
+                        value=additional_results[DEFAULT_MODULE_ID][NUM_TARGET_UPDATES],
                         reduce="sum",
                     )
 

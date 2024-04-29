@@ -68,7 +68,9 @@ if __name__ == "__main__":
 
     # Config for the served RLlib RLModule/Algorithm.
     config = (
-        PPOConfig().experimental(_enable_new_api_stack=True).environment("CartPole-v1")
+        PPOConfig()
+        .api_stack(enable_rl_module_and_learner=True)
+        .environment("CartPole-v1")
     )
 
     # Train the Algorithm for some time, then save it and get the checkpoint path.
