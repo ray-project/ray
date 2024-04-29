@@ -1,6 +1,9 @@
 from abc import ABCMeta, abstractmethod
 
+from ray.util.annotations import DeveloperAPI
 
+
+@DeveloperAPI
 class AutoscalingActorPool(metaclass=ABCMeta):
     """Abstract interface of an autoscaling actor pool."""
 

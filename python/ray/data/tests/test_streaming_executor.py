@@ -62,7 +62,7 @@ class NoopAutoscaler(Autoscaler):
     def __init__(self):
         pass
 
-    def try_trigger_scaling(self):
+    def try_trigger_scaling(self, scheduling_decision):
         pass
 
     def on_executor_shutdown(self):

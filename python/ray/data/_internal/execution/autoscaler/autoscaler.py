@@ -1,6 +1,8 @@
 from abc import ABCMeta, abstractmethod
 from typing import TYPE_CHECKING
 
+from ray.util.annotations import DeveloperAPI
+
 if TYPE_CHECKING:
     from ray.data._internal.execution.resource_manager import ResourceManager
     from ray.data._internal.execution.streaming_executor_state import (
@@ -9,6 +11,7 @@ if TYPE_CHECKING:
     )
 
 
+@DeveloperAPI
 class Autoscaler(metaclass=ABCMeta):
     """Abstract interface for Ray Data autoscaler."""
 
