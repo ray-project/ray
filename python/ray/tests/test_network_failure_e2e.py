@@ -10,7 +10,7 @@ from ray.tests.conftest_docker import gen_head_node, gen_worker_node
 
 SLEEP_TASK_SCRIPTS = """
 import ray
-ray.init(address="localhost:6379")
+ray.init()
 @ray.remote(max_retries=-1)
 def f():
     import time
@@ -54,7 +54,6 @@ def test_network_task_submit(head, worker, gcs_network):
             "RAY_grpc_client_keepalive_timeout_ms=1000",
         ],
     )
-    sleep(3)
 
     def check_task_running(n=None):
         output = head.exec_run(cmd="ray list tasks --format json")
@@ -69,15 +68,16 @@ def test_network_task_submit(head, worker, gcs_network):
     # list_task make sure all tasks are running
     wait_for_condition(lambda: check_task_running(2))
 
+    # Previously grpc client will only send 2 ping frames when there is no
+    # data/header frame to be sent.
+    # keepalive interval is 1s. So after 3s it wouldn't send anything and
+    # failed the test previously.
+    sleep(3)
+
     # partition the network between head and worker
     # https://docker-py.readthedocs.io/en/stable/networks.html#docker.models.networks.Network.disconnect
     network.disconnect(worker.name)
     print("Disconnected network")
-    sleep(2)
-    # kill the worker to simulate the spot shutdown
-    worker.kill()
-    print("Killed worker")
-    sleep(2)
 
     def check_dead_node():
         output = head.exec_run(cmd="ray list nodes --format json")
@@ -90,8 +90,11 @@ def test_network_task_submit(head, worker, gcs_network):
         return False
 
     wait_for_condition(check_dead_node)
-    print("found dead node")
+    print("observed node died")
 
+    # Previously under network partition, the tasks would stay in RUNNING state
+    # and hanging forever.
+    # We write this test to check that.
     def check_task_not_running():
         output = head.exec_run(cmd="ray list tasks --format json")
         if output.exit_code == 0:
@@ -100,25 +103,25 @@ def test_network_task_submit(head, worker, gcs_network):
             return all([task["state"] != "RUNNING" for task in tasks_json])
         return False
 
-    def check_task_state(n=0, state="RUNNING"):
+    # we set num_cpus=0 for head node.
+    # which ensures no task was scheduled on the head node.
+    wait_for_condition(check_task_not_running)
+
+    # After the fix, we should observe that the tasks are not running.
+    # `ray list tasks` would show two FAILED and
+    # two PENDING_NODE_ASSIGNMENT states.
+
+    def check_task_pending(n=0):
         output = head.exec_run(cmd="ray list tasks --format json")
         if output.exit_code == 0:
             tasks_json = json.loads(output.output)
             print("tasks_json:", json.dumps(tasks_json, indent=2))
-            return n == sum([task["state"] == state for task in tasks_json])
+            return n == sum(
+                [task["state"] == "PENDING_NODE_ASSIGNMENT" for task in tasks_json]
+            )
         return False
 
-    # we set num_cpus=0 for head node.
-    # which ensures no task was scheduled on the head node.
-    # This is important so the test doesn't just spuriously hang.
-
-    # list_task make sure all tasks are not running => working!
-    wait_for_condition(check_task_not_running)
-    print("tasks are not running")
-
-    # list_task make sure all tasks are pending node assignment => working!
-    wait_for_condition(lambda: check_task_state(2, "PENDING_NODE_ASSIGNMENT"))
-    print("tasks are pending node assignment")
+    wait_for_condition(lambda: check_task_pending(2))
 
 
 if __name__ == "__main__":
