@@ -408,7 +408,6 @@ def read_datasource(
     read_tasks = datasource_or_legacy_reader.get_read_tasks(requested_parallelism)
     latency = time.time() - start
     read_task_latency.observe(1000 * latency)
-    print(f"[Connor] Latency to generate read tasks in seconds is: {latency}")
 
     read_op_name = f"Read{datasource.get_name()}"
 

@@ -131,7 +131,7 @@ def iter_batches(
     block_num_files_metric = Histogram(
         "data_block_input_file_number",
         description=("Number of files that make up an individual block"),
-        boundaries=[0, 1, 5, 10, 100],
+        boundaries=[0.01, 1, 5, 10, 100],
     )
 
     def _async_iter_batches(

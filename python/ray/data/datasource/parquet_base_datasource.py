@@ -63,8 +63,8 @@ class ParquetBaseDatasource(FileBasedDatasource):
         start = time.time()
         table = pq.read_table(f, use_threads=use_threads, **self.read_table_args)
         stop = time.time()
-        self.read_file_latency.observe(stop - start)
-        self.pyarrow_table_size_metric.observe(table.nbytes / 1024 / 1024 ) # Measured in MB
+        self.read_file_latency.observe((stop - start) * 1000)
+        self.pyarrow_table_size_metric.observe(table.nbytes / 1024 / 1024) # Measured in MB
         self.calculate_nulls(table)
         yield table
 
@@ -82,6 +82,6 @@ class ParquetBaseDatasource(FileBasedDatasource):
             null_count = column.null_count
             total_count = len(column)
 
-            percent = total_count - null_count / total_count
+            percent = (total_count - null_count) / total_count
             self.null_count_metric.observe(percent, tags={"column_name": column.name})
 
