@@ -22,11 +22,9 @@ from packaging import version
 
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.rl_module import INFERENCE_ONLY
-from ray.rllib.core.rl_module.marl_module import (
-    DEFAULT_MODULE_ID,
-    MultiAgentRLModuleSpec,
-)
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv

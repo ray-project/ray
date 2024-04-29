@@ -699,7 +699,7 @@ def check_train_results_new_api_stack(train_results: ResultDict) -> None:
             data in it.
     """
     # Import these here to avoid circular dependencies.
-    from ray.rllib.core.rl_module.rl_module import DEFAULT_POLICY_ID
+    from ray.rllib.core import DEFAULT_MODULE_ID
     from ray.rllib.utils.metrics import (
         ENV_RUNNER_RESULTS,
         FAULT_TOLERANCE_STATS,
@@ -740,11 +740,11 @@ def check_train_results_new_api_stack(train_results: ResultDict) -> None:
     # Check in particular the "info" dict.
     learner_results = train_results[LEARNER_RESULTS]
 
-    # Make sure we have a default_policy key if we are not in a
+    # Make sure we have a `DEFAULT_MODULE_ID key if we are not in a
     # multi-agent setup.
     if not is_multi_agent:
-        assert len(learner_results) == 0 or DEFAULT_POLICY_ID in learner_results, (
-            f"'{DEFAULT_POLICY_ID}' not found in "
+        assert len(learner_results) == 0 or DEFAULT_MODULE_ID in learner_results, (
+            f"'{DEFAULT_MODULE_ID}' not found in "
             f"train_results['{LEARNER_RESULTS}']!"
         )
 
