@@ -1300,7 +1300,7 @@ def start_api_server(
             fate_share=fate_share,
         )
 
-        ray.__ticket__("[after_start_dashboard_process]")
+        ray.__tick__("[after_start_dashboard_process]")
         # Retrieve the dashboard url
         gcs_client = GcsClient(address=gcs_address)
         ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
