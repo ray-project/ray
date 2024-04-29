@@ -218,7 +218,7 @@ class PPOLearner(Learner):
         timestep: int,
         sampled_kl_values: dict,
     ) -> Dict[str, Any]:
-        results = super().additional_update_for_module(
+        super().additional_update_for_module(
             module_id=module_id,
             config=config,
             timestep=timestep,
@@ -229,9 +229,13 @@ class PPOLearner(Learner):
         new_entropy_coeff = self.entropy_coeff_schedulers_per_module[module_id].update(
             timestep=timestep
         )
-        results.update({LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY: new_entropy_coeff})
+        self.metrics.log_value(
+            (module_id, LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY),
+            new_entropy_coeff,
+            window=1,
+        )
 
-        return results
+        return self.metrics.reduce()
 
     @OverrideToImplementCustomLogic
     def _compute_values(

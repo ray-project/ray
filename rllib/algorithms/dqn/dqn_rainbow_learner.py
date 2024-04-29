@@ -1,6 +1,6 @@
 import abc
 
-from typing import Any, Dict, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.utils.annotations import override
