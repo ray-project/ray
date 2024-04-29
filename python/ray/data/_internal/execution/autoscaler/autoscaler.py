@@ -7,6 +7,8 @@ if TYPE_CHECKING:
 
 
 class Autoscaler(metaclass=ABCMeta):
+    """Abstract interface for Ray Data autoscaler."""
+
     def __init__(
         self,
         topology: "Topology",
@@ -19,8 +21,13 @@ class Autoscaler(metaclass=ABCMeta):
 
     @abstractmethod
     def try_trigger_scaling(self):
-        pass
+        """Try trigger autoscaling.
+        This method will be called each time when StreamExecutor makes
+        a scheduling decision.
+        """
+        ...
 
     @abstractmethod
     def on_executor_shutdown(self):
-        pass
+        """Callback when the StreamExecutor is shutting down."""
+        ...

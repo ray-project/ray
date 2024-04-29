@@ -109,6 +109,7 @@ class DefaultAutoscaler(Autoscaler):
             topology: The execution state of the in-progress workload for which we wish to
                 request more resources.
         """
+        # TODO -    if not ops and any(state.num_queued() > 0 for state in topology.values()):
         now = time.time()
         if now - self._last_request_time < self.MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS:
             return
