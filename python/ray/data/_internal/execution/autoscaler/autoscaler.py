@@ -28,8 +28,12 @@ class Autoscaler(metaclass=ABCMeta):
     @abstractmethod
     def try_trigger_scaling(self, scheduling_decision: "SchedulingDecision"):
         """Try trigger autoscaling.
+
         This method will be called each time when StreamExecutor makes
         a scheduling decision.
+
+        Args:
+            scheduling_decision: The scheduling decision made by the executor.
         """
         ...
 
