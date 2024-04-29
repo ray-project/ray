@@ -364,7 +364,10 @@ class MetricsLogger:
             # Finally, merge `merged_stats` into self's entry, but w/o shuffling to
             # give the newer values (`merged_stats`) priority over possibly already
             # existing ones.
-            self.stats[extended_key].merge(merged_stats, shuffle=False)
+            try:
+                self.stats[extended_key].merge(merged_stats, shuffle=False)
+            except Exception as e:
+                print("here")
 
     def log_time(
         self,

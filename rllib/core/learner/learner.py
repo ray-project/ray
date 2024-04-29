@@ -898,7 +898,7 @@ class Learner:
         module_ids_to_update: Optional[Sequence[ModuleID]] = None,
         timestep: int,
         **kwargs,
-    ) -> Dict[ModuleID, Any]:
+    ) -> Dict[ModuleID, ResultDict]:
         """Apply additional non-gradient based updates to this Algorithm.
 
         For example, this could be used to do a polyak averaging update
@@ -1024,7 +1024,7 @@ class Learner:
         timestep: int,
         hps=None,
         **kwargs,
-    ) -> Dict[str, Any]:
+    ) -> ResultDict:
         """Apply additional non-gradient based updates for a single module.
 
         See `additional_update` for more details.
@@ -1045,8 +1045,6 @@ class Learner:
                 error=True,
             )
 
-        results = {}
-
         # Only cover the optimizer mapped to this particular module.
         for optimizer_name, optimizer in self.get_optimizers_for_module(module_id):
             # Only update this optimizer's lr, if a scheduler has been registered
@@ -1056,14 +1054,17 @@ class Learner:
                     timestep=timestep
                 )
                 self._set_optimizer_lr(optimizer, lr=new_lr)
+
                 # Make sure our returned results differentiate by optimizer name
                 # (if not the default name).
                 stats_name = LEARNER_RESULTS_CURR_LR_KEY
                 if optimizer_name != DEFAULT_OPTIMIZER:
                     stats_name += "_" + optimizer_name
-                results.update({stats_name: new_lr})
+                self.metrics.log_value(
+                    key=(module_id, stats_name), value=new_lr, window=1
+                )
 
-        return results
+        return self.metrics.reduce()
 
     def update_from_batch(
         self,
@@ -1367,24 +1368,28 @@ class Learner:
 
             # Log all individual RLModules' loss terms and its registered optimizers'
             # current learning rates.
-            for mid, loss in convert_to_numpy(loss_per_module).items():
-                self.metrics.log_dict(
-                    {
-                        (mid, self.TOTAL_LOSS_KEY): loss,
-                        **{
-                            (mid, f"{optim_name}_lr"): convert_to_numpy(
-                                self._get_optimizer_lr(optimizer)
-                            )
-                            for optim_name, optimizer in (
-                                self.get_optimizers_for_module(module_id=mid)
-                            )
-                        },
-                    },
+            for mid, loss in loss_per_module.items():
+                self.metrics.log_value(
+                    key=(mid, self.TOTAL_LOSS_KEY),
+                    value=convert_to_numpy(loss),
                     window=float("inf"),  # <- infinite window (we clear on `reduce()`).
                     clear_on_reduce=True,
                 )
 
         self._set_slicing_by_batch_id(batch, value=False)
+
+        # Log all current learning rates of all our optimizers (registered under the
+        # different ModuleIDs).
+        self.metrics.log_dict(
+            {
+                (mid, f"{full_name[len(mid) + 1 :]}_lr"): convert_to_numpy(
+                    self._get_optimizer_lr(self._named_optimizers[full_name])
+                )
+                for mid, full_names in self._module_optimizers.items()
+                for full_name in full_names
+            },
+            window=1,
+        )
 
         # Reduce results across all minibatch update steps.
         return self.metrics.reduce()

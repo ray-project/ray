@@ -574,8 +574,8 @@ class LearnerGroup:
             )
             results = self._get_results(results)
 
-        # If we are on the old or hybrid API stacks (no EnvRunners), we need to emulate
-        # the old behavior of returning an already reduced dict (as if we had a
+        # If we are on hybrid API stack (no EnvRunners), we need to emulate
+        # the existing behavior of returning an already reduced dict (as if we had a
         # reduce_fn).
         if not self.config.enable_env_runner_and_connector_v2:
             self._metrics_logger_old_and_hybrid_stack.log_n_dicts(results)

@@ -67,13 +67,18 @@ class AppoLearner(ImpalaLearner):
             module_id=module_id, config=config, timestep=timestep
         )
 
-        if (timestep - last_update) >= config.target_update_frequency:
+        # TODO (Sven): DQN uses `config.target_network_update_freq`. Can we
+        #  choose a standard here?
+        last_update_ts_key = (module_id, LAST_TARGET_UPDATE_TS)
+        if (
+            timestep - self.metrics.peek(last_update_ts_key, default=0)
+            >= config.target_update_frequency
+        ):
             self._update_module_target_networks(module_id, config)
-            results[NUM_TARGET_UPDATES] = 1
-            results[LAST_TARGET_UPDATE_TS] = timestep
-        else:
-            results[NUM_TARGET_UPDATES] = 0
-            results[LAST_TARGET_UPDATE_TS] = last_update
+            # Increase lifetime target network update counter by one.
+            self.metrics.log_value((module_id, NUM_TARGET_UPDATES), 1, reduce="sum")
+            # Update the (single-value -> window=1) last updated timestep metric.
+            self.metrics.log_value(last_update_ts_key, timestep, window=1)
 
         if config.use_kl_loss and module_id in mean_kl_loss_per_module:
             results.update(
