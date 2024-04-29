@@ -146,7 +146,7 @@ Miscellaneous
 .. _workerset-reference-docs:
 
 EnvRunnerGroup API
--------------
+------------------
 
 .. currentmodule:: ray.rllib.env.env_runner_group
 

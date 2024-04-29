@@ -27,7 +27,7 @@ machine is pre-empted, RLlib can continue training and evaluation with minimal i
 
 The two properties that RLlib supports here are self-recovery and elasticity:
 
-* **Elasticity**: RLlib continues training even when an :py:class:`~ray.rllib.env.env_runner.EnvRunner` is removed. For example, if an RLlib trial uses spot instances, nodes may be removed from the cluster, potentially resulting in a subset of workers not getting scheduled. In this case, RLlib will continue with whatever healthy :py:class:`~ray.rllib.env.env_runner.EnvRunner`s left at a reduced speed.
+* **Elasticity**: RLlib continues training even when an :py:class:`~ray.rllib.env.env_runner.EnvRunner` is removed. For example, if an RLlib trial uses spot instances, nodes may be removed from the cluster, potentially resulting in a subset of workers not getting scheduled. In this case, RLlib will continue with whatever healthy :py:class:`~ray.rllib.env.env_runner.EnvRunner` instances left at a reduced speed.
 * **Self-Recovery**: When possible, RLlib will attempt to restore any :py:class:`~ray.rllib.env.env_runner.EnvRunner` that was previously removed. During restoration, RLlib syncs the latest state over to the restored :py:class:`~ray.rllib.env.env_runner.EnvRunner` before new episodes can be sampled.
 
 
