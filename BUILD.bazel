@@ -1247,6 +1247,28 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "mutable_object_provider_test",
+    srcs = [
+        "src/ray/core_worker/test/mutable_object_provider_test.cc",
+    ],
+    tags = [
+      "no_tsan",
+      "team:core",
+      "no_windows"
+    ],
+    deps = [
+        ":core_worker_lib",
+        ":plasma_store_server_lib",
+        "@com_google_absl//absl/random",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest_main",
+    ],
+    target_compatible_with = [
+        "@platforms//os:linux",
+    ],
+)
+
+ray_cc_test(
     name = "object_lifecycle_manager_test",
     srcs = [
         "src/ray/object_manager/plasma/test/object_lifecycle_manager_test.cc",
