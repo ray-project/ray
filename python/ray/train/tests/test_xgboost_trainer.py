@@ -1,4 +1,5 @@
 import json
+from unittest import mock
 
 import pandas as pd
 import pytest
@@ -148,6 +149,23 @@ def test_checkpoint_freq(ray_start_4_cpus, freq_end_expected):
     # Assert checkpoint numbers are increasing
     cp_paths = [cp.path for cp, _ in result.best_checkpoints]
     assert cp_paths == sorted(cp_paths), str(cp_paths)
+
+
+def test_checkpoint_only_on_rank0(ray_start_4_cpus):
+    # with mock.patch("ray.train.report", side_effect=ray.train.report) as mock_report:
+    trainer = XGBoostTrainer(
+        run_config=ray.train.RunConfig(
+            checkpoint_config=ray.train.CheckpointConfig(
+                checkpoint_frequency=0, checkpoint_at_end=True
+            )
+        ),
+        scaling_config=ray.train.ScalingConfig(num_workers=4),
+        label_column="target",
+        params=params,
+        num_boost_round=1,
+        datasets={TRAIN_DATASET_KEY: ray.data.from_pandas(train_df)},
+    )
+    trainer.fit()
 
 
 def test_tune(ray_start_8_cpus):

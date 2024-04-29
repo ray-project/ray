@@ -172,7 +172,6 @@ class RayTrainReportCallback(TuneCallback):
 
     def after_iteration(self, model: Booster, epoch: int, evals_log: Dict):
         self._evals_log = evals_log
-        self._last_checkpoint_iteration = epoch
 
         checkpointing_disabled = self._frequency == 0
         # Ex: if frequency=2, checkpoint at epoch 1, 3, 5, ... (counting from 0)
@@ -182,6 +181,7 @@ class RayTrainReportCallback(TuneCallback):
 
         report_dict = self._get_report_dict(evals_log)
         if should_checkpoint:
+            self._last_checkpoint_iteration = epoch
             with self._get_checkpoint(model=model) as checkpoint:
                 train.report(report_dict, checkpoint=checkpoint)
         else:
