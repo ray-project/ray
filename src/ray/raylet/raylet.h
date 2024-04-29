@@ -71,6 +71,8 @@ class Raylet {
 
   NodeID GetNodeId() const { return self_node_id_; }
 
+  NodeManager &node_manager() { return node_manager_; }
+
  private:
   /// Register GCS client.
   ray::Status RegisterGcs();

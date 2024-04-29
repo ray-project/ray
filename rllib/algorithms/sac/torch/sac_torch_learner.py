@@ -18,10 +18,11 @@ from ray.rllib.algorithms.sac.sac_learner import (
     TD_ERROR_KEY,
     SACLearner,
 )
+from ray.rllib.core import DEFAULT_MODULE_ID
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import (
     POLICY_LOSS_KEY,
 )
-from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.nested_dict import NestedDict
@@ -120,7 +121,7 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
         # This is needed for the policy (actor) loss in SAC.
         action_dist_class = self.module[module_id].get_train_action_dist_cls()
         action_dist_curr = action_dist_class.from_logits(
-            fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+            fwd_out[Columns.ACTION_DIST_INPUTS]
         )
         # Get the train action distribution for the current policy and next state.
         # For the Q (critic) loss in SAC, we need to sample from the current policy at
@@ -160,8 +161,8 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
         # the sampled actions.
         q_batch_curr = NestedDict(
             {
-                SampleBatch.OBS: batch[SampleBatch.OBS],
-                SampleBatch.ACTIONS: actions_curr,
+                Columns.OBS: batch[Columns.OBS],
+                Columns.ACTIONS: actions_curr,
             }
         )
         q_curr = self.module[module_id]._qf_forward_train(q_batch_curr)[QF_PREDS]
@@ -177,8 +178,8 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
         # sampled actions for the next state.
         q_batch_next = NestedDict(
             {
-                SampleBatch.OBS: batch[SampleBatch.NEXT_OBS],
-                SampleBatch.ACTIONS: actions_next,
+                Columns.OBS: batch[Columns.NEXT_OBS],
+                Columns.ACTIONS: actions_next,
             }
         )
         q_target_next = self.module[module_id]._qf_target_forward_train(q_batch_next)[
@@ -196,13 +197,13 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
         # Note, we use here the sampled actions in the log probabilities.
         q_target_next -= alpha * logps_next
         # Now mask all Q-values with terminated next states in the targets.
-        q_next_masked = (1.0 - batch[SampleBatch.TERMINATEDS].float()) * q_target_next
+        q_next_masked = (1.0 - batch[Columns.TERMINATEDS].float()) * q_target_next
 
         # Compute the right hand side of the Bellman equation.
         # Detach this node from the computation graph as we do not want to
         # backpropagate through the target network when optimizing the Q loss.
         q_selected_target = (
-            batch[SampleBatch.REWARDS]
+            batch[Columns.REWARDS]
             + (self.config.gamma ** batch["n_steps"]) * q_next_masked
         ).detach()
 
@@ -313,7 +314,7 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
         for component in (
             ["qf", "policy", "alpha"] + ["qf_twin"] if self.config.twin_q else []
         ):
-            self.metrics.peek(DEFAULT_POLICY_ID, component + "_loss").backward(
+            self.metrics.peek(DEFAULT_MODULE_ID, component + "_loss").backward(
                 retain_graph=True
             )
             grads.update(
