@@ -130,7 +130,7 @@ class TestAlgorithm(unittest.TestCase):
                 )
 
                 # Assert new policy is part of local worker (eval worker set does NOT
-                # have a local worker, only the main WorkerSet does).
+                # have a local worker, only the main EnvRunnerGroup does).
                 pol_map = algo.workers.local_worker().policy_map
                 self.assertTrue(new_pol is not pol0)
                 for j in range(i + 1):
@@ -226,8 +226,8 @@ class TestAlgorithm(unittest.TestCase):
                     )[0]
                 )
                 # Assert removed policy is no longer part of local worker
-                # (eval worker set does NOT have a local worker, only the main WorkerSet
-                # does).
+                # (eval worker set does NOT have a local worker, only the main
+                # EnvRunnerGroup does).
                 pol_map = algo.workers.local_worker().policy_map
                 self.assertTrue(pid not in pol_map)
                 self.assertTrue(len(pol_map) == i)
@@ -304,7 +304,7 @@ class TestAlgorithm(unittest.TestCase):
             self.assertTrue("evaluation" in r2)
             self.assertTrue("evaluation" in r3)
 
-    def test_evaluation_wo_evaluation_worker_set(self):
+    def test_evaluation_wo_evaluation_env_runner_group(self):
         # Use a custom callback that asserts that we are running the
         # configured exact number of episodes per evaluation.
         config = (

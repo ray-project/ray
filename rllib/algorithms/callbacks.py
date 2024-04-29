@@ -36,7 +36,7 @@ import psutil
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm
     from ray.rllib.env.env_runner import EnvRunner
-    from ray.rllib.evaluation import WorkerSet
+    from ray.rllib.env.env_runner_group import EnvRunnerGroup
 
 
 @PublicAPI
@@ -76,7 +76,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         self,
         *,
         algorithm: "Algorithm",
-        worker_set: "WorkerSet",
+        worker_set: "EnvRunnerGroup",
         worker_ids: List[int],
         is_evaluation: bool,
         **kwargs,
@@ -87,7 +87,8 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         snippet inside your custom override of this method:
 
         Note that any "worker" inside the algorithm's `self.worker` and
-        `self.evaluation_workers` WorkerSets are instances of a subclass of EnvRunner.
+        `self.evaluation_workers` EnvRunnerGroups are instances of a subclass of
+        EnvRunner.
 
         .. testcode::
             from ray.rllib.algorithms.callbacks import DefaultCallbacks
@@ -124,14 +125,14 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
 
         Args:
             algorithm: Reference to the Algorithm instance.
-            worker_set: The WorkerSet object in which the workers in question reside.
-                You can use a `worker_set.foreach_worker(remote_worker_ids=...,
+            worker_set: The EnvRunnerGroup object in which the workers in question
+                reside. You can use a `worker_set.foreach_worker(remote_worker_ids=...,
                 local_worker=False)` method call to execute custom
                 code on the recreated (remote) workers. Note that the local worker is
                 never recreated as a failure of this would also crash the Algorithm.
             worker_ids: The list of (remote) worker IDs that have been recreated.
-            is_evaluation: Whether `worker_set` is the evaluation WorkerSet (located
-                in `Algorithm.evaluation_workers`) or not.
+            is_evaluation: Whether `worker_set` is the evaluation EnvRunnerGroup
+                (located in `Algorithm.evaluation_workers`) or not.
         """
         pass
 
