@@ -44,6 +44,8 @@ RUN sudo apt-get update && sudo apt-get install curl -y
 
 # Download the source code for the Whisper application into `whisper_example.py`.
 RUN curl -O https://raw.githubusercontent.com/ray-project/ray/master/doc/source/serve/doc_code/whisper_example.py
+
+ENV PYTHONPATH "${PYTHONPATH}:/home/ray"
 ```
 :::
 :::{tab-item} resnet.Dockerfile
@@ -57,29 +59,31 @@ RUN sudo apt-get update && sudo apt-get install curl -y
 
 # Download the source code for the ResNet application into `resnet50_example.py`.
 RUN curl -O https://raw.githubusercontent.com/ray-project/ray/master/doc/source/serve/doc_code/resnet50_example.py
+
+ENV PYTHONPATH "${PYTHONPATH}:/home/ray"
 ```
 :::
 ::::
 
-Then, build the corresponding Docker images and push it to your choice of Docker registry. This tutorial uses `alice/whisper_image:latest` and `alice/resnet_image:latest` as placeholder names for the images, but make sure to swap out `alice` for a repo name of your choice.
+Then, build the corresponding Docker images and push it to your choice of Docker registry using `podman`. This tutorial uses `alice/whisper_image:latest` and `alice/resnet_image:latest` as placeholder names for the images, but make sure to swap out `alice` for a repo name of your choice.
 
 ::::{tab-set}
 :::{tab-item} Whisper
 ```bash
-# Build the Docker image from the Dockerfile
+# Build the Docker image from the Dockerfile using podman
 export IMG1=alice/whisper_image:latest
-docker build -t $IMG1 -f whisper.Dockerfile .
+podman build -t $IMG1 -f whisper.Dockerfile .
 # Push to a Docker registry. This step is unnecessary if you are deploying Serve locally.
-docker push $IMG1
+podman push $IMG1
 ```
 :::
 :::{tab-item} Resnet
 ```bash
-# Build the Docker image from the Dockerfile
+# Build the Docker image from the Dockerfile using podman
 export IMG2=alice/resnet_image:latest
-docker build -t $IMG2 -f resnet.Dockerfile .
+podman build -t $IMG2 -f resnet.Dockerfile .
 # Push to a Docker registry. This step is unnecessary if you are deploying Serve locally.
-docker push $IMG2
+podman push $IMG2
 ```
 :::
 ::::
