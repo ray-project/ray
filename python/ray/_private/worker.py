@@ -1748,7 +1748,7 @@ def init(
     else:
         logger.info(info_str)
 
-    ray.__tick__("before_connect")
+    ray._private.path_timer.tick("before_connect")
     connect(
         _global_node,
         _global_node.session_name,
@@ -1761,7 +1761,7 @@ def init(
         job_config=job_config,
         entrypoint=ray._private.utils.get_entrypoint_name(),
     )
-    ray.__tick__("after_connect")
+    ray._private.path_timer.tick("after_connect")
     if job_config and job_config.code_search_path:
         global_worker.set_load_code_from_local(True)
     else:
@@ -1782,7 +1782,7 @@ def init(
     node_id = global_worker.core_worker.get_current_node_id()
     global_node_address_info = _global_node.address_info.copy()
     global_node_address_info["webui_url"] = _remove_protocol_from_url(dashboard_url)
-    ray.__tick__("ray_start_done")
+    ray._private.path_timer.tick("ray_start_done")
     ray.__sum__()
     return RayContext(dict(global_node_address_info, node_id=node_id.hex()))
 

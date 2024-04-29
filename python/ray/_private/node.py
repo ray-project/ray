@@ -72,7 +72,7 @@ class Node:
             default_worker: Whether it's running from a ray worker or not
             ray_init_cluster: Whether it's a cluster created by ray.init()
         """
-        ray.__tick__("node:__init__")
+        ray._private.path_timer.tick("node:__init__")
 
         if shutdown_at_exit:
             if connect_only:
@@ -332,11 +332,11 @@ class Node:
 
         # Start processes.
         if head:
-            ray.__tick__("before_start_head_processes")
+            ray._private.path_timer.tick("before_start_head_processes")
             self.start_head_processes()
 
         if not connect_only:
-            ray.__tick__("before_start_ray_processes")
+            ray._private.path_timer.tick("before_start_ray_processes")
             self.start_ray_processes()
             # we should update the address info after the node has been started
             try:
@@ -357,15 +357,14 @@ class Node:
             if self._ray_params.node_manager_port == 0:
                 self._ray_params.node_manager_port = node_info["node_manager_port"]
 
-        ray.__tick__("after_start_ray_processes")
+        ray._private.path_timer.tick("after_start_ray_processes")
         # Makes sure the Node object has valid addresses after setup.
         self.validate_ip_port(self.address)
         self.validate_ip_port(self.gcs_address)
 
         if not connect_only:
             self._record_stats()
-        ray.__tick__("node_init_done")
-        ray.__sum__()
+        ray._private.path_timer.tick("node_init_done")
 
     def check_persisted_session_name(self):
         if self._ray_params.external_addresses is None:
@@ -720,7 +719,7 @@ class Node:
         return self._gcs_client
 
     def _init_gcs_client(self):
-        ray.__tick__("[start_init_gcs_client]")
+        ray._private.path_timer.tick("[start_init_gcs_client]")
         if self.head:
             gcs_process = self.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER][
                 0
@@ -738,7 +737,7 @@ class Node:
                     address=gcs_address,
                     cluster_id=self._ray_params.cluster_id,  # Hex string
                 )
-                ray.__tick__("[gcs_client_created_and_connected]")
+                ray._private.path_timer.tick("[gcs_client_created_and_connected]")
                 self.cluster_id = client.cluster_id
                 if self.head:
                     # Send a simple request to make sure GCS is alive
@@ -776,7 +775,7 @@ class Node:
                 raise RuntimeError(
                     f"Failed to {'start' if self.head else 'connect to'} GCS."
                 )
-        ray.__tick__(f"[after_init_gcs_client with iter={iter}]")
+        ray._private.path_timer.tick(f"[after_init_gcs_client with iter={iter}]")
 
         ray.experimental.internal_kv._initialize_internal_kv(self._gcs_client)
 
@@ -1141,7 +1140,7 @@ class Node:
             self.all_processes[ray_constants.PROCESS_TYPE_DASHBOARD] = [
                 process_info,
             ]
-            ray.__tick__("[before_webui_url_kv_put]")
+            ray._private.path_timer.tick("[before_webui_url_kv_put]")
             self.get_gcs_client().internal_kv_put(
                 b"webui:url",
                 self._webui_url.encode(),
@@ -1361,18 +1360,18 @@ class Node:
         assert self._gcs_client is None
 
         self.start_gcs_server()
-        ray.__tick__("after_start_gcs_server")
+        ray._private.path_timer.tick("after_start_gcs_server")
         assert self.get_gcs_client() is not None
         self._write_cluster_info_to_kv()
-        ray.__tick__("after_write_cluster_info_to_kv")
+        ray._private.path_timer.tick("after_write_cluster_info_to_kv")
 
         if not self._ray_params.no_monitor:
             self.start_monitor()
-            ray.__tick__("after_start_monitor")
+            ray._private.path_timer.tick("after_start_monitor")
 
         if self._ray_params.ray_client_server_port:
             self.start_ray_client_server()
-            ray.__tick__("after_start_ray_client_server")
+            ray._private.path_timer.tick("after_start_ray_client_server")
 
         if self._ray_params.include_dashboard is None:
             # Default
@@ -1384,7 +1383,7 @@ class Node:
             include_dashboard=self._ray_params.include_dashboard,
             raise_on_failure=raise_on_api_server_failure,
         )
-        ray.__tick__("after_start_api_server")
+        ray._private.path_timer.tick("after_start_api_server")
 
     def start_ray_processes(self):
         """Start all of the processes on the node."""

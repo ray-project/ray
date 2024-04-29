@@ -1310,7 +1310,7 @@ def start_api_server(
             fate_share=fate_share,
         )
 
-        ray.__tick__("[after_start_dashboard_process]")
+        ray._private.path_timer.tick("[after_start_dashboard_process]")
         # Retrieve the dashboard url
         gcs_client = GcsClient(address=gcs_address)
         ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
@@ -1330,7 +1330,7 @@ def start_api_server(
             # This is often on the critical path of ray.init() and ray start,
             # so we need to poll often.
             time.sleep(0.1)
-        ray.__tick__("[after_kv_get_dashboard_url]")
+        ray._private.path_timer.tick("[after_kv_get_dashboard_url]")
 
         # Dashboard couldn't be started.
         if dashboard_url is None:

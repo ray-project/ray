@@ -23,6 +23,7 @@ import yaml
 
 import ray
 import ray._private.ray_constants as ray_constants
+import ray._private.path_timer as path_timer
 import ray._private.services as services
 from ray._private.utils import (
     check_ray_client_dependencies_installed,
@@ -611,7 +612,7 @@ def start(
     labels,
 ):
     """Start Ray processes manually on the local machine."""
-    ray.__tick__("ray_start")
+    path_timer.tick("ray_start")
     if gcs_server_port is not None:
         cli_logger.error(
             "`{}` is deprecated and ignored. Use {} to specify "
@@ -876,8 +877,8 @@ def start(
                     )
                 )
         ray_params.gcs_address = bootstrap_address
-        ray.__tick__("ray_start_head_done")
-        ray.__sum__()
+        path_timer.tick("ray_start_head_done")
+        path_timer.summary()
     else:
         # Start worker node.
         if not ray_constants.ENABLE_RAY_CLUSTER:
