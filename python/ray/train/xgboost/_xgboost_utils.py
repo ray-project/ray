@@ -118,6 +118,9 @@ class RayTrainReportCallback(TuneCallback):
         # so that the latest metrics can be reported with the checkpoint
         # at the end of training.
         self._evals_log = None
+        # Keep track of the last checkpoint iteration to avoid double-checkpointing
+        # when using `checkpoint_at_end=True`.
+        self._last_checkpoint_iteration = None
 
     @classmethod
     def get_model(
@@ -169,6 +172,7 @@ class RayTrainReportCallback(TuneCallback):
 
     def after_iteration(self, model: Booster, epoch: int, evals_log: Dict):
         self._evals_log = evals_log
+        self._last_checkpoint_iteration = epoch
 
         checkpointing_disabled = self._frequency == 0
         # Ex: if frequency=2, checkpoint at epoch 1, 3, 5, ... (counting from 0)
@@ -183,8 +187,13 @@ class RayTrainReportCallback(TuneCallback):
         else:
             train.report(report_dict)
 
-    def after_training(self, model: Booster):
+    def after_training(self, model: Booster) -> Booster:
         if not self._checkpoint_at_end:
+            return model
+
+        if model.num_boosted_rounds() - 1 == self._last_checkpoint_iteration:
+            # Avoids a duplicate checkpoint if the checkpoint frequency happens
+            # to align with the last iteration.
             return model
 
         report_dict = self._get_report_dict(self._evals_log) if self._evals_log else {}
