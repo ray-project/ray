@@ -80,7 +80,6 @@ class GlobalStateAccessor {
   /// deserialized with protobuf function.
   std::vector<std::string> GetAllTotalResources() ABSL_LOCKS_EXCLUDED(mutex_);
 
-
   /// Get draining nodes.
   ///
   /// \return Draining node id to draining deadline.

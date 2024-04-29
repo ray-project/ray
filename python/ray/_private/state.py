@@ -741,7 +741,7 @@ class GlobalState:
 
     def _live_node_ids(self):
         """Returns a set of node IDs corresponding to nodes still alive."""
-        return {node_id for node_id in self.total_resources_per_node().keys()}
+        return set(self.total_resources_per_node().keys())
 
     def available_resources_per_node(self):
         """Returns a dictionary mapping node id to avaiable resources."""

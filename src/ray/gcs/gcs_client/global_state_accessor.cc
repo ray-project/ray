@@ -124,8 +124,7 @@ std::vector<std::string> GlobalStateAccessor::GetAllTotalResources() {
   {
     absl::ReaderMutexLock lock(&mutex_);
     RAY_CHECK_OK(gcs_client_->NodeResources().AsyncGetAllTotalResources(
-        TransformForMultiItemCallback<rpc::TotalResources>(total_resources,
-                                                               promise)));
+        TransformForMultiItemCallback<rpc::TotalResources>(total_resources, promise)));
   }
   promise.get_future().get();
   return total_resources;

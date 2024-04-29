@@ -81,10 +81,9 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
 
   /// Handle get total resources of all nodes.
   /// Autoscaler-specific RPC called from Python.
-  void HandleGetAllTotalResources(
-      rpc::GetAllTotalResourcesRequest request,
-      rpc::GetAllTotalResourcesReply *reply,
-      rpc::SendReplyCallback send_reply_callback) override;
+  void HandleGetAllTotalResources(rpc::GetAllTotalResourcesRequest request,
+                                  rpc::GetAllTotalResourcesReply *reply,
+                                  rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle get ids of draining nodes.
   /// Autoscaler-specific RPC called from Python.

@@ -188,7 +188,8 @@ TEST_P(GlobalStateAccessorTest, TestGetAllTotalResources) {
 
   // Assert get total resources right.
   std::vector<rpc::TotalResources> all_total_resources;
-  for(const auto &string_of_total_resources_by_node_id : global_state_->GetAllTotalResources()){
+  for (const auto &string_of_total_resources_by_node_id :
+       global_state_->GetAllTotalResources()) {
     rpc::TotalResources total_resources_by_node_id;
     total_resources_by_node_id.ParseFromString(string_of_total_resources_by_node_id);
     all_total_resources.push_back(total_resources_by_node_id);

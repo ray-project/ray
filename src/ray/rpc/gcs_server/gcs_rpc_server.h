@@ -369,10 +369,9 @@ class NodeResourceInfoGcsServiceHandler {
       rpc::GetAllAvailableResourcesReply *reply,
       rpc::SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleGetAllTotalResources(
-      rpc::GetAllTotalResourcesRequest request,
-      rpc::GetAllTotalResourcesReply *reply,
-      rpc::SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleGetAllTotalResources(rpc::GetAllTotalResourcesRequest request,
+                                          rpc::GetAllTotalResourcesReply *reply,
+                                          rpc::SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleGetDrainingNodes(rpc::GetDrainingNodesRequest request,
                                       rpc::GetDrainingNodesReply *reply,
