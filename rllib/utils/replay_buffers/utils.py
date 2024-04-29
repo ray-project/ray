@@ -1,6 +1,6 @@
 import logging
 import psutil
-from typing import Any, Optional, TYPE_CHECKING
+from typing import Any, Dict, Optional, TYPE_CHECKING
 
 import numpy as np
 
@@ -18,7 +18,13 @@ from ray.rllib.utils.replay_buffers import (
     MultiAgentReplayBuffer,
 )
 from ray.rllib.policy.sample_batch import concat_samples, MultiAgentBatch, SampleBatch
-from ray.rllib.utils.typing import ResultDict, SampleBatchType, AlgorithmConfigDict
+from ray.rllib.utils.typing import (
+    AlgorithmConfigDict,
+    ModuleID,
+    ResultDict,
+    SampleBatchType,
+    TensorType,
+)
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
 
@@ -30,24 +36,18 @@ logger = logging.getLogger(__name__)
 
 @DeveloperAPI
 def update_priorities_in_episode_replay_buffer(
+    *,
     replay_buffer: EpisodeReplayBuffer,
-    config: "AlgorithmConfig",
-    train_batch: SampleBatchType,
-    train_results: ResultDict,
+    td_errors: Dict[ModuleID, TensorType],
 ) -> None:
     # Only update priorities, if the buffer supports them.
     if isinstance(replay_buffer, PrioritizedEpisodeReplayBuffer):
 
         # The `ResultDict` will be multi-agent.
-        for module_id, result_dict in train_results.items():
+        for module_id, td_error in td_errors.items():
             # Skip the `"__all__"` keys.
             if module_id in ["__all__", ALL_MODULES]:
                 continue
-
-            from ray.rllib.algorithms.dqn.dqn_rainbow_learner import TD_ERROR_KEY
-
-            # Get the TD-error from the results.
-            td_error = result_dict.get(TD_ERROR_KEY, None)
 
             # Warn once, if we have no TD-errors to update priorities.
             if td_error is None:

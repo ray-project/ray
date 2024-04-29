@@ -652,31 +652,25 @@ class DQN(Algorithm):
                 self.learner_group.foreach_learner(lambda lrnr: lrnr._reset_noise())
             # Run multiple sample-from-buffer and update iterations.
             for _ in range(sample_and_train_weight):
-                # Sample training batch from replay_buffer.
-                # TODO (simon): Use sample_with_keys() here.
+                # Sample a list of episodes used for learning from the replay buffer.
                 with self.metrics.log_time((TIMERS, REPLAY_BUFFER_SAMPLE_TIMER)):
-                    train_dict = self.local_replay_buffer.sample(
+                    episodes = self.local_replay_buffer.sample(
                         num_items=self.config.train_batch_size,
                         n_step=self.config.n_step,
                         gamma=self.config.gamma,
                         beta=self.config.replay_buffer_config["beta"],
                     )
-                    train_batch = SampleBatch(train_dict)
-                    # Convert to multi-agent batch as `LearnerGroup` depends on it.
-                    # TODO (sven, simon): Remove this conversion once the `LearnerGroup`
-                    #  supports dict.
-                    train_batch = train_batch.as_multi_agent()
 
                 # Perform an update on the buffer-sampled train batch.
                 with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
-                    learner_results = self.learner_group.update_from_batch(
-                        train_batch,
+                    learner_results = self.learner_group.update_from_episodes(
+                        episodes=episodes,
                         reduce_fn=self._reduce_fn,
                     )
                     # Isolate TD-errors from result dicts (we should not log these, they
                     # might be very large).
                     td_errors = {
-                        mid: {TD_ERROR_KEY: res.pop(TD_ERROR_KEY)}
+                        mid: res.pop(TD_ERROR_KEY)
                         for mid, res in learner_results.items()
                         if TD_ERROR_KEY in res
                     }
@@ -706,10 +700,8 @@ class DQN(Algorithm):
                 # Update replay buffer priorities.
                 with self.metrics.log_time((TIMERS, REPLAY_BUFFER_UPDATE_PRIOS_TIMER)):
                     update_priorities_in_episode_replay_buffer(
-                        self.local_replay_buffer,
-                        self.config,
-                        train_batch,
-                        td_errors,
+                        replay_buffer=self.local_replay_buffer,
+                        td_errors=td_errors,
                     )
 
                 # Update the target networks, if necessary.
