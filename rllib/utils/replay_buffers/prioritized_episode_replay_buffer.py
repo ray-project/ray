@@ -267,9 +267,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                         [
                             (
                                 eps_idx,
-                                # Note, we add 1 b/c the first timestep is never
-                                # sampled.
-                                old_len + i + 1,
+                                old_len + i,
                                 # Get the index in the segment trees.
                                 self._get_free_node_and_assign(j + i, weight),
                             )
@@ -286,9 +284,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                         [
                             (
                                 eps_idx,
-                                # Note, we add 1 b/c the first timestep is never
-                                # sampled.
-                                i + 1,
+                                i,
                                 self._get_free_node_and_assign(j + i, weight),
                             )
                             for i in range(len(eps))
@@ -296,6 +292,169 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                     )
                 # Increase index.
                 j = len(self._indices)
+
+    @override(EpisodeReplayBuffer)
+    def sample_episodes(
+        self,
+        num_items: Optional[int] = None,
+        *,
+        batch_size_B: Optional[int] = None,
+        batch_length_T: Optional[int] = None,
+        n_step: Optional[Union[int, Tuple]] = None,
+        beta: float = 0.0,
+        gamma: float = 0.99,
+        include_infos: bool = False,
+        include_extra_model_outputs: bool = False,
+    ) -> SampleBatchType:
+        assert beta >= 0.0
+
+        if num_items is not None:
+            assert batch_size_B is None, (
+                "Cannot call `sample()` with both `num_items` and `batch_size_B` "
+                "provided! Use either one."
+            )
+            batch_size_B = num_items
+
+        # Use our default values if no sizes/lengths provided.
+        batch_size_B = batch_size_B or self.batch_size_B
+        # TODO (simon): Implement trajectory sampling for RNNs.
+        batch_length_T = batch_length_T or self.batch_length_T
+
+        # Sample the n-step if necessary.
+        actual_n_step = n_step or 1
+        random_n_step = False
+        if isinstance(n_step, tuple):
+            random_n_step = True
+
+        # Keep track of the indices that were sampled last for updating the
+        # weights later (see `ray.rllib.utils.replay_buffer.utils.
+        # update_priorities_in_episode_replay_buffer`).
+        self._last_sampled_indices = []
+
+        sampled_episodes = []
+
+
+
+
+
+        # Rows to return.
+        #observations = [[] for _ in range(batch_size_B)]
+        #next_observations = [[] for _ in range(batch_size_B)]
+        #actions = [[] for _ in range(batch_size_B)]
+        #rewards = [[] for _ in range(batch_size_B)]
+        #is_terminated = [False for _ in range(batch_size_B)]
+        #is_truncated = [False for _ in range(batch_size_B)]
+        #weights = [[] for _ in range(batch_size_B)]
+        #n_steps = [[] for _ in range(batch_size_B)]
+        ## If `info` should be included, construct also a container for them.
+        #if include_infos:
+        #    infos = [[] for _ in range(batch_size_B)]
+        ## If `extra_model_outputs` should be included, construct a container for them.
+        #if include_extra_model_outputs:
+        #    extra_model_outputs = [[] for _ in range(batch_size_B)]
+
+        # Sample proportionally from replay buffer's segments using the weights.
+        total_segment_sum = self._sum_segment.sum()
+        p_min = self._min_segment.min() / total_segment_sum
+        max_weight = (p_min * self.get_num_timesteps()) ** (-beta)
+        B = 0
+        while B < batch_size_B:
+            # First, draw a random sample from Uniform(0, sum over all weights).
+            # Note, transitions with higher weight get sampled more often (as
+            # more random draws fall into larger intervals).
+            random_sum = self.rng.random() * self._sum_segment.sum()
+            # Get the highest index in the sum-tree for which the sum is
+            # smaller or equal the random sum sample.
+            # Note, we sample `o_(t + n_step)` as this is the state that
+            # brought the information contained in the TD-error (see Schaul
+            # et al. (2018), Algorithm 1).
+            idx = self._sum_segment.find_prefixsum_idx(random_sum)
+            # Get the theoretical probability mass for drawing this sample.
+            p_sample = self._sum_segment[idx] / total_segment_sum
+            # Compute the importance sampling weight.
+            weight = (p_sample * self.get_num_timesteps()) ** (-beta)
+            # Now, get the transition stored at this index.
+            index_triple = self._indices[self._tree_idx_to_sample_idx[idx]]
+
+            # Compute the actual episode index (offset by the number of
+            # already evicted episodes)
+            episode_idx, episode_ts = (
+                index_triple[0] - self._num_episodes_evicted,
+                index_triple[1],
+            )
+            episode = self.episodes[episode_idx]
+
+            # If we use random n-step sampling, draw the n-step for this item.
+            if random_n_step:
+                actual_n_step = int(self.rng.integers(n_step[0], n_step[1]))
+
+            # Skip, if we are too far to the end and `episode_ts` + n_step would go
+            # beyond the episode's end.
+            if episode_ts + actual_n_step > len(episode):
+                continue
+
+            # Note, this will be the reward after executing action
+            # `a_(episode_ts-n_step+1)`. For `n_step>1` this will be the sum of
+            # all discounted rewards that were collected over the last n steps.
+            raw_rewards = episode.get_rewards(
+                slice(episode_ts, episode_ts + actual_n_step + 1)
+            )
+            rewards = scipy.signal.lfilter(
+                [1], [1, -gamma], raw_rewards[::-1], axis=0
+            )[-1]
+
+            # Generate the episode to be returned.
+            sampled_episode = SingleAgentEpisode(
+                # Ensure that each episode contains a tuple of the form:
+                #   (o_t, a_t, sum(r_(t:t+n_step)), o_(t+n_step))
+                # Two observations (t and t+n).
+                observations=episode.get_observations(
+                    [episode_ts, episode_ts + actual_n_step]
+                ),
+                observation_space=episode.observation_space,
+                infos=(
+                    episode.get_infos([episode_ts, episode_ts + actual_n_step])
+                    if include_infos
+                    else None
+                ),
+                actions=episode.get_actions([episode_ts]),
+                action_space=episode.action_space,
+                rewards=rewards,
+                # If the sampled time step is the episode's last time step check, if
+                # the episode is terminated or truncated.
+                terminated=(
+                    False if episode_ts < len(episode) else episode.is_terminated
+                ),
+                truncated=(
+                    False if episode_ts < len(episode) else episode.is_truncated
+                ),
+                extra_model_outputs={
+                    # TODO (simon): Check, if we have to correct here for sequences
+                    #  later.
+                    "weights": [weight / max_weight * 1],  # actual_size=1
+                    "n_step": [actual_n_step],
+                    **(
+                        {
+                            k: episode.get_extra_model_outputs(k, episode_ts)
+                            for k in episode.extra_model_outputs.keys()
+                        }
+                        if include_extra_model_outputs
+                        else {}
+                    ),
+                },
+                # TODO (sven): Support lookback buffers.
+                len_lookback_buffer=0,
+            )
+
+            # Increment counter.
+            B += 1
+
+            # Keep track of sampled indices for updating priorities later.
+            self._last_sampled_indices.append(idx)
+
+        self.sampled_timesteps += batch_size_B
+
+        return sampled_episodes
 
     @override(EpisodeReplayBuffer)
     def sample(
