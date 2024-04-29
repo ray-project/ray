@@ -1185,7 +1185,6 @@ class Learner:
         """
         return self._update_from_batch_or_episodes(
             batch=batch,
-            episodes=None,
             reduce_fn=reduce_fn,
             minibatch_size=minibatch_size,
             num_iters=num_iters,
@@ -1235,7 +1234,6 @@ class Learner:
             case `reduce_fn` is None and we have more than one minibatch pass.
         """
         return self._update_from_batch_or_episodes(
-            batch=None,
             episodes=episodes,
             reduce_fn=reduce_fn,
             minibatch_size=minibatch_size,
@@ -1358,7 +1356,7 @@ class Learner:
         if self._learner_connector is not None and episodes is not None:
             batch = self._learner_connector(
                 rl_module=self.module,
-                data=batch,
+                data=batch if batch is not None else {},
                 episodes=episodes,
                 shared_data={},
             )

@@ -294,7 +294,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                 j = len(self._indices)
 
     @override(EpisodeReplayBuffer)
-    def sample_episodes(
+    def sample(
         self,
         num_items: Optional[int] = None,
         *,
@@ -397,7 +397,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             # `a_(episode_ts-n_step+1)`. For `n_step>1` this will be the sum of
             # all discounted rewards that were collected over the last n steps.
             raw_rewards = episode.get_rewards(
-                slice(episode_ts, episode_ts + actual_n_step + 1)
+                slice(episode_ts, episode_ts + actual_n_step)
             )
             rewards = scipy.signal.lfilter(
                 [1], [1, -gamma], raw_rewards[::-1], axis=0
@@ -408,18 +408,21 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                 # Ensure that each episode contains a tuple of the form:
                 #   (o_t, a_t, sum(r_(t:t+n_step)), o_(t+n_step))
                 # Two observations (t and t+n).
-                observations=episode.get_observations(
-                    [episode_ts, episode_ts + actual_n_step]
-                ),
+                observations=[
+                    episode.get_observations(episode_ts),
+                    episode.get_observations(episode_ts + actual_n_step),
+                ],
                 observation_space=episode.observation_space,
                 infos=(
-                    episode.get_infos([episode_ts, episode_ts + actual_n_step])
-                    if include_infos
+                    [
+                        episode.get_infos(episode_ts),
+                        episode.get_infos(episode_ts + actual_n_step),
+                    ] if include_infos
                     else None
                 ),
-                actions=episode.get_actions([episode_ts]),
+                actions=[episode.get_actions(episode_ts)],
                 action_space=episode.action_space,
-                rewards=rewards,
+                rewards=[rewards],
                 # If the sampled time step is the episode's last time step check, if
                 # the episode is terminated or truncated.
                 terminated=(
@@ -435,7 +438,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                     "n_step": [actual_n_step],
                     **(
                         {
-                            k: episode.get_extra_model_outputs(k, episode_ts)
+                            k: [episode.get_extra_model_outputs(k, episode_ts)]
                             for k in episode.extra_model_outputs.keys()
                         }
                         if include_extra_model_outputs
@@ -444,7 +447,9 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                 },
                 # TODO (sven): Support lookback buffers.
                 len_lookback_buffer=0,
+                t_started=episode_ts,
             )
+            sampled_episodes.append(sampled_episode)
 
             # Increment counter.
             B += 1
@@ -456,8 +461,8 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
 
         return sampled_episodes
 
-    @override(EpisodeReplayBuffer)
-    def sample(
+    #@override(EpisodeReplayBuffer)
+    def OLD_sample(
         self,
         num_items: Optional[int] = None,
         *,
