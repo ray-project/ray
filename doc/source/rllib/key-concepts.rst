@@ -313,7 +313,7 @@ Methods like ``train_one_step`` and ``multi_gpu_train_one_step`` are used for tr
 Further documentation with examples can be found on the :ref:`train ops documentation page <train-ops-docs>`.
 
 The training updates on the policy are only applied to its version inside ``self.workers.local_worker``.
-Note that each :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` has n remote :py:class:`~ray.rllib.env.env_runner.EnvRunner`s and exactly one "local worker" and that all EnvRunners (remote and local ones)
+Note that each :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` has n remote :py:class:`~ray.rllib.env.env_runner.EnvRunner` instances and exactly one "local worker" and that all EnvRunners (remote and local ones)
 hold a copy of the policy.
 
 Now that we updated the local policy (the copy in ``self.workers.local_worker``), we need to make sure
