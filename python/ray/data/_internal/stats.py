@@ -299,11 +299,29 @@ class _StatsActor:
             tag_keys=iter_tag_keys,
         )
 
+        self.iter_blocks_local = Gauge(
+            "data_iter_blocks_local",
+            description="Number of blocks in local node",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_blocks_remote = Gauge(
+            "data_iter_blocks_remote",
+            description="Number of blocks in remote nodes",
+            tag_keys=iter_tag_keys,
+        )
+
+        self.iter_blocks_unknown = Gauge(
+            "data_iter_blocks_unknown",
+            description="Number of blocks with unknown location",
+            tag_keys=iter_tag_keys,
+        )        
+
         self.streaming_split_coordinator_s = Gauge(
             "data_iter_streaming_split_coordinator_seconds",
             description="Seconds spent in the coordinator actor to distribute blocks",
             tag_keys=iter_tag_keys,
         )
+
 
         self.streaming_exec_schedule_s = Gauge(
             "data_streaming_exec_schedule_seconds",
@@ -429,6 +447,11 @@ class _StatsActor:
         self.iter_format_batch_s.set(stats.iter_format_batch_s.get(), tags)
         self.iter_collate_batch_s.set(stats.iter_collate_batch_s.get(), tags)
         self.iter_finalize_batch_s.set(stats.iter_finalize_batch_s.get(), tags)
+
+        self.iter_blocks_local.set(stats.iter_blocks_local.get(), tags)
+        self.iter_blocks_remote.set(stats.iter_blocks_remote.get(), tags)
+        self.iter_blocks_unknown.set(stats.iter_unknown_location.get(), tags)
+
         self.streaming_split_coordinator_s.set(stats.streaming_split_coordinator_s.get(), tags)
         self.streaming_exec_schedule_s.set(stats.streaming_exec_schedule_s.get(), tags) # Where should this live?
 
@@ -472,6 +495,10 @@ class _StatsActor:
         self.iter_collate_batch_s.set(0, tags)
         self.iter_finalize_batch_s.set(0, tags)
         self.streaming_split_coordinator_s.set(0, tags)
+
+        self.iter_blocks_local.set(0, tags)
+        self.iter_blocks_remote.set(0, tags)
+        self.iter_blocks_unknown.set(0, tags)
 
     def register_dataset(self, dataset_tag: str, operator_tags: List[str]):
         self.datasets[dataset_tag] = {

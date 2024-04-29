@@ -39,6 +39,8 @@ from ray.data.datasource.path_util import (
     _resolve_paths_and_filesystem,
 )
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+from ray.util.metrics import Histogram
+from ray.serve._private.constants import DEFAULT_LATENCY_BUCKET_MS
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -137,6 +139,12 @@ class FileBasedDatasource(Datasource):
                     ignore_missing_paths=ignore_missing_paths,
                 )
             ),
+        )
+
+        self.raw_file_size = Histogram(
+            "data_s3_file_size",
+            boundaries=DEFAULT_LATENCY_BUCKET_MS, # Even though this is ms, will be reused to give buckets for MB
+            description=("Size of the input S3 parquet file before download or deserialization"),
         )
 
         if ignore_missing_paths and len(paths) == 0:
@@ -277,6 +285,9 @@ class FileBasedDatasource(Datasource):
         ):
             if len(read_paths) <= 0:
                 continue
+
+            for file_size in file_sizes:
+                self.raw_file_size.observe(file_size / 1024 / 1024) # In MB
 
             meta = self._meta_provider(
                 read_paths,
