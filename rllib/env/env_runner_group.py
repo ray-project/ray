@@ -80,6 +80,9 @@ class EnvRunnerGroup:
         local_env_runner: bool = True,
         logdir: Optional[str] = None,
         _setup: bool = True,
+        # Deprecated args.
+        num_workers=DEPRECATED_VALUE,
+        local_worker=DEPRECATED_VALUE,
     ):
         """Initializes a EnvRunnerGroup instance.
 
@@ -101,6 +104,17 @@ class EnvRunnerGroup:
             logdir: Optional logging directory for workers.
             _setup: Whether to actually set up workers. This is only for testing.
         """
+        if num_workers != DEPRECATED_VALUE or local_worker != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="WorkerSet(num_workers=... OR local_worker=...)",
+                new="EnvRunnerGroup(num_env_runners=... AND local_env_runner=...)",
+                error=False,
+            )
+            if num_workers != DEPRECATED_VALUE:
+                num_env_runners = num_workers
+            if local_worker != DEPRECATED_VALUE:
+                local_env_runner = local_worker
+
         from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
         # Make sure `config` is an AlgorithmConfig object.
@@ -323,9 +337,14 @@ class EnvRunnerGroup:
 
         return spaces
 
+    @property
+    def local_env_runner(self) -> EnvRunner:
+        """Returns the local EnvRunner."""
+        return self._local_worker
+
     @DeveloperAPI
     def local_worker(self) -> EnvRunner:
-        """Returns the local rollout worker."""
+        """Returns the local EnvRunner."""
         return self._local_worker
 
     @DeveloperAPI
@@ -334,8 +353,13 @@ class EnvRunnerGroup:
         return self._worker_manager.healthy_actor_ids()
 
     @DeveloperAPI
+    def num_remote_env_runners(self) -> int:
+        """Returns the number of remote EnvRunners."""
+        return self._worker_manager.num_actors()
+
+    @DeveloperAPI
     def num_remote_workers(self) -> int:
-        """Returns the number of remote rollout workers."""
+        """Returns the number of remote EnvRunners."""
         return self._worker_manager.num_actors()
 
     @DeveloperAPI
@@ -518,7 +542,7 @@ class EnvRunnerGroup:
             if weights_src is None:
                 raise ValueError(
                     "`from_worker_or_trainer` is None. In this case, EnvRunnerGroup "
-                    "should have local_worker. But local_worker is also None."
+                    "should have local_env_runner. But local_env_runner is also None."
                 )
             weights = weights_src.get_weights(policies, inference_only)
             # Move weights to the object store to avoid having to make n pickled copies
