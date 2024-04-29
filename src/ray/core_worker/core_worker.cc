@@ -2715,6 +2715,11 @@ const std::string CoreWorker::GetActorName() const {
   return actor_manager_->GetActorHandle(actor_id_)->GetName();
 }
 
+const std::string CoreWorker::GetActorNamespace() const {
+  absl::MutexLock lock(&mutex_);
+  return actor_manager_->GetActorHandle(actor_id_)->GetNamespace();
+}
+
 const ResourceMappingType CoreWorker::GetResourceIDs() const {
   absl::MutexLock lock(&mutex_);
   return *resource_ids_;

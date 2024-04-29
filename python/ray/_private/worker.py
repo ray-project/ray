@@ -506,6 +506,12 @@ class Worker:
         return None
 
     @property
+    def actor_namespace(self):
+        if hasattr(self, "core_worker"):
+            return self.core_worker.get_actor_namespace().decode("utf-8")
+        return None
+
+    @property
     def current_task_id(self):
         return self.core_worker.get_current_task_id()
 

@@ -280,6 +280,27 @@ class RuntimeContext(object):
         actor_id = self.worker.actor_id
         return self.worker.actor_name if not actor_id.is_nil() else None
 
+    def get_actor_namespace(self) -> Optional[str]:
+        """Get the current actor namespace of this worker.
+
+        This shouldn't be used in a driver process.
+        The namespace is in string format.
+
+        Returns:
+            The current actor namespace of this worker.
+            If a current worker is an actor, and
+            if actor namespace doesn't exist, it returns an empty string.
+            If a current worker is not an actor, it returns None.
+        """
+        if self.worker.mode != ray._private.worker.WORKER_MODE:
+            logger.warning(
+                "This method is only available when the process is a "
+                f"worker. Current mode: {self.worker.mode}"
+            )
+        actor_id = self.worker.actor_id
+        return self.worker.actor_namespace if not actor_id.is_nil() else None
+
+
     @property
     def namespace(self):
         """Get the current namespace of this worker.

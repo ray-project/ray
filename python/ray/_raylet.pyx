@@ -3437,6 +3437,9 @@ cdef class CoreWorker:
     def get_actor_name(self):
         return CCoreWorkerProcess.GetCoreWorker().GetActorName()
 
+    def get_actor_namespace(self):
+        return CCoreWorkerProcess.GetCoreWorker().GetActorNamespace()
+
     def get_placement_group_id(self):
         return PlacementGroupID(
             CCoreWorkerProcess.GetCoreWorker()

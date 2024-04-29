@@ -1052,6 +1052,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   const std::string GetActorName() const;
 
+  const std::string GetActorNamespace() const;
+
   // Get the resource IDs available to this worker (as assigned by the raylet).
   const ResourceMappingType GetResourceIDs() const;
 
