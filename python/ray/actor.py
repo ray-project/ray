@@ -1,7 +1,7 @@
 import inspect
 import logging
 import weakref
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 import ray._private.ray_constants as ray_constants
 import ray._private.signature as signature
@@ -148,7 +148,7 @@ class ActorMethod:
         self,
         actor,
         method_name,
-        num_returns: Optional[Union[int, str]],
+        num_returns: Optional[Union[int, Literal["streaming"]]],
         max_task_retries: int,
         retry_exceptions: Union[bool, list, tuple],
         is_generator: bool,
@@ -1273,7 +1273,7 @@ class ActorHandle:
         method_is_generator: Dict[str, bool],
         method_decorators,
         method_signatures,
-        method_num_returns: Dict[str, int],
+        method_num_returns: Dict[str, Union[int, Literal["streaming"]]],
         method_max_task_retries: Dict[str, int],
         method_retry_exceptions: Dict[str, Union[bool, list, tuple]],
         method_generator_backpressure_num_objects: Dict[str, int],
@@ -1359,7 +1359,7 @@ class ActorHandle:
         args: List[Any] = None,
         kwargs: Dict[str, Any] = None,
         name: str = "",
-        num_returns: Optional[int] = None,
+        num_returns: Optional[Union[int, Literal["streaming"]]] = None,
         max_task_retries: int = None,
         retry_exceptions: Union[bool, list, tuple] = None,
         concurrency_group_name: Optional[str] = None,

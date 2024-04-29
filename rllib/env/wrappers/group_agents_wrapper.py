@@ -58,9 +58,6 @@ class GroupAgentsWrapper(MultiAgentEnv):
         """
         super().__init__()
         self.env = env
-        # Inherit wrapped env's `_skip_env_checking` flag.
-        if hasattr(self.env, "_skip_env_checking"):
-            self._skip_env_checking = self.env._skip_env_checking
         self.groups = groups
         self.agent_id_to_group = {}
         for group_id, agent_ids in groups.items():

@@ -82,9 +82,9 @@ register_env("pistonball", lambda config: PettingZooEnv(env_creator(config)))
 config = (
     PPOConfig()
     .environment("pistonball", env_config={"local_ratio": 0.5}, clip_rewards=True)
-    .rollouts(
-        num_rollout_workers=15 if not args.as_test else 2,
-        num_envs_per_worker=1,
+    .env_runners(
+        num_env_runners=15 if not args.as_test else 2,
+        num_envs_per_env_runner=1,
         observation_filter="NoFilter",
         rollout_fragment_length="auto",
     )
@@ -112,8 +112,8 @@ tune.Tuner(
     run_config=air.RunConfig(
         stop={
             "training_iteration": args.stop_iters,
-            "timesteps_total": args.stop_timesteps,
-            "episode_reward_mean": args.stop_reward,
+            "num_env_steps_sampled_lifetime": args.stop_timesteps,
+            "env_runner_results/episode_return_mean": args.stop_reward,
         },
         verbose=2,
     ),

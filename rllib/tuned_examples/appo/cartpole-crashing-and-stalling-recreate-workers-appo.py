@@ -33,20 +33,17 @@ config = (
             "stall_time_sec": (2, 5),  # stall between 2 and 10sec.
             "stall_on_worker_indices": [2, 3],
         },
-        # Disable env checking. Env checker doesn't handle Exceptions from
-        # user envs, and will crash rollout worker.
-        disable_env_checking=True,
     )
-    .rollouts(
-        num_rollout_workers=1,
-        num_envs_per_worker=1,
+    .env_runners(
+        num_env_runners=1,
+        num_envs_per_env_runner=1,
     )
     # Switch on resiliency (recreate any failed worker).
     .fault_tolerance(
-        recreate_failed_workers=True,
+        recreate_failed_env_runners=True,
     )
     .evaluation(
-        evaluation_num_workers=4,
+        evaluation_num_env_runners=4,
         evaluation_interval=1,
         evaluation_duration=25,
         evaluation_duration_unit="episodes",

@@ -30,11 +30,11 @@ if __name__ == "__main__":
         get_trainable_cls(args.algo)
         .get_default_config()
         .environment("env" if args.num_agents > 0 else "Pendulum-v1")
-        .rollouts(
+        .env_runners(
             # TODO (sven): MAEnvRunner does not support vectorized envs yet
             #  due to gym's env checkers and non-compatability with RLlib's
             #  MultiAgentEnv API.
-            num_envs_per_worker=1 if args.num_agents > 0 else 20,
+            num_envs_per_env_runner=1 if args.num_agents > 0 else 20,
             # Define a single connector piece to be prepended to the env-to-module
             # connector pipeline.
             # Alternatively, return a list of n ConnectorV2 pieces (which will then be
@@ -54,14 +54,22 @@ if __name__ == "__main__":
             vf_clip_param=10.0,
             vf_loss_coeff=0.01,
         )
-        # .evaluation(
-        #    evaluation_num_workers=1,
-        #    evaluation_parallel_to_training=True,
-        #    evaluation_interval=1,
-        #    evaluation_duration=10,
-        #    evaluation_duration_unit="episodes",
-        #    evaluation_config={"explore": False},
-        # )
+        .evaluation(
+            evaluation_num_env_runners=1,
+            evaluation_parallel_to_training=True,
+            evaluation_interval=1,
+            evaluation_duration=10,
+            evaluation_duration_unit="episodes",
+            evaluation_config={
+                "explore": False,
+                # Do NOT use the eval EnvRunners' ConnectorV2 states. Instead, before
+                # each round of evaluation, broadcast the latest training
+                # EnvRunnerGroup's ConnectorV2 states (merged from all training remote
+                # EnvRunners) to the eval EnvRunnerGroup (and discard the eval
+                # EnvRunners' stats).
+                "use_worker_filter_stats": False,
+            },
+        )
     )
     if args.enable_new_api_stack:
         config = config.rl_module(
@@ -92,4 +100,9 @@ if __name__ == "__main__":
             policy_mapping_fn=lambda aid, *a, **kw: f"p{aid}",
         )
 
-    run_rllib_example_script_experiment(config, args)
+    stop = {
+        "training_iteration": args.stop_iters,
+        "evaluation_results/env_runner_results/episode_return_mean": args.stop_reward,
+        "num_env_steps_sampled_lifetime": args.stop_timesteps,
+    }
+    run_rllib_example_script_experiment(config, args, stop=stop)

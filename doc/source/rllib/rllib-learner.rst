@@ -58,7 +58,7 @@ arguments in the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConf
 
     config = (
         PPOConfig()
-        .experimental(_enable_new_api_stack=True)
+        .api_stack(enable_rl_module_and_learner=True)
         .resources(
             num_gpus_per_learner_worker=0,  # Set this to 1 to enable GPU training.
             num_cpus_per_learner_worker=1,
@@ -77,7 +77,7 @@ arguments in the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConf
 .. note::
     
     This features is in alpha. If you migrate to this algorithm, enable the feature by 
-    via `AlgorithmConfig.experimental(_enable_new_api_stack=True)`.
+    via `AlgorithmConfig.api_stack(enable_rl_module_and_learner=True)`.
 
     The following algorithms support :py:class:`~ray.rllib.core.learner.learner.Learner` out of the box. Implement
     an algorithm with a custom :py:class:`~ray.rllib.core.learner.learner.Learner` to leverage this API for other algorithms.
@@ -185,12 +185,9 @@ Updates
 
     import time
 
+    from ray.rllib.core import DEFAULT_MODULE_ID
     from ray.rllib.evaluation.postprocessing import Postprocessing
-    from ray.rllib.policy.sample_batch import (
-        DEFAULT_POLICY_ID,
-        SampleBatch,
-        MultiAgentBatch,
-    )
+    from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 
     DUMMY_BATCH = {
         SampleBatch.OBS: np.array(
@@ -221,7 +218,7 @@ Updates
     DUMMY_BATCH = default_batch.as_multi_agent()
     ADDITIONAL_UPDATE_KWARGS = {
         "timestep": 0,
-        "sampled_kl_values": {DEFAULT_POLICY_ID: 1e-4},
+        "sampled_kl_values": {DEFAULT_MODULE_ID: 1e-4},
     }
 
     learner.build() # needs to be called on the learner before calling any functions

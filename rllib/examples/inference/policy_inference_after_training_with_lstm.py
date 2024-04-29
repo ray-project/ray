@@ -92,8 +92,8 @@ if __name__ == "__main__":
 
     stop = {
         "training_iteration": args.stop_iters,
-        "timesteps_total": args.stop_timesteps,
-        "episode_reward_mean": args.stop_reward,
+        "num_env_steps_sampled_lifetime": args.stop_timesteps,
+        "env_runner_results/episode_return_mean": args.stop_reward,
     }
 
     print("Training policy until desired reward/timesteps/iterations. ...")
@@ -130,7 +130,7 @@ if __name__ == "__main__":
     # Set LSTM's initial internal state.
     lstm_cell_size = config["model"]["lstm_cell_size"]
     # range(2) b/c h- and c-states of the LSTM.
-    if algo.config._enable_new_api_stack:
+    if algo.config.enable_rl_module_and_learner:
         init_state = state = algo.get_policy().model.get_initial_state()
     else:
         init_state = state = [np.zeros([lstm_cell_size], np.float32) for _ in range(2)]

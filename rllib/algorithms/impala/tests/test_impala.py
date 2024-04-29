@@ -30,7 +30,7 @@ class TestIMPALA(unittest.TestCase):
             impala.ImpalaConfig()
             .environment("CartPole-v1")
             .resources(num_gpus=0)
-            .rollouts(num_rollout_workers=2)
+            .env_runners(num_env_runners=2)
             .training(
                 model={
                     "lstm_use_prev_action": True,
@@ -78,7 +78,7 @@ class TestIMPALA(unittest.TestCase):
                 ],
                 train_batch_size=100,
             )
-            .rollouts(num_envs_per_worker=2)
+            .env_runners(num_envs_per_env_runner=2)
             .environment(env="CartPole-v1")
         )
 
