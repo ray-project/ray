@@ -56,10 +56,10 @@ class TestAPPOTfLearner(unittest.TestCase):
         """Test that appo_policy_rlm loss matches the appo learner loss."""
         config = (
             appo.APPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .environment("CartPole-v1")
-            .rollouts(
-                num_rollout_workers=0,
+            .env_runners(
+                num_env_runners=0,
                 rollout_fragment_length=frag_length,
             )
             .resources(num_gpus=0)
@@ -73,7 +73,7 @@ class TestAPPOTfLearner(unittest.TestCase):
             )
         )
         # We have to set exploration_config here manually because setting it through
-        # config.exploration() only deep-updates it
+        # config.env_runners() only deep-updates it
         config.exploration_config = {}
 
         for fw in framework_iterator(config, frameworks=("torch", "tf2")):
@@ -104,13 +104,14 @@ class TestAPPOTfLearner(unittest.TestCase):
         initial_kl_coeff = 0.01
         config = (
             appo.APPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .environment("CartPole-v1")
             # Asynchronous Algo, make sure we have some results after 1 iteration.
             .reporting(min_time_s_per_iteration=10)
-            .rollouts(
-                num_rollout_workers=0,
+            .env_runners(
+                num_env_runners=0,
                 rollout_fragment_length=frag_length,
+                exploration_config={},
             )
             .resources(num_gpus=0)
             .training(
@@ -123,7 +124,6 @@ class TestAPPOTfLearner(unittest.TestCase):
                 use_kl_loss=True,
                 kl_coeff=initial_kl_coeff,
             )
-            .exploration(exploration_config={})
         )
         for _ in framework_iterator(config, frameworks=("torch", "tf2")):
             algo = config.build()

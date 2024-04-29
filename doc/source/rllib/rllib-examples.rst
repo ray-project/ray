@@ -26,7 +26,7 @@ Environments and Adapters
    Example of how to setup an RLlib Algorithm against a locally running Unity3D editor instance to
    learn any Unity3D game (including support for multi-agent).
    Use this example to try things out and watch the game and the learning progress live in the editor.
-   Providing a compiled game, this example could also run in distributed fashion with `num_workers > 0`.
+   Providing a compiled game, this example could also run in distributed fashion with `num_env_runners > 0`.
    For a more heavy-weight, distributed, cloud-based example, see ``Unity3D client/server`` below.
 
 Custom- and Complex Models
@@ -125,7 +125,7 @@ Multi-Agent and Hierarchical
 Special Action- and Observation Spaces
 --------------------------------------
 
-- `Nested action spaces <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/connector_v2_nested_action_spaces.py>`__:
+- `Nested action spaces <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/nested_action_spaces.py>`__:
    Learning in arbitrarily nested action spaces.
 - `Parametric actions <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/parametric_actions_cartpole.py>`__:
    Example of how to handle variable-length or parametric action spaces.

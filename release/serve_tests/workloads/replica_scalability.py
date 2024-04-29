@@ -27,7 +27,14 @@ DEFAULT_FULL_TEST_TRIAL_LENGTH_S = 60
 @click.command()
 @click.option("--num-replicas", type=int, default=DEFAULT_FULL_TEST_NUM_REPLICA)
 @click.option("--trial-length", type=int, default=DEFAULT_FULL_TEST_TRIAL_LENGTH_S)
-def main(num_replicas: Optional[int], trial_length: Optional[int]):
+@click.option("--output-path", "-o", type=str, default=None)
+@click.option("--cluster-env", type=str, default=None)
+def main(
+    num_replicas: Optional[int],
+    trial_length: Optional[int],
+    output_path: Optional[str],
+    cluster_env: Optional[str],
+):
     noop_1k_application = {
         "name": "default",
         "import_path": "noop:app",
@@ -45,7 +52,7 @@ def main(num_replicas: Optional[int], trial_length: Optional[int]):
         ],
     }
     compute_config = ComputeConfig(
-        cloud="anyscale_v2_default_cloud",
+        cloud="serve_release_tests_cloud",
         head_node=HeadNodeConfig(instance_type="m5.8xlarge"),
         worker_nodes=[
             WorkerNodeGroupConfig(
@@ -83,6 +90,7 @@ def main(num_replicas: Optional[int], trial_length: Optional[int]):
         service_name="replica-scalability",
         compute_config=compute_config,
         applications=[noop_1k_application],
+        cluster_env=cluster_env,
     ) as service_name:
         ray.init("auto")
         status = service.status(name=service_name)
@@ -126,7 +134,7 @@ def main(num_replicas: Optional[int], trial_length: Optional[int]):
         ]
         results = {
             "total_requests": stats.total_requests,
-            "history": stats.history,
+            "service_id": status.id,
             "perf_metrics": sum(
                 results_per_stage,
                 [
@@ -154,8 +162,9 @@ def main(num_replicas: Optional[int], trial_length: Optional[int]):
             ),
         }
 
+        logger.info(f"Stats history: {json.dumps(stats.history, indent=4)}")
         logger.info(f"Final aggregated metrics: {json.dumps(results, indent=4)}")
-        save_test_results(results)
+        save_test_results(results, output_path=output_path)
 
 
 if __name__ == "__main__":

@@ -234,8 +234,10 @@ def run(
         env = config.get("env")
 
     # Make sure we have evaluation workers.
-    if not config.get("evaluation_num_workers"):
-        config["evaluation_num_workers"] = config.get("num_workers", 0)
+    if not config.get(
+        "evaluation_num_workers", config.get("evaluation_num_env_runners")
+    ):
+        config["evaluation_num_env_runners"] = config.get("num_workers", 0)
     if not config.get("evaluation_duration"):
         config["evaluation_duration"] = 1
 
@@ -320,7 +322,7 @@ def rollout(
         episodes = 0
         while keep_going(steps, num_steps, episodes, num_episodes):
             saver.begin_rollout()
-            eval_result = agent.evaluate()["evaluation"]
+            eval_result = agent.evaluate()
             # Increase time-step and episode counters.
             eps = agent.config["evaluation_duration"]
             episodes += eps
@@ -328,7 +330,7 @@ def rollout(
             # Print out results and continue.
             print(
                 "Episode #{}: reward: {}".format(
-                    episodes, eval_result["episode_reward_mean"]
+                    episodes, eval_result["episode_return_mean"]
                 )
             )
             saver.end_rollout()

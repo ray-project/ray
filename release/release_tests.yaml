@@ -2287,6 +2287,7 @@
   cluster:
     byod: {}
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98 
 
   run:
     timeout: 7200
@@ -2308,6 +2309,7 @@
   cluster:
     byod: {}
     cluster_compute: compute_tpl_32_cpu.yaml
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
 
   run:
     timeout: 7200
@@ -2337,6 +2339,7 @@
     byod:
       type: gpu
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
 
   run:
     timeout: 7200
@@ -2358,6 +2361,7 @@
   cluster:
     byod: {}
     cluster_compute: compute_tpl_single_node.yaml
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
 
   run:
     timeout: 7200
@@ -2384,6 +2388,7 @@
   cluster:
     byod: {}
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98 
 
   run:
     timeout: 7200
@@ -2411,6 +2416,7 @@
     byod:
       type: gpu
     cluster_compute: compute_tpl_gpu_node.yaml
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98 
 
   run:
     timeout: 7200

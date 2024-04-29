@@ -57,7 +57,7 @@ if __name__ == "__main__":
     config = (
         PPOConfig()
         .environment("env")
-        .rollouts(env_to_module_connector=_env_to_module)
+        .env_runners(env_to_module_connector=_env_to_module)
         .training(
             num_sgd_iter=6,
             lr=0.0003,

@@ -142,14 +142,15 @@ class DreamerV3Config(AlgorithmConfig):
         # Do not use! Set `batch_size_B` and `batch_length_T` instead.
         self.train_batch_size = None
         self.env_runner_cls = DreamerV3EnvRunner
-        self.num_rollout_workers = 0
+        self.num_env_runners = 0
         self.rollout_fragment_length = 1
         # Since we are using a gymnasium-based EnvRunner, we can utilitze its
         # vectorization capabilities w/o suffering performance losses (as we would
         # with RLlib's `RemoteVectorEnv`).
         self.remote_worker_envs = True
         # Dreamer only runs on the new API stack.
-        self._enable_new_api_stack = True
+        self.enable_rl_module_and_learner = True
+        self.enable_env_runner_and_connector_v2 = True
         # __sphinx_doc_end__
         # fmt: on
 
@@ -382,10 +383,10 @@ class DreamerV3Config(AlgorithmConfig):
             raise ValueError("DreamerV3 does NOT support multi-agent setups yet!")
 
         # Make sure, we are configure for the new API stack.
-        if not self._enable_new_api_stack:
+        if not self.enable_rl_module_and_learner:
             raise ValueError(
-                "DreamerV3 must be run with `config.experimental("
-                "_enable_new_api_stack=True)`!"
+                "DreamerV3 must be run with `config.api_stack("
+                "enable_rl_module_and_learner=True)`!"
             )
 
         # If run on several Learners, the provided batch_size_B must be a multiple
@@ -446,9 +447,9 @@ class DreamerV3Config(AlgorithmConfig):
     @property
     def share_module_between_env_runner_and_learner(self) -> bool:
         # If we only have one local Learner (num_learner_workers=0) and only
-        # one local EnvRunner (num_rollout_workers=0), share the RLModule
+        # one local EnvRunner (num_env_runners=0), share the RLModule
         # between these two to avoid having to sync weights, ever.
-        return self.num_learner_workers == 0 and self.num_rollout_workers == 0
+        return self.num_learner_workers == 0 and self.num_env_runners == 0
 
     @property
     @override(AlgorithmConfig)
