@@ -15,11 +15,12 @@ from ray.rllib.algorithms.sac.sac_learner import (
     TD_ERROR_KEY,
     SACLearner,
 )
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.learner.learner import (
     POLICY_LOSS_KEY,
 )
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
-from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.nested_dict import NestedDict
@@ -114,7 +115,7 @@ class SACTorchLearner(SACLearner, TorchLearner):
         for component in (
             ["qf", "policy", "alpha"] + ["qf_twin"] if self.config.twin_q else []
         ):
-            self._metrics[DEFAULT_POLICY_ID][component + "_loss"].backward(
+            self._metrics[DEFAULT_MODULE_ID][component + "_loss"].backward(
                 retain_graph=True
             )
             grads.update(
