@@ -720,6 +720,7 @@ class Node:
         return self._gcs_client
 
     def _init_gcs_client(self):
+        ray.__tick__("[start_init_gcs_client]")
         if self.head:
             gcs_process = self.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER][
                 0
@@ -727,7 +728,8 @@ class Node:
         else:
             gcs_process = None
 
-        for _ in range(ray_constants.NUM_REDIS_GET_RETRIES):
+        iter = None
+        for i in range(ray_constants.NUM_REDIS_GET_RETRIES):
             gcs_address = None
             last_ex = None
             try:
@@ -736,12 +738,14 @@ class Node:
                     address=gcs_address,
                     cluster_id=self._ray_params.cluster_id,  # Hex string
                 )
+                ray.__tick__("[gcs_client_created_and_connected]")
                 self.cluster_id = client.cluster_id
                 if self.head:
                     # Send a simple request to make sure GCS is alive
                     # if it's a head node.
                     client.internal_kv_get(b"dummy", None)
                 self._gcs_client = client
+                iter = i
                 break
             except Exception:
                 if gcs_process is not None and gcs_process.poll() is not None:
@@ -772,6 +776,7 @@ class Node:
                 raise RuntimeError(
                     f"Failed to {'start' if self.head else 'connect to'} GCS."
                 )
+        ray.__tick__(f"[after_init_gcs_client with iter={iter}]")
 
         ray.experimental.internal_kv._initialize_internal_kv(self._gcs_client)
 

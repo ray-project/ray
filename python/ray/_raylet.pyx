@@ -2708,6 +2708,7 @@ cdef class GcsClient:
             self.cluster_id = ClusterID.nil()
         else:
             self.cluster_id = ClusterID.from_hex(cluster_id)
+        ray.__tick__("[gcs_client_created]")
         self._connect(RayConfig.instance().py_gcs_connect_timeout_s())
 
     def _connect(self, timeout_s=None):
