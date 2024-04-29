@@ -12,7 +12,12 @@ from ray.data._internal.execution.interfaces.execution_options import ExecutionR
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import PhysicalOperator
     from ray.data._internal.execution.resource_manager import ResourceManager
-    from ray.data._internal.execution.streaming_executor_state import OpState, Topology
+    from ray.data._internal.execution.streaming_executor_state import (
+        OpSchedulingStatus,
+        OpState,
+        SchedulingDecision,
+        Topology,
+    )
 
 
 class DefaultAutoscaler(Autoscaler):
@@ -32,9 +37,9 @@ class DefaultAutoscaler(Autoscaler):
         self._last_request_time = 0
         super().__init__(topology, resource_manager, execution_id)
 
-    def try_trigger_scaling(self):
-        self._try_scale_up_cluster()
-        self._try_scale_up_or_down_actor_pool()
+    def try_trigger_scaling(self, scheduling_decision: "SchedulingDecision"):
+        self._try_scale_up_cluster(scheduling_decision)
+        self._try_scale_up_or_down_actor_pool(scheduling_decision)
 
     def _actor_pool_util(self, actor_pool: AutoscalingActorPool):
         if actor_pool.current_size() == 0:
@@ -47,16 +52,18 @@ class DefaultAutoscaler(Autoscaler):
         actor_pool: AutoscalingActorPool,
         op: "PhysicalOperator",
         op_state: "OpState",
+        op_scheduling_status: "OpSchedulingStatus",
     ):
         if op._inputs_complete and op.internal_queue_size() == 0:
             return False
         if actor_pool.current_size() >= actor_pool.max_size():
             return False
+        if op_scheduling_status.under_resource_limits:
+            return False
         free_slots = (
             actor_pool.max_tasks_in_flight_per_actor() * actor_pool.current_size()
             - actor_pool.current_in_flight_tasks()
         )
-        # TODO: under_resource_limits
         if op_state.num_queued() <= free_slots:
             return False
         util = self._actor_pool_util(actor_pool)
@@ -75,12 +82,14 @@ class DefaultAutoscaler(Autoscaler):
         util = self._actor_pool_util(actor_pool)
         return util < self.DEFAULT_ACTOR_POOL_SCALING_DOWN_THRESHOLD
 
-    def _try_scale_up_or_down_actor_pool(self):
+    def _try_scale_up_or_down_actor_pool(
+        self, scheduling_decision: "SchedulingDecision"
+    ):
         for op, state in self._topology.items():
             actor_pools = op.get_autoscaling_actor_pools()
             for actor_pool in actor_pools:
                 while self._actor_pool_should_scale_up(
-                    actor_pool, op, state
+                    actor_pool, op, state, scheduling_decision.op_scheduling_status[op]
                 ) and not self._actor_pool_should_scale_down(actor_pool, op, state):
                     if actor_pool.scale_up(1) == 0:
                         break
@@ -88,11 +97,13 @@ class DefaultAutoscaler(Autoscaler):
                 # self._kill_inactive_workers_if_done()
                 while self._actor_pool_should_scale_down(
                     actor_pool, op, state
-                ) and not self._actor_pool_should_scale_up(actor_pool, op, state):
+                ) and not self._actor_pool_should_scale_up(
+                    actor_pool, op, state, scheduling_decision.op_scheduling_status[op]
+                ):
                     if actor_pool.scale_down(1) == 0:
                         break
 
-    def _try_scale_up_cluster(self):
+    def _try_scale_up_cluster(self, scheduling_decision: "SchedulingDecision"):
         """Try to scale up the cluster to accomodate the provided in-progress workload.
 
         This makes a resource request to Ray's autoscaler consisting of the current,
@@ -109,10 +120,23 @@ class DefaultAutoscaler(Autoscaler):
             topology: The execution state of the in-progress workload for which we wish to
                 request more resources.
         """
-        # TODO -    if not ops and any(state.num_queued() > 0 for state in topology.values()):
+        # Limit the frequency of autoscaling requests.
         now = time.time()
         if now - self._last_request_time < self.MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS:
             return
+
+        # If no ops are allowed to execute due to resource constraints, try to trigger
+        # cluster scale-up.
+        no_runnable_op = all(
+            status.runnable is False
+            for _, status in scheduling_decision.op_scheduling_status.items()
+        )
+        any_has_input = any(
+            op_state.num_queued() > 0 for _, op_state in self._topology.items()
+        )
+        if not (no_runnable_op and any_has_input):
+            return
+
         self._last_request_time = now
 
         # Get resource usage for all ops + additional resources needed to launch one more

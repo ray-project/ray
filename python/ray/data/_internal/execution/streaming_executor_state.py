@@ -8,6 +8,7 @@ import math
 import threading
 import time
 from collections import defaultdict, deque
+from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 import ray
@@ -479,6 +480,26 @@ def update_operator_states(topology: Topology) -> None:
             op.mark_execution_completed()
 
 
+@dataclass
+class OpSchedulingStatus:
+    """The scheduling status of an operator."""
+
+    # Whether the operator is runnable.
+    runnable: bool
+    # Whether the resources are sufficient for the operator to run.
+    under_resource_limits: bool
+
+
+@dataclass
+class SchedulingDecision:
+    """The decision made by the executor on which operator to run next."""
+
+    # The selected operator to run next.
+    selected_op: Optional[PhysicalOperator]
+    # The scheduling status of each operator.
+    op_scheduling_status: Dict[PhysicalOperator, OpSchedulingStatus]
+
+
 def select_operator_to_run(
     topology: Topology,
     resource_manager: ResourceManager,
@@ -499,6 +520,8 @@ def select_operator_to_run(
     provides backpressure if the consumer is slow. However, once a bundle is returned
     to the user, it is no longer tracked.
     """
+    op_scheduling_status: Dict[PhysicalOperator, OpSchedulingStatus] = {}
+
     # Filter to ops that are eligible for execution.
     ops = []
     for op, state in topology.items():
@@ -511,6 +534,7 @@ def select_operator_to_run(
         in_backpressure = not under_resource_limits or any(
             not p.can_add_input(op) for p in backpressure_policies
         )
+        op_runnable = False
         if (
             not in_backpressure
             and not op.completed()
@@ -518,10 +542,14 @@ def select_operator_to_run(
             and op.should_add_input()
         ):
             ops.append(op)
+            op_runnable = True
+        op_scheduling_status[op] = OpSchedulingStatus(
+            runnable=op_runnable,
+            under_resource_limits=under_resource_limits,
+        )
+
         # Signal whether op in backpressure for stats collections
         op.notify_in_task_submission_backpressure(in_backpressure)
-
-    autoscaler.try_trigger_scaling()
 
     # To ensure liveness, allow at least 1 op to run regardless of limits. This is
     # gated on `ensure_at_least_one_running`, which is set if the consumer is blocked.
@@ -543,13 +571,19 @@ def select_operator_to_run(
 
     # Run metadata-only operators first. After that, choose the operator with the least
     # memory usage.
-    return min(
+    selected_op = min(
         ops,
         key=lambda op: (
             not op.throttling_disabled(),
             resource_manager.get_op_usage(op).object_store_memory,
         ),
     )
+    scheduling_decision = SchedulingDecision(
+        selected_op=selected_op,
+        op_scheduling_status=op_scheduling_status,
+    )
+    autoscaler.try_trigger_scaling(scheduling_decision)
+    return selected_op
 
 
 def _execution_allowed(op: PhysicalOperator, resource_manager: ResourceManager) -> bool:

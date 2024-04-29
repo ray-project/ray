@@ -3,7 +3,10 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.resource_manager import ResourceManager
-    from ray.data._internal.execution.streaming_executor_state import Topology
+    from ray.data._internal.execution.streaming_executor_state import (
+        SchedulingDecision,
+        Topology,
+    )
 
 
 class Autoscaler(metaclass=ABCMeta):
@@ -20,7 +23,7 @@ class Autoscaler(metaclass=ABCMeta):
         self._execution_id = execution_id
 
     @abstractmethod
-    def try_trigger_scaling(self):
+    def try_trigger_scaling(self, scheduling_decision: "SchedulingDecision"):
         """Try trigger autoscaling.
         This method will be called each time when StreamExecutor makes
         a scheduling decision.
