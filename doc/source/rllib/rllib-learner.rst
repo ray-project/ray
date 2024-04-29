@@ -247,12 +247,10 @@ Updates
             results = learner_group.update_from_batch(
                 batch=DUMMY_BATCH, async_update=True
             )
-            # `results` is a list of results dict. The items in the list represent the different
-            # remote results from the different calls to
-            # `update_from_batch(..., async_update=True)`.
-            assert len(results) > 0
-            # Each item is a results dict, already reduced over the n Learner workers.
-            assert isinstance(results[0], dict), results[0]
+            # `results` is an already reduced dict, which is the result of
+            # reducing over the individual async `update_from_batch(..., async_update=True)`
+            # calls.
+            assert isinstance(results, dict), results
 
             # This is an additional non-gradient based update.
             learner_group.additional_update(**ADDITIONAL_UPDATE_KWARGS)
