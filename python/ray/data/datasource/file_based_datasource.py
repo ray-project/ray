@@ -39,13 +39,14 @@ from ray.data.datasource.path_util import (
     _resolve_paths_and_filesystem,
 )
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
-from ray.util.metrics import Histogram
+from ray.util.metrics import Histogram, Gauge
 from ray.serve._private.constants import DEFAULT_LATENCY_BUCKET_MS
 
 if TYPE_CHECKING:
     import pandas as pd
     import pyarrow
 
+import time
 
 logger = DatasetLogger(__name__)
 
@@ -147,6 +148,12 @@ class FileBasedDatasource(Datasource):
             description=("Size of the input S3 parquet file before download or deserialization"),
         )
 
+        self.read_task_latency = Histogram(
+            "data_get_read_tasks_latency",
+            boundaries=DEFAULT_LATENCY_BUCKET_MS,
+            description=("Latency to obtain all read tasks"),
+        )
+
         if ignore_missing_paths and len(paths) == 0:
             raise ValueError(
                 "None of the provided paths exist. "
@@ -200,6 +207,7 @@ class FileBasedDatasource(Datasource):
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         import numpy as np
+        start = time.time()
 
         ctx = DataContext.get_current()
         open_stream_args = self._open_stream_args
@@ -303,6 +311,8 @@ class FileBasedDatasource(Datasource):
 
             read_tasks.append(read_task)
 
+        stop = time.time()
+        self.read_task_latency.observe((stop - start) * 1000)
         return read_tasks
 
     def _open_input_source(

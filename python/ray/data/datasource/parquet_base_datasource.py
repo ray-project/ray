@@ -78,10 +78,12 @@ class ParquetBaseDatasource(FileBasedDatasource):
         return filesystem.open_input_file(path, **open_args)
     
     def calculate_nulls(self, table):
+        total = 0
+        null = 0
         for column in table.columns:
-            null_count = column.null_count
-            total_count = len(column)
-
-            percent = (total_count - null_count) / total_count
-            self.null_count_metric.observe(percent)
+            null += column.null_count
+            total += len(column)
+            
+        percent = (total - null) / total
+        self.null_count_metric.observe(percent)
 

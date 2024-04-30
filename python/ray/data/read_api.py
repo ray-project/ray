@@ -83,7 +83,7 @@ from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
-from ray.util.metrics import Histogram
+from ray.util.metrics import Gauge
 from ray.serve._private.constants import DEFAULT_LATENCY_BUCKET_MS
 import time
 
@@ -336,12 +336,6 @@ def read_datasource(
     """  # noqa: E501
     parallelism = _get_num_output_blocks(parallelism, override_num_blocks)
 
-    read_task_latency = Histogram(
-        "data_get_read_tasks_latency",
-        description=("Latency to obtain all read tasks"),
-        boundaries=DEFAULT_LATENCY_BUCKET_MS,
-    )
-
     ctx = DataContext.get_current()
 
     if ray_remote_args is None:
@@ -404,10 +398,8 @@ def read_datasource(
 
     # TODO(hchen/chengsu): Remove the duplicated get_read_tasks call here after
     # removing LazyBlockList code path.
-    start = time.time()
+
     read_tasks = datasource_or_legacy_reader.get_read_tasks(requested_parallelism)
-    latency = time.time() - start
-    read_task_latency.observe(1000 * latency)
 
     read_op_name = f"Read{datasource.get_name()}"
 
