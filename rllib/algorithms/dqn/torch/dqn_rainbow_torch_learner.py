@@ -203,7 +203,7 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
         )
         # If we learn a Q-value distribution store the support and average
         # probabilities.
-        if self.config.num_atoms > 1:
+        if config.num_atoms > 1:
             self.register_metrics(
                 module_id,
                 {
