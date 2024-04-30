@@ -10,8 +10,8 @@ on: pull_request_target
 jobs:
   check-changes:
     permissions: write-all
-    runs-on: ubuntu-22.04
-    timeout-minutes: 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
     - name: Checkout repository
       uses: actions/checkout@v2
