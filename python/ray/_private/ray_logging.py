@@ -25,6 +25,11 @@ def setup_logger(
 ):
     """Setup default logging for ray."""
     logger = logging.getLogger("ray")
+    if logging_format:
+        # Overwrite the formatters for all default handlers.
+        formatter = logging.Formatter(logging_format)
+        for handler in logger.handlers:
+            handler.setFormatter(formatter)
     if type(logging_level) is str:
         logging_level = logging.getLevelName(logging_level.upper())
     logger.setLevel(logging_level)
