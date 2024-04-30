@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Iterator, List, Optional, Union
 
 import ray
+import ray.exceptions
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
@@ -84,7 +85,10 @@ class ActorPoolMapOperator(MapOperator):
         self._ray_actor_task_remote_args = {}
         actor_task_errors = DataContext.get_current().actor_task_retry_on_errors
         if actor_task_errors:
-            self._ray_actor_task_remote_args["retry_exceptions"] = actor_task_errors
+            actor_task_errors.append(ray.exceptions.RaySystemError)
+        else:
+            actor_task_errors = [ray.exceptions.RaySystemError]
+        self._ray_actor_task_remote_args["retry_exceptions"] = actor_task_errors
         data_context = DataContext.get_current()
         if data_context._max_num_blocks_in_streaming_gen_buffer is not None:
             # The `_generator_backpressure_num_objects` parameter should be
