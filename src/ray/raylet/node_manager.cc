@@ -600,7 +600,7 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
   for (const auto &pair : leased_workers_) {
     auto &worker = pair.second;
     RAY_CHECK(!worker->GetAssignedJobId().IsNil());
-    if (worker->GetAncestorDetachedActorId().IsNil() &&
+    if (worker->GetRootDetachedActorId().IsNil() &&
         (worker->GetAssignedJobId() == job_id)) {
       RAY_LOG(INFO) << "The leased worker " << worker->WorkerId()
                     << " is killed because the job " << job_id << " finished.";

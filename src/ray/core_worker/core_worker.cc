@@ -2126,15 +2126,15 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       /*generator_backpressure_num_objects*/
                       task_options.generator_backpressure_num_objects,
                       /*enable_task_event*/ task_options.enable_task_events);
-  ActorID ancestor_detached_actor_id;
-  if (!worker_context_.GetAncestorDetachedActorID().IsNil()) {
-    ancestor_detached_actor_id = worker_context_.GetAncestorDetachedActorID();
+  ActorID root_detached_actor_id;
+  if (!worker_context_.GetRootDetachedActorID().IsNil()) {
+    root_detached_actor_id = worker_context_.GetRootDetachedActorID();
   }
   builder.SetNormalTaskSpec(max_retries,
                             retry_exceptions,
                             serialized_retry_exception_allowlist,
                             scheduling_strategy,
-                            ancestor_detached_actor_id);
+                            root_detached_actor_id);
   TaskSpecification task_spec = builder.Build();
   RAY_LOG(DEBUG) << "Submitting normal task " << task_spec.DebugString();
   std::vector<rpc::ObjectReference> returned_refs;
@@ -2239,11 +2239,11 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_creation_options.enable_task_events);
   std::string serialized_actor_handle;
   actor_handle->Serialize(&serialized_actor_handle);
-  ActorID ancestor_detached_actor_id;
+  ActorID root_detached_actor_id;
   if (is_detached) {
-    ancestor_detached_actor_id = actor_id;
-  } else if (!worker_context_.GetAncestorDetachedActorID().IsNil()) {
-    ancestor_detached_actor_id = worker_context_.GetAncestorDetachedActorID();
+    root_detached_actor_id = actor_id;
+  } else if (!worker_context_.GetRootDetachedActorID().IsNil()) {
+    root_detached_actor_id = worker_context_.GetRootDetachedActorID();
   }
   builder.SetActorCreationTaskSpec(actor_id,
                                    serialized_actor_handle,
@@ -2259,7 +2259,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                                    actor_creation_options.concurrency_groups,
                                    extension_data,
                                    actor_creation_options.execute_out_of_order,
-                                   ancestor_detached_actor_id);
+                                   root_detached_actor_id);
   // Add the actor handle before we submit the actor creation task, since the
   // actor handle must be in scope by the time the GCS sends the
   // WaitForActorOutOfScopeRequest.

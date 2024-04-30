@@ -206,7 +206,7 @@ void WorkerPool::PopWorkerCallbackInternal(const TaskSpecification &task_spec,
   RAY_CHECK(callback);
   auto used = false;
   if (worker && finished_jobs_.contains(task_spec.JobId()) &&
-      task_spec.AncestorDetachedActorId().IsNil()) {
+      task_spec.RootDetachedActorId().IsNil()) {
     RAY_CHECK(status == PopWorkerStatus::OK);
     callback(nullptr, PopWorkerStatus::JobFinished, "");
   } else {
@@ -989,7 +989,7 @@ void WorkerPool::InvokePopWorkerCallbackForProcess(
     // invoking the callback immediately.
     RAY_CHECK(status != PopWorkerStatus::RuntimeEnvCreationFailed);
     if (worker && finished_jobs_.contains(it->second.task_spec.JobId()) &&
-        it->second.task_spec.AncestorDetachedActorId().IsNil()) {
+        it->second.task_spec.RootDetachedActorId().IsNil()) {
       RAY_CHECK(status == PopWorkerStatus::OK);
       callback(nullptr, PopWorkerStatus::JobFinished, "");
     } else {
@@ -1108,8 +1108,7 @@ void WorkerPool::KillIdleWorker(std::shared_ptr<WorkerInterface> idle_worker,
   RAY_CHECK(rpc_client);
   rpc::ExitRequest request;
   const auto &job_id = idle_worker->GetAssignedJobId();
-  if (finished_jobs_.contains(job_id) &&
-      idle_worker->GetAncestorDetachedActorId().IsNil()) {
+  if (finished_jobs_.contains(job_id) && idle_worker->GetRootDetachedActorId().IsNil()) {
     RAY_LOG(INFO) << "Force exiting worker whose job has exited "
                   << idle_worker->WorkerId();
     request.set_force_exit(true);
@@ -1344,12 +1343,11 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
 
 void WorkerPool::PrestartDefaultCpuWorkers(ray::Language language, int64_t num_needed) {
   // default workers uses 1 cpu and doesn't support actor.
-  static const WorkerCacheKey kDefaultCpuWorkerCacheKey{
-      /*serialized_runtime_env*/ "",
-      {{"CPU", 1}},
-      /*is_actor*/ false,
-      /*is_gpu*/ false,
-      /*is_ancestor_detached_actor*/ false};
+  static const WorkerCacheKey kDefaultCpuWorkerCacheKey{/*serialized_runtime_env*/ "",
+                                                        {{"CPU", 1}},
+                                                        /*is_actor*/ false,
+                                                        /*is_gpu*/ false,
+                                                        /*is_root_detached_actor*/ false};
   RAY_LOG(DEBUG) << "PrestartDefaultCpuWorkers " << num_needed;
   for (int i = 0; i < num_needed; i++) {
     PopWorkerStatus status;

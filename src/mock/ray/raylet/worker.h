@@ -80,11 +80,7 @@ class MockWorkerInterface : public WorkerInterface {
   MOCK_METHOD(bool, IsRegistered, (), (override));
   MOCK_METHOD(rpc::CoreWorkerClientInterface *, rpc_client, (), (override));
   MOCK_METHOD(bool, SetJobId, (const JobID &job_id), (override));
-  MOCK_METHOD(const ActorID &, GetAncestorDetachedActorId, (), (override));
-  MOCK_METHOD(void,
-              SetAncestorDetachedActorId,
-              (const ActorID &ancestor_detached_actor_id),
-              (override));
+  MOCK_METHOD(const ActorID &, GetRootDetachedActorId, (), (override));
 };
 
 }  // namespace raylet

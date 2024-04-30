@@ -95,7 +95,7 @@ class WorkerContext {
 
   const ActorID &GetCurrentActorID() const ABSL_LOCKS_EXCLUDED(mutex_);
 
-  const ActorID &GetAncestorDetachedActorID() const ABSL_LOCKS_EXCLUDED(mutex_);
+  const ActorID &GetRootDetachedActorID() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Returns whether the current thread is the main worker thread.
   bool CurrentThreadIsMain() const;
@@ -160,7 +160,7 @@ class WorkerContext {
   TaskID main_thread_or_actor_creation_task_id_ ABSL_GUARDED_BY(mutex_);
   /// If the current task or actor is originated from a detached actor,
   /// this contains that actor's id otherwise it's nil.
-  ActorID ancestor_detached_actor_id_ ABSL_GUARDED_BY(mutex_);
+  ActorID root_detached_actor_id_ ABSL_GUARDED_BY(mutex_);
   // To protect access to mutable members;
   mutable absl::Mutex mutex_;
 

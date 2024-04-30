@@ -287,7 +287,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   TaskID ParentTaskId() const;
 
-  ActorID AncestorDetachedActorId() const;
+  ActorID RootDetachedActorId() const;
 
   TaskID SubmitterTaskId() const;
 
@@ -531,7 +531,7 @@ class WorkerCacheKey {
   ///         task type isolation between workers is enabled.
   /// worker. \param is_gpu Whether the worker will be using GPUs. This is set when
   ///         resource type isolation between workers is enabled.
-  /// worker. \param is_ancestor_detached_actor Whether the worker will be running
+  /// worker. \param is_root_detached_actor Whether the worker will be running
   ///         tasks or actors whose ancestor is a detached actor. This is set
   ///         to prevent worker reuse between tasks whose ancestor is the driver process
   ///         and tasks whose ancestor is a detached actor.
@@ -539,7 +539,7 @@ class WorkerCacheKey {
                  const absl::flat_hash_map<std::string, double> &required_resources,
                  bool is_actor,
                  bool is_gpu,
-                 bool is_ancestor_detached_actor);
+                 bool is_root_detached_actor);
 
   bool operator==(const WorkerCacheKey &k) const;
 
@@ -572,8 +572,8 @@ class WorkerCacheKey {
   /// Whether the worker is to use a GPU.
   const bool is_gpu;
   /// Whether the worker is to run tasks or actors
-  /// whose ancestor is a detached actor.
-  const bool is_ancestor_detached_actor;
+  /// whose root is a detached actor.
+  const bool is_root_detached_actor;
   /// The hash of the worker's environment.  This is set to 0
   /// for unspecified or empty environments.
   const std::size_t hash_ = 0;
