@@ -310,7 +310,7 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
 
         # Calculate gradients for each loss by its optimizer.
         # TODO (sven): Maybe we rename to `actor`, `critic`. We then also
-        # need to either add to or change in the `Learner` constants.
+        #  need to either add to or change in the `Learner` constants.
         for component in (
             ["qf", "policy", "alpha"] + ["qf_twin"] if self.config.twin_q else []
         ):
