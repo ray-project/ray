@@ -109,8 +109,8 @@ if __name__ == "__main__":
 
     # Start our actual experiment.
     stop = {
-        "episode_reward_mean": args.stop_reward,
-        "timesteps_total": args.stop_timesteps,
+        "env_runner_results/episode_return_mean": args.stop_reward,
+        "num_env_steps_sampled_lifetime": args.stop_timesteps,
         "training_iteration": args.stop_iters,
     }
 

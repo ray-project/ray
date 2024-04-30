@@ -268,7 +268,7 @@ if __name__ == "__main__":
         PPOConfig()
         .environment(TwoStepGame)
         .framework(args.framework)
-        .rollouts(batch_mode="complete_episodes", num_rollout_workers=0)
+        .env_runners(batch_mode="complete_episodes", num_env_runners=0)
         .training(model={"custom_model": "cc_model"})
         .multi_agent(
             policies={
@@ -297,8 +297,8 @@ if __name__ == "__main__":
 
     stop = {
         "training_iteration": args.stop_iters,
-        "timesteps_total": args.stop_timesteps,
-        "episode_reward_mean": args.stop_reward,
+        "num_env_steps_sampled_lifetime": args.stop_timesteps,
+        "env_runner_results/episode_return_mean": args.stop_reward,
     }
 
     tuner = tune.Tuner(

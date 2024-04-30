@@ -247,19 +247,19 @@ def test_get_test_results() -> None:
         json.dumps(log)
         for log in [
             {
-                "id": {"testResult": {"label": "//ray/ci:test"}},
+                "id": {"testResult": {"label": "//ray/ci:test", "run": "1"}},
                 "testResult": {"status": "FAILED"},
             },
             {
-                "id": {"testResult": {"label": "//ray/ci:reef"}},
+                "id": {"testResult": {"label": "//ray/ci:reef", "run": "1"}},
                 "testResult": {"status": "FAILED"},
             },
             {
-                "id": {"testResult": {"label": "//ray/ci:test"}},
+                "id": {"testResult": {"label": "//ray/ci:test", "run": "2"}},
                 "testResult": {"status": "FAILED"},
             },
             {
-                "id": {"testResult": {"label": "//ray/ci:test"}},
+                "id": {"testResult": {"label": "//ray/ci:test", "run": "1"}},
                 "testResult": {"status": "PASSED"},
             },
         ]
@@ -280,6 +280,11 @@ def test_get_test_results() -> None:
         assert test.get_name() == f"{platform.system().lower()}://ray/ci:test"
         assert test.get_oncall() == "manu"
         assert result.is_passing()
+
+        test, result = results[2]
+        assert test.get_name() == f"{platform.system().lower()}://ray/ci:test"
+        assert test.get_oncall() == "manu"
+        assert result.is_failing()
 
 
 if __name__ == "__main__":

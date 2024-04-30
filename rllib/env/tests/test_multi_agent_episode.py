@@ -3404,19 +3404,18 @@ class TestMultiAgentEpisode(unittest.TestCase):
 
         # If no episode is given, construct one.
         # We give it the `agent_ids` to make it create all objects.
-        episode = episode or MultiAgentEpisode()
+        episode = MultiAgentEpisode() if episode is None else episode
 
         # We initialize the episode, if requested.
         if init:
             obs, info = env.reset(seed=seed)
             episode.add_env_reset(observations=obs, infos=info)
-        # In the other case wer need at least the last observations for the next
+        # In the other case we need at least the last observations for the next
         # actions.
         else:
             obs = {
                 agent_id: agent_obs
-                for agent_id, agent_obs in episode.get_observations().items()
-                if episode._hanging_actions_end[agent_id]
+                for agent_id, agent_obs in episode.get_observations(-1).items()
             }
 
         # Sample `size` many records.

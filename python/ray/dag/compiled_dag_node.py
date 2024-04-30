@@ -30,7 +30,9 @@ logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-def do_allocate_channel(self, buffer_size_bytes: int, num_readers: int = 1) -> Channel:
+def do_allocate_channel(
+    self, readers: List[Optional["ray.actor.ActorHandle"]], buffer_size_bytes: int
+) -> Channel:
     """Generic actor method to allocate an output channel.
 
     Args:
@@ -40,7 +42,10 @@ def do_allocate_channel(self, buffer_size_bytes: int, num_readers: int = 1) -> C
     Returns:
         The allocated channel.
     """
-    self._output_channel = Channel(buffer_size_bytes, num_readers)
+    self._output_channel = Channel(
+        readers,
+        buffer_size_bytes,
+    )
     return self._output_channel
 
 
@@ -108,6 +113,8 @@ def do_exec_compiled_task(
                 self._output_writer.write(exc)
                 self._input_reader.end_read()
                 continue
+            except IOError:
+                break
 
             for idx, output in zip(input_channel_idxs, res):
                 resolved_inputs[idx] = output
@@ -120,8 +127,11 @@ def do_exec_compiled_task(
                 self._output_writer.write(_wrap_exception(exc))
             else:
                 self._output_writer.write(output_val)
-            finally:
+
+            try:
                 self._input_reader.end_read()
+            except IOError:
+                break
 
     except Exception:
         logging.exception("Compiled DAG task exited with exception")
@@ -425,19 +435,49 @@ class CompiledDAG:
             # Create an output buffer on the actor.
             assert task.output_channel is None
             if isinstance(task.dag_node, ClassMethodNode):
+                readers = [self.idx_to_task[idx] for idx in task.downstream_node_idxs]
+                assert len(readers) == 1
+                if isinstance(readers[0].dag_node, MultiOutputNode):
+                    # This node is a multi-output node, which means that it will only be
+                    # read by the driver, not an actor. Thus, we handle this case by
+                    # setting `reader_handles` to `[None]`.
+                    reader_handles = [None]
+
+                    fn = task.dag_node._get_remote_method("__ray_call__")
+
+                    def _get_node_id(self):
+                        return ray.get_runtime_context().get_node_id()
+
+                    actor_node = ray.get(fn.remote(_get_node_id))
+
+                    # The driver and all actors that write outputs must be on the same
+                    # node for now.
+                    if actor_node != _get_node_id(self):
+                        raise NotImplementedError(
+                            "The driver and all actors that write outputs must be on "
+                            "the same node for now."
+                        )
+                else:
+                    reader_handles = [
+                        reader.dag_node._get_actor_handle() for reader in readers
+                    ]
                 fn = task.dag_node._get_remote_method("__ray_call__")
                 task.output_channel = ray.get(
                     fn.remote(
                         do_allocate_channel,
+                        reader_handles,
                         buffer_size_bytes=self._buffer_size_bytes,
-                        num_readers=task.num_readers,
                     )
                 )
                 self.actor_refs.add(task.dag_node._get_actor_handle())
             elif isinstance(task.dag_node, InputNode):
+                readers = [self.idx_to_task[idx] for idx in task.downstream_node_idxs]
+                reader_handles = [
+                    reader.dag_node._get_actor_handle() for reader in readers
+                ]
                 task.output_channel = Channel(
+                    reader_handles,
                     buffer_size_bytes=self._buffer_size_bytes,
-                    num_readers=task.num_readers,
                 )
             else:
                 assert isinstance(task.dag_node, MultiOutputNode)

@@ -2007,7 +2007,7 @@ def validate_node_labels(labels: Dict[str, str]):
             )
 
 
-def pasre_pg_formatted_resources_to_original(
+def parse_pg_formatted_resources_to_original(
     pg_formatted_resources: Dict[str, float]
 ) -> Dict[str, float]:
     original_resources = {}

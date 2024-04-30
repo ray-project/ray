@@ -54,7 +54,7 @@ from ray.tune.registry import register_env
 
 
 parser = add_rllib_example_script_args(
-    default_iters=20, default_reward=500.0, default_timesteps=100000
+    default_iters=40, default_reward=500.0, default_timesteps=200000
 )
 
 

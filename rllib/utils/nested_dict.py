@@ -202,9 +202,10 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
         This is a zero-copy operation. The pointer to value if preserved in the
         internal data structure.
         """
-        if not k:
+        if not isinstance(k, (str, tuple)) or len(k) == 0:
             raise IndexError(
-                f"Key for {self.__class__.__name__} cannot be empty. Got {k}."
+                f"Key for {self.__class__.__name__} must be str or Tuple[str] of "
+                f"len > 0! Got {k}."
             )
         k = _flatten_index(k)
         v = self.__class__(v) if isinstance(v, Mapping) else v
