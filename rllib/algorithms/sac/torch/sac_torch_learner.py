@@ -15,7 +15,6 @@ from ray.rllib.algorithms.sac.sac_learner import (
     TD_ERROR_KEY,
     SACLearner,
 )
-from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.learner.learner import (
     POLICY_LOSS_KEY,
 )
