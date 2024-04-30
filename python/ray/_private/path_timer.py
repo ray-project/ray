@@ -3,12 +3,13 @@ import time
 
 PATH_TIMER_ENABLED = "RAY_PATH_TIMER_ENABLED" in os.environ
 
-time_list = [] # list of (event, timestamp)
+time_list = []  # list of (event, timestamp)
 
 
 def tick(event) -> None:
     if PATH_TIMER_ENABLED:
         time_list.append((event, time.time()))
+
 
 def summary() -> None:
     if not PATH_TIMER_ENABLED:
