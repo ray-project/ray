@@ -1,11 +1,18 @@
+import logging
 from typing import Any, Dict, Optional, Tuple, Union
 
 import tree  # pip install dm_tree
 
 from ray.rllib.utils import force_tuple
 from ray.rllib.utils.metrics.stats import Stats
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.nested_dict import NestedDict
+from ray.util import log_once
 from ray.util.annotations import PublicAPI
+
+_, tf, _ = try_import_tf()
+torch, _ = try_import_torch()
+logger = logging.getLogger("ray.rllib")
 
 
 @PublicAPI(stability="alpha")
@@ -45,6 +52,8 @@ class MetricsLogger:
     def __init__(self):
         """Initializes a MetricsLogger instance."""
         self.stats = NestedDict()
+        self._tensor_mode = False
+        self._tensor_keys = set()
 
     def log_value(
         self,
@@ -156,6 +165,8 @@ class MetricsLogger:
         if reduce is None and (window is None or window == float("inf")):
             clear_on_reduce = True
 
+        window = self._check_tensor(key, value, window)
+
         if key not in self.stats:
             self.stats[key] = Stats(
                 value,
@@ -262,6 +273,8 @@ class MetricsLogger:
                 clear_on_reduce = True
 
             if not isinstance(stat_or_value, Stats):
+                window = self._check_tensor(extended_key, stat_or_value, window)
+
                 # `self` already has this key path -> Use c'tor options from self's
                 # Stats.
                 if extended_key in self.stats:
@@ -343,6 +356,7 @@ class MetricsLogger:
             for i, stat_or_value in enumerate(available_stats):
                 # Value is NOT a Stats object -> Convert it to one.
                 if not isinstance(stat_or_value, Stats):
+                    window = self._check_tensor(extended_key, stat_or_value, window)
                     available_stats[i] = stat_or_value = Stats(
                         stat_or_value,
                         reduce=reduce,
@@ -410,6 +424,13 @@ class MetricsLogger:
                 in which the internal values list would otherwise grow indefinitely,
                 for example if reduce is None and there is no `window` provided.
         """
+        if self.tensor_mode:
+            raise RuntimeError(
+                "`MetricsLogger.log_time()` cannot be called in tensor-mode! Make sure "
+                "to deactivate tensor-mode first (`MetricsLogger."
+                "deactivate_tensor_mode()`), before calling this method."
+            )
+
         # No reduction (continue appending to list) AND no window.
         # -> We'll force-reset our values upon `reduce()`.
         if reduce is None and (window is None or window == float("inf")):
@@ -444,6 +465,42 @@ class MetricsLogger:
 
         # Return the Stats object, so a `with` clause can enter and exit it.
         return self.stats[key]
+
+    def activate_tensor_mode(self):
+        """Switches to tensor-mode, in which in-graph tensors can be logged.
+
+        Should be used before calling in-graph/copmiled functions, for example loss
+        functions. The user can then still call the `log_...` APIs, but each incoming
+        value will be checked for a) whether it is a tensor indeed and b) the `window`
+        args must be 1 (MetricsLogger does not support any tensor-framework reducing
+        operations).
+
+        When in tensor-mode, we also track all incoming `log_...` values and return
+        them TODO (sven) continue docstring
+
+        """
+        assert not self.tensor_mode
+        self._tensor_mode = True
+
+    def deactivate_tensor_mode(self):
+        """Switches off tensor-mode."""
+        assert self.tensor_mode
+        self._tensor_mode = False
+        # Return all logged tensors (logged during the tensor-mode phase).
+        ret = {key: self.stats[key].peek() for key in self._tensor_keys}
+        # Clear out logged tensor keys.
+        self._tensor_keys.clear()
+        return ret
+
+    def tensors_to_numpy(self, tensor_metrics):
+        """Converts all previously logged and returned tensors back to numpy values."""
+        for key, value in tensor_metrics.items():
+            assert key in self.stats
+            self.stats[key].numpy(value)
+
+    @property
+    def tensor_mode(self):
+        return self._tensor_mode
 
     def peek(self, *key, default: Optional[Any] = None) -> Any:
         """Returns the (reduced) value(s) found under the given key or key sequence.
@@ -577,7 +634,7 @@ class MetricsLogger:
         key: Optional[Union[str, Tuple[str]]] = None,
         *,
         return_stats_obj: bool = True,
-        convert_tensors_to_numpy: bool = True,
+        # convert_tensors_to_numpy: bool = True,
     ) -> Dict:
         """Reduces all logged values based on their settings and returns a result dict.
 
@@ -655,8 +712,8 @@ class MetricsLogger:
                 objects. This is the default as it enables users to continue using
                 (and further logging) the results of this call inside another
                 (downstream) MetricsLogger object.
-            convert_tensors_to_numpy: Whether to convert all tensor types to numpy
-                arrays inside the returned `Stats` leafs.
+            #convert_tensors_to_numpy: Whether to convert all tensor types to numpy
+            #    arrays inside the returned `Stats` leafs.
 
         Returns:
             A (nested) dict matching the structure of `self.stats` (contains all ever
@@ -688,10 +745,10 @@ class MetricsLogger:
         # Return reduced values as dict (not NestedDict).
         stats_to_return = stats_to_return.asdict()
 
-        if convert_tensors_to_numpy:
-            stats_to_return = tree.map_structure(
-                lambda s: s.numpy() if isinstance(s, Stats) else s, stats_to_return
-            )
+        # if convert_tensors_to_numpy:
+        #    stats_to_return = tree.map_structure(
+        #        lambda s: s.numpy() if isinstance(s, Stats) else s, stats_to_return
+        #    )
 
         if return_stats_obj:
             return stats_to_return
@@ -720,3 +777,19 @@ class MetricsLogger:
                 for key, stat_state in state["stats"].items()
             }
         )
+
+    def _check_tensor(self, key, value, window):
+        if not self.tensor_mode:
+            return window
+        is_tensor = (torch and torch.is_tensor(value)) or (tf and tf.is_tensor(value))
+        # `value` is a tensor -> Make sure `window=1` AND log it in our keys set.
+        if is_tensor:
+            if window != 1 and log_once("metrics_logger_tensor_mode_window_1"):
+                logger.warning(
+                    "When MetricsLogger is in tensor-mode (for example during loss "
+                    "computations), `window` must be set to 1!"
+                )
+            self._tensor_keys.add(key)
+            return 1
+        # Not a tensor, window is allowed to have any value.
+        return window

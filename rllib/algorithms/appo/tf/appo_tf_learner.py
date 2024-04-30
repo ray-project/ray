@@ -159,7 +159,10 @@ class APPOTfLearner(AppoLearner, ImpalaTfLearner):
             + (mean_kl_loss * self.curr_kl_coeffs_per_module[module_id])
         )
 
-        # Register important loss stats.
+        # Register all important loss stats.
+        # Note that our MetricsLogger (self.metrics) is currently in tensor-mode,
+        # meaning that it allows us to even log in-graph/compiled tensors through
+        # its `log_...()` APIs.
         self.metrics.log_dict(
             {
                 POLICY_LOSS_KEY: mean_pi_loss,

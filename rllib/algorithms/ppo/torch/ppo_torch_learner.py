@@ -161,6 +161,8 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
                 curr_var.data *= 1.5
             elif sampled_kl < 0.5 * config.kl_target:
                 curr_var.data *= 0.5
+
+            # Log the updated KL-coeff value.
             self.metrics.log_value(
                 (module_id, LEARNER_RESULTS_CURR_KL_COEFF_KEY),
                 curr_var.item(),

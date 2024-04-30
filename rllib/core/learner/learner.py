@@ -1364,11 +1364,17 @@ class Learner:
             # Make the actual in-graph/traced `_update` call. This should return
             # all tensor values (no numpy).
             nested_tensor_minibatch = NestedDict(tensor_minibatch.policy_batches)
-            fwd_out, loss_per_module = self._update(nested_tensor_minibatch)
+            fwd_out, loss_per_module, tensor_metrics = self._update(
+                nested_tensor_minibatch
+            )
+
+            # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
+            # to actual (numpy) values.
+            self.metrics.tensors_to_numpy(tensor_metrics)
 
             # Log all individual RLModules' loss terms and its registered optimizers'
             # current learning rates.
-            for mid, loss in loss_per_module.items():
+            for mid, loss in convert_to_numpy(loss_per_module).items():
                 self.metrics.log_value(
                     key=(mid, self.TOTAL_LOSS_KEY),
                     value=loss,

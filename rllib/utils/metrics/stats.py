@@ -325,9 +325,13 @@ class Stats:
             if shuffle:
                 random.shuffle(self.values)
 
-    def numpy(self) -> "Stats":
+    def numpy(self, value: Any = None) -> "Stats":
         """Converts all of self's internal values to numpy (if a tensor)."""
-        self.values = convert_to_numpy(self.values)
+        if value is not None:
+            assert len(self.values) > 0
+            self.values[-1] = convert_to_numpy(value)
+        else:
+            self.values = convert_to_numpy(self.values)
         return self
 
     def __len__(self) -> int:
@@ -373,6 +377,9 @@ class Stats:
 
     def __sub__(self, other):
         return float(self) - float(other)
+
+    def __mul__(self, other):
+        return float(self) * float(other)
 
     def __format__(self, fmt):
         return f"{float(self):{fmt}}"
