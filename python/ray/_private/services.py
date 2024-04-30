@@ -24,6 +24,7 @@ from filelock import FileLock
 # Ray modules
 import ray
 import ray._private.ray_constants as ray_constants
+import ray._private.path_timer as path_timer
 from ray._raylet import GcsClient, GcsClientOptions
 from ray.core.generated.common_pb2 import Language
 from ray._private.ray_constants import RAY_NODE_IP_FILENAME
@@ -1310,7 +1311,7 @@ def start_api_server(
             fate_share=fate_share,
         )
 
-        ray._private.path_timer.tick("[after_start_dashboard_process]")
+        path_timer.tick("[after_start_dashboard_process]")
         # Retrieve the dashboard url
         gcs_client = GcsClient(address=gcs_address)
         ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
@@ -1330,7 +1331,7 @@ def start_api_server(
             # This is often on the critical path of ray.init() and ray start,
             # so we need to poll often.
             time.sleep(0.1)
-        ray._private.path_timer.tick("[after_kv_get_dashboard_url]")
+        path_timer.tick("[after_kv_get_dashboard_url]")
 
         # Dashboard couldn't be started.
         if dashboard_url is None:

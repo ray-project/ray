@@ -43,6 +43,7 @@ import ray
 import ray._private.worker
 import ray._private.node
 import ray._private.parameter
+import ray._private.path_timer as path_timer
 import ray._private.profiling as profiling
 import ray._private.ray_constants as ray_constants
 import ray._private.serialization as serialization
@@ -1748,7 +1749,7 @@ def init(
     else:
         logger.info(info_str)
 
-    ray._private.path_timer.tick("before_connect")
+    path_timer.tick("before_connect")
     connect(
         _global_node,
         _global_node.session_name,
@@ -1761,7 +1762,7 @@ def init(
         job_config=job_config,
         entrypoint=ray._private.utils.get_entrypoint_name(),
     )
-    ray._private.path_timer.tick("after_connect")
+    path_timer.tick("after_connect")
     if job_config and job_config.code_search_path:
         global_worker.set_load_code_from_local(True)
     else:
@@ -1782,7 +1783,7 @@ def init(
     node_id = global_worker.core_worker.get_current_node_id()
     global_node_address_info = _global_node.address_info.copy()
     global_node_address_info["webui_url"] = _remove_protocol_from_url(dashboard_url)
-    ray._private.path_timer.tick("ray_start_done")
+    path_timer.tick("ray_start_done")
     ray.__sum__()
     return RayContext(dict(global_node_address_info, node_id=node_id.hex()))
 
