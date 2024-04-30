@@ -1,6 +1,8 @@
 import collections
 import math
 import time
+import unittest
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -27,6 +29,7 @@ from ray.data._internal.execution.streaming_executor_state import (
     DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION,
     AutoscalingState,
     DownstreamMemoryInfo,
+    OpBufferQueue,
     OpState,
     TopologyResourceUsage,
     _execution_allowed,
@@ -796,6 +799,37 @@ def test_max_errored_blocks(
         assert res == list(range(num_errored_blocks, num_tasks))
         stats = ds._get_stats_summary()
         assert stats.extra_metrics["num_tasks_failed"] == num_errored_blocks
+
+
+class OpBufferQueueTest(unittest.TestCase):
+    def test_multi_threading(self):
+        num_blocks = 5_000
+        num_splits = 8
+        num_per_split = num_blocks // num_splits
+        ref_bundles = make_ref_bundles([[[i]] for i in range(num_blocks)])
+
+        queue = OpBufferQueue()
+        for i, ref_bundle in enumerate(ref_bundles):
+            ref_bundle.output_split_idx = i % num_splits
+            queue.append(ref_bundle)
+
+        def consume(output_split_idx):
+            nonlocal queue
+
+            count = 0
+            while queue.has_next(output_split_idx):
+                ref_bundle = queue.pop(output_split_idx)
+                count += 1
+                assert ref_bundle is not None
+                assert ref_bundle.output_split_idx == output_split_idx
+            assert count == num_per_split
+            return True
+
+        with ThreadPoolExecutor(max_workers=num_splits) as executor:
+            futures = [executor.submit(consume, i) for i in range(num_splits)]
+
+        for f in futures:
+            assert f.result() is True, f.result()
 
 
 def test_exception_concise_stacktrace():
