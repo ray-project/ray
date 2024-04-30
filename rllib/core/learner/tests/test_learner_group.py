@@ -8,6 +8,7 @@ import unittest
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.ppo.tests.test_ppo_learner import FAKE_BATCH
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
@@ -18,11 +19,7 @@ from ray.rllib.core.testing.utils import (
 )
 from ray.rllib.core.testing.testing_learner import BaseTestingAlgorithmConfig
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
-from ray.rllib.policy.sample_batch import (
-    DEFAULT_POLICY_ID,
-    SampleBatch,
-    MultiAgentBatch,
-)
+from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
 from ray.rllib.utils.metrics import ALL_MODULES
 from ray.util.timer import _Timer
@@ -104,7 +101,7 @@ class RemoteTrainingHelper:
         # do another update
         batch = reader.next()
         ma_batch = MultiAgentBatch(
-            {new_module_id: batch, DEFAULT_POLICY_ID: batch}, env_steps=batch.count
+            {new_module_id: batch, DEFAULT_MODULE_ID: batch}, env_steps=batch.count
         )
         # the optimizer state is not initialized fully until the first time that
         # training is completed. A call to get state before that won't contain the
@@ -205,8 +202,8 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
 
                 for res1, res2 in zip(results, results[1:]):
                     self.assertEqual(
-                        res1[DEFAULT_POLICY_ID]["mean_weight"],
-                        res2[DEFAULT_POLICY_ID]["mean_weight"],
+                        res1[DEFAULT_MODULE_ID]["mean_weight"],
+                        res2[DEFAULT_MODULE_ID]["mean_weight"],
                     )
 
             self.assertLess(min_loss, 0.57)
@@ -234,7 +231,7 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
             results = learner_group.update_from_batch(
                 batch=batch.as_multi_agent(), reduce_fn=None
             )
-            module_ids_before_add = {DEFAULT_POLICY_ID}
+            module_ids_before_add = {DEFAULT_MODULE_ID}
             new_module_id = "test_module"
 
             # add a test_module
@@ -245,7 +242,7 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
             # do training that includes the test_module
             results = learner_group.update_from_batch(
                 batch=MultiAgentBatch(
-                    {new_module_id: batch, DEFAULT_POLICY_ID: batch}, batch.count
+                    {new_module_id: batch, DEFAULT_MODULE_ID: batch}, batch.count
                 ),
                 reduce_fn=None,
             )
@@ -253,7 +250,7 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
             self._check_multi_worker_weights(results)
 
             # check that module ids are updated to include the new module
-            module_ids_after_add = {DEFAULT_POLICY_ID, new_module_id}
+            module_ids_after_add = {DEFAULT_MODULE_ID, new_module_id}
             for result in results:
                 # remove the total_loss key since its not a module key
                 self.assertEqual(
@@ -320,10 +317,10 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
             )
             config = BaseTestingAlgorithmConfig().update_from_dict(config_overrides)
             learner_group = config.build_learner_group(env=env)
-            spec = config.get_marl_module_spec(env=env).module_specs[DEFAULT_POLICY_ID]
+            spec = config.get_marl_module_spec(env=env).module_specs[DEFAULT_MODULE_ID]
             learner_group.add_module(module_id="0", module_spec=spec)
             learner_group.add_module(module_id="1", module_spec=spec)
-            learner_group.remove_module(DEFAULT_POLICY_ID)
+            learner_group.remove_module(DEFAULT_MODULE_ID)
 
             module_0 = spec.build()
             module_1 = spec.build()
@@ -400,7 +397,7 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
 
         learner_group.add_module(module_id="0", module_spec=rl_module_spec)
         learner_group.add_module(module_id="1", module_spec=rl_module_spec)
-        learner_group.remove_module(DEFAULT_POLICY_ID)
+        learner_group.remove_module(DEFAULT_MODULE_ID)
 
         module_0 = rl_module_spec.build()
         module_1 = rl_module_spec.build()
@@ -579,8 +576,8 @@ class TestLearnerGroupAsyncUpdate(unittest.TestCase):
                 for results in async_results:
                     for res1, res2 in zip(results, results[1:]):
                         self.assertEqual(
-                            res1[DEFAULT_POLICY_ID]["mean_weight"],
-                            res2[DEFAULT_POLICY_ID]["mean_weight"],
+                            res1[DEFAULT_MODULE_ID]["mean_weight"],
+                            res2[DEFAULT_MODULE_ID]["mean_weight"],
                         )
                 iter_i += 1
             learner_group.shutdown()
