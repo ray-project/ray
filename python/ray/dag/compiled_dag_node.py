@@ -135,6 +135,9 @@ def do_exec_compiled_task(
                     output_val = output_wrapper_fn(output_val)
             except Exception as exc:
                 wrapped = _wrap_exception(exc)
+                # TODO: If output channel is a NCCL channel, then we cannot
+                # write the wrapped exception. Instead, we should throw the
+                # error to the outer loop and let the driver teardown the DAG.
                 self._output_writer.write(wrapped)
             else:
                 self._output_writer.write(output_val)
@@ -706,6 +709,12 @@ class CompiledDAG:
         monitor = getattr(self, "_monitor", None)
         if monitor is not None:
             monitor.teardown()
+
+        _, unready = ray.wait(self.worker_task_refs, num_returns=len(self.worker_task_refs), timeout=10)
+        if unready:
+            logger.warn("At least one actor in the DAG is still running 10s after teardown(). Teardown may hang.")
+            ray.wait(self.worker_task_refs, num_returns=len(self.worker_task_refs))
+
 
     def __del__(self):
         self.teardown()
