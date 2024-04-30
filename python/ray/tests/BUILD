@@ -322,6 +322,15 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_channel_perf.py",
+  ],
+  size = "large",
+  tags = ["exclusive", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
       "test_redis_tls.py",
   ],
   size = "small",
