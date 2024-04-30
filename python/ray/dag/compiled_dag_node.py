@@ -44,7 +44,6 @@ def do_allocate_channel(self, buffer_size_bytes: int, num_readers: int = 1) -> C
     return self._output_channel
 
 
-@DeveloperAPI
 def _wrap_exception(exc):
     backtrace = ray._private.utils.format_error_message(
         "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
@@ -104,6 +103,8 @@ def do_exec_compiled_task(
             try:
                 res = self._input_reader.begin_read()
             except ValueError as exc:
+                # ValueError is raised if a type hint was set and the returned
+                # type did not match the hint.
                 self._output_writer.write(exc)
                 self._input_reader.end_read()
                 continue
@@ -116,8 +117,7 @@ def do_exec_compiled_task(
                 if output_wrapper_fn is not None:
                     output_val = output_wrapper_fn(output_val)
             except Exception as exc:
-                wrapped = _wrap_exception(exc)
-                self._output_writer.write(wrapped)
+                self._output_writer.write(_wrap_exception(exc))
             else:
                 self._output_writer.write(output_val)
             finally:
@@ -174,6 +174,8 @@ class CompiledTask:
         self.downstream_node_idxs = set()
         self.output_channel = None
 
+        # If set, a lambda to apply to the task output. This can be used to
+        # check type hints, if any.
         self.output_wrapper_fn = None
         if self.dag_node.type_hint is not None:
             if isinstance(self.dag_node.type_hint, TorchTensorType):
@@ -182,11 +184,10 @@ class CompiledTask:
                 self.output_wrapper_fn = lambda t: _TorchTensorWrapper(
                     t, self.dag_node.type_hint
                 )
-
-    def arg_tensor_meta(self, arg_idx) -> Dict[str, Any]:
-        if arg_idx not in self.arg_idx_to_tensor_meta:
-            return None
-        return self.arg_idx_to_tensor_meta[arg_idx]
+            else:
+                raise ValueError(
+                    "DAGNode.with_type_hint may only be called on " "TorchTensorType"
+                )
 
     @property
     def args(self) -> Tuple[Any]:
@@ -487,7 +488,7 @@ class CompiledDAG:
         input_task = self.idx_to_task[self.input_task_idx]
         self.input_wrapper_fn = input_task.output_wrapper_fn
         self.dag_input_channel = input_task.output_channel
-        do_register_custom_dag_serializers(self)
+        _do_register_custom_dag_serializers(self)
 
         self.dag_output_channels = []
         for output in self.idx_to_task[self.output_task_idx].args:

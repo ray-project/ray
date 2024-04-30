@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, Any
 
 import numpy as np
 import torch
@@ -11,8 +11,9 @@ class DAGNodeOutputType:
     pass
 
 
-@DeveloperAPI
-def do_register_custom_dag_serializers(self):
+def _do_register_custom_dag_serializers(self: Any) -> None:
+    # Helper method to run on the DAG driver and actors to register custom
+    # serializers.
     from ray.air._internal import torch_utils
 
     default_device = torch_utils.get_devices()[0]
@@ -69,7 +70,6 @@ class _TorchTensorWrapper:
         self.tensor = tensor
 
 
-@DeveloperAPI
 class _TorchTensorSerializer:
     def __init__(self, device: "torch.device"):
         self.device = device
