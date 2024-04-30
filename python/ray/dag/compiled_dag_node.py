@@ -34,7 +34,12 @@ logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-def do_allocate_channel(self, buffer_size_bytes: int, readers: List["ray.actor.ActorHandle"], typ: Optional[DAGNodeOutputType]) -> Channel:
+def do_allocate_channel(
+    self,
+    buffer_size_bytes: int,
+    readers: List["ray.actor.ActorHandle"],
+    typ: Optional[DAGNodeOutputType],
+) -> Channel:
     """Generic actor method to allocate an output channel.
 
     Args:
@@ -48,8 +53,8 @@ def do_allocate_channel(self, buffer_size_bytes: int, readers: List["ray.actor.A
     if isinstance(typ, TorchTensorType) and typ.transport == "nccl":
         assert ray.get_gpu_ids(), "NCCL actor has no GPUs assigned"
         self._output_channel = TorchTensorNcclChannel(
-                ray.get_runtime_context().current_actor,
-                readers, typ)
+            ray.get_runtime_context().current_actor, readers, typ
+        )
     else:
         self._output_channel = Channel(buffer_size_bytes, num_readers)
     self._output_channel._init(_get_or_create_ray_dag_context(self))
@@ -184,7 +189,7 @@ class CompiledTask:
         self.dag_node = dag_node
         self.arg_idx_to_tensor_meta: Dict[int, Dict[str, Any]] = {}
 
-        self.downstream_node_idxs : Dict[int, "ray.actor.ActorHandle"] = {}
+        self.downstream_node_idxs: Dict[int, "ray.actor.ActorHandle"] = {}
         self.output_channel = None
 
         self.output_wrapper_fn = None

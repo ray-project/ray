@@ -1,6 +1,5 @@
 from typing import Tuple, Optional, List, Dict
 import torch
-import uuid
 
 import numpy as np
 
@@ -8,8 +7,8 @@ import ray.util.serialization
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.collective.collective_group import nccl_util
 from ray.experimental.channel import (
-        Channel,
-        )
+    Channel,
+)
 
 
 class DAGNodeOutputType:
@@ -120,7 +119,8 @@ class _TorchTensorSerializer:
 
 class ChannelContext:
     def __init__(self):
-        self.nccl_group : Optional["NcclGroup"] = None
+        self.nccl_group: Optional["NcclGroup"] = None
+
 
 def _get_or_create_ray_dag_context(self):
     if not hasattr(self, "_ray_dag_context"):
@@ -129,14 +129,15 @@ def _get_or_create_ray_dag_context(self):
 
 
 class NcclGroup:
-    def __init__(self,
-            world_size: int,
-            comm_id: int,
-            rank: Optional[int],
-            actor_ids_to_ranks: Dict[ray.ActorID, int],
-            cuda_stream: Optional[int],
-            ):
-        self._rank : Optional[int] = rank
+    def __init__(
+        self,
+        world_size: int,
+        comm_id: int,
+        rank: Optional[int],
+        actor_ids_to_ranks: Dict[ray.ActorID, int],
+        cuda_stream: Optional[int],
+    ):
+        self._rank: Optional[int] = rank
         if rank is not None:
             from cupy.cuda import nccl
 
@@ -160,24 +161,23 @@ class NcclGroup:
         if self._closed:
             raise IOError("NCCL group has already been destroyed.")
         self._comm.send(
-                nccl_util.get_tensor_ptr(value),
-                value.numel(),
-                nccl_util.get_nccl_tensor_dtype(value),
-                peer_rank,
-                self._cuda_stream,
-                )
-
+            nccl_util.get_tensor_ptr(value),
+            value.numel(),
+            nccl_util.get_nccl_tensor_dtype(value),
+            peer_rank,
+            self._cuda_stream,
+        )
 
     def recv(self, buf: torch.Tensor, peer_rank: int):
         if self._closed:
             raise IOError("NCCL group has already been destroyed.")
         self._comm.recv(
-                nccl_util.get_tensor_ptr(buf),
-                buf.numel(),
-                nccl_util.get_nccl_tensor_dtype(buf),
-                peer_rank,
-                self._cuda_stream,
-                )
+            nccl_util.get_tensor_ptr(buf),
+            buf.numel(),
+            nccl_util.get_nccl_tensor_dtype(buf),
+            peer_rank,
+            self._cuda_stream,
+        )
 
     def destroy(self):
         if self._closed:
@@ -190,27 +190,30 @@ class NcclGroup:
 
 @DeveloperAPI
 class TorchTensorNcclChannel(Channel):
-    def __init__(self,
-            writer: ray.actor.ActorHandle,
-            readers: List[ray.actor.ActorHandle],
-            typ: TorchTensorType,
-            device: Optional["torch.device"] = None,
-            ):
+    def __init__(
+        self,
+        writer: ray.actor.ActorHandle,
+        readers: List[ray.actor.ActorHandle],
+        typ: TorchTensorType,
+        device: Optional["torch.device"] = None,
+    ):
         from ray.air._internal import torch_utils
 
         self._nccl_group = None
 
         self._writer = writer
-        self._writer_rank : Optional[int] = None
+        self._writer_rank: Optional[int] = None
         self._readers = readers
-        self._reader_ranks : Optional[List[int]] = None
+        self._reader_ranks: Optional[List[int]] = None
 
         self._device = device
         if self._device is None:
             # TODO(swang): Allow default device to be overridden.
             self._device = torch_utils.get_devices()[0]
         if self._device.type != "cuda":
-            raise ValueError(f"Actor's default device has type \"{self._device.type}\", need \"cuda\"")
+            raise ValueError(
+                f'Actor\'s default device has type "{self._device.type}", need "cuda"'
+            )
 
         assert typ.transport == "nccl"
         self._typ = typ
@@ -221,25 +224,40 @@ class TorchTensorNcclChannel(Channel):
         self._nccl_group = channel_context.nccl_group
         assert self._nccl_group is not None, "Actor is not part of a NcclGroup"
         self._writer_rank = self._nccl_group.get_rank(self._writer)
-        self._reader_ranks = [self._nccl_group.get_rank(reader) for reader in self._readers]
+        self._reader_ranks = [
+            self._nccl_group.get_rank(reader) for reader in self._readers
+        ]
 
-        self._writer_registered = (self._nccl_group.get_self_rank() == self._writer_rank)
-        self._reader_registered = (self._nccl_group.get_self_rank() in self._reader_ranks)
+        self._writer_registered = self._nccl_group.get_self_rank() == self._writer_rank
+        self._reader_registered = self._nccl_group.get_self_rank() in self._reader_ranks
 
     def __reduce__(self):
         return (self.__class__, (self._writer, self._readers, self._typ, self._device))
 
-    def write(self, wrapped: _TorchTensorWrapper, readers: Optional[List[ray.actor.ActorHandle]] = None):
+    def write(
+        self,
+        wrapped: _TorchTensorWrapper,
+        readers: Optional[List[ray.actor.ActorHandle]] = None,
+    ):
         value = wrapped.tensor
         if value.shape != self._typ.shape:
-            raise ValueError(f"torch.Tensor has shape {value.shape}, expected {self._typ.shape}")
+            raise ValueError(
+                f"torch.Tensor has shape {value.shape}, expected {self._typ.shape}"
+            )
         if value.dtype != self._typ.dtype:
-            raise ValueError(f"torch.Tensor has shape {value.shape}, expected {self._typ.shape}")
+            raise ValueError(
+                f"torch.Tensor has shape {value.shape}, expected {self._typ.shape}"
+            )
         if value.device != self._device:
-            raise ValueError(f"torch.Tensor must be on the default device: {self._device}")
+            raise ValueError(
+                f"torch.Tensor must be on the default device: {self._device}"
+            )
 
         if readers is not None:
-            raise NotImplementedError("TorchTensorNcclChannel.write() not supported for dynamically passed readers.")
+            raise NotImplementedError(
+                "TorchTensorNcclChannel.write() not supported for dynamically "
+                "passed readers."
+            )
 
         # TODO: If there are multiple readers, can replace with a broadcast.
         for rank in self._reader_ranks:
@@ -266,12 +284,12 @@ def do_init_nccl_group(self, world_size, comm_id, rank, actor_ids_to_ranks):
 
     ctx = _get_or_create_ray_dag_context(self)
     ctx.nccl_group = NcclGroup(
-            world_size,
-            comm_id,
-            rank,
-            actor_ids_to_ranks,
-            torch.cuda.current_stream().cuda_stream,
-            )
+        world_size,
+        comm_id,
+        rank,
+        actor_ids_to_ranks,
+        torch.cuda.current_stream().cuda_stream,
+    )
 
 
 @DeveloperAPI
@@ -293,13 +311,16 @@ def _init_nccl_group(
                 "GPU assigned by Ray."
             )
 
-    actor_handles_to_ranks = {
-            actor: rank for rank, actor in enumerate(actors)}
+    actor_handles_to_ranks = {actor: rank for rank, actor in enumerate(actors)}
     actor_ids_to_ranks = {
-            actor._ray_actor_id: rank for actor, rank in actor_handles_to_ranks.items()}
-    assert len(actor_ids_to_ranks) == len(actor_handles_to_ranks), "actors must be unique"
+        actor._ray_actor_id: rank for actor, rank in actor_handles_to_ranks.items()
+    }
+    assert len(actor_ids_to_ranks) == len(
+        actor_handles_to_ranks
+    ), "actors must be unique"
 
     from cupy.cuda import nccl
+
     comm_id = nccl.get_unique_id()
 
     # TODO(swang): Handle timeout errors.
