@@ -40,8 +40,7 @@ class MockWorker : public WorkerInterface {
   void SetAssignedTask(const RayTask &assigned_task) override {
     task_ = assigned_task;
     task_assign_time_ = absl::Now();
-    ancestor_detached_actor_id_ =
-        assigned_task.GetTaskSpecification().AncestorDetachedActorId();
+    root_detached_actor_id_ = assigned_task.GetTaskSpecification().RootDetachedActorId();
   };
 
   absl::Time GetAssignedTaskTime() const override { return task_assign_time_; };
