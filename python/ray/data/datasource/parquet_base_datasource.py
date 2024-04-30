@@ -36,7 +36,6 @@ class ParquetBaseDatasource(FileBasedDatasource):
             "data_read_null_percentage",
             boundaries=[0.00001, 1],
             description=("Coverage of input data (percentage of null to filled values in columns)"),
-            tag_keys=("column_name",),
         )
         self.pyarrow_table_size_metric = Histogram(
             "data_pyarrow_decompressed_size",
@@ -84,5 +83,5 @@ class ParquetBaseDatasource(FileBasedDatasource):
             total_count = len(column)
 
             percent = (total_count - null_count) / total_count
-            self.null_count_metric.observe(percent, tags={"column_name": column.name})
+            self.null_count_metric.observe(percent)
 
