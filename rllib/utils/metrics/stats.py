@@ -328,8 +328,12 @@ class Stats:
     def numpy(self, value: Any = None) -> "Stats":
         """Converts all of self's internal values to numpy (if a tensor)."""
         if value is not None:
-            assert len(self.values) > 0
-            self.values[-1] = convert_to_numpy(value)
+            if self._reduce_method is None:
+                assert isinstance(value, list) and len(self.values) >= len(value)
+                self.values = convert_to_numpy(value)
+            else:
+                assert len(self.values) > 0
+                self.values = [convert_to_numpy(value)]
         else:
             self.values = convert_to_numpy(self.values)
         return self
@@ -430,7 +434,7 @@ class Stats:
                 return self.values[-self._window :], self.values[-self._window :]
 
         # Special case: Internal values list is empty -> return NaN.
-        if len(self.values) == 0:
+        elif len(self.values) == 0:
             return float("nan"), []
         # Do EMA (always a "mean" reduction).
         elif self._ema_coeff is not None:

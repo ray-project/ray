@@ -190,7 +190,7 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
         # a 1:1 representation of the original batch.
         self.metrics.log_value(
             key=(module_id, TD_ERROR_KEY),
-            value=td_error.squeeze(),
+            value=td_error,
             reduce=None,
             clear_on_reduce=True,
         )
