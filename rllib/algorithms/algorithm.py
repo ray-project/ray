@@ -38,22 +38,19 @@ import ray.cloudpickle as pickle
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.registry import ALGORITHMS_CLASS_TO_NAME as ALL_ALGORITHMS
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
+from ray.rllib.core import DEFAULT_AGENT_ID, DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.rl_module.marl_module import (
-    MultiAgentRLModuleSpec,
-    DEFAULT_MODULE_ID,
-)
-from ray.rllib.core import DEFAULT_AGENT_ID
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
+from ray.rllib.env.env_runner_group import EnvRunnerGroup
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.metrics import (
     collect_episodes,
     summarize_episodes,
 )
-from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.offline import get_dataset_and_shards
 from ray.rllib.offline.estimators import (
@@ -213,17 +210,16 @@ logger = logging.getLogger(__name__)
 class Algorithm(Trainable, AlgorithmBase):
     """An RLlib algorithm responsible for optimizing one or more Policies.
 
-    Algorithms contain a WorkerSet under `self.workers`. A WorkerSet is
-    normally composed of a single local worker
-    (self.workers.local_worker()), used to compute and apply learning updates,
-    and optionally one or more remote workers used to generate environment
-    samples in parallel.
-    WorkerSet is fault tolerant and elastic. It tracks health states for all
-    the managed remote worker actors. As a result, Algorithm should never
+    Algorithms contain a EnvRunnerGroup under `self.workers`. An EnvRunnerGroup is
+    normally composed of a single local EnvRunner (self.workers.local_worker()), serving
+    as the main copy of the NeuralNetwork(s) to be trained and optionally one or more
+    remote EnvRunners used to generate environment samples in parallel.
+    EnvRunnerGroup is fault tolerant and elastic. It tracks health states for all
+    the managed remote EnvRunner actors. As a result, Algorithm should never
     access the underlying actor handles directly. Instead, always access them
-    via all the foreach APIs with assigned IDs of the underlying workers.
+    via all the foreach APIs with assigned IDs of the underlying EnvRunners.
 
-    Each worker (remotes or local) contains a PolicyMap, which itself
+    Each EnvRunners (remotes or local) contains a PolicyMap, which itself
     may contain either one policy for single-agent training or one or more
     policies for multi-agent training. Policies are synchronized
     automatically from time to time using ray.remote calls. The exact
@@ -535,8 +531,8 @@ class Algorithm(Trainable, AlgorithmBase):
         # The fully qualified AlgorithmConfig used for evaluation
         # (or None if evaluation not setup).
         self.evaluation_config: Optional[AlgorithmConfig] = None
-        # Evaluation WorkerSet and metrics last returned by `self.evaluate()`.
-        self.evaluation_workers: Optional[WorkerSet] = None
+        # Evaluation EnvRunnerGroup and metrics last returned by `self.evaluate()`.
+        self.evaluation_workers: Optional[EnvRunnerGroup] = None
         # Initialize common evaluation_metrics to nan, before they become
         # available. We want to make sure the metrics are always present
         # (although their values may be nan), so that Tune does not complain
@@ -624,7 +620,7 @@ class Algorithm(Trainable, AlgorithmBase):
             ActorHandle, Set[ray.ObjectRef]
         ] = defaultdict(set)
 
-        self.workers: Optional[WorkerSet] = None
+        self.workers: Optional[EnvRunnerGroup] = None
 
         # Offline RL settings.
         input_evaluation = self.config.get("input_evaluation")
@@ -640,8 +636,8 @@ class Algorithm(Trainable, AlgorithmBase):
             )
             self.config.off_policy_estimation_methods = ope_dict
 
-        # Create a set of env runner actors via a WorkerSet.
-        self.workers = WorkerSet(
+        # Create a set of env runner actors via a EnvRunnerGroup.
+        self.workers = EnvRunnerGroup(
             env_creator=self.env_creator,
             validate_env=self.validate_env,
             default_policy_class=self.get_default_policy_class(self.config),
@@ -659,9 +655,9 @@ class Algorithm(Trainable, AlgorithmBase):
         self.evaluation_config.validate()
         self.evaluation_config.freeze()
 
-        # Evaluation WorkerSet setup.
+        # Evaluation EnvRunnerGroup setup.
         # User would like to setup a separate evaluation worker set.
-        # Note: We skip workerset creation if we need to do offline evaluation
+        # Note: We skip EnvRunnerGroup creation if we need to do offline evaluation.
         if self._should_create_evaluation_rollout_workers(self.evaluation_config):
             _, env_creator = self._get_env_id_and_creator(
                 self.evaluation_config.env, self.evaluation_config
@@ -671,7 +667,7 @@ class Algorithm(Trainable, AlgorithmBase):
             # If evaluation_num_env_runners=0, use the evaluation set's local
             # worker for evaluation, otherwise, use its remote workers
             # (parallelized evaluation).
-            self.evaluation_workers: WorkerSet = WorkerSet(
+            self.evaluation_workers: EnvRunnerGroup = EnvRunnerGroup(
                 env_creator=env_creator,
                 validate_env=None,
                 default_policy_class=self.get_default_policy_class(self.config),
@@ -1011,7 +1007,7 @@ class Algorithm(Trainable, AlgorithmBase):
         # We will use a user provided evaluation function.
         if self.config.custom_evaluation_function:
             eval_results = self._evaluate_with_custom_eval_function()
-        # There is no eval WorkerSet -> Run on local EnvRunner.
+        # There is no eval EnvRunnerGroup -> Run on local EnvRunner.
         elif self.evaluation_workers is None:
             (
                 eval_results,
@@ -1125,11 +1121,12 @@ class Algorithm(Trainable, AlgorithmBase):
         if hasattr(env_runner, "input_reader") and env_runner.input_reader is None:
             raise ValueError(
                 "Cannot evaluate on a local worker (wether there is no evaluation "
-                "WorkerSet OR no remote evaluation workers) in the Algorithm or w/o an "
-                "environment on that local worker!\nTry one of the following:\n1) Set "
-                "`evaluation_interval` > 0 to force creating a separate evaluation "
-                "worker set.\n2) Set `create_env_on_driver=True` to force the local "
-                "(non-eval) worker to have an environment to evaluate on."
+                "EnvRunnerGroup OR no remote evaluation workers) in the Algorithm or "
+                "w/o an environment on that local worker!\nTry one of the following:"
+                "\n1) Set `evaluation_interval` > 0 to force creating a separate "
+                "evaluation EnvRunnerGroup.\n2) Set `create_env_on_driver=True` to "
+                "force the local (non-eval) EnvRunner to have an environment to "
+                "evaluate on."
             )
         elif self.config.evaluation_parallel_to_training:
             raise ValueError(
@@ -1526,7 +1523,7 @@ class Algorithm(Trainable, AlgorithmBase):
 
     @OverrideToImplementCustomLogic
     @DeveloperAPI
-    def restore_workers(self, workers: WorkerSet) -> None:
+    def restore_workers(self, workers: EnvRunnerGroup) -> None:
         """Try bringing back unhealthy EnvRunners and - if successful - sync with local.
 
         Algorithms that use custom EnvRunners may override this method to
@@ -1535,13 +1532,13 @@ class Algorithm(Trainable, AlgorithmBase):
         after such a restart of a (previously failed) worker.
 
         Args:
-            workers: The WorkerSet to restore. This may be the training or the
-                evaluation WorkerSet.
+            workers: The EnvRunnerGroup to restore. This may be the training or the
+                evaluation EnvRunnerGroup.
         """
         # If `workers` is None, or
-        # 1. `workers` (WorkerSet) does not have a local worker, and
-        # 2. `self.workers` (WorkerSet used for training) does not have a local worker
-        # -> we don't have a local worker to get state from, so we can't recover
+        # 1. `workers` (EnvRunnerGroup) does not have a local worker, and
+        # 2. `self.workers` (EnvRunnerGroup used for training) does not have a local
+        # worker -> we don't have a local worker to get state from, so we can't recover
         # remote worker in this case.
         if not workers or (
             not workers.local_worker() and not self.workers.local_worker()
@@ -1558,7 +1555,7 @@ class Algorithm(Trainable, AlgorithmBase):
 
             from_worker = workers.local_worker() or self.workers.local_worker()
             # Get the state of the correct (reference) worker. E.g. The local worker
-            # of the main WorkerSet.
+            # of the training EnvRunnerGroup.
             # TODO (sven): EnvRunners currently return an empty dict from `get_state()`.
             #  Once this API has been implemented properly (and replaced the
             #  `get/set_weights()` APIs), re-visit the test cases that check, whether
@@ -2087,7 +2084,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 whose IDs are not in the list (or for which the callable
                 returns False) will not be updated.
             evaluation_workers: Whether to add the new policy also
-                to the evaluation WorkerSet.
+                to the evaluation EnvRunnerGroup.
             module_spec: In the new RLModule API we need to pass in the module_spec for
                 the new module that is supposed to be added. Knowing the policy spec is
                 not sufficient.
@@ -2192,7 +2189,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 whose IDs are not in the list (or for which the callable
                 returns False) will not be updated.
             evaluation_workers: Whether to add the new RLModule also
-                to the evaluation WorkerSet.
+                to the evaluation EnvRunnerGroup.
 
         Returns:
             The newly added RLModule (the copy that got added to the local
@@ -2262,7 +2259,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 whose IDs are not in the list (or for which the callable
                 returns False) will not be updated.
             evaluation_workers: Whether to also remove the policy from the
-                evaluation WorkerSet.
+                evaluation EnvRunnerGroup.
         """
 
         def fn(worker):
@@ -2652,7 +2649,7 @@ class Algorithm(Trainable, AlgorithmBase):
         self,
         *,
         central_worker: EnvRunner,
-        workers: WorkerSet,
+        workers: EnvRunnerGroup,
         config: AlgorithmConfig,
     ) -> None:
         """Synchronizes the filter stats from `workers` to `central_worker`.
@@ -2664,8 +2661,8 @@ class Algorithm(Trainable, AlgorithmBase):
             central_worker: The worker to sync/aggregate all `workers`' filter stats to
                 and from which to (possibly) broadcast the updated filter stats back to
                 `workers`.
-            workers: The WorkerSet, whose workers' filter stats should be used for
-                aggregation on `central_worker` and which (possibly) get updated
+            workers: The EnvRunnerGroup, whose EnvRunners' filter stats should be used
+                for aggregation on `central_worker` and which (possibly) get updated
                 from `central_worker` after the sync.
             config: The algorithm config instance. This is used to determine, whether
                 syncing from `workers` should happen at all and whether broadcasting
@@ -2996,7 +2993,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 state = pickle.load(f)
 
         # New checkpoint format: Policies are in separate sub-dirs.
-        # Note: Algorithms like ES/ARS don't have a WorkerSet, so we just return
+        # Note: Algorithms like ES/ARS don't have an EnvRunnerGroup, so we just return
         # the plain state here.
         if (
             checkpoint_info["checkpoint_version"] > version.Version("0.1")

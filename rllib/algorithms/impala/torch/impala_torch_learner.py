@@ -6,11 +6,11 @@ from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
     vtrace_torch,
     make_time_major,
 )
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import ENTROPY_KEY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.core.models.base import CRITIC, ENCODER_OUT
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.framework import try_import_torch
@@ -160,7 +160,7 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
             batch[Columns.INFOS] = infos
 
         # TODO (sven): Make multi-agent capable.
-        module = self.module[DEFAULT_POLICY_ID].unwrapped()
+        module = self.module[DEFAULT_MODULE_ID].unwrapped()
 
         # Shared encoder.
         encoder_outs = module.encoder(batch)

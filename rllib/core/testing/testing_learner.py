@@ -3,13 +3,13 @@ from typing import Any, DefaultDict, Dict, Mapping, Type
 import numpy as np
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModule,
     MultiAgentRLModuleSpec,
 )
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -56,7 +56,7 @@ class BaseTestingAlgorithmConfig(AlgorithmConfig):
             #  "1" and "2".
             return MultiAgentRLModuleSpec(
                 marl_module_class=MultiAgentRLModule,
-                module_specs={DEFAULT_POLICY_ID: spec},
+                module_specs={DEFAULT_MODULE_ID: spec},
             )
         else:
             return spec
