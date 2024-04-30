@@ -4395,7 +4395,7 @@ class Dataset:
         One DataFrame is created for each block in this Dataset.
 
         This function induces a copy of the data. For zero-copy access to the
-        underlying data, consider using :meth:`Dataset.to_arrow` or
+        underlying data, consider using :meth:`Dataset.to_arrow_refs` or
         :meth:`Dataset.get_internal_block_refs`.
 
         Examples:
@@ -4423,7 +4423,7 @@ class Dataset:
 
         This is only supported for datasets convertible to NumPy ndarrays.
         This function induces a copy of the data. For zero-copy access to the
-        underlying data, consider using :meth:`Dataset.to_arrow` or
+        underlying data, consider using :meth:`Dataset.to_arrow_refs` or
         :meth:`Dataset.get_internal_block_refs`.
 
         Examples:
