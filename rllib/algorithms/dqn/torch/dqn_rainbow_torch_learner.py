@@ -109,9 +109,7 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
                 # Change the view and then expand to get to the dimensions
                 # of the probabilities (dims 0 and 2, 1 should be reduced
                 # from 2 -> 1).
-                index=q_next_best_idx.view(-1, 1, 1).expand(
-                    -1, 1, config.num_atoms
-                ),
+                index=q_next_best_idx.view(-1, 1, 1).expand(-1, 1, config.num_atoms),
             ).squeeze(dim=1)
 
             # For distributional Q-learning we use an entropy loss.
@@ -132,8 +130,7 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
             ).squeeze(dim=1)
             # (32, 10)
             b = (r_tau - config.v_min) / (
-                (config.v_max - config.v_min)
-                / float(config.num_atoms - 1.0)
+                (config.v_max - config.v_min) / float(config.num_atoms - 1.0)
             )
             lower_bound = torch.floor(b)
             upper_bound = torch.ceil(b)
@@ -179,9 +176,7 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
 
             # Choose the requested loss function. Note, in case of the Huber loss
             # we fall back to the default of `delta=1.0`.
-            loss_fn = (
-                nn.HuberLoss if config.td_error_loss_fn == "huber" else nn.MSELoss
-            )
+            loss_fn = nn.HuberLoss if config.td_error_loss_fn == "huber" else nn.MSELoss
             # Compute the TD error.
             td_error = torch.abs(q_selected - q_selected_target)
             # Compute the weighted loss (importance sampling weights).
