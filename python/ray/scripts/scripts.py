@@ -878,7 +878,6 @@ def start(
                 )
         ray_params.gcs_address = bootstrap_address
         path_timer.tick("ray_start_head_done")
-        path_timer.summary()
     else:
         # Start worker node.
         if not ray_constants.ENABLE_RAY_CLUSTER:
@@ -966,9 +965,11 @@ def start(
         cli_logger.print("To terminate the Ray runtime, run")
         cli_logger.print(cf.bold("  ray stop"))
         cli_logger.flush()
+        path_timer.tick("ray_start_worker_done")
 
     assert ray_params.gcs_address is not None
     ray._private.utils.write_ray_address(ray_params.gcs_address, temp_dir)
+    path_timer.tick("write_ray_address_done")
 
     if block:
         cli_logger.newline()
@@ -1023,6 +1024,8 @@ def start(
                 node.kill_all_processes(check_alive=False, allow_graceful=False)
                 os._exit(1)
         # not-reachable
+    path_timer.tick("ray_start_done")
+    path_timer.summary()
 
 
 @cli.command()
