@@ -699,7 +699,7 @@ def check_train_results_new_api_stack(train_results: ResultDict) -> None:
             data in it.
     """
     # Import these here to avoid circular dependencies.
-    from ray.rllib.core.rl_module.rl_module import DEFAULT_POLICY_ID
+    from ray.rllib.core import DEFAULT_MODULE_ID
     from ray.rllib.utils.metrics import (
         ENV_RUNNER_RESULTS,
         FAULT_TOLERANCE_STATS,
@@ -740,11 +740,11 @@ def check_train_results_new_api_stack(train_results: ResultDict) -> None:
     # Check in particular the "info" dict.
     learner_results = train_results[LEARNER_RESULTS]
 
-    # Make sure we have a default_policy key if we are not in a
+    # Make sure we have a `DEFAULT_MODULE_ID key if we are not in a
     # multi-agent setup.
     if not is_multi_agent:
-        assert len(learner_results) == 0 or DEFAULT_POLICY_ID in learner_results, (
-            f"'{DEFAULT_POLICY_ID}' not found in "
+        assert len(learner_results) == 0 or DEFAULT_MODULE_ID in learner_results, (
+            f"'{DEFAULT_MODULE_ID}' not found in "
             f"train_results['{LEARNER_RESULTS}']!"
         )
 
@@ -1792,7 +1792,7 @@ def test_ckpt_restore(
     tf2=False,
     replay_buffer=False,
     run_restored_algorithm=True,
-    eval_workerset=False,
+    eval_env_runner_group=False,
 ):
     """Test that after an algorithm is trained, its checkpoint can be restored.
 
@@ -1807,6 +1807,8 @@ def test_ckpt_restore(
         object_store: Whether to test checkpointing with objects from the object store.
         replay_buffer: Whether to test checkpointing with replay buffers.
         run_restored_algorithm: Whether to run the restored algorithm after restoring.
+        eval_env_runner_group: Whether to also inspect the eval EnvRunnerGroup of the
+            Algorithm.
 
     """
     # config = algorithms_and_configs[algo_name].to_dict()
@@ -1862,9 +1864,9 @@ def test_ckpt_restore(
             ]._storage[42 : 42 + 42]
             check(data, new_data)
 
-        # Check, whether the eval worker sets have the same policies and
+        # Check, whether the eval EnvRunnerGroup has the same policies and
         # `policy_mapping_fn`.
-        if eval_workerset:
+        if eval_env_runner_group:
             eval_mapping_src = inspect.getsource(
                 alg1.evaluation_workers.local_worker().policy_mapping_fn
             )

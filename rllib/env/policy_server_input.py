@@ -53,7 +53,7 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
             .offline_data(
                 input_=lambda ioctx: PolicyServerInput(ioctx, addr, port)
             )
-            # Run just 1 server (in the Algorithm's WorkerSet).
+            # Run just 1 server (in the Algorithm's EnvRunnerGroup).
             .env_runners(num_env_runners=0)
         )
         algo = config.build()

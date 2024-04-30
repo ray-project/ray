@@ -2,7 +2,7 @@ from typing import Type, Union, Dict, Tuple
 
 import numpy as np
 from ray.rllib.algorithms import AlgorithmConfig
-from ray.rllib.evaluation.worker_set import WorkerSet
+from ray.rllib.env.env_runner_group import EnvRunnerGroup
 from ray.rllib.examples.envs.classes.cliff_walking_wall_env import CliffWalkingWallEnv
 from ray.rllib.examples._old_api_stack.policy.cliff_walking_wall_policy import (
     CliffWalkingWallPolicy,
@@ -54,7 +54,7 @@ def get_cliff_walking_wall_policy_and_data(
     policy = CliffWalkingWallPolicy(
         env.observation_space, env.action_space, {"epsilon": epsilon, "seed": seed}
     )
-    workers = WorkerSet(
+    workers = EnvRunnerGroup(
         env_creator=lambda env_config: CliffWalkingWallEnv(),
         default_policy_class=CliffWalkingWallPolicy,
         config=config,

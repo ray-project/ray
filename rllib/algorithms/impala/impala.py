@@ -15,7 +15,7 @@ from ray.rllib import SampleBatch
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.evaluation.worker_set import handle_remote_call_result_errors
+from ray.rllib.env.env_runner_group import _handle_remote_call_result_errors
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
 from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
@@ -1113,7 +1113,7 @@ class Impala(Algorithm):
                 timeout_seconds=self._timeout_s_aggregator_manager,
             )
         )
-        handle_remote_call_result_errors(
+        _handle_remote_call_result_errors(
             waiting_processed_sample_batches,
             self.config.ignore_env_runner_failures,
         )
