@@ -533,7 +533,11 @@ void ObjectManager::SendObjectChunk(const UniqueID &push_id,
     on_complete(Status::IOError("Failed to read spilled object"));
     return;
   }
-  push_request.set_data(std::move(optional_chunk.value()));
+  if (config_.push_payload_compression_algorithm == CompressionAlgorithm::none) {
+    push_request.set_data(std::move(optional_chunk.value()));
+  } else {
+    push_request.set_data(CompressData(optional_chunk.value()));
+  }
   if (from_disk) {
     num_bytes_pushed_from_disk_ += push_request.data().length();
   } else {
@@ -573,7 +577,15 @@ void ObjectManager::HandlePush(rpc::PushRequest request,
   const std::string &data = request.data();
 
   bool success = ReceiveObjectChunk(
-      node_id, object_id, owner_address, data_size, metadata_size, chunk_index, data);
+      node_id,
+      object_id,
+      owner_address,
+      data_size,
+      metadata_size,
+      chunk_index,
+      config_.push_payload_compression_algorithm == CompressionAlgorithm::none
+          ? data
+          : DecompressData(data));
   num_chunks_received_total_++;
   if (!success) {
     num_chunks_received_total_failed_++;
@@ -807,6 +819,26 @@ void ObjectManager::Tick(const boost::system::error_code &e) {
   auto interval = boost::posix_time::milliseconds(config_.timer_freq_ms);
   pull_retry_timer_.expires_from_now(interval);
   pull_retry_timer_.async_wait([this](const boost::system::error_code &e) { Tick(e); });
+}
+
+std::string ObjectManager::CompressData(const std::string &data) const {
+  switch (config_.push_payload_compression_algorithm) {
+  case CompressionAlgorithm::zstd:
+    return CompressZstd(data);
+  default:
+    RAY_LOG(FATAL) << "Unknown compression algorithm";
+  }
+  return data;
+}
+
+std::string ObjectManager::DecompressData(const std::string &data) const {
+  switch (config_.push_payload_compression_algorithm) {
+  case CompressionAlgorithm::zstd:
+    return DecompressZstd(data);
+  default:
+    RAY_LOG(FATAL) << "Unknown compression algorithm";
+  }
+  return data;
 }
 
 }  // namespace ray

@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <zstd.h>
+
 #include <chrono>
 #include <iterator>
 #include <memory>
@@ -153,6 +155,32 @@ inline std::string GenerateUUIDV4() {
     ss << dis(gen);
   };
   return ss.str();
+}
+
+/// Compress the input data using zstd compression
+inline std::string CompressZstd(const std::string &data) {
+  // Compress the data.
+  const size_t compressed_size = ZSTD_compressBound(data.size());
+  std::string compressed_data(compressed_size, '\0');
+  const size_t actual_compressed_size =
+      ZSTD_compress(compressed_data.data(), compressed_size, data.data(), data.size(), 1);
+  compressed_data.resize(actual_compressed_size);
+  return compressed_data;
+}
+
+/// Decompress the input data compressed by zstd compression
+inline std::string DecompressZstd(const std::string &data) {
+  // Get the decompressed size.
+  const size_t decompressed_size = ZSTD_getFrameContentSize(data.data(), data.size());
+  // Decompress the data.
+  std::string decompressed_data(decompressed_size, '\0');
+  const size_t actual_decompressed_size = ZSTD_decompress(
+      decompressed_data.data(), decompressed_size, data.data(), data.size());
+  if (actual_decompressed_size != decompressed_size) {
+    RAY_LOG(ERROR) << "ZSTD_decompress failed";
+    return "";
+  }
+  return decompressed_data;
 }
 
 /// A helper function to parse command-line arguments in a platform-compatible manner.
