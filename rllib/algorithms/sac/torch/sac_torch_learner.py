@@ -19,9 +19,10 @@ from ray.rllib.core.learner.learner import (
     POLICY_LOSS_KEY,
 )
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
-from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import ModuleID, ParamDict, TensorType
 
@@ -57,10 +58,10 @@ class SACTorchLearner(SACLearner, TorchLearner):
             optimizer_name="qf",
             optimizer=optim_critic,
             params=params_critic,
-            lr_or_lr_schedule=self.config.lr,
+            lr_or_lr_schedule=config.lr,
         )
         # If necessary register also an optimizer for a twin Q network.
-        if self.config.twin_q:
+        if config.twin_q:
             params_twin_critic = self.get_parameters(
                 module.qf_twin_encoder
             ) + self.get_parameters(module.qf_twin)
@@ -71,7 +72,7 @@ class SACTorchLearner(SACLearner, TorchLearner):
                 optimizer_name="qf_twin",
                 optimizer=optim_twin_critic,
                 params=params_twin_critic,
-                lr_or_lr_schedule=self.config.lr,
+                lr_or_lr_schedule=config.lr,
             )
 
         # Define the optimizer for the actor.
@@ -85,7 +86,7 @@ class SACTorchLearner(SACLearner, TorchLearner):
             optimizer_name="policy",
             optimizer=optim_actor,
             params=params_actor,
-            lr_or_lr_schedule=self.config.lr,
+            lr_or_lr_schedule=config.lr,
         )
 
         # Define the optimizer for the temperature.
@@ -96,7 +97,7 @@ class SACTorchLearner(SACLearner, TorchLearner):
             optimizer_name="alpha",
             optimizer=optim_temperature,
             params=[temperature],
-            lr_or_lr_schedule=self.config.lr,
+            lr_or_lr_schedule=config.lr,
         )
 
     @override(TorchLearner)
@@ -108,23 +109,26 @@ class SACTorchLearner(SACLearner, TorchLearner):
 
         grads = {}
 
-        # Calculate gradients for each loss by its optimizer.
-        # TODO (sven): Maybe we rename to `actor`, `critic`. We then also
-        # need to either add to or change in the `Learner` constants.
-        for component in (
-            ["qf", "policy", "alpha"] + ["qf_twin"] if self.config.twin_q else []
-        ):
-            self._metrics[DEFAULT_POLICY_ID][component + "_loss"].backward(
-                retain_graph=True
-            )
-            grads.update(
-                {
-                    pid: p.grad
-                    for pid, p in self.filter_param_dict_for_optimizer(
-                        self._params, self.get_optimizer(optimizer_name=component)
-                    ).items()
-                }
-            )
+        for module_id in set(loss_per_module.keys()) - {ALL_MODULES}:
+            config = self.config.get_config_for_module(module_id)
+
+            # Calculate gradients for each loss by its optimizer.
+            # TODO (sven): Maybe we rename to `actor`, `critic`. We then also
+            #  need to either add to or change in the `Learner` constants.
+            for component in (
+                ["qf", "policy", "alpha"] + ["qf_twin"] if config.twin_q else []
+            ):
+                self._metrics[module_id][component + "_loss"].backward(
+                    retain_graph=True
+                )
+                grads.update(
+                    {
+                        pid: p.grad
+                        for pid, p in self.filter_param_dict_for_optimizer(
+                            self._params, self.get_optimizer(module_id, component)
+                        ).items()
+                    }
+                )
 
         return grads
 
@@ -138,7 +142,7 @@ class SACTorchLearner(SACLearner, TorchLearner):
         fwd_out: Mapping[str, TensorType]
     ) -> TensorType:
         # Only for debugging.
-        deterministic = self.config._deterministic_loss
+        deterministic = config._deterministic_loss
 
         # Receive the current alpha hyperparameter.
         alpha = torch.exp(self.curr_log_alpha[module_id])
@@ -180,7 +184,7 @@ class SACTorchLearner(SACLearner, TorchLearner):
         # Get Q-values for the actually selected actions during rollout.
         # In the critic loss we use these as predictions.
         q_selected = fwd_out[QF_PREDS]
-        if self.config.twin_q:
+        if config.twin_q:
             q_twin_selected = fwd_out[QF_TWIN_PREDS]
 
         # Compute Q-values for the current policy in the current state with
@@ -194,7 +198,7 @@ class SACTorchLearner(SACLearner, TorchLearner):
         q_curr = self.module[module_id]._qf_forward_train(q_batch_curr)[QF_PREDS]
         # If a twin Q network should be used, calculate twin Q-values and use the
         # minimum.
-        if self.config.twin_q:
+        if config.twin_q:
             q_twin_curr = self.module[module_id]._qf_twin_forward_train(q_batch_curr)[
                 QF_PREDS
             ]
@@ -213,7 +217,7 @@ class SACTorchLearner(SACLearner, TorchLearner):
         ]
         # If a twin Q network should be used, calculate twin Q-values and use the
         # minimum.
-        if self.config.twin_q:
+        if config.twin_q:
             q_target_twin_next = self.module[module_id]._qf_target_twin_forward_train(
                 q_batch_next
             )[QF_PREDS]
@@ -230,14 +234,14 @@ class SACTorchLearner(SACLearner, TorchLearner):
         # backpropagate through the target network when optimizing the Q loss.
         q_selected_target = (
             batch[SampleBatch.REWARDS]
-            + (self.config.gamma ** batch["n_steps"]) * q_next_masked
+            + (config.gamma ** batch["n_steps"]) * q_next_masked
         ).detach()
 
         # Calculate the TD-error. Note, this is needed for the priority weights in
         # the replay buffer.
         td_error = torch.abs(q_selected - q_selected_target)
         # If a twin Q network should be used, add the TD error of the twin Q network.
-        if self.config.twin_q:
+        if config.twin_q:
             td_error += torch.abs(q_twin_selected - q_selected_target)
             # Rescale the TD error.
             td_error *= 0.5
@@ -255,7 +259,7 @@ class SACTorchLearner(SACLearner, TorchLearner):
             )
         )
         # If a twin Q network should be used, add the critic loss of the twin Q network.
-        if self.config.twin_q:
+        if config.twin_q:
             critic_twin_loss = torch.mean(
                 batch["weights"]
                 * torch.nn.HuberLoss(reduction="none", delta=1.0)(
@@ -280,7 +284,7 @@ class SACTorchLearner(SACLearner, TorchLearner):
 
         total_loss = actor_loss + critic_loss + alpha_loss
         # If twin Q networks should be used, add the critic loss of the twin Q network.
-        if self.config.twin_q:
+        if config.twin_q:
             total_loss += critic_twin_loss
 
         self.register_metrics(
@@ -303,7 +307,7 @@ class SACTorchLearner(SACLearner, TorchLearner):
         )
         # If twin Q networks should be used add a critic loss for the twin Q network.
         # Note, we need this in the `self.compute_gradients()` to optimize.
-        if self.config.twin_q:
+        if config.twin_q:
             self.register_metrics(
                 module_id,
                 {
