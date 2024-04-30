@@ -216,13 +216,11 @@ class PPOLearner(Learner):
         module_id: ModuleID,
         config: "PPOConfig",
         timestep: int,
-        sampled_kl_values: dict,
     ) -> None:
         super().additional_update_for_module(
             module_id=module_id,
             config=config,
             timestep=timestep,
-            sampled_kl_values=sampled_kl_values,
         )
 
         # Update entropy coefficient via our Scheduler.
