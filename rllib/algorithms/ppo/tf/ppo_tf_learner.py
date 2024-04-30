@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict
+from typing import Dict
 
 from ray.rllib.algorithms.ppo.ppo import (
     LEARNER_RESULTS_KL_KEY,
@@ -152,10 +152,10 @@ class PPOTfLearner(PPOLearner, TfLearner):
         config: PPOConfig,
         timestep: int,
         sampled_kl_values: dict,
-    ) -> Dict[str, Any]:
+    ) -> None:
         assert sampled_kl_values, "Sampled KL values are empty."
 
-        results = super().additional_update_for_module(
+        super().additional_update_for_module(
             module_id=module_id,
             config=config,
             timestep=timestep,
@@ -171,6 +171,8 @@ class PPOTfLearner(PPOLearner, TfLearner):
                 curr_var.assign(curr_var * 1.5)
             elif sampled_kl < 0.5 * config.kl_target:
                 curr_var.assign(curr_var * 0.5)
-            results.update({LEARNER_RESULTS_CURR_KL_COEFF_KEY: curr_var.numpy()})
-
-        return results
+            self.metrics.log_value(
+                (module_id, LEARNER_RESULTS_CURR_KL_COEFF_KEY),
+                curr_var.numpy(),
+                window=1,
+            )

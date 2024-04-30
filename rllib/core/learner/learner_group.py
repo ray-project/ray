@@ -539,7 +539,6 @@ class LearnerGroup:
     def additional_update(
         self,
         *,
-        # Deprecated args.
         reduce_fn=DEPRECATED_VALUE,
         **kwargs,
     ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:

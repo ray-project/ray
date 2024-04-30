@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import LAST_TARGET_UPDATE_TS, NUM_TARGET_UPDATES
-from ray.rllib.utils.typing import ModuleID, ResultDict
+from ray.rllib.utils.typing import ModuleID
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.dqn.dqn import DQNConfig
@@ -31,7 +31,7 @@ class DQNRainbowLearner(Learner):
     @override(Learner)
     def additional_update_for_module(
         self, *, module_id: ModuleID, config: "DQNConfig", timestep: int, **kwargs
-    ) -> ResultDict:
+    ) -> None:
         """Updates the target Q Networks."""
         super().additional_update_for_module(
             module_id=module_id,
@@ -51,8 +51,6 @@ class DQNRainbowLearner(Learner):
             self.metrics.log_value((module_id, NUM_TARGET_UPDATES), 1, reduce="sum")
             # Update the (single-value -> window=1) last updated timestep metric.
             self.metrics.log_value(last_update_ts_key, timestep, window=1)
-
-        return self.metrics.reduce()
 
     @abc.abstractmethod
     def _update_module_target_networks(

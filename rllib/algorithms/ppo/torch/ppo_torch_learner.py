@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict
+from typing import Dict
 
 from ray.rllib.algorithms.ppo.ppo import (
     LEARNER_RESULTS_KL_KEY,
@@ -142,7 +142,7 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         config: PPOConfig,
         timestep: int,
         sampled_kl_values: dict,
-    ) -> Dict[str, Any]:
+    ) -> None:
         assert sampled_kl_values, "Sampled KL values are empty."
 
         super().additional_update_for_module(
@@ -166,5 +166,3 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
                 curr_var.item(),
                 window=1,
             )
-
-        return self.metrics.reduce()

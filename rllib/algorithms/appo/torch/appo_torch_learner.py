@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Dict
 
 from ray.rllib.algorithms.appo.appo import (
     APPOConfig,
@@ -232,7 +232,7 @@ class APPOTorchLearner(AppoLearner, ImpalaTorchLearner):
     @override(AppoLearner)
     def _update_module_kl_coeff(
         self, module_id: ModuleID, config: APPOConfig, sampled_kl: float
-    ) -> Dict[str, Any]:
+    ) -> None:
         # Update the current KL value based on the recently measured value.
         # Increase.
         kl_coeff_var = self.curr_kl_coeffs_per_module[module_id]
@@ -244,4 +244,8 @@ class APPOTorchLearner(AppoLearner, ImpalaTorchLearner):
         elif sampled_kl < 0.5 * config.kl_target:
             kl_coeff_var.data *= 0.5
 
-        return {LEARNER_RESULTS_CURR_KL_COEFF_KEY: kl_coeff_var.item()}
+        self.metrics.log_value(
+            (module_id, LEARNER_RESULTS_CURR_KL_COEFF_KEY),
+            kl_coeff_var.item(),
+            window=1,
+        )

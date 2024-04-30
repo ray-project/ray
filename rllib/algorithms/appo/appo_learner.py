@@ -1,5 +1,4 @@
 import abc
-from typing import Any, Dict
 
 from ray.rllib.algorithms.appo.appo import APPOConfig
 from ray.rllib.algorithms.impala.impala_learner import ImpalaLearner
@@ -46,7 +45,7 @@ class AppoLearner(ImpalaLearner):
         last_update: int,
         mean_kl_loss_per_module: dict,
         **kwargs,
-    ) -> Dict[str, Any]:
+    ) -> None:
         """Updates the target networks and KL loss coefficients (per module).
 
         Args:
@@ -63,7 +62,7 @@ class AppoLearner(ImpalaLearner):
         #  updates.
         #  We should instead have the target / kl threshold update be based off
         #  of the train_batch_size * some target update frequency * num_sgd_iter.
-        results = super().additional_update_for_module(
+        super().additional_update_for_module(
             module_id=module_id, config=config, timestep=timestep
         )
 
@@ -81,13 +80,9 @@ class AppoLearner(ImpalaLearner):
             self.metrics.log_value(last_update_ts_key, timestep, window=1)
 
         if config.use_kl_loss and module_id in mean_kl_loss_per_module:
-            results.update(
-                self._update_module_kl_coeff(
-                    module_id, config, mean_kl_loss_per_module[module_id]
-                )
+            self._update_module_kl_coeff(
+                module_id, config, mean_kl_loss_per_module[module_id]
             )
-
-        return results
 
     @abc.abstractmethod
     def _update_module_target_networks(
@@ -105,7 +100,7 @@ class AppoLearner(ImpalaLearner):
     @abc.abstractmethod
     def _update_module_kl_coeff(
         self, module_id: ModuleID, config: APPOConfig, sampled_kl: float
-    ) -> Dict[str, Any]:
+    ) -> None:
         """Dynamically update the KL loss coefficients of each module with.
 
         The update is completed using the mean KL divergence between the action

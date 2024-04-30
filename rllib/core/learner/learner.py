@@ -953,9 +953,9 @@ class Learner:
             class CustomPPOLearner(PPOTorchLearner):
                 def additional_update_for_module(
                     self, *, module_id, config, timestep, sampled_kl_values
-                ):
+                ) -> None:
 
-                    results = super().additional_update_for_module(
+                    super().additional_update_for_module(
                         module_id=module_id,
                         config=config,
                         timestep=timestep,
@@ -969,7 +969,11 @@ class Learner:
                         curr_var.data *= 1.2
                     elif sampled_kl < 0.8 * self.config.kl_target:
                         curr_var.data *= 0.4
-                    results.update({LEARNER_RESULTS_CURR_KL_COEFF_KEY: curr_var.item()})
+                    self.metrics.log_value(
+                        (module_id, LEARNER_RESULTS_CURR_KL_COEFF_KEY),
+                        curr_var.item(),
+                        window=1,
+                    )
 
             # Construct the Learner object.
             learner = CustomPPOLearner(
@@ -1022,7 +1026,7 @@ class Learner:
         timestep: int,
         hps=None,
         **kwargs,
-    ) -> ResultDict:
+    ) -> None:
         """Apply additional non-gradient based updates for a single module.
 
         See `additional_update` for more details.
@@ -1061,8 +1065,6 @@ class Learner:
                 self.metrics.log_value(
                     key=(module_id, stats_name), value=new_lr, window=1
                 )
-
-        return self.metrics.reduce()
 
     def update_from_batch(
         self,
@@ -1370,8 +1372,7 @@ class Learner:
                 self.metrics.log_value(
                     key=(mid, self.TOTAL_LOSS_KEY),
                     value=loss,
-                    window=float("inf"),  # <- infinite window (we clear on `reduce()`).
-                    clear_on_reduce=True,
+                    window=1,
                 )
 
         self._set_slicing_by_batch_id(batch, value=False)
