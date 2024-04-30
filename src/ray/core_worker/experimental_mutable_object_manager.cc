@@ -78,7 +78,7 @@ MutableObjectManager::~MutableObjectManager() {
   destructor_lock_.Lock();
 
   // Copy `semaphores_` into `tmp` because `DestroySemaphores()` mutates `semaphores_`.
-  absl::node_hash_map<ObjectID, PlasmaObjectHeader::Semaphores> tmp = semaphores_;
+  absl::flat_hash_map<ObjectID, PlasmaObjectHeader::Semaphores> tmp = semaphores_;
   for (const auto &[object_id, _] : tmp) {
     (void)SetErrorInternal(object_id);
     DestroySemaphores(object_id);
