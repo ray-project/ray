@@ -622,8 +622,6 @@ class CompiledDAG:
                     logger.debug(f"Handling exception from worker tasks: {e}")
                     if self.in_teardown:
                         return
-                    for output_channel in outer.dag_output_channels:
-                        output_channel.close()
                     self.teardown()
 
         monitor = Monitor()
