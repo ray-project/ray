@@ -1,4 +1,3 @@
-import json
 from unittest import mock
 
 import pandas as pd
@@ -42,11 +41,6 @@ params = {
     "objective": "binary:logistic",
     "eval_metric": ["logloss", "error"],
 }
-
-
-def get_num_trees(booster: xgb.Booster) -> int:
-    data = [json.loads(d) for d in booster.get_dump(dump_format="json")]
-    return len(data)
 
 
 def test_fit(ray_start_4_cpus):
@@ -151,21 +145,44 @@ def test_checkpoint_freq(ray_start_4_cpus, freq_end_expected):
     assert cp_paths == sorted(cp_paths), str(cp_paths)
 
 
-def test_checkpoint_only_on_rank0(ray_start_4_cpus):
-    # with mock.patch("ray.train.report", side_effect=ray.train.report) as mock_report:
-    trainer = XGBoostTrainer(
-        run_config=ray.train.RunConfig(
-            checkpoint_config=ray.train.CheckpointConfig(
-                checkpoint_frequency=0, checkpoint_at_end=True
-            )
-        ),
-        scaling_config=ray.train.ScalingConfig(num_workers=4),
-        label_column="target",
-        params=params,
-        num_boost_round=1,
-        datasets={TRAIN_DATASET_KEY: ray.data.from_pandas(train_df)},
-    )
-    trainer.fit()
+@pytest.mark.parametrize("rank", [0, 1])
+def test_checkpoint_only_on_rank0(rank):
+    callback = RayTrainReportCallback(frequency=2, checkpoint_at_end=True)
+
+    booster = mock.MagicMock()
+
+    with mock.patch("ray.train.report") as mock_report, mock.patch(
+        "ray.train.get_context"
+    ) as mock_get_context:
+        mock_context = mock.MagicMock()
+        mock_context.get_world_rank.return_value = rank
+        mock_get_context.return_value = mock_context
+
+        booster.num_boosted_rounds.return_value = 2
+        callback.after_iteration(booster, epoch=1, evals_log={})
+
+        # Only rank 0 should report based on `frequency`
+        reported_checkpoint = bool(mock_report.call_args.kwargs.get("checkpoint"))
+        if rank == 0:
+            assert reported_checkpoint
+        else:
+            assert not reported_checkpoint
+
+        booster.num_boosted_rounds.return_value = 3
+        callback.after_iteration(booster, epoch=2, evals_log={})
+        # Nobody should report a checkpoint on iterations
+        reported_checkpoint = bool(mock_report.call_args.kwargs.get("checkpoint"))
+        assert not reported_checkpoint
+
+        booster.num_boosted_rounds.return_value = 4
+        callback.after_training(booster)
+
+        # Only rank 0 should report based on `checkpoint_at_end`
+        reported_checkpoint = bool(mock_report.call_args.kwargs.get("checkpoint"))
+        if rank == 0:
+            assert reported_checkpoint
+        else:
+            assert not reported_checkpoint
 
 
 def test_tune(ray_start_8_cpus):

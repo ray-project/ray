@@ -6,7 +6,7 @@ from typing import Callable, Dict, List, Optional, Union
 
 from xgboost.core import Booster
 
-from ray import train
+import ray.train
 from ray.train import Checkpoint
 from ray.tune.utils import flatten_dict
 from ray.util.annotations import PublicAPI
@@ -176,16 +176,18 @@ class RayTrainReportCallback(TuneCallback):
         checkpointing_disabled = self._frequency == 0
         # Ex: if frequency=2, checkpoint at epoch 1, 3, 5, ... (counting from 0)
         should_checkpoint = (
-            not checkpointing_disabled and (epoch + 1) % self._frequency == 0
+            not checkpointing_disabled
+            and (epoch + 1) % self._frequency == 0
+            and ray.train.get_context().get_world_rank() == 0
         )
 
         report_dict = self._get_report_dict(evals_log)
         if should_checkpoint:
             self._last_checkpoint_iteration = epoch
             with self._get_checkpoint(model=model) as checkpoint:
-                train.report(report_dict, checkpoint=checkpoint)
+                ray.train.report(report_dict, checkpoint=checkpoint)
         else:
-            train.report(report_dict)
+            ray.train.report(report_dict)
 
     def after_training(self, model: Booster) -> Booster:
         if not self._checkpoint_at_end:
@@ -197,7 +199,10 @@ class RayTrainReportCallback(TuneCallback):
             return model
 
         report_dict = self._get_report_dict(self._evals_log) if self._evals_log else {}
-        with self._get_checkpoint(model=model) as checkpoint:
-            train.report(report_dict, checkpoint=checkpoint)
+        if ray.train.get_context().get_world_rank() == 0:
+            with self._get_checkpoint(model=model) as checkpoint:
+                ray.train.report(report_dict, checkpoint=checkpoint)
+        else:
+            ray.train.report(report_dict)
 
         return model
