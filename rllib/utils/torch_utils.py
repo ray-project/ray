@@ -136,7 +136,7 @@ def clip_gradients(
         for k, v in gradients_dict.copy().items():
             if v is not None:
                 # Compute the L2-norm of the gradient tensor.
-                norm = v.norm(2)
+                norm = v.norm(2).nan_to_num(neginf=-10e8, posinf=10e8)
                 # Clip all the gradients.
                 if norm > grad_clip:
                     v.mul_(grad_clip / norm)
