@@ -411,7 +411,11 @@ Status MutableObjectManager::SetError(const ObjectID &object_id) {
   return Status::NotImplemented("Not supported on Windows.");
 }
 
-Status MutableObjectManager::SetError() {
+Status MutableObjectManager::SetErrorInternal(const ObjectID &object_id) {
+  return Status::NotImplemented("Not supported on Windows.");
+}
+
+Status MutableObjectManager::SetErrorAll() {
   return Status::NotImplemented("Not supported on Windows.");
 }
 

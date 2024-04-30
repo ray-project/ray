@@ -275,7 +275,7 @@ class DataIterator(abc.ABC):
 
         This iterable yields a dictionary of column-tensors. If you are looking for
         more flexibility in the tensor conversion (e.g. casting dtypes) or the batch
-        format, try using :meth:`~ray.data.iterator.DataIterator.iter_batches` directly.
+        format, try using :meth:`~ray.data.DataIterator.iter_batches` directly.
 
         Examples:
             >>> import ray
