@@ -70,19 +70,19 @@ Then, build the corresponding Docker images and push it to your choice of Docker
 ::::{tab-set}
 :::{tab-item} Whisper
 ```bash
-# Build the Docker image from the Dockerfile using podman
+# Build the Podman image from the Dockerfile using podman
 export IMG1=alice/whisper_image:latest
 podman build -t $IMG1 -f whisper.Dockerfile .
-# Push to a Docker registry. This step is unnecessary if you are deploying Serve locally.
+# Push to a registry. This step is unnecessary if you are deploying Serve locally.
 podman push $IMG1
 ```
 :::
 :::{tab-item} Resnet
 ```bash
-# Build the Docker image from the Dockerfile using podman
+# Build the Podman image from the Dockerfile using podman
 export IMG2=alice/resnet_image:latest
 podman build -t $IMG2 -f resnet.Dockerfile .
-# Push to a Docker registry. This step is unnecessary if you are deploying Serve locally.
+# Push to a registry. This step is unnecessary if you are deploying Serve locally.
 podman push $IMG2
 ```
 :::
@@ -93,7 +93,7 @@ Finally, you can specify the Docker image within which you want to run each appl
 - `worker_path`: The absolute path to `default_worker.py` inside the container.
 - `run_options`: Additional options to pass to the `podman run` command used to start a Serve deployment replica in a container. See [podman run documentation](https://docs.podman.io/en/latest/markdown/podman-run.1.html) for a list of all options. If you are familiar with `docker run`, most options work the same way.
 
-The following Serve config runs the `whisper` app with the image `IMG1`, and the `resnet` app with the image `IMG2`. Concretely, all deployment replicas in the applications start and run in containers with the respective images.
+The following Serve config runs the `whisper` app with the image `IMG1`, and the `resnet` app with the image `IMG2`. `podman images` command can be used to list the names of the images. Concretely, all deployment replicas in the applications start and run in containers with the respective images.
 
 ```yaml
 applications:
