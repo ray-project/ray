@@ -100,7 +100,6 @@ def atanh(x: TensorType) -> TensorType:
     pass
 
 
-@PublicAPI
 def clip_gradients(
     gradients_dict: "ParamDict",
     *,
@@ -155,15 +154,26 @@ def clip_gradients(
         device = grads[0].device
 
         total_norm = torch.norm(
-            torch.stack([torch.norm(g.detach(), norm_type).to(device) for g in grads]),
+            torch.stack(
+                [
+                    torch.norm(g.detach(), norm_type)
+                    # Note, we want to avoid overflow in the norm computation, this does
+                    # not affect the gradients themselves as we clamp by multiplying and
+                    # not by overriding tensor values.
+                    .nan_to_num(neginf=-10e8, posinf=10e8).to(device)
+                    for g in grads
+                ]
+            ),
             norm_type,
-        )
+        ).nan_to_num(neginf=-10e8, posinf=10e8)
         if torch.logical_or(total_norm.isnan(), total_norm.isinf()):
             raise RuntimeError(
                 f"The total norm of order {norm_type} for gradients from "
                 "`parameters` is non-finite, so it cannot be clipped. "
             )
-        clip_coef = grad_clip / (total_norm + 1e-6)
+        clip_coef = grad_clip / torch.maximum(
+            torch.tensor(grad_clip), total_norm + 1e-6
+        )
         # Note: multiplying by the clamped coef is redundant when the coef is clamped to
         # 1, but doing so avoids a `if clip_coef < 1:` conditional which can require a
         # CPU <=> device synchronization when the gradients do not reside in CPU memory.
