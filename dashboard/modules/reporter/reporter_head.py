@@ -642,11 +642,11 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 # The JSON Parsing can be CPU heavy. Offload to another thread to avoid
                 # blocking the event loop.
                 loop = get_or_create_event_loop()
-                parsed = await loop.run_in_executor(
+                parsed_data = await loop.run_in_executor(
                     self.thread_pool_executor, json.loads, data
                 )
                 node_id = key.split(":")[-1]
-                DataSource.node_physical_stats[node_id] = parsed
+                DataSource.node_physical_stats[node_id] = parsed_data
             except Exception:
                 logger.exception(
                     "Error receiving node physical stats from reporter agent."
