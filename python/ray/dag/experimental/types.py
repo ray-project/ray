@@ -1,14 +1,23 @@
 from typing import Tuple, Any
 
 import numpy as np
-import torch
 
 import ray.util.serialization
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
+try:
+    import torch
+except ImportError:
+    torch = None
+
 
 class DAGNodeOutputType:
     pass
+
+
+def _assert_torch_available():
+    if torch is None:
+        raise ImportError("Ray DAG TorchTensorType requires PyTorch.")
 
 
 def _do_register_custom_dag_serializers(self: Any) -> None:
@@ -38,6 +47,7 @@ def _do_register_custom_dag_serializers(self: Any) -> None:
 @PublicAPI(stability="alpha")
 class TorchTensorType(DAGNodeOutputType):
     def __init__(self, shape: Tuple[int], dtype: "torch.dtype"):
+        _assert_torch_available()
         self.shape = shape
         self.dtype = dtype
 
@@ -49,6 +59,7 @@ class _TorchTensorWrapper:
         tensor: "torch.Tensor",
         typ: TorchTensorType,
     ):
+        _assert_torch_available()
         if not isinstance(tensor, torch.Tensor):
             raise ValueError(
                 "DAG nodes wrapped with ray.experimental.TorchTensor must return a "

@@ -19,7 +19,7 @@ from ray.experimental.channel import (
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 from ray.dag.experimental.types import (
-    do_register_custom_dag_serializers,
+    _do_register_custom_dag_serializers,
     TorchTensorType,
     _TorchTensorWrapper,
 )
@@ -83,7 +83,7 @@ def do_exec_compiled_task(
             the loop.
     """
     try:
-        do_register_custom_dag_serializers(self)
+        _do_register_custom_dag_serializers(self)
 
         method = getattr(self, actor_method_name)
 
