@@ -647,7 +647,7 @@ class DQN(Algorithm):
             current_ts = self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME)
 
         # If enough experiences have been sampled start training.
-        if current_ts > self.config.num_steps_sampled_before_learning_starts:
+        if current_ts >= self.config.num_steps_sampled_before_learning_starts:
             # Resample noise for noisy networks, if necessary. Note, this
             # is proposed in the "Noisy Networks for Exploration" paper
             # (https://arxiv.org/abs/1706.10295) in Algorithm 1. The noise
@@ -674,8 +674,8 @@ class DQN(Algorithm):
                 # Perform an update on the buffer-sampled train batch.
                 with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
                     learner_results = self.learner_group.update_from_batch(train_batch)
-                    # Isolate TD-errors from result dicts (we should not log these, they
-                    # might be very large).
+                    # Isolate TD-errors from result dicts (we should not log these to
+                    # disk or WandB, they might be very large).
                     td_errors = defaultdict(list)
                     for res in learner_results:
                         for mid, m_res in res.items():
