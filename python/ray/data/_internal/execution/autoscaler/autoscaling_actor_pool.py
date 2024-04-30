@@ -33,8 +33,8 @@ class AutoscalingActorPool(metaclass=ABCMeta):
         ...
 
     @abstractmethod
-    def num_busy_actors(self) -> int:
-        """Number of actors with in-flight tasks."""
+    def num_active_actors(self) -> int:
+        """Number of actors with at least one active task."""
         ...
 
     @abstractmethod

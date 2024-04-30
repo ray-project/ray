@@ -352,7 +352,7 @@ class _ActorPool(AutoscalingActorPool):
     def __init__(
         self,
         compute_strategy: ActorPoolStrategy,
-        create_actor_fn: Callable[[], Tuple[ActorHandle, ObjectRef]],
+        create_actor_fn: Callable[[], Tuple[ActorHandle, ObjectRef[Any]]],
     ):
         self._min_size: int = compute_strategy.min_size
         self._max_size: int = compute_strategy.max_size
@@ -393,8 +393,11 @@ class _ActorPool(AutoscalingActorPool):
     def num_running_actors(self) -> int:
         return len(self._num_tasks_in_flight)
 
-    def num_busy_actors(self) -> int:
-        return self.current_size() - self.num_idle_actors()
+    def num_active_actors(self) -> int:
+        return sum(
+            1 if num_tasks_in_flight > 0 else 0
+            for num_tasks_in_flight in self._num_tasks_in_flight.values()
+        )
 
     def num_pending_actors(self) -> int:
         return len(self._pending_actors)
@@ -525,13 +528,6 @@ class _ActorPool(AutoscalingActorPool):
             return 0
         return sum(
             max(0, self._max_tasks_in_flight - num_tasks_in_flight)
-            for num_tasks_in_flight in self._num_tasks_in_flight.values()
-        )
-
-    def num_active_actors(self) -> int:
-        """Return the number of actors in the pool with at least one active task."""
-        return sum(
-            1 if num_tasks_in_flight > 0 else 0
             for num_tasks_in_flight in self._num_tasks_in_flight.values()
         )
 

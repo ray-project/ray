@@ -48,7 +48,7 @@ class DefaultAutoscaler(Autoscaler):
         if actor_pool.current_size() == 0:
             return 0
         else:
-            return actor_pool.num_busy_actors() / actor_pool.current_size()
+            return actor_pool.num_active_actors() / actor_pool.current_size()
 
     def _actor_pool_should_scale_up(
         self,
