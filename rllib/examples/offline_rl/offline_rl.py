@@ -53,7 +53,7 @@ if __name__ == "__main__":
     config = (
         cql.CQLConfig()
         .framework(framework="torch")
-        .env_runners(num_rollout_workers=0)
+        .env_runners(num_env_runners=0)
         .training(
             n_step=3,
             bc_iters=0,

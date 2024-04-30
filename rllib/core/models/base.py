@@ -6,9 +6,9 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.configs import ModelConfig
 from ray.rllib.core.models.specs.specs_base import Spec
 from ray.rllib.policy.rnn_sequencing import get_fold_unfold_fns
-from ray.rllib.utils.annotations import ExperimentalAPI, DeveloperAPI
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.typing import TensorType
+from ray.util.annotations import DeveloperAPI
 
 # Top level keys that unify model i/o.
 ENCODER_OUT: str = "encoder_out"
@@ -70,7 +70,7 @@ class Model(abc.ABC):
         def init_decorator(previous_init):
             def new_init(self, *args, **kwargs):
                 previous_init(self, *args, **kwargs)
-                if type(self) == cls:
+                if type(self) is cls:
                     self.__post_init__()
 
             return new_init

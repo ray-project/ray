@@ -25,9 +25,10 @@ from ray.rllib.algorithms.dreamerv3.utils.summaries import (
     report_predicted_vs_sampled_obs,
     report_sampling_and_replay_buffer,
 )
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import deep_update
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.framework import try_import_tf
@@ -149,7 +150,8 @@ class DreamerV3Config(AlgorithmConfig):
         # with RLlib's `RemoteVectorEnv`).
         self.remote_worker_envs = True
         # Dreamer only runs on the new API stack.
-        self._enable_new_api_stack = True
+        self.enable_rl_module_and_learner = True
+        self.enable_env_runner_and_connector_v2 = True
         # __sphinx_doc_end__
         # fmt: on
 
@@ -382,10 +384,10 @@ class DreamerV3Config(AlgorithmConfig):
             raise ValueError("DreamerV3 does NOT support multi-agent setups yet!")
 
         # Make sure, we are configure for the new API stack.
-        if not self._enable_new_api_stack:
+        if not self.enable_rl_module_and_learner:
             raise ValueError(
-                "DreamerV3 must be run with `config.experimental("
-                "_enable_new_api_stack=True)`!"
+                "DreamerV3 must be run with `config.api_stack("
+                "enable_rl_module_and_learner=True)`!"
             )
 
         # If run on several Learners, the provided batch_size_B must be a multiple
@@ -490,7 +492,7 @@ class DreamerV3(Algorithm):
         if self.config.share_module_between_env_runner_and_learner:
             assert self.workers.local_worker().module is None
             self.workers.local_worker().module = self.learner_group._learner.module[
-                DEFAULT_POLICY_ID
+                DEFAULT_MODULE_ID
             ]
 
         # Summarize (single-agent) RLModule (only once) here.
@@ -621,7 +623,7 @@ class DreamerV3(Algorithm):
                 if self.config.report_images_and_videos:
                     report_predicted_vs_sampled_obs(
                         # TODO (sven): DreamerV3 is single-agent only.
-                        results=train_results[DEFAULT_POLICY_ID],
+                        results=train_results[DEFAULT_MODULE_ID],
                         sample=sample,
                         batch_size_B=self.config.batch_size_B,
                         batch_length_T=self.config.batch_length_T,
@@ -631,7 +633,7 @@ class DreamerV3(Algorithm):
                         ),
                     )
 
-                res = train_results[DEFAULT_POLICY_ID]
+                res = train_results[DEFAULT_MODULE_ID]
                 logger.info(
                     f"\t\tWORLD_MODEL_L_total={res['WORLD_MODEL_L_total']:.5f} ("
                     f"L_pred={res['WORLD_MODEL_L_prediction']:.5f} ("
@@ -715,8 +717,8 @@ class DreamerV3(Algorithm):
         # longer a copy of the learner.
         if self.config.share_module_between_env_runner_and_learner:
             assert id(self.workers.local_worker().module) != id(
-                self.learner_group._learner.module[DEFAULT_POLICY_ID]
+                self.learner_group._learner.module[DEFAULT_MODULE_ID]
             )
             self.workers.local_worker().module = self.learner_group._learner.module[
-                DEFAULT_POLICY_ID
+                DEFAULT_MODULE_ID
             ]

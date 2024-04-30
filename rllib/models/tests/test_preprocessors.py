@@ -39,7 +39,7 @@ class TestPreprocessors(unittest.TestCase):
     def test_rlms_and_preprocessing(self):
         config = (
             ppo.PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .framework("tf2")
             .environment(
                 env="ray.rllib.examples.envs.classes.random_env.RandomEnv",

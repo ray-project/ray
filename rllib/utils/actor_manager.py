@@ -443,7 +443,7 @@ class FaultTolerantActorManager:
         tags: List[str],
         timeout_seconds: int = None,
         return_obj_refs: bool = False,
-        mark_healthy: bool = False,
+        mark_healthy: bool = True,
     ) -> Tuple[List[ray.ObjectRef], RemoteCallResults]:
         """Try fetching results from remote actor calls.
 
@@ -508,8 +508,10 @@ class FaultTolerantActorManager:
                 remote_results.add_result(actor_id, ResultOrError(error=e), tag)
 
                 # Mark the actor as unhealthy.
-                # TODO(jungong): Using RayError here to preserve historical behavior.
-                #  It may very likely be better to use RayActorError here.
+                # TODO (sven): Using RayError here to preserve historical behavior.
+                #  It may be better to use (RayActorError, RayTaskError) here, but it's
+                #  not 100% clear to me yet. For example, if an env crashes within a
+                #  EnvRunner, Ray seems to throw a RayTaskError, not RayActorError.
                 if isinstance(e, RayError):
                     # Take this actor out of service and wait for Ray Core to
                     # restore it.
@@ -519,8 +521,9 @@ class FaultTolerantActorManager:
                             f"{str(e)}"
                         )
                     self.set_actor_state(actor_id, healthy=False)
+                # ActorManager should not handle other RayErrors or application level
+                # errors.
                 else:
-                    # ActorManager should not handle application level errors.
                     pass
 
         return ready, remote_results
@@ -564,31 +567,39 @@ class FaultTolerantActorManager:
         self,
         func: Union[Callable[[Any], Any], List[Callable[[Any], Any]]],
         *,
-        healthy_only=True,
+        healthy_only: bool = True,
         remote_actor_ids: List[int] = None,
-        timeout_seconds=None,
+        timeout_seconds: Optional[float] = None,
         return_obj_refs: bool = False,
-        mark_healthy: bool = False,
+        mark_healthy: bool = True,
     ) -> RemoteCallResults:
         """Calls the given function with each actor instance as arg.
 
-        Automatically mark actors unhealthy if they fail to respond.
+        Automatically marks actors unhealthy if they crash during the remote call.
 
         Args:
             func: A single, or a list of Callables, that get applied on the list
                 of specified remote actors.
-            healthy_only: If True, applies func on known healthy actors only.
+            healthy_only: If True, applies `func` only to actors currently tagged
+                "healthy", otherwise to all actors. If `healthy_only=False` and
+                `mark_healthy=True`, will send `func` to all actors and mark those
+                actors "healthy" that respond to the request within `timeout_seconds`
+                and are currently tagged as "unhealthy".
             remote_actor_ids: Apply func on a selected set of remote actors.
-            timeout_seconds: Ray.get() timeout. Default is None.
-                Setting this to 0.0 effectively makes all the
-                remote calls fire-and-forget, while setting timeout_seconds to None
-                make them synchronous calls.
+            timeout_seconds: Ray.get() timeout in seconds. Default is None, which will
+                block until all remote results have been received. Setting this to 0.0
+                makes all the remote calls fire-and-forget, while setting this to
+                None make them synchronous calls.
             return_obj_refs: whether to return ObjectRef instead of actual results.
                 Note, for fault tolerance reasons, these returned ObjectRefs should
                 never be resolved with ray.get() outside of the context of this manager.
-            mark_healthy: whether to mark certain actors healthy based on the results
-                of these remote calls. Useful, for example, to make sure actors
-                do not come back without proper state restoration.
+            mark_healthy: Whether to mark all those actors healthy again that are
+                currently marked unhealthy AND that returned results from the remote
+                call (within the given `timeout_seconds`).
+                Note that actors are NOT set unhealthy, if they simply time out
+                (only if they return a RayActorError).
+                Also not that this setting is ignored if `healthy_only=True` (b/c this
+                setting only affects actors that are currently tagged as unhealthy).
 
         Returns:
             The list of return values of all calls to `func(actor)`. The values may be
@@ -625,7 +636,7 @@ class FaultTolerantActorManager:
         func: Union[Callable[[Any], Any], List[Callable[[Any], Any]]],
         tag: str = None,
         *,
-        healthy_only=True,
+        healthy_only: bool = True,
         remote_actor_ids: List[int] = None,
     ) -> int:
         """Calls given functions against each actors without waiting for results.
@@ -634,7 +645,12 @@ class FaultTolerantActorManager:
             func: A single, or a list of Callables, that get applied on the list
                 of specified remote actors.
             tag: A tag to identify the results from this async call.
-            healthy_only: If True, applies func on known healthy actors only.
+            healthy_only: If True, applies `func` only to actors currently tagged
+                "healthy", otherwise to all actors. If `healthy_only=False` and
+                later, `self.fetch_ready_async_reqs()` is called with
+                `mark_healthy=True`, will send `func` to all actors and mark those
+                actors "healthy" that respond to the request within `timeout_seconds`
+                and are currently tagged as "unhealthy".
             remote_actor_ids: Apply func on a selected set of remote actors.
                 Note, for fault tolerance reasons, these returned ObjectRefs should
                 never be resolved with ray.get() outside of the context of this manager.
@@ -744,7 +760,7 @@ class FaultTolerantActorManager:
         tags: Union[str, List[str]] = (),
         timeout_seconds: Union[None, int] = 0,
         return_obj_refs: bool = False,
-        mark_healthy: bool = False,
+        mark_healthy: bool = True,
     ) -> RemoteCallResults:
         """Get results from outstanding async requests that are ready.
 
@@ -758,9 +774,17 @@ class FaultTolerantActorManager:
                 already ready).
             tags: A tag or a list of tags to identify the results from this async call.
             return_obj_refs: Whether to return ObjectRef instead of actual results.
-            mark_healthy: whether to mark certain actors healthy based on the results
-                of these remote calls. Useful, for example, to make sure actors
-                do not come back without proper state restoration.
+            mark_healthy: Whether to mark all those actors healthy again that are
+                currently marked unhealthy AND that returned results from the remote
+                call (within the given `timeout_seconds`).
+                Note that actors are NOT set to unhealthy, if they simply time out,
+                meaning take a longer time to fulfil the remote request. We only ever
+                mark an actor unhealthy, if they raise a RayActorError inside the remote
+                request.
+                Also note that this settings is ignored if the preceding
+                `foreach_actor_async()` call used the `healthy_only=True` argument (b/c
+                `mark_healthy` only affects actors that are currently tagged as
+                unhealthy).
 
         Returns:
             A list of return values of all calls to `func(actor)` that are ready.
@@ -791,19 +815,29 @@ class FaultTolerantActorManager:
     @DeveloperAPI
     def probe_unhealthy_actors(
         self,
-        timeout_seconds: Optional[int] = None,
-        mark_healthy: bool = False,
+        timeout_seconds: Optional[float] = None,
+        mark_healthy: bool = True,
     ) -> List[int]:
         """Ping all unhealthy actors to try bringing them back.
 
         Args:
-            timeout_seconds: Timeout to avoid pinging hanging workers indefinitely.
-            mark_healthy: Whether to mark actors healthy if they respond to the ping.
+            timeout_seconds: Timeout in seconds (to avoid pinging hanging workers
+                indefinitely).
+            mark_healthy: Whether to mark all those actors healthy again that are
+                currently marked unhealthy AND that respond to the `ping` remote request
+                (within the given `timeout_seconds`).
+                Note that actors are NOT set to unhealthy, if they simply time out,
+                meaning take a longer time to fulfil the remote request. We only ever
+                mark and actor unhealthy, if they return a RayActorError from the remote
+                request.
+                Also note that this settings is ignored if `healthy_only=True` (b/c this
+                setting only affects actors that are currently tagged as unhealthy).
 
         Returns:
-            A list of actor IDs that were restored by the `ping` AND those actors that
-            were previously restored via other remote requests. The cached set of
-            such previously restored actors will be erased in this call.
+            A list of actor IDs that were restored by the `ping.remote()` call PLUS
+            those actors that were previously restored via other remote requests.
+            The cached set of such previously restored actors will be erased in this
+            call.
         """
         # Collect recently restored actors (from `self._fetch_result` calls other than
         # the one triggered here via the `ping`).
@@ -836,6 +870,6 @@ class FaultTolerantActorManager:
         ]
 
     def actors(self):
-        # TODO(jungong) : remove this API once WorkerSet.remote_workers()
-        #  and WorkerSet._remote_workers() are removed.
+        # TODO(jungong) : remove this API once EnvRunnerGroup.remote_workers()
+        #  and EnvRunnerGroup._remote_workers() are removed.
         return self._actors

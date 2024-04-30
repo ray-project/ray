@@ -5,7 +5,7 @@ from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
 config = (
     APPOConfig()
     # TODO: Switch over to new stack once it supports LSTMs.
-    .experimental(_enable_new_api_stack=False)
+    .api_stack(enable_rl_module_and_learner=False)
     .environment(StatelessCartPole)
     .resources(num_gpus=0)
     .env_runners(num_env_runners=1, observation_filter="MeanStdFilter")

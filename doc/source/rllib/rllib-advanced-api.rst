@@ -434,8 +434,8 @@ the other evaluation EnvRunners still complete the job.
 
 In case you would like to entirely customize the evaluation step,
 set ``custom_eval_function`` in your config to a callable, which takes the Algorithm
-object and a WorkerSet object (the Algorithm's ``self.evaluation_workers``
-WorkerSet instance) and returns a metrics dictionary.
+object and an :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` object (the Algorithm's ``self.evaluation_workers``
+:py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` instance) and returns a metrics dictionary.
 See `algorithm.py <https://github.com/ray-project/ray/blob/master/rllib/algorithms/algorithm.py>`__
 for further documentation.
 
