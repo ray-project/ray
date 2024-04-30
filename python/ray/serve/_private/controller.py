@@ -909,11 +909,9 @@ class ServeController:
             proxy_location=ProxyLocation._from_deployment_mode(http_config.location),
             http_options=http_options,
             grpc_options=grpc_options,
-            proxies=(
-                self.proxy_state_manager.get_proxy_details()
-                if self.proxy_state_manager
-                else None
-            ),
+            proxies=self.proxy_state_manager.get_proxy_details()
+            if self.proxy_state_manager
+            else None,
             applications=applications,
         )._get_user_facing_json_serializable_dict(exclude_unset=True)
 
