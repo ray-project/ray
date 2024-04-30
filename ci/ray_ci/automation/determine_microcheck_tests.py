@@ -15,7 +15,13 @@ LINUX_PYTHON_TEST_PREFIX = "linux:__python"
 @click.option("--test-history-length", default=100, type=int)
 @click.option("--test-prefix", default=LINUX_PYTHON_TEST_PREFIX, type=str)
 @click.option("--production", is_flag=True, default=False)
-def main(team: str, coverage: int, test_history_length: int, test_prefix: str, production: bool) -> None:
+def main(
+    team: str,
+    coverage: int,
+    test_history_length: int,
+    test_prefix: str,
+    production: bool,
+) -> None:
     """
     This script determines the tests that need to be run to cover a certain percentage
     of PR failures, based on historical data
@@ -42,8 +48,13 @@ def main(team: str, coverage: int, test_history_length: int, test_prefix: str, p
 
 def _update_high_impact_tests(tests: List[Test], high_impact_tests: Set[str]) -> None:
     for test in tests:
-        test[Test.KEY_IS_HIGH_IMPACT] = 'true' if test.get_name() in high_impact_tests else 'false'
-        logger.info(f"Mark test {test.get_name()} as high impact: {test[Test.KEY_IS_HIGH_IMPACT]}")
+        test_name = test.get_name()
+        test[Test.KEY_IS_HIGH_IMPACT] = (
+            "true" if test_name in high_impact_tests else "false"
+        )
+        logger.info(
+            f"Mark test {test_name} as high impact: {test[Test.KEY_IS_HIGH_IMPACT]}"
+        )
         test.persist_to_s3()
 
 

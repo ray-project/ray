@@ -220,10 +220,10 @@ class Test(dict):
         """
         return self["cluster"].get("byod") is not None
 
-    def get_is_high_impact(self) -> bool:
+    def is_high_impact(self) -> bool:
         # a test is high impact if it catches regressions frequently, this field is
         # populated by the determine_microcheck_tests.py script
-        self.get(self.KEY_IS_HIGH_IMPACT, None) == "true"
+        return self.get(self.KEY_IS_HIGH_IMPACT, None) == "true"
 
     def get_test_type(self) -> TestType:
         test_name = self.get_name()
