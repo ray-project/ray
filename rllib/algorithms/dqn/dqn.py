@@ -686,7 +686,7 @@ class DQN(Algorithm):
                     #  module-steps and agent-steps trained and sampled.
                     self.metrics.log_dict(
                         {
-                            NUM_ENV_STEPS_TRAINED_LIFETIME: train_batch.env_steps(),
+                            NUM_ENV_STEPS_TRAINED_LIFETIME: sum(map(len, episodes)),
                             # NUM_MODULE_STEPS_TRAINED_LIFETIME: self.metrics.peek(
                             #    LEARNER_RESULTS, NUM_MODULE_STEPS_TRAINED
                             # ),

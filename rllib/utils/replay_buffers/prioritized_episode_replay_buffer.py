@@ -688,7 +688,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             Columns.TERMINATEDS: np.array(is_terminated),
             Columns.TRUNCATEDS: np.array(is_truncated),
             "weights": np.array(weights),
-            "n_steps": np.array(n_steps),
+            "n_step": np.array(n_steps),
         }
         # Include infos if necessary.
         if include_infos:
@@ -954,7 +954,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             Columns.TERMINATEDS: is_terminated,
             Columns.TRUNCATEDS: is_truncated,
             "weights": weights,
-            "n_steps": n_steps,
+            "n_step": n_steps,
         }
         # Include infos if necessary.
         if include_infos:

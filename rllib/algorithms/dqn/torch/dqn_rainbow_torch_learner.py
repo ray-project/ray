@@ -123,7 +123,7 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
             r_tau = torch.clamp(
                 batch[Columns.REWARDS].unsqueeze(dim=-1)
                 + (
-                    self.config.gamma ** batch["n_steps"]
+                    self.config.gamma ** batch["n_step"]
                     * (1.0 - batch[Columns.TERMINATEDS].float())
                 ).unsqueeze(dim=-1)
                 * z,
@@ -174,7 +174,7 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
             # backpropagate through the target network when optimizing the Q loss.
             q_selected_target = (
                 batch[Columns.REWARDS]
-                + (self.config.gamma ** batch["n_steps"]) * q_next_best_masked
+                + (self.config.gamma ** batch["n_step"]) * q_next_best_masked
             ).detach()
 
             # Choose the requested loss function. Note, in case of the Huber loss
