@@ -100,6 +100,7 @@ def atanh(x: TensorType) -> TensorType:
     pass
 
 
+@PublicAPI
 def clip_gradients(
     gradients_dict: "ParamDict",
     *,
