@@ -2188,12 +2188,6 @@ tensorboard-data-server==0.7.2
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   tensorboard
-tensorboardx==2.6
-    # via
-    #   -r /ray/ci/../python/requirements.txt
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
-    #   pytorch-lightning
-    #   ray
 tensorflow==2.15.1 ; sys_platform != "darwin" or platform_machine != "arm64"
     # via
     #   -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
