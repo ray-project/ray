@@ -84,7 +84,8 @@ class ActorPoolMapOperator(MapOperator):
         self._ray_remote_args = self._apply_default_remote_args(self._ray_remote_args)
         self._ray_actor_task_remote_args = {}
         actor_task_errors = DataContext.get_current().actor_task_retry_on_errors
-        self._ray_actor_task_remote_args["retry_exceptions"] = actor_task_errors
+        if actor_task_errors:
+            self._ray_actor_task_remote_args["retry_exceptions"] = actor_task_errors
         _add_system_error_to_retry_exceptions(self._ray_actor_task_remote_args)
         data_context = DataContext.get_current()
         if data_context._max_num_blocks_in_streaming_gen_buffer is not None:

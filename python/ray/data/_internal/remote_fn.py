@@ -41,7 +41,7 @@ def _add_system_error_to_retry_exceptions(ray_remote_args) -> None:
 
     TODO: Fix this in Ray Core. See https://github.com/ray-project/ray/pull/45079.
     """
-    retry_exceptions = ray_remote_args["retry_exceptions"]
+    retry_exceptions = ray_remote_args.get("retry_exceptions", False)
     assert isinstance(retry_exceptions, (list, bool))
 
     if (
