@@ -601,7 +601,7 @@ def test_actor_failover_with_bad_network(ray_start_cluster_head):
     ray.get(obj2)
 
 
-# Previously when there is threading.Lock in the exception, it will cause
+# Previously when threading.Lock is in the exception, it causes
 # the serialization to fail. This test case is to cover this scenario.
 def test_unserializable_exception(ray_start_regular, propagate_logs):
     class UnserializableException(Exception):
