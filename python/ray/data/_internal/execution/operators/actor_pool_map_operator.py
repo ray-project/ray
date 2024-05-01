@@ -83,8 +83,15 @@ class ActorPoolMapOperator(MapOperator):
         self._ray_remote_args = self._apply_default_remote_args(self._ray_remote_args)
         self._ray_actor_task_remote_args = {}
         actor_task_errors = DataContext.get_current().actor_task_retry_on_errors
+        # Ray typically automatically retries system errors. However, in some cases, Ray
+        # won't retry system errors if they're raised from task code. To ensure Ray Data
+        # is fault tolerant to those errors, we need to add RaySystemError to the
+        # retry_exceptions list.
         if actor_task_errors:
-            self._ray_actor_task_remote_args["retry_exceptions"] = actor_task_errors
+            actor_task_errors.append(ray.exceptions.RaySystemError)
+        else:
+            actor_task_errors = [ray.exceptions.RaySystemError]
+        self._ray_actor_task_remote_args["retry_exceptions"] = actor_task_errors
         data_context = DataContext.get_current()
         if data_context._max_num_blocks_in_streaming_gen_buffer is not None:
             # The `_generator_backpressure_num_objects` parameter should be

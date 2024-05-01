@@ -24,6 +24,11 @@ def cached_remote_fn(fn: Any, **ray_remote_args) -> Any:
             # as needed.
             "scheduling_strategy": "DEFAULT",
             "max_retries": -1,
+            # Ray typically automatically retries system errors. However, in some cases,
+            # Ray won't retry system errors if they're raised from task code. To ensure
+            # Ray Data is fault tolerant to those errors, we need to add RaySystemError
+            # to the retry_exceptions list.
+            "retry_exceptions": [ray.exceptions.RaySystemError],
         }
         CACHED_FUNCTIONS[fn] = ray.remote(
             **{**default_ray_remote_args, **ray_remote_args}
