@@ -248,6 +248,7 @@ def _get_ray_resources_from_group_spec(
 
     num_cpus = _get_num_cpus(ray_start_params, k8s_resource_limits, group_name)
     num_gpus = _get_num_gpus(ray_start_params, k8s_resource_limits, group_name)
+    num_tpus = _get_num_tpus(ray_start_params, k8s_resource_limits, group_name)
     custom_resource_dict = _get_custom_resources(ray_start_params, group_name)
     memory = _get_memory(ray_start_params, k8s_resource_limits)
 
@@ -261,6 +262,30 @@ def _get_ray_resources_from_group_spec(
 
     if num_gpus is not None:
         resources["GPU"] = num_gpus
+
+    if num_tpus is not None:
+        resources["TPU"] = num_tpus
+
+        """Add TPU head resource, similar to the GCP node_provider.
+        Sets the Ray resource TPU-{...}-head to ensure the Ray autoscaler
+        has sufficient resources to make scaling decisions.
+        TPU worker groups treat each replica as a TPU podslice, with `NumOfHosts`
+        specifying the number of workers per slice. Therefore, we can use the
+        `replicas` of each TPU worker group as the number of TPU heads.
+
+        For example, a v4-16 worker group with 2 replicas should have the following
+        resource labels on worker 0 of each replica:
+            worker 0: resources = {"TPU": 4, "TPU-v4-16-head": 2}
+        """
+        topology = group_spec["template"]["spec"]["nodeSelector"][
+            "cloud.google.com/gke-tpu-topology"
+        ]
+        accelerator = group_spec["template"]["spec"]["nodeSelector"][
+            "cloud.google.com/gke-tpu-accelerator"
+        ]
+        accelerator_type = utils.tpu_node_selectors_to_type(topology, accelerator)
+        if accelerator_type:
+            resources[f"TPU-{accelerator_type}-head"] = group_spec["replicas"]
 
     if memory is not None:
         resources["memory"] = memory
@@ -330,6 +355,31 @@ def _get_num_gpus(
                     # Only one GPU type supported for now, break out on first
                     # "/gpu" match.
                     return num_gpus
+    return None
+
+
+def _get_num_tpus(
+    ray_start_params: Dict[str, str],
+    k8s_resource_limits: Dict[str, Any],
+    group_name: str,
+) -> Optional[int]:
+    """Get memory resource annotation from ray_start_params or k8s_resource_limits,
+    with priority for ray_start_params.
+    """
+
+    if "num-tpus" in ray_start_params:
+        return int(ray_start_params["num-tpus"])
+    else:
+        for key in k8s_resource_limits:
+            # e.g. google.com/tpu
+            if key.endswith("tpu"):
+                # Typically, this is a string representing an integer, e.g. "1".
+                tpu_resource_quantity = k8s_resource_limits[key]
+                # Convert to int, making no assumptions on the tpu_resource_quantity,
+                # besides that it's valid as a K8s resource quantity.
+                num_tpus = _round_up_k8s_quantity(tpu_resource_quantity)
+                if num_tpus > 0:
+                    return num_tpus
     return None
 
 
