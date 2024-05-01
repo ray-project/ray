@@ -136,15 +136,20 @@ class NcclGroup:
         rank: Optional[int],
         actor_ids_to_ranks: Dict[ray.ActorID, int],
         cuda_stream: Optional[int],
+        device: "torch.device",
     ):
         self._rank: Optional[int] = rank
         if rank is not None:
             from cupy.cuda import nccl
+            import cupy.cuda
 
             self._comm = nccl.NcclCommunicator(world_size, comm_id, rank)
+            self._closed_tensor = torch.as_tensor(cupy.zeros(1), device=device)
+            self._close_stream = cupy.cuda.Stream(non_blocking=True)
         else:
             # Driver does not have a rank.
             self._comm = None
+            self._closed_tensor = None
         self._actor_ids_to_ranks = actor_ids_to_ranks
 
         self._cuda_stream = cuda_stream
@@ -180,13 +185,29 @@ class NcclGroup:
             self._cuda_stream,
         )
 
+        torch.cuda.synchronize()
+        if self._closed:
+            raise IOError("NCCL group has been destroyed.")
+
     def destroy(self):
         if self._closed:
             return
 
         self._closed = True
+
+        #import cupy.cuda
+        #with self._close_stream:
+        #    self._closed_tensor[0] += 1
+        #self._close_stream.synchronize()
+
         self._comm.abort()
         self._comm.destroy()
+
+    def is_gpu_closed(self) -> bool:
+        return self._closed_tensor[0] > 0
+
+    def is_closed(self) -> bool:
+        return self._closed
 
 
 @DeveloperAPI
@@ -279,9 +300,13 @@ class TorchTensorNcclChannel(Channel):
         # TODO(swang): Set flag for downstream kernels that have already been
         # launched to the GPU to abort.
 
+    def is_gpu_closed(self) -> bool:
+        return self._nccl_group.is_gpu_closed()
+
 
 def do_init_nccl_group(self, world_size, comm_id, rank, actor_ids_to_ranks):
     assert ray.get_gpu_ids()
+    from ray.air._internal import torch_utils
 
     ctx = _get_or_create_ray_dag_context(self)
     ctx.nccl_group = NcclGroup(
@@ -290,6 +315,7 @@ def do_init_nccl_group(self, world_size, comm_id, rank, actor_ids_to_ranks):
         rank,
         actor_ids_to_ranks,
         torch.cuda.current_stream().cuda_stream,
+        torch_utils.get_devices()[0],
     )
 
 

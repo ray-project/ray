@@ -157,6 +157,8 @@ class Channel:
             num_readers,
         )
 
+        self._closed = False
+
     def begin_read(self) -> Any:
         """
         Read the latest value from the channel. This call will block until a
@@ -188,9 +190,16 @@ class Channel:
         Does not block. Any existing values in the channel may be lost after the
         channel is closed.
         """
+        self._closed = True
         logger.debug(f"Setting error bit on channel: {self._base_ref}")
         self.ensure_registered_as_writer()
         self._worker.core_worker.experimental_channel_set_error(self._base_ref)
+
+    def is_gpu_closed(self) -> bool:
+        return False
+
+    def is_closed(self) -> bool:
+        return self._closed
 
 
 # Interfaces for channel I/O.
@@ -234,6 +243,18 @@ class ReaderInterface:
         self._closed = True
         for channel in self._input_channels:
             channel.close()
+
+    def is_gpu_closed(self) -> bool:
+        for c in self._input_channels:
+            if c.is_gpu_closed():
+                return True
+        return False
+
+    def is_closed(self) -> bool:
+        for c in self._input_channels:
+            if c.is_closed():
+                return True
+        return False
 
 
 @DeveloperAPI
