@@ -7,7 +7,6 @@ import pytest
 
 import ray
 from ray._private.test_utils import run_string_as_driver_nonblocking
-from ray.data._internal.execution.autoscaler.autoscaler import Autoscaler
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
