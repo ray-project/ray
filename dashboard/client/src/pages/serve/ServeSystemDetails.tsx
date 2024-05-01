@@ -1,7 +1,6 @@
 import {
   Box,
-  createStyles,
-  makeStyles,
+  Pagination,
   Table,
   TableBody,
   TableCell,
@@ -9,8 +8,9 @@ import {
   TableHead,
   TableRow,
   Typography,
-} from "@material-ui/core";
-import { Pagination } from "@material-ui/lab";
+} from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import _ from "lodash";
 import React, { ReactElement } from "react";
 import Loading from "../../components/Loading";
@@ -18,6 +18,7 @@ import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip, StatusChipProps } from "../../components/StatusChip";
 import { HelpInfo } from "../../components/Tooltip";
 import {
+  ServeApplication,
   ServeApplicationsRsp,
   ServeDeployment,
   ServeProxy,
@@ -159,12 +160,14 @@ type ServeSystemPreviewProps = {
   serveDetails: ServeDetails;
   proxies: ServeProxy[];
   allDeployments: ServeDeployment[];
+  allApplications: ServeApplication[];
 };
 
 export const ServeSystemPreview = ({
   serveDetails,
   proxies,
   allDeployments,
+  allApplications,
 }: ServeSystemPreviewProps) => {
   const { data: controllerActor } = useFetchActor(
     serveDetails.controller_info.actor_id,
@@ -200,12 +203,12 @@ export const ServeSystemPreview = ({
             ),
           },
           {
-            label: "Deployments status",
+            label: "Application status",
             content: (
               <StatusCountChips
-                elements={allDeployments}
+                elements={allApplications}
                 statusKey="status"
-                type="serveDeployment"
+                type="serveApplication"
               />
             ),
           },
@@ -238,7 +241,7 @@ const StatusCountChips = <T,>({
   );
 
   return (
-    <Box display="inline-flex" gridGap={8} flexWrap="wrap">
+    <Box display="inline-flex" gap={1} flexWrap="wrap">
       {_.orderBy(
         Object.entries(statusCounts),
         ([, count]) => count,

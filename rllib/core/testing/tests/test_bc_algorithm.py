@@ -16,7 +16,7 @@ from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.testing.bc_algorithm import BCConfigTest
 from ray.rllib.utils.test_utils import framework_iterator
-from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 
 
 class TestLearner(unittest.TestCase):
@@ -33,8 +33,8 @@ class TestLearner(unittest.TestCase):
 
         config = (
             BCConfigTest()
+            .api_stack(enable_rl_module_and_learner=True)
             .training(model={"fcnet_hiddens": [32, 32]})
-            .experimental(_enable_new_api_stack=True)
         )
 
         # TODO (Kourosh): Add tf2 support
@@ -54,7 +54,7 @@ class TestLearner(unittest.TestCase):
         policies = {"policy_1", "policy_2"}
         config = (
             BCConfigTest()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .training(model={"fcnet_hiddens": [32, 32]})
             .multi_agent(
                 policies=policies,
@@ -98,7 +98,7 @@ class TestLearner(unittest.TestCase):
 
             config = (
                 BCConfigTest()
-                .experimental(_enable_new_api_stack=True)
+                .api_stack(enable_rl_module_and_learner=True)
                 .framework(fw)
                 .rl_module(rl_module_spec=spec)
                 .training(

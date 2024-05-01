@@ -154,14 +154,8 @@ def test_parquet_read_basic(ray_start_regular_shared, fs, data_path):
     assert len(input_files) == 2, input_files
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
-    assert (
-        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
-        "schema={one: int64, two: string})"
-    ), ds
-    assert (
-        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
-        "schema={one: int64, two: string})"
-    ), ds
+    assert str(ds) == "Dataset(num_rows=6, schema={one: int64, two: string})", ds
+    assert repr(ds) == "Dataset(num_rows=6, schema={one: int64, two: string})", ds
     check_num_computed(ds, 0)
 
     # Forces a data read.
@@ -242,14 +236,8 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
     assert len(input_files) == 2, input_files
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
-    assert (
-        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
-        "schema={one: int64, two: string})"
-    ), ds
-    assert (
-        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
-        "schema={one: int64, two: string})"
-    ), ds
+    assert str(ds) == "Dataset(num_rows=6, schema={one: int64, two: string})", ds
+    assert repr(ds) == "Dataset(num_rows=6, schema={one: int64, two: string})", ds
     check_num_computed(ds, 2)
 
     # Forces a data read.
@@ -369,14 +357,8 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
     assert len(input_files) == 2, input_files
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
-    assert (
-        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
-        "schema={one: int64, two: string})"
-    ), ds
-    assert (
-        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
-        "schema={one: int64, two: string})"
-    ), ds
+    assert str(ds) == "Dataset(num_rows=6, schema={one: int64, two: string})", ds
+    assert repr(ds) == "Dataset(num_rows=6, schema={one: int64, two: string})", ds
     check_num_computed(ds, 2)
 
     # Forces a data read.
@@ -398,7 +380,7 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
     pq.write_table(txt_table, _unwrap_protocol(txt_path), filesystem=fs)
 
     ds = ray.data.read_parquet_bulk(paths + [txt_path], filesystem=fs)
-    assert ds.num_blocks() == 2
+    assert ds._plan.initial_num_blocks() == 2
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
@@ -459,14 +441,8 @@ def test_parquet_read_bulk_meta_provider(ray_start_regular_shared, fs, data_path
     assert len(input_files) == 2, input_files
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
-    assert (
-        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
-        "schema={one: int64, two: string})"
-    ), ds
-    assert (
-        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
-        "schema={one: int64, two: string})"
-    ), ds
+    assert str(ds) == "Dataset(num_rows=6, schema={one: int64, two: string})", ds
+    assert repr(ds) == "Dataset(num_rows=6, schema={one: int64, two: string})", ds
     check_num_computed(ds, 2)
 
     # Forces a data read.
@@ -522,7 +498,6 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
     check_num_computed(ds, 0)
     assert str(ds) == (
         "Dataset(\n"
-        "   num_blocks=2,\n"
         "   num_rows=6,\n"
         "   schema={two: string, "
         "one: dictionary<values=int32, indices=int32, ordered=0>}\n"
@@ -530,7 +505,6 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
     ), ds
     assert repr(ds) == (
         "Dataset(\n"
-        "   num_blocks=2,\n"
         "   num_rows=6,\n"
         "   schema={two: string, "
         "one: dictionary<values=int32, indices=int32, ordered=0>}\n"
@@ -569,7 +543,7 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path
     # 2 partitions, 1 empty partition, 1 block/read task
 
     ds = ray.data.read_parquet(
-        str(tmp_path), parallelism=1, filter=(pa.dataset.field("two") == "a")
+        str(tmp_path), override_num_blocks=1, filter=(pa.dataset.field("two") == "a")
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
@@ -580,7 +554,7 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path
     # 2 partitions, 1 empty partition, 2 block/read tasks, 1 empty block
 
     ds = ray.data.read_parquet(
-        str(tmp_path), parallelism=2, filter=(pa.dataset.field("two") == "a")
+        str(tmp_path), override_num_blocks=2, filter=(pa.dataset.field("two") == "a")
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
@@ -719,14 +693,8 @@ def test_parquet_read_partitioned_explicit(ray_start_regular_shared, tmp_path):
     assert ds.schema() is not None
     input_files = ds.input_files()
     assert len(input_files) == 2, input_files
-    assert (
-        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
-        "schema={two: string, one: int32})"
-    ), ds
-    assert (
-        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
-        "schema={two: string, one: int32})"
-    ), ds
+    assert str(ds) == "Dataset(num_rows=6, schema={two: string, one: int32})", ds
+    assert repr(ds) == "Dataset(num_rows=6, schema={two: string, one: int32})", ds
     check_num_computed(ds, 0)
 
     # Forces a data read.
@@ -757,7 +725,9 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
 
     # 1 block/read task
 
-    ds = ray.data.read_parquet(str(tmp_path), parallelism=1, _block_udf=_block_udf)
+    ds = ray.data.read_parquet(
+        str(tmp_path), override_num_blocks=1, _block_udf=_block_udf
+    )
 
     ones, twos = zip(*[[s["one"], s["two"]] for s in ds.take()])
     check_num_computed(ds, 0)
@@ -765,7 +735,9 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
 
     # 2 blocks/read tasks
 
-    ds = ray.data.read_parquet(str(tmp_path), parallelism=2, _block_udf=_block_udf)
+    ds = ray.data.read_parquet(
+        str(tmp_path), override_num_blocks=2, _block_udf=_block_udf
+    )
 
     ones, twos = zip(*[[s["one"], s["two"]] for s in ds.take()])
     check_num_computed(ds, 0)
@@ -775,7 +747,7 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
 
     ds = ray.data.read_parquet(
         str(tmp_path),
-        parallelism=2,
+        override_num_blocks=2,
         filter=(pa.dataset.field("two") == "a"),
         _block_udf=_block_udf,
     )
@@ -808,7 +780,9 @@ def test_parquet_read_parallel_meta_fetch(ray_start_regular_shared, fs, data_pat
         pq.write_table(table, path, filesystem=fs)
 
     parallelism = 8
-    ds = ray.data.read_parquet(data_path, filesystem=fs, parallelism=parallelism)
+    ds = ray.data.read_parquet(
+        data_path, filesystem=fs, override_num_blocks=parallelism
+    )
 
     # Test metadata-only parquet ops.
     check_num_computed(ds, 0)
@@ -835,7 +809,7 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
         tensor_output_path = os.path.join(tmp_path, "tensor")
         ray.data.range_tensor(1000, shape=(1000,)).write_parquet(tensor_output_path)
         ds = ray.data.read_parquet(tensor_output_path)
-        assert ds.num_blocks() > 1
+        assert ds._plan.initial_num_blocks() > 1
         data_size = ds.size_bytes()
         assert (
             data_size >= 6_000_000 and data_size <= 10_000_000
@@ -863,7 +837,7 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
             text_output_path
         )
         ds = ray.data.read_parquet(text_output_path)
-        assert ds.num_blocks() > 1
+        assert ds._plan.initial_num_blocks() > 1
         data_size = ds.size_bytes()
         assert (
             data_size >= 1_000_000 and data_size <= 2_000_000
@@ -1013,7 +987,7 @@ def test_parquet_write_create_dir(
     # Test that writing empty blocks does not create empty parquet files,
     # nor does it create empty directories when no files are created.
     ds_all_empty = ds.filter(lambda x: x["one"] > 10).materialize()
-    assert ds_all_empty.num_blocks() == 2
+    assert ds_all_empty._plan.initial_num_blocks() == 2
     assert ds_all_empty.count() == 0
 
     all_empty_key = "all_empty"
@@ -1022,7 +996,7 @@ def test_parquet_write_create_dir(
 
     ds_contains_some_empty = ds.union(ds_all_empty)
     # 2 blocks from original ds with 6 rows total, 2 empty blocks from ds_all_empty.
-    assert ds_contains_some_empty.num_blocks() == 4
+    assert ds_contains_some_empty._plan.initial_num_blocks() == 4
     assert ds_contains_some_empty.count() == 6
 
     some_empty_key = "some_empty"
@@ -1068,55 +1042,6 @@ def test_parquet_write_create_dir(
 
 
 @pytest.mark.parametrize(
-    "fs,data_path,endpoint_url",
-    [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
-    ],
-)
-def test_parquet_write_block_path_provider(
-    ray_start_regular_shared,
-    fs,
-    data_path,
-    endpoint_url,
-    mock_block_write_path_provider,
-):
-    if endpoint_url is None:
-        storage_options = {}
-    else:
-        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
-
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    df = pd.concat([df1, df2])
-    ds = ray.data.from_pandas([df1, df2])
-    path = os.path.join(data_path, "test_parquet_dir")
-    if fs is None:
-        os.mkdir(path)
-    else:
-        fs.create_dir(_unwrap_protocol(path))
-    ds._set_uuid("data")
-
-    ds.write_parquet(
-        path, filesystem=fs, block_path_provider=mock_block_write_path_provider
-    )
-    path1 = os.path.join(path, "000000_000000_data.test.parquet")
-    path2 = os.path.join(path, "000001_000000_data.test.parquet")
-    dfds = pd.concat(
-        [
-            pd.read_parquet(path1, storage_options=storage_options),
-            pd.read_parquet(path2, storage_options=storage_options),
-        ]
-    )
-    assert df.equals(dfds)
-    if fs is None:
-        shutil.rmtree(path)
-    else:
-        fs.delete_dir(_unwrap_protocol(path))
-
-
-@pytest.mark.parametrize(
     "fs,data_path",
     [
         (None, lazy_fixture("local_path")),
@@ -1139,7 +1064,7 @@ def test_parquet_roundtrip(ray_start_regular_shared, fs, data_path):
     else:
         fs.create_dir(_unwrap_protocol(path))
     ds.write_parquet(path, filesystem=fs)
-    ds2 = ray.data.read_parquet(path, parallelism=2, filesystem=fs)
+    ds2 = ray.data.read_parquet(path, override_num_blocks=2, filesystem=fs)
     ds2df = ds2.to_pandas()
     assert pd.concat([df1, df2], ignore_index=True).equals(ds2df)
     # Test metadata ops.
@@ -1271,7 +1196,7 @@ def test_parquet_bulk_columns(ray_start_regular_shared):
 def test_write_num_rows_per_file(tmp_path, ray_start_regular_shared, num_rows_per_file):
     import pyarrow.parquet as pq
 
-    ray.data.range(100, parallelism=20).write_parquet(
+    ray.data.range(100, override_num_blocks=20).write_parquet(
         tmp_path, num_rows_per_file=num_rows_per_file
     )
 

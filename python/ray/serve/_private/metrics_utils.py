@@ -1,60 +1,82 @@
+import asyncio
 import bisect
 import logging
-import math
-import threading
-import time
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Any, Callable, DefaultDict, Dict, List, Optional, Union
+from typing import Callable, DefaultDict, Dict, Hashable, List, Optional
 
-import ray
-from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.constants import (
+    METRICS_PUSHER_GRACEFUL_SHUTDOWN_TIMEOUT_S,
+    SERVE_LOGGER_NAME,
+)
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-class _MetricTask:
-    def __init__(self, task_func, interval_s, callback_func):
-        """
-        Args:
-            task_func: a callable that MetricsPusher will try to call in
-                each loop. It should take no arguments, and return a
-                kwargs dictionary to be used to call the callback_func.
-            interval_s: the interval of each task_func is supposed to be called.
-            callback_func: callback function is called when task_func is done, and
-                the result of task_func is passed to callback_func as the first
-                argument, and the timestamp of the call is passed as the second
-                argument.
-        """
-        self.task_func: Callable[[], Dict[str]] = task_func
-        self.interval_s: float = interval_s
-        self.callback_func: Callable[[Any, float]] = callback_func
-        self.last_ref: Optional[ray.ObjectRef] = None
-        self.last_call_succeeded_time: Optional[float] = time.time()
+@dataclass
+class _MetricsTask:
+    task_func: Callable
+    interval_s: float
 
 
 class MetricsPusher:
-    """
-    Metrics pusher is a background thread that run the registered tasks in a loop.
-    """
-
-    # If no tasks are registered, sleep for 1s between iterations (until one is
-    # registered).
-    NO_TASKS_REGISTERED_INTERVAL_S = 1
+    """Periodically runs registered asyncio tasks."""
 
     def __init__(
         self,
+        *,
+        async_sleep: Optional[Callable[[int], None]] = None,
     ):
-        self.tasks: Dict[str, _MetricTask] = dict()
-        self.pusher_thread: Union[threading.Thread, None] = None
-        self.stop_event = threading.Event()
+        self._async_sleep = async_sleep or asyncio.sleep
+        self._tasks: Dict[str, _MetricsTask] = dict()
+        self._async_tasks: Dict[str, asyncio.Task] = dict()
+
+        # The event needs to be lazily initialized because this class may be constructed
+        # on the main thread but its methods called on a separate asyncio loop.
+        self._stop_event: Optional[asyncio.Event] = None
+
+    @property
+    def stop_event(self) -> asyncio.Event:
+        if self._stop_event is None:
+            self._stop_event = asyncio.Event()
+
+        return self._stop_event
+
+    def start(self):
+        self.stop_event.clear()
+
+    async def metrics_task(self, name: str):
+        """Periodically runs `task_func` every `interval_s` until `stop_event` is set.
+
+        If `task_func` raises an error, an exception will be logged.
+        """
+
+        wait_for_stop_event = asyncio.create_task(self.stop_event.wait())
+        while True:
+            if wait_for_stop_event.done():
+                return
+
+            try:
+                self._tasks[name].task_func()
+            except Exception as e:
+                logger.exception(f"Failed to run metrics task '{name}': {e}")
+
+            sleep_task = asyncio.create_task(
+                self._async_sleep(self._tasks[name].interval_s)
+            )
+            await asyncio.wait(
+                [sleep_task, wait_for_stop_event],
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+
+            if not sleep_task.done():
+                sleep_task.cancel()
 
     def register_or_update_task(
         self,
         name: str,
         task_func: Callable,
         interval_s: int,
-        process_func: Optional[Callable] = None,
     ) -> None:
         """Register a task under the provided name, or update it.
 
@@ -62,79 +84,30 @@ class MetricsPusher:
         the specified name, it will update it with the most recent info.
         """
 
-        self.tasks[name] = _MetricTask(task_func, interval_s, process_func)
+        self._tasks[name] = _MetricsTask(task_func, interval_s)
+        if name not in self._async_tasks or self._async_tasks[name].done():
+            self._async_tasks[name] = asyncio.create_task(self.metrics_task(name))
 
-    def start(self):
-        """Start a background thread to run the registered tasks in a loop.
+    def stop_tasks(self):
+        self.stop_event.set()
+        self._tasks.clear()
+        self._async_tasks.clear()
 
-        We use this background so it will be not blocked by user's code and ensure
-        consistently metrics delivery. Python GIL will ensure that this thread gets
-        fair timeshare to execute and run.
-        """
-
-        if self.pusher_thread and self.pusher_thread.is_alive():
-            return
-
-        def send_forever():
-            while True:
-                if self.stop_event.is_set():
-                    return
-
-                start = time.time()
-                for task in self.tasks.values():
-                    try:
-                        if start - task.last_call_succeeded_time >= task.interval_s:
-                            if task.last_ref:
-                                ready_refs, _ = ray.wait([task.last_ref], timeout=0)
-                                if len(ready_refs) == 0:
-                                    continue
-                            kwargs = task.task_func()
-                            task.last_call_succeeded_time = time.time()
-                            if task.callback_func and ray.is_initialized():
-                                task.last_ref = task.callback_func(
-                                    **kwargs, send_timestamp=time.time()
-                                )
-                    except Exception as e:
-                        logger.warning(
-                            f"MetricsPusher thread failed to run metric task: {e}"
-                        )
-
-                # For all tasks, check when the task should be executed
-                # next. Sleep until the next closest time.
-                least_interval_s = math.inf
-                if self.tasks:
-                    for task in self.tasks.values():
-                        time_until_next_push = task.interval_s - (
-                            time.time() - task.last_call_succeeded_time
-                        )
-                        least_interval_s = min(least_interval_s, time_until_next_push)
-                else:
-                    # If there are no tasks registered, fall back to the default.
-                    least_interval_s = self.NO_TASKS_REGISTERED_INTERVAL_S
-
-                time.sleep(max(least_interval_s, 0))
-
-        self.pusher_thread = threading.Thread(target=send_forever)
-        # Making this a daemon thread so it doesn't leak upon shutdown, and it
-        # doesn't need to block the replica's shutdown.
-        self.pusher_thread.setDaemon(True)
-        self.pusher_thread.start()
-
-    def __del__(self):
-        self.shutdown()
-
-    def shutdown(self):
+    async def graceful_shutdown(self):
         """Shutdown metrics pusher gracefully.
 
         This method will ensure idempotency of shutdown call.
         """
-        if not self.stop_event.is_set():
-            self.stop_event.set()
 
-        if self.pusher_thread:
-            self.pusher_thread.join()
+        self.stop_event.set()
+        if self._async_tasks:
+            await asyncio.wait(
+                list(self._async_tasks.values()),
+                timeout=METRICS_PUSHER_GRACEFUL_SHUTDOWN_TIMEOUT_S,
+            )
 
-        self.tasks.clear()
+        self._tasks.clear()
+        self._async_tasks.clear()
 
 
 @dataclass(order=True)
@@ -147,14 +120,14 @@ class InMemoryMetricsStore:
     """A very simple, in memory time series database"""
 
     def __init__(self):
-        self.data: DefaultDict[str, List[TimeStampedValue]] = defaultdict(list)
+        self.data: DefaultDict[Hashable, List[TimeStampedValue]] = defaultdict(list)
 
-    def add_metrics_point(self, data_points: Dict[str, float], timestamp: float):
+    def add_metrics_point(self, data_points: Dict[Hashable, float], timestamp: float):
         """Push new data points to the store.
 
         Args:
             data_points: dictionary containing the metrics values. The
-              key should be a string that uniquely identifies this time series
+              key should uniquely identify this time series
               and to be used to perform aggregation.
             timestamp: the unix epoch timestamp the metrics are
               collected at.
@@ -163,7 +136,23 @@ class InMemoryMetricsStore:
             # Using in-sort to insert while maintaining sorted ordering.
             bisect.insort(a=self.data[name], x=TimeStampedValue(timestamp, value))
 
-    def _get_datapoints(self, key: str, window_start_timestamp_s: float) -> List[float]:
+    def prune_keys_and_compact_data(self, start_timestamp_s: float):
+        """Prune keys and compact data that are outdated.
+
+        For keys that haven't had new data recorded after the timestamp,
+        remove them from the database.
+        For keys that have, compact the datapoints that were recorded
+        before the timestamp.
+        """
+        for key, datapoints in list(self.data.items()):
+            if len(datapoints) == 0 or datapoints[-1].timestamp < start_timestamp_s:
+                del self.data[key]
+            else:
+                self.data[key] = self._get_datapoints(key, start_timestamp_s)
+
+    def _get_datapoints(
+        self, key: Hashable, window_start_timestamp_s: float
+    ) -> List[float]:
         """Get all data points given key after window_start_timestamp_s"""
 
         datapoints = self.data[key]
@@ -177,7 +166,7 @@ class InMemoryMetricsStore:
         return datapoints[idx:]
 
     def window_average(
-        self, key: str, window_start_timestamp_s: float, do_compact: bool = True
+        self, key: Hashable, window_start_timestamp_s: float, do_compact: bool = True
     ) -> Optional[float]:
         """Perform a window average operation for metric `key`
 
@@ -202,7 +191,9 @@ class InMemoryMetricsStore:
             return
         return sum(point.value for point in points_after_idx) / len(points_after_idx)
 
-    def max(self, key: str, window_start_timestamp_s: float, do_compact: bool = True):
+    def max(
+        self, key: Hashable, window_start_timestamp_s: float, do_compact: bool = True
+    ):
         """Perform a max operation for metric `key`.
 
         Args:

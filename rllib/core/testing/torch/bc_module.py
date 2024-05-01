@@ -1,11 +1,11 @@
 from typing import Any, Mapping
 
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
 from ray.rllib.models.torch.torch_distributions import TorchCategorical
 from ray.rllib.core.rl_module.marl_module import (
-    MultiAgentRLModuleConfig,
     MultiAgentRLModule,
+    MultiAgentRLModuleConfig,
 )
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.core.models.specs.typing import SpecType
@@ -44,15 +44,15 @@ class DiscreteBCTorchModule(TorchRLModule):
 
     @override(RLModule)
     def output_specs_exploration(self) -> SpecType:
-        return [SampleBatch.ACTION_DIST_INPUTS]
+        return [Columns.ACTION_DIST_INPUTS]
 
     @override(RLModule)
     def output_specs_inference(self) -> SpecType:
-        return [SampleBatch.ACTION_DIST_INPUTS]
+        return [Columns.ACTION_DIST_INPUTS]
 
     @override(RLModule)
     def output_specs_train(self) -> SpecType:
-        return [SampleBatch.ACTION_DIST_INPUTS]
+        return [Columns.ACTION_DIST_INPUTS]
 
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
@@ -67,7 +67,7 @@ class DiscreteBCTorchModule(TorchRLModule):
     @override(RLModule)
     def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
         action_logits = self.policy(batch["obs"])
-        return {SampleBatch.ACTION_DIST_INPUTS: action_logits}
+        return {Columns.ACTION_DIST_INPUTS: action_logits}
 
 
 class BCTorchRLModuleWithSharedGlobalEncoder(TorchRLModule):
@@ -128,7 +128,7 @@ class BCTorchRLModuleWithSharedGlobalEncoder(TorchRLModule):
         policy_in = torch.cat([global_enc, obs["local"]], dim=-1)
         action_logits = self.policy_head(policy_in)
 
-        return {SampleBatch.ACTION_DIST_INPUTS: action_logits}
+        return {Columns.ACTION_DIST_INPUTS: action_logits}
 
 
 class BCTorchMultiAgentModuleWithSharedEncoder(MultiAgentRLModule):

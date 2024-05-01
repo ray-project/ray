@@ -11,11 +11,10 @@ import tree
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import (
     Encoder,
-    STATE_IN,
     ENCODER_OUT,
-    STATE_OUT,
 )
 from ray.rllib.core.models.catalog import (
     Catalog,
@@ -42,7 +41,6 @@ from ray.rllib.models.torch.torch_distributions import (
     TorchMultiCategorical,
     TorchMultiDistribution,
 )
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
@@ -83,19 +81,19 @@ class TestCatalog(unittest.TestCase):
         )
         seq_lens = convert_method([32])
         inputs = {
-            SampleBatch.OBS: observations,
-            STATE_IN: states,
-            SampleBatch.SEQ_LENS: seq_lens,
+            Columns.OBS: observations,
+            Columns.STATE_IN: states,
+            Columns.SEQ_LENS: seq_lens,
         }
         outputs = model(inputs)
 
         self.assertEqual(outputs[ENCODER_OUT].shape, (32, expected_latent_dim))
-        if STATE_OUT in outputs:
+        if Columns.STATE_OUT in outputs:
             tree.map_structure_with_path(
                 lambda p, v: (
                     True if v is None else self.assertEqual(v.shape, states[p].shape)
                 ),
-                outputs[STATE_OUT],
+                outputs[Columns.STATE_OUT],
             )
 
     def test_get_encoder_config(self):
@@ -390,7 +388,7 @@ class TestCatalog(unittest.TestCase):
 
         config = (
             PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .rl_module(
                 rl_module_spec=SingleAgentRLModuleSpec(catalog_class=MyCatalog),
             )
@@ -444,7 +442,7 @@ class TestCatalog(unittest.TestCase):
             def _forward(self, input_dict, **kwargs):
                 return {
                     ENCODER_OUT: (self.net(input_dict["obs"])),
-                    STATE_OUT: None,
+                    Columns.STATE_OUT: None,
                 }
 
         class MyCustomCatalog(PPOCatalog):

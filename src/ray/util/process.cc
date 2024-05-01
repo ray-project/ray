@@ -41,6 +41,7 @@
 #include "ray/util/filesystem.h"
 #include "ray/util/logging.h"
 #include "ray/util/macros.h"
+#include "ray/util/subreaper.h"
 #include "ray/util/util.h"
 
 #ifdef __APPLE__
@@ -364,10 +365,20 @@ Process::Process(const char *argv[],
                  bool pipe_to_stdin) {
   /// TODO: use io_service with boost asio notify_fork.
   (void)io_service;
+#ifdef __linux__
+  KnownChildrenTracker::instance().AddKnownChild([&, this]() -> pid_t {
+    ProcessFD procfd = ProcessFD::spawnvpe(argv, ec, decouple, env, pipe_to_stdin);
+    if (!ec) {
+      this->p_ = std::make_shared<ProcessFD>(std::move(procfd));
+    }
+    return this->GetId();
+  });
+#else
   ProcessFD procfd = ProcessFD::spawnvpe(argv, ec, decouple, env, pipe_to_stdin);
   if (!ec) {
     p_ = std::make_shared<ProcessFD>(std::move(procfd));
   }
+#endif
 }
 
 std::error_code Process::Call(const std::vector<std::string> &args,

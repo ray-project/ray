@@ -17,7 +17,7 @@ from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import add_mixins, force_list
-from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
     deprecation_warning,
@@ -144,7 +144,7 @@ def _check_too_many_retraces(obj):
     return _func
 
 
-@DeveloperAPI
+@OldAPIStack
 class EagerTFPolicy(Policy):
     """Dummy class to recognize any eagerized TFPolicy by its inheritance."""
 
@@ -180,7 +180,7 @@ def _traced_eager_policy(eager_policy_cls):
 
             # Create a traced version of `self._compute_actions_helper`.
             if self._traced_compute_actions_helper is False and not self._no_tracing:
-                if self.config.get("_enable_new_api_stack"):
+                if self.config.get("enable_rl_module_and_learner"):
                     self._compute_actions_helper_rl_module_explore = (
                         _convert_eager_inputs(
                             tf.function(
@@ -301,6 +301,7 @@ class _OptimizerWrapper:
         return list(zip(self.tape.gradient(loss, var_list), var_list))
 
 
+@OldAPIStack
 def _build_eager_tf_policy(
     name,
     loss_fn,
@@ -441,7 +442,7 @@ def _build_eager_tf_policy(
             # action).
             self._lock = threading.RLock()
 
-            if self.config.get("_enable_new_api_stack", False):
+            if self.config.get("enable_rl_module_and_learner", False):
                 # Maybe update view_requirements, e.g. for recurrent case.
                 self.view_requirements = self.model.update_default_view_requirements(
                     self.view_requirements
@@ -753,7 +754,10 @@ def _build_eager_tf_policy(
             if self._optimizer and len(self._optimizer.variables()) > 0:
                 state["_optimizer_variables"] = self._optimizer.variables()
             # Add exploration state.
-            if not self.config.get("_enable_new_api_stack", False) and self.exploration:
+            if (
+                not self.config.get("enable_rl_module_and_learner", False)
+                and self.exploration
+            ):
                 # This is not compatible with RLModules, which have a method
                 # `forward_exploration` to specify custom exploration behavior.
                 state["_exploration_state"] = self.exploration.get_state()

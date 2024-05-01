@@ -132,6 +132,12 @@ def _load_fake_multinode_defaults_config():
     return os.path.join(os.path.dirname(ray_fake_multinode.__file__), "example.yaml")
 
 
+def _load_read_only_defaults_config():
+    import ray.autoscaler._private.readonly as ray_readonly
+
+    return os.path.join(os.path.dirname(ray_readonly.__file__), "example.yaml")
+
+
 def _load_fake_multinode_docker_defaults_config():
     import ray.autoscaler._private.fake_multi_node as ray_fake_multinode
 
@@ -228,6 +234,7 @@ _DEFAULT_CONFIGS = {
     "aliyun": _load_aliyun_defaults_config,
     "kubernetes": _load_kubernetes_defaults_config,
     "vsphere": _load_vsphere_defaults_config,
+    "readonly": _load_read_only_defaults_config,
 }
 
 

@@ -1,36 +1,25 @@
 import copy
-import fnmatch
 import io
 import json
 import logging
-from numbers import Number
 import os
+from numbers import Number
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import pyarrow.fs
 
-from ray.util.annotations import PublicAPI
-from ray.air.constants import (
-    EXPR_PROGRESS_FILE,
-    EXPR_RESULT_FILE,
-    TRAINING_ITERATION,
-)
+from ray.air.constants import EXPR_PROGRESS_FILE, EXPR_RESULT_FILE, TRAINING_ITERATION
 from ray.train import Checkpoint
-from ray.train._internal.storage import (
-    _list_at_fs_path,
-    _exists_at_fs_path,
-    get_fs_and_path,
-)
+from ray.train._internal.storage import _exists_at_fs_path, get_fs_and_path
+from ray.tune.execution.experiment_state import _find_newest_experiment_checkpoint
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
-from ray.tune.result import (
-    DEFAULT_METRIC,
-    CONFIG_PREFIX,
-)
+from ray.tune.result import CONFIG_PREFIX, DEFAULT_METRIC
 from ray.tune.utils import flatten_dict
 from ray.tune.utils.serialization import TuneFunctionDecoder
-from ray.tune.utils.util import is_nan_or_inf, is_nan, unflattened_lookup
+from ray.tune.utils.util import is_nan, is_nan_or_inf, unflattened_lookup
+from ray.util.annotations import PublicAPI
 
 try:
     import pandas as pd
@@ -97,15 +86,13 @@ class ExperimentAnalysis:
         else:
             self._experiment_fs_path = experiment_checkpoint_path
 
-            experiment_json_fs_path = (
-                ExperimentAnalysis._find_newest_experiment_checkpoint(
-                    self._fs, self._experiment_fs_path
-                )
+            experiment_json_fs_path = _find_newest_experiment_checkpoint(
+                experiment_path=self._experiment_fs_path, fs=self._fs
             )
             if experiment_json_fs_path is None:
                 pattern = TuneController.CKPT_FILE_TMPL.format("*")
                 raise ValueError(
-                    f"No experiment checkpoint file of form '{pattern}' was found at: "
+                    f"No experiment snapshot file of form '{pattern}' was found at: "
                     f"({self._fs.type_name}, {self._experiment_fs_path})\n"
                     "Please check if you specified the correct experiment path, "
                     "which should be a combination of the `storage_path` and `name` "
@@ -211,19 +198,6 @@ class ExperimentAnalysis:
             )
             for trial in self.trials
         }
-
-    @classmethod
-    def _find_newest_experiment_checkpoint(
-        cls, fs: pyarrow.fs.FileSystem, experiment_fs_path: Union[str, os.PathLike]
-    ) -> Optional[str]:
-        """Return the most recent experiment checkpoint path."""
-        filenames = _list_at_fs_path(fs=fs, fs_path=experiment_fs_path)
-        pattern = TuneController.CKPT_FILE_TMPL.format("*")
-        matching = fnmatch.filter(filenames, pattern)
-        if not matching:
-            return None
-        filename = max(matching)
-        return Path(experiment_fs_path, filename).as_posix()
 
     @property
     def experiment_path(self) -> str:

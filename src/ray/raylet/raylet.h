@@ -71,6 +71,8 @@ class Raylet {
 
   NodeID GetNodeId() const { return self_node_id_; }
 
+  NodeManager &node_manager() { return node_manager_; }
+
  private:
   /// Register GCS client.
   ray::Status RegisterGcs();
@@ -81,9 +83,6 @@ class Raylet {
   void HandleAccept(const boost::system::error_code &error);
 
   friend class TestObjectManagerIntegration;
-
-  // Main event loop.
-  instrumented_io_context &main_service_;
 
   /// ID of this node.
   NodeID self_node_id_;

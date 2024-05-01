@@ -48,10 +48,10 @@
 #include "ray/common/bundle_spec.h"
 #include "ray/raylet/placement_group_resource_manager.h"
 #include "ray/raylet/worker_killing_policy.h"
+#include "ray/core_worker/experimental_mutable_object_provider.h"
 // clang-format on
 
 namespace ray {
-
 namespace raylet {
 
 using rpc::ErrorType;
@@ -222,6 +222,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       bool include_task_info,
       int64_t limit,
       const std::function<void()> &on_all_replied);
+
+  std::unique_ptr<core::experimental::MutableObjectProvider> &mutable_object_provider() {
+    return mutable_object_provider_;
+  }
 
  private:
   void ReleaseWorker(const WorkerID &worker_id) {
@@ -571,11 +575,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                                     rpc::FormatGlobalMemoryInfoReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a `RequestObjectSpillage` request.
-  void HandleRequestObjectSpillage(rpc::RequestObjectSpillageRequest request,
-                                   rpc::RequestObjectSpillageReply *reply,
-                                   rpc::SendReplyCallback send_reply_callback) override;
-
   /// Handle a `ReleaseUnusedBundles` request.
   void HandleReleaseUnusedBundles(rpc::ReleaseUnusedBundlesRequest request,
                                   rpc::ReleaseUnusedBundlesReply *reply,
@@ -595,6 +594,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void HandleGetTaskFailureCause(rpc::GetTaskFailureCauseRequest request,
                                  rpc::GetTaskFailureCauseReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleRegisterMutableObject(rpc::RegisterMutableObjectRequest request,
+                                   rpc::RegisterMutableObjectReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandlePushMutableObject(rpc::PushMutableObjectRequest request,
+                               rpc::PushMutableObjectReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `GetObjectsInfo` request.
   void HandleGetObjectsInfo(rpc::GetObjectsInfoRequest request,
@@ -695,6 +702,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::unique_ptr<AgentManager> CreateRuntimeEnvAgentManager(
       const NodeID &self_node_id, const NodeManagerConfig &config);
 
+  /// If Node Manager already knows this (worker, node) is dead, return true.
+  /// Otherwise returns false.
+  bool IsWorkerDead(const WorkerID &worker_id, const NodeID &node_id) const;
+
+  /// Creates a Raylet client. Used by `mutable_object_provider_` when a new writer
+  /// channel is registered.
+  std::shared_ptr<raylet::RayletClient> CreateRayletClient(const NodeID &node_id);
+
   /// ID of this node.
   NodeID self_node_id_;
   /// The user-given identifier or name of this node.
@@ -720,7 +735,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// A Plasma object store client. This is used for creating new objects in
   /// the object store (e.g., for actor tasks that can't be run because the
   /// actor died) and to pin objects that are in scope in the cluster.
-  plasma::PlasmaClient store_client_;
+  std::shared_ptr<plasma::PlasmaClient> store_client_;
   /// The runner to run function periodically.
   PeriodicalRunner periodical_runner_;
   /// The period used for the resources report timer.
@@ -867,8 +882,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Monitors and reports node memory usage and whether it is above threshold.
   std::unique_ptr<MemoryMonitor> memory_monitor_;
+
+  std::unique_ptr<core::experimental::MutableObjectProvider> mutable_object_provider_;
 };
 
 }  // namespace raylet
-
 }  // namespace ray

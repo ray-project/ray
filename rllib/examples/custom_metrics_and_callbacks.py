@@ -1,3 +1,5 @@
+# TODO (sven): Move this example script into the new API stack.
+
 """Example of using RLlib's debug callbacks.
 
 Here we use callbacks to track the average CartPole pole angle magnitude as a
@@ -187,7 +189,7 @@ if __name__ == "__main__":
         .framework(args.framework)
         .callbacks(MyCallbacks)
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
-        .rollouts(enable_connectors=False)
+        .env_runners(enable_connectors=False)
         .reporting(keep_per_episode_custom_metrics=True)
     )
 

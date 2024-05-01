@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import React from "react";
 import { ActorEnum } from "../../type/actor";
 import {
+  ServeApplicationStatus,
   ServeDeploymentStatus,
   ServeSystemActorStatus,
 } from "../../type/serve";
@@ -14,7 +15,7 @@ const mockedUseFetchActor = jest.mocked(useFetchActor);
 
 describe("ServeSystemDetails", () => {
   it("renders", async () => {
-    expect.assertions(6);
+    expect.assertions(7);
 
     mockedUseFetchActor.mockReturnValue({
       data: {
@@ -34,6 +35,19 @@ describe("ServeSystemDetails", () => {
             },
             {
               status: ServeDeploymentStatus.UPDATING,
+            },
+          ] as any
+        }
+        allApplications={
+          [
+            {
+              status: ServeApplicationStatus.UNHEALTHY,
+            },
+            {
+              status: ServeApplicationStatus.RUNNING,
+            },
+            {
+              status: ServeApplicationStatus.DEPLOYING,
             },
           ] as any
         }
@@ -59,12 +73,12 @@ describe("ServeSystemDetails", () => {
     );
     await screen.findByText("STARTING");
     // Controller, Proxy, and Deployment
-    expect(screen.getAllByText("HEALTHY")).toHaveLength(3);
+    expect(screen.getAllByText("HEALTHY")).toHaveLength(2);
     expect(screen.getByText("STARTING")).toBeInTheDocument();
-    // Other deployments
-    expect(screen.getByText("UPDATING")).toBeInTheDocument();
+    // Applications
     expect(screen.getByText("UNHEALTHY")).toBeInTheDocument();
-
+    expect(screen.getByText("RUNNING")).toBeInTheDocument();
+    expect(screen.getByText("DEPLOYING")).toBeInTheDocument();
     expect(
       screen.getByText(/View system status and configuration/),
     ).toBeInTheDocument();

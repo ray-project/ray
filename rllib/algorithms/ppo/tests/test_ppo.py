@@ -7,6 +7,7 @@ from ray.rllib.algorithms.callbacks import DefaultCallbacks
 import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF2Policy
 from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
+from ray.rllib.core.columns import Columns
 from ray.rllib.evaluation.postprocessing import (
     compute_gae_for_sample_batch,
     Postprocessing,
@@ -30,22 +31,22 @@ from ray.rllib.utils.test_utils import (
 # Fake CartPole episode of n time steps.
 CARTPOLE_FAKE_BATCH = SampleBatch(
     {
-        SampleBatch.OBS: np.array(
+        Columns.OBS: np.array(
             [[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8], [0.9, 1.0, 1.1, 1.2]],
             dtype=np.float32,
         ),
-        SampleBatch.ACTIONS: np.array([0, 1, 1]),
+        Columns.ACTIONS: np.array([0, 1, 1]),
         SampleBatch.PREV_ACTIONS: np.array([0, 1, 1]),
-        SampleBatch.REWARDS: np.array([1.0, -1.0, 0.5], dtype=np.float32),
+        Columns.REWARDS: np.array([1.0, -1.0, 0.5], dtype=np.float32),
         SampleBatch.PREV_REWARDS: np.array([1.0, -1.0, 0.5], dtype=np.float32),
-        SampleBatch.TERMINATEDS: np.array([False, False, True]),
-        SampleBatch.TRUNCATEDS: np.array([False, False, False]),
-        SampleBatch.VF_PREDS: np.array([0.5, 0.6, 0.7], dtype=np.float32),
-        SampleBatch.ACTION_DIST_INPUTS: np.array(
+        Columns.TERMINATEDS: np.array([False, False, True]),
+        Columns.TRUNCATEDS: np.array([False, False, False]),
+        Columns.VF_PREDS: np.array([0.5, 0.6, 0.7], dtype=np.float32),
+        Columns.ACTION_DIST_INPUTS: np.array(
             [[-2.0, 0.5], [-3.0, -0.3], [-0.1, 2.5]], dtype=np.float32
         ),
-        SampleBatch.ACTION_LOGP: np.array([-0.5, -0.1, -0.2], dtype=np.float32),
-        SampleBatch.EPS_ID: np.array([0, 0, 0]),
+        Columns.ACTION_LOGP: np.array([-0.5, -0.1, -0.2], dtype=np.float32),
+        Columns.EPS_ID: np.array([0, 0, 0]),
         SampleBatch.AGENT_INDEX: np.array([0, 0, 0]),
     }
 )
@@ -53,18 +54,18 @@ CARTPOLE_FAKE_BATCH = SampleBatch(
 # Fake Pendulum episode of n time steps.
 PENDULUM_FAKE_BATCH = SampleBatch(
     {
-        SampleBatch.OBS: np.array(
+        Columns.OBS: np.array(
             [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6], [0.7, 0.8, 0.9]],
             dtype=np.float32,
         ),
-        SampleBatch.ACTIONS: np.array([0.1, 0.2, 0.3], dtype=np.float32),
+        Columns.ACTIONS: np.array([0.1, 0.2, 0.3], dtype=np.float32),
         SampleBatch.PREV_ACTIONS: np.array([0.3, 0.4], dtype=np.float32),
-        SampleBatch.REWARDS: np.array([1.0, -1.0, 0.5], dtype=np.float32),
+        Columns.REWARDS: np.array([1.0, -1.0, 0.5], dtype=np.float32),
         SampleBatch.PREV_REWARDS: np.array([1.0, -1.0, 0.5], dtype=np.float32),
-        SampleBatch.TERMINATEDS: np.array([False, False, True]),
-        SampleBatch.TRUNCATEDS: np.array([False, False, False]),
-        SampleBatch.VF_PREDS: np.array([0.5, 0.6, 0.7], dtype=np.float32),
-        SampleBatch.ACTION_DIST_INPUTS: np.array(
+        Columns.TERMINATEDS: np.array([False, False, True]),
+        Columns.TRUNCATEDS: np.array([False, False, False]),
+        Columns.VF_PREDS: np.array([0.5, 0.6, 0.7], dtype=np.float32),
+        Columns.ACTION_DIST_INPUTS: np.array(
             [
                 [0.1, 0.0, 0.1, 0.2, 0.3, 0.4],
                 [0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
@@ -72,8 +73,8 @@ PENDULUM_FAKE_BATCH = SampleBatch(
             ],
             dtype=np.float32,
         ),
-        SampleBatch.ACTION_LOGP: np.array([-0.5, -0.1, -0.2], dtype=np.float32),
-        SampleBatch.EPS_ID: np.array([0, 0, 0]),
+        Columns.ACTION_LOGP: np.array([-0.5, -0.1, -0.2], dtype=np.float32),
+        Columns.EPS_ID: np.array([0, 0, 0]),
         SampleBatch.AGENT_INDEX: np.array([0, 0, 0]),
     }
 )
@@ -127,9 +128,6 @@ class TestPPO(unittest.TestCase):
         # Build a PPOConfig object.
         config = (
             ppo.PPOConfig()
-            # TODO (Kourosh): Enable when the scheduler is supported in the new
-            #  Learner API stack.
-            .experimental(_enable_new_api_stack=False)
             .training(
                 num_sgd_iter=2,
                 # Setup lr schedule for testing.
@@ -145,8 +143,8 @@ class TestPPO(unittest.TestCase):
                     max_seq_len=20,
                 ),
             )
-            .rollouts(
-                num_rollout_workers=1,
+            .env_runners(
+                num_env_runners=1,
                 # Test with compression.
                 compress_observations=True,
                 enable_connectors=True,
@@ -155,7 +153,7 @@ class TestPPO(unittest.TestCase):
             .evaluation(
                 evaluation_duration=2,
                 evaluation_duration_unit="episodes",
-                evaluation_num_workers=1,
+                evaluation_num_env_runners=1,
             )
         )  # For checking lr-schedule correctness.
 
@@ -201,9 +199,6 @@ class TestPPO(unittest.TestCase):
         # Build a PPOConfig object.
         config = (
             ppo.PPOConfig()
-            # TODO (Kourosh): Enable when the scheduler is supported in the new
-            #  Learner API stack.
-            .experimental(_enable_new_api_stack=False)
             .training(
                 # Setup lr schedule for testing.
                 lr_schedule=[[0, 5e-5], [256, 0.0]],
@@ -220,8 +215,8 @@ class TestPPO(unittest.TestCase):
                     max_seq_len=20,
                 ),
             )
-            .rollouts(
-                num_rollout_workers=1,
+            .env_runners(
+                num_env_runners=1,
                 # Test with compression.
                 compress_observations=True,
             )
@@ -274,13 +269,13 @@ class TestPPO(unittest.TestCase):
         """Tests, whether PPO runs with different exploration setups."""
         config = (
             ppo.PPOConfig()
-            # .experimental(_enable_new_api_stack=True)
             .environment(
                 "FrozenLake-v1",
                 env_config={"is_slippery": False, "map_name": "4x4"},
-            ).rollouts(
+            )
+            .env_runners(
                 # Run locally.
-                num_rollout_workers=0,
+                num_env_runners=0,
             )
         )
         obs = np.array(0)
@@ -324,12 +319,9 @@ class TestPPO(unittest.TestCase):
 
         config = (
             ppo.PPOConfig()
-            # TODO (Kourosh): Enable when free log std is supported in the new
-            #  Learner API stack.
-            .experimental(_enable_new_api_stack=False)
             .environment("CartPole-v1")
-            .rollouts(
-                num_rollout_workers=0,
+            .env_runners(
+                num_env_runners=0,
             )
             .training(
                 gamma=0.99,
@@ -391,10 +383,9 @@ class TestPPO(unittest.TestCase):
         """
         config = (
             ppo.PPOConfig()
-            .experimental(_enable_new_api_stack=False)
             .environment("CartPole-v1")
-            .rollouts(
-                num_rollout_workers=0,
+            .env_runners(
+                num_env_runners=0,
             )
             .training(
                 gamma=0.99,
@@ -450,7 +441,7 @@ class TestPPO(unittest.TestCase):
             if fw == "tf":
                 vars = policy.get_session().run(vars)
             expected_shared_out = fc(
-                train_batch[SampleBatch.CUR_OBS],
+                train_batch[Columns.OBS],
                 vars[0 if fw != "torch" else 2],
                 vars[1 if fw != "torch" else 3],
                 framework=fw,
@@ -518,15 +509,12 @@ class TestPPO(unittest.TestCase):
         """
         # Calculate expected PPO loss results.
         dist = dist_class(logits, policy.model)
-        dist_prev = dist_class(
-            train_batch[SampleBatch.ACTION_DIST_INPUTS], policy.model
-        )
-        expected_logp = dist.logp(train_batch[SampleBatch.ACTIONS])
+        dist_prev = dist_class(train_batch[Columns.ACTION_DIST_INPUTS], policy.model)
+        expected_logp = dist.logp(train_batch[Columns.ACTIONS])
         if isinstance(model, TorchModelV2):
             train_batch.set_get_interceptor(None)
             expected_rho = np.exp(
-                expected_logp.detach().cpu().numpy()
-                - train_batch[SampleBatch.ACTION_LOGP]
+                expected_logp.detach().cpu().numpy() - train_batch[Columns.ACTION_LOGP]
             )
             # KL(prev vs current action dist)-loss component.
             kl = np.mean(dist_prev.kl(dist).detach().cpu().numpy())
@@ -535,7 +523,7 @@ class TestPPO(unittest.TestCase):
         else:
             if sess:
                 expected_logp = sess.run(expected_logp)
-            expected_rho = np.exp(expected_logp - train_batch[SampleBatch.ACTION_LOGP])
+            expected_rho = np.exp(expected_logp - train_batch[Columns.ACTION_LOGP])
             # KL(prev vs current action dist)-loss component.
             kl = dist_prev.kl(dist)
             if sess:
@@ -560,8 +548,8 @@ class TestPPO(unittest.TestCase):
 
         # Value function loss component.
         vf_loss1 = np.power(vf_outs - train_batch[Postprocessing.VALUE_TARGETS], 2.0)
-        vf_clipped = train_batch[SampleBatch.VF_PREDS] + np.clip(
-            vf_outs - train_batch[SampleBatch.VF_PREDS],
+        vf_clipped = train_batch[Columns.VF_PREDS] + np.clip(
+            vf_outs - train_batch[Columns.VF_PREDS],
             -policy.config["vf_clip_param"],
             policy.config["vf_clip_param"],
         )

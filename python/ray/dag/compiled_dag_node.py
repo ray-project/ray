@@ -1,13 +1,22 @@
+import asyncio
 from collections import defaultdict
 from typing import Any, Dict, List, Tuple, Union, Optional
 import logging
-import threading
 import traceback
+import threading
 
 import ray
 from ray.exceptions import RayTaskError
-from ray.experimental.channel import Channel
-from ray.util.annotations import DeveloperAPI
+from ray.experimental.channel import (
+    Channel,
+    ReaderInterface,
+    SynchronousReader,
+    WriterInterface,
+    SynchronousWriter,
+    AwaitableBackgroundReader,
+    AwaitableBackgroundWriter,
+)
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
 MAX_BUFFER_SIZE = int(100 * 1e6)  # 100MB
@@ -16,7 +25,9 @@ logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-def do_allocate_channel(self, buffer_size_bytes: int, num_readers: int = 1) -> Channel:
+def do_allocate_channel(
+    self, readers: List[Optional["ray.actor.ActorHandle"]], buffer_size_bytes: int
+) -> Channel:
     """Generic actor method to allocate an output channel.
 
     Args:
@@ -26,7 +37,10 @@ def do_allocate_channel(self, buffer_size_bytes: int, num_readers: int = 1) -> C
     Returns:
         The allocated channel.
     """
-    self._output_channel = Channel(buffer_size_bytes, num_readers)
+    self._output_channel = Channel(
+        readers,
+        buffer_size_bytes,
+    )
     return self._output_channel
 
 
@@ -49,25 +63,35 @@ def do_exec_compiled_task(
         actor_method_name: The name of the actual actor method to execute in
             the loop.
     """
-    self._dag_cancelled = False
-
     try:
-        self._input_channels = [i for i in inputs if isinstance(i, Channel)]
         method = getattr(self, actor_method_name)
 
         resolved_inputs = []
+        input_channels = []
         input_channel_idxs = []
         # Add placeholders for input channels.
         for idx, inp in enumerate(inputs):
             if isinstance(inp, Channel):
-                input_channel_idxs.append((idx, inp))
+                input_channels.append(inp)
+                input_channel_idxs.append(idx)
                 resolved_inputs.append(None)
             else:
                 resolved_inputs.append(inp)
 
+        self._input_reader: ReaderInterface = SynchronousReader(input_channels)
+        self._output_writer: WriterInterface = SynchronousWriter(self._output_channel)
+        self._input_reader.start()
+        self._output_writer.start()
+
         while True:
-            for idx, channel in input_channel_idxs:
-                resolved_inputs[idx] = channel.begin_read()
+            res = None
+            try:
+                res = self._input_reader.begin_read()
+            except IOError:
+                break
+
+            for idx, output in zip(input_channel_idxs, res):
+                resolved_inputs[idx] = output
 
             try:
                 output_val = method(*resolved_inputs)
@@ -83,14 +107,14 @@ def do_exec_compiled_task(
                     traceback_str=backtrace,
                     cause=exc,
                 )
-                self._output_channel.write(wrapped)
+                self._output_writer.write(wrapped)
             else:
-                if self._dag_cancelled:
-                    raise RuntimeError("DAG execution cancelled")
-                self._output_channel.write(output_val)
+                self._output_writer.write(output_val)
 
-            for _, channel in input_channel_idxs:
-                channel.end_read()
+            try:
+                self._input_reader.end_read()
+            except IOError:
+                break
 
     except Exception:
         logging.exception("Compiled DAG task exited with exception")
@@ -99,10 +123,31 @@ def do_exec_compiled_task(
 
 @DeveloperAPI
 def do_cancel_compiled_task(self):
-    self._dag_cancelled = True
-    for channel in self._input_channels:
-        channel.close()
-    self._output_channel.close()
+    self._input_reader.close()
+    self._output_writer.close()
+
+
+@PublicAPI(stability="alpha")
+class AwaitableDAGOutput:
+    def __init__(self, fut: asyncio.Future, ReaderInterface: ReaderInterface):
+        self._fut = fut
+        self._reader = ReaderInterface
+
+    async def begin_read(self):
+        ret = await self._fut
+        if isinstance(ret, Exception):
+            raise ret
+        return ret
+
+    def end_read(self):
+        self._reader.end_read()
+
+    async def __aenter__(self):
+        ret = await self._fut
+        return ret
+
+    async def __aexit__(self, exc_type, exc_value, traceback):
+        self.end_read()
 
 
 @DeveloperAPI
@@ -148,7 +193,31 @@ class CompiledDAG:
     information.
     """
 
-    def __init__(self, buffer_size_bytes: Optional[int]):
+    def __init__(
+        self,
+        buffer_size_bytes: Optional[int],
+        enable_asyncio: bool = False,
+        async_max_queue_size: Optional[int] = None,
+    ):
+        """
+        Args:
+            buffer_size_bytes: The number of bytes to allocate for object data and
+                metadata. Each argument passed to a task in the DAG must be
+                less than or equal to this value when serialized.
+            enable_asyncio: Whether to enable asyncio. If enabled, caller must
+                be running in an event loop and must use `execute_async` to
+                invoke the DAG. Otherwise, the caller should use `execute` to
+                invoke the DAG.
+            async_max_queue_size: Optional parameter to limit how many DAG
+                inputs can be queued at a time. The actual number of concurrent
+                DAG invocations may be higher than this, if there are already
+                inputs being processed by the DAG executors. If used, the
+                caller is responsible for preventing deadlock, i.e. if the
+                input queue is full, another asyncio task is reading from the
+                DAG output.
+        Returns:
+            Channel: A wrapper around ray.ObjectRef.
+        """
         self._buffer_size_bytes: Optional[int] = buffer_size_bytes
         if self._buffer_size_bytes is None:
             self._buffer_size_bytes = MAX_BUFFER_SIZE
@@ -157,6 +226,15 @@ class CompiledDAG:
                 "`buffer_size_bytes` must be a positive integer, found "
                 f"{self._buffer_size_bytes}"
             )
+
+        self._enable_asyncio: bool = enable_asyncio
+        self._fut_queue = asyncio.Queue()
+        self._async_max_queue_size: Optional[int] = async_max_queue_size
+        # Used to ensure that the future returned to the
+        # caller corresponds to the correct DAG output. I.e.
+        # order of futures added to fut_queue should match the
+        # order of inputs written to the DAG.
+        self._dag_submission_lock = asyncio.Lock()
 
         # idx -> CompiledTask.
         self.idx_to_task: Dict[int, "CompiledTask"] = {}
@@ -174,7 +252,10 @@ class CompiledDAG:
 
         # Cached attributes that are set during compilation.
         self.dag_input_channel: Optional[Channel] = None
-        self.dag_output_channels: Optional[Channel] = None
+        self.dag_output_channels: Optional[List[Channel]] = None
+        self._dag_submitter: Optional[WriterInterface] = None
+        self._dag_output_fetcher: Optional[ReaderInterface] = None
+
         # ObjectRef for each worker's task. The task is an infinite loop that
         # repeatedly executes the method specified in the DAG.
         self.worker_task_refs: List["ray.ObjectRef"] = []
@@ -282,38 +363,31 @@ class CompiledDAG:
 
     def _get_or_compile(
         self,
-    ) -> Tuple[Channel, Union[Channel, List[Channel]]]:
+    ) -> None:
         """Compile an execution path. This allocates channels for adjacent
         tasks to send/receive values. An infinite task is submitted to each
         actor in the DAG that repeatedly receives from input channel(s) and
         sends to output channel(s).
 
         This function is idempotent and will cache the previously allocated
-        channels.
-
-        Returns:
-            A tuple of (input channel, output channel(s)). The input channel
-            that should be used by the caller to submit a DAG execution. The
-            output channel(s) should be read by the caller to get the DAG
-            output.
+        channels. After calling this function, _dag_submitter and
+        _dag_output_fetcher will be set and can be used to invoke and fetch
+        outputs for the DAG.
         """
         from ray.dag import DAGNode, InputNode, MultiOutputNode, ClassMethodNode
 
         if self.input_task_idx is None:
             self._preprocess()
 
-        if self.dag_input_channel is not None:
-            assert self.dag_output_channels is not None
-            return (
-                self.dag_input_channel,
-                self.dag_output_channels,
-            )
+        if self._dag_submitter is not None:
+            assert self._dag_output_fetcher is not None
+            return
 
-        queue = [self.input_task_idx]
+        frontier = [self.input_task_idx]
         visited = set()
         # Create output buffers
-        while queue:
-            cur_idx = queue.pop(0)
+        while frontier:
+            cur_idx = frontier.pop(0)
             if cur_idx in visited:
                 continue
             visited.add(cur_idx)
@@ -322,25 +396,55 @@ class CompiledDAG:
             # Create an output buffer on the actor.
             assert task.output_channel is None
             if isinstance(task.dag_node, ClassMethodNode):
+                readers = [self.idx_to_task[idx] for idx in task.downstream_node_idxs]
+                assert len(readers) == 1
+                if isinstance(readers[0].dag_node, MultiOutputNode):
+                    # This node is a multi-output node, which means that it will only be
+                    # read by the driver, not an actor. Thus, we handle this case by
+                    # setting `reader_handles` to `[None]`.
+                    reader_handles = [None]
+
+                    fn = task.dag_node._get_remote_method("__ray_call__")
+
+                    def _get_node_id(self):
+                        return ray.get_runtime_context().get_node_id()
+
+                    actor_node = ray.get(fn.remote(_get_node_id))
+
+                    # The driver and all actors that write outputs must be on the same
+                    # node for now.
+                    if actor_node != _get_node_id(self):
+                        raise NotImplementedError(
+                            "The driver and all actors that write outputs must be on "
+                            "the same node for now."
+                        )
+                else:
+                    reader_handles = [
+                        reader.dag_node._get_actor_handle() for reader in readers
+                    ]
                 fn = task.dag_node._get_remote_method("__ray_call__")
                 task.output_channel = ray.get(
                     fn.remote(
                         do_allocate_channel,
+                        reader_handles,
                         buffer_size_bytes=self._buffer_size_bytes,
-                        num_readers=task.num_readers,
                     )
                 )
                 self.actor_refs.add(task.dag_node._get_actor_handle())
             elif isinstance(task.dag_node, InputNode):
+                readers = [self.idx_to_task[idx] for idx in task.downstream_node_idxs]
+                reader_handles = [
+                    reader.dag_node._get_actor_handle() for reader in readers
+                ]
                 task.output_channel = Channel(
+                    reader_handles,
                     buffer_size_bytes=self._buffer_size_bytes,
-                    num_readers=task.num_readers,
                 )
             else:
                 assert isinstance(task.dag_node, MultiOutputNode)
 
             for idx in task.downstream_node_idxs:
-                queue.append(idx)
+                frontier.append(idx)
 
         for node_idx, task in self.idx_to_task.items():
             if node_idx == self.input_task_idx:
@@ -402,7 +506,21 @@ class CompiledDAG:
 
         # Driver should ray.put on input, ray.get/release on output
         self._monitor = self._monitor_failures()
-        return (self.dag_input_channel, self.dag_output_channels, self._monitor)
+        if self._enable_asyncio:
+            self._dag_submitter = AwaitableBackgroundWriter(
+                self.dag_input_channel, self._async_max_queue_size
+            )
+            self._dag_output_fetcher = AwaitableBackgroundReader(
+                self.dag_output_channels,
+                self._fut_queue,
+            )
+        else:
+            self._dag_submitter = SynchronousWriter(self.dag_input_channel)
+            self._dag_output_fetcher = SynchronousReader(self.dag_output_channels)
+
+        self._dag_submitter.start()
+        self._dag_output_fetcher.start()
+        return
 
     def _monitor_failures(self):
         outer = self
@@ -416,9 +534,15 @@ class CompiledDAG:
                 if self.in_teardown:
                     return
                 logger.info("Tearing down compiled DAG")
+
+                outer._dag_submitter.close()
+                outer._dag_output_fetcher.close()
+
                 self.in_teardown = True
                 for actor in outer.actor_refs:
                     logger.info(f"Cancelling compiled worker on actor: {actor}")
+                    # TODO(swang): Suppress exceptions from actors trying to
+                    # read closed channels when DAG is being torn down.
                     try:
                         ray.get(actor.__ray_call__.remote(do_cancel_compiled_task))
                     except Exception:
@@ -439,11 +563,8 @@ class CompiledDAG:
                     logger.debug(f"Handling exception from worker tasks: {e}")
                     if self.in_teardown:
                         return
-                    if isinstance(outer.dag_output_channels, list):
-                        for output_channel in outer.dag_output_channels:
-                            output_channel.close()
-                    else:
-                        outer.dag_output_channels.close()
+                    for output_channel in outer.dag_output_channels:
+                        output_channel.close()
                     self.teardown()
 
         monitor = Monitor()
@@ -471,13 +592,54 @@ class CompiledDAG:
         if len(kwargs) != 0:
             raise NotImplementedError("Compiled DAGs do not support kwargs")
 
-        input_channel, output_channels = self._get_or_compile()
-        input_channel.write(args[0])
-        return output_channels
+        if self._enable_asyncio:
+            raise ValueError("Use execute_async if enable_asyncio=True")
+
+        self._get_or_compile()
+        self._dag_submitter.write(args[0])
+
+        return self._dag_output_fetcher
+
+    async def execute_async(
+        self,
+        *args,
+        **kwargs,
+    ) -> AwaitableDAGOutput:
+        """Execute this DAG using the compiled execution path.
+
+        NOTE: Not threadsafe.
+
+        Args:
+            args: Args to the InputNode.
+            kwargs: Kwargs to the InputNode. Not supported yet.
+
+        Returns:
+            A list of Channels that can be used to read the DAG result.
+        """
+        # These errors should already be caught during compilation, but just in
+        # case.
+        if len(args) != 1:
+            raise NotImplementedError("Compiled DAGs support exactly one InputNode arg")
+        if len(kwargs) != 0:
+            raise NotImplementedError("Compiled DAGs do not support kwargs")
+
+        if not self._enable_asyncio:
+            raise ValueError("Use execute if enable_asyncio=False")
+
+        self._get_or_compile()
+        async with self._dag_submission_lock:
+            await self._dag_submitter.write(args[0])
+            # Allocate a future that the caller can use to get the result.
+            fut = asyncio.Future()
+            await self._fut_queue.put(fut)
+
+        return AwaitableDAGOutput(fut, self._dag_output_fetcher)
 
     def teardown(self):
         """Teardown and cancel all worker tasks for this DAG."""
-        self._monitor.teardown()
+        monitor = getattr(self, "_monitor", None)
+        if monitor is not None:
+            monitor.teardown()
 
     def __del__(self):
         self.teardown()
@@ -485,9 +647,16 @@ class CompiledDAG:
 
 @DeveloperAPI
 def build_compiled_dag_from_ray_dag(
-    dag: "ray.dag.DAGNode", buffer_size_bytes: Optional[int]
+    dag: "ray.dag.DAGNode",
+    buffer_size_bytes: Optional[int],
+    enable_asyncio: bool = False,
+    async_max_queue_size: Optional[int] = None,
 ) -> "CompiledDAG":
-    compiled_dag = CompiledDAG(buffer_size_bytes)
+    compiled_dag = CompiledDAG(
+        buffer_size_bytes,
+        enable_asyncio,
+        async_max_queue_size,
+    )
 
     def _build_compiled_dag(node):
         compiled_dag._add_node(node)

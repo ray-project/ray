@@ -54,6 +54,7 @@ def mock_resource_manager(
         get_downstream_object_store_memory=MagicMock(
             return_value=downstream_object_store_memory
         ),
+        op_resource_allocator_enabled=MagicMock(return_value=False),
     )
 
 
@@ -127,7 +128,8 @@ def test_process_completed_tasks():
 
     # Test processing output bundles.
     assert len(topo[o1].outqueue) == 0, topo
-    process_completed_tasks(topo, [], 0)
+    resource_manager = mock_resource_manager()
+    process_completed_tasks(topo, resource_manager, 0)
     update_operator_states(topo)
     assert len(topo[o1].outqueue) == 20, topo
 
@@ -138,7 +140,7 @@ def test_process_completed_tasks():
     o2.get_active_tasks = MagicMock(return_value=[sleep_task, done_task])
     o2.all_inputs_done = MagicMock()
     o1.mark_execution_completed = MagicMock()
-    process_completed_tasks(topo, [], 0)
+    process_completed_tasks(topo, resource_manager, 0)
     update_operator_states(topo)
     done_task_callback.assert_called_once()
     o2.all_inputs_done.assert_not_called()
@@ -152,7 +154,7 @@ def test_process_completed_tasks():
     o1.mark_execution_completed = MagicMock()
     o1.completed = MagicMock(return_value=True)
     topo[o1].outqueue.clear()
-    process_completed_tasks(topo, [], 0)
+    process_completed_tasks(topo, resource_manager, 0)
     update_operator_states(topo)
     done_task_callback.assert_called_once()
     o2.all_inputs_done.assert_called_once()
@@ -170,7 +172,7 @@ def test_process_completed_tasks():
 
     o3.mark_execution_completed()
     o2.mark_execution_completed = MagicMock()
-    process_completed_tasks(topo, [], 0)
+    process_completed_tasks(topo, resource_manager, 0)
     update_operator_states(topo)
     o2.mark_execution_completed.assert_called_once()
 
@@ -187,7 +189,15 @@ def test_select_operator_to_run():
     )
     topo, _ = build_streaming_topology(o3, opt)
     resource_manager = mock_resource_manager(
-        global_limits=ExecutionResources(1, 1, 1),
+        global_limits=ExecutionResources.for_limits(1, 1, 1),
+    )
+    memory_usage = {
+        o1: 0,
+        o2: 0,
+        o3: 0,
+    }
+    resource_manager.get_op_usage = MagicMock(
+        side_effect=lambda op: ExecutionResources(0, 0, memory_usage[op])
     )
 
     # Test empty.
@@ -198,8 +208,9 @@ def test_select_operator_to_run():
         is None
     )
 
-    # Test backpressure based on queue length between operators.
+    # Test backpressure based on memory_usage of each operator.
     topo[o1].outqueue.append(make_ref_bundle("dummy1"))
+    memory_usage[o1] += 1
     assert (
         select_operator_to_run(
             topo, resource_manager, [], True, "dummy", AutoscalingState()
@@ -207,6 +218,7 @@ def test_select_operator_to_run():
         == o2
     )
     topo[o1].outqueue.append(make_ref_bundle("dummy2"))
+    memory_usage[o1] += 1
     assert (
         select_operator_to_run(
             topo, resource_manager, [], True, "dummy", AutoscalingState()
@@ -214,41 +226,7 @@ def test_select_operator_to_run():
         == o2
     )
     topo[o2].outqueue.append(make_ref_bundle("dummy3"))
-    assert (
-        select_operator_to_run(
-            topo, resource_manager, [], True, "dummy", AutoscalingState()
-        )
-        == o3
-    )
-
-    # Test backpressure includes num active tasks as well.
-    o3.num_active_tasks = MagicMock(return_value=2)
-    o3.internal_queue_size = MagicMock(return_value=0)
-    assert (
-        select_operator_to_run(
-            topo, resource_manager, [], True, "dummy", AutoscalingState()
-        )
-        == o2
-    )
-    # Internal queue size is added to num active tasks.
-    o3.num_active_tasks = MagicMock(return_value=0)
-    o3.internal_queue_size = MagicMock(return_value=2)
-    assert (
-        select_operator_to_run(
-            topo, resource_manager, [], True, "dummy", AutoscalingState()
-        )
-        == o2
-    )
-    o2.num_active_tasks = MagicMock(return_value=2)
-    o2.internal_queue_size = MagicMock(return_value=0)
-    assert (
-        select_operator_to_run(
-            topo, resource_manager, [], True, "dummy", AutoscalingState()
-        )
-        == o3
-    )
-    o2.num_active_tasks = MagicMock(return_value=0)
-    o2.internal_queue_size = MagicMock(return_value=2)
+    memory_usage[o2] += 1
     assert (
         select_operator_to_run(
             topo, resource_manager, [], True, "dummy", AutoscalingState()
@@ -320,11 +298,11 @@ def test_validate_dag():
         o2,
         compute_strategy=ray.data.ActorPoolStrategy(size=4),
     )
-    _validate_dag(o3, ExecutionResources())
-    _validate_dag(o3, ExecutionResources(cpu=20))
-    _validate_dag(o3, ExecutionResources(gpu=0))
+    _validate_dag(o3, ExecutionResources.for_limits())
+    _validate_dag(o3, ExecutionResources.for_limits(cpu=20))
+    _validate_dag(o3, ExecutionResources.for_limits(gpu=0))
     with pytest.raises(ValueError):
-        _validate_dag(o3, ExecutionResources(cpu=10))
+        _validate_dag(o3, ExecutionResources.for_limits(cpu=10))
 
 
 def test_execution_allowed():
@@ -336,21 +314,21 @@ def test_execution_allowed():
         op,
         mock_resource_manager(
             global_usage=ExecutionResources(cpu=1),
-            global_limits=ExecutionResources(cpu=2),
+            global_limits=ExecutionResources.for_limits(cpu=2),
         ),
     )
     assert not _execution_allowed(
         op,
         mock_resource_manager(
             global_usage=ExecutionResources(cpu=2),
-            global_limits=ExecutionResources(cpu=2),
+            global_limits=ExecutionResources.for_limits(cpu=2),
         ),
     )
     assert _execution_allowed(
         op,
         mock_resource_manager(
             global_usage=ExecutionResources(cpu=2),
-            global_limits=ExecutionResources(gpu=2),
+            global_limits=ExecutionResources.for_limits(gpu=2),
         ),
     )
 
@@ -362,14 +340,14 @@ def test_execution_allowed():
         op,
         mock_resource_manager(
             global_usage=ExecutionResources(gpu=1),
-            global_limits=ExecutionResources(gpu=2),
+            global_limits=ExecutionResources.for_limits(gpu=2),
         ),
     )
     assert not _execution_allowed(
         op,
         mock_resource_manager(
             global_usage=ExecutionResources(gpu=2),
-            global_limits=ExecutionResources(gpu=2),
+            global_limits=ExecutionResources.for_limits(gpu=2),
         ),
     )
 
@@ -381,21 +359,21 @@ def test_execution_allowed():
         op,
         mock_resource_manager(
             global_usage=ExecutionResources(gpu=1),
-            global_limits=ExecutionResources(gpu=2),
+            global_limits=ExecutionResources.for_limits(gpu=2),
         ),
     )
     assert _execution_allowed(
         op,
         mock_resource_manager(
             global_usage=ExecutionResources(gpu=1.5),
-            global_limits=ExecutionResources(gpu=2),
+            global_limits=ExecutionResources.for_limits(gpu=2),
         ),
     )
     assert not _execution_allowed(
         op,
         mock_resource_manager(
             global_usage=ExecutionResources(gpu=2),
-            global_limits=ExecutionResources(gpu=2),
+            global_limits=ExecutionResources.for_limits(gpu=2),
         ),
     )
 
@@ -407,21 +385,21 @@ def test_execution_allowed():
         op,
         mock_resource_manager(
             global_usage=ExecutionResources(gpu=1),
-            global_limits=ExecutionResources(gpu=2),
+            global_limits=ExecutionResources.for_limits(gpu=2),
         ),
     )
     assert _execution_allowed(
         op,
         mock_resource_manager(
             global_usage=ExecutionResources(gpu=1.5),
-            global_limits=ExecutionResources(gpu=2),
+            global_limits=ExecutionResources.for_limits(gpu=2),
         ),
     )
     assert not _execution_allowed(
         op,
         mock_resource_manager(
             global_usage=ExecutionResources(gpu=2),
-            global_limits=ExecutionResources(gpu=2),
+            global_limits=ExecutionResources.for_limits(gpu=2),
         ),
     )
 
@@ -483,7 +461,9 @@ def test_resource_constrained_triggers_autoscaling(monkeypatch):
         topo[o4].inqueues[0].append(make_ref_bundle("dummy"))
         resource_manager = mock_resource_manager(
             global_usage=ExecutionResources(cpu=2, gpu=1, object_store_memory=1000),
-            global_limits=ExecutionResources(cpu=2, gpu=1, object_store_memory=1000),
+            global_limits=ExecutionResources.for_limits(
+                cpu=2, gpu=1, object_store_memory=1000
+            ),
         )
         selected_op = select_operator_to_run(
             topo,
@@ -595,7 +575,7 @@ def test_select_ops_ensure_at_least_one_live_operator():
     o1.num_active_tasks = MagicMock(return_value=2)
     resource_manager = mock_resource_manager(
         global_usage=ExecutionResources(cpu=1),
-        global_limits=ExecutionResources(cpu=1),
+        global_limits=ExecutionResources.for_limits(cpu=1),
     )
     assert (
         select_operator_to_run(
@@ -684,7 +664,7 @@ def test_execution_allowed_downstream_aware_memory_throttling():
         op,
         mock_resource_manager(
             global_usage=ExecutionResources(object_store_memory=1000),
-            global_limits=ExecutionResources(object_store_memory=1100),
+            global_limits=ExecutionResources.for_limits(object_store_memory=1100),
             downstream_fraction=1,
             downstream_object_store_memory=1000,
         ),
@@ -694,7 +674,7 @@ def test_execution_allowed_downstream_aware_memory_throttling():
         op,
         mock_resource_manager(
             global_usage=ExecutionResources(object_store_memory=1000),
-            global_limits=ExecutionResources(object_store_memory=900),
+            global_limits=ExecutionResources.for_limits(object_store_memory=900),
             downstream_fraction=1,
             downstream_object_store_memory=1000,
         ),
@@ -704,7 +684,7 @@ def test_execution_allowed_downstream_aware_memory_throttling():
         op,
         mock_resource_manager(
             global_usage=ExecutionResources(object_store_memory=1000),
-            global_limits=ExecutionResources(object_store_memory=900),
+            global_limits=ExecutionResources.for_limits(object_store_memory=900),
             downstream_fraction=0.5,
             downstream_object_store_memory=400,
         ),
@@ -714,7 +694,7 @@ def test_execution_allowed_downstream_aware_memory_throttling():
         op,
         mock_resource_manager(
             global_usage=ExecutionResources(object_store_memory=1000),
-            global_limits=ExecutionResources(object_store_memory=900),
+            global_limits=ExecutionResources.for_limits(object_store_memory=900),
             downstream_fraction=0.5,
             downstream_object_store_memory=600,
         ),
@@ -729,7 +709,7 @@ def test_execution_allowed_nothrottle():
         op,
         mock_resource_manager(
             global_usage=ExecutionResources(object_store_memory=1000),
-            global_limits=ExecutionResources(object_store_memory=900),
+            global_limits=ExecutionResources.for_limits(object_store_memory=900),
             downstream_fraction=1,
             downstream_object_store_memory=1000,
         ),
@@ -741,7 +721,7 @@ def test_execution_allowed_nothrottle():
         op,
         mock_resource_manager(
             global_usage=ExecutionResources(object_store_memory=1000),
-            global_limits=ExecutionResources(object_store_memory=900),
+            global_limits=ExecutionResources.for_limits(object_store_memory=900),
             downstream_fraction=1,
             downstream_object_store_memory=1000,
         ),

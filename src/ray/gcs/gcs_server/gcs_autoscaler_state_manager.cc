@@ -413,8 +413,9 @@ void GcsAutoscalerStateManager::HandleDrainNode(
           const Status &status, const rpc::DrainRayletReply &raylet_reply) {
         reply->set_is_accepted(raylet_reply.is_accepted());
 
-        // Unset the death reason of the node if the drain was rejected.
         if (!raylet_reply.is_accepted()) {
+          reply->set_rejection_reason_message(raylet_reply.rejection_reason_message());
+          // Unset the death reason of the node if the drain was rejected.
           auto node = gcs_node_manager_.GetAliveNode(node_id);
           if (node.has_value()) {
             auto death_info = node.value()->mutable_death_info();

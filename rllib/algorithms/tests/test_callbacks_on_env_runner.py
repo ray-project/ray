@@ -4,7 +4,6 @@ import unittest
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.utils.test_utils import framework_iterator
 
 
@@ -30,15 +29,15 @@ class EpisodeAndSampleCallbacks(DefaultCallbacks):
 
 
 class OnEnvironmentCreatedCallback(DefaultCallbacks):
-    def on_environment_created(self, *, worker, sub_environment, env_context, **kwargs):
+    def on_environment_created(self, *, env_runner, env, env_context, **kwargs):
         # Create a vector-index-sum property per remote worker.
-        if not hasattr(worker, "sum_sub_env_vector_indices"):
-            worker.sum_sub_env_vector_indices = 0
+        if not hasattr(env_runner, "sum_sub_env_vector_indices"):
+            env_runner.sum_sub_env_vector_indices = 0
         # Add the sub-env's vector index to the counter.
-        worker.sum_sub_env_vector_indices += env_context.vector_index
+        env_runner.sum_sub_env_vector_indices += env_context.vector_index
         print(
-            f"sub-env {sub_environment} created; "
-            f"worker={worker.worker_index}; "
+            f"sub-env {env} created; "
+            f"worker={env_runner.worker_index}; "
             f"vector-idx={env_context.vector_index}"
         )
 
@@ -72,12 +71,14 @@ class TestCallbacks(unittest.TestCase):
     def test_episode_and_sample_callbacks_batch_mode_truncate_episodes(self):
         config = (
             PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            )
             .environment("CartPole-v1")
-            .rollouts(
-                num_rollout_workers=0,
+            .env_runners(
+                num_env_runners=0,
                 batch_mode="truncate_episodes",
-                env_runner_cls=SingleAgentEnvRunner,
             )
             .callbacks(EpisodeAndSampleCallbacks)
             .training(
@@ -115,12 +116,14 @@ class TestCallbacks(unittest.TestCase):
     def test_episode_and_sample_callbacks_batch_mode_complete_episodes(self):
         config = (
             PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            )
             .environment("CartPole-v1")
-            .rollouts(
+            .env_runners(
                 batch_mode="complete_episodes",
-                env_runner_cls=SingleAgentEnvRunner,
-                num_rollout_workers=0,
+                num_env_runners=0,
             )
             .callbacks(EpisodeAndSampleCallbacks)
             .training(
@@ -158,8 +161,10 @@ class TestCallbacks(unittest.TestCase):
         """Tests, whw"""
         config = (
             PPOConfig()
-            .experimental(_enable_new_api_stack=True)
-            .rollouts(env_runner_cls=SingleAgentEnvRunner)
+            .api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            )
             .callbacks(OnEpisodeCreatedCallback)
         )
         self.assertRaises(ValueError, lambda: config.validate())

@@ -14,7 +14,7 @@ class WindowsTesterContainer(TesterContainer, WindowsContainer):
         network: Optional[str] = None,
         skip_ray_installation: bool = False,
     ) -> None:
-        WindowsContainer.__init__(self, docker_tag, test_envs)
+        WindowsContainer.__init__(self, docker_tag, envs=test_envs)
         TesterContainer.__init__(
             self,
             shard_count,

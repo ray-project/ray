@@ -65,7 +65,8 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   auto scheduling_options =
       CreateSchedulingOptions(placement_group->GetPlacementGroupID(),
                               strategy,
-                              placement_group->GetMaxCpuFractionPerNode());
+                              placement_group->GetMaxCpuFractionPerNode(),
+                              placement_group->GetSoftTargetNodeID());
   auto scheduling_result =
       cluster_resource_scheduler_.Schedule(resource_request_list, scheduling_options);
 
@@ -109,7 +110,7 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   const auto &bundle_locations = lease_status_tracker->GetBundleLocations();
   AcquireBundleResources(bundle_locations);
 
-  // Covert to a set of bundle specifications grouped by the node.
+  // Convert to a set of bundle specifications grouped by the node.
   std::unordered_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
       node_to_bundles;
   for (size_t i = 0; i < selected_nodes.size(); ++i) {
@@ -324,8 +325,13 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
         lease_status_tracker->MarkCommitRequestReturned(node_id, bundle, status);
         (*commited_bundle_locations)[bundle->BundleId()] = {node_id, bundle};
       }
-      // Commit the bundle resources on the remote node to the cluster resources.
-      CommitBundleResources(commited_bundle_locations);
+
+      if (status.ok()) {
+        // Commit the bundle resources on the remote node to the cluster resources.
+        // If status is not OK, no need to call ReturnBundleResources because the
+        // OnAllBundleCommitRequestReturned function calls it.
+        CommitBundleResources(commited_bundle_locations);
+      }
 
       if (lease_status_tracker->AllCommitRequestReturned()) {
         OnAllBundleCommitRequestReturned(
@@ -457,14 +463,19 @@ GcsPlacementGroupScheduler::CreateSchedulingContext(
 SchedulingOptions GcsPlacementGroupScheduler::CreateSchedulingOptions(
     const PlacementGroupID &placement_group_id,
     rpc::PlacementStrategy strategy,
-    double max_cpu_fraction_per_node) {
+    double max_cpu_fraction_per_node,
+    NodeID soft_target_node_id) {
   switch (strategy) {
   case rpc::PlacementStrategy::PACK:
     return SchedulingOptions::BundlePack(max_cpu_fraction_per_node);
   case rpc::PlacementStrategy::SPREAD:
     return SchedulingOptions::BundleSpread(max_cpu_fraction_per_node);
   case rpc::PlacementStrategy::STRICT_PACK:
-    return SchedulingOptions::BundleStrictPack(max_cpu_fraction_per_node);
+    return SchedulingOptions::BundleStrictPack(
+        max_cpu_fraction_per_node,
+        soft_target_node_id.IsNil() ? scheduling::NodeID::Nil()
+                                    : scheduling::NodeID(soft_target_node_id.Binary()));
+
   case rpc::PlacementStrategy::STRICT_SPREAD:
     return SchedulingOptions::BundleStrictSpread(
         max_cpu_fraction_per_node, CreateSchedulingContext(placement_group_id));

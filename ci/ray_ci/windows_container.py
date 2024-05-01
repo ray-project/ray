@@ -6,6 +6,9 @@ from typing import List, Tuple, Optional
 from ci.ray_ci.container import Container
 
 
+WORKDIR = "C:\\rayci"
+
+
 class WindowsContainer(Container):
     def install_ray(self, build_type: Optional[str] = None) -> List[str]:
         assert build_type is None, f"Windows does not support build types {build_type}"
@@ -38,7 +41,7 @@ class WindowsContainer(Container):
         gpu_ids: Optional[List[int]] = None,
     ) -> List[str]:
         assert not gpu_ids, "Windows does not support gpu ids"
-        return []
+        return ["--workdir", WORKDIR]
 
     def get_artifact_mount(self) -> Tuple[str, str]:
         return ("C:\\tmp\\artifacts", "C:\\artifact-mount")

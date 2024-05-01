@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional
 
 import ray._private.worker
 from ray._private.client_mode_hook import client_mode_hook
-from ray._private.utils import pasre_pg_formatted_resources_to_original
+from ray._private.utils import parse_pg_formatted_resources_to_original
 from ray._raylet import TaskID
 from ray.runtime_env import RuntimeEnv
 from ray.util.annotations import Deprecated, PublicAPI
@@ -355,7 +355,8 @@ class RuntimeContext(object):
             res: sum(amt for _, amt in mapping)
             for res, mapping in resource_id_map.items()
         }
-        return pasre_pg_formatted_resources_to_original(resource_map)
+        result = parse_pg_formatted_resources_to_original(resource_map)
+        return result
 
     def get_runtime_env_string(self):
         """Get the runtime env string used for the current driver or worker.
@@ -423,7 +424,7 @@ class RuntimeContext(object):
                 accelerator_resource_name,
                 f"^{accelerator_resource_name}_group_[0-9A-Za-z]+$",
             )
-            ids_dict[accelerator_resource_name] = accelerator_ids
+            ids_dict[accelerator_resource_name] = [str(id) for id in accelerator_ids]
         return ids_dict
 
 

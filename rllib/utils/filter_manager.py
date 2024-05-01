@@ -2,19 +2,18 @@ import logging
 from typing import Optional
 
 import ray
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import OldAPIStack
 
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
+@OldAPIStack
 class FilterManager:
     """Manages filters and coordination across remote evaluators that expose
     `get_filters` and `sync_filters`.
     """
 
     @staticmethod
-    @DeveloperAPI
     def synchronize(
         local_filters,
         worker_set,
@@ -29,7 +28,7 @@ class FilterManager:
 
         Args:
             local_filters: Filters to be synchronized.
-            worker_set: WorkerSet with remote EnvRunners with filters.
+            worker_set: EnvRunnerGroup with remote EnvRunners with filters.
             update_remote: Whether to push updates from the local filters to the remote
                 workers' filters.
             timeout_seconds: How long to wait for filter to get or set filters

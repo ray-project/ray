@@ -1,8 +1,7 @@
 import pytest
 
-from ray.tune.search import BasicVariantGenerator
+from ray.tune.search import BasicVariantGenerator, ConcurrencyLimiter, Searcher
 from ray.tune.search.repeater import Repeater
-from ray.tune.search import Searcher, ConcurrencyLimiter
 from ray.tune.search.search_generator import SearchGenerator
 
 

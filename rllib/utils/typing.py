@@ -6,6 +6,7 @@ from typing import (
     Hashable,
     List,
     Optional,
+    Sequence,
     Tuple,
     Type,
     TypeVar,
@@ -29,6 +30,7 @@ if TYPE_CHECKING:
     from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
     from ray.rllib.policy.view_requirement import ViewRequirement
     from ray.rllib.utils import try_import_jax, try_import_tf, try_import_torch
+    from ray.rllib.utils.nested_dict import NestedDict
 
     _, tf, _ = try_import_tf()
     torch, _ = try_import_torch()
@@ -104,9 +106,17 @@ ModuleID = str
 # Type of the config.policies dict for multi-agent training.
 MultiAgentPolicyConfigDict = Dict[PolicyID, "PolicySpec"]
 
+# A new stack Episode type: Either single-agent or multi-agent.
+EpisodeType = Union["SingleAgentEpisode", "MultiAgentEpisode"]
+
 # Is Policy to train callable.
 IsPolicyToTrain = Callable[[PolicyID, Optional["MultiAgentBatch"]], bool]
-ShouldModuleBeUpdatedFn = Callable[[ModuleID, Optional["MultiAgentBatch"]], bool]
+# Agent to module mapping and should-module-be-updated.
+AgentToModuleMappingFn = Callable[[AgentID, EpisodeType], ModuleID]
+ShouldModuleBeUpdatedFn = Union[
+    Sequence[ModuleID],
+    Callable[[ModuleID, Optional["MultiAgentBatch"]], bool],
+]
 
 # State dict of a Policy, mapping strings (e.g. "weights") to some state
 # data (TensorStructType).
@@ -115,11 +125,8 @@ PolicyState = Dict[str, TensorStructType]
 # Any tf Policy type (static-graph or eager Policy).
 TFPolicyV2Type = Type[Union["DynamicTFPolicyV2", "EagerTFPolicyV2"]]
 
-# Represents an episode id.
-EpisodeID = int
-
-# A new stack Episode type: Either single-agent or multi-agent.
-EpisodeType = Union["SingleAgentEpisode", "MultiAgentEpisode"]
+# Represents an episode id (old and new API stack).
+EpisodeID = Union[int, str]
 
 # Represents an "unroll" (maybe across different sub-envs in a vector env).
 UnrollID = int
@@ -148,8 +155,11 @@ FileType = Any
 # ViewRequirement objects.
 ViewRequirementsDict = Dict[str, "ViewRequirement"]
 
-# Represents the result dict returned by Algorithm.train().
-ResultDict = dict
+# Represents the result dict returned by Algorithm.train() and algorithm components,
+# such as EnvRunners, LearnerGroup, etc.. Also, the MetricsLogger used by all these
+# components returns this upon its `reduce()` method call, so a ResultDict can further
+# be accumulated (and reduced again) by downstream components.
+ResultDict = Union[dict, "NestedDict"]
 
 # A tf or torch local optimizer object.
 LocalOptimizer = Union["torch.optim.Optimizer", "tf.keras.optimizers.Optimizer"]

@@ -1,3 +1,10 @@
+
+.. include:: /_includes/rllib/we_are_hiring.rst
+
+.. include:: /_includes/rllib/new_api_stack.rst
+
+.. include:: /_includes/rllib/new_api_stack_component.rst
+
 .. _learner-reference-docs:
 
 
@@ -151,15 +158,3 @@ Adding and Removing Modules
 
     Learner.add_module
     Learner.remove_module
-
-Managing Results
-----------------
-
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    Learner.compile_results
-    Learner.register_metric
-    Learner.register_metrics
-    Learner._check_result

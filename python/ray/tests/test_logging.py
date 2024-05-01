@@ -128,7 +128,7 @@ def test_log_rotation_config(ray_start_cluster, monkeypatch):
 
 def test_log_file_exists(shutdown_only):
     """Verify all log files exist as specified in
-    https://docs.ray.io/en/master/ray-observability/ray-logging.html#logging-directory-structure # noqa
+    https://docs.ray.io/en/master/ray-observability/user-guides/configure-logging.html#logging-directory-structure # noqa
     """
     ray.init(num_cpus=1)
     session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
@@ -458,6 +458,15 @@ assert set(log_component_names).isdisjoint(set(paths)), paths
         # parentheses since some components, like the core driver and worker, add a
         # unique ID suffix.
         assert f"({component}" in stderr, stderr
+
+
+def test_custom_logging_format(shutdown_only):
+    script = """
+import ray
+ray.init(logging_format='custom logging format - %(message)s')
+"""
+    stderr = run_string_as_driver(script)
+    assert "custom logging format - " in stderr
 
 
 def test_segfault_stack_trace(ray_start_cluster, capsys):
@@ -878,29 +887,6 @@ def test_ray_does_not_break_makeRecord():
     finally:
         # Set it back to the default factory.
         logging.setLogRecordFactory(logging.LogRecord)
-
-
-@pytest.mark.parametrize(
-    "logger_name,package_name",
-    (
-        ("ray", ""),
-        ("ray.air", "[Ray AIR]"),
-        ("ray.data", "[Ray Data]"),
-        ("ray.rllib", "[Ray RLlib]"),
-        ("ray.serve", "[Ray Serve]"),
-        ("ray.train", "[Ray Train]"),
-        ("ray.tune", "[Ray Tune]"),
-        ("ray.workflow", "[Ray Workflow]"),
-    ),
-)
-def test_log_library_context(propagate_logs, caplog, logger_name, package_name):
-    """Test that the log configuration injects the correct context into log messages."""
-    logger = logging.getLogger(logger_name)
-    logger.critical("Test!")
-
-    assert (
-        caplog.records[-1].package == package_name
-    ), "Missing ray package name in log record."
 
 
 @pytest.mark.parametrize(

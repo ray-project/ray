@@ -20,13 +20,14 @@ def test_rllib_integration(ray_start_regular):
             # Confirming mode hook is enabled.
             assert client_mode_should_convert()
 
-            config = dqn.SIMPLE_Q_DEFAULT_CONFIG.copy()
-            # Run locally.
-            config["num_workers"] = 0
-            # Test with compression.
-            config["compress_observations"] = True
+            config = (
+                dqn.DQNConfig().environment("CartPole-v1")
+                # Run locally.
+                # Test with compression.
+                .rollouts(num_rollout_workers=0, compress_observations=True)
+            )
             num_iterations = 2
-            trainer = dqn.SimpleQ(config=config, env="CartPole-v1")
+            trainer = config.build()
             rw = trainer.workers.local_worker()
             for i in range(num_iterations):
                 sb = rw.sample()

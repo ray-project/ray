@@ -7,6 +7,7 @@ from typing import Any, Iterable, Optional
 
 import pyarrow.parquet as pq
 
+import ray
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import _check_import
@@ -120,6 +121,11 @@ class _BigQueryDatasink(Datasink):
         _write_single_block = cached_remote_fn(_write_single_block)
 
         # Launch a remote task for each block within this write task
-        for block in blocks:
-            _write_single_block.remote(block, self.project_id, self.dataset)
+        ray.get(
+            [
+                _write_single_block.remote(block, self.project_id, self.dataset)
+                for block in blocks
+            ]
+        )
+
         return "ok"

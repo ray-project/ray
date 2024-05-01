@@ -1,7 +1,9 @@
 import logging
+import uuid
 from typing import Any, Callable, Dict, List, Optional, Type, Union
 
 import ray
+from ray._private.ray_constants import env_integer
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.air.config import RunConfig, ScalingConfig
 from ray.train import BackendConfig, Checkpoint, TrainingIterator
@@ -10,6 +12,7 @@ from ray.train._internal.backend_executor import BackendExecutor, TrialInfo
 from ray.train._internal.data_config import DataConfig
 from ray.train._internal.session import _TrainingResult, get_session
 from ray.train._internal.utils import construct_train_func, count_required_parameters
+from ray.train.constants import RAY_TRAIN_ENABLE_STATE_TRACKING
 from ray.train.trainer import BaseTrainer, GenDataset
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.widgets import Template
@@ -210,6 +213,7 @@ class DataParallelTrainer(BaseTrainer):
         "resources_per_worker",
         "use_gpu",
         "placement_strategy",
+        "accelerator_type",
     ]
 
     # For backwards compatibility with the legacy dataset config API.
@@ -263,6 +267,11 @@ class DataParallelTrainer(BaseTrainer):
             train_total_resources.get("CPU", 0),
             train_total_resources.get("GPU", 0),
         )
+
+        if env_integer(RAY_TRAIN_ENABLE_STATE_TRACKING, 0):
+            from ray.train._internal.state.state_actor import get_or_create_state_actor
+
+            get_or_create_state_actor()
 
     @PublicAPI(stability="beta")
     @classmethod
@@ -422,11 +431,10 @@ class DataParallelTrainer(BaseTrainer):
         train_loop_per_worker = construct_train_func(
             self._train_loop_per_worker,
             self._train_loop_config,
+            train_func_context=self._backend_config.train_func_context,
             fn_arg_name="train_loop_per_worker",
             discard_returns=True,
         )
-
-        additional_resources_per_worker = scaling_config.additional_resources_per_worker
 
         trial_info = TrialInfo(
             name=session.get_trial_name(),
@@ -435,15 +443,14 @@ class DataParallelTrainer(BaseTrainer):
             logdir=session.get_trial_dir(),
             driver_ip=ray.util.get_node_ip_address(),
             experiment_name=session.get_experiment_name(),
+            run_id=uuid.uuid4().hex,
         )
 
         backend_executor = self._backend_executor_cls(
             backend_config=self._backend_config,
             trial_info=trial_info,
             num_workers=scaling_config.num_workers,
-            num_cpus_per_worker=scaling_config.num_cpus_per_worker,
-            num_gpus_per_worker=scaling_config.num_gpus_per_worker,
-            additional_resources_per_worker=additional_resources_per_worker,
+            resources_per_worker=scaling_config._resources_per_worker_not_none,
             max_retries=0,
         )
 

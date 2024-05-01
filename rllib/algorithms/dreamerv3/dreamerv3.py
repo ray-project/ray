@@ -7,7 +7,7 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 D. Hafner, T. Lillicrap, M. Norouzi, J. Ba
 https://arxiv.org/pdf/2010.02193.pdf
 """
-import copy
+
 import gc
 import logging
 import tree  # pip install dm_tree
@@ -25,9 +25,10 @@ from ray.rllib.algorithms.dreamerv3.utils.summaries import (
     report_predicted_vs_sampled_obs,
     report_sampling_and_replay_buffer,
 )
+from ray.rllib.core import DEFAULT_MODULE_ID
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.models.catalog import MODEL_DEFAULTS
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import deep_update
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.framework import try_import_tf
@@ -142,14 +143,15 @@ class DreamerV3Config(AlgorithmConfig):
         # Do not use! Set `batch_size_B` and `batch_length_T` instead.
         self.train_batch_size = None
         self.env_runner_cls = DreamerV3EnvRunner
-        self.num_rollout_workers = 0
+        self.num_env_runners = 0
         self.rollout_fragment_length = 1
         # Since we are using a gymnasium-based EnvRunner, we can utilitze its
         # vectorization capabilities w/o suffering performance losses (as we would
         # with RLlib's `RemoteVectorEnv`).
         self.remote_worker_envs = True
         # Dreamer only runs on the new API stack.
-        self._enable_new_api_stack = True
+        self.enable_rl_module_and_learner = True
+        self.enable_env_runner_and_connector_v2 = True
         # __sphinx_doc_end__
         # fmt: on
 
@@ -159,21 +161,6 @@ class DreamerV3Config(AlgorithmConfig):
 
         Needed by some of the DreamerV3 loss math."""
         return self.batch_size_B // (self.num_learner_workers or 1)
-
-    @property
-    def model(self):
-        model = copy.deepcopy(MODEL_DEFAULTS)
-        model.update(
-            {
-                "batch_length_T": self.batch_length_T,
-                "gamma": self.gamma,
-                "horizon_H": self.horizon_H,
-                "model_size": self.model_size,
-                "symlog_obs": self.symlog_obs,
-                "use_float16": self.use_float16,
-            }
-        )
-        return model
 
     @override(AlgorithmConfig)
     def training(
@@ -397,10 +384,10 @@ class DreamerV3Config(AlgorithmConfig):
             raise ValueError("DreamerV3 does NOT support multi-agent setups yet!")
 
         # Make sure, we are configure for the new API stack.
-        if not self._enable_new_api_stack:
+        if not self.enable_rl_module_and_learner:
             raise ValueError(
-                "DreamerV3 must be run with `config.experimental("
-                "_enable_new_api_stack=True)`!"
+                "DreamerV3 must be run with `config.api_stack("
+                "enable_rl_module_and_learner=True)`!"
             )
 
         # If run on several Learners, the provided batch_size_B must be a multiple
@@ -461,9 +448,21 @@ class DreamerV3Config(AlgorithmConfig):
     @property
     def share_module_between_env_runner_and_learner(self) -> bool:
         # If we only have one local Learner (num_learner_workers=0) and only
-        # one local EnvRunner (num_rollout_workers=0), share the RLModule
+        # one local EnvRunner (num_env_runners=0), share the RLModule
         # between these two to avoid having to sync weights, ever.
-        return self.num_learner_workers == 0 and self.num_rollout_workers == 0
+        return self.num_learner_workers == 0 and self.num_env_runners == 0
+
+    @property
+    @override(AlgorithmConfig)
+    def _model_config_auto_includes(self) -> Dict[str, Any]:
+        return super()._model_config_auto_includes | {
+            "gamma": self.gamma,
+            "horizon_H": self.horizon_H,
+            "model_size": self.model_size,
+            "symlog_obs": self.symlog_obs,
+            "use_float16": self.use_float16,
+            "batch_length_T": self.batch_length_T,
+        }
 
 
 class DreamerV3(Algorithm):
@@ -493,7 +492,7 @@ class DreamerV3(Algorithm):
         if self.config.share_module_between_env_runner_and_learner:
             assert self.workers.local_worker().module is None
             self.workers.local_worker().module = self.learner_group._learner.module[
-                DEFAULT_POLICY_ID
+                DEFAULT_MODULE_ID
             ]
 
         # Summarize (single-agent) RLModule (only once) here.
@@ -599,8 +598,8 @@ class DreamerV3(Algorithm):
                 replayed_steps_this_iter += replayed_steps
 
                 if isinstance(env_runner.env.single_action_space, gym.spaces.Discrete):
-                    sample["actions_ints"] = sample[SampleBatch.ACTIONS]
-                    sample[SampleBatch.ACTIONS] = one_hot(
+                    sample["actions_ints"] = sample[Columns.ACTIONS]
+                    sample[Columns.ACTIONS] = one_hot(
                         sample["actions_ints"],
                         depth=env_runner.env.single_action_space.n,
                     )
@@ -624,7 +623,7 @@ class DreamerV3(Algorithm):
                 if self.config.report_images_and_videos:
                     report_predicted_vs_sampled_obs(
                         # TODO (sven): DreamerV3 is single-agent only.
-                        results=train_results[DEFAULT_POLICY_ID],
+                        results=train_results[DEFAULT_MODULE_ID],
                         sample=sample,
                         batch_size_B=self.config.batch_size_B,
                         batch_length_T=self.config.batch_length_T,
@@ -634,7 +633,7 @@ class DreamerV3(Algorithm):
                         ),
                     )
 
-                res = train_results[DEFAULT_POLICY_ID]
+                res = train_results[DEFAULT_MODULE_ID]
                 logger.info(
                     f"\t\tWORLD_MODEL_L_total={res['WORLD_MODEL_L_total']:.5f} ("
                     f"L_pred={res['WORLD_MODEL_L_prediction']:.5f} ("
@@ -718,8 +717,8 @@ class DreamerV3(Algorithm):
         # longer a copy of the learner.
         if self.config.share_module_between_env_runner_and_learner:
             assert id(self.workers.local_worker().module) != id(
-                self.learner_group._learner.module[DEFAULT_POLICY_ID]
+                self.learner_group._learner.module[DEFAULT_MODULE_ID]
             )
             self.workers.local_worker().module = self.learner_group._learner.module[
-                DEFAULT_POLICY_ID
+                DEFAULT_MODULE_ID
             ]

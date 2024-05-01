@@ -310,7 +310,7 @@ def explained_variance(y: TensorType, pred: TensorType) -> TensorType:
     y_var = torch.var(y, dim=[0])
     diff_var = torch.var(y - pred, dim=[0])
     min_ = torch.tensor([-1.0]).to(pred.device)
-    return torch.max(min_, 1 - (diff_var / y_var + SMALL_NUMBER))[0]
+    return torch.max(min_, 1 - (diff_var / (y_var + SMALL_NUMBER)))[0]
 
 
 @PublicAPI

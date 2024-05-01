@@ -530,7 +530,6 @@ def teardown_cluster(
 
     container_name = config.get("docker", {}).get("container_name")
     if container_name:
-
         # This is to ensure that the parallel SSH calls below do not mess with
         # the users terminal.
         output_redir = cmd_output_util.is_output_redirected()
@@ -605,7 +604,7 @@ def kill_node(
 
     time.sleep(POLL_INTERVAL)
 
-    if config.get("provider", {}).get("use_internal_ips", False) is True:
+    if config.get("provider", {}).get("use_internal_ips", False):
         node_ip = provider.internal_ip(node)
     else:
         node_ip = provider.external_ip(node)
@@ -786,7 +785,6 @@ def get_or_create_head_node(
         # cf.bold(provider.node_tags(head_node)[TAG_RAY_NODE_NAME]),
         _tags=dict(),
     ):  # add id, ARN to tags?
-
         # TODO(ekl) right now we always update the head node even if the
         # hash matches.
         # We could prompt the user for what they want to do here.
@@ -958,7 +956,6 @@ def _should_create_new_head(
         with cli_logger.group(
             "Currently running head node is out-of-date with cluster configuration"
         ):
-
             if hashes_mismatch:
                 cli_logger.print(
                     "Current hash is {}, expected {}",
@@ -1358,7 +1355,12 @@ def get_head_node_ip(
 
     provider = _get_node_provider(config["provider"], config["cluster_name"])
     head_node = _get_running_head_node(config, config_file, override_cluster_name)
-    if config.get("provider", {}).get("use_internal_ips", False):
+    provider_cfg = config.get("provider", {})
+    # Get internal IP if using internal IPs and
+    # use_external_head_ip is not specified
+    if provider_cfg.get("use_internal_ips", False) and not provider_cfg.get(
+        "use_external_head_ip", False
+    ):
         head_node_ip = provider.internal_ip(head_node)
     else:
         head_node_ip = provider.external_ip(head_node)
@@ -1378,7 +1380,7 @@ def get_worker_node_ips(
     provider = _get_node_provider(config["provider"], config["cluster_name"])
     nodes = provider.non_terminated_nodes({TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
 
-    if config.get("provider", {}).get("use_internal_ips", False) is True:
+    if config.get("provider", {}).get("use_internal_ips", False):
         return [provider.internal_ip(node) for node in nodes]
     else:
         return [provider.external_ip(node) for node in nodes]
@@ -1527,7 +1529,6 @@ def get_cluster_dump_archive(
     processes_verbose: bool = False,
     tempfile: Optional[str] = None,
 ) -> Optional[str]:
-
     # Inform the user what kind of logs are collected (before actually
     # collecting, so they can abort)
     content_str = ""

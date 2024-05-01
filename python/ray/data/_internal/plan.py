@@ -1,11 +1,11 @@
 import copy
 import itertools
-from typing import TYPE_CHECKING, Iterator, Optional, Tuple, Union
+import logging
+from typing import TYPE_CHECKING, Iterator, Optional, Tuple, Type, Union
 
 import ray
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray.data._internal.block_list import BlockList
-from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
 from ray.data._internal.logical.operators.from_operators import AbstractFrom
@@ -15,6 +15,7 @@ from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
 from ray.data._internal.util import create_dataset_tag, unify_block_metadata_schema
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
+from ray.data.exceptions import omit_traceback_stdout
 from ray.types import ObjectRef
 from ray.util.debug import log_once
 
@@ -23,13 +24,14 @@ if TYPE_CHECKING:
 
     from ray.data._internal.execution.interfaces import Executor
     from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
+    from ray.data.dataset import Dataset
 
 
 # Scheduling strategy can be inherited from prev operator if not specified.
 INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
 
 
-logger = DatasetLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class ExecutionPlan:
@@ -102,7 +104,7 @@ class ExecutionPlan:
             f"snapshot_blocks={self._snapshot_blocks})"
         )
 
-    def get_plan_as_string(self, classname: str) -> str:
+    def get_plan_as_string(self, dataset_cls: Type["Dataset"]) -> str:
         """Create a cosmetic string representation of this execution plan.
 
         Returns:
@@ -111,6 +113,8 @@ class ExecutionPlan:
         # NOTE: this is used for Dataset.__repr__ to give a user-facing string
         # representation. Ideally ExecutionPlan.__repr__ should be replaced with this
         # method as well.
+
+        from ray.data.dataset import MaterializedDataset
 
         # Do not force execution for schema, as this method is expected to be very
         # cheap.
@@ -191,19 +195,22 @@ class ExecutionPlan:
         count = self._get_num_rows_from_blocks_metadata(dataset_blocks)
         if count is None:
             count = "?"
-        if dataset_blocks is None:
-            num_blocks = "?"
-        else:
+
+        num_blocks = None
+        if dataset_blocks is not None and dataset_cls == MaterializedDataset:
             num_blocks = dataset_blocks.estimated_num_blocks()
+
         name_str = (
             "name={}, ".format(self._dataset_name)
             if self._dataset_name is not None
             else ""
         )
-        dataset_str = "{}({}num_blocks={}, num_rows={}, schema={})".format(
-            classname,
+        num_blocks_str = f"num_blocks={num_blocks}, " if num_blocks else ""
+
+        dataset_str = "{}({}{}num_rows={}, schema={})".format(
+            dataset_cls.__name__,
             name_str,
-            num_blocks,
+            num_blocks_str,
             count,
             schema_str,
         )
@@ -251,10 +258,15 @@ class ExecutionPlan:
                 if self._dataset_name is not None
                 else ""
             )
-            dataset_str = (
-                f"{classname}("
-                f"{name_str}"
+            num_blocks_str = (
                 f"\n{trailing_space}{INDENT_STR}num_blocks={num_blocks},"
+                if num_blocks
+                else ""
+            )
+            dataset_str = (
+                f"{dataset_cls.__name__}("
+                f"{name_str}"
+                f"{num_blocks_str}"
                 f"\n{trailing_space}{INDENT_STR}num_rows={count},"
                 f"\n{trailing_space}{INDENT_STR}schema={schema_str}"
                 f"\n{trailing_space})"
@@ -321,7 +333,7 @@ class ExecutionPlan:
         plan_copy._dataset_name = self._dataset_name
         return plan_copy
 
-    def initial_num_blocks(self) -> int:
+    def initial_num_blocks(self) -> Optional[int]:
         """Get the estimated number of blocks from the logical plan
         after applying execution plan optimizations, but prior to
         fully executing the dataset."""
@@ -442,8 +454,11 @@ class ExecutionPlan:
             # This applies to newly created dataset. For example, initial dataset
             # from read, and output datasets of Dataset.split().
             self.execute()
-        # Snapshot is now guaranteed to be the final block or None.
-        return self._get_num_rows_from_blocks_metadata(self._snapshot_blocks)
+
+        if self._logical_plan.dag is self._snapshot_operator:
+            return self._get_num_rows_from_blocks_metadata(self._snapshot_blocks)
+        else:
+            return None
 
     def _get_num_rows_from_blocks_metadata(self, blocks: BlockList) -> Optional[int]:
         metadata = blocks.get_metadata() if blocks else None
@@ -452,6 +467,7 @@ class ExecutionPlan:
         else:
             return None
 
+    @omit_traceback_stdout
     def execute_to_iterator(
         self,
         allow_clear_input_blocks: bool = True,
@@ -509,6 +525,7 @@ class ExecutionPlan:
         self._snapshot_stats = executor.get_stats()
         return block_iter, self._snapshot_stats, executor
 
+    @omit_traceback_stdout
     def execute(
         self,
         allow_clear_input_blocks: bool = True,
@@ -532,7 +549,7 @@ class ExecutionPlan:
 
         if not ray.available_resources().get("CPU"):
             if log_once("cpu_warning"):
-                logger.get_logger().warning(
+                logger.warning(
                     "Warning: The Ray cluster currently does not have "
                     "any available CPUs. The Dataset job will hang unless more CPUs "
                     "are freed up. A common reason is that cluster resources are "
@@ -580,9 +597,9 @@ class ExecutionPlan:
                 stats_summary_string = stats.to_summary().to_string(
                     include_parent=False
                 )
-                logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
-                    stats_summary_string,
-                )
+                if context.enable_auto_log_stats:
+                    logger.info(stats_summary_string)
+
             # TODO(ekl) we shouldn't need to set this in the future once we move
             # to a fully lazy execution model, unless .materialize() is used. Th
             # reason we need it right now is since the user may iterate over a
@@ -604,7 +621,7 @@ class ExecutionPlan:
                         reply.store_stats.restored_bytes_total
                     )
             except Exception as e:
-                logger.get_logger(log_to_stdout=False).warning(
+                logger.debug(
                     "Skipping recording memory spilled and restored statistics due to "
                     f"exception: {e}"
                 )
