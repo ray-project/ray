@@ -448,9 +448,9 @@ class _StatsActor:
         self.iter_collate_batch_s.set(stats.iter_collate_batch_s.get(), tags)
         self.iter_finalize_batch_s.set(stats.iter_finalize_batch_s.get(), tags)
 
-        self.iter_blocks_local.set(stats.iter_blocks_local.get(), tags)
-        self.iter_blocks_remote.set(stats.iter_blocks_remote.get(), tags)
-        self.iter_blocks_unknown.set(stats.iter_unknown_location.get(), tags)
+        self.iter_blocks_local.set(stats.iter_blocks_local, tags)
+        self.iter_blocks_remote.set(stats.iter_blocks_remote, tags)
+        self.iter_blocks_unknown.set(stats.iter_unknown_location, tags)
 
         self.streaming_split_coordinator_s.set(stats.streaming_split_coordinator_s.get(), tags)
         self.streaming_exec_schedule_s.set(stats.streaming_exec_schedule_s.get(), tags) # Where should this live?
