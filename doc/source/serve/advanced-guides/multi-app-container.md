@@ -65,12 +65,12 @@ ENV PYTHONPATH "${PYTHONPATH}:/home/ray"
 :::
 ::::
 
-Then, build the corresponding Docker images and push it to your choice of Docker registry using `podman`. This tutorial uses `alice/whisper_image:latest` and `alice/resnet_image:latest` as placeholder names for the images, but make sure to swap out `alice` for a repo name of your choice.
+Then, build the corresponding container images and push it to your choice of container registry. This tutorial uses `alice/whisper_image:latest` and `alice/resnet_image:latest` as placeholder names for the images, but make sure to swap out `alice` for a repo name of your choice.
 
 ::::{tab-set}
 :::{tab-item} Whisper
 ```bash
-# Build the Podman image from the Dockerfile using podman
+# Build the container image from the Dockerfile using podman
 export IMG1=alice/whisper_image:latest
 podman build -t $IMG1 -f whisper.Dockerfile .
 # Push to a registry. This step is unnecessary if you are deploying Serve locally.
@@ -79,7 +79,7 @@ podman push $IMG1
 :::
 :::{tab-item} Resnet
 ```bash
-# Build the Podman image from the Dockerfile using podman
+# Build the container image from the Dockerfile using podman
 export IMG2=alice/resnet_image:latest
 podman build -t $IMG2 -f resnet.Dockerfile .
 # Push to a registry. This step is unnecessary if you are deploying Serve locally.
@@ -88,7 +88,7 @@ podman push $IMG2
 :::
 ::::
 
-Finally, you can specify the Docker image within which you want to run each application in the `container` field of an application's runtime environment specification. The `container` field has three fields:
+Finally, you can specify the container image within which you want to run each application in the `container` field of an application's runtime environment specification. The `container` field has three fields:
 - `image`: (Required) The image to run your application in.
 - `worker_path`: The absolute path to `default_worker.py` inside the container.
 - `run_options`: Additional options to pass to the `podman run` command used to start a Serve deployment replica in a container. See [podman run documentation](https://docs.podman.io/en/latest/markdown/podman-run.1.html) for a list of all options. If you are familiar with `docker run`, most options work the same way.
