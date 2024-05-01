@@ -18,9 +18,12 @@ from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
+    NUM_AGENT_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_EPISODES,
+    NUM_MODULE_STEPS_SAMPLED,
+    NUM_MODULE_STEPS_SAMPLED_LIFETIME,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.pre_checks.env import check_multiagent_environments
@@ -293,17 +296,7 @@ class MultiAgentEnvRunner(EnvRunner):
             obs, rewards, terminateds, truncateds, infos = self.env.step(
                 actions_for_env[0]
             )
-
-            ts += self.num_envs
-            self.metrics.log_dict(
-                {
-                    NUM_ENV_STEPS_SAMPLED: self.num_envs,
-                    # TODO (sven): obs is not-vectorized. Support vectorized MA envs.
-                    NUM_AGENT_STEPS_SAMPLED: {str(aid): 1 for aid in obs},
-                },
-                reduce="sum",
-                reset_on_reduce=True,
-            )
+            ts += self._increase_sampled_metrics(self.num_envs, obs, self._episode)
 
             # TODO (sven): This simple approach to re-map `to_env` from a
             #  dict[col, List[MADict]] to a dict[agentID, MADict] would not work for
@@ -506,17 +499,7 @@ class MultiAgentEnvRunner(EnvRunner):
             obs, rewards, terminateds, truncateds, infos = self.env.step(
                 actions_for_env[0]
             )
-
-            ts += self.num_envs
-            self.metrics.log_dict(
-                {
-                    NUM_ENV_STEPS_SAMPLED: self.num_envs,
-                    # TODO (sven): obs is not-vectorized. Support vectorized MA envs.
-                    NUM_AGENT_STEPS_SAMPLED: {str(aid): 1 for aid in obs},
-                },
-                reduce="sum",
-                reset_on_reduce=True,
-            )
+            ts += self._increase_sampled_metrics(self.num_envs, obs, _episode)
 
             # Add render data if needed.
             if with_render_data:
@@ -642,7 +625,7 @@ class MultiAgentEnvRunner(EnvRunner):
             NUM_EPISODES,
             len(self._done_episodes_for_metrics),
             reduce="sum",
-            reset_on_reduce=True,  # Not a lifetime count.
+            clear_on_reduce=True,  # Not a lifetime count.
         )
 
         # Now that we have logged everything, clear cache of done episodes.
@@ -847,6 +830,32 @@ class MultiAgentEnvRunner(EnvRunner):
             rl_module=self.module,
             env_index=0,
         )
+
+    def _increase_sampled_metrics(self, num_steps, next_obs, episode):
+        self.metrics.log_dict(
+            {
+                NUM_ENV_STEPS_SAMPLED: num_steps,
+                # TODO (sven): obs is not-vectorized. Support vectorized MA envs.
+                NUM_AGENT_STEPS_SAMPLED: {str(aid): 1 for aid in next_obs},
+                NUM_MODULE_STEPS_SAMPLED: {
+                    episode.module_for(aid): 1 for aid in next_obs
+                },
+            },
+            reduce="sum",
+            clear_on_reduce=True,
+        )
+        self.metrics.log_dict(
+            {
+                NUM_ENV_STEPS_SAMPLED_LIFETIME: num_steps,
+                # TODO (sven): obs is not-vectorized. Support vectorized MA envs.
+                NUM_AGENT_STEPS_SAMPLED_LIFETIME: {str(aid): 1 for aid in next_obs},
+                NUM_MODULE_STEPS_SAMPLED_LIFETIME: {
+                    episode.module_for(aid): 1 for aid in next_obs
+                },
+            },
+            reduce="sum",
+        )
+        return num_steps
 
     def _log_episode_metrics(self, length, ret, sec, agents=None, modules=None):
         # Log general episode metrics.
