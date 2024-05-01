@@ -240,6 +240,7 @@ class ActorMethod:
         from ray.dag.class_node import (
             PARENT_CLASS_NODE_KEY,
             PREV_CLASS_METHOD_CALL_KEY,
+            BIND_INDEX_KEY,
             ClassMethodNode,
         )
 
