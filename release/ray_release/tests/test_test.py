@@ -254,5 +254,15 @@ def test_get_s3_name() -> None:
     assert Test._get_s3_name("linux://python/ray/test") == "linux:__python_ray_test"
 
 
+def test_is_high_impact() -> None:
+    assert _stub_test(
+        {"name": "test", Test.KEY_IS_HIGH_IMPACT: "true"}
+    ).is_high_impact()
+    assert not _stub_test(
+        {"name": "test", Test.KEY_IS_HIGH_IMPACT: "false"}
+    ).is_high_impact()
+    assert not _stub_test({"name": "test"}).is_high_impact()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

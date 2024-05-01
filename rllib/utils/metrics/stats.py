@@ -1,4 +1,3 @@
-import random
 import time
 from typing import Any, Callable, Dict, Optional, Tuple, Union
 
@@ -281,49 +280,137 @@ class Stats:
         else:
             return self
 
-    def merge(self, *others: "Stats", shuffle: bool = True) -> None:
+    def merge_on_time_axis(self, other: "Stats") -> None:
+        # Make sure `others` have same reduction settings.
+        assert self._reduce_method == other._reduce_method
+        assert self._window == other._window
+        assert self._ema_coeff == other._ema_coeff
+
+        # Extend `self`'s values by `other`'s.
+        self.values.extend(other.values)
+
+        # Slice by window size, if provided.
+        if self._window not in [None, float("inf")]:
+            self.values = self.values[-self._window :]
+
+    def merge_in_parallel(self, *others: "Stats") -> None:
         """Merges all internal values of `others` into `self`'s internal values list.
 
+        Thereby, the newly incoming values of `others` are treated equally with respect
+        to each other as well as with respect to the internal values of self.
+
+        Use this method to merge another Stats into this one that resulted from a
+        parallel run and metrics logging of `self` and n `others` (for example, n
+        Learner workers all returning a loss value).
+
+        The following examples demonstrate the parallel merging logic:
+
+        .. testcode::
+
+            from ray.rllib.utils.metrics.stats import Stats
+            from ray.rllib.utils.test_utils import check
+
+            # Parallel-merge two mean stats (win=3).
+            stats = Stats(reduce="mean", window=3)
+            stats1 = Stats(reduce="mean", window=3)
+            stats1.push(1)
+            stats1.push(2)
+            stats1.push(3)
+            stats2 = Stats(reduce="mean", window=3)
+            stats1.push(4)
+            stats1.push(5)
+            stats1.push(6)
+            stats.merge_in_parallel(stats1, stats2)
+            check(stats.values, [3.5, 3.5, 3.5])
+
+            # Parallel-merge two max stats (win=3).
+            stats = Stats(reduce="max", window=3)
+            stats1 = Stats(reduce="max", window=3)
+            stats1.push(1)
+            stats1.push(2)
+            stats1.push(3)
+            stats2 = Stats(reduce="max", window=3)
+            stats1.push(4)
+            stats1.push(5)
+            stats1.push(6)
+            stats.merge_in_parallel(stats1, stats2)
+            check(stats.values, [6])
+
+            # Parallel-merge two min stats (win=4).
+            stats = Stats(reduce="min", window=4)
+            stats1 = Stats(reduce="min", window=4)
+            stats1.push(1)
+            stats1.push(2)
+            stats1.push(1)
+            stats1.push(4)
+            stats2 = Stats(reduce="min", window=4)
+            stats1.push(5)
+            stats1.push(0.5)
+            stats1.push(7)
+            stats1.push(8)
+            stats.merge_in_parallel(stats1, stats2)
+            check(stats.values, [0.5])
+
+            # Parallel-merge two sum stats (no window).
+            stats = Stats(reduce="sum")
+            stats1 = Stats(reduce="sum")
+            stats1.push(1)
+            stats1.push(2)
+            stats1.push(3)
+            stats2 = Stats(reduce="sum")
+            stats1.push(4)
+            stats1.push(5)
+            stats1.push(6)
+            stats.merge_in_parallel(stats1, stats2)
+            check(stats.values, [21])
+
+            # Parallel-merge two "concat" stats (reduce=None; no win).
+            stats = Stats(reduce=None, window=float("inf"), clear_on_reduce=True)
+            stats1 = Stats(reduce=None, window=float("inf"), clear_on_reduce=True)
+            stats1.push(1)
+            stats2 = Stats(reduce=None, window=float("inf"), clear_on_reduce=True)
+            stats1.push(2)
+            stats.merge_in_parallel(stats1, stats2)
+            check(stats.values, [1, 2])
+
         Args:
-            others: One or more other Stats objects that need to be merged into `self.
-            shuffle: Whether to shuffle the merged internal values list after the
-                merging (extending). Set to True, if `self` and `*others` are all equal
-                components in a parallel setup (each of their values should
-                matter equally and without any time-axis bias). Set to False, if
-                `*others` is only one component AND its values should be given priority
-                (because they are newer).
+            others: One or more other Stats objects that need to be parallely merged
+                into `self, meaning with equal weighting as the existing values in
+                `self`.
         """
-        # Make sure `other` has same reduction settings.
+        # Make sure `others` have same reduction settings.
         assert all(self._reduce_method == o._reduce_method for o in others)
         assert all(self._window == o._window for o in others)
         assert all(self._ema_coeff == o._ema_coeff for o in others)
-        # No reduction, combine self's and other's values.
-        if self._reduce_method is None:
-            for o in others:
-                self.values.extend(o.values)
-        # Combine values, then maybe shuffle to not give the values of `self` OR `other`
-        # any specific weight (over the other).
-        elif self._ema_coeff is not None:
-            for o in others:
-                self.values.extend(o.values)
-            if shuffle:
-                random.shuffle(self.values)
-        # If we have to reduce by a window:
-        # Slice self's and other's values using window, combine them, then maybe shuffle
-        # values (to make sure none gets a specific weight over the other when it
-        # comes to the actual reduction step).
+
+        # Extend `self`'s values by all `others`' values.
+        for o in others:
+            self.values.extend(o.values)
+
+        # Reduce over the entire values (no matter the window size!) first.
+        store_win = self._window
+        self._window = None
+        reduced_value, new_values = self._reduced_values()
+        self._window = store_win
+        # x-fold the reduced_value over the actual window size and use the resulting
+        # list as new self.values.
+        if self._reduce_method == "mean":
+            self.values = [reduced_value] * self._window
         else:
-            # Slice by some finite window, then merge.
-            if self._window is not None and self._window != float("inf"):
-                self.values = self.values[-self._window :]
-                for o in others:
-                    self.values += o.values[-self._window :]
-            # Merge all.
+            self.values = new_values
+
+    def numpy(self, value: Any = None) -> "Stats":
+        """Converts all of self's internal values to numpy (if a tensor)."""
+        if value is not None:
+            if self._reduce_method is None:
+                assert isinstance(value, list) and len(self.values) >= len(value)
+                self.values = convert_to_numpy(value)
             else:
-                for o in others:
-                    self.values.extend(o.values)
-            if shuffle:
-                random.shuffle(self.values)
+                assert len(self.values) > 0
+                self.values = [convert_to_numpy(value)]
+        else:
+            self.values = convert_to_numpy(self.values)
+        return self
 
     def numpy(self, value: Any = None) -> "Stats":
         """Converts all of self's internal values to numpy (if a tensor)."""

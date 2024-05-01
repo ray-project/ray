@@ -606,7 +606,7 @@ class DQN(Algorithm):
         for _ in range(store_weight):
             with self.metrics.log_time((TIMERS, ENV_RUNNER_SAMPLING_TIMER)):
                 # Sample in parallel from workers.
-                episodes, env_runner_metrics = synchronous_parallel_sample(
+                episodes, env_runner_results = synchronous_parallel_sample(
                     worker_set=self.workers,
                     concat=True,
                     sample_timeout_s=self.config.sample_timeout_s,
@@ -616,7 +616,7 @@ class DQN(Algorithm):
             # Add the sampled experiences to the replay buffer.
             self.local_replay_buffer.add(episodes)
             # Reduce EnvRunner metrics over the n EnvRunners.
-            self.metrics.log_n_dicts(env_runner_metrics, key=ENV_RUNNER_RESULTS)
+            self.metrics.log_n_dicts(env_runner_results, key=ENV_RUNNER_RESULTS)
 
         self.metrics.log_value(
             NUM_ENV_STEPS_SAMPLED_LIFETIME,
