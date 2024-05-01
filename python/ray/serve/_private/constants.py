@@ -36,8 +36,13 @@ SERVE_DEFAULT_APP_NAME = "default"
 #: Max concurrency
 ASYNC_CONCURRENCY = int(1e6)
 
-# How often to call the control loop on the controller.
-CONTROL_LOOP_PERIOD_S = 0.1
+# How long to sleep between control loop cycles on the controller.
+CONTROL_LOOP_INTERVAL_S = float(os.getenv("RAY_SERVE_CONTROL_LOOP_INTERVAL_S", 0.1))
+assert CONTROL_LOOP_INTERVAL_S >= 0, (
+    f"Got unexpected value {CONTROL_LOOP_INTERVAL_S} for "
+    "RAY_SERVE_CONTROL_LOOP_INTERVAL_S environment variable. "
+    "RAY_SERVE_CONTROL_LOOP_INTERVAL_S cannot be negative."
+)
 
 #: Max time to wait for HTTP proxy in `serve.start()`.
 HTTP_PROXY_TIMEOUT = 60

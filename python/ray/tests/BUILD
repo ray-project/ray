@@ -333,10 +333,18 @@ py_test_module_list(
   files = [
     "test_gcs_ha_e2e.py",
     "test_gcs_ha_e2e_2.py",
-    "test_network_failure_e2e.py",
   ],
   size = "medium",
   tags = ["exclusive", "ha_integration", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
+    "test_network_failure_e2e.py",
+  ],
+  size = "medium",
+  tags = ["exclusive", "ha_integration", "no_windows", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 

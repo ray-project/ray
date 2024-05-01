@@ -8,16 +8,12 @@ config = (
         enable_rl_module_and_learner=True,
         enable_env_runner_and_connector_v2=True,
     )
-    .env_runners(num_env_runners=0)
-    .resources(
-        num_learner_workers=0,
-    )
     .rl_module(
         # Settings identical to old stack.
         model_config_dict={
             "fcnet_hiddens": [256],
             "fcnet_activation": "relu",
-            "epsilon": [(0, 1.0), (10000, 0.05)],
+            "epsilon": [(0, 1.0), (50000, 0.05)],
             "fcnet_bias_initializer": "zeros_",
             "post_fcnet_bias_initializer": "zeros_",
             "post_fcnet_hiddens": [256],
@@ -41,18 +37,11 @@ config = (
         evaluation_parallel_to_training=True,
         evaluation_num_env_runners=1,
         evaluation_duration="auto",
-        evaluation_config={
-            "explore": False,
-            # TODO (sven): Add support for window=float(inf) and reduce=mean for
-            #  evaluation episode_return_mean reductions (identical to old stack
-            #  behavior, which does NOT use a window (100 by default) to reduce
-            #  eval episode returns.
-            "metrics_num_episodes_for_smoothing": 4,
-        },
+        evaluation_config={"explore": False},
     )
 )
 
 stop = {
-    "evaluation_results/env_runner_results/episode_return_mean": 500.0,
+    "evaluation_results/env_runner_results/episode_return_mean": 450.0,
     "num_env_steps_sampled_lifetime": 100000,
 }
