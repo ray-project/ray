@@ -178,6 +178,7 @@ class RayTrainReportCallback(TuneCallback):
         should_checkpoint = (
             not checkpointing_disabled
             and (epoch + 1) % self._frequency == 0
+            # Only one worker needs to checkpoint since all workers are the same.
             and ray.train.get_context().get_world_rank() == 0
         )
 
