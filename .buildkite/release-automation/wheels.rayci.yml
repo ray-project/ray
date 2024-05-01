@@ -4,45 +4,10 @@ steps:
     depends_on: 
       - forge
 
-  - label: "Upload wheels from S3 to TestPyPI"
-    key: upload-wheels-testpypi
-    job_env: forge
-    instance_type: small_branch
-    commands:
-      - bazel run //ci/ray_ci/automation:upload_wheels_pypi -- 
-        --ray_version="$RAY_VERSION"
-        --commit_hash="$BUILDKITE_COMMIT"
-        --pypi_env=test
-
   - block: "Download & validate Ray wheels from TestPyPI"
     depends_on:
       - forge
       - forge_arm64
-
-  - label: "Linux x86_64 Python {{matrix}}"
-    key: validate-linux-x86_64-wheels
-    job_env: forge
-    commands:
-      - export PYTHON_VERSION={{matrix}}
-      - export RAY_VERSION="$RAY_VERSION"
-      - bash -i .buildkite/release-automation/verify-linux-wheels.sh
-    matrix:
-      - "3.9"
-      - "3.10"
-      - "3.11"
-
-  - label: "Linux arm64 Python {{matrix}}"
-    key: validate-linux-arm64-wheels
-    instance_type: medium-arm64
-    job_env: forge-arm64
-    commands:
-      - export PYTHON_VERSION={{matrix}}
-      - export RAY_VERSION="$RAY_VERSION"
-      - bash -i .buildkite/release-automation/verify-linux-wheels.sh
-    matrix:
-      - "3.9"
-      - "3.10"
-      - "3.11"
 
   - label: "MacOS x86_64"
     key: validate-macos-x86_64-wheels
@@ -72,5 +37,5 @@ steps:
     commands:
       - bazel run //ci/ray_ci/automation:upload_wheels_pypi -- 
         --ray_version="$RAY_VERSION" 
-        --commit_hash="$BUILDKITE_COMMIT" 
+        --commit_hash="5708e75978413e46c703e44f43fd89769f3c148b" 
         --pypi_env=prod

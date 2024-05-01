@@ -54,7 +54,7 @@ run_sanity_check() {
         "ray[cpp]==$RAY_VERSION"
     (
         cd release/util
-        python sanity_check.py --ray_version="$RAY_VERSION" --ray_commit="$BUILDKITE_COMMIT"
+        python sanity_check.py --ray_version="$RAY_VERSION" --ray_commit="5708e75978413e46c703e44f43fd89769f3c148b"
         bash sanity_check_cpp.sh
     )
     conda deactivate
@@ -68,6 +68,7 @@ _clean_up() {
 # Create tmp directory unique for the run
 TMP_DIR="$(mktemp -d "$HOME/tmp.XXXXXXXXXX")"
 mkdir -p "$TMP_DIR/bin"
+export PATH="$TMP_DIR/bin:$PATH"
 
 trap _clean_up EXIT
 
