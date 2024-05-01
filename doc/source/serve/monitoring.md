@@ -559,7 +559,7 @@ The following metrics are exposed by Ray Serve:
      - * deployment
        * actor_id
      - The number of request scheduling tasks in the router that are undergoing backoff.
-   * - ``ray_serve_handle_request_counter_total`` [**]
+   * - ``ray_serve_handle_request_counter`` [**]
      - * handle
        * deployment
        * route
