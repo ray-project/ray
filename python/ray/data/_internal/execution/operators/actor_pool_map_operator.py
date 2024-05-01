@@ -421,7 +421,7 @@ class _ActorPool(AutoscalingActorPool):
                 num_killed += 1
         return num_killed
 
-    # === End of overriding methods ===
+    # === End of overriding methods of AutoscalingActorPool ===
 
     def add_pending_actor(self, actor: ray.actor.ActorHandle, ready_ref: ray.ObjectRef):
         """Adds a pending actor to the pool.

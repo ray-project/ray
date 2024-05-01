@@ -21,7 +21,6 @@ class PoolWorker:
 
 
 class TestActorPool(unittest.TestCase):
-
     def setup_class(self):
         self._last_created_actor_and_ready_ref = (None, None)
         self._actor_node_id = "node1"

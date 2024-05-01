@@ -35,8 +35,8 @@ class DefaultAutoscaler(Autoscaler):
         topology: "Topology",
         resource_manager: "ResourceManager",
         execution_id: str,
-        actor_pool_scaling_up_threshold: float = DEFAULT_ACTOR_POOL_SCALING_UP_THRESHOLD,
-        actor_pool_scaling_down_threshold: float = DEFAULT_ACTOR_POOL_SCALING_DOWN_THRESHOLD,
+        actor_pool_scaling_up_threshold: float = DEFAULT_ACTOR_POOL_SCALING_UP_THRESHOLD,  # noqa: E501
+        actor_pool_scaling_down_threshold: float = DEFAULT_ACTOR_POOL_SCALING_DOWN_THRESHOLD,  # noqa: E501
     ):
         self._actor_pool_scaling_up_threshold = actor_pool_scaling_up_threshold
         self._actor_pool_scaling_down_threshold = actor_pool_scaling_down_threshold
@@ -128,14 +128,14 @@ class DefaultAutoscaler(Autoscaler):
         """Try to scale up the cluster to accomodate the provided in-progress workload.
 
         This makes a resource request to Ray's autoscaler consisting of the current,
-        aggregate usage of all operators in the DAG + the incremental usage of all operators
-        that are ready for dispatch (i.e. that have inputs queued). If the autoscaler were
-        to grant this resource request, it would allow us to dispatch one task for every
-        ready operator.
+        aggregate usage of all operators in the DAG + the incremental usage of all
+        operators that are ready for dispatch (i.e. that have inputs queued). If the
+        autoscaler were to grant this resource request, it would allow us to dispatch
+        one task for every ready operator.
 
         Note that this resource request does not take the global resource limits or the
-        liveness policy into account; it only tries to make the existing resource usage +
-        one more task per ready operator feasible in the cluster.
+        liveness policy into account; it only tries to make the existing resource usage
+        + one more task per ready operator feasible in the cluster.
         """
         # Limit the frequency of autoscaling requests.
         now = time.time()
@@ -156,8 +156,8 @@ class DefaultAutoscaler(Autoscaler):
 
         self._last_request_time = now
 
-        # Get resource usage for all ops + additional resources needed to launch one more
-        # task for each ready op.
+        # Get resource usage for all ops + additional resources needed to launch one
+        # more task for each ready op.
         resource_request = []
 
         def to_bundle(resource: ExecutionResources) -> Dict:
