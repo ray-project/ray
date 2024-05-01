@@ -617,7 +617,7 @@ def test_unserializable_exception(ray_start_regular, propagate_logs):
 
     assert isinstance(exc_info.value, ray.exceptions.RayTaskError)
     assert isinstance(exc_info.value.cause, ray.exceptions.RayError)
-    assert "is not serializable" in str(exc_info.value.cause)
+    assert "isn't serializable" in str(exc_info.value.cause)
 
 
 def test_final_user_exception(ray_start_regular, propagate_logs, caplog):
