@@ -78,7 +78,16 @@ try:
         # anything.
         pass
     else:
-        if parse_version(pyarrow_version) >= parse_version("14.0.1"):
+        from ray._private.ray_constants import env_bool
+
+        RAY_DATA_AUTOLOAD_UNSAFE_ARROW_TYPES = env_bool(
+            "RAY_DATA_AUTOLOAD_UNSAFE_ARROW_TYPES", False
+        )
+
+        if (
+            parse_version(pyarrow_version) >= parse_version("14.0.1")
+            and RAY_DATA_AUTOLOAD_UNSAFE_ARROW_TYPES
+        ):
             pa.PyExtensionType.set_auto_load(True)
         # Import these arrow extension types to ensure that they are registered.
         from ray.air.util.tensor_extensions.arrow import (  # noqa
