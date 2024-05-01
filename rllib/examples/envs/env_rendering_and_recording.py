@@ -198,12 +198,14 @@ if __name__ == "__main__":
     def _env_creator(cfg):
         cfg.update({"render_mode": "rgb_array"})
         if args.env.startswith("ALE/"):
-            cfg.update({
-                # Make analogous to old v4 + NoFrameskip.
-                "frameskip": 1,
-                "full_action_space": False,
-                "repeat_action_probability": 0.0,
-            })
+            cfg.update(
+                {
+                    # Make analogous to old v4 + NoFrameskip.
+                    "frameskip": 1,
+                    "full_action_space": False,
+                    "repeat_action_probability": 0.0,
+                }
+            )
             return wrap_atari_for_new_api_stack(gym.make(args.env, **cfg), framestack=4)
         else:
             return gym.make(args.env, **cfg)
@@ -211,8 +213,7 @@ if __name__ == "__main__":
     register_env("env", _env_creator)
 
     base_config = (
-        get_trainable_cls(args.algo)
-        .get_default_config()
+        get_trainable_cls(args.algo).get_default_config()
         # Use the above-registered environment.
         .environment("env")
         # Plug in our custom callback that controls, which videos are created (best,
