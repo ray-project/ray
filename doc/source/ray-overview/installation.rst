@@ -427,7 +427,7 @@ Docker images for Python 3.9.
     .. tab-item:: ray (Python 3.9)
         :sync: ray (Python 3.9)
 
-        Ray version: nightly (`5708e75 <https://github.com/ray-project/ray/commit/5708e75978413e46c703e44f43fd89769f3c148b>`_)
+        Ray version: 2.20.0 (`5708e75 <https://github.com/ray-project/ray/commit/5708e75978413e46c703e44f43fd89769f3c148b>`_)
 
         .. literalinclude:: ./pip_freeze_ray-py39-cpu.txt
 
