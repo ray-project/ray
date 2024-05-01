@@ -136,7 +136,7 @@ class RayTaskError(RayError):
             pickle.dumps(cause)
         except (pickle.PicklingError, TypeError) as e:
             err_msg = (
-                "The original cause of RayTaskError"
+                "The original cause of the RayTaskError"
                 f" ({self.cause.__class__}) is not serializable: {e}."
                 " Overwriting the cause to RayError."
             )
