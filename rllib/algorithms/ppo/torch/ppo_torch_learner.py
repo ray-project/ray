@@ -142,17 +142,16 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         timestep: int,
         sampled_kl_values: dict,
     ) -> Dict[str, Any]:
-        assert sampled_kl_values, "Sampled KL values are empty."
 
         results = super().additional_update_for_module(
             module_id=module_id,
             config=config,
             timestep=timestep,
-            sampled_kl_values=sampled_kl_values,
         )
 
         # Update KL coefficient.
         if config.use_kl_loss:
+            assert sampled_kl_values, "Sampled KL values are empty."
             sampled_kl = sampled_kl_values[module_id]
             curr_var = self.curr_kl_coeffs_per_module[module_id]
             if sampled_kl > 2.0 * config.kl_target:
