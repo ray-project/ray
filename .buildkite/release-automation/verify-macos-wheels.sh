@@ -54,7 +54,7 @@ run_sanity_check() {
         "ray[cpp]==$RAY_VERSION"
     (
         cd release/util
-        python sanity_check.py --ray_version="$RAY_VERSION" --ray_commit="5708e75978413e46c703e44f43fd89769f3c148b"
+        python sanity_check.py --ray_version="$RAY_VERSION" --ray_commit="$BUILDKITE_COMMIT"
         bash sanity_check_cpp.sh
     )
     conda deactivate
