@@ -2278,6 +2278,17 @@ py_test(
     args = ["--enable-new-api-stack", "--as-test"]
 )
 
+py_test(
+    name = "examples/envs/env_rendering_and_recording.py",
+    main = "examples/envs/env_rendering_and_recording.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/envs/env_rendering_and_recording.py"],
+    # Note: Run this example w/o tune (which would be required for WandB logging) to
+    # just test the script and its callbacks are running properly.
+    args = ["--enable-new-api-stack", "--env=CartPole-v1", "--no-tune"]
+)
+
 #@OldAPIStack
 py_test(
     name = "examples/envs/greyscale_env",

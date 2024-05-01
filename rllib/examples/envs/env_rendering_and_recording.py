@@ -170,15 +170,15 @@ class EnvRenderCallback(DefaultCallbacks):
             reduce=None,
             # B/c we do NOT reduce over the video data (mean/min/max), we need to make
             # sure the list of videos in our MetricsLogger does not grow infinitely and
-            # gets cleared after each `reduce()` operation, meaning after each
-            # iteration.
+            # gets cleared after each `reduce()` operation, meaning every time, the
+            # EnvRunner is asked to send its logged metrics.
             clear_on_reduce=True,
         )
         # Worst video.
         metrics_logger.log_value(
             "episode_videos_worst",
             self.worst_episode_and_return[0],
-            # Same options as above.
+            # Same logging options as above.
             reduce=None,
             clear_on_reduce=True,
         )
@@ -213,12 +213,28 @@ if __name__ == "__main__":
     base_config = (
         get_trainable_cls(args.algo)
         .get_default_config()
+        # Use the above-registered environment.
         .environment("env")
+        # Plug in our custom callback that controls, which videos are created (best,
+        # and worst per sampling cycle per EnvRunner) and then logged via the
+        # `MetricsLogger` API.
         .callbacks(EnvRenderCallback)
-        .debugging(
-            logger_config={
-                "type": tune.logger.NoopLogger,
-            }
+        # Switch off RLlib's logging to avoid having the large videos show up in any log
+        # files.
+        .debugging(logger_config={"type": tune.logger.NoopLogger})
+        # The following settings are beneficial for Atari-type environments. Feel free
+        # to adjust these when providing a non-Atari `--env` option.
+        .training(
+            lambda_=0.95,
+            kl_coeff=0.5,
+            clip_param=0.1,
+            vf_clip_param=10.0,
+            entropy_coeff=0.01,
+            num_sgd_iter=10,
+            # Linearly adjust learning rate based on number of GPUs.
+            lr=0.00015 * (args.num_gpus or 1),
+            grad_clip=100.0,
+            grad_clip_by="global_norm",
         )
     )
 
