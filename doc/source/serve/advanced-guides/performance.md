@@ -56,3 +56,13 @@ proper backpressure. You can increase the value in the deployment decorator; e.g
 By default, Serve lets client HTTP requests run to completion no matter how long they take. However, slow requests could bottleneck the replica processing, blocking other requests that are waiting. It's recommended that you set an end-to-end timeout, so slow requests can be terminated and retried.
 
 You can set an end-to-end timeout for HTTP requests by setting the `request_timeout_s` in the `http_options` field of the Serve config. HTTP Proxies will wait for that many seconds before terminating an HTTP request. This config is global to your Ray cluster, and it cannot be updated during runtime. Use [client-side retries](serve-best-practices-http-requests) to retry requests that time out due to transient failures.
+
+### Give the Serve Controller more time to process requests
+
+The Serve Controller runs on the Ray head node and is responsible for a variety of tasks,
+including receiving autoscaling metrics from other Ray Serve components.
+If the Serve Controller becomes overloaded
+(symptoms might include high CPU usage and a large number of pending `ServeController.record_handle_metrics` tasks),
+you can increase the interval between cycles of the control loop
+by setting the `RAY_SERVE_CONTROL_LOOP_INTERVAL_S` environment variable (defaults to `0.1` seconds).
+This will give the Controller more time to process requests and may help alleviate the overload.
