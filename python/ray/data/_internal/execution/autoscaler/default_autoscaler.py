@@ -35,10 +35,14 @@ class DefaultAutoscaler(Autoscaler):
         topology: "Topology",
         resource_manager: "ResourceManager",
         execution_id: str,
+        actor_pool_scaling_up_threshold: float = DEFAULT_ACTOR_POOL_SCALING_UP_THRESHOLD,
+        actor_pool_scaling_down_threshold: float = DEFAULT_ACTOR_POOL_SCALING_DOWN_THRESHOLD,
     ):
-        super().__init__(topology, resource_manager, execution_id)
+        self._actor_pool_scaling_up_threshold = actor_pool_scaling_up_threshold
+        self._actor_pool_scaling_down_threshold = actor_pool_scaling_down_threshold
         # Last time when a request was sent to Ray's autoscaler.
         self._last_request_time = 0
+        super().__init__(topology, resource_manager, execution_id)
 
     def try_trigger_scaling(self, scheduling_decision: "SchedulingDecision"):
         self._try_scale_up_cluster(scheduling_decision)
@@ -70,15 +74,11 @@ class DefaultAutoscaler(Autoscaler):
         if op_scheduling_status.under_resource_limits:
             return False
         # Do not scale up, if the op has enough free slots for the existing inputs.
-        free_slots = (
-            actor_pool.max_tasks_in_flight_per_actor() * actor_pool.current_size()
-            - actor_pool.current_in_flight_tasks()
-        )
-        if op_state.num_queued() <= free_slots:
+        if op_state.num_queued() <= actor_pool.num_free_task_slots():
             return False
         # Determine whether to scale up based on the actor pool utilization.
         util = self._actor_pool_util(actor_pool)
-        return util > self.DEFAULT_ACTOR_POOL_SCALING_UP_THRESHOLD
+        return util > self._actor_pool_scaling_up_threshold
 
     def _actor_pool_should_scale_down(
         self,
@@ -86,7 +86,7 @@ class DefaultAutoscaler(Autoscaler):
         op: "PhysicalOperator",
     ):
         # Scale down, if the op is completed or no more inputs are coming.
-        if op.completed() or (op._inputs_complete and op.internal_queue_size()) == 0:
+        if op.completed() or (op._inputs_complete and op.internal_queue_size() == 0):
             return True
         if actor_pool.current_size() > actor_pool.max_size():
             # Scale down, if the actor pool is above max size.
@@ -96,7 +96,7 @@ class DefaultAutoscaler(Autoscaler):
             return False
         # Determine whether to scale down based on the actor pool utilization.
         util = self._actor_pool_util(actor_pool)
-        return util < self.DEFAULT_ACTOR_POOL_SCALING_DOWN_THRESHOLD
+        return util < self._actor_pool_scaling_down_threshold
 
     def _try_scale_up_or_down_actor_pool(
         self, scheduling_decision: "SchedulingDecision"

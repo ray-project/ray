@@ -52,6 +52,17 @@ class AutoscalingActorPool(metaclass=ABCMeta):
         """Number of current in-flight tasks."""
         ...
 
+    def num_total_task_slots(self) -> int:
+        """Total number of task slots."""
+        return self.max_tasks_in_flight_per_actor() * self.current_size()
+
+    def num_free_task_slots(self) -> int:
+        """Number of free slots to run tasks."""
+        return (
+            self.max_tasks_in_flight_per_actor() * self.current_size()
+            - self.current_in_flight_tasks()
+        )
+
     @abstractmethod
     def scale_up(self, num_actors: int) -> int:
         """Scale up the actor pool by the given number of actors.
