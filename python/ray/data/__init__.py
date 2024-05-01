@@ -80,13 +80,13 @@ try:
     else:
         from ray._private.ray_constants import env_bool
 
-        RAY_DATA_AUTOLOAD_UNSAFE_ARROW_TYPES = env_bool(
-            "RAY_DATA_AUTOLOAD_UNSAFE_ARROW_TYPES", False
+        RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE = env_bool(
+            "RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE", False
         )
 
         if (
             parse_version(pyarrow_version) >= parse_version("14.0.1")
-            and RAY_DATA_AUTOLOAD_UNSAFE_ARROW_TYPES
+            and RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE
         ):
             pa.PyExtensionType.set_auto_load(True)
         # Import these arrow extension types to ensure that they are registered.

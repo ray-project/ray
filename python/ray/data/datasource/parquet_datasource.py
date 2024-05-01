@@ -177,7 +177,7 @@ def _check_for_legacy_tensor_type(schema):
                 "you're trying to read data written with an older version of Ray. "
                 "Reading data written with older versions of Ray might expose you to "
                 "arbitrary code execution. To try reading the data anyway, set "
-                "`RAY_DATA_AUTOLOAD_UNSAFE_ARROW_TYPES=1` on all nodes."
+                "`RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE=1` on all nodes."
                 "To learn more, see https://github.com/ray-project/ray/issues/41314."
             )
 
