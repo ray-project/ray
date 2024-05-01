@@ -1,5 +1,4 @@
 import abc
-from typing import Any, Dict
 
 from ray.rllib.algorithms.appo.appo import APPOConfig
 from ray.rllib.algorithms.impala.impala_learner import ImpalaLearner
@@ -46,7 +45,7 @@ class AppoLearner(ImpalaLearner):
         last_update: int,
         mean_kl_loss_per_module: dict,
         **kwargs,
-    ) -> Dict[str, Any]:
+    ) -> None:
         """Updates the target networks and KL loss coefficients (per module).
 
         Args:
@@ -63,26 +62,27 @@ class AppoLearner(ImpalaLearner):
         #  updates.
         #  We should instead have the target / kl threshold update be based off
         #  of the train_batch_size * some target update frequency * num_sgd_iter.
-        results = super().additional_update_for_module(
+        super().additional_update_for_module(
             module_id=module_id, config=config, timestep=timestep
         )
 
-        if (timestep - last_update) >= config.target_update_frequency:
+        # TODO (Sven): DQN uses `config.target_network_update_freq`. Can we
+        #  choose a standard here?
+        last_update_ts_key = (module_id, LAST_TARGET_UPDATE_TS)
+        if (
+            timestep - self.metrics.peek(last_update_ts_key, default=0)
+            >= config.target_update_frequency
+        ):
             self._update_module_target_networks(module_id, config)
-            results[NUM_TARGET_UPDATES] = 1
-            results[LAST_TARGET_UPDATE_TS] = timestep
-        else:
-            results[NUM_TARGET_UPDATES] = 0
-            results[LAST_TARGET_UPDATE_TS] = last_update
+            # Increase lifetime target network update counter by one.
+            self.metrics.log_value((module_id, NUM_TARGET_UPDATES), 1, reduce="sum")
+            # Update the (single-value -> window=1) last updated timestep metric.
+            self.metrics.log_value(last_update_ts_key, timestep, window=1)
 
         if config.use_kl_loss and module_id in mean_kl_loss_per_module:
-            results.update(
-                self._update_module_kl_coeff(
-                    module_id, config, mean_kl_loss_per_module[module_id]
-                )
+            self._update_module_kl_coeff(
+                module_id, config, mean_kl_loss_per_module[module_id]
             )
-
-        return results
 
     @abc.abstractmethod
     def _update_module_target_networks(
@@ -100,7 +100,7 @@ class AppoLearner(ImpalaLearner):
     @abc.abstractmethod
     def _update_module_kl_coeff(
         self, module_id: ModuleID, config: APPOConfig, sampled_kl: float
-    ) -> Dict[str, Any]:
+    ) -> None:
         """Dynamically update the KL loss coefficients of each module with.
 
         The update is completed using the mean KL divergence between the action
