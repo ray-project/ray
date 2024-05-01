@@ -138,7 +138,7 @@ class RayTaskError(RayError):
             err_msg = (
                 "The original cause of the RayTaskError"
                 f" ({self.cause.__class__}) isn't serializable: {e}."
-                " Overwriting the cause to RayError."
+                " Overwriting the cause to a RayError."
             )
             logger.warning(err_msg)
             self.cause = RayError(err_msg)
