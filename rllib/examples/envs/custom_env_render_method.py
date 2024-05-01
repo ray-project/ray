@@ -85,6 +85,7 @@ class CustomRenderedEnv(gym.Env):
 
 MultiAgentCustomRenderedEnv = make_multi_agent(lambda config: CustomRenderedEnv(config))
 
+
 if __name__ == "__main__":
     # Note: Recording and rendering in this example
     # should work for both local_mode=True|False.
