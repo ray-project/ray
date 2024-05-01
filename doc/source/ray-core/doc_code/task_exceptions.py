@@ -51,14 +51,14 @@ try:
     ray.get(raise_unserializable_error.remote())
 except ray.exceptions.RayTaskError as e:
     print(e)
-    # ray::raise_unserializable_error() (pid=222813, ip=172.31.5.154)
+    # ray::raise_unserializable_error() (pid=328577, ip=172.31.5.154)
     #   File "/home/ubuntu/ray/tmp~/main.py", line 25, in raise_unserializable_error
     #     raise UnserializableException
     # UnserializableException
     print(type(e.cause))
     # <class 'ray.exceptions.RayError'>
     print(e.cause)
-    # The original cause of RayTaskError (<class '__main__.UnserializableException'>) is not serializable: cannot pickle '_thread.lock' object. Overwriting the cause to RayError.
+    # The original cause of the RayTaskError (<class '__main__.UnserializableException'>) isn't serializable: cannot pickle '_thread.lock' object. Overwriting the cause to a RayError.
 
 # __unserializable_exceptions_end__
 # __catch_user_exceptions_begin__
