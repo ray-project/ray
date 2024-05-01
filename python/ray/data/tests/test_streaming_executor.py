@@ -58,15 +58,8 @@ def mock_resource_manager(
     )
 
 
-class NoopAutoscaler(Autoscaler):
-    def __init__(self):
-        pass
-
-    def try_trigger_scaling(self, scheduling_decision):
-        pass
-
-    def on_executor_shutdown(self):
-        pass
+def mock_autoscaler():
+    return MagicMock()
 
 
 @ray.remote
@@ -215,7 +208,7 @@ def test_select_operator_to_run():
         nonlocal topo, resource_manager
 
         return select_operator_to_run(
-            topo, resource_manager, [], NoopAutoscaler(), True
+            topo, resource_manager, [], mock_autoscaler(), True
         )
 
     # Test empty.
@@ -423,7 +416,7 @@ def test_select_ops_ensure_at_least_one_live_operator():
         nonlocal topo, resource_manager
 
         return select_operator_to_run(
-            topo, resource_manager, [], NoopAutoscaler(), ensure_at_least_one_running
+            topo, resource_manager, [], mock_autoscaler(), ensure_at_least_one_running
         )
 
     assert _select_op_to_run(True) is None
