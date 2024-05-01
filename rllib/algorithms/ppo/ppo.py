@@ -432,7 +432,7 @@ class PPO(Algorithm):
         with self.metrics.log_time((TIMERS, ENV_RUNNER_SAMPLING_TIMER)):
             # Sample in parallel from the workers.
             if self.config.count_steps_by == "agent_steps":
-                episodes, env_runner_metrics = synchronous_parallel_sample(
+                episodes, env_runner_results = synchronous_parallel_sample(
                     worker_set=self.workers,
                     max_agent_steps=self.config.total_train_batch_size,
                     sample_timeout_s=self.config.sample_timeout_s,
@@ -442,7 +442,7 @@ class PPO(Algorithm):
                     _return_metrics=True,
                 )
             else:
-                episodes, env_runner_metrics = synchronous_parallel_sample(
+                episodes, env_runner_results = synchronous_parallel_sample(
                     worker_set=self.workers,
                     max_env_steps=self.config.total_train_batch_size,
                     sample_timeout_s=self.config.sample_timeout_s,
@@ -456,7 +456,7 @@ class PPO(Algorithm):
                 return {}
 
             # Reduce EnvRunner metrics over the n EnvRunners.
-            self.metrics.log_n_dicts(env_runner_metrics, key=ENV_RUNNER_RESULTS)
+            self.metrics.log_n_dicts(env_runner_results, key=ENV_RUNNER_RESULTS)
             # Log lifetime counts for env- and agent steps.
             self.metrics.log_dict(
                 {

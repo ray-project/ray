@@ -174,6 +174,10 @@ class MetricsLogger:
                 ema_coeff=ema_coeff,
                 clear_on_reduce=clear_on_reduce,
             )
+        # If value itself is a stat, we merge it on time axis into `self`.
+        elif isinstance(value, Stats):
+            self.stats[key].merge_on_time_axis(value)
+        # Otherwise, we just push the value into `self`.
         else:
             self.stats[key].push(value)
 
@@ -289,9 +293,10 @@ class MetricsLogger:
                         clear_on_reduce=clear_on_reduce,
                     )
 
-            # Merge existing Stats with incoming one.
+            # Merge incoming Stats into existing one (as a next timestep on top of
+            # existing data).
             if extended_key in self.stats:
-                self.stats[extended_key].merge(stat_or_value, shuffle=False)
+                self.stats[extended_key].merge_on_time_axis(stat_or_value)
             # Use incoming Stats object's values, but create a new Stats object (around
             # these values) to not mess with the original Stats object.
             else:
@@ -351,7 +356,8 @@ class MetricsLogger:
                 clear_on_reduce = True
 
             available_stats = [s[key] for s in stats_dicts if key in s]
-            merged_stats = None
+            base_stats = None
+            more_stats = []
             for i, stat_or_value in enumerate(available_stats):
                 # Value is NOT a Stats object -> Convert it to one.
                 if not isinstance(stat_or_value, Stats):
@@ -367,17 +373,24 @@ class MetricsLogger:
                 if extended_key not in self.stats:
                     self.stats[extended_key] = Stats.similar_to(stat_or_value)
 
-                # Create a new Stats object to merge everything into (with shuffle=True
-                # to make sure all to-be-merged Stats are treated equally).
-                if merged_stats is None:
-                    merged_stats = Stats.similar_to(stat_or_value)
-                # Merge all `stats_dicts` into `merged_stats`first.
-                merged_stats.merge(stat_or_value, shuffle=True)
+                # Create a new Stats object to merge everything into as parallel,
+                # equally weighted Stats.
+                if base_stats is None:
+                    base_stats = Stats.similar_to(
+                        stat_or_value,
+                        init_value=stat_or_value.values,
+                    )
+                else:
+                    more_stats.append(stat_or_value)
 
-            # Finally, merge `merged_stats` into self's entry, but w/o shuffling to
-            # give the newer values (`merged_stats`) priority over possibly already
-            # existing ones.
-            self.stats[extended_key].merge(merged_stats, shuffle=False)
+            # There are more than one incoming parallel others -> Merge all of them
+            # first in parallel.
+            if len(more_stats) > 0:
+                base_stats.merge_in_parallel(*more_stats)
+
+            # Finally, merge `base_stats` into self's entry on time axis, meaning
+            # give the incoming values priority over already existing ones.
+            self.stats[extended_key].merge_on_time_axis(base_stats)
 
     def log_time(
         self,

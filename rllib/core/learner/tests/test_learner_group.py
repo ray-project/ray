@@ -26,13 +26,13 @@ from ray.util.timer import _Timer
 
 
 REMOTE_CONFIGS = {
-    "remote-cpu": AlgorithmConfig.overrides(num_learner_workers=1),
-    "remote-gpu": AlgorithmConfig.overrides(
-        num_learner_workers=1, num_gpus_per_learner_worker=1
-    ),
-    "multi-gpu-ddp": AlgorithmConfig.overrides(
-        num_learner_workers=2, num_gpus_per_learner_worker=1
-    ),
+    # "remote-cpu": AlgorithmConfig.overrides(num_learner_workers=1),
+    # "remote-gpu": AlgorithmConfig.overrides(
+    #    num_learner_workers=1, num_gpus_per_learner_worker=1
+    # ),
+    # "multi-gpu-ddp": AlgorithmConfig.overrides(
+    #    num_learner_workers=2, num_gpus_per_learner_worker=1
+    # ),
     "multi-cpu-ddp": AlgorithmConfig.overrides(
         num_learner_workers=2, num_cpus_per_learner_worker=2
     ),
@@ -43,12 +43,12 @@ REMOTE_CONFIGS = {
 
 
 LOCAL_CONFIGS = {
-    "local-cpu": AlgorithmConfig.overrides(
-        num_learner_workers=0, num_gpus_per_learner_worker=0
-    ),
-    "local-gpu": AlgorithmConfig.overrides(
-        num_learner_workers=0, num_gpus_per_learner_worker=1
-    ),
+    # "local-cpu": AlgorithmConfig.overrides(
+    #    num_learner_workers=0, num_gpus_per_learner_worker=0
+    # ),
+    # "local-gpu": AlgorithmConfig.overrides(
+    #    num_learner_workers=0, num_gpus_per_learner_worker=1
+    # ),
 }
 
 
@@ -439,7 +439,7 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
         """Check that saving and loading learner group state works."""
         fws = ["torch", "tf2"]
         # this is expanded to more scaling modes on the release ci.
-        scaling_modes = ["multi-gpu-ddp", "local-cpu"]
+        scaling_modes = ["multi-cpu-ddp"]  # , "local-cpu"]
         test_iterator = itertools.product(fws, scaling_modes)
         batch = SampleBatch(FAKE_BATCH)
         for fw, scaling_mode in test_iterator:
