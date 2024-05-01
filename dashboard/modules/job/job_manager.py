@@ -180,7 +180,7 @@ class JobSupervisor:
         self._logger = logging.getLogger(f"{__name__}.supervisor_{job_id}")
         supervisor_log_file_name = os.path.join(
             ray._private.worker._global_node.get_logs_dir_path(),
-            f"jobs/supervisor-{job_id}.log"
+            f"jobs/supervisor-{job_id}.log",
         )
         os.makedirs(os.path.dirname(supervisor_log_file_name), exist_ok=True)
         self._logger.addHandler(logging.FileHandler(supervisor_log_file_name))
