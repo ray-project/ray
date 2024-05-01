@@ -113,7 +113,7 @@ kubectl apply -n pod-security -f ray-cluster.pod-security.yaml
 docker exec kind-control-plane cat /var/log/kubernetes/kube-apiserver-audit.log
 
 # Forward the dashboard port
-kubectl port-forward --address 0.0.0.0 svc/raycluster-pod-security-head-svc -n pod-security 8265:8265
+kubectl port-forward svc/raycluster-pod-security-head-svc -n pod-security 8265:8265
 
 # Log in to the head Pod
 kubectl exec -it -n pod-security ${YOUR_HEAD_POD} -- bash

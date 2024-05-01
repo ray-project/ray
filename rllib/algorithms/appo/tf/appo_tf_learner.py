@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Dict
 
 from ray.rllib.algorithms.appo.appo import (
     APPOConfig,
@@ -72,7 +72,7 @@ class APPOTfLearner(AppoLearner, ImpalaTfLearner):
             trajectory_len=rollout_frag_or_episode_len,
             recurrent_seq_len=recurrent_seq_len,
         )
-        if self.config.uses_new_env_runners:
+        if self.config.enable_env_runner_and_connector_v2:
             bootstrap_values = batch[Columns.VALUES_BOOTSTRAPPED]
         else:
             bootstrap_values_time_major = make_time_major(
@@ -159,9 +159,11 @@ class APPOTfLearner(AppoLearner, ImpalaTfLearner):
             + (mean_kl_loss * self.curr_kl_coeffs_per_module[module_id])
         )
 
-        # Register important loss stats.
-        self.register_metrics(
-            module_id,
+        # Register all important loss stats.
+        # Note that our MetricsLogger (self.metrics) is currently in tensor-mode,
+        # meaning that it allows us to even log in-graph/compiled tensors through
+        # its `log_...()` APIs.
+        self.metrics.log_dict(
             {
                 POLICY_LOSS_KEY: mean_pi_loss,
                 VF_LOSS_KEY: mean_vf_loss,
@@ -171,6 +173,8 @@ class APPOTfLearner(AppoLearner, ImpalaTfLearner):
                     self.curr_kl_coeffs_per_module[module_id]
                 ),
             },
+            key=module_id,
+            window=1,  # <- single items (should not be mean/ema-reduced over time).
         )
         # Return the total loss.
         return total_loss
@@ -194,7 +198,7 @@ class APPOTfLearner(AppoLearner, ImpalaTfLearner):
     @override(AppoLearner)
     def _update_module_kl_coeff(
         self, module_id: ModuleID, config: APPOConfig, sampled_kl: float
-    ) -> Dict[str, Any]:
+    ) -> None:
         # Update the current KL value based on the recently measured value.
         # Increase.
         kl_coeff_var = self.curr_kl_coeffs_per_module[module_id]
@@ -206,4 +210,8 @@ class APPOTfLearner(AppoLearner, ImpalaTfLearner):
         elif sampled_kl < 0.5 * config.kl_target:
             kl_coeff_var.assign(kl_coeff_var * 0.5)
 
-        return {LEARNER_RESULTS_CURR_KL_COEFF_KEY: kl_coeff_var.numpy()}
+        self.metrics.log_value(
+            (module_id, LEARNER_RESULTS_CURR_KL_COEFF_KEY),
+            kl_coeff_var.numpy(),
+            window=1,
+        )

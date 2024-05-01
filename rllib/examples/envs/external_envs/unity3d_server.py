@@ -132,8 +132,8 @@ if __name__ == "__main__":
         # DL framework to use.
         .framework(args.framework)
         # Use n worker processes to listen on different ports.
-        .rollouts(
-            num_rollout_workers=args.num_workers,
+        .env_runners(
+            num_env_runners=args.num_workers,
             rollout_fragment_length=20,
             enable_connectors=False,
         )

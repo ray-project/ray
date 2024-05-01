@@ -95,12 +95,12 @@ if __name__ == "__main__":
             num_gpus_per_worker=args.num_gpus_per_worker,
         )
         # How many RolloutWorkers (each with n environment copies:
-        # `num_envs_per_worker`)?
-        .rollouts(
-            num_rollout_workers=args.num_workers,
+        # `num_envs_per_env_runner`)?
+        .env_runners(
+            num_env_runners=args.num_workers,
             # This setting should not really matter as it does not affect the
             # number of GPUs reserved for each worker.
-            num_envs_per_worker=args.num_envs_per_worker,
+            num_envs_per_env_runner=args.num_envs_per_worker,
         )
         # 4 tune trials altogether.
         .training(lr=tune.grid_search([0.005, 0.003, 0.001, 0.0001]))
@@ -108,8 +108,8 @@ if __name__ == "__main__":
 
     stop = {
         "training_iteration": args.stop_iters,
-        "timesteps_total": args.stop_timesteps,
-        "episode_reward_mean": args.stop_reward,
+        "num_env_steps_sampled_lifetime": args.stop_timesteps,
+        "env_runner_results/episode_return_mean": args.stop_reward,
     }
 
     # Note: The above GPU settings should also work in case you are not

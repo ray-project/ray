@@ -140,7 +140,7 @@ if __name__ == "__main__":
         get_trainable_cls(args.run)
         .get_default_config()
         # Batch-norm models have not been migrated to the RL Module API yet.
-        .experimental(_enable_new_api_stack=False)
+        .api_stack(enable_rl_module_and_learner=False)
         .environment(CorrelatedActionsEnv)
         .framework(args.framework)
         .training(gamma=0.5)
@@ -160,8 +160,8 @@ if __name__ == "__main__":
     # use stop conditions passed via CLI (or defaults)
     stop = {
         "training_iteration": args.stop_iters,
-        "timesteps_total": args.stop_timesteps,
-        "episode_reward_mean": args.stop_reward,
+        "num_env_steps_sampled_lifetime": args.stop_timesteps,
+        "env_runner_results/episode_return_mean": args.stop_reward,
     }
 
     # manual training loop using PPO without ``Tuner.fit()``.

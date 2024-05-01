@@ -374,33 +374,81 @@ std::string GlobalStateAccessor::GetSystemConfig() {
   return future.get();
 }
 
-ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
-    const std::string &node_ip_address, std::string *node_to_connect) {
+ray::Status GlobalStateAccessor::GetAliveNodes(std::vector<rpc::GcsNodeInfo> &nodes) {
+  std::promise<std::pair<Status, std::vector<rpc::GcsNodeInfo>>> promise;
+  {
+    absl::ReaderMutexLock lock(&mutex_);
+    RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAll(
+        [&promise](Status status, std::vector<rpc::GcsNodeInfo> &&nodes) {
+          promise.set_value(
+              std::pair<Status, std::vector<rpc::GcsNodeInfo>>(status, std::move(nodes)));
+        }));
+  }
+  auto result = promise.get_future().get();
+  auto status = result.first;
+  if (!status.ok()) {
+    return status;
+  }
+
+  std::copy_if(result.second.begin(),
+               result.second.end(),
+               std::back_inserter(nodes),
+               [](const rpc::GcsNodeInfo &node) {
+                 return node.state() == rpc::GcsNodeInfo::ALIVE;
+               });
+  return status;
+}
+
+ray::Status GlobalStateAccessor::GetNode(const std::string &node_id,
+                                         std::string *node_info) {
   auto start_ms = current_time_ms();
+  auto node_id_binary = NodeID::FromHex(node_id).Binary();
   while (true) {
-    std::promise<std::pair<Status, std::vector<rpc::GcsNodeInfo>>> promise;
-    {
-      absl::ReaderMutexLock lock(&mutex_);
-      RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAll(
-          [&promise](Status status, std::vector<rpc::GcsNodeInfo> &&nodes) {
-            promise.set_value(std::pair<Status, std::vector<rpc::GcsNodeInfo>>(
-                status, std::move(nodes)));
-          }));
-    }
-    auto result = promise.get_future().get();
-    auto status = result.first;
+    std::vector<rpc::GcsNodeInfo> nodes;
+    auto status = GetAliveNodes(nodes);
     if (!status.ok()) {
       return status;
     }
 
-    // Deal with alive nodes only
+    if (nodes.empty()) {
+      status = Status::NotFound("GCS has started but no raylets have registered yet.");
+    } else {
+      int relevant_client_index = -1;
+      for (int i = 0; i < static_cast<int>(nodes.size()); i++) {
+        const auto &node = nodes[i];
+        if (node_id_binary == node.node_id()) {
+          relevant_client_index = i;
+          break;
+        }
+      }
+
+      if (relevant_client_index < 0) {
+        status = Status::NotFound("GCS cannot find the node with node ID " + node_id);
+      } else {
+        *node_info = nodes[relevant_client_index].SerializeAsString();
+        return Status::OK();
+      }
+    }
+
+    if (current_time_ms() - start_ms >=
+        RayConfig::instance().raylet_start_wait_time_s() * 1000) {
+      return status;
+    }
+    RAY_LOG(WARNING) << "Retrying to get node with node ID " << node_id;
+    // Some of the information may not be in GCS yet, so wait a little bit.
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+  }
+}
+
+ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
+    const std::string &node_ip_address, std::string *node_to_connect) {
+  auto start_ms = current_time_ms();
+  while (true) {
     std::vector<rpc::GcsNodeInfo> nodes;
-    std::copy_if(result.second.begin(),
-                 result.second.end(),
-                 std::back_inserter(nodes),
-                 [](const rpc::GcsNodeInfo &node) {
-                   return node.state() == rpc::GcsNodeInfo::ALIVE;
-                 });
+    auto status = GetAliveNodes(nodes);
+    if (!status.ok()) {
+      return status;
+    }
 
     if (nodes.empty()) {
       status = Status::NotFound("GCS has started but no raylets have registered yet.");

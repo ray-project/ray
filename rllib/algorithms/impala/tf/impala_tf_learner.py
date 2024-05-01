@@ -4,11 +4,11 @@ import tree
 from ray.rllib.algorithms.impala.impala import ImpalaConfig
 from ray.rllib.algorithms.impala.impala_learner import ImpalaLearner
 from ray.rllib.algorithms.impala.tf.vtrace_tf_v2 import make_time_major, vtrace_tf2
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import ENTROPY_KEY
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
 from ray.rllib.core.models.base import CRITIC, ENCODER_OUT
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.nested_dict import NestedDict
@@ -60,7 +60,7 @@ class ImpalaTfLearner(ImpalaLearner, TfLearner):
             trajectory_len=rollout_frag_or_episode_len,
             recurrent_seq_len=recurrent_seq_len,
         )
-        if self.config.uses_new_env_runners:
+        if self.config.enable_env_runner_and_connector_v2:
             bootstrap_values = batch[Columns.VALUES_BOOTSTRAPPED]
         else:
             bootstrap_values_time_major = make_time_major(
@@ -123,14 +123,15 @@ class ImpalaTfLearner(ImpalaLearner, TfLearner):
             )
         )
 
-        # Register important loss stats.
-        self.register_metrics(
-            module_id,
+        # Log important loss stats.
+        self.metrics.log_dict(
             {
                 "pi_loss": mean_pi_loss,
                 "vf_loss": mean_vf_loss,
                 ENTROPY_KEY: -mean_entropy_loss,
             },
+            key=module_id,
+            window=1,  # <- single items (should not be mean/ema-reduced over time).
         )
         # Return the total loss.
         return total_loss
@@ -143,7 +144,7 @@ class ImpalaTfLearner(ImpalaLearner, TfLearner):
             batch[Columns.INFOS] = infos
 
         # TODO (sven): Make multi-agent capable.
-        module = self.module[DEFAULT_POLICY_ID].unwrapped()
+        module = self.module[DEFAULT_MODULE_ID].unwrapped()
 
         # Shared encoder.
         encoder_outs = module.encoder(batch)

@@ -1,7 +1,11 @@
-from typing import Tuple, Optional, List, Dict
-import torch
-
-import numpy as np
+from typing import (
+    TYPE_CHECKING,
+    Tuple,
+    Any,
+    Optional,
+    List,
+    Dict,
+)
 
 import ray.util.serialization
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -10,13 +14,27 @@ from ray.experimental.channel import (
     Channel,
 )
 
+try:
+    import torch
+except ImportError:
+    torch = None
+
+if TYPE_CHECKING:
+    import numpy as np
+
 
 class DAGNodeOutputType:
     pass
 
 
-@DeveloperAPI
-def do_register_custom_dag_serializers(self):
+def _assert_torch_available():
+    if torch is None:
+        raise ImportError("Ray DAG TorchTensorType requires PyTorch.")
+
+
+def _do_register_custom_dag_serializers(self: Any) -> None:
+    # Helper method to run on the DAG driver and actors to register custom
+    # serializers.
     from ray.air._internal import torch_utils
 
     default_device = torch_utils.get_devices()[0]
@@ -40,9 +58,8 @@ def do_register_custom_dag_serializers(self):
 
 @PublicAPI(stability="alpha")
 class TorchTensorType(DAGNodeOutputType):
-    def __init__(
-        self, shape: Tuple[int], dtype: "torch.dtype", transport: Optional[str] = None
-    ):
+    def __init__(self, shape: Tuple[int], dtype: "torch.dtype", transport: Optional[str] = None):
+        _assert_torch_available()
         self.shape = shape
         self.dtype = dtype
         self.transport = transport
@@ -55,6 +72,7 @@ class _TorchTensorWrapper:
         tensor: "torch.Tensor",
         typ: TorchTensorType,
     ):
+        _assert_torch_available()
         if not isinstance(tensor, torch.Tensor):
             raise ValueError(
                 "DAG nodes wrapped with ray.experimental.TorchTensor must return a "
@@ -77,13 +95,12 @@ class _TorchTensorWrapper:
         self.typ = typ
 
 
-@DeveloperAPI
 class _TorchTensorSerializer:
     def __init__(self, device: "torch.device"):
         self.device = device
 
     @staticmethod
-    def serialize_to_numpy(instance: "_TorchTensorWrapper") -> np.ndarray:
+    def serialize_to_numpy(instance: "_TorchTensorWrapper") -> "np.ndarray":
         tensor = instance.tensor
         # Transfer through Ray's shared memory store for now.
         # TODO(swang): This requires two copies, one to transfer from GPU to
@@ -95,7 +112,7 @@ class _TorchTensorSerializer:
 
         return tensor.numpy()
 
-    def deserialize_from_numpy(self, np_array: np.ndarray):
+    def deserialize_from_numpy(self, np_array: "np.ndarray"):
         # TODO(swang): Support local P2P transfers if available.
         # TODO(swang): Support multinode transfers with NCCL.
 
