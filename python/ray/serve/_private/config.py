@@ -117,7 +117,7 @@ class DeploymentConfig(BaseModel):
     )
     max_ongoing_requests: PositiveInt = Field(
         default=DEFAULT_MAX_ONGOING_REQUESTS,
-        update_type=DeploymentOptionUpdateType.NeedsReconfigure,
+        update_type=DeploymentOptionUpdateType.NeedsActorReconfigure,
     )
     max_queued_requests: int = Field(
         default=-1,

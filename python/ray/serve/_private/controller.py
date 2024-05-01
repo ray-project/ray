@@ -23,7 +23,7 @@ from ray.serve._private.common import (
     TargetCapacityDirection,
 )
 from ray.serve._private.constants import (
-    CONTROL_LOOP_PERIOD_S,
+    CONTROL_LOOP_INTERVAL_S,
     CONTROLLER_MAX_CONCURRENCY,
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
     RAY_SERVE_ENABLE_TASK_EVENTS,
@@ -466,7 +466,7 @@ class ServeController:
             self.num_control_loops_gauge.set(num_loops)
 
             sleep_start_time = time.time()
-            await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
+            await asyncio.sleep(CONTROL_LOOP_INTERVAL_S)
             self.sleep_duration_gauge_s.set(time.time() - sleep_start_time)
 
     def _create_control_loop_metrics(self):

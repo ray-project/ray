@@ -767,6 +767,7 @@ ray_cc_library(
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@nlohmann_json",
     ],
@@ -1243,6 +1244,28 @@ ray_cc_test(
         "@com_google_absl//absl/random",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "mutable_object_provider_test",
+    srcs = [
+        "src/ray/core_worker/test/mutable_object_provider_test.cc",
+    ],
+    tags = [
+      "no_tsan",
+      "team:core",
+      "no_windows"
+    ],
+    deps = [
+        ":core_worker_lib",
+        ":plasma_store_server_lib",
+        "@com_google_absl//absl/random",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest_main",
+    ],
+    target_compatible_with = [
+        "@platforms//os:linux",
     ],
 )
 

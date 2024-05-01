@@ -22,11 +22,9 @@ from packaging import version
 
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.rl_module import INFERENCE_ONLY
-from ray.rllib.core.rl_module.marl_module import (
-    DEFAULT_MODULE_ID,
-    MultiAgentRLModuleSpec,
-)
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -1657,7 +1655,7 @@ class AlgorithmConfig(_Config):
                 and compile RLModule input data from this information. For example, if
                 your custom env-to-module connector (and your custom RLModule) requires
                 the previous 10 rewards as inputs, you must set this to at least 10.
-            use_worker_filter_stats: Whether to use the workers in the WorkerSet to
+            use_worker_filter_stats: Whether to use the workers in the EnvRunnerGroup to
                 update the central filters (held by the local worker). If False, stats
                 from the workers will not be used and discarded.
             update_worker_filter_stats: Whether to push filter updates from the central
@@ -2185,7 +2183,7 @@ class AlgorithmConfig(_Config):
                 workers are created separately from those EnvRunners used to sample data
                 for training.
             custom_evaluation_function: Customize the evaluation method. This must be a
-                function of signature (algo: Algorithm, eval_workers: WorkerSet) ->
+                function of signature (algo: Algorithm, eval_workers: EnvRunnerGroup) ->
                 metrics: dict. See the Algorithm.evaluate() method to see the default
                 implementation. The Algorithm guarantees all eval workers have the
                 latest policy state before this function is called.
@@ -3089,7 +3087,8 @@ class AlgorithmConfig(_Config):
 
         Returns:
             A fully valid AlgorithmConfig object that can be used for the evaluation
-            WorkerSet. If `self` is already an evaluation config object, return None.
+            EnvRunnerGroup. If `self` is already an evaluation config object, return
+            None.
         """
         if self.in_evaluation:
             assert self.evaluation_config is None

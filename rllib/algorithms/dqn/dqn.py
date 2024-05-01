@@ -19,16 +19,13 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dqn.dqn_rainbow_learner import TD_ERROR_KEY
 from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.algorithms.dqn.dqn_torch_policy import DQNTorchPolicy
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.learner import Learner
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
-from ray.rllib.policy.sample_batch import (
-    DEFAULT_POLICY_ID,
-    MultiAgentBatch,
-    SampleBatch,
-)
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.execution.train_ops import (
     train_one_step,
     multi_gpu_train_one_step,
@@ -720,7 +717,7 @@ class DQN(Algorithm):
                         timestep=current_ts,
                         last_update=self.metrics.peek(
                             # TODO (sven): Support multi-agent in DQN/SAC.
-                            (LEARNER_RESULTS, DEFAULT_POLICY_ID, LAST_TARGET_UPDATE_TS),
+                            (LEARNER_RESULTS, DEFAULT_MODULE_ID, LAST_TARGET_UPDATE_TS),
                             default=0,
                         ),
                     )
@@ -740,7 +737,7 @@ class DQN(Algorithm):
                     #  `additional_update()` once MetricsLogger is present in Learner.
                     self.metrics.log_value(
                         (LEARNER_RESULTS, NUM_TARGET_UPDATES),
-                        value=additional_results[DEFAULT_POLICY_ID][NUM_TARGET_UPDATES],
+                        value=additional_results[DEFAULT_MODULE_ID][NUM_TARGET_UPDATES],
                         reduce="sum",
                     )
 

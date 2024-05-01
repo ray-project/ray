@@ -49,7 +49,7 @@ helm install kuberay-operator kuberay/kuberay-operator --version 1.0.0
 kubectl apply -f https://raw.githubusercontent.com/ray-project/ray/master/doc/source/cluster/kubernetes/configs/ray-cluster.gpu.yaml
 
 # Set up port-forwarding
-kubectl port-forward --address 0.0.0.0 services/raycluster-head-svc 8265:8265
+kubectl port-forward services/raycluster-head-svc 8265:8265
 
 # Step 3: Run the PyTorch image training benchmark.
 # Install Ray if needed
@@ -122,7 +122,7 @@ helm install kuberay-operator kuberay/kuberay-operator --version 1.0.0
 kubectl apply -f https://raw.githubusercontent.com/ray-project/ray/master/doc/source/cluster/kubernetes/configs/ray-cluster.gpu.yaml
 
 # port forwarding
-kubectl port-forward --address 0.0.0.0 services/raycluster-head-svc 8265:8265
+kubectl port-forward services/raycluster-head-svc 8265:8265
 
 # Test cluster (optional)
 ray job submit --address http://localhost:8265 -- python -c "import ray; ray.init(); print(ray.cluster_resources())"

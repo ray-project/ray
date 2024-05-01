@@ -966,10 +966,10 @@ py_test(
 )
 
 py_test(
-    name = "evaluation/tests/test_episode",
-    tags = ["team:rllib", "evaluation"],
+    name = "env/tests/test_env_runner_group",
+    tags = ["team:rllib", "evaluation", "exclusive"],
     size = "small",
-    srcs = ["evaluation/tests/test_episode.py"]
+    srcs = ["env/tests/test_env_runner_group.py"]
 )
 
 py_test(
@@ -977,6 +977,13 @@ py_test(
     tags = ["team:rllib", "evaluation"],
     size = "small",
     srcs = ["evaluation/tests/test_env_runner_v2.py"]
+)
+
+py_test(
+    name = "evaluation/tests/test_episode",
+    tags = ["team:rllib", "evaluation"],
+    size = "small",
+    srcs = ["evaluation/tests/test_episode.py"]
 )
 
 py_test(
@@ -991,13 +998,6 @@ py_test(
     tags = ["team:rllib", "evaluation"],
     size = "small",
     srcs = ["evaluation/tests/test_postprocessing.py"]
-)
-
-py_test(
-    name = "evaluation/tests/test_worker_set",
-    tags = ["team:rllib", "evaluation", "exclusive"],
-    size = "small",
-    srcs = ["evaluation/tests/test_worker_set.py"]
 )
 
 py_test(

@@ -6,12 +6,11 @@ from ray.rllib.algorithms.ppo.ppo_learner import (
     LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY,
 )
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.learner.learner import (
     LEARNER_RESULTS_CURR_LR_KEY,
 )
 
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.metrics import LEARNER_RESULTS
 from ray.rllib.utils.test_utils import (
     check,
@@ -36,7 +35,7 @@ def get_model_config(framework, lstm=False):
 
 class MyCallbacks(DefaultCallbacks):
     def on_train_result(self, *, algorithm, result: dict, **kwargs):
-        stats = result[LEARNER_RESULTS][DEFAULT_POLICY_ID]
+        stats = result[LEARNER_RESULTS][DEFAULT_MODULE_ID]
         # Entropy coeff goes to 0.05, then 0.0 (per iter).
         check(
             stats[LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY],
@@ -126,7 +125,7 @@ class TestPPO(unittest.TestCase):
 
                     # Check current entropy coeff value using the respective Scheduler.
                     entropy_coeff = learner.entropy_coeff_schedulers_per_module[
-                        DEFAULT_POLICY_ID
+                        DEFAULT_MODULE_ID
                     ].get_current_value()
                     check(entropy_coeff, 0.1)
 

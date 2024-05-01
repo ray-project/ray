@@ -19,6 +19,7 @@
 #include <string>
 #include <vector>
 
+#include "absl/container/node_hash_map.h"
 #include "gtest/gtest_prod.h"
 #include "ray/common/buffer.h"
 #include "ray/common/ray_object.h"
@@ -36,72 +37,74 @@ class MutableObjectManager {
  public:
   struct Channel {
     Channel(std::unique_ptr<plasma::MutableObject> mutable_object_ptr)
-        : mutable_object(std::move(mutable_object_ptr)) {}
+        : lock(std::make_unique<absl::Mutex>()),
+          mutable_object(std::move(mutable_object_ptr)) {}
+
+    // WriteAcquire() sets this to true. WriteRelease() sets this to false.
+    bool written = false;
+    // ReadAcquire() sets this to true. ReadRelease() sets this to false. This is used by
+    // the destructor to determine if the channel lock must be unlocked. This is necessary
+    // if a reader exits after calling ReadAcquire() and before calling ReadRelease().
+    bool reading = false;
+
+    // This mutex protects `next_version_to_read`.
+    std::unique_ptr<absl::Mutex> lock;
+    // The last version that we read. To read again, we must pass a newer
+    // version than this.
+    int64_t next_version_to_read = 1;
+
+    bool reader_registered = false;
+    bool writer_registered = false;
 
     std::unique_ptr<plasma::MutableObject> mutable_object;
   } ABSL_CACHELINE_ALIGNED;
 
-  struct WriterChannel : public Channel {
-    WriterChannel(std::unique_ptr<plasma::MutableObject> mutable_object_ptr)
-        : Channel(std::move(mutable_object_ptr)) {}
-
-    // WriteAcquire() sets this to true. WriteRelease() sets this to false.
-    bool written = false;
-  };
-
-  // Thread-safe for multiple ReadAcquire threads and one ReadRelease thread.
-  struct ReaderChannel : public Channel {
-    ReaderChannel(std::unique_ptr<plasma::MutableObject> mutable_object_ptr)
-        : Channel(std::move(mutable_object_ptr)), lock(std::make_unique<absl::Mutex>()) {}
-
-    /// This mutex protects `next_version_to_read`.
-    std::unique_ptr<absl::Mutex> lock;
-    /// The last version that we read. To read again, we must pass a newer
-    /// version than this.
-    int64_t next_version_to_read = 1;
-  };
-
   MutableObjectManager() = default;
   ~MutableObjectManager();
 
-  /// Registers the caller as a writer for the channel.
+  /// Registers a channel for `object_id`.
   ///
   /// \param[in] object_id The ID of the object.
   /// \param[in] mutable_object Contains pointers for the object
   /// header, which is used to synchronize with other writers and readers, and
-  /// the object data and metadata, which is read by the application.  \return
-  /// The return status. The function is not idempotent and it returns Invalid
-  /// if it is called twice.
-  Status RegisterWriterChannel(const ObjectID &object_id,
-                               std::unique_ptr<plasma::MutableObject> mutable_object);
+  /// the object data and metadata, which is read by the application.
+  /// \param[in] reader True if the reader is registering this channel. False if the
+  /// writer is registering this channel.
+  /// \return The return status.
+  Status RegisterChannel(const ObjectID &object_id,
+                         std::unique_ptr<plasma::MutableObject> mutable_object,
+                         bool reader);
 
-  /// Registers the caller as a reader for the channel.
+  /// Checks if a channel is registered for an object.
   ///
   /// \param[in] object_id The ID of the object.
-  /// \param[in] mutable_object Contains pointers for the object
-  /// header, which is used to synchronize with other writers and readers, and
-  /// the object data and metadata, read by the application.
-  /// The return status. The function is not idempotent and it returns Invalid
-  /// if it is called twice.
-  Status RegisterReaderChannel(const ObjectID &object_id,
-                               std::unique_ptr<plasma::MutableObject> mutable_object);
-
-  /// Checks if a writer channel is registered for an object.
-  ///
-  /// \param[in] object_id The ID of the object.
-  /// The return status. True if the writer channel is registered for object_id, false
-  /// otherwise.
-  bool WriterChannelRegistered(const ObjectID &object_id) {
-    return GetChannel<WriterChannel>(writer_channels_, object_id);
-  }
+  /// The return status. True if the channel is registered for object_id, false otherwise.
+  bool ChannelRegistered(const ObjectID &object_id) { return GetChannel(object_id); }
 
   /// Checks if a reader channel is registered for an object.
   ///
   /// \param[in] object_id The ID of the object.
-  /// The return status. True if the reader channel is registered for object_id, false
-  /// otherwise.
+  /// The return status. True if the channel is registered as a reader for object_id,
+  /// false otherwise.
   bool ReaderChannelRegistered(const ObjectID &object_id) {
-    return GetChannel<ReaderChannel>(reader_channels_, object_id);
+    Channel *c = GetChannel(object_id);
+    if (!c) {
+      return false;
+    }
+    return c->reader_registered;
+  }
+
+  /// Checks if a writer channel is registered for an object.
+  ///
+  /// \param[in] object_id The ID of the object.
+  /// The return status. True if the channel is registered as a writer for object_id,
+  /// false otherwise.
+  bool WriterChannelRegistered(const ObjectID &object_id) {
+    Channel *c = GetChannel(object_id);
+    if (!c) {
+      return false;
+    }
+    return c->writer_registered;
   }
 
   /// Acquires a write lock on the object that prevents readers from reading
@@ -156,46 +159,36 @@ class MutableObjectManager {
   /// \param[in] object_id The ID of the object.
   Status SetError(const ObjectID &object_id);
 
- private:
-  template <typename T>
-  Status RegisterChannel(absl::flat_hash_map<ObjectID, T> &channels,
-                         const ObjectID &object_id,
-                         std::unique_ptr<plasma::MutableObject> &mutable_object);
+  /// Sets the error bit on all channels, causing all future readers and writers to raise
+  /// an error on acquire.
+  Status SetErrorAll();
 
-#if defined(__APPLE__) || defined(__linux__)
-  template <typename T>
-  T *GetChannel(absl::flat_hash_map<ObjectID, T> &channels, const ObjectID &object_id) {
-    auto entry = channels.find(object_id);
-    if (entry == channels.end()) {
-      return nullptr;
-    }
-    return &entry->second;
-  }
-#else
-  template <typename T>
-  T *GetChannel(absl::flat_hash_map<ObjectID, T> &channels, const ObjectID &object_id) {
-    return nullptr;
-  }
-#endif
+ private:
+  Channel *GetChannel(const ObjectID &object_id);
 
   // Returns the plasma object header for the object.
   PlasmaObjectHeader *GetHeader(const ObjectID &object_id);
 
   // Returns the unique semaphore name for the object. This name is intended to be used
   // for the object's named sempahores.
-  std::string GetSemaphoreName(const ObjectID &object_id);
+  std::string GetSemaphoreName(PlasmaObjectHeader *header);
 
   // Opens named semaphores for the object. This method must be called before
   // `GetSemaphores()`.
-  void OpenSemaphores(const ObjectID &object_id);
+  void OpenSemaphores(const ObjectID &object_id, PlasmaObjectHeader *header);
 
   // Returns the named semaphores for the object. `OpenSemaphores()` must be called
   // before this method.
-  PlasmaObjectHeader::Semaphores GetSemaphores(const ObjectID &object_id);
+  bool GetSemaphores(const ObjectID &object_id, PlasmaObjectHeader::Semaphores &sem);
 
   // Closes, unlinks, and destroys the named semaphores for the object. Note that the
   // destructor calls this method for all remaining objects.
   void DestroySemaphores(const ObjectID &object_id);
+
+  // Internal method used to set the error bit on `object_id`. The destructor lock must be
+  // held before calling this method.
+  Status SetErrorInternal(const ObjectID &object_id)
+      ABSL_SHARED_LOCKS_REQUIRED(destructor_lock_);
 
   FRIEND_TEST(MutableObjectTest, TestBasic);
   FRIEND_TEST(MutableObjectTest, TestMultipleReaders);
@@ -206,20 +199,28 @@ class MutableObjectManager {
   FRIEND_TEST(MutableObjectTest, TestReadAcquireDuringFailure);
   FRIEND_TEST(MutableObjectTest, TestReadMultipleAcquireDuringFailure);
 
-  // TODO(swang): Access to these maps is not threadsafe. This is fine in the
-  // case that all channels are initialized before any reads and writes are
-  // issued, but may not work if channels are added/removed during run time
-  // (i.e., if there are multiple DAGs).
-  // TODO(jhumphri): If we do need to synchronize accesses to these maps, we may want to
+  // TODO(jhumphri): If we do need to synchronize accesses to this map, we may want to
   // consider using RCU to avoid synchronization overhead in the common case.
-  // These two maps hold the channels for readers and writers of mutable objects.
-  absl::flat_hash_map<ObjectID, ReaderChannel> reader_channels_;
-  absl::flat_hash_map<ObjectID, WriterChannel> writer_channels_;
+  // This map holds the channels for readers and writers of mutable objects.
+  absl::Mutex channel_lock_;
+  // `channels_` requires pointer stability as one thread may hold a Channel pointer while
+  // another thread mutates `channels_`. Thus, we use absl::node_hash_map instead of
+  // absl::flat_hash_map.
+  absl::node_hash_map<ObjectID, Channel> channels_;
 
   // This maps holds the semaphores for each mutable object. The semaphores are used to
   // (1) synchronize accesses to the object header and (2) synchronize readers and writers
   // of the mutable object.
   absl::flat_hash_map<ObjectID, PlasmaObjectHeader::Semaphores> semaphores_;
+
+  // This lock ensures that the destructor does not start tearing down the manager and
+  // freeing the memory until all readers and writers are outside the Acquire()/Release()
+  // functions. Without this lock, readers and writers still inside those methods could
+  // see inconsistent state or access freed memory.
+  //
+  // The calling threads are all readers and writers, along with the thread that calls the
+  // destructor.
+  absl::Mutex destructor_lock_;
 };
 
 }  // namespace experimental
