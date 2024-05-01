@@ -174,6 +174,16 @@ class JobSupervisor:
         # Windows Job Object used to handle stopping the child processes.
         self._win32_job_object = None
 
+        # Logger object to persist JobSupervisor logs in separate file.
+        self._logger = logging.getLogger(f"{__name__}.supervisor_{job_id}")
+        supervisor_log_file_name = os.path.join(
+            ray._private.worker._global_node.get_logs_dir_path(),
+            f"jobs/supervisor-{job_id}.log"
+        )
+        os.makedirs(os.path.dirname(supervisor_log_file_name), exist_ok=True)
+        self._logger.addHandler(logging.FileHandler(supervisor_log_file_name))
+        self._logger.addHandler(logging.StreamHandler())
+
     def _get_driver_runtime_env(
         self, resources_specified: bool = False
     ) -> Dict[str, Any]:
@@ -405,7 +415,7 @@ class JobSupervisor:
             # will *not* be set in the runtime_env, so they apply to the driver
             # only, not its tasks & actors.
             os.environ.update(self._get_driver_env_vars(resources_specified))
-            logger.info(
+            self._logger.info(
                 "Submitting job with RAY_ADDRESS = "
                 f"{os.environ[ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE]}"
             )
@@ -426,7 +436,7 @@ class JobSupervisor:
                 elif sys.platform != "win32":
                     stop_signal = os.environ.get("RAY_JOB_STOP_SIGNAL", "SIGTERM")
                     if stop_signal not in self.VALID_STOP_SIGNALS:
-                        logger.warning(
+                        self._logger.warning(
                             f"{stop_signal} not a valid stop signal. Terminating "
                             "job with SIGTERM."
                         )
@@ -447,12 +457,12 @@ class JobSupervisor:
                         )
                         poll_job_stop_task = create_task(self._poll_all(proc_to_kill))
                         await asyncio.wait_for(poll_job_stop_task, stop_job_wait_time)
-                        logger.info(
+                        self._logger.info(
                             f"Job {self._job_id} has been terminated gracefully "
                             f"with {stop_signal}."
                         )
                     except asyncio.TimeoutError:
-                        logger.warning(
+                        self._logger.warning(
                             f"Attempt to gracefully terminate job {self._job_id} "
                             f"through {stop_signal} has timed out after "
                             f"{stop_job_wait_time} seconds. Job is now being "
@@ -467,7 +477,7 @@ class JobSupervisor:
                 assert len(finished) == 1, "Should have only one coroutine done"
                 [child_process_task] = finished
                 return_code = child_process_task.result()
-                logger.info(
+                self._logger.info(
                     f"Job {self._job_id} entrypoint command "
                     f"exited with code {return_code}"
                 )
@@ -498,7 +508,7 @@ class JobSupervisor:
                         driver_exit_code=return_code,
                     )
         except Exception:
-            logger.error(
+            self._logger.error(
                 "Got unexpected exception while trying to execute driver "
                 f"command. {traceback.format_exc()}"
             )
@@ -509,7 +519,7 @@ class JobSupervisor:
                     message=traceback.format_exc(),
                 )
             except Exception:
-                logger.error(
+                self._logger.error(
                     "Failed to update job status to FAILED. "
                     f"Exception: {traceback.format_exc()}"
                 )
