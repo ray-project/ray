@@ -27,7 +27,7 @@ field of the ``RayTaskError``.
   :start-after: __task_exceptions_begin__
   :end-before: __task_exceptions_end__
 
-If the user's exception cannot be serialized, it would be converted to a ``RayError``:
+If Ray can't serialize the user's exception, it converts the exception to a ``RayError``.
 
 .. literalinclude:: ../doc_code/task_exceptions.py
   :language: python
