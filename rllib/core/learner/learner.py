@@ -784,6 +784,11 @@ class Learner:
 
         self.module.remove_module(module_id)
 
+        # Remove all stats from the module from our metrics logger, so we don't report
+        # results from this module again.
+        if module_id in self.metrics.stats:
+            del self.metrics.stats[module_id]
+
     @OverrideToImplementCustomLogic
     def should_module_be_updated(self, module_id, multi_agent_batch=None):
         """Returns whether a module should be updated or not based on `self.config`.

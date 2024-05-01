@@ -371,9 +371,7 @@ Implementation
      - calculate the loss for gradient based update to a module.
    * - :py:meth:`~ray.rllib.core.learner.learner.Learner.additional_update_for_module()`
      - do any non gradient based updates to a RLModule, e.g. target network updates.
-   * - :py:meth:`~ray.rllib.core.learner.learner.Learner.compile_results()`
-     - compute training statistics and format them for downstream use.
-     
+
 Starter Example
 ---------------
 
@@ -414,31 +412,5 @@ A :py:class:`~ray.rllib.core.learner.learner.Learner` that implements behavior c
             loss = -torch.mean(action_dist.logp(batch[SampleBatch.ACTIONS]))
 
             return loss
-
-        @override(Learner)
-        def compile_results(
-            self,
-            *,
-            batch: MultiAgentBatch,
-            fwd_out: Dict[str, Any],
-            loss_per_module: Dict[str, TensorType],
-            metrics_per_module: DefaultDict[ModuleID, Dict[str, Any]],
-        ) -> Dict[str, Any]:
-
-            results = super().compile_results(
-                batch=batch,
-                fwd_out=fwd_out,
-                loss_per_module=loss_per_module,
-                metrics_per_module=metrics_per_module,
-            )
-            # report the mean weight of each 
-            mean_ws = {}
-            for module_id in self.module.keys():
-                m = self.module[module_id]
-                parameters = convert_to_numpy(self.get_parameters(m))
-                mean_ws[module_id] = np.mean([w.mean() for w in parameters])
-                results[module_id]["mean_weight"] = mean_ws[module_id]
-
-            return results
 
 

@@ -626,6 +626,11 @@ class LearnerGroup:
                 refs.append(ref)
             ray.get(refs)
 
+        # Remove all stats from the module from our metrics logger (hybrid API stack
+        # only), so we don't report results from this module again.
+        if not self.config.enable_env_runner_and_connector_v2:
+            del self._metrics_logger_old_and_hybrid_stack.stats[module_id]
+
     def get_weights(
         self, module_ids: Optional[Set[str]] = None, inference_only: bool = False
     ) -> Dict[str, Any]:
