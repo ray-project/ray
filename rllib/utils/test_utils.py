@@ -110,6 +110,12 @@ def add_rllib_example_script_args(
         help="The DL framework specifier.",
     )
     parser.add_argument(
+        "--env",
+        type=str,
+        default=None,
+        help="The gym.Env identifier to run the experiment with.",
+    )
+    parser.add_argument(
         "--num-env-runners",
         type=int,
         default=None,
@@ -1362,19 +1368,22 @@ def run_rllib_example_script_experiment(
     # Enhance the `base_config`, based on provided `args`.
     # Set the framework.
     config = base_config.framework(args.framework)
+    # Add an env specifier?
+    if args.env is not None:
+        config.environment(args.env)
     # Enable the new API stack?
     if args.enable_new_api_stack:
         config.api_stack(
             enable_rl_module_and_learner=True,
             enable_env_runner_and_connector_v2=True,
         )
-    # Define compute resources used.
+    # Define compute resources used automatically (only using the --num-gpus arg).
     if config.enable_rl_module_and_learner:
         config.resources(
             num_gpus=0,
             num_learner_workers=args.num_gpus,
             num_gpus_per_learner_worker=(
-                1 if torch.cuda.is_available() and args.num_gpus > 0
+                1 if torch and torch.cuda.is_available() and args.num_gpus > 0
                 else 0
             ),
             num_cpus_for_local_worker=1,
