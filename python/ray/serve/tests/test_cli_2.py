@@ -964,5 +964,22 @@ def test_serve_run_mount_to_correct_deployment_route_prefix(ray_start_stop):
     )
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_control_c_shutdown_serve_components(ray_start_stop):
+    """Test ctrl+c after `serve run` shuts down serve components."""
+
+    p = subprocess.Popen(["serve", "run", "ray.serve.tests.test_cli_2.echo_app"])
+
+    wait_for_condition(check_app_running, app_name=SERVE_DEFAULT_APP_NAME)
+    assert ping_endpoint("/") == "hello"
+    p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
+    p.wait()
+
+    status_response = subprocess.check_output(["serve", "status"])
+    status = yaml.safe_load(status_response)
+    assert False, status
+    assert status == {"applications": {}, "proxies": {}, "target_capacity": None}
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
