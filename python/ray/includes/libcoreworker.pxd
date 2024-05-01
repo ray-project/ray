@@ -283,6 +283,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                         c_bool fetch_local)
         CRayStatus Delete(const c_vector[CObjectID] &object_ids,
                           c_bool local_only)
+        unique_ptr[CObjectLocation] TryGetObjectLocationFromLocal(const CObjectID &object_id)
         CRayStatus GetLocationFromOwner(
                 const c_vector[CObjectID] &object_ids,
                 int64_t timeout_ms,

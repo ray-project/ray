@@ -823,6 +823,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status DeleteImpl(const std::vector<ObjectID> &object_ids, bool local_only);
 
+  /// Get the location info of an object that this core worker has reference to. If not,
+  /// returns nullptr. No RPCs are made in this method.
+  std::unique_ptr<ObjectLocation> TryGetObjectLocationFromLocal(
+      const ObjectID &object_id);
+
   /// Get the locations of a list objects. Locations that failed to be retrieved
   /// will be returned as nullptrs.
   ///

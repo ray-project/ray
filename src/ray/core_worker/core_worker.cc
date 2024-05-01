@@ -3868,6 +3868,21 @@ void CoreWorker::ProcessSubscribeObjectLocations(
   reference_counter_->PublishObjectLocationSnapshot(object_id);
 }
 
+std::unique_ptr<ObjectLocation> CoreWorker::TryGetObjectLocationFromLocal(
+    const ObjectID &object_id) {
+  if (!reference_counter_->HasReference(object_id)) {
+    return nullptr;
+  }
+  rpc::WorkerObjectLocationsPubMessage object_info;
+  reference_counter_->FillObjectInformation(object_id, &object_info);
+  // Note: there can be a TOCTOU race condition: HasReference returned true, but before
+  // FillObjectInformation the object is released. Hence we check the ref_removed field.
+  if (object_info.ref_removed()) {
+    return nullptr;
+  }
+  return std::make_unique<ObjectLocation>(CreateObjectLocation(object_info));
+}
+
 void CoreWorker::HandleGetObjectLocationsOwner(
     rpc::GetObjectLocationsOwnerRequest request,
     rpc::GetObjectLocationsOwnerReply *reply,
@@ -3878,7 +3893,7 @@ void CoreWorker::HandleGetObjectLocationsOwner(
   }
   for (int i = 0; i < request.object_ids_size(); ++i) {
     auto object_id = ObjectID::FromBinary(request.object_ids(i));
-    auto object_info = reply->add_object_location_infos();
+    auto *object_info = reply->add_object_location_infos();
     reference_counter_->FillObjectInformation(object_id, object_info);
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);

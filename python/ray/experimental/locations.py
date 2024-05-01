@@ -39,3 +39,30 @@ def get_object_locations(
     return ray._private.worker.global_worker.core_worker.get_object_locations(
         obj_refs, timeout_ms
     )
+
+
+def try_get_object_location_from_local(object_ref) -> Dict[str, Any] | None:
+    """Try to lookup the location for an object. Only returns information if the local
+    core worker has a reference to this object ref. Otherwise, returns None.
+
+    Args:
+        object_ref: The object ref.
+
+    Returns:
+        A dict maps from an object to its location, or None.
+
+        The location is stored as a dict with following attributes:
+
+        - node_ids (List[str]): The hex IDs of the nodes that have a
+          copy of this object. Objects less than 100KB will be in memory
+          store not plasma store and therefore will have nodes_id = [].
+
+        - object_size (int): The size of data + metadata in bytes.
+
+    Raises:
+        RuntimeError: if the processes were not started by ray.init().
+    """
+    if not ray.is_initialized():
+        raise RuntimeError("Ray hasn't been initialized.")
+    core_worker = ray._private.worker.global_worker.core_worker
+    return core_worker.try_get_object_location_from_local(object_ref)

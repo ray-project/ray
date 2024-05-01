@@ -3830,6 +3830,18 @@ cdef class CoreWorker:
             check_status(CCoreWorkerProcess.GetCoreWorker().Delete(
                 free_ids, local_only))
 
+    def try_get_object_location_from_local(self, object_ref):
+        cdef:
+            CObjectID object_id = (<ObjectRef>object_ref).native()
+            unique_ptr[CObjectLocation] result
+
+        with nogil:
+            result = CCoreWorkerProcess.GetCoreWorker().TryGetObjectLocationFromLocal(object_id)
+
+        if not result:
+            return None
+        return CObjectLocationPtrToDict(result.get())    
+
     def get_object_locations(self, object_refs, int64_t timeout_ms):
         cdef:
             c_vector[shared_ptr[CObjectLocation]] results

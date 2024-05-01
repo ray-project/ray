@@ -1,9 +1,11 @@
 import time
 
 import numpy as np
+import pandas as pd
 import pytest
 
 import ray
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
 def test_uninitialized():
@@ -127,6 +129,69 @@ def test_location_pending(ray_start_cluster):
     # TODO(chenshen): this is a result of converting int -1 to unsigned int;
     # should be fix by https://github.com/ray-project/ray/issues/16321
     assert location["object_size"] == 2**64 - 1
+
+
+class BigObject:
+    def __init__(self):
+        # 100 MiB of memory used...
+        self.data = np.zeros((100 * 1024 * 1024), dtype=np.uint8)
+
+
+@ray.remote
+def gen_big_objects(block_size, block_count):
+    for _ in range(block_count):
+        yield pd.DataFrame([{"data": BigObject()} for _ in range(block_size)])
+
+
+def test_local_get_locations(ray_start_cluster):
+    """
+    Creates big memory consuming objects that appears to have a small `sys.getsizeof`.
+    The streaming generator's consumer can get the size of it since it has a reference
+    of the object.
+    """
+    for obj_ref in gen_big_objects.remote(3, 10):
+        d = ray.experimental.try_get_object_location_from_local(obj_ref)
+        assert d is not None
+        # The dataframe consists of 3 * 100MiB of NumPy NDArrays.
+        assert d["object_size"] > 3 * 100 * 1024 * 1024
+
+
+def test_local_get_locations_multi_nodes(ray_start_cluster_enabled):
+    """
+    Same as test_local_get_locations, except that we assign the generator and the caller
+    to different nodes and assert it still works, since the caller has references to the
+    object refs.
+    """
+    cluster = ray_start_cluster_enabled
+    # head node
+    head_node = cluster.add_node(num_cpus=1, object_store_memory=75 * 1024 * 1024)
+    head_node_id = head_node.node_id
+    ray.init(cluster.address)
+    # add 1 worker node
+    worker_node = cluster.add_node(num_cpus=1, object_store_memory=75 * 1024 * 1024)
+    worker_node_id = worker_node.node_id
+    cluster.wait_for_nodes()
+
+    @ray.remote
+    def caller():
+        gen = gen_big_objects.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(
+                node_id=worker_node_id, soft=False
+            )
+        ).remote(3, 10)
+        for obj_ref in gen:
+            d = ray.experimental.try_get_object_location_from_local(obj_ref)
+            assert d is not None
+            # The dataframe consists of 3 * 100MiB of NumPy NDArrays.
+            assert d["object_size"] > 3 * 100 * 1024 * 1024
+
+    ray.get(
+        caller.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(
+                node_id=head_node_id, soft=False
+            )
+        ).remote()
+    )
 
 
 if __name__ == "__main__":
