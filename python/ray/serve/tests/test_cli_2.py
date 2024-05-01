@@ -970,14 +970,19 @@ def test_control_c_shutdown_serve_components(ray_start_stop):
 
     p = subprocess.Popen(["serve", "run", "ray.serve.tests.test_cli_2.echo_app"])
 
+    # Make sure Serve components are up and running
     wait_for_condition(check_app_running, app_name=SERVE_DEFAULT_APP_NAME)
+    assert ping_endpoint("/-/healthz") == "success"
+    assert json.loads(ping_endpoint("/-/routes")) == {"/": "default"}
     assert ping_endpoint("/") == "hello"
-    p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
+
+    # Send ctrl+c to shutdown Serve components
+    p.send_signal(signal.SIGINT)
     p.wait()
 
+    # Make sure Serve components are shutdown
     status_response = subprocess.check_output(["serve", "status"])
     status = yaml.safe_load(status_response)
-    assert False, status
     assert status == {"applications": {}, "proxies": {}, "target_capacity": None}
 
 
