@@ -1,6 +1,8 @@
-from typing import Tuple, Any
-
-import numpy as np
+from typing import (
+    TYPE_CHECKING,
+    Tuple,
+    Any,
+)
 
 import ray.util.serialization
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -9,6 +11,9 @@ try:
     import torch
 except ImportError:
     torch = None
+
+if TYPE_CHECKING:
+    import numpy as np
 
 
 class DAGNodeOutputType:
@@ -86,7 +91,7 @@ class _TorchTensorSerializer:
         self.device = device
 
     @staticmethod
-    def serialize_to_numpy(instance: "_TorchTensorWrapper") -> np.ndarray:
+    def serialize_to_numpy(instance: "_TorchTensorWrapper") -> "np.ndarray":
         tensor = instance.tensor
         # Transfer through Ray's shared memory store for now.
         # TODO(swang): This requires two copies, one to transfer from GPU to
@@ -98,7 +103,7 @@ class _TorchTensorSerializer:
 
         return tensor.numpy()
 
-    def deserialize_from_numpy(self, np_array: np.ndarray):
+    def deserialize_from_numpy(self, np_array: "np.ndarray"):
         # TODO(swang): Support local P2P transfers if available.
         # TODO(swang): Support multinode transfers with NCCL.
 
