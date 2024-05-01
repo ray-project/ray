@@ -119,7 +119,6 @@ class RayTaskError(RayError):
         # BaseException implements a __reduce__ method that returns
         # a tuple with the type and the value of self.args.
         # https://stackoverflow.com/a/49715949/2213289
-        self.args = (function_name, traceback_str, cause, proctitle, pid, ip)
         if proctitle:
             self.proctitle = proctitle
         else:
@@ -142,7 +141,8 @@ class RayTaskError(RayError):
             )
             logger.warning(err_msg)
             self.cause = RayError(err_msg)
-            self.args = (function_name, traceback_str, self.cause, proctitle, pid, ip)
+
+        self.args = (function_name, traceback_str, self.cause, proctitle, pid, ip)
 
         assert traceback_str is not None
 

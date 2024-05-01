@@ -27,13 +27,6 @@ field of the ``RayTaskError``.
   :start-after: __task_exceptions_begin__
   :end-before: __task_exceptions_end__
 
-If Ray can't serialize the user's exception, it converts the exception to a ``RayError``.
-
-.. literalinclude:: ../doc_code/task_exceptions.py
-  :language: python
-  :start-after: __unserializable_exceptions_begin__
-  :end-before: __unserializable_exceptions_end__
-
 Example code of catching the user exception type when the exception type can be subclassed:
 
 .. literalinclude:: ../doc_code/task_exceptions.py
@@ -47,6 +40,13 @@ Example code of accessing the user exception type when the exception type can *n
   :language: python
   :start-after: __catch_user_final_exceptions_begin__
   :end-before: __catch_user_final_exceptions_end__
+
+If Ray can't serialize the user's exception, it converts the exception to a ``RayError``.
+
+.. literalinclude:: ../doc_code/task_exceptions.py
+  :language: python
+  :start-after: __unserializable_exceptions_begin__
+  :end-before: __unserializable_exceptions_end__
 
 Use `ray list tasks` from :ref:`State API CLI <state-api-overview-ref>` to query task exit details:
 
