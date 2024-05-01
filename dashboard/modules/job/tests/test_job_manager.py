@@ -448,6 +448,27 @@ async def test_simultaneous_with_same_id(job_manager):
 
 
 @pytest.mark.asyncio
+async def test_job_supervisor_logs_saved(job_manager):
+    """Test JobSupervisor logs are saved to jobs/supervisor-{submission_id}.log"""
+    job_ids = await asyncio.gather(
+        job_manager.submit_job(entrypoint="echo hello 1", submission_id="job_1"),
+        job_manager.submit_job(entrypoint="echo hello 2", submission_id="job_2"),
+    )
+    supervisor_log_path = os.path.join(
+        ray._private.worker._global_node.get_logs_dir_path(),
+        "jobs/supervisor-{job_id}.log",
+    )
+
+    for job_id in job_ids:
+        await async_wait_for_condition_async_predicate(
+            check_job_succeeded, job_manager=job_manager, job_id=job_id
+        )
+        with open(supervisor_log_path.format(job_id), "r") as f:
+            logs = f.read()
+            assert f"Job {job_id} entrypoint command exited with code 0" in logs
+
+
+@pytest.mark.asyncio
 class TestShellScriptExecution:
     async def test_submit_basic_echo(self, job_manager):
         job_id = await job_manager.submit_job(entrypoint="echo hello")
