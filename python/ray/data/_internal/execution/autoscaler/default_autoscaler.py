@@ -179,6 +179,9 @@ class DefaultAutoscaler(Autoscaler):
                 # usage for more than one bundle in the queue for this op?
                 resource_request.append(task_bundle)
 
+        self._send_resource_request(resource_request)
+
+    def _send_resource_request(self, resource_request):
         # Make autoscaler resource request.
         actor = get_or_create_autoscaling_requester_actor()
         actor.request_resources.remote(resource_request, self._execution_id)
