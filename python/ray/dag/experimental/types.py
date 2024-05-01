@@ -159,7 +159,7 @@ class NcclGroup:
 
     def send(self, value: torch.Tensor, peer_rank: int):
         if self._closed:
-            raise IOError("NCCL group has already been destroyed.")
+            raise IOError("NCCL group has been destroyed.")
         # TODO(swang): Handle aysnchronous NCCL errors.
         self._comm.send(
             nccl_util.get_tensor_ptr(value),
@@ -171,7 +171,7 @@ class NcclGroup:
 
     def recv(self, buf: torch.Tensor, peer_rank: int):
         if self._closed:
-            raise IOError("NCCL group has already been destroyed.")
+            raise IOError("NCCL group has been destroyed.")
         self._comm.recv(
             nccl_util.get_tensor_ptr(buf),
             buf.numel(),

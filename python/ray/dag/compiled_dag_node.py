@@ -592,9 +592,26 @@ class CompiledDAG:
                 super().__init__(daemon=True)
                 self.in_teardown = False
 
+            def wait_teardown(self):
+                for ref in outer.worker_task_refs:
+                    try:
+                        ray.get(ref, timeout=10)
+                    except ray.exceptions.GetTimeoutError:
+                        logger.warn("At least one actor in the DAG is still running 10s after teardown(). Teardown may hang.")
+                    except Exception:
+                        continue
+
+                    try:
+                        ray.get(ref)
+                    except Exception:
+                        continue
+
+
             def teardown(self):
                 if self.in_teardown:
+                    self.wait_teardown()
                     return
+
                 logger.info("Tearing down compiled DAG")
 
                 outer._dag_submitter.close()
@@ -610,12 +627,10 @@ class CompiledDAG:
                     except Exception:
                         logger.exception("Error cancelling worker task")
                         pass
+
                 logger.info("Waiting for worker tasks to exit")
-                for ref in outer.worker_task_refs:
-                    try:
-                        ray.get(ref)
-                    except Exception:
-                        pass
+                self.wait_teardown()
+
                 logger.info("Teardown complete")
 
             def run(self):
@@ -709,15 +724,6 @@ class CompiledDAG:
         monitor = getattr(self, "_monitor", None)
         if monitor is not None:
             monitor.teardown()
-
-        _, unready = ray.wait(self.worker_task_refs, num_returns=len(self.worker_task_refs), timeout=10)
-        if unready:
-            logger.warn("At least one actor in the DAG is still running 10s after teardown(). Teardown may hang.")
-            ray.wait(self.worker_task_refs, num_returns=len(self.worker_task_refs))
-
-
-    def __del__(self):
-        self.teardown()
 
 
 @DeveloperAPI
