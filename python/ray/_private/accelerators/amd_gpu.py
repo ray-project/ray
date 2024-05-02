@@ -55,6 +55,7 @@ class AMDGPUAcceleratorManager(AcceleratorManager):
     @staticmethod
     def get_current_node_num_accelerators() -> int:
         import ray._private.thirdparty.pyamdsmi as pyamdsmi
+
         num_gpus = 0
 
         try:
@@ -124,7 +125,7 @@ class AMDGPUAcceleratorManager(AcceleratorManager):
             A list of strings containing GPU IDs
         """
         import ray._private.thirdparty.pyamdsmi as pyamdsmi
-        
+
         device_ids = []
         try:
             pyamdsmi.smi_initialize()
@@ -142,4 +143,3 @@ class AMDGPUAcceleratorManager(AcceleratorManager):
                 pass
 
         return device_ids
-
