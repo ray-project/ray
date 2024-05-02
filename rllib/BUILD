@@ -152,8 +152,9 @@ py_test(
 # --------------------------------------------------------------------
 
 # APPO
+#@OldAPIStack
 py_test(
-    name = "learning_tests_cartpole_appo_w_rl_modules_and_learner",
+    name = "learning_tests_cartpole_appo_hybrid_api_stack",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "no_tf_static_graph"],
     size = "medium", # bazel may complain about it being too long sometimes - medium is on purpose as some frameworks take longer
@@ -162,8 +163,9 @@ py_test(
     args = ["--dir=tuned_examples/appo"]
 )
 
+#@OldAPIStack
 py_test(
-    name = "learning_tests_cartpole_separate_losses_appo",
+    name = "learning_tests_cartpole_separate_losses_appo_old_api_stack",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "torch_only", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "medium",
@@ -174,8 +176,9 @@ py_test(
     args = ["--dir=tuned_examples/appo"]
 )
 
+#@OldAPIStack
 py_test(
-    name = "learning_tests_multi_agent_cartpole_appo",
+    name = "learning_tests_multi_agent_cartpole_appo_old_api_stack",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "medium",
@@ -184,8 +187,9 @@ py_test(
     args = ["--dir=tuned_examples/appo"]
 )
 
+#@OldAPIStack
 py_test(
-    name = "learning_tests_multi_agent_cartpole_w_100_policies_appo",
+    name = "learning_tests_multi_agent_cartpole_w_100_policies_appo_old_api_stack",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "enormous",
@@ -194,8 +198,9 @@ py_test(
     args = ["--dir=tuned_examples/appo"]
 )
 
+#@OldAPIStack
 py_test(
-    name = "learning_tests_cartpole_appo_fake_gpus",
+    name = "learning_tests_cartpole_appo_fake_gpus_old_api_stack",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
     size = "medium",
@@ -204,8 +209,9 @@ py_test(
     args = ["--dir=tuned_examples/appo"]
 )
 
+#@OldAPIStack
 py_test(
-    name = "learning_tests_stateless_cartpole_appo",
+    name = "learning_tests_stateless_cartpole_appo_old_api_stack",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "enormous",
@@ -216,8 +222,9 @@ py_test(
 
 # Tests against crashing or hanging environments.
 # Single-agent: Crash only.
+#@OldAPIStack
 py_test(
-    name = "learning_tests_cartpole_crashing_appo",
+    name = "learning_tests_cartpole_crashing_appo_old_api_stack",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole", "no_tf_static_graph"],
     size = "large",
@@ -226,8 +233,9 @@ py_test(
     args = ["--dir=tuned_examples/appo", "--num-cpus=6"]
 )
 # Single-agent: Crash and stall.
+#@OldAPIStack
 py_test(
-    name = "learning_tests_cartpole_crashing_and_stalling_appo",
+    name = "learning_tests_cartpole_crashing_and_stalling_appo_old_api_stack",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole"],
     size = "large",
@@ -236,8 +244,9 @@ py_test(
     args = ["--dir=tuned_examples/appo", "--num-cpus=6"]
 )
 # Multi-agent: Crash only.
+#@OldAPIStack
 py_test(
-    name = "learning_tests_multi_agent_cartpole_crashing_appo",
+    name = "learning_tests_multi_agent_cartpole_crashing_appo_old_api_stack",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole"],
     size = "large",
@@ -246,8 +255,9 @@ py_test(
     args = ["--dir=tuned_examples/appo", "--num-cpus=6"]
 )
 # Multi-agent: Crash and stall.
+#@OldAPIStack
 py_test(
-    name = "learning_tests_multi_agent_cartpole_crashing_and_stalling_appo",
+    name = "learning_tests_multi_agent_cartpole_crashing_and_stalling_appo_old_api_stack",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole"],
     size = "large",
@@ -257,8 +267,9 @@ py_test(
 )
 
 # CQL
+#@OldAPIStack
 py_test(
-    name = "learning_tests_pendulum_cql",
+    name = "learning_tests_pendulum_cql_old_api_stack",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "learning_tests_with_ray_data"],
     size = "medium",
@@ -272,8 +283,9 @@ py_test(
 )
 
 # DQN
+#@OldAPIStack
 # py_test(
-#    name = "learning_tests_cartpole_dqn",
+#    name = "learning_tests_cartpole_dqn_old_api_stack",
 #    main = "tests/run_regression_tests.py",
 #    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
 #    size = "large",
@@ -283,16 +295,17 @@ py_test(
 # )
 
 py_test(
-    name = "learning_tests_cartpole_dqn_envrunner",
-    main = "tests/run_regression_tests.py",
+    name = "learning_tests_cartpole_dqn",
+    main = "tuned_examples/dqn/cartpole_dqn_envrunner.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
     srcs = ["tuned_examples/dqn/cartpole_dqn_envrunner.py"],
-    args = ["--as-test"]
+    args = ["--as-test", "--enable-new-api-stack"]
 )
 
+#@OldAPIStack
 py_test(
-    name = "learning_tests_cartpole_dqn_softq",
+    name = "learning_tests_cartpole_dqn_softq_old_api_stack",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
@@ -301,8 +314,9 @@ py_test(
     args = ["--dir=tuned_examples/dqn"]
 )
 
+#@OldAPIStack
 py_test(
-    name = "learning_tests_cartpole_dqn_fake_gpus",
+    name = "learning_tests_cartpole_dqn_fake_gpus_old_api_stack",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
     size = "large",
@@ -312,8 +326,9 @@ py_test(
 )
 
 # IMPALA
+#@OldAPIStack
 # py_test(
-#    name = "learning_tests_cartpole_impala",
+#    name = "learning_tests_cartpole_impala_old_api_stack",
 #    main = "tests/run_regression_tests.py",
 #    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
 #    size = "large",
@@ -322,8 +337,9 @@ py_test(
 #    args = ["--dir=tuned_examples/impala"]
 # )
 
+#@OldAPIStack
 py_test(
-    name = "learning_tests_cartpole_separate_losses_impala",
+    name = "learning_tests_cartpole_separate_losses_impala_old_api_stack",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "medium",
@@ -334,8 +350,9 @@ py_test(
     args = ["--dir=tuned_examples/impala"]
 )
 
+#@OldAPIStack
 py_test(
-    name = "learning_tests_multi_agent_cartpole_impala",
+    name = "learning_tests_multi_agent_cartpole_impala_old_api_stack",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "medium",
@@ -344,8 +361,9 @@ py_test(
     args = ["--dir=tuned_examples/impala"]
 )
 
+#@OldAPIStack
 py_test(
-    name = "learning_tests_cartpole_impala_fake_gpus",
+    name = "learning_tests_cartpole_impala_fake_gpus_old_api_stack",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
     size = "large",
@@ -355,38 +373,36 @@ py_test(
 )
 
 # PPO
-# w/ new EnvRunner
 py_test(
-    name = "learning_tests_cartpole_ppo_envrunner",
-    main = "tests/run_regression_tests.py",
+    name = "learning_tests_cartpole_ppo",
+    main = "tuned_examples/ppo/cartpole_ppo.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "no_tf_static_graph"],
     size = "large",
-    srcs = ["tuned_examples/ppo/cartpole_ppo_envrunner.py"],
-    args = ["--as-test"]
+    srcs = ["tuned_examples/ppo/cartpole_ppo.py"],
+    args = ["--as-test", "--enable-new-api-stack"]
 )
 
-py_test(
-    name = "learning_tests_pendulum_ppo_envrunner",
-    main = "tests/run_regression_tests.py",
-    tags = ["torch_only", "team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
-    size = "large",
-    srcs = ["tuned_examples/ppo/pendulum_ppo_envrunner.py"],
-    args = ["--as-test"]
-)
-
-# w/o EnvRunner (using RolloutWorker)
 py_test(
     name = "learning_tests_cartpole_truncated_ppo",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "no_tf_static_graph"],
+    main = tuned_examples/ppo/cartpole_truncated_ppo.py,
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "torch_only"],
     size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/ppo/cartpole_truncated_ppo.py"],
-    args = ["--dir=tuned_examples/ppo"]
+    srcs = ["tuned_examples/ppo/cartpole_truncated_ppo.py"],
+    args = ["--as-test", "--enable-new-api-stack"]
 )
 
 py_test(
     name = "learning_tests_pendulum_ppo",
+    main = "tuned_examples/ppo/pendulum_ppo.py",
+    tags = ["torch_only", "team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+    size = "large",
+    srcs = ["tuned_examples/ppo/pendulum_ppo.py"],
+    args = ["--as-test", "--enable-new-api-stack"]
+)
+
+#@OldAPIStack
+py_test(
+    name = "learning_tests_pendulum_ppo_old_api_stack",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "no_tf_static_graph"],
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
@@ -396,17 +412,17 @@ py_test(
 )
 
 py_test(
-    name = "learning_tests_multi_agent_pendulum_ppo_envrunner",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "no_tf_static_graph"],
+    name = "learning_tests_multi_agent_pendulum_ppo",
+    main = "tuned_examples/ppo/multi_agent_pendulum_ppo.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "torch_only"],
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/ppo/multi_agent_pendulum_ppo_envrunner.py"],
-    args = ["--dir=tuned_examples/ppo"]
+    srcs = ["tuned_examples/ppo/multi_agent_pendulum_ppo.py"],
+    args = ["--as-test", "--enable-new-api-stack"]
 )
 
+#@OldAPIStack
 py_test(
-    name = "learning_tests_transformed_actions_pendulum_ppo",
+    name = "learning_tests_transformed_actions_pendulum_ppo_old_api_stack",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "no_tf_static_graph"],
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
@@ -415,8 +431,9 @@ py_test(
     args = ["--dir=tuned_examples/ppo"]
 )
 
+#@OldAPIStack
 py_test(
-    name = "learning_tests_repeat_after_me_ppo_wo_rl_module",
+    name = "learning_tests_repeat_after_me_ppo_old_api_stack",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete"],
     size = "medium",
@@ -425,28 +442,19 @@ py_test(
     args = ["--dir=tuned_examples/ppo"]
 )
 
-py_test(
-    name = "learning_tests_cartpole_ppo_fake_gpus",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/ppo/cartpole-ppo-fake-gpus.yaml"],
-    args = ["--dir=tuned_examples/ppo"]
-)
-
 # SAC
 py_test(
-    name = "learning_tests_pendulum_sac_envrunner",
-    main = "tests/run_regression_tests.py",
+    name = "learning_tests_pendulum_sac",
+    main = "tuned_examples/sac/pendulum_sac.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_pendulum", "learning_tests_continuous"],
     size = "large",
-    srcs = ["tuned_examples/sac/pendulum_sac_envrunner.py"],
-    args = ["--as-test"]
+    srcs = ["tuned_examples/sac/pendulum_sac.py"],
+    args = ["--as-test", "--enable-new-api-stack"]
 )
 
+#@OldAPIStack
 py_test(
-    name = "learning_tests_cartpole_sac",
+    name = "learning_tests_cartpole_sac_old_api_stack",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",

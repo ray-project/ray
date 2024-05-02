@@ -1,3 +1,4 @@
+# @OldAPIStack
 # Our implementation of SAC can reach 9k reward in 400k timesteps
 halfcheetah_sac:
     env: HalfCheetah-v3

@@ -1,3 +1,4 @@
+# @OldAPIStack
 # Pendulum SAC can attain -150+ reward in 6-7k
 # Configurations are the similar to original softlearning/sac codebase
 pendulum-sac:

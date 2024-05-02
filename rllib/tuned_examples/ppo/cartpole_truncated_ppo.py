@@ -13,8 +13,20 @@ register_env(
 
 config = (
     PPOConfig()
+    # Enable new API stack and use EnvRunner.
+    .api_stack(
+        enable_rl_module_and_learner=True,
+        enable_env_runner_and_connector_v2=True,
+    )
     .environment("cartpole_truncated")
     .env_runners(num_envs_per_env_runner=10)
+    .training(
+        gamma=0.99,
+        lr=0.0003,
+        num_sgd_iter=6,
+        vf_loss_coeff=0.01,
+        use_kl_loss=True,
+    )
     # For evaluation, use the "real" CartPole-v1 env (up to 500 steps).
     .evaluation(
         evaluation_config=PPOConfig.overrides(env="CartPole-v1"),
@@ -24,6 +36,12 @@ config = (
 )
 
 stop = {
-    "timesteps_total": 500000,
-    "evaluation/sampler_results/episode_reward_mean": 200.0,
+    "num_env_steps_sampled_lifetime": 500000,
+    "evaluation_results/env_runner_results/episode_return_mean": 200.0,
 }
+
+
+if __name__ == "__main__":
+    from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
+
+    run_rllib_example_script_experiment(config, stop=stop)

@@ -3220,7 +3220,7 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run_new_api_stack.py --config-dir=ppo/new_stack --framework=torch
+    script: python ../../rllib/tuned_examples/ppo/pong_ppo.py --as-test
 
   alert: default
 
