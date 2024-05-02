@@ -19,6 +19,7 @@
 #include <string>
 #include <vector>
 
+#include "absl/container/node_hash_map.h"
 #include "gtest/gtest_prod.h"
 #include "ray/common/buffer.h"
 #include "ray/common/ray_object.h"
@@ -157,7 +158,6 @@ class MutableObjectManager {
   ///
   /// \param[in] object_id The ID of the object.
   Status SetError(const ObjectID &object_id);
-  Status SetErrorInternal(const ObjectID &object_id);
 
   /// Sets the error bit on all channels, causing all future readers and writers to raise
   /// an error on acquire.
@@ -185,6 +185,11 @@ class MutableObjectManager {
   // destructor calls this method for all remaining objects.
   void DestroySemaphores(const ObjectID &object_id);
 
+  // Internal method used to set the error bit on `object_id`. The destructor lock must be
+  // held before calling this method.
+  Status SetErrorInternal(const ObjectID &object_id)
+      ABSL_SHARED_LOCKS_REQUIRED(destructor_lock_);
+
   FRIEND_TEST(MutableObjectTest, TestBasic);
   FRIEND_TEST(MutableObjectTest, TestMultipleReaders);
   FRIEND_TEST(MutableObjectTest, TestWriterFails);
@@ -198,7 +203,10 @@ class MutableObjectManager {
   // consider using RCU to avoid synchronization overhead in the common case.
   // This map holds the channels for readers and writers of mutable objects.
   absl::Mutex channel_lock_;
-  absl::flat_hash_map<ObjectID, Channel> channels_;
+  // `channels_` requires pointer stability as one thread may hold a Channel pointer while
+  // another thread mutates `channels_`. Thus, we use absl::node_hash_map instead of
+  // absl::flat_hash_map.
+  absl::node_hash_map<ObjectID, Channel> channels_;
 
   // This maps holds the semaphores for each mutable object. The semaphores are used to
   // (1) synchronize accesses to the object header and (2) synchronize readers and writers

@@ -870,6 +870,6 @@ class FaultTolerantActorManager:
         ]
 
     def actors(self):
-        # TODO(jungong) : remove this API once WorkerSet.remote_workers()
-        #  and WorkerSet._remote_workers() are removed.
+        # TODO(jungong) : remove this API once EnvRunnerGroup.remote_workers()
+        #  and EnvRunnerGroup._remote_workers() are removed.
         return self._actors

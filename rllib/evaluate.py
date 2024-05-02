@@ -14,7 +14,7 @@ import ray.cloudpickle as cloudpickle
 from ray.rllib.env import MultiAgentEnv
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.env.env_context import EnvContext
-from ray.rllib.evaluation.worker_set import WorkerSet
+from ray.rllib.env.env_runner_group import EnvRunnerGroup
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
 from ray.rllib.common import CLIArguments as cli
@@ -313,10 +313,10 @@ def rollout(
     if saver is None:
         saver = RolloutSaver()
 
-    # Normal case: Agent was setup correctly with an evaluation WorkerSet,
+    # Normal case: Agent was setup correctly with an evaluation EnvRunnerGroup,
     # which we will now use to rollout.
     if hasattr(agent, "evaluation_workers") and isinstance(
-        agent.evaluation_workers, WorkerSet
+        agent.evaluation_workers, EnvRunnerGroup
     ):
         steps = 0
         episodes = 0
@@ -337,7 +337,7 @@ def rollout(
         return
 
     # Agent has no evaluation workers, but RolloutWorkers.
-    elif hasattr(agent, "workers") and isinstance(agent.workers, WorkerSet):
+    elif hasattr(agent, "workers") and isinstance(agent.workers, EnvRunnerGroup):
         env = agent.workers.local_worker().env
         multiagent = isinstance(env, MultiAgentEnv)
         if agent.workers.local_worker().multiagent:
@@ -380,10 +380,10 @@ def rollout(
         saver.begin_rollout()
         obs, info = env.reset()
         agent_states = DefaultMapping(
-            lambda agent_id: state_init[mapping_cache[agent_id]]
+            lambda agent_id: state_init[mapping_cache[agent_id]]  # noqa
         )
         prev_actions = DefaultMapping(
-            lambda agent_id: action_init[mapping_cache[agent_id]]
+            lambda agent_id: action_init[mapping_cache[agent_id]]  # noqa
         )
         prev_rewards = collections.defaultdict(lambda: 0.0)
         terminated = truncated = False

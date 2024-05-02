@@ -18,17 +18,17 @@ There are three main areas for RLlib fault tolerance support:
 Worker Recovery
 ---------------
 
-RLlib supports self-recovering and elastic WorkerSets for both
-:ref:`rollout and evaluation Workers <rolloutworker-reference-docs>`.
+RLlib supports self-recovering and elastic :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` for both
+:ref:`training and evaluation EnvRunner workers <rolloutworker-reference-docs>`.
 This provides fault tolerance at worker level.
 
-This means that if you have rollout workers sitting on different machines and a 
+This means that if you have n :py:class:`~ray.rllib.env.env_runner.EnvRunner` workers sitting on different machines and a
 machine is pre-empted, RLlib can continue training and evaluation with minimal interruption. 
 
 The two properties that RLlib supports here are self-recovery and elasticity:
 
-* **Elasticity**: RLlib continues training even when workers are removed. For example, if an RLlib trial uses spot instances, nodes may be removed from the cluster, potentially resulting in a subset of workers not getting scheduled. In this case, RLlib will continue with whatever healthy workers left at a reduced speed.
-* **Self-Recovery**: When possible, RLlib will attempt to restore workers that were previously removed. During restoration, RLlib sync the latest state before new episodes can be sampled. 
+* **Elasticity**: RLlib continues training even when an :py:class:`~ray.rllib.env.env_runner.EnvRunner` is removed. For example, if an RLlib trial uses spot instances, nodes may be removed from the cluster, potentially resulting in a subset of workers not getting scheduled. In this case, RLlib will continue with whatever healthy :py:class:`~ray.rllib.env.env_runner.EnvRunner` instances left at a reduced speed.
+* **Self-Recovery**: When possible, RLlib will attempt to restore any :py:class:`~ray.rllib.env.env_runner.EnvRunner` that was previously removed. During restoration, RLlib syncs the latest state over to the restored :py:class:`~ray.rllib.env.env_runner.EnvRunner` before new episodes can be sampled.
 
 
 Worker fault tolerance can be turned on by setting config ``recreate_failed_env_runners`` to True.
@@ -39,7 +39,7 @@ RLlib achieves this by utilizing a
 Env Fault Tolerance
 -------------------
 
-In addition to worker fault tolerance, RLlib offers fault tolerance at environment level as well.
+In addition to worker fault tolerance, RLlib offers fault tolerance at the environment level as well.
 
 Rollout or evaluation workers will often run multiple environments in parallel to take
 advantage of, for example, the parallel computing power that GPU offers. This can be controlled with

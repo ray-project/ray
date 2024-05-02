@@ -3,12 +3,12 @@ import unittest
 
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.evaluation.worker_set import WorkerSet
+from ray.rllib.env.env_runner_group import EnvRunnerGroup
 from ray.rllib.examples._old_api_stack.policy.random_policy import RandomPolicy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 
 
-class TestWorkerSet(unittest.TestCase):
+class TestEnvRunnerGroup(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         ray.init()
@@ -19,7 +19,7 @@ class TestWorkerSet(unittest.TestCase):
 
     def test_foreach_worker(self):
         """Test to make sure basic sychronous calls to remote workers work."""
-        ws = WorkerSet(
+        ws = EnvRunnerGroup(
             env_creator=lambda _: gym.make("CartPole-v1"),
             default_policy_class=RandomPolicy,
             config=AlgorithmConfig().env_runners(num_env_runners=2),
@@ -48,7 +48,7 @@ class TestWorkerSet(unittest.TestCase):
 
     def test_foreach_worker_return_obj_refss(self):
         """Test to make sure return_obj_refs parameter works."""
-        ws = WorkerSet(
+        ws = EnvRunnerGroup(
             env_creator=lambda _: gym.make("CartPole-v1"),
             default_policy_class=RandomPolicy,
             config=AlgorithmConfig().env_runners(num_env_runners=2),
@@ -70,7 +70,7 @@ class TestWorkerSet(unittest.TestCase):
 
     def test_foreach_worker_async(self):
         """Test to make sure basic asychronous calls to remote workers work."""
-        ws = WorkerSet(
+        ws = EnvRunnerGroup(
             env_creator=lambda _: gym.make("CartPole-v1"),
             default_policy_class=RandomPolicy,
             config=AlgorithmConfig().env_runners(num_env_runners=2),
