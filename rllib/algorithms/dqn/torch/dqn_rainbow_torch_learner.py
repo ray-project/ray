@@ -185,22 +185,33 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
                 * loss_fn(reduction="none")(q_selected, q_selected_target)
             )
 
-        self.register_metrics(
-            module_id,
+        # Log the TD-error with reduce=None, such that - in case we have n parallel
+        # Learners - we will re-concatenate the produced TD-error tensors to yield
+        # a 1:1 representation of the original batch.
+        self.metrics.log_value(
+            key=(module_id, TD_ERROR_KEY),
+            value=td_error,
+            reduce=None,
+            clear_on_reduce=True,
+        )
+        # Log other important loss stats (reduce=mean (default), but with window=1
+        # in order to keep them history free).
+        self.metrics.log_dict(
             {
                 QF_LOSS_KEY: total_loss,
-                TD_ERROR_KEY: td_error.squeeze(),
-                TD_ERROR_MEAN_KEY: torch.mean(td_error),
                 QF_MEAN_KEY: torch.mean(q_selected),
                 QF_MAX_KEY: torch.max(q_selected),
                 QF_MIN_KEY: torch.min(q_selected),
+                TD_ERROR_MEAN_KEY: torch.mean(td_error),
             },
+            key=module_id,
+            window=1,  # <- single items (should not be mean/ema-reduced over time).
         )
         # If we learn a Q-value distribution store the support and average
         # probabilities.
         if config.num_atoms > 1:
-            self.register_metrics(
-                module_id,
+            # Log important loss stats.
+            self.metrics.log_dict(
                 {
                     ATOMS: z,
                     # The absolute difference in expectation between the actions
@@ -237,6 +248,8 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
                         dim=0,
                     ),
                 },
+                key=module_id,
+                window=1,  # <- single items (should not be mean/ema-reduced over time).
             )
 
         return total_loss
