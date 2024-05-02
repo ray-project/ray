@@ -77,7 +77,7 @@ class JobSupervisor:
         self._metadata = {JOB_ID_METADATA_KEY: job_id, JOB_NAME_METADATA_KEY: job_id}
         self._metadata.update(user_metadata)
 
-        # fire and forget call from outer job manager to this actor
+        # Event used to signal that a job should be stopped. Set in the `stop_job` method.
         self._stop_event = asyncio.Event()
 
         # Windows Job Object used to handle stopping the child processes.
