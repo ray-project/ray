@@ -29,6 +29,53 @@ def test_put_local_get(ray_start_regular):
         chan.end_read()
 
 
+"""
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "darwin",
+    reason="Requires Linux or Mac.",
+)
+def test_set_error_before_read(ray_start_regular):
+    @ray.remote
+    class Actor:
+        def pass_channel(self,channel):
+            self._channel = channel
+
+        def close(self):
+            self._channel.close()
+
+        def write(self):
+            self._channel.write(b"x")
+
+        def begin_read(self):
+            self._channel.begin_read()
+
+        def end_read(self):
+            self._channel.end_read()
+
+    a = Actor.remote()
+    b = Actor.remote()
+    c = Actor.remote()
+
+    chan = ray_channel.Channel([b, c], 1000)
+    ray.get(a.pass_channel.remote(chan))
+    ray.get(b.pass_channel.remote(chan))
+    ray.get(c.pass_channel.remote(chan))
+
+    # Indirectly registers the channel for both the writer and the reader.
+    ray.get(a.write.remote())
+    ray.get(b.begin_read.remote())
+    ray.get(b.end_read.remote())
+    ray.get(c.begin_read.remote())
+    ray.get(c.end_read.remote())
+
+    # Check that the thread does not block on the second call to begin_read() below
+    # (note that either b or c could be the second caller). begin_read() acquires a
+    # lock, though if the lock is not released when begin_read() fails (because the
+    # channel has been closed), then an additional call to begin_read() *could* block.
+    ray.get([a.close.remote(), b.begin_read.remote(), c.begin_read.remote()])
+"""
+
+
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "darwin",
     reason="Requires Linux or Mac.",
@@ -151,6 +198,10 @@ def test_put_remote_get(ray_start_regular, num_readers):
     ray.get(done)
 
 
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "darwin",
+    reason="Requires Linux or Mac.",
+)
 @pytest.mark.parametrize("remote", [True, False])
 def test_remote_reader(ray_start_cluster, remote):
     num_readers = 10
@@ -201,6 +252,10 @@ def test_remote_reader(ray_start_cluster, remote):
         print(end - start, 10_000 / (end - start))
 
 
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "darwin",
+    reason="Requires Linux or Mac.",
+)
 @pytest.mark.parametrize("remote", [True, False])
 def test_remote_reader_close(ray_start_cluster, remote):
     num_readers = 10
