@@ -15,7 +15,7 @@ from asyncio.tasks import FIRST_COMPLETED
 from collections import deque
 from typing import Any, Dict, List, Optional, Union, AsyncIterator, Iterator
 
-from ray.util.client.common import INT64_MAX
+from ray.util.client.common import INT32_MAX
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     SchedulingStrategyT,
@@ -117,8 +117,8 @@ class JobLogStorageClient:
         self,
         job_id: str,
         *,
-        max_log_lines: int = INT64_MAX,  # unbounded
-        max_total_size: int = INT64_MAX,  # unbounded
+        max_log_lines: int = INT32_MAX,  # unbounded
+        max_total_size: int = INT32_MAX,  # unbounded
     ) -> str:
         """
         Returns the last MAX_LOG_SIZE (20000) characters in the last

@@ -30,8 +30,7 @@ logger = logging.getLogger(__name__)
 
 # The maximum field value for int32 id's -- which is also the maximum
 # number of simultaneous in-flight requests.
-INT32_MAX = (2**31) - 1
-INT64_MAX = (2**64) - 1
+INT32_MAX = (2**32) - 1
 
 # gRPC status codes that the client shouldn't attempt to recover from
 # Resource exhausted: Server is low on resources, or has hit the max number
