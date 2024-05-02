@@ -1,8 +1,9 @@
-from typing import Any, Dict, List
+from typing import List
 
 from ray.rllib.algorithms.appo.appo import (
     OLD_ACTION_DIST_LOGITS_KEY,
 )
+from ray.rllib.algorithms.appo.appo_rl_module import APPORLModule
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import ACTOR
@@ -14,29 +15,9 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
 
 
-class APPOTorchRLModule(PPOTorchRLModule, RLModuleWithTargetNetworksInterface):
-    @override(PPOTorchRLModule)
-    def setup(self):
-        # APPO is asynchronous and therefore all modules must be learner modules.
-        # Note, this has to run before the parent is built, otherwise the parent
-        # will be built as an inference-only module.
-        self.inference_only = False
-        super().setup()
-        catalog = self.config.get_catalog()
-        # Old pi and old encoder are the "target networks" that are used for
-        # the stabilization of the updates of the current pi and encoder.
-        self.old_pi = catalog.build_pi_head(framework=self.framework)
-        self.old_encoder = catalog.build_actor_critic_encoder(framework=self.framework)
-        self.old_pi.load_state_dict(self.pi.state_dict())
-        self.old_encoder.load_state_dict(self.encoder.state_dict())
-        self.old_pi.trainable = False
-        self.old_encoder.trainable = False
-
-    @override(PPOTorchRLModule)
-    def get_state(self, inference_only: bool = False) -> Dict[str, Any]:
-        # The learner module must always return the full state dict.
-        return super().get_state(False)
-
+class APPOTorchRLModule(
+    PPOTorchRLModule, RLModuleWithTargetNetworksInterface, APPORLModule
+):
     @override(RLModuleWithTargetNetworksInterface)
     def get_target_network_pairs(self):
         return [(self.old_pi, self.pi), (self.old_encoder, self.encoder)]
@@ -51,8 +32,26 @@ class APPOTorchRLModule(PPOTorchRLModule, RLModuleWithTargetNetworksInterface):
 
     @override(PPOTorchRLModule)
     def _forward_train(self, batch: NestedDict):
+        if self.inference_only:
+            raise RuntimeError(
+                "Trying to train a module that is not a learner module. Set the "
+                "flag `inference_only=False` when building the module."
+            )
+
         outs = super()._forward_train(batch)
         old_pi_inputs_encoded = self.old_encoder(batch)[ENCODER_OUT][ACTOR]
         old_action_dist_logits = self.old_pi(old_pi_inputs_encoded)
         outs[OLD_ACTION_DIST_LOGITS_KEY] = old_action_dist_logits
         return outs
+
+    @override(PPOTorchRLModule)
+    def _set_inference_only_state_dict_keys(self) -> None:
+        # Get the model_parameters from the `PPOTorchRLModule`.
+        super()._set_inference_only_state_dict_keys()
+        # Get the model_parameters.
+        state_dict = self.state_dict()
+        # Note, these keys are only known to the learner module. Furthermore,
+        # we want this to be run once during setup and not for each worker.
+        self._inference_only_state_dict_keys["unexpected_keys"].extend(
+            [name for name in state_dict if "old" in name]
+        )
