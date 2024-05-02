@@ -13,7 +13,7 @@ config = (
         model_config_dict={
             "fcnet_hiddens": [256],
             "fcnet_activation": "relu",
-            "epsilon": [(0, 1.0), (50000, 0.05)],
+            "epsilon": [(0, 1.0), (50000, 0.02)],
             "fcnet_bias_initializer": "zeros_",
             "post_fcnet_bias_initializer": "zeros_",
             "post_fcnet_hiddens": [256],
@@ -32,16 +32,17 @@ config = (
         noisy=False,
         dueling=True,
     )
-    .evaluation(
-        evaluation_interval=1,
-        evaluation_parallel_to_training=True,
-        evaluation_num_env_runners=1,
-        evaluation_duration="auto",
-        evaluation_config={"explore": False},
-    )
+    #.evaluation(
+    #    evaluation_interval=1,
+    #    evaluation_parallel_to_training=True,
+    #    evaluation_num_env_runners=1,
+    #    evaluation_duration=10,
+    #    evaluation_duration_unit="episodes",
+    #    evaluation_config={"explore": False},
+    #)
 )
 
 stop = {
-    "evaluation_results/env_runner_results/episode_return_mean": 450.0,
+    "env_runner_results/episode_return_mean": 450.0,
     "num_env_steps_sampled_lifetime": 100000,
 }
