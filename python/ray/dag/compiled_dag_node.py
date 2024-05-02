@@ -530,9 +530,28 @@ class CompiledDAG:
                 super().__init__(daemon=True)
                 self.in_teardown = False
 
+            def wait_teardown(self):
+                for ref in outer.worker_task_refs:
+                    try:
+                        ray.get(ref, timeout=10)
+                    except ray.exceptions.GetTimeoutError:
+                        logger.warn(
+                            "At least one actor in the DAG is still running 10s "
+                            "after teardown(). Teardown may hang."
+                        )
+                    except Exception:
+                        continue
+
+                    try:
+                        ray.get(ref)
+                    except Exception:
+                        continue
+
             def teardown(self):
                 if self.in_teardown:
+                    self.wait_teardown()
                     return
+
                 logger.info("Tearing down compiled DAG")
 
                 outer._dag_submitter.close()
@@ -549,11 +568,7 @@ class CompiledDAG:
                         logger.exception("Error cancelling worker task")
                         pass
                 logger.info("Waiting for worker tasks to exit")
-                for ref in outer.worker_task_refs:
-                    try:
-                        ray.get(ref)
-                    except Exception:
-                        pass
+                self.wait_teardown()
                 logger.info("Teardown complete")
 
             def run(self):
@@ -563,8 +578,6 @@ class CompiledDAG:
                     logger.debug(f"Handling exception from worker tasks: {e}")
                     if self.in_teardown:
                         return
-                    for output_channel in outer.dag_output_channels:
-                        output_channel.close()
                     self.teardown()
 
         monitor = Monitor()
@@ -636,7 +649,9 @@ class CompiledDAG:
         return AwaitableDAGOutput(fut, self._dag_output_fetcher)
 
     def teardown(self):
-        """Teardown and cancel all worker tasks for this DAG."""
+        """Teardown and cancel all actor tasks for this DAG. After this
+        function returns, the actors should be available to execute new tasks
+        or compile a new DAG."""
         monitor = getattr(self, "_monitor", None)
         if monitor is not None:
             monitor.teardown()
