@@ -13,7 +13,7 @@ import time
 import traceback
 from asyncio.tasks import FIRST_COMPLETED
 from collections import deque
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Union, AsyncIterator
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     SchedulingStrategyT,
@@ -45,6 +45,11 @@ from ray.job_submission import JobStatus
 from ray._private.event.event_logger import get_event_logger
 from ray.core.generated.event_pb2 import Event
 from ray.runtime_env import RuntimeEnvConfig
+
+
+RAY_DASHBOARD_ENABLE_INTERRUPTIBLE_LOG_STREAMING = ray_constants.env_bool(
+    "RAY_DASHBOARD_ENABLE_INTERRUPTIBLE_LOG_STREAMING", default=True
+)
 
 logger = logging.getLogger(__name__)
 
@@ -102,10 +107,24 @@ class JobLogStorageClient:
         except FileNotFoundError:
             return ""
 
-    def tail_logs(self, job_id: str) -> Iterator[List[str]]:
-        return file_tail_iterator(self.get_log_file_path(job_id))
+    async def tail_logs(self, job_id: str) -> AsyncIterator[List[str]]:
+        """
+        NOTE: Please read carefully
 
-    def get_last_n_log_lines(
+        By default, this method yields event-loop on every iteration to make sure
+        that whenever large files are tailed event-loop is not going to be blocked
+        for prolonged periods of time
+        """
+
+        for lines_batch in file_tail_iterator(self.get_log_file_path(job_id)):
+            yield lines_batch
+
+            if RAY_DASHBOARD_ENABLE_INTERRUPTIBLE_LOG_STREAMING:
+                # NOTE: We're yielding event-loop on every iteration to make sure that
+                #       fetching logs doesn't block other requests handling
+                await asyncio.sleep(0)
+
+    async def get_last_n_log_lines(
         self, job_id: str, num_log_lines=NUM_LOG_LINES_ON_ERROR
     ) -> str:
         """
@@ -116,9 +135,9 @@ class JobLogStorageClient:
             job_id: The id of the job whose logs we want to return
             num_log_lines: The number of lines to return.
         """
-        log_tail_iter = self.tail_logs(job_id)
         log_tail_deque = deque(maxlen=num_log_lines)
-        for lines in log_tail_iter:
+
+        async for lines in self.tail_logs(job_id):
             if lines is None:
                 break
             else:
@@ -1068,12 +1087,12 @@ class JobManager:
         """Get all logs produced by a job."""
         return self._log_client.get_logs(job_id)
 
-    async def tail_job_logs(self, job_id: str) -> Iterator[str]:
+    async def tail_job_logs(self, job_id: str) -> AsyncIterator[str]:
         """Return an iterator following the logs of a job."""
         if await self.get_job_status(job_id) is None:
             raise RuntimeError(f"Job '{job_id}' does not exist.")
 
-        for lines in self._log_client.tail_logs(job_id):
+        async for lines in self._log_client.tail_logs(job_id):
             if lines is None:
                 # Return if the job has exited and there are no new log lines.
                 status = await self.get_job_status(job_id)
