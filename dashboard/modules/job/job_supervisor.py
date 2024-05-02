@@ -38,7 +38,7 @@ if sys.platform == "win32":
         win32api = None
         win32con = None
         win32job = None
-        
+
         logger = logging.getLogger(__name__)
         logger.warning(
             "Failed to Import win32api. For best usage experience run "
@@ -334,11 +334,7 @@ class JobSupervisor:
             # will *not* be set in the runtime_env, so they apply to the driver
             # only, not its tasks & actors.
             os.environ.update(self._get_driver_env_vars(resources_specified))
-<<<<<<< HEAD
             self._logger.info(
-=======
-            logger.info(
->>>>>>> 9a3b22b566119b6c2a1ce479c843e6a4414fd9e5
                 "Submitting job with RAY_ADDRESS = "
                 f"{os.environ[ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE]}"
             )
@@ -359,11 +355,7 @@ class JobSupervisor:
                 elif sys.platform != "win32":
                     stop_signal = os.environ.get("RAY_JOB_STOP_SIGNAL", "SIGTERM")
                     if stop_signal not in self.VALID_STOP_SIGNALS:
-<<<<<<< HEAD
                         self._logger.warning(
-=======
-                        logger.warning(
->>>>>>> 9a3b22b566119b6c2a1ce479c843e6a4414fd9e5
                             f"{stop_signal} not a valid stop signal. Terminating "
                             "job with SIGTERM."
                         )
@@ -384,20 +376,12 @@ class JobSupervisor:
                         )
                         poll_job_stop_task = create_task(self._poll_all(proc_to_kill))
                         await asyncio.wait_for(poll_job_stop_task, stop_job_wait_time)
-<<<<<<< HEAD
                         self._logger.info(
-=======
-                        logger.info(
->>>>>>> 9a3b22b566119b6c2a1ce479c843e6a4414fd9e5
                             f"Job {self._job_id} has been terminated gracefully "
                             f"with {stop_signal}."
                         )
                     except asyncio.TimeoutError:
-<<<<<<< HEAD
                         self._logger.warning(
-=======
-                        logger.warning(
->>>>>>> 9a3b22b566119b6c2a1ce479c843e6a4414fd9e5
                             f"Attempt to gracefully terminate job {self._job_id} "
                             f"through {stop_signal} has timed out after "
                             f"{stop_job_wait_time} seconds. Job is now being "
@@ -412,11 +396,7 @@ class JobSupervisor:
                 assert len(finished) == 1, "Should have only one coroutine done"
                 [child_process_task] = finished
                 return_code = child_process_task.result()
-<<<<<<< HEAD
                 self._logger.info(
-=======
-                logger.info(
->>>>>>> 9a3b22b566119b6c2a1ce479c843e6a4414fd9e5
                     f"Job {self._job_id} entrypoint command "
                     f"exited with code {return_code}"
                 )
@@ -447,11 +427,7 @@ class JobSupervisor:
                         driver_exit_code=return_code,
                     )
         except Exception:
-<<<<<<< HEAD
             self._logger.error(
-=======
-            logger.error(
->>>>>>> 9a3b22b566119b6c2a1ce479c843e6a4414fd9e5
                 "Got unexpected exception while trying to execute driver "
                 f"command. {traceback.format_exc()}"
             )
@@ -462,11 +438,7 @@ class JobSupervisor:
                     message=traceback.format_exc(),
                 )
             except Exception:
-<<<<<<< HEAD
                 self._logger.error(
-=======
-                logger.error(
->>>>>>> 9a3b22b566119b6c2a1ce479c843e6a4414fd9e5
                     "Failed to update job status to FAILED. "
                     f"Exception: {traceback.format_exc()}"
                 )
