@@ -543,7 +543,7 @@ class MultiAgentEnvRunner(EnvRunner):
                 eps += 1
 
                 # Make `on_episode_end` callback before finalizing the episode.
-                self._make_on_episode_callback("on_episode_end", env_index, episodes)
+                self._make_on_episode_callback("on_episode_end")
 
                 # Finish the episode.
                 done_episodes_to_return.append(
