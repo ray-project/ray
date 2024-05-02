@@ -547,9 +547,10 @@ class CompiledDAG:
                     except Exception:
                         continue
 
-            def teardown(self):
+            def teardown(self, wait):
                 if self.in_teardown:
-                    self.wait_teardown()
+                    if wait:
+                        self.wait_teardown()
                     return
 
                 logger.info("Tearing down compiled DAG")
@@ -567,9 +568,11 @@ class CompiledDAG:
                     except Exception:
                         logger.exception("Error cancelling worker task")
                         pass
-                logger.info("Waiting for worker tasks to exit")
-                self.wait_teardown()
-                logger.info("Teardown complete")
+
+                if wait:
+                    logger.info("Waiting for worker tasks to exit")
+                    self.wait_teardown()
+                    logger.info("Teardown complete")
 
             def run(self):
                 try:
@@ -578,7 +581,7 @@ class CompiledDAG:
                     logger.debug(f"Handling exception from worker tasks: {e}")
                     if self.in_teardown:
                         return
-                    self.teardown()
+                    self.teardown(wait=True)
 
         monitor = Monitor()
         monitor.start()
@@ -654,7 +657,16 @@ class CompiledDAG:
         or compile a new DAG."""
         monitor = getattr(self, "_monitor", None)
         if monitor is not None:
-            monitor.teardown()
+            monitor.teardown(wait=True)
+
+    def __del__(self):
+        monitor = getattr(self, "_monitor", None)
+        if monitor is not None:
+            # Teardown asynchronously.
+            # NOTE(swang): Somehow, this can get called after the CoreWorker
+            # has already been destructed, so it is not safe to block in
+            # ray.get.
+            monitor.teardown(wait=False)
 
 
 @DeveloperAPI
