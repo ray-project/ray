@@ -4,11 +4,9 @@ import logging
 import os
 import random
 import string
-import sys
 import time
 import traceback
-from collections import deque
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterator, Optional, Union
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     SchedulingStrategyT,
@@ -26,14 +24,12 @@ from ray.dashboard.consts import (
 )
 from ray.dashboard.modules.job.common import (
     JOB_ACTOR_NAME_TEMPLATE,
-    JOB_LOGS_PATH_TEMPLATE,
     SUPERVISOR_ACTOR_RAY_NAMESPACE,
     JobInfo,
     JobInfoStorageClient,
 )
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.dashboard.modules.job.job_supervisor import JobSupervisor
-from ray.dashboard.modules.job.utils import file_tail_iterator
 from ray.exceptions import ActorUnschedulableError, RuntimeEnvSetupError
 from ray.job_submission import JobStatus
 from ray._private.event.event_logger import get_event_logger
