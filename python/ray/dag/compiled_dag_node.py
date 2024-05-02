@@ -222,10 +222,6 @@ class CompiledTask:
     def num_readers(self) -> int:
         return len(self.downstream_node_idxs)
 
-    @property
-    def readers(self) -> List["ray.actor.ActorHandle"]:
-        return list(self.downstream_node_idxs.values())
-
     def __str__(self) -> str:
         return f"""
 Node: {self.dag_node}
@@ -472,10 +468,6 @@ class CompiledDAG:
             if cur_idx in visited:
                 continue
             visited.add(cur_idx)
-
-            # TODO: Check for GPU arguments. Find the actor upstream to that
-            # GPU argument. If both writer and reader actors are on GPUs, then
-            # add them.
 
             task = self.idx_to_task[cur_idx]
             # Create an output buffer on the actor.
