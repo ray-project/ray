@@ -1,4 +1,4 @@
-from typing import List
+from typing import Any, Dict, List
 
 from ray.rllib.algorithms.appo.appo import (
     OLD_ACTION_DIST_LOGITS_KEY,
@@ -17,6 +17,10 @@ from ray.rllib.utils.nested_dict import NestedDict
 class APPOTorchRLModule(PPOTorchRLModule, RLModuleWithTargetNetworksInterface):
     @override(PPOTorchRLModule)
     def setup(self):
+        # APPO is asynchronous and therefore all modules must be learner modules.
+        # Note, this has to run before the parent is built, otherwise the parent
+        # will be built as an inference-only module.
+        self.inference_only = False
         super().setup()
         catalog = self.config.get_catalog()
         # Old pi and old encoder are the "target networks" that are used for
@@ -27,6 +31,11 @@ class APPOTorchRLModule(PPOTorchRLModule, RLModuleWithTargetNetworksInterface):
         self.old_encoder.load_state_dict(self.encoder.state_dict())
         self.old_pi.trainable = False
         self.old_encoder.trainable = False
+
+    @override(PPOTorchRLModule)
+    def get_state(self, inference_only: bool = False) -> Dict[str, Any]:
+        # The learner module must always return the full state dict.
+        return super().get_state(False)
 
     @override(RLModuleWithTargetNetworksInterface)
     def get_target_network_pairs(self):
