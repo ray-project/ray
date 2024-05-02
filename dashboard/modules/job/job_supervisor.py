@@ -153,7 +153,7 @@ class JobSupervisor:
                     lambda: signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGINT})
                 )
                 if sys.platform != "win32"
-                   and os.environ.get("RAY_JOB_STOP_SIGNAL") == "SIGINT"
+                and os.environ.get("RAY_JOB_STOP_SIGNAL") == "SIGINT"
                 else None,
             )
             parent_pid = os.getpid()
@@ -199,7 +199,7 @@ class JobSupervisor:
                     win32con.PROCESS_TERMINATE | win32con.PROCESS_SET_QUOTA,
                     False,
                     child_pid,
-                    )
+                )
                 win32job.AssignProcessToJobObject(self._win32_job_object, child_handle)
 
             return child_process
@@ -442,4 +442,3 @@ class JobSupervisor:
     def stop(self):
         """Set step_event and let run() handle the rest in its asyncio.wait()."""
         self._stop_event.set()
-
