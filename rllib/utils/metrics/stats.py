@@ -412,19 +412,6 @@ class Stats:
             self.values = convert_to_numpy(self.values)
         return self
 
-    def numpy(self, value: Any = None) -> "Stats":
-        """Converts all of self's internal values to numpy (if a tensor)."""
-        if value is not None:
-            if self._reduce_method is None:
-                assert isinstance(value, list) and len(self.values) >= len(value)
-                self.values = convert_to_numpy(value)
-            else:
-                assert len(self.values) > 0
-                self.values = [convert_to_numpy(value)]
-        else:
-            self.values = convert_to_numpy(self.values)
-        return self
-
     def __len__(self) -> int:
         """Returns the length of the internal values list."""
         return len(self.values)

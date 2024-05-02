@@ -15,8 +15,8 @@ This example:
 How to run this script
 ----------------------
 `python [script file name].py --enable-new-api-stack --env [env name e.g. 'ALE/Pong-v5']
---wandb-key=[your WandB API key] --wandb-project=[some project name]
---wandb-run-name=[optional: WandB run name (within the defined project)]`
+--wandb-key=[your WandB API key] --wandb-project=[some WandB project name]
+--wandb-run-name=[optional: WandB run name within --wandb-project]`
 
 In order to see the actual videos, you need to have a WandB account and provide your
 API key and a project name on the command line (see above).
@@ -32,7 +32,28 @@ have the execution stop there for inspection and debugging.
 
 Results to expect
 -----------------
-TODO
+After the first training iteration, you should see the videos in your WandB account
+under the provided `--wandb-project` name. Filter for "videos_best" or "videos_worst".
+
+Note that the default Tune TensorboardX (TBX) logger might complain about the videos
+being logged. This is ok, the TBX logger will simply ignore these. The WandB logger,
+however, will recognize the video tensors shaped
+(1 [batch], T [video len], 3 [rgb], [height], [width]) and properly create a WandB video
+object to be sent to their server.
+
+Your terminal output should look similar to this:
++---------------------+----------+-----------------+--------+------------------+
+| Trial name          | status   | loc             |   iter |   total time (s) |
+|                     |          |                 |        |                  |
+|---------------------+----------+-----------------+--------+------------------+
+| PPO_env_8d3f3_00000 | RUNNING  | 127.0.0.1:89991 |      1 |          239.633 |
++---------------------+----------+-----------------+--------+------------------+
++------------------------+------------------------+------------------------+
+|   num_env_steps_sample |   num_env_steps_traine |   num_episodes_lifetim |
+|             d_lifetime |             d_lifetime |                      e |
++------------------------+------------------------+------------------------|
+|                   4000 |                   4000 |                     24 |
++------------------------+------------------------+------------------------+
 """
 import gymnasium as gym
 import numpy as np
@@ -47,7 +68,7 @@ from ray.rllib.utils.test_utils import (
 from ray.tune.registry import get_trainable_cls, register_env
 from ray import tune
 
-parser = add_rllib_example_script_args(default_reward=450.0)
+parser = add_rllib_example_script_args(default_reward=20.0)
 # TODO (sven): Move this command line option into the generic
 #  `add_rllib_example_script_args` and `run_rllib_example_script_experiment`.
 parser.add_argument(
