@@ -58,9 +58,7 @@ class TestPPO(unittest.TestCase):
             ppo.PPOConfig()
             .api_stack(enable_rl_module_and_learner=True)
             .environment("CartPole-v1")
-            .env_runners(
-                num_env_runners=0,
-            )
+            .env_runners(num_env_runners=0)
             .training(
                 gamma=0.99,
                 model=dict(

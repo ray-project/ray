@@ -91,6 +91,7 @@ from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
     ENV_RUNNER_RESULTS,
+    ENV_RUNNER_SAMPLING_TIMER,
     EVALUATION_ITERATION_TIMER,
     EVALUATION_RESULTS,
     FAULT_TOLERANCE_STATS,
@@ -117,7 +118,6 @@ from ray.rllib.utils.metrics import (
     TIMERS,
     TRAINING_ITERATION_TIMER,
     TRAINING_STEP_TIMER,
-    SAMPLE_TIMER,
     STEPS_TRAINED_THIS_ITER_COUNTER,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
@@ -1608,9 +1608,9 @@ class Algorithm(Trainable, AlgorithmBase):
             )
 
         # Collect SampleBatches from sample workers until we have a full batch.
-        with self.metrics.log_time((TIMERS, SAMPLE_TIMER)):
+        with self.metrics.log_time((TIMERS, ENV_RUNNER_SAMPLING_TIMER)):
             if self.config.count_steps_by == "agent_steps":
-                train_batch, env_runner_metrics = synchronous_parallel_sample(
+                train_batch, env_runner_results = synchronous_parallel_sample(
                     worker_set=self.workers,
                     max_agent_steps=self.config.train_batch_size,
                     sample_timeout_s=self.config.sample_timeout_s,
@@ -1620,7 +1620,7 @@ class Algorithm(Trainable, AlgorithmBase):
                     _return_metrics=True,
                 )
             else:
-                train_batch, env_runner_metrics = synchronous_parallel_sample(
+                train_batch, env_runner_results = synchronous_parallel_sample(
                     worker_set=self.workers,
                     max_env_steps=self.config.train_batch_size,
                     sample_timeout_s=self.config.sample_timeout_s,
@@ -1632,7 +1632,7 @@ class Algorithm(Trainable, AlgorithmBase):
         train_batch = train_batch.as_multi_agent()
 
         # Reduce EnvRunner metrics over the n EnvRunners.
-        self.metrics.log_n_dicts(env_runner_metrics, key=ENV_RUNNER_RESULTS)
+        self.metrics.log_n_dicts(env_runner_results, key=ENV_RUNNER_RESULTS)
 
         # Only train if train_batch is not empty.
         # In an extreme situation, all rollout workers die during the
@@ -3115,13 +3115,16 @@ class Algorithm(Trainable, AlgorithmBase):
         return from_config(ReplayBuffer, config["replay_buffer_config"])
 
     def _run_one_training_iteration(self) -> Tuple[ResultDict, "TrainIterCtx"]:
-        """Runs one training iteration (self.iteration will be +1 after this).
+        """Runs one training iteration (`self.iteration` will be +1 after this).
 
-        Calls `self.training_step()` repeatedly until the minimum time (sec),
-        sample- or training steps have been reached.
+        Calls `self.training_step()` repeatedly until the configured minimum time (sec),
+        minimum sample- or minimum training steps have been reached.
 
         Returns:
-            The results dict from the training iteration.
+            The ResultDict from the last call to `training_step()`. Note that even
+            though we only return the last ResultDict, the user stil has full control
+            over the history and reduce behavior of individual metrics at the time these
+            metrics are logged with `self.metrics.log_...()`.
         """
         with self._timers[TRAINING_ITERATION_TIMER]:
             # In case we are training (in a thread) parallel to evaluation,

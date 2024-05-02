@@ -1,20 +1,29 @@
 import click
-from typing import Set, Dict
+from typing import List, Set, Dict
 
 from ci.ray_ci.utils import logger, ci_init
 from ray_release.configs.global_config import get_global_config
 from ray_release.test import Test
 from ray_release.result import ResultStatus
 
-LINUX_PYTHON_TEST_PREFIX = "linux:__python"
+# The s3 prefix for the tests that run on Linux. It comes from the bazel prefix rule
+# linux:// with the character "/" replaced by "_" for s3 compatibility
+LINUX_TEST_PREFIX = "linux:__"
 
 
 @click.command()
 @click.argument("team", required=True, type=str)
 @click.argument("coverage", required=True, type=int)
 @click.option("--test-history-length", default=100, type=int)
-@click.option("--test-prefix", default=LINUX_PYTHON_TEST_PREFIX, type=str)
-def main(team: str, coverage: int, test_history_length: int, test_prefix: str) -> None:
+@click.option("--test-prefix", default=LINUX_TEST_PREFIX, type=str)
+@click.option("--production", is_flag=True, default=False)
+def main(
+    team: str,
+    coverage: int,
+    test_history_length: int,
+    test_prefix: str,
+    production: bool,
+) -> None:
     """
     This script determines the tests that need to be run to cover a certain percentage
     of PR failures, based on historical data
@@ -31,10 +40,24 @@ def main(team: str, coverage: int, test_history_length: int, test_prefix: str) -
         test.get_name(): _get_failed_prs(test, test_history_length) for test in tests
     }
     high_impact_tests = _get_test_with_minimal_coverage(test_to_prs, coverage)
+    if production:
+        _update_high_impact_tests(tests, high_impact_tests)
 
     logger.info(
         f"To cover {coverage}% of PRs, run the following tests: {high_impact_tests}"
     )
+
+
+def _update_high_impact_tests(tests: List[Test], high_impact_tests: Set[str]) -> None:
+    for test in tests:
+        test_name = test.get_name()
+        test[Test.KEY_IS_HIGH_IMPACT] = (
+            "true" if test_name in high_impact_tests else "false"
+        )
+        logger.info(
+            f"Mark test {test_name} as high impact: {test[Test.KEY_IS_HIGH_IMPACT]}"
+        )
+        test.persist_to_s3()
 
 
 def _get_test_with_minimal_coverage(
