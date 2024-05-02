@@ -629,7 +629,8 @@ class CompiledDAG:
                         ray.get(ref, timeout=10)
                     except ray.exceptions.GetTimeoutError:
                         logger.warn(
-                            "At least one actor in the DAG is still running 10s after teardown(). Teardown may hang."
+                            "At least one actor in the DAG is still running 10s "
+                            "after teardown(). Teardown may hang."
                         )
                     except Exception:
                         continue

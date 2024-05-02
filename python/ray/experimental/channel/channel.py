@@ -5,7 +5,6 @@ import logging
 from typing import Any, List, Optional
 
 import ray
-from ray.experimental.channel_common import ChannelContext
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 # Logger for this module. It should be configured at the entry point

@@ -1,29 +1,19 @@
-from typing import (
-    TYPE_CHECKING,
-    Tuple,
-    Any,
-    Optional,
-    List,
-    Dict,
-)
+from typing import TYPE_CHECKING, List, Optional
+
+import ray
+import ray.util.serialization
+from ray.experimental.channel import Channel
+from ray.experimental.channel_common import ChannelContext
+from ray.experimental.nccl_group import _NcclGroup
+from ray.util.annotations import DeveloperAPI
+
+if TYPE_CHECKING:
+    from ray.dag.experimental.types import TorchTensorType, _TorchTensorWrapper
 
 try:
     import torch
 except ImportError:
     torch = None
-
-import ray.util.serialization
-from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray.util.collective.collective_group import nccl_util
-from ray.experimental.channel import (
-    Channel,
-)
-
-import ray
-from ray.util.annotations import DeveloperAPI
-from ray.experimental.channel_common import (
-    ChannelContext,
-)
 
 
 @DeveloperAPI
@@ -43,8 +33,8 @@ class TorchTensorNcclChannel(Channel):
         self._writer_rank: Optional[int] = None
         self._readers = readers
         self._reader_ranks: Optional[List[int]] = None
-        self._writer_registered : bool = False
-        self._reader_registered : bool = False
+        self._writer_registered: bool = False
+        self._reader_registered: bool = False
 
         self._device = device
         if self._device is None:
@@ -66,12 +56,17 @@ class TorchTensorNcclChannel(Channel):
                 self._nccl_group.get_rank(reader) for reader in self._readers
             ]
 
-            if self._writer_rank is not None and self._writer_rank == self._nccl_group.get_self_rank():
+            if (
+                self._writer_rank is not None
+                and self._writer_rank == self._nccl_group.get_self_rank()
+            ):
                 self._writer_registered = True
 
-            if self._reader_ranks and self._nccl_group.get_self_rank() in self._reader_ranks:
+            if (
+                self._reader_ranks
+                and self._nccl_group.get_self_rank() in self._reader_ranks
+            ):
                 self._reader_registered = True
-
 
     def ensure_registered_as_writer(self):
         assert self._nccl_group is not None, "Actor is not part of a NCCL group"
@@ -129,74 +124,11 @@ class TorchTensorNcclChannel(Channel):
         # launched to the GPU to abort.
 
 
-class NcclGroup:
-    def __init__(
-        self,
-        world_size: int,
-        comm_id: int,
-        rank: int,
-        actor_ids_to_ranks: Dict[ray.ActorID, int],
-        cuda_stream: Optional[int],
-    ):
-        self._rank: Optional[int] = rank
-        if rank is not None:
-            from cupy.cuda import nccl
-
-            self._comm = nccl.NcclCommunicator(world_size, comm_id, rank)
-        else:
-            # Driver does not have a rank.
-            self._comm = None
-        self._actor_ids_to_ranks = actor_ids_to_ranks
-
-        self._cuda_stream = cuda_stream
-
-        self._closed = False
-
-    def get_rank(self, actor: ray.actor.ActorHandle) -> int:
-        if actor._ray_actor_id not in self._actor_ids_to_ranks:
-            raise ValueError("Actor is not in the NCCL group.")
-        return self._actor_ids_to_ranks[actor._ray_actor_id]
-
-    def get_self_rank(self) -> int:
-        return self._rank
-
-    def send(self, value: torch.Tensor, peer_rank: int):
-        if self._closed:
-            raise IOError("NCCL group has been destroyed.")
-        # TODO(swang): Handle aysnchronous NCCL errors.
-        self._comm.send(
-            nccl_util.get_tensor_ptr(value),
-            value.numel(),
-            nccl_util.get_nccl_tensor_dtype(value),
-            peer_rank,
-            self._cuda_stream,
-        )
-
-    def recv(self, buf: torch.Tensor, peer_rank: int):
-        if self._closed:
-            raise IOError("NCCL group has been destroyed.")
-        self._comm.recv(
-            nccl_util.get_tensor_ptr(buf),
-            buf.numel(),
-            nccl_util.get_nccl_tensor_dtype(buf),
-            peer_rank,
-            self._cuda_stream,
-        )
-
-    def destroy(self):
-        if self._closed:
-            return
-
-        self._closed = True
-        self._comm.abort()
-        self._comm.destroy()
-
-
 def _do_init_nccl_group(self, world_size, comm_id, rank, actor_ids_to_ranks):
     assert ray.get_gpu_ids()
 
     ctx = ChannelContext.get_current()
-    ctx.nccl_group = NcclGroup(
+    ctx.nccl_group = _NcclGroup(
         world_size,
         comm_id,
         rank,

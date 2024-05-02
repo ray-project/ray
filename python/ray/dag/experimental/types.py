@@ -3,16 +3,10 @@ from typing import (
     Tuple,
     Any,
     Optional,
-    List,
-    Dict,
 )
 
 import ray.util.serialization
 from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray.util.collective.collective_group import nccl_util
-from ray.experimental.channel import (
-    Channel,
-)
 
 try:
     import torch

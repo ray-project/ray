@@ -1,15 +1,11 @@
 # coding: utf-8
 import logging
-import os
-import sys
 import torch
 import pickle
 import io
 import cupy
 import numpy as np
 import time
-
-import pytest
 
 import ray
 from ray.air._internal import torch_utils
@@ -19,7 +15,7 @@ from ray.tests.conftest import *  # noqa
 from ray.util.collective.collective_group import nccl_util
 
 from ray.dag.experimental.types import TorchTensorType
-from ray._private.ray_microbenchmark_helpers import timeit, asyncio_timeit
+from ray._private.ray_microbenchmark_helpers import timeit
 
 # from ray.experimental.torch_serializer import TorchTensor
 
@@ -80,7 +76,6 @@ class TorchTensorWorker:
 class NcclWorker:
     def __init__(self, world_size, rank, comm_id):
         from ray.air._internal import torch_utils
-        import cupy.cuda.nccl
 
         self.device = torch_utils.get_devices()[0]
         self.world_size = world_size
@@ -170,7 +165,7 @@ def exec_ray_dag_ipc(label, sender, receiver, use_tensor=True, use_nccl=False):
         output_channel = compiled_dag.execute(i)
         # TODO(swang): Replace with fake ObjectRef.
         result = output_channel.begin_read()
-        # assert result == (i, SHAPE, DTYPE), (result, (i, SHAPE, DTYPE))
+        assert result == (i, SHAPE, DTYPE), (result, (i, SHAPE, DTYPE))
         output_channel.end_read()
         i += 1
 
