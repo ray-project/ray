@@ -95,10 +95,10 @@ class JobLogStorageClient:
     # Max number of characters to print out of the logs to avoid
     # HUGE log outputs that bring down the api server
     MAX_SNIPPET_SIZE = 20000
-    # Max number of lines being fetched form log files *uninterrupted* (after
+    # Max number of lines being fetched from log file per chunk (after
     # every chunk event-loop has to be yielded to make sure that other tasks
     # are not being starved)
-    MAX_LINES_PER_CHUNK = 100
+    MAX_LINES_PER_CHUNK = 10
 
     def get_logs(self, job_id: str) -> str:
         try:
@@ -111,7 +111,7 @@ class JobLogStorageClient:
         self,
         job_id: str,
         *,
-        max_lines_per_chunk: int,
+        max_lines_per_chunk: int = MAX_LINES_PER_CHUNK,
     ) -> Iterator[List[str]]:
         return file_tail_iterator(
             self.get_log_file_path(job_id),
@@ -1101,7 +1101,7 @@ class JobManager:
         if await self.get_job_status(job_id) is None:
             raise RuntimeError(f"Job '{job_id}' does not exist.")
 
-        async for lines in self._log_client.tail_logs(job_id):
+        for lines in self._log_client.tail_logs(job_id):
             if lines is None:
                 # Return if the job has exited and there are no new log lines.
                 status = await self.get_job_status(job_id)

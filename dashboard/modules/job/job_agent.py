@@ -190,6 +190,8 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
         await ws.prepare(req)
 
         async for lines in self._job_manager.tail_job_logs(job.submission_id):
+            # NOTE: Sending chunk over the web-socket is an async operation,
+            #       allowing sync tailing iteration to yield the event-loop
             await ws.send_str(lines)
 
         return ws
