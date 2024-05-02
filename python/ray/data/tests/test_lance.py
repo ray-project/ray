@@ -72,7 +72,7 @@ def test_lance_read_basic(fs, data_path):
     ds = ray.data.read_lance(path, columns=["one"])
     values = [s["one"] for s in ds.take()]
     assert sorted(values) == [1, 2, 3, 4, 5, 6]
-    assert ds.schema().names == ['one', 'two', 'three', 'four']
+    assert ds.schema().names == ["one", "two", "three", "four"]
 
 
 if __name__ == "__main__":
