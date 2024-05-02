@@ -213,7 +213,10 @@ def test_dag_errors(ray_start_regular):
 
 
 def test_dag_fault_tolerance(ray_start_regular_shared):
-    actors = [Actor.remote(0, fail_after=100 if i == 0 else None, sys_exit=False) for i in range(4)]
+    actors = [
+        Actor.remote(0, fail_after=100 if i == 0 else None, sys_exit=False)
+        for i in range(4)
+    ]
     with InputNode() as i:
         out = [a.inc.bind(i) for a in actors]
         dag = MultiOutputNode(out)
@@ -255,7 +258,10 @@ def test_dag_fault_tolerance(ray_start_regular_shared):
 
 
 def test_dag_fault_tolerance_sys_exit(ray_start_regular_shared):
-    actors = [Actor.remote(0, fail_after=100 if i == 0 else None, sys_exit=True) for i in range(4)]
+    actors = [
+        Actor.remote(0, fail_after=100 if i == 0 else None, sys_exit=True)
+        for i in range(4)
+    ]
     with InputNode() as i:
         out = [a.inc.bind(i) for a in actors]
         dag = MultiOutputNode(out)
@@ -277,7 +283,7 @@ def test_dag_fault_tolerance_sys_exit(ray_start_regular_shared):
 
     # Remaining actors are still alive.
     with pytest.raises(ray.exceptions.RayActorError):
-        actors[0].echo.remote("hello")
+        ray.get(actors[0].echo.remote("hello"))
     actors.pop(0)
     ray.get([actor.echo.remote("hello") for actor in actors])
 

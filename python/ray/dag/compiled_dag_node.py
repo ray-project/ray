@@ -656,9 +656,6 @@ class CompiledDAG:
         if monitor is not None:
             monitor.teardown()
 
-    def __del__(self):
-        self.teardown()
-
 
 @DeveloperAPI
 def build_compiled_dag_from_ray_dag(
