@@ -13,7 +13,7 @@ import time
 import traceback
 from asyncio.tasks import FIRST_COMPLETED
 from collections import deque
-from typing import Any, Dict, List, Optional, Union, AsyncIterator
+from typing import Any, Dict, List, Optional, Union, AsyncIterator, Iterator
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     SchedulingStrategyT,
@@ -46,10 +46,6 @@ from ray._private.event.event_logger import get_event_logger
 from ray.core.generated.event_pb2 import Event
 from ray.runtime_env import RuntimeEnvConfig
 
-
-RAY_DASHBOARD_ENABLE_INTERRUPTIBLE_LOG_STREAMING = ray_constants.env_bool(
-    "RAY_DASHBOARD_ENABLE_INTERRUPTIBLE_LOG_STREAMING", default=True
-)
 
 logger = logging.getLogger(__name__)
 
@@ -95,10 +91,14 @@ class JobLogStorageClient:
     """
 
     # Number of last N lines to put in job message upon failure.
-    NUM_LOG_LINES_ON_ERROR = 10
-    # Maximum number of characters to print out of the logs to avoid
+    MAX_LOG_LINES_ON_ERROR = 10
+    # Max number of characters to print out of the logs to avoid
     # HUGE log outputs that bring down the api server
-    MAX_LOG_SIZE = 20000
+    MAX_SNIPPET_SIZE = 20000
+    # Max number of lines being fetched form log files *uninterrupted* (after
+    # every chunk event-loop has to be yielded to make sure that other tasks
+    # are not being starved)
+    MAX_LINES_PER_CHUNK = 100
 
     def get_logs(self, job_id: str) -> str:
         try:
@@ -107,25 +107,23 @@ class JobLogStorageClient:
         except FileNotFoundError:
             return ""
 
-    async def tail_logs(self, job_id: str) -> AsyncIterator[List[str]]:
-        """
-        NOTE: Please read carefully
-
-        By default, this method yields event-loop on every iteration to make sure
-        that whenever large files are tailed event-loop is not going to be blocked
-        for prolonged periods of time
-        """
-
-        for lines_batch in file_tail_iterator(self.get_log_file_path(job_id)):
-            yield lines_batch
-
-            if RAY_DASHBOARD_ENABLE_INTERRUPTIBLE_LOG_STREAMING:
-                # NOTE: We're yielding event-loop on every iteration to make sure that
-                #       fetching logs doesn't block other requests handling
-                await asyncio.sleep(0)
+    def tail_logs(
+        self,
+        job_id: str,
+        *,
+        max_lines_per_chunk: int,
+    ) -> Iterator[List[str]]:
+        return file_tail_iterator(
+            self.get_log_file_path(job_id),
+            max_lines_per_chunk=max_lines_per_chunk,
+        )
 
     async def get_last_n_log_lines(
-        self, job_id: str, num_log_lines=NUM_LOG_LINES_ON_ERROR
+        self,
+        *,
+        job_id: str,
+        max_log_lines = MAX_LOG_LINES_ON_ERROR,
+        max_snippet_size = MAX_SNIPPET_SIZE,
     ) -> str:
         """
         Returns the last MAX_LOG_SIZE (20000) characters in the last
@@ -133,11 +131,14 @@ class JobLogStorageClient:
 
         Args:
             job_id: The id of the job whose logs we want to return
-            num_log_lines: The number of lines to return.
+            max_log_lines: The number of lines to return.
         """
-        log_tail_deque = deque(maxlen=num_log_lines)
+        log_tail_deque = deque(maxlen=max_log_lines)
 
-        async for lines in self.tail_logs(job_id):
+        max_lines_per_chunk = min(self.MAX_LINES_PER_CHUNK, max_log_lines)
+        read_lines_count = 0
+
+        for lines in self.tail_logs(job_id, max_lines_per_chunk=max_lines_per_chunk):
             if lines is None:
                 break
 
@@ -145,7 +146,14 @@ class JobLogStorageClient:
             for line in lines:
                 log_tail_deque.append(line)
 
-        return "".join(log_tail_deque)[-self.MAX_LOG_SIZE :]
+            read_lines_count += len(lines)
+
+            # NOTE: We have to yield the event-loop after every chunk being read
+            #       to make sure that log tailing is not blocking the event-loop
+            if read_lines_count % max_lines_per_chunk == 1:
+                await asyncio.sleep(0)
+
+        return "".join(log_tail_deque)[-max_snippet_size:]
 
     @staticmethod
     def get_log_file_path(job_id: str) -> str:
