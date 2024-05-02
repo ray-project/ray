@@ -18,12 +18,6 @@ from ray.experimental.channel import (
 )
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
-from ray.dag.experimental.types import (
-    _do_register_custom_dag_serializers,
-    TorchTensorType,
-    _TorchTensorWrapper,
-)
-
 MAX_BUFFER_SIZE = int(100 * 1e6)  # 100MB
 
 logger = logging.getLogger(__name__)
@@ -83,6 +77,8 @@ def do_exec_compiled_task(
             the loop.
     """
     try:
+        from ray.dag.experimental.types import _do_register_custom_dag_serializers
+
         _do_register_custom_dag_serializers(self)
 
         method = getattr(self, actor_method_name)
@@ -177,6 +173,11 @@ class CompiledTask:
             idx: A unique index into the original DAG.
             dag_node: The original DAG node created by the user.
         """
+        from ray.dag.experimental.types import (
+            TorchTensorType,
+            _TorchTensorWrapper,
+        )
+
         self.idx = idx
         self.dag_node = dag_node
         self.arg_idx_to_tensor_meta: Dict[int, Dict[str, Any]] = {}
@@ -410,6 +411,7 @@ class CompiledDAG:
         outputs for the DAG.
         """
         from ray.dag import DAGNode, InputNode, MultiOutputNode, ClassMethodNode
+        from ray.dag.experimental.types import _do_register_custom_dag_serializers
 
         if self.input_task_idx is None:
             self._preprocess()
