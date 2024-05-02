@@ -82,6 +82,16 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     help=("Run flaky tests."),
 )
 @click.option(
+    "--run-high-impact-tests",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help=(
+        "Run only high impact tests. "
+        "High impact tests are tests that often catch regressions in the past."
+    ),
+)
+@click.option(
     "--skip-ray-installation",
     is_flag=True,
     show_default=True,
@@ -169,6 +179,7 @@ def main(
     except_tags: str,
     only_tags: str,
     run_flaky_tests: bool,
+    run_high_impact_tests: bool,
     skip_ray_installation: bool,
     build_only: bool,
     gpus: int,
@@ -215,6 +226,7 @@ def main(
         except_tags=_add_default_except_tags(except_tags),
         only_tags=only_tags,
         get_flaky_tests=run_flaky_tests,
+        get_high_impact_tests=run_high_impact_tests,
     )
     success = container.run_tests(team, test_targets, test_arg)
     sys.exit(0 if success else 42)
@@ -330,6 +342,7 @@ def _get_test_targets(
     only_tags: Optional[str] = "",
     yaml_dir: Optional[str] = None,
     get_flaky_tests: bool = False,
+    get_high_impact_tests: bool = False,
 ) -> List[str]:
     """
     Get test targets that are owned by a particular team
@@ -353,6 +366,14 @@ def _get_test_targets(
         return list(flaky_tests.intersection(test_targets))
     return list(test_targets.difference(flaky_tests))
 
+def _get_high_impact_test_targets(team: str, operating_system: str) -> List[str]:
+    """
+    Get all test targets that are high impact
+    """
+    os_prefix = f"{operating_system}:"
+    return [
+        test.get_name().lstrip(os_prefix) for test in Test.gen_from_s3(prefix=os_prefix) if test.get_oncall() == team and test.is_high_impact()
+    ]
 
 def _get_flaky_test_targets(
     team: str, operating_system: str, yaml_dir: Optional[str] = None
