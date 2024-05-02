@@ -172,8 +172,11 @@ def clip_gradients(
                 f"The total norm of order {norm_type} for gradients from "
                 "`parameters` is non-finite, so it cannot be clipped. "
             )
+        # We do want the coefficient to be in between 0.0 and 1.0, therefore
+        # if the global_norm is smaller than the clip value, we use the clip value
+        # as normalization constant.
         clip_coef = grad_clip / torch.maximum(
-            torch.tensor(grad_clip), total_norm + 1e-6
+            torch.tensor(grad_clip).to(device), total_norm + 1e-6
         )
         # Note: multiplying by the clamped coef is redundant when the coef is clamped to
         # 1, but doing so avoids a `if clip_coef < 1:` conditional which can require a
