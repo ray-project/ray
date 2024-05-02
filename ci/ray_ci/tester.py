@@ -362,9 +362,23 @@ def _get_test_targets(
     )
     flaky_tests = set(_get_flaky_test_targets(team, operating_system, yaml_dir))
 
+    # normal case, we want to exclude flaky tests from the list of targets provided
+    # by users
+    final_targets = test_targets.difference(flaky_tests)
+
     if get_flaky_tests:
-        return list(flaky_tests.intersection(test_targets))
-    return list(test_targets.difference(flaky_tests))
+        # run flaky test cases, so we include flaky tests in the list of targets
+        # provided by users
+        final_targets = flaky_tests.intersection(test_targets)
+
+    if get_high_impact_tests:
+        # run high impact test cases, so we include only high impact tests in the list
+        # of targets provided by users
+        high_impact_tests = set(_get_high_impact_test_targets(team, operating_system))
+        final_targets = high_impact_tests.intersection(final_targets)
+
+    return list(final_targets)
+
 
 def _get_high_impact_test_targets(team: str, operating_system: str) -> List[str]:
     """
@@ -372,8 +386,11 @@ def _get_high_impact_test_targets(team: str, operating_system: str) -> List[str]
     """
     os_prefix = f"{operating_system}:"
     return [
-        test.get_name().lstrip(os_prefix) for test in Test.gen_from_s3(prefix=os_prefix) if test.get_oncall() == team and test.is_high_impact()
+        test.get_name().lstrip(os_prefix)
+        for test in Test.gen_from_s3(prefix=os_prefix)
+        if test.get_oncall() == team and test.is_high_impact()
     ]
+
 
 def _get_flaky_test_targets(
     team: str, operating_system: str, yaml_dir: Optional[str] = None

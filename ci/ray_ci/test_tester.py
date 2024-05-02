@@ -13,6 +13,7 @@ from ci.ray_ci.tester import (
     _get_container,
     _get_all_test_query,
     _get_test_targets,
+    _get_high_impact_test_targets,
     _get_flaky_test_targets,
     _get_tag_matcher,
 )
@@ -86,6 +87,7 @@ def test_get_test_targets() -> None:
             f.write(_TEST_YAML)
 
         test_targets = [
+            "//python/ray/tests:high_impact_test_01",
             "//python/ray/tests:good_test_01",
             "//python/ray/tests:good_test_02",
             "//python/ray/tests:good_test_03",
@@ -99,7 +101,24 @@ def test_get_test_targets() -> None:
             return_value=None,
         ), mock.patch(
             "ray_release.test.Test.gen_from_s3",
-            return_value=[],
+            return_value=[
+                _stub_test(
+                    {
+                        "name": "linux://python/ray/tests:high_impact_test_01",
+                        "team": "core",
+                        "state": TestState.PASSING,
+                        Test.KEY_IS_HIGH_IMPACT: "true",
+                    }
+                ),
+                _stub_test(
+                    {
+                        "name": "linux://python/ray/tests:flaky_test_01",
+                        "team": "core",
+                        "state": TestState.FLAKY,
+                        Test.KEY_IS_HIGH_IMPACT: "true",
+                    }
+                ),
+            ],
         ):
             assert set(
                 _get_test_targets(
@@ -110,6 +129,7 @@ def test_get_test_targets() -> None:
                     yaml_dir=tmp,
                 )
             ) == {
+                "//python/ray/tests:high_impact_test_01",
                 "//python/ray/tests:good_test_01",
                 "//python/ray/tests:good_test_02",
                 "//python/ray/tests:good_test_03",
@@ -122,6 +142,30 @@ def test_get_test_targets() -> None:
                 operating_system="linux",
                 yaml_dir=tmp,
                 get_flaky_tests=True,
+            ) == [
+                "//python/ray/tests:flaky_test_01",
+            ]
+
+            assert _get_test_targets(
+                LinuxTesterContainer("core"),
+                "targets",
+                "core",
+                operating_system="linux",
+                yaml_dir=tmp,
+                get_flaky_tests=False,
+                get_high_impact_tests=True,
+            ) == [
+                "//python/ray/tests:high_impact_test_01",
+            ]
+
+            assert _get_test_targets(
+                LinuxTesterContainer("core"),
+                "targets",
+                "core",
+                operating_system="linux",
+                yaml_dir=tmp,
+                get_flaky_tests=True,
+                get_high_impact_tests=True,
             ) == [
                 "//python/ray/tests:flaky_test_01",
             ]
@@ -154,6 +198,43 @@ def test_get_all_test_query() -> None:
         "intersect (attr(tags, '\\\\btag2\\\\b', tests(a))) "
         "except (attr(tags, '\\\\btag1\\\\b', tests(a)))"
     )
+
+
+def test_get_high_impact_test_targets() -> None:
+    test_harness = [
+        {
+            "input": [],
+            "output": [],
+        },
+        {
+            "input": [
+                _stub_test(
+                    {
+                        "name": "linux://core_good",
+                        "team": "core",
+                        Test.KEY_IS_HIGH_IMPACT: "true",
+                    }
+                ),
+                _stub_test(
+                    {
+                        "name": "linux://serve_good",
+                        "team": "serve",
+                        Test.KEY_IS_HIGH_IMPACT: "true",
+                    }
+                ),
+                _stub_test({"name": "linux://core_bad", "team": "core"}),
+            ],
+            "output": [
+                "//core_good",
+            ],
+        },
+    ]
+    for test in test_harness:
+        with mock.patch(
+            "ray_release.test.Test.gen_from_s3",
+            return_value=test["input"],
+        ):
+            assert _get_high_impact_test_targets("core", "linux") == test["output"]
 
 
 def test_get_flaky_test_targets() -> None:
