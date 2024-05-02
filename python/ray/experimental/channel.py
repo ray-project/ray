@@ -5,6 +5,7 @@ import logging
 from typing import Any, List, Optional
 
 import ray
+from ray.experimental.channel_common import ChannelContext
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 # Logger for this module. It should be configured at the entry point
@@ -154,9 +155,6 @@ class Channel:
 
     def is_remote(self):
         return self._writer_node_id != self._reader_node_id
-
-    def _init(self, channel_context: "ChannelContext"):
-        pass
 
     def ensure_registered_as_writer(self):
         if self._writer_registered:

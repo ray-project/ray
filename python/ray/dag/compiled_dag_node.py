@@ -16,16 +16,17 @@ from ray.experimental.channel import (
     AwaitableBackgroundReader,
     AwaitableBackgroundWriter,
 )
+from ray.experimental.torch_tensor_nccl_channel import (
+    _init_nccl_group,
+    TorchTensorNcclChannel,
+)
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 from ray.dag.experimental.types import (
     DAGNodeOutputType,
     _do_register_custom_dag_serializers,
-    _init_nccl_group,
     TorchTensorType,
     _TorchTensorWrapper,
-    TorchTensorNcclChannel,
-    _get_or_create_ray_dag_context,
 )
 
 MAX_BUFFER_SIZE = int(100 * 1e6)  # 100MB
@@ -35,7 +36,9 @@ logger = logging.getLogger(__name__)
 
 @DeveloperAPI
 def do_allocate_channel(
-    self, readers: List[Optional["ray.actor.ActorHandle"]], buffer_size_bytes: int,
+    self,
+    readers: List[Optional["ray.actor.ActorHandle"]],
+    buffer_size_bytes: int,
     typ: Optional[DAGNodeOutputType],
 ) -> Channel:
     """Generic actor method to allocate an output channel.
@@ -57,7 +60,6 @@ def do_allocate_channel(
             readers,
             buffer_size_bytes,
         )
-    self._output_channel._init(_get_or_create_ray_dag_context(self))
     return self._output_channel
 
 
@@ -105,7 +107,6 @@ def do_exec_compiled_task(
         # Add placeholders for input channels.
         for idx, inp in enumerate(inputs):
             if isinstance(inp, Channel):
-                inp._init(_get_or_create_ray_dag_context(self))
                 input_channels.append(inp)
                 input_channel_idxs.append(idx)
                 resolved_inputs.append(None)
@@ -212,8 +213,7 @@ class CompiledTask:
                 )
             else:
                 raise ValueError(
-                    "DAGNode.with_type_hint may only be called on "
-                    "TorchTensorType"
+                    "DAGNode.with_type_hint may only be called on " "TorchTensorType"
                 )
 
     @property
@@ -628,7 +628,9 @@ class CompiledDAG:
                     try:
                         ray.get(ref, timeout=10)
                     except ray.exceptions.GetTimeoutError:
-                        logger.warn("At least one actor in the DAG is still running 10s after teardown(). Teardown may hang.")
+                        logger.warn(
+                            "At least one actor in the DAG is still running 10s after teardown(). Teardown may hang."
+                        )
                     except Exception:
                         continue
 
@@ -636,7 +638,6 @@ class CompiledDAG:
                         ray.get(ref)
                     except Exception:
                         continue
-
 
             def teardown(self):
                 if self.in_teardown:
