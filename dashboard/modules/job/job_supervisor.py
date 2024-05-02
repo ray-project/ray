@@ -84,9 +84,16 @@ class JobSupervisor:
 
         # Logger object to persist JobSupervisor logs in separate file.
         self._logger = logging.getLogger(f"{__name__}.supervisor-{job_id}")
+        self._configure_logger()
+
+    def _configure_logger(self) -> None:
+        """
+        Configure self._logger object to write logs to file based on job
+        submission ID and to console.
+        """
         supervisor_log_file_name = os.path.join(
             ray._private.worker._global_node.get_logs_dir_path(),
-            f"jobs/supervisor-{job_id}.log",
+            f"jobs/supervisor-{self._job_id}.log",
         )
         os.makedirs(os.path.dirname(supervisor_log_file_name), exist_ok=True)
         self._logger.addHandler(logging.FileHandler(supervisor_log_file_name))
