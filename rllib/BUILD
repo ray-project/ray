@@ -2280,20 +2280,26 @@ py_test(
 
 py_test(
     name = "examples/envs/custom_env_render_method",
-    main = "examples/envs/custom_env_render_method.py",
+    srcs = ["examples/envs/custom_env_render_method.py"],
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
-    srcs = ["examples/envs/custom_env_render_method.py"],
     args = ["--enable-new-api-stack", "--num-agents=0"]
 )
 
 py_test(
     name = "examples/envs/custom_env_render_method_multi_agent",
-    main = "examples/envs/custom_env_render_method.py",
+    srcs = ["examples/envs/custom_env_render_method.py"],
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
-    srcs = ["examples/envs/custom_env_render_method.py"],
     args = ["--enable-new-api-stack", "--num-agents=2"]
+)
+
+py_test(
+    name = "examples/envs/env_rendering_and_recording",
+    srcs = ["examples/envs/env_rendering_and_recording.py"],
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "small",
+    args = ["--enable-new-api-stack", "--env=CartPole-v1", "--stop-iters=3"]
 )
 
 #@OldAPIStack
