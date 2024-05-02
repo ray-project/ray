@@ -140,14 +140,15 @@ class JobLogStorageClient:
         async for lines in self.tail_logs(job_id):
             if lines is None:
                 break
-            else:
-                # log_tail_iter can return batches of lines at a time.
-                for line in lines:
-                    log_tail_deque.append(line)
 
-        return "".join(log_tail_deque)[-self.MAX_LOG_SIZE :]
+            # log_tail_iter can return batches of lines at a time.
+            for line in lines:
+                log_tail_deque.append(line)
 
-    def get_log_file_path(self, job_id: str) -> Tuple[str, str]:
+        return "".join(log_tail_deque)[-self.MAX_LOG_SIZE:]
+
+    @staticmethod
+    def get_log_file_path(job_id: str) -> str:
         """
         Get the file path to the logs of a given job. Example:
             /tmp/ray/session_date/logs/job-driver-{job_id}.log
