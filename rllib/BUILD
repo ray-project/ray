@@ -2279,11 +2279,10 @@ py_test(
 )
 
 py_test(
-    name = "examples/envs/env_rendering_and_recording.py",
-    main = "examples/envs/env_rendering_and_recording.py",
+    name = "examples/envs/env_rendering_and_recording",
+    srcs = ["examples/envs/env_rendering_and_recording.py"],
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
-    srcs = ["examples/envs/env_rendering_and_recording.py"],
     args = ["--enable-new-api-stack", "--env=CartPole-v1", "--stop-iters=3"]
 )
 
