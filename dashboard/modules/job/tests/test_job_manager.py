@@ -298,8 +298,7 @@ async def _run_hanging_command(job_manager, tmp_dir, start_signal_actor=None):
         await async_wait_for_condition_async_predicate(
             check_job_running, job_manager=job_manager, job_id=job_id
         )
-
-    await async_wait_for_condition(check_in_logs, job_manager=job_manager, job_id=job_id, expected_message="Waiting...")
+        await async_wait_for_condition(check_in_logs, job_manager=job_manager, job_id=job_id, expected_message="Waiting...")
 
     return pid_file, tmp_file, job_id
 
