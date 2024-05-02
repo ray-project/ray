@@ -13,6 +13,7 @@ import createStyles from "@mui/styles/createStyles";
 import makeStyles from "@mui/styles/makeStyles";
 import _ from "lodash";
 import React, { ReactElement } from "react";
+import { sliceToPage } from "../../common/util";
 import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip, StatusChipProps } from "../../components/StatusChip";
@@ -68,6 +69,12 @@ export const ServeSystemDetails = ({
 }: ServeSystemDetailsProps) => {
   const classes = useStyles();
 
+  const {
+    items: list,
+    constrainedPage,
+    maxPage,
+  } = sliceToPage(proxies, page.pageNo, page.pageSize);
+
   return (
     <div>
       <Typography variant="h3" className={classes.title}>
@@ -109,8 +116,8 @@ export const ServeSystemDetails = ({
       <TableContainer>
         <div style={{ display: "flex", alignItems: "center" }}>
           <Pagination
-            count={Math.ceil(proxies.length / page.pageSize)}
-            page={page.pageNo}
+            count={maxPage}
+            page={constrainedPage}
             onChange={(e, pageNo) => setPage("pageNo", pageNo)}
           />
         </div>
@@ -141,14 +148,9 @@ export const ServeSystemDetails = ({
           </TableHead>
           <TableBody>
             <ServeControllerRow controller={serveDetails.controller_info} />
-            {proxies
-              .slice(
-                (page.pageNo - 1) * page.pageSize,
-                page.pageNo * page.pageSize,
-              )
-              .map((proxy) => (
-                <ServeProxyRow key={proxy.actor_id} proxy={proxy} />
-              ))}
+            {list.map((proxy) => (
+              <ServeProxyRow key={proxy.actor_id} proxy={proxy} />
+            ))}
           </TableBody>
         </Table>
       </TableContainer>
