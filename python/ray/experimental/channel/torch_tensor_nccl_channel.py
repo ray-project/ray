@@ -2,9 +2,8 @@ from typing import TYPE_CHECKING, List, Optional
 
 import ray
 import ray.util.serialization
-from ray.experimental.channel import Channel
-from ray.experimental.channel_common import ChannelContext
-from ray.experimental.nccl_group import _NcclGroup
+from ray.experimental.channel import Channel, ChannelContext
+from ray.experimental.channel.nccl_group import _NcclGroup
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:

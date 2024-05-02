@@ -2,7 +2,7 @@ import threading
 from dataclasses import dataclass
 from typing import Optional
 
-from ray.experimental.nccl_group import _NcclGroup
+from ray.experimental.channel.nccl_group import _NcclGroup
 from ray.util.annotations import DeveloperAPI
 
 # The context singleton on this process.
