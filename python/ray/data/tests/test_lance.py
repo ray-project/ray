@@ -1,9 +1,9 @@
 import os
 
 import lance
-from pkg_resources import parse_version
 import pyarrow as pa
 import pytest
+from pkg_resources import parse_version
 from pytest_lazyfixture import lazy_fixture
 
 import ray
