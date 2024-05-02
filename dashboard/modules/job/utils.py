@@ -34,8 +34,8 @@ from ray.runtime_env import RuntimeEnv
 
 logger = logging.getLogger(__name__)
 
-MAX_CHUNK_LINE_LENGTH = 10
-MAX_CHUNK_CHAR_LENGTH = 20000
+MAX_LINES_PER_CHUNK = 10
+MAX_CHUNK_CHAR_SIZE = 20000
 
 
 def strip_keys_with_value_none(d: Dict[str, Any]) -> Dict[str, Any]:
@@ -52,7 +52,12 @@ def redact_url_password(url: str) -> str:
     return url
 
 
-def file_tail_iterator(path: str) -> Iterator[Optional[List[str]]]:
+def file_tail_iterator(
+    path: str,
+    *,
+    max_lines_per_chunk: int = MAX_LINES_PER_CHUNK,
+    max_chunk_char_size: int = MAX_CHUNK_CHAR_SIZE,
+) -> Iterator[Optional[List[str]]]:
     """Yield lines from a file as it's written.
 
     Returns lines in batches of up to 10 lines or 20000 characters,
@@ -83,8 +88,8 @@ def file_tail_iterator(path: str) -> Iterator[Optional[List[str]]]:
             #   - We accumulated at least MAX_CHUNK_CHAR_LENGTH total chars
             #   - We reached EOF
             if (
-                len(lines) >= 10
-                or chunk_char_count > MAX_CHUNK_CHAR_LENGTH
+                len(lines) >= max_lines_per_chunk
+                or chunk_char_count > max_chunk_char_size
                 or curr_line == EOF
             ):
                 # Too many lines, return 10 lines in this chunk, and then

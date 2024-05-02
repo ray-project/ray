@@ -136,7 +136,7 @@ class TestIterLine:
         assert next(it) is None
 
     def test_max_line_batching(self, tmp):
-        it = file_tail_iterator(tmp)
+        it = file_tail_iterator(tmp, max_lines_per_chunk=10)
         assert next(it) is None
 
         f = open(tmp, "w")
@@ -157,7 +157,7 @@ class TestIterLine:
         assert next(it) is None
 
     def test_max_char_batching(self, tmp):
-        it = file_tail_iterator(tmp)
+        it = file_tail_iterator(tmp, max_chunk_char_size=20000)
         assert next(it) is None
 
         f = open(tmp, "w")
