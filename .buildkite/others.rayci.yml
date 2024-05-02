@@ -60,7 +60,6 @@ steps:
 
   - label: ":robot_face: {{matrix}} microcheck test coverage"
     tags: skip-on-premerge
-    if: build.branch == "master" && build.env("RAYCI_CONTINUOUS_BUILD") == "1"
     instance_type: small
     commands:
       - bazel run //ci/ray_ci/automation:determine_microcheck_tests -- {{matrix}} 95 --production

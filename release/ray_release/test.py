@@ -466,46 +466,38 @@ class Test(dict):
             key=lambda file: int(file["LastModified"].timestamp()),
             reverse=True,
         )[:limit]
-        asyncio.run(self._gen_test_results(bucket, [file["Key"] for file in files]))
+        loop = asyncio.get_event_loop()
+        self.test_results = loop.run_until_complete(
+            self._gen_test_results(
+                bucket,
+                [file["Key"] for file in files],
+            )
+        )
+        logger.info(f"Test {self.get_name()} has {len(self.test_results)} results")
 
         return self.test_results
 
     async def _gen_test_results(
         self,
         bucket: str,
-        key: List[str],
-    ) -> None:
+        keys: List[str],
+    ):
         session = aioboto3.Session()
-        tasks = []
-        async with asyncio.TaskGroup() as tg, session.resource("s3") as client:
-            for k in key:
-                tasks.append(tg.create_task(
-                    self._gen_test_result(
-                        client,
-                        bucket,
-                        k,
-                    )
-                ))
-
-        self.test_results = [task.result() for task in tasks]
+        async with session.client("s3") as client:
+            return await asyncio.gather(
+                *[self._gen_test_result(client, bucket, key) for key in keys]
+            )
 
     async def _gen_test_result(
         self,
-        client: aioboto3.Session.resource,
+        client: aioboto3.Session.client,
         bucket: str,
         key: str,
-    ) -> asyncio.Awaitable[TestResult]:
-        await client.get_object(
-            Bucket=bucket,
-            Key=key,
-        )
-        return TestResult.from_dict(
-            json.loads(
-                object["Body"]
-                .read()
-                .decode("utf-8")
-            )
-        )
+    ):
+        object = await client.get_object(Bucket=bucket, Key=key)
+        content = await object["Body"].read()
+
+        return TestResult.from_dict(json.loads(content.decode("utf-8")))
 
     def persist_result_to_s3(self, result: Result) -> bool:
         """

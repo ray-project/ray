@@ -14,7 +14,7 @@ LINUX_TEST_PREFIX = "linux:__python"
 @click.command()
 @click.argument("team", required=True, type=str)
 @click.argument("coverage", required=True, type=int)
-@click.option("--test-history-length", default=100, type=int)
+@click.option("--test-history-length", default=500, type=int)
 @click.option("--test-prefix", default=LINUX_TEST_PREFIX, type=str)
 @click.option("--production", is_flag=True, default=False)
 def main(
@@ -119,7 +119,6 @@ def _get_failed_prs(test: Test, test_history_length: int) -> Set[str]:
         )
         if result.status == ResultStatus.ERROR.value
     ]
-    logger.info([result.status for result in results])
     return {result.branch for result in results if result.branch}
 
 
