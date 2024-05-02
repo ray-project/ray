@@ -41,15 +41,21 @@ def get_object_locations(
     )
 
 
-def try_get_object_location_from_local(object_ref) -> Dict[str, Any] | None:
-    """Try to lookup the location for an object. Only returns information if the local
-    core worker has a reference to this object ref. Otherwise, returns None.
+def get_local_object_locations(
+    obj_refs: List[ObjectRef],
+) -> Dict[ObjectRef, Dict[str, Any]]:
+    """Lookup the locations for a list of objects *from the local core worker*. No RPCs
+    are made in this method.
+
+    It returns a dict maps from an object to its location. The dict excludes
+    those objects whose location lookup failed.
 
     Args:
-        object_ref: The object ref.
+        object_refs (List[ObjectRef]): List of object refs.
 
     Returns:
-        A dict maps from an object to its location, or None.
+        A dict maps from an object to its location. The dict excludes those
+        objects whose location lookup failed.
 
         The location is stored as a dict with following attributes:
 
@@ -65,4 +71,4 @@ def try_get_object_location_from_local(object_ref) -> Dict[str, Any] | None:
     if not ray.is_initialized():
         raise RuntimeError("Ray hasn't been initialized.")
     core_worker = ray._private.worker.global_worker.core_worker
-    return core_worker.try_get_object_location_from_local(object_ref)
+    return core_worker.get_local_object_locations([obj_refs])

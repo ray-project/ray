@@ -89,7 +89,7 @@ class ScopedTaskMetricSetter {
 using ActorLifetime = ray::rpc::JobConfig_ActorLifetime;
 
 // Helper function converts GetObjectLocationsOwnerReply to ObjectLocation
-ObjectLocation CreateObjectLocation(
+std::shared_ptr<ObjectLocation> CreateObjectLocation(
     const rpc::WorkerObjectLocationsPubMessage &object_info) {
   std::vector<NodeID> node_ids;
   node_ids.reserve(object_info.node_ids_size());
@@ -97,14 +97,31 @@ ObjectLocation CreateObjectLocation(
     node_ids.push_back(NodeID::FromBinary(object_info.node_ids(i)));
   }
   bool is_spilled = !object_info.spilled_url().empty();
-  return ObjectLocation(NodeID::FromBinary(object_info.primary_node_id()),
-                        object_info.object_size(),
-                        std::move(node_ids),
-                        is_spilled,
-                        object_info.spilled_url(),
-                        NodeID::FromBinary(object_info.spilled_node_id()),
-                        object_info.did_spill());
+  return std::make_shared<ObjectLocation>(
+      NodeID::FromBinary(object_info.primary_node_id()),
+      object_info.object_size(),
+      std::move(node_ids),
+      is_spilled,
+      object_info.spilled_url(),
+      NodeID::FromBinary(object_info.spilled_node_id()),
+      object_info.did_spill());
 }
+
+std::shared_ptr<ObjectLocation> TryGetLocalObjectLocation(
+    ReferenceCounter &reference_counter, const ObjectID &object_id) {
+  if (!reference_counter.HasReference(object_id)) {
+    return nullptr;
+  }
+  rpc::WorkerObjectLocationsPubMessage object_info;
+  reference_counter.FillObjectInformation(object_id, &object_info);
+  // Note: there can be a TOCTOU race condition: HasReference returned true, but before
+  // FillObjectInformation the object is released. Hence we check the ref_removed field.
+  if (object_info.ref_removed()) {
+    return nullptr;
+  }
+  return CreateObjectLocation(object_info);
+}
+
 }  // namespace
 
 CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_id)
@@ -1894,8 +1911,7 @@ Status CoreWorker::GetLocationFromOwner(
                 // Map the object ID to its location, adjusting index by batch_start
                 location_by_id->emplace(
                     owner_object_ids[batch_start + i],
-                    std::make_shared<ObjectLocation>(
-                        CreateObjectLocation(reply.object_location_infos(i))));
+                    CreateObjectLocation(reply.object_location_infos(i)));
               }
             } else {
               RAY_LOG(WARNING) << "Failed to query location information for objects "
@@ -3868,19 +3884,18 @@ void CoreWorker::ProcessSubscribeObjectLocations(
   reference_counter_->PublishObjectLocationSnapshot(object_id);
 }
 
-std::unique_ptr<ObjectLocation> CoreWorker::TryGetObjectLocationFromLocal(
-    const ObjectID &object_id) {
-  if (!reference_counter_->HasReference(object_id)) {
-    return nullptr;
+Status CoreWorker::GetLocalObjectLocations(
+    const std::vector<ObjectID> &object_ids,
+    std::vector<std::shared_ptr<ObjectLocation>> *results) {
+  results->clear();
+  results->resize(object_ids.size());
+  if (object_ids.empty()) {
+    return Status::OK();
   }
-  rpc::WorkerObjectLocationsPubMessage object_info;
-  reference_counter_->FillObjectInformation(object_id, &object_info);
-  // Note: there can be a TOCTOU race condition: HasReference returned true, but before
-  // FillObjectInformation the object is released. Hence we check the ref_removed field.
-  if (object_info.ref_removed()) {
-    return nullptr;
+  for (size_t i = 0; i < object_ids.size(); i++) {
+    (*results)[i] = TryGetLocalObjectLocation(*reference_counter_, object_ids[i]);
   }
-  return std::make_unique<ObjectLocation>(CreateObjectLocation(object_info));
+  return Status::OK();
 }
 
 void CoreWorker::HandleGetObjectLocationsOwner(

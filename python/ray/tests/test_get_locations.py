@@ -150,10 +150,10 @@ def test_local_get_locations(ray_start_cluster):
     of the object.
     """
     for obj_ref in gen_big_objects.remote(3, 10):
-        d = ray.experimental.try_get_object_location_from_local(obj_ref)
+        d = ray.experimental.get_local_object_locations(obj_ref)
         assert d is not None
         # The dataframe consists of 3 * 100MiB of NumPy NDArrays.
-        assert d["object_size"] > 3 * 100 * 1024 * 1024
+        assert d[obj_ref]["object_size"] > 3 * 100 * 1024 * 1024
 
 
 def test_local_get_locations_multi_nodes(ray_start_cluster_enabled):
@@ -180,10 +180,10 @@ def test_local_get_locations_multi_nodes(ray_start_cluster_enabled):
             )
         ).remote(3, 10)
         for obj_ref in gen:
-            d = ray.experimental.try_get_object_location_from_local(obj_ref)
+            d = ray.experimental.get_local_object_locations(obj_ref)
             assert d is not None
             # The dataframe consists of 3 * 100MiB of NumPy NDArrays.
-            assert d["object_size"] > 3 * 100 * 1024 * 1024
+            assert d[obj_ref]["object_size"] > 3 * 100 * 1024 * 1024
 
     ray.get(
         caller.options(
