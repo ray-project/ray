@@ -2,9 +2,11 @@ import logging
 import ray
 import json
 
-LOGRECORD_STANDARD_ATTRS = logging.makeLogRecord({"message": "test"}).__dict__.keys()
-LOG_RAY_CORE_CONTEXT = "ray_core"
-LOGGER_RAY_ATTRS = {LOG_RAY_CORE_CONTEXT}
+from ray._private.ray_constants import (
+    LOG_RAY_CORE_CONTEXT,
+    LOGGER_RAY_ATTRS,
+    LOGRECORD_STANDARD_ATTRS,
+)
 
 
 class CoreContextFilter(logging.Filter):

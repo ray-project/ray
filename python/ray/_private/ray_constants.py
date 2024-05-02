@@ -222,6 +222,14 @@ LOGGER_FORMAT_STDERR = (
     "%(asctime)s\t%(levelname)s ({component}) %(filename)s:%(lineno)s -- %(message)s"
 )
 
+# A dict_keys object containing the standard attributes of a LogRecord. This is used to
+# help us determine which attributes constitute user-provided context.
+LOGRECORD_STANDARD_ATTRS = logging.makeLogRecord({"message": "test"}).__dict__.keys()
+# An attribute in LogRecord stores the Ray Core context.
+LOG_RAY_CORE_CONTEXT = "ray_core"
+# A set of attributes in LogRecord that are Ray-specific.
+LOGGER_RAY_ATTRS = {LOG_RAY_CORE_CONTEXT}
+
 # Constants used to define the different process types.
 PROCESS_TYPE_REAPER = "reaper"
 PROCESS_TYPE_MONITOR = "monitor"
