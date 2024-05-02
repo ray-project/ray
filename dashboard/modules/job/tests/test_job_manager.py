@@ -463,7 +463,7 @@ async def test_job_supervisor_logs_saved(job_manager):
         await async_wait_for_condition_async_predicate(
             check_job_succeeded, job_manager=job_manager, job_id=job_id
         )
-        with open(supervisor_log_path.format(job_id), "r") as f:
+        with open(supervisor_log_path.format(job_id=job_id), "r") as f:
             logs = f.read()
             assert f"Job {job_id} entrypoint command exited with code 0" in logs
 
