@@ -49,6 +49,7 @@ class OnEpisodeCreatedCallback(DefaultCallbacks):
         episode,
         worker=None,
         env_runner=None,
+        metrics_logger=None,
         base_env=None,
         env=None,
         policies=None,
