@@ -8,7 +8,7 @@ from ray_release.result import ResultStatus
 
 # The s3 prefix for the tests that run on Linux. It comes from the bazel prefix rule
 # linux:// with the character "/" replaced by "_" for s3 compatibility
-LINUX_TEST_PREFIX = "linux:__"
+LINUX_TEST_PREFIX = "linux:__python"
 
 
 @click.command()
@@ -119,6 +119,7 @@ def _get_failed_prs(test: Test, test_history_length: int) -> Set[str]:
         )
         if result.status == ResultStatus.ERROR.value
     ]
+    logger.info([result.status for result in results])
     return {result.branch for result in results if result.branch}
 
 

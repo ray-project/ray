@@ -1,3 +1,4 @@
+import asyncio
 import enum
 import os
 import platform
@@ -7,6 +8,7 @@ from itertools import chain
 from typing import Optional, List, Dict
 from dataclasses import dataclass
 
+import aioboto3
 import boto3
 from botocore.exceptions import ClientError
 from github import Repository
@@ -464,21 +466,46 @@ class Test(dict):
             key=lambda file: int(file["LastModified"].timestamp()),
             reverse=True,
         )[:limit]
-        self.test_results = [
-            TestResult.from_dict(
-                json.loads(
-                    s3_client.get_object(
-                        Bucket=bucket,
-                        Key=file["Key"],
-                    )
-                    .get("Body")
-                    .read()
-                    .decode("utf-8")
-                )
-            )
-            for file in files
-        ]
+        asyncio.run(self._gen_test_results(bucket, [file["Key"] for file in files]))
+
         return self.test_results
+
+    async def _gen_test_results(
+        self,
+        bucket: str,
+        key: List[str],
+    ) -> None:
+        session = aioboto3.Session()
+        tasks = []
+        async with asyncio.TaskGroup() as tg, session.resource("s3") as client:
+            for k in key:
+                tasks.append(tg.create_task(
+                    self._gen_test_result(
+                        client,
+                        bucket,
+                        k,
+                    )
+                ))
+
+        self.test_results = [task.result() for task in tasks]
+
+    async def _gen_test_result(
+        self,
+        client: aioboto3.Session.resource,
+        bucket: str,
+        key: str,
+    ) -> asyncio.Awaitable[TestResult]:
+        await client.get_object(
+            Bucket=bucket,
+            Key=key,
+        )
+        return TestResult.from_dict(
+            json.loads(
+                object["Body"]
+                .read()
+                .decode("utf-8")
+            )
+        )
 
     def persist_result_to_s3(self, result: Result) -> bool:
         """
