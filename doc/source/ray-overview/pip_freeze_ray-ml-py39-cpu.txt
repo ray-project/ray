@@ -351,7 +351,7 @@ pynvml==11.5.0
 PyOpenGL==3.1.7
 pyOpenSSL==23.0.0
 pyparsing==3.1.1
-pyproject_hooks==1.0.0
+pyproject_hooks==1.1.0
 pyro-api==0.1.2
 pyro-ppl==1.8.6
 Pyro4==4.82
@@ -371,7 +371,7 @@ PyYAML==6.0.1
 pyzmq==24.0.1
 qpd==0.4.4
 querystring-parser==1.2.4
-ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=fcde265d3b6f8d1a96105539592e90ca2543822cc072ed213a97f85753428024
+ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=0f0d70f0473a1dcbe93f7f1e84a4ca9eb21a1c7f976e44b6f3914300253b7336
 recsim==0.2.4
 redis==3.5.3
 referencing==0.35.0
