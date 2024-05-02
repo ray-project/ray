@@ -314,7 +314,8 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
               containing ``len(arr)`` tensors of variable shape.
             - If scalar elements, a ``pyarrow.Array``.
         """
-        if isinstance(arr, (list, tuple)) and arr and isinstance(arr[0], np.ndarray):
+        if isinstance(arr, (list, tuple)) and arr and (isinstance(arr[0], np.ndarray) 
+                                                       or isinstance(arr[0], ArrowTensorArray)):
             # Stack ndarrays and pass through to ndarray handling logic below.
             try:
                 arr = np.stack(arr, axis=0)
@@ -548,58 +549,7 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
                 [e for a in to_concat for e in a]
             )
         else:
-            def create_empty_tensor_array(to_concat):
-                # Create an empty tensor array with the same type as the input arrays
-                if to_concat:
-                    type_ = to_concat[0].type
-                    empty_storage = pa.array([], type=type_.storage_type)
-                    return pa.ExtensionArray.from_storage(type_, empty_storage)
-                else:
-                    # Fallback if no type information is available
-                    return pa.array([])
-                
-            if not to_concat:
-                # Return an empty tensor array if the input list is empty
-                return create_empty_tensor_array(to_concat)
-
-            # Gather all offsets and data buffers
-            offsets = [0]  # Start with the initial offset
-            data_buffers = []
-            total_length = 0
-
-            for array in to_concat:
-                storage = array.storage
-                # Extract the offset buffer, skip the first offset (0)
-                offset_array = np.array(storage.buffers()[1]).view(np.int32)[1:]
-                # Adjust these offsets by the total length accumulated so far
-                adjusted_offsets = offset_array + total_length
-                offsets.extend(adjusted_offsets)
-                # Collect data buffer
-                data_buffer = np.array(storage.buffers()[2])
-                if data_buffer.ndim == 0:  # Handling for zero-dimensional buffers
-                    continue  # Skip this buffer
-                data_buffers.append(data_buffer)
-                total_length += len(storage)  # Use len() to get the length of the ListArray
-
-            if not data_buffers:
-                # If no valid data buffers to concatenate, return an empty tensor array
-                return create_empty_tensor_array(to_concat)
-
-            # Concatenate all data buffers
-            concatenated_data_buffer = pa.py_buffer(np.concatenate(data_buffers))
-
-            # Create the offset buffer
-            concatenated_offsets_buffer = pa.py_buffer(np.array(offsets, dtype=np.int32))
-
-            # Create the concatenated storage array using the same child type as the input
-            child_type = to_concat[0].storage.type.value_type
-            concatenated_storage = pa.Array.from_buffers(
-                pa.list_(child_type),
-                len(offsets) - 1,
-                [None, concatenated_offsets_buffer, concatenated_data_buffer]
-            )
-
-            return pa.ExtensionArray.from_storage(to_concat[0].type, concatenated_storage)
+            return ArrowTensorArray.from_numpy([e for e in to_concat])
 
     @classmethod
     def _chunk_tensor_arrays(
