@@ -274,7 +274,7 @@ class SingleAgentEnvRunner(EnvRunner):
                 if explore:
                     env_steps_lifetime = self.metrics.peek(
                         NUM_ENV_STEPS_SAMPLED_LIFETIME
-                    ) + self.metrics.peek(NUM_ENV_STEPS_SAMPLED, default=0)
+                    )
                     to_env = self.module.forward_exploration(
                         to_module, t=env_steps_lifetime
                     )
@@ -465,7 +465,7 @@ class SingleAgentEnvRunner(EnvRunner):
                 if explore:
                     env_steps_lifetime = self.metrics.peek(
                         NUM_ENV_STEPS_SAMPLED_LIFETIME
-                    ) + self.metrics.peek(NUM_ENV_STEPS_SAMPLED, default=0)
+                    )
                     to_env = self.module.forward_exploration(
                         to_module, t=env_steps_lifetime
                     )
