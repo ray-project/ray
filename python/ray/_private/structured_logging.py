@@ -4,23 +4,21 @@ import json
 
 LOGRECORD_STANDARD_ATTRS = logging.makeLogRecord({"message": "test"}).__dict__.keys()
 LOG_RAY_CORE_CONTEXT = "ray_core"
-LOGGER_RAY_ATTRS = set([LOG_RAY_CORE_CONTEXT])
+LOGGER_RAY_ATTRS = {LOG_RAY_CORE_CONTEXT}
 
 
 class CoreContextFilter(logging.Filter):
     def filter(self, record):
         runtime_context = ray.get_runtime_context()
-        setattr(
-            record,
-            LOG_RAY_CORE_CONTEXT,
-            {
-                "actor_id": runtime_context.get_actor_id(),
-                "task_id": runtime_context.get_task_id(),
-                "job_id": runtime_context.get_job_id(),
-                "worker_id": runtime_context.get_worker_id(),
-                "node_id": runtime_context.get_node_id(),
-            },
-        )
+        ray_core_context = {
+            "job_id": runtime_context.get_job_id(),
+            "worker_id": runtime_context.get_worker_id(),
+            "node_id": runtime_context.get_node_id(),
+        }
+        if runtime_context.worker.mode == ray.WORKER_MODE:
+            ray_core_context["actor_id"] = runtime_context.get_actor_id()
+            ray_core_context["task_id"] = runtime_context.get_task_id()
+        setattr(record, LOG_RAY_CORE_CONTEXT, ray_core_context)
         return True
 
 
