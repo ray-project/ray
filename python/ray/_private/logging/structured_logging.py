@@ -3,7 +3,6 @@ import ray
 import json
 
 from ray._private.ray_constants import (
-    LOG_RAY_CORE_CONTEXT,
     LOGGER_RAY_ATTRS,
     LOGRECORD_STANDARD_ATTRS,
 )
@@ -12,19 +11,16 @@ from ray._private.ray_constants import (
 class CoreContextFilter(logging.Filter):
     def filter(self, record):
         runtime_context = ray.get_runtime_context()
-        ray_core_context = {
-            "job_id": runtime_context.get_job_id(),
-            "worker_id": runtime_context.get_worker_id(),
-            "node_id": runtime_context.get_node_id(),
-        }
+        record.job_id = runtime_context.get_job_id()
+        record.worker_id = runtime_context.get_worker_id()
+        record.node_id = runtime_context.get_node_id()
         if runtime_context.worker.mode == ray.WORKER_MODE:
             actor_id = runtime_context.get_actor_id()
             if actor_id is not None:
-                ray_core_context["actor_id"] = actor_id
+                record.actor_id = actor_id
             task_id = runtime_context.get_task_id()
             if task_id is not None:
-                ray_core_context["task_id"] = task_id
-        setattr(record, LOG_RAY_CORE_CONTEXT, ray_core_context)
+                record.task_id = task_id
         return True
 
 
@@ -44,7 +40,7 @@ class JSONFormatter(logging.Formatter):
 
         for key, value in record.__dict__.items():
             if key in LOGGER_RAY_ATTRS:  # Ray context
-                record_format.update(value)
+                record_format[key] = value
             elif key not in LOGRECORD_STANDARD_ATTRS:  # User-provided context
                 record_format[key] = value
         return json.dumps(record_format)
