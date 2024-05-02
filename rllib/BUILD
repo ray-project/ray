@@ -2273,6 +2273,14 @@ py_test(
     args = ["--enable-new-api-stack", "--as-test"]
 )
 
+py_test(
+    name = "examples/envs/env_rendering_and_recording",
+    srcs = ["examples/envs/env_rendering_and_recording.py"],
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "small",
+    args = ["--enable-new-api-stack", "--env=CartPole-v1", "--stop-iters=3"]
+)
+
 #@OldAPIStack
 py_test(
     name = "examples/envs/greyscale_env",

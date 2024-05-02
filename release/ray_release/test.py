@@ -134,6 +134,8 @@ class Test(dict):
     KEY_GITHUB_ISSUE_NUMBER = "github_issue_number"
     KEY_BISECT_BUILD_NUMBER = "bisect_build_number"
     KEY_BISECT_BLAMED_COMMIT = "bisect_blamed_commit"
+    # a test is high impact if it catches regressions frequently
+    KEY_IS_HIGH_IMPACT = "is_high_impact"
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -217,6 +219,11 @@ class Test(dict):
         Returns whether this test is running on a BYOD cluster.
         """
         return self["cluster"].get("byod") is not None
+
+    def is_high_impact(self) -> bool:
+        # a test is high impact if it catches regressions frequently, this field is
+        # populated by the determine_microcheck_tests.py script
+        return self.get(self.KEY_IS_HIGH_IMPACT, None) == "true"
 
     def get_test_type(self) -> TestType:
         test_name = self.get_name()

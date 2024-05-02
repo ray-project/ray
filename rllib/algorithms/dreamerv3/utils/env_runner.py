@@ -168,7 +168,6 @@ class DreamerV3EnvRunner(EnvRunner):
         num_episodes: int = None,
         explore: bool = True,
         random_actions: bool = False,
-        with_render_data: bool = False,
     ) -> Tuple[List[SingleAgentEpisode], List[SingleAgentEpisode]]:
         """Runs and returns a sample (n timesteps or m episodes) on the environment(s).
 
@@ -190,11 +189,6 @@ class DreamerV3EnvRunner(EnvRunner):
             force_reset: Whether to reset the environment(s) before starting to sample.
                 If False, will still reset the environment(s) if they were left in
                 a terminated or truncated state during previous sample calls.
-            with_render_data: If True, will record rendering images per timestep
-                in the returned Episodes. This data can be used to create video
-                reports.
-                TODO (sven): Note that this is only supported for runnign with
-                 `num_episodes` yet.
 
         Returns:
             A tuple consisting of a) list of Episode instances that are done and
@@ -224,7 +218,6 @@ class DreamerV3EnvRunner(EnvRunner):
                     num_episodes=num_episodes,
                     explore=explore,
                     random_actions=random_actions,
-                    with_render_data=with_render_data,
                 ),
                 [],
             )
@@ -372,7 +365,6 @@ class DreamerV3EnvRunner(EnvRunner):
         num_episodes: int,
         explore: bool = True,
         random_actions: bool = False,
-        with_render_data: bool = False,
     ) -> List[SingleAgentEpisode]:
         """Helper method to run n episodes.
 
@@ -390,15 +382,8 @@ class DreamerV3EnvRunner(EnvRunner):
         )
         is_first = np.ones((self.num_envs,))
 
-        render_images = [None] * self.num_envs
-        if with_render_data:
-            render_images = [e.render() for e in self.env.envs]
-
         for i in range(self.num_envs):
-            episodes[i].add_env_reset(
-                observation=obs[i],
-                render_image=render_images[i],
-            )
+            episodes[i].add_env_reset(observation=obs[i])
 
         eps = 0
         while eps < num_episodes:
@@ -426,8 +411,6 @@ class DreamerV3EnvRunner(EnvRunner):
                 )
 
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
-            if with_render_data:
-                render_images = [e.render() for e in self.env.envs]
 
             for i in range(self.num_envs):
                 # The last entry in self.observations[i] is already the reset
@@ -455,18 +438,12 @@ class DreamerV3EnvRunner(EnvRunner):
                         states[k][i] = v.numpy()
                     is_first[i] = True
 
-                    episodes[i] = SingleAgentEpisode(
-                        observations=[obs[i]],
-                        render_images=(
-                            [render_images[i]] if with_render_data else None
-                        ),
-                    )
+                    episodes[i] = SingleAgentEpisode(observations=[obs[i]])
                 else:
                     episodes[i].add_env_step(
                         observation=obs[i],
                         action=actions[i],
                         reward=rewards[i],
-                        render_image=render_images[i],
                     )
                     is_first[i] = False
 
