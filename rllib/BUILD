@@ -283,7 +283,7 @@ py_test(
 # )
 
 py_test(
-    name = "learning_tests_carpole_dqn_envrunner",
+    name = "learning_tests_cartpole_dqn_envrunner",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
