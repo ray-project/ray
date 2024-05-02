@@ -57,6 +57,9 @@ if __name__ == "__main__":
             model={"fcnet_activation": "relu"},
             vf_clip_param=10.0,
         )
+        .rl_module(
+            model_config_dict={"fcnet_activation": "relu"},
+        )
     )
 
     # Add a simple multi-agent setup.
