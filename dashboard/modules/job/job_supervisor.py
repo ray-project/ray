@@ -81,6 +81,19 @@ class JobSupervisor:
         self._entrypoint = entrypoint
 
         self._runner_actor_cls = ray.remote(JobRunner)
+        self._runner = None
+
+    async def ping(self):
+        """Pings job runner to make sure Ray job is being executed"""
+        assert self._runner, "Runner is not initialized!"
+
+        await self._runner.ping.remote()
+
+    async def stop(self):
+        """Proxies request to job runner"""
+        assert self._runner, "Runner is not initialized!"
+
+        await self._runner.stop.remote()
 
     async def start(
         self,
@@ -302,7 +315,11 @@ class JobRunner:
         curr_runtime_env["env_vars"] = env_vars
         return curr_runtime_env
 
-    def ping(self):
+    async def stop(self):
+        """Set step_event and let run() handle the rest in its asyncio.wait()."""
+        self._stop_event.set()
+
+    async def ping(self):
         """Used to check the health of the actor."""
         pass
 
@@ -601,7 +618,3 @@ class JobRunner:
         finally:
             # clean up actor after tasks are finished
             ray.actor.exit_actor()
-
-    def stop(self):
-        """Set step_event and let run() handle the rest in its asyncio.wait()."""
-        self._stop_event.set()
