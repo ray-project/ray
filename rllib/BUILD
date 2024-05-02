@@ -384,7 +384,7 @@ py_test(
 
 py_test(
     name = "learning_tests_cartpole_truncated_ppo",
-    main = tuned_examples/ppo/cartpole_truncated_ppo.py,
+    main = "tuned_examples/ppo/cartpole_truncated_ppo.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "torch_only"],
     size = "large",
     srcs = ["tuned_examples/ppo/cartpole_truncated_ppo.py"],
