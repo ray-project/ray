@@ -2,9 +2,8 @@
 # Copy anyscale pin to requirements.txt and util.py
 anyscale
 bazel-runfiles
-botocore==1.34.69
 aioboto3
-boto3==1.34.69
+boto3
 click
 freezegun
 google-cloud-storage

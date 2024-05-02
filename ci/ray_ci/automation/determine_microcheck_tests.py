@@ -8,7 +8,7 @@ from ray_release.result import ResultStatus
 
 # The s3 prefix for the tests that run on Linux. It comes from the bazel prefix rule
 # linux:// with the character "/" replaced by "_" for s3 compatibility
-LINUX_TEST_PREFIX = "linux:__python"
+LINUX_TEST_PREFIX = "linux:__"
 
 
 @click.command()
