@@ -14,6 +14,8 @@ import traceback
 from asyncio.tasks import FIRST_COMPLETED
 from collections import deque
 from typing import Any, Dict, List, Optional, Union, AsyncIterator, Iterator
+
+from ray.util.client.common import INT64_MAX
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     SchedulingStrategyT,
@@ -94,18 +96,11 @@ class JobLogStorageClient:
     MAX_LOG_LINES_ON_ERROR = 10
     # Max number of characters to print out of the logs to avoid
     # HUGE log outputs that bring down the api server
-    MAX_SNIPPET_SIZE = 20000
+    MAX_LOG_SNIPPET_SIZE_ON_ERROR = 20000
     # Max number of lines being fetched from log file per chunk (after
     # every chunk event-loop has to be yielded to make sure that other tasks
     # are not being starved)
     MAX_LINES_PER_CHUNK = 10
-
-    def get_logs(self, job_id: str) -> str:
-        try:
-            with open(self.get_log_file_path(job_id), "r") as f:
-                return f.read()
-        except FileNotFoundError:
-            return ""
 
     def tail_logs(
         self,
@@ -118,12 +113,12 @@ class JobLogStorageClient:
             max_lines_per_chunk=max_lines_per_chunk,
         )
 
-    async def get_last_n_log_lines(
+    async def get_logs(
         self,
-        *,
         job_id: str,
-        max_log_lines = MAX_LOG_LINES_ON_ERROR,
-        max_snippet_size = MAX_SNIPPET_SIZE,
+        *,
+        max_log_lines: int = INT64_MAX,  # unbounded
+        max_total_size: int = INT64_MAX,  # unbounded
     ) -> str:
         """
         Returns the last MAX_LOG_SIZE (20000) characters in the last
@@ -153,7 +148,7 @@ class JobLogStorageClient:
             if read_lines_count % max_lines_per_chunk == 1:
                 await asyncio.sleep(0)
 
-        return "".join(log_tail_deque)[-max_snippet_size:]
+        return "".join(log_tail_deque)[-max_total_size:]
 
     @staticmethod
     def get_log_file_path(job_id: str) -> str:
@@ -510,7 +505,12 @@ class JobSupervisor:
                         driver_exit_code=return_code,
                     )
                 else:
-                    log_tail = self._log_client.get_last_n_log_lines(self._job_id)
+                    log_tail = self._log_client.get_logs(
+                        self._job_id,
+                        max_log_lines=JobLogStorageClient.MAX_LOG_LINES_ON_ERROR,
+                        max_total_size=JobLogStorageClient.MAX_LOG_SNIPPET_SIZE_ON_ERROR,
+                    )
+
                     if log_tail is not None and log_tail != "":
                         message = (
                             "Job entrypoint command "
