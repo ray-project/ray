@@ -177,6 +177,15 @@ Databricks
 
    read_databricks_tables
 
+Iceberg
+-------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_iceberg
+
 Dask
 ----
 
