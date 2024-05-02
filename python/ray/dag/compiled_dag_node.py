@@ -89,33 +89,33 @@ def do_exec_tasks(self, tasks: List["ExecutableTask"]) -> None:
             except IOError:
                 break
 
-                for idx, output in zip(task.input_channel_idxs, res):
-                    task.resolved_inputs[idx] = output
+            for idx, output in zip(task.input_channel_idxs, res):
+                task.resolved_inputs[idx] = output
 
-                try:
-                    output_val = method(*task.resolved_inputs)
-                except Exception as exc:
-                    backtrace = ray._private.utils.format_error_message(
-                        "".join(
-                            traceback.format_exception(
-                                type(exc), exc, exc.__traceback__
-                            )
-                        ),
-                        task_exception=True,
-                    )
-                    wrapped = RayTaskError(
-                        function_name="do_exec_tasks",
-                        traceback_str=backtrace,
-                        cause=exc,
-                    )
-                    output_writer.write(wrapped)
-                else:
-                    output_writer.write(output_val)
+            try:
+                output_val = method(*task.resolved_inputs)
+            except Exception as exc:
+                backtrace = ray._private.utils.format_error_message(
+                    "".join(
+                        traceback.format_exception(
+                            type(exc), exc, exc.__traceback__
+                        )
+                    ),
+                    task_exception=True,
+                )
+                wrapped = RayTaskError(
+                    function_name="do_exec_tasks",
+                    traceback_str=backtrace,
+                    cause=exc,
+                )
+                output_writer.write(wrapped)
+            else:
+                output_writer.write(output_val)
 
-                try:
-                    input_reader.end_read()
-                except IOError:
-                    break
+            try:
+                input_reader.end_read()
+            except IOError:
+                break
 
     except Exception:
         logging.exception("Compiled DAG task exited with exception")
