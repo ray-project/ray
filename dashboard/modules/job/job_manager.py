@@ -505,7 +505,7 @@ class JobSupervisor:
                         driver_exit_code=return_code,
                     )
                 else:
-                    log_tail = self._log_client.get_logs(
+                    log_tail = await self._log_client.get_logs(
                         self._job_id,
                         max_log_lines=JobLogStorageClient.MAX_LOG_LINES_ON_ERROR,
                         max_total_size=JobLogStorageClient.MAX_LOG_SNIPPET_SIZE_ON_ERROR,
