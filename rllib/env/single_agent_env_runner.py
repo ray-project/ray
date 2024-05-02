@@ -702,6 +702,7 @@ class SingleAgentEnvRunner(EnvRunner):
         # Call the `on_environment_created` callback.
         self._callbacks.on_environment_created(
             env_runner=self,
+            metrics_logger=self.metrics,
             env=self.env,
             env_context=env_ctx,
         )

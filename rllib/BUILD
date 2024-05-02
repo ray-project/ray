@@ -2280,17 +2280,19 @@ py_test(
 
 py_test(
     name = "examples/envs/custom_env_render_method",
-    srcs = ["examples/envs/custom_env_render_method.py"],
+    main = "examples/envs/custom_env_render_method.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
+    size = "medium",
+    srcs = ["examples/envs/custom_env_render_method.py"],
     args = ["--enable-new-api-stack", "--num-agents=0"]
 )
 
 py_test(
     name = "examples/envs/custom_env_render_method_multi_agent",
-    srcs = ["examples/envs/custom_env_render_method.py"],
+    main = "examples/envs/custom_env_render_method.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
+    size = "medium",
+    srcs = ["examples/envs/custom_env_render_method.py"],
     args = ["--enable-new-api-stack", "--num-agents=2"]
 )
 

@@ -46,7 +46,7 @@ class AddPolicyCallback(DefaultCallbacks):
         self._checkpoint_dir = checkpoint_dir
         super().__init__()
 
-    def on_algorithm_init(self, *, algorithm, **kwargs):
+    def on_algorithm_init(self, *, algorithm, metrics_logger, **kwargs):
         policy = Policy.from_checkpoint(
             self._checkpoint_dir, policy_ids=[OPPONENT_POLICY_ID]
         )
