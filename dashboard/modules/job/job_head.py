@@ -51,7 +51,7 @@ logger.setLevel(logging.INFO)
 routes = optional_utils.DashboardHeadRouteTable
 
 
-class JobAgentSubmissionClient:
+class JobAgentClient:
     """A local client for submitting and interacting with jobs on a specific node
     in the remote cluster.
     Submits requests over HTTP to the job agent on the specific node using the REST API.
@@ -171,7 +171,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         # longer available (the corresponding agent process is dead)
         self._agents = dict()
 
-    async def choose_agent(self) -> Optional[JobAgentSubmissionClient]:
+    async def choose_agent(self) -> Optional[JobAgentClient]:
         """
         Try to disperse as much as possible to select one of
         the `CANDIDATE_AGENT_NUMBER` agents to solve requests.
@@ -215,7 +215,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 node_ip = agent_info["ipAddress"]
                 http_port = agent_info["httpPort"]
                 agent_http_address = f"http://{node_ip}:{http_port}"
-                self._agents[node_id] = JobAgentSubmissionClient(agent_http_address)
+                self._agents[node_id] = JobAgentClient(agent_http_address)
 
             return self._agents[node_id]
 
@@ -466,7 +466,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 resp = JobLogsResponse("")
             else:
                 if driver_node_id not in self._agents:
-                    self._agents[driver_node_id] = JobAgentSubmissionClient(
+                    self._agents[driver_node_id] = JobAgentClient(
                         driver_agent_http_address
                     )
                 job_agent_client = self._agents[driver_node_id]
@@ -520,7 +520,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
         driver_node_id = job.driver_node_id
         if driver_node_id not in self._agents:
-            self._agents[driver_node_id] = JobAgentSubmissionClient(
+            self._agents[driver_node_id] = JobAgentClient(
                 driver_agent_http_address
             )
         job_agent_client = self._agents[driver_node_id]

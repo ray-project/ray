@@ -3,7 +3,9 @@ from collections import deque
 from typing import Iterator, List, Tuple
 
 import ray
-from ray.dashboard.modules.job.common import JOB_LOGS_PATH_TEMPLATE
+from ray.dashboard.modules.job.common import (
+    JOB_LOGS_PATH_TEMPLATE,
+)
 from ray.dashboard.modules.job.utils import file_tail_iterator
 
 
