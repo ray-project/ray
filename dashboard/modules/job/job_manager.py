@@ -508,7 +508,9 @@ class JobSupervisor:
                     log_tail = await self._log_client.get_logs(
                         self._job_id,
                         max_log_lines=JobLogStorageClient.MAX_LOG_LINES_ON_ERROR,
-                        max_total_size=JobLogStorageClient.MAX_LOG_SNIPPET_SIZE_ON_ERROR,
+                        max_total_size=(
+                            JobLogStorageClient.MAX_LOG_SNIPPET_SIZE_ON_ERROR
+                        ),
                     )
 
                     if log_tail is not None and log_tail != "":

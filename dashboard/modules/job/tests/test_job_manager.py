@@ -298,7 +298,12 @@ async def _run_hanging_command(job_manager, tmp_dir, start_signal_actor=None):
         await async_wait_for_condition_async_predicate(
             check_job_running, job_manager=job_manager, job_id=job_id
         )
-        await async_wait_for_condition(check_in_logs, job_manager=job_manager, job_id=job_id, expected_message="Waiting...")
+        await async_wait_for_condition(
+            check_in_logs,
+            job_manager=job_manager,
+            job_id=job_id,
+            expected_message="Waiting...",
+        )
 
     return pid_file, tmp_file, job_id
 
@@ -508,7 +513,8 @@ class TestShellScriptExecution:
             check_job_succeeded, job_manager=job_manager, job_id=job_id
         )
         assert (
-            await job_manager.get_job_logs(job_id) == "Executing main() from script.py !!\n"
+            await job_manager.get_job_logs(job_id)
+            == "Executing main() from script.py !!\n"
         )
 
     async def test_submit_with_file_runtime_env(self, job_manager):
@@ -972,7 +978,12 @@ while True:
 """
     job_id = await job_manager.submit_job(entrypoint=entrypoint)
 
-    await async_wait_for_condition(check_in_logs, job_manager=job_manager, job_id=job_id, expected_message="Waiting...")
+    await async_wait_for_condition(
+        check_in_logs,
+        job_manager=job_manager,
+        job_id=job_id,
+        expected_message="Waiting...",
+    )
 
     assert job_manager.stop_job(job_id) is True
 
@@ -1012,7 +1023,12 @@ while True:
     else:
         job_id = await job_manager.submit_job(entrypoint=entrypoint)
 
-    await async_wait_for_condition(check_in_logs, job_manager=job_manager, job_id=job_id, expected_message="Waiting...")
+    await async_wait_for_condition(
+        check_in_logs,
+        job_manager=job_manager,
+        job_id=job_id,
+        expected_message="Waiting...",
+    )
 
     assert job_manager.stop_job(job_id) is True
 
@@ -1024,7 +1040,12 @@ while True:
             timeout=stop_timeout - 1,
         )
 
-    await async_wait_for_condition(check_in_logs, job_manager=job_manager, job_id=job_id, expected_message="SIGTERM signal handled!")
+    await async_wait_for_condition(
+        check_in_logs,
+        job_manager=job_manager,
+        job_id=job_id,
+        expected_message="SIGTERM signal handled!",
+    )
 
     await async_wait_for_condition_async_predicate(
         check_job_stopped,
@@ -1049,7 +1070,12 @@ while True:
 
     job_id = await job_manager.submit_job(entrypoint=stream_logs_cmd)
 
-    await async_wait_for_condition(check_in_logs, job_manager=job_manager, job_id=job_id, expected_message="STREAMED")
+    await async_wait_for_condition(
+        check_in_logs,
+        job_manager=job_manager,
+        job_id=job_id,
+        expected_message="STREAMED",
+    )
 
     job_manager.stop_job(job_id)
 
@@ -1099,7 +1125,12 @@ async def test_job_runs_with_no_resources_available(job_manager):
             check_job_running, job_manager=job_manager, job_id=job_id
         )
 
-        await async_wait_for_condition(check_in_logs, job_manager=job_manager, job_id=job_id, expected_message="Hanging...")
+        await async_wait_for_condition(
+            check_in_logs,
+            job_manager=job_manager,
+            job_id=job_id,
+            expected_message="Hanging...",
+        )
 
         # Signal the hanging task to exit and release its CPUs.
         ray.get(hang_signal_actor.send.remote())
@@ -1108,7 +1139,12 @@ async def test_job_runs_with_no_resources_available(job_manager):
         await async_wait_for_condition_async_predicate(
             check_job_succeeded, job_manager=job_manager, job_id=job_id
         )
-        await async_wait_for_condition(check_in_logs, job_manager=job_manager, job_id=job_id, expected_message="Success!")
+        await async_wait_for_condition(
+            check_in_logs,
+            job_manager=job_manager,
+            job_id=job_id,
+            expected_message="Success!",
+        )
     finally:
         # Just in case the test fails.
         ray.cancel(hanging_ref)
