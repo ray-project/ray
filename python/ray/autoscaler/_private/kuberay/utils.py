@@ -88,7 +88,7 @@ def parse_quantity(quantity):
 
 def tpu_node_selectors_to_type(topology: str, accelerator: str) -> Optional[str]:
     """Convert Kubernetes gke-tpu nodeSelectors to TPU accelerator_type
-    for a Kuberay TPU worker group.
+    for a kuberay TPU worker group.
     Args:
         topology: value of the cloud.google.com/gke-tpu-topology Kubernetes
             nodeSelector, describes the physical topology of the TPU podslice.
