@@ -558,7 +558,6 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
                 storage = array.storage
 
                 if storage.buffers()[3] is None or storage.buffers()[1] is None:
-                    print("Encountered None in buffers; skipping this array.")
                     continue
 
                 # Process data buffer
@@ -571,17 +570,12 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
                 offset_buffers.append(adjusted_offsets[1:])  # Exclude the first offset to avoid duplication
                 total_length += adjusted_offsets[-1]  # Update total length using the last adjusted offset
 
-            if not data_buffers:
-                print("No data buffers available after filtering out None values.")
-                raise ValueError("No valid data to concatenate.")
 
             # Concatenate data and offsets
             concatenated_data = np.concatenate(data_buffers)
             concatenated_offsets = np.concatenate(offset_buffers)
             concatenated_offsets = np.insert(concatenated_offsets, 0, 0)  # Reinsert the initial offset at the beginning
 
-            # Log final sizes
-            print("Concatenated data size: {}, Concatenated offsets size: {}".format(concatenated_data.size, concatenated_offsets.size))
 
             # Create final buffers for Arrow
             concatenated_data_buffer = pa.py_buffer(concatenated_data)
