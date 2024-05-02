@@ -158,12 +158,17 @@ class EnvRenderCallback(DefaultCallbacks):
         ):
             # Pull all images from the temp. data of the episode.
             images = episode.get_temporary_timestep_data("render_images")
+            # `images` is now a list of 3D ndarrays
 
-            # Create a video from the images by simply stacking them.
-            video = np.expand_dims(
-                np.stack(images, axis=0), axis=0
-            )  # TODO: test to make sure WandB properly logs videos.
-            # video = np.stack(images, axis=0)
+            # Create a video from the images by simply stacking them AND
+            # adding an extra B=1 dimension. Note that Tune's WandB logger currently
+            # knows how to log the different data types by the following rules:
+            # array is shape=3D -> An image (c, h, w).
+            # array is shape=4D -> A batch of images (B, c, h, w).
+            # array is shape=5D -> A video (1, L, c, h, w), where L is the length of the
+            # video.
+            # -> Make our video ndarray a 5D one.
+            video = np.expand_dims(np.stack(images, axis=0), axis=0)
 
             # `video` is from the best episode in this cycle (iteration).
             if episode_return > self.best_episode_and_return[1]:
