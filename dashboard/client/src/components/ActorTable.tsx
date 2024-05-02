@@ -28,6 +28,7 @@ import {
   MemoryProfilingButton,
 } from "../common/ProfilingLink";
 import rowStyles from "../common/RowStyles";
+import { sliceToPage } from "../common/util";
 import { getSumGpuUtilization, WorkerGpuRow } from "../pages/node/GPUColumn";
 import { getSumGRAMUsage, WorkerGRAM } from "../pages/node/GRAMColumn";
 import { ActorDetail, ActorEnum } from "../type/actor";
@@ -89,7 +90,7 @@ const ActorTable = ({
     onFilterChange,
   });
   const [actorIdFilterValue, setActorIdFilterValue] = useState(filterToActorId);
-  const pageSize = 10;
+  const [pageSize, setPageSize] = useState<number | undefined>(10);
 
   const uptimeSorterKey = "fake_uptime_attr";
   const gpuUtilizationSorterKey = "fake_gpu_attr";
@@ -150,7 +151,11 @@ const ActorTable = ({
     });
   }, [actors, sorterKey, sorterFunc, filterFunc, descVal]);
 
-  const list = sortedActors.slice((pageNo - 1) * pageSize, pageNo * pageSize);
+  const {
+    items: list,
+    constrainedPage,
+    maxPage,
+  } = sliceToPage(sortedActors, pageNo, pageSize ?? 10);
 
   const classes = rowStyles();
 
@@ -455,6 +460,20 @@ const ActorTable = ({
             ),
           }}
         />
+        <TextField
+          style={{ margin: 8, width: 120 }}
+          label="Page Size"
+          size="small"
+          value={pageSize}
+          InputProps={{
+            onChange: ({ target: { value } }) => {
+              setPageSize(Math.min(Number(value), 500) || undefined);
+            },
+            endAdornment: (
+              <InputAdornment position="end">Per Page</InputAdornment>
+            ),
+          }}
+        />
         <div data-testid="sortByFilter">
           <SearchSelect
             label="Sort By"
@@ -481,9 +500,9 @@ const ActorTable = ({
       <div style={{ display: "flex", alignItems: "center" }}>
         <div>
           <Pagination
-            page={pageNo}
+            page={constrainedPage}
             onChange={(e, num) => setPageNo(num)}
-            count={Math.ceil(sortedActors.length / pageSize)}
+            count={maxPage}
           />
         </div>
         <div>
