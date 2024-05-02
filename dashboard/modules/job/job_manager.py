@@ -1092,9 +1092,9 @@ class JobManager:
         """Get info for all jobs."""
         return await self._job_info_client.get_all_jobs()
 
-    def get_job_logs(self, job_id: str) -> str:
+    async def get_job_logs(self, job_id: str) -> str:
         """Get all logs produced by a job."""
-        return self._log_client.get_logs(job_id)
+        return await self._log_client.get_logs(job_id)
 
     async def tail_job_logs(self, job_id: str) -> AsyncIterator[str]:
         """Return an iterator following the logs of a job."""
