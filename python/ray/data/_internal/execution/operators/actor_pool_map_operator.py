@@ -16,6 +16,7 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.execution.operators.map_operator import MapOperator, _map_task
 from ray.data._internal.execution.operators.map_transformer import MapTransformer
 from ray.data._internal.execution.util import locality_string
+from ray.data._internal.remote_fn import _add_system_error_to_retry_exceptions
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 from ray.types import ObjectRef
@@ -85,6 +86,7 @@ class ActorPoolMapOperator(MapOperator):
         actor_task_errors = DataContext.get_current().actor_task_retry_on_errors
         if actor_task_errors:
             self._ray_actor_task_remote_args["retry_exceptions"] = actor_task_errors
+        _add_system_error_to_retry_exceptions(self._ray_actor_task_remote_args)
         data_context = DataContext.get_current()
         if data_context._max_num_blocks_in_streaming_gen_buffer is not None:
             # The `_generator_backpressure_num_objects` parameter should be

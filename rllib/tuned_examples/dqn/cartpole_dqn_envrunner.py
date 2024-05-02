@@ -13,7 +13,7 @@ config = (
         model_config_dict={
             "fcnet_hiddens": [256],
             "fcnet_activation": "relu",
-            "epsilon": [(0, 1.0), (50000, 0.05)],
+            "epsilon": [(0, 1.0), (10000, 0.02)],
             "fcnet_bias_initializer": "zeros_",
             "post_fcnet_bias_initializer": "zeros_",
             "post_fcnet_hiddens": [256],
@@ -23,7 +23,7 @@ config = (
         # Settings identical to old stack.
         replay_buffer_config={
             "type": "PrioritizedEpisodeReplayBuffer",
-            "capacity": 100000,
+            "capacity": 50000,
             "alpha": 0.6,
             "beta": 0.4,
         },
@@ -37,7 +37,14 @@ config = (
         evaluation_parallel_to_training=True,
         evaluation_num_env_runners=1,
         evaluation_duration="auto",
-        evaluation_config={"explore": False},
+        evaluation_config={
+            "explore": False,
+            # TODO (sven): Add support for window=float(inf) and reduce=mean for
+            #  evaluation episode_return_mean reductions (identical to old stack
+            #  behavior, which does NOT use a window (100 by default) to reduce
+            #  eval episode returns.
+            "metrics_num_episodes_for_smoothing": 4,
+        },
     )
 )
 
