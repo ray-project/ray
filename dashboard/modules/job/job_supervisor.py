@@ -8,7 +8,7 @@ import subprocess
 import sys
 import traceback
 from asyncio.tasks import FIRST_COMPLETED
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, Tuple
 
 import psutil
 
@@ -120,7 +120,7 @@ class JobSupervisor:
         entrypoint_num_gpus: Optional[Union[int, float]],
         entrypoint_memory: Optional[int],
         entrypoint_resources: Optional[Dict[str, float]],
-    ):
+    ) -> Tuple["JobRunner", bool]:
         resources_specified = any(
             [
                 entrypoint_num_cpus is not None and entrypoint_num_cpus > 0,
@@ -129,7 +129,9 @@ class JobSupervisor:
                 entrypoint_resources not in [None, {}],
             ]
         )
+
         scheduling_strategy = self._get_scheduling_strategy(resources_specified)
+
         runner = self._runner_actor_cls.options(
             name=JOB_EXECUTOR_ACTOR_NAME_TEMPLATE.format(job_id=self._job_id),
             num_cpus=entrypoint_num_cpus,
@@ -142,7 +144,8 @@ class JobSupervisor:
             ),
             namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
         ).remote()
-        return resources_specified, runner
+
+        return runner, resources_specified
 
     async def _get_scheduling_strategy(
         self, resources_specified: bool
