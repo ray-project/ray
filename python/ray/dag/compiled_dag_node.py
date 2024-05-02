@@ -70,6 +70,8 @@ def do_exec_tasks(self, tasks: List["ExecutableTask"]) -> None:
                 else:
                     task.resolved_inputs.append(inp)
 
+            logger.info(f"Task {task.method_name} has input channels {task.input_channels}")
+            logger.info(f"Task {task.method_name} has output channel {task.output_channel}")
             input_reader: ReaderInterface = SynchronousReader(task.input_channels)
             output_writer: WriterInterface = SynchronousWriter(task.output_channel)
             self._uuid_to_input_reader[task.uuid] = input_reader
@@ -79,43 +81,46 @@ def do_exec_tasks(self, tasks: List["ExecutableTask"]) -> None:
             output_writer.start()
 
         while True:
-            res = None
-            try:
-                for task in tasks:
-                    method = getattr(self, task.method_name)
-                    input_reader = self._uuid_to_input_reader[task.uuid]
-                    output_writer = self._uuid_to_output_writer[task.uuid]
+            for task in tasks:
+                method = getattr(self, task.method_name)
+                input_reader = self._uuid_to_input_reader[task.uuid]
+                output_writer = self._uuid_to_output_writer[task.uuid]
+                res = None
+                try:
                     res = input_reader.begin_read()
-            except IOError:
-                break
+                except IOError:
+                    logger.info("IOError in reading input channel")
+                    break
 
-            for idx, output in zip(task.input_channel_idxs, res):
-                task.resolved_inputs[idx] = output
+                for idx, output in zip(task.input_channel_idxs, res):
+                    task.resolved_inputs[idx] = output
 
-            try:
-                output_val = method(*task.resolved_inputs)
-            except Exception as exc:
-                backtrace = ray._private.utils.format_error_message(
-                    "".join(
-                        traceback.format_exception(
-                            type(exc), exc, exc.__traceback__
-                        )
-                    ),
-                    task_exception=True,
-                )
-                wrapped = RayTaskError(
-                    function_name="do_exec_tasks",
-                    traceback_str=backtrace,
-                    cause=exc,
-                )
-                output_writer.write(wrapped)
-            else:
-                output_writer.write(output_val)
+                try:
+                    output_val = method(*task.resolved_inputs)
+                    logger.info(f"Output value: {output_val}")
+                except Exception as exc:
+                    backtrace = ray._private.utils.format_error_message(
+                        "".join(
+                            traceback.format_exception(
+                                type(exc), exc, exc.__traceback__
+                            )
+                        ),
+                        task_exception=True,
+                    )
+                    wrapped = RayTaskError(
+                        function_name="do_exec_tasks",
+                        traceback_str=backtrace,
+                        cause=exc,
+                    )
+                    output_writer.write(wrapped)
+                else:
+                    output_writer.write(output_val)
 
-            try:
-                input_reader.end_read()
-            except IOError:
-                break
+                try:
+                    input_reader.end_read()
+                except IOError:
+                    logger.info("IOError in closing input channel")
+                    break
 
     except Exception:
         logging.exception("Compiled DAG task exited with exception")
@@ -302,8 +307,8 @@ class CompiledDAG:
 
     def _add_node(self, node: "ray.dag.DAGNode") -> None:
         logger.info(f"Adding node {node} to index {self.counter}")
-        import traceback
-        traceback.print_stack()
+        #import traceback
+        #traceback.print_stack()
         idx = self.counter
         self.idx_to_task[idx] = CompiledTask(idx, node)
         self.dag_node_to_idx[node] = idx

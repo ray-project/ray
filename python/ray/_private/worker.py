@@ -2603,6 +2603,9 @@ def get(
             )
             blocking_get_inside_async_warned = True
 
+    logger.info(f"ray.get for {object_refs}")
+    import traceback
+    traceback.print_stack
     with profiling.profile("ray.get"):
         # TODO(sang): Should make ObjectRefGenerator
         # compatible to ray.get for dataset.
