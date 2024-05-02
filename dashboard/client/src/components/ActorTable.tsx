@@ -398,6 +398,8 @@ const ActorTable = ({
             ),
           }}
         />
+      </Box>
+      <Box sx={{ display: "flex", flex: 1, alignItems: "center" }}>
         <TextField
           style={{ margin: 8, width: 120 }}
           label="Name"
@@ -474,7 +476,7 @@ const ActorTable = ({
             ),
           }}
         />
-        <div data-testid="sortByFilter">
+        <div data-testid="sortByFilter" style={{ margin: 8 }}>
           <SearchSelect
             label="Sort By"
             options={[
@@ -492,10 +494,10 @@ const ActorTable = ({
             defaultValue={defaultSorterKey}
           />
         </div>
-        <span>
+        <Box sx={{ marginLeft: 1 }}>
           Reverse:
           <Switch onChange={(_, checked) => setOrderDesc(checked)} />
-        </span>
+        </Box>
       </Box>
       <div style={{ display: "flex", alignItems: "center" }}>
         <div>
