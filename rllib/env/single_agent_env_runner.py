@@ -52,10 +52,15 @@ class SingleAgentEnvRunner(EnvRunner):
         """
         super().__init__(config=config)
 
+        self.worker_index = kwargs.get("worker_index")
+
+        # Create a MetricsLogger object for logging custom stats.
+        self.metrics = MetricsLogger()
+        # Initialize lifetime counts.
+        self.metrics.log_value(NUM_ENV_STEPS_SAMPLED_LIFETIME, 0, reduce="sum")
+
         # Create our callbacks object.
         self._callbacks: DefaultCallbacks = self.config.callbacks_class()
-
-        self.worker_index = kwargs.get("worker_index")
 
         # Create the vectorized gymnasium env.
         self.env: Optional[gym.Wrapper] = None
@@ -97,11 +102,6 @@ class SingleAgentEnvRunner(EnvRunner):
 
         # Create the two connector pipelines: env-to-module and module-to-env.
         self._module_to_env = self.config.build_module_to_env_connector(self.env)
-
-        # Create a MetricsLogger object for logging custom stats.
-        self.metrics = MetricsLogger()
-        # Initialize lifetime counts.
-        self.metrics.log_value(NUM_ENV_STEPS_SAMPLED_LIFETIME, 0, reduce="sum")
 
         # This should be the default.
         self._needs_initial_reset: bool = True
