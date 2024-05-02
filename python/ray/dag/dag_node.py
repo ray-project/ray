@@ -363,7 +363,7 @@ class DAGNode(DAGNodeBase):
             new_args, new_kwargs, new_options, new_other_args_to_resolve
         )
         instance._stable_uuid = self._stable_uuid
-        instance = instance.with_type_hint(self.type_hint)
+        #instance = instance.with_type_hint(self.type_hint)
         return instance
 
     def __getstate__(self):
