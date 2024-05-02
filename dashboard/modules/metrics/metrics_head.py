@@ -1,4 +1,8 @@
 import asyncio
+import aiodebug
+import aiodebug.hang_inspection
+import aiodebug.log_slow_callbacks
+import aiodebug.monitor_loop_lag
 import aiohttp
 import logging
 import os
@@ -96,6 +100,8 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         self._component = "dashboard"
         self._session_name = dashboard_head.session_name
         assert self._component in AVAILABLE_COMPONENT_NAMES_FOR_METRICS
+
+        self.event_loop_lag = 0.0
 
     @routes.get("/api/grafana_health")
     async def grafana_health(self, req) -> aiohttp.web.Response:
@@ -318,10 +324,34 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             Component=self._component,
             SessionName=self._session_name,
         ).set(float(dashboard_proc.memory_full_info().uss) / 1.0e6)
+        self._dashboard_head.metrics.metrics_event_loop_lag.labels(
+            ip=self._ip,
+            pid=self._pid,
+            Component=self._component,
+            SessionName=self._session_name,
+        ).set(float(self.event_loop_lag))
 
     async def run(self, server):
         self._create_default_grafana_configs()
         self._create_default_prometheus_configs()
+        head = self
+
+        class StatsdClient:
+            def timing(self, metric: str, value: float) -> None:
+                assert metric == "aiodebug.monitor_loop_lag"
+                head.event_loop_lag = value
+
+        aiodebug.monitor_loop_lag.enable(StatsdClient())
+        # TODO: make a keyword in the logger, and add test by blocking the event loop
+        # and collect logs
+        aiodebug.log_slow_callbacks.enable(
+            slow_duration=0.1,
+            on_slow_callback=lambda name, duration: logger.error(
+                "Executing %s took %.3f seconds", name, duration
+            ),
+        )
+        # do we need this??? to save stack trace to ray logs
+        # aiodebug.hang_inspection.start(stack_output_dir=os.path.join(self._metrics_root, "hang_inspection"))
         await asyncio.gather(self.record_dashboard_metrics())
 
         logger.info(
