@@ -131,8 +131,8 @@ if __name__ == "__main__":
         .framework("tf" if args.env != "Pyramids" else "torch")
         # For running in editor, force to use just one Worker (we only have
         # one Unity running)!
-        .rollouts(
-            num_rollout_workers=args.num_workers if args.file_name else 0,
+        .env_runners(
+            num_env_runners=args.num_workers if args.file_name else 0,
             rollout_fragment_length=200,
         )
         .training(
@@ -153,7 +153,7 @@ if __name__ == "__main__":
     # Switch on Curiosity based exploration for Pyramids env
     # (not solvable otherwise).
     if args.env == "Pyramids":
-        config.exploration(
+        config.env_runners(
             exploration_config={
                 "type": "Curiosity",
                 "eta": 0.1,

@@ -29,7 +29,7 @@ class SACConfig(AlgorithmConfig):
 
         config = SACConfig().training(gamma=0.9, lr=0.01, train_batch_size=32)
         config = config.resources(num_gpus=0)
-        config = config.rollouts(num_rollout_workers=1)
+        config = config.env_runners(num_env_runners=1)
 
         # Build a Algorithm object from the config and run 1 training iteration.
         algo = config.build(env="CartPole-v1")
@@ -85,7 +85,9 @@ class SACConfig(AlgorithmConfig):
         self.grad_clip = None
         self.target_network_update_freq = 0
 
-        # .exploration()
+        # .env_runners()
+        self.rollout_fragment_length = "auto"
+        self.compress_observations = False
         self.exploration_config = {
             # The Exploration class to use. In the simplest case, this is the name
             # (str) of any class present in the `rllib.utils.exploration` package.
@@ -95,10 +97,6 @@ class SACConfig(AlgorithmConfig):
             "type": "StochasticSampling",
             # Add constructor kwargs here (if any).
         }
-
-        # .rollout()
-        self.rollout_fragment_length = "auto"
-        self.compress_observations = False
 
         # .training()
         self.train_batch_size = 256
@@ -219,7 +217,7 @@ class SACConfig(AlgorithmConfig):
                 collecting samples from the env).
                 If None, uses "natural" values of:
                 `train_batch_size` / (`rollout_fragment_length` x `num_workers` x
-                `num_envs_per_worker`).
+                `num_envs_per_env_runner`).
                 If not None, will make sure that the ratio between timesteps inserted
                 into and sampled from th buffer matches the given values.
                 Example:
@@ -227,7 +225,7 @@ class SACConfig(AlgorithmConfig):
                 train_batch_size=250
                 rollout_fragment_length=1
                 num_workers=1 (or 0)
-                num_envs_per_worker=1
+                num_envs_per_env_runner=1
                 -> natural value = 250 / 1 = 250.0
                 -> will make sure that replay+train op will be executed 4x asoften as
                 rollout+insert op (4 * 250 = 1000).
@@ -349,7 +347,9 @@ class SACConfig(AlgorithmConfig):
         # Validate that we use the corresponding `EpisodeReplayBuffer` when using
         # episodes.
         # TODO (sven, simon): Implement the multi-agent case for replay buffers.
-        if self.uses_new_env_runners and self.replay_buffer_config["type"] not in [
+        if self.enable_env_runner_and_connector_v2 and self.replay_buffer_config[
+            "type"
+        ] not in [
             "EpisodeReplayBuffer",
             "PrioritizedEpisodeReplayBuffer",
         ]:
@@ -447,7 +447,7 @@ class SAC(DQN):
             The results dict from executing the training iteration.
         """
         # New API stack (RLModule, Learner, EnvRunner, ConnectorV2).
-        if self.config.uses_new_env_runners:
+        if self.config.enable_env_runner_and_connector_v2:
             return self._training_step_new_api_stack(with_noise_reset=False)
         # Old and hybrid API stacks (Policy, RolloutWorker, Connector, maybe RLModule,
         # maybe Learner).

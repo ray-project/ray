@@ -138,7 +138,7 @@ class SingleAgentEnvRunner(EnvRunner):
                 `forward_inference()` method. If None (default), will use the `explore`
                 boolean setting from `self.config` passed into this EnvRunner's
                 constructor. You can change this setting in your config via
-                `config.exploration(explore=True|False)`.
+                `config.env_runners(explore=True|False)`.
             random_actions: If True, actions will be sampled randomly (from the action
                 space of the environment). If False (default), actions or action
                 distribution parameters are computed by the RLModule.
@@ -274,7 +274,7 @@ class SingleAgentEnvRunner(EnvRunner):
                 if explore:
                     env_steps_lifetime = self.metrics.peek(
                         NUM_ENV_STEPS_SAMPLED_LIFETIME
-                    ) + self.metrics.peek(NUM_ENV_STEPS_SAMPLED, default=0)
+                    )
                     to_env = self.module.forward_exploration(
                         to_module, t=env_steps_lifetime
                     )
@@ -465,7 +465,7 @@ class SingleAgentEnvRunner(EnvRunner):
                 if explore:
                     env_steps_lifetime = self.metrics.peek(
                         NUM_ENV_STEPS_SAMPLED_LIFETIME
-                    ) + self.metrics.peek(NUM_ENV_STEPS_SAMPLED, default=0)
+                    )
                     to_env = self.module.forward_exploration(
                         to_module, t=env_steps_lifetime
                     )
@@ -573,35 +573,8 @@ class SingleAgentEnvRunner(EnvRunner):
                     episode_duration_s += eps2.get_duration_s()
                 del self._ongoing_episodes_for_metrics[eps.id_]
 
-            # Log general episode metrics.
-            self.metrics.log_dict(
-                {
-                    "episode_len_mean": episode_length,
-                    "episode_return_mean": episode_return,
-                    "episode_duration_sec_mean": episode_duration_s,
-                    # Per-agent returns.
-                    "agent_episode_returns_mean": {DEFAULT_AGENT_ID: episode_return},
-                    # Per-RLModule returns.
-                    "module_episode_returns_mean": {DEFAULT_MODULE_ID: episode_return},
-                },
-                # To mimick the old API stack behavior, we'll use `window` here for
-                # these particular stats (instead of the default EMA).
-                window=self.config.metrics_num_episodes_for_smoothing,
-            )
-            # For some metrics, log min/max as well.
-            self.metrics.log_dict(
-                {
-                    "episode_len_min": episode_length,
-                    "episode_return_min": episode_return,
-                },
-                reduce="min",
-            )
-            self.metrics.log_dict(
-                {
-                    "episode_len_max": episode_length,
-                    "episode_return_max": episode_return,
-                },
-                reduce="max",
+            self._log_episode_metrics(
+                episode_length, episode_return, episode_duration_s
             )
 
         # Log num episodes counter for this iteration.
@@ -610,7 +583,7 @@ class SingleAgentEnvRunner(EnvRunner):
             len(self._done_episodes_for_metrics),
             reduce="sum",
             # Reset internal data on `reduce()` call below (not a lifetime count).
-            reset_on_reduce=True,
+            clear_on_reduce=True,
         )
 
         # Now that we have logged everything, clear cache of done episodes.
@@ -690,7 +663,7 @@ class SingleAgentEnvRunner(EnvRunner):
             env_ctx = EnvContext(
                 env_ctx,
                 worker_index=self.worker_index,
-                num_workers=self.config.num_rollout_workers,
+                num_workers=self.config.num_env_runners,
                 remote=self.config.remote_worker_envs,
             )
 
@@ -716,12 +689,12 @@ class SingleAgentEnvRunner(EnvRunner):
         self.env: gym.Wrapper = gym.wrappers.VectorListInfo(
             gym.vector.make(
                 "rllib-single-agent-env-v0",
-                num_envs=self.config.num_envs_per_worker,
+                num_envs=self.config.num_envs_per_env_runner,
                 asynchronous=self.config.remote_worker_envs,
             )
         )
         self.num_envs: int = self.env.num_envs
-        assert self.num_envs == self.config.num_envs_per_worker
+        assert self.num_envs == self.config.num_envs_per_env_runner
 
         # Set the flag to reset all envs upon the next `sample()` call.
         self._needs_initial_reset = True
@@ -772,6 +745,49 @@ class SingleAgentEnvRunner(EnvRunner):
                 NUM_MODULE_STEPS_SAMPLED: {DEFAULT_MODULE_ID: num_steps},
             },
             reduce="sum",
-            reset_on_reduce=True,
+            clear_on_reduce=True,
+        )
+        # Lifetime stats.
+        self.metrics.log_dict(
+            {
+                NUM_ENV_STEPS_SAMPLED_LIFETIME: num_steps,
+                NUM_AGENT_STEPS_SAMPLED_LIFETIME: {DEFAULT_AGENT_ID: num_steps},
+                NUM_MODULE_STEPS_SAMPLED_LIFETIME: {
+                    DEFAULT_MODULE_ID: num_steps,
+                },
+            },
+            reduce="sum",
         )
         return num_steps
+
+    def _log_episode_metrics(self, length, ret, sec):
+        # Log general episode metrics.
+        self.metrics.log_dict(
+            {
+                "episode_len_mean": length,
+                "episode_return_mean": ret,
+                "episode_duration_sec_mean": sec,
+                # Per-agent returns.
+                "agent_episode_returns_mean": {DEFAULT_AGENT_ID: ret},
+                # Per-RLModule returns.
+                "module_episode_returns_mean": {DEFAULT_MODULE_ID: ret},
+            },
+            # To mimick the old API stack behavior, we'll use `window` here for
+            # these particular stats (instead of the default EMA).
+            window=self.config.metrics_num_episodes_for_smoothing,
+        )
+        # For some metrics, log min/max as well.
+        self.metrics.log_dict(
+            {
+                "episode_len_min": length,
+                "episode_return_min": ret,
+            },
+            reduce="min",
+        )
+        self.metrics.log_dict(
+            {
+                "episode_len_max": length,
+                "episode_return_max": ret,
+            },
+            reduce="max",
+        )

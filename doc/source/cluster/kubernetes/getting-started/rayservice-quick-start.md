@@ -87,7 +87,7 @@ When the Ray Serve applications are healthy and ready, KubeRay creates a head se
 ```sh
 # (1) Forward the dashboard port to localhost.
 # (2) Check the Serve page in the Ray dashboard at http://localhost:8265/#/serve.
-kubectl port-forward svc/rayservice-sample-head-svc --address 0.0.0.0 8265:8265
+kubectl port-forward svc/rayservice-sample-head-svc 8265:8265
 ```
 
 * Refer to [rayservice-troubleshooting.md](kuberay-raysvc-troubleshoot) for more details on RayService observability.

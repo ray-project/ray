@@ -62,73 +62,91 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
     """A dict with special properties to support partial indexing.
 
     The main properties of NestedDict are::
-        * The NestedDict gives access to nested elements as a sequence of
-        strings.
-        * These NestedDicts can also be used to filter a superset into a subset of
-        nested elements with the filter function.
-        * This can be instantiated with any mapping of strings, or an iterable of
-        key value tuples where the values can themselves be recursively the values
-        that a NestedDict can take.
-        * The length of a NestedDict is the number of leaves in the tree, excluding
-        empty leafs.
-        * Iterating over a NestedDict yields the leaves of the tree, including empty
-        leafs.
+    - The NestedDict gives access to nested elements as a sequence of strings.
+    - These NestedDicts can also be used to filter a superset into a subset of nested
+    elements with the filter function.
+    - This can be instantiated with any mapping of strings, or an iterable of key value
+    tuples where the values can themselves be recursively the values that a NestedDict
+    can take.
+    - The length of a NestedDict is the number of leaves in the tree, excluding empty
+    leafs.
+    - Iterating over a NestedDict yields the leaves of the tree, including empty leafs.
 
-    Args:
-        x: a representation of a NestedDict: it can be an iterable of `SeqStrType`
-        to values. e.g. `[(("a", "b") , 1), ("b", 2)]` or a mapping of flattened
-        keys to values. e.g. `{("a", "b"): 1, ("b",): 2}` or any nested mapping,
-        e.g. `{"a": {"b": 1}, "b": {}}`.
-
-    Basic Usage:
     .. testcode::
-        :skipif: True
 
-        foo_dict = NestedDict()
+        from ray.rllib.utils.nested_dict import NestedDict
+        from ray.rllib.utils.test_utils import check
+
+        # Basic usage and iterating:
+        nested_dict = NestedDict()
         # Setting elements, possibly nested:
-        foo_dict['a'] = 100         # foo_dict = {'a': 100}
-        foo_dict['b', 'c'] = 200    # foo_dict = {'a': 100, 'b': {'c': 200}}
-        foo_dict['b', 'd'] = 300    # foo_dict = {'a': 100,
-                                    #             'b': {'c': 200, 'd': 300}}
-        foo_dict['b', 'e'] = {}     # foo_dict = {'a': 100,
-                                    #            'b': {'c': 200, 'd': 300}}
+        nested_dict["a"] = 100
+        check(list(nested_dict.keys()), [("a",)])
+        nested_dict["b", "c"] = 200
+        check(list(nested_dict.keys()), [("a",), ("b", "c")])
+        nested_dict["b", "d"] = 300
+        check(list(nested_dict.keys()), [("a",), ("b", "c"), ("b", "d")])
+        nested_dict["b", "e"] = {}
+        check(list(nested_dict.values()), [100, 200, 300, {}])
+        check(
+            list(nested_dict.items()),
+            [("a", 100), (("b", "c"), 200), (("b", "d"), 300)],
+        )
+        check(list(nested_dict.shallow_keys()), ["a", "b"])
+
         # Getting elements, possibly nested:
-        print(foo_dict['b', 'c'])   # 200
-        print(foo_dict['b'])        # {'c': 200, 'd': 300}
-        print(foo_dict.get('b'))    # {'c': 200, 'd': 300}
-        print(foo_dict) # {'a': 100, 'b': {'c': 200, 'd': 300}}
+        check(nested_dict["b", "c"], 200)
+        check(nested_dict[("b", "c")], 200)
+        check(nested_dict["b"], {("c",): 200, ("d",): 300, ("e",): {}})
+        check(nested_dict.get("b"), {("c",): 200, ("d",): 300, ("e",): {}})
+        check(
+            nested_dict,
+            {("a",): 100, ("b", "c"): 200, ("b", "d"): 300, ("b", "e"): {}},
+        )
+
         # Converting to a dict:
-        foo_dict.asdict()  # {'a': 100, 'b': {'c': 200, 'd': 300}}
-        # len function:
-        print(len(foo_dict))  # 3
-        # Iterating:
-        foo_dict.keys()  # dict_keys(['a', ('b', 'c'), ('b', 'd')])
-        foo_dict.items() # dict_items([('a', 100), (('b', 'c'), 200), (('b', 'd'), 300)])
-        foo_dict.shallow_keys()  # dict_keys(['a', 'b'])
+        check(nested_dict["b"].asdict(), {"c": 200, "d": 300, "e": {}})
+        check(nested_dict.asdict(), {'a': 100, 'b': {'c': 200, 'd': 300, "e": {}}})
 
-        Filter:
-        .. testcode::
-            :skipif: True
+        # Len function:
+        check(len(nested_dict), 3)
 
-            dict1 = NestedDict([
-                (('foo', 'a'), 10), (('foo', 'b'), 11),
-                (('bar', 'c'), 11), (('bar', 'a'), 110)])
-            dict2 = NestedDict([('foo', NestedDict(dict(a=11)))])
-            dict3 = NestedDict([('foo', NestedDict(dict(a=100))),
-                                ('bar', NestedDict(dict(d=11)))])
-            dict4 = NestedDict([('foo', NestedDict(dict(a=100))),
-                                ('bar', NestedDict(dict(c=11)))])
-            dict1.filter(dict2).asdict()   # {'foo': {'a': 10}}
-            dict1.filter(dict4).asdict()   # {'bar': {'c': 11}, 'foo': {'a': 10}}
-            dict1.filter(dict3).asdict()   # KeyError - ('bar', 'd') not in dict1
-    """  # noqa: E501
+        # More examples:
+        dict1 = NestedDict([
+            (("foo", "a"), 10), (("foo", "b"), 11),
+            (("bar", "c"), 11), (("bar", "a"), 110),
+        ])
+        dict2 = NestedDict([("foo", NestedDict(dict(a=11)))])
+        dict3 = NestedDict([
+            ("foo", NestedDict(dict(a=100))),
+            ("bar", NestedDict(dict(d=11))),
+        ])
+        dict4 = NestedDict([
+            ("foo", NestedDict(dict(a=100))),
+            ("bar", NestedDict(dict(c=11))),
+        ])
+        check(dict1.filter(dict2).asdict(), {"foo": {"a": 10}})
+        check(dict1.filter(dict4).asdict(), {"bar": {"c": 11}, "foo": {"a": 10}})
+        # dict1.filter(dict3).asdict()  # KeyError: ('bar', 'd') (not in dict1)
+    """
 
     def __init__(
         self,
         x: Optional[NestedDictInputType] = None,
     ):
-        # shallow dict
-        self._data = dict()  # type: Dict[str, Union[T, NestedDict[T]]]
+        """Initializes a NestedDict instance.
+
+        Args:
+            x: A representation of a NestedDict, which can be provided as
+                An iterable of pairs of `SeqStrType` and values, e.g.
+                `[(("a", "b") , 1), ("b", 2)]`
+                Or a mapping of flattened keys to values, e.g.
+                `{("a", "b"): 1, ("b",): 2}`
+                Or any nested mapping, e.g.
+                `{"a": {"b": 1}, "b": {}}`.
+        """
+        # Shallow dict.
+        self._data: Dict[str, Union[T, NestedDict[T]]] = dict()
         x = x if x is not None else {}
         if isinstance(x, NestedDict):
             self._data = x._data
@@ -145,7 +163,7 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
         """Returns true if the key is in the NestedDict."""
         k = _flatten_index(k)
 
-        data_ptr = self._data  # type: Dict[str, Any]
+        data_ptr: Dict[str, Any] = self._data
         for key in k:
             # this is to avoid the recursion on __contains__
             if isinstance(data_ptr, NestedDict):
@@ -246,22 +264,22 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
 
     def __delitem__(self, k: SeqStrType) -> None:
         """Deletes item at `k`."""
-        ks, ns = [], []
+        keys, ns = [], []
         data_ptr = self._data
-        for k in _flatten_index(k):
+        for key in _flatten_index(k):
             if isinstance(data_ptr, NestedDict):
                 data_ptr = data_ptr._data
-            if k not in data_ptr:
-                raise KeyError(str(ks + [k]))
-            ks.append(k)
+            if key not in data_ptr:
+                raise KeyError(str(keys + [key]))
+            keys.append(key)
             ns.append(data_ptr)
-            data_ptr = data_ptr[k]
+            data_ptr = data_ptr[key]
 
-        del ns[-1][ks[-1]]
+        del ns[-1][keys[-1]]
 
-        for i in reversed(range(len(ks) - 1)):
+        for i in reversed(range(len(keys) - 1)):
             if not ns[i + 1]:
-                del ns[i][ks[i]]
+                del ns[i][keys[i]]
 
     def __len__(self) -> int:
         """Returns the length of the NestedDict.

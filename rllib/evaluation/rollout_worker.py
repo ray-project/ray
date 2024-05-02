@@ -132,11 +132,11 @@ def _update_env_seed_if_necessary(
 
     # A single RL job is unlikely to have more than 10K
     # rollout workers.
-    max_num_envs_per_workers: int = 1000
+    max_num_envs_per_env_runner: int = 1000
     assert (
-        worker_idx < max_num_envs_per_workers
+        worker_idx < max_num_envs_per_env_runner
     ), "Too many envs per worker. Random seeds may collide."
-    computed_seed: int = worker_idx * max_num_envs_per_workers + vector_idx + seed
+    computed_seed: int = worker_idx * max_num_envs_per_env_runner + vector_idx + seed
 
     # Gymnasium.env.
     # This will silently fail for most Farama-foundation gymnasium environments.
@@ -247,9 +247,9 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 non-zero and unique value. This index is passed to created envs
                 through EnvContext so that envs can be configured per worker.
             recreated_worker: Whether this worker is a recreated one. Workers are
-                recreated by an Algorithm (via WorkerSet) in case
-                `recreate_failed_workers=True` and one of the original workers (or an
-                already recreated one) has failed. They don't differ from original
+                recreated by an Algorithm (via EnvRunnerGroup) in case
+                `recreate_failed_env_runners=True` and one of the original workers (or
+                an already recreated one) has failed. They don't differ from original
                 workers other than the value of this flag (`self.recreated_worker`).
             log_dir: Directory where logs can be placed.
             spaces: An optional space dict mapping policy IDs
@@ -295,7 +295,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         EnvRunner.__init__(self, config=config)
 
         self.num_workers = (
-            num_workers if num_workers is not None else self.config.num_rollout_workers
+            num_workers if num_workers is not None else self.config.num_env_runners
         )
         # In case we are reading from distributed datasets, store the shards here
         # and pick our shard by our worker-index.
@@ -356,7 +356,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             worker_index=self.worker_index
         )
         self.total_rollout_fragment_length: int = (
-            configured_rollout_fragment_length * self.config.num_envs_per_worker
+            configured_rollout_fragment_length * self.config.num_envs_per_env_runner
         )
         self.preprocessing_enabled: bool = not config._disable_preprocessor_api
         self.last_batch: Optional[SampleBatchType] = None
@@ -492,7 +492,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         )
 
         # This is only for the old API where local_worker was responsible for learning
-        if not self.config._enable_new_api_stack:
+        if not self.config.enable_rl_module_and_learner:
             # Error if we don't find enough GPUs.
             if (
                 ray.is_initialized()
@@ -537,7 +537,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         # state.
         for pol in self.policy_map.values():
             if not pol._model_init_state_automatically_added and not pol.config.get(
-                "_enable_new_api_stack", False
+                "enable_rl_module_and_learner", False
             ):
                 pol._update_model_view_requirements_from_init_state()
 
@@ -566,11 +566,11 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         # further clones of self.env and creates a RLlib BaseEnv (which is
         # vectorized under the hood).
         else:
-            # Always use vector env for consistency even if num_envs_per_worker=1.
+            # Always use vector env for consistency even if num_envs_per_env_runner=1.
             self.async_env: BaseEnv = convert_to_base_env(
                 self.env,
                 make_env=self.make_sub_env_fn,
-                num_envs=self.config.num_envs_per_worker,
+                num_envs=self.config.num_envs_per_env_runner,
                 remote_envs=self.config.remote_worker_envs,
                 remote_env_batch_wait_ms=self.config.remote_env_batch_wait_ms,
                 worker=self,
@@ -695,7 +695,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             self.config.batch_mode == "truncate_episodes"
             and not self.config.offline_sampling
         ):
-            max_batches = self.config.num_envs_per_worker
+            max_batches = self.config.num_envs_per_env_runner
         else:
             max_batches = float("inf")
         while steps_so_far < self.total_rollout_fragment_length and (
@@ -1121,7 +1121,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         """
         validate_policy_id(policy_id, error=False)
 
-        if module_spec is not None and not self.config._enable_new_api_stack:
+        if module_spec is not None and not self.config.enable_rl_module_and_learner:
             raise ValueError(
                 "If you pass in module_spec to the policy, the RLModule API needs "
                 "to be enabled."
@@ -1714,7 +1714,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         updated_policy_dict = self._get_complete_policy_specs_dict(policy_dict)
 
         # Use the updated policy dict to create the marl_module_spec if necessary
-        if self.config._enable_new_api_stack:
+        if self.config.enable_rl_module_and_learner:
             spec = self.config.get_marl_module_spec(
                 policy_dict=updated_policy_dict,
                 single_agent_rl_module_spec=single_agent_rl_module_spec,
@@ -1793,7 +1793,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                     obs_space,
                     merged_conf.model,
                     include_multi_binary=self.config.get(
-                        "_enable_new_api_stack", False
+                        "enable_rl_module_and_learner", False
                     ),
                 )
                 # Original observation space should be accessible at
@@ -1860,9 +1860,9 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 new_policy = policy
 
             # Maybe torch compile an RLModule.
-            if self.config.get("_enable_new_api_stack", False) and self.config.get(
-                "torch_compile_worker"
-            ):
+            if self.config.get(
+                "enable_rl_module_and_learner", False
+            ) and self.config.get("torch_compile_worker"):
                 if self.config.framework_str != "torch":
                     raise ValueError("Attempting to compile a non-torch RLModule.")
                 rl_module = getattr(new_policy, "model", None)

@@ -26,9 +26,9 @@ config = (
             "vf_share_layers": False,
         },
     )
-    .rollouts(
-        num_envs_per_worker=5,
-        num_rollout_workers=1,
+    .env_runners(
+        num_envs_per_env_runner=5,
+        num_env_runners=1,
         observation_filter="MeanStdFilter",
     )
     .resources(num_gpus=0)

@@ -46,7 +46,7 @@ class APPOConfig(ImpalaConfig):
         from ray.rllib.algorithms.appo import APPOConfig
         config = APPOConfig().training(lr=0.01, grad_clip=30.0, train_batch_size=50)
         config = config.resources(num_gpus=0)
-        config = config.rollouts(num_rollout_workers=1)
+        config = config.env_runners(num_env_runners=1)
         config = config.environment("CartPole-v1")
 
         # Build an Algorithm object from the config and run 1 training iteration.
@@ -99,7 +99,7 @@ class APPOConfig(ImpalaConfig):
         self.kl_target = 0.01
 
         # Override some of ImpalaConfig's default values with APPO-specific values.
-        self.num_rollout_workers = 2
+        self.num_env_runners = 2
         self.rollout_fragment_length = 50
         self.train_batch_size = 500
         self.min_time_s_per_iteration = 10
@@ -116,8 +116,8 @@ class APPOConfig(ImpalaConfig):
         self.broadcast_interval = 1
 
         self.grad_clip = 40.0
-        # Note: Only when using _enable_new_api_stack=True can the clipping mode be
-        # configured by the user. On the old API stack, RLlib will always clip by
+        # Note: Only when using enable_rl_module_and_learner=True can the clipping mode
+        # be configured by the user. On the old API stack, RLlib will always clip by
         # global_norm, no matter the value of `grad_clip_by`.
         self.grad_clip_by = "global_norm"
 
@@ -187,7 +187,7 @@ class APPOConfig(ImpalaConfig):
                 networks and tuned the kl loss coefficients that are used during
                 training.
                 NOTE: This parameter is only applicable when using the Learner API
-                (_enable_new_api_stack=True).
+                (enable_rl_module_and_learner=True).
 
 
         Returns:
@@ -272,7 +272,7 @@ class APPO(Impala):
 
         # TODO(avnishn): Does this need to happen in __init__? I think we can move it
         #  to setup()
-        if not self.config._enable_new_api_stack:
+        if not self.config.enable_rl_module_and_learner:
             self.workers.local_worker().foreach_policy_to_train(
                 lambda p, _: p.update_target()
             )
@@ -290,7 +290,7 @@ class APPO(Impala):
                 training step.
         """
 
-        if self.config._enable_new_api_stack:
+        if self.config.enable_rl_module_and_learner:
             if NUM_TARGET_UPDATES in train_results:
                 self._counters[NUM_TARGET_UPDATES] += train_results[NUM_TARGET_UPDATES]
                 self._counters[LAST_TARGET_UPDATE_TS] = train_results[
@@ -376,7 +376,7 @@ class APPO(Impala):
 
             return APPOTorchPolicy
         elif config["framework"] == "tf":
-            if config._enable_new_api_stack:
+            if config.enable_rl_module_and_learner:
                 raise ValueError(
                     "RLlib's RLModule and Learner API is not supported for"
                     " tf1. Use "

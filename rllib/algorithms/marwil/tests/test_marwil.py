@@ -46,11 +46,11 @@ class TestMARWIL(unittest.TestCase):
 
         config = (
             marwil.MARWILConfig()
-            .rollouts(num_rollout_workers=2)
+            .env_runners(num_env_runners=2)
             .environment(env="CartPole-v1")
             .evaluation(
                 evaluation_interval=3,
-                evaluation_num_workers=1,
+                evaluation_num_env_runners=1,
                 evaluation_duration=5,
                 evaluation_parallel_to_training=True,
                 evaluation_config=marwil.MARWILConfig.overrides(input_="sampler"),
@@ -109,9 +109,9 @@ class TestMARWIL(unittest.TestCase):
 
         config = (
             marwil.MARWILConfig()
-            .rollouts(num_rollout_workers=1)
+            .env_runners(num_env_runners=1)
             .evaluation(
-                evaluation_num_workers=1,
+                evaluation_num_env_runners=1,
                 evaluation_interval=3,
                 evaluation_duration=5,
                 evaluation_parallel_to_training=True,
@@ -148,7 +148,7 @@ class TestMARWIL(unittest.TestCase):
 
         config = (
             marwil.MARWILConfig()
-            .rollouts(num_rollout_workers=0)
+            .env_runners(num_env_runners=0)
             .offline_data(input_=[data_file])
         )  # Learn from offline data.
 
