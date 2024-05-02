@@ -391,6 +391,14 @@ def _get_high_impact_test_targets(team: str, operating_system: str) -> List[str]
         if test.get_oncall() == team and test.is_high_impact()
     ]
 
+def _get_high_impact_test_targets(team: str, operating_system: str) -> List[str]:
+    """
+    Get all test targets that are high impact
+    """
+    os_prefix = f"{operating_system}:"
+    return [
+        test.get_name().lstrip(os_prefix) for test in Test.gen_from_s3(prefix=os_prefix) if test.get_oncall() == team and test.is_high_impact()
+    ]
 
 def _get_flaky_test_targets(
     team: str, operating_system: str, yaml_dir: Optional[str] = None
