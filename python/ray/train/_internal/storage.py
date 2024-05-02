@@ -477,7 +477,7 @@ class StorageContext:
         valid_file = Path(
             self.experiment_fs_path, _VALIDATE_STORAGE_MARKER_FILENAME
         ).as_posix()
-        self.storage_filesystem.create_dir(self.experiment_fs_path)
+        _create_directory(fs=self.storage_filesystem, fs_path=self.experiment_fs_path)
         with self.storage_filesystem.open_output_stream(valid_file):
             pass
 
@@ -538,7 +538,7 @@ class StorageContext:
         # will only exist on the head node but not the worker nodes.
         self._check_validation_file()
 
-        self.storage_filesystem.create_dir(self.checkpoint_fs_path)
+        _create_directory(fs=self.storage_filesystem, fs_path=self.experiment_fs_path)
         _pyarrow_fs_copy_files(
             source=checkpoint.path,
             destination=self.checkpoint_fs_path,

@@ -21,7 +21,11 @@ import ray.cloudpickle as pickle
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.config import RunConfig, ScalingConfig
-from ray.train._internal.storage import StorageContext, get_fs_and_path
+from ray.train._internal.storage import (
+    StorageContext,
+    _create_directory,
+    get_fs_and_path,
+)
 from ray.tune import Experiment, ExperimentAnalysis, ResumeConfig, TuneError
 from ray.tune.registry import is_function_trainable
 from ray.tune.result_grid import ResultGrid
@@ -142,7 +146,7 @@ class TunerInternal:
         )
 
         fs = storage.storage_filesystem
-        fs.create_dir(storage.experiment_fs_path)
+        _create_directory(fs=fs, fs_path=storage.experiment_fs_path)
         with fs.open_output_stream(
             Path(storage.experiment_fs_path, _TUNER_PKL).as_posix()
         ) as f:
