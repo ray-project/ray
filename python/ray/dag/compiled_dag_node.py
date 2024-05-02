@@ -258,7 +258,7 @@ class CompiledDAG:
 
         # ObjectRef for each worker's task. The task is an infinite loop that
         # repeatedly executes the method specified in the DAG.
-        self.worker_task_refs: List["ray.ObjectRef"] = []
+        self.worker_task_refs: Dict["ray.actor.ActorHandle", "ray.ObjectRef"] = {}
         # Set of actors present in the DAG.
         self.actor_refs = set()
 
@@ -476,12 +476,12 @@ class CompiledDAG:
 
             # Assign the task with the correct input and output buffers.
             worker_fn = task.dag_node._get_remote_method("__ray_call__")
-            self.worker_task_refs.append(
-                worker_fn.options(concurrency_group="_ray_system").remote(
-                    do_exec_compiled_task,
-                    resolved_args,
-                    task.dag_node.get_method_name(),
-                )
+            self.worker_task_refs[
+                task.dag_node._get_actor_handle()
+            ] = worker_fn.options(concurrency_group="_ray_system").remote(
+                do_exec_compiled_task,
+                resolved_args,
+                task.dag_node.get_method_name(),
             )
 
         self.dag_input_channel = self.idx_to_task[self.input_task_idx].output_channel
@@ -531,23 +531,31 @@ class CompiledDAG:
                 self.in_teardown = False
 
             def wait_teardown(self):
-                for ref in outer.worker_task_refs:
+                for actor, ref in outer.worker_task_refs.items():
+                    timeout = False
                     try:
                         ray.get(ref, timeout=10)
                     except ray.exceptions.GetTimeoutError:
                         logger.warn(
-                            "At least one actor in the DAG is still running 10s "
+                            f"Compiled DAG actor {actor} is still running 10s "
                             "after teardown(). Teardown may hang."
                         )
+                        timeout = True
                     except Exception:
+                        # We just want to check that the task has finished so
+                        # we don't care if the actor task ended in an
+                        # exception.
+                        pass
+
+                    if not timeout:
                         continue
 
                     try:
                         ray.get(ref)
                     except Exception:
-                        continue
+                        pass
 
-            def teardown(self, wait):
+            def teardown(self, wait: bool):
                 if self.in_teardown:
                     if wait:
                         self.wait_teardown()
@@ -576,7 +584,7 @@ class CompiledDAG:
 
             def run(self):
                 try:
-                    ray.get(outer.worker_task_refs)
+                    ray.get(list(outer.worker_task_refs.values()))
                 except Exception as e:
                     logger.debug(f"Handling exception from worker tasks: {e}")
                     if self.in_teardown:
