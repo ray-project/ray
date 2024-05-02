@@ -2,7 +2,6 @@ import dataclasses
 import logging
 import os
 import re
-import time
 import traceback
 from dataclasses import dataclass
 from typing import Iterator, List, Optional, Any, Dict, Tuple, Union
@@ -105,9 +104,6 @@ def file_tail_iterator(path: str) -> Iterator[Optional[List[str]]]:
                 # Add line to current chunk
                 lines.append(curr_line)
                 chunk_char_count += len(curr_line)
-            else:
-                # If EOF is reached sleep for 1s before continuing
-                time.sleep(1)
 
 
 async def parse_and_validate_request(
