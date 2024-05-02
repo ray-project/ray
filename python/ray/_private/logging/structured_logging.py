@@ -18,22 +18,30 @@ class CoreContextFilter(logging.Filter):
             "node_id": runtime_context.get_node_id(),
         }
         if runtime_context.worker.mode == ray.WORKER_MODE:
-            ray_core_context["actor_id"] = runtime_context.get_actor_id()
-            ray_core_context["task_id"] = runtime_context.get_task_id()
+            actor_id = runtime_context.get_actor_id()
+            if actor_id is not None:
+                ray_core_context["actor_id"] = actor_id
+            task_id = runtime_context.get_task_id()
+            if task_id is not None:
+                ray_core_context["task_id"] = task_id
         setattr(record, LOG_RAY_CORE_CONTEXT, ray_core_context)
         return True
 
 
 class JSONFormatter(logging.Formatter):
     def format(self, record):
-        super().format(record)
         record_format = {
-            "ts": self.formatTime(record, self.datefmt),
+            "ts": self.formatTime(record),
             "level": record.levelname,
             "msg": record.getMessage(),
             "filename": record.filename,
             "lineno": record.lineno,
         }
+        if record.exc_info:
+            if not record.exc_text:
+                record.exc_text = self.formatException(record.exc_info)
+            record_format["exc_text"] = record.exc_text
+
         for key, value in record.__dict__.items():
             if key in LOGGER_RAY_ATTRS:  # Ray context
                 record_format.update(value)
