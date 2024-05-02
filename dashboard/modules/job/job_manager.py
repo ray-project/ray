@@ -145,7 +145,7 @@ class JobLogStorageClient:
             for line in lines:
                 log_tail_deque.append(line)
 
-        return "".join(log_tail_deque)[-self.MAX_LOG_SIZE:]
+        return "".join(log_tail_deque)[-self.MAX_LOG_SIZE :]
 
     @staticmethod
     def get_log_file_path(job_id: str) -> str:
