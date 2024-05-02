@@ -1,11 +1,13 @@
 import os
 
 import lance
+from pkg_resources import parse_version
 import pyarrow as pa
 import pytest
 from pytest_lazyfixture import lazy_fixture
 
 import ray
+from ray._private.utils import _get_pyarrow_version
 from ray.data.datasource.path_util import _unwrap_protocol
 
 
@@ -26,6 +28,12 @@ from ray.data.datasource.path_util import _unwrap_protocol
     ],
 )
 def test_lance_read_basic(fs, data_path):
+    # NOTE: Lance only works with PyArrow 12 or above.
+    pyarrow_version = _get_pyarrow_version()
+    if pyarrow_version is not None:
+        pyarrow_version = parse_version(pyarrow_version)
+    if pyarrow_version is not None and pyarrow_version < parse_version("12.0.0"):
+        return
 
     df1 = pa.table({"one": [2, 1, 3, 4, 6, 5], "two": ["b", "a", "c", "e", "g", "f"]})
     setup_data_path = _unwrap_protocol(data_path)
