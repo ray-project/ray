@@ -93,29 +93,13 @@ class JobSupervisor:
         entrypoint_resources: Optional[Dict[str, float]] = None,
         _start_signal_actor: Optional[ActorHandle] = None,
     ):
-        resources_specified = any(
-            [
-                entrypoint_num_cpus is not None and entrypoint_num_cpus > 0,
-                entrypoint_num_gpus is not None and entrypoint_num_gpus > 0,
-                entrypoint_memory is not None and entrypoint_memory > 0,
-                entrypoint_resources not in [None, {}],
-                ]
+        resources_specified, runner = await self._create_runner_actor(
+            runtime_env,
+            entrypoint_memory,
+            entrypoint_num_cpus,
+            entrypoint_num_gpus,
+            entrypoint_resources,
         )
-
-        scheduling_strategy = self._get_scheduling_strategy(resources_specified)
-
-        runner = self._runner_actor_cls.options(
-            name=JOB_EXECUTOR_ACTOR_NAME_TEMPLATE.format(job_id=self._job_id),
-            num_cpus=entrypoint_num_cpus,
-            num_gpus=entrypoint_num_gpus,
-            memory=entrypoint_memory,
-            resources=entrypoint_resources,
-            scheduling_strategy=scheduling_strategy,
-            runtime_env=self._get_supervisor_runtime_env(
-                runtime_env, self._job_id, resources_specified
-            ),
-            namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
-        ).remote()
 
         run_background_task(
             runner.execute.remote(
@@ -128,6 +112,37 @@ class JobSupervisor:
             self.event_logger.info(
                 f"Started a ray job {self._job_id}.", submission_id=self._job_id
             )
+
+    async def _create_runner_actor(
+        self,
+        runtime_env: Optional[Dict[str, Any]],
+        entrypoint_num_cpus: Optional[Union[int, float]],
+        entrypoint_num_gpus: Optional[Union[int, float]],
+        entrypoint_memory: Optional[int],
+        entrypoint_resources: Optional[Dict[str, float]],
+    ):
+        resources_specified = any(
+            [
+                entrypoint_num_cpus is not None and entrypoint_num_cpus > 0,
+                entrypoint_num_gpus is not None and entrypoint_num_gpus > 0,
+                entrypoint_memory is not None and entrypoint_memory > 0,
+                entrypoint_resources not in [None, {}],
+            ]
+        )
+        scheduling_strategy = self._get_scheduling_strategy(resources_specified)
+        runner = self._runner_actor_cls.options(
+            name=JOB_EXECUTOR_ACTOR_NAME_TEMPLATE.format(job_id=self._job_id),
+            num_cpus=entrypoint_num_cpus,
+            num_gpus=entrypoint_num_gpus,
+            memory=entrypoint_memory,
+            resources=entrypoint_resources,
+            scheduling_strategy=scheduling_strategy,
+            runtime_env=self._get_supervisor_runtime_env(
+                runtime_env, self._job_id, resources_specified
+            ),
+            namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
+        ).remote()
+        return resources_specified, runner
 
     async def _get_scheduling_strategy(
         self, resources_specified: bool
@@ -369,7 +384,7 @@ class JobRunner:
                     win32con.PROCESS_TERMINATE | win32con.PROCESS_SET_QUOTA,
                     False,
                     child_pid,
-                    )
+                )
                 win32job.AssignProcessToJobObject(self._win32_job_object, child_handle)
 
             return child_process
@@ -449,26 +464,6 @@ class JobRunner:
             variables.
         3) Handle concurrent events of driver execution and
         """
-        curr_info = await self._job_info_client.get_info(self._job_id)
-        if curr_info is None:
-            raise RuntimeError(f"Status could not be retrieved for job {self._job_id}.")
-        curr_status = curr_info.status
-        curr_message = curr_info.message
-        if curr_status == JobStatus.RUNNING:
-            raise RuntimeError(
-                f"Job {self._job_id} is already in RUNNING state. "
-                f"JobSupervisor.run() should only be called once. "
-            )
-        if curr_status != JobStatus.PENDING:
-            raise RuntimeError(
-                f"Job {self._job_id} is not in PENDING state. "
-                f"Current status is {curr_status} with message {curr_message}."
-            )
-
-        if _start_signal_actor:
-            # Block in PENDING state until start signal received.
-            await _start_signal_actor.wait.remote()
-
         driver_agent_http_address = (
             "http://"
             f"{ray.worker.global_worker.node.node_ip_address}:"
@@ -607,4 +602,3 @@ class JobRunner:
     def stop(self):
         """Set step_event and let run() handle the rest in its asyncio.wait()."""
         self._stop_event.set()
-
