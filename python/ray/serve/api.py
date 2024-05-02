@@ -588,11 +588,11 @@ def run(
             while True:
                 # Block, letting Ray print logs to the terminal.
                 time.sleep(10)
-        except KeyboardInterrupt as e:
+        except KeyboardInterrupt:
             logger.warning("Got KeyboardInterrupt, exiting...")
             # We need to re-raise KeyboardInterrupt, so serve components can be shutdown
             # from the main script.
-            raise e
+            raise
     return handle
 
 
