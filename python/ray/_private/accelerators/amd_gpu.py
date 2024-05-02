@@ -1,7 +1,6 @@
 import os
 import sys
 import logging
-import subprocess
 from typing import Optional, List, Tuple
 
 from ray._private.accelerators.accelerator import AcceleratorManager
