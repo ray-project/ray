@@ -15,7 +15,6 @@ from typing import (
 import uuid
 
 import gymnasium as gym
-import numpy as np
 
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.env.utils.infinite_lookback_buffer import InfiniteLookbackBuffer
@@ -73,7 +72,6 @@ class MultiAgentEpisode:
         rewards: Optional[List[MultiAgentDict]] = None,
         terminateds: Union[MultiAgentDict, bool] = False,
         truncateds: Union[MultiAgentDict, bool] = False,
-        render_images: Optional[List[np.ndarray]] = None,
         extra_model_outputs: Optional[List[MultiAgentDict]] = None,
         env_t_started: Optional[int] = None,
         agent_t_started: Optional[Dict[AgentID, int]] = None,
@@ -125,8 +123,6 @@ class MultiAgentEpisode:
                 truncated. A special __all__ key in these dicts indicates, whether the
                 episode is truncated for all agents.
                 The default is `False`, i.e. the episode has not been truncated.
-            render_images: A list of RGB uint8 images from rendering
-                the multi-agent environment.
             extra_model_outputs: A list of dictionaries mapping agent IDs to their
                 corresponding extra model outputs. Each of these "outputs" is a dict
                 mapping keys (str) to model output values, for example for
@@ -267,17 +263,6 @@ class MultiAgentEpisode:
             len_lookback_buffer=len_lookback_buffer,
         )
 
-        # TODO (sven): Remove this in favor of logging render images from an env inside
-        #  custom callbacks and using a to-be-designed metrics logger. Render images
-        #  from the env should NOT be stored in an episode (b/c they have nothing to do
-        #  with the data to be learned from, which should be the only thing an episode
-        #  has to be concerned with).
-        # RGB uint8 images from rendering the env.
-        assert render_images is None or observations is not None
-        self.render_images: Union[List[np.ndarray], List[object]] = (
-            [] if render_images is None else render_images
-        )
-
         # Caches for temporary per-timestep data. May be used to store custom metrics
         # from within a callback for the ongoing episode (e.g. render images).
         self._temporary_timestep_data = defaultdict(list)
@@ -294,7 +279,6 @@ class MultiAgentEpisode:
         *,
         observations: MultiAgentDict,
         infos: Optional[MultiAgentDict] = None,
-        render_image: Optional[np.ndarray] = None,
     ) -> None:
         """Stores initial observation.
 
@@ -306,19 +290,12 @@ class MultiAgentEpisode:
                 the agent IDs in `infos` must be a subset of those in `observations`
                 meaning it would not be allowed to have an agent with an info dict,
                 but not with an observation.
-            render_image: A (global) RGB uint8 image from rendering the environment
-                (for all agents).
         """
         assert not self.is_done
         # Assume that this episode is completely empty and has not stepped yet.
         # Leave self.env_t (and self.env_t_started) at 0.
         assert self.env_t == self.env_t_started == 0
         infos = infos or {}
-
-        # Note that we store the render images into the `MultiAgentEpisode`
-        # instead into each `SingleAgentEpisode`.
-        if render_image is not None:
-            self.render_images.append(render_image)
 
         # Note, all agents will have an initial observation, some may have an initial
         # info dict as well.
@@ -356,7 +333,6 @@ class MultiAgentEpisode:
         *,
         terminateds: Optional[MultiAgentDict] = None,
         truncateds: Optional[MultiAgentDict] = None,
-        render_image: Optional[np.ndarray] = None,
         extra_model_outputs: Optional[MultiAgentDict] = None,
     ) -> None:
         """Adds a timestep to the episode.
@@ -382,7 +358,6 @@ class MultiAgentEpisode:
                 indicating, whether the environment has been truncated for them.
                 A special `__all__` key indicates that the episode is `truncated` for
                 all agent IDs.
-            render_image: An RGB uint8 image from rendering the environment.
             extra_model_outputs: A dictionary mapping agent IDs to their
                 corresponding specific model outputs (also in a dictionary; e.g.
                 `vf_preds` for PPO).
@@ -417,11 +392,6 @@ class MultiAgentEpisode:
         # this episode as terminated.
         if all(aid in set(agents_done) for aid in self.agent_ids):
             self.is_terminated = True
-
-        # Note that we store the render images into the `MultiAgentEpisode`
-        # instead of storing them into each `SingleAgentEpisode`.
-        if render_image is not None:
-            self.render_images.append(render_image)
 
         # For all agents that are not stepping in this env step, but that are not done
         # yet -> Add a skip tag to their env- to agent-step mappings.
@@ -1776,7 +1746,6 @@ class MultiAgentEpisode:
                     for agent_id, agent_eps in self.agent_episodes.items()
                 }.items()
             ),
-            "render_images": self.render_images,
             "_start_time": self._start_time,
             "_last_step_time": self._last_step_time,
         }
@@ -1824,7 +1793,6 @@ class MultiAgentEpisode:
             agent_id: SingleAgentEpisode.from_state(agent_state)
             for agent_id, agent_state in state["agent_episodes"]
         }
-        episode.render_images = state["render_images"]
         episode._start_time = state["_start_time"]
         episode._last_step_time = state["_last_step_time"]
 
