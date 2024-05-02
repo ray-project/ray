@@ -117,7 +117,11 @@ void Raylet::Start() {
 }
 
 void Raylet::Stop() {
-  RAY_CHECK_OK(gcs_client_->Nodes().DrainSelf());
+  // RAY_CHECK_OK(gcs_client_->Nodes().DrainSelf());
+  rpc::NodeDeathInfo node_death_info;
+  node_death_info.set_reason(rpc::NodeDeathInfo::EXPECTED_TERMINATION);
+  node_death_info.set_reason_message("Raylet stop");
+  RAY_CHECK_OK(gcs_client_->Nodes().UnregisterSelf(node_death_info));
   node_manager_.Stop();
   acceptor_.close();
 }

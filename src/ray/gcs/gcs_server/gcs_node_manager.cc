@@ -108,6 +108,26 @@ void GcsNodeManager::HandleCheckAlive(rpc::CheckAliveRequest request,
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
+void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
+                                          rpc::UnregisterNodeReply *reply,
+                                          rpc::SendReplyCallback send_reply_callback) {
+  NodeID node_id = NodeID::FromBinary(request.node_id());
+  auto node = RemoveNode(node_id, /* is_intended = */ true);
+  if (!node) {
+    RAY_LOG(INFO) << "Node " << node_id << " is already removed";
+    return;
+  }
+  node->set_state(rpc::GcsNodeInfo::DEAD);
+  node->set_end_time_ms(current_sys_time_ms());
+  AddDeadNodeToCache(node);
+  auto node_info_delta = std::make_shared<rpc::GcsNodeInfo>();
+  node_info_delta->set_node_id(node->node_id());
+  node_info_delta->set_state(node->state());
+  node_info_delta->set_end_time_ms(node->end_time_ms());
+  // Update node state to DEAD instead of deleting it.
+  RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node, nullptr));
+}
+
 void GcsNodeManager::HandleDrainNode(rpc::DrainNodeRequest request,
                                      rpc::DrainNodeReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {

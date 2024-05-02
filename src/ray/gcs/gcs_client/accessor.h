@@ -312,6 +312,8 @@ class NodeInfoAccessor {
   virtual Status AsyncRegister(const rpc::GcsNodeInfo &node_info,
                                const StatusCallback &callback);
 
+  virtual Status UnregisterSelf(const rpc::NodeDeathInfo &node_death_info);
+
   /// Send a check alive request to GCS for the liveness of some node.
   ///
   /// \param callback The callback function once the request is finished.

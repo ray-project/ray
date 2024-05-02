@@ -28,10 +28,12 @@ LocalResourceManager::LocalResourceManager(
     const NodeResources &node_resources,
     std::function<int64_t(void)> get_used_object_store_memory,
     std::function<bool(void)> get_pull_manager_at_capacity,
+    std::function<bool(rpc::NodeDeathInfo)> unregister_self,
     std::function<void(const NodeResources &)> resource_change_subscriber)
     : local_node_id_(local_node_id),
       get_used_object_store_memory_(get_used_object_store_memory),
       get_pull_manager_at_capacity_(get_pull_manager_at_capacity),
+      unregister_self_(unregister_self),
       resource_change_subscriber_(resource_change_subscriber) {
   RAY_CHECK(node_resources.total == node_resources.available);
   local_resources_.available = NodeResourceInstanceSet(node_resources.total);
@@ -382,7 +384,17 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
 void LocalResourceManager::OnResourceOrStateChanged() {
   if (IsLocalNodeDraining() && IsLocalNodeIdle()) {
     // The node is drained.
-    RAY_LOG(INFO) << "The node is drained, exiting...";
+    if (unregister_self_ != nullptr) {
+      RAY_LOG(INFO) << "The node is drained, unregister itself ...";
+      if (!unregister_self_(node_death_info_)) {
+        RAY_LOG(ERROR) << "Failed to unregister the node.";
+        // Still shutdown?
+      } else {
+        RAY_LOG(INFO) << "The node is unregistered, exiting ...";
+      }
+    } else {
+      RAY_LOG(INFO) << "The node is drained, exiting ...";
+    }
     raylet::ShutdownRayletGracefully();
   }
 
@@ -444,10 +456,12 @@ void LocalResourceManager::RecordMetrics() const {
   }
 }
 
-void LocalResourceManager::SetLocalNodeDraining(int64_t draining_deadline_timestamp_ms) {
+void LocalResourceManager::SetLocalNodeDraining(
+    int64_t draining_deadline_timestamp_ms, const rpc::NodeDeathInfo &node_death_info) {
   RAY_CHECK_GE(draining_deadline_timestamp_ms, 0);
   is_local_node_draining_ = true;
   local_node_draining_deadline_timestamp_ms_ = draining_deadline_timestamp_ms;
+  node_death_info_ = node_death_info;
   OnResourceOrStateChanged();
 }
 

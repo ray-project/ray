@@ -441,6 +441,30 @@ Status NodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info,
   return Status::OK();
 }
 
+Status NodeInfoAccessor::UnregisterSelf(const rpc::NodeDeathInfo &node_death_info) {
+  if (local_node_id_.IsNil()) {
+    RAY_LOG(INFO) << "The node is already unregistered.";
+    // This node is already unregistered.
+    return Status::OK();
+  }
+  auto node_id = NodeID::FromBinary(local_node_info_.node_id());
+  RAY_CHECK(!node_id.IsNil()) << "Node ID cannnot be nil.";
+  rpc::UnregisterNodeRequest request;
+  request.set_node_id(local_node_info_.node_id());
+  request.mutable_node_death_info()->CopyFrom(node_death_info);
+  client_impl_->GetGcsRpcClient().UnregisterNode(
+      request,
+      [this, node_id](const Status &status, const rpc::UnregisterNodeReply &reply) {
+        if (status.ok()) {
+          local_node_info_.set_state(GcsNodeInfo::DEAD);
+          local_node_id_ = NodeID::Nil();
+        }
+        RAY_LOG(DEBUG) << "Finished unregistering node info, status = " << status
+                       << ", node id = " << node_id;
+      });
+  return Status::OK();
+}
+
 Status NodeInfoAccessor::DrainSelf() {
   if (local_node_id_.IsNil()) {
     RAY_LOG(INFO) << "The node is already drained.";

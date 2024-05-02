@@ -309,6 +309,10 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       },
       /*get_pull_manager_at_capacity*/
       [this]() { return object_manager_.PullManagerHasPullsQueued(); },
+      [this](rpc::NodeDeathInfo node_death_info) {
+        Status status = gcs_client_->Nodes().UnregisterSelf(node_death_info);
+        return status.ok();
+      },
       /*labels*/
       config.labels);
 
@@ -1945,8 +1949,11 @@ void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,
     const bool is_idle =
         cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeIdle();
     if (is_idle) {
+      rpc::NodeDeathInfo node_death_info;
+      node_death_info.set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_IDLE);
+      node_death_info.set_reason_message(request.reason_message());
       cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining(
-          request.deadline_timestamp_ms());
+          request.deadline_timestamp_ms(), node_death_info);
       reply->set_is_accepted(true);
     } else {
       reply->set_is_accepted(false);
@@ -1957,8 +1964,11 @@ void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,
     // Non-rejectable draining request.
     RAY_CHECK_EQ(request.reason(),
                  rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION);
+    rpc::NodeDeathInfo node_death_info;
+    node_death_info.set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
+    node_death_info.set_reason_message(request.reason_message());
     cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining(
-        request.deadline_timestamp_ms());
+        request.deadline_timestamp_ms(), node_death_info);
     reply->set_is_accepted(true);
   }
 
