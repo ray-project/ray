@@ -1,36 +1,23 @@
 import logging
 from typing import TYPE_CHECKING, Dict, Iterator, List, Optional
 
-import lance
 import numpy as np
-import pyarrow as pa
-from lance import LanceFragment
 
-from ray.data import ReadTask
+from ray.data._internal.util import _check_import
 from ray.data.block import BlockMetadata
-from ray.data.datasource import Datasource
+from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.util.annotations import DeveloperAPI
-
-logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     import pyarrow
 
 
+logger = logging.getLogger(__name__)
+
+
 @DeveloperAPI
 class LanceDatasource(Datasource):
-    """Lance Datasource
-    Read a Lance Dataset as a Ray Dataset
-
-    Parameters
-    ----------
-    uri : str
-        The base URI of the Lance dataset.
-    columns: list
-        A list of columns to return from the dataset.
-    filter: str
-        A standard SQL expressions as predicates for dataset filtering.
-    """
+    """Lance datasource, for reading Lance dataset."""
 
     def __init__(
         self,
@@ -39,6 +26,10 @@ class LanceDatasource(Datasource):
         filter: Optional[str] = None,
         storage_options: Optional[Dict[str, str]] = None,
     ):
+        _check_import(self, module="lance", package="pylance")
+
+        import lance
+
         self.uri = uri
         self.columns = columns
         self.filter = filter
@@ -48,31 +39,29 @@ class LanceDatasource(Datasource):
         self.fragments = self.lance_ds.get_fragments()
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
-        # Read multiple fragments in parallel
-        # Each Ray Data Block contains a Pandas RecordBatch
-        def _read_fragments(
-            fragments: List[LanceFragment],
-        ) -> Iterator["pyarrow.Table"]:
-            for fragment in fragments:
-                batches = fragment.to_batches(columns=self.columns, filter=self.filter)
-                for batch in batches:
-                    yield pa.Table.from_batches([batch])
-
         read_tasks = []
         for fragments in np.array_split(self.fragments, parallelism):
             if len(fragments) <= 0:
                 continue
 
+            num_rows = sum([f.count_rows() for f in fragments])
+            input_files = [
+                data_file.path() for f in fragments for data_file in f.data_files()
+            ]
+
+            # TODO(chengsu): Take column projection into consideration for schema.
             metadata = BlockMetadata(
-                num_rows=None,
-                schema=None,
-                input_files=None,
+                num_rows=num_rows,
+                schema=fragments[0].schema,
+                input_files=input_files,
                 size_bytes=None,
                 exec_stats=None,
             )
+            columns = self.columns
+            row_filter = self.filter
 
             read_task = ReadTask(
-                lambda fragments=fragments: _read_fragments(fragments),
+                lambda f=fragments: _read_fragments(f, columns, row_filter),
                 metadata,
             )
             read_tasks.append(read_task)
@@ -80,5 +69,15 @@ class LanceDatasource(Datasource):
         return read_tasks
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
-        # TODO: Add memory size estimation to improve auto-tune of parallelism.
+        # TODO(chengsu): Add memory size estimation to improve auto-tune of parallelism.
         return None
+
+
+def _read_fragments(fragments, columns, row_filter) -> Iterator["pyarrow.Table"]:
+    """Read Lance fragments in batches."""
+    import pyarrow
+
+    for fragment in fragments:
+        batches = fragment.to_batches(columns=columns, filter=row_filter)
+        for batch in batches:
+            yield pyarrow.Table.from_batches([batch])

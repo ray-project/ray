@@ -581,7 +581,7 @@ py_test(
 
 py_test(
     name = "test_lance",
-    size = "large",
+    size = "small",
     srcs = ["tests/test_lance.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],

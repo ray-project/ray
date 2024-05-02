@@ -2908,52 +2908,54 @@ def read_lance(
     columns: Optional[List[str]] = None,
     filter: Optional[str] = None,
     storage_options: Optional[Dict[str, str]] = None,
-    parallelism: int = -1,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
 ) -> Dataset:
     """
-    Create a :class:`~ray.data.Dataset` from a Lance dataset. The dataset to read from
-    is specified using a fully qualified ```uri```. Using Lance, any
-    intended columns or filters are applied, and the files that satisfy
-    the query are distributed across Ray read tasks. The number of tasks is
-    determined by ``parallelism`` which can be requested from this interface or
-    automatically chosen if unspecified (see the``parallelism`` arg below).
+    Create a :class:`~ray.data.Dataset` from a
+    `Lance Dataset <https://lancedb.github.io/lance/api/python/lance.html#lance.LanceDataset>`_.
 
     Examples:
         >>> import ray
-        >>> ds = ray.data.read_lance(
+        >>> ds = ray.data.read_lance( # doctest: +SKIP
         ...     uri="./db_name.lance",
-        ...     columns=["column_name", "label"],
-        ...     filter="label = 2 AND column_name IS NOT NULL",
-        ...     parallelism=64
+        ...     columns=["image", "label"],
+        ...     filter="label = 2 AND text IS NOT NULL",
         ... )
 
-    Tip:
-
-        For more details about these Lance concepts, see the following:
-        - URI: https://lancedb.github.io/lance/read_and_write.html#object-store-configuration
-
     Args:
-        uri: The URI of the source Lance dataset to read from.
-            Currently supports local file paths, S3, GCS, and AZ URIs are supported.
-        columns: The columns to read from the dataset.
-            If not specified, all columns are read.
-        filter: The filter to apply to the dataset.
-            If not specified, no filter is applied.
-        parallelism: Degree of parallelism to use for the Dataset
-        ray_remote_args: Optional arguments to pass to `ray.remote` in the read tasks
+        uri: The URI of the Lance dataset to read from. Local file paths, S3, and GCS
+            are supported.
+        columns: The columns to read. By default, all columns are read.
+        filter: Read returns only the rows matching the filter. By default, no
+            filter is applied.
+        storage_options: Extra options that make sense for a particular storage
+            connection. This is used to store connection parameters like credentials,
+            endpoint, etc. For more information, see `Object Store Configuration <https\
+                ://lancedb.github.io/lance/read_and_write.html#object-store-configuration>`_.
+        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
-        A :class:`~ray.data.Dataset` the Lance dataset from the results of executing the read.
+        A :class:`~ray.data.Dataset` producing records read from the Lance dataset.
     """  # noqa: E501
-    datasource = LanceDatasource(uri=uri, columns=columns, filter=filter)
+    datasource = LanceDatasource(
+        uri=uri,
+        columns=columns,
+        filter=filter,
+        storage_options=storage_options,
+    )
 
     return read_datasource(
         datasource=datasource,
-        parallelism=parallelism,
-        storage_options=storage_options,
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_locks=override_num_blocks,

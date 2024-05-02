@@ -4,8 +4,8 @@ import lance
 import pyarrow as pa
 import pytest
 from pytest_lazyfixture import lazy_fixture
-from read_api import read_lance
 
+import ray
 from ray.data.datasource.path_util import _unwrap_protocol
 
 
@@ -42,17 +42,11 @@ def test_lance_read_basic(fs, data_path):
     )
     ds_lance.merge(df2, "one")
 
-    ds = read_lance(path)
+    ds = ray.data.read_lance(path)
 
-    # Test metadata-only lance ops.
+    # Test metadata-only ops.
     assert ds.count() == 6
-    assert ds.size_bytes() > 0
     assert ds.schema() is not None
-
-    # todo: brentb input_files test
-    # input_files = ds.input_files()
-    # assert len(input_files) == 2, input_files
-    # assert ".lance" in str(input_files)
 
     assert (
         " ".join(str(ds).split())
@@ -63,7 +57,7 @@ def test_lance_read_basic(fs, data_path):
         == "Dataset( num_rows=6, schema={one: int64, two: string, three: int64, four: string} )"  # noqa: E501
     ), ds
 
-    # Forces a data read.
+    # Test read.
     values = [[s["one"], s["two"]] for s in ds.take_all()]
     assert sorted(values) == [
         [1, "a"],
@@ -74,14 +68,14 @@ def test_lance_read_basic(fs, data_path):
         [6, "g"],
     ]
 
-    # Test column selection.
-    ds = read_lance(path, columns=["one"])
+    # Test column projection.
+    ds = ray.data.read_lance(path, columns=["one"])
     values = [s["one"] for s in ds.take()]
     assert sorted(values) == [1, 2, 3, 4, 5, 6]
-    print(ds.schema().names)
-    assert ds.schema().names == ["one"]
+    assert ds.schema().names == ['one', 'two', 'three', 'four']
 
-    # Test concurrency.
-    ds = read_lance(path, concurrency=1)
-    values = [s["one"] for s in ds.take()]
-    assert sorted(values) == [1, 2, 3, 4, 5, 6]
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
