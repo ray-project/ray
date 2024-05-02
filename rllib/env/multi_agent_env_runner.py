@@ -329,15 +329,13 @@ class MultiAgentEnvRunner(EnvRunner):
                     shared_data=self._shared_data,
                 )
 
-                # Make the `on_episode_step` callback.
+                # Make the `on_episode_step` and `on_episode_end` callbacks (before
+                # finalizing the episode object).
                 self._make_on_episode_callback("on_episode_step")
+                self._make_on_episode_callback("on_episode_end")
                 # Finalize (numpy'ize) the episode.
                 self._episode.finalize(drop_zero_len_single_agent_episodes=True)
                 done_episodes_to_return.append(self._episode)
-
-                # Make the `on_episode_env` callback (after having finalized the
-                # episode object).
-                self._make_on_episode_callback("on_episode_end")
 
                 # Create a new episode instance.
                 self._episode = self._new_episode()
@@ -526,13 +524,13 @@ class MultiAgentEnvRunner(EnvRunner):
                 # Increase episode count.
                 eps += 1
 
+                # Make `on_episode_end` callback before finalizing the episode.
+                self._make_on_episode_callback("on_episode_end")
+
                 # Finish the episode.
                 done_episodes_to_return.append(
                     _episode.finalize(drop_zero_len_single_agent_episodes=True)
                 )
-
-                # Make `on_episode_end` callback after finalizing the episode.
-                self._make_on_episode_callback("on_episode_end", _episode)
 
                 # Also early-out if we reach the number of episodes within this
                 # for-loop.
