@@ -20,20 +20,16 @@ RUN --mount=type=bind,source=$FIND_LINKS_PATH,target=$FIND_LINKS_PATH <<EOF
 set -euo pipefail
 
 SITE_PKG_DIR="$(python -c "import site; print(site.getsitepackages()[0])")"
-if conda info > /dev/null 2>&1; then
-    PIP=(/home/ray/anaconda3/bin/pip)
-else
-    PIP=(sudo pip)
-fi
+PIP="/home/ray/anaconda3/bin/pip"
 
 if [[ -d "${SITE_PKG_DIR}/ray" ]]; then
     # Needs to uninstall ray first, otherwise pip will not overwrite the
     # existing files if OSS already published a wheel with the same version.
     # This step is required only for ray-ml images.
-    "${PIP[@]}" uninstall -y ray
+    "${PIP}" uninstall -y ray
 fi
 
-"${PIP[@]}" --no-cache-dir \
+"${PIP}" --no-cache-dir \
     install -c requirements_compiled.txt "${WHEEL_PATH}"[all] \
     --find-links "${FIND_LINKS_PATH}"
 
