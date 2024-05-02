@@ -45,6 +45,7 @@ RUN sudo apt-get update && sudo apt-get install curl -y
 # Download the source code for the Whisper application into `whisper_example.py`.
 RUN curl -O https://raw.githubusercontent.com/ray-project/ray/master/doc/source/serve/doc_code/whisper_example.py
 
+# Add /home/ray path to PYTHONPATH avoid import module error
 ENV PYTHONPATH "${PYTHONPATH}:/home/ray"
 ```
 :::
@@ -60,6 +61,7 @@ RUN sudo apt-get update && sudo apt-get install curl -y
 # Download the source code for the ResNet application into `resnet50_example.py`.
 RUN curl -O https://raw.githubusercontent.com/ray-project/ray/master/doc/source/serve/doc_code/resnet50_example.py
 
+# Add /home/ray path to PYTHONPATH avoid import module error
 ENV PYTHONPATH "${PYTHONPATH}:/home/ray"
 ```
 :::
