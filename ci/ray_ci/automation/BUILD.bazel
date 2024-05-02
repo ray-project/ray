@@ -222,17 +222,3 @@ py_test(
         ":automation",
     ],
 )
-
-py_test(
-    name = "test_determine_microcheck_step_ids",
-    srcs = ["test_determine_microcheck_step_ids.py"],
-    exec_compatible_with = ["//:hermetic_python"],
-    tags = [
-        "ci_unit",
-        "team:ci",
-    ],
-    deps = [
-        ci_require("pytest"),
-        ":automation",
-    ],
-)

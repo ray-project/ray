@@ -93,6 +93,24 @@ def test_get_test_targets() -> None:
             "//python/ray/tests:good_test_03",
             "//python/ray/tests:flaky_test_01",
         ]
+        test_objects = [
+            _stub_test(
+                {
+                    "name": "linux://python/ray/tests:high_impact_test_01",
+                    "team": "core",
+                    "state": TestState.PASSING,
+                    Test.KEY_IS_HIGH_IMPACT: "true",
+                }
+            ),
+            _stub_test(
+                {
+                    "name": "linux://python/ray/tests:flaky_test_01",
+                    "team": "core",
+                    "state": TestState.FLAKY,
+                    Test.KEY_IS_HIGH_IMPACT: "true",
+                }
+            ),
+        ]
         with mock.patch(
             "subprocess.check_output",
             return_value="\n".join(test_targets).encode("utf-8"),
@@ -101,24 +119,10 @@ def test_get_test_targets() -> None:
             return_value=None,
         ), mock.patch(
             "ray_release.test.Test.gen_from_s3",
-            return_value=[
-                _stub_test(
-                    {
-                        "name": "linux://python/ray/tests:high_impact_test_01",
-                        "team": "core",
-                        "state": TestState.PASSING,
-                        Test.KEY_IS_HIGH_IMPACT: "true",
-                    }
-                ),
-                _stub_test(
-                    {
-                        "name": "linux://python/ray/tests:flaky_test_01",
-                        "team": "core",
-                        "state": TestState.FLAKY,
-                        Test.KEY_IS_HIGH_IMPACT: "true",
-                    }
-                ),
-            ],
+            return_value=test_objects,
+        ), mock.patch(
+            "ray_release.test.Test.gen_high_impact_tests",
+            return_value={"step": test_objects},
         ):
             assert set(
                 _get_test_targets(
@@ -204,7 +208,7 @@ def test_get_high_impact_test_targets() -> None:
     test_harness = [
         {
             "input": [],
-            "output": [],
+            "output": set(),
         },
         {
             "input": [
@@ -212,27 +216,24 @@ def test_get_high_impact_test_targets() -> None:
                     {
                         "name": "linux://core_good",
                         "team": "core",
-                        Test.KEY_IS_HIGH_IMPACT: "true",
                     }
                 ),
                 _stub_test(
                     {
                         "name": "linux://serve_good",
                         "team": "serve",
-                        Test.KEY_IS_HIGH_IMPACT: "true",
                     }
                 ),
-                _stub_test({"name": "linux://core_bad", "team": "core"}),
             ],
-            "output": [
+            "output": {
                 "//core_good",
-            ],
+            },
         },
     ]
     for test in test_harness:
         with mock.patch(
-            "ray_release.test.Test.gen_from_s3",
-            return_value=test["input"],
+            "ray_release.test.Test.gen_high_impact_tests",
+            return_value={"step": test["input"]},
         ):
             assert _get_high_impact_test_targets("core", "linux") == test["output"]
 
