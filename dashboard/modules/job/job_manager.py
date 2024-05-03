@@ -445,10 +445,10 @@ class JobManager:
             await supervisor.start.remote(
                 runtime_env=runtime_env,
                 metadata=metadata,
-                num_cpus=entrypoint_num_cpus,
-                num_gpus=entrypoint_num_gpus,
-                memory=entrypoint_memory,
-                resources=entrypoint_resources,
+                entrypoint_num_cpus=entrypoint_num_cpus,
+                entrypoint_num_gpus=entrypoint_num_gpus,
+                entrypoint_memory=entrypoint_memory,
+                entrypoint_resources=entrypoint_resources,
             )
 
             # TODO move to JS
