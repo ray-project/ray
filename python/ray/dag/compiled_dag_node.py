@@ -190,6 +190,7 @@ class CompiledTask:
         # check type hints, if any.
         self.output_wrapper_fn = None
         if self.dag_node.type_hint is not None:
+            print(self.dag_node.type_hint)
             if isinstance(self.dag_node.type_hint, TorchTensorType):
                 # Wrap outputs produced by this task to indicate that it
                 # should be specially serialized.
