@@ -143,6 +143,8 @@ class JobSupervisor:
             entrypoint_resources=entrypoint_resources
         )
 
+        self._runner = runner
+
         # TODO clean up
         if _start_signal_actor:
             # Block in PENDING state until start signal received.
