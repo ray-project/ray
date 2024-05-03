@@ -1,6 +1,7 @@
 from typing import List
 
 from ray.rllib.algorithms.appo.appo import OLD_ACTION_DIST_LOGITS_KEY
+from ray.rllib.algorithms.appo.appo_rl_module import APPORLModule
 from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import ACTOR
@@ -15,19 +16,7 @@ from ray.rllib.utils.nested_dict import NestedDict
 _, tf, _ = try_import_tf()
 
 
-class APPOTfRLModule(PPOTfRLModule, RLModuleWithTargetNetworksInterface):
-    def setup(self):
-        super().setup()
-        catalog = self.config.get_catalog()
-        # old pi and old encoder are the "target networks" that are used for
-        # the stabilization of the updates of the current pi and encoder.
-        self.old_pi = catalog.build_pi_head(framework=self.framework)
-        self.old_encoder = catalog.build_actor_critic_encoder(framework=self.framework)
-        self.old_pi.set_weights(self.pi.get_weights())
-        self.old_encoder.set_weights(self.encoder.get_weights())
-        self.old_pi.trainable = False
-        self.old_encoder.trainable = False
-
+class APPOTfRLModule(PPOTfRLModule, RLModuleWithTargetNetworksInterface, APPORLModule):
     @override(RLModuleWithTargetNetworksInterface)
     def get_target_network_pairs(self):
         return [(self.old_pi, self.pi), (self.old_encoder, self.encoder)]
