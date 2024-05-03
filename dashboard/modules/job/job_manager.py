@@ -176,7 +176,9 @@ class JobManager:
                             f"variable {RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR}."
                         )
 
-                        resources_specified = self._has_entrypoint_resources_set(job_info)
+                        resources_specified = self._has_entrypoint_resources_set(
+                            job_info
+                        )
 
                         if resources_specified:
                             err_msg += (
@@ -323,7 +325,9 @@ class JobManager:
         if result is None:
             return
 
-    async def _get_head_node_scheduling_strategy(self) -> Optional[NodeAffinitySchedulingStrategy]:
+    async def _get_head_node_scheduling_strategy(
+        self,
+    ) -> Optional[NodeAffinitySchedulingStrategy]:
         head_node_id_bytes = await self._gcs_aio_client.internal_kv_get(
             "head_node_id".encode(),
             namespace=ray_constants.KV_NAMESPACE_JOB,
@@ -345,9 +349,7 @@ class JobManager:
             f"head node {head_node_id}"
         )
 
-        return NodeAffinitySchedulingStrategy(
-            node_id=head_node_id, soft=False
-        )
+        return NodeAffinitySchedulingStrategy(node_id=head_node_id, soft=False)
 
     async def submit_job(
         self,
@@ -421,7 +423,9 @@ class JobManager:
         # up.
         try:
             # NOTE: JobSupervisor is *always* scheduled onto the head-node
-            head_node_scheduling_strategy = await self._get_head_node_scheduling_strategy()
+            head_node_scheduling_strategy = (
+                await self._get_head_node_scheduling_strategy()
+            )
 
             supervisor = self._supervisor_actor_cls.options(
                 lifetime="detached",
@@ -429,10 +433,10 @@ class JobManager:
                 num_cpus=0,
                 scheduling_strategy=head_node_scheduling_strategy,
                 namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
-                #num_cpus=entrypoint_num_cpus,
-                #num_gpus=entrypoint_num_gpus,
-                #memory=entrypoint_memory,
-                #resources=entrypoint_resources,
+                # num_cpus=entrypoint_num_cpus,
+                # num_gpus=entrypoint_num_gpus,
+                # memory=entrypoint_memory,
+                # resources=entrypoint_resources,
                 # runtime_env=self._get_supervisor_runtime_env(
                 #     runtime_env, submission_id, resources_specified
                 # ),
