@@ -44,12 +44,6 @@ class APPOTorchRLModule(
 
     @override(PPOTorchRLModule)
     def _forward_train(self, batch: NestedDict):
-        if self.inference_only:
-            raise RuntimeError(
-                "Trying to train a module that is not a learner module. Set the "
-                "flag `inference_only=False` when building the module."
-            )
-
         outs = super()._forward_train(batch)
         old_pi_inputs_encoded = self.old_encoder(batch)[ENCODER_OUT][ACTOR]
         old_action_dist_logits = self.old_pi(old_pi_inputs_encoded)
