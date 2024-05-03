@@ -24,6 +24,8 @@ from ray.dashboard.modules.job.common import (
     JobInfo,
     JobInfoStorageClient,
 )
+from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
+from ray.dashboard.modules.job.job_supervisor import JobSupervisor
 from ray.exceptions import ActorUnschedulableError, RuntimeEnvSetupError
 from ray.job_submission import JobStatus
 from ray.util.scheduling_strategies import (
