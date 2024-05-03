@@ -460,7 +460,7 @@ async def test_job_supervisor_logs_saved(job_manager):
         "jobs/supervisor-{job_id}.log",
     )
     worker_err_files = [
-        f
+        os.path.join(ray._private.worker._global_node.get_logs_dir_path(), f)
         for f in os.listdir(ray._private.worker._global_node.get_logs_dir_path())
         if "worker" in f and ".err" in f
     ]
