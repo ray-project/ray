@@ -14,6 +14,7 @@ import Autocomplete from "@mui/material/Autocomplete";
 import Pagination from "@mui/material/Pagination";
 import React, { useState } from "react";
 import rowStyles from "../common/RowStyles";
+import { sliceToPage } from "../common/util";
 import { Bundle, PlacementGroup } from "../type/placementGroup";
 import { useFilter } from "../util/hook";
 import StateCounter from "./StatesCounter";
@@ -42,10 +43,11 @@ const PlacementGroupTable = ({
   const { changeFilter, filterFunc } = useFilter();
   const [pageSize, setPageSize] = useState(10);
   const placementGroupList = placementGroups.filter(filterFunc);
-  const list = placementGroupList.slice(
-    (pageNo - 1) * pageSize,
-    pageNo * pageSize,
-  );
+  const {
+    items: list,
+    constrainedPage,
+    maxPage,
+  } = sliceToPage(placementGroupList, pageNo, pageSize);
   const classes = rowStyles();
 
   const columns = [
@@ -123,9 +125,9 @@ const PlacementGroupTable = ({
       <div style={{ display: "flex", alignItems: "center" }}>
         <div>
           <Pagination
-            page={pageNo}
+            page={constrainedPage}
             onChange={(e, num) => setPageNo(num)}
-            count={Math.ceil(placementGroupList.length / pageSize)}
+            count={maxPage}
           />
         </div>
         <div>

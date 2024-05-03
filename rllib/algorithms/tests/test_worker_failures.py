@@ -225,7 +225,7 @@ class AddModuleCallback(DefaultCallbacks):
     def __init__(self):
         super().__init__()
 
-    def on_algorithm_init(self, *, algorithm, **kwargs):
+    def on_algorithm_init(self, *, algorithm, metrics_logger, **kwargs):
         # Add a custom module to algorithm.
         spec = algorithm.config.get_default_rl_module_spec()
         spec.observation_space = gym.spaces.Box(low=0, high=1, shape=(8,))

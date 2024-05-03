@@ -35,7 +35,7 @@ class OnWorkersRecreatedCallbacks(DefaultCallbacks):
 
 
 class InitAndCheckpointRestoredCallbacks(DefaultCallbacks):
-    def on_algorithm_init(self, *, algorithm, **kwargs):
+    def on_algorithm_init(self, *, algorithm, metrics_logger, **kwargs):
         self._on_init_was_called = True
 
     def on_checkpoint_loaded(self, *, algorithm, **kwargs):

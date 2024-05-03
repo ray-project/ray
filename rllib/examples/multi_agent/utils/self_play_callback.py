@@ -18,7 +18,7 @@ class SelfPlayCallback(DefaultCallbacks):
         # Report the matchup counters (who played against whom?).
         self._matching_stats = defaultdict(int)
 
-    def on_train_result(self, *, algorithm, result, **kwargs):
+    def on_train_result(self, *, algorithm, metrics_logger=None, result, **kwargs):
         # Get the win rate for the train batch.
         # Note that normally, one should set up a proper evaluation config,
         # such that evaluation always happens on the already updated policy,

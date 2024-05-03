@@ -4175,16 +4175,15 @@ class AlgorithmConfig(_Config):
                 "script for more information: "
                 "https://github.com/ray-project/ray/blob/master/rllib/examples/curriculum/curriculum_learning.py",  # noqa
             )
-        # `render_env` will be deprecated
-        # TODO (sven): Uncomment once example is translated to new API stack.
-        # if self._enable_new_api_stack and self.render_env is not False:
-        #    deprecation_warning(
-        #        old="AlgorithmConfig.render_env",
-        #        help="The `render_env` setting is not supported on the new API stack! "
-        #        "Take a look at the new rendering example here for how to create
-        #        videos of your envs and send them to WandB: "
-        #        "https://github.com/ray-project/ray/blob/master/rllib/examples/envs/env_rendering_and_recording.py",  # noqa
-        #    )
+        # `render_env` is deprecated on new API stack.
+        if self.enable_env_runner_and_connector_v2 and self.render_env is not False:
+            deprecation_warning(
+                old="AlgorithmConfig.render_env",
+                help="The `render_env` setting is not supported on the new API stack! "
+                "In order to log videos to WandB (or other loggers), take a look at "
+                "this example here: "
+                "https://github.com/ray-project/ray/blob/master/rllib/examples/envs/env_rendering_and_recording.py",  # noqa
+            )
 
         if self.preprocessor_pref not in ["rllib", "deepmind", None]:
             raise ValueError(
