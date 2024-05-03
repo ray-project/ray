@@ -2282,6 +2282,24 @@ py_test(
 )
 
 py_test(
+    name = "examples/envs/custom_env_render_method",
+    main = "examples/envs/custom_env_render_method.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/envs/custom_env_render_method.py"],
+    args = ["--enable-new-api-stack", "--num-agents=0"]
+)
+
+py_test(
+    name = "examples/envs/custom_env_render_method_multi_agent",
+    main = "examples/envs/custom_env_render_method.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/envs/custom_env_render_method.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2"]
+)
+
+py_test(
     name = "examples/envs/env_rendering_and_recording",
     srcs = ["examples/envs/env_rendering_and_recording.py"],
     tags = ["team:rllib", "exclusive", "examples"],

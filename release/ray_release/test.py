@@ -1,12 +1,15 @@
+import asyncio
+import concurrent.futures
 import enum
 import os
 import platform
 import json
 import time
 from itertools import chain
-from typing import Optional, List, Dict
+from typing import Awaitable, Optional, List, Dict
 from dataclasses import dataclass
 
+import aioboto3
 import boto3
 from botocore.exceptions import ClientError
 from github import Repository
@@ -39,6 +42,8 @@ MACOS_BISECT_DAILY_RATE_LIMIT = 3
 LINUX_BISECT_DAILY_RATE_LIMIT = 0  # linux bisect is disabled
 WINDOWS_BISECT_DAILY_RATE_LIMIT = 0  # windows bisect is disabled
 BISECT_DAILY_RATE_LIMIT = 10
+
+_asyncio_thread_pool = concurrent.futures.ThreadPoolExecutor()
 
 
 def _convert_env_list_to_dict(env_list: List[str]) -> Dict[str, str]:
@@ -464,21 +469,35 @@ class Test(dict):
             key=lambda file: int(file["LastModified"].timestamp()),
             reverse=True,
         )[:limit]
-        self.test_results = [
-            TestResult.from_dict(
-                json.loads(
-                    s3_client.get_object(
-                        Bucket=bucket,
-                        Key=file["Key"],
-                    )
-                    .get("Body")
-                    .read()
-                    .decode("utf-8")
-                )
+        self.test_results = _asyncio_thread_pool.submit(
+            lambda: asyncio.run(
+                self._gen_test_results(bucket, [file["Key"] for file in files])
             )
-            for file in files
-        ]
+        ).result()
+
         return self.test_results
+
+    async def _gen_test_results(
+        self,
+        bucket: str,
+        keys: List[str],
+    ) -> Awaitable[List[TestResult]]:
+        session = aioboto3.Session()
+        async with session.client("s3") as s3_client:
+            return await asyncio.gather(
+                *[self._gen_test_result(s3_client, bucket, key) for key in keys]
+            )
+
+    async def _gen_test_result(
+        self,
+        s3_client: aioboto3.Session.client,
+        bucket: str,
+        key: str,
+    ) -> Awaitable[TestResult]:
+        object = await s3_client.get_object(Bucket=bucket, Key=key)
+        object_body = await object["Body"].read()
+
+        return TestResult.from_dict(json.loads(object_body.decode("utf-8")))
 
     def persist_result_to_s3(self, result: Result) -> bool:
         """
