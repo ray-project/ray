@@ -2,10 +2,7 @@ import logging
 import ray
 import json
 
-from ray._private.ray_constants import (
-    LOGGER_RAY_ATTRS,
-    LOGRECORD_STANDARD_ATTRS,
-)
+from ray._private.ray_constants import LOGRECORD_STANDARD_ATTRS
 
 
 class CoreContextFilter(logging.Filter):
@@ -39,8 +36,7 @@ class JSONFormatter(logging.Formatter):
             record_format["exc_text"] = record.exc_text
 
         for key, value in record.__dict__.items():
-            if key in LOGGER_RAY_ATTRS:  # Ray context
-                record_format[key] = value
-            elif key not in LOGRECORD_STANDARD_ATTRS:  # User-provided context
+            # Both Ray and user-provided context are stored in `record_format`.
+            if key not in LOGRECORD_STANDARD_ATTRS:
                 record_format[key] = value
         return json.dumps(record_format)
