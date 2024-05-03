@@ -80,6 +80,8 @@ class JobSupervisor:
         self._job_id = job_id
         self._entrypoint = entrypoint
 
+        self._job_info_client = JobInfoStorageClient(GcsAioClient(address=gcs_address))
+
         self._runner_actor_cls = ray.remote(JobRunner)
         self._runner = None
 
@@ -106,7 +108,30 @@ class JobSupervisor:
         entrypoint_resources: Optional[Dict[str, float]] = None,
         _start_signal_actor: Optional[ActorHandle] = None,
     ):
-        resources_specified, runner = await self._create_runner_actor(
+        logger.info(f"Starting job with submission_id: {self._job_id}")
+
+        job_info = JobInfo(
+            entrypoint=self._entrypoint,
+            status=JobStatus.PENDING,
+            start_time=int(time.time() * 1000),
+            metadata=metadata,
+            runtime_env=runtime_env,
+            entrypoint_num_cpus=entrypoint_num_cpus,
+            entrypoint_num_gpus=entrypoint_num_gpus,
+            entrypoint_memory=entrypoint_memory,
+            entrypoint_resources=entrypoint_resources,
+        )
+
+        new_key_added = await self._job_info_client.put_info(
+            self._job_id, job_info, overwrite=False
+        )
+        if not new_key_added:
+            raise ValueError(
+                f"Job with submission_id {self._job_id} already exists. "
+                "Please use a different submission_id."
+            )
+
+        runner, resources_specified = await self._create_runner_actor(
             runtime_env,
             entrypoint_memory,
             entrypoint_num_cpus,
