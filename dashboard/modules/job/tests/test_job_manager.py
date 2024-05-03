@@ -461,7 +461,7 @@ async def test_job_supervisor_logs_saved(job_manager):
             check_job_succeeded, job_manager=job_manager, job_id=job_id
         )
         # Wait for logs to finish streaming to stderr
-        time.sleep(2)
+        time.sleep(3)
     stderr = f.getvalue()
 
     supervisor_log_path = os.path.join(
