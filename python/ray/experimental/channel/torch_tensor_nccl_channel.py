@@ -108,7 +108,6 @@ class TorchTensorNcclChannel(Channel):
             self._nccl_group.send(value, rank)
 
     def begin_read(self) -> torch.Tensor:
-        # TODO(swang): Perform the NCCL recv. Pass in the source actor.
         buf = torch.zeros(self._typ.shape, dtype=self._typ.dtype, device=self._device)
         self._nccl_group.recv(buf, self._writer_rank)
         return buf
