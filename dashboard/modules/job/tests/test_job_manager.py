@@ -460,6 +460,7 @@ async def test_job_supervisor_logs_saved(job_manager):
         await async_wait_for_condition_async_predicate(
             check_job_succeeded, job_manager=job_manager, job_id=job_id
         )
+        # Wait for logs to finish streaming to stderr
         time.sleep(2)
     stderr = f.getvalue()
 
