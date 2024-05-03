@@ -24,7 +24,7 @@ from ray._private.test_utils import (
     wait_for_condition,
 )
 from ray.dashboard.modules.job.common import JOB_ID_METADATA_KEY, JOB_NAME_METADATA_KEY
-from ray.dashboard.modules.job.job_supervisor import JobRunner
+from ray.dashboard.modules.job.job_supervisor import JobRunner, JobSupervisor
 from ray.dashboard.modules.job.job_manager import (
     JobLogStorageClient,
     JobManager,
@@ -60,20 +60,18 @@ async def test_get_scheduling_strategy(
         address=address_info["gcs_address"], nums_reconnect_retry=0
     )
 
-    job_manager = JobManager(gcs_aio_client, tmp_path)
-
     # If no head node id is found, we should use "DEFAULT".
     await gcs_aio_client.internal_kv_del(
         "head_node_id".encode(), del_by_prefix=False, namespace=KV_NAMESPACE_JOB
     )
-    strategy = await job_manager._get_scheduling_strategy(resources_specified)
+    strategy = JobSupervisor._get_scheduling_strategy(resources_specified)
     assert strategy == "DEFAULT"
 
     # Add a head node id to the internal KV to simulate what is done in node_head.py.
     await gcs_aio_client.internal_kv_put(
         "head_node_id".encode(), "123456".encode(), True, namespace=KV_NAMESPACE_JOB
     )
-    strategy = await job_manager._get_scheduling_strategy(resources_specified)
+    strategy = JobSupervisor._get_scheduling_strategy(resources_specified)
     if resources_specified:
         assert strategy == "DEFAULT"
     else:
@@ -83,7 +81,7 @@ async def test_get_scheduling_strategy(
 
     # When the env var is set to 1, we should use DEFAULT.
     monkeypatch.setenv(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR, "1")
-    strategy = await job_manager._get_scheduling_strategy(resources_specified)
+    strategy = JobSupervisor._get_scheduling_strategy(resources_specified)
     assert strategy == "DEFAULT"
 
 
