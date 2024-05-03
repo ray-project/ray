@@ -18,6 +18,7 @@ import Pagination from "@mui/material/Pagination";
 import makeStyles from "@mui/styles/makeStyles";
 import React from "react";
 import { Outlet, Link as RouterLink } from "react-router-dom";
+import { sliceToPage } from "../../common/util";
 import Loading from "../../components/Loading";
 import PercentageBar from "../../components/PercentageBar";
 import { SearchInput, SearchSelect } from "../../components/SearchComponent";
@@ -253,6 +254,12 @@ const Nodes = () => {
     setMode,
   } = useNodeList();
 
+  const {
+    items: list,
+    constrainedPage,
+    maxPage,
+  } = sliceToPage(nodeList, page.pageNo, page.pageSize);
+
   return (
     <div className={classes.root}>
       <Loading loading={isLoading} />
@@ -335,8 +342,8 @@ const Nodes = () => {
         </Grid>
         <div>
           <Pagination
-            count={Math.ceil(nodeList.length / page.pageSize)}
-            page={page.pageNo}
+            count={maxPage}
+            page={constrainedPage}
             onChange={(e, pageNo) => setPage("pageNo", pageNo)}
           />
         </div>
@@ -364,35 +371,25 @@ const Nodes = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {nodeList
-                  .slice(
-                    (page.pageNo - 1) * page.pageSize,
-                    page.pageNo * page.pageSize,
-                  )
-                  .map((node) => (
-                    <NodeRows
-                      key={node.raylet.nodeId}
-                      node={node}
-                      isRefreshing={isRefreshing}
-                      startExpanded={nodeList.length === 1}
-                    />
-                  ))}
+                {list.map((node) => (
+                  <NodeRows
+                    key={node.raylet.nodeId}
+                    node={node}
+                    isRefreshing={isRefreshing}
+                    startExpanded={nodeList.length === 1}
+                  />
+                ))}
               </TableBody>
             </Table>
           </TableContainer>
         )}
         {mode === "card" && (
           <Grid container>
-            {nodeList
-              .slice(
-                (page.pageNo - 1) * page.pageSize,
-                page.pageNo * page.pageSize,
-              )
-              .map((e) => (
-                <Grid item xs={6}>
-                  <NodeCard node={e} />
-                </Grid>
-              ))}
+            {list.map((e) => (
+              <Grid item xs={6}>
+                <NodeCard node={e} />
+              </Grid>
+            ))}
           </Grid>
         )}
       </TitleCard>

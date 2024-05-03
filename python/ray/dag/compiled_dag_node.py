@@ -16,7 +16,6 @@ from ray.experimental.channel import (
     AwaitableBackgroundReader,
     AwaitableBackgroundWriter,
     _init_nccl_group,
-    TorchTensorNcclChannel,
 )
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -49,6 +48,8 @@ def do_allocate_channel(
         The allocated channel.
     """
     if isinstance(typ, TorchTensorType) and typ.transport == "nccl":
+        from ray.experimental.channel import TorchTensorNcclChannel
+
         assert ray.get_gpu_ids(), "NCCL actor has no GPUs assigned"
         self._output_channel = TorchTensorNcclChannel(
             ray.get_runtime_context().current_actor, readers, typ
@@ -80,6 +81,7 @@ def do_exec_compiled_task(
     inputs: List[Union[Any, Channel]],
     actor_method_name: str,
     output_wrapper_fn: Optional[Callable[[Any], Any]],
+    has_type_hints: bool,
 ) -> None:
     """Generic actor method to begin executing a compiled DAG. This runs an
     infinite loop to repeatedly read input channel(s), execute the given
@@ -95,7 +97,8 @@ def do_exec_compiled_task(
             the loop.
     """
     try:
-        _do_register_custom_dag_serializers(self)
+        if has_type_hints:
+            _do_register_custom_dag_serializers(self)
 
         method = getattr(self, actor_method_name)
 
@@ -192,6 +195,9 @@ class CompiledTask:
             idx: A unique index into the original DAG.
             dag_node: The original DAG node created by the user.
         """
+        from ray.dag.experimental.types import (
+        )
+
         self.idx = idx
         self.dag_node = dag_node
         self.arg_idx_to_tensor_meta: Dict[int, Dict[str, Any]] = {}
@@ -311,6 +317,9 @@ class CompiledDAG:
         # Set of actors present in the DAG.
         self.actor_refs = set()
 
+        # Type hints specified by the user for DAG (intermediate) outputs.
+        self._type_hints = []
+
     def _add_node(self, node: "ray.dag.DAGNode") -> None:
         idx = self.counter
         self.idx_to_task[idx] = CompiledTask(idx, node)
@@ -335,6 +344,7 @@ class CompiledDAG:
 
         self.input_task_idx, self.output_task_idx = None, None
         self.actor_task_count.clear()
+        self._type_hints.clear()
 
         nccl_actors = set()
 
@@ -397,10 +407,8 @@ class CompiledDAG:
                     # Add all readers to the NCCL group.
                     nccl_actors.add(downstream_actor_handle)
 
-        nccl_actors = list(nccl_actors)
-        if None in nccl_actors:
-            raise ValueError("Driver cannot participate in the NCCL group.")
-        _init_nccl_group(nccl_actors)
+            if dag_node.type_hint is not None:
+                self._type_hints.append(dag_node.type_hint)
 
         for actor_id, task_count in self.actor_task_count.items():
             if task_count > 1:
@@ -438,6 +446,14 @@ class CompiledDAG:
             # now.
             self._preprocess()
 
+        # If there were type hints indicating transport via NCCL, initialize
+        # the NCCL group on the participating actors.
+        nccl_actors = list(nccl_actors)
+        if None in nccl_actors:
+            raise ValueError("Driver cannot participate in the NCCL group.")
+        if nccl_actors:
+            _init_nccl_group(nccl_actors)
+
     def _get_or_compile(
         self,
     ) -> None:
@@ -468,6 +484,10 @@ class CompiledDAG:
             if cur_idx in visited:
                 continue
             visited.add(cur_idx)
+
+            # TODO: Check for GPU arguments. Find the actor upstream to that
+            # GPU argument. If both writer and reader actors are on GPUs, then
+            # add them.
 
             task = self.idx_to_task[cur_idx]
             # Create an output buffer on the actor.
@@ -560,6 +580,7 @@ class CompiledDAG:
                     resolved_args,
                     task.dag_node.get_method_name(),
                     output_wrapper_fn=task.output_wrapper_fn,
+                    has_type_hints=bool(self._type_hints),
                 )
             )
 
@@ -567,7 +588,8 @@ class CompiledDAG:
         input_task = self.idx_to_task[self.input_task_idx]
         self.input_wrapper_fn = input_task.output_wrapper_fn
         self.dag_input_channel = input_task.output_channel
-        _do_register_custom_dag_serializers(self)
+        if self._type_hints:
+            _do_register_custom_dag_serializers(self)
 
         self.dag_output_channels = []
         for output in self.idx_to_task[self.output_task_idx].args:

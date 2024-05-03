@@ -8,22 +8,13 @@ from typing import (
 import ray.util.serialization
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
-try:
-    import torch
-except ImportError:
-    torch = None
-
 if TYPE_CHECKING:
+    import torch
     import numpy as np
 
 
 class DAGNodeOutputType:
     pass
-
-
-def _assert_torch_available():
-    if torch is None:
-        raise ImportError("Ray DAG TorchTensorType requires PyTorch.")
 
 
 def _do_register_custom_dag_serializers(self: Any) -> None:
@@ -55,7 +46,6 @@ class TorchTensorType(DAGNodeOutputType):
     def __init__(
         self, shape: Tuple[int], dtype: "torch.dtype", transport: Optional[str] = None
     ):
-        _assert_torch_available()
         self.shape = shape
         self.dtype = dtype
         self.transport = transport
@@ -68,7 +58,8 @@ class _TorchTensorWrapper:
         tensor: "torch.Tensor",
         typ: TorchTensorType,
     ):
-        _assert_torch_available()
+        import torch
+
         if not isinstance(tensor, torch.Tensor):
             raise ValueError(
                 "DAG nodes wrapped with ray.experimental.TorchTensor must return a "
@@ -109,8 +100,9 @@ class _TorchTensorSerializer:
         return tensor.numpy()
 
     def deserialize_from_numpy(self, np_array: "np.ndarray"):
+        import torch
+
         # TODO(swang): Support local P2P transfers if available.
-        # TODO(swang): Support multinode transfers with NCCL.
 
         # If there is a GPU assigned to this worker, move it there.
         if self.device.type == "cuda":

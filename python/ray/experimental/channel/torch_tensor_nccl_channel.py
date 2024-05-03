@@ -144,6 +144,10 @@ def _do_check_has_gpu(self) -> bool:
 def _init_nccl_group(
     actors: List[ray.actor.ActorHandle],
 ):
+    ctx = ChannelContext.get_current()
+    if ctx.nccl_group is not None:
+        return
+
     has_gpus = ray.get(
         [actor.__ray_call__.remote(_do_check_has_gpu) for actor in actors]
     )
@@ -182,3 +186,11 @@ def _init_nccl_group(
         ],
         timeout=30,
     )
+
+    ctx.nccl_group = _NcclGroup(
+        world_size,
+        comm_id,
+        rank=None,
+        actor_ids_to_ranks=actor_ids_to_ranks,
+        cuda_stream=None,
+        )

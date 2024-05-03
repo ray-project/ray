@@ -19,6 +19,8 @@ import asyncio
 from ray.dag.compiled_dag_node import build_compiled_dag_from_ray_dag
 from ray.dag.experimental.types import DAGNodeOutputType
 
+from ray.dag.experimental.types import DAGNodeOutputType
+
 T = TypeVar("T")
 
 

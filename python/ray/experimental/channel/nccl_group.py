@@ -14,7 +14,7 @@ class _NcclGroup:
         self,
         world_size: int,
         comm_id: int,
-        rank: int,
+        rank: Optional[int],
         actor_ids_to_ranks: Dict[ray.ActorID, int],
         cuda_stream: Optional[int],
     ):
