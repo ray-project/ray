@@ -215,6 +215,11 @@ class JobSupervisor:
                 message=message,
             )
 
+            # Job's supervisor actor lifespan is bound to that of the job's driver,
+            # and therefore upon completing its execution JobSupervisor (along with JobRunner)
+            # actors could be subsequently destroyed
+            ray.actor.exit_actor()
+
     async def _create_runner_actor(
         self,
         *,
@@ -681,11 +686,6 @@ class JobRunner:
                 driver_exit_code=-1,
                 message=exception_message,
             )
-        finally:
-            # Job's supervisor actor lifespan is bound to that of the job's driver,
-            # and therefore upon completing its execution JobSupervisor (along with JobRunner)
-            # actors could be subsequently destroyed
-            ray.actor.exit_actor()
 
     async def stop_process(self, child_pid: int):
         if sys.platform == "win32" and self._win32_job_object:
