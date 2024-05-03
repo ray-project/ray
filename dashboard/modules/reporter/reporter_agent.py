@@ -24,6 +24,7 @@ from ray.dashboard.modules.reporter.profile_manager import (
     MemoryProfilingManager,
 )
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
+from ray.dashboard.metrics_utils import IN_KUBERNETES_POD, get_cpu_percent
 import ray.dashboard.utils as dashboard_utils
 from opencensus.stats import stats as stats_module
 import ray._private.prometheus_exporter as prometheus_exporter
@@ -31,15 +32,13 @@ from prometheus_client.core import REGISTRY
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
 from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
-from ray.dashboard import k8s_utils
 from ray._raylet import WorkerID
 
 logger = logging.getLogger(__name__)
 
 enable_gpu_usage_check = True
 
-# Are we in a K8s pod?
-IN_KUBERNETES_POD = "KUBERNETES_SERVICE_HOST" in os.environ
+
 # Flag to enable showing disk usage when running in a K8s pod,
 # disk usage defined as the result of running psutil.disk_usage("/")
 # in the Ray container.
@@ -415,13 +414,6 @@ class ReporterAgent(
         return reporter_pb2.ReportOCMetricsReply()
 
     @staticmethod
-    def _get_cpu_percent(in_k8s: bool):
-        if in_k8s:
-            return k8s_utils.cpu_percent()
-        else:
-            return psutil.cpu_percent()
-
-    @staticmethod
     def _get_gpu_usage():
         import ray._private.thirdparty.pynvml as pynvml
 
@@ -715,7 +707,7 @@ class ReporterAgent(
             "now": now,
             "hostname": self._hostname,
             "ip": self._ip,
-            "cpu": self._get_cpu_percent(IN_KUBERNETES_POD),
+            "cpu": get_cpu_percent(IN_KUBERNETES_POD),
             "cpus": self._cpu_counts,
             "mem": self._get_mem_usage(),
             # Unit is in bytes. None if

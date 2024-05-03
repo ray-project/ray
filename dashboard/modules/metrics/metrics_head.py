@@ -23,6 +23,7 @@ from ray.dashboard.modules.metrics.grafana_dashboard_provisioning_template impor
 )
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
+from ray.dashboard.metrics_utils import IN_KUBERNETES_POD, get_cpu_percent
 from ray.dashboard.consts import (
     AVAILABLE_COMPONENT_NAMES_FOR_METRICS,
     METRICS_INPUT_ROOT,
@@ -311,7 +312,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             pid=self._pid,
             Component=self._component,
             SessionName=self._session_name,
-        ).set(float(dashboard_proc.cpu_percent()) * 100)
+        ).set(float(get_cpu_percent(IN_KUBERNETES_POD)) * 100)
         self._dashboard_head.metrics.metrics_dashboard_mem.labels(
             ip=self._ip,
             pid=self._pid,
@@ -322,11 +323,12 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
     async def run(self, server):
         self._create_default_grafana_configs()
         self._create_default_prometheus_configs()
-        await asyncio.gather(self.record_dashboard_metrics())
 
         logger.info(
             f"Generated prometheus and grafana configurations in: {self._metrics_root}"
         )
+
+        await asyncio.gather(self.record_dashboard_metrics())
 
     async def _query_prometheus(self, query):
         async with self.http_session.get(
