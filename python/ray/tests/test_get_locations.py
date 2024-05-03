@@ -143,22 +143,23 @@ def gen_big_objects(block_size, block_count):
         yield pd.DataFrame([{"data": BigObject()} for _ in range(block_size)])
 
 
-def test_local_get_locations(ray_start_cluster):
+def test_get_local_locations(ray_start_cluster):
     """
     Creates big memory consuming objects that appears to have a small `sys.getsizeof`.
     The streaming generator's consumer can get the size of it since it has a reference
     of the object.
     """
     for obj_ref in gen_big_objects.remote(3, 10):
-        d = ray.experimental.get_local_object_locations(obj_ref)
+        d = ray.experimental.get_local_object_locations([obj_ref])
         assert d is not None
+        assert len(d) == 1
         # The dataframe consists of 3 * 100MiB of NumPy NDArrays.
         assert d[obj_ref]["object_size"] > 3 * 100 * 1024 * 1024
 
 
-def test_local_get_locations_multi_nodes(ray_start_cluster_enabled):
+def test_get_local_locations_multi_nodes(ray_start_cluster_enabled):
     """
-    Same as test_local_get_locations, except that we assign the generator and the caller
+    Same as test_get_local_locations, except that we assign the generator and the caller
     to different nodes and assert it still works, since the caller has references to the
     object refs.
     """
@@ -180,8 +181,9 @@ def test_local_get_locations_multi_nodes(ray_start_cluster_enabled):
             )
         ).remote(3, 10)
         for obj_ref in gen:
-            d = ray.experimental.get_local_object_locations(obj_ref)
+            d = ray.experimental.get_local_object_locations([obj_ref])
             assert d is not None
+            assert len(d) == 1
             # The dataframe consists of 3 * 100MiB of NumPy NDArrays.
             assert d[obj_ref]["object_size"] > 3 * 100 * 1024 * 1024
 
