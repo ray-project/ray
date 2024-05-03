@@ -31,6 +31,7 @@ from ray.dashboard.consts import (
     AVAILABLE_COMPONENT_NAMES_FOR_METRICS,
     METRICS_INPUT_ROOT,
     PROMETHEUS_CONFIG_INPUT_PATH,
+    RAY_SLOW_COROUTINE_WARNING,
 )
 
 logger = logging.getLogger(__name__)
@@ -342,16 +343,17 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
                 head.event_loop_lag = value
 
         aiodebug.monitor_loop_lag.enable(StatsdClient())
-        # TODO: make a keyword in the logger, and add test by blocking the event loop
-        # and collect logs
+        # Logs warnings if a task ran for more than 100ms. Limitation: it only logs
+        # the task name and duration, e.g. if the blocker is in a aiohttp handler it
+        # only logs `RequestHandler._handle_request()` instead of the actual handler.
         aiodebug.log_slow_callbacks.enable(
             slow_duration=0.1,
-            on_slow_callback=lambda name, duration: logger.error(
-                "Executing %s took %.3f seconds", name, duration
+            on_slow_callback=lambda name, duration: logger.warning(
+                f"{RAY_SLOW_COROUTINE_WARNING}: {name} took {duration} seconds."
             ),
         )
-        # do we need this??? to save stack trace to ray logs
-        # aiodebug.hang_inspection.start(stack_output_dir=os.path.join(self._metrics_root, "hang_inspection"))
+        # TODO: if needed, add `aiodebug.hang_inspection` to record stack trace of the
+        # slow coroutine.
         await asyncio.gather(self.record_dashboard_metrics())
 
         logger.info(
