@@ -2,16 +2,19 @@ import asyncio
 import json
 import logging
 import os
-import psutil
 import signal
 import subprocess
 import sys
 import traceback
 from asyncio.tasks import FIRST_COMPLETED
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
+from typing import List
+
+import psutil
+
 import ray
-from ray._private.gcs_utils import GcsAioClient
 import ray._private.ray_constants as ray_constants
+from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray.actor import ActorHandle
 from ray.dashboard.modules.job.common import (
@@ -22,9 +25,10 @@ from ray.dashboard.modules.job.common import (
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.job_submission import JobStatus
 
+
 logger = logging.getLogger(__name__)
 
-# asyncio python version compatibility
+
 try:
     create_task = asyncio.create_task
 except AttributeError:
@@ -77,8 +81,7 @@ class JobSupervisor:
         self._metadata = {JOB_ID_METADATA_KEY: job_id, JOB_NAME_METADATA_KEY: job_id}
         self._metadata.update(user_metadata)
 
-        # Event used to signal that a job should be stopped.
-        # Set in the `stop_job` method.
+        # fire and forget call from outer job manager to this actor
         self._stop_event = asyncio.Event()
 
         # Windows Job Object used to handle stopping the child processes.
@@ -390,7 +393,14 @@ class JobSupervisor:
                         driver_exit_code=return_code,
                     )
                 else:
-                    log_tail = self._log_client.get_last_n_log_lines(self._job_id)
+                    log_tail = await self._log_client.get_logs(
+                        self._job_id,
+                        max_log_lines=JobLogStorageClient.MAX_LOG_LINES_ON_ERROR,
+                        max_total_size=(
+                            JobLogStorageClient.MAX_LOG_SNIPPET_SIZE_ON_ERROR
+                        ),
+                    )
+
                     if log_tail is not None and log_tail != "":
                         message = (
                             "Job entrypoint command "

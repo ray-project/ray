@@ -6,16 +6,15 @@ import random
 import string
 import time
 import traceback
-from typing import Any, Dict, Iterator, Optional, Union
-from ray.util.scheduling_strategies import (
-    NodeAffinitySchedulingStrategy,
-    SchedulingStrategyT,
-)
+from typing import Any, Dict, Optional, Union, AsyncIterator
+
 import ray
+import ray._private.ray_constants as ray_constants
+from ray._private.event.event_logger import get_event_logger
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.utils import run_background_task
-import ray._private.ray_constants as ray_constants
 from ray.actor import ActorHandle
+from ray.core.generated.event_pb2 import Event
 from ray.dashboard.consts import (
     RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR,
     DEFAULT_JOB_START_TIMEOUT_SECONDS,
@@ -32,9 +31,11 @@ from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.dashboard.modules.job.job_supervisor import JobSupervisor
 from ray.exceptions import ActorUnschedulableError, RuntimeEnvSetupError
 from ray.job_submission import JobStatus
-from ray._private.event.event_logger import get_event_logger
-from ray.core.generated.event_pb2 import Event
 from ray.runtime_env import RuntimeEnvConfig
+from ray.util.scheduling_strategies import (
+    NodeAffinitySchedulingStrategy,
+    SchedulingStrategyT,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -591,11 +592,11 @@ class JobManager:
         """Get info for all jobs."""
         return await self._job_info_client.get_all_jobs()
 
-    def get_job_logs(self, job_id: str) -> str:
+    async def get_job_logs(self, job_id: str) -> str:
         """Get all logs produced by a job."""
-        return self._log_client.get_logs(job_id)
+        return await self._log_client.get_logs(job_id)
 
-    async def tail_job_logs(self, job_id: str) -> Iterator[str]:
+    async def tail_job_logs(self, job_id: str) -> AsyncIterator[str]:
         """Return an iterator following the logs of a job."""
         if await self.get_job_status(job_id) is None:
             raise RuntimeError(f"Job '{job_id}' does not exist.")

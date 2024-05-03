@@ -1,9 +1,13 @@
+import asyncio
 import os
 from collections import deque
-from typing import Iterator, List, Tuple
+from typing import List, Iterator
 
 import ray
-from ray.dashboard.modules.job.common import JOB_LOGS_PATH_TEMPLATE
+from ray.util.client.common import INT32_MAX
+from ray.dashboard.modules.job.common import (
+    JOB_LOGS_PATH_TEMPLATE,
+)
 from ray.dashboard.modules.job.utils import file_tail_iterator
 
 
@@ -13,23 +17,32 @@ class JobLogStorageClient:
     """
 
     # Number of last N lines to put in job message upon failure.
-    NUM_LOG_LINES_ON_ERROR = 10
-    # Maximum number of characters to print out of the logs to avoid
+    MAX_LOG_LINES_ON_ERROR = 10
+    # Max number of characters to print out of the logs to avoid
     # HUGE log outputs that bring down the api server
-    MAX_LOG_SIZE = 20000
+    MAX_LOG_SNIPPET_SIZE_ON_ERROR = 20000
+    # Max number of lines being fetched from log file per chunk (after
+    # every chunk event-loop has to be yielded to make sure that other tasks
+    # are not being starved)
+    MAX_LINES_PER_CHUNK = 10
 
-    def get_logs(self, job_id: str) -> str:
-        try:
-            with open(self.get_log_file_path(job_id), "r") as f:
-                return f.read()
-        except FileNotFoundError:
-            return ""
+    def tail_logs(
+        self,
+        job_id: str,
+        *,
+        max_lines_per_chunk: int = MAX_LINES_PER_CHUNK,
+    ) -> Iterator[List[str]]:
+        return file_tail_iterator(
+            self.get_log_file_path(job_id),
+            max_lines_per_chunk=max_lines_per_chunk,
+        )
 
-    def tail_logs(self, job_id: str) -> Iterator[List[str]]:
-        return file_tail_iterator(self.get_log_file_path(job_id))
-
-    def get_last_n_log_lines(
-        self, job_id: str, num_log_lines=NUM_LOG_LINES_ON_ERROR
+    async def get_logs(
+        self,
+        job_id: str,
+        *,
+        max_log_lines: int = INT32_MAX,  # unbounded
+        max_total_size: int = INT32_MAX,  # unbounded
     ) -> str:
         """
         Returns the last MAX_LOG_SIZE (20000) characters in the last
@@ -37,21 +50,32 @@ class JobLogStorageClient:
 
         Args:
             job_id: The id of the job whose logs we want to return
-            num_log_lines: The number of lines to return.
+            max_log_lines: The number of lines to return.
         """
-        log_tail_iter = self.tail_logs(job_id)
-        log_tail_deque = deque(maxlen=num_log_lines)
-        for lines in log_tail_iter:
+        log_tail_deque = deque(maxlen=max_log_lines)
+
+        max_lines_per_chunk = min(self.MAX_LINES_PER_CHUNK, max_log_lines)
+        read_lines_count = 0
+
+        for lines in self.tail_logs(job_id, max_lines_per_chunk=max_lines_per_chunk):
             if lines is None:
                 break
-            else:
-                # log_tail_iter can return batches of lines at a time.
-                for line in lines:
-                    log_tail_deque.append(line)
 
-        return "".join(log_tail_deque)[-self.MAX_LOG_SIZE :]
+            # log_tail_iter can return batches of lines at a time.
+            for line in lines:
+                log_tail_deque.append(line)
 
-    def get_log_file_path(self, job_id: str) -> Tuple[str, str]:
+            read_lines_count += len(lines)
+
+            # NOTE: We have to yield the event-loop after every chunk being read
+            #       to make sure that log tailing is not blocking the event-loop
+            if read_lines_count % max_lines_per_chunk == 1:
+                await asyncio.sleep(0)
+
+        return "".join(log_tail_deque)[-max_total_size:]
+
+    @staticmethod
+    def get_log_file_path(job_id: str) -> str:
         """
         Get the file path to the logs of a given job. Example:
             /tmp/ray/session_date/logs/job-driver-{job_id}.log
