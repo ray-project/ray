@@ -311,7 +311,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             pid=self._pid,
             Component=self._component,
             SessionName=self._session_name,
-        ).set(float(self.dashboard_proc.cpu_percent()) * 100)
+        ).set(float(self.dashboard_proc.cpu_percent()))
         self._dashboard_head.metrics.metrics_dashboard_mem.labels(
             ip=self._ip,
             pid=self._pid,
