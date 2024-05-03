@@ -29,7 +29,8 @@ from ray.dashboard.modules.job.common import (
     JOB_NAME_METADATA_KEY,
     JOB_EXECUTOR_ACTOR_NAME_TEMPLATE,
     SUPERVISOR_ACTOR_RAY_NAMESPACE,
-    JobInfoStorageClient, JobInfo,
+    JobInfoStorageClient,
+    JobInfo,
 )
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.job_submission import JobStatus
@@ -169,9 +170,7 @@ class JobSupervisor:
 
         try:
             driver_node_info: JobDriverNodeInfo = await runner.get_node_info.remote()
-            driver_agent_http_address = (
-                f"http://{driver_node_info.node_ip}:{driver_node_info.dashboard_agent_port}"
-            )
+            driver_agent_http_address = f"http://{driver_node_info.node_ip}:{driver_node_info.dashboard_agent_port}"
 
             # Mark the job as running
             await self._job_info_client.put_status(
@@ -468,7 +467,7 @@ class JobRunner:
                     lambda: signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGINT})
                 )
                 if sys.platform != "win32"
-                   and os.environ.get("RAY_JOB_STOP_SIGNAL") == "SIGINT"
+                and os.environ.get("RAY_JOB_STOP_SIGNAL") == "SIGINT"
                 else None,
             )
 
@@ -650,9 +649,14 @@ class JobRunner:
                 message: Optional[str] = None
 
                 if return_code != 0:
-                    raw_log_snippet = self._log_client.get_last_n_log_lines(self._job_id)
+                    raw_log_snippet = self._log_client.get_last_n_log_lines(
+                        self._job_id
+                    )
                     if raw_log_snippet:
-                        truncated_log_snippet = "Last available logs (truncated to 20,000 chars):\n" + raw_log_snippet
+                        truncated_log_snippet = (
+                            "Last available logs (truncated to 20,000 chars):\n"
+                            + raw_log_snippet
+                        )
                     else:
                         truncated_log_snippet = "No logs available."
 

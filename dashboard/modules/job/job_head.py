@@ -520,9 +520,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
         driver_node_id = job.driver_node_id
         if driver_node_id not in self._agents:
-            self._agents[driver_node_id] = JobAgentClient(
-                driver_agent_http_address
-            )
+            self._agents[driver_node_id] = JobAgentClient(driver_agent_http_address)
         job_agent_client = self._agents[driver_node_id]
 
         async for lines in job_agent_client.tail_job_logs(job.submission_id):
