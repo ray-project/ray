@@ -69,7 +69,7 @@ config = (
 
 stop = {
     "evaluation/sampler_results/episode_reward_mean": 500.0,
-    "num_env_steps_sampled": 2000000,
+    "num_env_steps_sampled_lifetime": 2000000,
 }
 
 if __name__ == "__main__":
