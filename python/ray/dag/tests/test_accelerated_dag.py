@@ -58,6 +58,20 @@ class Actor:
         return x
 
 
+def test_imports(ray_start_regular):
+    assert "torch" not in sys.modules
+
+    a = Actor.remote(0)
+    with InputNode() as i:
+        dag = a.inc.bind(i)
+
+    compiled_dag = dag.experimental_compile()
+    compiled_dag.execute(1)
+    compiled_dag.teardown()
+
+    assert "torch" not in sys.modules
+
+
 def test_basic(ray_start_regular):
     a = Actor.remote(0)
     with InputNode() as i:

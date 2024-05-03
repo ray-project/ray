@@ -68,6 +68,7 @@ def do_exec_compiled_task(
     inputs: List[Union[Any, Channel]],
     actor_method_name: str,
     output_wrapper_fn: Optional[Callable[[Any], Any]],
+    has_type_hints: bool,
 ) -> None:
     """Generic actor method to begin executing a compiled DAG. This runs an
     infinite loop to repeatedly read input channel(s), execute the given
@@ -83,7 +84,8 @@ def do_exec_compiled_task(
             the loop.
     """
     try:
-        _do_register_custom_dag_serializers(self)
+        if has_type_hints:
+            _do_register_custom_dag_serializers(self)
 
         method = getattr(self, actor_method_name)
 
@@ -296,6 +298,9 @@ class CompiledDAG:
         # Set of actors present in the DAG.
         self.actor_refs = set()
 
+        # Type hints specified by the user for DAG (intermediate) outputs.
+        self._type_hints = []
+
     def _add_node(self, node: "ray.dag.DAGNode") -> None:
         idx = self.counter
         self.idx_to_task[idx] = CompiledTask(idx, node)
@@ -320,6 +325,7 @@ class CompiledDAG:
 
         self.input_task_idx, self.output_task_idx = None, None
         self.actor_task_count.clear()
+        self._type_hints.clear()
 
         # For each task node, set its upstream and downstream task nodes.
         # Also collect the set of tasks that produce torch.tensors.
@@ -359,6 +365,9 @@ class CompiledDAG:
                 if isinstance(arg, DAGNode):
                     arg_node_idx = self.dag_node_to_idx[arg]
                     self.idx_to_task[arg_node_idx].downstream_node_idxs.add(node_idx)
+
+            if dag_node.type_hint is not None:
+                self._type_hints.append(dag_node.type_hint)
 
         for actor_id, task_count in self.actor_task_count.items():
             if task_count > 1:
@@ -521,6 +530,7 @@ class CompiledDAG:
                     resolved_args,
                     task.dag_node.get_method_name(),
                     output_wrapper_fn=task.output_wrapper_fn,
+                    has_type_hints=bool(self._type_hints),
                 )
             )
 
@@ -528,7 +538,8 @@ class CompiledDAG:
         input_task = self.idx_to_task[self.input_task_idx]
         self.input_wrapper_fn = input_task.output_wrapper_fn
         self.dag_input_channel = input_task.output_channel
-        _do_register_custom_dag_serializers(self)
+        if self._type_hints:
+            _do_register_custom_dag_serializers(self)
 
         self.dag_output_channels = []
         for output in self.idx_to_task[self.output_task_idx].args:
