@@ -1,6 +1,6 @@
 import logging
 import psutil
-from typing import Any, Dict, Optional, TYPE_CHECKING
+from typing import Any, Dict, Optional
 
 import numpy as np
 
