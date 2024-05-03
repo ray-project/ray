@@ -2,8 +2,13 @@ import gymnasium as gym
 from gymnasium.wrappers import TimeLimit
 
 from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.utils.test_utils import add_rllib_example_script_args
 from ray.tune.registry import register_env
 
+parser = add_rllib_example_script_args()
+# Use `parser` to add your own custom command line options to this script
+# and (if needed) use their values toset up `config` below.
+args = parser.parse_args()
 
 # For training, use a time-truncated (max. 50 timestep) version of CartPole-v1.
 register_env(
@@ -44,4 +49,4 @@ stop = {
 if __name__ == "__main__":
     from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
 
-    run_rllib_example_script_experiment(config, stop=stop)
+    run_rllib_example_script_experiment(config, args, stop=stop)

@@ -1,7 +1,12 @@
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentPendulum
+from ray.rllib.utils.test_utils import add_rllib_example_script_args
 from ray.tune.registry import register_env
 
+parser = add_rllib_example_script_args()
+# Use `parser` to add your own custom command line options to this script
+# and (if needed) use their values toset up `config` below.
+args = parser.parse_args()
 
 register_env("multi_agent_pendulum", lambda _: MultiAgentPendulum({"num_agents": 2}))
 
@@ -38,17 +43,12 @@ config = (
 
 stop = {
     "num_env_steps_sampled_lifetime": 500000,
-    # Divide by num_agents for actual reward per agent.
-    "env_runner_results/episode_return_mean": -800.0,
+    # `episode_return_mean` is the sum of all agents/policies' returns.
+    "env_runner_results/episode_return_mean": -400.0 * (args.num_agents or 1),
 }
 
 
 if __name__ == "__main__":
-    from ray import air, tune
+    from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
 
-    tuner = tune.Tuner(
-        config.algo_class,
-        param_space=config,
-        run_config=air.RunConfig(stop=stop, verbose=2),
-    )
-    results = tuner.fit()
+    run_rllib_example_script_experiment(config, args, stop=stop)
