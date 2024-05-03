@@ -102,7 +102,8 @@ class AddNextObservationsFromEpisodesToTrainBatch(ConnectorV2):
 
         for sa_episode in self.single_agent_episode_iterator(
             # This is a Learner-only connector -> Get all episodes (for train batch).
-            episodes, agents_that_stepped_only=False
+            episodes,
+            agents_that_stepped_only=False,
         ):
             self.add_n_batch_items(
                 data,

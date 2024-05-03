@@ -24,7 +24,7 @@ from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
-from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
+from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.execution.train_ops import (
     train_one_step,
     multi_gpu_train_one_step,
@@ -669,7 +669,6 @@ class DQN(Algorithm):
                 with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
                     learner_results = self.learner_group.update_from_episodes(
                         episodes=episodes,
-                        reduce_fn=self._reduce_fn,
                     )
                     # Isolate TD-errors from result dicts (we should not log these to
                     # disk or WandB, they might be very large).

@@ -333,26 +333,6 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
 
         sampled_episodes = []
 
-
-
-
-
-        # Rows to return.
-        #observations = [[] for _ in range(batch_size_B)]
-        #next_observations = [[] for _ in range(batch_size_B)]
-        #actions = [[] for _ in range(batch_size_B)]
-        #rewards = [[] for _ in range(batch_size_B)]
-        #is_terminated = [False for _ in range(batch_size_B)]
-        #is_truncated = [False for _ in range(batch_size_B)]
-        #weights = [[] for _ in range(batch_size_B)]
-        #n_steps = [[] for _ in range(batch_size_B)]
-        ## If `info` should be included, construct also a container for them.
-        #if include_infos:
-        #    infos = [[] for _ in range(batch_size_B)]
-        ## If `extra_model_outputs` should be included, construct a container for them.
-        #if include_extra_model_outputs:
-        #    extra_model_outputs = [[] for _ in range(batch_size_B)]
-
         # Sample proportionally from replay buffer's segments using the weights.
         total_segment_sum = self._sum_segment.sum()
         p_min = self._min_segment.min() / total_segment_sum
@@ -399,9 +379,9 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             raw_rewards = episode.get_rewards(
                 slice(episode_ts, episode_ts + actual_n_step)
             )
-            rewards = scipy.signal.lfilter(
-                [1], [1, -gamma], raw_rewards[::-1], axis=0
-            )[-1]
+            rewards = scipy.signal.lfilter([1], [1, -gamma], raw_rewards[::-1], axis=0)[
+                -1
+            ]
 
             # Generate the episode to be returned.
             sampled_episode = SingleAgentEpisode(
@@ -417,7 +397,8 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                     [
                         episode.get_infos(episode_ts),
                         episode.get_infos(episode_ts + actual_n_step),
-                    ] if include_infos
+                    ]
+                    if include_infos
                     else None
                 ),
                 actions=[episode.get_actions(episode_ts)],
@@ -426,10 +407,14 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                 # If the sampled time step is the episode's last time step check, if
                 # the episode is terminated or truncated.
                 terminated=(
-                    False if episode_ts < len(episode) else episode.is_terminated
+                    False
+                    if episode_ts + actual_n_step < len(episode)
+                    else episode.is_terminated
                 ),
                 truncated=(
-                    False if episode_ts < len(episode) else episode.is_truncated
+                    False
+                    if episode_ts + actual_n_step < len(episode)
+                    else episode.is_truncated
                 ),
                 extra_model_outputs={
                     # TODO (simon): Check, if we have to correct here for sequences
@@ -461,7 +446,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
 
         return sampled_episodes
 
-    #@override(EpisodeReplayBuffer)
+    # @override(EpisodeReplayBuffer)
     def OLD_sample(
         self,
         num_items: Optional[int] = None,

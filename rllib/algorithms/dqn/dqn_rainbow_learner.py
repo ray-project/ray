@@ -4,10 +4,10 @@ from typing import TYPE_CHECKING
 
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.connectors.common.add_observations_from_episodes_to_batch import (
-    AddObservationsFromEpisodesToBatch
+    AddObservationsFromEpisodesToBatch,
 )
 from ray.rllib.connectors.learner.add_next_observations_from_episodes_to_train_batch import (  # noqa
-    AddNextObservationsFromEpisodesToTrainBatch
+    AddNextObservationsFromEpisodesToTrainBatch,
 )
 from ray.rllib.utils.annotations import (
     override,
@@ -46,7 +46,7 @@ class DQNRainbowLearner(Learner):
         if self.config.add_default_connectors_to_learner_pipeline:
             self._learner_connector.insert_after(
                 AddObservationsFromEpisodesToBatch,
-                AddNextObservationsFromEpisodesToTrainBatch()
+                AddNextObservationsFromEpisodesToTrainBatch(),
             )
 
     @override(Learner)

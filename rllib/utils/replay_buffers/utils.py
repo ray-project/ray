@@ -28,9 +28,6 @@ from ray.rllib.utils.typing import (
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
 
-if TYPE_CHECKING:
-    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-
 logger = logging.getLogger(__name__)
 
 
@@ -50,7 +47,7 @@ def update_priorities_in_episode_replay_buffer(
                 continue
 
             # Warn once, if we have no TD-errors to update priorities.
-            if td_error is None:
+            if "td_error" not in td_error or td_error["td_error"] is None:
                 if log_once(
                     "no_td_error_in_train_results_from_module_{}".format(module_id)
                 ):
@@ -62,10 +59,10 @@ def update_priorities_in_episode_replay_buffer(
                     )
                 continue
             # TODO (simon): Implement multi-agent version. Remove, happens in buffer.
-            assert len(td_error) == len(replay_buffer._last_sampled_indices)
+            assert len(td_error["td_error"]) == len(replay_buffer._last_sampled_indices)
             # TODO (simon): Implement for stateful modules.
 
-            replay_buffer.update_priorities(td_error)
+            replay_buffer.update_priorities(td_error["td_error"])
 
 
 @OldAPIStack
