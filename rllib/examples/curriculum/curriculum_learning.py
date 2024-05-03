@@ -149,6 +149,7 @@ class EnvTaskCallback(DefaultCallbacks):
         self,
         *,
         algorithm: Algorithm,
+        metrics_logger=None,
         result: dict,
         **kwargs,
     ) -> None:
