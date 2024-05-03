@@ -450,6 +450,11 @@ async def test_simultaneous_with_same_id(job_manager):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head"],
+    indirect=True,
+)
 async def test_job_supervisor_logs_saved(call_ray_start, tmp_path):  # noqa: F811
     """Test JobSupervisor logs are saved to jobs/supervisor-{submission_id}.log"""
     address_info = ray.init(address=call_ray_start)
