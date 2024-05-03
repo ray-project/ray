@@ -77,7 +77,6 @@ class JobSupervisor:
         self,
         job_id: str,
         entrypoint: str,
-        user_metadata: Dict[str, str],
         gcs_address: str,
     ):
         self._job_id = job_id
@@ -136,11 +135,12 @@ class JobSupervisor:
             )
 
         runner, resources_specified = await self._create_runner_actor(
-            runtime_env,
-            entrypoint_memory,
-            entrypoint_num_cpus,
-            entrypoint_num_gpus,
-            entrypoint_resources,
+            runtime_env=runtime_env,
+            metadata=metadata,
+            entrypoint_num_cpus=entrypoint_num_cpus,
+            entrypoint_num_gpus=entrypoint_num_gpus,
+            entrypoint_memory=entrypoint_memory,
+            entrypoint_resources=entrypoint_resources
         )
 
         # TODO clean up
@@ -214,7 +214,9 @@ class JobSupervisor:
 
     async def _create_runner_actor(
         self,
+        *,
         runtime_env: Optional[Dict[str, Any]],
+        metadata: Optional[Dict[str, str]],
         entrypoint_num_cpus: Optional[Union[int, float]],
         entrypoint_num_gpus: Optional[Union[int, float]],
         entrypoint_memory: Optional[int],
@@ -242,7 +244,11 @@ class JobSupervisor:
                 runtime_env, self._job_id, resources_specified
             ),
             namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
-        ).remote()
+        ).remote(
+            job_id=self._job_id,
+            entrypoint=self._entrypoint,
+            user_metadata=metadata or {}
+        )
 
         return runner, resources_specified
 
@@ -353,7 +359,6 @@ class JobRunner:
         job_id: str,
         entrypoint: str,
         user_metadata: Dict[str, str],
-        gcs_address: str,
     ):
         self._job_id = job_id
         self._entrypoint = entrypoint
