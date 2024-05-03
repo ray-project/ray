@@ -414,30 +414,6 @@ class JobManager:
         # avoid duplicate monitoring of the same job.
         await self._recover_running_jobs_event.wait()
 
-        logger.info(f"Starting job with submission_id: {submission_id}")
-
-        # TODO move to JS
-        job_info = JobInfo(
-            entrypoint=entrypoint,
-            status=JobStatus.PENDING,
-            start_time=int(time.time() * 1000),
-            metadata=metadata,
-            runtime_env=runtime_env,
-            entrypoint_num_cpus=entrypoint_num_cpus,
-            entrypoint_num_gpus=entrypoint_num_gpus,
-            entrypoint_memory=entrypoint_memory,
-            entrypoint_resources=entrypoint_resources,
-        )
-
-        new_key_added = await self._job_info_client.put_info(
-            submission_id, job_info, overwrite=False
-        )
-        if not new_key_added:
-            raise ValueError(
-                f"Job with submission_id {submission_id} already exists. "
-                "Please use a different submission_id."
-            )
-
         # Wait for the actor to start up asynchronously so this call always
         # returns immediately and we can catch errors with the actor starting
         # up.
