@@ -157,6 +157,10 @@ class JobSupervisor:
                 },
             )
 
+            message = None
+            status = None
+            exit_code = -1
+
             try:
                 result: JobExecutionResult = await runner.execute.remote(
                     _start_signal_actor=_start_signal_actor,
@@ -172,8 +176,15 @@ class JobSupervisor:
                     status = JobStatus.FAILED
 
                 # TODO mark the job as STOPPED
-            except Exception as e:
-                pass
+            except Exception:
+                message = traceback.format_exc()
+                status = JobStatus.FAILED
+                exit_code = -1
+
+                logger.error(
+                    f"Got unexpected exception while executing Ray job {self._job_id} "
+                    f"command: {message}"
+                )
             finally:
                 await self._job_info_client.put_status(
                     self._job_id,
@@ -663,12 +674,16 @@ class JobRunner:
                 )
 
         except Exception:
+            exception_message = traceback.format_exc()
             self._logger.error(
-                "Got unexpected exception while trying to execute driver "
-                f"command. {traceback.format_exc()}"
+                f"Got unexpected exception while trying to execute driver for job {self._job_id} "
+                f"command. {exception_message}"
             )
 
-            raise
+            return JobExecutionResult(
+                driver_exit_code=-1,
+                message=exception_message,
+            )
         finally:
             # clean up actor after tasks are finished
             ray.actor.exit_actor()
