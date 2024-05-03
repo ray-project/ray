@@ -204,7 +204,7 @@ class JobSupervisor:
             exit_code = None
 
             logger.error(
-                f"Got unexpected exception while executing Ray job {self._job_id}: {message}"
+                f"Got unexpected exception while executing job {self._job_id}: {message}"
             )
 
         finally:
@@ -605,10 +605,7 @@ class JobRunner:
             # only, not its tasks & actors.
             os.environ.update(self._get_driver_env_vars(resources_specified))
 
-            self._logger.info(
-                "Submitting job with RAY_ADDRESS = "
-                f"{os.environ[ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE]}"
-            )
+            self._logger.info(f"Executing job {self._job_id} driver's entrypoint")
 
             log_path = self._log_client.get_log_file_path(self._job_id)
 
@@ -627,6 +624,8 @@ class JobRunner:
             )
 
             if self._stop_event.is_set():
+                logger.info(f"Job {self._job_id} driver's has been interrupted (job stopped)")
+
                 # Cancel task polling the subprocess (unless already finished)
                 if not polling_task.done():
                     polling_task.cancel()
@@ -647,8 +646,7 @@ class JobRunner:
                 return_code = child_process_task.result()
 
                 logger.info(
-                    f"Job {self._job_id} entrypoint command "
-                    f"exited with code {return_code}"
+                    f"Job {self._job_id} driver's entrypoint command exited with code {return_code}"
                 )
 
                 message: Optional[str] = None
