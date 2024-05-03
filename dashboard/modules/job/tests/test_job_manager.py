@@ -1,6 +1,4 @@
 import asyncio
-from contextlib import redirect_stderr
-import io
 import os
 import signal
 import sys
@@ -452,17 +450,24 @@ async def test_simultaneous_with_same_id(job_manager):
 @pytest.mark.asyncio
 async def test_job_supervisor_logs_saved(job_manager):
     """Test JobSupervisor logs are saved to jobs/supervisor-{submission_id}.log"""
-    f = io.StringIO()
-    with redirect_stderr(f):
-        job_ids = await asyncio.gather(
-            job_manager.submit_job(entrypoint="echo hello 1", submission_id="job_1"),
-            job_manager.submit_job(entrypoint="echo hello 2", submission_id="job_2"),
-        )
-    stderr = f.getvalue()
+    job_ids = await asyncio.gather(
+        job_manager.submit_job(entrypoint="echo hello 1", submission_id="job_1"),
+        job_manager.submit_job(entrypoint="echo hello 2", submission_id="job_2"),
+    )
+
     supervisor_log_path = os.path.join(
         ray._private.worker._global_node.get_logs_dir_path(),
         "jobs/supervisor-{job_id}.log",
     )
+    worker_err_files = [
+        f
+        for f in os.listdir(ray._private.worker._global_node.get_logs_dir_path())
+        if "worker" in f and ".err" in f
+    ]
+    worker_err_logs = []
+    for worker_err_file in worker_err_files:
+        with open(worker_err_file, "r") as f:
+            worker_err_logs.append(f.read())
 
     for job_id in job_ids:
         await async_wait_for_condition_async_predicate(
@@ -472,7 +477,7 @@ async def test_job_supervisor_logs_saved(job_manager):
             logs = f.read()
             log_message = f"Job {job_id} entrypoint command exited with code 0"
             assert log_message in logs
-            assert log_message in stderr
+            assert any([log_message in worker_log for worker_log in worker_err_logs])
 
 
 @pytest.mark.asyncio
