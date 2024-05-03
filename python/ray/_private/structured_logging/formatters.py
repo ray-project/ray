@@ -9,7 +9,7 @@ LOGRECORD_STANDARD_ATTRS = logging.makeLogRecord({"message": "test"}).__dict__.k
 class JSONFormatter(logging.Formatter):
     def format(self, record):
         record_format = {
-            "ts": self.formatTime(record),
+            "ts": self.formatTime(record, "%Y-%m-%d %H:%M:%S.%f %z"),
             "level": record.levelname,
             "msg": record.getMessage(),
             "filename": record.filename,

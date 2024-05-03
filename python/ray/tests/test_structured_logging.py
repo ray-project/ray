@@ -5,8 +5,8 @@ import logging
 import sys
 import json
 
-from ray._private.logging.filters import CoreContextFilter
-from ray._private.logging.formatters import JSONFormatter
+from ray._private.structured_logging.filters import CoreContextFilter
+from ray._private.structured_logging.formatters import JSONFormatter
 
 
 class TestCoreContextFilter:
