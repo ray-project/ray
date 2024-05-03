@@ -1,16 +1,27 @@
 from ray.rllib.algorithms.sac.sac import SACConfig
-from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 
 config = (
     SACConfig()
     # Enable new API stack and use EnvRunner.
-    .experimental(_enable_new_api_stack=True)
-    .rollouts(
+    .api_stack(
+        enable_rl_module_and_learner=True,
+        enable_env_runner_and_connector_v2=True,
+    )
+    .env_runners(
         rollout_fragment_length=1,
-        env_runner_cls=SingleAgentEnvRunner,
-        num_rollout_workers=0,
+        num_env_runners=0,
     )
     .environment(env="Pendulum-v1")
+    .rl_module(
+        model_config_dict={
+            "fcnet_hiddens": [256, 256],
+            "fcnet_activation": "relu",
+            "post_fcnet_hiddens": [],
+            "post_fcnet_activation": None,
+            "post_fcnet_weights_initializer": "orthogonal_",
+            "post_fcnet_weights_initializer_config": {"gain": 0.01},
+        }
+    )
     .training(
         initial_alpha=1.001,
         lr=3e-4,
@@ -21,16 +32,11 @@ config = (
         target_network_update_freq=1,
         replay_buffer_config={
             "type": "PrioritizedEpisodeReplayBuffer",
+            "capacity": 100000,
+            "alpha": 1.0,
+            "beta": 0.0,
         },
         num_steps_sampled_before_learning_starts=256,
-        model={
-            "fcnet_hiddens": [256, 256],
-            "fcnet_activation": "relu",
-            "post_fcnet_hiddens": [],
-            "post_fcnet_activation": None,
-            "post_fcnet_weights_initializer": "orthogonal_",
-            "post_fcnet_weights_initializer_config": {"gain": 0.01},
-        },
     )
     .reporting(
         metrics_num_episodes_for_smoothing=5,
@@ -39,9 +45,6 @@ config = (
 )
 
 stop = {
-    "sampler_results/episode_reward_mean": -250,
-    "timesteps_total": 20000,
+    "num_env_steps_sampled_lifetime": 20000,
+    "env_runner_results/episode_return_mean": -250.0,
 }
-
-
-print(config.build().train())

@@ -63,8 +63,8 @@ class TestPettingZooEnv(unittest.TestCase):
                 policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: "av",
             )
             .debugging(log_level="DEBUG")
-            .rollouts(
-                num_rollout_workers=1,
+            .env_runners(
+                num_env_runners=1,
                 # Fragment length, collected at once from each worker
                 # and for each agent!
                 rollout_fragment_length=30,
@@ -83,7 +83,7 @@ class TestPettingZooEnv(unittest.TestCase):
         config = (
             PPOConfig()
             .environment("simple_spread")
-            .rollouts(num_rollout_workers=0, rollout_fragment_length=30)
+            .env_runners(num_env_runners=0, rollout_fragment_length=30)
             .debugging(log_level="DEBUG")
             .training(train_batch_size=200)
             .multi_agent(

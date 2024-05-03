@@ -122,6 +122,9 @@ html_baseurl = "https://docs.ray.io/en/latest"
 copybutton_prompt_text = r">>> |\.\.\. |\$ |In \[\d*\]: | {2,5}\.\.\.: | {5,8}: "
 copybutton_prompt_is_regexp = True
 
+# Ignore divs with class="no-copybutton"
+copybutton_selector = "div:not(.no-copybutton) > div.highlight > pre"
+
 # By default, tabs can be closed by selecting an open tab. We disable this
 # functionality with the `sphinx_tabs_disable_tab_closing` option.
 sphinx_tabs_disable_tab_closing = True
@@ -262,7 +265,7 @@ html_theme = "pydata_sphinx_theme"
 # documentation.
 html_theme_options = {
     "use_edit_page_button": True,
-    "announcement": None,
+    "announcement": """Ray Summit unites the community. Submit a <b><a target="_blank" href="https://raysummit.anyscale.com/flow/anyscale/raysummit2024/landing/page/eventsite?utm_source=cfpraydocs_gl=1*949o36*_ga*Mzk2ODgxMTUwLjE3MTM4OTE0NzM.*_ga_T6EXHYG44V*MTcxNDA3ODUzNC43LjAuMTcxNDA3ODUzNC42MC4wLjEyMDk3NzQ2MjE">session proposal</a></b> to share your experience.""",
     "logo": {
         "svg": render_svg_logo("_static/img/ray_logo.svg"),
     },

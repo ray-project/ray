@@ -10,8 +10,7 @@ steps:
   - name: servebuild-multipy
     label: "wanda: servebuild-py{{matrix}}"
     wanda: ci/docker/serve.build.wanda.yaml
-    matrix:
-      - "3.11"
+    matrix: ["3.11"]
     env:
       PYTHON: "{{matrix}}"
     depends_on: oss-ci-base_build-multipy
@@ -98,22 +97,6 @@ steps:
       - manylinux
       - servebuild
       - forge
-
-  - label: ":ray-serve: serve: wheel-aarch64 tests"
-    tags: linux_wheels
-    instance_type: medium-arm64
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //doc/... serve 
-        --build-type wheel-aarch64
-        --build-name oss-ci-base_build-aarch64
-        --parallelism-per-worker 3
-        --only-tags post_wheel_build
-        --test-env=RAY_CI_POST_WHEEL_TESTS=True
-    depends_on: 
-      - manylinux-aarch64
-      - oss-ci-base_build-aarch64
-      - forge-aarch64
-    job_env: forge-aarch64
 
   - label: ":ray-serve: serve: doc tests"
     tags: 

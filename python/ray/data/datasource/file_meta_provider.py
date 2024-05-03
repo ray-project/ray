@@ -26,6 +26,8 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     import pyarrow
 
+    from ray.data.datasource.parquet_datasource import _ParquetFileFragmentMetaData
+
 
 logger = logging.getLogger(__name__)
 
@@ -261,9 +263,9 @@ class ParquetMetadataProvider(FileMetadataProvider):
     ) -> Optional[List[Any]]:
         """Pre-fetches file metadata for all Parquet file fragments in a single batch.
 
-        Subsets of the metadata returned will be provided as input to
-        subsequent calls to :meth:`~FileMetadataProvider._get_block_metadata` together
-        with their corresponding Parquet file fragments.
+        Subsets of the metadata returned will be provided as input to subsequent calls
+        to ``_get_block_metadata`` together with their corresponding Parquet file
+        fragments.
 
         Implementations that don't support pre-fetching file metadata shouldn't
         override this method.
@@ -293,7 +295,7 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
         schema: Optional[Union[type, "pyarrow.lib.Schema"]],
         *,
         num_fragments: int,
-        prefetched_metadata: Optional[List["pyarrow.parquet.FileMetaData"]],
+        prefetched_metadata: Optional[List["_ParquetFileFragmentMetaData"]],
     ) -> BlockMetadata:
         if (
             prefetched_metadata is not None
@@ -304,10 +306,7 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
             # BlockMetadata.
             block_metadata = BlockMetadata(
                 num_rows=sum(m.num_rows for m in prefetched_metadata),
-                size_bytes=sum(
-                    sum(m.row_group(i).total_byte_size for i in range(m.num_row_groups))
-                    for m in prefetched_metadata
-                ),
+                size_bytes=sum(m.total_byte_size for m in prefetched_metadata),
                 schema=schema,
                 input_files=paths,
                 exec_stats=None,

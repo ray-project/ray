@@ -13,7 +13,7 @@ import pyarrow.fs
 
 import ray
 import ray.cloudpickle as pickle
-from ray._private.dict import merge_dicts
+from ray._private.dict import deep_update
 from ray.air._internal import usage as air_usage
 from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
 from ray.air._internal.usage import AirEntrypoint
@@ -571,8 +571,8 @@ class BaseTrainer(abc.ABC):
             A Result object containing the training result.
 
         Raises:
-            TrainingFailedError: If any failures during the execution of
-            ``self.as_trainable()``, or during the Tune execution loop.
+            TrainingFailedError: If any failures during the execution
+                of ``self.as_trainable()``, or during the Tune execution loop.
         """
         from ray.tune import ResumeConfig, TuneError
         from ray.tune.tuner import Tuner
@@ -739,11 +739,17 @@ class BaseTrainer(abc.ABC):
 
             def setup(self, config, **kwargs):
                 base_config = dict(kwargs)
-                # Create a new config by merging the dicts.
+                # Merge Tuner param space hyperparameters in `config` into the
+                # base config passed to the Trainer constructor, which is `base_config`.
+                # `base_config` is pulled from the object store from the usage of
+                # tune.with_parameters in `BaseTrainer.as_trainable`.
+
                 # run_config is not a tunable hyperparameter so it does not need to be
                 # merged.
                 run_config = base_config.pop("run_config", None)
-                self._merged_config = merge_dicts(base_config, self.config)
+                self._merged_config = deep_update(
+                    base_config, self.config, new_keys_allowed=True
+                )
                 self._merged_config["run_config"] = run_config
                 merged_scaling_config = self._merged_config.get(
                     "scaling_config", ScalingConfig()

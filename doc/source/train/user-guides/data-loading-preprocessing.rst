@@ -3,12 +3,13 @@
 Data Loading and Preprocessing
 ==============================
 
-Ray Train integrates with :ref:`Ray Data <data>` to offer an efficient, streaming solution for loading and preprocessing large datasets.
-Use Ray Data to performantly run large-scale distributed training workloads. Key advantages include:
+Ray Train integrates with :ref:`Ray Data <data>` to offer a performant and scalable streaming solution for loading and preprocessing large datasets.
+Key advantages include:
 
-- Fast out-of-memory recovery
-- Support for heterogeneous clusters
-- No dropped rows during distributed dataset iteration
+- Streaming data loading and preprocessing, scalable to petabyte-scale data.
+- Scaling out heavy data preprocessing to CPU nodes, to avoid bottlenecking GPU training.
+- Automatic and fast failure recovery.
+- Automatic on-the-fly data splitting across distributed training workers.
 
 For more details about Ray Data, including comparisons to alternatives, see :ref:`Ray Data Overview <data_overview>`.
 
@@ -30,9 +31,9 @@ Install Ray Data and Ray Train:
 
 Data ingestion can be set up with four basic steps:
 
-1. Create a Ray Dataset.
-2. Preprocess your Ray Dataset.
-3. Input the preprocessed Dataset into the Ray Train Trainer.
+1. Create a Ray Dataset from your input data.
+2. Apply preprocessing operations to your Ray Dataset.
+3. Input the preprocessed Dataset into the Ray Train Trainer, which internally splits the dataset equally in a streaming way across the distributed training workers.
 4. Consume the Ray Dataset in your training function.
 
 .. tab-set::
@@ -40,7 +41,7 @@ Data ingestion can be set up with four basic steps:
     .. tab-item:: PyTorch
 
         .. code-block:: python
-            :emphasize-lines: 29-32
+            :emphasize-lines: 14,21,29,31-33,53
 
             import torch
             import ray
@@ -71,6 +72,9 @@ Data ingestion can be set up with four basic steps:
                 # Step 4: Access the dataset shard for the training worker via
                 # ``get_dataset_shard``.
                 train_data_shard = train.get_dataset_shard("train")
+                # `iter_torch_batches` returns an iterable object that
+                # yield tensor batches. Ray Data automatically moves the Tensor batches
+                # to GPU if you enable GPU training.
                 train_dataloader = train_data_shard.iter_torch_batches(
                     batch_size=batch_size, dtypes=torch.float32
                 )
@@ -82,7 +86,9 @@ Data ingestion can be set up with four basic steps:
                         assert type(labels) == torch.Tensor
                         assert inputs.shape[0] == batch_size
                         assert labels.shape[0] == batch_size
-                        break # Only check one batch. Last batch can be partial.
+                        # Only check one batch for demo purposes.
+                        # Replace the above with your actual model training code.
+                        break
 
             # Step 3: Create a TorchTrainer. Specify the number of training workers and
             # pass in your Ray Dataset.
@@ -97,16 +103,17 @@ Data ingestion can be set up with four basic steps:
     .. tab-item:: PyTorch Lightning
 
         .. code-block:: python
-            :emphasize-lines: 9,10,13,14,25,26
+            :emphasize-lines: 4-5,10-11,14-15,26-27,33
 
             from ray import train
 
+            # Create the train and validation datasets.
             train_data = ray.data.read_csv("./train.csv")
             val_data = ray.data.read_csv("./validation.csv")
 
             def train_func_per_worker():
                 # Access Ray datsets in your train_func via ``get_dataset_shard``.
-                # The "train" dataset gets sharded across workers by default
+                # Ray Data shards all datasets across workers by default.
                 train_ds = train.get_dataset_shard("train")
                 val_ds = train.get_dataset_shard("validation")
 
@@ -129,6 +136,7 @@ Data ingestion can be set up with four basic steps:
 
             trainer = TorchTrainer(
                 train_func,
+                # You can pass in multiple datasets to the Trainer.
                 datasets={"train": train_data, "validation": val_data},
                 scaling_config=ScalingConfig(num_workers=4),
             )
@@ -137,19 +145,20 @@ Data ingestion can be set up with four basic steps:
     .. tab-item:: HuggingFace Transformers
 
         .. code-block:: python
-            :emphasize-lines: 12,13,16,17,23,29,30,34
+            :emphasize-lines: 7-8,13-14,17-18,30-31,41
 
             import ray
             import ray.train
 
             ...
 
+            # Create the train and evaluation datasets.
             train_data = ray.data.from_huggingface(hf_train_ds)
             eval_data = ray.data.from_huggingface(hf_eval_ds)
 
             def train_func():
                 # Access Ray datsets in your train_func via ``get_dataset_shard``.
-                # The "train" dataset gets sharded across workers by default
+                # Ray Data shards all datasets across workers by default.
                 train_ds = ray.train.get_dataset_shard("train")
                 eval_ds = ray.train.get_dataset_shard("evaluation")
 
@@ -177,6 +186,7 @@ Data ingestion can be set up with four basic steps:
 
             trainer = TorchTrainer(
                 train_func,
+                # You can pass in multiple datasets to the Trainer.
                 datasets={"train": train_data, "evaluation": val_data},
                 scaling_config=ScalingConfig(num_workers=4, use_gpu=True),
             )
@@ -195,7 +205,7 @@ Ray Datasets can be created from many different data sources and formats. For mo
 Preprocessing data
 ~~~~~~~~~~~~~~~~~~
 
-Ray Data support a wide range of preprocessing operations that can be used to transform your data prior to training.
+Ray Data supports a wide range of preprocessing operations that you can use to transform data prior to training.
 
 - For general preprocessing, see :ref:`Transforming Data <transforming_data>`.
 - For tabular data, see :ref:`Preprocessing Structured Data <preprocessing_structured_data>`.
@@ -211,11 +221,13 @@ Your preprocessed datasets can be passed into a Ray Train Trainer (e.g. :class:`
 
 The datasets passed into the Trainer's ``datasets`` can be accessed inside of the ``train_loop_per_worker`` run on each distributed training worker by calling :meth:`ray.train.get_dataset_shard`.
 
-All datasets are split (i.e. sharded) across the training workers by default. :meth:`~ray.train.get_dataset_shard` will return ``1/n`` of the dataset, where ``n`` is the number of training workers.
+Ray Data splits all datasets across the training workers by default. :meth:`~ray.train.get_dataset_shard` returns ``1/n`` of the dataset, where ``n`` is the number of training workers.
+
+Ray Data does data splitting in a streaming fashion on the fly.
 
 .. note::
 
-    Please be aware that as the evaluation dataset is split, users have to aggregate the evaluation results across workers.
+    Be aware that because Ray Data splits the evaluation dataset, you have to aggregate the evaluation results across workers.
     You might consider using `TorchMetrics <https://torchmetrics.readthedocs.io/en/latest/>`_ (:doc:`example <../examples/deepspeed/deepspeed_example>`) or
     utilities available in other frameworks that you can explore.
 
@@ -303,7 +315,7 @@ For more details, see the following sections for each framework.
 
 Splitting datasets
 ------------------
-By default, Ray Train splits all datasets across workers using :meth:`Dataset.streaming_split <ray.data.Dataset.streaming_split>`. Each worker sees a disjoint subset of the data, instead of iterating over the entire dataset. Unless randomly shuffled, the same splits are used for each iteration of the dataset.
+By default, Ray Train splits all datasets across workers using :meth:`Dataset.streaming_split <ray.data.Dataset.streaming_split>`. Each worker sees a disjoint subset of the data, instead of iterating over the entire dataset.
 
 If want to customize which datasets are split, pass in a :class:`DataConfig <ray.train.DataConfig>` to the Trainer constructor.
 
@@ -416,62 +428,7 @@ Random shuffling
 ----------------
 Randomly shuffling data for each epoch can be important for model quality depending on what model you are training.
 
-Ray Data has two approaches to random shuffling:
-
-1. Shuffling data blocks and local shuffling on each training worker. This requires less communication at the cost of less randomness (i.e. rows that appear in the same data block are more likely to appear near each other in the iteration order).
-2. Full global shuffle, which is more expensive. This will fully decorrelate row iteration order from the original dataset order, at the cost of significantly more computation, I/O, and communication.
-
-For most cases, option 1 suffices.
-
-First, randomize each :ref:`block <dataset_concept>` of your dataset via :meth:`randomize_block_order <ray.data.Dataset.randomize_block_order>`. Then, when iterating over your dataset during training, enable local shuffling by specifying a ``local_shuffle_buffer_size`` to :meth:`iter_batches <ray.data.DataIterator.iter_batches>` or :meth:`iter_torch_batches <ray.data.DataIterator.iter_torch_batches>`.
-
-.. testcode::
-    import ray
-    from ray import train
-    from ray.train import ScalingConfig
-    from ray.train.torch import TorchTrainer
-
-    ds = ray.data.read_text(
-        "s3://anonymous@ray-example-data/sms_spam_collection_subset.txt"
-    )
-
-    # Randomize the blocks of this dataset.
-    ds = ds.randomize_block_order()
-
-    def train_loop_per_worker():
-        # Get an iterator to the dataset we passed in below.
-        it = train.get_dataset_shard("train")
-        for _ in range(2):
-            # Use a shuffle buffer size of 10k rows.
-            for batch in it.iter_batches(
-                local_shuffle_buffer_size=10000, batch_size=128):
-                print("Do some training on batch", batch)
-
-    my_trainer = TorchTrainer(
-        train_loop_per_worker,
-        scaling_config=ScalingConfig(num_workers=2),
-        datasets={"train": ds},
-    )
-    my_trainer.fit()
-
-
-If your model is sensitive to shuffle quality, call :meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>` to perform a global shuffle.
-
-.. testcode::
-
-    import ray
-
-    ds = ray.data.read_text(
-        "s3://anonymous@ray-example-data/sms_spam_collection_subset.txt"
-    )
-
-    # Do a global shuffle of all rows in this dataset.
-    # The dataset will be shuffled on each iteration, unless `.materialize()`
-    # is called after the `.random_shuffle()`
-    ds = ds.random_shuffle()
-
-For more information on how to optimize shuffling, and which approach to choose, see the :ref:`Optimize shuffling guide <optimizing_shuffles>`.
-
+Ray Data provides multiple options for random shuffling, see :ref:`Shuffling Data <shuffling_data>` for more details.
 
 Enabling reproducibility
 ------------------------
@@ -565,14 +522,14 @@ You can use this with Ray Train Trainers by applying them on the dataset before 
     print(StandardScaler.deserialize(metadata["preprocessor_pkl"]))
 
 
-In this example, we persist the fitted preprocessor using the ``Trainer(metadata={...})`` constructor argument. This arg specifies a dict that will available from ``TrainContext.get_metadata()`` and ``checkpoint.get_metadata()`` for checkpoints saved from the Trainer. This enables recreation of the fitted preprocessor for use for inference.
+This example persists the fitted preprocessor using the ``Trainer(metadata={...})`` constructor argument. This arg specifies a dict that is available from ``TrainContext.get_metadata()`` and ``checkpoint.get_metadata()`` for checkpoints that the Trainer saves. This design enables the recreation of the fitted preprocessor for inference.
 
 Performance tips
 ----------------
 
 Prefetching batches
 ~~~~~~~~~~~~~~~~~~~
-While iterating over your dataset for training, you can increase ``prefetch_batches`` in :meth:`iter_batches <ray.data.DataIterator.iter_batches>` or :meth:`iter_torch_batches <ray.data.DataIterator.iter_torch_batches>` to further increase performance. While training on the current batch, this launches N background threads to fetch and process the next N batches.
+While iterating over a dataset for training, you can increase ``prefetch_batches`` in :meth:`iter_batches <ray.data.DataIterator.iter_batches>` or :meth:`iter_torch_batches <ray.data.DataIterator.iter_torch_batches>` to further increase performance. While training on the current batch, this approach launches background threads to fetch and process the next ``N`` batches.
 
 This approach can help if training is bottlenecked on cross-node data transfer or on last-mile preprocessing such as converting batches to tensors or executing ``collate_fn``. However, increasing ``prefetch_batches`` leads to more data that needs to be held in heap memory. By default, ``prefetch_batches`` is set to 1.
 
@@ -604,16 +561,19 @@ For example, the following code prefetches 10 batches at a time for each trainin
     )
     my_trainer.fit()
 
+Avoid heavy transformation in collate_fn
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The ``collate_fn`` parameter in :meth:`iter_batches <ray.data.DataIterator.iter_batches>` or :meth:`iter_torch_batches <ray.data.DataIterator.iter_torch_batches>` allows you to transform data before feeding it to the model. This operation happens locally in the training workers. Avoid adding a heavy transformation in this function as it may become the bottleneck. Instead, :ref:`apply the transformation with map or map_batches <transforming_data>` before passing the dataset to the Trainer.
+
 
 .. _dataset_cache_performance:
 
 Caching the preprocessed dataset
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-If you're training on GPUs and have an expensive CPU preprocessing operation, this approach may bottleneck training throughput.
-
 If your preprocessed Dataset is small enough to fit in Ray object store memory (by default this is 30% of total cluster RAM), *materialize* the preprocessed dataset in Ray's built-in object store, by calling :meth:`materialize() <ray.data.Dataset.materialize>` on the preprocessed dataset. This method tells Ray Data to compute the entire preprocessed and pin it in the Ray object store memory. As a result, when iterating over the dataset repeatedly, the preprocessing operations do not need to be re-run. However, if the preprocessed data is too large to fit into Ray object store memory, this approach will greatly decreases performance as data needs to be spilled to and read back from disk.
 
-Transformations that you want run per-epoch, such as randomization, should go after the materialize call.
+Transformations that you want to run per-epoch, such as randomization, should go after the materialize call.
 
 .. testcode::
 
@@ -652,8 +612,8 @@ Transformations that you want run per-epoch, such as randomization, should go af
 
 Adding CPU-only nodes to your cluster
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-If you are bottlenecked on expensive CPU preprocessing and the preprocessed Dataset is too large to fit in object store memory, then materializing the dataset doesn't work. In this case, since Ray supports heterogeneous clusters, you can add more CPU-only nodes to your cluster.
+If the GPU training is bottlenecked on expensive CPU preprocessing and the preprocessed Dataset is too large to fit in object store memory, then materializing the dataset doesn't work. In this case, Ray's native support for heterogeneous resources enables you to simply add more CPU-only nodes to your cluster, and Ray Data automatically scales out CPU-only preprocessing tasks to CPU-only nodes, making GPUs more saturated.
 
-For cases where you're bottlenecked by object store memory, adding more CPU-only nodes to your cluster increases total cluster object store memory, allowing more data to be buffered in between preprocessing and training stages.
-
-For cases where you're bottlenecked by preprocessing compute time, adding more CPU-only nodes adds more CPU cores to your cluster, further parallelizing preprocessing. If your preprocessing is still not fast enough to saturate GPUs, then add enough CPU-only nodes to :ref:`cache the preprocessed dataset <dataset_cache_performance>`.
+In general, adding CPU-only nodes can help in two ways:
+* Adding more CPU cores helps further parallelize preprocessing. This approach is helpful when CPU compute time is the bottleneck.
+* Increasing object store memory, which 1) allows Ray Data to buffer more data in between preprocessing and training stages, and 2) provides more memory to make it possible to :ref:`cache the preprocessed dataset <dataset_cache_performance>`. This approach is helpful when memory is the bottleneck.

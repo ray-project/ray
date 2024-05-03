@@ -36,8 +36,13 @@ SERVE_DEFAULT_APP_NAME = "default"
 #: Max concurrency
 ASYNC_CONCURRENCY = int(1e6)
 
-# How often to call the control loop on the controller.
-CONTROL_LOOP_PERIOD_S = 0.1
+# How long to sleep between control loop cycles on the controller.
+CONTROL_LOOP_INTERVAL_S = float(os.getenv("RAY_SERVE_CONTROL_LOOP_INTERVAL_S", 0.1))
+assert CONTROL_LOOP_INTERVAL_S >= 0, (
+    f"Got unexpected value {CONTROL_LOOP_INTERVAL_S} for "
+    "RAY_SERVE_CONTROL_LOOP_INTERVAL_S environment variable. "
+    "RAY_SERVE_CONTROL_LOOP_INTERVAL_S cannot be negative."
+)
 
 #: Max time to wait for HTTP proxy in `serve.start()`.
 HTTP_PROXY_TIMEOUT = 60
@@ -135,7 +140,9 @@ CLIENT_POLLING_INTERVAL_S: float = 1
 CLIENT_CHECK_CREATION_POLLING_INTERVAL_S: float = 0.1
 
 # Handle metric push interval. (This interval will affect the cold start time period)
-HANDLE_METRIC_PUSH_INTERVAL_S = 10
+HANDLE_METRIC_PUSH_INTERVAL_S = float(
+    os.environ.get("RAY_SERVE_HANDLE_METRIC_PUSH_INTERVAL_S", "10")
+)
 
 # Timeout for GCS internal KV service
 RAY_SERVE_KV_TIMEOUT_S = float(os.environ.get("RAY_SERVE_KV_TIMEOUT_S", "0")) or None
@@ -223,6 +230,9 @@ RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH = os.environ.get(
 
 # How often autoscaling metrics are recorded on Serve replicas.
 RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S = 0.5
+
+# How often autoscaling metrics are recorded on Serve handles.
+RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_PERIOD_S = 0.5
 
 # Serve multiplexed matching timeout.
 # This is the timeout for the matching process of multiplexed requests. To avoid

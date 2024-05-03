@@ -68,38 +68,46 @@ class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         # Build the encoder for the policy.
         self.pi_encoder = catalog.build_encoder(framework=self.framework)
 
-        # SAC needs a separate Q network encoder (besides the pi network).
-        # This is because the Q network also takes the action as input
-        # (concatenated with the observations).
-        self.qf_encoder = catalog.build_qf_encoder(framework=self.framework)
+        if not self.inference_only or self.framework != "torch":
+            # SAC needs a separate Q network encoder (besides the pi network).
+            # This is because the Q network also takes the action as input
+            # (concatenated with the observations).
+            self.qf_encoder = catalog.build_qf_encoder(framework=self.framework)
 
-        # Build the target Q encoder as an exact copy of the Q encoder.
-        # TODO (simon): Maybe merging encoders together for target and qf
-        # and keep only the heads differently?
-        self.qf_target_encoder = catalog.build_qf_encoder(framework=self.framework)
-        # If necessary, build also a twin Q encoders.
-        if self.twin_q:
-            self.qf_twin_encoder = catalog.build_qf_encoder(framework=self.framework)
-            self.qf_target_twin_encoder = catalog.build_qf_encoder(
-                framework=self.framework
-            )
+            # Build the target Q encoder as an exact copy of the Q encoder.
+            # TODO (simon): Maybe merging encoders together for target and qf
+            # and keep only the heads differently?
+            self.qf_target_encoder = catalog.build_qf_encoder(framework=self.framework)
+            # If necessary, build also a twin Q encoders.
+            if self.twin_q:
+                self.qf_twin_encoder = catalog.build_qf_encoder(
+                    framework=self.framework
+                )
+                self.qf_target_twin_encoder = catalog.build_qf_encoder(
+                    framework=self.framework
+                )
+            # Holds the parameter names to be removed or renamed when synching
+            # from the learner to the inference module.
+            self._inference_only_state_dict_keys = {}
 
         # Build heads.
         self.pi = catalog.build_pi_head(framework=self.framework)
-        self.qf = catalog.build_qf_head(framework=self.framework)
-        # The Q target network head is an identical copy of the Q network head.
-        self.qf_target = catalog.build_qf_head(framework=self.framework)
-        # If necessary build also a twin Q heads.
-        if self.twin_q:
-            self.qf_twin = catalog.build_qf_head(framework=self.framework)
-            self.qf_target_twin = catalog.build_qf_head(framework=self.framework)
 
-        # We do not want to train the target network.
-        self.qf_target_encoder.trainable = False
-        self.qf_target.trainable = False
-        if self.twin_q:
-            self.qf_target_twin_encoder.trainable = False
-            self.qf_target_twin.trainable = False
+        if not self.inference_only or self.framework != "torch":
+            self.qf = catalog.build_qf_head(framework=self.framework)
+            # The Q target network head is an identical copy of the Q network head.
+            self.qf_target = catalog.build_qf_head(framework=self.framework)
+            # If necessary build also a twin Q heads.
+            if self.twin_q:
+                self.qf_twin = catalog.build_qf_head(framework=self.framework)
+                self.qf_target_twin = catalog.build_qf_head(framework=self.framework)
+
+            # We do not want to train the target network.
+            self.qf_target_encoder.trainable = False
+            self.qf_target.trainable = False
+            if self.twin_q:
+                self.qf_target_twin_encoder.trainable = False
+                self.qf_target_twin.trainable = False
 
         # Get the action distribution class.
         self.action_dist_cls = catalog.get_action_dist_cls(framework=self.framework)

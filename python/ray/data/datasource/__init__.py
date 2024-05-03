@@ -1,3 +1,4 @@
+from ray.data.datasource.avro_datasource import AvroDatasource
 from ray.data.datasource.bigquery_datasink import _BigQueryDatasink
 from ray.data.datasource.bigquery_datasource import BigQueryDatasource
 from ray.data.datasource.binary_datasource import BinaryDatasource
@@ -36,6 +37,7 @@ from ray.data.datasource.image_datasink import _ImageDatasink
 from ray.data.datasource.image_datasource import ImageDatasource
 from ray.data.datasource.json_datasink import _JSONDatasink
 from ray.data.datasource.json_datasource import JSONDatasource
+from ray.data.datasource.lance_datasource import LanceDatasource
 from ray.data.datasource.mongo_datasink import _MongoDatasink
 from ray.data.datasource.mongo_datasource import MongoDatasource
 from ray.data.datasource.numpy_datasink import _NumpyDatasink
@@ -63,6 +65,7 @@ from ray.data.datasource.webdataset_datasource import WebDatasetDatasource
 # we want to only import the Hugging Face datasets library when we use
 # ray.data.from_huggingface() or HuggingFaceDatasource() directly.
 __all__ = [
+    "AvroDatasource",
     "BaseFileMetadataProvider",
     "BinaryDatasource",
     "_BigQueryDatasink",
@@ -89,6 +92,7 @@ __all__ = [
     "ImageDatasource",
     "_JSONDatasink",
     "JSONDatasource",
+    "LanceDatasource",
     "_NumpyDatasink",
     "NumpyDatasource",
     "ParquetBaseDatasource",

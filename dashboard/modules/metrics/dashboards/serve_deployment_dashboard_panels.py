@@ -117,7 +117,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         ],
         fill=0,
         stack=False,
-        grid_pos=GridPos(0, 2, 8, 8),
+        grid_pos=GridPos(0, 2, 12, 8),
     ),
     Panel(
         id=8,
@@ -132,7 +132,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         ],
         fill=0,
         stack=False,
-        grid_pos=GridPos(16, 2, 8, 8),
+        grid_pos=GridPos(12, 2, 12, 8),
     ),
     Panel(
         id=9,

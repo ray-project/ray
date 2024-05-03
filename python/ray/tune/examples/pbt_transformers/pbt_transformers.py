@@ -2,26 +2,28 @@
 This example is uses the official
 huggingface transformers `hyperparameter_search` API.
 """
+
 import os
+
+from transformers import (
+    AutoConfig,
+    AutoModelForSequenceClassification,
+    AutoTokenizer,
+    GlueDataset,
+    GlueDataTrainingArguments,
+    Trainer,
+    TrainingArguments,
+    glue_tasks_num_labels,
+)
 
 from ray import tune
 from ray.train import CheckpointConfig
 from ray.tune import CLIReporter
 from ray.tune.examples.pbt_transformers.utils import (
-    download_data,
     build_compute_metrics_fn,
+    download_data,
 )
 from ray.tune.schedulers import PopulationBasedTraining
-from transformers import (
-    glue_tasks_num_labels,
-    AutoConfig,
-    AutoModelForSequenceClassification,
-    AutoTokenizer,
-    Trainer,
-    GlueDataset,
-    GlueDataTrainingArguments,
-    TrainingArguments,
-)
 
 
 def tune_transformer(num_samples=8, gpus_per_trial=0, smoke_test=False):

@@ -223,7 +223,7 @@ def convert_to_msgpack_checkpoint(
     state["worker"]["is_policy_to_train"] = NOT_SERIALIZABLE
 
     # Add RLlib checkpoint version (as string).
-    if state["config"]["_enable_new_api_stack"]:
+    if state["config"]["enable_rl_module_and_learner"]:
         state["checkpoint_version"] = str(CHECKPOINT_VERSION_LEARNER)
     else:
         state["checkpoint_version"] = str(CHECKPOINT_VERSION)

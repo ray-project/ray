@@ -25,7 +25,7 @@ frozenlake-appo-vtrace:
         batch_mode: complete_episodes
         vtrace: true
 
-        num_envs_per_worker: 5
+        num_envs_per_env_runner: 5
         num_workers: 4
         num_gpus: 0
         num_sgd_iter: 1

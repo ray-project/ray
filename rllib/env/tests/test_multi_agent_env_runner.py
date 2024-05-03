@@ -4,7 +4,7 @@ import ray
 
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
-from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.test_utils import check
 
 
@@ -95,12 +95,14 @@ class TestMultiAgentEnvRunner(unittest.TestCase):
         # Build the configuration and use `PPO`.
         config = (
             PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            )
             .environment(
                 MultiAgentCartPole,
                 env_config={"num_agents": 2},
             )
-            .rollouts(env_runner_cls=MultiAgentEnvRunner)
             # TODO (sven, simon): Setup is still for `Policy`, change as soon
             #  as we have switched fully to the new stack.
             .multi_agent(

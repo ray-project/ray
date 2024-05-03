@@ -15,22 +15,6 @@ steps:
       - manylinux
       - forge
 
-  - label: ":tapioca: build: wheel {{matrix}} (aarch64)"
-    tags:
-      - linux_wheels
-      - oss
-    instance_type: medium-arm64
-    commands:
-      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}} --architecture aarch64 --upload
-    matrix:
-      - "3.9"
-      - "3.10"
-      - "3.11"
-    depends_on:
-      - manylinux-aarch64
-      - forge-aarch64
-    job_env: forge-aarch64
-
   - label: ":tapioca: build: debug wheel"
     tags:
       - linux_wheels
@@ -83,31 +67,6 @@ steps:
       - "3.10"
       - "3.11"
 
-  - label: ":tapioca: build: ray py{{matrix}} docker (aarch64)"
-    tags:
-      - python_dependencies
-      - docker
-      - core_cpp
-      - oss
-    instance_type: medium-arm64
-    commands:
-      - bazel run //ci/ray_ci:build_in_docker -- docker --python-version {{matrix}}
-        --platform cu11.5.2 --platform cu11.6.2 --platform cu11.7.1
-        --platform cu11.8.0 --platform cu12.1.1 --platform cpu
-        --image-type ray
-        --architecture aarch64
-        --upload
-    depends_on:
-      - manylinux-aarch64
-      - forge-aarch64
-      - raycudabase-aarch64
-      - raycpubase-aarch64
-    job_env: forge-aarch64
-    matrix:
-      - "3.9"
-      - "3.10"
-      - "3.11"
-
   - label: ":tapioca: build: ray-ml py{{matrix}} docker (x86_64)"
     tags:
       - python_dependencies
@@ -126,3 +85,4 @@ steps:
     matrix:
       - "3.9"
       - "3.10"
+      - "3.11"

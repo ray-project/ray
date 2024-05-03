@@ -6,6 +6,7 @@ import pickle
 import socket
 import time
 from abc import ABC, abstractmethod
+from functools import partial
 from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Type
 
 import grpc
@@ -160,7 +161,7 @@ class GenericProxy(ABC):
         self.route_info: Dict[str, DeploymentID] = dict()
 
         self.proxy_router = proxy_router_class(
-            serve.get_deployment_handle, self.protocol
+            partial(serve.get_deployment_handle, _record_telemetry=False), self.protocol
         )
         self.request_counter = metrics.Counter(
             f"serve_num_{self.protocol.lower()}_requests",

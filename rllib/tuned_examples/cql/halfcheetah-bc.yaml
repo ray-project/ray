@@ -1,10 +1,10 @@
 halfcheetah_bc:
     env: 
         grid_search:
-            #- ray.rllib.examples.env.d4rl_env.halfcheetah_random
-            #- ray.rllib.examples.env.d4rl_env.halfcheetah_medium
-            - ray.rllib.examples.env.d4rl_env.halfcheetah_expert
-            #- ray.rllib.examples.env.d4rl_env.halfcheetah_medium_replay
+            #- ray.rllib.examples.envs.classes.d4rl_env.halfcheetah_random
+            #- ray.rllib.examples.envs.classes.d4rl_env.halfcheetah_medium
+            - ray.rllib.examples.envs.classes.d4rl_env.halfcheetah_expert
+            #- ray.rllib.examples.envs.classes.d4rl_env.halfcheetah_medium_replay
     run: CQL
     config:
         # SAC Configs
