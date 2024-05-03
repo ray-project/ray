@@ -24,8 +24,3 @@ class APPORLModule(PPORLModule, abc.ABC):
             self.old_encoder = catalog.build_actor_critic_encoder(
                 framework=self.framework
             )
-            self.old_pi.load_state_dict(self.pi.state_dict())
-            self.old_encoder.load_state_dict(self.encoder.state_dict())
-            # We do not train the targets.
-            self.old_pi.requires_grad_(False)
-            self.old_encoder.requires_grad_(False)

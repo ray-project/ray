@@ -17,6 +17,17 @@ _, tf, _ = try_import_tf()
 
 
 class APPOTfRLModule(PPOTfRLModule, RLModuleWithTargetNetworksInterface, APPORLModule):
+    @override(PPOTfRLModule)
+    def setup(self):
+        super().setup()
+
+        # If the module is not for inference only, set up the target networks.
+        if not self.inference_only:
+            self.old_pi.set_weights(self.pi.get_weights())
+            self.old_encoder.set_weights(self.encoder.get_weights())
+            self.old_pi.trainable = False
+            self.old_encoder.trainable = False
+
     @override(RLModuleWithTargetNetworksInterface)
     def get_target_network_pairs(self):
         return [(self.old_pi, self.pi), (self.old_encoder, self.encoder)]
