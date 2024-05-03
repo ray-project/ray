@@ -149,7 +149,7 @@ Policy Evaluation
 
 Given an environment and policy, policy evaluation produces `batches <https://github.com/ray-project/ray/blob/master/rllib/policy/sample_batch.py>`__ of experiences. This is your classic "environment interaction loop". Efficient policy evaluation can be burdensome to get right, especially when leveraging vectorization, RNNs, or when operating in a multi-agent environment. RLlib provides a `RolloutWorker <https://github.com/ray-project/ray/blob/master/rllib/evaluation/rollout_worker.py>`__ class that manages all of this, and this class is used in most RLlib algorithms.
 
-You can use rollout workers standalone to produce batches of experiences. This can be done by calling ``worker.sample()`` on a worker instance, or ``worker.sample.remote()`` in parallel on worker instances created as Ray actors (see `WorkerSet <https://github.com/ray-project/ray/blob/master/rllib/evaluation/worker_set.py>`__).
+You can use rollout workers standalone to produce batches of experiences. This can be done by calling ``worker.sample()`` on a worker instance, or ``worker.sample.remote()`` in parallel on worker instances created as Ray actors (see `EnvRunnerGroup <https://github.com/ray-project/ray/blob/master/rllib/env/env_runner_group.py>`__).
 
 Here is an example of creating a set of rollout workers and using them gather experiences in parallel. The trajectories are concatenated, the policy learns on the trajectory batch, and then we broadcast the policy weights to the workers for the next round of rollouts:
 
@@ -158,7 +158,7 @@ Here is an example of creating a set of rollout workers and using them gather ex
     # Setup policy and rollout workers.
     env = gym.make("CartPole-v1")
     policy = CustomPolicy(env.observation_space, env.action_space, {})
-    workers = WorkerSet(
+    workers = EnvRunnerGroup(
         policy_class=CustomPolicy,
         env_creator=lambda c: gym.make("CartPole-v1"),
         num_env_runners=10)
@@ -296,7 +296,7 @@ In the first step, we collect trajectory data from the environment(s):
 
 Here, ``self.workers`` is a set of ``RolloutWorkers`` that are created in the ``Algorithm``'s ``setup()`` method
 (prior to calling ``training_step()``).
-This ``WorkerSet`` is covered in greater depth on the :ref:`WorkerSet documentation page <workerset-reference-docs>`.
+This :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` is covered in greater depth on the :ref:`EnvRunnerGroup documentation page <workerset-reference-docs>`.
 The utility function ``synchronous_parallel_sample`` can be used for parallel sampling in a blocking
 fashion across multiple rollout workers (returns once all rollout workers are done sampling).
 It returns one final MultiAgentBatch resulting from concatenating n smaller MultiAgentBatches
@@ -313,8 +313,8 @@ Methods like ``train_one_step`` and ``multi_gpu_train_one_step`` are used for tr
 Further documentation with examples can be found on the :ref:`train ops documentation page <train-ops-docs>`.
 
 The training updates on the policy are only applied to its version inside ``self.workers.local_worker``.
-Note that each WorkerSet has n remote workers and exactly one "local worker" and that each worker (remote and local ones)
-holds a copy of the policy.
+Note that each :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` has n remote :py:class:`~ray.rllib.env.env_runner.EnvRunner` instances and exactly one "local worker" and that all EnvRunners (remote and local ones)
+hold a copy of the policy.
 
 Now that we updated the local policy (the copy in ``self.workers.local_worker``), we need to make sure
 that the copies in all remote workers (``self.workers.remote_workers``) have their weights synchronized
@@ -367,7 +367,7 @@ Rollout workers are an abstraction that wraps a policy (or policies in the case 
 From a high level, we can use rollout workers to collect experiences from the environment by calling
 their ``sample()`` method and we can train their policies by calling their ``learn_on_batch()`` method.
 By default, in RLlib, we create a set of workers that can be used for sampling and training.
-We create a ``WorkerSet`` object inside of ``setup`` which is called when an RLlib algorithm is created. The ``WorkerSet`` has a ``local_worker``
+We create a :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` object inside of ``setup`` which is called when an RLlib algorithm is created. The :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` has a ``local_worker``
 and ``remote_workers`` if ``num_env_runners > 0`` in the experiment config. In RLlib we typically use ``local_worker``
 for training and ``remote_workers`` for sampling.
 

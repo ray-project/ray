@@ -123,7 +123,7 @@ Now that we have the name of the service, we can use port-forwarding to access t
 
 ```sh
 # Execute this in a separate shell.
-kubectl port-forward --address 0.0.0.0 service/raycluster-kuberay-head-svc 8265:8265
+kubectl port-forward service/raycluster-kuberay-head-svc 8265:8265
 
 # Visit ${YOUR_IP}:8265 in your browser for the Dashboard (e.g. 127.0.0.1:8265)
 ```
