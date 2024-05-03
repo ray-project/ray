@@ -191,12 +191,13 @@ class JobSupervisor:
             exit_code = result.driver_exit_code
             message = result.message
 
-            if result.driver_exit_code == 0:
+            if result.stopped:
+                status = JobStatus.STOPPED
+            elif result.driver_exit_code == 0:
                 status = JobStatus.SUCCEEDED
             else:
                 status = JobStatus.FAILED
 
-            # TODO mark the job as STOPPED
         except Exception:
             message = traceback.format_exc()
             status = JobStatus.FAILED
