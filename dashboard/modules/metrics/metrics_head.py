@@ -31,7 +31,7 @@ from ray.dashboard.consts import (
     AVAILABLE_COMPONENT_NAMES_FOR_METRICS,
     METRICS_INPUT_ROOT,
     PROMETHEUS_CONFIG_INPUT_PATH,
-    RAY_SLOW_COROUTINE_WARNING,
+    RAY_SLOW_TASK_WARNING,
 )
 
 logger = logging.getLogger(__name__)
@@ -349,7 +349,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         aiodebug.log_slow_callbacks.enable(
             slow_duration=0.1,
             on_slow_callback=lambda name, duration: logger.warning(
-                f"{RAY_SLOW_COROUTINE_WARNING}: {name} took {duration} seconds."
+                f"{RAY_SLOW_TASK_WARNING}: {name} took {duration} seconds."
             ),
         )
         # TODO: if needed, add `aiodebug.hang_inspection` to record stack trace of the

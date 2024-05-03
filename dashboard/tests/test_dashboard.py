@@ -1016,7 +1016,7 @@ def test_dashboard_log_warning_on_slow_task(
 
     # Check if the warning message is logged. Example log:
     #
-    # RaySlowCoroutineWarning: <Task finished name='Task-47'
+    # RaySlowTaskWarning: <Task finished name='Task-47'
     # coro=<TestHead.blocking_async_func() done, defined at
     # $RAY/dashboard/modules/tests/test_head.py:113> result=1.0> took 1.0036689169937745
     # seconds.
@@ -1027,7 +1027,7 @@ def test_dashboard_log_warning_on_slow_task(
         warning_lines = [
             line
             for line in f.readlines()
-            if dashboard_consts.RAY_SLOW_COROUTINE_WARNING in line
+            if dashboard_consts.RAY_SLOW_TASK_WARNING in line
         ]
         assert len(warning_lines) == 1, warning_lines
         line = warning_lines[0]
