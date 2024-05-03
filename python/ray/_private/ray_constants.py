@@ -222,10 +222,6 @@ LOGGER_FORMAT_STDERR = (
     "%(asctime)s\t%(levelname)s ({component}) %(filename)s:%(lineno)s -- %(message)s"
 )
 
-# A dict_keys object containing the standard attributes of a LogRecord. This is used to
-# help us determine which attributes constitute user-provided context.
-LOGRECORD_STANDARD_ATTRS = logging.makeLogRecord({"message": "test"}).__dict__.keys()
-
 # Constants used to define the different process types.
 PROCESS_TYPE_REAPER = "reaper"
 PROCESS_TYPE_MONITOR = "monitor"

@@ -1,7 +1,9 @@
 import logging
 import json
 
-from ray._private.ray_constants import LOGRECORD_STANDARD_ATTRS
+# A dict_keys object containing the standard attributes of a LogRecord. This is used to
+# help us determine which attributes constitute user-provided context.
+LOGRECORD_STANDARD_ATTRS = logging.makeLogRecord({"message": "test"}).__dict__.keys()
 
 
 class JSONFormatter(logging.Formatter):
