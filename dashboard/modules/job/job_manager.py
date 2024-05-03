@@ -433,14 +433,7 @@ class JobManager:
                 num_cpus=0,
                 scheduling_strategy=head_node_scheduling_strategy,
                 namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
-                # num_cpus=entrypoint_num_cpus,
-                # num_gpus=entrypoint_num_gpus,
-                # memory=entrypoint_memory,
-                # resources=entrypoint_resources,
-                # runtime_env=self._get_supervisor_runtime_env(
-                #     runtime_env, submission_id, resources_specified
-                # ),
-            ).remote(submission_id, entrypoint, metadata or {}, self._gcs_address)
+            ).remote(submission_id, entrypoint, self._gcs_address)
 
             await supervisor.start.remote(
                 runtime_env=runtime_env,
