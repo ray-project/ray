@@ -24,10 +24,10 @@ from ray._private.test_utils import (
     wait_for_condition,
 )
 from ray.dashboard.modules.job.common import JOB_ID_METADATA_KEY, JOB_NAME_METADATA_KEY
+from ray.dashboard.modules.job.job_supervisor import JobRunner
 from ray.dashboard.modules.job.job_manager import (
     JobLogStorageClient,
     JobManager,
-    JobSupervisor,
     generate_job_id,
 )
 from ray.dashboard.consts import (
@@ -1064,7 +1064,7 @@ while True:
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "use_env_var,stop_timeout",
-    [(True, 10), (False, JobSupervisor.DEFAULT_RAY_JOB_STOP_WAIT_TIME_S)],
+    [(True, 10), (False, JobRunner.DEFAULT_RAY_JOB_STOP_WAIT_TIME_S)],
 )
 async def test_stop_job_timeout(job_manager, use_env_var, stop_timeout):
     """
