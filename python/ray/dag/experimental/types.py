@@ -7,7 +7,6 @@ from typing import (
 import ray.util.serialization
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
-
 if TYPE_CHECKING:
     import torch
     import numpy as np
