@@ -195,9 +195,6 @@ class CompiledTask:
             idx: A unique index into the original DAG.
             dag_node: The original DAG node created by the user.
         """
-        from ray.dag.experimental.types import (
-        )
-
         self.idx = idx
         self.dag_node = dag_node
         self.arg_idx_to_tensor_meta: Dict[int, Dict[str, Any]] = {}
