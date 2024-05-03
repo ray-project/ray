@@ -450,20 +450,10 @@ async def test_simultaneous_with_same_id(job_manager):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "call_ray_start",
-    ["ray start --head"],
-    indirect=True,
-)
-async def test_job_supervisor_logs_saved(call_ray_start, tmp_path):  # noqa: F811
+async def test_job_supervisor_logs_saved(job_manager):
     """Test JobSupervisor logs are saved to jobs/supervisor-{submission_id}.log"""
-    address_info = ray.init(address=call_ray_start)
-    gcs_aio_client = GcsAioClient(
-        address=address_info["gcs_address"], nums_reconnect_retry=0
-    )
     f = io.StringIO()
     with redirect_stderr(f):
-        job_manager = JobManager(gcs_aio_client, tmp_path)
         job_id = await job_manager.submit_job(
             entrypoint="echo hello 1", submission_id="job_1"
         )
