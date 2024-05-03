@@ -85,13 +85,22 @@ class JobSupervisor:
         self._job_info_client = JobInfoStorageClient(GcsAioClient(address=gcs_address))
 
         self._runner_actor_cls = ray.remote(JobRunner)
-        self._runner = None
+        self._runner: Optional[ActorHandle] = None
+        self._runner_executing_task: Optional[asyncio.Task] = None
 
     async def ping(self):
         """Pings job runner to make sure Ray job is being executed"""
         assert self._runner, "Runner is not initialized!"
-
+        # First, check if job's driver runner actor is alive
         await self._runner.ping.remote()
+        # Next check if job's driver completed executing by
+        # checking the state of the background task
+        # TODO setup self-ping loop
+        if self._runner_executing_task.done():
+            # Job's supervisor actor lifespan is bound to that of the job's driver,
+            # and therefore upon completing its execution JobSupervisor (along with JobRunner)
+            # actors could be subsequently destroyed
+            ray.actor.exit_actor()
 
     async def stop(self):
         """Proxies request to job runner"""
@@ -153,7 +162,9 @@ class JobSupervisor:
         # Job driver (entrypoint) is executed in a synchronous fashion,
         # therefore is performed as a background operation updating Ray Job's
         # state asynchronously upon job's driver completing the execution
-        run_background_task(
+        loop = asyncio.get_running_loop()
+
+        self._runner_executing_task = loop.create_task(
             self._execute_sync(
                 runner,
                 resources_specified=resources_specified,
@@ -174,6 +185,7 @@ class JobSupervisor:
             driver_node_info: JobDriverNodeInfo = await runner.get_node_info.remote()
             driver_agent_http_address = f"http://{driver_node_info.node_ip}:{driver_node_info.dashboard_agent_port}"
 
+            # TODO mark as running only after driver has been launched
             # Mark the job as running
             await self._job_info_client.put_status(
                 self._job_id,
@@ -214,11 +226,6 @@ class JobSupervisor:
                 driver_exit_code=exit_code,
                 message=message,
             )
-
-            # Job's supervisor actor lifespan is bound to that of the job's driver,
-            # and therefore upon completing its execution JobSupervisor (along with JobRunner)
-            # actors could be subsequently destroyed
-            ray.actor.exit_actor()
 
     async def _create_runner_actor(
         self,
