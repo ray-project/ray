@@ -6,8 +6,10 @@ import os
 import signal
 import subprocess
 import sys
+import time
 import traceback
 from asyncio.tasks import FIRST_COMPLETED
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Union, Tuple
 
 import psutil
@@ -27,7 +29,7 @@ from ray.dashboard.modules.job.common import (
     JOB_NAME_METADATA_KEY,
     JOB_EXECUTOR_ACTOR_NAME_TEMPLATE,
     SUPERVISOR_ACTOR_RAY_NAMESPACE,
-    JobInfoStorageClient,
+    JobInfoStorageClient, JobInfo,
 )
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.job_submission import JobStatus
@@ -94,7 +96,7 @@ class JobSupervisor:
     async def stop(self):
         """Proxies request to job runner"""
         assert self._runner, "Runner is not initialized!"
-
+        # Stop the job runner actor & killing the driver process
         await self._runner.stop.remote()
 
     async def start(
@@ -139,12 +141,49 @@ class JobSupervisor:
             entrypoint_resources,
         )
 
-        run_background_task(
-            runner.execute.remote(
-                _start_signal_actor=_start_signal_actor,
-                resources_specified=resources_specified,
+        # TODO clean up
+        if _start_signal_actor:
+            # Block in PENDING state until start signal received.
+            await _start_signal_actor.wait.remote()
+
+        async def execute():
+            # Mark the job as running
+            await self._job_info_client.put_status(
+                self._job_id,
+                JobStatus.RUNNING,
+                jobinfo_replace_kwargs={
+                    "driver_agent_http_address": driver_agent_http_address,
+                    "driver_node_id": driver_node_id,
+                },
             )
-        )
+
+            try:
+                result: JobExecutionResult = await runner.execute.remote(
+                    _start_signal_actor=_start_signal_actor,
+                    resources_specified=resources_specified,
+                )
+
+                exit_code = result.driver_exit_code
+                message = result.message
+
+                if result.driver_exit_code == 0:
+                    status = JobStatus.SUCCEEDED
+                else:
+                    status = JobStatus.FAILED
+
+                # TODO mark the job as STOPPED
+            except Exception as e:
+                pass
+            finally:
+                await self._job_info_client.put_status(
+                    self._job_id,
+                    status,
+                    driver_exit_code=exit_code,
+                    message=message,
+                )
+
+        # TODO elaborate
+        run_background_task(execute())
 
         if self.event_logger:
             self.event_logger.info(
@@ -262,9 +301,15 @@ class JobSupervisor:
             # Empty fields may be set to None, so we need to check for None explicitly.
             if config is None:
                 config = RuntimeEnvConfig()
-            config["log_files"] = [self._log_client.get_log_file_path(submission_id)]
+            config["log_files"] = [JobLogStorageClient.get_log_file_path(submission_id)]
             runtime_env["config"] = config
         return runtime_env
+
+
+@dataclass
+class JobExecutionResult:
+    driver_exit_code: int
+    message: Optional[str] = None
 
 
 class JobRunner:
@@ -285,6 +330,8 @@ class JobRunner:
     ):
         self._job_id = job_id
         self._entrypoint = entrypoint
+
+        self._log_client = JobLogStorageClient()
 
         # Default metadata if not passed by the user.
         self._metadata = {JOB_ID_METADATA_KEY: job_id, JOB_NAME_METADATA_KEY: job_id}
@@ -386,6 +433,7 @@ class JobRunner:
                    and os.environ.get("RAY_JOB_STOP_SIGNAL") == "SIGINT"
                 else None,
             )
+
             parent_pid = os.getpid()
             child_pid = child_process.pid
             # Create new pgid with new subprocess to execute driver command
@@ -499,7 +547,7 @@ class JobRunner:
         # Signal actor used in testing to capture PENDING -> RUNNING cases
         _start_signal_actor: Optional[ActorHandle] = None,
         resources_specified: bool = False,
-    ):
+    ) -> JobExecutionResult:
         """
         Stop and start both happen asynchronously, coordinated by asyncio event
         and coroutine, respectively.
@@ -521,28 +569,22 @@ class JobRunner:
             # will *not* be set in the runtime_env, so they apply to the driver
             # only, not its tasks & actors.
             os.environ.update(self._get_driver_env_vars(resources_specified))
+
             self._logger.info(
                 "Submitting job with RAY_ADDRESS = "
                 f"{os.environ[ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE]}"
             )
+
             log_path = self._log_client.get_log_file_path(self._job_id)
+
             child_process = self._exec_entrypoint(log_path)
             child_pid = child_process.pid
 
-            # TODO move out into JobManager
-            # Mark the job as running
-            await self._job_info_client.put_status(
-                self._job_id,
-                JobStatus.RUNNING,
-                jobinfo_replace_kwargs={
-                    "driver_agent_http_address": driver_agent_http_address,
-                    "driver_node_id": driver_node_id,
-                },
-            )
-
             polling_task = create_task(self._polling(child_process))
+            stop_event_awaiting_task = create_task(self._stop_event.wait())
+
             finished, _ = await asyncio.wait(
-                [polling_task, create_task(self._stop_event.wait())],
+                [polling_task, stop_event_awaiting_task],
                 return_when=FIRST_COMPLETED,
             )
 
@@ -565,19 +607,23 @@ class JobRunner:
                     # Send stop signal and wait for job to terminate gracefully,
                     # otherwise SIGKILL job forcefully after timeout.
                     self._kill_processes(proc_to_kill, getattr(signal, stop_signal))
-                    try:
-                        stop_job_wait_time = int(
-                            os.environ.get(
-                                "RAY_JOB_STOP_WAIT_TIME_S",
-                                self.DEFAULT_RAY_JOB_STOP_WAIT_TIME_S,
-                            )
+
+                    stop_job_wait_time = int(
+                        os.environ.get(
+                            "RAY_JOB_STOP_WAIT_TIME_S",
+                            self.DEFAULT_RAY_JOB_STOP_WAIT_TIME_S,
                         )
+                    )
+
+                    try:
                         poll_job_stop_task = create_task(self._poll_all(proc_to_kill))
                         await asyncio.wait_for(poll_job_stop_task, stop_job_wait_time)
+
                         self._logger.info(
                             f"Job {self._job_id} has been terminated gracefully "
                             f"with {stop_signal}."
                         )
+
                     except asyncio.TimeoutError:
                         self._logger.warning(
                             f"Attempt to gracefully terminate job {self._job_id} "
@@ -586,60 +632,43 @@ class JobRunner:
                             "force-killed with SIGKILL."
                         )
                         self._kill_processes(proc_to_kill, signal.SIGKILL)
-
-                await self._job_info_client.put_status(self._job_id, JobStatus.STOPPED)
             else:
                 # Child process finished execution and no stop event is set
                 # at the same time
                 assert len(finished) == 1, "Should have only one coroutine done"
+
                 [child_process_task] = finished
+
                 return_code = child_process_task.result()
+
                 self._logger.info(
                     f"Job {self._job_id} entrypoint command "
                     f"exited with code {return_code}"
                 )
-                if return_code == 0:
-                    await self._job_info_client.put_status(
-                        self._job_id,
-                        JobStatus.SUCCEEDED,
-                        driver_exit_code=return_code,
-                    )
-                else:
-                    log_tail = self._log_client.get_last_n_log_lines(self._job_id)
-                    if log_tail is not None and log_tail != "":
-                        message = (
-                            "Job entrypoint command "
-                            f"failed with exit code {return_code}, "
-                            "last available logs (truncated to 20,000 chars):\n"
-                            + log_tail
-                        )
+
+                message: Optional[str] = None
+
+                if return_code != 0:
+                    raw_log_snippet = self._log_client.get_last_n_log_lines(self._job_id)
+                    if raw_log_snippet:
+                        truncated_log_snippet = "Last available logs (truncated to 20,000 chars):\n" + raw_log_snippet
                     else:
-                        message = (
-                            "Job entrypoint command "
-                            f"failed with exit code {return_code}. No logs available."
-                        )
-                    await self._job_info_client.put_status(
-                        self._job_id,
-                        JobStatus.FAILED,
-                        message=message,
-                        driver_exit_code=return_code,
-                    )
+                        truncated_log_snippet = "No logs available."
+
+                    message = f"Job entrypoint command failed with exit code {return_code}. {truncated_log_snippet}"
+
+                return JobExecutionResult(
+                    driver_exit_code=return_code,
+                    message=message,
+                )
+
         except Exception:
             self._logger.error(
                 "Got unexpected exception while trying to execute driver "
                 f"command. {traceback.format_exc()}"
             )
-            try:
-                await self._job_info_client.put_status(
-                    self._job_id,
-                    JobStatus.FAILED,
-                    message=traceback.format_exc(),
-                )
-            except Exception:
-                self._logger.error(
-                    "Failed to update job status to FAILED. "
-                    f"Exception: {traceback.format_exc()}"
-                )
+
+            raise
         finally:
             # clean up actor after tasks are finished
             ray.actor.exit_actor()
