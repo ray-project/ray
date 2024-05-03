@@ -1,4 +1,6 @@
 import asyncio
+from contextlib import redirect_stderr
+import io
 import os
 import signal
 import sys
@@ -450,10 +452,13 @@ async def test_simultaneous_with_same_id(job_manager):
 @pytest.mark.asyncio
 async def test_job_supervisor_logs_saved(job_manager):
     """Test JobSupervisor logs are saved to jobs/supervisor-{submission_id}.log"""
-    job_ids = await asyncio.gather(
-        job_manager.submit_job(entrypoint="echo hello 1", submission_id="job_1"),
-        job_manager.submit_job(entrypoint="echo hello 2", submission_id="job_2"),
-    )
+    f = io.StringIO()
+    with redirect_stderr(f):
+        job_ids = await asyncio.gather(
+            job_manager.submit_job(entrypoint="echo hello 1", submission_id="job_1"),
+            job_manager.submit_job(entrypoint="echo hello 2", submission_id="job_2"),
+        )
+    stderr = f.getvalue()
     supervisor_log_path = os.path.join(
         ray._private.worker._global_node.get_logs_dir_path(),
         "jobs/supervisor-{job_id}.log",
@@ -465,7 +470,9 @@ async def test_job_supervisor_logs_saved(job_manager):
         )
         with open(supervisor_log_path.format(job_id=job_id), "r") as f:
             logs = f.read()
-            assert f"Job {job_id} entrypoint command exited with code 0" in logs
+            log_message = f"Job {job_id} entrypoint command exited with code 0"
+            assert log_message in logs
+            assert log_message in stderr
 
 
 @pytest.mark.asyncio
