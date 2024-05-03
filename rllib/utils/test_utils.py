@@ -30,6 +30,7 @@ import yaml
 
 import ray
 from ray import air, tune
+from ray.air.constants import TRAINING_ITERATION
 from ray.air.integrations.wandb import WandbLoggerCallback
 from ray.rllib.common import SupportedFileType
 from ray.rllib.env.wrappers.atari_wrappers import is_atari, wrap_deepmind
@@ -41,16 +42,16 @@ from ray.rllib.utils.metrics import (
     DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
     ENV_RUNNER_RESULTS,
     EVALUATION_RESULTS,
-    NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_TRAINED,
+    NUM_ENV_STEPS_TRAINED_LIFETIME,
+    NUM_EPISODES_LIFETIME,
 )
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import ResultDict
 from ray.rllib.utils.error import UnsupportedSpaceException
-
-
 from ray.tune import CLIReporter, run_experiments
+from ray.tune.progress_reporter import TIME_TOTAL_S
 
 
 if TYPE_CHECKING:
@@ -1140,13 +1141,15 @@ def run_learning_tests_from_yaml_or_py(
             verbose=2,
             progress_reporter=CLIReporter(
                 metric_columns={
-                    "training_iteration": "iter",
-                    "time_total_s": "time_total_s",
-                    NUM_ENV_STEPS_SAMPLED: "ts (sampled)",
-                    NUM_ENV_STEPS_TRAINED: "ts (trained)",
-                    "episodes_this_iter": "train_episodes",
-                    "episode_reward_mean": "reward_mean",
-                    "evaluation/episode_reward_mean": "eval_reward_mean",
+                    TRAINING_ITERATION: "iter",
+                    TIME_TOTAL_S: "total time (s)",
+                    NUM_ENV_STEPS_SAMPLED_LIFETIME: "env steps sampled",
+                    NUM_ENV_STEPS_TRAINED_LIFETIME: "env steps trained",
+                    NUM_EPISODES_LIFETIME: "episodes",
+                    f"{ENV_RUNNER_RESULTS}/episode_return_mean": "R",
+                    (
+                        f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/episode_return_mean"
+                    ): "R (eval)",
                 },
                 parameter_columns=["framework"],
                 sort_by_metric=True,
@@ -1352,7 +1355,7 @@ def run_rllib_example_script_experiment(
         stop = {
             f"{ENV_RUNNER_RESULTS}/episode_return_mean": args.stop_reward,
             f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": args.stop_timesteps,
-            "training_iteration": args.stop_iters,
+            TRAINING_ITERATION: args.stop_iters,
         }
 
     # Enhance the `base_config`, based on provided `args`.
@@ -1406,11 +1409,13 @@ def run_rllib_example_script_experiment(
     # Run the experiment using Ray Tune.
 
     # Log results using WandB.
-    tune_callbacks = tune_callbacks or []
+    # tune_callbacks = tune_callbacks or []
     if hasattr(args, "wandb_key") and args.wandb_key is not None:
         project = args.wandb_project or (
             args.algo.lower() + "-" + re.sub("\\W+", "-", str(config.env).lower())
         )
+        if tune_callbacks is None:
+            tune_callbacks = []
         tune_callbacks.append(
             WandbLoggerCallback(
                 api_key=args.wandb_key,
@@ -1427,16 +1432,19 @@ def run_rllib_example_script_experiment(
         progress_reporter = CLIReporter(
             metric_columns={
                 **{
-                    "training_iteration": "iter",
-                    "time_total_s": "total time (s)",
-                    "num_env_steps_sampled_lifetime": "ts",
-                    f"{ENV_RUNNER_RESULTS}/episode_return_mean": "combined return",
+                    TRAINING_ITERATION: "iter",
+                    TIME_TOTAL_S: "total time (s)",
+                    NUM_ENV_STEPS_SAMPLED_LIFETIME: "env steps sampled",
+                    f"{ENV_RUNNER_RESULTS}/episode_return_mean": "R (combined)",
                 },
                 **{
                     (
-                        f"{ENV_RUNNER_RESULTS}/module_episode_returns_mean/" f"{pid}"
-                    ): f"return {pid}"
+                        f"{ENV_RUNNER_RESULTS}/module_episode_returns_mean/{pid}"
+                    ): f"R ({pid})"
                     for pid in config.policies
+                },
+                **{
+                    f"{NUM_EPISODES_LIFETIME}": "episodes",
                 },
             },
         )
