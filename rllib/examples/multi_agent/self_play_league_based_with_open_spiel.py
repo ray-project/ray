@@ -60,12 +60,7 @@ from open_spiel.python.rl_environment import Environment  # noqa: E402
 
 
 parser = add_rllib_example_script_args(default_timesteps=2000000)
-parser.add_argument(
-    "--env",
-    type=str,
-    default="markov_soccer",
-    choices=["markov_soccer", "connect_four"],
-)
+parser.set_defaults(env="markov_soccer")
 parser.add_argument(
     "--win-rate-threshold",
     type=float,

@@ -1383,8 +1383,7 @@ def run_rllib_example_script_experiment(
             num_gpus=0,
             num_learner_workers=args.num_gpus,
             num_gpus_per_learner_worker=(
-                1 if torch and torch.cuda.is_available() and args.num_gpus > 0
-                else 0
+                1 if torch and torch.cuda.is_available() and args.num_gpus > 0 else 0
             ),
             num_cpus_for_local_worker=1,
         )

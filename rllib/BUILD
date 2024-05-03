@@ -296,10 +296,10 @@ py_test(
 
 py_test(
     name = "learning_tests_cartpole_dqn",
-    main = "tuned_examples/dqn/cartpole_dqn_envrunner.py",
+    main = "tuned_examples/dqn/cartpole_dqn.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
-    srcs = ["tuned_examples/dqn/cartpole_dqn_envrunner.py"],
+    srcs = ["tuned_examples/dqn/cartpole_dqn.py"],
     args = ["--as-test", "--enable-new-api-stack"]
 )
 
