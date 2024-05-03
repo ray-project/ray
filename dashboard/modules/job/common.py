@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import time
 from dataclasses import dataclass, replace, asdict
 from enum import Enum
@@ -28,6 +29,9 @@ JOB_EXECUTOR_ACTOR_NAME_TEMPLATE = (
 # they must be set to the same namespace.
 SUPERVISOR_ACTOR_RAY_NAMESPACE = "SUPERVISOR_ACTOR_RAY_NAMESPACE"
 JOB_LOGS_PATH_TEMPLATE = "job-driver-{submission_id}.log"
+
+
+logger = logging.getLogger(__file__)
 
 
 @PublicAPI(stability="stable")
@@ -257,7 +261,10 @@ class JobInfoStorageClient:
         )
         if old_info is not None:
             if status != old_info.status and old_info.status.is_terminal():
-                assert False, "Attempted to change job status from a terminal state."
+                logger.error(f"Trying to update job {job_id} that already reached terminal state {old_info.status}")
+
+                raise ValueError(f"Attempted to change job status from a terminal state (state: {old_info.status})")
+
             new_info = replace(old_info, **jobinfo_replace_kwargs)
         else:
             new_info = JobInfo(
