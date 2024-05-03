@@ -1,6 +1,4 @@
 import asyncio
-from contextlib import redirect_stderr
-import io
 import os
 import signal
 import sys
@@ -450,29 +448,28 @@ async def test_simultaneous_with_same_id(job_manager):
 
 
 @pytest.mark.asyncio
-async def test_job_supervisor_logs_saved(job_manager):
+async def test_job_supervisor_logs_saved(job_manager, capsys):  # noqa: F811
     """Test JobSupervisor logs are saved to jobs/supervisor-{submission_id}.log"""
-    f = io.StringIO()
-    with redirect_stderr(f):
-        job_id = await job_manager.submit_job(
-            entrypoint="echo hello 1", submission_id="job_1"
-        )
-        await async_wait_for_condition_async_predicate(
-            check_job_succeeded, job_manager=job_manager, job_id=job_id
-        )
-        # Wait for logs to finish streaming to stderr
-        time.sleep(3)
-    stderr = f.getvalue()
+    job_id = await job_manager.submit_job(
+        entrypoint="echo hello 1", submission_id="job_1"
+    )
+    # Tail logs to ensure job finished
+    async for _ in job_manager.tail_job_logs(job_id):
+        pass
 
+    # Verify logs saved to file
     supervisor_log_path = os.path.join(
         ray._private.worker._global_node.get_logs_dir_path(),
         f"jobs/supervisor-{job_id}.log",
     )
+    log_message = f"Job {job_id} entrypoint command exited with code 0"
     with open(supervisor_log_path, "r") as f:
         logs = f.read()
-        log_message = f"Job {job_id} entrypoint command exited with code 0"
         assert log_message in logs
-        assert log_message in stderr
+
+    # Verify logs in stderr
+    captured = capsys.readouterr()
+    assert log_message in captured.err
 
 
 @pytest.mark.asyncio

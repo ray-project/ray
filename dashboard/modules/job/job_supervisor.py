@@ -98,8 +98,8 @@ class JobSupervisor:
             f"jobs/supervisor-{self._job_id}.log",
         )
         os.makedirs(os.path.dirname(supervisor_log_file_name), exist_ok=True)
-        self._logger.addHandler(logging.FileHandler(supervisor_log_file_name))
         self._logger.addHandler(logging.StreamHandler())
+        self._logger.addHandler(logging.FileHandler(supervisor_log_file_name))
 
     def _get_driver_runtime_env(
         self, resources_specified: bool = False
