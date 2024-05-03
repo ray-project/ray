@@ -17,6 +17,7 @@ from ray.experimental.channel import (
     AwaitableBackgroundWriter,
 )
 from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.dag.experimental.types import _do_register_custom_dag_serializers
 
 MAX_BUFFER_SIZE = int(100 * 1e6)  # 100MB
 
@@ -418,7 +419,6 @@ class CompiledDAG:
         outputs for the DAG.
         """
         from ray.dag import DAGNode, InputNode, MultiOutputNode, ClassMethodNode
-        from ray.dag.experimental.types import _do_register_custom_dag_serializers
 
         if self.input_task_idx is None:
             self._preprocess()

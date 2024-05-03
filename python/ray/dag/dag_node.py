@@ -17,7 +17,8 @@ import uuid
 import asyncio
 
 from ray.dag.compiled_dag_node import build_compiled_dag_from_ray_dag
-#from ray.dag.experimental.types import DAGNodeOutputType
+
+# from ray.dag.experimental.types import DAGNodeOutputType
 
 T = TypeVar("T")
 
@@ -62,14 +63,14 @@ class DAGNode(DAGNodeBase):
         # Cached values from last call to execute()
         self.cache_from_last_execute = {}
 
-        #self._type_hint: Optional[DAGNodeOutputType] = None
+        # self._type_hint: Optional[DAGNodeOutputType] = None
 
-    #def with_type_hint(self, typ: DAGNodeOutputType):
+    # def with_type_hint(self, typ: DAGNodeOutputType):
     #    self._type_hint = typ
     #    return self
 
-    #@property
-    #def type_hint(self) -> Optional[DAGNodeOutputType]:
+    # @property
+    # def type_hint(self) -> Optional[DAGNodeOutputType]:
     #    return self._type_hint
 
     def get_args(self) -> Tuple[Any]:
@@ -363,7 +364,7 @@ class DAGNode(DAGNodeBase):
             new_args, new_kwargs, new_options, new_other_args_to_resolve
         )
         instance._stable_uuid = self._stable_uuid
-        #instance = instance.with_type_hint(self.type_hint)
+        # instance = instance.with_type_hint(self.type_hint)
         return instance
 
     def __getstate__(self):
