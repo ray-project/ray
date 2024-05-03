@@ -52,6 +52,14 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
                 usage_stats_prompt_enabled=self.usage_stats_prompt_enabled,
             )
 
+        @routes.get("/cluster_id")
+        async def get_cluster_id(self, req) -> aiohttp.web.Response:
+            return ray.dashboard.optional_utils.rest_response(
+                success=True,
+                message="Fetched cluster id",
+                cluster_id=self._dashboard_head.gcs_client.cluster_id.hex(),
+            )
+
     def _check_grafana_running(self):
         from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
