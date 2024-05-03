@@ -23,7 +23,6 @@ from ray.dashboard.modules.metrics.grafana_dashboard_provisioning_template impor
 )
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
-from ray.dashboard.metrics_utils import IN_KUBERNETES_POD, get_cpu_percent
 from ray.dashboard.consts import (
     AVAILABLE_COMPONENT_NAMES_FOR_METRICS,
     METRICS_INPUT_ROOT,
@@ -97,6 +96,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         self._component = "dashboard"
         self._session_name = dashboard_head.session_name
         assert self._component in AVAILABLE_COMPONENT_NAMES_FOR_METRICS
+        self.dashboard_proc = psutil.Process()
 
     @routes.get("/api/grafana_health")
     async def grafana_health(self, req) -> aiohttp.web.Response:
@@ -306,19 +306,18 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
 
     @dashboard_utils.async_loop_forever(METRICS_RECORD_INTERVAL_S)
     async def record_dashboard_metrics(self):
-        dashboard_proc = psutil.Process()
         self._dashboard_head.metrics.metrics_dashboard_cpu.labels(
             ip=self._ip,
             pid=self._pid,
             Component=self._component,
             SessionName=self._session_name,
-        ).set(float(get_cpu_percent(IN_KUBERNETES_POD)) * 100)
+        ).set(float(self.dashboard_proc.cpu_percent()) * 100)
         self._dashboard_head.metrics.metrics_dashboard_mem.labels(
             ip=self._ip,
             pid=self._pid,
             Component=self._component,
             SessionName=self._session_name,
-        ).set(float(dashboard_proc.memory_full_info().uss) / 1.0e6)
+        ).set(float(self.dashboard_proc.memory_full_info().uss) / 1.0e6)
 
     async def run(self, server):
         self._create_default_grafana_configs()
