@@ -108,6 +108,7 @@ class JobSupervisor:
         entrypoint_num_gpus: Optional[Union[int, float]] = None,
         entrypoint_memory: Optional[int] = None,
         entrypoint_resources: Optional[Dict[str, float]] = None,
+        # Signal actor used in testing to capture PENDING -> RUNNING cases
         _start_signal_actor: Optional[ActorHandle] = None,
     ):
         logger.info(f"Starting job with submission_id: {self._job_id}")
@@ -146,64 +147,70 @@ class JobSupervisor:
             # Block in PENDING state until start signal received.
             await _start_signal_actor.wait.remote()
 
-        async def execute():
-            message: Optional[str] = None
-            status: JobStatus = JobStatus.FAILED
-            exit_code: Optional[int] = None
-
-            try:
-                driver_node_info: JobDriverNodeInfo = await runner.get_node_info.remote()
-                driver_agent_http_address = (
-                    f"http://{driver_node_info.node_ip}:{driver_node_info.dashboard_agent_port}"
-                )
-
-                # Mark the job as running
-                await self._job_info_client.put_status(
-                    self._job_id,
-                    JobStatus.RUNNING,
-                    jobinfo_replace_kwargs={
-                        "driver_agent_http_address": driver_agent_http_address,
-                        "driver_node_id": driver_node_info.node_id,
-                    },
-                )
-
-                result: JobExecutionResult = await runner.execute.remote(
-                    _start_signal_actor=_start_signal_actor,
-                    resources_specified=resources_specified,
-                )
-
-                exit_code = result.driver_exit_code
-                message = result.message
-
-                if result.driver_exit_code == 0:
-                    status = JobStatus.SUCCEEDED
-                else:
-                    status = JobStatus.FAILED
-
-                # TODO mark the job as STOPPED
-            except Exception:
-                message = traceback.format_exc()
-                status = JobStatus.FAILED
-                exit_code = None
-
-                logger.error(
-                    f"Got unexpected exception while executing Ray job {self._job_id}: {message}"
-                )
-
-            finally:
-                await self._job_info_client.put_status(
-                    self._job_id,
-                    status,
-                    driver_exit_code=exit_code,
-                    message=message,
-                )
-
-        # TODO elaborate
-        run_background_task(execute())
+        # Job driver (entrypoint) is executed in a synchronous fashion,
+        # therefore is performed as a background operation updating Ray Job's
+        # state asynchronously upon job's driver completing the execution
+        run_background_task(
+            self._execute_sync(
+                runner,
+                resources_specified=resources_specified,
+            )
+        )
 
         if self.event_logger:
             self.event_logger.info(
                 f"Started a ray job {self._job_id}.", submission_id=self._job_id
+            )
+
+    async def _execute_sync(self, runner: ActorHandle, *, resources_specified: bool):
+        message: Optional[str] = None
+        status: JobStatus = JobStatus.FAILED
+        exit_code: Optional[int] = None
+
+        try:
+            driver_node_info: JobDriverNodeInfo = await runner.get_node_info.remote()
+            driver_agent_http_address = (
+                f"http://{driver_node_info.node_ip}:{driver_node_info.dashboard_agent_port}"
+            )
+
+            # Mark the job as running
+            await self._job_info_client.put_status(
+                self._job_id,
+                JobStatus.RUNNING,
+                jobinfo_replace_kwargs={
+                    "driver_agent_http_address": driver_agent_http_address,
+                    "driver_node_id": driver_node_info.node_id,
+                },
+            )
+
+            result: JobExecutionResult = await runner.execute_sync.remote(
+                resources_specified=resources_specified,
+            )
+
+            exit_code = result.driver_exit_code
+            message = result.message
+
+            if result.driver_exit_code == 0:
+                status = JobStatus.SUCCEEDED
+            else:
+                status = JobStatus.FAILED
+
+            # TODO mark the job as STOPPED
+        except Exception:
+            message = traceback.format_exc()
+            status = JobStatus.FAILED
+            exit_code = None
+
+            logger.error(
+                f"Got unexpected exception while executing Ray job {self._job_id}: {message}"
+            )
+
+        finally:
+            await self._job_info_client.put_status(
+                self._job_id,
+                status,
+                driver_exit_code=exit_code,
+                message=message,
             )
 
     async def _create_runner_actor(
@@ -213,7 +220,7 @@ class JobSupervisor:
         entrypoint_num_gpus: Optional[Union[int, float]],
         entrypoint_memory: Optional[int],
         entrypoint_resources: Optional[Dict[str, float]],
-    ) -> Tuple["JobRunner", bool]:
+    ) -> Tuple[ActorHandle, bool]:
         resources_specified = any(
             [
                 entrypoint_num_cpus is not None and entrypoint_num_cpus > 0,
@@ -573,10 +580,8 @@ class JobRunner:
                 # Process is already dead
                 pass
 
-    async def execute(
+    async def execute_sync(
         self,
-        # Signal actor used in testing to capture PENDING -> RUNNING cases
-        _start_signal_actor: Optional[ActorHandle] = None,
         resources_specified: bool = False,
     ) -> JobExecutionResult:
         """
