@@ -84,6 +84,7 @@ class TestJSONFormatter:
         for key in should_exist:
             assert key in record_dict
         assert len(record_dict) == len(should_exist)
+        assert "exc_text" not in record_dict
 
 
 if __name__ == "__main__":
