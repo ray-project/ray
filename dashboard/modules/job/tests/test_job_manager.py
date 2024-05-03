@@ -468,6 +468,8 @@ async def test_job_supervisor_logs_saved(job_manager):
     for worker_err_file in worker_err_files:
         with open(worker_err_file, "r") as f:
             worker_err_logs.append(f.read())
+    print("DEBUG worker_err_files", worker_err_files)
+    print("DEBUG worker_err_logs", worker_err_logs)
 
     for job_id in job_ids:
         await async_wait_for_condition_async_predicate(
