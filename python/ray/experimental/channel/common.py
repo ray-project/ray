@@ -17,26 +17,48 @@ _context_lock = threading.Lock()
 class ChannelOutputType:
     @staticmethod
     def register_custom_serializer() -> None:
+        """
+        Register any custom serializers needed to pass data of this type.
+        """
         pass
 
     def get_channel_class(self) -> type:
+        """
+        Get the ChannelInterface class that can be instantiated to pass data of
+        this type.
+        """
         raise NotImplementedError
 
 
 def _do_register_custom_serializers(
     self: Any, channel_output_types: List[type]
 ) -> None:
+    """
+    Register custom serializers for the given channel types. This method should
+    be run on the reader(s) and writer of a channel, which are the driver
+    and/or Ray actors.
+
+    Args:
+        self: This method should be run on the driver or the Ray actor. The Ray
+            actor should be passed as `self`.
+        channel_output_types: The list of channel output types to register.
+    """
     for typ in channel_output_types:
         typ.register_custom_serializer(self)
 
 
 def _get_channel_cls_for_output_type(channel_output_type: ChannelOutputType) -> type:
+    """
+    Get the ChannelInterface class that can be instantiated to pass data of
+    type channel_output_type.
+    """
     return channel_output_type.get_channel_class()
 
 
 @DeveloperAPI
 @dataclass
 class ChannelContext:
+    # Used for the torch.Tensor NCCL transport.
     nccl_group: Optional["_NcclGroup"] = None
 
     @staticmethod
@@ -65,10 +87,19 @@ class ChannelInterface:
 
     def __init__(
         self,
-        writer: ray.actor.ActorHandle,
+        writer: Optional[ray.actor.ActorHandle],
         readers: List[Optional[ray.actor.ActorHandle]],
         typ: "ChannelOutputType",
     ):
+        """
+        Create a channel that can be read and written by a Ray driver or actor.
+
+        Args:
+            writer: The actor that may write to the channel. None signifies the driver.
+            readers: The actors that may read from the channel. None signifies
+                the driver.
+            typ: Type information about the values passed through the channel.
+        """
         pass
 
     def ensure_registered_as_writer(self):
@@ -78,6 +109,16 @@ class ChannelInterface:
         raise NotImplementedError
 
     def write(self, value: Any) -> None:
+        """
+        Write a value to the channel.
+
+        Blocks if there are still pending readers for the previous value. The
+        writer may not write again until the specified number of readers have
+        called ``end_read``.
+
+        Args:
+            value: The value to write.
+        """
         raise NotImplementedError
 
     def begin_read(self) -> Any:

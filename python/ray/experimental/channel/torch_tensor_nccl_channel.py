@@ -178,8 +178,8 @@ def _init_nccl_group(
 
     comm_id = nccl.get_unique_id()
 
-    # TODO(swang): Handle timeout errors.
     logger.info(f"Creating NCCL group on actors->ranks: {actor_handles_to_ranks}")
+
     world_size = len(actors)
     init_tasks = [
         actor.__ray_call__.remote(
@@ -199,7 +199,6 @@ def _init_nccl_group(
         logger.warning(
             "NCCL group creation not done after 30s. NCCL group creation may be hung."
         )
-
     if not done:
         ray.get(init_tasks)
 

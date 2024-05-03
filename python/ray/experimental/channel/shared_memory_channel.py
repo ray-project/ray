@@ -21,10 +21,15 @@ def _create_channel_ref(
     buffer_size_bytes: int,
 ) -> "ray.ObjectRef":
     """
-    Create a channel that can be read and written by co-located Ray processes.
+    Create a channel that can be read and written through Ray's shared-memory
+    object store.
 
     The channel has no buffer, so the writer will block until reader(s) have
     read the previous value.
+
+    A writer and colocated readers can communicate via a shared memory buffer.
+    If the readers are remote, then RPC is used to synchronize the writer and
+    readers' buffers.
 
     Args:
         buffer_size_bytes: The number of bytes to allocate for the object data and
@@ -53,6 +58,12 @@ def _create_channel_ref(
 
 class SharedMemoryType(ChannelOutputType):
     def __init__(self, buffer_size_bytes: int):
+        """
+        Args:
+            buffer_size_bytes: The number of bytes to allocate for the object data and
+                metadata. Writes to the channel must produce serialized data and
+                metadata less than or equal to this value.
+        """
         self.buffer_size_bytes = buffer_size_bytes
 
     def get_channel_class(self):
@@ -236,16 +247,6 @@ class Channel(ChannelInterface):
         )
 
     def write(self, value: Any):
-        """
-        Write a value to the channel.
-
-        Blocks if there are still pending readers for the previous value. The
-        writer may not write again until the specified number of readers have
-        called ``end_read_channel``.
-
-        Args:
-            value: The value to write.
-        """
         self.ensure_registered_as_writer()
 
         try:
@@ -267,26 +268,10 @@ class Channel(ChannelInterface):
         )
 
     def begin_read(self) -> Any:
-        """
-        Read the latest value from the channel. This call will block until a
-        value is available to read.
-
-        Subsequent calls to begin_read() will *block*, until end_read() is
-        called and the next value is available to read.
-
-        Returns:
-            Any: The deserialized value.
-        """
         self.ensure_registered_as_reader()
         return ray.get(self._reader_ref)
 
     def end_read(self):
-        """
-        Signal to the writer that the channel is ready to write again.
-
-        If begin_read is not called first, then this call will block until a
-        value is written, then drop the value.
-        """
         self.ensure_registered_as_reader()
         self._worker.core_worker.experimental_channel_read_release([self._reader_ref])
 
@@ -294,9 +279,6 @@ class Channel(ChannelInterface):
         """
         Close this channel by setting the error bit on both the writer_ref and the
         reader_ref.
-
-        Does not block. Any existing values in the channel may be lost after the
-        channel is closed.
         """
         self._worker.core_worker.experimental_channel_set_error(self._writer_ref)
         if self.is_local_node(self._reader_node_id):
