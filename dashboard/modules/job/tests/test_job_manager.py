@@ -21,6 +21,7 @@ from ray._private.test_utils import (
     SignalActor,
     async_wait_for_condition,
     async_wait_for_condition_async_predicate,
+    wait_for_condition,
 )
 from ray.dashboard.modules.job.common import JOB_ID_METADATA_KEY, JOB_NAME_METADATA_KEY
 from ray.dashboard.modules.job.job_manager import (
@@ -453,9 +454,9 @@ async def test_job_supervisor_logs_saved(job_manager, capsys):  # noqa: F811
     job_id = await job_manager.submit_job(
         entrypoint="echo hello 1", submission_id="job_1"
     )
-    # Tail logs to ensure job finished
-    async for _ in job_manager.tail_job_logs(job_id):
-        pass
+    await async_wait_for_condition_async_predicate(
+        check_job_succeeded, job_manager=job_manager, job_id=job_id
+    )
 
     # Verify logs saved to file
     supervisor_log_path = os.path.join(
@@ -467,9 +468,9 @@ async def test_job_supervisor_logs_saved(job_manager, capsys):  # noqa: F811
         logs = f.read()
         assert log_message in logs
 
-    # Verify logs in stderr
-    captured = capsys.readouterr()
-    assert log_message in captured.err
+    # Verify logs in stderr. Run in wait_for_condition to ensure
+    # logs are flushed
+    wait_for_condition(lambda: log_message in capsys.readouterr().err)
 
 
 @pytest.mark.asyncio
