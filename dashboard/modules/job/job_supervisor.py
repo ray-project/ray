@@ -321,6 +321,7 @@ class JobSupervisor:
 class JobExecutionResult:
     driver_exit_code: int
     message: Optional[str] = None
+    stopped: bool = False
 
 
 class JobRunner:
@@ -560,6 +561,7 @@ class JobRunner:
         resources_specified: bool = False,
     ) -> JobExecutionResult:
         """
+        TODO update
         Stop and start both happen asynchronously, coordinated by asyncio event
         and coroutine, respectively.
 
@@ -588,9 +590,12 @@ class JobRunner:
 
             log_path = self._log_client.get_log_file_path(self._job_id)
 
+            # Execute job's entrypoint in the subprocess
             child_process = self._exec_entrypoint(log_path)
-            child_pid = child_process.pid
 
+            # Block until either of the following occurs:
+            #   - Process executing job's entrypoint completes (exits, returning specific exit-code)
+            #   - Stop API is invoked to interrupt job's entrypoint process
             polling_task = create_task(self._polling(child_process))
             stop_event_awaiting_task = create_task(self._stop_event.wait())
 
@@ -600,49 +605,16 @@ class JobRunner:
             )
 
             if self._stop_event.is_set():
-                polling_task.cancel()
-                if sys.platform == "win32" and self._win32_job_object:
-                    win32job.TerminateJobObject(self._win32_job_object, -1)
-                elif sys.platform != "win32":
-                    stop_signal = os.environ.get("RAY_JOB_STOP_SIGNAL", "SIGTERM")
-                    if stop_signal not in self.VALID_STOP_SIGNALS:
-                        self._logger.warning(
-                            f"{stop_signal} not a valid stop signal. Terminating "
-                            "job with SIGTERM."
-                        )
-                        stop_signal = "SIGTERM"
+                # Cancel task polling the subprocess (unless already finished)
+                if not polling_task.done():
+                    polling_task.cancel()
+                # Stop the subprocess running job's entrypoint
+                await self.stop_process(child_process.pid)
 
-                    job_process = psutil.Process(child_pid)
-                    proc_to_kill = [job_process] + job_process.children(recursive=True)
-
-                    # Send stop signal and wait for job to terminate gracefully,
-                    # otherwise SIGKILL job forcefully after timeout.
-                    self._kill_processes(proc_to_kill, getattr(signal, stop_signal))
-
-                    stop_job_wait_time = int(
-                        os.environ.get(
-                            "RAY_JOB_STOP_WAIT_TIME_S",
-                            self.DEFAULT_RAY_JOB_STOP_WAIT_TIME_S,
-                        )
-                    )
-
-                    try:
-                        poll_job_stop_task = create_task(self._poll_all(proc_to_kill))
-                        await asyncio.wait_for(poll_job_stop_task, stop_job_wait_time)
-
-                        self._logger.info(
-                            f"Job {self._job_id} has been terminated gracefully "
-                            f"with {stop_signal}."
-                        )
-
-                    except asyncio.TimeoutError:
-                        self._logger.warning(
-                            f"Attempt to gracefully terminate job {self._job_id} "
-                            f"through {stop_signal} has timed out after "
-                            f"{stop_job_wait_time} seconds. Job is now being "
-                            "force-killed with SIGKILL."
-                        )
-                        self._kill_processes(proc_to_kill, signal.SIGKILL)
+                return JobExecutionResult(
+                    driver_exit_code=-1,
+                    stopped=True,
+                )
             else:
                 # Child process finished execution and no stop event is set
                 # at the same time
@@ -652,7 +624,7 @@ class JobRunner:
 
                 return_code = child_process_task.result()
 
-                self._logger.info(
+                logger.info(
                     f"Job {self._job_id} entrypoint command "
                     f"exited with code {return_code}"
                 )
@@ -676,7 +648,7 @@ class JobRunner:
         except Exception:
             exception_message = traceback.format_exc()
             self._logger.error(
-                f"Got unexpected exception while trying to execute driver for job {self._job_id} "
+                f"Got unexpected exception while executing driver for job {self._job_id} "
                 f"command. {exception_message}"
             )
 
@@ -687,3 +659,47 @@ class JobRunner:
         finally:
             # clean up actor after tasks are finished
             ray.actor.exit_actor()
+
+    async def stop_process(self, child_pid: int):
+        if sys.platform == "win32" and self._win32_job_object:
+            win32job.TerminateJobObject(self._win32_job_object, -1)
+        elif sys.platform != "win32":
+            stop_signal = os.environ.get("RAY_JOB_STOP_SIGNAL", "SIGTERM")
+            if stop_signal not in self.VALID_STOP_SIGNALS:
+                self._logger.warning(
+                    f"{stop_signal} not a valid stop signal. Terminating "
+                    "job with SIGTERM."
+                )
+                stop_signal = "SIGTERM"
+
+            job_process = psutil.Process(child_pid)
+            proc_to_kill = [job_process] + job_process.children(recursive=True)
+
+            # Send stop signal and wait for job to terminate gracefully,
+            # otherwise SIGKILL job forcefully after timeout.
+            self._kill_processes(proc_to_kill, getattr(signal, stop_signal))
+
+            stop_job_wait_time = int(
+                os.environ.get(
+                    "RAY_JOB_STOP_WAIT_TIME_S",
+                    self.DEFAULT_RAY_JOB_STOP_WAIT_TIME_S,
+                )
+            )
+
+            try:
+                poll_job_stop_task = create_task(self._poll_all(proc_to_kill))
+                await asyncio.wait_for(poll_job_stop_task, stop_job_wait_time)
+
+                self._logger.info(
+                    f"Job {self._job_id} has been terminated gracefully "
+                    f"with {stop_signal}."
+                )
+
+            except asyncio.TimeoutError:
+                self._logger.warning(
+                    f"Attempt to gracefully terminate job {self._job_id} "
+                    f"through {stop_signal} has timed out after "
+                    f"{stop_job_wait_time} seconds. Job is now being "
+                    "force-killed with SIGKILL."
+                )
+                self._kill_processes(proc_to_kill, signal.SIGKILL)
