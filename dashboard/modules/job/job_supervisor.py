@@ -147,21 +147,26 @@ class JobSupervisor:
             await _start_signal_actor.wait.remote()
 
         async def execute():
-            # Mark the job as running
-            await self._job_info_client.put_status(
-                self._job_id,
-                JobStatus.RUNNING,
-                jobinfo_replace_kwargs={
-                    "driver_agent_http_address": driver_agent_http_address,
-                    "driver_node_id": driver_node_id,
-                },
-            )
-
-            message = None
-            status = None
-            exit_code = -1
+            message: Optional[str] = None
+            status: JobStatus = JobStatus.FAILED
+            exit_code: Optional[int] = None
 
             try:
+                driver_node_info: JobDriverNodeInfo = await runner.get_node_info.remote()
+                driver_agent_http_address = (
+                    f"http://{driver_node_info.node_ip}:{driver_node_info.dashboard_agent_port}"
+                )
+
+                # Mark the job as running
+                await self._job_info_client.put_status(
+                    self._job_id,
+                    JobStatus.RUNNING,
+                    jobinfo_replace_kwargs={
+                        "driver_agent_http_address": driver_agent_http_address,
+                        "driver_node_id": driver_node_info.node_id,
+                    },
+                )
+
                 result: JobExecutionResult = await runner.execute.remote(
                     _start_signal_actor=_start_signal_actor,
                     resources_specified=resources_specified,
@@ -179,12 +184,12 @@ class JobSupervisor:
             except Exception:
                 message = traceback.format_exc()
                 status = JobStatus.FAILED
-                exit_code = -1
+                exit_code = None
 
                 logger.error(
-                    f"Got unexpected exception while executing Ray job {self._job_id} "
-                    f"command: {message}"
+                    f"Got unexpected exception while executing Ray job {self._job_id}: {message}"
                 )
+
             finally:
                 await self._job_info_client.put_status(
                     self._job_id,
@@ -318,6 +323,13 @@ class JobSupervisor:
 
 
 @dataclass
+class JobDriverNodeInfo:
+    node_id: str
+    node_ip: str
+    dashboard_agent_port: int
+
+
+@dataclass
 class JobExecutionResult:
     driver_exit_code: int
     message: Optional[str] = None
@@ -398,6 +410,13 @@ class JobRunner:
         env_vars.pop(ray_constants.RAY_WORKER_NICENESS)
         curr_runtime_env["env_vars"] = env_vars
         return curr_runtime_env
+
+    async def get_node_info(self):
+        return JobDriverNodeInfo(
+            node_id=ray.worker.global_worker.current_node_id.hex(),
+            node_ip=ray.worker.global_worker.node.node_ip_address,
+            dashboard_agent_port=ray.worker.global_worker.node.dashboard_agent_listen_port,
+        )
 
     async def stop(self):
         """Set step_event and let run() handle the rest in its asyncio.wait()."""
@@ -570,12 +589,6 @@ class JobRunner:
             variables.
         3) Handle concurrent events of driver execution and
         """
-        driver_agent_http_address = (
-            "http://"
-            f"{ray.worker.global_worker.node.node_ip_address}:"
-            f"{ray.worker.global_worker.node.dashboard_agent_listen_port}"
-        )
-        driver_node_id = ray.worker.global_worker.current_node_id.hex()
 
         try:
             # Configure environment variables for the child process. These
