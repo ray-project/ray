@@ -675,7 +675,9 @@ class JobRunner:
                 message=exception_message,
             )
         finally:
-            # clean up actor after tasks are finished
+            # Job's supervisor actor lifespan is bound to that of the job's driver,
+            # and therefore upon completing its execution JobSupervisor (along with JobRunner)
+            # actors could be subsequently destroyed
             ray.actor.exit_actor()
 
     async def stop_process(self, child_pid: int):
