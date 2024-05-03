@@ -20,6 +20,8 @@ class _NcclGroup:
     ):
         self._rank: Optional[int] = rank
         if rank is not None:
+            assert ray.get_gpu_ids(), "NCCL actor has no GPUs assigned"
+
             from cupy.cuda import nccl
 
             self._comm = nccl.NcclCommunicator(world_size, comm_id, rank)
@@ -43,7 +45,8 @@ class _NcclGroup:
     def send(self, value: torch.Tensor, peer_rank: int):
         if self._closed:
             raise IOError("NCCL group has been destroyed.")
-        # TODO(swang): Handle aysnchronous NCCL errors.
+        # TODO(swang): Handle send/recv async NCCL errors such as network
+        # failures.
         self._comm.send(
             nccl_util.get_tensor_ptr(value),
             value.numel(),
@@ -63,10 +66,19 @@ class _NcclGroup:
             self._cuda_stream,
         )
 
+        # Buffer values are undefined if NCCL ops are aborted. Therefore, we
+        # need to synchronize here and check that the channel is still open to
+        # ensure that the receive buffer is valid.
+        # TODO(swang): Avoid CUDA synchronization.
+        torch.cuda.synchronize()
+        if self._closed:
+            raise IOError("NCCL group has been destroyed.")
+
     def destroy(self):
         if self._closed:
             return
 
         self._closed = True
+        # Abort *after* setting the _closed flag.
         self._comm.abort()
         self._comm.destroy()

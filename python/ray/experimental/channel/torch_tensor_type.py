@@ -1,54 +1,58 @@
-from typing import (
-    TYPE_CHECKING,
-    Tuple,
-    Any,
-    Optional,
-)
+from typing import TYPE_CHECKING, Any, Optional, Tuple
 
-import ray.util.serialization
+import ray
+from ray.experimental.channel import ChannelOutputType
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
-    import torch
     import numpy as np
-
-
-class DAGNodeOutputType:
-    pass
-
-
-def _do_register_custom_dag_serializers(self: Any) -> None:
-    # Helper method to run on the DAG driver and actors to register custom
-    # serializers.
-    from ray.air._internal import torch_utils
-
-    default_device = torch_utils.get_devices()[0]
-    torch_tensor_serializer = _TorchTensorSerializer(default_device)
-
-    CUSTOM_SERIALIZERS = (
-        (
-            _TorchTensorWrapper,
-            torch_tensor_serializer.serialize_to_numpy,
-            torch_tensor_serializer.deserialize_from_numpy,
-        ),
-    )
-
-    for cls, serializer, deserializer in CUSTOM_SERIALIZERS:
-        ray.util.serialization.register_serializer(
-            cls, serializer=serializer, deserializer=deserializer
-        )
-
-    self._torch_tensor_serializer = torch_tensor_serializer
+    import torch
 
 
 @PublicAPI(stability="alpha")
-class TorchTensorType(DAGNodeOutputType):
+class TorchTensorType(ChannelOutputType):
     def __init__(
         self, shape: Tuple[int], dtype: "torch.dtype", transport: Optional[str] = None
     ):
         self.shape = shape
         self.dtype = dtype
         self.transport = transport
+
+    @staticmethod
+    def register_custom_serializer(outer: Any) -> None:
+        # Helper method to run on the DAG driver and actors to register custom
+        # serializers.
+        from ray.air._internal import torch_utils
+
+        default_device = torch_utils.get_devices()[0]
+        torch_tensor_serializer = _TorchTensorSerializer(default_device)
+
+        CUSTOM_SERIALIZERS = (
+            (
+                _TorchTensorWrapper,
+                torch_tensor_serializer.serialize_to_numpy,
+                torch_tensor_serializer.deserialize_from_numpy,
+            ),
+        )
+
+        for cls, serializer, deserializer in CUSTOM_SERIALIZERS:
+            ray.util.serialization.register_serializer(
+                cls, serializer=serializer, deserializer=deserializer
+            )
+
+        outer._torch_tensor_serializer = torch_tensor_serializer
+
+    def get_channel_class(self) -> type:
+        if self.transport == "nccl":
+            from ray.experimental.channel.torch_tensor_nccl_channel import (
+                TorchTensorNcclChannel,
+            )
+
+            return TorchTensorNcclChannel
+        else:
+            from ray.experimental.channel.shared_memory_channel import Channel
+
+            return Channel
 
 
 @DeveloperAPI
@@ -103,7 +107,6 @@ class _TorchTensorSerializer:
         import torch
 
         # TODO(swang): Support local P2P transfers if available.
-
         # If there is a GPU assigned to this worker, move it there.
         if self.device.type == "cuda":
             # Use zero-copy from_numpy() because we are going to copy to GPU

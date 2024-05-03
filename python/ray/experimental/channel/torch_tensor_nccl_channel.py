@@ -1,13 +1,18 @@
+import logging
 from typing import TYPE_CHECKING, List, Optional
 
 import ray
 import ray.util.serialization
-from ray.experimental.channel import Channel, ChannelContext
+from ray.experimental.channel import ChannelContext
+from ray.experimental.channel.common import ChannelInterface
 from ray.experimental.channel.nccl_group import _NcclGroup
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
-    from ray.dag.experimental.types import TorchTensorType, _TorchTensorWrapper
+    from ray.experimental.channel.torch_tensor_type import (
+        TorchTensorType,
+        _TorchTensorWrapper,
+    )
 
 try:
     import torch
@@ -15,8 +20,14 @@ except ImportError:
     torch = None
 
 
+# Logger for this module. It should be configured at the entry point
+# into the program using Ray. Ray provides a default configuration at
+# entry/init points.
+logger = logging.getLogger(__name__)
+
+
 @DeveloperAPI
-class TorchTensorNcclChannel(Channel):
+class TorchTensorNcclChannel(ChannelInterface):
     def __init__(
         self,
         writer: ray.actor.ActorHandle,
@@ -118,12 +129,9 @@ class TorchTensorNcclChannel(Channel):
     def close(self) -> None:
         self._nccl_group.destroy()
 
-        # TODO(swang): Set flag for downstream kernels that have already been
-        # launched to the GPU to abort.
-
 
 def _do_init_nccl_group(self, world_size, comm_id, rank, actor_ids_to_ranks):
-    assert ray.get_gpu_ids()
+    # assert ray.get_gpu_ids()
 
     ctx = ChannelContext.get_current()
     ctx.nccl_group = _NcclGroup(
@@ -171,19 +179,39 @@ def _init_nccl_group(
     comm_id = nccl.get_unique_id()
 
     # TODO(swang): Handle timeout errors.
+    logger.info(f"Creating NCCL group on actors->ranks: {actor_handles_to_ranks}")
     world_size = len(actors)
+    init_tasks = [
+        actor.__ray_call__.remote(
+            _do_init_nccl_group,
+            world_size,
+            comm_id,
+            rank,
+            actor_ids_to_ranks,
+        )
+        for actor, rank in actor_handles_to_ranks.items()
+    ]
+    done = False
+    try:
+        ray.get(init_tasks, timeout=30)
+        done = True
+    except ray.exceptions.GetTimeoutError:
+        logger.warning(
+            "NCCL group creation not done after 30s. NCCL group creation may be hung."
+        )
+
+    if not done:
+        ray.get(init_tasks)
+
+    logger.info("NCCL group created.")
+
     ray.get(
         [
             actor.__ray_call__.remote(
-                _do_init_nccl_group,
-                world_size,
-                comm_id,
-                rank,
-                actor_ids_to_ranks,
+                lambda self: print(ChannelContext.get_current().nccl_group)
             )
             for actor, rank in actor_handles_to_ranks.items()
-        ],
-        timeout=30,
+        ]
     )
 
     ctx.nccl_group = _NcclGroup(
