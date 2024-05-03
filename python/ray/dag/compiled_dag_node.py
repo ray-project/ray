@@ -295,7 +295,7 @@ class CompiledDAG:
 
         # ObjectRef for each worker's task. The task is an infinite loop that
         # repeatedly executes the method specified in the DAG.
-        self.worker_task_refs: List["ray.ObjectRef"] = []
+        self.worker_task_refs: Dict["ray.actor.ActorHandle", "ray.ObjectRef"] = {}
         # Set of actors present in the DAG.
         self.actor_refs = set()
 
@@ -525,14 +525,14 @@ class CompiledDAG:
 
             # Assign the task with the correct input and output buffers.
             worker_fn = task.dag_node._get_remote_method("__ray_call__")
-            self.worker_task_refs.append(
-                worker_fn.options(concurrency_group="_ray_system").remote(
-                    do_exec_compiled_task,
-                    resolved_args,
-                    task.dag_node.get_method_name(),
-                    output_wrapper_fn=task.output_wrapper_fn,
-                    has_type_hints=bool(self._type_hints),
-                )
+            self.worker_task_refs[
+                task.dag_node._get_actor_handle()
+            ] = worker_fn.options(concurrency_group="_ray_system").remote(
+                do_exec_compiled_task,
+                resolved_args,
+                task.dag_node.get_method_name(),
+                output_wrapper_fn=task.output_wrapper_fn,
+                has_type_hints=bool(self._type_hints),
             )
 
         # Wrapper function for inputs provided to dag.execute().
@@ -586,9 +586,37 @@ class CompiledDAG:
                 super().__init__(daemon=True)
                 self.in_teardown = False
 
-            def teardown(self):
+            def wait_teardown(self):
+                for actor, ref in outer.worker_task_refs.items():
+                    timeout = False
+                    try:
+                        ray.get(ref, timeout=10)
+                    except ray.exceptions.GetTimeoutError:
+                        logger.warn(
+                            f"Compiled DAG actor {actor} is still running 10s "
+                            "after teardown(). Teardown may hang."
+                        )
+                        timeout = True
+                    except Exception:
+                        # We just want to check that the task has finished so
+                        # we don't care if the actor task ended in an
+                        # exception.
+                        pass
+
+                    if not timeout:
+                        continue
+
+                    try:
+                        ray.get(ref)
+                    except Exception:
+                        pass
+
+            def teardown(self, wait: bool):
                 if self.in_teardown:
+                    if wait:
+                        self.wait_teardown()
                     return
+
                 logger.info("Tearing down compiled DAG")
 
                 outer._dag_submitter.close()
@@ -604,24 +632,20 @@ class CompiledDAG:
                     except Exception:
                         logger.exception("Error cancelling worker task")
                         pass
-                logger.info("Waiting for worker tasks to exit")
-                for ref in outer.worker_task_refs:
-                    try:
-                        ray.get(ref)
-                    except Exception:
-                        pass
-                logger.info("Teardown complete")
+
+                if wait:
+                    logger.info("Waiting for worker tasks to exit")
+                    self.wait_teardown()
+                    logger.info("Teardown complete")
 
             def run(self):
                 try:
-                    ray.get(outer.worker_task_refs)
+                    ray.get(list(outer.worker_task_refs.values()))
                 except Exception as e:
                     logger.debug(f"Handling exception from worker tasks: {e}")
                     if self.in_teardown:
                         return
-                    for output_channel in outer.dag_output_channels:
-                        output_channel.close()
-                    self.teardown()
+                    self.teardown(wait=True)
 
         monitor = Monitor()
         monitor.start()
@@ -701,13 +725,21 @@ class CompiledDAG:
         return AwaitableDAGOutput(fut, self._dag_output_fetcher)
 
     def teardown(self):
-        """Teardown and cancel all worker tasks for this DAG."""
+        """Teardown and cancel all actor tasks for this DAG. After this
+        function returns, the actors should be available to execute new tasks
+        or compile a new DAG."""
         monitor = getattr(self, "_monitor", None)
         if monitor is not None:
-            monitor.teardown()
+            monitor.teardown(wait=True)
 
     def __del__(self):
-        self.teardown()
+        monitor = getattr(self, "_monitor", None)
+        if monitor is not None:
+            # Teardown asynchronously.
+            # NOTE(swang): Somehow, this can get called after the CoreWorker
+            # has already been destructed, so it is not safe to block in
+            # ray.get.
+            monitor.teardown(wait=False)
 
 
 @DeveloperAPI
