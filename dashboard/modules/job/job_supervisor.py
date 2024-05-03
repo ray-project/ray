@@ -36,7 +36,7 @@ from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.job_submission import JobStatus
 from ray.runtime_env import RuntimeEnvConfig
 from ray.util.scheduling_strategies import (
-    SchedulingStrategyT,
+    SchedulingStrategyT, NodeAffinitySchedulingStrategy,
 )
 
 # asyncio python version compatibility
@@ -246,9 +246,8 @@ class JobSupervisor:
 
         return runner, resources_specified
 
-    async def _get_scheduling_strategy(
-        self, resources_specified: bool
-    ) -> SchedulingStrategyT:
+    @staticmethod
+    def _get_scheduling_strategy(resources_specified: bool) -> SchedulingStrategyT:
         """Get the scheduling strategy for the job.
 
         If resources_specified is true, or if the environment variable is set to
@@ -275,9 +274,7 @@ class JobSupervisor:
 
         # If the user did not specify any resources or set the driver on worker nodes
         # env var, we will run the driver on the head node.
-        head_node_scheduling_strategy = await self._get_head_node_scheduling_strategy()
-
-        return head_node_scheduling_strategy
+        return NodeAffinitySchedulingStrategy(node_id=ray.worker.global_worker.current_node_id.hex(), soft=True)
 
     def _get_supervisor_runtime_env(
         self,
