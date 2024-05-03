@@ -382,9 +382,9 @@ def _get_local_ray_node_slots(
         if num_gpus_per_node > num_gpus:
             raise ValueError(
                 "gpu number per Ray worker node should be <= spark worker node "
-                "GPU number, you set cpu number per Ray worker node to "
-                f"{num_cpus_per_node} but spark worker node CPU core number "
-                f"is {num_cpus}."
+                "GPU number, you set GPU devices number per Ray worker node to "
+                f"{num_gpus_per_node} but spark worker node GPU devices number "
+                f"is {num_gpus}."
             )
         if num_ray_node_slots > num_gpus // num_gpus_per_node:
             num_ray_node_slots = num_gpus // num_gpus_per_node
