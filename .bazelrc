@@ -79,6 +79,9 @@ build:windows --color=yes
 build:clang-cl --per_file_copt="-\\.(asm|S)$@-fansi-escape-codes"
 build:clang-cl --per_file_copt="-\\.(asm|S)$@-fcolor-diagnostics"
 
+build:clang-cl --copt=-flto
+build:clang-cl --linkopt=-flto
+
 build:manylinux2010 --copt="-Wno-unused-result"
 build:manylinux2010 --linkopt="-lrt"
 

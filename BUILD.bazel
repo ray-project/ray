@@ -465,6 +465,13 @@ ray_cc_binary(
         "//src/ray/util",
         "@com_github_gflags_gflags//:gflags",
     ],
+    copts = select({
+        "//:clang-cl": [
+            "-fwhole-program-vtables",
+        ],
+        "//conditions:default": [
+        ],
+    })
 )
 
 ray_cc_library(
@@ -531,6 +538,13 @@ ray_cc_binary(
         ":stats_lib",
         "@com_github_gflags_gflags//:gflags",
     ],
+    copts = select({
+    "//:clang-cl": [
+        "-fwhole-program-vtables",
+    ],
+    "//conditions:default": [
+    ],
+})
 )
 
 # Ray native pubsub module.
