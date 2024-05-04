@@ -7,6 +7,7 @@ If you don't find an answer to your question here, please don't hesitate to conn
 
 # Contents
 
+- [Use ARM-based docker images for Apple M1/M2 Macbooks](#docker-image-for-apple-macbooks) 
 - [Upgrade KubeRay](#upgrade-kuberay)
 - [Worker init container](#worker-init-container)
 - [Cluster domain](#cluster-domain)
@@ -14,6 +15,13 @@ If you don't find an answer to your question here, please don't hesitate to conn
 - [Autoscaler](#autoscaler)
 - [Other questions](#other-questions)
 
+(docker-image-for-apple-macbooks)=
+## Use ARM-based docker images for Apple M1/M2 Macbooks
+Currently Ray builds different images for different platforms. Until Ray moves to building multi-architecture images, [tracked by this Github issue](https://github.com/ray-project/ray/issues/39364), the solution here is to use platform specific docker images in the head and worker group specs of the [RayCluster config](https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/config.html#image). 
+
+For e.g. just using `image: rayproject/ray:2.10.0` led to issues such as head service (`rayservice-sample-head-svc`) and Ray Serve service (`rayservice-sample-serve-svc`) for the RayService custom resource not launching in the head node and Serve applications not getting ready. The solution is to use `image: rayproject/ray:2.10.0-aarch64` instead for Apple M1/M2 Macbooks. [Link to issue details and discussion](https://ray-distributed.slack.com/archives/C02GFQ82JPM/p1712267296145549).
+
+(upgrade-kuberay)=
 ## Upgrade KubeRay
 
 If you have issues upgrading KubeRay, refer to the [upgrade guide](#kuberay-upgrade-guide).

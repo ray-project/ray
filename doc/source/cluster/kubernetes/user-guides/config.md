@@ -171,6 +171,9 @@ the same Ray version as the CR's `spec.rayVersion`.
 If you are using a nightly or development Ray image, it is fine to specify Ray's
 latest release version under `spec.rayVersion`.
 
+For Apple M1/M2 Macbooks, please refer to [this troubleshooting doc](docker-image-for-apple-macbooks) on specifying the 
+right image.
+
 Code dependencies for a given Ray task or actor must be installed on each Ray node that
 might run the task or actor.
 To achieve this, it is simplest to use the same Ray image for the Ray head and all worker groups.
