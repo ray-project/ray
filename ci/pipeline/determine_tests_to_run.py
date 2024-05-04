@@ -327,6 +327,7 @@ if __name__ == "__main__":
                 changed_file == ".buildkite/macos.rayci.yml"
                 or changed_file == ".buildkite/pipeline.macos.yml"
                 or changed_file == "ci/ray_ci/macos/macos_ci.sh"
+                or changed_file == "ci/ray_ci/macos/macos_ci_build.sh"
             ):
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif (
