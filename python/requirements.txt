@@ -43,6 +43,7 @@ virtualenv!=20.21.1,>=20.0.24
 opentelemetry-api
 opencensus
 aiohttp_cors
+aiodebug
 dm_tree
 uvicorn
 scikit-image==0.21.0
