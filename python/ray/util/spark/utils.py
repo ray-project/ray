@@ -357,10 +357,14 @@ def _get_num_physical_gpus():
             text=True,
             capture_output=True,
         )
-    except Exception as e:
-        raise RuntimeError(
+    except Exception:
+        _logger.warning(
             "Running command `nvidia-smi` for inferring GPU devices list failed."
-        ) from e
+        )
+        _logger.debug(
+            "'nvidia-smi --query-gpu=name --format=csv,noheader' command execution failed.",
+            exc_info=True,
+        )
     return len(completed_proc.stdout.strip().split("\n"))
 
 
