@@ -250,6 +250,7 @@ class Dataset:
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+        scheduling_strategy_fn: Optional[Callable[[], Any]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Apply the given function to each row of this dataset.
@@ -351,6 +352,7 @@ class Dataset:
             fn_constructor_args=fn_constructor_args,
             fn_constructor_kwargs=fn_constructor_kwargs,
             compute=compute,
+            scheduling_strategy_fn=scheduling_strategy_fn,
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(map_op)
@@ -383,6 +385,7 @@ class Dataset:
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+        scheduling_strategy_fn: Optional[Callable[[], Any]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Apply the given function to batches of data.
@@ -589,6 +592,7 @@ class Dataset:
             fn_constructor_args=fn_constructor_args,
             fn_constructor_kwargs=fn_constructor_kwargs,
             compute=compute,
+            scheduling_strategy_fn=scheduling_strategy_fn,
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(map_batches_op)
@@ -785,6 +789,7 @@ class Dataset:
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+        scheduling_strategy_fn: Optional[Callable[[], Any]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Apply the given function to each row and then flatten results.
@@ -879,6 +884,7 @@ class Dataset:
             fn_constructor_args=fn_constructor_args,
             fn_constructor_kwargs=fn_constructor_kwargs,
             compute=compute,
+            scheduling_strategy_fn=scheduling_strategy_fn,
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(op)
@@ -890,6 +896,7 @@ class Dataset:
         *,
         compute: Union[str, ComputeStrategy] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+        scheduling_strategy_fn: Optional[Callable[[], Any]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Filter out rows that don't satisfy the given predicate.
@@ -935,6 +942,7 @@ class Dataset:
             input_op=self._logical_plan.dag,
             fn=fn,
             compute=compute,
+            scheduling_strategy_fn=scheduling_strategy_fn,
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(op)

@@ -1,6 +1,6 @@
 import inspect
 import logging
-from typing import Any, Dict, Iterable, Optional, Union
+from typing import Any, Callable, Dict, Iterable, Optional, Union
 
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.logical.interfaces import LogicalOperator
@@ -57,6 +57,7 @@ class AbstractUDFMap(AbstractMap):
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         min_rows_per_bundled_input: Optional[int] = None,
         compute: Optional[Union[str, ComputeStrategy]] = None,
+        scheduling_strategy_fn: Optional[Callable[[], Any]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         """
@@ -91,6 +92,7 @@ class AbstractUDFMap(AbstractMap):
         self._fn_constructor_args = fn_constructor_args
         self._fn_constructor_kwargs = fn_constructor_kwargs
         self._compute = compute or TaskPoolStrategy()
+        self._scheduling_strategy_fn = scheduling_strategy_fn
 
     def _get_operator_name(self, op_name: str, fn: UserDefinedFunction):
         """Gets the Operator name including the map `fn` UDF name."""
@@ -135,6 +137,7 @@ class MapBatches(AbstractUDFMap):
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         min_rows_per_bundled_input: Optional[int] = None,
         compute: Optional[Union[str, ComputeStrategy]] = None,
+        scheduling_strategy_fn: Optional[Callable[[], Any]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
@@ -147,6 +150,7 @@ class MapBatches(AbstractUDFMap):
             fn_constructor_kwargs=fn_constructor_kwargs,
             min_rows_per_bundled_input=min_rows_per_bundled_input,
             compute=compute,
+            scheduling_strategy_fn=scheduling_strategy_fn,
             ray_remote_args=ray_remote_args,
         )
         self._batch_size = batch_size
@@ -170,6 +174,7 @@ class MapRows(AbstractUDFMap):
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         compute: Optional[Union[str, ComputeStrategy]] = None,
+        scheduling_strategy_fn: Optional[Callable[[], Any]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
@@ -181,6 +186,7 @@ class MapRows(AbstractUDFMap):
             fn_constructor_args=fn_constructor_args,
             fn_constructor_kwargs=fn_constructor_kwargs,
             compute=compute,
+            scheduling_strategy_fn=scheduling_strategy_fn,
             ray_remote_args=ray_remote_args,
         )
 
@@ -197,6 +203,7 @@ class Filter(AbstractUDFMap):
         input_op: LogicalOperator,
         fn: UserDefinedFunction,
         compute: Optional[Union[str, ComputeStrategy]] = None,
+        scheduling_strategy_fn: Optional[Callable[[], Any]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
@@ -204,6 +211,7 @@ class Filter(AbstractUDFMap):
             input_op,
             fn,
             compute=compute,
+            scheduling_strategy_fn=scheduling_strategy_fn,
             ray_remote_args=ray_remote_args,
         )
 
@@ -224,6 +232,7 @@ class FlatMap(AbstractUDFMap):
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         compute: Optional[Union[str, ComputeStrategy]] = None,
+        scheduling_strategy_fn: Optional[Callable[[], Any]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
@@ -235,6 +244,7 @@ class FlatMap(AbstractUDFMap):
             fn_constructor_args=fn_constructor_args,
             fn_constructor_kwargs=fn_constructor_kwargs,
             compute=compute,
+            scheduling_strategy_fn=scheduling_strategy_fn,
             ray_remote_args=ray_remote_args,
         )
 

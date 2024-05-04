@@ -1,7 +1,7 @@
 import collections
 import logging
 from dataclasses import dataclass
-from typing import Any, Dict, Iterator, List, Optional, Union
+from typing import Any, Callable, Dict, Iterator, List, Optional, Union
 
 import ray
 from ray.data._internal.compute import ActorPoolStrategy
@@ -54,6 +54,7 @@ class ActorPoolMapOperator(MapOperator):
         autoscaling_policy: "AutoscalingPolicy",
         name: str = "ActorPoolMap",
         min_rows_per_bundle: Optional[int] = None,
+        scheduling_strategy_fn: Optional[Callable[[], Any]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         """Create an ActorPoolMapOperator instance.
@@ -96,6 +97,7 @@ class ActorPoolMapOperator(MapOperator):
                 2 * data_context._max_num_blocks_in_streaming_gen_buffer
             )
         self._min_rows_per_bundle = min_rows_per_bundle
+        self._scheduling_strategy_fn = scheduling_strategy_fn
 
         # Create autoscaling policy from compute strategy.
         self._autoscaling_policy = autoscaling_policy
@@ -116,8 +118,13 @@ class ActorPoolMapOperator(MapOperator):
         super().start(options)
 
         # Create the actor workers and add them to the pool.
-        self._cls = ray.remote(**self._ray_remote_args)(_MapWorker)
         for _ in range(self._autoscaling_policy.min_workers):
+            remote_args = self._ray_remote_args
+            if self._scheduling_strategy_fn:
+                # For each new actor, get new scheduling strategy by
+                # calling the generation fn.
+                remote_args["scheduling_strategy"] = self._scheduling_strategy_fn()
+            self._cls = ray.remote(**remote_args)(_MapWorker)
             self._start_actor()
         refs = self._actor_pool.get_pending_actor_refs()
 

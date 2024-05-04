@@ -110,6 +110,7 @@ class MapOperator(OneToOneOperator, ABC):
         # TODO(ekl): slim down ComputeStrategy to only specify the compute
         # config and not contain implementation code.
         compute_strategy: Optional[ComputeStrategy] = None,
+        scheduling_strategy_fn: Optional[Callable[[], Any]] = None,
         min_rows_per_bundle: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ) -> "MapOperator":
@@ -170,6 +171,7 @@ class MapOperator(OneToOneOperator, ABC):
                 name=name,
                 target_max_block_size=target_max_block_size,
                 min_rows_per_bundle=min_rows_per_bundle,
+                scheduling_strategy_fn=scheduling_strategy_fn,
                 ray_remote_args=ray_remote_args,
             )
         else:

@@ -236,6 +236,39 @@ def test_avoid_placement_group_capture(shutdown_only):
     )
 
 
+def test_scheduling_strategy_fn(shutdown_only):
+    ray.init()
+
+    global_idx = 1
+
+    def _generate_scheduling_strategy():
+        pg = ray.util.placement_group([{"CPU": global_idx}])
+        return PlacementGroupSchedulingStrategy(placement_group=pg)
+
+    class ActorClass:
+        def __init__(self):
+            # Each time a new actor is created with ActorClass,
+            # global_idx is incremented, and the number of CPUs in its
+            # placement group should match the saved self._idx value.
+            nonlocal global_idx
+            self._idx = global_idx
+            global_idx += 1
+
+        def __call__(self, batch):
+            pg = ray.util.get_current_placement_group()
+            assert pg.bundle_specs == [{"CPU": self._idx}]
+            return batch
+
+    original_input = list(range(20))
+    ds = ray.data.from_items(original_input)
+    ds = ds.map_batches(
+        ActorClass,
+        concurrency=4,
+        scheduling_strategy_fn=_generate_scheduling_strategy,
+    )
+    assert sorted(extract_values("item", ds.take_all())) == sorted(original_input)
+
+
 def test_dataset_lineage_serialization(shutdown_only):
     ray.init()
     ds = ray.data.range(10)
