@@ -363,7 +363,8 @@ def _get_num_physical_gpus():
             "Running command `nvidia-smi` for inferring GPU devices list failed."
         )
         _logger.debug(
-            "'nvidia-smi --query-gpu=name --format=csv,noheader' command execution failed.",
+            "'nvidia-smi --query-gpu=name --format=csv,noheader' command execution "
+            "failed.",
             exc_info=True,
         )
         return 0
