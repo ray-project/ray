@@ -33,16 +33,22 @@ from ray.rllib.utils.annotations import (
     override,
     OverrideToImplementCustomLogic,
 )
-from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
     deprecation_warning,
 )
 from ray.rllib.utils.metrics import (
+    ALL_MODULES,
+    ENV_RUNNER_RESULTS,
     NUM_AGENT_STEPS_SAMPLED,
+    NUM_AGENT_STEPS_SAMPLED_LIFETIME,
     NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_SAMPLED,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_TRAINED,
+    NUM_EPISODES,
+    NUM_EPISODES_LIFETIME,
+    NUM_MODULE_STEPS_SAMPLED_LIFETIME,
     NUM_MODULE_STEPS_TRAINED,
     NUM_SYNCH_WORKER_WEIGHTS,
     NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS,
@@ -609,7 +615,7 @@ class Impala(Algorithm):
             self._timeout_s_aggregator_manager = (
                 self.config.timeout_s_aggregator_manager
             )
-        elif self.config.uses_new_env_runners:
+        elif self.config.enable_rl_module_and_learner:
             self._aggregator_actor_manager = None
         else:
             # Create our local mixin buffer if the num of aggregation workers is 0.
@@ -638,7 +644,7 @@ class Impala(Algorithm):
     @override(Algorithm)
     def training_step(self) -> ResultDict:
         # Old- and hybrid API stacks.
-        if not self.config.uses_new_env_runners:
+        if not self.config.enable_rl_module_and_learner:
             return self._training_step_old_and_hybrid_api_stacks()
 
         local_worker = self.workers.local_worker()
@@ -651,22 +657,35 @@ class Impala(Algorithm):
             episode_refs,
             env_runner_states,
             env_runner_metrics,
-        ) = self._training_step_sample_and_get_states()
-        # Increase our sampling counters.
-        for rollout_metric in env_runner_metrics:
-            self._counters[NUM_ENV_STEPS_SAMPLED] += rollout_metric.episode_length
-            self._counters[NUM_AGENT_STEPS_SAMPLED] += sum(
-                s for s in rollout_metric.agent_steps.values()
+        ) = self._sample_and_get_states()
+
+        # Reduce EnvRunner metrics over the n EnvRunners.
+        self.metrics.log_n_dicts(env_runner_metrics, key=ENV_RUNNER_RESULTS)
+        # Log lifetime counts for env- and agent steps.
+        if env_runner_metrics:
+            self.metrics.log_dict(
+                {
+                    NUM_AGENT_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
+                        ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED
+                    ),
+                    NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
+                        ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED
+                    ),
+                    NUM_EPISODES_LIFETIME: self.metrics.peek(
+                        ENV_RUNNER_RESULTS, NUM_EPISODES
+                    ),
+                },
+                reduce="sum",
             )
 
         # "Batch" episode refs into groups (such that batching would result in
         # `train_batch_size`) to be sent to LearnerGroup.
 
         # TEST: sample only
-        episode_refs_for_learner_group = self._training_step_pre_queue_episode_refs(
-            episode_refs
-        )
-        #episode_refs_for_learner_group = []
+        #episode_refs_for_learner_group = self._training_step_pre_queue_episode_refs(
+        #    episode_refs
+        #)
+        episode_refs_for_learner_group = []
         # END TEST!
 
         # Call the LearnerGroup's `update_from_episodes` method.
@@ -778,11 +797,11 @@ class Impala(Algorithm):
         # Add already collected metrics to results for later processing.
         # TODO (sven): All algos should behave this way in their `training_step` methods
         #  in the future. Makes things more transparent and explicit for the user.
-        update_results.update({"_episodes_this_training_step": env_runner_metrics})
+        #update_results.update({"_episodes_this_training_step": env_runner_metrics})
 
-        return update_results
+        return self.metrics.reduce()
 
-    def _training_step_sample_and_get_states(self):
+    def _sample_and_get_states(self):
         episode_refs = []
         env_runner_states = []
         env_runner_metrics = []
@@ -825,15 +844,15 @@ class Impala(Algorithm):
                 for (episodes, states, metrics) in results:
                     episode_refs.append(episodes)
                     env_runner_states.append(states)
-                    env_runner_metrics.extend(metrics)
+                    env_runner_metrics.append(metrics)
             # Sample from the local EnvRunner worker.
             else:
                 episodes = self.workers.local_worker().sample()
-                env_runner_metrics = self.workers.local_worker().get_metrics()
+                env_runner_metrics = [self.workers.local_worker().get_metrics()]
                 episode_refs = [ray.put(episodes)]
-                env_runner_states = self.workers.local_worker().get_state(
+                env_runner_states = [self.workers.local_worker().get_state(
                     components=["env_to_module_connector", "module_to_env_connector"]
-                )
+                )]
 
         return (
             episode_refs,
@@ -961,6 +980,10 @@ class Impala(Algorithm):
                 return_object_refs=use_tree_aggregation,
             )
         )
+        #TODO: test
+        a=1
+        unprocessed_sample_batches = []
+
         # Tag workers that actually produced ready sample batches this iteration.
         # Those workers will have to get updated at the end of the iteration.
         workers_that_need_updates = {

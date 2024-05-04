@@ -16,6 +16,7 @@ from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.env.utils import _gym_env_creator
+from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_tf
@@ -27,6 +28,7 @@ from ray.rllib.utils.metrics import (
     NUM_EPISODES,
     NUM_MODULE_STEPS_SAMPLED,
     NUM_MODULE_STEPS_SAMPLED_LIFETIME,
+    WEIGHTS_SEQ_NO,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.spaces.space_utils import unbatch
@@ -593,66 +595,63 @@ class SingleAgentEnvRunner(EnvRunner):
         # Return reduced metrics.
         return self.metrics.reduce()
 
+    @override(EnvRunner)
     def get_state(
         self,
         components: Optional[Container[str]] = None,
+        *,
+        inference_only: bool = True,
+        module_ids=None,
     ) -> Dict[str, Any]:
-        components = force_list(components)
+        components = force_list(components if components is not None else [
+            "rl_module", "env_to_module_connector", "module_to_env_connector"
+        ])
         state = {
             WEIGHTS_SEQ_NO: self._weights_seq_no,
             NUM_ENV_STEPS_SAMPLED_LIFETIME: (
-                self.metrics.peek(ENV_STEPS_SAMPLED_LIFETIME, default=0)
+                self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
             ),
         }
-        if components is None or "rl_module" in components:
-            state["rl_module"] = self.module.get_state()
-        if components is None or "env_to_module_connector" in components:
+        if "rl_module" in components:
+            state["rl_module"] = self.module.get_state(inference_only=inference_only)
+        if "env_to_module_connector" in components:
             state["env_to_module_connector"] = self._env_to_module.get_state()
-        if components is None or "module_to_env_connector" in components:
+        if "module_to_env_connector" in components:
             state["module_to_env_connector"] = self._module_to_env.get_state()
 
         return state
 
+    @override(EnvRunner)
     def set_state(self, state: Dict[str, Any]) -> None:
+        if "env_to_module_connector" in state:
+            self._env_to_module.set_state(state["env_to_module_connector"])
+        if "module_to_env_connector" in state:
+            self._module_to_env.set_state(state["module_to_env_connector"])
+
         # Update the RLModule state.
         if "rl_module" in state:
             # A missing value for WEIGHTS_SEQ_NO or a value of 0 means: Force the
             # update.
             weights_seq_no = state.get(WEIGHTS_SEQ_NO, 0)
 
-        # Only update the weigths, if this is the first synchronization or
-        # if the weights of this `EnvRunner` lacks behind the actual ones.
-        if weights_seq_no == 0 or self._weights_seq_no < weights_seq_no:
-            if isinstance(weights, dict) and DEFAULT_MODULE_ID in weights:
-                weights = weights[DEFAULT_MODULE_ID]
-            weights = self._convert_to_tensor(weights)
-            self.module.set_state(weights)
             # Only update the weigths, if this is the first synchronization or
             # if the weights of this `EnvRunner` lacks behind the actual ones.
             if weights_seq_no == 0 or self._weights_seq_no < weights_seq_no:
                 weights = state["rl_module"]
-                if isinstance(weights, dict) and DEFAULT_POLICY_ID in weights:
-                    weights = weights[DEFAULT_POLICY_ID]
+                if isinstance(weights, dict) and DEFAULT_MODULE_ID in weights:
+                    weights = weights[DEFAULT_MODULE_ID]
                 weights = self._convert_to_tensor(weights)
                 self.module.set_state(weights)
             # Update our weights_seq_no, if the new one is > 0.
             if weights_seq_no > 0:
                 self._weights_seq_no = weights_seq_no
 
-    def get_weights(self, modules=None, inference_only: bool = False):
-        """Returns the weights of our (single-agent) RLModule."""
-        # Update the Connectors.
-        if "env_to_module_connector" in state:
-            self._env_to_module.set_state(state["env_to_module_connector"])
-        if "module_to_env_connector" in state:
-            self._module_to_env.set_state(state["module_to_env_connector"])
-
-        return self.module.get_state(inference_only=inference_only)
-        # Update our counters.
+        # Update our lifetime counters.
         if NUM_ENV_STEPS_SAMPLED_LIFETIME in state:
-            self.metrics.set(
+            self.metrics.set_value(
                 key=NUM_ENV_STEPS_SAMPLED_LIFETIME,
                 value=state[NUM_ENV_STEPS_SAMPLED_LIFETIME],
+                reduce="sum",
             )
 
     @override(EnvRunner)

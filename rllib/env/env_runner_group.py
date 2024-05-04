@@ -427,56 +427,47 @@ class EnvRunnerGroup:
         if not config.update_worker_filter_stats and not config.use_worker_filter_stats:
             return
 
-        env_runner_states = {}
         # Use states from all remote EnvRunners.
         if config.use_worker_filter_stats:
             connector_states = self.foreach_worker(
-                lambda w: (w._env_to_module.get_state(), w._module_to_env.get_state()),
+                lambda w: w.get_state(components=[
+                    "env_to_module_connector", "module_to_env_connector"
+                ]),
                 local_worker=False,
                 timeout_seconds=config.sync_filters_on_rollout_workers_timeout_s,
             )
-            env_to_module_states = [s[0] for s in connector_states]
-            module_to_env_states = [s[1] for s in connector_states]
+            env_to_module_states = [
+                s["env_to_module_connector"] for s in connector_states
+            ]
+            module_to_env_states = [
+                s["module_to_env_connector"] for s in connector_states
+            ]
 
-            env_runner_states["connector_states"] = {
-                "env_to_module_states": local_worker._env_to_module.merge_states(
+            env_runner_states = {
+                "env_to_module_connector": local_worker._env_to_module.merge_states(
                     env_to_module_states
                 ),
-                "module_to_env_states": local_worker._module_to_env.merge_states(
+                "module_to_env_connector": local_worker._module_to_env.merge_states(
                     module_to_env_states
                 ),
             }
         # Ignore states from remote EnvRunners (use the current `from_worker` states
         # only).
         else:
-            env_runner_states["connector_states"] = {
-                "env_to_module_states": from_worker._env_to_module.get_state(),
-                "module_to_env_states": from_worker._module_to_env.get_state(),
-            }
+            env_runner_states = from_worker.get_state(components=[
+                "env_to_module_connector", "module_to_env_connector"
+            ])
 
         # Update the global number of environment steps, if necessary.
-        if env_steps_sampled:
-            env_runner_states["env_steps_sampled"] = env_steps_sampled
+        if env_steps_sampled is not None:
+            env_runner_states[NUM_ENV_STEPS_SAMPLED_LIFETIME] = env_steps_sampled
 
         # Put the state dictionary into Ray's object store to avoid having to make n
         # pickled copies of the state dict.
         ref_env_runner_states = ray.put(env_runner_states)
 
         def _update(_env_runner: EnvRunner) -> Any:
-            env_runner_states = ray.get(ref_env_runner_states)
-            _env_runner._env_to_module.set_state(
-                env_runner_states["connector_states"]["env_to_module_states"]
-            )
-            _env_runner._module_to_env.set_state(
-                env_runner_states["connector_states"]["module_to_env_states"]
-            )
-            # Update the global number of environment steps for each worker.
-            if "env_steps_sampled" in env_runner_states:
-                # _env_runner.global_num_env_steps_sampled =
-                _env_runner.metrics.set_value(
-                    NUM_ENV_STEPS_SAMPLED_LIFETIME,
-                    env_runner_states["env_steps_sampled"],
-                )
+            _env_runner.set_state(ray.get(ref_env_runner_states))
 
         # Broadcast updated states back to all workers (including the local one).
         if config.update_worker_filter_stats:
@@ -545,14 +536,30 @@ class EnvRunnerGroup:
                     "`from_worker_or_trainer` is None. In this case, EnvRunnerGroup "
                     "should have local_env_runner. But local_env_runner is also None."
                 )
-            weights = weights_src.get_weights(policies, inference_only)
+            if self._remote_config.enable_env_runner_and_connector_v2:
+                weights = weights_src.get_state(
+                    components="rl_module",
+                    inference_only=inference_only,
+                    module_ids=policies,
+                )["rl_module"]
+            else:
+                weights = weights_src.get_weights(policies, inference_only)
+
             # Move weights to the object store to avoid having to make n pickled copies
             # of the weights dict for each worker.
             weights_ref = ray.put(weights)
 
-            def _set_weights(env_runner):
-                _weights = ray.get(weights_ref)
-                env_runner.set_weights(_weights, global_vars)
+            if self._remote_config.enable_env_runner_and_connector_v2:
+
+                def _set_weights(env_runner):
+                    _weights = ray.get(weights_ref)
+                    env_runner.set_state({"rl_module": _weights})
+
+            else:
+
+                def _set_weights(env_runner):
+                    _weights = ray.get(weights_ref)
+                    env_runner.set_weights(_weights, global_vars)
 
             # Sync to specified remote workers in this EnvRunnerGroup.
             self.foreach_worker(

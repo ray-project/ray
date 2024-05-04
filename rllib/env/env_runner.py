@@ -76,6 +76,7 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
     def get_state(
         self,
         components: Optional[Container[str]] = None,
+        inference_only: bool = False,
     ) -> Dict[str, Any]:
         """Returns this EnvRunner's (possibly serialized) current state as a dict.
 
@@ -85,6 +86,9 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
                 of the state is expensive (e.g. reading/compiling the weights of a large
                 NN) and at the same time, these components are not required by the
                 caller.
+            inference_only: Whether to return the inference-only weight set of the
+                underlying RLModule. Note that this setting only has an effect if
+                components is None or the string "rl_module" is in components.
 
         Returns:
             The current state (or only the components specified) of this EnvRunner.
