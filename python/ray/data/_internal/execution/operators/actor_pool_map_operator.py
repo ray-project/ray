@@ -1,7 +1,7 @@
 import collections
 import logging
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Iterator, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional, Union
 
 import ray
 from ray.data._internal.compute import ActorPoolStrategy
@@ -20,6 +20,10 @@ from ray.data._internal.remote_fn import _add_system_error_to_retry_exceptions
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 from ray.types import ObjectRef
+
+if TYPE_CHECKING:
+    from ray.util.scheduling_strategies import SchedulingStrategyT
+
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +58,7 @@ class ActorPoolMapOperator(MapOperator):
         autoscaling_policy: "AutoscalingPolicy",
         name: str = "ActorPoolMap",
         min_rows_per_bundle: Optional[int] = None,
-        scheduling_strategy_fn: Optional[Callable[[], Any]] = None,
+        scheduling_strategy_fn: Optional[Callable[[], "SchedulingStrategyT"]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         """Create an ActorPoolMapOperator instance.
@@ -72,6 +76,8 @@ class ActorPoolMapOperator(MapOperator):
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
                 The actual rows passed may be less if the dataset is small.
+            scheduling_strategy_fn: A function that returns a ``SchedulingStrategy``
+                used to initialize the actor.
             ray_remote_args: Customize the ray remote args for this op's tasks.
         """
         super().__init__(

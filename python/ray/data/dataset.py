@@ -119,6 +119,7 @@ if TYPE_CHECKING:
 
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data.grouped_data import GroupedData
+    from ray.util.scheduling_strategies import SchedulingStrategyT
 
 
 logger = logging.getLogger(__name__)
@@ -250,7 +251,7 @@ class Dataset:
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
-        scheduling_strategy_fn: Optional[Callable[[], Any]] = None,
+        scheduling_strategy_fn: Optional[Callable[[], "SchedulingStrategyT"]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Apply the given function to each row of this dataset.
@@ -317,6 +318,8 @@ class Dataset:
             concurrency: The number of Ray workers to use concurrently. For a fixed-sized
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
                 worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
+            scheduling_strategy_fn: A function that returns a ``SchedulingStrategy``
+                used to initialize the actor. Only valid if ``fn`` is a callable class.
             ray_remote_args: Additional resource requirements to request from
                 Ray for each map worker.
 
@@ -335,6 +338,7 @@ class Dataset:
             fn_constructor_args=fn_constructor_args,
             compute=compute,
             concurrency=concurrency,
+            scheduling_strategy_fn=scheduling_strategy_fn,
         )
 
         if num_cpus is not None:
@@ -385,7 +389,7 @@ class Dataset:
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
-        scheduling_strategy_fn: Optional[Callable[[], Any]] = None,
+        scheduling_strategy_fn: Optional[Callable[[], "SchedulingStrategyT"]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Apply the given function to batches of data.
@@ -524,6 +528,8 @@ class Dataset:
             concurrency: The number of Ray workers to use concurrently. For a fixed-sized
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
                 worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
+            scheduling_strategy_fn: A function that returns a ``SchedulingStrategy``
+                used to initialize the actor. Only valid if ``fn`` is a callable class.
             ray_remote_args: Additional resource requirements to request from
                 ray for each map worker.
 
@@ -552,6 +558,7 @@ class Dataset:
             fn_constructor_args=fn_constructor_args,
             compute=compute,
             concurrency=concurrency,
+            scheduling_strategy_fn=scheduling_strategy_fn,
         )
 
         if num_cpus is not None:
@@ -789,7 +796,7 @@ class Dataset:
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
-        scheduling_strategy_fn: Optional[Callable[[], Any]] = None,
+        scheduling_strategy_fn: Optional[Callable[[], "SchedulingStrategyT"]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Apply the given function to each row and then flatten results.
@@ -851,6 +858,8 @@ class Dataset:
                 fixed-sized worker pool of size ``n``, specify ``concurrency=n``.
                 For an autoscaling worker pool from ``m`` to ``n`` workers, specify
                 ``concurrency=(m, n)``.
+            scheduling_strategy_fn: A function that returns a ``SchedulingStrategy``
+                used to initialize the actor. Only valid if ``fn`` is a callable class.
             ray_remote_args: Additional resource requirements to request from
                 ray for each map worker.
 
@@ -867,6 +876,7 @@ class Dataset:
             fn_constructor_args=fn_constructor_args,
             compute=compute,
             concurrency=concurrency,
+            scheduling_strategy_fn=scheduling_strategy_fn,
         )
 
         if num_cpus is not None:
@@ -896,7 +906,7 @@ class Dataset:
         *,
         compute: Union[str, ComputeStrategy] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
-        scheduling_strategy_fn: Optional[Callable[[], Any]] = None,
+        scheduling_strategy_fn: Optional[Callable[[], "SchedulingStrategyT"]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Filter out rows that don't satisfy the given predicate.
@@ -928,6 +938,8 @@ class Dataset:
                 fixed-sized worker pool of size ``n``, specify ``concurrency=n``.
                 For an autoscaling worker pool from ``m`` to ``n`` workers, specify
                 ``concurrency=(m, n)``.
+            scheduling_strategy_fn: A function that returns a ``SchedulingStrategy``
+                used to initialize the actor. Only valid if ``fn`` is a callable class.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
@@ -935,6 +947,7 @@ class Dataset:
             fn,
             compute=compute,
             concurrency=concurrency,
+            scheduling_strategy_fn=scheduling_strategy_fn,
         )
 
         plan = self._plan.copy()

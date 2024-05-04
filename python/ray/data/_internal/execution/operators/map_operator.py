@@ -127,6 +127,8 @@ class MapOperator(OneToOneOperator, ABC):
             init_fn: The callable class to instantiate if using ActorPoolMapOperator.
             name: The name of this operator.
             compute_strategy: Customize the compute strategy for this op.
+            scheduling_strategy_fn: A function that returns a ``SchedulingStrategy``
+                used to initialize the actor. Only valid for actor-based map.
             target_max_block_size: The target maximum number of bytes to
                 include in an output block.
             min_rows_per_bundle: The number of rows to gather per batch passed to the

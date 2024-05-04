@@ -1,6 +1,6 @@
 import inspect
 import logging
-from typing import Any, Callable, Dict, Iterable, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, Optional, Union
 
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.logical.interfaces import LogicalOperator
@@ -8,6 +8,9 @@ from ray.data._internal.logical.operators.one_to_one_operator import AbstractOne
 from ray.data.block import UserDefinedFunction
 from ray.data.context import DEFAULT_BATCH_SIZE
 from ray.data.preprocessor import Preprocessor
+
+if TYPE_CHECKING:
+    from ray.util.scheduling_strategies import SchedulingStrategyT
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +60,7 @@ class AbstractUDFMap(AbstractMap):
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         min_rows_per_bundled_input: Optional[int] = None,
         compute: Optional[Union[str, ComputeStrategy]] = None,
-        scheduling_strategy_fn: Optional[Callable[[], Any]] = None,
+        scheduling_strategy_fn: Optional[Callable[[], "SchedulingStrategyT"]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         """
@@ -77,6 +80,8 @@ class AbstractUDFMap(AbstractMap):
                 ``MapOperator._add_bundled_input()``.
             compute: The compute strategy, either ``"tasks"`` (default) to use Ray
                 tasks, or ``"actors"`` to use an autoscaling actor pool.
+            scheduling_strategy_fn: A function that returns a ``SchedulingStrategy``
+                used to initialize the actor. Only valid if ``fn`` is a callable class.
             ray_remote_args: Args to provide to ray.remote.
         """
         name = self._get_operator_name(name, fn)
@@ -137,7 +142,7 @@ class MapBatches(AbstractUDFMap):
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         min_rows_per_bundled_input: Optional[int] = None,
         compute: Optional[Union[str, ComputeStrategy]] = None,
-        scheduling_strategy_fn: Optional[Callable[[], Any]] = None,
+        scheduling_strategy_fn: Optional[Callable[[], "SchedulingStrategyT"]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
@@ -174,7 +179,7 @@ class MapRows(AbstractUDFMap):
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         compute: Optional[Union[str, ComputeStrategy]] = None,
-        scheduling_strategy_fn: Optional[Callable[[], Any]] = None,
+        scheduling_strategy_fn: Optional[Callable[[], "SchedulingStrategyT"]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
@@ -203,7 +208,7 @@ class Filter(AbstractUDFMap):
         input_op: LogicalOperator,
         fn: UserDefinedFunction,
         compute: Optional[Union[str, ComputeStrategy]] = None,
-        scheduling_strategy_fn: Optional[Callable[[], Any]] = None,
+        scheduling_strategy_fn: Optional[Callable[[], "SchedulingStrategyT"]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
@@ -232,7 +237,7 @@ class FlatMap(AbstractUDFMap):
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         compute: Optional[Union[str, ComputeStrategy]] = None,
-        scheduling_strategy_fn: Optional[Callable[[], Any]] = None,
+        scheduling_strategy_fn: Optional[Callable[[], "SchedulingStrategyT"]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
