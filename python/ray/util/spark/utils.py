@@ -357,6 +357,7 @@ def _get_num_physical_gpus():
             text=True,
             capture_output=True,
         )
+        return len(completed_proc.stdout.strip().split("\n"))
     except Exception:
         _logger.warning(
             "Running command `nvidia-smi` for inferring GPU devices list failed."
@@ -365,7 +366,7 @@ def _get_num_physical_gpus():
             "'nvidia-smi --query-gpu=name --format=csv,noheader' command execution failed.",
             exc_info=True,
         )
-    return len(completed_proc.stdout.strip().split("\n"))
+        return 0
 
 
 def _get_local_ray_node_slots(
