@@ -58,7 +58,8 @@ class Raylet {
          const ObjectManagerConfig &object_manager_config,
          std::shared_ptr<gcs::GcsClient> gcs_client,
          int metrics_export_port,
-         bool is_head_node);
+         bool is_head_node,
+         std::function<void(rpc::NodeDeathInfo)> shutdown_raylet_gracefully);
 
   /// Start this raylet.
   void Start();

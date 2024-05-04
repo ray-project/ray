@@ -452,17 +452,19 @@ Status NodeInfoAccessor::UnregisterSelf(const rpc::NodeDeathInfo &node_death_inf
   rpc::UnregisterNodeRequest request;
   request.set_node_id(local_node_info_.node_id());
   request.mutable_node_death_info()->CopyFrom(node_death_info);
+  std::promise<Status> promise;
   client_impl_->GetGcsRpcClient().UnregisterNode(
       request,
-      [this, node_id](const Status &status, const rpc::UnregisterNodeReply &reply) {
+      [this, node_id, &promise](const Status &status, const rpc::UnregisterNodeReply &reply) {
         if (status.ok()) {
           local_node_info_.set_state(GcsNodeInfo::DEAD);
           local_node_id_ = NodeID::Nil();
         }
         RAY_LOG(DEBUG) << "Finished unregistering node info, status = " << status
                        << ", node id = " << node_id;
+        promise.set_value(status);
       });
-  return Status::OK();
+  return promise.get_future().get();
 }
 
 Status NodeInfoAccessor::DrainSelf() {

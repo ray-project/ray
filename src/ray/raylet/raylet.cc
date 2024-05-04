@@ -65,7 +65,8 @@ Raylet::Raylet(instrumented_io_context &main_service,
                const ObjectManagerConfig &object_manager_config,
                std::shared_ptr<gcs::GcsClient> gcs_client,
                int metrics_export_port,
-               bool is_head_node)
+               bool is_head_node,
+               std::function<void(rpc::NodeDeathInfo)> shutdown_raylet_gracefully)
     : self_node_id_(self_node_id),
       gcs_client_(gcs_client),
       node_manager_(main_service,
@@ -73,7 +74,8 @@ Raylet::Raylet(instrumented_io_context &main_service,
                     node_name,
                     node_manager_config,
                     object_manager_config,
-                    gcs_client_),
+                    gcs_client_,
+                    shutdown_raylet_gracefully),
       socket_name_(socket_name),
       acceptor_(main_service, ParseUrlEndpoint(socket_name)),
       socket_(main_service) {
@@ -116,11 +118,7 @@ void Raylet::Start() {
   DoAccept();
 }
 
-void Raylet::Stop() {
-  // RAY_CHECK_OK(gcs_client_->Nodes().DrainSelf());
-  rpc::NodeDeathInfo node_death_info;
-  node_death_info.set_reason(rpc::NodeDeathInfo::EXPECTED_TERMINATION);
-  node_death_info.set_reason_message("Raylet stop");
+void Raylet::Stop(const rpc::NodeDeathInfo &node_death_info) {
   RAY_CHECK_OK(gcs_client_->Nodes().UnregisterSelf(node_death_info));
   node_manager_.Stop();
   acceptor_.close();

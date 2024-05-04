@@ -104,11 +104,13 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
                          const std::string &self_node_name,
                          const NodeManagerConfig &config,
                          const ObjectManagerConfig &object_manager_config,
-                         std::shared_ptr<gcs::GcsClient> gcs_client)
+                         std::shared_ptr<gcs::GcsClient> gcs_client,
+                         std::function<void(rpc::NodeDeathInfo)> shutdown_raylet_gracefully)
     : self_node_id_(self_node_id),
       self_node_name_(self_node_name),
       io_service_(io_service),
       gcs_client_(gcs_client),
+      shutdown_raylet_gracefully_(shutdown_raylet_gracefully),
       worker_pool_(
           io_service,
           self_node_id_,
@@ -313,6 +315,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
         Status status = gcs_client_->Nodes().UnregisterSelf(node_death_info);
         return status.ok();
       },
+      shutdown_raylet_gracefully,
       /*labels*/
       config.labels);
 
@@ -1994,7 +1997,10 @@ void NodeManager::HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
     // Note that the callback is posted to the io service after the shutdown GRPC request
     // is replied. Otherwise, the RPC might not be replied to GCS before it shutsdown
     // itself.
-    ShutdownRayletGracefully();
+    rpc::NodeDeathInfo node_death_info;
+    node_death_info.reason = rpc::NodeDeathInfo::EXPECTED_TERMINATION;
+    node_death_info.reason_message = "ShutdownRaylet RPC has been received.";
+    shutdown_raylet_gracefully_(node_death_info);
   };
   is_shutdown_request_received_ = true;
   send_reply_callback(Status::OK(), shutdown_after_reply, shutdown_after_reply);
@@ -3070,7 +3076,8 @@ std::unique_ptr<AgentManager> NodeManager::CreateDashboardAgentManager(
       /*delay_executor=*/
       [this](std::function<void()> task, uint32_t delay_ms) {
         return execute_after(io_service_, task, std::chrono::milliseconds(delay_ms));
-      });
+      },
+      shutdown_raylet_gracefully_);
 }
 
 std::unique_ptr<AgentManager> NodeManager::CreateRuntimeEnvAgentManager(
@@ -3101,7 +3108,8 @@ std::unique_ptr<AgentManager> NodeManager::CreateRuntimeEnvAgentManager(
       /*delay_executor=*/
       [this](std::function<void()> task, uint32_t delay_ms) {
         return execute_after(io_service_, task, std::chrono::milliseconds(delay_ms));
-      });
+      },
+      shutdown_raylet_gracefully_);
 }
 
 }  // namespace raylet

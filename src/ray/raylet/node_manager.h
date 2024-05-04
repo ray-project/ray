@@ -135,7 +135,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
               const std::string &self_node_name,
               const NodeManagerConfig &config,
               const ObjectManagerConfig &object_manager_config,
-              std::shared_ptr<gcs::GcsClient> gcs_client);
+              std::shared_ptr<gcs::GcsClient> gcs_client,
+              std::function<void(rpc::NodeDeathInfo)> shutdown_raylet_gracefully);
 
   /// Process a new client connection.
   ///
@@ -884,6 +885,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::unique_ptr<MemoryMonitor> memory_monitor_;
 
   std::unique_ptr<core::experimental::MutableObjectProvider> mutable_object_provider_;
+
+  std::function<void(rpc::NodeDeathInfo)> shutdown_raylet_gracefully_;
 };
 
 }  // namespace raylet

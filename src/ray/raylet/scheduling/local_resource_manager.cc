@@ -29,11 +29,13 @@ LocalResourceManager::LocalResourceManager(
     std::function<int64_t(void)> get_used_object_store_memory,
     std::function<bool(void)> get_pull_manager_at_capacity,
     std::function<bool(rpc::NodeDeathInfo)> unregister_self,
+    std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
     std::function<void(const NodeResources &)> resource_change_subscriber)
     : local_node_id_(local_node_id),
       get_used_object_store_memory_(get_used_object_store_memory),
       get_pull_manager_at_capacity_(get_pull_manager_at_capacity),
       unregister_self_(unregister_self),
+      shutdown_raylet_gracefully_(shutdown_raylet_gracefully),
       resource_change_subscriber_(resource_change_subscriber) {
   RAY_CHECK(node_resources.total == node_resources.available);
   local_resources_.available = NodeResourceInstanceSet(node_resources.total);
@@ -384,18 +386,20 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
 void LocalResourceManager::OnResourceOrStateChanged() {
   if (IsLocalNodeDraining() && IsLocalNodeIdle()) {
     // The node is drained.
-    if (unregister_self_ != nullptr) {
-      RAY_LOG(INFO) << "The node is drained, unregister itself ...";
-      if (!unregister_self_(node_death_info_)) {
-        RAY_LOG(ERROR) << "Failed to unregister the node.";
-        // Still shutdown?
-      } else {
-        RAY_LOG(INFO) << "The node is unregistered, exiting ...";
-      }
-    } else {
-      RAY_LOG(INFO) << "The node is drained, exiting ...";
-    }
-    raylet::ShutdownRayletGracefully();
+
+    // TODO: remove the following and clean up unregister_self_.
+    // if (unregister_self_ != nullptr) {
+    //   RAY_LOG(INFO) << "The node is drained, unregister itself ...";
+    //   if (!unregister_self_(node_death_info_)) {
+    //     RAY_LOG(ERROR) << "Failed to unregister the node.";
+    //     // Still shutdown?
+    //   } else {
+    //     RAY_LOG(INFO) << "The node is unregistered, exiting ...";
+    //   }
+    // } else {
+    //   RAY_LOG(INFO) << "The node is drained, exiting ...";
+    // }
+    shutdown_raylet_gracefully_(node_death_info_);
   }
 
   ++version_;
