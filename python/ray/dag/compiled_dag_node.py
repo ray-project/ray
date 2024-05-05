@@ -48,9 +48,9 @@ def do_allocate_channel(
 @DeveloperAPI
 def do_exec_tasks(self, tasks: List["ExecutableTask"]) -> None:
     """Generic actor method to begin executing the tasks belonging to an actor.
-    This runs an infinite loop to run each task in turn: reading input channel(s),
-    executing the given taks, and writing output channel(s). It only exits if the
-    actor dies or an exception is thrown.
+    This runs an infinite loop to run each task in turn (following the order specified
+    in the list): reading input channel(s), executing the given taks, and writing output
+    channel(s). It only exits if the actor dies or an exception is thrown.
 
     Args:
         tasks: the executable tasks corresponding to the actor methods.
@@ -302,9 +302,7 @@ class CompiledDAG:
         # ObjectRef for each worker's task. The task is an infinite loop that
         # repeatedly executes the method specified in the DAG.
         self.worker_task_refs: List["ray.ObjectRef"] = []
-        # Set of actors present in the DAG.
-        self.actor_and_method_name_tuples = set()
-        self.actor_to_ref = {}
+        self.actor_to_handle: Dict["ray._raylet.ActorID", "ray.actor.ActorHandle"] = {}
         self.actor_to_tasks: Dict[
             "ray._raylet.ActorID", List["CompiledTask"]
         ] = defaultdict(list)
@@ -487,7 +485,7 @@ class CompiledDAG:
                     )
                 )
                 actor_handle = task.dag_node._get_actor_handle()
-                self.actor_to_ref[actor_handle._actor_id] = actor_handle
+                self.actor_to_handle[actor_handle._actor_id] = actor_handle
                 self.actor_to_tasks[actor_handle._actor_id].append(task)
             elif isinstance(task.dag_node, InputNode):
                 readers = [self.idx_to_task[idx] for idx in task.downstream_node_idxs]
@@ -554,8 +552,11 @@ class CompiledDAG:
                 executable_tasks.append(executable_task)
                 if worker_fn is None:
                     worker_fn = task.dag_node._get_remote_method("__ray_call__")
+            # Sort executable tasks based on their bind index, i.e., submission order
+            # so that they will be executed in that order.
             executable_tasks.sort(key=lambda task: task.bind_index)
 
+            # Check unsupported case: binding the same actor method multiple times
             import itertools
 
             for _, g in itertools.groupby(executable_tasks, lambda x: x.method_name):
@@ -573,7 +574,7 @@ class CompiledDAG:
                         ):
                             # TODO: Support binding the same actor method to the
                             # same input multiple times.
-                            raise ValueError(
+                            raise NotImplementedError(
                                 f"Compiled DAGs currently do not support binding the "
                                 f"same actor method to the same input multiple times. "
                                 f"Method: {executable_task.method_name}"
@@ -637,6 +638,7 @@ class CompiledDAG:
             def teardown(self):
                 if self.in_teardown:
                     return
+                logger.info("Tearing down compiled DAG")
 
                 outer._dag_submitter.close()
                 outer._dag_output_fetcher.close()
@@ -647,18 +649,20 @@ class CompiledDAG:
                         # TODO(swang): Suppress exceptions from actors trying to
                         # read closed channels when DAG is being torn down.
                         ray.get(
-                            outer.actor_to_ref[actor_id].__ray_call__.remote(
+                            outer.actor_to_handle[actor_id].__ray_call__.remote(
                                 do_cancel_executable_tasks, tasks
                             )
                         )
                     except Exception:
-                        logger.exception("Error cancelling task")
+                        logger.exception("Error cancelling worker task")
                         pass
+                logger.info("Waiting for worker tasks to exit")
                 for ref in outer.worker_task_refs:
                     try:
                         ray.get(ref)
                     except Exception:
                         pass
+                logger.info("Teardown complete")
 
             def run(self):
                 try:

@@ -251,7 +251,6 @@ class Channel:
             )
             raise TypeError(msg) from e
 
-        # logger.info("write on %s", self._writer_ref)
         self._worker.core_worker.experimental_channel_put_serialized(
             serialized_value,
             self._writer_ref,
@@ -270,7 +269,6 @@ class Channel:
             Any: The deserialized value.
         """
         self.ensure_registered_as_reader()
-        # logger.info(f"begin_read on {self._reader_ref}", stack_info=True)
         return ray.get(self._reader_ref)
 
     def end_read(self):

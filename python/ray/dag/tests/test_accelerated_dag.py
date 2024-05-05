@@ -232,7 +232,7 @@ def test_dag_errors(ray_start_regular):
         dag2 = a.inc.bind(inp)
         dag3 = a.inc_two.bind(dag, dag2)
     with pytest.raises(
-        ValueError,
+        NotImplementedError,
         match=r"Compiled DAGs currently do not support binding the same "
         "actor method to the same input multiple times.*",
     ):
