@@ -160,7 +160,9 @@ class ClassMethodNode(DAGNode):
         self._prev_class_method_call: Optional[
             ClassMethodNode
         ] = other_args_to_resolve.get(PREV_CLASS_METHOD_CALL_KEY, None)
-        self._bind_index: int = other_args_to_resolve.get(BIND_INDEX_KEY, None)
+        self._bind_index: Optional[int] = other_args_to_resolve.get(
+            BIND_INDEX_KEY, None
+        )
 
         # The actor creation task dependency is encoded as the first argument,
         # and the ordering dependency as the second, which ensures they are

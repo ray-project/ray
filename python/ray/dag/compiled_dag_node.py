@@ -34,8 +34,8 @@ def do_allocate_channel(
     """Generic actor method to allocate an output channel.
 
     Args:
+        readers: The actor handles of the readers.
         buffer_size_bytes: The maximum size of messages in the channel.
-        num_readers: The number of readers per message.
         reader_node_id: The node ID of the readers (must be the same for all readers).
 
     Returns:
@@ -556,7 +556,8 @@ class CompiledDAG:
             # so that they will be executed in that order.
             executable_tasks.sort(key=lambda task: task.bind_index)
 
-            # Check unsupported case: binding the same actor method multiple times
+            # Check unsupported case: binding the same actor method to the same
+            # input multiple times
             import itertools
 
             for _, g in itertools.groupby(executable_tasks, lambda x: x.method_name):
