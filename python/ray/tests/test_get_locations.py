@@ -124,11 +124,16 @@ def test_location_pending(ray_start_cluster):
 
     object_ref = task.remote()
     locations = ray.experimental.get_object_locations([object_ref])
+    assert len(locations) == 1
     location = locations[object_ref]
     assert location["node_ids"] == []
-    # TODO(chenshen): this is a result of converting int -1 to unsigned int;
-    # should be fix by https://github.com/ray-project/ray/issues/16321
-    assert location["object_size"] == 2**64 - 1
+    assert location["object_size"] is None
+
+    local_locations = ray.experimental.get_local_object_locations([object_ref])
+    assert len(local_locations) == 1
+    local_location = local_locations[object_ref]
+    assert local_location["node_ids"] == []
+    assert local_location["object_size"] is None
 
 
 ###### Tests for `get_local_object_locations`. We use matrix test:
@@ -256,41 +261,6 @@ def test_get_local_locations_generator_multi_nodes(ray_start_cluster_enabled):
             )
         ).remote()
     )
-
-
-def test_object_size_unknown(ray_start_cluster):
-    """
-    The object size is unknown yet because the task is not completed.
-    """
-
-    @ray.remote
-    def slow_task(sleep_secs, obj_size):
-        time.sleep(sleep_secs)
-        return np.zeros(obj_size, dtype=np.uint8)
-
-    obj_ref = slow_task.remote(3600, 1024 * 1024)
-    d = ray.experimental.get_object_locations([obj_ref])
-    print(d)
-    assert d is not None
-    assert len(d) == 1
-    assert d[obj_ref]["object_size"] is None
-
-
-def test_local_object_size_unknown(ray_start_cluster):
-    """
-    The object size is unknown yet because the task is not completed.
-    """
-
-    @ray.remote
-    def slow_task(sleep_secs, obj_size):
-        time.sleep(sleep_secs)
-        return np.zeros(obj_size, dtype=np.uint8)
-
-    obj_ref = slow_task.remote(3600, 1024 * 1024)
-    d = ray.experimental.get_local_object_locations([obj_ref])
-    assert d is not None
-    assert len(d) == 1
-    assert d[obj_ref]["object_size"] is None
 
 
 if __name__ == "__main__":
