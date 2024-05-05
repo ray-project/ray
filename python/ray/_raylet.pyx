@@ -697,11 +697,13 @@ cdef CObjectLocationPtrToDict(CObjectLocation* c_object_location):
         - node_ids:
             The hex IDs of the nodes that have a copy of this object.
         - object_size:
-            The size of data + metadata in bytes.
+            The size of data + metadata in bytes. Can be None if it's -1 in the source.
         - did_spill:
             Whether or not this object was spilled.
     """
     object_size = c_object_location.GetObjectSize()
+    if object_size <= 0:
+        object_size = None
     did_spill = c_object_location.GetDidSpill()
 
     node_ids = set()
@@ -3832,7 +3834,7 @@ cdef class CoreWorker:
 
     def get_local_object_locations(self, object_refs):
         cdef:
-            c_vector[shared_ptr[CObjectLocation]] results
+            c_vector[optional[CObjectLocation]] results
             c_vector[CObjectID] lookup_ids = ObjectRefsToVector(object_refs)
 
         with nogil:
@@ -3844,11 +3846,11 @@ cdef class CoreWorker:
         for i in range(results.size()):
             # core_worker will return a nullptr for objects that couldn't be
             # located
-            if not results[i].get():
+            if not results[i].has_value():
                 continue
             else:
                 object_locations[object_refs[i]] = \
-                    CObjectLocationPtrToDict(results[i].get())
+                    CObjectLocationPtrToDict(&results[i].value())
         return object_locations
 
     def get_object_locations(self, object_refs, int64_t timeout_ms):

@@ -89,7 +89,7 @@ class ScopedTaskMetricSetter {
 using ActorLifetime = ray::rpc::JobConfig_ActorLifetime;
 
 // Helper function converts GetObjectLocationsOwnerReply to ObjectLocation
-std::shared_ptr<ObjectLocation> CreateObjectLocation(
+ObjectLocation CreateObjectLocation(
     const rpc::WorkerObjectLocationsPubMessage &object_info) {
   std::vector<NodeID> node_ids;
   node_ids.reserve(object_info.node_ids_size());
@@ -97,27 +97,29 @@ std::shared_ptr<ObjectLocation> CreateObjectLocation(
     node_ids.push_back(NodeID::FromBinary(object_info.node_ids(i)));
   }
   bool is_spilled = !object_info.spilled_url().empty();
-  return std::make_shared<ObjectLocation>(
-      NodeID::FromBinary(object_info.primary_node_id()),
-      object_info.object_size(),
-      std::move(node_ids),
-      is_spilled,
-      object_info.spilled_url(),
-      NodeID::FromBinary(object_info.spilled_node_id()),
-      object_info.did_spill());
+  // If the object size is unknown it's unset, and we use -1 to indicate that.
+  uint64_t object_size = object_info.object_size() == 0 ? -1 : object_info.object_size();
+  object_size = object_size == 0 ? -1 : object_size;
+  return ObjectLocation(NodeID::FromBinary(object_info.primary_node_id()),
+                        object_size,
+                        std::move(node_ids),
+                        is_spilled,
+                        object_info.spilled_url(),
+                        NodeID::FromBinary(object_info.spilled_node_id()),
+                        object_info.did_spill());
 }
 
-std::shared_ptr<ObjectLocation> TryGetLocalObjectLocation(
+std::optional<ObjectLocation> TryGetLocalObjectLocation(
     ReferenceCounter &reference_counter, const ObjectID &object_id) {
   if (!reference_counter.HasReference(object_id)) {
-    return nullptr;
+    return std::nullopt;
   }
   rpc::WorkerObjectLocationsPubMessage object_info;
   reference_counter.FillObjectInformation(object_id, &object_info);
   // Note: there can be a TOCTOU race condition: HasReference returned true, but before
   // FillObjectInformation the object is released. Hence we check the ref_removed field.
   if (object_info.ref_removed()) {
-    return nullptr;
+    return std::nullopt;
   }
   return CreateObjectLocation(object_info);
 }
@@ -1911,7 +1913,8 @@ Status CoreWorker::GetLocationFromOwner(
                 // Map the object ID to its location, adjusting index by batch_start
                 location_by_id->emplace(
                     owner_object_ids[batch_start + i],
-                    CreateObjectLocation(reply.object_location_infos(i)));
+                    std::make_shared<ObjectLocation>(
+                        CreateObjectLocation(reply.object_location_infos(i))));
               }
             } else {
               RAY_LOG(WARNING) << "Failed to query location information for objects "
@@ -3886,14 +3889,14 @@ void CoreWorker::ProcessSubscribeObjectLocations(
 
 Status CoreWorker::GetLocalObjectLocations(
     const std::vector<ObjectID> &object_ids,
-    std::vector<std::shared_ptr<ObjectLocation>> *results) {
+    std::vector<std::optional<ObjectLocation>> *results) {
   results->clear();
-  results->resize(object_ids.size());
+  results->reserve(object_ids.size());
   if (object_ids.empty()) {
     return Status::OK();
   }
   for (size_t i = 0; i < object_ids.size(); i++) {
-    (*results)[i] = TryGetLocalObjectLocation(*reference_counter_, object_ids[i]);
+    results->emplace_back(TryGetLocalObjectLocation(*reference_counter_, object_ids[i]));
   }
   return Status::OK();
 }

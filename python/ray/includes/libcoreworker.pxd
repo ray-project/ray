@@ -285,7 +285,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                           c_bool local_only)
         CRayStatus GetLocalObjectLocations(
                 const c_vector[CObjectID] &object_ids,
-                c_vector[shared_ptr[CObjectLocation]] *results)
+                c_vector[optional[CObjectLocation]] *results)
         CRayStatus GetLocationFromOwner(
                 const c_vector[CObjectID] &object_ids,
                 int64_t timeout_ms,

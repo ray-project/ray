@@ -131,6 +131,15 @@ def test_location_pending(ray_start_cluster):
     assert location["object_size"] == 2**64 - 1
 
 
+###### Tests for `get_local_object_locations`. We use matrix test:
+# callee can be regular ray task, or streaming generator;
+# caller can be in the same node (single node cluster), or different node.
+#
+# Each task has the caller to produce Object(s) that consumes big memory but has a small
+# sys.getsizeof. The caller then asserts the object size from the API
+# `ray.experimental.get_local_object_locations` is > the actual memory consumed.
+
+
 class BigObject:
     def __init__(self):
         # 100 MiB of memory used...
@@ -138,30 +147,85 @@ class BigObject:
 
 
 @ray.remote
+def gen_big_object(block_size):
+    return pd.DataFrame([{"data": BigObject()} for _ in range(block_size)])
+
+
+@ray.remote
 def gen_big_objects(block_size, block_count):
     for _ in range(block_count):
-        yield pd.DataFrame([{"data": BigObject()} for _ in range(block_size)])
+        big_object = ray.get(gen_big_object.remote(block_size))
+        yield big_object
+
+
+def assert_object_size_gt(obj_ref: ray.ObjectRef, size: int):
+    d = ray.experimental.get_local_object_locations([obj_ref])
+    assert d is not None
+    assert len(d) == 1
+    assert d[obj_ref]["object_size"] > size
 
 
 def test_get_local_locations(ray_start_cluster):
     """
-    Creates big memory consuming objects that appears to have a small `sys.getsizeof`.
-    The streaming generator's consumer can get the size of it since it has a reference
-    of the object.
+    caller and callee are in the same node.
+    callee is a regular ray task.
+    """
+    obj_ref = gen_big_object.remote(3)
+    ray.wait([obj_ref])
+    # The dataframe consists of 3 * 100MiB of NumPy NDArrays.
+    assert_object_size_gt(obj_ref, 3 * 100 * 1024 * 1024)
+
+
+def test_get_local_locations_generator(ray_start_cluster):
+    """
+    caller and callee are in the same node.
+    callee is a streaming generator.
     """
     for obj_ref in gen_big_objects.remote(3, 10):
-        d = ray.experimental.get_local_object_locations([obj_ref])
-        assert d is not None
-        assert len(d) == 1
+        # No need to ray.wait, the object ref must have been ready before it's yielded.
         # The dataframe consists of 3 * 100MiB of NumPy NDArrays.
-        assert d[obj_ref]["object_size"] > 3 * 100 * 1024 * 1024
+        assert_object_size_gt(obj_ref, 3 * 100 * 1024 * 1024)
 
 
 def test_get_local_locations_multi_nodes(ray_start_cluster_enabled):
     """
-    Same as test_get_local_locations, except that we assign the generator and the caller
-    to different nodes and assert it still works, since the caller has references to the
-    object refs.
+    caller and callee are in different nodes.
+    callee is a regular ray task.
+    """
+    cluster = ray_start_cluster_enabled
+    # head node
+    head_node = cluster.add_node(num_cpus=1, object_store_memory=75 * 1024 * 1024)
+    head_node_id = head_node.node_id
+    ray.init(cluster.address)
+    # add 1 worker node
+    worker_node = cluster.add_node(num_cpus=1, object_store_memory=75 * 1024 * 1024)
+    worker_node_id = worker_node.node_id
+    cluster.wait_for_nodes()
+
+    @ray.remote
+    def caller():
+        obj_ref = gen_big_object.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(
+                node_id=worker_node_id, soft=False
+            )
+        ).remote(3)
+        ray.wait([obj_ref])
+        # The dataframe consists of 3 * 100MiB of NumPy NDArrays.
+        assert_object_size_gt(obj_ref, 3 * 100 * 1024 * 1024)
+
+    ray.get(
+        caller.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(
+                node_id=head_node_id, soft=False
+            )
+        ).remote()
+    )
+
+
+def test_get_local_locations_generator_multi_nodes(ray_start_cluster_enabled):
+    """
+    caller and callee are in different nodes.
+    callee is a streaming generator.
     """
     cluster = ray_start_cluster_enabled
     # head node
@@ -181,11 +245,9 @@ def test_get_local_locations_multi_nodes(ray_start_cluster_enabled):
             )
         ).remote(3, 10)
         for obj_ref in gen:
-            d = ray.experimental.get_local_object_locations([obj_ref])
-            assert d is not None
-            assert len(d) == 1
-            # The dataframe consists of 3 * 100MiB of NumPy NDArrays.
-            assert d[obj_ref]["object_size"] > 3 * 100 * 1024 * 1024
+            # No need to ray.wait, the object ref must have been ready before it's
+            # yielded.
+            assert_object_size_gt(obj_ref, 3 * 100 * 1024 * 1024)
 
     ray.get(
         caller.options(
@@ -194,6 +256,41 @@ def test_get_local_locations_multi_nodes(ray_start_cluster_enabled):
             )
         ).remote()
     )
+
+
+def test_object_size_unknown(ray_start_cluster):
+    """
+    The object size is unknown yet because the task is not completed.
+    """
+
+    @ray.remote
+    def slow_task(sleep_secs, obj_size):
+        time.sleep(sleep_secs)
+        return np.zeros(obj_size, dtype=np.uint8)
+
+    obj_ref = slow_task.remote(3600, 1024 * 1024)
+    d = ray.experimental.get_object_locations([obj_ref])
+    print(d)
+    assert d is not None
+    assert len(d) == 1
+    assert d[obj_ref]["object_size"] is None
+
+
+def test_local_object_size_unknown(ray_start_cluster):
+    """
+    The object size is unknown yet because the task is not completed.
+    """
+
+    @ray.remote
+    def slow_task(sleep_secs, obj_size):
+        time.sleep(sleep_secs)
+        return np.zeros(obj_size, dtype=np.uint8)
+
+    obj_ref = slow_task.remote(3600, 1024 * 1024)
+    d = ray.experimental.get_local_object_locations([obj_ref])
+    assert d is not None
+    assert len(d) == 1
+    assert d[obj_ref]["object_size"] is None
 
 
 if __name__ == "__main__":
