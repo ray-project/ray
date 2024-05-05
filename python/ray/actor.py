@@ -237,9 +237,9 @@ class ActorMethod:
         _generator_backpressure_num_objects=None,
     ):
         from ray.dag.class_node import (
+            BIND_INDEX_KEY,
             PARENT_CLASS_NODE_KEY,
             PREV_CLASS_METHOD_CALL_KEY,
-            BIND_INDEX_KEY,
             ClassMethodNode,
         )
 
@@ -263,7 +263,6 @@ class ActorMethod:
             BIND_INDEX_KEY: actor._ray_bind_index,
         }
         actor._ray_bind_index += 1
-        logger.info(f"Binding method {self._method_name} with index {actor._ray_bind_index}")
 
         node = ClassMethodNode(
             self._method_name,

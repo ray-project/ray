@@ -26,24 +26,22 @@ logger = logging.getLogger(__name__)
 
 @DeveloperAPI
 def do_allocate_channel(
-    self, readers: List[Optional["ray.actor.ActorHandle"]], 
+    self,
+    readers: List[Optional["ray.actor.ActorHandle"]],
     buffer_size_bytes: int,
-    reader_node_id : Optional["ray.NodeID"] = None
+    reader_node_id: Optional["ray.NodeID"] = None,
 ) -> Channel:
     """Generic actor method to allocate an output channel.
 
     Args:
         buffer_size_bytes: The maximum size of messages in the channel.
         num_readers: The number of readers per message.
+        reader_node_id: The node ID of the readers (must be the same for all readers).
 
     Returns:
         The allocated channel.
     """
-    output_channel = Channel(
-        readers,
-        buffer_size_bytes,
-        _reader_node_id=reader_node_id
-    )
+    output_channel = Channel(readers, buffer_size_bytes, _reader_node_id=reader_node_id)
     return output_channel
 
 
@@ -73,8 +71,6 @@ def do_exec_tasks(self, tasks: List["ExecutableTask"]) -> None:
                 else:
                     task.resolved_inputs.append(inp)
 
-            # logger.info(f"Task {task.method_name} has input channels {task.input_channels}")
-            # logger.info(f"Task {task.method_name} has output channel {task.output_channel}")
             input_reader: ReaderInterface = SynchronousReader(task.input_channels)
             output_writer: WriterInterface = SynchronousWriter(task.output_channel)
             self._uuid_to_input_reader[task.uuid] = input_reader
@@ -86,16 +82,18 @@ def do_exec_tasks(self, tasks: List["ExecutableTask"]) -> None:
         done = False
         while True:
             if done:
-                break;
+                break
             for task in tasks:
+                # TODO: for cases where output is passed as input to a task on
+                # the same actor, introduce a "LocalChannel" to avoid the overhead
+                # of serialization/deserialization and synchronization.
                 method = getattr(self, task.method_name)
                 input_reader = self._uuid_to_input_reader[task.uuid]
                 output_writer = self._uuid_to_output_writer[task.uuid]
                 res = None
                 try:
                     res = input_reader.begin_read()
-                except IOError as e:
-                    logger.info(f"IOError in reading input channel {e}")
+                except IOError:
                     done = True
                     break
 
@@ -104,7 +102,6 @@ def do_exec_tasks(self, tasks: List["ExecutableTask"]) -> None:
 
                 try:
                     output_val = method(*task.resolved_inputs)
-                    # logger.info(f"Output value: {output_val}")
                 except Exception as exc:
                     backtrace = ray._private.utils.format_error_message(
                         "".join(
@@ -125,8 +122,7 @@ def do_exec_tasks(self, tasks: List["ExecutableTask"]) -> None:
 
                 try:
                     input_reader.end_read()
-                except IOError as e:
-                    logger.info(f"IOError in closing input channel {e}")
+                except IOError:
                     done = True
                     break
 
@@ -317,7 +313,6 @@ class CompiledDAG:
         ] = {}
 
     def _add_node(self, node: "ray.dag.DAGNode") -> None:
-        logger.info(f"Adding node {node} to index {self.counter}", stack_info=False)
         idx = self.counter
         self.idx_to_task[idx] = CompiledTask(idx, node)
         self.dag_node_to_idx[node] = idx
@@ -379,9 +374,6 @@ class CompiledDAG:
                 if isinstance(arg, DAGNode):
                     arg_idx = self.dag_node_to_idx[arg]
                     self.idx_to_task[arg_idx].downstream_node_idxs.add(idx)
-                    logger.info(
-                        f"Adding {idx} as downstream for {arg_idx}, all downstream is {self.idx_to_task[arg_idx].downstream_node_idxs}"
-                    )
 
         # Find the input node to the DAG.
         for idx, task in self.idx_to_task.items():
@@ -449,9 +441,11 @@ class CompiledDAG:
             if isinstance(task.dag_node, ClassMethodNode):
                 readers = [self.idx_to_task[idx] for idx in task.downstream_node_idxs]
                 assert len(readers) == 1
+                reader_node_id = None
+
                 def _get_node_id(self):
                     return ray.get_runtime_context().get_node_id()
-                reader_node_id = None
+
                 if isinstance(readers[0].dag_node, MultiOutputNode):
                     # This node is a multi-output node, which means that it will only be
                     # read by the driver, not an actor. Thus, we handle this case by
@@ -473,30 +467,28 @@ class CompiledDAG:
                     reader_handles = [
                         reader.dag_node._get_actor_handle() for reader in readers
                     ]
-                    # logger.info(f"reader_handles: {reader_handles}")
                     for reader in readers:
                         fn = reader.dag_node._get_remote_method("__ray_call__")
                         current_reader_node_id = ray.get(fn.remote(_get_node_id))
                         if reader_node_id is None:
                             reader_node_id = current_reader_node_id
                         elif reader_node_id != current_reader_node_id:
-                            raise ValueError(
-                                "All readers of a task must be on the same node"
+                            raise NotImplementedError(
+                                "All readers of a channel must be "
+                                "on the same node for now."
                             )
-                # logger.info(f"task actor handle: {task.dag_node._get_actor_handle()}")
                 fn = task.dag_node._get_remote_method("__ray_call__")
                 task.output_channel = ray.get(
                     fn.remote(
                         do_allocate_channel,
                         reader_handles,
                         buffer_size_bytes=self._buffer_size_bytes,
-                        reader_node_id=reader_node_id
+                        reader_node_id=reader_node_id,
                     )
                 )
                 actor_handle = task.dag_node._get_actor_handle()
                 self.actor_to_ref[actor_handle._actor_id] = actor_handle
                 self.actor_to_tasks[actor_handle._actor_id].append(task)
-                logger.info(f"Adding task index {cur_idx} to actor {actor_handle._actor_id}")
             elif isinstance(task.dag_node, InputNode):
                 readers = [self.idx_to_task[idx] for idx in task.downstream_node_idxs]
                 reader_handles = [
@@ -510,7 +502,6 @@ class CompiledDAG:
                 assert isinstance(task.dag_node, MultiOutputNode)
 
             for idx in task.downstream_node_idxs:
-                logger.info(f"Appending {idx} to frontier")
                 frontier.append(idx)
 
         # Validate input channels for tasks that have not been visited
@@ -633,7 +624,6 @@ class CompiledDAG:
 
         self._dag_submitter.start()
         self._dag_output_fetcher.start()
-        logger.info("Finished _get_or_compile")
         return
 
     def _monitor_failures(self):
@@ -654,13 +644,13 @@ class CompiledDAG:
                 self.in_teardown = True
                 for actor_id, tasks in outer.actor_to_executable_tasks.items():
                     try:
-                         # TODO(swang): Suppress exceptions from actors trying to
+                        # TODO(swang): Suppress exceptions from actors trying to
                         # read closed channels when DAG is being torn down.
                         ray.get(
-                                outer.actor_to_ref[actor_id].__ray_call__.remote(
-                                    do_cancel_executable_tasks, tasks
-                                )
+                            outer.actor_to_ref[actor_id].__ray_call__.remote(
+                                do_cancel_executable_tasks, tasks
                             )
+                        )
                     except Exception:
                         logger.exception("Error cancelling task")
                         pass
