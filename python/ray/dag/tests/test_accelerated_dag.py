@@ -71,6 +71,7 @@ def test_basic(ray_start_regular):
     compiled_dag = dag.experimental_compile()
 
     for i in range(3):
+        print(f"Executing iteration {i}")
         output_channel = compiled_dag.execute(1)
         # TODO(swang): Replace with fake ObjectRef.
         result = output_channel.begin_read()

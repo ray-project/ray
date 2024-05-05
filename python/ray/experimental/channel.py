@@ -101,15 +101,18 @@ class Channel:
                 self._reader_ref = self._writer_ref
             else:
                 # Reader and writer are on different nodes.
-                fn = readers[0].__ray_call__
-                self._reader_node_id = ray.get(fn.remote(_get_node_id))
-                for reader in readers:
-                    fn = reader.__ray_call__
-                    reader_node_id = ray.get(fn.remote(_get_node_id))
-                    if reader_node_id != self._reader_node_id:
-                        raise NotImplementedError(
-                            "All readers must be on the same node for now."
-                        )
+                if _reader_node_id is not None:
+                    self._reader_node_id = _reader_node_id
+                else:
+                    fn = readers[0].__ray_call__
+                    self._reader_node_id = ray.get(fn.remote(_get_node_id))
+                    for reader in readers:
+                        fn = reader.__ray_call__
+                        reader_node_id = ray.get(fn.remote(_get_node_id))
+                        if reader_node_id != self._reader_node_id:
+                            raise NotImplementedError(
+                                "All readers must be on the same node for now."
+                            )
                 if self.is_remote():
                     self._reader_ref = ray.get(
                         fn.remote(_create_channel_ref, buffer_size_bytes)

@@ -26,7 +26,9 @@ logger = logging.getLogger(__name__)
 
 @DeveloperAPI
 def do_allocate_channel(
-    self, readers: List[Optional["ray.actor.ActorHandle"]], buffer_size_bytes: int
+    self, readers: List[Optional["ray.actor.ActorHandle"]], 
+    buffer_size_bytes: int,
+    reader_node_id : Optional["ray.NodeID"] = None
 ) -> Channel:
     """Generic actor method to allocate an output channel.
 
@@ -40,6 +42,7 @@ def do_allocate_channel(
     output_channel = Channel(
         readers,
         buffer_size_bytes,
+        _reader_node_id=reader_node_id
     )
     return output_channel
 
@@ -80,7 +83,10 @@ def do_exec_tasks(self, tasks: List["ExecutableTask"]) -> None:
             input_reader.start()
             output_writer.start()
 
+        done = False
         while True:
+            if done:
+                break;
             for task in tasks:
                 method = getattr(self, task.method_name)
                 input_reader = self._uuid_to_input_reader[task.uuid]
@@ -88,8 +94,9 @@ def do_exec_tasks(self, tasks: List["ExecutableTask"]) -> None:
                 res = None
                 try:
                     res = input_reader.begin_read()
-                except IOError:
-                    logger.info("IOError in reading input channel")
+                except IOError as e:
+                    logger.info(f"IOError in reading input channel {e}")
+                    done = True
                     break
 
                 for idx, output in zip(task.input_channel_idxs, res):
@@ -118,8 +125,9 @@ def do_exec_tasks(self, tasks: List["ExecutableTask"]) -> None:
 
                 try:
                     input_reader.end_read()
-                except IOError:
-                    logger.info("IOError in closing input channel")
+                except IOError as e:
+                    logger.info(f"IOError in closing input channel {e}")
+                    done = True
                     break
 
     except Exception:
@@ -440,6 +448,8 @@ class CompiledDAG:
             if isinstance(task.dag_node, ClassMethodNode):
                 readers = [self.idx_to_task[idx] for idx in task.downstream_node_idxs]
                 assert len(readers) == 1
+                def _get_node_id(self):
+                    return ray.get_runtime_context().get_node_id()
                 if isinstance(readers[0].dag_node, MultiOutputNode):
                     # This node is a multi-output node, which means that it will only be
                     # read by the driver, not an actor. Thus, we handle this case by
@@ -447,9 +457,6 @@ class CompiledDAG:
                     reader_handles = [None]
 
                     fn = task.dag_node._get_remote_method("__ray_call__")
-
-                    def _get_node_id(self):
-                        return ray.get_runtime_context().get_node_id()
 
                     actor_node = ray.get(fn.remote(_get_node_id))
 
@@ -464,12 +471,25 @@ class CompiledDAG:
                     reader_handles = [
                         reader.dag_node._get_actor_handle() for reader in readers
                     ]
+                    logger.info(f"reader_handles: {reader_handles}")
+                    reader_node_id = None
+                    for reader in readers:
+                        fn = reader.dag_node._get_remote_method("__ray_call__")
+                        current_reader_node_id = ray.get(fn.remote(_get_node_id))
+                        if reader_node_id is None:
+                            reader_node_id = current_reader_node_id
+                        elif reader_node_id != current_reader_node_id:
+                            raise ValueError(
+                                "All readers of a task must be on the same node"
+                            )
+                logger.info(f"task actor handle: {task.dag_node._get_actor_handle()}")
                 fn = task.dag_node._get_remote_method("__ray_call__")
                 task.output_channel = ray.get(
                     fn.remote(
                         do_allocate_channel,
                         reader_handles,
                         buffer_size_bytes=self._buffer_size_bytes,
+                        reader_node_id=reader_node_id
                     )
                 )
                 actor_handle = task.dag_node._get_actor_handle()
@@ -610,6 +630,7 @@ class CompiledDAG:
 
         self._dag_submitter.start()
         self._dag_output_fetcher.start()
+        logger.info("Finished _get_or_compile")
         return
 
     def _monitor_failures(self):
