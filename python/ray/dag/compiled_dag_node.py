@@ -73,8 +73,8 @@ def do_exec_tasks(self, tasks: List["ExecutableTask"]) -> None:
                 else:
                     task.resolved_inputs.append(inp)
 
-            logger.info(f"Task {task.method_name} has input channels {task.input_channels}")
-            logger.info(f"Task {task.method_name} has output channel {task.output_channel}")
+            # logger.info(f"Task {task.method_name} has input channels {task.input_channels}")
+            # logger.info(f"Task {task.method_name} has output channel {task.output_channel}")
             input_reader: ReaderInterface = SynchronousReader(task.input_channels)
             output_writer: WriterInterface = SynchronousWriter(task.output_channel)
             self._uuid_to_input_reader[task.uuid] = input_reader
@@ -104,7 +104,7 @@ def do_exec_tasks(self, tasks: List["ExecutableTask"]) -> None:
 
                 try:
                     output_val = method(*task.resolved_inputs)
-                    logger.info(f"Output value: {output_val}")
+                    # logger.info(f"Output value: {output_val}")
                 except Exception as exc:
                     backtrace = ray._private.utils.format_error_message(
                         "".join(
@@ -206,24 +206,27 @@ class ExecutableTask:
     def __init__(
         self,
         method_name: str,
+        uuid: str,
+        bind_index: int,
         resolved_args: List[Any],
         output_channel: Channel,
-        uuid: str,
     ):
         """
         Args:
             method_name: The name of the method to execute.
+            uuid: The unique identifier for the task.
+            bind_index: The bind index of the method in the actor.
             resolved_args: The arguments to the method. Arguments that are
                 not Channels will get passed through to the actor method.
                 If the argument is a channel, it will be replaced by the
                 value read from the channel before the method executes.
             output_channel: The channel to write the output to.
-            uuid: The unique identifier for the task.
         """
         self.method_name = method_name
+        self.uuid = uuid
+        self.bind_index = bind_index
         self.resolved_args = resolved_args
         self.output_channel = output_channel
-        self.uuid = uuid
 
 
 @DeveloperAPI
@@ -314,9 +317,7 @@ class CompiledDAG:
         ] = {}
 
     def _add_node(self, node: "ray.dag.DAGNode") -> None:
-        logger.info(f"Adding node {node} to index {self.counter}")
-        #import traceback
-        #traceback.print_stack()
+        logger.info(f"Adding node {node} to index {self.counter}", stack_info=False)
         idx = self.counter
         self.idx_to_task[idx] = CompiledTask(idx, node)
         self.dag_node_to_idx[node] = idx
@@ -450,6 +451,7 @@ class CompiledDAG:
                 assert len(readers) == 1
                 def _get_node_id(self):
                     return ray.get_runtime_context().get_node_id()
+                reader_node_id = None
                 if isinstance(readers[0].dag_node, MultiOutputNode):
                     # This node is a multi-output node, which means that it will only be
                     # read by the driver, not an actor. Thus, we handle this case by
@@ -471,8 +473,7 @@ class CompiledDAG:
                     reader_handles = [
                         reader.dag_node._get_actor_handle() for reader in readers
                     ]
-                    logger.info(f"reader_handles: {reader_handles}")
-                    reader_node_id = None
+                    # logger.info(f"reader_handles: {reader_handles}")
                     for reader in readers:
                         fn = reader.dag_node._get_remote_method("__ray_call__")
                         current_reader_node_id = ray.get(fn.remote(_get_node_id))
@@ -482,7 +483,7 @@ class CompiledDAG:
                             raise ValueError(
                                 "All readers of a task must be on the same node"
                             )
-                logger.info(f"task actor handle: {task.dag_node._get_actor_handle()}")
+                # logger.info(f"task actor handle: {task.dag_node._get_actor_handle()}")
                 fn = task.dag_node._get_remote_method("__ray_call__")
                 task.output_channel = ray.get(
                     fn.remote(
@@ -554,13 +555,15 @@ class CompiledDAG:
                     )
                 executable_task = ExecutableTask(
                     task.dag_node.get_method_name(),
+                    task.dag_node.get_stable_uuid(),
+                    task.dag_node._get_bind_index(),
                     resolved_args,
                     task.output_channel,
-                    task.dag_node.get_stable_uuid(),
                 )
                 executable_tasks.append(executable_task)
                 if worker_fn is None:
                     worker_fn = task.dag_node._get_remote_method("__ray_call__")
+            executable_tasks.sort(key=lambda task: task.bind_index)
 
             import itertools
 
