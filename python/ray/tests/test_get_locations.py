@@ -136,11 +136,13 @@ def test_location_pending(ray_start_cluster):
     assert local_location["object_size"] is None
 
 
-###### Tests for `get_local_object_locations`. We use matrix test:
-# callee can be regular ray task, or streaming generator;
-# caller can be in the same node (single node cluster), or different node.
+# Tests for `get_local_object_locations`. We use matrix test:
+# - callee can be regular ray task, or streaming generator;
+# - caller can be in the same node (single node cluster), or different node.
 #
-# Each task has the caller to produce Object(s) that consumes big memory but has a small
+# ... so we have 4 tests.
+#
+# Each test has the caller to produce Object(s) that consumes big memory but has a small
 # sys.getsizeof. The caller then asserts the object size from the API
 # `ray.experimental.get_local_object_locations` is > the actual memory consumed.
 
