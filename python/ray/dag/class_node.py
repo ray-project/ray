@@ -160,6 +160,7 @@ class ClassMethodNode(DAGNode):
         self._prev_class_method_call: Optional[
             ClassMethodNode
         ] = other_args_to_resolve.get(PREV_CLASS_METHOD_CALL_KEY, None)
+        # The index/order when bind() is called on this class method
         self._bind_index: Optional[int] = other_args_to_resolve.get(
             BIND_INDEX_KEY, None
         )

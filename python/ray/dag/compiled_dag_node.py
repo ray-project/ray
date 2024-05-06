@@ -1,6 +1,7 @@
 import asyncio
 from collections import defaultdict
 from typing import Any, Callable, Dict, List, Tuple, Union, Optional
+import itertools
 import logging
 import traceback
 import threading
@@ -41,21 +42,13 @@ def do_allocate_channel(
     Returns:
         The allocated channel.
     """
+    # We need to pass in `reader_node_id` to avoid a potential deadlock.
+    # Specifically, without predetermined `reader_node_id`, during channel creation,
+    # it makes a `ray.get()` blocking call to get the node id of the `readers`, which
+    # executes on the reader actor; and if the reader actor is the current actor which
+    # is creating the channel, there will be a deadlock.
     output_channel = Channel(readers, buffer_size_bytes, _reader_node_id=reader_node_id)
     return output_channel
-
-
-def _wrap_exception(exc):
-    backtrace = ray._private.utils.format_error_message(
-        "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
-        task_exception=True,
-    )
-    wrapped = RayTaskError(
-        function_name="do_exec_tasks",
-        traceback_str=backtrace,
-        cause=exc,
-    )
-    return wrapped
 
 
 @DeveloperAPI
@@ -76,8 +69,8 @@ def do_exec_tasks(
         if has_type_hints:
             _do_register_custom_dag_serializers(self)
 
-        self._uuid_to_input_reader = {}
-        self._uuid_to_output_writer = {}
+        self._input_readers = []
+        self._output_writers = []
         for task in tasks:
             task.resolved_inputs = []
             task.input_channels = []
@@ -93,8 +86,8 @@ def do_exec_tasks(
 
             input_reader: ReaderInterface = SynchronousReader(task.input_channels)
             output_writer: WriterInterface = SynchronousWriter(task.output_channel)
-            self._uuid_to_input_reader[task.uuid] = input_reader
-            self._uuid_to_output_writer[task.uuid] = output_writer
+            self._input_readers.append(input_reader)
+            self._output_writers.append(output_writer)
 
             input_reader.start()
             output_writer.start()
@@ -103,13 +96,13 @@ def do_exec_tasks(
         while True:
             if done:
                 break
-            for task in tasks:
+            for idx, task in enumerate(tasks):
                 # TODO: for cases where output is passed as input to a task on
                 # the same actor, introduce a "LocalChannel" to avoid the overhead
                 # of serialization/deserialization and synchronization.
                 method = getattr(self, task.method_name)
-                input_reader = self._uuid_to_input_reader[task.uuid]
-                output_writer = self._uuid_to_output_writer[task.uuid]
+                input_reader = self._input_readers[idx]
+                output_writer = self._output_writers[idx]
                 res = None
                 try:
                     res = input_reader.begin_read()
@@ -148,9 +141,46 @@ def do_exec_tasks(
 
 @DeveloperAPI
 def do_cancel_executable_tasks(self, tasks: List["ExecutableTask"]) -> None:
-    for task in tasks:
-        self._uuid_to_input_reader[task.uuid].close()
-        self._uuid_to_output_writer[task.uuid].close()
+    for idx in range(len(tasks)):
+        self._input_readers[idx].close()
+        self._output_writers[idx].close()
+
+
+def _wrap_exception(exc):
+    backtrace = ray._private.utils.format_error_message(
+        "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+        task_exception=True,
+    )
+    wrapped = RayTaskError(
+        function_name="do_exec_tasks",
+        traceback_str=backtrace,
+        cause=exc,
+    )
+    return wrapped
+
+
+def _check_multi_binds_to_same_input(executable_tasks: List["ExecutableTask"]):
+    """
+    Check unsupported case: binding the same actor method to the same
+    input multiple times
+    """
+    for _, g in itertools.groupby(executable_tasks, lambda x: x.method_name):
+        group = list(g)
+        if len(group) > 1:
+            resolved_args = set()
+            for executable_task in group:
+                if (
+                    len(set(executable_task.resolved_args).intersection(resolved_args))
+                    > 0
+                ):
+                    # TODO: Support binding the same actor method to the
+                    # same input multiple times.
+                    raise NotImplementedError(
+                        f"Compiled DAGs currently do not support binding the "
+                        f"same actor method to the same input multiple times. "
+                        f"Method: {executable_task.method_name}"
+                    )
+                resolved_args.update(executable_task.resolved_args)
 
 
 @PublicAPI(stability="alpha")
@@ -250,7 +280,6 @@ class ExecutableTask:
                 value read from the channel before the method executes.
         """
         self.method_name = task.dag_node.get_method_name()
-        self.uuid = task.dag_node.get_stable_uuid()
         self.bind_index = task.dag_node._get_bind_index()
         self.output_channel = task.output_channel
         self.output_wrapper_fn = task.output_wrapper_fn
@@ -598,31 +627,7 @@ class CompiledDAG:
             # so that they will be executed in that order.
             executable_tasks.sort(key=lambda task: task.bind_index)
 
-            # Check unsupported case: binding the same actor method to the same
-            # input multiple times
-            import itertools
-
-            for _, g in itertools.groupby(executable_tasks, lambda x: x.method_name):
-                group = list(g)
-                if len(group) > 1:
-                    resolved_args = set()
-                    for executable_task in group:
-                        if (
-                            len(
-                                set(executable_task.resolved_args).intersection(
-                                    resolved_args
-                                )
-                            )
-                            > 0
-                        ):
-                            # TODO: Support binding the same actor method to the
-                            # same input multiple times.
-                            raise NotImplementedError(
-                                f"Compiled DAGs currently do not support binding the "
-                                f"same actor method to the same input multiple times. "
-                                f"Method: {executable_task.method_name}"
-                            )
-                        resolved_args.update(executable_task.resolved_args)
+            _check_multi_binds_to_same_input(executable_tasks)
 
             self.actor_to_executable_tasks[actor_id] = executable_tasks
             # Assign the task with the correct input and output buffers.
@@ -722,6 +727,8 @@ class CompiledDAG:
                 outer._dag_output_fetcher.close()
 
                 self.in_teardown = True
+                for actor_handle in outer.actor_to_handle.values():
+                    logger.info(f"Cancelling compiled worker on actor: {actor_handle}")
                 for actor_id, tasks in outer.actor_to_executable_tasks.items():
                     try:
                         # TODO(swang): Suppress exceptions from actors trying to
