@@ -1,5 +1,6 @@
 from enum import Enum
 
+
 class LogKey(str, Enum):
     # Core context
     JOB_ID = "job_id"
