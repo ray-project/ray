@@ -306,12 +306,13 @@ class ReplicaActor:
         from ray.anyscale.serve._private.tracing_utils import setup_tracing
 
         try:
-            setup_tracing(
+            is_tracing_setup_successful = setup_tracing(
                 component_type=ServeComponentType.REPLICA,
                 component_name=self._component_name,
                 component_id=self._component_id,
             )
-            logger.info("Successfully setup tracing for replica")
+            if is_tracing_setup_successful:
+                logger.info("Successfully set up tracing for replica")
 
         except Exception as e:
             logger.warning(

@@ -1,6 +1,6 @@
 import inspect
 import os
-from typing import Any, Callable, List
+from typing import Any, Callable, List, Optional
 
 from ray._private.utils import import_attr
 from ray.anyscale.serve._private.constants import (
@@ -81,12 +81,22 @@ def setup_tracing(
     component_type: ServeComponentType,
     component_name: str,
     component_id: str,
-) -> None:
-    # If exporter import path is empty, then shortcircuit
-    tracing_exporter_import_path = ANYSCALE_TRACING_EXPORTER_IMPORT_PATH
+    tracing_exporter_import_path: Optional[str] = ANYSCALE_TRACING_EXPORTER_IMPORT_PATH,
+) -> bool:
+    """
+    Set up tracing for a specific Serve component.
 
+    Args:
+        component_type: The type of the component.
+        component_name: The name of the component.
+        component_id: The unique identifier of the component.
+        tracing_exporter_import_path: Path to tracing exporter function.
+
+    Returns:
+        bool: True if tracing setup is successful, False otherwise.
+    """
     if tracing_exporter_import_path == "":
-        return
+        return False
 
     # Check dependencies
     if (
@@ -96,7 +106,8 @@ def setup_tracing(
         or not TracerProvider
     ):
         raise ImportError(
-            "You must `pip install opentelemetry` and `pip install opentelemetry-sdk`"
+            "You must `pip install opentelemetry-api` and "
+            "`pip install opentelemetry-sdk` "
             "to enable tracing on Ray Serve."
         )
 
@@ -118,3 +129,5 @@ def setup_tracing(
 
     for span_processor in span_processors:
         trace.get_tracer_provider().add_span_processor(span_processor)
+
+    return True

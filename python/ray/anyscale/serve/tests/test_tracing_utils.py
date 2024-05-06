@@ -31,6 +31,18 @@ except ImportError:
     )
 
 
+def test_disable_tracing_exporter():
+
+    is_tracing_setup_successful = setup_tracing(
+        component_type=ServeComponentType.REPLICA,
+        component_name="component_name",
+        component_id="component_id",
+        tracing_exporter_import_path="",
+    )
+
+    assert is_tracing_setup_successful is False
+
+
 def test_default_tracing_exporter(ray_start_cluster):
 
     cluster = ray_start_cluster
@@ -115,8 +127,8 @@ def test_validate_tracing_exporter_processors_full_output():
 
 def test_missing_dependencies():
     expected_exception = (
-        "You must `pip install opentelemetry` and "
-        "`pip install opentelemetry-sdk`"
+        "You must `pip install opentelemetry-api` and "
+        "`pip install opentelemetry-sdk` "
         "to enable tracing on Ray Serve."
     )
     with patch(
