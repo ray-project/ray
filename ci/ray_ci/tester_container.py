@@ -72,6 +72,7 @@ class TesterContainer(Container):
         team: str,
         test_targets: List[str],
         test_arg: Optional[str] = None,
+        is_bisect_run: bool = False,
     ) -> bool:
         """
         Run tests parallelly in docker.  Return whether all tests pass.
@@ -100,16 +101,23 @@ class TesterContainer(Container):
             for i in range(len(chunks))
         ]
         exits = [run.wait() for run in runs]
-        self._persist_test_results(team, bazel_log_dir_container)
+        self._persist_test_results(team, bazel_log_dir_container, is_bisect_run)
         self._cleanup_bazel_log_mount(bazel_log_dir_container)
 
         return all(exit == 0 for exit in exits)
 
-    def _persist_test_results(self, team: str, bazel_log_dir: str) -> None:
+    def _persist_test_results(
+        self, team: str, bazel_log_dir: str, is_bisect_run: bool = False
+    ) -> None:
         pipeline_id = os.environ.get("BUILDKITE_PIPELINE_ID")
         branch = os.environ.get("BUILDKITE_BRANCH")
         branch_pipelines = get_global_config()["ci_pipeline_postmerge"]
         pr_pipelines = get_global_config()["ci_pipeline_premerge"]
+        if is_bisect_run:
+            logger.info(
+                "Skip upload test results. We do not upload results on bisect runs."
+            )
+            return
         if pipeline_id not in branch_pipelines + pr_pipelines:
             logger.info(
                 "Skip upload test results. "

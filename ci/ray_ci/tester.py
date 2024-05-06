@@ -149,6 +149,11 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     default="optimized",
 )
 @click.option(
+    "--bisect-run-test-target",
+    type=str,
+    help="Test target to run in bisection mode",
+)
+@click.option(
     "--operating-system",
     default="linux",
     type=click.Choice(["linux", "windows"]),
@@ -178,6 +183,7 @@ def main(
     python_version: Optional[str],
     build_name: Optional[str],
     build_type: Optional[str],
+    bisect_run_test_target: Optional[str],
     tmp_filesystem: Optional[str],
 ) -> None:
     if not bazel_workspace_dir:
@@ -190,6 +196,9 @@ def main(
         # for wheel testing, we first build the wheel and then use it for running tests
         architecture = DEFAULT_ARCHITECTURE if build_type == "wheel" else "aarch64"
         BuilderContainer(DEFAULT_PYTHON_VERSION, DEFAULT_BUILD_TYPE, architecture).run()
+    bisect_run_test_target = bisect_run_test_target or os.environ.get(
+        "RAYCI_BISECT_TEST_TARGET"
+    )
     container = _get_container(
         team,
         operating_system,
@@ -209,14 +218,17 @@ def main(
         sys.exit(0)
     test_targets = _get_test_targets(
         container,
-        targets,
+        # use the bisect_run_test_target if it is provided
+        [bisect_run_test_target] if bisect_run_test_target else targets,
         team,
         operating_system,
         except_tags=_add_default_except_tags(except_tags),
         only_tags=only_tags,
         get_flaky_tests=run_flaky_tests,
     )
-    success = container.run_tests(team, test_targets, test_arg)
+    success = container.run_tests(
+        team, test_targets, test_arg, is_bisect_run=bisect_run_test_target is not None
+    )
     sys.exit(0 if success else 42)
 
 

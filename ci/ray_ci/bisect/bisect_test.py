@@ -1,19 +1,20 @@
 import click
 import json
+import os
 
 from ci.ray_ci.utils import logger, ci_init
 from ci.ray_ci.bisect.macos_validator import MacOSValidator
+from ci.ray_ci.bisect.generic_validator import GenericValidator
 from ci.ray_ci.bisect.bisector import Bisector
 from ray_release.test import (
     Test,
-    MACOS_TEST_PREFIX,
-    LINUX_TEST_PREFIX,
-    WINDOWS_TEST_PREFIX,
+    TestType,
 )
 from ray_release.test_automation.ci_state_machine import CITestStateMachine
 
 
-TEST_PREFIXES = [MACOS_TEST_PREFIX, LINUX_TEST_PREFIX, WINDOWS_TEST_PREFIX]
+# This is the directory where the ray repository is mounted in the container
+RAYCI_CHECKOUT_DIR_MOUNT = "/ray"
 
 
 @click.command()
@@ -23,11 +24,18 @@ TEST_PREFIXES = [MACOS_TEST_PREFIX, LINUX_TEST_PREFIX, WINDOWS_TEST_PREFIX]
 def main(test_name: str, passing_commit: str, failing_commit: str) -> None:
     ci_init()
     test = Test.gen_from_name(test_name)
+    if test.get_test_type() == TestType.MACOS_TEST:
+        validator = MacOSValidator()
+        git_dir = os.environ.get("RAYCI_CHECKOUT_DIR")
+    else:
+        validator = GenericValidator()
+        git_dir = RAYCI_CHECKOUT_DIR_MOUNT
     blame_commit = Bisector(
         test,
         passing_commit,
         failing_commit,
-        MacOSValidator(),
+        validator,
+        git_dir,
     ).run()
     logger.info(f"Blame revision: {blame_commit}")
     _update_test_state(test, blame_commit)
