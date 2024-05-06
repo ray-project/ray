@@ -14,6 +14,7 @@ class GlobalConfig(TypedDict):
     byod_gcp_cr: str
     state_machine_pr_aws_bucket: str
     state_machine_branch_aws_bucket: str
+    state_machine_disabled: bool
     aws2gce_credentials: str
     ci_pipeline_premerge: List[str]
     ci_pipeline_postmerge: List[str]
@@ -83,6 +84,10 @@ def _init_global_config(config_file: str):
         .get(
             "aws_bucket",
         ),
+        state_machine_disabled=config_content.get("state_machine", {}).get(
+            "disabled", 0
+        )
+        == 1,
         ci_pipeline_premerge=config_content.get("ci_pipeline", {}).get("premerge", []),
         ci_pipeline_postmerge=config_content.get("ci_pipeline", {}).get(
             "postmerge", []
