@@ -455,7 +455,8 @@ Status NodeInfoAccessor::UnregisterSelf(const rpc::NodeDeathInfo &node_death_inf
   std::promise<Status> promise;
   client_impl_->GetGcsRpcClient().UnregisterNode(
       request,
-      [this, node_id, &promise](const Status &status, const rpc::UnregisterNodeReply &reply) {
+      [this, node_id, &promise](const Status &status,
+                                const rpc::UnregisterNodeReply &reply) {
         if (status.ok()) {
           local_node_info_.set_state(GcsNodeInfo::DEAD);
           local_node_id_ = NodeID::Nil();

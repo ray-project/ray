@@ -23,6 +23,7 @@
 
 #include "ray/common/id.h"
 #include "ray/util/process.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace raylet {
@@ -54,10 +55,11 @@ class AgentManager {
     bool fate_shares;
   };
 
-  explicit AgentManager(Options options,
-                        DelayExecutorFn delay_executor,
-                        std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
-                        bool start_agent = true /* for test */)
+  explicit AgentManager(
+      Options options,
+      DelayExecutorFn delay_executor,
+      std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
+      bool start_agent = true /* for test */)
       : options_(std::move(options)),
         delay_executor_(std::move(delay_executor)),
         shutdown_raylet_gracefully_(std::move(shutdown_raylet_gracefully)),

@@ -251,15 +251,16 @@ inline constexpr std::string_view HTTP_PATH_DELETE_RUNTIME_ENV_IF_POSSIBLE =
 
 class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
  public:
-  HttpRuntimeEnvAgentClient(instrumented_io_context &io_context,
-                            const std::string &address,
-                            int port,
-                            std::function<std::shared_ptr<boost::asio::deadline_timer>(
-                                std::function<void()>, uint32_t delay_ms)> delay_executor,
-                            std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
-                            uint32_t agent_register_timeout_ms,
-                            uint32_t agent_manager_retry_interval_ms,
-                            uint32_t session_pool_size = 10)
+  HttpRuntimeEnvAgentClient(
+      instrumented_io_context &io_context,
+      const std::string &address,
+      int port,
+      std::function<std::shared_ptr<boost::asio::deadline_timer>(
+          std::function<void()>, uint32_t delay_ms)> delay_executor,
+      std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
+      uint32_t agent_register_timeout_ms,
+      uint32_t agent_manager_retry_interval_ms,
+      uint32_t session_pool_size = 10)
       : io_context_(io_context),
         session_pool_(session_pool_size),
         address_(address),
@@ -286,7 +287,8 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
            "https://docs.ray.io/en/master/ray-observability/user-guides/"
            "configure-logging.html#logging-directory-structure.\n";
     rpc::NodeDeathInfo node_death_info;
-    node_death_info.set_reason(rpc::NodeDeathInfo_Reason::NodeDeathInfo_Reason_UNEXPECTED_TERMINATION);
+    node_death_info.set_reason(
+        rpc::NodeDeathInfo_Reason::NodeDeathInfo_Reason_UNEXPECTED_TERMINATION);
     node_death_info.set_reason_message("Runtime Env Agent timed out");
     shutdown_raylet_gracefully_(node_death_info);
     // If the process is not terminated within 10 seconds, forcefully kill itself.
@@ -517,7 +519,7 @@ std::shared_ptr<RuntimeEnvAgentClient> RuntimeEnvAgentClient::Create(
     int port,
     std::function<std::shared_ptr<boost::asio::deadline_timer>(
         std::function<void()>, uint32_t delay_ms)> delay_executor,
-    std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,,
+    std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
     uint32_t agent_register_timeout_ms,
     uint32_t agent_manager_retry_interval_ms) {
   return std::make_shared<HttpRuntimeEnvAgentClient>(io_context,

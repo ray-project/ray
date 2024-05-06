@@ -98,7 +98,7 @@ void AgentManager::StartAgent() {
              "- The agent is killed by the OS (e.g., out of memory).";
       rpc::NodeDeathInfo node_death_info;
       node_death_info.set_reason(rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
-      node_death_info.set_reason_message("Ray agent failed"); // TODO: add more info
+      node_death_info.set_reason_message("Ray agent failed");  // TODO: add more info
       shutdown_raylet_gracefully_(node_death_info);
       // If the process is not terminated within 10 seconds, forcefully kill raylet
       // itself.

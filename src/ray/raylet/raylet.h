@@ -65,7 +65,7 @@ class Raylet {
   void Start();
 
   /// Stop this raylet.
-  void Stop();
+  void Stop(const rpc::NodeDeathInfo &node_death_info);
 
   /// Destroy the NodeServer.
   ~Raylet();

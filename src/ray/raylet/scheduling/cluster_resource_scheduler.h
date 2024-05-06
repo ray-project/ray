@@ -64,7 +64,8 @@ class ClusterResourceScheduler {
       std::function<int64_t(void)> get_used_object_store_memory = nullptr,
       std::function<bool(void)> get_pull_manager_at_capacity = nullptr,
       std::function<bool(rpc::NodeDeathInfo)> unregister_self = nullptr,
-      std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully = nullptr,
+      std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully =
+          nullptr,
       const absl::flat_hash_map<std::string, std::string> &local_node_labels = {});
 
   /// Schedule the specified resources to the cluster nodes.
