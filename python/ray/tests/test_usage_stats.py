@@ -690,9 +690,7 @@ def test_usage_lib_cluster_metadata_generation(
             ray.experimental.internal_kv.internal_kv_get_gcs_client()
         )
         # Remove fields that are dynamically changed.
-        assert meta.pop("session_id")
         assert meta.pop("session_start_timestamp_ms")
-        assert cluster_metadata.pop("session_id")
         assert cluster_metadata.pop("session_start_timestamp_ms")
         assert meta == cluster_metadata
 
@@ -1064,6 +1062,7 @@ provider:
             2,
             2,
             ray.worker.global_worker.gcs_client.address,
+            ray.worker.global_worker.gcs_client.cluster_id.hex(),
         )
         validate(instance=asdict(d), schema=schema)
 
@@ -1122,7 +1121,7 @@ provider:
         usage_stats_server = start_usage_stats_server
 
         cluster = ray_start_cluster
-        cluster.add_node(num_cpus=3)
+        node = cluster.add_node(num_cpus=3)
         if os.environ.get("RAY_MINIMAL") != "1":
             from ray import train  # noqa: F401
             from ray.rllib.algorithms.ppo import PPO  # noqa: F401
@@ -1170,6 +1169,7 @@ provider:
             )
 
         assert payload["source"] == "OSS"
+        assert payload["session_id"] == node.cluster_id.hex()
         assert payload["cloud_provider"] == "aws"
         assert payload["min_workers"] is None
         assert payload["max_workers"] == 1
