@@ -72,66 +72,15 @@ def do_exec_tasks(
         self._input_readers = []
         self._output_writers = []
         for task in tasks:
-            task.resolved_inputs = []
-            task.input_channels = []
-            task.input_channel_idxs = []
-            # Add placeholders for input channels.
-            for idx, inp in enumerate(task.resolved_args):
-                if isinstance(inp, Channel):
-                    task.input_channels.append(inp)
-                    task.input_channel_idxs.append(idx)
-                    task.resolved_inputs.append(None)
-                else:
-                    task.resolved_inputs.append(inp)
-
-            input_reader: ReaderInterface = SynchronousReader(task.input_channels)
-            output_writer: WriterInterface = SynchronousWriter(task.output_channel)
-            self._input_readers.append(input_reader)
-            self._output_writers.append(output_writer)
-
-            input_reader.start()
-            output_writer.start()
+            _prep_task(self, task)
 
         done = False
         while True:
             if done:
                 break
             for idx, task in enumerate(tasks):
-                # TODO: for cases where output is passed as input to a task on
-                # the same actor, introduce a "LocalChannel" to avoid the overhead
-                # of serialization/deserialization and synchronization.
-                method = getattr(self, task.method_name)
-                input_reader = self._input_readers[idx]
-                output_writer = self._output_writers[idx]
-                res = None
-                try:
-                    res = input_reader.begin_read()
-                except ValueError as exc:
-                    # ValueError is raised if a type hint was set and the returned
-                    # type did not match the hint.
-                    output_writer.write(exc)
-                    input_reader.end_read()
-                    continue
-                except IOError:
-                    done = True
-                    break
-
-                for idx, output in zip(task.input_channel_idxs, res):
-                    task.resolved_inputs[idx] = output
-
-                try:
-                    output_val = method(*task.resolved_inputs)
-                    if task.output_wrapper_fn is not None:
-                        output_val = task.output_wrapper_fn(output_val)
-                except Exception as exc:
-                    output_writer.write(_wrap_exception(exc))
-                else:
-                    output_writer.write(output_val)
-
-                try:
-                    input_reader.end_read()
-                except IOError:
-                    done = True
+                done = _exec_task(self, task, idx)
+                if done:
                     break
 
     except Exception:
@@ -144,6 +93,77 @@ def do_cancel_executable_tasks(self, tasks: List["ExecutableTask"]) -> None:
     for idx in range(len(tasks)):
         self._input_readers[idx].close()
         self._output_writers[idx].close()
+
+
+def _prep_task(self, task: "ExecutableTask") -> None:
+    """
+    Prepare the task for execution.
+    """
+    task.resolved_inputs = []
+    task.input_channels = []
+    task.input_channel_idxs = []
+    # Add placeholders for input channels.
+    for idx, inp in enumerate(task.resolved_args):
+        if isinstance(inp, Channel):
+            task.input_channels.append(inp)
+            task.input_channel_idxs.append(idx)
+            task.resolved_inputs.append(None)
+        else:
+            task.resolved_inputs.append(inp)
+
+    input_reader: ReaderInterface = SynchronousReader(task.input_channels)
+    output_writer: WriterInterface = SynchronousWriter(task.output_channel)
+    self._input_readers.append(input_reader)
+    self._output_writers.append(output_writer)
+
+    input_reader.start()
+    output_writer.start()
+
+
+def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
+    """
+    Execute the task.
+    Args:
+        task: The task to execute.
+        idx: The index of the task in the list of tasks of the actor.
+    Returns:
+        True if we are done executing all tasks of this actor, False otherwise.
+    """
+    # TODO: for cases where output is passed as input to a task on
+    # the same actor, introduce a "LocalChannel" to avoid the overhead
+    # of serialization/deserialization and synchronization.
+    method = getattr(self, task.method_name)
+    input_reader = self._input_readers[idx]
+    output_writer = self._output_writers[idx]
+    res = None
+    try:
+        res = input_reader.begin_read()
+    except ValueError as exc:
+        # ValueError is raised if a type hint was set and the returned
+        # type did not match the hint.
+        output_writer.write(exc)
+        input_reader.end_read()
+        return False
+    except IOError:
+        return True
+
+    for idx, output in zip(task.input_channel_idxs, res):
+        task.resolved_inputs[idx] = output
+
+    try:
+        output_val = method(*task.resolved_inputs)
+        if task.output_wrapper_fn is not None:
+            output_val = task.output_wrapper_fn(output_val)
+    except Exception as exc:
+        output_writer.write(_wrap_exception(exc))
+    else:
+        output_writer.write(output_val)
+
+    try:
+        input_reader.end_read()
+    except IOError:
+        return True
+    return False
 
 
 def _wrap_exception(exc):
