@@ -5,10 +5,7 @@ from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.resource_manager import ResourceManager
-    from ray.data._internal.execution.streaming_executor_state import (
-        SchedulingDecision,
-        Topology,
-    )
+    from ray.data._internal.execution.streaming_executor_state import Topology
 
 
 @DeveloperAPI
@@ -26,17 +23,12 @@ class Autoscaler(ABC):
         self._execution_id = execution_id
 
     @abstractmethod
-    def try_trigger_scaling(self, scheduling_decision: "SchedulingDecision"):
+    def try_trigger_scaling(self):
         """Try trigger autoscaling.
 
-        The subclass implementation should handle the autoscaling of both
-        the cluster and `PhysicalOperator`s that have `AutoscalingActorPool`s.
-
         This method will be called each time when StreamingExecutor makes
-        a scheduling decision.
-
-        Args:
-            scheduling_decision: The scheduling decision made by the executor.
+        a scheduling decision. A subclass should override this method to
+        handle the autoscaling of both the cluster and `AutoscalingActorPool`s.
         """
         ...
 

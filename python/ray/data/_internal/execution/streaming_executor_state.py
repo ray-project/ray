@@ -142,6 +142,26 @@ class OpBufferQueue:
             self._num_per_split.clear()
 
 
+@dataclass
+class OpSchedulingStatus:
+    """The scheduling status of an operator.
+
+    This will be updated each time when StreamingExecutor makes
+    a scheduling decision, i.e., in each `select_operator_to_run`
+    call.
+    """
+
+    # Whether the op was selected to run in the last scheduling
+    # decision.
+    selected: bool = False
+    # Whether the op was considered runnable in the last scheduling
+    # decision.
+    runnable: bool = False
+    # Whether the resources were sufficient for the operator to run
+    # in the last scheduling decision.
+    under_resource_limits: bool = False
+
+
 class OpState:
     """The execution state tracked for each PhysicalOperator.
 
@@ -172,6 +192,7 @@ class OpState:
         # Used for StreamingExecutor to signal exception or end of execution
         self._finished: bool = False
         self._exception: Optional[Exception] = None
+        self._scheduling_status = OpSchedulingStatus()
 
     def __repr__(self):
         return f"OpState({self.op.name})"
@@ -480,26 +501,6 @@ def update_operator_states(topology: Topology) -> None:
             op.mark_execution_completed()
 
 
-@dataclass
-class OpSchedulingStatus:
-    """The scheduling status of an operator."""
-
-    # Whether the operator is runnable.
-    runnable: bool
-    # Whether the resources are sufficient for the operator to run.
-    under_resource_limits: bool
-
-
-@dataclass
-class SchedulingDecision:
-    """The decision made by the executor on which operator to run next."""
-
-    # The selected operator to run next.
-    selected_op: Optional[PhysicalOperator]
-    # The scheduling status of each operator.
-    op_scheduling_status: Dict[PhysicalOperator, OpSchedulingStatus]
-
-
 def select_operator_to_run(
     topology: Topology,
     resource_manager: ResourceManager,
@@ -520,8 +521,6 @@ def select_operator_to_run(
     provides backpressure if the consumer is slow. However, once a bundle is returned
     to the user, it is no longer tracked.
     """
-    op_scheduling_status: Dict[PhysicalOperator, OpSchedulingStatus] = {}
-
     # Filter to ops that are eligible for execution.
     ops = []
     for op, state in topology.items():
@@ -543,7 +542,8 @@ def select_operator_to_run(
         ):
             ops.append(op)
             op_runnable = True
-        op_scheduling_status[op] = OpSchedulingStatus(
+        state._scheduling_status = OpSchedulingStatus(
+            selected=False,
             runnable=op_runnable,
             under_resource_limits=under_resource_limits,
         )
@@ -578,11 +578,8 @@ def select_operator_to_run(
             resource_manager.get_op_usage(op).object_store_memory,
         ),
     )
-    scheduling_decision = SchedulingDecision(
-        selected_op=selected_op,
-        op_scheduling_status=op_scheduling_status,
-    )
-    autoscaler.try_trigger_scaling(scheduling_decision)
+    topology[selected_op]._scheduling_status.selected = True
+    autoscaler.try_trigger_scaling()
     return selected_op
 
 
