@@ -1309,8 +1309,10 @@ class ActorHandle:
             actor_creation_function_descriptor
         )
         self._ray_function_descriptor = {}
-        # This is incremented each time `bind()` is called on the actor method
+        # This is incremented each time `bind()` is called on an actor handle
         # (in Ray DAGs), therefore capturing the bind order of the actor methods.
+        # TODO: this does not work properly if the caller has two copies of the
+        # same actor handle, and needs to be fixed.
         self._ray_dag_bind_index = 0
 
         if not self._ray_is_cross_language:
