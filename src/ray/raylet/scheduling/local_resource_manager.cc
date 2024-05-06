@@ -387,8 +387,8 @@ void LocalResourceManager::OnResourceOrStateChanged() {
 
     if (shutdown_raylet_gracefully_ == nullptr) {
       RAY_LOG(ERROR) << "shutdown_raylet_gracefully_ callback is not set, "
-        << "please check the LocalResourceManager constructor."
-        << "Using ShutdownRayletGracefully (sending SIGTERM) instead.";
+                     << "please check the LocalResourceManager constructor."
+                     << "Using ShutdownRayletGracefully (sending SIGTERM) instead.";
       raylet::ShutdownRayletGracefully();
     } else {
       shutdown_raylet_gracefully_(node_death_info_);

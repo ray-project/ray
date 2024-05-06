@@ -464,7 +464,7 @@ Status NodeInfoAccessor::UnregisterSelf(const rpc::NodeDeathInfo &node_death_inf
           local_node_id_ = NodeID::Nil();
         }
         RAY_LOG(INFO) << "Finished unregistering node info, status = " << status
-                       << ", node id = " << node_id;
+                      << ", node id = " << node_id;
         promise.set_value(status);
       });
   return promise.get_future().get();
