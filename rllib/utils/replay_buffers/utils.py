@@ -4,6 +4,8 @@ from typing import Any, Dict, Optional
 
 import numpy as np
 
+# TODO (simon): Move all regular keys to the metric constants file.
+from ray.rllib.algorithms.dqn.dqn_rainbow_learner import TD_ERROR_KEY
 from ray.rllib.utils import deprecation_warning
 from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
@@ -47,7 +49,7 @@ def update_priorities_in_episode_replay_buffer(
                 continue
 
             # Warn once, if we have no TD-errors to update priorities.
-            if "td_error" not in td_error or td_error["td_error"] is None:
+            if TD_ERROR_KEY not in td_error or td_error[TD_ERROR_KEY] is None:
                 if log_once(
                     "no_td_error_in_train_results_from_module_{}".format(module_id)
                 ):
@@ -59,10 +61,12 @@ def update_priorities_in_episode_replay_buffer(
                     )
                 continue
             # TODO (simon): Implement multi-agent version. Remove, happens in buffer.
-            assert len(td_error["td_error"]) == len(replay_buffer._last_sampled_indices)
+            assert len(td_error[TD_ERROR_KEY]) == len(
+                replay_buffer._last_sampled_indices
+            )
             # TODO (simon): Implement for stateful modules.
 
-            replay_buffer.update_priorities(td_error["td_error"])
+            replay_buffer.update_priorities(td_error[TD_ERROR_KEY])
 
 
 @OldAPIStack
