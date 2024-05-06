@@ -384,12 +384,13 @@ class CompiledDAG:
         # ObjectRef for each worker's task. The task is an infinite loop that
         # repeatedly executes the method specified in the DAG.
         self.worker_task_refs: Dict["ray.actor.ActorHandle", "ray.ObjectRef"] = {}
-        self.actor_to_handle: Dict["ray._raylet.ActorID", "ray.actor.ActorHandle"] = {}
+        # Set of actors present in the DAG.
+        self.actor_refs = set()
         self.actor_to_tasks: Dict[
-            "ray._raylet.ActorID", List["CompiledTask"]
+            "ray.actor.ActorHandle", List["CompiledTask"]
         ] = defaultdict(list)
         self.actor_to_executable_tasks: Dict[
-            "ray._raylet.ActorID", List["ExecutableTask"]
+            "ray.actor.ActorHandle", List["ExecutableTask"]
         ] = {}
 
         # Type hints specified by the user for DAG (intermediate) outputs.
@@ -579,8 +580,8 @@ class CompiledDAG:
                     )
                 )
                 actor_handle = task.dag_node._get_actor_handle()
-                self.actor_to_handle[actor_handle._actor_id] = actor_handle
-                self.actor_to_tasks[actor_handle._actor_id].append(task)
+                self.actor_refs.add(actor_handle)
+                self.actor_to_tasks[actor_handle].append(task)
             elif isinstance(task.dag_node, InputNode):
                 readers = [self.idx_to_task[idx] for idx in task.downstream_node_idxs]
                 reader_handles = [
@@ -614,7 +615,7 @@ class CompiledDAG:
                     )
 
         # Create executable tasks for each actor
-        for actor_id, tasks in self.actor_to_tasks.items():
+        for actor_handle, tasks in self.actor_to_tasks.items():
             executable_tasks = []
             worker_fn = None
             for task in tasks:
@@ -649,7 +650,7 @@ class CompiledDAG:
 
             _check_multi_binds_to_same_input(executable_tasks)
 
-            self.actor_to_executable_tasks[actor_id] = executable_tasks
+            self.actor_to_executable_tasks[actor_handle] = executable_tasks
             # Assign the task with the correct input and output buffers.
             self.worker_task_refs[
                 task.dag_node._get_actor_handle()
@@ -747,14 +748,14 @@ class CompiledDAG:
                 outer._dag_output_fetcher.close()
 
                 self.in_teardown = True
-                for actor_handle in outer.actor_to_handle.values():
+                for actor_handle in outer.actor_refs:
                     logger.info(f"Cancelling compiled worker on actor: {actor_handle}")
-                for actor_id, tasks in outer.actor_to_executable_tasks.items():
+                for actor_handle, tasks in outer.actor_to_executable_tasks.items():
                     try:
                         # TODO(swang): Suppress exceptions from actors trying to
                         # read closed channels when DAG is being torn down.
                         ray.get(
-                            outer.actor_to_handle[actor_id].__ray_call__.remote(
+                            actor_handle.__ray_call__.remote(
                                 do_cancel_executable_tasks, tasks
                             )
                         )
