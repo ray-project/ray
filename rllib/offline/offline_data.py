@@ -2,9 +2,10 @@ import logging
 import numpy as np
 from pathlib import Path
 import ray
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+from ray.rllib.utils.compression import unpack_if_needed
 from ray.rllib.utils.typing import EpisodeType
 
 logger = logging.getLogger(__name__)
@@ -17,6 +18,7 @@ class OfflineData:
         self.path = Path(config.get("input_"))
         # Use `read_json` as default data read method.
         self.data_read_method = config.get("data_read_method", "read_json")
+        self.compressed = config.get("compressed", False)
         try:
             self.data = getattr(ray.data, self.data_read_method)(self.path)
             logger.info("Reading data from {}".format(self.path))
@@ -41,10 +43,22 @@ class OfflineData:
             # Return a single batch
             return self.data.take_batch(batch_size=num_samples)
 
-    def _convert_to_episodes(self, batch: Dict[str, np.ndarray]):
+    def _convert_to_episodes(self, batch: Dict[str, np.ndarray]) -> List[EpisodeType]:
         """Converts a batch of data to episodes."""
 
+        episodes = []
+        # TODO (simon): Put everything that has no identificable name into
+        # extra model outputs (e.g. action_prob, value_pred, etc.).
+        # TODO (simon): Give users possibility to provide a custom schema.
         for i, obs in enumerate(batch["obs"]):
             episode = SingleAgentEpisode(
-                episode_id=batch["eps_id"][0], agent_id=batch["agent_index"][0]
+                episode_id=batch["eps_id"][i][0],
+                agent_id=batch["agent_index"][i][0],
+                observation=unpack_if_needed(obs),
+                actions=batch["actions"][i],
+                rewards=batch["rewards"][i][0],
+                terminated=batch["dones"][i][0],
+                t=batch["t"][i][0],
             )
+            episodes.append(episode)
+        return episodes
