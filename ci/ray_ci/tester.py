@@ -367,16 +367,13 @@ def _get_flaky_test_targets(
         # load flaky tests from yaml
         yaml_flaky_tests = set(yaml.safe_load(f)["flaky_tests"])
         # load flaky tests from DB
-        if os.environ.get("RAYCI_DISABLE_TEST_DB") == "true":
-            s3_flaky_tests = set()
-        else:
-            s3_flaky_tests = {
-                # remove "linux:" prefix for linux tests to be consistent with the
-                # interface supported in the yaml file
-                test.get_name().lstrip("linux:")
-                for test in Test.gen_from_s3(prefix=f"{operating_system}:")
-                if test.get_oncall() == team and test.get_state() == TestState.FLAKY
-            }
+        s3_flaky_tests = {
+            # remove "linux:" prefix for linux tests to be consistent with the
+            # interface supported in the yaml file
+            test.get_name().lstrip("linux:")
+            for test in Test.gen_from_s3(prefix=f"{operating_system}:")
+            if test.get_oncall() == team and test.get_state() == TestState.FLAKY
+        }
         all_flaky_tests = sorted(yaml_flaky_tests.union(s3_flaky_tests))
 
         # linux tests are prefixed with "//"
