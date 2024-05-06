@@ -300,7 +300,6 @@ class RuntimeContext(object):
         actor_id = self.worker.actor_id
         return self.worker.actor_namespace if not actor_id.is_nil() else None
 
-
     @property
     def namespace(self):
         """Get the current namespace of this worker.
