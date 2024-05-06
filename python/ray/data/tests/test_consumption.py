@@ -270,10 +270,14 @@ def test_scheduling_strategy_fn(shutdown_only):
 
     # Check that task-based map is not compatible with scheduling_strategy_fn.
     with pytest.raises(ValueError):
-        ds = ray.data.range(10).map_batches(
-            lambda batch: batch,
-            scheduling_strategy_fn=_generate_scheduling_strategy,
-        ).materialize()
+        ds = (
+            ray.data.range(10)
+            .map_batches(
+                lambda batch: batch,
+                scheduling_strategy_fn=_generate_scheduling_strategy,
+            )
+            .materialize()
+        )
 
 
 def test_dataset_lineage_serialization(shutdown_only):
