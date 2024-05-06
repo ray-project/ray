@@ -32,6 +32,7 @@ from ray.rllib.core.rl_module.marl_module import (
 )
 from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
+from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
@@ -1235,19 +1236,34 @@ class Learner:
         # If not provided in state (None), all Modules will be trained by default.
         self.config.multi_agent(policies_to_train=state.get("modules_to_train"))
 
-    def get_state(self) -> Dict[str, Any]:
+    def get_state(
+        self,
+        components: Optional[Union[str, List[str]]] = None,
+        *,
+        inference_only: bool = False,
+    ) -> Dict[str, Any]:
         """Get the state of the learner.
 
         Returns:
             The state of the optimizer and module.
-
         """
         self._check_is_built()
-        return {
-            "module_state": self.get_module_state(),
-            "optimizer_state": self.get_optimizer_state(),
-            "modules_to_train": self.config.policies_to_train,
-        }
+        components = force_list(components) or [
+            "rl_module", "optimizer", "modules_to_be_updated"
+        ]
+        state = {}
+        if "rl_module" in components:
+            state["rl_module"] = self.get_module_state(inference_only=inference_only)
+        if "optimizer" in components:
+            state["optimizer"] = self.get_optimizer_state()
+        if "modules_to_be_updated" in components:
+            state["modules_to_be_updated"] = self.config.policies_to_train
+        return state
+        #return {
+        #    "module_state": self.get_module_state(),
+        #    "optimizer_state": self.get_optimizer_state(),
+        #    "modules_to_train": self.config.policies_to_train,
+        #}
 
     def set_optimizer_state(self, state: Dict[str, Any]) -> None:
         """Sets the state of all optimizers currently registered in this Learner.
@@ -1291,13 +1307,14 @@ class Learner:
             episodes = tree.flatten(episodes)
 
         # Call the learner connector.
+        shared_data = {}
         if self._learner_connector is not None and episodes is not None:
             # Call the learner connector pipeline.
             batch = self._learner_connector(
                 rl_module=self.module,
                 data=batch or {},
                 episodes=episodes,
-                shared_data={},
+                shared_data=shared_data,
             )
             # Convert to a batch.
             # TODO (sven): Try to not require MultiAgentBatch anymore.
@@ -1326,22 +1343,20 @@ class Learner:
 
         # Log all timesteps (env, agent, modules) based on given episodes.
         if self._learner_connector is not None and episodes is not None:
-            self._log_steps_trained_metrics(episodes, batch)
+            self._log_steps_trained_metrics(episodes, batch, shared_data)
         # TODO (sven): Possibly remove this if-else block entirely. We might be in a
         #  world soon where we always learn from episodes, never from an incoming batch.
         else:
             self.metrics.log_dict(
                 {
-                    (ALL_MODULES, NUM_ENV_STEPS_TRAINED): batch.env_steps(),
-                    (ALL_MODULES, NUM_MODULE_STEPS_TRAINED): batch.agent_steps(),
-                },
-                reduce="sum",
-                clear_on_reduce=True,
-            )
-            self.metrics.log_dict(
-                {
-                    (mid, NUM_MODULE_STEPS_TRAINED): len(b)
-                    for mid, b in batch.policy_batches.items()
+                    **{
+                        (ALL_MODULES, NUM_ENV_STEPS_TRAINED): batch.env_steps(),
+                        (ALL_MODULES, NUM_MODULE_STEPS_TRAINED): batch.agent_steps(),
+                    },
+                    **{
+                        (mid, NUM_MODULE_STEPS_TRAINED): len(b)
+                        for mid, b in batch.policy_batches.items()
+                    },
                 },
                 reduce="sum",
                 clear_on_reduce=True,
@@ -1657,10 +1672,11 @@ class Learner:
     def _get_clip_function() -> Callable:
         """Returns the gradient clipping function to use, given the framework."""
 
-    def _log_steps_trained_metrics(self, episodes, batch):
+    def _log_steps_trained_metrics(self, episodes, batch, shared_data):
         # Logs this iteration's steps trained, based on given `episodes`.
         env_steps = sum(len(e) for e in episodes)
         log_dict = defaultdict(dict)
+        orig_lengths = shared_data.get("_sa_episodes_lengths", {})
         for sa_episode in self._learner_connector.single_agent_episode_iterator(
             episodes, agents_that_stepped_only=False
         ):
@@ -1673,8 +1689,10 @@ class Learner:
             if mid != ALL_MODULES and mid not in batch.policy_batches:
                 continue
 
-            _len = len(sa_episode)
-
+            _len = (
+                orig_lengths[sa_episode.id_]
+                if sa_episode.id_ in orig_lengths else len(sa_episode)
+            )
             # TODO (sven): Decide, whether agent_ids should be part of LEARNER_RESULTS.
             #  Currently and historically, only ModuleID keys and ALL_MODULES were used
             #  and expected. Does it make sense to include e.g. agent steps trained?

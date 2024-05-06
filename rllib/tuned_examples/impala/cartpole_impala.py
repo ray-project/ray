@@ -1,5 +1,4 @@
 from ray.rllib.algorithms.impala import ImpalaConfig
-from ray.rllib.connectors.env_to_module.mean_std_filter import MeanStdFilter
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
 parser = add_rllib_example_script_args()

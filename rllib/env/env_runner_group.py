@@ -385,9 +385,12 @@ class EnvRunnerGroup:
     @DeveloperAPI
     def sync_env_runner_states(
         self,
+        *,
         config: "AlgorithmConfig",
         from_worker: Optional[EnvRunner] = None,
         env_steps_sampled: Optional[int] = None,
+        connector_states: Optional[List[Dict[str, Any]]] = None,
+        rl_module_state: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Synchronizes the connectors of this EnvRunnerGroup's EnvRunners.
 
@@ -415,10 +418,16 @@ class EnvRunnerGroup:
         # local worker is the only operating worker and thus of course always holds
         # the reference connector state.
         if self.num_healthy_remote_workers() == 0:
-            if env_steps_sampled:
-                self.local_worker().metrics.set_value(
-                    NUM_ENV_STEPS_SAMPLED_LIFETIME, env_steps_sampled
-                )
+            self.local_worker().set_state({
+                **(
+                    {NUM_ENV_STEPS_SAMPLED_LIFETIME: env_steps_sampled}
+                    if env_steps_sampled is not None else {}
+                ),
+                **(
+                    {"rl_module": rl_module_state}
+                    if rl_module_state is not None else {}
+                ),
+            })
             return
 
         # Also early out, if we a) don't use the remote states AND b) don't want to
@@ -427,30 +436,77 @@ class EnvRunnerGroup:
         if not config.update_worker_filter_stats and not config.use_worker_filter_stats:
             return
 
+
+        # TEST: Skip env runner merge and broadcast
+        #if env_runner_states:
+        #    env_to_module_connector_state = local_worker._env_to_module.merge_states(
+        #        [s["env_to_module_connector"] for s in env_runner_states]
+        #    )
+        #    module_to_env_connector_state = local_worker._module_to_env.merge_states(
+        #        [s["module_to_env_connector"] for s in env_runner_states]
+        #    )
+        #    local_worker.set_state(
+        #        {
+        #            "env_to_module_connector": env_to_module_connector_state,
+        #            "module_to_env_connector": module_to_env_connector_state,
+        #        }
+        #    )
+
+        # Only if Learner's state is available: Broadcast together with the already
+        # merged local worker's connector states and updated counters back to all
+        # EnvRunners, including the local one.
+        # if rl_module_state is not None:
+        #    _kwargs = local_worker.get_state(components=["env_to_module_connector", "module_to_env_connector"]) if env_runner_states else {}
+        #    new_state = {
+        #        # TODO (sven): Make these keys unified constants across RLlib.
+        #        "rl_module": rl_module_state,
+        #        NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0),
+        #        **_kwargs,
+        #    }
+        #    # Broadcast updated weights and (merged) EnvRunner states back to all
+        #    # EnvRunner workers.
+        #    self.workers.foreach_worker(
+        #        func=lambda worker: worker.set_state(new_state),
+        #        timeout_seconds=0.0,  # fire-and-forget
+        #        local_worker=True,
+        #    )
+        # END: TEST
+
+
+
+
+
+
+
+
         # Use states from all remote EnvRunners.
         if config.use_worker_filter_stats:
-            connector_states = self.foreach_worker(
-                lambda w: w.get_state(components=[
-                    "env_to_module_connector", "module_to_env_connector"
-                ]),
-                local_worker=False,
-                timeout_seconds=config.sync_filters_on_rollout_workers_timeout_s,
-            )
-            env_to_module_states = [
-                s["env_to_module_connector"] for s in connector_states
-            ]
-            module_to_env_states = [
-                s["module_to_env_connector"] for s in connector_states
-            ]
+            if connector_states == []:
+                env_runner_states = {}
+            else:
+                if connector_states is None:
+                    connector_states = self.foreach_worker(
+                        lambda w: w.get_state(components=[
+                            "env_to_module_connector", "module_to_env_connector"
+                        ]),
+                        local_worker=False,
+                        timeout_seconds=config.sync_filters_on_rollout_workers_timeout_s,
+                    )
+                env_to_module_states = [
+                    s["env_to_module_connector"] for s in connector_states
+                ]
+                module_to_env_states = [
+                    s["module_to_env_connector"] for s in connector_states
+                ]
 
-            env_runner_states = {
-                "env_to_module_connector": local_worker._env_to_module.merge_states(
-                    env_to_module_states
-                ),
-                "module_to_env_connector": local_worker._module_to_env.merge_states(
-                    module_to_env_states
-                ),
-            }
+                env_runner_states = {
+                    "env_to_module_connector": local_worker._env_to_module.merge_states(
+                        env_to_module_states
+                    ),
+                    "module_to_env_connector": local_worker._module_to_env.merge_states(
+                        module_to_env_states
+                    ),
+                }
         # Ignore states from remote EnvRunners (use the current `from_worker` states
         # only).
         else:
@@ -458,9 +514,16 @@ class EnvRunnerGroup:
                 "env_to_module_connector", "module_to_env_connector"
             ])
 
+        if not config.update_worker_filter_stats:
+            local_worker.set_state(env_runner_states)
+
         # Update the global number of environment steps, if necessary.
         if env_steps_sampled is not None:
             env_runner_states[NUM_ENV_STEPS_SAMPLED_LIFETIME] = env_steps_sampled
+
+        # Update the rl_module component of the EnvRunner states, if necessary:
+        if rl_module_state:
+            env_runner_states["rl_module"] = rl_module_state
 
         # Put the state dictionary into Ray's object store to avoid having to make n
         # pickled copies of the state dict.
@@ -470,20 +533,19 @@ class EnvRunnerGroup:
             _env_runner.set_state(ray.get(ref_env_runner_states))
 
         # Broadcast updated states back to all workers (including the local one).
-        if config.update_worker_filter_stats:
-            self.foreach_worker(
-                _update,
-                local_worker=True,
-                timeout_seconds=config.sync_filters_on_rollout_workers_timeout_s,
-            )
-        # Update only the local_worker. Why don't we use `from_worker` here (assuming
-        # it's different from the local worker)? B/c we want to use this utility as
-        # a means to update the local worker of EnvRunnerGroup A from another
-        # EnvRunnerGroup B (for example synching eval EnvRunners from training
-        # EnvRunners). In other words, if `from_worker` != local worker,
-        # `from_worker`'s state will not be altered by this method, no matter what.
-        else:
-            _update(self.local_worker())
+        self.foreach_worker(
+            _update,
+            local_worker=False,
+            timeout_seconds=0.0,  # This is a state update -> Fire-and-forget.
+        )
+        ## Update only the local_worker. Why don't we use `from_worker` here (assuming
+        ## it's different from the local worker)? B/c we want to use this utility as
+        ## a means to update the local worker of EnvRunnerGroup A from another
+        ## EnvRunnerGroup B (for example synching eval EnvRunners from training
+        ## EnvRunners). In other words, if `from_worker` != local worker,
+        ## `from_worker`'s state will not be altered by this method, no matter what.
+        #else:
+        #    _update(self.local_worker())
 
     @DeveloperAPI
     def sync_weights(

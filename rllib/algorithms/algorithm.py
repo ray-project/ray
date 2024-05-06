@@ -795,6 +795,8 @@ class Algorithm(Trainable, AlgorithmBase):
                 local_worker.set_state({"rl_module": weights})
 
         # Ensure remote workers are initially in sync with the local worker.
+        # TODO (sven): Remove the `sync_weights()` call in favor of only calling
+        #  `sync_env_runner_states`.
         self.workers.sync_weights(inference_only=True)
         self.workers.sync_env_runner_states(
             config=self.config,
@@ -3155,7 +3157,6 @@ class Algorithm(Trainable, AlgorithmBase):
 
             results = {}
             training_step_results = {}
-            #episodes_this_iter = None
             # Create a step context ...
             with TrainIterCtx(algo=self) as train_iter_ctx:
                 # .. so we can query it whether we should stop the iteration loop (e.g.
@@ -3168,29 +3169,11 @@ class Algorithm(Trainable, AlgorithmBase):
                     # Try to train one step.
                     with self._timers[TRAINING_STEP_TIMER]:
                         # TODO (sven): Should we reduce the different
-                        #  `training_step_results` over time
-                        #  with MetricsLogger.
+                        #  `training_step_results` over time with MetricsLogger.
                         training_step_results = self.training_step()
-
-                    # Collect returned episode metrics from each `training_step` call,
-                    # so nothing gets lost (in this mode, we do NOT call get_metrics()
-                    # here automatically, it has already been done by the
-                    # `training_step` method).
-                    #if "_episodes_this_training_step" in training_step_results:
-                    #    if episodes_this_iter is None:
-                    #        episodes_this_iter = []
-                    #    episodes_this_iter.extend(
-                    #        training_step_results.pop("_episodes_this_training_step")
-                    #    )
 
                     if training_step_results:
                         results = training_step_results
-
-        # Publish all episodes collected in this entire iteration (consisting of n
-        # `training_step` calls) to let the algo know, we do NOT have to call
-        # `get_metrics` anymore on all EnvRunners (already done inside `training_step`).
-        #if episodes_this_iter is not None:
-        #    results["_episodes_this_iter"] = episodes_this_iter
 
         return results, train_iter_ctx
 

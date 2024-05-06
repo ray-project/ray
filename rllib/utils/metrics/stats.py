@@ -393,9 +393,11 @@ class Stats:
         reduced_value, new_values = self._reduced_values()
         self._window = store_win
         # x-fold the reduced_value over the actual window size and use the resulting
-        # list as new self.values.
+        # list as new `self.values`. For EMA (window=None), repeat once.
         if self._reduce_method == "mean":
-            self.values = [reduced_value] * self._window
+            self.values = [reduced_value] * (
+                self._window if self._window is not None else 1
+            )
         else:
             self.values = new_values
 

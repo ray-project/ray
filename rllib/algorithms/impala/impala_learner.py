@@ -1,5 +1,6 @@
-import abc
-from typing import Any, Dict, Union
+from queue import Queue, Empty
+import threading
+from typing import Dict, List, Optional
 
 import tree  # pip install dm_tree
 
@@ -10,16 +11,17 @@ from ray.rllib.algorithms.impala.impala import (
 )
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import Learner
-from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
-from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
+from ray.rllib.connectors.learner import AddOneTsToEpisodesAndTruncate
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
-from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
     NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_TRAINED,
 )
+from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.postprocessing.episodes import (
     add_one_ts_to_episodes_and_truncate,
@@ -29,7 +31,14 @@ from ray.rllib.utils.postprocessing.episodes import (
 from ray.rllib.utils.postprocessing.value_predictions import extract_bootstrapped_values
 from ray.rllib.utils.postprocessing.zero_padding import unpad_data_if_necessary
 from ray.rllib.utils.schedules.scheduler import Scheduler
-from ray.rllib.utils.typing import ModuleID, TensorType
+from ray.rllib.utils.typing import EpisodeType, ModuleID, ResultDict
+
+torch, _ = try_import_torch()
+
+GPU_LOADER_QUEUE_WAIT_TIMER = "gpu_loader_queue_wait_timer"
+GPU_LOADER_LOAD_TO_GPU_TIMER = "gpu_loader_load_to_gpu_timer"
+LEARNER_THREAD_IN_QUEUE_WAIT_TIMER = "learner_thread_in_queue_wait_timer"
+LEARNER_THREAD_UPDATE_TIMER = "learner_thread_update_timer"
 
 
 class ImpalaLearner(Learner):
@@ -50,36 +59,112 @@ class ImpalaLearner(Learner):
             )
         )
 
-    @override(Learner)
-    def _update_from_batch_or_episodes(
-        self,
-        *,
-        batch=None,
-        episodes=None,
-        reduce_fn=_reduce_mean_results,
-        minibatch_size=None,
-        num_iters=1,
-    ):
-        # First perform GAE computation on the entirety of the given train data (all
-        # episodes).
-        if self.config.uses_new_env_runners:
-            # Resolve batch/episodes being ray object refs (instead of actual
-            # batch/episodes objects).
-            episodes = ray.get(episodes)
-            episodes = tree.flatten(episodes)
-            batch, episodes = self._compute_v_trace_from_episodes(episodes=episodes)
+        # Extend all episodes by one artificual timestep to allow the value function net
+        # to compute the bootstrap values (and add a mask to the batch to know, which
+        # slots to mask out).
+        if self.config.add_default_connectors_to_learner_pipeline:
+            self._learner_connector.prepend(AddOneTsToEpisodesAndTruncate())
 
-        # Now that GAE (advantages and value targets) have been added to the train
-        # batch, we can proceed normally (calling super method) with the update step.
-        return super()._update_from_batch_or_episodes(
-            batch=batch,
+        # Create and start the GPU-loader thread. It picks up train-ready batches from
+        # the "GPU-loader queue" and loads them to the GPU, then places the GPU batches
+        # on the "update queue" for the actual RLModule forward pass and loss
+        # computations.
+        self._gpu_loader_in_queue = Queue()
+        self._learner_thread_in_queue = Queue()
+        self._learner_thread_out_queue = Queue()
+
+        # Create and start the GPU loader thread.
+        self._gpu_loader_thread = _GPULoaderThread(
+            in_queue=self._gpu_loader_in_queue,
+            out_queue=self._learner_thread_in_queue,
+            device=self._device,
+            metrics_logger=self.metrics,
+        )
+        self._gpu_loader_thread.start()
+
+        # Create and start the Learner thread.
+        self._learner_thread = _LearnerThread(
+            update_method=self._update_from_batch_or_episodes,
+            in_queue=self._learner_thread_in_queue,
+            out_queue=self._learner_thread_out_queue,
+            metrics_logger=self.metrics,
+        )
+        self._learner_thread.start()
+
+    def update_from_episodes(
+        self,
+        episodes: List[EpisodeType],
+        *,
+        # TODO (sven): Deprecate these in favor of config attributes for only those
+        #  algos that actually need (and know how) to do minibatching.
+        minibatch_size: Optional[int] = None,
+        num_iters: int = 1,
+        min_total_mini_batches: int = 0,
+        reduce_fn=None,  # Deprecated args.
+    ) -> ResultDict:
+        # Resolve batch/episodes being ray object refs (instead of
+        # actual batch/episodes objects).
+        episodes = ray.get(episodes)
+        episodes = tree.flatten(episodes)
+
+        # Call the learner connector pipeline.
+        batch = self._learner_connector(
+            rl_module=self.module,
+            data={},
             episodes=episodes,
-            reduce_fn=reduce_fn,
-            minibatch_size=minibatch_size,
-            num_iters=num_iters,
+            shared_data={},
+        )
+        # Convert to a batch (on the CPU).
+        # TODO (sven): Try to not require MultiAgentBatch anymore.
+        batch = MultiAgentBatch(
+            {
+                module_id: SampleBatch(module_data)
+                for module_id, module_data in batch.items()
+            },
+            env_steps=sum(len(e) for e in episodes),
         )
 
-    def _compute_v_trace_from_episodes(
+        # Queue the CPU batch to the GPU-loader thread.
+        self._gpu_loader_in_queue.put(batch)
+
+        # Return all queued result dicts thus far (after reducing over them).
+        results = {}
+        try:
+            while True:
+                results = self._learner_thread_out_queue.get(block=False)
+        except Empty:
+            return results
+
+    #@override(Learner)
+    #def _update_from_batch_or_episodes(
+    #    self,
+    #    *,
+    #    batch=None,
+    #    episodes=None,
+    #    reduce_fn=_reduce_mean_results,
+    #    minibatch_size=None,
+    #    num_iters=1,
+    #):
+    #    # First perform GAE computation on the entirety of the given train data (all
+    #    # episodes).
+    #    if self.config.uses_new_env_runners:
+    #        # Resolve batch/episodes being ray object refs (instead of actual
+    #        # batch/episodes objects).
+    #        episodes = ray.get(episodes)
+    #        episodes = tree.flatten(episodes)
+    #        batch, episodes = self._compute_v_trace_from_episodes(episodes=episodes)
+
+    #    # Now that GAE (advantages and value targets) have been added to the train
+    #    # batch, we can proceed normally (calling super method) with the update step.
+    #    return super()._update_from_batch_or_episodes(
+    #        batch=batch,
+    #        episodes=episodes,
+    #        reduce_fn=reduce_fn,
+    #        minibatch_size=minibatch_size,
+    #        num_iters=num_iters,
+    #    )
+
+    def _NOT_NEEDED_ANYMORE_compute_v_trace_from_episodes(
         self,
         *,
         episodes,
@@ -209,29 +294,91 @@ class ImpalaLearner(Learner):
             window=1,
         )
 
-    @OverrideToImplementCustomLogic
-    def _compute_values(
+    #@OverrideToImplementCustomLogic
+    #def _compute_values(
+    #    self,
+    #    batch_for_vf: MultiAgentBatch,
+    #) -> Union[TensorType, Dict[str, Any]]:
+    #    """Computes the value function predictions for the RLModule(s) being optimized.
+
+    #    This method must be overridden by multiagent-specific algorithm learners to
+    #    specify the specific value computation logic. If the algorithm is single agent
+    #    (or independent multi-agent), there should be no need to override this method.
+
+    #    Args:
+    #        batch_for_vf: The multi-agent batch to be used for value function
+    #            predictions.
+
+    #    Returns:
+    #        A dictionary mapping module IDs to individual value function prediction
+    #        tensors.
+    #    """
+    #    return {
+    #        module_id: self.module[module_id]
+    #        .unwrapped()
+    #        ._compute_values(module_batch, self._device)
+    #        for module_id, module_batch in batch_for_vf.policy_batches.items()
+    #        if self.should_module_be_updated(module_id, module_batch)
+    #    }
+
+
+class _GPULoaderThread(threading.Thread):
+    def __init__(
         self,
-        batch_for_vf: MultiAgentBatch,
-    ) -> Union[TensorType, Dict[str, Any]]:
-        """Computes the value function predictions for the RLModule(s) being optimized.
+        *,
+        in_queue: Queue,
+        out_queue: Queue,
+        device: torch.device,
+        metrics_logger: MetricsLogger,
+    ):
+        super().__init__()
+        self.daemon = True
 
-        This method must be overridden by multiagent-specific algorithm learners to
-        specify the specific value computation logic. If the algorithm is single agent
-        (or independent multi-agent), there should be no need to override this method.
+        self._in_queue = in_queue
+        self._out_queue = out_queue
+        self._device = device
+        self.metrics = metrics_logger
 
-        Args:
-            batch_for_vf: The multi-agent batch to be used for value function
-                predictions.
+    def run(self) -> None:
+        while True:
+            self._step()
 
-        Returns:
-            A dictionary mapping module IDs to individual value function prediction
-            tensors.
-        """
-        return {
-            module_id: self.module[module_id]
-            .unwrapped()
-            ._compute_values(module_batch, self._device)
-            for module_id, module_batch in batch_for_vf.policy_batches.items()
-            if self.should_module_be_updated(module_id, module_batch)
-        }
+    def _step(self) -> None:
+        # Get a new batch from the data (inqueue).
+        with self.metrics.log_time((ALL_MODULES, GPU_LOADER_QUEUE_WAIT_TIMER)):
+            ma_batch = self._in_queue.get()
+
+        # Load the batch onto the GPU device.
+        with self.metrics.log_time((ALL_MODULES, GPU_LOADER_LOAD_TO_GPU_TIMER)):
+            ma_batch_on_gpu = ma_batch.to_device(self._device)
+            self._out_queue.put(ma_batch_on_gpu)
+
+
+class _LearnerThread(threading.Thread):
+    def __init__(self, *, update_method, in_queue, out_queue, metrics_logger):
+        super().__init__()
+        self.daemon = True
+        self.metrics = metrics_logger
+        self.stopped = False
+
+        self._update_method = update_method
+        self._in_queue = in_queue
+        self._out_queue = out_queue
+
+    def run(self) -> None:
+        while not self.stopped:
+            self.step()
+
+    def step(self):
+        # Get a new batch from the GPU-data (inqueue).
+        with self.metrics.log_time((ALL_MODULES, LEARNER_THREAD_IN_QUEUE_WAIT_TIMER)):
+            ma_batch_on_gpu = self._in_queue.get()
+
+        # Call the update method on the batch.
+        with self.metrics.log_time((ALL_MODULES, LEARNER_THREAD_UPDATE_TIMER)):
+            # TODO (sven): For multi-agent AND SGD iter > 1, we need to make sure
+            #  this thread has the information about the min minibatches necessary
+            #  (due to different agents taking different steps in the env, e.g.
+            #  MA-CartPole).
+            results = self._update_method(batch=ma_batch_on_gpu)
+            self._out_queue.put(results)

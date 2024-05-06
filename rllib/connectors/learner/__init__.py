@@ -10,6 +10,9 @@ from ray.rllib.connectors.common.numpy_to_tensor import NumpyToTensor
 from ray.rllib.connectors.learner.add_columns_from_episodes_to_train_batch import (
     AddColumnsFromEpisodesToTrainBatch,
 )
+from ray.rllib.connectors.learner.add_one_ts_to_episodes_and_truncate import (
+    AddOneTsToEpisodesAndTruncate
+)
 from ray.rllib.connectors.learner.learner_connector_pipeline import (
     LearnerConnectorPipeline,
 )
@@ -17,6 +20,7 @@ from ray.rllib.connectors.learner.learner_connector_pipeline import (
 __all__ = [
     "AddColumnsFromEpisodesToTrainBatch",
     "AddObservationsFromEpisodesToBatch",
+    "AddOneTsToEpisodesAndTruncate",
     "AddStatesFromEpisodesToBatch",
     "AgentToModuleMapping",
     "BatchIndividualItems",

@@ -227,7 +227,7 @@ class LearnerGroup:
                 requests that have not been returned thus far.
             return_state: Whether to include one of the Learner worker's state from
                 after the update step in the returned results dict (under the
-                `_state_after_update` key). Note that after an update, all Learner
+                `_rl_module_state_after_update` key). Note that after an update, all Learner
                 workers' states should be identical, so we use the first Learner's state
                 here. Useful for avoiding an extra `get_weights()` call, e.g. for
                 synchronizing EnvRunner weights.
@@ -291,7 +291,7 @@ class LearnerGroup:
                 requests that have not been returned thus far.
             return_state: Whether to include one of the Learner worker's state from
                 after the update step in the returned results dict (under the
-                `_state_after_update` key). Note that after an update, all Learner
+                `_rl_module_state_after_update` key). Note that after an update, all Learner
                 workers' states should be identical, so we use the first Learner's state
                 here. Useful for avoiding an extra `get_weights()` call, e.g. for
                 synchronizing EnvRunner weights.
@@ -363,7 +363,9 @@ class LearnerGroup:
                     min_total_mini_batches=_min_total_mini_batches,
                 )
             if _return_state:
-                result["_state_after_update"] = _learner.get_state()
+                result["_rl_module_state_after_update"] = _learner.get_state(
+                    components="rl_module", inference_only=True
+                )["rl_module"]
             return result
 
         # Local Learner worker: Don't shard batch/episodes, just run data as-is through

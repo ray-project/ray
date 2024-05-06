@@ -58,3 +58,8 @@ class Columns:
     # Postprocessing columns.
     ADVANTAGES = "advantages"
     VALUE_TARGETS = "value_targets"
+
+    # Loss mask. If provided in a train batch, a Learner's compute_loss_for_module
+    # method should respect the False-set value in here and mask out the respective
+    # items form the loss.
+    LOSS_MASK = "loss_mask"
