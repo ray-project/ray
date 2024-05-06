@@ -5,6 +5,7 @@ import random
 import threading
 import collections
 import logging
+import shutil
 import time
 
 
@@ -349,6 +350,9 @@ def _get_num_physical_gpus():
         # `RAY_ON_SPARK_WORKER_CPU_CORES` for user.
         return int(os.environ[RAY_ON_SPARK_WORKER_GPU_NUM])
 
+    if shutil.which("nvidia-smi") is None:
+        # GPU driver is not installed.
+        return 0
     try:
         completed_proc = subprocess.run(
             "nvidia-smi --query-gpu=name --format=csv,noheader",
@@ -358,14 +362,10 @@ def _get_num_physical_gpus():
             capture_output=True,
         )
         return len(completed_proc.stdout.strip().split("\n"))
-    except Exception:
-        _logger.warning(
-            "Running command `nvidia-smi` for inferring GPU devices list failed."
-        )
-        _logger.debug(
+    except Exception as e:
+        _logger.info(
             "'nvidia-smi --query-gpu=name --format=csv,noheader' command execution "
-            "failed.",
-            exc_info=True,
+            f"failed, error: {repr(e)}"
         )
         return 0
 
