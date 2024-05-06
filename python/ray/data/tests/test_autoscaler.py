@@ -35,6 +35,7 @@ def test_actor_pool_scaling():
     )
     op_state = MagicMock(num_queued=MagicMock(return_value=10))
     op_scheduling_status = MagicMock(under_resource_limits=False)
+    op_state._scheduling_status = op_scheduling_status
 
     @contextmanager
     def patch(mock, attr, value, is_method=True):
@@ -48,12 +49,13 @@ def test_actor_pool_scaling():
     # === Test scaling up ===
 
     def assert_should_scale_up(expected):
+        nonlocal actor_pool, op, op_state
+
         assert (
             autoscaler._actor_pool_should_scale_up(
                 actor_pool=actor_pool,
                 op=op,
                 op_state=op_state,
-                op_scheduling_status=op_scheduling_status,
             )
             == expected
         )
@@ -145,6 +147,9 @@ def test_cluster_scaling():
     )
     op_state1 = MagicMock(
         num_queued=MagicMock(return_value=0),
+        _scheduling_status=MagicMock(
+            runnable=False,
+        ),
     )
     op2 = MagicMock(
         input_dependencies=[op1],
@@ -155,6 +160,9 @@ def test_cluster_scaling():
     )
     op_state2 = MagicMock(
         num_queued=MagicMock(return_value=1),
+        _scheduling_status=MagicMock(
+            runnable=False,
+        ),
     )
     topology = {
         op1: op_state1,
@@ -168,7 +176,7 @@ def test_cluster_scaling():
     )
 
     autoscaler._send_resource_request = MagicMock()
-    autoscaler._try_scale_up_cluster(MagicMock())
+    autoscaler._try_scale_up_cluster()
 
     autoscaler._send_resource_request.assert_called_once_with(
         [{"CPU": 1}, {"CPU": 2}, {"CPU": 2}]
