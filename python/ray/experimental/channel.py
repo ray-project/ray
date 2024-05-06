@@ -102,6 +102,12 @@ class Channel:
             else:
                 # Reader and writer are on different nodes.
                 if _reader_node_id is not None:
+                    # Note: if the reader actor is the same as current actor that
+                    # is creating the channel, we must pass in _reader_node_id as
+                    # an argument to avoid making a blocking call to _get_node_id()
+                    # on the "else" branch below. If that happens, the blocking call
+                    # will never return since it will not get a chance to run before
+                    # this method finishes, in other words, there is a deadlock.
                     self._reader_node_id = _reader_node_id
                 else:
                     fn = readers[0].__ray_call__
