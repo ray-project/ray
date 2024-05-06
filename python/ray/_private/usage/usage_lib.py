@@ -48,7 +48,6 @@ import os
 import platform
 import sys
 import time
-import uuid
 from dataclasses import asdict, dataclass
 from enum import Enum, auto
 from pathlib import Path
@@ -414,7 +413,6 @@ def _generate_cluster_metadata(*, ray_init_cluster: bool):
     if usage_stats_enabled():
         metadata.update(
             {
-                "session_id": str(uuid.uuid4()),
                 "git_commit": ray.__commit__,
                 "os": sys.platform,
                 "session_start_timestamp_ms": int(time.time() * 1000),
@@ -836,6 +834,7 @@ def generate_report_data(
     total_failed: int,
     seq_number: int,
     gcs_address: str,
+    cluster_id: str,
 ) -> UsageStatsToReport:
     """Generate the report data.
 
@@ -849,11 +848,16 @@ def generate_report_data(
         seq_number: The sequence number that's incremented whenever
             a new report is sent.
         gcs_address: the address of gcs to get data to report.
+        cluster_id: hex id of the cluster.
 
     Returns:
         UsageStats
     """
-    gcs_client = ray._raylet.GcsClient(address=gcs_address, nums_reconnect_retry=20)
+    assert cluster_id
+
+    gcs_client = ray._raylet.GcsClient(
+        address=gcs_address, nums_reconnect_retry=20, cluster_id=cluster_id
+    )
 
     cluster_metadata = get_cluster_metadata(gcs_client)
     cluster_status_to_report = get_cluster_status_to_report(gcs_client)
@@ -870,7 +874,7 @@ def generate_report_data(
         seq_number=seq_number,
         ray_version=cluster_metadata["ray_version"],
         python_version=cluster_metadata["python_version"],
-        session_id=cluster_metadata["session_id"],
+        session_id=cluster_id,
         git_commit=cluster_metadata["git_commit"],
         os=cluster_metadata["os"],
         session_start_timestamp_ms=cluster_metadata["session_start_timestamp_ms"],
