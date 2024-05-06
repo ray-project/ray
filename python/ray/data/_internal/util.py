@@ -652,7 +652,7 @@ def pandas_df_to_arrow_block(df: "pandas.DataFrame") -> "Block":
     stats = BlockExecStats.builder()
     import pyarrow as pa
 
-    block = pa.table(df)
+    block = BlockAccessor.for_block(df).to_arrow()
     return (
         block,
         BlockAccessor.for_block(block).get_metadata(

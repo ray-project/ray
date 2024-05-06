@@ -138,7 +138,7 @@ def test_to_pandas_refs(ray_start_regular_shared):
 def test_pandas_roundtrip(ray_start_regular_shared, tmp_path):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    ds = ray.data.from_pandas([df1, df2])
+    ds = ray.data.from_pandas([df1, df2], override_num_blocks=2)
     dfds = ds.to_pandas()
     assert pd.concat([df1, df2], ignore_index=True).equals(dfds)
 
