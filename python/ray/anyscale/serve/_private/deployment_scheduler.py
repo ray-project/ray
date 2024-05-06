@@ -214,9 +214,12 @@ class AnyscaleDeploymentScheduler(DeploymentScheduler):
             if info.target_labels is None:
                 continue
 
-            az = info.target_labels.get(ANYSCALE_RAY_NODE_AVAILABILITY_ZONE_LABEL)
-            if az is not None:
+            az_label = info.target_labels.get(ANYSCALE_RAY_NODE_AVAILABILITY_ZONE_LABEL)
+            if az_label is not None:
+                assert isinstance(az_label, In)
+                az = az_label.values[0]
                 az_to_num_replicas[az] = az_to_num_replicas.get(az, 0) + 1
+
         return az_to_num_replicas
 
     def _get_replicas_to_stop(
