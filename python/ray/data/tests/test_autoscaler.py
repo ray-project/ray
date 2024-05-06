@@ -59,10 +59,12 @@ def test_actor_pool_scaling():
         )
 
     # Should scale up since the util above the threshold.
+    assert autoscaler._calculate_actor_pool_util(actor_pool) == 0.9
     assert_should_scale_up(True)
 
     # Shouldn't scale up since the util is below the threshold.
     with patch(actor_pool, "num_active_actors", 7):
+        assert autoscaler._calculate_actor_pool_util(actor_pool) == 0.7
         assert_should_scale_up(False)
 
     # Shouldn't scale up since we have reached the max size.
@@ -107,10 +109,12 @@ def test_actor_pool_scaling():
         )
 
     # Shouldn't scale down since the util above the threshold.
+    assert autoscaler._calculate_actor_pool_util(actor_pool) == 0.9
     assert_should_scale_down(False)
 
     # Should scale down since the util is below the threshold.
     with patch(actor_pool, "num_active_actors", 4):
+        assert autoscaler._calculate_actor_pool_util(actor_pool) == 0.4
         assert_should_scale_down(True)
 
     # Should scale down since the pool is above the max size.

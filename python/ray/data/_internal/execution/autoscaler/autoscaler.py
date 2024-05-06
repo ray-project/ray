@@ -1,4 +1,4 @@
-from abc import ABCMeta, abstractmethod
+from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 from ray.util.annotations import DeveloperAPI
@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 
 @DeveloperAPI
-class Autoscaler(metaclass=ABCMeta):
+class Autoscaler(ABC):
     """Abstract interface for Ray Data autoscaler."""
 
     def __init__(
@@ -29,7 +29,10 @@ class Autoscaler(metaclass=ABCMeta):
     def try_trigger_scaling(self, scheduling_decision: "SchedulingDecision"):
         """Try trigger autoscaling.
 
-        This method will be called each time when StreamExecutor makes
+        The subclass implementation should handle the autoscaling of both
+        the cluster and `PhysicalOperator`s that have `AutoscalingActorPool`s.
+
+        This method will be called each time when StreamingExecutor makes
         a scheduling decision.
 
         Args:
@@ -39,5 +42,5 @@ class Autoscaler(metaclass=ABCMeta):
 
     @abstractmethod
     def on_executor_shutdown(self):
-        """Callback when the StreamExecutor is shutting down."""
+        """Callback when the StreamingExecutor is shutting down."""
         ...

@@ -1,10 +1,10 @@
-from abc import ABCMeta, abstractmethod
+from abc import ABC, abstractmethod
 
 from ray.util.annotations import DeveloperAPI
 
 
 @DeveloperAPI
-class AutoscalingActorPool(metaclass=ABCMeta):
+class AutoscalingActorPool(ABC):
     """Abstract interface of an autoscaling actor pool.
 
     A `PhysicalOperator` can manage one or more `AutoscalingActorPool`s.
@@ -65,7 +65,10 @@ class AutoscalingActorPool(metaclass=ABCMeta):
 
     @abstractmethod
     def scale_up(self, num_actors: int) -> int:
-        """Scale up the actor pool by the given number of actors.
+        """Request the actor pool to scale up by the given number of actors.
+
+        The number of actually added actors may be less than the requested
+        number.
 
         Returns:
             The number of actors actually added.
@@ -74,7 +77,10 @@ class AutoscalingActorPool(metaclass=ABCMeta):
 
     @abstractmethod
     def scale_down(self, num_actors: int) -> int:
-        """Scale down the actor pool by the given number of actors.
+        """Request actor pool to scale down by the given number of actors.
+
+        The number of actually removed actors may be less than the requested
+        number.
 
         Returns:
             The number of actors actually removed.

@@ -48,7 +48,8 @@ class DefaultAutoscaler(Autoscaler):
         self._try_scale_up_cluster(scheduling_decision)
         self._try_scale_up_or_down_actor_pool(scheduling_decision)
 
-    def _actor_pool_util(self, actor_pool: AutoscalingActorPool):
+    def _calculate_actor_pool_util(self, actor_pool: AutoscalingActorPool):
+        """Calculate the utilization of the given actor pool."""
         if actor_pool.current_size() == 0:
             return 0
         else:
@@ -77,7 +78,7 @@ class DefaultAutoscaler(Autoscaler):
         if op_state.num_queued() <= actor_pool.num_free_task_slots():
             return False
         # Determine whether to scale up based on the actor pool utilization.
-        util = self._actor_pool_util(actor_pool)
+        util = self._calculate_actor_pool_util(actor_pool)
         return util > self._actor_pool_scaling_up_threshold
 
     def _actor_pool_should_scale_down(
@@ -95,7 +96,7 @@ class DefaultAutoscaler(Autoscaler):
             # Do not scale down, if the actor pool is already at min size.
             return False
         # Determine whether to scale down based on the actor pool utilization.
-        util = self._actor_pool_util(actor_pool)
+        util = self._calculate_actor_pool_util(actor_pool)
         return util < self._actor_pool_scaling_down_threshold
 
     def _try_scale_up_or_down_actor_pool(
