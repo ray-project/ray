@@ -649,10 +649,8 @@ def capitalize(s: str):
 def pandas_df_to_arrow_block(df: "pandas.DataFrame") -> "Block":
     from ray.data.block import BlockAccessor, BlockExecStats
 
-    stats = BlockExecStats.builder()
-    import pyarrow as pa
-
     block = BlockAccessor.for_block(df).to_arrow()
+    stats = BlockExecStats.builder()
     return (
         block,
         BlockAccessor.for_block(block).get_metadata(
