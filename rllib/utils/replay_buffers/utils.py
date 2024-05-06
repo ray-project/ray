@@ -4,8 +4,6 @@ from typing import Any, Dict, Optional
 
 import numpy as np
 
-# TODO (simon): Move all regular keys to the metric constants file.
-from ray.rllib.algorithms.dqn.dqn_rainbow_learner import TD_ERROR_KEY
 from ray.rllib.utils import deprecation_warning
 from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
@@ -31,6 +29,9 @@ from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
+
+# TODO (simon): Move all regular keys to the metric constants file.
+TD_ERROR_KEY = "td_error"
 
 
 @DeveloperAPI
