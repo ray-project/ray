@@ -401,7 +401,7 @@ class Policy(metaclass=ABCMeta):
         """Returns the RL Module (only for when RLModule API is enabled.)
 
         If RLModule API is enabled
-        (self.config.experimental(_enable_new_api_stack=True), this method should be
+        (self.config.api_stack(enable_rl_module_and_learner=True), this method should be
         implemented and should return the RLModule instance to use for this Policy.
         Otherwise, RLlib will error out.
         """
@@ -521,7 +521,7 @@ class Policy(metaclass=ABCMeta):
         if input_dict is None:
             input_dict = {SampleBatch.OBS: obs}
             if state is not None:
-                if self.config.get("_enable_new_api_stack", False):
+                if self.config.get("enable_rl_module_and_learner", False):
                     input_dict["state_in"] = state
                 else:
                     for i, s in enumerate(state):
@@ -1255,7 +1255,7 @@ class Policy(metaclass=ABCMeta):
             # If we are on the new RLModule/Learner stack, `num_gpus` is deprecated.
             # so use `num_gpus_per_worker` for policy sampling
             # we need this .get() syntax here to ensure backwards compatibility.
-            if self.config.get("_enable_new_api_stack", False):
+            if self.config.get("enable_rl_module_and_learner", False):
                 num_gpus = self.config["num_gpus_per_worker"]
             else:
                 # If head node, take num_gpus.
@@ -1391,12 +1391,12 @@ class Policy(metaclass=ABCMeta):
         self._lazy_tensor_dict(self._dummy_batch)
         # With RL Modules you want the explore flag to be True for initialization
         # of the tensors and placeholder you'd need for training.
-        explore = self.config.get("_enable_new_api_stack", False)
+        explore = self.config.get("enable_rl_module_and_learner", False)
 
         actions, state_outs, extra_outs = self.compute_actions_from_input_dict(
             self._dummy_batch, explore=explore
         )
-        if not self.config.get("_enable_new_api_stack", False):
+        if not self.config.get("enable_rl_module_and_learner", False):
             for key, view_req in self.view_requirements.items():
                 if key not in self._dummy_batch.accessed_keys:
                     view_req.used_for_compute_actions = False
@@ -1446,7 +1446,7 @@ class Policy(metaclass=ABCMeta):
         seq_lens = None
         if state_outs:
             B = 4  # For RNNs, have B=4, T=[depends on sample_batch_size]
-            if self.config.get("_enable_new_api_stack", False):
+            if self.config.get("enable_rl_module_and_learner", False):
                 sub_batch = postprocessed_batch[:B]
                 postprocessed_batch["state_in"] = sub_batch["state_in"]
                 postprocessed_batch["state_out"] = sub_batch["state_out"]
@@ -1466,7 +1466,7 @@ class Policy(metaclass=ABCMeta):
             seq_lens = np.array([seq_len for _ in range(B)], dtype=np.int32)
             postprocessed_batch[SampleBatch.SEQ_LENS] = seq_lens
 
-        if not self.config.get("_enable_new_api_stack"):
+        if not self.config.get("enable_rl_module_and_learner"):
             # Switch on lazy to-tensor conversion on `postprocessed_batch`.
             train_batch = self._lazy_tensor_dict(postprocessed_batch)
             # Calling loss, so set `is_training` to True.
@@ -1506,7 +1506,7 @@ class Policy(metaclass=ABCMeta):
 
         # Add new columns automatically to view-reqs.
         if (
-            not self.config.get("_enable_new_api_stack")
+            not self.config.get("enable_rl_module_and_learner")
             and auto_remove_unneeded_view_reqs
         ):
             # Add those needed for postprocessing and training.
@@ -1607,7 +1607,7 @@ class Policy(metaclass=ABCMeta):
         # We need to check for hasattr(self, "model") because a dummy Policy may not
         # have a model.
         if (
-            self.config.get("_enable_new_api_stack", False)
+            self.config.get("enable_rl_module_and_learner", False)
             and hasattr(self, "model")
             and self.model.is_stateful()
         ):

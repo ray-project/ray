@@ -65,7 +65,7 @@ if __name__ == "__main__":
                 "episode_len": 100,
             },
         )
-        .rollouts(env_to_module_connector=_env_to_module_pipeline)
+        .env_runners(env_to_module_connector=_env_to_module_pipeline)
         # No history in Env (bandit problem).
         .training(
             gamma=0.0,

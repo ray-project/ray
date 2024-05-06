@@ -14,4 +14,4 @@ memory-leak-test-impala:
         num_gpus: 0
         num_workers: 3
         num_aggregation_workers: 1
-        num_envs_per_worker: 5
+        num_envs_per_env_runner: 5

@@ -78,7 +78,7 @@ class TestCallbacks(unittest.TestCase):
         config = (
             PPOConfig()
             .environment("CartPole-v1")
-            .rollouts(num_rollout_workers=0)
+            .env_runners(num_env_runners=0)
             .callbacks(EpisodeAndSampleCallbacks)
             .training(train_batch_size=50, sgd_minibatch_size=50, num_sgd_iter=1)
         )
@@ -99,7 +99,7 @@ class TestCallbacks(unittest.TestCase):
             dqn.DQNConfig().environment("CartPole-v1")
             # Create 4 sub-environments per remote worker.
             # Create 2 remote workers.
-            .rollouts(num_envs_per_worker=4, num_rollout_workers=2)
+            .env_runners(num_envs_per_env_runner=4, num_env_runners=2)
         )
 
         for callbacks in (
@@ -131,14 +131,14 @@ class TestCallbacks(unittest.TestCase):
         config = (
             dqn.DQNConfig()
             .environment("CartPole-v1")
-            .rollouts(
+            .env_runners(
                 # Make each sub-environment a ray actor.
                 remote_worker_envs=True,
                 # Create 2 remote workers.
-                num_rollout_workers=2,
+                num_env_runners=2,
                 # Create 4 sub-environments (ray remote actors) per remote
                 # worker.
-                num_envs_per_worker=4,
+                num_envs_per_env_runner=4,
             )
         )
 
@@ -179,13 +179,13 @@ class TestCallbacks(unittest.TestCase):
                     "p_terminated": 0.0,
                 },
             )
-            .rollouts(num_envs_per_worker=2, num_rollout_workers=1)
+            .env_runners(num_envs_per_env_runner=2, num_env_runners=1)
             .callbacks(OnEpisodeCreatedCallback)
         )
 
         # Test with and without Connectors.
         for connector in [True, False]:
-            config.rollouts(enable_connectors=connector)
+            config.env_runners(enable_connectors=connector)
             algo = config.build()
             algo.train()
             # Two sub-environments share 1000 steps in the first training iteration

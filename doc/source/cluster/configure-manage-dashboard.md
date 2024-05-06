@@ -77,7 +77,7 @@ Follow the [instructions](kuberay-ingress) to set up ingress to access Ray Dashb
 You can also view the dashboard from outside the Kubernetes cluster by using port-forwarding:
 
 ```shell
-$ kubectl port-forward --address 0.0.0.0 service/${RAYCLUSTER_NAME}-head-svc 8265:8265 
+$ kubectl port-forward service/${RAYCLUSTER_NAME}-head-svc 8265:8265 
 # Visit ${YOUR_IP}:8265 for the Dashboard (e.g. 127.0.0.1:8265 or ${YOUR_VM_IP}:8265)
 ```
 

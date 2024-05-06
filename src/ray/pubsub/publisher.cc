@@ -478,6 +478,7 @@ void Publisher::UnregisterAll() {
 }
 
 int Publisher::UnregisterSubscriberInternal(const SubscriberID &subscriber_id) {
+  RAY_LOG(DEBUG) << "Unregistering subscriber " << subscriber_id.Hex();
   int erased = 0;
   for (auto &index : subscription_index_map_) {
     if (index.second.EraseSubscriber(subscriber_id)) {

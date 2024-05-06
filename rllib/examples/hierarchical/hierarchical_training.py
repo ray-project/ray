@@ -75,8 +75,8 @@ if __name__ == "__main__":
 
     stop = {
         "training_iteration": args.stop_iters,
-        "timesteps_total": args.stop_timesteps,
-        "episode_reward_mean": args.stop_reward,
+        "num_env_steps_sampled_lifetime": args.stop_timesteps,
+        "env_runner_results/episode_return_mean": args.stop_reward,
     }
 
     if args.flat:
@@ -86,7 +86,7 @@ if __name__ == "__main__":
             param_space=(
                 PPOConfig()
                 .environment(WindyMazeEnv)
-                .rollouts(num_rollout_workers=0)
+                .env_runners(num_env_runners=0)
                 .framework(args.framework)
             ).to_dict(),
         ).fit()
@@ -103,7 +103,7 @@ if __name__ == "__main__":
             PPOConfig()
             .environment(HierarchicalWindyMazeEnv)
             .framework(args.framework)
-            .rollouts(num_rollout_workers=0)
+            .env_runners(num_env_runners=0)
             .training(entropy_coeff=0.01)
             .multi_agent(
                 policies={
