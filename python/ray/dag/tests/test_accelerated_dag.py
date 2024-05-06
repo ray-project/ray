@@ -132,6 +132,23 @@ def test_actor_method_multi_binds(ray_start_regular):
     compiled_dag.teardown()
 
 
+def test_actor_method_bind_same_constant(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as inp:
+        dag = a.inc_two.bind(inp, 1)
+        dag2 = a.inc_two.bind(dag, 1)
+        # a.inc_two() binding the same constant "1" (i.e. non-DAGNode)
+        # multiple times should not throw an exception.
+
+    compiled_dag = dag2.experimental_compile()
+    output_channel = compiled_dag.execute(1)
+    result = output_channel.begin_read()
+    assert result == 5
+    output_channel.end_read()
+
+    compiled_dag.teardown()
+
+
 def test_regular_args(ray_start_regular):
     # Test passing regular args to .bind in addition to DAGNode args.
     a = Actor.remote(0)
@@ -233,8 +250,8 @@ def test_dag_errors(ray_start_regular):
         dag3 = a.inc_two.bind(dag, dag2)
     with pytest.raises(
         NotImplementedError,
-        match=r"Compiled DAGs currently do not support binding the same "
-        "actor method to the same input multiple times.*",
+        match=r"Compiled DAGs currently do not support binding the same input "
+        "on the same actor multiple times.*",
     ):
         dag3.experimental_compile()
 

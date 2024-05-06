@@ -1,7 +1,6 @@
 import asyncio
 from collections import defaultdict
 from typing import Any, Callable, Dict, List, Tuple, Union, Optional
-import itertools
 import logging
 import traceback
 import threading
@@ -177,30 +176,6 @@ def _wrap_exception(exc):
         cause=exc,
     )
     return wrapped
-
-
-def _check_multi_binds_to_same_input(executable_tasks: List["ExecutableTask"]):
-    """
-    Check unsupported case: binding the same actor method to the same
-    input multiple times
-    """
-    for _, g in itertools.groupby(executable_tasks, lambda x: x.method_name):
-        group = list(g)
-        if len(group) > 1:
-            resolved_args = set()
-            for executable_task in group:
-                if (
-                    len(set(executable_task.resolved_args).intersection(resolved_args))
-                    > 0
-                ):
-                    # TODO: Support binding the same actor method to the
-                    # same input multiple times.
-                    raise NotImplementedError(
-                        f"Compiled DAGs currently do not support binding the "
-                        f"same actor method to the same input multiple times. "
-                        f"Method: {executable_task.method_name}"
-                    )
-                resolved_args.update(executable_task.resolved_args)
 
 
 @PublicAPI(stability="alpha")
@@ -456,7 +431,7 @@ class CompiledDAG:
                     )
                 self.actor_task_count[actor_handle._actor_id] += 1
 
-            for arg_idx, arg in enumerate(task.args):
+            for arg in task.args:
                 if isinstance(arg, DAGNode):
                     arg_node_idx = self.dag_node_to_idx[arg]
                     self.idx_to_task[arg_node_idx].downstream_node_idxs.add(node_idx)
@@ -584,9 +559,18 @@ class CompiledDAG:
                 self.actor_to_tasks[actor_handle].append(task)
             elif isinstance(task.dag_node, InputNode):
                 readers = [self.idx_to_task[idx] for idx in task.downstream_node_idxs]
-                reader_handles = [
-                    reader.dag_node._get_actor_handle() for reader in readers
-                ]
+                reader_handles = []
+                reader_handles_set = set()
+                for reader in readers:
+                    reader_handle = reader.dag_node._get_actor_handle()
+                    if reader_handle in reader_handles_set:
+                        raise NotImplementedError(
+                            "Compiled DAGs currently do not support binding the "
+                            "same input on the same actor multiple times. "
+                            f"Violating actor: {reader_handle}"
+                        )
+                    reader_handles_set.add(reader_handle)
+                    reader_handles.append(reader_handle)
                 task.output_channel = Channel(
                     reader_handles,
                     buffer_size_bytes=self._buffer_size_bytes,
@@ -647,8 +631,6 @@ class CompiledDAG:
             # Sort executable tasks based on their bind index, i.e., submission order
             # so that they will be executed in that order.
             executable_tasks.sort(key=lambda task: task.bind_index)
-
-            _check_multi_binds_to_same_input(executable_tasks)
 
             self.actor_to_executable_tasks[actor_handle] = executable_tasks
             # Assign the task with the correct input and output buffers.
