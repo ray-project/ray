@@ -11,7 +11,6 @@ from ray.rllib.connectors.common.numpy_to_tensor import NumpyToTensor
 
 __all__ = [
     "AddObservationsFromEpisodesToBatch",
-    "AddOneTsToEpisodesAndTruncate",
     "AddStatesFromEpisodesToBatch",
     "AgentToModuleMapping",
     "BatchIndividualItems",

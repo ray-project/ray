@@ -158,7 +158,9 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
         # Log important loss stats.
         self.metrics.log_dict(
             {
+                "pi_loss": pi_loss,
                 "mean_pi_loss": mean_pi_loss,
+                "vf_loss": vf_loss,
                 "mean_vf_loss": mean_vf_loss,
                 ENTROPY_KEY: -mean_entropy_loss,
             },

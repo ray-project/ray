@@ -908,7 +908,6 @@ class Algorithm(Trainable, AlgorithmBase):
         #  inside the `training_step` as well. See the new IMPALA for an example.
         if self.config.enable_env_runner_and_connector_v2:
             if not self.config._dont_auto_sync_env_runner_states:
-                assert False#TODO
                 # Synchronize EnvToModule and ModuleToEnv connector states and broadcast new
                 # states back to all EnvRunners.
                 with self.metrics.log_time((TIMERS, SYNCH_ENV_CONNECTOR_STATES_TIMER)):
@@ -931,13 +930,11 @@ class Algorithm(Trainable, AlgorithmBase):
                 config=self.config,
             )
             # Get EnvRunner metrics and compile them into results.
-            episodes_this_iter = train_results.pop("_episodes_this_iter", None)
-            if episodes_this_iter is None:
-                episodes_this_iter = collect_episodes(
-                    self.workers,
-                    self._remote_worker_ids_for_metrics(),
-                    timeout_seconds=self.config.metrics_episode_collection_timeout_s,
-                )
+            episodes_this_iter = collect_episodes(
+                self.workers,
+                self._remote_worker_ids_for_metrics(),
+                timeout_seconds=self.config.metrics_episode_collection_timeout_s,
+            )
             results = self._compile_iteration_results_old_and_hybrid_api_stacks(
                 episodes_this_iter=episodes_this_iter,
                 step_ctx=train_iter_ctx,

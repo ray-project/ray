@@ -436,13 +436,6 @@ class MetricsLogger:
                 in which the internal values list would otherwise grow indefinitely,
                 for example if reduce is None and there is no `window` provided.
         """
-        #if self.tensor_mode:
-        #    raise RuntimeError(
-        #        "`MetricsLogger.log_time()` cannot be called in tensor-mode! Make sure "
-        #        "to deactivate tensor-mode first (`MetricsLogger."
-        #        "deactivate_tensor_mode()`), before calling this method."
-        #    )
-
         # No reduction (continue appending to list) AND no window.
         # -> We'll force-reset our values upon `reduce()`.
         if reduce is None and (window is None or window == float("inf")):

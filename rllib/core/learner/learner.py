@@ -1242,10 +1242,17 @@ class Learner:
         *,
         inference_only: bool = False,
     ) -> Dict[str, Any]:
-        """Get the state of the learner.
+        """Get (select components of) the state of this Learner.
+
+        Args:
+            components: Either None (return all components) or one of "rl_module",
+                "optimizer", or "modules_to_be_updated", or a list of either of these.
+            inference_only: Whether to return the inference-only weight set of the
+                underlying RLModule. Note that this setting only has an effect if
+                components is None or the string "rl_module" is in components.
 
         Returns:
-            The state of the optimizer and module.
+            The state (or select components thereof) of this Learner.
         """
         self._check_is_built()
         components = force_list(components) or [
@@ -1259,11 +1266,6 @@ class Learner:
         if "modules_to_be_updated" in components:
             state["modules_to_be_updated"] = self.config.policies_to_train
         return state
-        #return {
-        #    "module_state": self.get_module_state(),
-        #    "optimizer_state": self.get_optimizer_state(),
-        #    "modules_to_train": self.config.policies_to_train,
-        #}
 
     def set_optimizer_state(self, state: Dict[str, Any]) -> None:
         """Sets the state of all optimizers currently registered in this Learner.

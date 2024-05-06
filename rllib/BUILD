@@ -322,7 +322,6 @@ py_test(
 )
 
 # IMPALA
-# w/ new EnvRunner
 py_test(
     name = "learning_tests_cartpole_impala",
     main = "tuned_examples/impala/cartpole_impala.py",

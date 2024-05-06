@@ -452,12 +452,9 @@ class LearnerGroup:
                 partials = [
                     partial(
                         _learner_update,
-                        _episodes_shard=episodes_shard,
+                        _episodes_shard=eps_shard,
                         _return_state=(return_state and i == 0),
                         _min_total_mini_batches=min_total_mini_batches,
-                    )
-                    for i, episodes_shard in enumerate(
-                        ShardEpisodesIterator(episodes, len(self._workers))
                     )
                     for eps_shard in eps_shards
                 ]
@@ -540,34 +537,6 @@ class LearnerGroup:
             )
 
         return results
-
-        # OLD APPO CODE:
-        ## TODO (sven): Move reduce_fn to the training_step
-        #if reduce_fn is None:
-        #    return results
-        #elif not async_update:
-        #    w = None
-        #    for r_ in results:
-        #        if "_state_after_update" in r_:
-        #            w = r_.pop("_state_after_update")
-        #    reduced_r = reduce_fn(results)
-        #    if w is not None:
-        #        reduced_r.update({"_state_after_update": w})
-        #    return reduced_r
-        #else:
-        #    # TODO: Move this "return weights from 1st actor pinged"-logic to IMPALA;
-        #    ret = []
-        #    for r in results:
-        #        w = None
-        #        for r_ in r:
-        #            if "_state_after_update" in r_:
-        #                w = r_.pop("_state_after_update")
-        #                break
-        #        reduced_r = reduce_fn(r)
-        #        if w is not None:
-        #            reduced_r.update({"_state_after_update": w})
-        #        ret.append(reduced_r)
-        #    return ret
 
     def _get_results(self, results):
         processed_results = []
@@ -703,15 +672,6 @@ class LearnerGroup:
             )
 
         return results
-
-        # OLD APPO CODE
-        ## TODO(sven): Move reduce_fn to the training_step.
-        #if reduce_fn is None:
-        #    return results
-        #elif async_update:
-        #    return [reduce_fn(r) for r in results]
-        #else:
-        #    return reduce_fn(results)
 
     def add_module(
         self,

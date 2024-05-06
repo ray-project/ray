@@ -1,4 +1,3 @@
-import time
 import copy
 from functools import partial
 import logging
@@ -929,10 +928,6 @@ class Impala(Algorithm):
                 return_object_refs=use_tree_aggregation,
             )
         )
-        #TODO: test
-        a=1
-        unprocessed_sample_batches = []
-
         # Tag workers that actually produced ready sample batches this iteration.
         # Those workers will have to get updated at the end of the iteration.
         workers_that_need_updates = {
@@ -1462,6 +1457,7 @@ class AggregatorWorker(FaultAwareApply):
         return platform.node()
 
 
+@OldAPIStack
 def make_learner_thread(local_worker, config):
     if not config["simple_optimizer"]:
         logger.info(
