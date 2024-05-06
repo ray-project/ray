@@ -14,7 +14,7 @@ class TestOfflineData(unittest.TestCase):
         ray.shutdown()
 
     def test_offline_data_load(self):
-        
+
         data_path = "tests/data/pendulum/large.json"
         base_path = Path(__file__).parents[2]
         data_path = "local://" + base_path.joinpath(data_path).as_posix()
