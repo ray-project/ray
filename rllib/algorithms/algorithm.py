@@ -91,6 +91,7 @@ from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
     ENV_RUNNER_RESULTS,
+    ENV_RUNNER_SAMPLING_TIMER,
     EVALUATION_ITERATION_TIMER,
     EVALUATION_RESULTS,
     FAULT_TOLERANCE_STATS,
@@ -117,7 +118,6 @@ from ray.rllib.utils.metrics import (
     TIMERS,
     TRAINING_ITERATION_TIMER,
     TRAINING_STEP_TIMER,
-    SAMPLE_TIMER,
     STEPS_TRAINED_THIS_ITER_COUNTER,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
@@ -796,7 +796,7 @@ class Algorithm(Trainable, AlgorithmBase):
             self.workers.sync_weights(inference_only=True)
 
         # Run `on_algorithm_init` callback after initialization is done.
-        self.callbacks.on_algorithm_init(algorithm=self)
+        self.callbacks.on_algorithm_init(algorithm=self, metrics_logger=self.metrics)
 
     @OverrideToImplementCustomLogic
     @classmethod
@@ -999,7 +999,7 @@ class Algorithm(Trainable, AlgorithmBase):
                     config=self.evaluation_config,
                 )
 
-        self.callbacks.on_evaluate_start(algorithm=self)
+        self.callbacks.on_evaluate_start(algorithm=self, metrics_logger=self.metrics)
 
         env_steps = agent_steps = 0
         batches = []
@@ -1097,7 +1097,11 @@ class Algorithm(Trainable, AlgorithmBase):
                     eval_results["off_policy_estimator"][name] = avg_estimate
 
         # Trigger `on_evaluate_end` callback.
-        self.callbacks.on_evaluate_end(algorithm=self, evaluation_metrics=eval_results)
+        self.callbacks.on_evaluate_end(
+            algorithm=self,
+            metrics_logger=self.metrics,
+            evaluation_metrics=eval_results,
+        )
 
         # Also return the results here for convenience.
         return eval_results
@@ -1608,9 +1612,9 @@ class Algorithm(Trainable, AlgorithmBase):
             )
 
         # Collect SampleBatches from sample workers until we have a full batch.
-        with self.metrics.log_time((TIMERS, SAMPLE_TIMER)):
+        with self.metrics.log_time((TIMERS, ENV_RUNNER_SAMPLING_TIMER)):
             if self.config.count_steps_by == "agent_steps":
-                train_batch, env_runner_metrics = synchronous_parallel_sample(
+                train_batch, env_runner_results = synchronous_parallel_sample(
                     worker_set=self.workers,
                     max_agent_steps=self.config.train_batch_size,
                     sample_timeout_s=self.config.sample_timeout_s,
@@ -1620,7 +1624,7 @@ class Algorithm(Trainable, AlgorithmBase):
                     _return_metrics=True,
                 )
             else:
-                train_batch, env_runner_metrics = synchronous_parallel_sample(
+                train_batch, env_runner_results = synchronous_parallel_sample(
                     worker_set=self.workers,
                     max_env_steps=self.config.train_batch_size,
                     sample_timeout_s=self.config.sample_timeout_s,
@@ -1632,7 +1636,7 @@ class Algorithm(Trainable, AlgorithmBase):
         train_batch = train_batch.as_multi_agent()
 
         # Reduce EnvRunner metrics over the n EnvRunners.
-        self.metrics.log_n_dicts(env_runner_metrics, key=ENV_RUNNER_RESULTS)
+        self.metrics.log_n_dicts(env_runner_results, key=ENV_RUNNER_RESULTS)
 
         # Only train if train_batch is not empty.
         # In an extreme situation, all rollout workers die during the
@@ -2447,9 +2451,13 @@ class Algorithm(Trainable, AlgorithmBase):
     def log_result(self, result: ResultDict) -> None:
         # Log after the callback is invoked, so that the user has a chance
         # to mutate the result.
-        # TODO: Remove `algorithm` arg at some point to fully deprecate the old
-        #  signature.
-        self.callbacks.on_train_result(algorithm=self, result=result)
+        # TODO (sven): It might not make sense to pass in the MetricsLogger at this late
+        #  point in time. In here, the result dict has already been "compiled" (reduced)
+        #  by the MetricsLogger and there is probably no point in adding more Stats
+        #  here.
+        self.callbacks.on_train_result(
+            algorithm=self, metrics_logger=self.metrics, result=result
+        )
         # Then log according to Trainable's logging logic.
         Trainable.log_result(self, result)
 
@@ -3115,13 +3123,16 @@ class Algorithm(Trainable, AlgorithmBase):
         return from_config(ReplayBuffer, config["replay_buffer_config"])
 
     def _run_one_training_iteration(self) -> Tuple[ResultDict, "TrainIterCtx"]:
-        """Runs one training iteration (self.iteration will be +1 after this).
+        """Runs one training iteration (`self.iteration` will be +1 after this).
 
-        Calls `self.training_step()` repeatedly until the minimum time (sec),
-        sample- or training steps have been reached.
+        Calls `self.training_step()` repeatedly until the configured minimum time (sec),
+        minimum sample- or minimum training steps have been reached.
 
         Returns:
-            The results dict from the training iteration.
+            The ResultDict from the last call to `training_step()`. Note that even
+            though we only return the last ResultDict, the user stil has full control
+            over the history and reduce behavior of individual metrics at the time these
+            metrics are logged with `self.metrics.log_...()`.
         """
         with self._timers[TRAINING_ITERATION_TIMER]:
             # In case we are training (in a thread) parallel to evaluation,
@@ -3261,7 +3272,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 config=self.evaluation_config,
             )
 
-        self.callbacks.on_evaluate_start(algorithm=self)
+        self.callbacks.on_evaluate_start(algorithm=self, metrics_logger=self.metrics)
 
         env_steps = agent_steps = 0
 

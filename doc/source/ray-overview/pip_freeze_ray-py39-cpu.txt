@@ -42,7 +42,7 @@ Cython==0.29.32
 distlib==0.3.7
 distro @ file:///croot/distro_1701455004953/work
 dm-tree==0.1.8
-exceptiongroup==1.2.0
+exceptiongroup==1.2.1
 Farama-Notifications==0.0.4
 fastapi==0.109.2
 filelock==3.13.1
@@ -126,7 +126,7 @@ python-dotenv==1.0.1
 pytz==2022.7.1
 PyWavelets==1.5.0
 PyYAML==6.0.1
-ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=bc790357ec5ba7d05635ba28589fb4061da226d74f73263c79db9ac63f56834f
+ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=631ded1c019074c62cfdd2da13ec578caaecbe73555081ea4467b134fcdc2a80
 redis==3.5.3
 requests @ file:///croot/requests_1707355572290/work
 requests-oauthlib==2.0.0

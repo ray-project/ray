@@ -38,6 +38,7 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_TRAINED,
+    NUM_MODULE_STEPS_TRAINED,
     NUM_SYNCH_WORKER_WEIGHTS,
     NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS,
     SYNCH_WORKER_WEIGHTS_TIMER,
@@ -949,7 +950,6 @@ class Impala(Algorithm):
                 result = self.learner_group.update_from_batch(
                     batch=batch,
                     async_update=async_update,
-                    reduce_fn=_reduce_impala_results,
                     num_iters=self.config.num_sgd_iter,
                     minibatch_size=self.config.minibatch_size,
                 )
@@ -961,7 +961,7 @@ class Impala(Algorithm):
                         NUM_ENV_STEPS_TRAINED
                     )
                     self._counters[NUM_AGENT_STEPS_TRAINED] += r[ALL_MODULES].pop(
-                        NUM_AGENT_STEPS_TRAINED
+                        NUM_MODULE_STEPS_TRAINED
                     )
 
             self._counters.update(self.learner_group.get_stats())
@@ -1264,23 +1264,3 @@ class AggregatorWorker(FaultAwareApply):
 
     def get_host(self) -> str:
         return platform.node()
-
-
-def _reduce_impala_results(results: List[ResultDict]) -> ResultDict:
-    """Reduce/Aggregate a list of results from Impala Learners.
-
-    Average the values of the result dicts. Add keys for the number of agent and env
-    steps trained (on all modules).
-
-    Args:
-        results: List of results dicts to be reduced.
-
-    Returns:
-        Final reduced results dict.
-    """
-    result = tree.map_structure(lambda *x: np.mean(x), *results)
-    agent_steps_trained = sum(r[ALL_MODULES][NUM_AGENT_STEPS_TRAINED] for r in results)
-    env_steps_trained = sum(r[ALL_MODULES][NUM_ENV_STEPS_TRAINED] for r in results)
-    result[ALL_MODULES][NUM_AGENT_STEPS_TRAINED] = agent_steps_trained
-    result[ALL_MODULES][NUM_ENV_STEPS_TRAINED] = env_steps_trained
-    return result

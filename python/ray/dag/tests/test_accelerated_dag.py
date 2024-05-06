@@ -213,7 +213,10 @@ def test_dag_errors(ray_start_regular):
 
 
 def test_dag_fault_tolerance(ray_start_regular_shared):
-    actors = [Actor.remote(0, fail_after=100, sys_exit=False) for _ in range(4)]
+    actors = [
+        Actor.remote(0, fail_after=100 if i == 0 else None, sys_exit=False)
+        for i in range(4)
+    ]
     with InputNode() as i:
         out = [a.inc.bind(i) for a in actors]
         dag = MultiOutputNode(out)
@@ -235,9 +238,30 @@ def test_dag_fault_tolerance(ray_start_regular_shared):
 
     compiled_dag.teardown()
 
+    # All actors are still alive.
+    ray.get([actor.echo.remote("hello") for actor in actors])
+
+    # Remaining actors can be reused.
+    actors.pop(0)
+    with InputNode() as i:
+        out = [a.inc.bind(i) for a in actors]
+        dag = MultiOutputNode(out)
+
+    compiled_dag = dag.experimental_compile()
+    for i in range(100):
+        output_channels = compiled_dag.execute(1)
+        # TODO(swang): Replace with fake ObjectRef.
+        output_channels.begin_read()
+        output_channels.end_read()
+
+    compiled_dag.teardown()
+
 
 def test_dag_fault_tolerance_sys_exit(ray_start_regular_shared):
-    actors = [Actor.remote(0, fail_after=100, sys_exit=True) for _ in range(4)]
+    actors = [
+        Actor.remote(0, fail_after=100 if i == 0 else None, sys_exit=True)
+        for i in range(4)
+    ]
     with InputNode() as i:
         out = [a.inc.bind(i) for a in actors]
         dag = MultiOutputNode(out)
@@ -256,6 +280,26 @@ def test_dag_fault_tolerance_sys_exit(ray_start_regular_shared):
             output_channels = compiled_dag.execute(1)
             output_channels.begin_read()
             output_channels.end_read()
+
+    # Remaining actors are still alive.
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(actors[0].echo.remote("hello"))
+    actors.pop(0)
+    ray.get([actor.echo.remote("hello") for actor in actors])
+
+    # Remaining actors can be reused.
+    with InputNode() as i:
+        out = [a.inc.bind(i) for a in actors]
+        dag = MultiOutputNode(out)
+
+    compiled_dag = dag.experimental_compile()
+    for i in range(100):
+        output_channels = compiled_dag.execute(1)
+        # TODO(swang): Replace with fake ObjectRef.
+        output_channels.begin_read()
+        output_channels.end_read()
+
+    compiled_dag.teardown()
 
 
 def test_dag_teardown_while_running(ray_start_regular_shared):
