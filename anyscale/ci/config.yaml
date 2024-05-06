@@ -30,7 +30,6 @@ env:
   RAYCI_SKIP_UPLOAD: "true"
   RAYCI_DISABLE_CPP_WHEEL: "true"
   RAYCI_DISABLE_JAVA: "true"
-  RAYCI_DISABLE_TEST_DB: "true"
   RAYCI_GLOBAL_CONFIG: "ci/ray_ci/runtime_config.yaml"
 tag_filter_command:
   - ./anyscale/ci/ci_all_tags.sh

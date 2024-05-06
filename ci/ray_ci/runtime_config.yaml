@@ -7,9 +7,9 @@ release_byod:
   gcp_cr: us-west1-docker.pkg.dev/anyscale-oss-ci
   aws2gce_credentials: release/aws2gce_runtime_iam.json
 ci_pipeline:
-  buildkite_secret: ray_ci_buildkite_token 
+  postmerge:
+    - 018803a7-6690-446f-9838-e81f7247a6d4
+  buildkite_secret: buildkite_access_token_anyscale 
 state_machine:
-  pr:
-    aws_bucket: ray-ci-results
   branch:
-    aws_bucket: ray-ci-results
+    aws_bucket: runtime-ci-results
