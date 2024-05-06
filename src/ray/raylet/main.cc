@@ -227,7 +227,7 @@ int main(int argc, char *argv[]) {
 
   auto shutted_down = std::make_shared<std::atomic<bool>>(false);
 
-  // Destroy the Raylet on a SIGTERM. The pointer to main_service is
+  // Shut down raylet gracefully. The pointer to main_service is
   // guaranteed to be valid since this function will run the event loop
   // instead of returning immediately.
   // We should stop the service and remove the local socket file.
@@ -240,7 +240,10 @@ int main(int argc, char *argv[]) {
           RAY_LOG(INFO) << "Raylet shutdown already triggered, ignoring this request.";
           return;
         }
-        RAY_LOG(INFO) << "Raylet shutdown triggered, shutting down...";
+        RAY_LOG(INFO) << "Raylet graceful shutdown triggered, "
+         << "reason = " << node_death_info.reason() << ", "
+          << "reason message = " << node_death_info.reason_message();
+        RAY_LOG(INFO) << "Shutting down...";
         *shutted_down = true;
         raylet->Stop(node_death_info);
         gcs_client->Disconnect();
@@ -424,7 +427,6 @@ int main(int argc, char *argv[]) {
 
   auto signal_handler = [shutdown_raylet_gracefully](
                             const boost::system::error_code &error, int signal_number) {
-    RAY_LOG(INFO) << "Raylet received SIGTERM, shutting down...";
     ray::rpc::NodeDeathInfo node_death_info;
     node_death_info.set_reason(ray::rpc::NodeDeathInfo::EXPECTED_TERMINATION);
     node_death_info.set_reason_message("SIGTERM received");

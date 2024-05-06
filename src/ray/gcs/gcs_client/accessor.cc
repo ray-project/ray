@@ -448,10 +448,12 @@ Status NodeInfoAccessor::UnregisterSelf(const rpc::NodeDeathInfo &node_death_inf
     return Status::OK();
   }
   auto node_id = NodeID::FromBinary(local_node_info_.node_id());
-  RAY_CHECK(!node_id.IsNil()) << "Node ID cannnot be nil.";
+  RAY_LOG(INFO) << "Unregistering node info, node id = " << node_id;
   rpc::UnregisterNodeRequest request;
   request.set_node_id(local_node_info_.node_id());
   request.mutable_node_death_info()->CopyFrom(node_death_info);
+  // Unregister the node synchronously because this method is only called in the
+  // raylet shutdown path: waiting is not an issue and actually desired.
   std::promise<Status> promise;
   client_impl_->GetGcsRpcClient().UnregisterNode(
       request,
@@ -461,7 +463,7 @@ Status NodeInfoAccessor::UnregisterSelf(const rpc::NodeDeathInfo &node_death_inf
           local_node_info_.set_state(GcsNodeInfo::DEAD);
           local_node_id_ = NodeID::Nil();
         }
-        RAY_LOG(DEBUG) << "Finished unregistering node info, status = " << status
+        RAY_LOG(INFO) << "Finished unregistering node info, status = " << status
                        << ", node id = " << node_id;
         promise.set_value(status);
       });

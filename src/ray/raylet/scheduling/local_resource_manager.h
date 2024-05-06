@@ -58,7 +58,6 @@ class LocalResourceManager : public syncer::ReporterInterface {
       const NodeResources &node_resources,
       std::function<int64_t(void)> get_used_object_store_memory,
       std::function<bool(void)> get_pull_manager_at_capacity,
-      std::function<bool(rpc::NodeDeathInfo)> unregister_self,
       std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
       std::function<void(const NodeResources &)> resource_change_subscriber);
 
@@ -218,8 +217,6 @@ class LocalResourceManager : public syncer::ReporterInterface {
   std::function<int64_t(void)> get_used_object_store_memory_;
   /// Function to get whether the pull manager is at capacity.
   std::function<bool(void)> get_pull_manager_at_capacity_;
-  /// Function to unregister the local node.
-  std::function<bool(rpc::NodeDeathInfo)> unregister_self_;
   /// Function to shutdown the raylet gracefully.
   std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully_;
 

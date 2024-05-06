@@ -28,13 +28,11 @@ LocalResourceManager::LocalResourceManager(
     const NodeResources &node_resources,
     std::function<int64_t(void)> get_used_object_store_memory,
     std::function<bool(void)> get_pull_manager_at_capacity,
-    std::function<bool(rpc::NodeDeathInfo)> unregister_self,
     std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
     std::function<void(const NodeResources &)> resource_change_subscriber)
     : local_node_id_(local_node_id),
       get_used_object_store_memory_(get_used_object_store_memory),
       get_pull_manager_at_capacity_(get_pull_manager_at_capacity),
-      unregister_self_(unregister_self),
       shutdown_raylet_gracefully_(shutdown_raylet_gracefully),
       resource_change_subscriber_(resource_change_subscriber) {
   RAY_CHECK(node_resources.total == node_resources.available);
@@ -387,19 +385,14 @@ void LocalResourceManager::OnResourceOrStateChanged() {
   if (IsLocalNodeDraining() && IsLocalNodeIdle()) {
     // The node is drained.
 
-    // TODO: remove the following and clean up unregister_self_.
-    // if (unregister_self_ != nullptr) {
-    //   RAY_LOG(INFO) << "The node is drained, unregister itself ...";
-    //   if (!unregister_self_(node_death_info_)) {
-    //     RAY_LOG(ERROR) << "Failed to unregister the node.";
-    //     // Still shutdown?
-    //   } else {
-    //     RAY_LOG(INFO) << "The node is unregistered, exiting ...";
-    //   }
-    // } else {
-    //   RAY_LOG(INFO) << "The node is drained, exiting ...";
-    // }
-    shutdown_raylet_gracefully_(node_death_info_);
+    if (shutdown_raylet_gracefully_ == nullptr) {
+      RAY_LOG(ERROR) << "shutdown_raylet_gracefully_ callback is not set, "
+        << "please check the LocalResourceManager constructor."
+        << "Using ShutdownRayletGracefully (sending SIGTERM) instead.";
+      raylet::ShutdownRayletGracefully();
+    } else {
+      shutdown_raylet_gracefully_(node_death_info_);
+    }
   }
 
   ++version_;

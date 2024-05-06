@@ -312,10 +312,6 @@ NodeManager::NodeManager(
       },
       /*get_pull_manager_at_capacity*/
       [this]() { return object_manager_.PullManagerHasPullsQueued(); },
-      [this](rpc::NodeDeathInfo node_death_info) {
-        Status status = gcs_client_->Nodes().UnregisterSelf(node_death_info);
-        return status.ok();
-      },
       shutdown_raylet_gracefully,
       /*labels*/
       config.labels);

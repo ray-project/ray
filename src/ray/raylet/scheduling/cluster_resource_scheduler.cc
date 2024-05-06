@@ -36,7 +36,6 @@ ClusterResourceScheduler::ClusterResourceScheduler(
        local_node_resources,
        /*get_used_object_store_memory=*/nullptr,
        /*get_pull_manager_at_capacity=*/nullptr,
-       /*unregister_self=*/nullptr,
        /*shutdown_raylet_gracefully=*/nullptr);
 }
 
@@ -47,7 +46,6 @@ ClusterResourceScheduler::ClusterResourceScheduler(
     std::function<bool(scheduling::NodeID)> is_node_available_fn,
     std::function<int64_t(void)> get_used_object_store_memory,
     std::function<bool(void)> get_pull_manager_at_capacity,
-    std::function<bool(rpc::NodeDeathInfo)> unregister_self,
     std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
     const absl::flat_hash_map<std::string, std::string> &local_node_labels)
     : local_node_id_(local_node_id), is_node_available_fn_(is_node_available_fn) {
@@ -57,7 +55,6 @@ ClusterResourceScheduler::ClusterResourceScheduler(
        node_resources,
        get_used_object_store_memory,
        get_pull_manager_at_capacity,
-       unregister_self,
        shutdown_raylet_gracefully);
 }
 
@@ -66,7 +63,6 @@ void ClusterResourceScheduler::Init(
     const NodeResources &local_node_resources,
     std::function<int64_t(void)> get_used_object_store_memory,
     std::function<bool(void)> get_pull_manager_at_capacity,
-    std::function<bool(rpc::NodeDeathInfo)> unregister_self,
     std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully) {
   cluster_resource_manager_ = std::make_unique<ClusterResourceManager>(io_service);
   local_resource_manager_ = std::make_unique<LocalResourceManager>(
@@ -74,7 +70,6 @@ void ClusterResourceScheduler::Init(
       local_node_resources,
       get_used_object_store_memory,
       get_pull_manager_at_capacity,
-      unregister_self,
       shutdown_raylet_gracefully,
       [this](const NodeResources &local_resource_update) {
         cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_resource_update);
