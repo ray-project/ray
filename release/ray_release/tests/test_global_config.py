@@ -19,7 +19,11 @@ release_byod:
   aws_cr: 029272617770.dkr.ecr.us-west-2.amazonaws.com
   gcp_cr: us-west1-docker.pkg.dev/anyscale-oss-ci
 state_machine:
-  aws_bucket: ray-ci-results
+  pr:
+    aws_bucket: ray-ci-pr-results
+  branch:
+    aws_bucket: ray-ci-results
+  disabled: 1
 credentials:
   aws2gce: release/aws2gce_iam.json
 ci_pipeline:
@@ -46,6 +50,8 @@ def test_init_global_config() -> None:
             os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
             == "/workdir/release/aws2gce_iam.json"
         )
+        assert config["state_machine_pr_aws_bucket"] == "ray-ci-pr-results"
+        assert config["state_machine_disabled"] is True
 
 
 if __name__ == "__main__":
