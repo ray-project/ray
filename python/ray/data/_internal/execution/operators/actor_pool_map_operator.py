@@ -127,6 +127,7 @@ class ActorPoolMapOperator(MapOperator):
         for _ in range(self._autoscaling_policy.min_workers):
             remote_args = self._ray_remote_args
             if self._scheduling_strategy_fn:
+                self._refresh_actor_cls_scheduling_strategy()
                 # For each new actor, get new scheduling strategy by
                 # calling the generation fn.
                 remote_args["scheduling_strategy"] = self._scheduling_strategy_fn()
@@ -167,6 +168,8 @@ class ActorPoolMapOperator(MapOperator):
         """Start a new actor and add it to the actor pool as a pending actor."""
         assert self._cls is not None
         ctx = DataContext.get_current()
+        if self._scheduling_strategy_fn:
+            self._refresh_actor_cls_scheduling_strategy()
         actor = self._cls.remote(
             ctx,
             src_fn_name=self.name,
@@ -250,6 +253,19 @@ class ActorPoolMapOperator(MapOperator):
         else:
             # Only try to scale down if the work queue has been fully consumed.
             self._scale_down_if_needed()
+    
+    def _refresh_actor_cls_scheduling_strategy(self):
+        """When `self._scheduling_strategy_fn` is specified, this method should
+        be called prior to initializing the new worker in order to get a new
+        scheduling strategy. It updates `self.cls` with the same `_MapWorker`
+        class, but with the new scheduling strategy passed to its remote args."""
+        assert self._scheduling_strategy_fn, "_scheduling_strategy_fn must be set"
+        remote_args = self._ray_remote_args
+        # For each new actor, get new scheduling strategy by
+        # calling the generation fn.
+        remote_args["scheduling_strategy"] = self._scheduling_strategy_fn()
+        self._cls = ray.remote(**remote_args)(_MapWorker)
+
 
     def _scale_up_if_needed(self):
         """Try to scale up the pool if the autoscaling policy allows it."""

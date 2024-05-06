@@ -319,7 +319,7 @@ class Dataset:
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
                 worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
             scheduling_strategy_fn: A function that returns a ``SchedulingStrategy``
-                used to initialize the actor. Only valid if ``fn`` is a callable class.
+                used to initialize the worker. Only valid if ``fn`` is a callable class.
             ray_remote_args: Additional resource requirements to request from
                 Ray for each map worker.
 
@@ -529,7 +529,7 @@ class Dataset:
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
                 worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
             scheduling_strategy_fn: A function that returns a ``SchedulingStrategy``
-                used to initialize the actor. Only valid if ``fn`` is a callable class.
+                used to initialize the worker. Only valid if ``fn`` is a callable class.
             ray_remote_args: Additional resource requirements to request from
                 ray for each map worker.
 
@@ -859,7 +859,7 @@ class Dataset:
                 For an autoscaling worker pool from ``m`` to ``n`` workers, specify
                 ``concurrency=(m, n)``.
             scheduling_strategy_fn: A function that returns a ``SchedulingStrategy``
-                used to initialize the actor. Only valid if ``fn`` is a callable class.
+                used to initialize the worker. Only valid if ``fn`` is a callable class.
             ray_remote_args: Additional resource requirements to request from
                 ray for each map worker.
 
@@ -939,7 +939,7 @@ class Dataset:
                 For an autoscaling worker pool from ``m`` to ``n`` workers, specify
                 ``concurrency=(m, n)``.
             scheduling_strategy_fn: A function that returns a ``SchedulingStrategy``
-                used to initialize the actor. Only valid if ``fn`` is a callable class.
+                used to initialize the worker. Only valid if ``fn`` is a callable class.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """

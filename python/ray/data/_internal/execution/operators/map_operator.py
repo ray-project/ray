@@ -3,7 +3,7 @@ import functools
 import itertools
 from abc import ABC, abstractmethod
 from collections import defaultdict, deque
-from typing import Any, Callable, Deque, Dict, Iterator, List, Optional, Set, Union
+from typing import Any, Callable, Deque, Dict, Iterator, List, Optional, Set, Union, TYPE_CHECKING
 
 import ray
 from ray import ObjectRef
@@ -35,7 +35,10 @@ from ray.data._internal.execution.operators.map_transformer import (
 from ray.data._internal.stats import StatsDict
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DataContext
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from ray.util.scheduling_strategies import (
+    NodeAffinitySchedulingStrategy, 
+    SchedulingStrategyT
+)
 
 
 class MapOperator(OneToOneOperator, ABC):
@@ -110,7 +113,7 @@ class MapOperator(OneToOneOperator, ABC):
         # TODO(ekl): slim down ComputeStrategy to only specify the compute
         # config and not contain implementation code.
         compute_strategy: Optional[ComputeStrategy] = None,
-        scheduling_strategy_fn: Optional[Callable[[], Any]] = None,
+        scheduling_strategy_fn: Optional[Callable[[], SchedulingStrategyT]] = None,
         min_rows_per_bundle: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ) -> "MapOperator":
