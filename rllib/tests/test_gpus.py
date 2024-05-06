@@ -18,7 +18,7 @@ class TestGPUs(unittest.TestCase):
         actual_gpus = torch.cuda.device_count()
         print(f"Actual GPUs found (by torch): {actual_gpus}")
 
-        config = PPOConfig().rollouts(num_rollout_workers=2).environment("CartPole-v1")
+        config = PPOConfig().env_runners(num_env_runners=2).environment("CartPole-v1")
 
         # Expect errors when we run a config w/ num_gpus>0 w/o a GPU
         # and _fake_gpus=False.
@@ -88,7 +88,7 @@ class TestGPUs(unittest.TestCase):
 
         actual_gpus_available = torch.cuda.device_count()
 
-        config = PPOConfig().rollouts(num_rollout_workers=2).environment("CartPole-v1")
+        config = PPOConfig().env_runners(num_env_runners=2).environment("CartPole-v1")
 
         # Expect no errors in local mode.
         for num_gpus in [0, 0.1, 1, actual_gpus_available + 4]:

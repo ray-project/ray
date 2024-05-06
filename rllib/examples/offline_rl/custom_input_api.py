@@ -99,7 +99,7 @@ if __name__ == "__main__":
         .training(train_batch_size=2000)
         .evaluation(
             evaluation_interval=1,
-            evaluation_num_workers=2,
+            evaluation_num_env_runners=2,
             evaluation_duration=10,
             evaluation_parallel_to_training=True,
             evaluation_config=default_config.overrides(
@@ -119,7 +119,7 @@ if __name__ == "__main__":
 
     stop = {
         "training_iteration": args.stop_iters,
-        "evaluation/sampler_results/episode_reward_mean": -600,
+        "evaluation_results/env_runner_results/episode_return_mean": -600,
     }
 
     tuner = tune.Tuner(

@@ -61,7 +61,7 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
         ).squeeze()
 
         # Use double Q learning.
-        if self.config.double_q:
+        if config.double_q:
             # Then we evaluate the target Q-function at the best action (greedy action)
             # over the online Q-function.
             # Mark the best online Q-value of the next state.
@@ -86,7 +86,7 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
             ).squeeze()
 
         # If we learn a Q-distribution.
-        if self.config.num_atoms > 1:
+        if config.num_atoms > 1:
             # Extract the Q-logits evaluated at the selected actions.
             # (Note, `torch.gather` should be faster than multiplication
             # with a one-hot tensor.)
@@ -99,7 +99,7 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
                 # (B, 1, num_atoms).
                 index=batch[Columns.ACTIONS]
                 .view(-1, 1, 1)
-                .expand(-1, 1, self.config.num_atoms)
+                .expand(-1, 1, config.num_atoms)
                 .long(),
             ).squeeze(dim=1)
             # Get the probabilies for the maximum Q-value(s).
@@ -109,9 +109,7 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
                 # Change the view and then expand to get to the dimensions
                 # of the probabilities (dims 0 and 2, 1 should be reduced
                 # from 2 -> 1).
-                index=q_next_best_idx.view(-1, 1, 1).expand(
-                    -1, 1, self.config.num_atoms
-                ),
+                index=q_next_best_idx.view(-1, 1, 1).expand(-1, 1, config.num_atoms),
             ).squeeze(dim=1)
 
             # For distributional Q-learning we use an entropy loss.
@@ -123,17 +121,16 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
             r_tau = torch.clamp(
                 batch[Columns.REWARDS].unsqueeze(dim=-1)
                 + (
-                    self.config.gamma ** batch["n_steps"]
+                    config.gamma ** batch["n_steps"]
                     * (1.0 - batch[Columns.TERMINATEDS].float())
                 ).unsqueeze(dim=-1)
                 * z,
-                self.config.v_min,
-                self.config.v_max,
+                config.v_min,
+                config.v_max,
             ).squeeze(dim=1)
             # (32, 10)
-            b = (r_tau - self.config.v_min) / (
-                (self.config.v_max - self.config.v_min)
-                / float(self.config.num_atoms - 1.0)
+            b = (r_tau - config.v_min) / (
+                (config.v_max - config.v_min) / float(config.num_atoms - 1.0)
             )
             lower_bound = torch.floor(b)
             upper_bound = torch.ceil(b)
@@ -142,10 +139,10 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
 
             # (B, num_atoms, num_atoms).
             lower_projection = nn.functional.one_hot(
-                lower_bound.long(), self.config.num_atoms
+                lower_bound.long(), config.num_atoms
             )
             upper_projection = nn.functional.one_hot(
-                upper_bound.long(), self.config.num_atoms
+                upper_bound.long(), config.num_atoms
             )
             # (32, 10)
             ml_delta = q_probs_next_best * (upper_bound - b + floor_equal_ceil)
@@ -174,14 +171,12 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
             # backpropagate through the target network when optimizing the Q loss.
             q_selected_target = (
                 batch[Columns.REWARDS]
-                + (self.config.gamma ** batch["n_steps"]) * q_next_best_masked
+                + (config.gamma ** batch["n_steps"]) * q_next_best_masked
             ).detach()
 
             # Choose the requested loss function. Note, in case of the Huber loss
             # we fall back to the default of `delta=1.0`.
-            loss_fn = (
-                nn.HuberLoss if self.config.td_error_loss_fn == "huber" else nn.MSELoss
-            )
+            loss_fn = nn.HuberLoss if config.td_error_loss_fn == "huber" else nn.MSELoss
             # Compute the TD error.
             td_error = torch.abs(q_selected - q_selected_target)
             # Compute the weighted loss (importance sampling weights).
@@ -190,22 +185,33 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
                 * loss_fn(reduction="none")(q_selected, q_selected_target)
             )
 
-        self.register_metrics(
-            module_id,
+        # Log the TD-error with reduce=None, such that - in case we have n parallel
+        # Learners - we will re-concatenate the produced TD-error tensors to yield
+        # a 1:1 representation of the original batch.
+        self.metrics.log_value(
+            key=(module_id, TD_ERROR_KEY),
+            value=td_error,
+            reduce=None,
+            clear_on_reduce=True,
+        )
+        # Log other important loss stats (reduce=mean (default), but with window=1
+        # in order to keep them history free).
+        self.metrics.log_dict(
             {
                 QF_LOSS_KEY: total_loss,
-                TD_ERROR_KEY: td_error.squeeze(),
-                TD_ERROR_MEAN_KEY: torch.mean(td_error),
                 QF_MEAN_KEY: torch.mean(q_selected),
                 QF_MAX_KEY: torch.max(q_selected),
                 QF_MIN_KEY: torch.min(q_selected),
+                TD_ERROR_MEAN_KEY: torch.mean(td_error),
             },
+            key=module_id,
+            window=1,  # <- single items (should not be mean/ema-reduced over time).
         )
         # If we learn a Q-value distribution store the support and average
         # probabilities.
-        if self.config.num_atoms > 1:
-            self.register_metrics(
-                module_id,
+        if config.num_atoms > 1:
+            # Log important loss stats.
+            self.metrics.log_dict(
                 {
                     ATOMS: z,
                     # The absolute difference in expectation between the actions
@@ -242,6 +248,8 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
                         dim=0,
                     ),
                 },
+                key=module_id,
+                window=1,  # <- single items (should not be mean/ema-reduced over time).
             )
 
         return total_loss

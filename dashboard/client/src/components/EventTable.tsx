@@ -16,6 +16,7 @@ import dayjs from "dayjs";
 import React, { useContext, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { GlobalContext } from "../App";
+import { sliceToPage } from "../common/util";
 import { getEvents, getGlobalEvents } from "../service/event";
 import { Event } from "../type/event";
 import { useFilter } from "../util/hook";
@@ -123,13 +124,12 @@ const useEventTable = (props: EventTableProps) => {
     }));
   }, [realLen, pageSize]);
 
-  const range = [
-    (pagination.pageNo - 1) * pagination.pageSize,
-    pagination.pageNo * pagination.pageSize,
-  ];
-
   return {
-    events: events.filter(filterFunc).slice(range[0], range[1]),
+    events: sliceToPage(
+      events.filter(filterFunc),
+      pagination.pageNo,
+      pagination.pageSize,
+    ).items,
     changeFilter,
     pagination,
     changePage,

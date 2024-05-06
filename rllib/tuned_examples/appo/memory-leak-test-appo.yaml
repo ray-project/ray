@@ -10,5 +10,5 @@ memory-leak-test-appo:
             config:
                 static_samples: true
         num_workers: 4
-        num_envs_per_worker: 5
+        num_envs_per_env_runner: 5
         rollout_fragment_length: 20

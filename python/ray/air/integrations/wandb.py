@@ -103,7 +103,7 @@ def setup_wandb(
 
     Example:
 
-        .. code-block: python
+        .. code-block:: python
 
             from ray.air.integrations.wandb import setup_wandb
 

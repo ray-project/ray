@@ -161,8 +161,8 @@ Quick First Experiment
                 "parrot_shriek_range": gym.spaces.Box(-5.0, 5.0, (1, ))
             },
         )
-        # Parallelize environment rollouts.
-        .rollouts(num_rollout_workers=3)
+        # Parallelize environment sampling.
+        .env_runners(num_env_runners=3)
     )
     # Use the config's `build()` method to construct a PPO object.
     algo = config.build()
@@ -235,7 +235,7 @@ allow you to set the ``num_workers`` config parameter, such that your workloads 
 on 100s of CPUs/nodes thus parallelizing and speeding up learning.
 
 **Vectorized (batched) and remote (parallel) environments**: RLlib auto-vectorizes
-your ``gym.Envs`` via the ``num_envs_per_worker`` config. Environment workers can
+your ``gym.Envs`` via the ``num_envs_per_env_runner`` config. Environment workers can
 then batch and thus significantly speedup the action computing forward pass.
 On top of that, RLlib offers the ``remote_worker_envs`` config to create
 `single environments (within a vectorized one) as ray Actors <https://github.com/ray-project/ray/blob/master/rllib/examples/remote_base_env_with_custom_api.py>`_,

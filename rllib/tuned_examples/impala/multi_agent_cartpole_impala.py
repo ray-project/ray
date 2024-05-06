@@ -8,9 +8,9 @@ tune.registry.register_env("env", lambda cfg: MultiAgentCartPole(config=cfg))
 config = (
     ImpalaConfig()
     .environment("env", env_config={"num_agents": 4})
-    .rollouts(
-        num_envs_per_worker=5,
-        num_rollout_workers=4,
+    .env_runners(
+        num_envs_per_env_runner=5,
+        num_env_runners=4,
         observation_filter="MeanStdFilter",
     )
     .resources(num_gpus=1, _fake_gpus=True)

@@ -146,6 +146,9 @@ class TesterContainer(Container):
 
     @classmethod
     def move_test_state(cls, team: str, bazel_log_dir: str) -> None:
+        if get_global_config()["state_machine_disabled"]:
+            return
+
         pipeline_id = os.environ.get("BUILDKITE_PIPELINE_ID")
         branch = os.environ.get("BUILDKITE_BRANCH")
         if (
@@ -181,11 +184,12 @@ class TesterContainer(Container):
                     event = json.loads(line.decode("utf-8"))
                     if "testResult" not in event:
                         continue
+                    run_id = event["id"]["testResult"]["run"]
                     test = Test.from_bazel_event(event, team)
                     test_result = TestResult.from_bazel_event(event)
-                    # Obtain only the final test result for a given test in case
-                    # the test is retried.
-                    tests[test.get_name()] = (test, test_result)
+                    # Obtain only the final test result for a given test and run
+                    # in case the test is retried.
+                    tests[f"{run_id}-{test.get_name()}"] = (test, test_result)
 
         return list(tests.values())
 
