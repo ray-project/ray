@@ -1990,8 +1990,7 @@ void NodeManager::HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
                      "request RPC is ignored.";
     return;
   }
-  auto shutdown_after_reply = [shutdown_raylet_gracefully =
-                                   shutdown_raylet_gracefully_]() {
+  auto shutdown_after_reply = [&]() {
     rpc::DrainServerCallExecutor();
     // Note that the callback is posted to the io service after the shutdown GRPC request
     // is replied. Otherwise, the RPC might not be replied to GCS before it shutsdown
@@ -1999,7 +1998,7 @@ void NodeManager::HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
     rpc::NodeDeathInfo node_death_info;
     node_death_info.set_reason(rpc::NodeDeathInfo::EXPECTED_TERMINATION);
     node_death_info.set_reason_message("ShutdownRaylet RPC has been received.");
-    shutdown_raylet_gracefully(node_death_info);
+    shutdown_raylet_gracefully_(node_death_info);
   };
   is_shutdown_request_received_ = true;
   send_reply_callback(Status::OK(), shutdown_after_reply, shutdown_after_reply);

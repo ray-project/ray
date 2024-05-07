@@ -454,21 +454,8 @@ Status NodeInfoAccessor::UnregisterSelf(const rpc::NodeDeathInfo &node_death_inf
   request.mutable_node_death_info()->CopyFrom(node_death_info);
   // Unregister the node synchronously because this method is only called in the
   // raylet shutdown path: waiting is not an issue and actually desired.
-  // std::promise<Status> promise;
-  client_impl_->GetGcsRpcClient().UnregisterNode(
-      request,
-      [this, node_id /*, &promise */](const Status &status,
-                                      const rpc::UnregisterNodeReply &reply) {
-        if (status.ok()) {
-          local_node_info_.set_state(GcsNodeInfo::DEAD);
-          local_node_id_ = NodeID::Nil();
-        }
-        RAY_LOG(INFO) << "Finished unregistering node info, status = " << status
-                      << ", node id = " << node_id;
-        // promise.set_value(status);
-      });
-  // return promise.get_future().get();
-  return Status::OK();
+  rpc::UnregisterNodeReply reply;
+  return client_impl_->GetGcsRpcClient().SyncUnregisterNode(request, &reply);
 }
 
 Status NodeInfoAccessor::DrainSelf() {
