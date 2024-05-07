@@ -297,6 +297,53 @@ ray.get(f.remote())
         # TODO(sang): Client entrypoint not supported yet.
 
 
+def test_task_spec_root_detached_actor_id(shutdown_only):
+    """Test to make sure root detached actor id is set correctly
+    for task spec of submitted task or actor.
+    """
+
+    ray.init()
+
+    @ray.remote
+    def get_task_root_detached_actor_id():
+        core_worker = ray._private.worker.global_worker.core_worker
+        return core_worker.get_current_root_detached_actor_id().hex()
+
+    @ray.remote
+    class Actor:
+        def get_root_detached_actor_id(self):
+            core_worker = ray._private.worker.global_worker.core_worker
+            return core_worker.get_current_root_detached_actor_id().hex()
+
+    @ray.remote(lifetime="detached")
+    class DetachedActor:
+        def check(self):
+            core_worker = ray._private.worker.global_worker.core_worker
+            assert (
+                ray.get_runtime_context().get_actor_id()
+                == core_worker.get_current_root_detached_actor_id().hex()
+            )
+            assert ray.get_runtime_context().get_actor_id() == ray.get(
+                get_task_root_detached_actor_id.remote()
+            )
+            actor = Actor.remote()
+            assert ray.get_runtime_context().get_actor_id() == ray.get(
+                actor.get_root_detached_actor_id.remote()
+            )
+
+    assert (
+        ray.get(get_task_root_detached_actor_id.remote())
+        == ray._raylet.ActorID.nil().hex()
+    )
+    actor = Actor.remote()
+    assert (
+        ray.get(actor.get_root_detached_actor_id.remote())
+        == ray._raylet.ActorID.nil().hex()
+    )
+    detached_actor = DetachedActor.remote()
+    ray.get(detached_actor.check.remote())
+
+
 def test_no_process_leak_after_job_finishes(ray_start_cluster):
     """Test to make sure when a job finishes,
     all the worker processes belonging to it exit.

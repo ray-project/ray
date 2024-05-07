@@ -532,9 +532,9 @@ class WorkerCacheKey {
   /// worker. \param is_gpu Whether the worker will be using GPUs. This is set when
   ///         resource type isolation between workers is enabled.
   /// worker. \param is_root_detached_actor Whether the worker will be running
-  ///         tasks or actors whose ancestor is a detached actor. This is set
-  ///         to prevent worker reuse between tasks whose ancestor is the driver process
-  ///         and tasks whose ancestor is a detached actor.
+  ///         tasks or actors whose root ancestor is a detached actor. This is set
+  ///         to prevent worker reuse between tasks whose root is the driver process
+  ///         and tasks whose root is a detached actor.
   WorkerCacheKey(const std::string serialized_runtime_env,
                  const absl::flat_hash_map<std::string, double> &required_resources,
                  bool is_actor,

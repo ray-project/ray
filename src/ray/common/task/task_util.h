@@ -173,7 +173,7 @@ class TaskSpecBuilder {
       bool retry_exceptions,
       const std::string &serialized_retry_exception_allowlist,
       const rpc::SchedulingStrategy &scheduling_strategy,
-      ActorID root_detached_actor_id = ActorID::Nil()) {
+      const ActorID root_detached_actor_id) {
     message_->set_max_retries(max_retries);
     message_->set_retry_exceptions(retry_exceptions);
     message_->set_serialized_retry_exception_allowlist(
