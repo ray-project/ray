@@ -29,24 +29,17 @@ def do_allocate_channel(
     self,
     readers: List[Optional["ray.actor.ActorHandle"]],
     buffer_size_bytes: int,
-    reader_node_id: Optional["ray.NodeID"] = None,
 ) -> Channel:
     """Generic actor method to allocate an output channel.
 
     Args:
         readers: The actor handles of the readers.
         buffer_size_bytes: The maximum size of messages in the channel.
-        reader_node_id: The node ID of the readers (must be the same for all readers).
 
     Returns:
         The allocated channel.
     """
-    # We need to pass in `reader_node_id` to avoid a potential deadlock.
-    # Specifically, without predetermined `reader_node_id`, during channel creation,
-    # it makes a `ray.get()` blocking call to get the node id of the `readers`, which
-    # executes on the reader actor; and if the reader actor is the current actor which
-    # is creating the channel, there will be a deadlock.
-    output_channel = Channel(readers, buffer_size_bytes, _reader_node_id=reader_node_id)
+    output_channel = Channel(readers, buffer_size_bytes)
     return output_channel
 
 
@@ -509,7 +502,6 @@ class CompiledDAG:
             if isinstance(task.dag_node, ClassMethodNode):
                 readers = [self.idx_to_task[idx] for idx in task.downstream_node_idxs]
                 assert len(readers) == 1
-                reader_node_id = None
 
                 def _get_node_id(self):
                     return ray.get_runtime_context().get_node_id()
@@ -535,23 +527,12 @@ class CompiledDAG:
                     reader_handles = [
                         reader.dag_node._get_actor_handle() for reader in readers
                     ]
-                    for reader in readers:
-                        fn = reader.dag_node._get_remote_method("__ray_call__")
-                        current_reader_node_id = ray.get(fn.remote(_get_node_id))
-                        if reader_node_id is None:
-                            reader_node_id = current_reader_node_id
-                        elif reader_node_id != current_reader_node_id:
-                            raise NotImplementedError(
-                                "All readers of a channel must be "
-                                "on the same node for now."
-                            )
                 fn = task.dag_node._get_remote_method("__ray_call__")
                 task.output_channel = ray.get(
                     fn.remote(
                         do_allocate_channel,
                         reader_handles,
                         buffer_size_bytes=self._buffer_size_bytes,
-                        reader_node_id=reader_node_id,
                     )
                 )
                 actor_handle = task.dag_node._get_actor_handle()

@@ -17,6 +17,26 @@ def _get_node_id(self) -> "ray.NodeID":
     return ray.get_runtime_context().get_node_id()
 
 
+def _get_reader_node_id(self, reader_actor: "ray.actor.ActorHandle") -> "ray.NodeID":
+    """
+    Get the node ID of the reader actor.
+    If the reader actor is the same as the current actor, make a local method call
+    to get the node ID. Otherwise, make a remote ray.get() call to get the node ID.
+    """
+    current_actor_id = ray.get_runtime_context().get_actor_id()
+    if current_actor_id is None:
+        # We are calling from the driver, make a remote call
+        fn = reader_actor.__ray_call__
+        return ray.get(fn.remote(_get_node_id))
+
+    current_actor = ray.get_runtime_context().current_actor
+    if reader_actor == current_actor:
+        return _get_node_id(self)
+    else:
+        fn = reader_actor.__ray_call__
+        return ray.get(fn.remote(_get_node_id))
+
+
 def _create_channel_ref(
     self,
     buffer_size_bytes: int,
@@ -101,25 +121,15 @@ class Channel:
                 self._reader_ref = self._writer_ref
             else:
                 # Reader and writer are on different nodes.
-                if _reader_node_id is not None:
-                    # Note: if the reader actor is the same as current actor that
-                    # is creating the channel, we must pass in _reader_node_id as
-                    # an argument to avoid making a blocking call to _get_node_id()
-                    # on the "else" branch below. If that happens, the blocking call
-                    # will never return since it will not get a chance to run before
-                    # this method finishes, in other words, there is a deadlock.
-                    self._reader_node_id = _reader_node_id
-                else:
-                    fn = readers[0].__ray_call__
-                    self._reader_node_id = ray.get(fn.remote(_get_node_id))
-                    for reader in readers:
-                        fn = reader.__ray_call__
-                        reader_node_id = ray.get(fn.remote(_get_node_id))
-                        if reader_node_id != self._reader_node_id:
-                            raise NotImplementedError(
-                                "All readers must be on the same node for now."
-                            )
+                self._reader_node_id = _get_reader_node_id(self, readers[0])
+                for reader in readers:
+                    reader_node_id = _get_reader_node_id(self, reader)
+                    if reader_node_id != self._reader_node_id:
+                        raise NotImplementedError(
+                            "All readers must be on the same node for now."
+                        )
                 if self.is_remote():
+                    fn = readers[0].__ray_call__
                     self._reader_ref = ray.get(
                         fn.remote(_create_channel_ref, buffer_size_bytes)
                     )
