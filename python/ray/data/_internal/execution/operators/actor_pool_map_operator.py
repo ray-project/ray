@@ -1,6 +1,7 @@
 import collections
 import logging
 from dataclasses import dataclass
+from functools import partial
 from typing import Any, Dict, Iterator, List, Optional, Union
 
 import ray
@@ -220,6 +221,16 @@ class ActorPoolMapOperator(MapOperator):
                 # Dipsatch more tasks.
                 self._dispatch_tasks()
 
+            def _task_failed_callback(actor, inputs: RefBundle):
+                if not self._actor_pool.is_failed_actor(actor):
+                    logger.get_logger().warning(
+                        f"Task failed due to failed actor {actor}, start another actor."
+                    )
+                    self._actor_pool.add_failed_actor(actor)
+                    self._start_actor()
+                # Add inputs back to trigger task reassignment
+                self._add_bundled_input(inputs)
+
             # For some reason, if we don't define a new variable `actor_to_return`,
             # the following lambda won't capture the correct `actor` variable.
             actor_to_return = actor
@@ -227,6 +238,7 @@ class ActorPoolMapOperator(MapOperator):
                 gen,
                 bundle,
                 lambda: _task_done_callback(actor_to_return),
+                partial(_task_failed_callback, actor_to_return),
             )
 
         # Needed in the bulk execution path for triggering autoscaling. This is a
@@ -273,6 +285,16 @@ class ActorPoolMapOperator(MapOperator):
 
         # Try to scale pool down.
         self._scale_down_if_needed()
+
+    def completed(self) -> bool:
+        if not self._execution_completed:
+            if self._inputs_complete and len(list(self._data_tasks.values())) == 0:
+                # If all inputs are complete and there are no active data tasks,
+                # then the operator has completed execution
+                # and inactive actors need be killed.
+                self._execution_completed = True
+                self._actor_pool.kill_all_inactive_actors()
+        return self._execution_completed and not self.has_next()
 
     def _kill_inactive_workers_if_done(self):
         if self._inputs_done and not self._bundle_queue:
@@ -564,6 +586,7 @@ class _ActorPool:
         # Track locality matching stats.
         self._locality_hits: int = 0
         self._locality_misses: int = 0
+        self._failed_actors = []
 
     def add_pending_actor(self, actor: ray.actor.ActorHandle, ready_ref: ray.ObjectRef):
         """Adds a pending actor to the pool.
@@ -643,6 +666,9 @@ class _ActorPool:
             else:
                 self._locality_misses += 1
         self._num_tasks_in_flight[actor] += 1
+        assert (
+            actor not in self._failed_actors
+        ), f"Failed actor {actor} can not be picked!"
         return actor
 
     def return_actor(self, actor: ray.actor.ActorHandle):
@@ -782,3 +808,10 @@ class _ActorPool:
             A node id associated with the bundle, or None if unknown.
         """
         return bundle.get_cached_location()
+
+    def add_failed_actor(self, actor):
+        self._failed_actors.append(actor)
+        del self._num_tasks_in_flight[actor]
+
+    def is_failed_actor(self, actor):
+        return actor in self._failed_actors

@@ -277,6 +277,7 @@ class MapOperator(OneToOneOperator, ABC):
         gen: ObjectRefGenerator,
         inputs: RefBundle,
         task_done_callback: Optional[Callable[[], None]] = None,
+        task_failed_callback: Optional[Callable[[RefBundle], None]] = None,
     ):
         """Submit a new data-handling task."""
         # TODO(hchen):
@@ -318,11 +319,18 @@ class MapOperator(OneToOneOperator, ABC):
             if task_done_callback:
                 task_done_callback()
 
+        def _task_failed_callback(task_index):
+            task = self._data_tasks.pop(task_index)
+            if task_failed_callback:
+                task_failed_callback(task._inputs)
+
         self._data_tasks[task_index] = DataOpTask(
             task_index,
             gen,
+            inputs,
             lambda output: _output_ready_callback(task_index, output),
             functools.partial(_task_done_callback, task_index),
+            lambda: _task_failed_callback(task_index),
         )
 
     def _submit_metadata_task(

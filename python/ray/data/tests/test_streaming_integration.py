@@ -593,6 +593,28 @@ def test_streaming_fault_tolerance(ray_start_10_cpus_shared, restore_data_contex
         ds2.take_all()
 
 
+def test_task_reassign_fault_tolerance(ray_start_10_cpus_shared, restore_data_context):
+    class RandomExit:
+        def __call__(self, x):
+            import os
+
+            if random.random() > 0.9:
+                print("force exit")
+                os._exit(1)
+            return x
+
+    # Test recover from task reassignment. Set (max_restarts=0, max_task_retries=0) to
+    # enable task reassignment.
+    base = ray.data.range(1000, parallelism=100)
+    ds = base.map_batches(
+        RandomExit,
+        compute=ray.data.ActorPoolStrategy(size=4),
+        max_restarts=0,
+        max_task_retries=0,
+    )
+    ds.take_all()
+
+
 def test_e2e_liveness_with_output_backpressure_edge_case(
     ray_start_10_cpus_shared, restore_data_context
 ):
