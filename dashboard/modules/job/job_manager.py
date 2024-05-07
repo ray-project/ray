@@ -435,6 +435,9 @@ class JobManager:
                 namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
             ).remote(submission_id, entrypoint, self._gcs_address)
 
+            # NOTE: Job execution process is async, however we await on the
+            #       `start` method to propagate any failures arising during
+            #       job driver's initiating sequence
             await supervisor.start.remote(
                 runtime_env=runtime_env,
                 metadata=metadata,
