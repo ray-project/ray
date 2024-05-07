@@ -427,11 +427,12 @@ class JobSupervisor:
                         # We will wait for the next loop.
                         continue
                     else:
-                        # The job supervisor actor is not created, but the job
+                        # The job runner actor is not created, but the job
                         # status is not PENDING. This means the job supervisor
                         # actor is not created due to some unexpected errors.
                         # We will set the job status to FAILED.
-                        logger.error(f"Failed to get job supervisor for job {self._job_id}.")
+                        logger.error(f"Failed to get job runner actor for job {self._job_id} (status: {job_status})")
+
                         await self._job_info_client.put_status(
                             self._job_id,
                             JobStatus.FAILED,
@@ -505,9 +506,9 @@ class JobSupervisor:
                     )
                     if job_error_message:
                         event_log += f" {job_error_message}"
-                        self.event_logger.error(event_log, submission_id=(self._job_id))
+                        self.event_logger.error(event_log, submission_id=self._job_id)
                     else:
-                        self.event_logger.info(event_log, submission_id=(self._job_id))
+                        self.event_logger.info(event_log, submission_id=self._job_id)
 
         # Kill the actor defensively to avoid leaking actors in unexpected error cases.
         self._take_poison_pill()

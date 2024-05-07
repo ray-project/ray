@@ -196,7 +196,8 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
     def get_job_manager(self):
         if not self._job_manager:
             self._job_manager = JobManager(
-                self._dashboard_agent.gcs_aio_client, self._dashboard_agent.log_dir
+                self._dashboard_agent.gcs_aio_client,
+                self._dashboard_agent.log_dir
             )
         return self._job_manager
 
