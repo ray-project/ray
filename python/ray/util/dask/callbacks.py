@@ -95,7 +95,7 @@ class RayDaskCallback(Callback):
             deps: The dependencies of this task.
 
         Returns:
-            Either None, in which case a Ray task will be submitted, or
+            Either None, in which case Ray submits a task, or
             a non-None value, in which case a Ray task will not be
             submitted and this return value will be used as the
             would-be task result value.
