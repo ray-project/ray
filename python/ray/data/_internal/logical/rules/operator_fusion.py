@@ -203,11 +203,10 @@ class OperatorFusionRule(Rule):
             getattr(down_logical_op, "_ray_remote_args", {}),
         ):
             return False
-        
+
         # Only fuse if at most one op specifies a `_ray_remote_args_fn`.
-        if (
-            getattr(up_logical_op, "_ray_remote_args_fn", None)
-            and getattr(down_logical_op, "_ray_remote_args_fn", None)
+        if getattr(up_logical_op, "_ray_remote_args_fn", None) and getattr(
+            down_logical_op, "_ray_remote_args_fn", None
         ):
             return False
 

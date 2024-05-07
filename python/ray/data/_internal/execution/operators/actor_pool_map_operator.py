@@ -1,7 +1,7 @@
 import collections
 import logging
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Iterator, List, Optional, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional, Union
 
 import ray
 from ray.data._internal.compute import ActorPoolStrategy
@@ -20,7 +20,7 @@ from ray.data._internal.remote_fn import _add_system_error_to_retry_exceptions
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 from ray.types import ObjectRef
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy, SchedulingStrategyT
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 if TYPE_CHECKING:
     from ray.util.placement_group import PlacementGroup
@@ -178,7 +178,9 @@ class ActorPoolMapOperator(MapOperator):
         if "scheduling_strategy" in overriden_args:
             scheduling_strategy = overriden_args["scheduling_strategy"]
             if isinstance(scheduling_strategy, PlacementGroupSchedulingStrategy):
-                self._actor_pool._actor_to_placement_groups[actor] = scheduling_strategy.placement_group
+                self._actor_pool._actor_to_placement_groups[
+                    actor
+                ] = scheduling_strategy.placement_group
         res_ref = actor.get_location.remote()
 
         def _task_done_callback(res_ref):
@@ -260,9 +262,9 @@ class ActorPoolMapOperator(MapOperator):
 
     def _refresh_actor_cls(self):
         """When `self._ray_remote_args_fn` is specified, this method should
-        be called prior to initializing the new worker in order to get new 
+        be called prior to initializing the new worker in order to get new
         remote args passed to the worker. It updates `self.cls` with the same
-        `_MapWorker` class, but with the new remote args from 
+        `_MapWorker` class, but with the new remote args from
         `self._ray_remote_args_fn`."""
         assert self._ray_remote_args_fn, "_ray_remote_args_fn must be provided"
         remote_args = self._ray_remote_args.copy()
@@ -595,7 +597,9 @@ class _ActorPool:
         # Node id of each ready actor.
         self._actor_locations: Dict[ray.actor.ActorHandle, str] = {}
         # Mapping of actor to its PlacementGroup.
-        self._actor_to_placement_groups: Dict[ray.actor.ActorHandle, "PlacementGroup"] = {}
+        self._actor_to_placement_groups: Dict[
+            ray.actor.ActorHandle, "PlacementGroup"
+        ] = {}
         # Actors that are not yet ready (still pending creation).
         self._pending_actors: Dict[ObjectRef, ray.actor.ActorHandle] = {}
         # Whether actors that become idle should be eagerly killed. This is False until

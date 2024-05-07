@@ -38,7 +38,6 @@ if TYPE_CHECKING:
     from ray.data.block import Block, BlockMetadata, UserDefinedFunction
     from ray.data.datasource import Datasource, Reader
     from ray.util.placement_group import PlacementGroup
-    from ray.util.scheduling_strategies import SchedulingStrategyT
 
 logger = logging.getLogger(__name__)
 

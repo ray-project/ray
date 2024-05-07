@@ -35,10 +35,7 @@ from ray.data._internal.execution.operators.map_transformer import (
 from ray.data._internal.stats import StatsDict
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DataContext
-from ray.util.scheduling_strategies import (
-    NodeAffinitySchedulingStrategy,
-    SchedulingStrategyT,
-)
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
 class MapOperator(OneToOneOperator, ABC):
@@ -247,12 +244,12 @@ class MapOperator(OneToOneOperator, ABC):
         self, input_bundle: Optional[RefBundle] = None
     ) -> Dict[str, Any]:
         ray_remote_args = copy.deepcopy(self._ray_remote_args)
-        
+
         # Override parameters from user provided remote args function.
         if self._ray_remote_args_fn:
             new_remote_args = self._ray_remote_args_fn()
             for k, v in new_remote_args.items():
-                    ray_remote_args[k] = v
+                ray_remote_args[k] = v
         # For tasks with small args, we will use SPREAD by default to optimize for
         # compute load-balancing. For tasks with large args, we will use DEFAULT to
         # allow the Ray locality scheduler a chance to optimize task placement.

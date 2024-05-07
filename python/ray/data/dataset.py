@@ -119,7 +119,6 @@ if TYPE_CHECKING:
 
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data.grouped_data import GroupedData
-    from ray.util.scheduling_strategies import SchedulingStrategyT
 
 
 logger = logging.getLogger(__name__)

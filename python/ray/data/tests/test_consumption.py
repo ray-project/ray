@@ -263,27 +263,19 @@ def test_ray_remote_args_fn(shutdown_only):
                 assert pg is not None
             return batch
 
-    def fn(batch):
-        return batch
-
     ray.data.range(10).map_batches(
         ActorClass,
         concurrency=3,
-        ray_remote_args_fn=_generate_ray_remote_args_with_scheduling_strategy
-    ).materialize()
-
-    ray.data.range(10).map_batches(
-        fn,
         ray_remote_args_fn=_generate_ray_remote_args_with_scheduling_strategy,
-    ).materialize()
+    ).take_all()
 
     global_idx = -10
-    with pytest.raises(ValueError): # cannot use -10 for pg, should error
+    with pytest.raises(ValueError):  # cannot use -10 for pg
         ray.data.range(10).map_batches(
             ActorClass,
             concurrency=3,
-            ray_remote_args_fn=_generate_ray_remote_args_with_scheduling_strategy
-        ).materialize()
+            ray_remote_args_fn=_generate_ray_remote_args_with_scheduling_strategy,
+        ).take_all()
 
 
 def test_dataset_lineage_serialization(shutdown_only):
