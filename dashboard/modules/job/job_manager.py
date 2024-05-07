@@ -65,13 +65,13 @@ class JobManager:
         self._gcs_aio_client = gcs_aio_client
         self._job_info_client = JobInfoStorageClient(gcs_aio_client)
         self._gcs_address = gcs_aio_client.address
+
         self._log_client = JobLogStorageClient()
+        self._logs_dir = logs_dir
+
         self._supervisor_actor_cls = ray.remote(JobSupervisor)
+
         self.monitored_jobs = set()
-        try:
-            self.event_logger = get_event_logger(Event.SourceType.JOBS, logs_dir)
-        except Exception:
-            self.event_logger = None
 
         self._recover_running_jobs_event = asyncio.Event()
 
@@ -253,7 +253,12 @@ class JobManager:
                 num_cpus=0,
                 scheduling_strategy=head_node_scheduling_strategy,
                 namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
-            ).remote(submission_id, entrypoint, self._gcs_address)
+            ).remote(
+                job_id=submission_id,
+                entrypoint=entrypoint,
+                gcs_address=self._gcs_address,
+                logs_dir=self._logs_dir,
+            )
 
             # NOTE: Job execution process is async, however we await on the
             #       `start` method to propagate any failures arising during
