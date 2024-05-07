@@ -9,7 +9,7 @@ For example, if the latest Ray release is 2.7.0, KubeRay CI tests the nightly Ku
 
 * KubeRay v0.6.0: Supports all Ray versions > Ray 2.0.0
 * KubeRay v1.0.0: Supports all Ray versions > Ray 2.0.0
-* KubeRay v1.1.0: Supports Ray 2.8.0 and later. Release planned with Ray 2.10.0. 
+* KubeRay v1.1.0: Supports Ray 2.8.0 and later.
 
 The preceding compatibility plan is closely tied to the KubeRay CRD versioning plan.
 
