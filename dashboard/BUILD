@@ -113,11 +113,3 @@ py_test(
     tags = ["team:data"],
     deps = [":conftest"],
 )
-
-py_test(
-    name = "test_usage_stats_head",
-    size = "small",
-    srcs = ["tests/test_usage_stats_head.py"],
-    tags = ["team:core"],
-    deps = [":conftest"],
-)

@@ -7,6 +7,7 @@ import threading
 from dataclasses import asdict
 from pathlib import Path
 from unittest.mock import patch
+from ray._raylet import GcsClient
 
 import requests
 import pytest
@@ -729,6 +730,26 @@ def test_usage_stats_enabled_endpoint(
         assert response.json()["result"] is True
         assert response.json()["data"]["usageStatsEnabled"] is False
         assert response.json()["data"]["usageStatsPromptEnabled"] is False
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+def test_get_cluster_id(ray_start_cluster, reset_usage_stats):
+    import requests
+
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+    context = ray.init(address=cluster.address)
+    webui_url = context["webui_url"]
+    assert wait_until_server_available(webui_url)
+    webui_url = format_web_url(webui_url)
+    response = requests.get(f"{webui_url}/cluster_id")
+    assert response.status_code == 200
+    assert response.json()["result"] is True
+    gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+    assert response.json()["data"]["clusterId"] == gcs_client.cluster_id.hex()
 
 
 def test_hardware_usages(shutdown_only, reset_usage_stats):
