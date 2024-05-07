@@ -53,6 +53,7 @@ def _stub_test_result(status: ResultStatus) -> TestResult:
         url="url",
         timestamp=0,
         pull_request="1",
+        rayci_step_id="123",
     )
 
 
@@ -179,7 +180,14 @@ def test_is_stable() -> None:
     assert not Test(stable=False).is_stable()
 
 
-@patch.dict(os.environ, {"BUILDKITE_BRANCH": "food", "BUILDKITE_PULL_REQUEST": "1"})
+@patch.dict(
+    os.environ,
+    {
+        "BUILDKITE_BRANCH": "food",
+        "BUILDKITE_PULL_REQUEST": "1",
+        "RAYCI_STEP_ID": "g4_s5",
+    },
+)
 def test_result_from_bazel_event() -> None:
     result = TestResult.from_bazel_event(
         {
@@ -189,6 +197,7 @@ def test_result_from_bazel_event() -> None:
     assert result.is_passing()
     assert result.branch == "food"
     assert result.pull_request == "1"
+    assert result.rayci_step_id == "g4_s5"
     result = TestResult.from_bazel_event(
         {
             "testResult": {"status": "FAILED"},
