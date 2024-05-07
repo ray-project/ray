@@ -84,7 +84,11 @@ class AbstractUDFMap(AbstractMap):
                 ``MapOperator._add_bundled_input()``.
             compute: The compute strategy, either ``"tasks"`` (default) to use Ray
                 tasks, or ``"actors"`` to use an autoscaling actor pool.
-            ray_remote_args_fn: ...
+            ray_remote_args_fn: A function that returns a dictionary of remote args
+                passed to each map worker. This function will be called each time prior
+                to initializing the worker. Args returned from this dict will always
+                override the args in ``ray_remote_args``. Note: this is an advanced,
+                experimental feature.
             ray_remote_args: Args to provide to ray.remote.
         """
         name = self._get_operator_name(name, fn)
