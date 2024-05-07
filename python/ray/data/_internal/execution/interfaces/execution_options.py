@@ -273,10 +273,6 @@ class ExecutionOptions:
         """Returns True if resource_limits is the default value."""
         return self._resource_limits == ExecutionResources.for_limits()
 
-    def is_exlude_resources_default(self):
-        """Returns True if exclude_resources is the default value."""
-        return self.exclude_resources == ExecutionResources.zero()
-
     def validate(self) -> None:
         """Validate the options."""
         for attr in ["cpu", "gpu", "object_store_memory"]:
