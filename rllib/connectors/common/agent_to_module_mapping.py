@@ -134,7 +134,7 @@ class AgentToModuleMapping(ConnectorV2):
         **kwargs,
     ) -> Any:
         # This Connector should only be used in a multi-agent setting.
-        assert not episodes or isinstance(episodes[0], MultiAgentEpisode)
+        # assert not episodes or isinstance(episodes[0], MultiAgentEpisode)
 
         # Current agent to module mapping function.
         # agent_to_module_mapping_fn = shared_data.get("agent_to_module_mapping_fn")

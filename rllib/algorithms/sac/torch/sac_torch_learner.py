@@ -18,7 +18,6 @@ from ray.rllib.algorithms.sac.sac_learner import (
     TD_ERROR_KEY,
     SACLearner,
 )
-from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import (
     POLICY_LOSS_KEY,
@@ -317,13 +316,13 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
             for component in (
                 ["qf", "policy", "alpha"] + ["qf_twin"] if config.twin_q else []
             ):
-                self.metrics.peek(DEFAULT_MODULE_ID, component + "_loss").backward(
+                self.metrics.peek(module_id, component + "_loss").backward(
                     retain_graph=True
                 )
                 grads.update(
                     {
-                        pid: p.grad
-                        for pid, p in self.filter_param_dict_for_optimizer(
+                        mid: p.grad
+                        for mid, p in self.filter_param_dict_for_optimizer(
                             self._params, self.get_optimizer(module_id, component)
                         ).items()
                     }

@@ -662,7 +662,7 @@ class DQN(Algorithm):
                         num_items=self.config.train_batch_size,
                         n_step=self.config.n_step,
                         gamma=self.config.gamma,
-                        beta=self.config.replay_buffer_config["beta"],
+                        beta=self.config.replay_buffer_config.get("beta"),
                     )
 
                 # Perform an update on the buffer-sampled train batch.
@@ -700,6 +700,7 @@ class DQN(Algorithm):
                         },
                         reduce="sum",
                     )
+
                     # TODO (sven): Uncomment this once agent steps are available in the
                     #  Learner stats.
                     # self.metrics.log_dict(self.metrics.peek(
