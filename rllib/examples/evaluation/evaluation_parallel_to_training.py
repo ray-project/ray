@@ -66,13 +66,18 @@ the experiment takes considerably longer (~70sec vs ~80sec):
 |          81.7371 | 100000 |   494.68 |             494.68 |
 +------------------+--------+----------+--------------------+
 """
+from typing import Optional
+
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EVALUATION_RESULTS,
     NUM_EPISODES,
     NUM_ENV_STEPS_SAMPLED,
 )
+from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
@@ -101,12 +106,11 @@ parser.add_argument(
     help="Whether to  NOT run evaluation parallel to training, but in sequence.",
 )
 parser.add_argument(
-    "--evaluation-num-workers",
+    "--evaluation-num-env-runners",
     type=int,
     default=2,
-    help="The number of evaluation workers to setup. "
-    "0 for a single local evaluation worker. Note that for values >0, no"
-    "local evaluation worker will be created (b/c not needed).",
+    help="The number of evaluation EnvRunners to setup. "
+    "0 for a single local evaluation EnvRunner.",
 )
 parser.add_argument(
     "--evaluation-interval",
@@ -123,17 +127,28 @@ parser.add_argument(
 
 
 class AssertEvalCallback(DefaultCallbacks):
-    def on_train_result(self, *, algorithm: Algorithm, result: ResultDict, **kwargs):
-        eval_results = result.get("evaluation_results", result.get("evaluation", {}))
+    def on_train_result(
+        self,
+        *,
+        algorithm: Algorithm,
+        metrics_logger: Optional[MetricsLogger] = None,
+        result: ResultDict,
+        **kwargs,
+    ):
+        # The eval results can be found inside the main `result` dict
+        # (old API stack: "evaluation").
+        eval_results = result.get(EVALUATION_RESULTS, result.get("evaluation", {}))
+        # In there, there is a sub-key: ENV_RUNNER_RESULTS
+        # (old API stack: "sampler_results")
         eval_env_runner_results = eval_results.get(
-            "env_runner_results", eval_results.get("sampler_results")
+            ENV_RUNNER_RESULTS, eval_results.get("sampler_results")
         )
         # Make sure we always run exactly the given evaluation duration,
         # no matter what the other settings are (such as
-        # `evaluation_num_workers` or `evaluation_parallel_to_training`).
+        # `evaluation_num_env_runners` or `evaluation_parallel_to_training`).
         if eval_env_runner_results and NUM_EPISODES in eval_env_runner_results:
             num_episodes_done = eval_env_runner_results[NUM_EPISODES]
-            if algorithm.config.uses_new_env_runners:
+            if algorithm.config.enable_env_runner_and_connector_v2:
                 num_timesteps_reported = eval_env_runner_results[NUM_ENV_STEPS_SAMPLED]
             else:
                 num_timesteps_reported = eval_results["timesteps_this_iter"]
@@ -147,7 +162,8 @@ class AssertEvalCallback(DefaultCallbacks):
                 # fetch.
                 assert (
                     num_timesteps_reported == 0
-                    or num_timesteps_reported >= algorithm.config.evaluation_num_workers
+                    or num_timesteps_reported
+                    >= algorithm.config.evaluation_num_env_runners
                 )
             # We count in episodes.
             elif algorithm.config.evaluation_duration_unit == "episodes":
@@ -210,7 +226,7 @@ if __name__ == "__main__":
             ),
             # Use two evaluation workers. Must be >0, otherwise,
             # evaluation will run on a local worker and block (no parallelism).
-            evaluation_num_workers=args.evaluation_num_workers,
+            evaluation_num_env_runners=args.evaluation_num_env_runners,
             # Evaluate every other training iteration (together
             # with every other call to Algorithm.train()).
             evaluation_interval=args.evaluation_interval,

@@ -11,7 +11,7 @@ pendulum-ppo:
         train_batch_size: 512
         vf_clip_param: 10.0
         num_workers: 0
-        num_envs_per_worker: 20
+        num_envs_per_env_runner: 20
         lambda: 0.1
         gamma: 0.95
         lr: 0.0003

@@ -13,7 +13,12 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 logger = logging.getLogger(__name__)
 
 
+def _get_node_id(self) -> "ray.NodeID":
+    return ray.get_runtime_context().get_node_id()
+
+
 def _create_channel_ref(
+    self,
     buffer_size_bytes: int,
 ) -> "ray.ObjectRef":
     """
@@ -56,9 +61,12 @@ class Channel:
 
     def __init__(
         self,
-        buffer_size_bytes: Optional[int] = None,
-        num_readers: int = 1,
-        _base_ref: Optional["ray.ObjectRef"] = None,
+        readers: List[Optional[ray.actor.ActorHandle]],
+        buffer_size_bytes: int,
+        _writer_node_id: Optional["ray.NodeID"] = None,
+        _reader_node_id: Optional["ray.NodeID"] = None,
+        _writer_ref: Optional["ray.ObjectRef"] = None,
+        _reader_ref: Optional["ray.ObjectRef"] = None,
     ):
         """
         Create a channel that can be read and written by co-located Ray processes.
@@ -74,49 +82,148 @@ class Channel:
         Returns:
             Channel: A wrapper around ray.ObjectRef.
         """
-        if buffer_size_bytes is None:
-            if _base_ref is None:
-                raise ValueError(
-                    "One of `buffer_size_bytes` or `_base_ref` must be provided"
-                )
-            self._base_ref = _base_ref
-        else:
+        is_creator = False
+        assert len(readers) > 0
+
+        if _writer_ref is None:
             if not isinstance(buffer_size_bytes, int):
                 raise ValueError("buffer_size_bytes must be an integer")
-            self._base_ref = _create_channel_ref(buffer_size_bytes)
 
-        if not isinstance(num_readers, int):
-            raise ValueError("num_readers must be an integer")
+            self._writer_node_id = (
+                ray.runtime_context.get_runtime_context().get_node_id()
+            )
+            self._writer_ref = _create_channel_ref(self, buffer_size_bytes)
 
-        self._num_readers = num_readers
+            if readers[0] is None:
+                # Reader is the driver. We assume that the reader and the writer are on
+                # the same node.
+                self._reader_node_id = self._writer_node_id
+                self._reader_ref = self._writer_ref
+            else:
+                # Reader and writer are on different nodes.
+                fn = readers[0].__ray_call__
+                self._reader_node_id = ray.get(fn.remote(_get_node_id))
+                for reader in readers:
+                    fn = reader.__ray_call__
+                    reader_node_id = ray.get(fn.remote(_get_node_id))
+                    if reader_node_id != self._reader_node_id:
+                        raise NotImplementedError(
+                            "All readers must be on the same node for now."
+                        )
+                if self.is_remote():
+                    self._reader_ref = ray.get(
+                        fn.remote(_create_channel_ref, buffer_size_bytes)
+                    )
+                else:
+                    self._reader_ref = self._writer_ref
+
+            is_creator = True
+        else:
+            assert (
+                _writer_node_id is not None
+            ), "_writer_node_id must also be passed to the constructor when "
+            "_writer_ref is."
+            assert (
+                _reader_ref is not None
+            ), "_reader_ref must also be passed to the constructor when _writer_ref is."
+
+            self._writer_ref = _writer_ref
+            self._writer_node_id = _writer_node_id
+            self._reader_node_id = _reader_node_id
+            self._reader_ref = _reader_ref
+
+        self._readers = readers
+        self._buffer_size_bytes = buffer_size_bytes
+        self._num_readers = len(self._readers)
+        if self.is_remote():
+            self._num_readers = 1
+
         self._worker = ray._private.worker.global_worker
         self._worker.check_connected()
 
         self._writer_registered = False
         self._reader_registered = False
 
+        if is_creator:
+            self.ensure_registered_as_writer()
+            assert self._reader_ref is not None
+
+    @staticmethod
+    def is_local_node(node_id):
+        return ray.runtime_context.get_runtime_context().get_node_id() == node_id
+
+    def is_remote(self):
+        return self._writer_node_id != self._reader_node_id
+
     def ensure_registered_as_writer(self):
         if self._writer_registered:
             return
 
-        self._worker.core_worker.experimental_channel_register_writer(self._base_ref)
+        if not self.is_local_node(self._writer_node_id):
+            raise ValueError(
+                "`ensure_registered_as_writer()` must only be called on the node that "
+                "the writer is on."
+            )
+
+        assert (
+            self._reader_ref
+        ), "`self._reader_ref` must be not be None when registering a writer, because "
+        "it should have been initialized in the constructor."
+
+        if len(self._readers) == 1 and self._readers[0] is None:
+            actor_id = ray.ActorID.nil()
+        else:
+            actor_id = self._readers[0]._actor_id
+        self._worker.core_worker.experimental_channel_register_writer(
+            self._writer_ref,
+            self._reader_ref,
+            self._writer_node_id,
+            self._reader_node_id,
+            actor_id,
+            len(self._readers),
+        )
         self._writer_registered = True
 
     def ensure_registered_as_reader(self):
         if self._reader_registered:
             return
 
-        self._worker.core_worker.experimental_channel_register_reader(self._base_ref)
+        self._worker.core_worker.experimental_channel_register_reader(
+            self._reader_ref,
+        )
         self._reader_registered = True
 
     @staticmethod
-    def _from_base_ref(base_ref: "ray.ObjectRef", num_readers: int) -> "Channel":
-        return Channel(num_readers=num_readers, _base_ref=base_ref)
+    def _deserialize_reader_channel(
+        readers: list,
+        buffer_size_bytes: int,
+        writer_node_id,
+        reader_node_id,
+        writer_ref: "ray.ObjectRef",
+        reader_ref: "ray.ObjectRef",
+    ) -> "Channel":
+        chan = Channel(
+            readers,
+            buffer_size_bytes,
+            _writer_node_id=writer_node_id,
+            _reader_node_id=reader_node_id,
+            _writer_ref=writer_ref,
+            _reader_ref=reader_ref,
+        )
+        return chan
 
     def __reduce__(self):
-        return self._from_base_ref, (self._base_ref, self._num_readers)
+        assert self._reader_ref is not None
+        return self._deserialize_reader_channel, (
+            self._readers,
+            self._buffer_size_bytes,
+            self._writer_node_id,
+            self._reader_node_id,
+            self._writer_ref,
+            self._reader_ref,
+        )
 
-    def write(self, value: Any, num_readers: Optional[int] = None):
+    def write(self, value: Any):
         """
         Write a value to the channel.
 
@@ -126,14 +233,7 @@ class Channel:
 
         Args:
             value: The value to write.
-            num_readers: The number of readers that must read and release the value
-                before we can write again.
         """
-        if num_readers is None:
-            num_readers = self._num_readers
-        if num_readers <= 0:
-            raise ValueError("``num_readers`` must be a positive integer.")
-
         self.ensure_registered_as_writer()
 
         try:
@@ -150,8 +250,8 @@ class Channel:
 
         self._worker.core_worker.experimental_channel_put_serialized(
             serialized_value,
-            self._base_ref,
-            num_readers,
+            self._writer_ref,
+            self._num_readers,
         )
 
     def begin_read(self) -> Any:
@@ -166,7 +266,7 @@ class Channel:
             Any: The deserialized value.
         """
         self.ensure_registered_as_reader()
-        return ray.get(self._base_ref)
+        return ray.get(self._reader_ref)
 
     def end_read(self):
         """
@@ -176,18 +276,20 @@ class Channel:
         value is written, then drop the value.
         """
         self.ensure_registered_as_reader()
-        self._worker.core_worker.experimental_channel_read_release([self._base_ref])
+        self._worker.core_worker.experimental_channel_read_release([self._reader_ref])
 
     def close(self) -> None:
         """
-        Close this channel by setting the error bit on the object.
+        Close this channel by setting the error bit on both the writer_ref and the
+        reader_ref.
 
         Does not block. Any existing values in the channel may be lost after the
         channel is closed.
         """
-        logger.debug(f"Setting error bit on channel: {self._base_ref}")
-        self.ensure_registered_as_writer()
-        self._worker.core_worker.experimental_channel_set_error(self._base_ref)
+        self._worker.core_worker.experimental_channel_set_error(self._writer_ref)
+        if self.is_local_node(self._reader_node_id):
+            self.ensure_registered_as_reader()
+        self._worker.core_worker.experimental_channel_set_error(self._reader_ref)
 
 
 # Interfaces for channel I/O.

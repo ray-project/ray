@@ -149,6 +149,7 @@ class EnvTaskCallback(DefaultCallbacks):
         self,
         *,
         algorithm: Algorithm,
+        metrics_logger=None,
         result: dict,
         **kwargs,
     ) -> None:
@@ -213,8 +214,8 @@ if __name__ == "__main__":
             lr=0.0002,
             model={"vf_share_layers": True},
         )
-        .rollouts(
-            num_envs_per_worker=5,
+        .env_runners(
+            num_envs_per_env_runner=5,
             env_to_module_connector=lambda env: [
                 AddObservationsFromEpisodesToBatch(),
                 FlattenObservations(),

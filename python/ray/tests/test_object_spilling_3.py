@@ -278,6 +278,7 @@ def test_spill_dir_cleanup_on_node_removal(fs_only_object_spilling_config):
 
     ids = ray.get(run_workload.remote())
     node2_id = node2.node_id
+    assert not is_dir_empty(temp_folder, node2_id)
 
     # Kill node 2
     cluster.remove_node(node2)

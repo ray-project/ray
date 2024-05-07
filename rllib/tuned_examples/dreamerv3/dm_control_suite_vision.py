@@ -26,7 +26,7 @@ config = (
         num_gpus_per_learner_worker=1 if num_gpus else 0,
         num_cpus_for_local_worker=1,
     )
-    .rollouts(num_envs_per_worker=4 * (num_gpus or 1), remote_worker_envs=True)
+    .env_runners(num_envs_per_env_runner=4 * (num_gpus or 1), remote_worker_envs=True)
     .reporting(
         metrics_num_episodes_for_smoothing=(num_gpus or 1),
         report_images_and_videos=False,

@@ -410,7 +410,7 @@ class TestNestedObservationSpaces(unittest.TestCase):
             PPOConfig()
             .experimental(_disable_preprocessor_api=True)
             .environment("nested")
-            .rollouts(num_rollout_workers=0, rollout_fragment_length=5)
+            .env_runners(num_env_runners=0, rollout_fragment_length=5)
             .framework("tf")
             .training(
                 model={"custom_model": "composite", "use_lstm": test_lstm},
@@ -444,7 +444,7 @@ class TestNestedObservationSpaces(unittest.TestCase):
             PPOConfig()
             .experimental(_disable_preprocessor_api=True)
             .environment("nested2")
-            .rollouts(num_rollout_workers=0, rollout_fragment_length=5)
+            .env_runners(num_env_runners=0, rollout_fragment_length=5)
             .framework("tf")
             .training(
                 model={"custom_model": "composite2"},
@@ -505,7 +505,7 @@ class TestNestedObservationSpaces(unittest.TestCase):
             PPOConfig()
             .environment("nested")
             .framework("torch")
-            .rollouts(num_rollout_workers=0, rollout_fragment_length=5)
+            .env_runners(num_env_runners=0, rollout_fragment_length=5)
             .training(
                 train_batch_size=5,
                 sgd_minibatch_size=5,
@@ -547,7 +547,7 @@ class TestNestedObservationSpaces(unittest.TestCase):
             PPOConfig()
             .environment("repeat")
             .framework("torch")
-            .rollouts(num_rollout_workers=0, rollout_fragment_length=5)
+            .env_runners(num_env_runners=0, rollout_fragment_length=5)
             .training(
                 train_batch_size=5,
                 num_sgd_iter=1,
