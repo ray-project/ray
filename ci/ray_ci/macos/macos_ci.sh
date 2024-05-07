@@ -27,26 +27,21 @@ run_tests() {
       --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI "$@"
 }
 
-run_python_flaky_tests() {
+run_small_and_large_flaky_tests() {
   # shellcheck disable=SC2046
   # 42 is the universal rayci exit code for test failures
-  (bazel query 'attr(tags, "client_tests|small_size_python_tests|medium_size_python_tests_a_to_j|medium_size_python_tests_k_to_z|large_size_python_tests_shard_0|large_size_python_tests_shard_1|large_size_python_tests_shard_2", tests(//python/ray/tests/...))' | select_flaky_tests |
+  (bazel query 'attr(tags, "client_tests|small_size_python_tests|large_size_python_tests_shard_0|large_size_python_tests_shard_1|large_size_python_tests_shard_2", tests(//python/ray/tests/...))' | select_flaky_tests |
     xargs bazel test --config=ci $(./ci/run/bazel_export_options) \
       --runs_per_test="$RUN_PER_FLAKY_TEST" \
       --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX \
       --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI) || exit 42
 }
 
-run_core_dashboard_flaky_test() {
-  TORCH_VERSION=1.9.0 ./ci/env/install-dependencies.sh
-  # Use --dynamic_mode=off until MacOS CI runs on Big Sur or newer. Otherwise there are problems with running tests
-  # with dynamic linking.
+run_medium_flaky_tests() {
   # shellcheck disable=SC2046
   # 42 is the universal rayci exit code for test failures
-  (bazel cquery '(tests(//python/ray/dashboard/...) union tests(//:all)) except (tests(//python/ray/serve/...) union tests(//rllib/...))' | awk '{print $1;}' | select_flaky_tests |
-    xargs bazel test --config=ci --dynamic_mode=off \
-      --test_env=CI $(./ci/run/bazel_export_options) --build_tests_only \
-      --test_tag_filters=-post_wheel_build) || exit 42
+  (bazel query 'attr(tags, "medium_size_python_tests_a_to_j|medium_size_python_tests_k_to_z", tests(//python/ray/tests/...))' | select_flaky_tests |
+    xargs bazel test --config=ci $(./ci/run/bazel_export_options) --runs_per_test="$RUN_PER_FLAKY_TEST" --test_env=CI) || exit 42
 }
 
 run_small_test() {
@@ -87,10 +82,10 @@ run_core_dashboard_test() {
   # with dynamic linking.
   # shellcheck disable=SC2046
   # 42 is the universal rayci exit code for test failures
-  (bazel cquery '(tests(//python/ray/dashboard/...) union tests(//:all)) except (tests(//python/ray/serve/...) union tests(//rllib/...))' | awk '{print $1;}' | filter_out_flaky_tests |
-    xargs bazel test --config=ci --dynamic_mode=off \
-      --test_env=CI $(./ci/run/bazel_export_options) --build_tests_only \
-      --test_tag_filters=-post_wheel_build) || exit 42
+  (bazel test --config=ci --dynamic_mode=off \
+    --test_env=CI $(./ci/run/bazel_export_options) --build_tests_only \
+    --test_tag_filters=-post_wheel_build -- \
+    //:all python/ray/dashboard/... -python/ray/serve/... -rllib/...) || exit 42
 }
 
 run_ray_cpp_and_java() {
