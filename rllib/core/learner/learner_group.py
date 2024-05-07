@@ -496,7 +496,7 @@ class LearnerGroup:
                         # Still not done with this `tag` -> skip out early.
                         ##force-fetch the results from
                         ##the missing Learners.
-                        if self._update_request_tags[tag] > len(result.result_or_errors) > 0:
+                        if self._update_request_tags[tag] > len(self._update_request_results[tag].result_or_errors) > 0:
                             #more_results = self._worker_manager.fetch_ready_async_reqs(
                             #    tags=[str(tag)], timeout_seconds=None
                             #)
