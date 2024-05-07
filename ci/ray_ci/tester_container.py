@@ -146,6 +146,9 @@ class TesterContainer(Container):
 
     @classmethod
     def move_test_state(cls, team: str, bazel_log_dir: str) -> None:
+        if get_global_config()["state_machine_disabled"]:
+            return
+
         pipeline_id = os.environ.get("BUILDKITE_PIPELINE_ID")
         branch = os.environ.get("BUILDKITE_BRANCH")
         if (

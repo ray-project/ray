@@ -40,6 +40,7 @@ def stub_test_result(status: ResultStatus, branch: str) -> TestResult:
         url="",
         timestamp=0,
         pull_request="",
+        rayci_step_id="",
     )
 
 
