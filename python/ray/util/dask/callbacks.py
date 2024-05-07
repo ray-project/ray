@@ -163,7 +163,7 @@ class RayDaskCallback(Callback):
 
     def _ray_finish(self, result):
         """Run after Ray finishes executing all Ray tasks and returns the final
-        result has been returned.
+        result.
 
         Args:
           result: The final result (output) of the Dask
