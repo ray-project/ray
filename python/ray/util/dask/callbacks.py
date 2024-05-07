@@ -152,7 +152,7 @@ class RayDaskCallback(Callback):
         pass
 
     def _ray_postsubmit_all(self, object_refs: List[ObjectRef], dsk):
-        """Run after all Ray tasks have been submitted.
+        """Run after Ray submits all tasks.
 
         Args:
             object_refs (List[ray.ObjectRef]): The object references
