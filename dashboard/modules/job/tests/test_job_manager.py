@@ -29,6 +29,7 @@ from ray.dashboard.modules.job.job_manager import (
     JobLogStorageClient,
     JobManager,
     generate_job_id,
+    _get_actor_for_job,
 )
 from ray.dashboard.consts import (
     RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR,
@@ -560,7 +561,7 @@ class TestShellScriptExecution:
             if "Exception: Script failed with exception !" not in data.message:
                 return False
 
-            return job_manager._get_actor_for_job(job_id) is None
+            return _get_actor_for_job(job_id) is None
 
         await async_wait_for_condition_async_predicate(cleaned_up)
 
@@ -833,7 +834,7 @@ class TestAsyncAPI:
                 pid = int(file.read())
                 assert psutil.pid_exists(pid), "driver subprocess should be running"
 
-            actor = job_manager._get_actor_for_job(job_id)
+            actor = _get_actor_for_job(job_id)
             ray.kill(actor, no_restart=True)
             await async_wait_for_condition_async_predicate(
                 check_job_failed, job_manager=job_manager, job_id=job_id
@@ -887,7 +888,7 @@ class TestAsyncAPI:
                 "driver subprocess should NOT be running while job is " "still PENDING."
             )
 
-            actor = job_manager._get_actor_for_job(job_id)
+            actor = _get_actor_for_job(job_id)
             ray.kill(actor, no_restart=True)
             await async_wait_for_condition_async_predicate(
                 check_job_failed, job_manager=job_manager, job_id=job_id
