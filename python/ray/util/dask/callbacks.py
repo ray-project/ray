@@ -90,7 +90,7 @@ class RayDaskCallback(Callback):
                 the task function, and the remaining tuple items are
                 the task arguments, which are either the actual argument values,
                 or Dask keys into the deps dictionary whose
-                corresponding values are the argument values).
+                corresponding values are the argument values.
             key: The Dask graph key for the given task.
             deps: The dependencies of this task.
 
