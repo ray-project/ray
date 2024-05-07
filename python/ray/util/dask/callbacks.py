@@ -97,7 +97,7 @@ class RayDaskCallback(Callback):
         Returns:
             Either None, in which case Ray submits a task, or
             a non-None value, in which case Ray task doesn't submit
-            submitted and this return value will be used as the
+            a task and uses this return value as the
             would-be task result value.
         """
         pass
