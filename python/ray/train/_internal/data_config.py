@@ -93,12 +93,9 @@ class DataConfig:
         for name, ds in datasets.items():
             execution_options = copy.deepcopy(self._execution_options)
 
-            if (
-                execution_options.is_resource_limits_default()
-                and execution_options.is_exlude_resources_default()
-            ):
-                # If "resource_limits" and "exclude_resources" are not overriden by the
-                # user, add training-reserved resources to Data's exclude_resources.
+            if execution_options.is_resource_limits_default():
+                # If "resource_limits" is not overriden by the user,
+                # add training-reserved resources to Data's exclude_resources.
                 execution_options.exclude_resources = (
                     ds.context.execution_options.exclude_resources.add(
                         ExecutionResources(
