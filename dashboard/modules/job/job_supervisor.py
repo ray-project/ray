@@ -23,6 +23,8 @@ from ray.actor import ActorHandle
 from ray.dashboard.consts import (
     RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR,
     RAY_STREAM_RUNTIME_ENV_LOG_TO_JOB_DRIVER_LOG_ENV_VAR,
+    RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR,
+    DEFAULT_JOB_START_TIMEOUT_SECONDS,
 )
 from ray.dashboard.modules.job.common import (
     JOB_ID_METADATA_KEY,
@@ -72,6 +74,8 @@ class JobSupervisor:
     One job supervisor actor maps to one subprocess, for one job_id.
     Job supervisor actor should fate share with subprocess it created.
     """
+
+    JOB_MONITOR_LOOP_PERIOD_S = 1
 
     def __init__(
         self,
@@ -170,6 +174,13 @@ class JobSupervisor:
                 resources_specified=resources_specified,
             )
         )
+
+        # Monitor the job in the background so we can detect errors without
+        # requiring a client to poll.
+        self._monitoring_task = loop.create_task(
+            self._monitor_job_internal()
+        )
+
 
         if self.event_logger:
             self.event_logger.info(
@@ -344,6 +355,174 @@ class JobSupervisor:
             config["log_files"] = [JobLogStorageClient.get_log_file_path(submission_id)]
             runtime_env["config"] = config
         return runtime_env
+
+    async def _monitor_job_internal(self):
+        logger.info(f"Starting monitoring loop for job {self._job_id}")
+
+        timeout = float(
+            os.environ.get(
+                RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR,
+                DEFAULT_JOB_START_TIMEOUT_SECONDS,
+            )
+        )
+
+        is_alive = True
+
+        while is_alive:
+            try:
+                job_status = await self._job_info_client.get_status(self._job_id)
+                if job_status == JobStatus.PENDING:
+                    # Compare the current time with the job start time.
+                    # If the job is still pending, we will set the status
+                    # to FAILED.
+                    job_info = await self._job_info_client.get_info(self._job_id)
+
+                    if time.time() - job_info.start_time / 1000 > timeout:
+                        err_msg = (
+                            "Job supervisor actor failed to start within "
+                            f"{timeout} seconds. This timeout can be "
+                            f"configured by setting the environment "
+                            f"variable {RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR}."
+                        )
+
+                        resources_specified = self._has_entrypoint_resources_set(
+                            job_info
+                        )
+
+                        if resources_specified:
+                            err_msg += (
+                                " This may be because the job entrypoint's specified "
+                                "resources (entrypoint_num_cpus, entrypoint_num_gpus, "
+                                "entrypoint_resources, entrypoint_memory)"
+                                "aren't available on the cluster."
+                                " Try checking the cluster's available resources with "
+                                "`ray status` and specifying fewer resources for the "
+                                "job entrypoint."
+                            )
+                        await self._job_info_client.put_status(
+                            self._job_id,
+                            JobStatus.FAILED,
+                            message=err_msg,
+                        )
+                        is_alive = False
+                        logger.error(err_msg)
+                        continue
+
+                if self._runner is None:
+                    if job_status == JobStatus.PENDING:
+                        # Maybe the Job Runner actor is not created yet.
+                        # We will wait for the next loop.
+                        continue
+                    else:
+                        # The job supervisor actor is not created, but the job
+                        # status is not PENDING. This means the job supervisor
+                        # actor is not created due to some unexpected errors.
+                        # We will set the job status to FAILED.
+                        logger.error(f"Failed to get job supervisor for job {self._job_id}.")
+                        await self._job_info_client.put_status(
+                            self._job_id,
+                            JobStatus.FAILED,
+                            message=(
+                                "Unexpected error occurred: "
+                                "failed to get job supervisor."
+                            ),
+                        )
+                        is_alive = False
+                        continue
+
+                # TODO elaborate why we're self-pinging (instead of just pinging the runner)
+                await self.ping()
+
+                await asyncio.sleep(self.JOB_MONITOR_LOOP_PERIOD_S)
+
+            except Exception as e:
+                is_alive = False
+                job_status = await self._job_info_client.get_status(self._job_id)
+
+                job_error_message = ""
+                if job_status.is_terminal():
+                    # If the job is already in a terminal state, then the actor
+                    # exiting is expected.
+                    pass
+                elif isinstance(e, RuntimeEnvSetupError):
+                    logger.info(f"Failed to set up runtime_env for job {self._job_id}.")
+                    job_error_message = f"runtime_env setup failed: {e}"
+                    job_status = JobStatus.FAILED
+                    await self._job_info_client.put_status(
+                        self._job_id,
+                        job_status,
+                        message=job_error_message,
+                    )
+                elif isinstance(e, ActorUnschedulableError):
+                    logger.info(
+                        f"Failed to schedule job {self._job_id} because the supervisor actor "
+                        f"could not be scheduled: {e}"
+                    )
+                    job_error_message = (
+                        f"Job supervisor actor could not be scheduled: {e}"
+                    )
+                    await self._job_info_client.put_status(
+                        self._job_id,
+                        JobStatus.FAILED,
+                        message=job_error_message,
+                    )
+                else:
+                    logger.warning(
+                        f"Job supervisor for job {self._job_id} failed unexpectedly: {e}."
+                    )
+                    job_error_message = f"Unexpected error occurred: {e}"
+                    job_status = JobStatus.FAILED
+                    await self._job_info_client.put_status(
+                        self._job_id,
+                        job_status,
+                        message=job_error_message,
+                    )
+
+                # TODO enable
+                # TODO move into job-runner
+                # Log error message to the job driver file for easy access.
+                # if job_error_message:
+                #     log_path = self._log_client.get_log_file_path(job_id)
+                #     os.makedirs(os.path.dirname(log_path), exist_ok=True)
+                #     with open(log_path, "a") as log_file:
+                #         log_file.write(job_error_message)
+
+                # Log events
+                if self.event_logger:
+                    event_log = (
+                        f"Completed a ray job {self._job_id} with a status {job_status}."
+                    )
+                    if job_error_message:
+                        event_log += f" {job_error_message}"
+                        self.event_logger.error(event_log, submission_id=(self._job_id))
+                    else:
+                        self.event_logger.info(event_log, submission_id=(self._job_id))
+
+        # Kill the actor defensively to avoid leaking actors in unexpected error cases.
+        job_supervisor_handle = _get_actor_for_job(self._job_id)
+        if job_supervisor_handle is not None:
+            ray.kill(job_supervisor_handle, no_restart=True)
+
+    @staticmethod
+    async def _has_entrypoint_resources_set(job_info):
+        return (
+            (
+                job_info.entrypoint_num_cpus is not None
+                and job_info.entrypoint_num_cpus > 0
+            )
+            or (
+                job_info.entrypoint_num_gpus is not None
+                and job_info.entrypoint_num_gpus > 0
+            )
+            or (
+                job_info.entrypoint_memory is not None
+                and job_info.entrypoint_memory > 0
+            )
+            or (
+                job_info.entrypoint_resources is not None
+                and len(job_info.entrypoint_resources) > 0
+            )
+        )
 
 
 @dataclass
