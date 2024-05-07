@@ -91,9 +91,6 @@ def _prep_task(self, task: "ExecutableTask") -> None:
     """
     Prepare the task for execution.
     """
-    task.resolved_inputs = []
-    task.input_channels = []
-    task.input_channel_idxs = []
     # Add placeholders for input channels.
     for idx, inp in enumerate(task.resolved_args):
         if isinstance(inp, Channel):
@@ -272,6 +269,10 @@ class ExecutableTask:
         self.output_channel = task.output_channel
         self.output_wrapper_fn = task.output_wrapper_fn
         self.resolved_args = resolved_args
+
+        self.resolved_inputs = []
+        self.input_channels = []
+        self.input_channel_idxs = []
 
 
 @DeveloperAPI
@@ -711,16 +712,14 @@ class CompiledDAG:
                 outer._dag_output_fetcher.close()
 
                 self.in_teardown = True
-                for actor_handle in outer.actor_refs:
-                    logger.info(f"Cancelling compiled worker on actor: {actor_handle}")
-                for actor_handle, tasks in outer.actor_to_executable_tasks.items():
+                for actor in outer.actor_refs:
+                    logger.info(f"Cancelling compiled worker on actor: {actor}")
+                for actor, tasks in outer.actor_to_executable_tasks.items():
                     try:
                         # TODO(swang): Suppress exceptions from actors trying to
                         # read closed channels when DAG is being torn down.
                         ray.get(
-                            actor_handle.__ray_call__.remote(
-                                do_cancel_executable_tasks, tasks
-                            )
+                            actor.__ray_call__.remote(do_cancel_executable_tasks, tasks)
                         )
                     except Exception:
                         logger.exception("Error cancelling worker task")
