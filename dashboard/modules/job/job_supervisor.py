@@ -18,7 +18,6 @@ import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
-from ray._private.utils import run_background_task
 from ray.actor import ActorHandle
 from ray.dashboard.consts import (
     RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR,
@@ -101,12 +100,12 @@ class JobSupervisor:
         await self._runner.ping.remote()
         # Next check if job's driver completed executing by
         # checking the state of the background task
-        # TODO setup self-ping loop
+        # TODO extract exceptions
         if self._runner_executing_task.done():
             # Job's supervisor actor lifespan is bound to that of the job's driver,
             # and therefore upon completing its execution JobSupervisor (along with JobRunner)
             # actors could be subsequently destroyed
-            ray.actor.exit_actor()
+            self._take_poison_pill("job driver completed")
 
     async def stop(self):
         """Proxies request to job runner"""
@@ -183,13 +182,12 @@ class JobSupervisor:
             self._monitor_job_internal()
         )
 
-
         if self.event_logger:
             self.event_logger.info(
                 f"Started a ray job {self._job_id}.", submission_id=self._job_id
             )
 
-    async def _execute_sync(self, runner: ActorHandle, *, resources_specified: bool):
+    async def _execute_sync(self, runner: ActorHandle, *, resources_specified: bool) -> JobStatus:
         message: Optional[str] = None
         status: JobStatus = JobStatus.FAILED
         exit_code: Optional[int] = None
@@ -239,6 +237,8 @@ class JobSupervisor:
                 driver_exit_code=exit_code,
                 message=message,
             )
+
+            return status
 
     async def _create_runner_actor(
         self,
@@ -501,9 +501,16 @@ class JobSupervisor:
                         self.event_logger.info(event_log, submission_id=(self._job_id))
 
         # Kill the actor defensively to avoid leaking actors in unexpected error cases.
+        self._take_poison_pill()
+
+    def _take_poison_pill(self, context: Optional[str] = None):
         job_supervisor_handle = _get_actor_for_job(self._job_id)
         if job_supervisor_handle is not None:
+            logger.info(f"Shutting down Job Supervisor actor (context: {context}")
+
             ray.kill(job_supervisor_handle, no_restart=True)
+        else:
+            logger.info(f"Job Supervisor actor not found, assuming it already shutdown")
 
     @staticmethod
     async def _has_entrypoint_resources_set(job_info):
