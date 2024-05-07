@@ -82,7 +82,7 @@ class RayDaskCallback(Callback):
     def _ray_presubmit(self, task, key, deps) -> Optional[Any]:
         """Run before submitting a Ray task.
 
-        If this callback returns a non-`None` value, Ray does _not_ create 
+        If this callback returns a non-`None` value, Ray does _not_ create
         a task and uses this value as the would-be task's result value.
 
         Args:
@@ -113,7 +113,7 @@ class RayDaskCallback(Callback):
                 corresponding values are the argument values.
             key: The Dask graph key for the given task.
             deps: The dependencies of this task.
-            object_ref (ray.ObjectRef): The object reference for the
+            object_ref: The object reference for the
                 return value of the Ray task.
 
         """
@@ -128,7 +128,7 @@ class RayDaskCallback(Callback):
 
         Args:
             key: The Dask graph key for the Dask task.
-            object_refs (List[ray.ObjectRef]): The object references
+            object_refs: The object references
                 for the arguments of the Ray task.
 
         Returns:
@@ -155,7 +155,7 @@ class RayDaskCallback(Callback):
         """Run after Ray submits all tasks.
 
         Args:
-            object_refs (List[ray.ObjectRef]): The object references
+            object_refs: The object references
                 for the output (leaf) Ray tasks of the task graph.
             dsk: The Dask graph.
         """
