@@ -82,6 +82,7 @@ class ImpalaLearner(Learner):
         )
         self._learner_thread.start()
 
+    @override(Learner)
     def update_from_episodes(
         self,
         episodes: List[EpisodeType],
@@ -92,7 +93,14 @@ class ImpalaLearner(Learner):
         num_iters: int = 1,
         min_total_mini_batches: int = 0,
         reduce_fn=None,  # Deprecated args.
+        ts,
+        **kwargs,
     ) -> ResultDict:
+        # TODO (sven): IMPALA does NOT call additional update anymore from its
+        #  `training_step()` method. Instead, we'll do this here (to avoid the extra
+        #  metrics.reduce() call -> we should only call this once per update round).
+        self._before_update(ts)
+
         with self.metrics.log_time((ALL_MODULES, RAY_GET_EPISODES_TIMER)):
             # Resolve batch/episodes being ray object refs (instead of
             # actual batch/episodes objects).
@@ -127,6 +135,17 @@ class ImpalaLearner(Learner):
                 results = self._learner_thread_out_queue.get(block=False)
         except Empty:
             return results
+
+    # TODO (sven): IMPALA does NOT call additional update anymore from its
+    #  `training_step()` method. Instead, we'll do this here (to avoid the extra
+    #  metrics.reduce() call -> we should only call this once per update round).
+    def _before_update(self, ts):
+        for module_id in self.module.keys():
+            self.additional_update_for_module(
+                module_id=module_id,
+                config=self.config.get_config_for_module(module_id),
+                timestep=ts,
+            )
 
     @override(Learner)
     def remove_module(self, module_id: str):
