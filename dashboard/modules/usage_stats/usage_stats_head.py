@@ -126,6 +126,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
                 self.total_failed,
                 self.seq_no,
                 self._dashboard_head.gcs_client.address,
+                self._dashboard_head.gcs_client.cluster_id.hex(),
             )
 
             error = None

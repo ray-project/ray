@@ -89,6 +89,7 @@ class TestResult:
     url: str
     timestamp: int
     pull_request: str
+    rayci_step_id: str
 
     @classmethod
     def from_result(cls, result: Result):
@@ -99,6 +100,7 @@ class TestResult:
             url=result.buildkite_url,
             timestamp=int(time.time() * 1000),
             pull_request=os.environ.get("BUILDKITE_PULL_REQUEST", ""),
+            rayci_step_id=os.environ.get("RAYCI_STEP_ID", ""),
         )
 
     @classmethod
@@ -124,6 +126,7 @@ class TestResult:
             url=result["url"],
             timestamp=result["timestamp"],
             pull_request=result.get("pull_request", ""),
+            rayci_step_id=result.get("rayci_step_id", ""),
         )
 
     def is_failing(self) -> bool:
