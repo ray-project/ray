@@ -123,7 +123,7 @@ class RayDaskCallback(Callback):
         """Run before executing a Dask task within a Ray task.
 
         This method executes after Ray submits the task within a Ray
-        worker. The return value of this task will be passed to the
+        worker. Ray passes the return value of this task to the
         _ray_posttask callback, if provided.
 
         Args:
