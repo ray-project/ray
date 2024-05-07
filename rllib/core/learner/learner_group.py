@@ -171,6 +171,7 @@ class LearnerGroup:
             # requests that were sent to the workers at the same time.
             self._update_request_tags = Counter()
             self._update_request_tag = 0
+            self._update_request_results = {}
             self._additional_update_request_tags = Counter()
             self._additional_update_request_tag = 0
 
@@ -376,6 +377,7 @@ class LearnerGroup:
                 result["_rl_module_state_after_update"] = _learner.get_state(
                     components="rl_module", inference_only=True
                 )["rl_module"]
+
             return result
 
         # Local Learner worker: Don't shard batch/episodes, just run data as-is through
@@ -475,29 +477,36 @@ class LearnerGroup:
 
             if async_update:
                 # Retrieve all ready results (kicked off by prior calls to this method).
-                results = None
+                tags_to_get = []
+                #results = None
                 if self._update_request_tags:
                     #assert len(self._update_request_tags) == 1  # only 1 in-flight right now possible
                     for tag in self._update_request_tags.keys():
-                        r = self._worker_manager.fetch_ready_async_reqs(
+                        result = self._worker_manager.fetch_ready_async_reqs(
                             tags=[str(tag)], timeout_seconds=0.0
                         )
-                        if results is None:
-                            results = r
+                        if tag not in self._update_request_results:
+                            self._update_request_results[tag] = result
                         else:
-                            for r_ in r:
-                                results.add_result(r_.actor_id, r_.result_or_error, tag)
-                        # Still not done with this `tag`, force-fetch the results from
-                        # the missing Learners.
-                        if self._update_request_tags[tag] > len(results.result_or_errors) > 0:
-                            more_results = self._worker_manager.fetch_ready_async_reqs(
-                                tags=[str(tag)], timeout_seconds=None
-                            )
-                            for result in more_results.result_or_errors:
-                                results.add_result(result.actor_id, result.result_or_error, tag)
+                            for r in result:
+                                self._update_request_results[tag].add_result(
+                                    r.actor_id, r.result_or_error, tag
+                                )
+
+                        # Still not done with this `tag` -> skip out early.
+                        ##force-fetch the results from
+                        ##the missing Learners.
+                        if self._update_request_tags[tag] > len(result.result_or_errors) > 0:
+                            #more_results = self._worker_manager.fetch_ready_async_reqs(
+                            #    tags=[str(tag)], timeout_seconds=None
+                            #)
+                            #for result in more_results.result_or_errors:
+                            #    results.add_result(result.actor_id, result.result_or_error, tag)
                             # If we did have to wait for some (slower) Learners results,
                             # break out of this loop.
                             break
+                        else:
+                            tags_to_get.append(tag)
 
                 # Send out new request(s), if there is still capacity on the actors.
                 update_tag = self._update_request_tag
@@ -534,7 +543,7 @@ class LearnerGroup:
                 # a list of lists where each inner list should be the length of the
                 # number of learner workers, if results from an non-blocking update are
                 # ready.
-                results = self._get_async_results(results)
+                results = self._get_async_results(tags_to_get)
 
             else:
                 results = self._get_results(
@@ -545,6 +554,7 @@ class LearnerGroup:
         # the old behavior of returning an already reduced dict (as if we had a
         # reduce_fn).
         if not self.config.enable_env_runner_and_connector_v2:
+            assert False
             # If we are doing an ansync update, we operate on a list (different async
             # requests that now have results ready) of lists (n Learner workers) here.
             if async_update:
@@ -571,7 +581,7 @@ class LearnerGroup:
                 raise result_or_error
         return processed_results
 
-    def _get_async_results(self, results):
+    def _get_async_results(self, tags_to_get):#results):
         """Get results from the worker manager and group them by tag.
 
         Returns:
@@ -579,33 +589,37 @@ class LearnerGroup:
             for same tags.
 
         """
-        if results is None:
-            return []
+        #if results is None:
+        #    return []
 
         unprocessed_results = defaultdict(list)
-        for result in results:
-            result_or_error = result.get()
-            if result.ok:
-                if result.tag is None:
-                    raise RuntimeError(
-                        "Cannot call `LearnerGroup._get_async_results()` on untagged "
-                        "async requests!"
-                    )
-                tag = int(result.tag)
-                unprocessed_results[tag].append(result_or_error)
-
-                if tag in self._update_request_tags:
-                    self._update_request_tags[tag] -= 1
-                    if self._update_request_tags[tag] == 0:
-                        del self._update_request_tags[tag]
+        for tag in tags_to_get:
+            results = self._update_request_results[tag]
+            for result in results:
+                result_or_error = result.get()
+                if result.ok:
+                    if result.tag is None:
+                        raise RuntimeError(
+                            "Cannot call `LearnerGroup._get_async_results()` on untagged "
+                            "async requests!"
+                        )
+                    tag = int(result.tag)
+                    unprocessed_results[tag].append(result_or_error)
+    
+                    if tag in self._update_request_tags:
+                        self._update_request_tags[tag] -= 1
+                        if self._update_request_tags[tag] == 0:
+                            del self._update_request_tags[tag]
+                            del self._update_request_results[tag]
+                    else:
+                        assert False
+                        assert tag in self._additional_update_request_tags
+                        self._additional_update_request_tags[tag] -= 1
+                        if self._additional_update_request_tags[tag] == 0:
+                            del self._additional_update_request_tags[tag]
+    
                 else:
-                    assert tag in self._additional_update_request_tags
-                    self._additional_update_request_tags[tag] -= 1
-                    if self._additional_update_request_tags[tag] == 0:
-                        del self._additional_update_request_tags[tag]
-
-            else:
-                raise result_or_error
+                    raise result_or_error
 
         return list(unprocessed_results.values())
 

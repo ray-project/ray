@@ -441,7 +441,7 @@ class FaultTolerantActorManager:
         remote_actor_ids: List[int],
         remote_calls: List[ray.ObjectRef],
         tags: List[str],
-        timeout_seconds: int = None,
+        timeout_seconds: Optional[float] = None,
         return_obj_refs: bool = False,
         mark_healthy: bool = True,
     ) -> Tuple[List[ray.ObjectRef], RemoteCallResults]:
@@ -454,7 +454,7 @@ class FaultTolerantActorManager:
                 calls were fired against.
             remote_calls: list of remote calls to fetch.
             tags: list of tags used for identifying the remote calls.
-            timeout_seconds: timeout for the ray.wait() call. Default is None.
+            timeout_seconds: Timeout (in sec) for the ray.wait() call. Default is None.
             return_obj_refs: whether to return ObjectRef instead of actual results.
             mark_healthy: whether to mark certain actors healthy based on the results
                 of these remote calls. Useful, for example, to make sure actors
@@ -762,7 +762,7 @@ class FaultTolerantActorManager:
         self,
         *,
         tags: Union[str, List[str], Tuple[str]] = (),
-        timeout_seconds: Union[None, int] = 0,
+        timeout_seconds: Optional[float] = 0.0,
         return_obj_refs: bool = False,
         mark_healthy: bool = True,
     ) -> RemoteCallResults:

@@ -1,3 +1,4 @@
+import copy
 from queue import Queue, Empty
 import threading
 from typing import Dict, List, Optional
@@ -230,4 +231,7 @@ class _LearnerThread(threading.Thread):
             #  (due to different agents taking different steps in the env, e.g.
             #  MA-CartPole).
             results = self._update_method(batch=ma_batch_on_gpu)
-            self._out_queue.put(results)
+            # We have to deepcopy the results dict, b/c we must avoid having a returned
+            # Stats object sit in the queue and getting a new (possibly even tensor)
+            # value added to it, which would falsify this result.
+            self._out_queue.put(copy.deepcopy(results))

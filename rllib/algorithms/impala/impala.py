@@ -719,20 +719,6 @@ class Impala(Algorithm):
                         rl_module_state = r.pop(
                             "_rl_module_state_after_update", rl_module_state
                         )
-                    ##TEST
-                    #import torch
-                    #for r in results_from_n_learners:
-                    #    if "default_policy" in r:
-                    #        for k, v in r["default_policy"].items():
-                    #            if any(torch.is_tensor(v_) for v_ in v.values):
-                    #                print(k, v.values)
-                    #                quit()
-                    #    if "__all_modules__" in r:
-                    #        for k, v in r["__all_modules__"].items():
-                    #            if any(torch.is_tensor(v_) for v_ in v.values):
-                    #                print(k, v.values)
-                    #                quit()
-                    ##END: TEST
                     self.metrics.log_n_dicts(
                         stats_dicts=results_from_n_learners,
                         key=LEARNER_RESULTS,
