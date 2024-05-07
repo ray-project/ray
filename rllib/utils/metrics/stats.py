@@ -227,9 +227,18 @@ class Stats:
         """Called when entering a context (with which users can measure a time delta).
 
         Returns:
-            This Stats instance (self).
+            This Stats instance (self), unless another thread has already entered (and
+            not exited yet), in which case a copy of `self` is returned. This way, the
+            second thread(s) cannot mess with the original Stat's (self) time-measuring.
+            This also means that only the first thread to __enter__ actually logs into
+            `self` and the following threads' measurements are discarded (logged into
+            a non-referenced shim-Stats object, which will simply be garbage collected).
         """
-        assert self._start_time is None, "Concurrent updates not supported!"
+        # In case another thread already is measuring this Stats (timing), simply ignore
+        # the "enter request" and return a clone of `self`.
+        if self._start_time is not None:
+            return Stats.similar_to(self, init_value=self.values)
+
         self._start_time = time.time()
         return self
 

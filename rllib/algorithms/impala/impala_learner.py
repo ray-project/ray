@@ -69,14 +69,17 @@ class ImpalaLearner(Learner):
         self._learner_thread_in_queue = Queue()
         self._learner_thread_out_queue = Queue()
 
-        # Create and start the GPU loader thread.
-        self._gpu_loader_thread = _GPULoaderThread(
-            in_queue=self._gpu_loader_in_queue,
-            out_queue=self._learner_thread_in_queue,
-            device=self._device,
-            metrics_logger=self.metrics,
-        )
-        self._gpu_loader_thread.start()
+        # Create and start the GPU loader thread(s).
+        self._gpu_loader_threads = [
+            _GPULoaderThread(
+                in_queue=self._gpu_loader_in_queue,
+                out_queue=self._learner_thread_in_queue,
+                device=self._device,
+                metrics_logger=self.metrics,
+            ) for _ in range(self.config.num_gpu_loader_threads)
+        ]
+        for t in self._gpu_loader_threads:
+            t.start()
 
         # Create and start the Learner thread.
         self._learner_thread = _LearnerThread(

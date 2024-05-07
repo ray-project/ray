@@ -134,19 +134,20 @@ class ImpalaConfig(AlgorithmConfig):
         self.vtrace = True
         self.vtrace_clip_rho_threshold = 1.0
         self.vtrace_clip_pg_rho_threshold = 1.0
-        self.num_multi_gpu_tower_stacks = 1
-        self.minibatch_buffer_size = 1
+        self.num_multi_gpu_tower_stacks = 1  # @OldAPIstack
+        self.minibatch_buffer_size = 1  # @OldAPIstack
         self.num_sgd_iter = 1
-        self.replay_proportion = 0.0
-        self.replay_buffer_num_slots = 0
-        self.learner_queue_size = 16
-        self.learner_queue_timeout = 300
+        self.replay_proportion = 0.0  # @OldAPIstack
+        self.replay_buffer_num_slots = 0  # @OldAPIstack
+        self.learner_queue_size = 16  # @OldAPIstack
+        self.learner_queue_timeout = 300  # @OldAPIstack
         self.max_requests_in_flight_per_sampler_worker = 2
         self.max_requests_in_flight_per_aggregator_worker = 2
         self.timeout_s_sampler_manager = 0.0
-        self.timeout_s_aggregator_manager = 0.0
+        self.timeout_s_aggregator_manager = 0.0  # @OldAPIstack
         self.broadcast_interval = 1
-        self.num_aggregation_workers = 0
+        self.num_aggregation_workers = 0  # @OldAPIstack
+        self.num_gpu_loader_threads = 16
         # Impala takes care of its own EnvRunner (weights, connector, counters)
         # synching.
         self._dont_auto_sync_env_runner_states = True
@@ -157,16 +158,16 @@ class ImpalaConfig(AlgorithmConfig):
         # global_norm, no matter the value of `grad_clip_by`.
         self.grad_clip_by = "global_norm"
 
-        self.opt_type = "adam"
+        self.opt_type = "adam"  # @OldAPIstack
         self.lr_schedule = None
-        self.decay = 0.99
-        self.momentum = 0.0
-        self.epsilon = 0.1
+        self.decay = 0.99  # @OldAPIstack
+        self.momentum = 0.0  # @OldAPIstack
+        self.epsilon = 0.1  # @OldAPIstack
         self.vf_loss_coeff = 0.5
         self.entropy_coeff = 0.01
         self.entropy_coeff_schedule = None
-        self._separate_vf_optimizer = False
-        self._lr_vf = 0.0005
+        self._separate_vf_optimizer = False  # @OldAPIstack
+        self._lr_vf = 0.0005  # @OldAPIstack
         self.after_train_step = None
 
         # Override some of AlgorithmConfig's default values with IMPALA-specific values.
@@ -202,6 +203,7 @@ class ImpalaConfig(AlgorithmConfig):
         vtrace_clip_rho_threshold: Optional[float] = NotProvided,
         vtrace_clip_pg_rho_threshold: Optional[float] = NotProvided,
         gamma: Optional[float] = NotProvided,
+        num_gpu_loader_threads: Optional[int] = NotProvided,
         num_multi_gpu_tower_stacks: Optional[int] = NotProvided,
         minibatch_buffer_size: Optional[int] = NotProvided,
         minibatch_size: Optional[Union[int, str]] = NotProvided,
@@ -236,6 +238,12 @@ class ImpalaConfig(AlgorithmConfig):
             vtrace_clip_rho_threshold:
             vtrace_clip_pg_rho_threshold:
             gamma: Float specifying the discount factor of the Markov Decision process.
+            num_gpu_loader_threads: The number of GPU-loader threads (per Learner
+                worker), used to load incoming (CPU) batches to the GPU, if applicable.
+                The incoming batches are produced by each Learner's LearnerConnector
+                pipeline. After loading the batches on the GPU, the threads place them
+                on yet another queue for the Learner thread (only one per Learner
+                worker) to pick up and perform `forward_train/loss` computations.
             num_multi_gpu_tower_stacks: For each stack of multi-GPU towers, how many
                 slots should we reserve for parallel data loading? Set this to >1 to
                 load data into GPUs in parallel. This will increase GPU memory usage
@@ -318,6 +326,10 @@ class ImpalaConfig(AlgorithmConfig):
             self.vtrace_clip_rho_threshold = vtrace_clip_rho_threshold
         if vtrace_clip_pg_rho_threshold is not NotProvided:
             self.vtrace_clip_pg_rho_threshold = vtrace_clip_pg_rho_threshold
+        if gamma is not NotProvided:
+            self.gamma = gamma
+        if num_gpu_loader_threads is not NotProvided:
+            self.num_gpu_loader_threads = num_gpu_loader_threads
         if num_multi_gpu_tower_stacks is not NotProvided:
             self.num_multi_gpu_tower_stacks = num_multi_gpu_tower_stacks
         if minibatch_buffer_size is not NotProvided:
@@ -368,8 +380,6 @@ class ImpalaConfig(AlgorithmConfig):
             self._lr_vf = _lr_vf
         if after_train_step is not NotProvided:
             self.after_train_step = after_train_step
-        if gamma is not NotProvided:
-            self.gamma = gamma
         if minibatch_size is not NotProvided:
             self._minibatch_size = minibatch_size
 
