@@ -477,11 +477,16 @@ class LearnerGroup:
                 # Retrieve all ready results (kicked off by prior calls to this method).
                 results = None
                 if self._update_request_tags:
-                    assert len(self._update_request_tags) == 1  # only 1 in-flight right now possible
+                    #assert len(self._update_request_tags) == 1  # only 1 in-flight right now possible
                     for tag in self._update_request_tags.keys():
-                        results = self._worker_manager.fetch_ready_async_reqs(
+                        r = self._worker_manager.fetch_ready_async_reqs(
                             tags=[str(tag)], timeout_seconds=0.0
                         )
+                        if results is None:
+                            results = r
+                        else:
+                            for r_ in r:
+                                results.add_result(r_.actor_id, r_.result_or_error, tag)
                         # Still not done with this `tag`, force-fetch the results from
                         # the missing Learners.
                         if self._update_request_tags[tag] > len(results.result_or_errors) > 0:
@@ -536,7 +541,7 @@ class LearnerGroup:
                     self._worker_manager.foreach_actor(partials)
                 )
 
-        # If we are on the old or hybrid API stacks (no EnvRunners), we need to emulate
+        # If we are on the hybrid API stacks (no EnvRunners), we need to emulate
         # the old behavior of returning an already reduced dict (as if we had a
         # reduce_fn).
         if not self.config.enable_env_runner_and_connector_v2:
