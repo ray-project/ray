@@ -16,6 +16,7 @@ import psutil
 
 import ray
 import ray._private.ray_constants as ray_constants
+from ray._private.event.event_logger import get_event_logger, EventLoggerAdapter
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray.actor import ActorHandle
@@ -41,6 +42,7 @@ from ray.runtime_env import RuntimeEnvConfig
 from ray.util.scheduling_strategies import (
     SchedulingStrategyT, NodeAffinitySchedulingStrategy,
 )
+from ray.workflow.common import Event
 
 # asyncio python version compatibility
 try:
@@ -80,9 +82,11 @@ class JobSupervisor:
 
     def __init__(
         self,
+        *,
         job_id: str,
         entrypoint: str,
         gcs_address: str,
+        logs_dir: str
     ):
         self._job_id = job_id
         self._entrypoint = entrypoint
@@ -92,6 +96,8 @@ class JobSupervisor:
         self._runner_actor_cls = ray.remote(JobRunner)
         self._runner: Optional[ActorHandle] = None
         self._runner_executing_task: Optional[asyncio.Task] = None
+
+        self.event_logger: Optional[EventLoggerAdapter] = _create_job_events_logger(logs_dir)
 
     async def ping(self):
         """Pings job runner to make sure Ray job is being executed"""
@@ -925,3 +931,11 @@ class JobRunner:
                     "force-killed with SIGKILL."
                 )
                 self._kill_processes(proc_to_kill, signal.SIGKILL)
+
+
+def _create_job_events_logger(logs_dir: str):
+    try:
+        return get_event_logger(Event.SourceType.JOBS, logs_dir)
+    except Exception as e:
+        logger.error(f"Failed to create jobs event logger: {e}")
+        return None
