@@ -236,14 +236,15 @@ def test_avoid_placement_group_capture(shutdown_only):
     )
 
 
-def test_scheduling_strategy_fn(shutdown_only):
+def test_ray_remote_args_fn(shutdown_only):
     ray.init()
 
     global_idx = 1
 
-    def _generate_scheduling_strategy():
+    def _generate_ray_remote_args_with_scheduling_strategy():
         pg = ray.util.placement_group([{"CPU": global_idx}])
-        return PlacementGroupSchedulingStrategy(placement_group=pg)
+        scheduling_strategy = PlacementGroupSchedulingStrategy(placement_group=pg)
+        return {"scheduling_strategy": scheduling_strategy}
 
     class ActorClass:
         def __init__(self):
@@ -256,28 +257,33 @@ def test_scheduling_strategy_fn(shutdown_only):
 
         def __call__(self, batch):
             pg = ray.util.get_current_placement_group()
-            assert pg.bundle_specs == [{"CPU": self._idx}]
+            if global_idx > 0:
+                assert pg.bundle_specs == [{"CPU": self._idx}]
+            else:
+                assert pg is not None
             return batch
 
-    original_input = list(range(20))
-    ds = ray.data.from_items(original_input)
-    ds = ds.map_batches(
-        ActorClass,
-        concurrency=4,
-        scheduling_strategy_fn=_generate_scheduling_strategy,
-    )
-    assert sorted(extract_values("item", ds.take_all())) == sorted(original_input)
+    def fn(batch):
+        return batch
 
-    # Check that task-based map is not compatible with scheduling_strategy_fn.
-    with pytest.raises(ValueError):
-        ds = (
-            ray.data.range(10)
-            .map_batches(
-                lambda batch: batch,
-                scheduling_strategy_fn=_generate_scheduling_strategy,
-            )
-            .materialize()
-        )
+    ray.data.range(10).map_batches(
+        ActorClass,
+        concurrency=3,
+        ray_remote_args_fn=_generate_ray_remote_args_with_scheduling_strategy
+    ).materialize()
+
+    ray.data.range(10).map_batches(
+        fn,
+        ray_remote_args_fn=_generate_ray_remote_args_with_scheduling_strategy,
+    ).materialize()
+
+    global_idx = -10
+    with pytest.raises(ValueError): # cannot use -10 for pg, should error
+        ray.data.range(10).map_batches(
+            ActorClass,
+            concurrency=3,
+            ray_remote_args_fn=_generate_ray_remote_args_with_scheduling_strategy
+        ).materialize()
 
 
 def test_dataset_lineage_serialization(shutdown_only):

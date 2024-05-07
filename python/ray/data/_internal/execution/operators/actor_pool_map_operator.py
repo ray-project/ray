@@ -58,7 +58,7 @@ class ActorPoolMapOperator(MapOperator):
         autoscaling_policy: "AutoscalingPolicy",
         name: str = "ActorPoolMap",
         min_rows_per_bundle: Optional[int] = None,
-        scheduling_strategy_fn: Optional[Callable[[], SchedulingStrategyT]] = None,
+        ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         """Create an ActorPoolMapOperator instance.
@@ -76,8 +76,11 @@ class ActorPoolMapOperator(MapOperator):
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
                 The actual rows passed may be less if the dataset is small.
-            scheduling_strategy_fn: A function that returns a ``SchedulingStrategy``
-                used to initialize the actor.
+            ray_remote_args_fn: A function that returns a dictionary of remote args
+                passed to each map worker. This function will be called each time prior
+                to initializing the worker. Args returned from this dict will always
+                override the args in ``ray_remote_args``. Note: this is an advanced,
+                experimental feature.
             ray_remote_args: Customize the ray remote args for this op's tasks.
         """
         super().__init__(
@@ -86,6 +89,7 @@ class ActorPoolMapOperator(MapOperator):
             name,
             target_max_block_size,
             min_rows_per_bundle,
+            ray_remote_args_fn,
             ray_remote_args,
         )
         self._ray_actor_task_remote_args = {}
@@ -102,8 +106,8 @@ class ActorPoolMapOperator(MapOperator):
                 2 * data_context._max_num_blocks_in_streaming_gen_buffer
             )
         self._min_rows_per_bundle = min_rows_per_bundle
-        self._scheduling_strategy_fn = scheduling_strategy_fn
-        self._ray_remote_args = self._apply_default_remote_args()
+        self._ray_remote_args_fn = ray_remote_args_fn
+        self._ray_remote_args = self._apply_default_remote_args(self._ray_remote_args)
 
         # Create autoscaling policy from compute strategy.
         self._autoscaling_policy = autoscaling_policy
@@ -164,8 +168,8 @@ class ActorPoolMapOperator(MapOperator):
         assert self._cls is not None
         ctx = DataContext.get_current()
         overriden_args = {}
-        if self._scheduling_strategy_fn:
-            overriden_args = self._refresh_actor_cls_scheduling_strategy()
+        if self._ray_remote_args_fn:
+            overriden_args = self._refresh_actor_cls()
         actor = self._cls.remote(
             ctx,
             src_fn_name=self.name,
@@ -254,24 +258,21 @@ class ActorPoolMapOperator(MapOperator):
             # Only try to scale down if the work queue has been fully consumed.
             self._scale_down_if_needed()
 
-    def _refresh_actor_cls_scheduling_strategy(self):
-        """When `self._scheduling_strategy_fn` is specified, this method should
-        be called prior to initializing the new worker in order to get a new
-        scheduling strategy. It updates `self.cls` with the same `_MapWorker`
-        class, but with the new scheduling strategy passed to its remote args."""
-        assert self._scheduling_strategy_fn, "_scheduling_strategy_fn must be set"
-        remote_args = self._ray_remote_args
-        new_remote_args = {}
-        # For each new actor, get new scheduling strategy by
-        # calling the generation fn.
-        scheduling_strategy = self._scheduling_strategy_fn()
-        new_remote_args["scheduling_strategy"] = scheduling_strategy
+    def _refresh_actor_cls(self):
+        """When `self._ray_remote_args_fn` is specified, this method should
+        be called prior to initializing the new worker in order to get new 
+        remote args passed to the worker. It updates `self.cls` with the same
+        `_MapWorker` class, but with the new remote args from 
+        `self._ray_remote_args_fn`."""
+        assert self._ray_remote_args_fn, "_ray_remote_args_fn must be provided"
+        remote_args = self._ray_remote_args.copy()
+        new_remote_args = self._ray_remote_args_fn()
+
+        # Override args from user-defined remote args function.
         new_and_overriden_remote_args = {}
         for k, v in new_remote_args.items():
-            # if k not in remote_args: TODO(scott): figure out override from given params
             remote_args[k] = v
             new_and_overriden_remote_args[k] = v
-                
         self._cls = ray.remote(**remote_args)(_MapWorker)
         return new_and_overriden_remote_args
 
@@ -395,13 +396,11 @@ class ActorPoolMapOperator(MapOperator):
             res["locality_misses"] = self._actor_pool._locality_misses
         return res
 
-    def _apply_default_remote_args(self) -> Dict[str, Any]:
+    @staticmethod
+    def _apply_default_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, Any]:
         """Apply defaults to the actor creation remote args."""
-        ray_remote_args = self._ray_remote_args.copy()
-        if (
-            not self._scheduling_strategy_fn
-            and "scheduling_strategy" not in ray_remote_args
-        ):
+        ray_remote_args = ray_remote_args.copy()
+        if "scheduling_strategy" not in ray_remote_args:
             ctx = DataContext.get_current()
             ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
         # Enable actor fault tolerance by default, with infinite actor recreations and

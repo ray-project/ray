@@ -525,7 +525,6 @@ def get_compute_strategy(
     fn_constructor_args: Optional[Iterable[Any]] = None,
     compute: Optional[Union[str, "ComputeStrategy"]] = None,
     concurrency: Optional[Union[int, Tuple[int, int]]] = None,
-    scheduling_strategy_fn: Optional[Callable[[], "SchedulingStrategyT"]] = None,
 ) -> "ComputeStrategy":
     """Get `ComputeStrategy` based on the function or class, and concurrency
     information.
@@ -554,11 +553,6 @@ def get_compute_strategy(
         if fn_constructor_args is not None:
             raise ValueError(
                 "``fn_constructor_args`` can only be specified if providing a "
-                f"callable class instance for ``fn``, but got: {fn}."
-            )
-        if scheduling_strategy_fn is not None:
-            raise ValueError(
-                "``scheduling_strategy_fn`` can only be specified if providing a "
                 f"callable class instance for ``fn``, but got: {fn}."
             )
 
