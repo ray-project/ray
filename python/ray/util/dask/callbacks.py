@@ -83,7 +83,7 @@ class RayDaskCallback(Callback):
         """Run before submitting a Ray task.
 
         If this callback returns a non-`None` value, Ray does _not_ create 
-        created and this value will be used as the would-be task's result value.
+        a task and uses this value as the would-be task's result value.
 
         Args:
             task: A Dask task, where the first tuple item is
