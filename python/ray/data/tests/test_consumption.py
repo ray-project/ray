@@ -731,7 +731,7 @@ def test_iter_batches_basic(ray_start_regular_shared):
     df3 = pd.DataFrame({"one": [7, 8, 9], "two": [8, 9, 10]})
     df4 = pd.DataFrame({"one": [10, 11, 12], "two": [11, 12, 13]})
     dfs = [df1, df2, df3, df4]
-    ds = ray.data.from_pandas(dfs)
+    ds = ray.data.from_pandas(dfs, override_num_blocks=len(dfs))
 
     # Default.
     for batch, df in zip(ds.iter_batches(batch_size=None, batch_format="pandas"), dfs):
@@ -1129,7 +1129,7 @@ def test_iter_batches_grid(ray_start_regular_shared):
                 )
                 running_size += block_size
             num_rows = running_size
-            ds = ray.data.from_pandas(dfs)
+            ds = ray.data.from_pandas(dfs, override_num_blocks=len(dfs))
             for batch_size in np.random.randint(
                 1, num_rows + 1, size=batch_size_samples
             ):
