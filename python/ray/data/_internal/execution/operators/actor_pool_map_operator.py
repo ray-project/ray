@@ -1,7 +1,7 @@
 import collections
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional, Union
+from typing import Any, Callable, Dict, Iterator, List, Optional, Union, TYPE_CHECKING
 
 import ray
 from ray.data._internal.compute import ActorPoolStrategy
@@ -20,10 +20,10 @@ from ray.data._internal.remote_fn import _add_system_error_to_retry_exceptions
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 from ray.types import ObjectRef
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy, SchedulingStrategyT
 
 if TYPE_CHECKING:
-    from ray.util.scheduling_strategies import SchedulingStrategyT
-
+    from ray.util.placement_group import PlacementGroup
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +58,7 @@ class ActorPoolMapOperator(MapOperator):
         autoscaling_policy: "AutoscalingPolicy",
         name: str = "ActorPoolMap",
         min_rows_per_bundle: Optional[int] = None,
-        scheduling_strategy_fn: Optional[Callable[[], "SchedulingStrategyT"]] = None,
+        scheduling_strategy_fn: Optional[Callable[[], SchedulingStrategyT]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         """Create an ActorPoolMapOperator instance.
@@ -88,7 +88,6 @@ class ActorPoolMapOperator(MapOperator):
             min_rows_per_bundle,
             ray_remote_args,
         )
-        self._ray_remote_args = self._apply_default_remote_args(self._ray_remote_args)
         self._ray_actor_task_remote_args = {}
         actor_task_errors = DataContext.get_current().actor_task_retry_on_errors
         if actor_task_errors:
@@ -104,6 +103,7 @@ class ActorPoolMapOperator(MapOperator):
             )
         self._min_rows_per_bundle = min_rows_per_bundle
         self._scheduling_strategy_fn = scheduling_strategy_fn
+        self._ray_remote_args = self._apply_default_remote_args()
 
         # Create autoscaling policy from compute strategy.
         self._autoscaling_policy = autoscaling_policy
@@ -126,11 +126,6 @@ class ActorPoolMapOperator(MapOperator):
         # Create the actor workers and add them to the pool.
         for _ in range(self._autoscaling_policy.min_workers):
             remote_args = self._ray_remote_args
-            if self._scheduling_strategy_fn:
-                self._refresh_actor_cls_scheduling_strategy()
-                # For each new actor, get new scheduling strategy by
-                # calling the generation fn.
-                remote_args["scheduling_strategy"] = self._scheduling_strategy_fn()
             self._cls = ray.remote(**remote_args)(_MapWorker)
             self._start_actor()
         refs = self._actor_pool.get_pending_actor_refs()
@@ -168,13 +163,18 @@ class ActorPoolMapOperator(MapOperator):
         """Start a new actor and add it to the actor pool as a pending actor."""
         assert self._cls is not None
         ctx = DataContext.get_current()
+        overriden_args = {}
         if self._scheduling_strategy_fn:
-            self._refresh_actor_cls_scheduling_strategy()
+            overriden_args = self._refresh_actor_cls_scheduling_strategy()
         actor = self._cls.remote(
             ctx,
             src_fn_name=self.name,
             map_transformer=self._map_transformer,
         )
+        if "scheduling_strategy" in overriden_args:
+            scheduling_strategy = overriden_args["scheduling_strategy"]
+            if isinstance(scheduling_strategy, PlacementGroupSchedulingStrategy):
+                self._actor_pool._actor_to_placement_groups[actor] = scheduling_strategy.placement_group
         res_ref = actor.get_location.remote()
 
         def _task_done_callback(res_ref):
@@ -261,10 +261,19 @@ class ActorPoolMapOperator(MapOperator):
         class, but with the new scheduling strategy passed to its remote args."""
         assert self._scheduling_strategy_fn, "_scheduling_strategy_fn must be set"
         remote_args = self._ray_remote_args
+        new_remote_args = {}
         # For each new actor, get new scheduling strategy by
         # calling the generation fn.
-        remote_args["scheduling_strategy"] = self._scheduling_strategy_fn()
+        scheduling_strategy = self._scheduling_strategy_fn()
+        new_remote_args["scheduling_strategy"] = scheduling_strategy
+        new_and_overriden_remote_args = {}
+        for k, v in new_remote_args.items():
+            # if k not in remote_args: TODO(scott): figure out override from given params
+            remote_args[k] = v
+            new_and_overriden_remote_args[k] = v
+                
         self._cls = ray.remote(**remote_args)(_MapWorker)
+        return new_and_overriden_remote_args
 
 
     def _scale_up_if_needed(self):
@@ -387,11 +396,13 @@ class ActorPoolMapOperator(MapOperator):
             res["locality_misses"] = self._actor_pool._locality_misses
         return res
 
-    @staticmethod
-    def _apply_default_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, Any]:
+    def _apply_default_remote_args(self) -> Dict[str, Any]:
         """Apply defaults to the actor creation remote args."""
-        ray_remote_args = ray_remote_args.copy()
-        if "scheduling_strategy" not in ray_remote_args:
+        ray_remote_args = self._ray_remote_args.copy()
+        if (
+            not self._scheduling_strategy_fn
+            and "scheduling_strategy" not in ray_remote_args
+        ):
             ctx = DataContext.get_current()
             ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
         # Enable actor fault tolerance by default, with infinite actor recreations and
@@ -585,6 +596,8 @@ class _ActorPool:
         self._num_tasks_in_flight: Dict[ray.actor.ActorHandle, int] = {}
         # Node id of each ready actor.
         self._actor_locations: Dict[ray.actor.ActorHandle, str] = {}
+        # Mapping of actor to its PlacementGroup.
+        self._actor_to_placement_groups: Dict[ray.actor.ActorHandle, "PlacementGroup"] = {}
         # Actors that are not yet ready (still pending creation).
         self._pending_actors: Dict[ObjectRef, ray.actor.ActorHandle] = {}
         # Whether actors that become idle should be eagerly killed. This is False until
@@ -794,12 +807,18 @@ class _ActorPool:
 
     def _kill_running_actor(self, actor: ray.actor.ActorHandle):
         """Kill the provided actor and remove it from the pool."""
+        pg = self._actor_to_placement_groups.pop(actor, None)
+        if pg:
+            ray.util.remove_placement_group(pg)
         ray.kill(actor)
         del self._num_tasks_in_flight[actor]
 
     def _kill_pending_actor(self, ready_ref: ray.ObjectRef):
         """Kill the provided pending actor and remove it from the pool."""
         actor = self._pending_actors.pop(ready_ref)
+        pg = self._actor_to_placement_groups.pop(actor, None)
+        if pg:
+            ray.util.remove_placement_group(pg)
         ray.kill(actor)
 
     def _get_location(self, bundle: RefBundle) -> Optional[NodeIdStr]:
