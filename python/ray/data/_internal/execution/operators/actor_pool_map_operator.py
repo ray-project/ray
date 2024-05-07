@@ -253,7 +253,7 @@ class ActorPoolMapOperator(MapOperator):
         else:
             # Only try to scale down if the work queue has been fully consumed.
             self._scale_down_if_needed()
-    
+
     def _refresh_actor_cls_scheduling_strategy(self):
         """When `self._scheduling_strategy_fn` is specified, this method should
         be called prior to initializing the new worker in order to get a new
@@ -274,7 +274,6 @@ class ActorPoolMapOperator(MapOperator):
                 
         self._cls = ray.remote(**remote_args)(_MapWorker)
         return new_and_overriden_remote_args
-
 
     def _scale_up_if_needed(self):
         """Try to scale up the pool if the autoscaling policy allows it."""

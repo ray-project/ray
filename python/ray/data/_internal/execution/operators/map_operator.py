@@ -3,7 +3,7 @@ import functools
 import itertools
 from abc import ABC, abstractmethod
 from collections import defaultdict, deque
-from typing import Any, Callable, Deque, Dict, Iterator, List, Optional, Set, Union, TYPE_CHECKING
+from typing import Any, Callable, Deque, Dict, Iterator, List, Optional, Set, Union
 
 import ray
 from ray import ObjectRef
@@ -36,8 +36,8 @@ from ray.data._internal.stats import StatsDict
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DataContext
 from ray.util.scheduling_strategies import (
-    NodeAffinitySchedulingStrategy, 
-    SchedulingStrategyT
+    NodeAffinitySchedulingStrategy,
+    SchedulingStrategyT,
 )
 
 
