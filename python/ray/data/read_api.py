@@ -2397,7 +2397,7 @@ def from_pandas(
     num_blocks = override_num_blocks
     if num_blocks is None:
         total_size = sum(_estimate_dataframe_size(df) for df in dfs)
-        num_blocks = math.ceil(total_size / context.target_max_block_size)
+        num_blocks = max(math.ceil(total_size / context.target_max_block_size), 1)
 
     if len(dfs) > 1:
         # I assume most users pass a single DataFrame as input. For simplicity, I'm
