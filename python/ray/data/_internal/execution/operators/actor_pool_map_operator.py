@@ -175,6 +175,8 @@ class ActorPoolMapOperator(MapOperator):
             src_fn_name=self.name,
             map_transformer=self._map_transformer,
         )
+        # Keep trakc of placement groups used in the operator, so we
+        # can remove them when the operator is complete.
         if "scheduling_strategy" in overriden_args:
             scheduling_strategy = overriden_args["scheduling_strategy"]
             if isinstance(scheduling_strategy, PlacementGroupSchedulingStrategy):
@@ -596,7 +598,8 @@ class _ActorPool:
         self._num_tasks_in_flight: Dict[ray.actor.ActorHandle, int] = {}
         # Node id of each ready actor.
         self._actor_locations: Dict[ray.actor.ActorHandle, str] = {}
-        # Mapping of actor to its PlacementGroup.
+        # Mapping of actor to its PlacementGroup. Used to remove the placement groups
+        # used by the operator after completion.
         self._actor_to_placement_groups: Dict[
             ray.actor.ActorHandle, "PlacementGroup"
         ] = {}
