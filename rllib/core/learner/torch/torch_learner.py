@@ -123,6 +123,9 @@ class TorchLearner(Learner):
         **kwargs,
     ):
         """Performs a single update given a batch of data."""
+        # Activate tensor-mode on our MetricsLogger.
+        self.metrics.activate_tensor_mode()
+
         fwd_out = self.module.forward_train(batch)
         loss_per_module = self.compute_loss(fwd_out=fwd_out, batch=batch)
 
@@ -355,9 +358,6 @@ class TorchLearner(Learner):
 
     @override(Learner)
     def _update(self, batch: NestedDict) -> Tuple[Any, Any, Any]:
-        # Activate tensor-mode on our MetricsLogger.
-        self.metrics.activate_tensor_mode()
-
         # The first time we call _update after building the learner or
         # adding/removing models, we update with the uncompiled update method.
         # This makes it so that any variables that may be created during the first

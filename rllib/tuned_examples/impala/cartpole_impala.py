@@ -22,7 +22,7 @@ config = (
         grad_clip=40.0,
         grad_clip_by="global_norm",
         lr=0.0005,
-        vf_loss_coeff=0.1,
+        vf_loss_coeff=0.05,
     )
     .rl_module(
         model_config_dict={

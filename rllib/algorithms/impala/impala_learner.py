@@ -9,7 +9,6 @@ from ray.rllib.algorithms.impala.impala import (
     ImpalaConfig,
     LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY,
 )
-from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.connectors.learner import AddOneTsToEpisodesAndTruncate
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
@@ -18,18 +17,8 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
-    NUM_AGENT_STEPS_TRAINED,
-    NUM_ENV_STEPS_TRAINED,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
-from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.postprocessing.episodes import (
-    add_one_ts_to_episodes_and_truncate,
-    remove_last_ts_from_data,
-    remove_last_ts_from_episodes_and_restore_truncateds,
-)
-from ray.rllib.utils.postprocessing.value_predictions import extract_bootstrapped_values
-from ray.rllib.utils.postprocessing.zero_padding import unpad_data_if_necessary
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.typing import EpisodeType, ModuleID, ResultDict
 
@@ -39,6 +28,8 @@ GPU_LOADER_QUEUE_WAIT_TIMER = "gpu_loader_queue_wait_timer"
 GPU_LOADER_LOAD_TO_GPU_TIMER = "gpu_loader_load_to_gpu_timer"
 LEARNER_THREAD_IN_QUEUE_WAIT_TIMER = "learner_thread_in_queue_wait_timer"
 LEARNER_THREAD_UPDATE_TIMER = "learner_thread_update_timer"
+RAY_GET_EPISODES_TIMER = "ray_get_episodes_timer"
+EPISODES_TO_BATCH_TIMER = "episodes_to_batch_timer"
 
 
 class ImpalaLearner(Learner):
@@ -102,27 +93,29 @@ class ImpalaLearner(Learner):
         min_total_mini_batches: int = 0,
         reduce_fn=None,  # Deprecated args.
     ) -> ResultDict:
-        # Resolve batch/episodes being ray object refs (instead of
-        # actual batch/episodes objects).
-        episodes = ray.get(episodes)
-        episodes = tree.flatten(episodes)
+        with self.metrics.log_time((ALL_MODULES, RAY_GET_EPISODES_TIMER)):
+            # Resolve batch/episodes being ray object refs (instead of
+            # actual batch/episodes objects).
+            episodes = ray.get(episodes)
+            episodes = tree.flatten(episodes)
 
         # Call the learner connector pipeline.
-        batch = self._learner_connector(
-            rl_module=self.module,
-            data={},
-            episodes=episodes,
-            shared_data={},
-        )
-        # Convert to a batch (on the CPU).
-        # TODO (sven): Try to not require MultiAgentBatch anymore.
-        batch = MultiAgentBatch(
-            {
-                module_id: SampleBatch(module_data)
-                for module_id, module_data in batch.items()
-            },
-            env_steps=sum(len(e) for e in episodes),
-        )
+        with self.metrics.log_time((ALL_MODULES, EPISODES_TO_BATCH_TIMER)):
+            batch = self._learner_connector(
+                rl_module=self.module,
+                data={},
+                episodes=episodes,
+                shared_data={},
+            )
+            # Convert to a batch (on the CPU).
+            # TODO (sven): Try to not require MultiAgentBatch anymore.
+            batch = MultiAgentBatch(
+                {
+                    module_id: SampleBatch(module_data)
+                    for module_id, module_data in batch.items()
+                },
+                env_steps=sum(len(e) for e in episodes),
+            )
 
         # Queue the CPU batch to the GPU-loader thread.
         self._gpu_loader_in_queue.put(batch)

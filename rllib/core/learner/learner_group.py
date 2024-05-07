@@ -164,7 +164,7 @@ class LearnerGroup:
                 #  (allowing for any arbitrary number of requests in-flight). Test with
                 #  3 first, then with unlimited, and if both show the same behavior on
                 #  an async algo, remove this restriction entirely.
-                max_remote_requests_in_flight_per_actor=1,#TODO: master=3
+                max_remote_requests_in_flight_per_actor=10,
             )
             # Counters for the tags for asynchronous update requests that are
             # in-flight. Used for keeping trakc of and grouping together the results of
@@ -214,6 +214,8 @@ class LearnerGroup:
         num_iters: int = 1,
         # Already deprecated args.
         reduce_fn=DEPRECATED_VALUE,
+        # User kwargs.
+        **kwargs,
     ) -> Union[Dict[str, Any], List[Dict[str, Any]], List[List[Dict[str, Any]]]]:
         """Performs gradient based update(s) on the Learner(s), based on given batch.
 
@@ -263,6 +265,7 @@ class LearnerGroup:
             return_state=return_state,
             minibatch_size=minibatch_size,
             num_iters=num_iters,
+            **kwargs,
         )
 
     def update_from_episodes(
@@ -278,6 +281,8 @@ class LearnerGroup:
         num_iters: int = 1,
         # Already deprecated args.
         reduce_fn=DEPRECATED_VALUE,
+        # User kwargs.
+        **kwargs,
     ) -> Union[Dict[str, Any], List[Dict[str, Any]], List[List[Dict[str, Any]]]]:
         """Performs gradient based update(s) on the Learner(s), based on given episodes.
 
@@ -328,6 +333,7 @@ class LearnerGroup:
             return_state=return_state,
             minibatch_size=minibatch_size,
             num_iters=num_iters,
+            **kwargs,
         )
 
     def _update(
@@ -339,6 +345,7 @@ class LearnerGroup:
         return_state: bool = False,
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
+        **kwargs,
     ) -> Union[Dict[str, Any], List[Dict[str, Any]], List[List[Dict[str, Any]]]]:
 
         # Define function to be called on all Learner actors (or the local learner).
@@ -348,12 +355,14 @@ class LearnerGroup:
             _episodes_shard=None,
             _return_state=False,
             _min_total_mini_batches=0,
+            **_kwargs,
         ):
             if _batch_shard is not None:
                 result = _learner.update_from_batch(
                     batch=_batch_shard,
                     minibatch_size=minibatch_size,
                     num_iters=num_iters,
+                    **_kwargs,
                 )
             else:
                 result = _learner.update_from_episodes(
@@ -361,6 +370,7 @@ class LearnerGroup:
                     minibatch_size=minibatch_size,
                     num_iters=num_iters,
                     min_total_mini_batches=_min_total_mini_batches,
+                    **_kwargs,
                 )
             if _return_state:
                 result["_rl_module_state_after_update"] = _learner.get_state(
@@ -383,6 +393,7 @@ class LearnerGroup:
                     _batch_shard=batch,
                     _episodes_shard=episodes,
                     _return_state=return_state,
+                    **kwargs,
                 )
             ]
         # One or more remote Learners: Shard batch/episodes into equal pieces (roughly
@@ -402,6 +413,7 @@ class LearnerGroup:
                         _learner_update,
                         _batch_shard=batch_shard,
                         _return_state=(return_state and i == 0),
+                        **kwargs,
                     )
                     for i, batch_shard in enumerate(
                         ShardBatchIterator(batch, len(self._workers))
@@ -413,6 +425,7 @@ class LearnerGroup:
                         _learner_update,
                         _episodes_shard=episodes_shard,
                         _return_state=(return_state and i == 0),
+                        **kwargs,
                     )
                     for i, episodes_shard in enumerate(
                         ShardObjectRefIterator(episodes, len(self._workers))
@@ -455,6 +468,7 @@ class LearnerGroup:
                         _episodes_shard=eps_shard,
                         _return_state=(return_state and i == 0),
                         _min_total_mini_batches=min_total_mini_batches,
+                        **kwargs,
                     )
                     for eps_shard in eps_shards
                 ]
@@ -464,17 +478,21 @@ class LearnerGroup:
                 results = None
                 if self._update_request_tags:
                     assert len(self._update_request_tags) == 1  # only 1 in-flight right now possible
-                    for tag in self._update_request_tags:
+                    for tag in self._update_request_tags.keys():
                         results = self._worker_manager.fetch_ready_async_reqs(
                             tags=[str(tag)], timeout_seconds=0.0
                         )
-                        # Still not done with this `tag`, force-fetch the rest.
+                        # Still not done with this `tag`, force-fetch the results from
+                        # the missing Learners.
                         if self._update_request_tags[tag] > len(results.result_or_errors) > 0:
                             more_results = self._worker_manager.fetch_ready_async_reqs(
                                 tags=[str(tag)], timeout_seconds=None
                             )
                             for result in more_results.result_or_errors:
                                 results.add_result(result.actor_id, result.result_or_error, tag)
+                            # If we did have to wait for some (slower) Learners results,
+                            # break out of this loop.
+                            break
 
                 # Send out new request(s), if there is still capacity on the actors.
                 update_tag = self._update_request_tag

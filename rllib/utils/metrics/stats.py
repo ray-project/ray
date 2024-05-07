@@ -402,16 +402,26 @@ class Stats:
             self.values = new_values
 
     def numpy(self, value: Any = None) -> "Stats":
-        """Converts all of self's internal values to numpy (if a tensor)."""
-        if value is not None:
-            if self._reduce_method is None:
-                assert isinstance(value, list) and len(self.values) >= len(value)
-                self.values = convert_to_numpy(value)
-            else:
-                assert len(self.values) > 0
-                self.values = [convert_to_numpy(value)]
-        else:
+        """Converts all of self's internal values to numpy (if a tensor).
+        
+        Args:
+            value: An optional non-tensor value to set the internal values list to.
+
+        Returns:
+            `self`.
+        """
+        # No actual (non-tensor) value provided -> Try converting all internal values to
+        # numpy. This will NOT succeed if any tensor in the internal values list is
+        # a in-graph/non-eager tensor (w/o numpy attribute).
+        if value is None:
             self.values = convert_to_numpy(self.values)
+        # No reduce method
+        elif self._reduce_method is None:
+            assert isinstance(value, list) and len(self.values) >= len(value)
+            self.values = convert_to_numpy(value)
+        else:
+            assert len(self.values) > 0
+            self.values = [convert_to_numpy(value)]
         return self
 
     def __len__(self) -> int:
@@ -528,6 +538,7 @@ class Stats:
             )
             # Use the numpy/torch "nan"-prefix to ignore NaN's in our value lists.
             if torch and torch.is_tensor(values[0]):
+                assert all(torch.is_tensor(v) for v in values), values
                 reduce_meth = getattr(torch, "nan" + self._reduce_method)
                 reduce_in = torch.stack(values)
                 if self._reduce_method == "mean":

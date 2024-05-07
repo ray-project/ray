@@ -698,6 +698,7 @@ class Impala(Algorithm):
                 episodes=to_learner_group,
                 async_update=do_async_updates,
                 return_state=True,
+                ts=self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0),
             )
             if not do_async_updates:
                 learner_results = [learner_results]
@@ -706,6 +707,20 @@ class Impala(Algorithm):
                     rl_module_state = r.pop(
                         "_rl_module_state_after_update", rl_module_state
                     )
+                ##TEST
+                #import torch
+                #for r in results_from_n_learners:
+                #    if "default_policy" in r:
+                #        for k, v in r["default_policy"].items():
+                #            if any(torch.is_tensor(v_) for v_ in v.values):
+                #                print(k, v.values)
+                #                quit()
+                #    if "__all_modules__" in r:
+                #        for k, v in r["__all_modules__"].items():
+                #            if any(torch.is_tensor(v_) for v_ in v.values):
+                #                print(k, v.values)
+                #                quit()
+                ##END: TEST
                 self.metrics.log_n_dicts(results_from_n_learners, key=LEARNER_RESULTS)
 
         # Note: `learner_results` is a List of n (num async calls) of Lists of m
@@ -727,27 +742,27 @@ class Impala(Algorithm):
                 reduce="sum",
             )
             #update_results[ALL_MODULES].update(self.learner_group.get_stats())
-            module_ids_to_update = (
-                set(k for l in learner_results for k in l[0].keys())
-                - {ALL_MODULES}
-            )
+            #module_ids_to_update = (
+            #    set(k for l in learner_results for k in l[0].keys())
+            #    - {ALL_MODULES}
+            #)
 
             # Perform additional updates on those modules that delivered results.
-            additional_results = self.learner_group.additional_update(
-                async_update=do_async_updates,
-                module_ids_to_update=module_ids_to_update,
-                timestep=self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0),
-                # TODO (sven): Feels hacked, but solves the problem of algos inheriting
-                #  from IMPALA (like APPO). In the old stack, we didn't have this
-                #  problem b/c IMPALA didn't need to call any additional update methods
-                #  as the entropy- and lr-schedules were handled by
-                #  `Policy.on_global_var_update()`.
-                **self._get_additional_update_kwargs(learner_results),
-            )
-            if not do_async_updates:
-                additional_results = [additional_results]
-            for results_from_n_learners in additional_results:
-                self.metrics.log_n_dicts(results_from_n_learners, key=LEARNER_RESULTS)
+            #additional_results = self.learner_group.additional_update(
+            #    async_update=do_async_updates,
+            #    module_ids_to_update=module_ids_to_update,
+            #    timestep=self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0),
+            #    # TODO (sven): Feels hacked, but solves the problem of algos inheriting
+            #    #  from IMPALA (like APPO). In the old stack, we didn't have this
+            #    #  problem b/c IMPALA didn't need to call any additional update methods
+            #    #  as the entropy- and lr-schedules were handled by
+            #    #  `Policy.on_global_var_update()`.
+            #    **self._get_additional_update_kwargs(learner_results),
+            #)
+            #if not do_async_updates:
+            #    additional_results = [additional_results]
+            #for results_from_n_learners in additional_results:
+            #    self.metrics.log_n_dicts(results_from_n_learners, key=LEARNER_RESULTS)
 
         # Merge available EnvRunner states into local worker's EnvRunner state.
         # Broadcast merged EnvRunner state AND new model weights back to all remote
