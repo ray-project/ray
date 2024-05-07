@@ -27,6 +27,7 @@ class AddNextObservationsFromEpisodesToTrainBatch(ConnectorV2):
         from ray.rllib.connectors.learner import (
             AddNextObservationsFromEpisodesToTrainBatch
         )
+        from ray.rllib.core.columns import Columns
         from ray.rllib.env.single_agent_episode import SingleAgentEpisode
         from ray.rllib.utils.test_utils import check
 
@@ -64,7 +65,7 @@ class AddNextObservationsFromEpisodesToTrainBatch(ConnectorV2):
         check(
             output_data,
             {
-                "new_obs": {
+                Columns.NEXT_OBS: {
                     (episodes[0].id_,): eps_1_next_obses,
                     (episodes[1].id_,): eps_2_next_obses,
                 },
