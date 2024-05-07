@@ -42,6 +42,7 @@ from ray.runtime_env import RuntimeEnvConfig
 from ray.util.scheduling_strategies import (
     SchedulingStrategyT, NodeAffinitySchedulingStrategy,
 )
+from ray.util.ticker import ticker
 from ray.workflow.common import Event
 
 # asyncio python version compatibility
@@ -78,7 +79,7 @@ class JobSupervisor:
     Job supervisor actor should fate share with subprocess it created.
     """
 
-    JOB_MONITOR_LOOP_PERIOD_S = 1
+    JOB_MONITOR_LOOP_INTERVAL_S = 1
 
     def __init__(
         self,
@@ -376,7 +377,11 @@ class JobSupervisor:
 
         is_alive = True
 
-        while is_alive:
+        async for _ in ticker(interval_s=self.JOB_MONITOR_LOOP_INTERVAL_S):
+            if not is_alive:
+                logger.info("Exiting monitoring loop")
+                break
+
             try:
                 job_status = await self._job_info_client.get_status(self._job_id)
                 if job_status == JobStatus.PENDING:
@@ -440,8 +445,6 @@ class JobSupervisor:
 
                 # TODO elaborate why we're self-pinging (instead of just pinging the runner)
                 await self.ping()
-
-                await asyncio.sleep(self.JOB_MONITOR_LOOP_PERIOD_S)
 
             except Exception as e:
                 is_alive = False
