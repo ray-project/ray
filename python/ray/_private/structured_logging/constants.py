@@ -1,5 +1,36 @@
 from enum import Enum
 
+# A set containing the standard attributes of a LogRecord. This is used to
+# help us determine which attributes constitute Ray or user-provided context.
+# http://docs.python.org/library/logging.html#logrecord-attributes
+LOGRECORD_STANDARD_ATTRS = set(
+    [
+        "args",
+        "asctime",
+        "created",
+        "exc_info",
+        "exc_text",
+        "filename",
+        "funcName",
+        "levelname",
+        "levelno",
+        "lineno",
+        "message",
+        "module",
+        "msecs",
+        "msg",
+        "name",
+        "pathname",
+        "process",
+        "processName",
+        "relativeCreated",
+        "stack_info",
+        "thread",
+        "threadName",
+        "taskName",
+    ]
+)
+
 
 class LogKey(str, Enum):
     # Core context
