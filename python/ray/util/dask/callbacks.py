@@ -132,7 +132,7 @@ class RayDaskCallback(Callback):
                 for the arguments of the Ray task.
 
         Returns:
-            A value that will be passed to the corresponding
+            A value that Ray passes to the corresponding
             _ray_posttask callback, if said callback is defined.
         """
         pass
