@@ -1236,14 +1236,13 @@ def override_deployment_info(
             options["max_ongoing_requests"] = options.get("max_ongoing_requests")
 
         deployment_name = options["name"]
-        try:
-            info = deployment_infos[deployment_name]
-        except KeyError:
-            raise RayServeException(
-                f"Deployment '{deployment_name}' for application "
-                f"'{app_name}' does not exist. Available: "
-                f"{list(deployment_infos.keys())}"
+        if deployment_name not in deployment_infos:
+            raise ValueError(
+                f"Deployment '{deployment_name}' does not exist. "
+                f"Available: {list(deployment_infos.keys())}"
             )
+
+        info = deployment_infos[deployment_name]
         original_options = info.deployment_config.dict()
         original_options["user_configured_option_names"].update(set(options))
 
