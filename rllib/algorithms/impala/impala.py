@@ -724,8 +724,12 @@ class Impala(Algorithm):
                         key=LEARNER_RESULTS,
                     )
 
+        # Figure out, whether we should sync/broadcast the (remote) EnvRunner states.
         # Note: `learner_results` is a List of n (num async calls) of Lists of m
         # (num Learner workers) ResultDicts each.
+        self.metrics.log_value(
+            NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS, 1, reduce="sum"
+        )
         if (
             learner_results
             and len(learner_results[0]) > 0
@@ -769,9 +773,6 @@ class Impala(Algorithm):
             # Broadcast merged EnvRunner state AND new model weights back to all remote
             # EnvRunners.
 
-            self.metrics.log_value(
-                NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS, 1, reduce="sum"
-            )
             if self.metrics.peek(
                 NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS
             ) >= self.config.broadcast_interval:

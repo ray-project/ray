@@ -601,6 +601,13 @@ class MultiAgentEnvRunner(EnvRunner):
                 dict(agent_steps),
             )
 
+        # If no episodes at all, log NaN stats.
+        if (
+            len(self._done_episodes_for_metrics) == 0
+            and self.metrics.peek("episode_return_mean", default=np.nan) is np.nan
+        ):
+            self._log_episode_metrics(np.nan, np.nan, np.nan)
+
         # Log num episodes counter for this iteration.
         self.metrics.log_value(
             NUM_EPISODES,
@@ -839,7 +846,15 @@ class MultiAgentEnvRunner(EnvRunner):
         )
         return num_steps
 
-    def _log_episode_metrics(self, length, ret, sec, agents=None, modules=None, agent_steps=None):
+    def _log_episode_metrics(
+        self,
+        length,
+        ret,
+        sec,
+        agents=None,
+        modules=None,
+        agent_steps=None,
+    ):
         # Log general episode metrics.
         self.metrics.log_dict(
             {

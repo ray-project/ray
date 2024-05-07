@@ -5,6 +5,7 @@ import logging
 from typing import Any, Container, DefaultDict, Dict, List, Optional
 
 import gymnasium as gym
+import numpy as np
 import tree  # pip install dm_tree
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -597,6 +598,13 @@ class SingleAgentEnvRunner(EnvRunner):
             self._log_episode_metrics(
                 episode_length, episode_return, episode_duration_s
             )
+
+        # If no episodes at all, log NaN stats.
+        if (
+            len(self._done_episodes_for_metrics) == 0
+            and self.metrics.peek("episode_return_mean", default=np.nan) is np.nan
+        ):
+            self._log_episode_metrics(np.nan, np.nan, np.nan)
 
         # Log num episodes counter for this iteration.
         self.metrics.log_value(

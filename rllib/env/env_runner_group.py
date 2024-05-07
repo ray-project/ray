@@ -471,9 +471,6 @@ class EnvRunnerGroup:
                 "env_to_module_connector", "module_to_env_connector"
             ])
 
-        if not config.update_worker_filter_stats:
-            local_worker.set_state(env_runner_states)
-
         # Update the global number of environment steps, if necessary.
         if env_steps_sampled is not None:
             env_runner_states[NUM_ENV_STEPS_SAMPLED_LIFETIME] = env_steps_sampled
@@ -482,19 +479,30 @@ class EnvRunnerGroup:
         if rl_module_state:
             env_runner_states["rl_module"] = rl_module_state
 
-        # Put the state dictionary into Ray's object store to avoid having to make n
-        # pickled copies of the state dict.
-        ref_env_runner_states = ray.put(env_runner_states)
+        # If we do NOT want remote EnvRunners to get their Connector states updated,
+        # only update the local worker here (with all state components) and then remove
+        # the connector components.
+        if not config.update_worker_filter_stats:
+            local_worker.set_state(env_runner_states)
+            del env_runner_states["env_to_module_connector"]
+            del env_runner_states["module_to_env_connector"]
 
-        def _update(_env_runner: EnvRunner) -> Any:
-            _env_runner.set_state(ray.get(ref_env_runner_states))
-
-        # Broadcast updated states back to all workers (including the local one).
-        self.foreach_worker(
-            _update,
-            local_worker=False,
-            timeout_seconds=0.0,  # This is a state update -> Fire-and-forget.
-        )
+        # If there are components in the state left -> Update remote workers with these
+        # state components (and maybe the local worker, if it hasn't been updated yet).
+        if env_runner_states:
+            # Put the state dictionary into Ray's object store to avoid having to make n
+            # pickled copies of the state dict.
+            ref_env_runner_states = ray.put(env_runner_states)
+    
+            def _update(_env_runner: EnvRunner) -> None:
+                _env_runner.set_state(ray.get(ref_env_runner_states))
+    
+            # Broadcast updated states back to all workers.
+            self.foreach_worker(
+                _update,
+                local_worker=config.update_worker_filter_stats,
+                timeout_seconds=0.0,  # This is a state update -> Fire-and-forget.
+            )
 
     @DeveloperAPI
     def sync_weights(

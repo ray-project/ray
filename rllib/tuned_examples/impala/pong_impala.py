@@ -6,6 +6,7 @@ from ray.rllib.utils.test_utils import add_rllib_example_script_args
 from ray.tune.registry import register_env
 
 parser = add_rllib_example_script_args()
+parser.set_defaults(env="ALE/Pong-v5")
 args = parser.parse_args()
 
 
@@ -35,11 +36,14 @@ config = (
         },
         clip_rewards=True,
     )
+    .env_runners(num_envs_per_env_runner=5)
     .training(
         train_batch_size_per_learner=500,
         grad_clip=40.0,
         grad_clip_by="global_norm",
-        vf_loss_coeff=0.05,
+        vf_loss_coeff=0.1,
+        # Only update connector states and model weights every n training_step calls.
+        broadcast_interval=5,
     )
     .rl_module(
         model_config_dict={

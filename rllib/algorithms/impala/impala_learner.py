@@ -32,6 +32,10 @@ LEARNER_THREAD_UPDATE_TIMER = "learner_thread_update_timer"
 RAY_GET_EPISODES_TIMER = "ray_get_episodes_timer"
 EPISODES_TO_BATCH_TIMER = "episodes_to_batch_timer"
 
+QUEUE_SIZE_GPU_LOADER_QUEUE = "queue_size_gpu_loader_queue"
+QUEUE_SIZE_LEARNER_THREAD_QUEUE = "queue_size_learner_thread_queue"
+QUEUE_SIZE_RESULTS_QUEUE = "queue_size_results_queue"
+
 
 class ImpalaLearner(Learner):
     @override(Learner)
@@ -128,6 +132,9 @@ class ImpalaLearner(Learner):
 
         # Queue the CPU batch to the GPU-loader thread.
         self._gpu_loader_in_queue.put(batch)
+        self.metrics.log_value(
+            QUEUE_SIZE_GPU_LOADER_QUEUE, self._gpu_loader_in_queue.qsize()
+        )
 
         # Return all queued result dicts thus far (after reducing over them).
         results = {}
@@ -202,18 +209,21 @@ class _GPULoaderThread(threading.Thread):
         with self.metrics.log_time((ALL_MODULES, GPU_LOADER_LOAD_TO_GPU_TIMER)):
             ma_batch_on_gpu = ma_batch.to_device(self._device)
             self._out_queue.put(ma_batch_on_gpu)
+            self.metrics.log_value(
+                QUEUE_SIZE_LEARNER_THREAD_QUEUE, self._out_queue.qsize()
+            )
 
 
 class _LearnerThread(threading.Thread):
     def __init__(self, *, update_method, in_queue, out_queue, metrics_logger):
         super().__init__()
         self.daemon = True
-        self.metrics = metrics_logger
+        self.metrics: MetricsLogger = metrics_logger
         self.stopped = False
 
         self._update_method = update_method
-        self._in_queue = in_queue
-        self._out_queue = out_queue
+        self._in_queue: Queue = in_queue
+        self._out_queue: Queue = out_queue
 
     def run(self) -> None:
         while not self.stopped:
@@ -235,3 +245,5 @@ class _LearnerThread(threading.Thread):
             # Stats object sit in the queue and getting a new (possibly even tensor)
             # value added to it, which would falsify this result.
             self._out_queue.put(copy.deepcopy(results))
+
+            self.metrics.log_value(QUEUE_SIZE_RESULTS_QUEUE, self._out_queue.qsize())
