@@ -1,6 +1,16 @@
 import collections
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Callable, Dict, Iterator, List, Optional, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import ray
 from ray.actor import ActorHandle
