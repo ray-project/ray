@@ -140,7 +140,7 @@ class RayDaskCallback(Callback):
     def _ray_posttask(self, key, result, pre_state):
         """Run after executing a Dask task within a Ray task.
 
-        This executes within a Ray worker. This callback receives the
+        This method executes within a Ray worker. This callback receives the
         return value of the _ray_pretask callback, if provided.
 
         Args:
