@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.DashboardHeadRouteTable
 
 
-def setup_static_dir():
+def setup_static_dir(routes):
     build_dir = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "client", "build"
     )
@@ -77,7 +77,7 @@ class HttpServerDashboardHead:
 
         # Setup Dashboard Routes
         try:
-            build_dir = setup_static_dir()
+            build_dir = setup_static_dir(routes)
             logger.info("Setup static dir for dashboard: %s", build_dir)
         except dashboard_utils.FrontendNotFoundError as ex:
             # Not to raise FrontendNotFoundError due to NPM incompatibilities
