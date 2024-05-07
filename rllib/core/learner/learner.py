@@ -1427,14 +1427,7 @@ class Learner:
         )
 
         # Reduce results across all minibatch update steps.
-        #TEST
-        reduced = self.metrics.reduce()
-        def _check(path, stats):
-            if any(torch.is_tensor(v) for v in stats.values):
-                raise Exception(f"Found tensor in learner results path={path} stats-values={stats.values}!!")
-        tree.map_structure_with_path(_check, reduced)
-        # END: TEST
-        return reduced
+        return self.metrics.reduce()
 
     def _set_slicing_by_batch_id(
         self, batch: MultiAgentBatch, *, value: bool
