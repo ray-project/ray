@@ -115,17 +115,6 @@ class JobManager:
             # are exceptions.
             self._recover_running_jobs_event.set()
 
-    @staticmethod
-    def _get_actor_for_job(job_id: str) -> Optional[ActorHandle]:
-        try:
-            return ray.get_actor(
-                JOB_ACTOR_NAME_TEMPLATE.format(job_id=job_id),
-                namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
-            )
-        except ValueError as ve:  # Ray returns ValueError for nonexistent actor.
-            logger.warning(f"Job supervisor for job {job_id} not found: {str(ve)}")
-            return None
-
     async def _monitor_job(
         self, job_id: str, job_supervisor: Optional[ActorHandle] = None
     ):
@@ -303,7 +292,7 @@ class JobManager:
 
         Returns whether or not the job was running.
         """
-        job_supervisor_actor = self._get_actor_for_job(job_id)
+        job_supervisor_actor = _get_actor_for_job(job_id)
         if job_supervisor_actor is not None:
             # Actor is still alive, signal it to stop the driver, fire and
             # forget
@@ -359,3 +348,15 @@ class JobManager:
                 await asyncio.sleep(self.LOG_TAIL_SLEEP_S)
             else:
                 yield "".join(lines)
+
+
+def _get_actor_for_job(job_id: str) -> Optional[ActorHandle]:
+    """Fetches JobSupervisor actor for job identified by Ray Job (submission) id"""
+    try:
+        return ray.get_actor(
+            JOB_ACTOR_NAME_TEMPLATE.format(job_id=job_id),
+            namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
+        )
+    except ValueError as ve:  # Ray returns ValueError for nonexistent actor.
+        logger.warning(f"Job supervisor for job {job_id} not found: {str(ve)}")
+        return None
