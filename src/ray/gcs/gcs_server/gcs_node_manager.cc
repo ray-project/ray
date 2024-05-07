@@ -112,6 +112,7 @@ void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
                                           rpc::UnregisterNodeReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
   NodeID node_id = NodeID::FromBinary(request.node_id());
+  RAY_LOG(DEBUG) << "HandleUnregisterNode, node id = " << node_id;
   auto node = RemoveNode(node_id, /* is_intended = */ true);
   if (!node) {
     RAY_LOG(INFO) << "Node " << node_id << " is already removed";
@@ -126,6 +127,15 @@ void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
   node_info_delta->set_end_time_ms(node->end_time_ms());
   // Update node state to DEAD instead of deleting it.
   RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node, nullptr));
+  RAY_LOG(ERROR) << "Published node info, node id = " << node_id;
+  // GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  auto status = Status::OK();
+  reply->mutable_status()->set_code((int)status.code());
+  reply->mutable_status()->set_message(status.message());
+  send_reply_callback(
+      status,
+      []() { RAY_LOG(DEBUG) << "HandleUnregisterNode reply successed"; },
+      []() { RAY_LOG(DEBUG) << "HandleUnregisterNode reply failed"; });
 }
 
 void GcsNodeManager::HandleDrainNode(rpc::DrainNodeRequest request,

@@ -346,6 +346,7 @@ class NodeInfoGrpcService : public GrpcService {
         RayConfig::instance().gcs_max_active_rpcs_per_handler(),
         AuthType::EMPTY_AUTH);
     NODE_INFO_SERVICE_RPC_HANDLER(RegisterNode);
+    NODE_INFO_SERVICE_RPC_HANDLER(UnregisterNode);
     NODE_INFO_SERVICE_RPC_HANDLER(DrainNode);
     NODE_INFO_SERVICE_RPC_HANDLER(GetAllNodeInfo);
     NODE_INFO_SERVICE_RPC_HANDLER(GetInternalConfig);

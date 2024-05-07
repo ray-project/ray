@@ -286,6 +286,12 @@ class NodeInfoAccessor {
   virtual Status RegisterSelf(const rpc::GcsNodeInfo &local_node_info,
                               const StatusCallback &callback);
 
+  /// Unregister local node to GCS synchronously
+  ///
+  /// \param node_death_info The death information of the node to unregister from GCS.
+  /// \return Status
+  virtual Status UnregisterSelf(const rpc::NodeDeathInfo &node_death_info);
+
   /// Drain (remove the information of the node from the cluster) the local node from GCS
   /// synchronously.
   ///
@@ -311,8 +317,6 @@ class NodeInfoAccessor {
   /// \return Status
   virtual Status AsyncRegister(const rpc::GcsNodeInfo &node_info,
                                const StatusCallback &callback);
-
-  virtual Status UnregisterSelf(const rpc::NodeDeathInfo &node_death_info);
 
   /// Send a check alive request to GCS for the liveness of some node.
   ///

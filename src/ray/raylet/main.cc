@@ -241,7 +241,8 @@ int main(int argc, char *argv[]) {
           return;
         }
         RAY_LOG(INFO) << "Raylet graceful shutdown triggered, "
-                      << "reason = " << node_death_info.reason() << ", "
+                      << "reason = "
+                      << NodeDeathInfo_Reason_Name(node_death_info.reason()) << ", "
                       << "reason message = " << node_death_info.reason_message();
         RAY_LOG(INFO) << "Shutting down...";
         *shutted_down = true;
