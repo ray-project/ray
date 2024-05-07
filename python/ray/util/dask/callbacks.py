@@ -122,7 +122,7 @@ class RayDaskCallback(Callback):
     def _ray_pretask(self, key, object_refs: List[ObjectRef]):
         """Run before executing a Dask task within a Ray task.
 
-        This executes after the task has been submitted, within a Ray
+        This method executes after Ray submits the task within a Ray
         worker. The return value of this task will be passed to the
         _ray_posttask callback, if provided.
 
