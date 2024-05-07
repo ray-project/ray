@@ -42,7 +42,7 @@ class AddNextObservationsFromEpisodesToTrainBatch(ConnectorV2):
             len_lookback_buffer=0,
         ) for _ in range(2)]
         eps_1_next_obses = episodes[0].get_observations([1, 2])
-        eps_1_next_obses = episodes[1].get_observations([1, 2])
+        eps_2_next_obses = episodes[1].get_observations([1, 2])
         print(f"1st Episode's next obses are {eps_1_next_obses}")
         print(f"2nd Episode's next obses are {eps_2_next_obses}")
 
@@ -64,7 +64,7 @@ class AddNextObservationsFromEpisodesToTrainBatch(ConnectorV2):
         check(
             output_data,
             {
-                "obs": {
+                "new_obs": {
                     (episodes[0].id_,): eps_1_next_obses,
                     (episodes[1].id_,): eps_2_next_obses,
                 },
