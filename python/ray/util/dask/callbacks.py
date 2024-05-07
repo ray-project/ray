@@ -82,7 +82,7 @@ class RayDaskCallback(Callback):
     def _ray_presubmit(self, task, key, deps) -> Optional[Any]:
         """Run before submitting a Ray task.
 
-        If this callback returns a non-`None` value, a Ray task will _not_ be
+        If this callback returns a non-`None` value, Ray does _not_ create 
         created and this value will be used as the would-be task's result value.
 
         Args:
