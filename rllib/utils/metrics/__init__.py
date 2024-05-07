@@ -10,6 +10,7 @@ TIMERS = "timers"
 
 # Counters for sampling, sampling (on eval workers) and
 # training steps (env- and agent steps).
+MEAN_NUM_EPISODE_LISTS_RECEIVED = "mean_num_episode_lists_received"
 NUM_AGENT_STEPS_SAMPLED = "num_agent_steps_sampled"
 NUM_AGENT_STEPS_SAMPLED_LIFETIME = "num_agent_steps_sampled_lifetime"
 NUM_AGENT_STEPS_SAMPLED_THIS_ITER = "num_agent_steps_sampled_this_iter"  # @OldAPIStack
@@ -23,7 +24,9 @@ NUM_MODULE_STEPS_SAMPLED = "num_module_steps_sampled"
 NUM_MODULE_STEPS_SAMPLED_LIFETIME = "num_module_steps_sampled_lifetime"
 NUM_EPISODES = "num_episodes"
 NUM_EPISODES_LIFETIME = "num_episodes_lifetime"
+TIME_BETWEEN_SAMPLING = "time_between_sampling"
 
+MEAN_NUM_LEARNER_GROUP_UPDATE_CALLED = "mean_num_learner_group_update_called"
 NUM_AGENT_STEPS_TRAINED = "num_agent_steps_trained"
 NUM_AGENT_STEPS_TRAINED_LIFETIME = "num_agent_steps_trained_lifetime"
 NUM_AGENT_STEPS_TRAINED_THIS_ITER = "num_agent_steps_trained_this_iter"  # @OldAPIStack

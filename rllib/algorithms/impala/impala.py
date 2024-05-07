@@ -40,6 +40,9 @@ from ray.rllib.utils.metrics import (
     ALL_MODULES,
     ENV_RUNNER_RESULTS,
     LEARNER_RESULTS,
+    LEARNER_UPDATE_TIMER,
+    MEAN_NUM_EPISODE_LISTS_RECEIVED,
+    MEAN_NUM_LEARNER_GROUP_UPDATE_CALLED,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_SAMPLED_LIFETIME,
     NUM_AGENT_STEPS_TRAINED,
@@ -55,6 +58,7 @@ from ray.rllib.utils.metrics import (
     NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS,
     SYNCH_WORKER_WEIGHTS_TIMER,
     SAMPLE_TIMER,
+    TIMERS,
 )
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import ReplayMode
@@ -655,14 +659,17 @@ class Impala(Algorithm):
         # Asynchronously request all EnvRunners to sample and return their current
         # (e.g. ConnectorV2) states and sampling metrics/stats.
         # Note that each item in `episode_refs` is a reference to a list of Episodes.
-        (
-            episode_refs,
-            connector_states,
-            env_runner_metrics,
-        ) = self._sample_and_get_connector_states()
+        with self.metrics.log_time((TIMERS, SAMPLE_TIMER)):
+            (
+                episode_refs,
+                connector_states,
+                env_runner_metrics,
+            ) = self._sample_and_get_connector_states()
+            # Reduce EnvRunner metrics over the n EnvRunners.
+            self.metrics.log_n_dicts(env_runner_metrics, key=ENV_RUNNER_RESULTS)
+            # Log the average number of sample results (list of episodes) received.
+            self.metrics.log_value(MEAN_NUM_EPISODE_LISTS_RECEIVED, len(episode_refs))
 
-        # Reduce EnvRunner metrics over the n EnvRunners.
-        self.metrics.log_n_dicts(env_runner_metrics, key=ENV_RUNNER_RESULTS)
         # Log lifetime counts for env- and agent steps.
         if env_runner_metrics:
             self.metrics.log_dict(
@@ -691,37 +698,45 @@ class Impala(Algorithm):
         # END TEST!
 
         # Call the LearnerGroup's `update_from_episodes` method.
-        rl_module_state = None
-        learner_results = None
-        for to_learner_group in episode_refs_for_learner_group:
-            learner_results = self.learner_group.update_from_episodes(
-                episodes=to_learner_group,
-                async_update=do_async_updates,
-                return_state=True,
-                ts=self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0),
+        with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
+            self.metrics.log_value(
+                key=MEAN_NUM_LEARNER_GROUP_UPDATE_CALLED,
+                value=len(episode_refs_for_learner_group),
             )
-            if not do_async_updates:
-                learner_results = [learner_results]
-            for results_from_n_learners in learner_results:
-                for r in results_from_n_learners:
-                    rl_module_state = r.pop(
-                        "_rl_module_state_after_update", rl_module_state
+            rl_module_state = None
+            learner_results = None
+            for to_learner_group in episode_refs_for_learner_group:
+                learner_results = self.learner_group.update_from_episodes(
+                    episodes=to_learner_group,
+                    async_update=do_async_updates,
+                    return_state=True,
+                    ts=self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0),
+                )
+                if not do_async_updates:
+                    learner_results = [learner_results]
+                for results_from_n_learners in learner_results:
+                    for r in results_from_n_learners:
+                        rl_module_state = r.pop(
+                            "_rl_module_state_after_update", rl_module_state
+                        )
+                    ##TEST
+                    #import torch
+                    #for r in results_from_n_learners:
+                    #    if "default_policy" in r:
+                    #        for k, v in r["default_policy"].items():
+                    #            if any(torch.is_tensor(v_) for v_ in v.values):
+                    #                print(k, v.values)
+                    #                quit()
+                    #    if "__all_modules__" in r:
+                    #        for k, v in r["__all_modules__"].items():
+                    #            if any(torch.is_tensor(v_) for v_ in v.values):
+                    #                print(k, v.values)
+                    #                quit()
+                    ##END: TEST
+                    self.metrics.log_n_dicts(
+                        stats_dicts=results_from_n_learners,
+                        key=LEARNER_RESULTS,
                     )
-                ##TEST
-                #import torch
-                #for r in results_from_n_learners:
-                #    if "default_policy" in r:
-                #        for k, v in r["default_policy"].items():
-                #            if any(torch.is_tensor(v_) for v_ in v.values):
-                #                print(k, v.values)
-                #                quit()
-                #    if "__all_modules__" in r:
-                #        for k, v in r["__all_modules__"].items():
-                #            if any(torch.is_tensor(v_) for v_ in v.values):
-                #                print(k, v.values)
-                #                quit()
-                ##END: TEST
-                self.metrics.log_n_dicts(results_from_n_learners, key=LEARNER_RESULTS)
 
         # Note: `learner_results` is a List of n (num async calls) of Lists of m
         # (num Learner workers) ResultDicts each.
@@ -764,22 +779,33 @@ class Impala(Algorithm):
             #for results_from_n_learners in additional_results:
             #    self.metrics.log_n_dicts(results_from_n_learners, key=LEARNER_RESULTS)
 
-        # Merge available EnvRunner states into local worker's EnvRunner state.
-        # Broadcast merged EnvRunner state AND new model weights back to all remote
-        # EnvRunners.
-        self.workers.sync_env_runner_states(
-            config=self.config,
-            env_steps_sampled=self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0),
-            connector_states=connector_states,
-            rl_module_state=rl_module_state,
-        )
+            # Merge available EnvRunner states into local worker's EnvRunner state.
+            # Broadcast merged EnvRunner state AND new model weights back to all remote
+            # EnvRunners.
+
+            self.metrics.log_value(
+                NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS, 1, reduce="sum"
+            )
+            if self.metrics.peek(
+                NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS
+            ) >= self.config.broadcast_interval:
+                self.metrics.set_value(
+                    NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS, 0
+                )
+                self.metrics.log_value(NUM_SYNCH_WORKER_WEIGHTS, 1, reduce="sum")
+                with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
+                    self.workers.sync_env_runner_states(
+                        config=self.config,
+                        env_steps_sampled=self.metrics.peek(
+                            NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
+                        ),
+                        connector_states=connector_states,
+                        rl_module_state=rl_module_state,
+                    )
 
         return self.metrics.reduce()
 
     def _sample_and_get_connector_states(self):
-        episode_refs = []
-        connector_states = []
-        env_runner_metrics = []
 
         def _remote_sample_get_state_and_metrics(_worker):
             _episodes = _worker.sample()
@@ -792,35 +818,37 @@ class Impala(Algorithm):
             # main algo process, but to the Learner workers directly.
             return ray.put(_episodes), _connector_states, _metrics
 
+        episode_refs = []
+        connector_states = []
+        env_runner_metrics = []
         num_healthy_remote_workers = self.workers.num_healthy_remote_workers()
 
-        with (self._timers[SAMPLE_TIMER]):
-            # Perform asynchronous sampling on all (healthy) remote rollout workers.
-            if num_healthy_remote_workers > 0:
-                self.workers.foreach_worker_async(
-                    _remote_sample_get_state_and_metrics, healthy_only=True
-                )
-                async_results: List[
-                    Tuple[int, ObjectRef]
-                ] = self.workers.fetch_ready_async_reqs(
-                    timeout_seconds=self.config.timeout_s_sampler_manager,
-                    return_obj_refs=True,
-                )
-                # Get results from the n different async calls.
-                results = ray.get([res[1] for res in async_results])
+        # Perform asynchronous sampling on all (healthy) remote rollout workers.
+        if num_healthy_remote_workers > 0:
+            self.workers.foreach_worker_async(
+                _remote_sample_get_state_and_metrics, healthy_only=True
+            )
+            async_results: List[
+                Tuple[int, ObjectRef]
+            ] = self.workers.fetch_ready_async_reqs(
+                timeout_seconds=self.config.timeout_s_sampler_manager,
+                return_obj_refs=True,
+            )
+            # Get results from the n different async calls.
+            results = ray.get([res[1] for res in async_results])
 
-                for (episodes, states, metrics) in results:
-                    episode_refs.append(episodes)
-                    connector_states.append(states)
-                    env_runner_metrics.append(metrics)
-            # Sample from the local EnvRunner worker.
-            else:
-                episodes = self.workers.local_worker().sample()
-                env_runner_metrics = [self.workers.local_worker().get_metrics()]
-                episode_refs = [ray.put(episodes)]
-                connector_states = [self.workers.local_worker().get_state(
-                    components=["env_to_module_connector", "module_to_env_connector"]
-                )]
+            for (episodes, states, metrics) in results:
+                episode_refs.append(episodes)
+                connector_states.append(states)
+                env_runner_metrics.append(metrics)
+        # Sample from the local EnvRunner worker.
+        else:
+            episodes = self.workers.local_worker().sample()
+            env_runner_metrics = [self.workers.local_worker().get_metrics()]
+            episode_refs = [ray.put(episodes)]
+            connector_states = [self.workers.local_worker().get_state(
+                components=["env_to_module_connector", "module_to_env_connector"]
+            )]
 
         return (
             episode_refs,

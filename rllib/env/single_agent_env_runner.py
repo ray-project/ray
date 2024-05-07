@@ -1,3 +1,4 @@
+import time
 from collections import defaultdict
 from functools import partial
 import logging
@@ -28,6 +29,8 @@ from ray.rllib.utils.metrics import (
     NUM_EPISODES,
     NUM_MODULE_STEPS_SAMPLED,
     NUM_MODULE_STEPS_SAMPLED_LIFETIME,
+    SAMPLE_TIMER,
+    TIME_BETWEEN_SAMPLING,
     WEIGHTS_SEQ_NO,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
@@ -119,6 +122,8 @@ class SingleAgentEnvRunner(EnvRunner):
         ] = defaultdict(list)
         self._weights_seq_no: int = 0
 
+        self._time_after_sampling = None
+
     @override(EnvRunner)
     def sample(
         self,
@@ -155,55 +160,64 @@ class SingleAgentEnvRunner(EnvRunner):
         """
         assert not (num_timesteps is not None and num_episodes is not None)
 
-        # If no execution details are provided, use the config to try to infer the
-        # desired timesteps/episodes to sample and exploration behavior.
-        if explore is None:
-            explore = self.config.explore
-        if (
-            num_timesteps is None
-            and num_episodes is None
-            and self.config.batch_mode == "truncate_episodes"
-        ):
-            num_timesteps = (
-                self.config.get_rollout_fragment_length(worker_index=self.worker_index)
-                * self.num_envs
+        if self._time_after_sampling is not None:
+            self.metrics.log_value(
+                key=TIME_BETWEEN_SAMPLING,
+                value=time.perf_counter() - self._time_after_sampling,
             )
 
-        # Sample n timesteps.
-        if num_timesteps is not None:
-            samples = self._sample_timesteps(
-                num_timesteps=num_timesteps,
-                explore=explore,
-                random_actions=random_actions,
-                force_reset=force_reset,
-            )
-        # Sample m episodes.
-        elif num_episodes is not None:
-            samples = self._sample_episodes(
-                num_episodes=num_episodes,
-                explore=explore,
-                random_actions=random_actions,
-            )
-        # For complete episodes mode, sample as long as the number of timesteps
-        # done is smaller than the `train_batch_size`.
-        else:
-            total = 0
-            samples = []
-            while total < self.config.train_batch_size:
-                episodes = self._sample_episodes(
-                    num_episodes=self.num_envs,
+        with self.metrics.log_time(SAMPLE_TIMER):
+            # If no execution details are provided, use the config to try to infer the
+            # desired timesteps/episodes to sample and exploration behavior.
+            if explore is None:
+                explore = self.config.explore
+            if (
+                num_timesteps is None
+                and num_episodes is None
+                and self.config.batch_mode == "truncate_episodes"
+            ):
+                num_timesteps = (
+                    self.config.get_rollout_fragment_length(self.worker_index)
+                    * self.num_envs
+                )
+
+            # Sample n timesteps.
+            if num_timesteps is not None:
+                samples = self._sample_timesteps(
+                    num_timesteps=num_timesteps,
+                    explore=explore,
+                    random_actions=random_actions,
+                    force_reset=force_reset,
+                )
+            # Sample m episodes.
+            elif num_episodes is not None:
+                samples = self._sample_episodes(
+                    num_episodes=num_episodes,
                     explore=explore,
                     random_actions=random_actions,
                 )
-                total += sum(len(e) for e in episodes)
-                samples.extend(episodes)
+            # For complete episodes mode, sample as long as the number of timesteps
+            # done is smaller than the `train_batch_size`.
+            else:
+                total = 0
+                samples = []
+                while total < self.config.train_batch_size:
+                    episodes = self._sample_episodes(
+                        num_episodes=self.num_envs,
+                        explore=explore,
+                        random_actions=random_actions,
+                    )
+                    total += sum(len(e) for e in episodes)
+                    samples.extend(episodes)
 
-        # Make the `on_sample_end` callback.
-        self._callbacks.on_sample_end(
-            env_runner=self,
-            metrics_logger=self.metrics,
-            samples=samples,
-        )
+            # Make the `on_sample_end` callback.
+            self._callbacks.on_sample_end(
+                env_runner=self,
+                metrics_logger=self.metrics,
+                samples=samples,
+            )
+
+        self._time_after_sampling = time.perf_counter()
 
         return samples
 
