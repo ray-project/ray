@@ -476,13 +476,17 @@ class Algorithm(Trainable, AlgorithmBase):
         # components (including timers, counters and other stats in its own
         # `training_step()` and other methods) as well as custom callbacks.
         self.metrics = MetricsLogger()
-        # Initialize lifetime counters.
+        # Initialize lifetime counters (or those that are common as Tune stop criteria.
+        # We don't want tune to crash regularly b/c these stats might be still missing
+        # entirely after the first few iterations.
         self.metrics.log_dict(
             {
                 NUM_ENV_STEPS_SAMPLED_LIFETIME: 0,
                 NUM_AGENT_STEPS_SAMPLED_LIFETIME: {DEFAULT_AGENT_ID: 0},
                 NUM_ENV_STEPS_TRAINED_LIFETIME: 0,
                 NUM_AGENT_STEPS_TRAINED_LIFETIME: {DEFAULT_AGENT_ID: 0},
+                NUM_EPISODES_LIFETIME: 0,
+                f"{ENV_RUNNER_RESULTS}/episode_return_mean": np.nan,
             },
             reduce="sum",
         )

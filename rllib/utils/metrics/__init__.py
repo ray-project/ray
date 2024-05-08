@@ -8,6 +8,10 @@ FAULT_TOLERANCE_STATS = "fault_tolerance_stats"
 TIMERS = "timers"
 # ALGORITHM_RESULTS = "algorithm"
 
+# RLModule metrics
+NUM_TRAINABLE_PARAMETERS = "num_trainable_parameters"
+NUM_NON_TRAINABLE_PARAMETERS = "num_non_trainable_parameters"
+
 # Counters for sampling, sampling (on eval workers) and
 # training steps (env- and agent steps).
 MEAN_NUM_EPISODE_LISTS_RECEIVED = "mean_num_episode_lists_received"

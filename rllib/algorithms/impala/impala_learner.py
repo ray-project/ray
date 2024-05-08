@@ -247,7 +247,7 @@ class _GPULoaderThread(threading.Thread):
             env_steps=env_steps,
         )
         self._out_queue.put(ma_batch_on_gpu)
-        if timer_stats:
+        if self.metrics:
             self.metrics.log_value(
                 QUEUE_SIZE_LEARNER_THREAD_QUEUE, self._out_queue.qsize()
             )
