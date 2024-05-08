@@ -43,6 +43,10 @@ class ImpalaLearner(Learner):
     def build(self) -> None:
         super().build()
 
+        # TEST: Fake (CPU) batch to bypass LearnerConnector call.
+        self.__batch = None
+        # END TEST
+
         # Dict mapping module IDs to the respective entropy Scheduler instance.
         self.entropy_coeff_schedulers_per_module: Dict[
             ModuleID, Scheduler
@@ -119,12 +123,19 @@ class ImpalaLearner(Learner):
 
         # Call the learner connector pipeline.
         with self.metrics.log_time((ALL_MODULES, EPISODES_TO_BATCH_TIMER)):
-            batch = self._learner_connector(
-                rl_module=self.module,
-                data={},
-                episodes=episodes,
-                shared_data={},
-            )
+            # TEST
+            if self.__batch is None:
+            # END TEST
+                self.__batch = self._learner_connector(
+                    rl_module=self.module,
+                    data={},
+                    episodes=episodes,
+                    shared_data={},
+                )
+            # TEST
+            batch = self.__batch
+            # END TEST
+
             # Convert to a batch (on the CPU).
             # TODO (sven): Try to not require MultiAgentBatch anymore.
             #batch = MultiAgentBatch(
