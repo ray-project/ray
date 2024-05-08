@@ -96,7 +96,14 @@ class TestJSONFormatter:
             record.exc_info = sys.exc_info()
         formatted = formatter.format(record)
         record_dict = json.loads(formatted)
-        should_exist = ["asctime", "levelname", "message", "filename", "lineno", "exc_text"]
+        should_exist = [
+            "asctime",
+            "levelname",
+            "message",
+            "filename",
+            "lineno",
+            "exc_text",
+        ]
         for key in should_exist:
             assert key in record_dict
         assert "Traceback (most recent call last):" in record_dict["exc_text"]
