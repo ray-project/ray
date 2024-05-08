@@ -206,9 +206,8 @@ class OperatorFusionRule(Rule):
 
         # Do not fuse if either op specifies a `_ray_remote_args_fn`,
         # since it is not known whether the generated args will be compatible.
-        if (
-            getattr(up_logical_op, "_ray_remote_args_fn", None) 
-            or getattr(down_logical_op, "_ray_remote_args_fn", None)
+        if getattr(up_logical_op, "_ray_remote_args_fn", None) or getattr(
+            down_logical_op, "_ray_remote_args_fn", None
         ):
             return False
 

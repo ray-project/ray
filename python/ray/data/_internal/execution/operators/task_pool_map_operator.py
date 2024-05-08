@@ -43,10 +43,10 @@ class TaskPoolMapOperator(MapOperator):
                 or None to use as many tasks as possible.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
-                dynamic arguments for each actor/task, and will be called each time prior
-                to initializing the worker. Args returned from this dict will always
-                override the args in ``ray_remote_args``. Note: this is an advanced,
-                experimental feature.
+                dynamic arguments for each actor/task, and will be called each time
+                prior to initializing the worker. Args returned from this dict will
+                always override the args in ``ray_remote_args``. Note: this is an
+                advanced, experimental feature.
             ray_remote_args: Customize the ray remote args for this op's tasks.
         """
         super().__init__(

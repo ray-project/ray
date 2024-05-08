@@ -865,10 +865,10 @@ class Dataset:
                 ``concurrency=(m, n)``.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
-                dynamic arguments for each actor/task, and will be called each time prior
-                to initializing the worker. Args returned from this dict will always
-                override the args in ``ray_remote_args``. Note: this is an advanced,
-                experimental feature.
+                dynamic arguments for each actor/task, and will be called each time
+                prior to initializing the worker. Args returned from this dict will
+                always override the args in ``ray_remote_args``. Note: this is an
+                advanced, experimental feature.
             ray_remote_args: Additional resource requirements to request from
                 ray for each map worker.
 
@@ -948,10 +948,10 @@ class Dataset:
                 ``concurrency=(m, n)``.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
-                dynamic arguments for each actor/task, and will be called each time prior
-                to initializing the worker. Args returned from this dict will always
-                override the args in ``ray_remote_args``. Note: this is an advanced,
-                experimental feature.
+                dynamic arguments for each actor/task, and will be called each time
+                prior to initializing the worker. Args returned from this dict will
+                always override the args in ``ray_remote_args``. Note: this is an
+                advanced, experimental feature.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """

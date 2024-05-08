@@ -1,16 +1,6 @@
 import collections
 import logging
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    Dict,
-    Iterator,
-    List,
-    Optional,
-    Tuple,
-    Union,
-)
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import ray
 from ray.actor import ActorHandle
@@ -31,7 +21,6 @@ from ray.data._internal.remote_fn import _add_system_error_to_retry_exceptions
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 from ray.types import ObjectRef
-
 
 logger = logging.getLogger(__name__)
 
@@ -85,10 +74,10 @@ class ActorPoolMapOperator(MapOperator):
                 The actual rows passed may be less if the dataset is small.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
-                dynamic arguments for each actor/task, and will be called each time prior
-                to initializing the worker. Args returned from this dict will always
-                override the args in ``ray_remote_args``. Note: this is an advanced,
-                experimental feature.
+                dynamic arguments for each actor/task, and will be called each time
+                prior to initializing the worker. Args returned from this dict will
+                always override the args in ``ray_remote_args``. Note: this is an
+                advanced, experimental feature.
             ray_remote_args: Customize the ray remote args for this op's tasks.
         """
         super().__init__(
@@ -158,9 +147,8 @@ class ActorPoolMapOperator(MapOperator):
         """Start a new actor and add it to the actor pool as a pending actor."""
         assert self._cls is not None
         ctx = DataContext.get_current()
-        overriden_args = {}
         if self._ray_remote_args_fn:
-            overriden_args = self._refresh_actor_cls()
+            self._refresh_actor_cls()
         actor = self._cls.remote(
             ctx,
             src_fn_name=self.name,
