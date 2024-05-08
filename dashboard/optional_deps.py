@@ -9,7 +9,6 @@ import opencensus  # noqa: F401
 
 import prometheus_client  # noqa: F401
 
-import aiodebug  # noqa: F401
 import aiohttp  # noqa: F401
 import aiohttp.web  # noqa: F401
 import aiohttp_cors  # noqa: F401

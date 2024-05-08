@@ -1,8 +1,5 @@
 import asyncio
-import aiodebug
-import aiodebug.hang_inspection
-import aiodebug.log_slow_callbacks
-import aiodebug.monitor_loop_lag
+from ray._private.async_utils import enable_monitor_loop_lag, enable_log_slow_callbacks
 import aiohttp
 import logging
 import os
@@ -102,7 +99,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         self._session_name = dashboard_head.session_name
         assert self._component in AVAILABLE_COMPONENT_NAMES_FOR_METRICS
 
-        self.event_loop_lag = 0.0
+        self.event_loop_lag_s = 0.0
 
     @routes.get("/api/grafana_health")
     async def grafana_health(self, req) -> aiohttp.web.Response:
@@ -330,29 +327,28 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             pid=self._pid,
             Component=self._component,
             SessionName=self._session_name,
-        ).set(float(self.event_loop_lag))
+        ).set(float(self.event_loop_lag_s))
 
     async def run(self, server):
         self._create_default_grafana_configs()
         self._create_default_prometheus_configs()
         head = self
 
-        class StatsdClient:
-            def timing(self, metric: str, value: float) -> None:
-                assert metric == "aiodebug.monitor_loop_lag"
-                head.event_loop_lag = value
+        def on_new_lag(lag_s):
+            # Keep the lag. It's exported in `record_dashboard_metrics`
+            head.event_loop_lag_s = lag_s
+        enable_monitor_loop_lag(on_new_lag)
 
-        aiodebug.monitor_loop_lag.enable(StatsdClient())
         # Logs warnings if a task ran for more than 100ms. Limitation: it only logs
         # the task name and duration, e.g. if the blocker is in a aiohttp handler it
         # only logs `RequestHandler._handle_request()` instead of the actual handler.
-        aiodebug.log_slow_callbacks.enable(
+        enable_log_slow_callbacks(
             slow_duration=0.1,
             on_slow_callback=lambda name, duration: logger.warning(
                 f"{RAY_SLOW_TASK_WARNING}: {name} took {duration} seconds."
             ),
         )
-        # TODO: if needed, add `aiodebug.hang_inspection` to record stack trace of the
+        # TODO: if needed, adapt `aiodebug.hang_inspection` to record stack trace of the
         # slow coroutine.
         await asyncio.gather(self.record_dashboard_metrics())
 

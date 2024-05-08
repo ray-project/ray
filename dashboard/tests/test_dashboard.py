@@ -12,6 +12,8 @@ import warnings
 from pathlib import Path
 
 import pytest
+import ray.dashboard.modules.metrics
+import ray.dashboard.modules.metrics.metrics_head
 import requests
 import socket
 
@@ -25,10 +27,12 @@ from ray._private import ray_constants
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_ERROR,
     DEBUG_AUTOSCALING_STATUS_LEGACY,
+    
 )
 from ray._private.utils import get_or_create_event_loop
 from ray._private.test_utils import (
     format_web_url,
+    fetch_prometheus_metrics,
     get_error_message,
     init_error_pubsub,
     run_string_as_driver,
@@ -1036,6 +1040,47 @@ def test_dashboard_log_warning_on_slow_task(
 
 
 @pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == "1",
+    reason="This test is not supposed to work for minimal or default installation.",
+)
+@pytest.mark.asyncio
+async def test_dashboard_exports_metric_on_event_loop_lag(
+    enable_test_module, ray_start_with_dashboard
+):
+    """
+    When the event loop is blocked, the dashboard should export a metric.
+    Uses aiohttp to send concurrent requests to block the event loop.
+    As the number of blocking call goes up, the event loop lag converges to ~5s on my
+    laptop. We assert it to be >3s to be safe.
+    """
+    import aiohttp
+    ray_context = ray_start_with_dashboard
+    assert wait_until_server_available(ray_context["webui_url"]) is True
+    webui_url = format_web_url(ray_context["webui_url"])
+    blocking_url = webui_url + "/test/block_event_loop?seconds=1"
+    
+    async def make_blocking_call():
+        async with aiohttp.ClientSession() as session:
+            async with session.get(blocking_url) as resp:
+                resp.raise_for_status()
+                return await resp.text()
+
+    # Blocks the event loop for 1 second for 10 times.
+    tasks = [make_blocking_call() for _ in range(10)]
+    await asyncio.gather(*tasks)
+    
+    # Fetch the metrics from the dashboard.
+    addr = ray_context["raylet_ip_address"]
+    prom_addresses = [f"{addr}:{dashboard_consts.DASHBOARD_METRIC_PORT}"]
+
+    metrics_samples = fetch_prometheus_metrics(prom_addresses)
+    print(metrics_samples)
+
+    lag_metric_samples = metrics_samples["ray_dashboard_event_loop_lag_seconds"]
+    assert len(lag_metric_samples) > 0
+    assert all(sample[1] > 3 for sample in lag_metric_samples)
+
+@pytest.mark.skipif(
     os.environ.get("RAY_DEFAULT") != "1",
     reason="This test only works for default installation.",
 )
@@ -1301,4 +1346,4 @@ def test_dashboard_not_included_ray_minimal(shutdown_only, capsys):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

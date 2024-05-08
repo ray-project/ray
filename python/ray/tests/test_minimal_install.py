@@ -76,7 +76,6 @@ def test_module_import_with_various_non_minimal_deps(pydantic_version: str):
     optional_modules = [
         "opencensus",
         "prometheus_client",
-        "aiodebug",
         "aiohttp",
         "aiohttp_cors",
         "pydantic",
