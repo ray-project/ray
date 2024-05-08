@@ -19,6 +19,7 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
+    NUM_ENV_STEPS_TRAINED,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.schedules.scheduler import Scheduler
@@ -154,10 +155,16 @@ class ImpalaLearner(Learner):
 
         # Return all queued result dicts thus far (after reducing over them).
         results = {}
+        ts_trained = 0  # TODO (sven): Super hack! Needs to be removed before(!) we merge.
+                        # We currently only return the very last `reduced` snapshot of our metrics object (put in the output queue by the learner thread)
+                        # However, this way, any `clear_on_reduce` sums before this last snapshot (e.g. num-env-steps-trained) are lost!
+                        # Hence the way too low counts for steps trained.
         try:
             while True:
                 results = self._learner_thread_out_queue.get(block=False)
+                ts_trained += results[ALL_MODULES][NUM_ENV_STEPS_TRAINED]
         except Empty:
+            results[ALL_MODULES][NUM_ENV_STEPS_TRAINED] = ts_trained
             return results
 
     # TODO (sven): IMPALA does NOT call additional update anymore from its
