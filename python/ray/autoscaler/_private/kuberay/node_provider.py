@@ -92,12 +92,26 @@ def kind_and_type(pod: Dict[str, Any]) -> Tuple[NodeKind, NodeType]:
         type = labels[KUBERAY_LABEL_KEY_TYPE]
     return kind, type
 
+
 def multihost_replica_id(pod: Dict[str, Any]) -> string:
     """ Returns the replica identifier for a multi-host worker group.
     If the pod belongs to a single-host group, returns an empty string.
     """
     labels = pod["metadata"]["labels"]
     return labels[MULTIHOST_REPLICA_KEY]
+
+
+def replica_index_label(pod: Dict[str, Any]) -> Optional[str]:
+    """Returns the replicaIndex label for a Pod in a TPU worker group.
+    The replicaIndex label is set by the GKE TPU Ray webhook and is of
+    the form {$WORKER_GROUP_NAME-$REPLICA_INDEX} where $REPLICA_INDEX
+    is an integer from 0 to Replicas-1.
+    """
+    labels = pod["metadata"]["labels"]
+    if REPLICA_INDEX_KEY in labels:
+        labels[REPLICA_INDEX_KEY]
+    return None
+
 
 def pod_ip(pod: Dict[str, Any]) -> NodeIP:
     return pod["status"].get("podIP", "IP not yet assigned")

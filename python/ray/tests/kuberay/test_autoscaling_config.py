@@ -19,7 +19,7 @@ AUTOSCALING_CONFIG_MODULE_PATH = "ray.autoscaler._private.kuberay.autoscaling_co
 
 def get_basic_ray_cr() -> dict:
     """Returns the example Ray CR included in the Ray documentation,
-    modified to include a GPU worker group.
+    modified to include a GPU worker group and a TPU worker group..
     """
     cr_path = str(
         Path(__file__).resolve().parents[2]
@@ -35,6 +35,20 @@ def get_basic_ray_cr() -> dict:
     )
     gpu_group["maxReplicas"] = 200
     config["spec"]["workerGroupSpecs"].append(gpu_group)
+    tpu_group = copy.deepcopy(config["spec"]["workerGroupSpecs"][0])
+    tpu_group["groupName"] = "tpu-group"
+    tpu_group["template"]["spec"]["containers"][0]["resources"]["limits"].setdefault(
+        "google.com/tpu", 8
+    )
+    tpu_group["template"]["spec"]["nodeSelector"] = {}
+    tpu_group["template"]["spec"]["nodeSelector"][
+        "cloud.google.com/gke-tpu-topology"
+    ] = "2x2x2"
+    tpu_group["template"]["spec"]["nodeSelector"][
+        "cloud.google.com/gke-tpu-accelerator"
+    ] = "tpu-v4-podslice"
+    tpu_group["maxReplicas"] = 4
+    config["spec"]["workerGroupSpecs"].append(tpu_group)
     return config
 
 
@@ -88,6 +102,19 @@ def _get_basic_autoscaling_config() -> dict:
                     "GPU": 3,
                 },
             },
+            # Same as "small-group" with a TPU resource entry added
+            # and modified max_workers and node_config.
+            "tpu-group": {
+                "max_workers": 4,
+                "min_workers": 1,
+                "node_config": {},
+                "resources": {
+                    "CPU": 1,
+                    "memory": 536870912,
+                    "Custom2": 5,
+                    "Custom3": 1,
+                },
+            },
         },
         "auth": {},
         "cluster_synced_files": [],
@@ -98,7 +125,7 @@ def _get_basic_autoscaling_config() -> dict:
         "head_start_ray_commands": [],
         "idle_timeout_minutes": 1.0,
         "initialization_commands": [],
-        "max_workers": 500,
+        "max_workers": 504,
         "setup_commands": [],
         "upscaling_speed": 1000,
         "worker_setup_commands": [],
@@ -280,8 +307,8 @@ def test_cr_image_consistency():
     cr = get_basic_ray_cr()
 
     group_specs = [cr["spec"]["headGroupSpec"]] + cr["spec"]["workerGroupSpecs"]
-    # Head, CPU group, GPU group.
-    assert len(group_specs) == 3
+    # Head, CPU group, GPU group, TPU group.
+    assert len(group_specs) == 4
 
     ray_containers = [
         group_spec["template"]["spec"]["containers"][0] for group_spec in group_specs
