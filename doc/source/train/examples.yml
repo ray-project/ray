@@ -65,6 +65,16 @@ examples:
       - large language models
     contributor: community
     link: examples/intel_gaudi/llama
+  - title: "Fine-tune Llama-2-70b with Deepspeed on Intel Gaudi"
+    frameworks:
+      - accelerate
+      - transformers
+    skill_level: beginner
+    use_cases:
+      - natural language processing
+      - large language models
+    contributor: community
+    link: examples/intel_gaudi/llama_deepspeed
 
   - title: Train a text classifier with DeepSpeed
     frameworks:
