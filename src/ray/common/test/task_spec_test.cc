@@ -202,6 +202,7 @@ TEST(TaskSpecTest, TestTaskSpecBuilderRootDetachedActorId) {
 }
 
 TEST(TaskSpecTest, TestWorkerCacheKey) {
+  // Test TaskSpec calculates the correct WorkerCacheKey hash.
   std::string serialized_runtime_env_A = "mock_env_A";
   rpc::RuntimeEnvInfo runtime_env_info_A;
   runtime_env_info_A.set_serialized_runtime_env(serialized_runtime_env_A);

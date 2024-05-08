@@ -4833,6 +4833,7 @@ cdef class CoreWorker:
                 .CurrentActorMaxConcurrency())
 
     def get_current_root_detached_actor_id(self) -> ActorID:
+        # This is only used in test
         return ActorID(CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
                        .GetRootDetachedActorID().Binary())
 

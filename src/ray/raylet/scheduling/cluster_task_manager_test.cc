@@ -1130,6 +1130,7 @@ TEST_F(ClusterTaskManagerTest, NotOKPopWorkerTest) {
   ASSERT_TRUE(reply.canceled());
   ASSERT_EQ(reply.scheduling_failure_message(), runtime_env_error_msg);
 
+  // Test that local task manager handles PopWorkerStatus::JobFinished correctly.
   callback_called = false;
   reply.Clear();
   RayTask task3 = CreateTask({{ray::kCPU_ResourceLabel, 1}});
@@ -1138,6 +1139,7 @@ TEST_F(ClusterTaskManagerTest, NotOKPopWorkerTest) {
   ASSERT_EQ(NumTasksToDispatchWithStatus(internal::WorkStatus::WAITING), 0);
   ASSERT_EQ(NumRunningTasks(), 1);
   pool_.TriggerCallbacksWithNotOKStatus(PopWorkerStatus::JobFinished);
+  // The task should be removed from the dispatch queue.
   ASSERT_FALSE(callback_called);
   ASSERT_EQ(NumTasksToDispatchWithStatus(internal::WorkStatus::WAITING_FOR_WORKER), 0);
   ASSERT_EQ(NumTasksToDispatchWithStatus(internal::WorkStatus::WAITING), 0);

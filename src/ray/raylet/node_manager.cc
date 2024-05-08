@@ -632,7 +632,9 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
       worker->rpc_client()->Exit(
           request, [this, worker](const ray::Status &status, const rpc::ExitReply &r) {
             if (!status.ok()) {
-              RAY_LOG(WARNING) << "Failed to send exit request: " << status.ToString();
+              RAY_LOG(WARNING) << "Failed to send exit request to worker "
+                               << worker->WorkerId() << ": " << status.ToString()
+                               << ". Killing it using SIGKILL instead.";
               // Just kill-9 as a last resort.
               KillWorker(worker, /* force */ true);
             }

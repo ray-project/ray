@@ -1000,6 +1000,10 @@ void WorkerPool::InvokePopWorkerCallbackForProcess(
     RAY_CHECK(status != PopWorkerStatus::RuntimeEnvCreationFailed);
     if (worker && finished_jobs_.contains(it->second.task_spec.JobId()) &&
         it->second.task_spec.RootDetachedActorId().IsNil()) {
+      // If the job has finished, we should fail the PopWorker callback
+      // and add the worker back to the idle workers so it can be killed later.
+      // This doesn't apply to detached actor and its descendants
+      // since they can outlive the job.
       RAY_CHECK(status == PopWorkerStatus::OK);
       callback(nullptr, PopWorkerStatus::JobFinished, "");
     } else {
