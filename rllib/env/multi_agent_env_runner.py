@@ -302,6 +302,8 @@ class MultiAgentEnvRunner(EnvRunner):
                     extra_model_outputs[agent_id][col] = val
             extra_model_outputs = dict(extra_model_outputs)
 
+            if terminateds["__all__"] or truncateds["__all__"]:
+                print("Episode done.")
             # Record the timestep in the episode instance.
             self._episode.add_env_step(
                 obs,
