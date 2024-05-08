@@ -4,7 +4,11 @@ import ray
 from ray.dag.dag_node import DAGNode
 from ray.dag.input_node import InputNode
 from ray.dag.format_utils import get_dag_node_str
-from ray.dag.constants import PARENT_CLASS_NODE_KEY, PREV_CLASS_METHOD_CALL_KEY
+from ray.dag.constants import (
+    PARENT_CLASS_NODE_KEY,
+    PREV_CLASS_METHOD_CALL_KEY,
+    BIND_INDEX_KEY,
+)
 from ray.util.annotations import DeveloperAPI
 
 from typing import Any, Dict, List, Union, Tuple, Optional
@@ -156,6 +160,10 @@ class ClassMethodNode(DAGNode):
         self._prev_class_method_call: Optional[
             ClassMethodNode
         ] = other_args_to_resolve.get(PREV_CLASS_METHOD_CALL_KEY, None)
+        # The index/order when bind() is called on this class method
+        self._bind_index: Optional[int] = other_args_to_resolve.get(
+            BIND_INDEX_KEY, None
+        )
 
         # The actor creation task dependency is encoded as the first argument,
         # and the ordering dependency as the second, which ensures they are
@@ -202,6 +210,9 @@ class ClassMethodNode(DAGNode):
 
     def get_method_name(self) -> str:
         return self._method_name
+
+    def _get_bind_index(self) -> int:
+        return self._bind_index
 
     def _get_remote_method(self, method_name):
         method_body = getattr(self._parent_class_node, method_name)

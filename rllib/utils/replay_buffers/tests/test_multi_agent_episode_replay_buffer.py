@@ -171,7 +171,7 @@ class TestMultiAgentEpisodeReplayBuffer(unittest.TestCase):
                     sample[module_id]["terminateds"],
                     sample[module_id]["truncateds"],
                     sample[module_id]["weights"],
-                    sample[module_id]["n_steps"],
+                    sample[module_id]["n_step"],
                 )
 
                 # Make sure terminated and truncated are never both True.
@@ -238,7 +238,7 @@ class TestMultiAgentEpisodeReplayBuffer(unittest.TestCase):
                     sample[module_id]["terminateds"],
                     sample[module_id]["truncateds"],
                     sample[module_id]["weights"],
-                    sample[module_id]["n_steps"],
+                    sample[module_id]["n_step"],
                 )
 
                 # Make sure terminated and truncated are never both True.
@@ -309,7 +309,7 @@ class TestMultiAgentEpisodeReplayBuffer(unittest.TestCase):
                     sample[module_id]["terminateds"],
                     sample[module_id]["truncateds"],
                     sample[module_id]["weights"],
-                    sample[module_id]["n_steps"],
+                    sample[module_id]["n_step"],
                 )
 
                 # Make sure terminated and truncated are never both True.
