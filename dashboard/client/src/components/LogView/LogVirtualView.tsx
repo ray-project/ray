@@ -1,3 +1,4 @@
+import { Box } from "@mui/material";
 import createStyles from "@mui/styles/createStyles";
 import makeStyles from "@mui/styles/makeStyles";
 import dayjs from "dayjs";
@@ -120,24 +121,26 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
   const itemRenderer = ({ index, style }: { index: number; style: any }) => {
     const { i, origin } = logs[revert ? logs.length - 1 - index : index];
     return (
-      <div
+      <Box
         key={`${index}list`}
-        style={{ ...style, overflowX: "visible", whiteSpace: "pre" }}
-      >
-        <span
-          style={{
-            marginRight: 4,
+        style={style}
+        sx={{
+          overflowX: "visible",
+          whiteSpace: "pre",
+          "&::before": {
+            content: `"${i + 1}"`,
+            marginRight: 0.5,
             width: `${logs.length}`.length * 6 + 4,
             color: "#999",
             display: "inline-block",
-          }}
-        >
-          {i + 1}
-        </span>
+          },
+        }}
+      >
         {low
           .highlight(language, origin)
           .value.map((v) => value2react(v, index.toString(), keywords))}
-      </div>
+        <br />
+      </Box>
     );
   };
 
