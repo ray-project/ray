@@ -1130,6 +1130,19 @@ TEST_F(ClusterTaskManagerTest, NotOKPopWorkerTest) {
   ASSERT_TRUE(reply.canceled());
   ASSERT_EQ(reply.scheduling_failure_message(), runtime_env_error_msg);
 
+  callback_called = false;
+  reply.Clear();
+  RayTask task3 = CreateTask({{ray::kCPU_ResourceLabel, 1}});
+  task_manager_.QueueAndScheduleTask(task3, false, false, &reply, callback);
+  ASSERT_EQ(NumTasksToDispatchWithStatus(internal::WorkStatus::WAITING_FOR_WORKER), 1);
+  ASSERT_EQ(NumTasksToDispatchWithStatus(internal::WorkStatus::WAITING), 0);
+  ASSERT_EQ(NumRunningTasks(), 1);
+  pool_.TriggerCallbacksWithNotOKStatus(PopWorkerStatus::JobFinished);
+  ASSERT_FALSE(callback_called);
+  ASSERT_EQ(NumTasksToDispatchWithStatus(internal::WorkStatus::WAITING_FOR_WORKER), 0);
+  ASSERT_EQ(NumTasksToDispatchWithStatus(internal::WorkStatus::WAITING), 0);
+  ASSERT_EQ(NumRunningTasks(), 0);
+
   AssertNoLeaks();
 }
 

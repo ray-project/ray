@@ -207,6 +207,15 @@ void WorkerPool::PopWorkerCallbackInternal(const TaskSpecification &task_spec,
   auto used = false;
   if (worker && finished_jobs_.contains(task_spec.JobId()) &&
       task_spec.RootDetachedActorId().IsNil()) {
+    // When a job finishes, node manager will kill leased workers one time
+    // and worker pool will kill idle workers periodically.
+    // The current worker is already removed from the idle workers
+    // but hasn't been added to the leased workers since the callback is not called yet.
+    // We shouldn't add this worker to the leased workers since killing leased workers
+    // for this finished job may already happen and won't happen again (this is one time)
+    // so it will cause a process leak.
+    // Instead we fail the PopWorker and add the worker back to the idle workers so it can
+    // be killed later.
     RAY_CHECK(status == PopWorkerStatus::OK);
     callback(nullptr, PopWorkerStatus::JobFinished, "");
   } else {
@@ -347,6 +356,7 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
     worker_command_args.push_back("--worker-launch-time-ms=" +
                                   std::to_string(current_sys_time_ms()));
     worker_command_args.push_back("--node-id=" + node_id_.Hex());
+    // TODO(jjyao) This should be renamed to worker cache key hash
     worker_command_args.push_back("--runtime-env-hash=" +
                                   std::to_string(runtime_env_hash));
   } else if (language == Language::CPP) {

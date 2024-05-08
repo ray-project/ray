@@ -616,11 +616,15 @@ void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_
 void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job_data) {
   RAY_LOG(DEBUG) << "HandleJobFinished " << job_id;
   RAY_CHECK(job_data.is_dead());
+  // Force kill all the worker processes belonging to the finished job
+  // so that no worker processes is leaked.
   for (const auto &pair : leased_workers_) {
     auto &worker = pair.second;
     RAY_CHECK(!worker->GetAssignedJobId().IsNil());
     if (worker->GetRootDetachedActorId().IsNil() &&
         (worker->GetAssignedJobId() == job_id)) {
+      // Don't kill worker processes belonging to the detached actor
+      // since those are expected to outlive the job.
       RAY_LOG(INFO) << "The leased worker " << worker->WorkerId()
                     << " is killed because the job " << job_id << " finished.";
       rpc::ExitRequest request;
@@ -628,7 +632,7 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
       worker->rpc_client()->Exit(
           request, [this, worker](const ray::Status &status, const rpc::ExitReply &r) {
             if (!status.ok()) {
-              RAY_LOG(ERROR) << "Failed to send exit request: " << status.ToString();
+              RAY_LOG(WARNING) << "Failed to send exit request: " << status.ToString();
               // Just kill-9 as a last resort.
               KillWorker(worker, /* force */ true);
             }
