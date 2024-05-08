@@ -2761,6 +2761,7 @@ CoreWorker::ListNamedActorsLocalMode() {
 
 const std::string CoreWorker::GetActorName() const {
   absl::MutexLock lock(&mutex_);
+  if (actor_id_.IsNil()) return "";
   return actor_manager_->GetActorHandle(actor_id_)->GetName();
 }
 
