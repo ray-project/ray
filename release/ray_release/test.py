@@ -39,8 +39,8 @@ MACOS_TEST_PREFIX = "darwin://"
 LINUX_TEST_PREFIX = "linux://"
 WINDOWS_TEST_PREFIX = "windows://"
 MACOS_BISECT_DAILY_RATE_LIMIT = 3
-LINUX_BISECT_DAILY_RATE_LIMIT = 0  # linux bisect is disabled
-WINDOWS_BISECT_DAILY_RATE_LIMIT = 0  # windows bisect is disabled
+LINUX_BISECT_DAILY_RATE_LIMIT = 3
+WINDOWS_BISECT_DAILY_RATE_LIMIT = 3
 BISECT_DAILY_RATE_LIMIT = 10
 
 _asyncio_thread_pool = concurrent.futures.ThreadPoolExecutor()
