@@ -145,8 +145,10 @@ def test_checkpoint_freq(ray_start_4_cpus, freq_end_expected):
     assert cp_paths == sorted(cp_paths), str(cp_paths)
 
 
-@pytest.mark.parametrize("rank", [0, 1])
+@pytest.mark.parametrize("rank", [None, 0, 1])
 def test_checkpoint_only_on_rank0(rank):
+    """Tests that the callback only reports checkpoints on rank 0,
+    or if the rank is not available (Tune usage)."""
     callback = RayTrainReportCallback(frequency=2, checkpoint_at_end=True)
 
     booster = mock.MagicMock()
@@ -163,7 +165,7 @@ def test_checkpoint_only_on_rank0(rank):
 
         # Only rank 0 should report based on `frequency`
         reported_checkpoint = bool(mock_report.call_args.kwargs.get("checkpoint"))
-        if rank == 0:
+        if rank in (0, None):
             assert reported_checkpoint
         else:
             assert not reported_checkpoint
@@ -179,7 +181,7 @@ def test_checkpoint_only_on_rank0(rank):
 
         # Only rank 0 should report based on `checkpoint_at_end`
         reported_checkpoint = bool(mock_report.call_args.kwargs.get("checkpoint"))
-        if rank == 0:
+        if rank in (0, None):
             assert reported_checkpoint
         else:
             assert not reported_checkpoint
