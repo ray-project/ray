@@ -166,9 +166,13 @@ class RayTrainReportCallback(TuneCallback):
 
     @contextmanager
     def _get_checkpoint(self, model: Booster) -> Optional[Checkpoint]:
-        with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
-            model.save_model(Path(temp_checkpoint_dir, self._filename).as_posix())
-            yield Checkpoint(temp_checkpoint_dir)
+        # NOTE: The world rank returns None for Tune usage without Train.
+        if ray.train.get_context().get_world_rank() in (0, None):
+            with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+                model.save_model(Path(temp_checkpoint_dir, self._filename).as_posix())
+                yield Checkpoint(temp_checkpoint_dir)
+        else:
+            yield None
 
     def after_iteration(self, model: Booster, epoch: int, evals_log: Dict):
         self._evals_log = evals_log
@@ -176,10 +180,7 @@ class RayTrainReportCallback(TuneCallback):
         checkpointing_disabled = self._frequency == 0
         # Ex: if frequency=2, checkpoint at epoch 1, 3, 5, ... (counting from 0)
         should_checkpoint = (
-            not checkpointing_disabled
-            and (epoch + 1) % self._frequency == 0
-            # Only one worker needs to checkpoint since all workers are the same.
-            and ray.train.get_context().get_world_rank() == 0
+            not checkpointing_disabled and (epoch + 1) % self._frequency == 0
         )
 
         report_dict = self._get_report_dict(evals_log)
@@ -194,16 +195,16 @@ class RayTrainReportCallback(TuneCallback):
         if not self._checkpoint_at_end:
             return model
 
-        if model.num_boosted_rounds() - 1 == self._last_checkpoint_iteration:
+        if (
+            self._last_checkpoint_iteration is not None
+            and model.num_boosted_rounds() - 1 == self._last_checkpoint_iteration
+        ):
             # Avoids a duplicate checkpoint if the checkpoint frequency happens
             # to align with the last iteration.
             return model
 
         report_dict = self._get_report_dict(self._evals_log) if self._evals_log else {}
-        if ray.train.get_context().get_world_rank() == 0:
-            with self._get_checkpoint(model=model) as checkpoint:
-                ray.train.report(report_dict, checkpoint=checkpoint)
-        else:
-            ray.train.report(report_dict)
+        with self._get_checkpoint(model=model) as checkpoint:
+            ray.train.report(report_dict, checkpoint=checkpoint)
 
         return model
