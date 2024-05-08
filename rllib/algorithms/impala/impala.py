@@ -147,7 +147,7 @@ class ImpalaConfig(AlgorithmConfig):
         self.timeout_s_aggregator_manager = 0.0  # @OldAPIstack
         self.broadcast_interval = 1
         self.num_aggregation_workers = 0  # @OldAPIstack
-        self.num_gpu_loader_threads = 1
+        self.num_gpu_loader_threads = 16
         # Impala takes care of its own EnvRunner (weights, connector, counters)
         # synching.
         self._dont_auto_sync_env_runner_states = True
