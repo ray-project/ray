@@ -16,7 +16,6 @@ import sys
 DEFAULT_BLACKLIST = [
     "aiohttp",
     "aiohttp_cors",
-    "aiodebug",
     "colorful",
     "py-spy",
     "opencensus",
