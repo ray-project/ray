@@ -1,7 +1,6 @@
 from typing import Dict, Optional
 
 import ray
-from ray.util.collective.collective_group import nccl_util
 
 try:
     import torch
@@ -18,6 +17,9 @@ class _NcclGroup:
         actor_ids_to_ranks: Dict[ray.ActorID, int],
         cuda_stream: Optional[int],
     ):
+        from ray.util.collective.collective_group import nccl_util
+        self.nccl_util = nccl_util
+
         self._rank: Optional[int] = rank
         if rank is not None:
             assert ray.get_gpu_ids(), "NCCL actor has no GPUs assigned"
@@ -48,9 +50,9 @@ class _NcclGroup:
         # TODO(swang): Handle send/recv async NCCL errors such as network
         # failures.
         self._comm.send(
-            nccl_util.get_tensor_ptr(value),
+            self.nccl_util.get_tensor_ptr(value),
             value.numel(),
-            nccl_util.get_nccl_tensor_dtype(value),
+            self.nccl_util.get_nccl_tensor_dtype(value),
             peer_rank,
             self._cuda_stream,
         )
@@ -59,9 +61,9 @@ class _NcclGroup:
         if self._closed:
             raise IOError("NCCL group has been destroyed.")
         self._comm.recv(
-            nccl_util.get_tensor_ptr(buf),
+            self.nccl_util.get_tensor_ptr(buf),
             buf.numel(),
-            nccl_util.get_nccl_tensor_dtype(buf),
+            self.nccl_util.get_nccl_tensor_dtype(buf),
             peer_rank,
             self._cuda_stream,
         )
