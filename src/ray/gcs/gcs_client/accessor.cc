@@ -466,16 +466,15 @@ Status NodeInfoAccessor::UnregisterSelf(const rpc::NodeDeathInfo &node_death_inf
   // return status;
 
   client_impl_->GetGcsRpcClient().UnregisterNode(
-        request,
-        [this, node_id](const Status &status,
-                                        const rpc::UnregisterNodeReply &reply) {
-          if (status.ok()) {
-            local_node_info_.set_state(GcsNodeInfo::DEAD);
-            local_node_id_ = NodeID::Nil();
-          }
-          RAY_LOG(INFO) << "Finished unregistering node info, status = " << status
-                        << ", node id = " << node_id;
-        });
+      request,
+      [this, node_id](const Status &status, const rpc::UnregisterNodeReply &reply) {
+        if (status.ok()) {
+          local_node_info_.set_state(GcsNodeInfo::DEAD);
+          local_node_id_ = NodeID::Nil();
+        }
+        RAY_LOG(INFO) << "Finished unregistering node info, status = " << status
+                      << ", node id = " << node_id;
+      });
   return Status::OK();
 }
 

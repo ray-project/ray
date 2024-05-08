@@ -231,7 +231,7 @@ int main(int argc, char *argv[]) {
   // guaranteed to be valid since this function will run the event loop
   // instead of returning immediately.
   // We should stop the service and remove the local socket file.
-  auto shutdown_raylet_gracefully =
+  auto shutdown_raylet_gracefully_sync =
       [&main_service, &raylet_socket_name, &raylet, &gcs_client, shutted_down](
           const ray::rpc::NodeDeathInfo &node_death_info) {
         // Make the shutdown handler idempotent since graceful shutdown can be triggered
@@ -252,6 +252,12 @@ int main(int argc, char *argv[]) {
         main_service.stop();
         remove(raylet_socket_name.c_str());
       };
+
+  auto shutdown_raylet_gracefully = [&main_service, shutdown_raylet_gracefully_sync](
+                                        const ray::rpc::NodeDeathInfo &node_death_info) {
+    main_service.post([shutdown_raylet_gracefully_sync, node_death_info]() {},
+                      "shutdown_raylet_gracefully_sync");
+  };
 
   RAY_CHECK_OK(gcs_client->Nodes().AsyncGetInternalConfig(
       [&](::ray::Status status,
@@ -426,12 +432,12 @@ int main(int argc, char *argv[]) {
         raylet->Start();
       }));
 
-  auto signal_handler = [shutdown_raylet_gracefully](
+  auto signal_handler = [shutdown_raylet_gracefully_sync](
                             const boost::system::error_code &error, int signal_number) {
     ray::rpc::NodeDeathInfo node_death_info;
     node_death_info.set_reason(ray::rpc::NodeDeathInfo::EXPECTED_TERMINATION);
     node_death_info.set_reason_message("SIGTERM received");
-    shutdown_raylet_gracefully(node_death_info);
+    shutdown_raylet_gracefully_sync(node_death_info);
   };
   boost::asio::signal_set signals(main_service);
 #ifdef _WIN32
