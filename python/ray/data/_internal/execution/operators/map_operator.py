@@ -154,21 +154,14 @@ class MapOperator(OneToOneOperator, ABC):
         elif isinstance(compute_strategy, ActorPoolStrategy):
             from ray.data._internal.execution.operators.actor_pool_map_operator import (
                 ActorPoolMapOperator,
-                AutoscalingConfig,
-                AutoscalingPolicy,
             )
-
-            autoscaling_config = AutoscalingConfig.from_compute_strategy(
-                compute_strategy
-            )
-            autoscaling_policy = AutoscalingPolicy(autoscaling_config)
 
             return ActorPoolMapOperator(
                 map_transformer,
                 input_op,
-                autoscaling_policy=autoscaling_policy,
-                name=name,
                 target_max_block_size=target_max_block_size,
+                compute_strategy=compute_strategy,
+                name=name,
                 min_rows_per_bundle=min_rows_per_bundle,
                 ray_remote_args=ray_remote_args,
             )
@@ -390,9 +383,7 @@ class MapOperator(OneToOneOperator, ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def incremental_resource_usage(
-        self, consider_autoscaling=True
-    ) -> ExecutionResources:
+    def incremental_resource_usage(self) -> ExecutionResources:
         raise NotImplementedError
 
 

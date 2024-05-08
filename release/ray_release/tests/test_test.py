@@ -4,6 +4,7 @@ import sys
 import os
 import platform
 from unittest import mock
+from typing import List
 
 import aioboto3
 import boto3
@@ -34,6 +35,20 @@ from ray_release.test import (
 init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
 
 
+class MockTest(dict):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def get_name(self) -> str:
+        return self.get("name", "")
+
+    def get_test_results(self, limit: int) -> List[TestResult]:
+        return self.get("test_results", [])
+
+    def is_high_impact(self) -> bool:
+        return self.get(Test.KEY_IS_HIGH_IMPACT, "false") == "true"
+
+
 def _stub_test(val: dict) -> Test:
     test = Test(
         {
@@ -45,7 +60,9 @@ def _stub_test(val: dict) -> Test:
     return test
 
 
-def _stub_test_result(status: ResultStatus) -> TestResult:
+def _stub_test_result(
+    status: ResultStatus = ResultStatus.SUCCESS, rayci_step_id="123"
+) -> TestResult:
     return TestResult(
         status=status.value,
         commit="1234567890",
@@ -53,6 +70,7 @@ def _stub_test_result(status: ResultStatus) -> TestResult:
         url="url",
         timestamp=0,
         pull_request="1",
+        rayci_step_id=rayci_step_id,
     )
 
 
@@ -179,7 +197,14 @@ def test_is_stable() -> None:
     assert not Test(stable=False).is_stable()
 
 
-@patch.dict(os.environ, {"BUILDKITE_BRANCH": "food", "BUILDKITE_PULL_REQUEST": "1"})
+@patch.dict(
+    os.environ,
+    {
+        "BUILDKITE_BRANCH": "food",
+        "BUILDKITE_PULL_REQUEST": "1",
+        "RAYCI_STEP_ID": "g4_s5",
+    },
+)
 def test_result_from_bazel_event() -> None:
     result = TestResult.from_bazel_event(
         {
@@ -189,6 +214,7 @@ def test_result_from_bazel_event() -> None:
     assert result.is_passing()
     assert result.branch == "food"
     assert result.pull_request == "1"
+    assert result.rayci_step_id == "g4_s5"
     result = TestResult.from_bazel_event(
         {
             "testResult": {"status": "FAILED"},
@@ -305,6 +331,43 @@ def test_gen_test_results(mock_gen_test_result) -> None:
         ResultStatus.ERROR.value,
         ResultStatus.SUCCESS.value,
     ]
+
+
+@patch("ray_release.test.Test.gen_from_s3")
+def gen_high_impact_tests(mock_gen_from_s3) -> None:
+    core_test = MockTest(
+        {
+            "name": "core_test",
+            Test.KEY_IS_HIGH_IMPACT: "false",
+            "test_results": [
+                _stub_test_result(rayci_step_id="corebuild"),
+            ],
+        }
+    )
+    data_test_01 = MockTest(
+        {
+            "name": "data_test_01",
+            Test.KEY_IS_HIGH_IMPACT: "true",
+            "test_results": [
+                _stub_test_result(rayci_step_id="databuild"),
+            ],
+        }
+    )
+    data_test_02 = MockTest(
+        {
+            "name": "data_test_02",
+            Test.KEY_IS_HIGH_IMPACT: "true",
+            "test_results": [
+                _stub_test_result(rayci_step_id="databuild"),
+            ],
+        }
+    )
+
+    mock_gen_from_s3.return_value = [core_test, data_test_01, data_test_02]
+
+    assert Test.gen_high_impact_tests("linux") == {
+        "databuild": [data_test_01, data_test_02]
+    }
 
 
 if __name__ == "__main__":

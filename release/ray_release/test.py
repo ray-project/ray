@@ -89,6 +89,7 @@ class TestResult:
     url: str
     timestamp: int
     pull_request: str
+    rayci_step_id: str
 
     @classmethod
     def from_result(cls, result: Result):
@@ -99,6 +100,7 @@ class TestResult:
             url=result.buildkite_url,
             timestamp=int(time.time() * 1000),
             pull_request=os.environ.get("BUILDKITE_PULL_REQUEST", ""),
+            rayci_step_id=os.environ.get("RAYCI_STEP_ID", ""),
         )
 
     @classmethod
@@ -124,6 +126,7 @@ class TestResult:
             url=result["url"],
             timestamp=result["timestamp"],
             pull_request=result.get("pull_request", ""),
+            rayci_step_id=result.get("rayci_step_id", ""),
         )
 
     def is_failing(self) -> bool:
@@ -190,6 +193,23 @@ class Test(dict):
             )
             for file in files
         ]
+
+    @classmethod
+    def gen_high_impact_tests(cls, prefix: str) -> Dict[str, List]:
+        """
+        Obtain the mapping from rayci step id to high impact tests with the given prefix
+        """
+        high_impact_tests = [
+            test for test in cls.gen_from_s3(prefix) if test.is_high_impact()
+        ]
+        step_id_to_tests = {}
+        for test in high_impact_tests:
+            step_id = test.get_test_results(limit=1)[0].rayci_step_id
+            if not step_id:
+                continue
+            step_id_to_tests[step_id] = step_id_to_tests.get(step_id, []) + [test]
+
+        return step_id_to_tests
 
     def is_jailed_with_open_issue(self, ray_github: Repository) -> bool:
         """

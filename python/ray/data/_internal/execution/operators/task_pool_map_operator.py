@@ -108,9 +108,7 @@ class TaskPoolMapOperator(MapOperator):
             gpu=self._ray_remote_args.get("num_gpus", 0) * num_active_workers,
         )
 
-    def incremental_resource_usage(
-        self, consider_autoscaling=True
-    ) -> ExecutionResources:
+    def incremental_resource_usage(self) -> ExecutionResources:
         return ExecutionResources(
             cpu=self._ray_remote_args.get("num_cpus", 0),
             gpu=self._ray_remote_args.get("num_gpus", 0),

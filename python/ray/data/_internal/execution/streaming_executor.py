@@ -4,9 +4,7 @@ import time
 import uuid
 from typing import Dict, Iterator, List, Optional
 
-from ray.data._internal.execution.autoscaling_requester import (
-    get_or_create_autoscaling_requester_actor,
-)
+from ray.data._internal.execution.autoscaler import create_autoscaler
 from ray.data._internal.execution.backpressure_policy import (
     BackpressurePolicy,
     get_backpressure_policies,
@@ -22,7 +20,6 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.execution.streaming_executor_state import (
-    AutoscalingState,
     OpState,
     Topology,
     build_streaming_topology,
@@ -63,7 +60,6 @@ class StreamingExecutor(Executor, threading.Thread):
         self._global_info: Optional[ProgressBar] = None
 
         self._execution_id = uuid.uuid4().hex
-        self._autoscaling_state = AutoscalingState()
 
         # The executor can be shutdown while still running.
         self._shutdown_lock = threading.RLock()
@@ -118,6 +114,11 @@ class StreamingExecutor(Executor, threading.Thread):
         self._topology, _ = build_streaming_topology(dag, self._options)
         self._resource_manager = ResourceManager(self._topology, self._options)
         self._backpressure_policies = get_backpressure_policies(self._topology)
+        self._autoscaler = create_autoscaler(
+            self._topology,
+            self._resource_manager,
+            self._execution_id,
+        )
 
         self._has_op_completed = {op: False for op in self._topology}
 
@@ -194,9 +195,7 @@ class StreamingExecutor(Executor, threading.Thread):
             for op, state in self._topology.items():
                 op.shutdown()
                 state.close_progress_bars()
-            # Make request for zero resources to autoscaler for this execution.
-            actor = get_or_create_autoscaling_requester_actor()
-            actor.request_resources.remote({}, self._execution_id)
+            self._autoscaler.on_executor_shutdown()
 
     def run(self):
         """Run the control loop in a helper thread.
@@ -279,9 +278,8 @@ class StreamingExecutor(Executor, threading.Thread):
             topology,
             self._resource_manager,
             self._backpressure_policies,
+            self._autoscaler,
             ensure_at_least_one_running=self._consumer_idling(),
-            execution_id=self._execution_id,
-            autoscaling_state=self._autoscaling_state,
         )
 
         i = 0
@@ -295,9 +293,8 @@ class StreamingExecutor(Executor, threading.Thread):
                 topology,
                 self._resource_manager,
                 self._backpressure_policies,
+                self._autoscaler,
                 ensure_at_least_one_running=self._consumer_idling(),
-                execution_id=self._execution_id,
-                autoscaling_state=self._autoscaling_state,
             )
 
         update_operator_states(topology)
