@@ -202,7 +202,7 @@ class _GPULoaderThread(threading.Thread):
         in_queue: Queue,
         out_queue: Queue,
         device: torch.device,
-        metrics_logger: Optional[MetricsLogger] = None,
+        metrics_logger: MetricsLogger,
     ):
         super().__init__()
         self.daemon = True
@@ -218,41 +218,28 @@ class _GPULoaderThread(threading.Thread):
 
     def _step(self) -> None:
         # Only measure time, if we have a `metrics` instance.
-        timer_stats = None
-        if self.metrics:
-            timer_stats = self.metrics.log_time(
-                (ALL_MODULES, GPU_LOADER_QUEUE_WAIT_TIMER)
-            )
-            timer_stats.__enter__()
+        with self.metrics.log_time((ALL_MODULES, GPU_LOADER_QUEUE_WAIT_TIMER)):
+            # Get a new batch from the data (inqueue).
+            batch_on_cpu, env_steps = self._in_queue.get()
 
-        # Get a new batch from the data (inqueue).
-        batch_on_cpu, env_steps = self._in_queue.get()
-        if timer_stats:
-            timer_stats.__exit__(None, None, None)
-            timer_stats = self.metrics.log_time(
-                (ALL_MODULES, GPU_LOADER_LOAD_TO_GPU_TIMER)
+        with self.metrics.log_time((ALL_MODULES, GPU_LOADER_LOAD_TO_GPU_TIMER)):
+            # Load the batch onto the GPU device.
+            batch_on_gpu = tree.map_structure_with_path(
+                lambda path, t: (
+                    t
+                    if isinstance(path, tuple) and Columns.INFOS in path
+                    else t.to(self._device, non_blocking=True)
+                ),
+                batch_on_cpu,
             )
-            timer_stats.__enter__()
-
-        # Load the batch onto the GPU device.
-        batch_on_gpu = tree.map_structure_with_path(
-            lambda path, t: (
-                t
-                if isinstance(path, tuple) and Columns.INFOS in path
-                else t.to(self._device, non_blocking=True)
-            ),
-            batch_on_cpu,
-        )
-        ma_batch_on_gpu = MultiAgentBatch(
-            policy_batches={mid: SampleBatch(b) for mid, b in batch_on_gpu.items()},
-            env_steps=env_steps,
-        )
-        self._out_queue.put(ma_batch_on_gpu)
-        if self.metrics:
+            ma_batch_on_gpu = MultiAgentBatch(
+                policy_batches={mid: SampleBatch(b) for mid, b in batch_on_gpu.items()},
+                env_steps=env_steps,
+            )
+            self._out_queue.put(ma_batch_on_gpu)
             self.metrics.log_value(
                 QUEUE_SIZE_LEARNER_THREAD_QUEUE, self._out_queue.qsize()
             )
-            timer_stats.__exit__(None, None, None)
 
 
 class _LearnerThread(threading.Thread):

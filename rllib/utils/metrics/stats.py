@@ -1,4 +1,5 @@
 import time
+import threading
 from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 import numpy as np
@@ -205,8 +206,8 @@ class Stats:
         self._window = window
         self._ema_coeff = ema_coeff
 
-        # Timing functionality.
-        self._start_time = None
+        # Timing functionality (keep start times per thread).
+        self._start_times = defaultdict(lambda: None)
 
         # Simply store ths flag for the user of this class.
         self._clear_on_reduce = clear_on_reduce
@@ -236,21 +237,23 @@ class Stats:
         """
         # In case another thread already is measuring this Stats (timing), simply ignore
         # the "enter request" and return a clone of `self`.
-        assert self._start_time is None
-        self._start_time = time.perf_counter()
+        thread_id = threading.get_ident()
+        assert self._start_times[thread_id] is None
+        self._start_times[thread_id] = time.perf_counter()
         return self
 
     def __exit__(self, exc_type, exc_value, tb) -> None:
         """Called when exiting a context (with which users can measure a time delta)."""
-        assert self._start_time is not None
-        time_delta = time.perf_counter() - self._start_time
+        thread_id = threading.get_ident()
+        assert self._start_times[thread_id] is not None
+        time_delta = time.perf_counter() - self._start_times[thread_id]
         self.push(time_delta)
 
         # Call the on_exit handler.
         if self._on_exit:
             self._on_exit(time_delta)
 
-        self._start_time = None
+        del self._start_times[thread_id]
 
     def peek(self) -> Any:
         """Returns the result of reducing the internal values list.
