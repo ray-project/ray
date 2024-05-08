@@ -572,6 +572,8 @@ def run(
         "It is no longer used and will not have any effect. "
         "You should set the `storage_path` instead. Files will no longer be "
         "written to `~/ray_results` as long as `storage_path` is set."
+        "See the docs: https://docs.ray.io/en/latest/train/user-guides/"
+        "persistent-storage.html#setting-the-local-staging-directory"
     )
     if os.environ.get("TUNE_RESULT_DIR"):
         raise DeprecationWarning(ENV_VAR_DEPRECATION_MESSAGE.format("TUNE_RESULT_DIR"))
@@ -582,14 +584,12 @@ def run(
         )
 
     if local_dir is not None:
-        warnings.warn(
-            "The `local_dir` argument is deprecated and will be removed. "
-            "This will pass-through to set the `storage_path` for now "
-            "but will raise an error in the future. "
-            "You should only set the `storage_path` from now on."
+        raise DeprecationWarning(
+            "The `local_dir` argument is deprecated. "
+            "You should set the `storage_path` instead. "
+            "See the docs: https://docs.ray.io/en/latest/train/user-guides/"
+            "persistent-storage.html#setting-the-local-staging-directory"
         )
-        # Have `storage_path` fall back to `local_dir` if only `local_dir` is set.
-        storage_path = storage_path or local_dir
 
     ray._private.usage.usage_lib.record_library_usage("tune")
 
