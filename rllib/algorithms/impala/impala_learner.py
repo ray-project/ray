@@ -80,8 +80,8 @@ class ImpalaLearner(Learner):
                 in_queue=self._gpu_loader_in_queue,
                 out_queue=self._learner_thread_in_queue,
                 device=self._device,
-                metrics_logger=self.metrics if i == 0 else None,
-            ) for i in range(self.config.num_gpu_loader_threads)
+                metrics_logger=self.metrics,
+            ) for _ in range(self.config.num_gpu_loader_threads)
         ]
         for t in self._gpu_loader_threads:
             t.start()
