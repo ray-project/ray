@@ -31,10 +31,7 @@ from ray.data._internal.remote_fn import _add_system_error_to_retry_exceptions
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 from ray.types import ObjectRef
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
-if TYPE_CHECKING:
-    from ray.util.placement_group import PlacementGroup
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +84,8 @@ class ActorPoolMapOperator(MapOperator):
                 important for the performance of GPU-accelerated transform functions.
                 The actual rows passed may be less if the dataset is small.
             ray_remote_args_fn: A function that returns a dictionary of remote args
-                passed to each map worker. This function will be called each time prior
+                passed to each map worker. The purpose of this argument is to generate
+                dynamic arguments for each actor/task, and will be called each time prior
                 to initializing the worker. Args returned from this dict will always
                 override the args in ``ray_remote_args``. Note: this is an advanced,
                 experimental feature.
@@ -168,14 +166,6 @@ class ActorPoolMapOperator(MapOperator):
             src_fn_name=self.name,
             map_transformer=self._map_transformer,
         )
-        # Keep trakc of placement groups used in the operator, so we
-        # can remove them when the operator is complete.
-        if "scheduling_strategy" in overriden_args:
-            scheduling_strategy = overriden_args["scheduling_strategy"]
-            if isinstance(scheduling_strategy, PlacementGroupSchedulingStrategy):
-                self._actor_pool._actor_to_placement_groups[
-                    actor
-                ] = scheduling_strategy.placement_group
         res_ref = actor.get_location.remote()
 
         def _task_done_callback(res_ref):
@@ -423,11 +413,6 @@ class _ActorPool(AutoscalingActorPool):
         self._num_tasks_in_flight: Dict[ray.actor.ActorHandle, int] = {}
         # Node id of each ready actor.
         self._actor_locations: Dict[ray.actor.ActorHandle, str] = {}
-        # Mapping of actor to its PlacementGroup. Used to remove the placement groups
-        # used by the operator after completion.
-        self._actor_to_placement_groups: Dict[
-            ray.actor.ActorHandle, "PlacementGroup"
-        ] = {}
         # Actors that are not yet ready (still pending creation).
         self._pending_actors: Dict[ObjectRef, ray.actor.ActorHandle] = {}
         # Whether actors that become idle should be eagerly killed. This is False until
@@ -660,18 +645,12 @@ class _ActorPool(AutoscalingActorPool):
 
     def _kill_running_actor(self, actor: ray.actor.ActorHandle):
         """Kill the provided actor and remove it from the pool."""
-        pg = self._actor_to_placement_groups.pop(actor, None)
-        if pg:
-            ray.util.remove_placement_group(pg)
         ray.kill(actor)
         del self._num_tasks_in_flight[actor]
 
     def _kill_pending_actor(self, ready_ref: ray.ObjectRef):
         """Kill the provided pending actor and remove it from the pool."""
         actor = self._pending_actors.pop(ready_ref)
-        pg = self._actor_to_placement_groups.pop(actor, None)
-        if pg:
-            ray.util.remove_placement_group(pg)
         ray.kill(actor)
 
     def _get_location(self, bundle: RefBundle) -> Optional[NodeIdStr]:

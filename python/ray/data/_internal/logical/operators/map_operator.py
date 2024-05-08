@@ -37,7 +37,8 @@ class AbstractMap(AbstractOneToOne):
                 ``MapOperator._add_bundled_input()``.
             ray_remote_args: Args to provide to ray.remote.
             ray_remote_args_fn: A function that returns a dictionary of remote args
-                passed to each map worker. This function will be called each time prior
+                passed to each map worker. The purpose of this argument is to generate
+                dynamic arguments for each actor/task, and will be called each time prior
                 to initializing the worker. Args returned from this dict will always
                 override the args in ``ray_remote_args``. Note: this is an advanced,
                 experimental feature.
@@ -85,7 +86,8 @@ class AbstractUDFMap(AbstractMap):
             compute: The compute strategy, either ``"tasks"`` (default) to use Ray
                 tasks, or ``"actors"`` to use an autoscaling actor pool.
             ray_remote_args_fn: A function that returns a dictionary of remote args
-                passed to each map worker. This function will be called each time prior
+                passed to each map worker. The purpose of this argument is to generate
+                dynamic arguments for each actor/task, and will be called each time prior
                 to initializing the worker. Args returned from this dict will always
                 override the args in ``ray_remote_args``. Note: this is an advanced,
                 experimental feature.
