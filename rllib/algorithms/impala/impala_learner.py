@@ -232,6 +232,7 @@ class _GPULoaderThread(threading.Thread):
             timer_stats = self.metrics.log_time(
                 (ALL_MODULES, GPU_LOADER_LOAD_TO_GPU_TIMER)
             )
+            timer_stats.__enter__()
 
         # Load the batch onto the GPU device.
         batch_on_gpu = tree.map_structure_with_path(
