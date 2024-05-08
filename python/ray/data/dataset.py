@@ -566,9 +566,8 @@ class Dataset:
             # Enable blocks bundling when batch_size is specified by caller.
             min_rows_per_bundled_input = batch_size
 
-        batch_size = _apply_batch_size(
-            batch_size, use_gpu="num_gpus" in ray_remote_args
-        )
+        use_gpu = ray_remote_args.get("num_gpus", 0) > 0
+        batch_size = _apply_batch_size(batch_size, use_gpu)
 
         if batch_format not in VALID_BATCH_FORMATS:
             raise ValueError(
