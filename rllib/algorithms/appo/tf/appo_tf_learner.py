@@ -72,7 +72,7 @@ class APPOTfLearner(AppoLearner, ImpalaTfLearner):
             trajectory_len=rollout_frag_or_episode_len,
             recurrent_seq_len=recurrent_seq_len,
         )
-        if self.config.enable_env_runner_and_connector_v2:
+        if config.enable_env_runner_and_connector_v2:
             bootstrap_values = batch[Columns.VALUES_BOOTSTRAPPED]
         else:
             bootstrap_values_time_major = make_time_major(

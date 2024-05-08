@@ -283,7 +283,7 @@ py_test(
 # )
 
 py_test(
-    name = "learning_tests_carpole_dqn_envrunner",
+    name = "learning_tests_cartpole_dqn_envrunner",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
@@ -2276,6 +2276,32 @@ py_test(
     size = "medium",
     srcs = ["examples/envs/custom_gym_env.py"],
     args = ["--enable-new-api-stack", "--as-test"]
+)
+
+py_test(
+    name = "examples/envs/custom_env_render_method",
+    main = "examples/envs/custom_env_render_method.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/envs/custom_env_render_method.py"],
+    args = ["--enable-new-api-stack", "--num-agents=0"]
+)
+
+py_test(
+    name = "examples/envs/custom_env_render_method_multi_agent",
+    main = "examples/envs/custom_env_render_method.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/envs/custom_env_render_method.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2"]
+)
+
+py_test(
+    name = "examples/envs/env_rendering_and_recording",
+    srcs = ["examples/envs/env_rendering_and_recording.py"],
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "small",
+    args = ["--enable-new-api-stack", "--env=CartPole-v1", "--stop-iters=3"]
 )
 
 #@OldAPIStack
