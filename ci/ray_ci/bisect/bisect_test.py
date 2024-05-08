@@ -22,22 +22,15 @@ TEST_PREFIXES = [MACOS_TEST_PREFIX, LINUX_TEST_PREFIX, WINDOWS_TEST_PREFIX]
 @click.argument("failing_commit", required=True, type=str)
 def main(test_name: str, passing_commit: str, failing_commit: str) -> None:
     ci_init()
-    test_target = _get_test_target(test_name)
+    test = Test.gen_from_name(test_name)
     blame_commit = Bisector(
-        test_target,
+        test,
         passing_commit,
         failing_commit,
         MacOSValidator(),
     ).run()
     logger.info(f"Blame revision: {blame_commit}")
-    _update_test_state(Test.gen_from_name(test_name), blame_commit)
-
-
-def _get_test_target(test_name: str) -> str:
-    for prefix in TEST_PREFIXES:
-        if test_name.startswith(prefix):
-            return test_name[len(prefix) :]
-    return test_name
+    _update_test_state(test, blame_commit)
 
 
 def _update_test_state(test: Test, blamed_commit: str) -> None:

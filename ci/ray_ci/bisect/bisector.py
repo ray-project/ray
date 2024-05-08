@@ -4,12 +4,13 @@ from typing import List, Optional
 
 from ci.ray_ci.utils import logger
 from ci.ray_ci.bisect.validator import Validator
+from ray_release.test import Test
 
 
 class Bisector:
     def __init__(
         self,
-        test: str,
+        test: Test,
         passing_revision: str,
         failing_revision: str,
         validator: Validator,

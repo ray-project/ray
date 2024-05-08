@@ -308,6 +308,18 @@ class Test(dict):
         """
         return self["name"]
 
+    def get_target(self) -> str:
+        test_type = self.get_test_type()
+        test_name = self.get_name()
+        if test_type == TestType.MACOS_TEST:
+            return test_name[len(MACOS_TEST_PREFIX) :]
+        if test_type == TestType.LINUX_TEST:
+            return test_name[len(LINUX_TEST_PREFIX) :]
+        if test_type == TestType.WINDOWS_TEST:
+            return test_name[len(WINDOWS_TEST_PREFIX) :]
+
+        return test_name
+
     @classmethod
     def _get_s3_name(cls, test_name: str) -> str:
         """
