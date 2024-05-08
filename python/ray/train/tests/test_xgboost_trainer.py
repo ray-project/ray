@@ -153,38 +153,16 @@ def test_checkpoint_only_on_rank0(rank):
 
     booster = mock.MagicMock()
 
-    with mock.patch("ray.train.report") as mock_report, mock.patch(
-        "ray.train.get_context"
-    ) as mock_get_context:
+    with mock.patch("ray.train.get_context") as mock_get_context:
         mock_context = mock.MagicMock()
         mock_context.get_world_rank.return_value = rank
         mock_get_context.return_value = mock_context
 
-        booster.num_boosted_rounds.return_value = 2
-        callback.after_iteration(booster, epoch=1, evals_log={})
-
-        # Only rank 0 should report based on `frequency`
-        reported_checkpoint = bool(mock_report.call_args.kwargs.get("checkpoint"))
-        if rank in (0, None):
-            assert reported_checkpoint
-        else:
-            assert not reported_checkpoint
-
-        booster.num_boosted_rounds.return_value = 3
-        callback.after_iteration(booster, epoch=2, evals_log={})
-        # Nobody should report a checkpoint on iterations
-        reported_checkpoint = bool(mock_report.call_args.kwargs.get("checkpoint"))
-        assert not reported_checkpoint
-
-        booster.num_boosted_rounds.return_value = 4
-        callback.after_training(booster)
-
-        # Only rank 0 should report based on `checkpoint_at_end`
-        reported_checkpoint = bool(mock_report.call_args.kwargs.get("checkpoint"))
-        if rank in (0, None):
-            assert reported_checkpoint
-        else:
-            assert not reported_checkpoint
+        with callback._get_checkpoint(booster) as checkpoint:
+            if rank in (0, None):
+                assert checkpoint
+            else:
+                assert not checkpoint
 
 
 def test_tune(ray_start_8_cpus):

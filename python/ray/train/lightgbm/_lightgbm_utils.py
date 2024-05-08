@@ -142,9 +142,12 @@ class RayTrainReportCallback:
 
     @contextmanager
     def _get_checkpoint(self, model: Booster) -> Optional[Checkpoint]:
-        with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
-            model.save_model(Path(temp_checkpoint_dir, self._filename).as_posix())
-            yield Checkpoint.from_directory(temp_checkpoint_dir)
+        if ray.train.get_context().get_world_rank() in (0, None):
+            with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+                model.save_model(Path(temp_checkpoint_dir, self._filename).as_posix())
+                yield Checkpoint.from_directory(temp_checkpoint_dir)
+        else:
+            yield None
 
     def __call__(self, env: CallbackEnv) -> None:
         eval_result = self._get_eval_result(env)
@@ -158,9 +161,7 @@ class RayTrainReportCallback:
         should_checkpoint_with_frequency = (
             self._frequency != 0 and (env.iteration + 1) % self._frequency == 0
         )
-        should_checkpoint = ray.train.get_context().get_world_rank() == 0 and (
-            should_checkpoint_at_end or should_checkpoint_with_frequency
-        )
+        should_checkpoint = should_checkpoint_at_end or should_checkpoint_with_frequency
 
         if should_checkpoint:
             with self._get_checkpoint(model=env.model) as checkpoint:
