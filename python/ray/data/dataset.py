@@ -36,7 +36,6 @@ from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.execution.legacy_compat import _block_list_to_bundles
 from ray.data._internal.iterator.iterator_impl import DataIteratorImpl
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
-from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.logical.operators.all_to_all_operator import (
     RandomizeBlocks,
     RandomShuffle,
@@ -69,8 +68,6 @@ from ray.data.block import (
     VALID_BATCH_FORMATS,
     Block,
     BlockAccessor,
-    BlockMetadata,
-    BlockPartition,
     DataBatch,
     T,
     U,
@@ -85,7 +82,6 @@ from ray.data.datasource import (
     Datasink,
     Datasource,
     FilenameProvider,
-    ReadTask,
     _BigQueryDatasink,
     _CSVDatasink,
     _ImageDatasink,
@@ -1743,77 +1739,13 @@ class Dataset:
             A new dataset holding the rows of the input datasets.
         """
 
-        start_time = time.perf_counter()
-
-        owned_by_consumer = self._plan.execute()._owned_by_consumer
+        plan = self._plan.copy()
         datasets = [self] + list(other)
-        bls: List[BlockList] = []
-        has_nonlazy = False
-        for ds in datasets:
-            bl = ds._plan.execute()
-            if not isinstance(bl, LazyBlockList):
-                has_nonlazy = True
-            bls.append(bl)
-        if has_nonlazy:
-            blocks = []
-            metadata = []
-            ops_to_union = []
-            for idx, bl in enumerate(bls):
-                if isinstance(bl, LazyBlockList):
-                    bs, ms = bl._get_blocks_with_metadata()
-                else:
-                    assert isinstance(bl, BlockList), type(bl)
-                    bs, ms = bl._blocks, bl._metadata
-                op_logical_plan = datasets[idx]._plan._logical_plan
-                ops_to_union.append(op_logical_plan.dag)
-                blocks.extend(bs)
-                metadata.extend(ms)
-            blocklist = BlockList(blocks, metadata, owned_by_consumer=owned_by_consumer)
-
-            logical_plan = LogicalPlan(UnionLogicalOperator(*ops_to_union))
-        else:
-            tasks: List[ReadTask] = []
-            block_partition_refs: List[ObjectRef[BlockPartition]] = []
-            block_partition_meta_refs: List[ObjectRef[BlockMetadata]] = []
-
-            # Gather read task names from input blocks of unioned Datasets,
-            # and concat them before passing to resulting LazyBlockList
-            read_task_names = []
-            self_read_name = self._plan._in_blocks._read_op_name or "Read"
-            read_task_names.append(self_read_name)
-            other_read_names = [
-                o._plan._in_blocks._read_op_name or "Read" for o in other
-            ]
-            read_task_names.extend(other_read_names)
-
-            for bl in bls:
-                tasks.extend(bl._tasks)
-                block_partition_refs.extend(bl._block_partition_refs)
-                block_partition_meta_refs.extend(bl._block_partition_meta_refs)
-            blocklist = LazyBlockList(
-                tasks,
-                f"Union({','.join(read_task_names)})",
-                block_partition_refs,
-                block_partition_meta_refs,
-                owned_by_consumer=owned_by_consumer,
-            )
-
-            logical_plan = self._logical_plan
-            logical_plans = [union_ds._plan._logical_plan for union_ds in datasets]
-            op = UnionLogicalOperator(
-                *[plan.dag for plan in logical_plans],
-            )
-            logical_plan = LogicalPlan(op)
-
-        stats = DatasetStats(
-            metadata={"Union": []},
-            parent=[d._plan.stats() for d in datasets],
+        op = UnionLogicalOperator(
+            *[union_ds._plan._logical_plan.dag for union_ds in datasets],
         )
-        stats.time_total_s = time.perf_counter() - start_time
-        return Dataset(
-            ExecutionPlan(blocklist, stats, run_by_consumer=owned_by_consumer),
-            logical_plan,
-        )
+        logical_plan = LogicalPlan(op)
+        return Dataset(plan, logical_plan)
 
     @AllToAllAPI
     def groupby(

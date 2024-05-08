@@ -336,7 +336,7 @@ def test_dataset_lineage_serialization_unsupported(shutdown_only):
     # Post-lazy-read unions not supported.
     ds = ray.data.range(10).map(column_udf("id", lambda x: x + 1))
     ds1 = ray.data.range(20).map(column_udf("id", lambda x: 2 * x))
-    ds2 = ds.union(ds1)
+    ds2 = ds.union(ds1).materialize()
 
     with pytest.raises(ValueError):
         ds2.serialize_lineage()
@@ -540,7 +540,9 @@ def test_dataset_repr(ray_start_regular_shared):
     ds3 = ds1.union(ds2)
     # TODO(scottjlee): include all of the input datasets to union()
     # in the repr output, instead of only the resulting unioned dataset.
-    assert repr(ds3) == ("Union\n+- Dataset(num_rows=9, schema={id: int64})")
+    assert (
+        repr(ds3) == f"Union\n+- Dataset(num_rows={ds1.count()}, " "schema={id: int64})"
+    )
     ds = ds.zip(ds3)
     assert repr(ds) == (
         "Zip\n"
