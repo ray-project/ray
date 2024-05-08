@@ -39,9 +39,9 @@ class LogKey(str, Enum):
     TASK_ID = "task_id"
 
     # Logger built-in context
-    TS = "ts"
-    LEVEL = "level"
-    MSG = "msg"
+    ASCTIME = "asctime"
+    LEVELNAME = "levelname"
+    MESSAGE = "message"
     FILENAME = "filename"
     LINENO = "lineno"
     EXC_TEXT = "exc_text"

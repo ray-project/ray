@@ -6,9 +6,9 @@ from ray._private.structured_logging.constants import LogKey, LOGRECORD_STANDARD
 class JSONFormatter(logging.Formatter):
     def format(self, record):
         record_format = {
-            LogKey.TS: self.formatTime(record),
-            LogKey.LEVEL: record.levelname,
-            LogKey.MSG: record.getMessage(),
+            LogKey.ASCTIME: self.formatTime(record),
+            LogKey.LEVELNAME: record.levelname,
+            LogKey.MESSAGE: record.getMessage(),
             LogKey.FILENAME: record.filename,
             LogKey.LINENO: record.lineno,
         }
