@@ -205,7 +205,8 @@ class _ExperimentCheckpointManager:
             ):
                 logger.warning(
                     "Experiment state snapshotting has been triggered multiple "
-                    f"times in the last {self._excessive_sync_threshold} seconds. "
+                    f"times in the last {self._excessive_sync_threshold} seconds "
+                    "and may become a bottleneck. "
                     "A snapshot is forced if `CheckpointConfig(num_to_keep)` is set, "
                     "and a trial has checkpointed >= `num_to_keep` times "
                     "since the last snapshot.\n"
