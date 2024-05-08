@@ -194,6 +194,23 @@ class Test(dict):
             for file in files
         ]
 
+    @classmethod
+    def gen_high_impact_tests(cls, prefix: str) -> Dict[str, List]:
+        """
+        Obtain the mapping from rayci step id to high impact tests with the given prefix
+        """
+        high_impact_tests = [
+            test for test in cls.gen_from_s3(prefix) if test.is_high_impact()
+        ]
+        step_id_to_tests = {}
+        for test in high_impact_tests:
+            step_id = test.get_test_results(limit=1)[0].rayci_step_id
+            if not step_id:
+                continue
+            step_id_to_tests[step_id] = step_id_to_tests.get(step_id, []) + [test]
+
+        return step_id_to_tests
+
     def is_jailed_with_open_issue(self, ray_github: Repository) -> bool:
         """
         Returns whether this test is jailed with open issue.
