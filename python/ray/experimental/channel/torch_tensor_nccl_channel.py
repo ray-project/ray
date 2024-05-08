@@ -60,23 +60,26 @@ class TorchTensorNcclChannel(ChannelInterface):
 
         ctx = ChannelContext.get_current()
         self._nccl_group = ctx.nccl_group
-        if self._nccl_group is not None:
-            self._writer_rank = self._nccl_group.get_rank(self._writer)
-            self._reader_ranks = [
-                self._nccl_group.get_rank(reader) for reader in self._readers
-            ]
+        assert (
+            self._nccl_group is not None
+        ), "ChannelContext.nccl_group is not initialized."
 
-            if (
-                self._writer_rank is not None
-                and self._writer_rank == self._nccl_group.get_self_rank()
-            ):
-                self._writer_registered = True
+        self._writer_rank = self._nccl_group.get_rank(self._writer)
+        self._reader_ranks = [
+            self._nccl_group.get_rank(reader) for reader in self._readers
+        ]
 
-            if (
-                self._reader_ranks
-                and self._nccl_group.get_self_rank() in self._reader_ranks
-            ):
-                self._reader_registered = True
+        if (
+            self._writer_rank is not None
+            and self._writer_rank == self._nccl_group.get_self_rank()
+        ):
+            self._writer_registered = True
+
+        if (
+            self._reader_ranks
+            and self._nccl_group.get_self_rank() in self._reader_ranks
+        ):
+            self._reader_registered = True
 
     def ensure_registered_as_writer(self):
         assert self._nccl_group is not None, "Actor is not part of a NCCL group"
@@ -101,7 +104,7 @@ class TorchTensorNcclChannel(ChannelInterface):
             )
         if value.dtype != self._typ.dtype:
             raise ValueError(
-                f"torch.Tensor has shape {value.shape}, expected {self._typ.shape}"
+                f"torch.Tensor has dtype {value.dtype}, expected {self._typ.dtype}"
             )
         if value.device != self._device:
             raise ValueError(
@@ -131,7 +134,9 @@ class TorchTensorNcclChannel(ChannelInterface):
 
 
 def _do_init_nccl_group(self, world_size, comm_id, rank, actor_ids_to_ranks):
-    # assert ray.get_gpu_ids()
+    assert (
+        ray.get_gpu_ids()
+    ), "Actors participating in NCCL group must have at least one GPU assigned"
 
     ctx = ChannelContext.get_current()
     ctx.nccl_group = _NcclGroup(
@@ -197,27 +202,15 @@ def _init_nccl_group(
         )
         for actor, rank in actor_handles_to_ranks.items()
     ]
-    done = False
     try:
         ray.get(init_tasks, timeout=30)
-        done = True
     except ray.exceptions.GetTimeoutError:
         logger.warning(
             "NCCL group creation not done after 30s. NCCL group creation may be hung."
         )
-    if not done:
         ray.get(init_tasks)
 
     logger.info("NCCL group created.")
-
-    ray.get(
-        [
-            actor.__ray_call__.remote(
-                lambda self: print(ChannelContext.get_current().nccl_group)
-            )
-            for actor, rank in actor_handles_to_ranks.items()
-        ]
-    )
 
     ctx.nccl_group = _NcclGroup(
         world_size,

@@ -175,7 +175,7 @@ class Channel(ChannelInterface):
     def is_remote(self):
         return self._writer_node_id != self._reader_node_id
 
-    def ensure_registered_as_writer(self):
+    def ensure_registered_as_writer(self) -> None:
         if self._writer_registered:
             return
 
@@ -204,7 +204,7 @@ class Channel(ChannelInterface):
         )
         self._writer_registered = True
 
-    def ensure_registered_as_reader(self):
+    def ensure_registered_as_reader(self) -> None:
         if self._reader_registered:
             return
 
