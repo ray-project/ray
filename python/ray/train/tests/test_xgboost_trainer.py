@@ -109,10 +109,11 @@ def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):
 @pytest.mark.parametrize(
     "freq_end_expected",
     [
-        (4, True, 7),  # 4, 8, 12, 16, 20, 24, 25
-        (4, False, 6),  # 4, 8, 12, 16, 20, 24
-        (5, True, 5),  # 5, 10, 15, 20, 25
-        (0, True, 1),  # end
+        # With num_boost_round=25 with 0 indexing, the checkpoints will be at:
+        (4, True, 7),  # 3, 7, 11, 15, 19, 23, 24 (end)
+        (4, False, 6),  # 3, 7, 11, 15, 19, 23
+        (5, True, 5),  # 4, 9, 14, 19, 24
+        (0, True, 1),  # 24 (end)
         (0, False, 0),
     ],
 )
