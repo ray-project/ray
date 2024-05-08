@@ -143,9 +143,14 @@ def _do_init_nccl_group(self, world_size, comm_id, rank, actor_ids_to_ranks):
     )
 
 
-@DeveloperAPI
 def _do_check_has_gpu(self) -> bool:
     return bool(ray.get_gpu_ids())
+
+
+def _do_get_unique_nccl_id(self) -> bool:
+    from cupy.cuda import nccl
+
+    return nccl.get_unique_id()
 
 
 def _init_nccl_group(
@@ -174,9 +179,10 @@ def _init_nccl_group(
         actor_handles_to_ranks
     ), "actors must be unique"
 
-    from cupy.cuda import nccl
-
-    comm_id = nccl.get_unique_id()
+    # Allocate a communicator ID on one of the actors that will participate in
+    # the group. This is in case the driver is not on the same node as one of
+    # the NCCL actors.
+    comm_id = ray.get(actors[0].__ray_call__.remote(_do_get_unique_nccl_id))
 
     logger.info(f"Creating NCCL group on actors->ranks: {actor_handles_to_ranks}")
 
