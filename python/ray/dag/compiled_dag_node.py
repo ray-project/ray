@@ -409,7 +409,7 @@ class CompiledDAG:
         self.actor_task_count.clear()
         self._type_hints.clear()
 
-        nccl_actors = set()
+        nccl_actors: Set["ray.actor.ActorHandle"] = set()
 
         # For each task node, set its upstream and downstream task nodes.
         # Also collect the set of tasks that produce torch.tensors.
