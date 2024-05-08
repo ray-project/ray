@@ -201,6 +201,7 @@ class _ExperimentCheckpointManager:
             if (
                 time_since_last_sync is not None
                 and time_since_last_sync < self._excessive_sync_threshold
+                and self._should_force_sync_up
             ):
                 logger.warning(
                     "Experiment state snapshotting has been triggered multiple "
