@@ -337,6 +337,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         def on_new_lag(lag_s):
             # Keep the lag. It's exported in `record_dashboard_metrics`
             head.event_loop_lag_s = lag_s
+
         enable_monitor_loop_lag(on_new_lag)
 
         # Logs warnings if a task ran for more than 100ms. Limitation: it only logs

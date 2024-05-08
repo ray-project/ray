@@ -20,30 +20,28 @@
 # - Renamed `monitor_loop_lag.enable()` to just `enable_monitor_loop_lag()`.
 # - Miscellaneous changes to make it work with Ray.
 
-# mypy doesn't think this function exists in the module:
-from asyncio.base_events import _format_handle  # type: ignore[attr-defined]
-from typing import Callable, Optional
+from asyncio.base_events import _format_handle
+from typing import Callable
 import asyncio
 import asyncio.events
 import time
 
 
-# import logging
-# logger = logging.getLogger(__name__)
+def enable_log_slow_callbacks(
+    slow_duration: float, on_slow_callback: Callable[[str, float], None] = None
+) -> None:
+    """
+    Patch ``asyncio.events.Handle`` to log warnings every time a callback takes
+    ``slow_duration`` seconds or more to run.
 
-def enable_log_slow_callbacks(slow_duration: float, on_slow_callback: Callable[[str, float], None] = None) -> None:
-    '''
-    Patch ``asyncio.events.Handle`` to log warnings every time a callback takes ``slow_duration`` seconds
-    or more to run.
-    
     Note: this only works with asyncio's default event loop, not with uvloop.
 
     :param on_slow_callback: Receives a formatted name of a slow callback
         and the time (in seconds) it took to execute.
-    '''
+    """
     if on_slow_callback is None:
         raise ValueError("on_slow_callback is required")
-    _run = asyncio.events.Handle._run  # pylint: disable=protected-access
+    _run = asyncio.events.Handle._run
 
     def instrumented(self):
         t0 = time.monotonic()
@@ -53,11 +51,7 @@ def enable_log_slow_callbacks(slow_duration: float, on_slow_callback: Callable[[
             on_slow_callback(_format_handle(self), dt)
         return return_value
 
-    asyncio.events.Handle._run = instrumented  # type: ignore[assignment] # pylint: disable=protected-access
-
-from typing_extensions import Protocol
-import asyncio
-
+    asyncio.events.Handle._run = instrumented
 
 
 def enable_monitor_loop_lag(
@@ -65,14 +59,14 @@ def enable_monitor_loop_lag(
     interval: float = 0.25,
     loop: asyncio.AbstractEventLoop = None,
 ) -> None:
-    '''
-    Start logging event loop lags to StatsD. In ideal circumstances they should be very close to zero.
-    Lags may increase if event loop callbacks block for too long.
-    
+    """
+    Start logging event loop lags to StatsD. In ideal circumstances they should be very
+    close to zero. Lags may increase if event loop callbacks block for too long.
+
     Note: this works for all event loops, including uvloop.
-    
+
     :param callback_s: Callback to call with the lag in seconds.
-    '''
+    """
     if loop is None:
         loop = asyncio.get_running_loop()
     if loop is None:
@@ -85,4 +79,4 @@ def enable_monitor_loop_lag(
             lag = loop.time() - t0 - interval  # Should be close to zero.
             callback_s(lag)
 
-    loop.create_task(monitor(), name = 'async_utils.monitor_loop_lag')
+    loop.create_task(monitor(), name="async_utils.monitor_loop_lag")

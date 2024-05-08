@@ -27,7 +27,6 @@ from ray._private import ray_constants
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_ERROR,
     DEBUG_AUTOSCALING_STATUS_LEGACY,
-    
 )
 from ray._private.utils import get_or_create_event_loop
 from ray._private.test_utils import (
@@ -1054,11 +1053,12 @@ async def test_dashboard_exports_metric_on_event_loop_lag(
     laptop. We assert it to be >3s to be safe.
     """
     import aiohttp
+
     ray_context = ray_start_with_dashboard
     assert wait_until_server_available(ray_context["webui_url"]) is True
     webui_url = format_web_url(ray_context["webui_url"])
     blocking_url = webui_url + "/test/block_event_loop?seconds=1"
-    
+
     async def make_blocking_call():
         async with aiohttp.ClientSession() as session:
             async with session.get(blocking_url) as resp:
@@ -1068,7 +1068,7 @@ async def test_dashboard_exports_metric_on_event_loop_lag(
     # Blocks the event loop for 1 second for 10 times.
     tasks = [make_blocking_call() for _ in range(10)]
     await asyncio.gather(*tasks)
-    
+
     # Fetch the metrics from the dashboard.
     addr = ray_context["raylet_ip_address"]
     prom_addresses = [f"{addr}:{dashboard_consts.DASHBOARD_METRIC_PORT}"]
@@ -1079,6 +1079,7 @@ async def test_dashboard_exports_metric_on_event_loop_lag(
     lag_metric_samples = metrics_samples["ray_dashboard_event_loop_lag_seconds"]
     assert len(lag_metric_samples) > 0
     assert all(sample[1] > 3 for sample in lag_metric_samples)
+
 
 @pytest.mark.skipif(
     os.environ.get("RAY_DEFAULT") != "1",
