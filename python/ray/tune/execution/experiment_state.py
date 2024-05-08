@@ -212,10 +212,11 @@ class _ExperimentCheckpointManager:
                     "You may want to consider increasing the "
                     "`CheckpointConfig(num_to_keep)` or decreasing the frequency of "
                     "saving checkpoints.\n"
-                    "You can suppress this error by setting the environment variable "
+                    "You can suppress this warning by setting the environment variable "
                     "TUNE_WARN_EXCESSIVE_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S "
                     "to a smaller value than the current threshold "
-                    f"({self._excessive_sync_threshold})."
+                    f"({self._excessive_sync_threshold}). "
+                    "Set it to 0 to completely suppress this warning."
                 )
 
             self._last_sync_time = time.monotonic()
