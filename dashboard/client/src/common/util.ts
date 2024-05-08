@@ -38,3 +38,19 @@ export const filterRuntimeEnvSystemVariables = (
   });
   return out;
 };
+
+export const sliceToPage = <T>(
+  items: T[],
+  pageNo: number,
+  pageSize = 10,
+): { items: T[]; constrainedPage: number; maxPage: number } => {
+  const maxPage = Math.ceil(items.length / pageSize);
+  const constrainedPage = Math.min(maxPage, Math.max(1, pageNo));
+  const start = (constrainedPage - 1) * pageSize;
+  const end = constrainedPage * pageSize;
+  return {
+    items: items.slice(start, end),
+    constrainedPage,
+    maxPage,
+  };
+};
