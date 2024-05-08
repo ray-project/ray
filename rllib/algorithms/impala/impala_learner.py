@@ -210,8 +210,12 @@ class _GPULoaderThread(threading.Thread):
 
         # Load the batch onto the GPU device.
         with self.metrics.log_time((ALL_MODULES, GPU_LOADER_LOAD_TO_GPU_TIMER)):
-            ma_batch_on_gpu = ma_batch.to_device(self._device)
-            self._out_queue.put(ma_batch_on_gpu)
+            for mid, module_batch in ma_batch.policy_batches.copy().items():
+                ma_batch.policy_batches[mid] = tree.map_structure(
+                    lambda t: t.to(self._device, non_blocking=True),
+                    module_batch,
+                )
+            self._out_queue.put(ma_batch)
             self.metrics.log_value(
                 QUEUE_SIZE_LEARNER_THREAD_QUEUE, self._out_queue.qsize()
             )

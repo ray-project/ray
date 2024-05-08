@@ -8,7 +8,7 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.framework import convert_to_tensor
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import EpisodeType
 
 
@@ -25,14 +25,28 @@ class NumpyToTensor(ConnectorV2):
         input_action_space: Optional[gym.Space] = None,
         *,
         as_learner_connector: bool = False,
+        pin_mempory: Optional[bool] = None,
         **kwargs,
     ):
+        """Initializes a NumpyToTensor instance.
+
+        Args:
+            as_learner_connector: Whether this ConnectorV2 piece is used inside a
+                LearnerConnectorPipeline or not.
+            pin_mempory: Whether to pin memory when creating (torch) tensors.
+                If None (default), pin memory if `as_learner_connector` is True,
+                otherwise, don't.
+            **kwargs:
+        """
         super().__init__(
             input_observation_space=input_observation_space,
             input_action_space=input_action_space,
             **kwargs,
         )
         self._as_learner_connector = as_learner_connector
+        self._pin_memory = (
+            pin_mempory if pin_mempory is not None else self._as_learner_connector
+        )
 
     @override(ConnectorV2)
     def __call__(
@@ -53,7 +67,14 @@ class NumpyToTensor(ConnectorV2):
         # TODO (sven): Support specifying a device (e.g. GPU).
         for module_id, module_data in data.copy().items():
             infos = module_data.pop(Columns.INFOS, None)
-            module_data = convert_to_tensor(module_data, framework=rl_module.framework)
+            if rl_module.framework == "torch":
+                module_data = convert_to_torch_tensor(
+                    module_data, pin_memory=self._pin_memory
+                )
+            else:
+                raise ValueError(
+                    "`NumpyToTensor`does NOT support frameworks other than torch!"
+                )
             if infos is not None:
                 module_data[Columns.INFOS] = infos
             # Early out if not multi-agent AND not learner connector (which

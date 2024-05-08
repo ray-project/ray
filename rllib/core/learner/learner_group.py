@@ -898,8 +898,8 @@ class LearnerGroup:
                     worker_ip_addr, worker_temp_dir, self_ip_addr, path
                 )
 
-                # creating this function here instead of making it a member funciton
-                # becasue it uses the worker_temp_dir variable, and this can't
+                # Creating this function here instead of making it a member function
+                # because it uses the worker_temp_dir variable, and this can't
                 # be passed in as an argument to foreach_actor
                 def remove_dir(w):
                     import shutil
