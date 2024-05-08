@@ -236,16 +236,14 @@ class Stats:
         """
         # In case another thread already is measuring this Stats (timing), simply ignore
         # the "enter request" and return a clone of `self`.
-        if self._start_time is not None:
-            return Stats.similar_to(self, init_value=self.values)
-
-        self._start_time = time.time()
+        assert self._start_time is None
+        self._start_time = time.perf_counter()
         return self
 
     def __exit__(self, exc_type, exc_value, tb) -> None:
         """Called when exiting a context (with which users can measure a time delta)."""
         assert self._start_time is not None
-        time_delta = time.time() - self._start_time
+        time_delta = time.perf_counter() - self._start_time
         self.push(time_delta)
 
         # Call the on_exit handler.

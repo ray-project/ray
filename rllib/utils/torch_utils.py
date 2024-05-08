@@ -279,7 +279,7 @@ def convert_to_torch_tensor(
             tensor = tensor.float()
 
         # Pin the tensor's memory (for faster transfer to GPU later).
-        if pin_memory:
+        if pin_memory and torch.cuda.is_available():
             tensor.pin_memory()
 
         return tensor if device is None else tensor.to(device)

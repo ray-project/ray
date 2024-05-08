@@ -5,6 +5,7 @@ import gymnasium as gym
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.utils.annotations import override
@@ -59,9 +60,11 @@ class NumpyToTensor(ConnectorV2):
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-        is_multi_agent = isinstance(episodes[0], MultiAgentEpisode)
-
-        if not is_multi_agent:
+        is_single_agent = False
+        is_marl_module = isinstance(rl_module, MultiAgentRLModule)
+        # `data` already a ModuleID to batch mapping format.
+        if not (is_marl_module and all(c in rl_module._rl_modules for c in data)):
+            is_single_agent = True
             data = {DEFAULT_MODULE_ID: data}
 
         # TODO (sven): Support specifying a device (e.g. GPU).
@@ -77,9 +80,9 @@ class NumpyToTensor(ConnectorV2):
                 )
             if infos is not None:
                 module_data[Columns.INFOS] = infos
-            # Early out if not multi-agent AND not learner connector (which
-            # does always operate on a MARLModule).
-            if not is_multi_agent and not self._as_learner_connector:
+            # Early out with data under(!) `DEFAULT_MODULE_ID`, b/c we are in plain
+            # single-agent mode.
+            if is_single_agent:
                 return module_data
             data[module_id] = module_data
 

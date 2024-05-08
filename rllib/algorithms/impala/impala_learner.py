@@ -10,6 +10,7 @@ from ray.rllib.algorithms.impala.impala import (
     ImpalaConfig,
     LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY,
 )
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.connectors.learner import AddOneTsToEpisodesAndTruncate
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
@@ -114,6 +115,7 @@ class ImpalaLearner(Learner):
             # actual batch/episodes objects).
             episodes = ray.get(episodes)
             episodes = tree.flatten(episodes)
+            env_steps = sum(map(len, episodes))
 
         # Call the learner connector pipeline.
         with self.metrics.log_time((ALL_MODULES, EPISODES_TO_BATCH_TIMER)):
@@ -125,16 +127,16 @@ class ImpalaLearner(Learner):
             )
             # Convert to a batch (on the CPU).
             # TODO (sven): Try to not require MultiAgentBatch anymore.
-            batch = MultiAgentBatch(
-                {
-                    module_id: SampleBatch(module_data)
-                    for module_id, module_data in batch.items()
-                },
-                env_steps=sum(len(e) for e in episodes),
-            )
+            #batch = MultiAgentBatch(
+            #    {
+            #        module_id: SampleBatch(module_data)
+            #        for module_id, module_data in batch.items()
+            #    },
+            #    env_steps=sum(len(e) for e in episodes),
+            #)
 
         # Queue the CPU batch to the GPU-loader thread.
-        self._gpu_loader_in_queue.put(batch)
+        self._gpu_loader_in_queue.put((batch, env_steps))
         self.metrics.log_value(
             QUEUE_SIZE_GPU_LOADER_QUEUE, self._gpu_loader_in_queue.qsize()
         )
@@ -206,16 +208,23 @@ class _GPULoaderThread(threading.Thread):
     def _step(self) -> None:
         # Get a new batch from the data (inqueue).
         with self.metrics.log_time((ALL_MODULES, GPU_LOADER_QUEUE_WAIT_TIMER)):
-            ma_batch = self._in_queue.get()
+            batch_on_cpu, env_steps = self._in_queue.get()
 
         # Load the batch onto the GPU device.
         with self.metrics.log_time((ALL_MODULES, GPU_LOADER_LOAD_TO_GPU_TIMER)):
-            for mid, module_batch in ma_batch.policy_batches.copy().items():
-                ma_batch.policy_batches[mid] = tree.map_structure(
-                    lambda t: t.to(self._device, non_blocking=True),
-                    module_batch,
-                )
-            self._out_queue.put(ma_batch)
+            batch_on_gpu = tree.map_structure_with_path(
+                lambda path, t: (
+                    t
+                    if isinstance(path, tuple) and Columns.INFOS in path
+                    else t.to(self._device, non_blocking=True)
+                ),
+                batch_on_cpu,
+            )
+            ma_batch_on_gpu = MultiAgentBatch(
+                policy_batches={mid: SampleBatch(b) for mid, b in batch_on_gpu.items()},
+                env_steps=env_steps,
+            )
+            self._out_queue.put(ma_batch_on_gpu)
             self.metrics.log_value(
                 QUEUE_SIZE_LEARNER_THREAD_QUEUE, self._out_queue.qsize()
             )
