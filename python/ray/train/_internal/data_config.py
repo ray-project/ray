@@ -97,12 +97,13 @@ class DataConfig:
                 # If "resource_limits" is not overriden by the user,
                 # add training-reserved resources to Data's exclude_resources.
                 execution_options.exclude_resources = (
-                    ds.context.execution_options.exclude_resources.add(
+                    execution_options.exclude_resources.add(
                         ExecutionResources(
                             cpu=self._num_train_cpus, gpu=self._num_train_gpus
                         )
                     )
                 )
+
             ds = ds.copy(ds)
             ds.context.execution_options = execution_options
 
