@@ -1,5 +1,5 @@
 import copy
-from queue import Queue, Empty
+from queue import Empty, LifoQueue, Queue
 import threading
 from typing import Dict, List, Optional
 
@@ -72,7 +72,7 @@ class ImpalaLearner(Learner):
         # on the "update queue" for the actual RLModule forward pass and loss
         # computations.
         self._gpu_loader_in_queue = Queue()
-        self._learner_thread_in_queue = Queue()
+        self._learner_thread_in_queue = LifoQueue(maxsize=self.config.learner_queue_size)
         self._learner_thread_out_queue = Queue()
 
         # Create and start the GPU loader thread(s).
@@ -162,9 +162,10 @@ class ImpalaLearner(Learner):
         try:
             while True:
                 results = self._learner_thread_out_queue.get(block=False)
-                ts_trained += results[ALL_MODULES][NUM_ENV_STEPS_TRAINED]
+                ts_trained += results[ALL_MODULES][NUM_ENV_STEPS_TRAINED].peek()
         except Empty:
-            results[ALL_MODULES][NUM_ENV_STEPS_TRAINED] = ts_trained
+            if ts_trained:
+                results[ALL_MODULES][NUM_ENV_STEPS_TRAINED].values = [ts_trained]
             return results
 
     # TODO (sven): IMPALA does NOT call additional update anymore from its
