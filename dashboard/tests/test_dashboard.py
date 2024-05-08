@@ -12,8 +12,6 @@ import warnings
 from pathlib import Path
 
 import pytest
-import ray.dashboard.modules.metrics
-import ray.dashboard.modules.metrics.metrics_head
 import requests
 import socket
 
@@ -1053,6 +1051,8 @@ async def test_dashboard_exports_metric_on_event_loop_lag(
     laptop. We assert it to be >3s to be safe.
     """
     import aiohttp
+    from prometheus_client.samples import Sample
+    from typing import List, Dict
 
     ray_context = ray_start_with_dashboard
     assert wait_until_server_available(ray_context["webui_url"]) is True
@@ -1073,12 +1073,12 @@ async def test_dashboard_exports_metric_on_event_loop_lag(
     addr = ray_context["raylet_ip_address"]
     prom_addresses = [f"{addr}:{dashboard_consts.DASHBOARD_METRIC_PORT}"]
 
-    metrics_samples = fetch_prometheus_metrics(prom_addresses)
+    metrics_samples: Dict[str, List[Sample]] = fetch_prometheus_metrics(prom_addresses)
     print(metrics_samples)
 
     lag_metric_samples = metrics_samples["ray_dashboard_event_loop_lag_seconds"]
     assert len(lag_metric_samples) > 0
-    assert all(sample[1] > 3 for sample in lag_metric_samples)
+    assert all(sample.value > 3 for sample in lag_metric_samples)
 
 
 @pytest.mark.skipif(
