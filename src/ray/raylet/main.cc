@@ -255,8 +255,11 @@ int main(int argc, char *argv[]) {
 
   auto shutdown_raylet_gracefully = [&main_service, shutdown_raylet_gracefully_sync](
                                         const ray::rpc::NodeDeathInfo &node_death_info) {
-    main_service.post([shutdown_raylet_gracefully_sync, node_death_info]() {},
-                      "shutdown_raylet_gracefully_sync");
+    main_service.post(
+        [shutdown_raylet_gracefully_sync, node_death_info]() {
+          shutdown_raylet_gracefully_sync(node_death_info);
+        },
+        "shutdown_raylet_gracefully_sync");
   };
 
   RAY_CHECK_OK(gcs_client->Nodes().AsyncGetInternalConfig(
