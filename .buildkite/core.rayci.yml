@@ -316,9 +316,9 @@ steps:
       - raycpubase
       - corebuild
 
-  - label: ":ray: core: accelerated dag tests"
+  - label: ":ray: core: multi gpu tests"
     tags:
-      - accelerated_dag
+      - python
       - gpu
     instance_type: gpu-large
     commands:
