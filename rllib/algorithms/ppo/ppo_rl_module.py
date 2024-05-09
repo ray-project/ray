@@ -12,17 +12,33 @@ from ray.rllib.models.distributions import Distribution
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.annotations import override
 
+# TODO (simon): Write a light-weight version of this class for the `TFRLModule`
+
 
 @ExperimentalAPI
 class PPORLModule(RLModule, abc.ABC):
     def setup(self):
         # __sphinx_doc_begin__
         catalog = self.config.get_catalog()
+        # If this is not a learner module, we use only a single value network. This
+        # network is then either the share encoder network from the learner module
+        # or the actor encoder network from the learner module (if the value network
+        # is not shared with the actor network).
+        if self.inference_only and self.framework == "torch":
+            # catalog._model_config_dict["vf_share_layers"] = True
+            # We need to set the shared flag in the encoder config
+            # b/c the catalog has already been built at this point.
+            catalog.actor_critic_encoder_config.shared = True
 
         # Build models from catalog
         self.encoder = catalog.build_actor_critic_encoder(framework=self.framework)
         self.pi = catalog.build_pi_head(framework=self.framework)
-        self.vf = catalog.build_vf_head(framework=self.framework)
+        # Only build the critic network when this is a learner module.
+        if not self.inference_only or self.framework != "torch":
+            self.vf = catalog.build_vf_head(framework=self.framework)
+            # Holds the parameter names to be removed or renamed when synching
+            # from the learner to the inference module.
+            self._inference_only_state_dict_keys = {}
 
         self.action_dist_cls = catalog.get_action_dist_cls(framework=self.framework)
         # __sphinx_doc_end__

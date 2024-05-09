@@ -9,13 +9,13 @@ from ray.rllib.algorithms.ppo.ppo import (
 )
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo.tests.test_ppo import PENDULUM_FAKE_BATCH
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.learner.learner import (
     LEARNER_RESULTS_CURR_LR_KEY,
 )
 from ray.rllib.evaluation.postprocessing import (
     compute_gae_for_sample_batch,
 )
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.test_utils import (
     check,
@@ -41,7 +41,7 @@ def get_model_config(framework, lstm=False):
 
 class MyCallbacks(DefaultCallbacks):
     def on_train_result(self, *, algorithm, result: dict, **kwargs):
-        stats = result["info"][LEARNER_INFO][DEFAULT_POLICY_ID]
+        stats = result["info"][LEARNER_INFO][DEFAULT_MODULE_ID]
         # Entropy coeff goes to 0.05, then 0.0 (per iter).
         check(
             stats[LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY],
@@ -78,7 +78,7 @@ class TestPPO(unittest.TestCase):
         # Build a PPOConfig object.
         config = (
             ppo.PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .training(
                 num_sgd_iter=2,
                 # Setup lr schedule for testing lr-scheduling correctness.
@@ -88,8 +88,8 @@ class TestPPO(unittest.TestCase):
                 entropy_coeff=[[0, 0.1], [256, 0.0]],  # 256=2x128,
                 train_batch_size=128,
             )
-            .rollouts(
-                num_rollout_workers=1,
+            .env_runners(
+                num_env_runners=1,
                 # Test with compression.
                 # compress_observations=True,
                 enable_connectors=True,
@@ -105,7 +105,7 @@ class TestPPO(unittest.TestCase):
                 print("Env={}".format(env))
                 for lstm in [False]:
                     print("LSTM={}".format(lstm))
-                    config.training(model=get_model_config(fw, lstm=lstm))
+                    config.rl_module(model_config_dict=get_model_config(fw, lstm=lstm))
 
                     algo = config.build(env=env)
                     # TODO: Maybe add an API to get the Learner(s) instances within
@@ -119,7 +119,7 @@ class TestPPO(unittest.TestCase):
 
                     # Check current entropy coeff value using the respective Scheduler.
                     entropy_coeff = learner.entropy_coeff_schedulers_per_module[
-                        DEFAULT_POLICY_ID
+                        DEFAULT_MODULE_ID
                     ].get_current_value()
                     check(entropy_coeff, 0.1)
 
@@ -137,14 +137,14 @@ class TestPPO(unittest.TestCase):
         """Tests, whether PPO runs with different exploration setups."""
         config = (
             ppo.PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .environment(
                 "FrozenLake-v1",
                 env_config={"is_slippery": False, "map_name": "4x4"},
             )
-            .rollouts(
+            .env_runners(
                 # Run locally.
-                num_rollout_workers=0,
+                num_env_runners=0,
             )
         )
         obs = np.array(0)
@@ -181,19 +181,21 @@ class TestPPO(unittest.TestCase):
         """Tests the free log std option works."""
         config = (
             ppo.PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .environment("Pendulum-v1")
-            .rollouts(
-                num_rollout_workers=1,
+            .env_runners(
+                num_env_runners=1,
+            )
+            .rl_module(
+                model_config_dict={
+                    "fcnet_hiddens": [10],
+                    "fcnet_activation": "linear",
+                    "free_log_std": True,
+                    "vf_share_layers": True,
+                }
             )
             .training(
                 gamma=0.99,
-                model=dict(
-                    fcnet_hiddens=[10],
-                    fcnet_activation="linear",
-                    free_log_std=True,
-                    vf_share_layers=True,
-                ),
             )
         )
 
@@ -201,7 +203,7 @@ class TestPPO(unittest.TestCase):
             algo = config.build()
             policy = algo.get_policy()
             learner = algo.learner_group._learner
-            module = learner.module[DEFAULT_POLICY_ID]
+            module = learner.module[DEFAULT_MODULE_ID]
 
             # Check the free log std var is created.
             if fw == "torch":
@@ -213,7 +215,7 @@ class TestPPO(unittest.TestCase):
             assert len(matching) == 1, matching
             log_std_var = matching[0]
 
-            def get_value():
+            def get_value(fw=fw, log_std_var=log_std_var):
                 if fw == "torch":
                     return log_std_var.detach().cpu().numpy()[0]
                 else:

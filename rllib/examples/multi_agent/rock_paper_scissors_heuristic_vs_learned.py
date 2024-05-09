@@ -26,6 +26,7 @@ For logging to your WandB account, use:
 `--wandb-key=[your WandB API key] --wandb-project=[some project name]
 --wandb-run-name=[optional: WandB run name (within the defined project)]`
 """
+
 import random
 
 import gymnasium as gym
@@ -81,7 +82,7 @@ if __name__ == "__main__":
         get_trainable_cls(args.algo)
         .get_default_config()
         .environment("RockPaperScissors")
-        .rollouts(
+        .env_runners(
             env_to_module_connector=lambda env: (
                 AddObservationsFromEpisodesToBatch(),
                 # Only flatten obs for the learning RLModul
@@ -103,7 +104,10 @@ if __name__ == "__main__":
             policies_to_train=["learned"],
         )
         .training(
-            model={
+            vf_loss_coeff=0.005,
+        )
+        .rl_module(
+            model_config_dict={
                 "use_lstm": args.use_lstm,
                 # Use a simpler FCNet when we also have an LSTM.
                 "fcnet_hiddens": [32] if args.use_lstm else [256, 256],
@@ -111,9 +115,6 @@ if __name__ == "__main__":
                 "max_seq_len": 15,
                 "vf_share_layers": True,
             },
-            vf_loss_coeff=0.005,
-        )
-        .rl_module(
             rl_module_spec=MultiAgentRLModuleSpec(
                 module_specs={
                     "always_same": SingleAgentRLModuleSpec(
@@ -128,20 +129,22 @@ if __name__ == "__main__":
                     ),
                     "learned": SingleAgentRLModuleSpec(),
                 }
-            )
+            ),
         )
     )
 
     # Make `args.stop_reward` "point" to the reward of the learned policy.
     stop = {
         "training_iteration": args.stop_iters,
-        "sampler_results/policy_reward_mean/learned": args.stop_reward,
-        "timesteps_total": args.stop_timesteps,
+        "env_runner_results/module_episode_returns_mean/learned": args.stop_reward,
+        "num_env_steps_sampled_lifetime": args.stop_timesteps,
     }
 
     run_rllib_example_script_experiment(
         base_config,
         args,
         stop=stop,
-        success_metric={"sampler_results/policy_reward_mean/learned": args.stop_reward},
+        success_metric={
+            "env_runner_results/module_episode_returns_mean/learned": args.stop_reward,
+        },
     )

@@ -30,6 +30,8 @@ class AggregateFn:
             For example, an empty accumulator for a sum would be 0.
         merge: This may be called multiple times, each time to merge
             two accumulators into one.
+        name: The name of the aggregation. This will be used as the column name
+            in the output Dataset.
         accumulate_row: This is called once per row of the same group.
             This combines the accumulator and the row, returns the updated
             accumulator. Exactly one of accumulate_row and accumulate_block must
@@ -41,18 +43,16 @@ class AggregateFn:
             accumulate_block must be provided.
         finalize: This is called once to compute the final aggregation
             result from the fully merged accumulator.
-        name: The name of the aggregation. This will be used as the output
-            column name in the case of Arrow dataset.
     """
 
     def __init__(
         self,
         init: Callable[[KeyType], AggType],
         merge: Callable[[AggType, AggType], AggType],
+        name: str,
         accumulate_row: Callable[[AggType, T], AggType] = None,
         accumulate_block: Callable[[AggType, Block], AggType] = None,
         finalize: Callable[[AggType], U] = lambda a: a,
-        name: Optional[str] = None,
     ):
         if (accumulate_row is None and accumulate_block is None) or (
             accumulate_row is not None and accumulate_block is not None
@@ -68,11 +68,14 @@ class AggregateFn:
                     a = accumulate_row(a, r)
                 return a
 
+        if not isinstance(name, str):
+            raise TypeError("`name` must be provided.")
+
         self.init = init
         self.merge = merge
+        self.name = name
         self.accumulate_block = accumulate_block
         self.finalize = finalize
-        self.name = name
 
     def _validate(self, schema: Optional[Union[type, "pa.lib.Schema"]]) -> None:
         """Raise an error if this cannot be applied to the given schema."""

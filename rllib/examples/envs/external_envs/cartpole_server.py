@@ -173,8 +173,8 @@ if __name__ == "__main__":
         # Use the `PolicyServerInput` to generate experiences.
         .offline_data(input_=_input)
         # Use n worker processes to listen on different ports.
-        .rollouts(
-            num_rollout_workers=args.num_workers,
+        .env_runners(
+            num_env_runners=args.num_workers,
             # Connectors are not compatible with the external env.
             enable_connectors=False,
         )
@@ -186,7 +186,7 @@ if __name__ == "__main__":
     # Disable RLModules because they need connectors
     # TODO (Sven): Deprecate ExternalEnv (via EnvRunner path) and reenable connectors
     #  and RL Modules here.
-    config.experimental(_enable_new_api_stack=False)
+    config.api_stack(enable_rl_module_and_learner=False)
 
     # DQN.
     if args.run == "DQN" or args.run == "APEX" or args.run == "R2D2":
@@ -267,8 +267,8 @@ if __name__ == "__main__":
 
         stop = {
             "training_iteration": args.stop_iters,
-            "timesteps_total": args.stop_timesteps,
-            "episode_reward_mean": args.stop_reward,
+            "num_env_steps_sampled_lifetime": args.stop_timesteps,
+            "env_runner_results/episode_return_mean": args.stop_reward,
         }
 
         tune.Tuner(

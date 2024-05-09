@@ -96,6 +96,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         self._component = "dashboard"
         self._session_name = dashboard_head.session_name
         assert self._component in AVAILABLE_COMPONENT_NAMES_FOR_METRICS
+        self._dashboard_proc = psutil.Process()
 
     @routes.get("/api/grafana_health")
     async def grafana_health(self, req) -> aiohttp.web.Response:
@@ -305,28 +306,28 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
 
     @dashboard_utils.async_loop_forever(METRICS_RECORD_INTERVAL_S)
     async def record_dashboard_metrics(self):
-        dashboard_proc = psutil.Process()
         self._dashboard_head.metrics.metrics_dashboard_cpu.labels(
             ip=self._ip,
             pid=self._pid,
             Component=self._component,
             SessionName=self._session_name,
-        ).set(float(dashboard_proc.cpu_percent()) * 100)
+        ).set(float(self._dashboard_proc.cpu_percent()))
         self._dashboard_head.metrics.metrics_dashboard_mem.labels(
             ip=self._ip,
             pid=self._pid,
             Component=self._component,
             SessionName=self._session_name,
-        ).set(float(dashboard_proc.memory_full_info().uss) / 1.0e6)
+        ).set(float(self._dashboard_proc.memory_full_info().uss) / 1.0e6)
 
     async def run(self, server):
         self._create_default_grafana_configs()
         self._create_default_prometheus_configs()
-        await asyncio.gather(self.record_dashboard_metrics())
 
         logger.info(
             f"Generated prometheus and grafana configurations in: {self._metrics_root}"
         )
+
+        await asyncio.gather(self.record_dashboard_metrics())
 
     async def _query_prometheus(self, query):
         async with self.http_session.get(

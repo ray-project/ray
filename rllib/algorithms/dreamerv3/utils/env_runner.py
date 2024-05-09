@@ -16,13 +16,13 @@ import numpy as np
 import tree  # pip install dm_tree
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.wrappers.atari_wrappers import NoopResetEnv, MaxAndSkipEnv
 from ray.rllib.env.wrappers.dm_control_wrapper import DMCEnv
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.evaluation.metrics import RolloutMetrics
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
@@ -82,7 +82,7 @@ class DreamerV3EnvRunner(EnvRunner):
                 "GymV26Environment-v0",
                 env_id=self.config.env,
                 wrappers=wrappers,
-                num_envs=self.config.num_envs_per_worker,
+                num_envs=self.config.num_envs_per_env_runner,
                 asynchronous=self.config.remote_worker_envs,
                 make_kwargs=dict(
                     self.config.env_config, **{"render_mode": "rgb_array"}
@@ -104,7 +104,7 @@ class DreamerV3EnvRunner(EnvRunner):
             self.env = gym.vector.make(
                 "dmc_env-v0",
                 wrappers=[ActionClip],
-                num_envs=self.config.num_envs_per_worker,
+                num_envs=self.config.num_envs_per_env_runner,
                 asynchronous=self.config.remote_worker_envs,
                 **dict(self.config.env_config),
             )
@@ -127,11 +127,11 @@ class DreamerV3EnvRunner(EnvRunner):
             # Create the vectorized gymnasium env.
             self.env = gym.vector.make(
                 "dreamerv3-custom-env-v0",
-                num_envs=self.config.num_envs_per_worker,
+                num_envs=self.config.num_envs_per_env_runner,
                 asynchronous=False,  # self.config.remote_worker_envs,
             )
         self.num_envs = self.env.num_envs
-        assert self.num_envs == self.config.num_envs_per_worker
+        assert self.num_envs == self.config.num_envs_per_env_runner
 
         # Create our RLModule to compute actions with.
         policy_dict, _ = self.config.get_multi_agent_setup(env=self.env)
@@ -145,7 +145,7 @@ class DreamerV3EnvRunner(EnvRunner):
         # weight-synched each iteration).
         else:
             # TODO (sven): DreamerV3 is currently single-agent only.
-            self.module = self.marl_module_spec.build()[DEFAULT_POLICY_ID]
+            self.module = self.marl_module_spec.build()[DEFAULT_MODULE_ID]
 
         self._needs_initial_reset = True
         self._episodes = [None for _ in range(self.num_envs)]
@@ -168,7 +168,6 @@ class DreamerV3EnvRunner(EnvRunner):
         num_episodes: int = None,
         explore: bool = True,
         random_actions: bool = False,
-        with_render_data: bool = False,
     ) -> Tuple[List[SingleAgentEpisode], List[SingleAgentEpisode]]:
         """Runs and returns a sample (n timesteps or m episodes) on the environment(s).
 
@@ -190,11 +189,6 @@ class DreamerV3EnvRunner(EnvRunner):
             force_reset: Whether to reset the environment(s) before starting to sample.
                 If False, will still reset the environment(s) if they were left in
                 a terminated or truncated state during previous sample calls.
-            with_render_data: If True, will record rendering images per timestep
-                in the returned Episodes. This data can be used to create video
-                reports.
-                TODO (sven): Note that this is only supported for runnign with
-                 `num_episodes` yet.
 
         Returns:
             A tuple consisting of a) list of Episode instances that are done and
@@ -224,7 +218,6 @@ class DreamerV3EnvRunner(EnvRunner):
                     num_episodes=num_episodes,
                     explore=explore,
                     random_actions=random_actions,
-                    with_render_data=with_render_data,
                 ),
                 [],
             )
@@ -372,7 +365,6 @@ class DreamerV3EnvRunner(EnvRunner):
         num_episodes: int,
         explore: bool = True,
         random_actions: bool = False,
-        with_render_data: bool = False,
     ) -> List[SingleAgentEpisode]:
         """Helper method to run n episodes.
 
@@ -390,15 +382,8 @@ class DreamerV3EnvRunner(EnvRunner):
         )
         is_first = np.ones((self.num_envs,))
 
-        render_images = [None] * self.num_envs
-        if with_render_data:
-            render_images = [e.render() for e in self.env.envs]
-
         for i in range(self.num_envs):
-            episodes[i].add_env_reset(
-                observation=obs[i],
-                render_image=render_images[i],
-            )
+            episodes[i].add_env_reset(observation=obs[i])
 
         eps = 0
         while eps < num_episodes:
@@ -426,8 +411,6 @@ class DreamerV3EnvRunner(EnvRunner):
                 )
 
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
-            if with_render_data:
-                render_images = [e.render() for e in self.env.envs]
 
             for i in range(self.num_envs):
                 # The last entry in self.observations[i] is already the reset
@@ -455,18 +438,12 @@ class DreamerV3EnvRunner(EnvRunner):
                         states[k][i] = v.numpy()
                     is_first[i] = True
 
-                    episodes[i] = SingleAgentEpisode(
-                        observations=[obs[i]],
-                        render_images=(
-                            [render_images[i]] if with_render_data else None
-                        ),
-                    )
+                    episodes[i] = SingleAgentEpisode(observations=[obs[i]])
                 else:
                     episodes[i].add_env_step(
                         observation=obs[i],
                         action=actions[i],
                         reward=rewards[i],
-                        render_image=render_images[i],
                     )
                     is_first[i] = False
 
@@ -514,7 +491,7 @@ class DreamerV3EnvRunner(EnvRunner):
         if self.module is None:
             assert self.config.share_module_between_env_runner_and_learner
         else:
-            self.module.set_state(weights[DEFAULT_POLICY_ID])
+            self.module.set_state(weights[DEFAULT_MODULE_ID])
 
     @override(EnvRunner)
     def assert_healthy(self):

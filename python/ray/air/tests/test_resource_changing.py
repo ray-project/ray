@@ -1,21 +1,21 @@
-import os
-from ray import train
-from ray.train import Checkpoint, FailureConfig, RunConfig, ScalingConfig
-from ray.tune.tune_config import TuneConfig
-from ray.tune.tuner import Tuner
-from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.train.xgboost import XGBoostTrainer
-import pytest
-import ray
 import json
+import os
 from tempfile import TemporaryDirectory
 
-from ray import tune
+import pytest
+
+import ray
+from ray import train, tune
+from ray.train import Checkpoint, FailureConfig, RunConfig, ScalingConfig
+from ray.train.data_parallel_trainer import DataParallelTrainer
+from ray.train.xgboost import XGBoostTrainer
+from ray.tune.schedulers.async_hyperband import ASHAScheduler
 from ray.tune.schedulers.resource_changing_scheduler import (
     DistributeResources,
     ResourceChangingScheduler,
 )
-from ray.tune.schedulers.async_hyperband import ASHAScheduler
+from ray.tune.tune_config import TuneConfig
+from ray.tune.tuner import Tuner
 
 
 @pytest.fixture

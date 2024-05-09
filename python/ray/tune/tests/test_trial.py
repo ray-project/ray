@@ -1,14 +1,14 @@
 import sys
+
 import pytest
 
 from ray.exceptions import RayActorError, RayTaskError
 from ray.train import Checkpoint
-from ray.train.constants import RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE
 from ray.train._internal.session import _TrainingResult
 from ray.train._internal.storage import StorageContext
-from ray.tune.experiment import Trial
-
+from ray.train.constants import RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE
 from ray.train.tests.util import mock_storage_context
+from ray.tune.experiment import Trial
 
 
 @pytest.fixture

@@ -35,6 +35,8 @@ enum MessageType:int {
   RegisterClientReply,
   // Send the worker's gRPC port to the raylet.
   AnnounceWorkerPort,
+  // Ack that the raylet has finished handling AnnounceWorkerPort.
+  AnnounceWorkerPortReply,
   // Notify the raylet that this client is disconnecting.
   // This is sent from a worker to a raylet.
   DisconnectClient,
@@ -129,8 +131,6 @@ table RegisterClientRequest {
   port: int;
   // The config bytes of this job serialized with protobuf.
   serialized_job_config: string;
-  // The entrypoint of the job.
-  entrypoint: string;
 }
 
 table RegisterClientReply {
@@ -147,6 +147,15 @@ table RegisterClientReply {
 table AnnounceWorkerPort {
   // Port that this worker is listening on.
   port: int;
+  // The entrypoint of the job. Only populated if the worker is a driver.
+  entrypoint: string;
+}
+
+table AnnounceWorkerPortReply {
+  // Whether the announcement and job registration succeeded.
+  success: bool;
+  // The reason of registration failure.
+  failure_reason: string;
 }
 
 table RegisterNodeManagerRequest {

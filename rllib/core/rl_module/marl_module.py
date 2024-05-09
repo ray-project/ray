@@ -15,7 +15,6 @@ from typing import (
 )
 
 from ray.rllib.core.models.specs.typing import SpecType
-from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
     RLMODULE_METADATA_FILE_NAME,
@@ -23,7 +22,7 @@ from ray.rllib.core.rl_module.rl_module import (
     SingleAgentRLModuleSpec,
 )
 
-# TODO (Kourosh): change this to module_id later to enforce consistency
+from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import (
     ExperimentalAPI,
     override,
@@ -34,11 +33,6 @@ from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.serialization import serialize_type, deserialize_type
 from ray.rllib.utils.typing import ModuleID, T
 from ray.util.annotations import PublicAPI
-
-
-# TODO (sven): This will replace all occurrences of DEFAULT_POLICY_ID on the new API
-#  stack.
-DEFAULT_MODULE_ID = "default_policy"
 
 
 @PublicAPI(stability="alpha")
@@ -295,7 +289,7 @@ class MultiAgentRLModule(RLModule):
 
     @override(RLModule)
     def get_state(
-        self, module_ids: Optional[Set[ModuleID]] = None
+        self, module_ids: Optional[Set[ModuleID]] = None, inference_only: bool = False
     ) -> Mapping[ModuleID, Any]:
         """Returns the state of the multi-agent module.
 
@@ -305,6 +299,9 @@ class MultiAgentRLModule(RLModule):
         Args:
             module_ids: The module IDs to get the state of. If None, the state of all
                 modules is returned.
+            inference_only: If True, only a subset of parameters that are needed for
+                inference are returned. This subset is defined in the module.
+
         Returns:
             A nested state dict with the first layer being the module ID and the second
             is the state of the module. The returned dict values are framework-specific
@@ -315,7 +312,7 @@ class MultiAgentRLModule(RLModule):
             module_ids = self._rl_modules.keys()
 
         return {
-            module_id: self._rl_modules[module_id].get_state()
+            module_id: self._rl_modules[module_id].get_state(inference_only)
             for module_id in module_ids
         }
 

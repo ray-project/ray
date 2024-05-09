@@ -23,7 +23,7 @@ class TestRNNSAC(unittest.TestCase):
         config = (
             sac.RNNSACConfig()
             .environment("CartPole-v1")
-            .rollouts(num_rollout_workers=0)
+            .env_runners(num_env_runners=0)
             .training(
                 # Wrap with an LSTM and use a very simple base-model.
                 model={"max_seq_len": 20},

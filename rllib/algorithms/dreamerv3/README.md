@@ -155,7 +155,7 @@ adjustments should be made on top of the default config.
   Use the `DreamerV3Config.training(batch_size_B=..)` API for this. For example, for 2 GPUs,
   use a batch size of `B=32`.
 - Multiply the number of environments you sample from in parallel by the number of GPUs you are using.
-  Use the `DreamerV3Config.rollouts(num_envs_per_worker=..)` for this.
+  Use the `DreamerV3Config.env_runners(num_envs_per_env_runner=..)` for this.
   For example, for 4 GPUs and a default environment count of 8 (the single-GPU default for
   this setting depends on the benchmark you are running), use 32
   parallel environments instead.

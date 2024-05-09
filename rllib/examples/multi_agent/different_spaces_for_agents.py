@@ -33,8 +33,8 @@ from ray.tune.registry import get_trainable_cls
 class BasicMultiAgentMultiSpaces(MultiAgentEnv):
     """A simple multi-agent example environment where agents have different spaces.
 
-    agent0: obs=(10,), act=Discrete(2)
-    agent1: obs=(20,), act=Discrete(3)
+    agent0: obs=Box(10,), act=Discrete(2)
+    agent1: obs=Box(20,), act=Discrete(3)
 
     The logic of the env doesn't really matter for this example. The point of this env
     is to show how to use multi-agent envs, in which the different agents utilize

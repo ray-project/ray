@@ -18,6 +18,7 @@ import React, { useState } from "react";
 import { RiArrowDownSLine, RiArrowRightSLine } from "react-icons/ri";
 import { formatDateFromTimeMs } from "../common/formatUtils";
 import rowStyles from "../common/RowStyles";
+import { sliceToPage } from "../common/util";
 import { TaskProgressBar } from "../pages/job/TaskProgressBar";
 import { DatasetMetrics, OperatorMetrics } from "../type/data";
 import { memoryConverter } from "../util/converter";
@@ -79,7 +80,11 @@ const DataOverviewTable = ({
     Record<string, boolean>
   >({});
 
-  const list = datasetList.slice((pageNo - 1) * pageSize, pageNo * pageSize);
+  const {
+    items: list,
+    constrainedPage,
+    maxPage,
+  } = sliceToPage(datasetList, pageNo, pageSize);
 
   const classes = rowStyles();
 
@@ -100,9 +105,9 @@ const DataOverviewTable = ({
       <div style={{ display: "flex", alignItems: "center" }}>
         <div>
           <Pagination
-            page={pageNo}
+            page={constrainedPage}
             onChange={(e, num) => setPageNo(num)}
-            count={Math.ceil(datasetList.length / pageSize)}
+            count={maxPage}
           />
         </div>
         <div>

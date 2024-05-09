@@ -57,11 +57,13 @@ class BCTfLearner(TfLearner):
 
         policy_loss = -possibly_masked_mean(log_probs)
 
-        self.register_metrics(
-            module_id,
+        # Log important loss stats.
+        self.metrics.log_dict(
             {
                 POLICY_LOSS_KEY: policy_loss,
             },
+            key=module_id,
+            window=1,  # <- single items (should not be mean/ema-reduced over time).
         )
 
         # Return total loss which is for BC simply the policy loss.
