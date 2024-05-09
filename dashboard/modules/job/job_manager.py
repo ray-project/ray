@@ -195,6 +195,7 @@ class JobManager:
                 entrypoint_num_gpus=entrypoint_num_gpus,
                 entrypoint_memory=entrypoint_memory,
                 entrypoint_resources=entrypoint_resources,
+                _start_signal_actor=_start_signal_actor,
             )
 
         except Exception as e:

@@ -136,6 +136,7 @@ class JobSupervisor:
         entrypoint_num_gpus: Optional[Union[int, float]] = None,
         entrypoint_memory: Optional[int] = None,
         entrypoint_resources: Optional[Dict[str, float]] = None,
+        _start_signal_actor: Optional[ActorHandle] = None,
     ):
         """Launches actual Ray Job driver
 
