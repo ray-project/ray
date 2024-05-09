@@ -71,80 +71,6 @@ class JobManager:
 
         self._supervisor_actor_cls = ray.remote(JobSupervisor)
 
-        self.monitored_jobs = set()
-
-        self._recover_running_jobs_event = asyncio.Event()
-
-        run_background_task(self._recover_running_jobs())
-
-    def _get_job_driver_logger(self, job_id: str) -> logging.Logger:
-        """Return job driver logger to log messages to the job driver log file.
-
-        If this function is called for the first time, configure the logger.
-        """
-        job_driver_logger = logging.getLogger(f"{__name__}.driver-{job_id}")
-
-        # Configure the logger if it's not already configured.
-        if not job_driver_logger.handlers:
-            job_driver_log_path = self._log_client.get_log_file_path(job_id)
-            job_driver_handler = logging.FileHandler(job_driver_log_path)
-            job_driver_formatter = logging.Formatter(ray_constants.LOGGER_FORMAT)
-            job_driver_handler.setFormatter(job_driver_formatter)
-            job_driver_logger.addHandler(job_driver_handler)
-
-        return job_driver_logger
-
-    async def _recover_running_jobs(self):
-        """Recovers all running jobs from the status client.
-
-        For each job, we will spawn a coroutine to monitor it.
-        Each will be added to self._running_jobs and reconciled.
-        """
-        try:
-            # TODO right now upon (re)starting every JM will monitor every job
-            all_jobs = await self._job_info_client.get_all_jobs()
-
-            logger.info(f"Recovered jobs from GCS: {','.join(list(all_jobs.keys()))}")
-
-            for job_id, job_info in all_jobs.items():
-                if not job_info.status.is_terminal():
-                    run_background_task(self._monitor_job(job_id))
-        finally:
-            # This event is awaited in `submit_job` to avoid race conditions between
-            # recovery and new job submission, so it must always get set even if there
-            # are exceptions.
-            self._recover_running_jobs_event.set()
-
-    async def _monitor_job(
-        self, job_id: str, job_supervisor: Optional[ActorHandle] = None
-    ):
-        """Monitors the specified job until it enters a terminal state.
-
-        This is necessary because we need to handle the case where the
-        JobSupervisor dies unexpectedly.
-        """
-        if job_id in self.monitored_jobs:
-            logger.debug(f"Job {job_id} is already being monitored.")
-            return
-
-        self.monitored_jobs.add(job_id)
-        try:
-            await self._monitor_job_internal(job_id, job_supervisor)
-        finally:
-            self.monitored_jobs.remove(job_id)
-
-    def _handle_supervisor_startup(self, job_id: str, result: Optional[Exception]):
-        """Handle the result of starting a job supervisor actor.
-
-        If started successfully, result should be None. Otherwise it should be
-        an Exception.
-
-        On failure, the job will be marked failed with a relevant error
-        message.
-        """
-        if result is None:
-            return
-
     async def _get_head_node_scheduling_strategy(
         self,
     ) -> Optional[NodeAffinitySchedulingStrategy]:
@@ -185,6 +111,8 @@ class JobManager:
         _start_signal_actor: Optional[ActorHandle] = None,
     ) -> str:
         """
+        TODO update
+
         Job execution happens asynchronously.
 
         1) Generate a new unique id for this job submission, each call of this
@@ -233,10 +161,6 @@ class JobManager:
 
         if submission_id is None:
             submission_id = generate_job_id()
-
-        # Wait for `_recover_running_jobs` to run before accepting submissions to
-        # avoid duplicate monitoring of the same job.
-        await self._recover_running_jobs_event.wait()
 
         # Wait for the actor to start up asynchronously so this call always
         # returns immediately and we can catch errors with the actor starting

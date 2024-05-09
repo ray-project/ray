@@ -100,6 +100,13 @@ class JobSupervisor:
 
         self.event_logger: Optional[EventLoggerAdapter] = _create_job_events_logger(logs_dir)
 
+        self._loop = asyncio.get_running_loop()
+
+        # Start up job monitoring thread in the background immediately
+        self._monitoring_task = self._loop.create_task(
+            self._monitor_job_internal()
+        )
+
     async def ping(self):
         """Pings job runner to make sure Ray job is being executed"""
         assert self._runner, "Runner is not initialized!"
@@ -174,19 +181,11 @@ class JobSupervisor:
         # Job driver (entrypoint) is executed in a synchronous fashion,
         # therefore is performed as a background operation updating Ray Job's
         # state asynchronously upon job's driver completing the execution
-        loop = asyncio.get_running_loop()
-
-        self._runner_executing_task = loop.create_task(
+        self._runner_executing_task = self._loop.create_task(
             self._execute_sync(
                 runner,
                 resources_specified=resources_specified,
             )
-        )
-
-        # Monitor the job in the background so we can detect errors without
-        # requiring a client to poll.
-        self._monitoring_task = loop.create_task(
-            self._monitor_job_internal()
         )
 
         if self.event_logger:
