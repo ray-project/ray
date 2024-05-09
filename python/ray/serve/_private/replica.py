@@ -299,6 +299,28 @@ class ReplicaActor:
     def _configure_logger_and_profilers(
         self, logging_config: Union[None, Dict, LoggingConfig]
     ):
+
+        # ===== Begin Anyscale proprietary code ======
+        # Load the setup_tracing function lazily
+        # as Opentelemetry imports are time-consuming.
+        from ray.anyscale.serve._private.tracing_utils import setup_tracing
+
+        try:
+            is_tracing_setup_successful = setup_tracing(
+                component_type=ServeComponentType.REPLICA,
+                component_name=self._component_name,
+                component_id=self._component_id,
+            )
+            if is_tracing_setup_successful:
+                logger.info("Successfully set up tracing for replica")
+
+        except Exception as e:
+            logger.warning(
+                f"Failed to set up tracing: {e}. "
+                "The replica will continue running, but traces will not be exported."
+            )
+        # ===== End Anyscale proprietary code ======
+
         if logging_config is None:
             logging_config = {}
         if isinstance(logging_config, dict):

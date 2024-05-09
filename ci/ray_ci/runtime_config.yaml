@@ -1,0 +1,16 @@
+release_byod:
+  ray_ecr: 830883877497.dkr.ecr.us-west-2.amazonaws.com/anyscale
+  ray_cr_repo: runtime
+  ray_ml_cr_repo: runtime-ml
+  byod_ecr: 830883877497.dkr.ecr.us-west-2.amazonaws.com
+  aws_cr: 830883877497.dkr.ecr.us-west-2.amazonaws.com
+  gcp_cr: us-west1-docker.pkg.dev/anyscale-oss-ci
+  aws2gce_credentials: release/aws2gce_runtime_iam.json
+ci_pipeline:
+  postmerge:
+    - 018803a7-6690-446f-9838-e81f7247a6d4
+  buildkite_secret: buildkite_access_token_anyscale 
+state_machine:
+  branch:
+    aws_bucket: runtime-ci-results
+  disabled: 1
