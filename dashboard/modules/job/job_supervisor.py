@@ -45,6 +45,15 @@ from ray.util.scheduling_strategies import (
 )
 from ray.util.ticker import ticker
 
+
+JOB_START_UP_TIMEOUT_SECONDS = float(
+    os.getenv(
+        RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR,
+        DEFAULT_JOB_START_TIMEOUT_SECONDS,
+    )
+)
+
+
 # asyncio python version compatibility
 try:
     create_task = asyncio.create_task
@@ -109,6 +118,8 @@ class JobSupervisor:
         self._monitoring_task: asyncio.Task = self._loop.create_task(
             self._monitor_job_internal()
         )
+
+        self._started_at = time.time()
 
         self.event_logger: Optional[EventLoggerAdapter] = self._create_job_events_logger(logs_dir)
 
@@ -397,52 +408,10 @@ class JobSupervisor:
     async def _monitor_job_internal(self):
         self._logger.info(f"Starting monitoring loop for job {self._job_id}")
 
-        timeout = float(
-            os.environ.get(
-                RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR,
-                DEFAULT_JOB_START_TIMEOUT_SECONDS,
-            )
-        )
-
         async for _ in ticker(interval_s=self.JOB_MONITOR_LOOP_INTERVAL_S):
             try:
-                job_status = await self._job_info_client.get_status(self._job_id)
-                if job_status == JobStatus.PENDING:
-                    # Compare the current time with the job start time.
-                    # If the job is still pending, we will set the status
-                    # to FAILED.
-                    job_info = await self._job_info_client.get_info(self._job_id)
-
-                    if time.time() - job_info.start_time / 1000 > timeout:
-                        err_msg = (
-                            "Job supervisor actor failed to start within "
-                            f"{timeout} seconds. This timeout can be "
-                            f"configured by setting the environment "
-                            f"variable {RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR}."
-                        )
-
-                        resources_specified = self._has_entrypoint_resources_set(
-                            job_info
-                        )
-
-                        if resources_specified:
-                            err_msg += (
-                                " This may be because the job entrypoint's specified "
-                                "resources (entrypoint_num_cpus, entrypoint_num_gpus, "
-                                "entrypoint_resources, entrypoint_memory)"
-                                "aren't available on the cluster."
-                                " Try checking the cluster's available resources with "
-                                "`ray status` and specifying fewer resources for the "
-                                "job entrypoint."
-                            )
-                        await self._job_info_client.put_status(
-                            self._job_id,
-                            JobStatus.FAILED,
-                            message=err_msg,
-                        )
-                        self._logger.error(err_msg)
-                        # Break out of the monitoring loop
-                        break
+                job_info = await self._job_info_client.get_info(self._job_id)
+                job_status = job_info.status if job_info else None
 
                 # Check if job driver is running
                 running = await self.check_driver_running()
@@ -451,23 +420,54 @@ class JobSupervisor:
                     if job_status is None or job_status == JobStatus.PENDING:
                         # Maybe the Job Runner actor is not created yet.
                         # We will wait for the next loop.
-                        continue
+                        duration_s = self._get_duration_s(job_info)
+
+                        if duration_s > JOB_START_UP_TIMEOUT_SECONDS:
+                            message = (
+                                f"Job driver failed to start within {JOB_START_UP_TIMEOUT_SECONDS} seconds. "
+                                f"This timeout can be configured by setting the environment variable "
+                                f"RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR."
+                            )
+
+                            if self._has_entrypoint_resources_set(job_info):
+                                message += (
+                                    f" This may be because the job entrypoint's specified "
+                                    f"resources (entrypoint_num_cpus={job_info.entrypoint_num_cpus}, "
+                                    f"entrypoint_num_gpus={job_info.entrypoint_num_gpus}, "
+                                    f"entrypoint_resources={job_info.entrypoint_resources}, "
+                                    f"entrypoint_memory={job_info.entrypoint_memory})"
+                                    "aren't available in the cluster at the moment. "
+                                    "You can check cluster's available resources with `ray status`"
+                                )
+
+                            await self._job_info_client.put_status(
+                                self._job_id,
+                                JobStatus.FAILED,
+                                message=message,
+                            )
+
+                            # TODO log to job event logger
+                            # Break out of the monitoring loop
+                            break
+
+                    elif job_status.is_terminal():
+                        self._logger.info(f"Job reached terminal state (job status: {job_status})")
+                        # Break out of the monitoring loop
+                        break
+
                     else:
-                        # The job runner actor is not created, but the job
-                        # status is not PENDING. This means the job supervisor
-                        # actor is not created due to some unexpected errors.
-                        # We will set the job status to FAILED.
-                        self._logger.error(f"Failed to get job runner actor for job {self._job_id} (status: {job_status})")
+                        # Job has not reached terminal state, but job driver is not running
+                        self._logger.error(
+                            f"Job driver is not running for job {self._job_id} (job status: {job_status})"
+                        )
 
                         await self._job_info_client.put_status(
                             self._job_id,
                             JobStatus.FAILED,
                             message=(
-                                "Unexpected error occurred: "
-                                "failed to get job supervisor."
+                                "Unexpected error occurred: job driver is not running"
                             ),
                         )
-
                         # Break out of monitoring loop
                         break
 
@@ -552,8 +552,17 @@ class JobSupervisor:
         else:
             self._logger.info(f"Job Supervisor actor not found, assuming it already shutdown")
 
+    def _get_duration_s(self, job_info: Optional[JobInfo]) -> float:
+        # NOTE: Job start-up time is captured in millis. However, if there's
+        #       no corresponding  record in the GCS, we assume Job Supervisor
+        #       start-up timestamp as job's one
+        started_at = job_info.start_time / 1000 if job_info else self._started_at
+
+        return time.time() - started_at
+
     @staticmethod
-    async def _has_entrypoint_resources_set(job_info):
+    async def _has_entrypoint_resources_set(job_info: JobInfo):
+        assert job_info
         return (
             (
                 job_info.entrypoint_num_cpus is not None
