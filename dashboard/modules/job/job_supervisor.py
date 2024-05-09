@@ -96,14 +96,14 @@ class JobSupervisor:
 
         self._runner_actor_cls = ray.remote(JobRunner)
         self._runner: Optional[ActorHandle] = None
-        self._runner_executing_task: Optional[asyncio.Task] = None
 
         self.event_logger: Optional[EventLoggerAdapter] = _create_job_events_logger(logs_dir)
 
         self._loop = asyncio.get_running_loop()
 
+        self._runner_executing_task: Optional[asyncio.Task] = None
         # Start up job monitoring thread in the background immediately
-        self._monitoring_task = self._loop.create_task(
+        self._monitoring_task: asyncio.Task = self._loop.create_task(
             self._monitor_job_internal()
         )
 

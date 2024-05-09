@@ -199,9 +199,7 @@ class JobManager:
             )
 
         except Exception as e:
-            tb_str = traceback.format_exc()
-
-            logger.warning(
+            logger.error(
                 f"Failed to start supervisor actor for job {submission_id}: {e}"
             )
 
@@ -210,8 +208,7 @@ class JobManager:
                 submission_id,
                 JobStatus.FAILED,
                 message=(
-                    f"Failed to start supervisor actor {submission_id}: '{e}'"
-                    f". Full traceback:\n{tb_str}"
+                    f"Failed to start supervisor actor {submission_id}: {e}"
                 ),
             )
 
