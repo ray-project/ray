@@ -122,7 +122,7 @@ class JobSupervisor:
             # Job's supervisor actor lifespan is bound to that of the job's driver,
             # and therefore upon completing its execution JobSupervisor (along with JobRunner)
             # actors could be subsequently destroyed
-            self._take_poison_pill("job driver completed")
+            self._take_poison_pill(message="job driver completed")
 
     async def stop(self):
         """Proxies request to job runner"""
@@ -535,13 +535,13 @@ class JobSupervisor:
                     else:
                         self.event_logger.info(event_log, submission_id=self._job_id)
 
-        # Kill the actor defensively to avoid leaking actors in unexpected error cases.
-        self._take_poison_pill()
+        # Kill the actor defensively to avoid leaking actors in unexpected error cases
+        self._take_poison_pill(message="exiting monitoring loop")
 
-    def _take_poison_pill(self, context: Optional[str] = None):
+    def _take_poison_pill(self, *, message: str):
         job_supervisor_handle = _get_actor_for_job(self._job_id)
         if job_supervisor_handle is not None:
-            self._logger.info(f"Shutting down Job Supervisor actor (context: {context}")
+            self._logger.info(f"Shutting down Job Supervisor actor ({message})")
 
             ray.kill(job_supervisor_handle, no_restart=True)
         else:
