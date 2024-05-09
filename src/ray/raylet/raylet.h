@@ -69,7 +69,7 @@ class Raylet {
 
   /// Unregister this raylet from the GCS.
   void UnregisterSelf(const rpc::NodeDeathInfo &node_death_info,
-                      const std::function<void()> &unregister_done_callback);
+                      std::function<void()> unregister_done_callback);
 
   /// Destroy the NodeServer.
   ~Raylet();

@@ -227,12 +227,21 @@ int main(int argc, char *argv[]) {
 
   auto shutted_down = std::make_shared<std::atomic<bool>>(false);
 
+  auto unregister_done_callback =
+    [&main_service, &raylet_socket_name, &raylet, &gcs_client]() {
+      raylet->Stop();
+      gcs_client->Disconnect();
+      ray::stats::Shutdown();
+      main_service.stop();
+      remove(raylet_socket_name.c_str());
+    };
+
   // Shut down raylet gracefully. The pointer to main_service is
   // guaranteed to be valid since this function will run the event loop
   // instead of returning immediately.
   // We should stop the service and remove the local socket file.
   auto shutdown_raylet_gracefully_sync =
-      [&main_service, &raylet_socket_name, &raylet, &gcs_client, shutted_down](
+      [&raylet, shutted_down, unregister_done_callback](
           const ray::rpc::NodeDeathInfo &node_death_info) {
         // Make the shutdown handler idempotent since graceful shutdown can be triggered
         // by many places.
@@ -246,15 +255,6 @@ int main(int argc, char *argv[]) {
                       << "reason message = " << node_death_info.reason_message();
         RAY_LOG(INFO) << "Shutting down...";
         *shutted_down = true;
-
-        auto unregister_done_callback =
-            [&main_service, &raylet_socket_name, &raylet, &gcs_client]() {
-              raylet->Stop();
-              gcs_client->Disconnect();
-              ray::stats::Shutdown();
-              main_service.stop();
-              remove(raylet_socket_name.c_str());
-            };
 
         raylet->UnregisterSelf(node_death_info, unregister_done_callback);
       };
@@ -457,5 +457,6 @@ int main(int argc, char *argv[]) {
   signals.async_wait(signal_handler);
 
   main_service.run();
+  RAY_LOG(INFO) << "Raylet ends";
 }
 #endif
