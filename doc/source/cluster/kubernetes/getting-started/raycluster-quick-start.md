@@ -135,8 +135,8 @@ ray job submit --address http://localhost:8265 -- python -c "import ray; ray.ini
 
 ## Step 5: Access the Ray Dashboard
 
-Visit `${YOUR_IP}:8265` in your browser for the Dashboard (e.g. `127.0.0.1:8265`).
-As shown in the screenshot below, you should see the job you submitted in Step 4 in the "Recent jobs" section.
+Visit `${YOUR_IP}:8265` in your browser for the Dashboard. For example, `127.0.0.1:8265`.
+See the job you submitted in Step 4 in the **Recent jobs** pane as shown below.
 
 ![Ray Dashboard](../images/ray-dashboard.png)
 
