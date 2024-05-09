@@ -79,11 +79,6 @@ class JobManager:
 
         head_node_id = head_node_id_bytes.decode()
 
-        logger.info(
-            "Head node ID found in GCS; scheduling job driver on "
-            f"head node {head_node_id}"
-        )
-
         return NodeAffinitySchedulingStrategy(node_id=head_node_id, soft=False)
 
     async def submit_job(
