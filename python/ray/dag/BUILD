@@ -80,12 +80,14 @@ py_test_module_list(
   deps = ["//:ray_lib"],
 )
 
-py_test_module_list(
-  files = [
+py_test(
+  name = "test_torch_tensor_dag_gpu",
+  srcs = [
     "tests/experimental/test_torch_tensor_dag.py",
   ],
+  main = "tests/experimental/test_torch_tensor_dag.py",
   size = "medium",
   tags = ["exclusive", "accelerated_dag", "no_windows", "team:core", "multi_gpu"],
   env = {"RAY_PYTEST_USE_GPU": "1"},
-  deps = ["//:ray_lib", ":conftest"],
+  deps = ["//:ray_lib"],
 )

@@ -318,11 +318,13 @@ steps:
 
   - label: ":ray: core: multi gpu tests"
     tags:
-      - python
+      - accelerated_dag
       - gpu
     instance_type: gpu-large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... core
-        --gpus 2
+        # This machine has 4 GPUs, and we need 2 GPUs, so allow 2 tests to run
+        # in parallel.
+        --parallelism-per-worker 2 --gpus 2
         --build-name raycoregpubuild
         --only-tags multi_gpu
