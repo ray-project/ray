@@ -125,7 +125,6 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
   // blocking where a task which cannot be dispatched because
   // there are not enough available resources blocks other
   // tasks from being dispatched.
-
   for (auto shapes_it = tasks_to_dispatch_.begin();
        shapes_it != tasks_to_dispatch_.end();) {
     auto &scheduling_class = shapes_it->first;
