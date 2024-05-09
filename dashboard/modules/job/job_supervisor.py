@@ -163,7 +163,7 @@ class JobSupervisor:
                 actors launched by it.
         """
 
-        logger.info(f"Starting job with submission_id: {self._job_id}")
+        self._logger.info(f"Starting job with submission_id: {self._job_id}")
 
         job_info = JobInfo(
             entrypoint=self._entrypoint,
