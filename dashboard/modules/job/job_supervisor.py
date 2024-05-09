@@ -970,7 +970,9 @@ def _create_file_logger(name: str) -> Logger:
     os.makedirs(os.path.dirname(supervisor_log_file_path), exist_ok=True)
 
     logger = logging.getLogger(name)
+
     logger.addHandler(logging.StreamHandler())
     logger.addHandler(logging.FileHandler(supervisor_log_file_path))
+    logger.setLevel(logging.INFO)
 
     return logger
