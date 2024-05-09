@@ -10,6 +10,7 @@ import time
 import traceback
 from asyncio.tasks import FIRST_COMPLETED
 from dataclasses import dataclass
+from logging import Logger
 from typing import Any, Dict, List, Optional, Union, Tuple
 
 import psutil
@@ -96,15 +97,18 @@ class JobSupervisor:
         self._runner_actor_cls = ray.remote(JobRunner)
         self._runner: Optional[ActorHandle] = None
 
-        self.event_logger: Optional[EventLoggerAdapter] = _create_job_events_logger(logs_dir)
+        # Logger object to persist supervisor logs in a special file
+        # (for easier discovery)
+        self._logger = _create_file_logger(f"job-supervisor-{job_id}")
 
         self._loop = asyncio.get_running_loop()
-
         self._runner_executing_task: Optional[asyncio.Task] = None
         # Start up job monitoring thread in the background immediately
         self._monitoring_task: asyncio.Task = self._loop.create_task(
             self._monitor_job_internal()
         )
+
+        self.event_logger: Optional[EventLoggerAdapter] = self._create_job_events_logger(logs_dir)
 
     async def ping(self):
         """Pings job runner to make sure Ray job is being executed"""
@@ -252,7 +256,7 @@ class JobSupervisor:
             status = JobStatus.FAILED
             exit_code = None
 
-            logger.error(
+            self._logger.error(
                 f"Got unexpected exception while executing job {self._job_id}: {message}"
             )
 
@@ -306,8 +310,7 @@ class JobSupervisor:
 
         return runner, resources_specified
 
-    @staticmethod
-    def _get_scheduling_strategy(resources_specified: bool) -> SchedulingStrategyT:
+    def _get_scheduling_strategy(self, resources_specified: bool) -> SchedulingStrategyT:
         """Get the scheduling strategy for the job.
 
         If resources_specified is true, or if the environment variable is set to
@@ -325,7 +328,7 @@ class JobSupervisor:
         if resources_specified:
             return "DEFAULT"
         elif os.environ.get(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR, "0") == "1":
-            logger.info(
+            self._logger.info(
                 f"{RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR} was set to 1. "
                 "Using Ray's default actor scheduling strategy for the job "
                 "driver instead of running it on the head node."
@@ -385,7 +388,7 @@ class JobSupervisor:
         return runtime_env
 
     async def _monitor_job_internal(self):
-        logger.info(f"Starting monitoring loop for job {self._job_id}")
+        self._logger.info(f"Starting monitoring loop for job {self._job_id}")
 
         timeout = float(
             os.environ.get(
@@ -398,7 +401,7 @@ class JobSupervisor:
 
         async for _ in ticker(interval_s=self.JOB_MONITOR_LOOP_INTERVAL_S):
             if not is_alive:
-                logger.info("Exiting monitoring loop")
+                self._logger.info("Exiting monitoring loop")
                 break
 
             try:
@@ -437,7 +440,7 @@ class JobSupervisor:
                             message=err_msg,
                         )
                         is_alive = False
-                        logger.error(err_msg)
+                        self._logger.error(err_msg)
                         continue
 
                 if self._runner is None:
@@ -450,7 +453,7 @@ class JobSupervisor:
                         # status is not PENDING. This means the job supervisor
                         # actor is not created due to some unexpected errors.
                         # We will set the job status to FAILED.
-                        logger.error(f"Failed to get job runner actor for job {self._job_id} (status: {job_status})")
+                        self._logger.error(f"Failed to get job runner actor for job {self._job_id} (status: {job_status})")
 
                         await self._job_info_client.put_status(
                             self._job_id,
@@ -476,7 +479,7 @@ class JobSupervisor:
                     # exiting is expected.
                     pass
                 elif isinstance(e, RuntimeEnvSetupError):
-                    logger.info(f"Failed to set up runtime_env for job {self._job_id}.")
+                    self._logger.info(f"Failed to set up runtime_env for job {self._job_id}.")
                     job_error_message = f"runtime_env setup failed: {e}"
                     job_status = JobStatus.FAILED
                     await self._job_info_client.put_status(
@@ -485,7 +488,7 @@ class JobSupervisor:
                         message=job_error_message,
                     )
                 elif isinstance(e, ActorUnschedulableError):
-                    logger.info(
+                    self._logger.info(
                         f"Failed to schedule job {self._job_id} because the supervisor actor "
                         f"could not be scheduled: {e}"
                     )
@@ -498,7 +501,7 @@ class JobSupervisor:
                         message=job_error_message,
                     )
                 else:
-                    logger.warning(
+                    self._logger.warning(
                         f"Job supervisor for job {self._job_id} failed unexpectedly: {e}."
                     )
                     job_error_message = f"Unexpected error occurred: {e}"
@@ -535,11 +538,11 @@ class JobSupervisor:
     def _take_poison_pill(self, context: Optional[str] = None):
         job_supervisor_handle = _get_actor_for_job(self._job_id)
         if job_supervisor_handle is not None:
-            logger.info(f"Shutting down Job Supervisor actor (context: {context}")
+            self._logger.info(f"Shutting down Job Supervisor actor (context: {context}")
 
             ray.kill(job_supervisor_handle, no_restart=True)
         else:
-            logger.info(f"Job Supervisor actor not found, assuming it already shutdown")
+            self._logger.info(f"Job Supervisor actor not found, assuming it already shutdown")
 
     @staticmethod
     async def _has_entrypoint_resources_set(job_info):
@@ -561,6 +564,13 @@ class JobSupervisor:
                 and len(job_info.entrypoint_resources) > 0
             )
         )
+
+    def _create_job_events_logger(self, logs_dir: str):
+        try:
+            return get_event_logger(Event.SourceType.JOBS, logs_dir)
+        except Exception as e:
+            self._logger.error(f"Failed to create jobs event logger: {e}")
+            return None
 
 
 @dataclass
@@ -607,22 +617,9 @@ class JobRunner:
         # Windows Job Object used to handle stopping the child processes.
         self._win32_job_object = None
 
-        # Logger object to persist JobSupervisor logs in separate file.
-        self._logger = logging.getLogger(f"{__name__}.supervisor-{job_id}")
-        self._configure_logger()
-
-    def _configure_logger(self) -> None:
-        """
-        Configure self._logger object to write logs to file based on job
-        submission ID and to console.
-        """
-        supervisor_log_file_name = os.path.join(
-            ray._private.worker._global_node.get_logs_dir_path(),
-            f"jobs/supervisor-{self._job_id}.log",
-        )
-        os.makedirs(os.path.dirname(supervisor_log_file_name), exist_ok=True)
-        self._logger.addHandler(logging.StreamHandler())
-        self._logger.addHandler(logging.FileHandler(supervisor_log_file_name))
+        # Logger object to persist supervisor logs in a special file
+        # (for easier discovery)
+        self._logger = _create_file_logger(f"job-runner-{job_id}")
 
     def _get_driver_runtime_env(
         self, resources_specified: bool = False
@@ -853,7 +850,7 @@ class JobRunner:
             )
 
             if self._stop_event.is_set():
-                logger.info(f"Job {self._job_id} driver's has been interrupted (job stopped)")
+                self._logger.info(f"Job {self._job_id} driver's has been interrupted (job stopped)")
 
                 # Cancel task polling the subprocess (unless already finished)
                 if not polling_task.done():
@@ -874,7 +871,7 @@ class JobRunner:
 
                 return_code = child_process_task.result()
 
-                logger.info(
+                self._logger.info(
                     f"Job {self._job_id} driver's entrypoint command exited with code {return_code}"
                 )
 
@@ -956,9 +953,21 @@ class JobRunner:
                 self._kill_processes(proc_to_kill, signal.SIGKILL)
 
 
-def _create_job_events_logger(logs_dir: str):
-    try:
-        return get_event_logger(Event.SourceType.JOBS, logs_dir)
-    except Exception as e:
-        logger.error(f"Failed to create jobs event logger: {e}")
-        return None
+def _create_file_logger(name: str) -> Logger:
+    """
+    Configure provided logger object to write logs to a file based on job
+    submission ID and to console.
+    """
+
+    supervisor_log_file_path = os.path.join(
+        ray._private.worker._global_node.get_logs_dir_path(),
+        f"jobs/{name}.log",
+    )
+
+    os.makedirs(os.path.dirname(supervisor_log_file_path), exist_ok=True)
+
+    logger = logging.getLogger(name)
+    logger.addHandler(logging.StreamHandler())
+    logger.addHandler(logging.FileHandler(supervisor_log_file_path))
+
+    return logger
