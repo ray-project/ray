@@ -102,27 +102,34 @@ class JobSupervisor:
         self._logger = _create_file_logger(f"job-supervisor-{job_id}")
 
         self._loop = asyncio.get_running_loop()
-        self._runner_executing_task: Optional[asyncio.Task] = None
-        # Start up job monitoring thread in the background immediately
+
+        # Job driver completion is tracked by a completion-waiting task
+        self._waiting_task: Optional[asyncio.Task] = None
+        # Start up job monitoring thread immediately (in the background)
         self._monitoring_task: asyncio.Task = self._loop.create_task(
             self._monitor_job_internal()
         )
 
         self.event_logger: Optional[EventLoggerAdapter] = self._create_job_events_logger(logs_dir)
 
-    async def ping(self):
-        """Pings job runner to make sure Ray job is being executed"""
-        assert self._runner, "Runner is not initialized!"
-        # First, check if job's driver runner actor is alive
+    async def check_driver_running(self) -> bool:
+        """Checks whether the job driver is currently running"""
+        if self._runner is None:
+            return False
+
+        # Check if job's driver runner actor is alive and reachable
         await self._runner.ping.remote()
-        # Next check if job's driver completed executing by
-        # checking the state of the background task
-        # TODO extract exceptions
-        if self._runner_executing_task.done():
-            # Job's supervisor actor lifespan is bound to that of the job's driver,
-            # and therefore upon completing its execution JobSupervisor (along with JobRunner)
-            # actors could be subsequently destroyed
-            self._take_poison_pill(message="job driver completed")
+
+        # Check whether job's driver completed execution
+        if self._waiting_task is None:
+            return False
+        elif self._waiting_task.done():
+            # NOTE: In case there was exception while awaiting
+            #       job's driver to complete its execution, we need to bubble it up
+            self._waiting_task.result()
+            return False
+
+        return True
 
     async def stop(self):
         """Proxies request to job runner"""
@@ -205,7 +212,7 @@ class JobSupervisor:
         # Job driver (entrypoint) is executed in a synchronous fashion,
         # therefore is performed as a background operation updating Ray Job's
         # state asynchronously upon job's driver completing the execution
-        self._runner_executing_task = self._loop.create_task(
+        self._waiting_task = self._loop.create_task(
             self._execute_sync(
                 runner,
                 resources_specified=resources_specified,
@@ -443,7 +450,10 @@ class JobSupervisor:
                         self._logger.error(err_msg)
                         continue
 
-                if self._runner is None:
+                # Check if job driver is running
+                running = await self.check_driver_running()
+
+                if not running:
                     if job_status is None or job_status == JobStatus.PENDING:
                         # Maybe the Job Runner actor is not created yet.
                         # We will wait for the next loop.
@@ -465,9 +475,6 @@ class JobSupervisor:
                         )
                         is_alive = False
                         continue
-
-                # TODO elaborate why we're self-pinging (instead of just pinging the runner)
-                await self.ping()
 
             except Exception as e:
                 is_alive = False
