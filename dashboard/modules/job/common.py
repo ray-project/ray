@@ -7,9 +7,11 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Union
 
+import ray
 from ray._private import ray_constants
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.packaging import parse_uri
+from ray.actor import ActorHandle
 
 from ray.util.annotations import PublicAPI
 
