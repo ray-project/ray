@@ -92,6 +92,7 @@ class RayParams:
         dashboard_agent_listen_port: The port for dashboard agents to listen on
             for HTTP requests.
             Defaults to 52365.
+        dashboard_grpc_port: Deprecated and unused. Please don't set it.
         runtime_env_agent_port: The port at which the runtime env agent
             listens to for HTTP.
             Defaults to random available port.
@@ -228,7 +229,7 @@ class RayParams:
         # Deprecated, no longer used.
         if dashboard_grpc_port is not None:
             logger.warning(
-                "dashboard_grpc_port is deprecated and no longer used. "
+                "dashboard_grpc_port is deprecated and no longer used, "
                 "You can remove it from your code."
             )
         self.runtime_env_agent_port = runtime_env_agent_port

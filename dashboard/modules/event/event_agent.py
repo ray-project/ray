@@ -80,8 +80,9 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
                 logger.debug("Reporting %s events.", len(data))
                 await self.report_events_once(data)
             except Exception:
-                logger.exception("Report event failed, waiting 1s and retry...")
-                await asyncio.sleep(1)
+                wait_s = event_consts.RETRY_CONNECT_TO_DASHBOARD_INTERVAL_SECONDS
+                logger.exception(f"Report event failed, waiting {wait_s}s and retry...")
+                await asyncio.sleep(wait_s)
         else:
             data_str = str(data)
             limit = event_consts.LOG_ERROR_EVENT_STRING_LENGTH_LIMIT
