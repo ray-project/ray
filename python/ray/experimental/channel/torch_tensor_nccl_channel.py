@@ -1,4 +1,5 @@
 import logging
+from types import ModuleType
 from typing import TYPE_CHECKING, List, Optional
 
 import ray
@@ -9,15 +10,12 @@ from ray.experimental.channel.nccl_group import _NcclGroup
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
+    import torch
+
     from ray.experimental.channel.torch_tensor_type import (
         TorchTensorType,
         _TorchTensorWrapper,
     )
-
-try:
-    import torch
-except ImportError:
-    torch = None
 
 
 # Logger for this module. It should be configured at the entry point
@@ -35,7 +33,11 @@ class TorchTensorNcclChannel(ChannelInterface):
         typ: "TorchTensorType",
         device: Optional["torch.device"] = None,
     ):
+        import torch
+
         from ray.air._internal import torch_utils
+
+        self.torch: ModuleType = torch
 
         self._nccl_group = None
 
@@ -121,8 +123,10 @@ class TorchTensorNcclChannel(ChannelInterface):
         for rank in self._reader_ranks:
             self._nccl_group.send(value, rank)
 
-    def begin_read(self) -> torch.Tensor:
-        buf = torch.zeros(self._typ.shape, dtype=self._typ.dtype, device=self._device)
+    def begin_read(self) -> "torch.Tensor":
+        buf = self.torch.zeros(
+            self._typ.shape, dtype=self._typ.dtype, device=self._device
+        )
         self._nccl_group.recv(buf, self._writer_rank)
         return buf
 
@@ -134,6 +138,8 @@ class TorchTensorNcclChannel(ChannelInterface):
 
 
 def _do_init_nccl_group(self, world_size, comm_id, rank, actor_ids_to_ranks):
+    import torch
+
     assert (
         ray.get_gpu_ids()
     ), "Actors participating in NCCL group must have at least one GPU assigned"

@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
     reason="Requires Linux or Mac.",
 )
 def test_put_local_get(ray_start_regular):
-    chan = ray_channel.Channel([None], 1000)
+    chan = ray_channel.Channel(None, [None], 1000)
 
     num_writes = 1000
     for i in range(num_writes):
@@ -37,7 +37,7 @@ def test_errors(ray_start_regular):
     @ray.remote
     class Actor:
         def make_chan(self, do_write=True):
-            self.chan = ray_channel.Channel([None], 1000)
+            self.chan = ray_channel.Channel(None, [None], 1000)
             if do_write:
                 self.chan.write(b"hello")
             return self.chan
@@ -70,7 +70,7 @@ def test_errors(ray_start_regular):
     reason="Requires Linux or Mac.",
 )
 def test_put_different_meta(ray_start_regular):
-    chan = ray_channel.Channel([None], 1000)
+    chan = ray_channel.Channel(None, [None], 1000)
 
     def _test(val):
         chan.write(val)
@@ -127,7 +127,7 @@ def test_put_remote_get(ray_start_regular, num_readers):
     num_writes = 1000
     readers = [Reader.remote() for _ in range(num_readers)]
 
-    chan = ray_channel.Channel(readers, 1000)
+    chan = ray_channel.Channel(None, readers, 1000)
     chan.ensure_registered_as_writer()
 
     done = [reader.read.remote(chan, num_writes) for reader in readers]
@@ -186,7 +186,7 @@ def test_remote_reader(ray_start_cluster, remote):
                 self._reader_chan.end_read()
 
     readers = [Reader.remote() for _ in range(num_readers)]
-    channel = ray_channel.Channel(readers, 1000)
+    channel = ray_channel.Channel(None, readers, 1000)
 
     # All readers have received the channel.
     ray.get([reader.pass_channel.remote(channel) for reader in readers])
@@ -238,7 +238,7 @@ def test_remote_reader_close(ray_start_cluster, remote):
             self._reader_chan.close()
 
     readers = [Reader.remote() for _ in range(num_readers)]
-    channel = ray_channel.Channel(readers, 1000)
+    channel = ray_channel.Channel(None, readers, 1000)
 
     # All readers have received the channel.
     ray.get([reader.pass_channel.remote(channel) for reader in readers])

@@ -89,7 +89,7 @@ class ChannelInterface:
         self,
         writer: Optional[ray.actor.ActorHandle],
         readers: List[Optional[ray.actor.ActorHandle]],
-        typ: "ChannelOutputType",
+        typ: Optional["ChannelOutputType"],
     ):
         """
         Create a channel that can be read and written by a Ray driver or actor.

@@ -1,6 +1,6 @@
 import io
 import logging
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Union
 
 import ray
 from ray.experimental.channel.common import ChannelInterface, ChannelOutputType
@@ -10,6 +10,8 @@ from ray.util.annotations import PublicAPI
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
 logger = logging.getLogger(__name__)
+
+DEFAULT_MAX_BUFFER_SIZE = int(100 * 1e6)  # 100MB
 
 
 def _get_node_id(self) -> "ray.NodeID":
@@ -99,9 +101,9 @@ class Channel(ChannelInterface):
 
     def __init__(
         self,
-        writer: ray.actor.ActorHandle,
+        writer: Optional[ray.actor.ActorHandle],
         readers: List[Optional[ray.actor.ActorHandle]],
-        typ: SharedMemoryType,
+        typ: Optional[Union[int, SharedMemoryType]] = None,
         _writer_node_id: Optional["ray.NodeID"] = None,
         _reader_node_id: Optional["ray.NodeID"] = None,
         _writer_ref: Optional["ray.ObjectRef"] = None,
@@ -115,19 +117,29 @@ class Channel(ChannelInterface):
         value.
 
         Args:
-            buffer_size_bytes: The number of bytes to allocate for the object data and
-                metadata. Writes to the channel must produce serialized data and
-                metadata less than or equal to this value.
+            writer: The actor that may write to the channel. None signifies the driver.
+            readers: The actors that may read from the channel. None signifies
+                the driver.
+            typ: Type information about the values passed through the channel.
+                Either an integer representing the max buffer size in bytes
+                allowed, or a SharedMemoryType.
         Returns:
             Channel: A wrapper around ray.ObjectRef.
         """
         is_creator = False
         assert len(readers) > 0
 
-        if _writer_ref is None:
-            if not isinstance(typ.buffer_size_bytes, int):
-                raise ValueError("buffer_size_bytes must be an integer")
+        if typ is None:
+            typ = SharedMemoryType(DEFAULT_MAX_BUFFER_SIZE)
+        elif isinstance(typ, int):
+            typ = SharedMemoryType(typ)
+        elif not isinstance(typ, SharedMemoryType):
+            raise ValueError(
+                "`typ` must be an `int` representing the max buffer size in "
+                "bytes or a SharedMemoryType"
+            )
 
+        if _writer_ref is None:
             self._writer_node_id = (
                 ray.runtime_context.get_runtime_context().get_node_id()
             )
