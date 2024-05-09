@@ -295,15 +295,11 @@ class SplitCoordinator:
                     self._output_iterator is None,
                     time.time(),
                 )
-            if self._cur_epoch == starting_epoch:
-                self._cur_epoch += 1
-                self._unfinished_clients_in_epoch = self._n
-                self._output_iterator = next(self._next_epoch)
-                self._debug_info[split_idx]["leaving_lock"] = (
-                    self._cur_epoch,
-                    self._output_iterator is None,
-                    time.time(),
-                )
+            self._debug_info[split_idx]["leaving_lock"] = (
+                self._cur_epoch,
+                self._output_iterator is None,
+                time.time(),
+            )
 
         assert self._output_iterator is not None, self._debug_info
         return starting_epoch + 1
