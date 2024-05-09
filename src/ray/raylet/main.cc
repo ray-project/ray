@@ -228,13 +228,13 @@ int main(int argc, char *argv[]) {
   auto shutted_down = std::make_shared<std::atomic<bool>>(false);
 
   auto unregister_done_callback =
-    [&main_service, &raylet_socket_name, &raylet, &gcs_client]() {
-      raylet->Stop();
-      gcs_client->Disconnect();
-      ray::stats::Shutdown();
-      main_service.stop();
-      remove(raylet_socket_name.c_str());
-    };
+      [&main_service, &raylet_socket_name, &raylet, &gcs_client]() {
+        raylet->Stop();
+        gcs_client->Disconnect();
+        ray::stats::Shutdown();
+        main_service.stop();
+        remove(raylet_socket_name.c_str());
+      };
 
   // Shut down raylet gracefully. The pointer to main_service is
   // guaranteed to be valid since this function will run the event loop
