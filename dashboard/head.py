@@ -28,31 +28,6 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-GRPC_CHANNEL_OPTIONS = (
-    *ray_constants.GLOBAL_GRPC_OPTIONS,
-    ("grpc.max_send_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
-    ("grpc.max_receive_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
-)
-
-
-def initialize_grpc_port_and_server(grpc_ip, grpc_port):
-    try:
-        from grpc import aio as aiogrpc
-    except ImportError:
-        from grpc.experimental import aio as aiogrpc
-
-    import ray._private.tls_utils
-
-    aiogrpc.init_grpc_aio()
-
-    server = aiogrpc.server(options=(("grpc.so_reuseport", 0),))
-
-    grpc_port = ray._private.tls_utils.add_port_to_grpc_server(
-        server, f"{grpc_ip}:{grpc_port}"
-    )
-
-    return server, grpc_port
-
 
 class GCSHealthCheckThread(threading.Thread):
     def __init__(self, gcs_address: str):
@@ -86,7 +61,6 @@ class DashboardHead:
         http_port_retries: int,
         gcs_address: str,
         node_ip_address: str,
-        grpc_port: int,
         log_dir: str,
         temp_dir: str,
         session_dir: str,
@@ -106,7 +80,6 @@ class DashboardHead:
             minimal: Whether or not it will load the minimal modules.
             serve_frontend: If configured, frontend HTML is
                 served from the dashboard.
-            grpc_port: The port used to listen for gRPC on.
             modules_to_load: A set of module name in string to load.
                 By default (None), it loads all available modules.
                 Note that available modules could be changed depending on
@@ -141,13 +114,11 @@ class DashboardHead:
         DataOrganizer.head_node_ip = self.ip
 
         if self.minimal:
-            self.server, self.grpc_port = None, None
-        else:
-            grpc_ip = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
-            self.server, self.grpc_port = initialize_grpc_port_and_server(
-                grpc_ip, grpc_port
-            )
-            logger.info("Dashboard head grpc address: %s:%s", grpc_ip, self.grpc_port)
+            """
+            We used to use minimal server to disable grpc server. Now we don't have any.
+            """
+            pass
+
         # If the dashboard is started as non-minimal version, http server should
         # be configured to expose APIs.
         self.http_server = None
@@ -309,10 +280,6 @@ class DashboardHead:
         self.health_check_thread = GCSHealthCheckThread(gcs_address)
         self.health_check_thread.start()
 
-        # Start a grpc asyncio server.
-        if self.server:
-            await self.server.start()
-
         async def _async_notify():
             """Notify signals from queue."""
             while True:
@@ -352,12 +319,6 @@ class DashboardHead:
             True,
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
         ),
-        self.gcs_client.internal_kv_put(
-            dashboard_consts.DASHBOARD_RPC_ADDRESS.encode(),
-            f"{self.ip}:{self.grpc_port}".encode(),
-            True,
-            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-        )
 
         # Freeze signal after all modules loaded.
         dashboard_utils.SignalManager.freeze()
@@ -368,9 +329,7 @@ class DashboardHead:
             DataOrganizer.organize(),
         ]
         for m in modules:
-            concurrent_tasks.append(m.run(self.server))
-        if self.server:
-            concurrent_tasks.append(self.server.wait_for_termination())
+            concurrent_tasks.append(m.run())
         await asyncio.gather(*concurrent_tasks)
 
         if self.http_server:

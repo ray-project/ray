@@ -92,9 +92,6 @@ class RayParams:
         dashboard_agent_listen_port: The port for dashboard agents to listen on
             for HTTP requests.
             Defaults to 52365.
-        dashboard_grpc_port: The port for the dashboard head process to listen
-            for gRPC on.
-            Defaults to random available port.
         runtime_env_agent_port: The port at which the runtime env agent
             listens to for HTTP.
             Defaults to random available port.
@@ -228,7 +225,12 @@ class RayParams:
         self.dashboard_host = dashboard_host
         self.dashboard_port = dashboard_port
         self.dashboard_agent_listen_port = dashboard_agent_listen_port
-        self.dashboard_grpc_port = dashboard_grpc_port
+        # Deprecated, no longer used.
+        if dashboard_grpc_port is not None:
+            logger.warning(
+                "dashboard_grpc_port is deprecated and no longer used. "
+                "You can remove it from your code."
+            )
         self.runtime_env_agent_port = runtime_env_agent_port
         self.plasma_store_socket_name = plasma_store_socket_name
         self.raylet_socket_name = raylet_socket_name
@@ -320,7 +322,6 @@ class RayParams:
             "dashboard": wrap_port(self.dashboard_port),
             "dashboard_agent_grpc": wrap_port(self.metrics_agent_port),
             "dashboard_agent_http": wrap_port(self.dashboard_agent_listen_port),
-            "dashboard_grpc": wrap_port(self.dashboard_grpc_port),
             "runtime_env_agent": wrap_port(self.runtime_env_agent_port),
             "metrics_export": wrap_port(self.metrics_export_port),
         }

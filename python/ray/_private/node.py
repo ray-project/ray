@@ -133,7 +133,6 @@ class Node:
         self._config = ray_params._system_config or {}
 
         self._dashboard_agent_listen_port = ray_params.dashboard_agent_listen_port
-        self._dashboard_grpc_port = ray_params.dashboard_grpc_port
 
         # Configure log rotation parameters.
         self.max_bytes = int(
@@ -677,7 +676,9 @@ class Node:
     @property
     def dashboard_grpc_port(self):
         """Get the dashboard head grpc port"""
-        return self._dashboard_grpc_port
+        raise AttributeError(
+            "Dashboard grpc server is removed. There is no port to " "listen."
+        )
 
     @property
     def logging_config(self):
@@ -1116,7 +1117,6 @@ class Node:
             self._logs_dir,
             self._session_dir,
             port=self._ray_params.dashboard_port,
-            dashboard_grpc_port=self._ray_params.dashboard_grpc_port,
             fate_share=self.kernel_fate_share,
             max_bytes=self.max_bytes,
             backup_count=self.backup_count,
