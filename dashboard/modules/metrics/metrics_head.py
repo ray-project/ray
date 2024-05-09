@@ -29,6 +29,7 @@ from ray.dashboard.consts import (
     METRICS_INPUT_ROOT,
     PROMETHEUS_CONFIG_INPUT_PATH,
     RAY_SLOW_TASK_WARNING,
+    RAY_ENABLE_DASHBOARD_SLOW_TASK_WARNING,
 )
 
 logger = logging.getLogger(__name__)
@@ -340,15 +341,17 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
 
         enable_monitor_loop_lag(on_new_lag)
 
-        # Logs warnings if a task ran for more than 100ms. Limitation: it only logs
-        # the task name and duration, e.g. if the blocker is in a aiohttp handler it
-        # only logs `RequestHandler._handle_request()` instead of the actual handler.
-        enable_log_slow_callbacks(
-            slow_duration=0.1,
-            on_slow_callback=lambda name, duration: logger.warning(
-                f"{RAY_SLOW_TASK_WARNING}: {name} took {duration} seconds."
-            ),
-        )
+        if RAY_ENABLE_DASHBOARD_SLOW_TASK_WARNING:
+            # Logs warnings if a task ran for more than 100ms. Limitation: it only logs
+            # the task name and duration, e.g. if the blocker is in a aiohttp handler it
+            # only logs `RequestHandler._handle_request()` instead of the actual
+            # handler.
+            enable_log_slow_callbacks(
+                slow_duration=0.1,
+                on_slow_callback=lambda name, duration: logger.warning(
+                    f"{RAY_SLOW_TASK_WARNING}: {name} took {duration} seconds."
+                ),
+            )
         # TODO: if needed, adapt `aiodebug.hang_inspection` to record stack trace of the
         # slow coroutine.
         await asyncio.gather(self.record_dashboard_metrics())

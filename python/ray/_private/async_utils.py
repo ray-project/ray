@@ -21,7 +21,7 @@
 # - Miscellaneous changes to make it work with Ray.
 
 from asyncio.base_events import _format_handle
-from typing import Callable
+from typing import Callable, Optional
 import asyncio
 import asyncio.events
 import time
@@ -33,6 +33,9 @@ def enable_log_slow_callbacks(
     """
     Patch ``asyncio.events.Handle`` to log warnings every time a callback takes
     ``slow_duration`` seconds or more to run.
+
+    Note: this relies on private implementation details of asyncio and may break in
+    future versions. When we update Python version we may need to update this code.
 
     Note: this only works with asyncio's default event loop, not with uvloop.
 
@@ -55,17 +58,17 @@ def enable_log_slow_callbacks(
 
 
 def enable_monitor_loop_lag(
-    callback_s: Callable[[float], None],
-    interval: float = 0.25,
-    loop: asyncio.AbstractEventLoop = None,
+    callback: Callable[[float], None],
+    interval_s: float = 0.25,
+    loop: Optional[asyncio.AbstractEventLoop] = None,
 ) -> None:
     """
-    Start logging event loop lags to StatsD. In ideal circumstances they should be very
-    close to zero. Lags may increase if event loop callbacks block for too long.
+    Start logging event loop lags to the callback. In ideal circumstances they should be
+    very close to zero. Lags may increase if event loop callbacks block for too long.
 
     Note: this works for all event loops, including uvloop.
 
-    :param callback_s: Callback to call with the lag in seconds.
+    :param callback: Callback to call with the lag in seconds.
     """
     if loop is None:
         loop = asyncio.get_running_loop()
@@ -75,8 +78,8 @@ def enable_monitor_loop_lag(
     async def monitor():
         while loop.is_running():
             t0 = loop.time()
-            await asyncio.sleep(interval)
-            lag = loop.time() - t0 - interval  # Should be close to zero.
-            callback_s(lag)
+            await asyncio.sleep(interval_s)
+            lag = loop.time() - t0 - interval_s  # Should be close to zero.
+            callback(lag)
 
     loop.create_task(monitor(), name="async_utils.monitor_loop_lag")

@@ -1000,88 +1000,6 @@ def test_dashboard_does_not_depend_on_serve():
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == "1",
-    reason="This test is not supposed to work for minimal or default installation.",
-)
-def test_dashboard_log_warning_on_slow_task(
-    enable_test_module, ray_start_with_dashboard
-):
-    ray_context = ray_start_with_dashboard
-
-    # Blocks the event loop for 1 second.
-    assert wait_until_server_available(ray_context["webui_url"]) is True
-    webui_url = ray_start_with_dashboard["webui_url"]
-    webui_url = format_web_url(webui_url)
-    response = requests.get(webui_url + "/test/block_event_loop?seconds=1")
-    response.raise_for_status()
-
-    # Check if the warning message is logged. Example log:
-    #
-    # RaySlowTaskWarning: <Task finished name='Task-47'
-    # coro=<TestHead.blocking_async_func() done, defined at
-    # $RAY/dashboard/modules/tests/test_head.py:113> result=1.0> took 1.0036689169937745
-    # seconds.
-    #
-    session_dir = ray_context["session_dir"]
-    dashboard_log_path = Path(session_dir) / "logs" / "dashboard.log"
-    with open(dashboard_log_path, "r") as f:
-        warning_lines = [
-            line
-            for line in f.readlines()
-            if dashboard_consts.RAY_SLOW_TASK_WARNING in line
-        ]
-        assert len(warning_lines) == 1, warning_lines
-        line = warning_lines[0]
-        print(line)
-        assert "TestHead.blocking_async_func" in line, line
-
-
-@pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == "1",
-    reason="This test is not supposed to work for minimal or default installation.",
-)
-@pytest.mark.asyncio
-async def test_dashboard_exports_metric_on_event_loop_lag(
-    enable_test_module, ray_start_with_dashboard
-):
-    """
-    When the event loop is blocked, the dashboard should export a metric.
-    Uses aiohttp to send concurrent requests to block the event loop.
-    As the number of blocking call goes up, the event loop lag converges to ~5s on my
-    laptop. We assert it to be >3s to be safe.
-    """
-    import aiohttp
-    from prometheus_client.samples import Sample
-    from typing import List, Dict
-
-    ray_context = ray_start_with_dashboard
-    assert wait_until_server_available(ray_context["webui_url"]) is True
-    webui_url = format_web_url(ray_context["webui_url"])
-    blocking_url = webui_url + "/test/block_event_loop?seconds=1"
-
-    async def make_blocking_call():
-        async with aiohttp.ClientSession() as session:
-            async with session.get(blocking_url) as resp:
-                resp.raise_for_status()
-                return await resp.text()
-
-    # Blocks the event loop for 1 second for 10 times.
-    tasks = [make_blocking_call() for _ in range(10)]
-    await asyncio.gather(*tasks)
-
-    # Fetch the metrics from the dashboard.
-    addr = ray_context["raylet_ip_address"]
-    prom_addresses = [f"{addr}:{dashboard_consts.DASHBOARD_METRIC_PORT}"]
-
-    metrics_samples: Dict[str, List[Sample]] = fetch_prometheus_metrics(prom_addresses)
-    print(metrics_samples)
-
-    lag_metric_samples = metrics_samples["ray_dashboard_event_loop_lag_seconds"]
-    assert len(lag_metric_samples) > 0
-    assert all(sample.value > 3 for sample in lag_metric_samples)
-
-
-@pytest.mark.skipif(
     os.environ.get("RAY_DEFAULT") != "1",
     reason="This test only works for default installation.",
 )
@@ -1344,6 +1262,90 @@ def test_dashboard_not_included_ray_minimal(shutdown_only, capsys):
         # Since the dashboard doesn't start, it should raise ConnectionError
         # becasue we cannot estabilish a connection.
         requests.get("http://localhost:8265")
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == "1",
+    reason="This test is not supposed to work for minimal or default installation.",
+)
+def test_dashboard_log_warning_on_slow_task(
+    enable_test_module, monkeypatch, shutdown_only
+):
+    monkeypatch.setenv("RAY_enable_dashboard_slow_task_warning", "1")
+
+    ray_context = ray.init(include_dashboard=True)
+
+    # Blocks the event loop for 1 second.
+    assert wait_until_server_available(ray_context["webui_url"]) is True
+    webui_url = ray_context["webui_url"]
+    webui_url = format_web_url(webui_url)
+    response = requests.get(webui_url + "/test/block_event_loop?seconds=1")
+    response.raise_for_status()
+
+    # Check if the warning message is logged. Example log:
+    #
+    # RaySlowTaskWarning: <Task finished name='Task-47'
+    # coro=<TestHead.blocking_async_func() done, defined at
+    # $RAY/dashboard/modules/tests/test_head.py:113> result=1.0> took 1.0036689169937745
+    # seconds.
+    #
+    session_dir = ray_context["session_dir"]
+    dashboard_log_path = Path(session_dir) / "logs" / "dashboard.log"
+    with open(dashboard_log_path, "r") as f:
+        warning_lines = [
+            line
+            for line in f.readlines()
+            if dashboard_consts.RAY_SLOW_TASK_WARNING in line
+        ]
+        assert len(warning_lines) == 1, warning_lines
+        line = warning_lines[0]
+        print(line)
+        assert "TestHead.blocking_async_func" in line, line
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == "1",
+    reason="This test is not supposed to work for minimal or default installation.",
+)
+@pytest.mark.asyncio
+async def test_dashboard_exports_metric_on_event_loop_lag(
+    enable_test_module, ray_start_with_dashboard
+):
+    """
+    When the event loop is blocked, the dashboard should export a metric.
+    Uses aiohttp to send concurrent requests to block the event loop.
+    As the number of blocking call goes up, the event loop lag converges to ~5s on my
+    laptop. We assert it to be >3s to be safe.
+    """
+    import aiohttp
+    from prometheus_client.samples import Sample
+    from typing import List, Dict
+
+    ray_context = ray_start_with_dashboard
+    assert wait_until_server_available(ray_context["webui_url"]) is True
+    webui_url = format_web_url(ray_context["webui_url"])
+    blocking_url = webui_url + "/test/block_event_loop?seconds=1"
+
+    async def make_blocking_call():
+        async with aiohttp.ClientSession() as session:
+            async with session.get(blocking_url) as resp:
+                resp.raise_for_status()
+                return await resp.text()
+
+    # Blocks the event loop for 1 second for 10 times.
+    tasks = [make_blocking_call() for _ in range(10)]
+    await asyncio.gather(*tasks)
+
+    # Fetch the metrics from the dashboard.
+    addr = ray_context["raylet_ip_address"]
+    prom_addresses = [f"{addr}:{dashboard_consts.DASHBOARD_METRIC_PORT}"]
+
+    metrics_samples: Dict[str, List[Sample]] = fetch_prometheus_metrics(prom_addresses)
+    print(metrics_samples)
+
+    lag_metric_samples = metrics_samples["ray_dashboard_event_loop_lag_seconds"]
+    assert len(lag_metric_samples) > 0
+    assert all(sample.value > 3 for sample in lag_metric_samples)
 
 
 if __name__ == "__main__":
