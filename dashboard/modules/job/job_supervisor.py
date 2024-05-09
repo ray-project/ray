@@ -127,7 +127,7 @@ class JobSupervisor:
         # Stop the job runner actor & killing the driver process
         await self._runner.stop.remote()
 
-    async def start(
+    async def launch(
         self,
         *,
         runtime_env: Optional[Dict[str, Any]] = None,
@@ -136,9 +136,29 @@ class JobSupervisor:
         entrypoint_num_gpus: Optional[Union[int, float]] = None,
         entrypoint_memory: Optional[int] = None,
         entrypoint_resources: Optional[Dict[str, float]] = None,
-        # Signal actor used in testing to capture PENDING -> RUNNING cases
-        _start_signal_actor: Optional[ActorHandle] = None,
     ):
+        """Launches actual Ray Job driver
+
+        Args:
+            runtime_env: Runtime environment used to execute driver command,
+                which could contain its own ray.init() to configure runtime
+                env at ray cluster, task and actor level.
+            metadata: Support passing arbitrary data to driver command in
+                case needed.
+            entrypoint_num_cpus: The quantity of CPU cores to reserve for the execution
+                of the entrypoint command, separately from any tasks or actors launched
+                by it. Defaults to 0.
+            entrypoint_num_gpus: The quantity of GPUs to reserve for
+                the entrypoint command, separately from any tasks or actors launched
+                by it. Defaults to 0.
+            entrypoint_memory: The amount of total available memory for workers
+                requesting memory the entrypoint command, separately from any tasks
+                or actors launched by it. Defaults to 0.
+            entrypoint_resources: The quantity of various custom resources
+                to reserve for the entrypoint command, separately from any tasks or
+                actors launched by it.
+        """
+
         logger.info(f"Starting job with submission_id: {self._job_id}")
 
         job_info = JobInfo(
