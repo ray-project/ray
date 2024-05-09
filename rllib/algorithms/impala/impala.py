@@ -39,6 +39,7 @@ from ray.rllib.utils.deprecation import (
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
     ENV_RUNNER_RESULTS,
+    LEARNER_GROUP,
     LEARNER_RESULTS,
     LEARNER_UPDATE_TIMER,
     MEAN_NUM_EPISODE_LISTS_RECEIVED,
@@ -139,7 +140,7 @@ class ImpalaConfig(AlgorithmConfig):
         self.num_sgd_iter = 1
         self.replay_proportion = 0.0  # @OldAPIstack
         self.replay_buffer_num_slots = 0  # @OldAPIstack
-        self.learner_queue_size = 16  # @OldAPIstack
+        self.learner_queue_size = 3  # @OldAPIstack
         self.learner_queue_timeout = 300  # @OldAPIstack
         self.max_requests_in_flight_per_sampler_worker = 2
         self.max_requests_in_flight_per_aggregator_worker = 2
@@ -147,7 +148,7 @@ class ImpalaConfig(AlgorithmConfig):
         self.timeout_s_aggregator_manager = 0.0  # @OldAPIstack
         self.broadcast_interval = 1
         self.num_aggregation_workers = 0  # @OldAPIstack
-        self.num_gpu_loader_threads = 16
+        self.num_gpu_loader_threads = 8
         # Impala takes care of its own EnvRunner (weights, connector, counters)
         # synching.
         self._dont_auto_sync_env_runner_states = True
@@ -733,6 +734,9 @@ class Impala(Algorithm):
                         stats_dicts=results_from_n_learners,
                         key=LEARNER_RESULTS,
                     )
+
+        # Update LearnerGroup's own stats.
+        self.metrics.log_dict(self.learner_group.get_stats(), key=LEARNER_GROUP)
 
         # Figure out, whether we should sync/broadcast the (remote) EnvRunner states.
         # Note: `learner_results` is a List of n (num async calls) of Lists of m

@@ -1,6 +1,8 @@
+from collections import deque
 import copy
-from queue import Empty, LifoQueue, Queue
+from queue import Empty, Queue
 import threading
+import time
 from typing import Dict, List, Optional
 
 import tree  # pip install dm_tree
@@ -72,7 +74,7 @@ class ImpalaLearner(Learner):
         # on the "update queue" for the actual RLModule forward pass and loss
         # computations.
         self._gpu_loader_in_queue = Queue()
-        self._learner_thread_in_queue = LifoQueue(maxsize=self.config.learner_queue_size)
+        self._learner_thread_in_queue = deque(maxlen=self.config.learner_queue_size)
         self._learner_thread_out_queue = Queue()
 
         # Create and start the GPU loader thread(s).
@@ -208,7 +210,7 @@ class _GPULoaderThread(threading.Thread):
         self,
         *,
         in_queue: Queue,
-        out_queue: Queue,
+        out_queue: deque,
         device: torch.device,
         metrics_logger: MetricsLogger,
     ):
@@ -244,9 +246,9 @@ class _GPULoaderThread(threading.Thread):
                 policy_batches={mid: SampleBatch(b) for mid, b in batch_on_gpu.items()},
                 env_steps=env_steps,
             )
-            self._out_queue.put(ma_batch_on_gpu)
+            self._out_queue.append(ma_batch_on_gpu)
             self.metrics.log_value(
-                QUEUE_SIZE_LEARNER_THREAD_QUEUE, self._out_queue.qsize()
+                QUEUE_SIZE_LEARNER_THREAD_QUEUE, len(self._out_queue)
             )
 
 
@@ -258,7 +260,7 @@ class _LearnerThread(threading.Thread):
         self.stopped = False
 
         self._update_method = update_method
-        self._in_queue: Queue = in_queue
+        self._in_queue: deque = in_queue
         self._out_queue: Queue = out_queue
 
     def run(self) -> None:
@@ -266,9 +268,12 @@ class _LearnerThread(threading.Thread):
             self.step()
 
     def step(self):
-        # Get a new batch from the GPU-data (inqueue).
+        # Get a new batch from the GPU-data (deque.pop -> newest item first).
         with self.metrics.log_time((ALL_MODULES, LEARNER_THREAD_IN_QUEUE_WAIT_TIMER)):
-            ma_batch_on_gpu = self._in_queue.get()
+            if not self._in_queue:
+                time.sleep(0.001)
+                return
+            ma_batch_on_gpu = self._in_queue.pop()
 
         # Call the update method on the batch.
         with self.metrics.log_time((ALL_MODULES, LEARNER_THREAD_UPDATE_TIMER)):

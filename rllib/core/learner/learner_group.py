@@ -479,34 +479,33 @@ class LearnerGroup:
                 # Retrieve all ready results (kicked off by prior calls to this method).
                 tags_to_get = []
                 #results = None
-                if self._update_request_tags:
-                    #assert len(self._update_request_tags) == 1  # only 1 in-flight right now possible
-                    for tag in self._update_request_tags.keys():
-                        result = self._worker_manager.fetch_ready_async_reqs(
-                            tags=[str(tag)], timeout_seconds=0.0
-                        )
-                        if tag not in self._update_request_results:
-                            self._update_request_results[tag] = result
-                        else:
-                            for r in result:
-                                self._update_request_results[tag].add_result(
-                                    r.actor_id, r.result_or_error, tag
-                                )
+                #assert len(self._update_request_tags) == 1  # only 1 in-flight right now possible
+                for tag in self._update_request_tags.keys():
+                    result = self._worker_manager.fetch_ready_async_reqs(
+                        tags=[str(tag)], timeout_seconds=0.0
+                    )
+                    if tag not in self._update_request_results:
+                        self._update_request_results[tag] = result
+                    else:
+                        for r in result:
+                            self._update_request_results[tag].add_result(
+                                r.actor_id, r.result_or_error, tag
+                            )
 
-                        # Still not done with this `tag` -> skip out early.
-                        ##force-fetch the results from
-                        ##the missing Learners.
-                        if self._update_request_tags[tag] > len(self._update_request_results[tag].result_or_errors) > 0:
-                            #more_results = self._worker_manager.fetch_ready_async_reqs(
-                            #    tags=[str(tag)], timeout_seconds=None
-                            #)
-                            #for result in more_results.result_or_errors:
-                            #    results.add_result(result.actor_id, result.result_or_error, tag)
-                            # If we did have to wait for some (slower) Learners results,
-                            # break out of this loop.
-                            break
-                        else:
-                            tags_to_get.append(tag)
+                    # Still not done with this `tag` -> skip out early.
+                    ##force-fetch the results from
+                    ##the missing Learners.
+                    if self._update_request_tags[tag] > len(self._update_request_results[tag].result_or_errors) > 0:
+                        #more_results = self._worker_manager.fetch_ready_async_reqs(
+                        #    tags=[str(tag)], timeout_seconds=None
+                        #)
+                        #for result in more_results.result_or_errors:
+                        #    results.add_result(result.actor_id, result.result_or_error, tag)
+                        # If we did have to wait for some (slower) Learners results,
+                        # break out of this loop.
+                        break
+                    else:
+                        tags_to_get.append(tag)
 
                 # Send out new request(s), if there is still capacity on the actors.
                 update_tag = self._update_request_tag

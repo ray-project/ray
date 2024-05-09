@@ -3,6 +3,7 @@
 #  -> `env_runners` and `learner_stats` -> `learners`).
 EVALUATION_RESULTS = "evaluation_results"
 ENV_RUNNER_RESULTS = "env_runner_results"
+LEARNER_GROUP = "learner_group"
 LEARNER_RESULTS = "learner_results"
 FAULT_TOLERANCE_STATS = "fault_tolerance_stats"
 TIMERS = "timers"
