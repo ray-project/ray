@@ -2013,8 +2013,6 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
                 return colorama.Fore.YELLOW
             else:
                 return colorama.Fore.CYAN
-        elif os.getenv("RAY_COLOR_PREFIX") == "0":
-            return ""
         elif os.getenv("RAY_COLOR_PREFIX") == "1":
             colors = [
                 # colorama.Fore.BLUE, # Too dark
@@ -2054,8 +2052,12 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
             process_tqdm(line)
         else:
             hide_tqdm()
-            color_pre = color_for(data, line)
-            color_post = "" if color_pre == "" else colorama.Style.RESET_ALL
+            if os.getenv("RAY_COLOR_PREFIX") == "0":
+                color_pre = ""
+                color_post = ""
+            else:
+                color_pre = color_for(data, line)
+                color_post = colorama.Style.RESET_ALL
             print(
                 f"{color_pre}({prefix_for(data)}{pid}{ip_prefix}){color_post} "
                 + f"{message_for(data, line)}",
