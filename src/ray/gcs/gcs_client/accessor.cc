@@ -441,7 +441,9 @@ Status NodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info,
   return Status::OK();
 }
 
-Status NodeInfoAccessor::UnregisterSelf(const rpc::NodeDeathInfo &node_death_info) {
+Status NodeInfoAccessor::UnregisterSelf(
+    const rpc::NodeDeathInfo &node_death_info,
+    const std::function<void()> &unregister_done_callback) {
   if (local_node_id_.IsNil()) {
     RAY_LOG(INFO) << "The node is already unregistered.";
     // This node is already unregistered.
@@ -467,13 +469,16 @@ Status NodeInfoAccessor::UnregisterSelf(const rpc::NodeDeathInfo &node_death_inf
 
   client_impl_->GetGcsRpcClient().UnregisterNode(
       request,
-      [this, node_id](const Status &status, const rpc::UnregisterNodeReply &reply) {
+      [this, node_id, &unregister_done_callback](const Status &status,
+                                                 const rpc::UnregisterNodeReply &reply) {
         if (status.ok()) {
           local_node_info_.set_state(GcsNodeInfo::DEAD);
           local_node_id_ = NodeID::Nil();
         }
         RAY_LOG(INFO) << "Finished unregistering node info, status = " << status
                       << ", node id = " << node_id;
+        unregister_done_callback();
+        RAY_LOG(INFO) << "Finished executing unregister_done_callback.";
       });
   return Status::OK();
 }

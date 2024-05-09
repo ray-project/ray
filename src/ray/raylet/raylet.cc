@@ -118,8 +118,13 @@ void Raylet::Start() {
   DoAccept();
 }
 
-void Raylet::Stop(const rpc::NodeDeathInfo &node_death_info) {
-  RAY_CHECK_OK(gcs_client_->Nodes().UnregisterSelf(node_death_info));
+void Raylet::UnregisterSelf(const rpc::NodeDeathInfo &node_death_info,
+                            const std::function<void()> &unregister_done_callback) {
+  RAY_CHECK_OK(
+      gcs_client_->Nodes().UnregisterSelf(node_death_info, unregister_done_callback));
+}
+
+void Raylet::Stop() {
   node_manager_.Stop();
   acceptor_.close();
 }

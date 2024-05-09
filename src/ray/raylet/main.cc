@@ -246,11 +246,17 @@ int main(int argc, char *argv[]) {
                       << "reason message = " << node_death_info.reason_message();
         RAY_LOG(INFO) << "Shutting down...";
         *shutted_down = true;
-        raylet->Stop(node_death_info);
-        gcs_client->Disconnect();
-        ray::stats::Shutdown();
-        main_service.stop();
-        remove(raylet_socket_name.c_str());
+
+        auto unregister_done_callback =
+            [&main_service, &raylet_socket_name, &raylet, &gcs_client]() {
+              raylet->Stop();
+              gcs_client->Disconnect();
+              ray::stats::Shutdown();
+              main_service.stop();
+              remove(raylet_socket_name.c_str());
+            };
+
+        raylet->UnregisterSelf(node_death_info, unregister_done_callback);
       };
 
   auto shutdown_raylet_gracefully = [&main_service, shutdown_raylet_gracefully_sync](

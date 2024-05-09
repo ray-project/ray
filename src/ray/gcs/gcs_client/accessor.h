@@ -289,8 +289,10 @@ class NodeInfoAccessor {
   /// Unregister local node to GCS synchronously
   ///
   /// \param node_death_info The death information of the node to unregister from GCS.
-  /// \return Status
-  virtual Status UnregisterSelf(const rpc::NodeDeathInfo &node_death_info);
+  /// \param unregister_done_callback Callback that will be called when unregistration is
+  /// done. \return Status
+  virtual Status UnregisterSelf(const rpc::NodeDeathInfo &node_death_info,
+                                const std::function<void()> &unregister_done_callback);
 
   /// Drain (remove the information of the node from the cluster) the local node from GCS
   /// synchronously.
