@@ -237,7 +237,7 @@ even after failure.
 Recovering From Failures
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-Tune automatically persists the progress of your entire experiment (a ``Tuner.fit()`` session), so if an experiment crashes or is otherwise cancelled, it can be resumed through :meth:`Tuner.restore() <ray.tune.tuner.Tuner.restore>`.
+Tune automatically persists the progress of your entire experiment (a ``Tuner.fit()`` session), so if an experiment crashes or is otherwise cancelled, it can be resumed through :meth:`~ray.tune.Tuner.restore`.
 
 .. _tune-distributed-common:
 

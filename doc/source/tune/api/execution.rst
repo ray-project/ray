@@ -54,3 +54,4 @@ tune.run_experiments
 
     run_experiments
     Experiment
+    TuneError
