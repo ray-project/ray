@@ -2052,6 +2052,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
             process_tqdm(line)
         else:
             hide_tqdm()
+            # If RAY_COLOR_PREFIX=0, do not wrap with any color codes
             if os.getenv("RAY_COLOR_PREFIX") == "0":
                 color_pre = ""
                 color_post = ""
