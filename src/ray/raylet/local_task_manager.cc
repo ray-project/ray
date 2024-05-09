@@ -119,89 +119,18 @@ void LocalTaskManager::ScheduleAndDispatchTasks() {
   SpillWaitingTasks();
 }
 
-size_t LocalTaskManager::GetTaskArgsSize(const TaskSpecification &spec) {
-  std::vector<std::unique_ptr<RayObject>> args;
-  const auto &deps = spec.GetDependencyIds();
-  size_t task_arg_bytes = 0;
-  if (!deps.empty()) {
-    if (!get_task_arguments_(deps, &args)) {
-      // This gets refs to the arguments stored in plasma. The refs should be
-      // deleted once we no longer need to pin the arguments.
-      return 0;
-    }
-  }
-  for (size_t i = 0; i < deps.size(); i++) {
-    if (args[i] == nullptr) {
-      // This can happen if the task's arguments were all local at some
-      // point, but then at least one was evicted before the task could
-      // be dispatched to a worker.
-      return 0;
-    }
-  }
-  for (auto &arg : args) {
-    task_arg_bytes += arg->GetSize();
-  }
-  return task_arg_bytes;
-}
-
 void LocalTaskManager::DispatchScheduledTasksToWorkers() {
-  // Step 1: Collect all tasks across scheduling classes and their argument sizes.
-  std::vector<std::pair<std::shared_ptr<internal::Work>, size_t>> all_tasks_with_sizes;
-  std::unordered_map<std::shared_ptr<internal::Work>, SchedulingClass>
-      work_to_sched_class_map;
+  // Check every task in task_to_dispatch queue to see
+  // whether it can be dispatched and ran. This avoids head-of-line
+  // blocking where a task which cannot be dispatched because
+  // there are not enough available resources blocks other
+  // tasks from being dispatched.
 
-  // Map to record did_spill status for each scheduling class.
-  std::unordered_map<SchedulingClass, bool> sched_class_did_spill_map;
-  // Map to record capacity for each scheduling class.
-  std::unordered_map<SchedulingClass, bool> sched_class_cap_map;
+  for (auto shapes_it = tasks_to_dispatch_.begin();
+       shapes_it != tasks_to_dispatch_.end();) {
+    auto &scheduling_class = shapes_it->first;
+    auto &dispatch_queue = shapes_it->second;
 
-  for (auto &shapes_it : tasks_to_dispatch_) {
-    auto &scheduling_class = shapes_it.first;
-    auto &dispatch_queue = shapes_it.second;
-    for (auto &work : dispatch_queue) {
-      size_t task_arg_bytes = GetTaskArgsSize(work->task.GetTaskSpecification());
-      all_tasks_with_sizes.emplace_back(work, task_arg_bytes);
-      work_to_sched_class_map[work] = scheduling_class;
-      // Initialize spill map entry for each scheduling class encountered
-      if (sched_class_did_spill_map.find(scheduling_class) ==
-          sched_class_did_spill_map.end()) {
-        sched_class_did_spill_map[scheduling_class] = false;
-      }
-      if (sched_class_cap_map.find(scheduling_class) == sched_class_cap_map.end()) {
-        sched_class_cap_map[scheduling_class] = false;
-      }
-    }
-  }
-
-  // Step 2: Sort the tasks based on their argument sizes in descending order.
-  std::stable_sort(all_tasks_with_sizes.begin(),
-                   all_tasks_with_sizes.end(),
-                   [](const std::pair<std::shared_ptr<internal::Work>, size_t> &a,
-                      const std::pair<std::shared_ptr<internal::Work>, size_t> &b) {
-                     return a.second > b.second;
-                   });
-
-  // Record some status of SchedulingClass
-  // Map to record is_infeasible status for each scheduling class.
-  std::unordered_map<SchedulingClass, bool> sched_class_infeasibility_map;
-
-  // Step 3: Loop all the work in all_tasks_with_sizes
-  for (auto task_it = all_tasks_with_sizes.begin();
-       task_it != all_tasks_with_sizes.end();) {
-    auto work_it = task_it->first;
-    SchedulingClass scheduling_class = work_to_sched_class_map[work_it];
-
-    // Skip this iteration if the scheduling class has already spilled
-    if (sched_class_did_spill_map[scheduling_class] ||
-        sched_class_cap_map[scheduling_class]) {
-      ++task_it;
-      continue;
-    }
-    auto &dispatch_queue =
-        tasks_to_dispatch_[scheduling_class];  // dispatch_queue of current
-                                               // scheduling_class
-
-    // SchedulingClass level variables
     if (info_by_sched_cls_.find(scheduling_class) == info_by_sched_cls_.end()) {
       // Initialize the class info.
       info_by_sched_cls_.emplace(
@@ -210,213 +139,197 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
     }
     auto &sched_cls_info = info_by_sched_cls_.at(scheduling_class);
 
+    // Only dispatch if below fair share.
+    size_t total_running_tasks = 0;
+    for (auto& entry : info_by_sched_cls_) {
+      total_running_tasks += entry.second.running_tasks.size();
+    }
+    size_t num_classes = tasks_to_dispatch_.size();
+    size_t fair_share = (num_classes == 0) ? 0 : total_running_tasks / num_classes;
+
+    if (sched_cls_info.running_tasks.size() > fair_share) {
+      shapes_it++;
+      continue;
+    }
+
+
+    /// We cap the maximum running tasks of a scheduling class to avoid
+    /// scheduling too many tasks of a single type/depth, when there are
+    /// deeper/other functions that should be run. We need to apply back
+    /// pressure to limit the number of worker processes started in scenarios
+    /// with nested tasks.
     bool is_infeasible = false;
+    for (auto work_it = dispatch_queue.begin(); work_it != dispatch_queue.end();) {
+      auto &work = *work_it;
+      const auto &task = work->task;
+      const auto spec = task.GetTaskSpecification();
+      TaskID task_id = spec.TaskId();
+      if (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
+        work_it++;
+        continue;
+      }
 
-    const auto &task = work_it->task;
-    const auto spec =
-        task.GetTaskSpecification();  // Correct usage as 'task' is directly accessed
-    TaskID task_id = spec.TaskId();
-    if (work_it->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
-      ++task_it;  // Increment iterator to move to the next task
-      continue;   // Skip the current iteration if the work is waiting for a worker
-    }
-    // Check if the scheduling class is at capacity now.
-    if (sched_cls_cap_enabled_ &&
-        sched_cls_info.running_tasks.size() >= sched_cls_info.capacity &&
-        work_it->GetState() == internal::WorkStatus::WAITING) {
-      RAY_LOG(DEBUG) << "Hit cap! time=" << get_time_ms_()
-                     << " next update time=" << sched_cls_info.next_update_time;
-      if (get_time_ms_() < sched_cls_info.next_update_time) {
-        // We're over capacity and it's not time to admit a new task yet.
-        // Calculate the next time we should admit a new task.
-        int64_t current_capacity = sched_cls_info.running_tasks.size();
-        int64_t allowed_capacity = sched_cls_info.capacity;
-        int64_t exp = current_capacity - allowed_capacity;
-        int64_t wait_time = sched_cls_cap_interval_ms_ * (1L << exp);
-        if (wait_time > sched_cls_cap_max_ms_) {
-          wait_time = sched_cls_cap_max_ms_;
-          RAY_LOG(WARNING) << "Starting too many worker processes for a single type of "
-                              "task. Worker process startup is being throttled.";
-        }
-
-        int64_t target_time = get_time_ms_() + wait_time;
-        sched_cls_info.next_update_time =
-            std::min(target_time, sched_cls_info.next_update_time);
-
-        // While we're over capacity and cannot run the task,
-        // try to spill to a node that can run it.
-        bool did_spill = TrySpillback(work_it, is_infeasible);
-        if (did_spill) {
-          auto dq_it = std::find(dispatch_queue.begin(), dispatch_queue.end(), work_it);
-          if (dq_it != dispatch_queue.end()) {
-            dispatch_queue.erase(dq_it);
+      // Check if the scheduling class is at capacity now.
+      if (sched_cls_cap_enabled_ &&
+          sched_cls_info.running_tasks.size() >= sched_cls_info.capacity &&
+          work->GetState() == internal::WorkStatus::WAITING) {
+        RAY_LOG(DEBUG) << "Hit cap! time=" << get_time_ms_()
+                       << " next update time=" << sched_cls_info.next_update_time;
+        if (get_time_ms_() < sched_cls_info.next_update_time) {
+          // We're over capacity and it's not time to admit a new task yet.
+          // Calculate the next time we should admit a new task.
+          int64_t current_capacity = sched_cls_info.running_tasks.size();
+          int64_t allowed_capacity = sched_cls_info.capacity;
+          int64_t exp = current_capacity - allowed_capacity;
+          int64_t wait_time = sched_cls_cap_interval_ms_ * (1L << exp);
+          if (wait_time > sched_cls_cap_max_ms_) {
+            wait_time = sched_cls_cap_max_ms_;
+            RAY_LOG(WARNING) << "Starting too many worker processes for a single type of "
+                                "task. Worker process startup is being throttled.";
           }
-          task_it = all_tasks_with_sizes.erase(task_it);
-          continue;
+
+          int64_t target_time = get_time_ms_() + wait_time;
+          sched_cls_info.next_update_time =
+              std::min(target_time, sched_cls_info.next_update_time);
+
+          // While we're over capacity and cannot run the task,
+          // try to spill to a node that can run it.
+          bool did_spill = TrySpillback(work, is_infeasible);
+          if (did_spill) {
+            work_it = dispatch_queue.erase(work_it);
+            continue;
+          }
+
+          break;
         }
-        sched_class_cap_map[scheduling_class] = true;
+      }
+
+      bool args_missing = false;
+      bool success = PinTaskArgsIfMemoryAvailable(spec, &args_missing);
+      // An argument was evicted since this task was added to the dispatch
+      // queue. Move it back to the waiting queue. The caller is responsible
+      // for notifying us when the task is unblocked again.
+      if (!success) {
+        if (args_missing) {
+          // Insert the task at the head of the waiting queue because we
+          // prioritize spilling from the end of the queue.
+          // TODO(scv119): where does pulling happen?
+          auto it = waiting_task_queue_.insert(waiting_task_queue_.begin(),
+                                               std::move(*work_it));
+          RAY_CHECK(waiting_tasks_index_.emplace(task_id, it).second);
+          work_it = dispatch_queue.erase(work_it);
+        } else {
+          // The task's args cannot be pinned due to lack of memory. We should
+          // retry dispatching the task once another task finishes and releases
+          // its arguments.
+          RAY_LOG(DEBUG) << "Dispatching task " << task_id
+                         << " would put this node over the max memory allowed for "
+                            "arguments of executing tasks ("
+                         << max_pinned_task_arguments_bytes_
+                         << "). Waiting to dispatch task until other tasks complete";
+          RAY_CHECK(!executing_task_args_.empty() && !pinned_task_arguments_.empty())
+              << "Cannot dispatch task " << task_id
+              << " until another task finishes and releases its arguments, but no other "
+                 "task is running";
+          work->SetStateWaiting(
+              internal::UnscheduledWorkCause::WAITING_FOR_AVAILABLE_PLASMA_MEMORY);
+          work_it++;
+        }
         continue;
       }
-    }
-    bool args_missing = false;
-    bool success = PinTaskArgsIfMemoryAvailable(spec, &args_missing);
-    // An argument was evicted since this task was added to the dispatch
-    // queue. Move it back to the waiting queue. The caller is responsible
-    // for notifying us when the task is unblocked again.
-    if (!success) {
-      if (args_missing) {
-        // Insert the task at the head of the waiting queue because we
-        // prioritize spilling from the end of the queue.
-        // TODO(scv119): where does pulling happen?
-        auto it = waiting_task_queue_.insert(waiting_task_queue_.begin(),
-                                             work_it);  // Use dereferenced shared_ptr
-        RAY_CHECK(waiting_tasks_index_.emplace(task_id, it).second);
-        auto dq_it = std::find_if(dispatch_queue.begin(),
-                                  dispatch_queue.end(),
-                                  [&work_it](const std::shared_ptr<internal::Work> &w) {
-                                    return w == work_it;
-                                  });
-        if (dq_it != dispatch_queue.end()) {
-          dispatch_queue.erase(dq_it);
+
+      const auto owner_worker_id = WorkerID::FromBinary(spec.CallerAddress().worker_id());
+      const auto owner_node_id = NodeID::FromBinary(spec.CallerAddress().raylet_id());
+
+      // If the owner has died since this task was queued, cancel the task by
+      // killing the worker (unless this task is for a detached actor).
+      if (!spec.IsDetachedActor() && !is_owner_alive_(owner_worker_id, owner_node_id)) {
+        RAY_LOG(WARNING) << "RayTask: " << task.GetTaskSpecification().TaskId()
+                         << "'s caller is no longer running. Cancelling task.";
+        if (!spec.GetDependencies().empty()) {
+          task_dependency_manager_.RemoveTaskDependencies(task_id);
         }
-        // Advance the loop iterator since the current task has been processed.
-        task_it = all_tasks_with_sizes.erase(task_it);
+        ReleaseTaskArgs(task_id);
+        work_it = dispatch_queue.erase(work_it);
+        continue;
+      }
+
+      // Check if the node is still schedulable. It may not be if dependency resolution
+      // took a long time.
+      auto allocated_instances = std::make_shared<TaskResourceInstances>();
+      bool schedulable =
+          !cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeDraining() &&
+          cluster_resource_scheduler_->GetLocalResourceManager()
+              .AllocateLocalTaskResources(spec.GetRequiredResources().GetResourceMap(),
+                                          allocated_instances);
+      if (!schedulable) {
+        ReleaseTaskArgs(task_id);
+        // The local node currently does not have the resources to run the task, so we
+        // should try spilling to another node.
+        bool did_spill = TrySpillback(work, is_infeasible);
+        if (!did_spill) {
+          // There must not be any other available nodes in the cluster, so the task
+          // should stay on this node. We can skip the rest of the shape because the
+          // scheduler will make the same decision.
+          work->SetStateWaiting(
+              internal::UnscheduledWorkCause::WAITING_FOR_RESOURCES_AVAILABLE);
+          break;
+        }
+        work_it = dispatch_queue.erase(work_it);
       } else {
-        // The task's args cannot be pinned due to lack of memory. We should
-        // retry dispatching the task once another task finishes and releases
-        // its arguments.
-        RAY_LOG(DEBUG) << "Dispatching task " << task_id
-                       << " would put this node over the max memory allowed for "
-                          "arguments of executing tasks ("
-                       << max_pinned_task_arguments_bytes_
-                       << "). Waiting to dispatch task until other tasks complete";
-        RAY_CHECK(!executing_task_args_.empty() && !pinned_task_arguments_.empty())
-            << "Cannot dispatch task " << task_id
-            << " until another task finishes and releases its arguments, but no other "
-               "task is running";
-        work_it->SetStateWaiting(
-            internal::UnscheduledWorkCause::WAITING_FOR_AVAILABLE_PLASMA_MEMORY);
-        ++task_it;
+        // Force us to recalculate the next update time the next time a task
+        // comes through this queue. We should only do this when we're
+        // confident we're ready to dispatch the task after all checks have
+        // passed.
+        sched_cls_info.next_update_time = std::numeric_limits<int64_t>::max();
+        sched_cls_info.running_tasks.insert(spec.TaskId());
+        // The local node has the available resources to run the task, so we should run
+        // it.
+        std::string allocated_instances_serialized_json = "{}";
+        if (RayConfig::instance().worker_resource_limits_enabled()) {
+          allocated_instances_serialized_json = allocated_instances->SerializeAsJson();
+        }
+        work->allocated_instances = allocated_instances;
+        work->SetStateWaitingForWorker();
+        bool is_detached_actor = spec.IsDetachedActor();
+        auto &owner_address = spec.CallerAddress();
+        /// TODO(scv119): if a worker is not started, the resources is leaked and
+        // task might be hanging.
+        worker_pool_.PopWorker(
+            spec,
+            [this, task_id, scheduling_class, work, is_detached_actor, owner_address](
+                const std::shared_ptr<WorkerInterface> worker,
+                PopWorkerStatus status,
+                const std::string &runtime_env_setup_error_message) -> bool {
+              return PoppedWorkerHandler(worker,
+                                         status,
+                                         task_id,
+                                         scheduling_class,
+                                         work,
+                                         is_detached_actor,
+                                         owner_address,
+                                         runtime_env_setup_error_message);
+            },
+            allocated_instances_serialized_json);
+        work_it++;
       }
-      continue;
     }
-
-    const auto owner_worker_id = WorkerID::FromBinary(spec.CallerAddress().worker_id());
-    const auto owner_node_id = NodeID::FromBinary(spec.CallerAddress().raylet_id());
-
-    // If the owner has died since this task was queued, cancel the task by
-    // killing the worker (unless this task is for a detached actor).
-    if (!spec.IsDetachedActor() && !is_owner_alive_(owner_worker_id, owner_node_id)) {
-      RAY_LOG(WARNING) << "RayTask: " << task.GetTaskSpecification().TaskId()
-                       << "'s caller is no longer running. Cancelling task.";
-      if (!spec.GetDependencies().empty()) {
-        task_dependency_manager_.RemoveTaskDependencies(task_id);
-      }
-      ReleaseTaskArgs(task_id);
-      auto dq_it = std::find_if(
-          dispatch_queue.begin(),
-          dispatch_queue.end(),
-          [&work_it](const std::shared_ptr<internal::Work> &w) { return w == work_it; });
-      if (dq_it != dispatch_queue.end()) {
-        dispatch_queue.erase(dq_it);
-      }
-      task_it = all_tasks_with_sizes.erase(task_it);
-      continue;
+    // In the beginning of the loop, we add scheduling_class
+    // to the `info_by_sched_cls_` map.
+    // In cases like dead owners, we may not add any tasks
+    // to `running_tasks` so we can remove the map entry
+    // for that scheduling_class to prevent memory leaks.
+    if (sched_cls_info.running_tasks.size() == 0) {
+      info_by_sched_cls_.erase(scheduling_class);
     }
-
-    // Check if the node is still schedulable. It may not be if dependency resolution
-    // took a long time.
-    auto allocated_instances = std::make_shared<TaskResourceInstances>();
-    bool schedulable =
-        !cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeDraining() &&
-        cluster_resource_scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(
-            spec.GetRequiredResources().GetResourceMap(), allocated_instances);
-
-    if (!schedulable) {
-      ReleaseTaskArgs(task_id);
-      // The local node currently does not have the resources to run the task, so we
-      // should try spilling to another node.
-      bool did_spill = TrySpillback(work_it, is_infeasible);
-      if (!did_spill) {
-        // There must not be any other available nodes in the cluster, so the task
-        // should stay on this node. We can skip the rest of the shape because the
-        // scheduler will make the same decision.
-        work_it->SetStateWaiting(
-            internal::UnscheduledWorkCause::WAITING_FOR_RESOURCES_AVAILABLE);
-        sched_class_did_spill_map[scheduling_class] =
-            true;  // Set to be true so next time this SchdulingClass will be skipped
-        continue;
-      }
-      auto dq_it = std::find_if(
-          dispatch_queue.begin(),
-          dispatch_queue.end(),
-          [&work_it](const std::shared_ptr<internal::Work> &w) { return w == work_it; });
-      if (dq_it != dispatch_queue.end()) {
-        dispatch_queue.erase(dq_it);
-      }
-      task_it = all_tasks_with_sizes.erase(task_it);
+    if (is_infeasible) {
+      // TODO(scv119): fail the request.
+      // Call CancelTask
+      tasks_to_dispatch_.erase(shapes_it++);
+    } else if (dispatch_queue.empty()) {
+      tasks_to_dispatch_.erase(shapes_it++);
     } else {
-      // Force us to recalculate the next update time the next time a task
-      // comes through this queue. We should only do this when we're
-      // confident we're ready to dispatch the task after all checks have
-      // passed.
-      sched_cls_info.next_update_time = std::numeric_limits<int64_t>::max();
-      sched_cls_info.running_tasks.insert(spec.TaskId());
-      // The local node has the available resources to run the task, so we should run
-      // it.
-      std::string allocated_instances_serialized_json = "{}";
-      if (RayConfig::instance().worker_resource_limits_enabled()) {
-        allocated_instances_serialized_json = allocated_instances->SerializeAsJson();
-      }
-      work_it->allocated_instances = allocated_instances;
-      work_it->SetStateWaitingForWorker();
-      bool is_detached_actor = spec.IsDetachedActor();
-      auto &owner_address = spec.CallerAddress();
-      /// TODO(scv119): if a worker is not started, the resources is leaked and
-      // task might be hanging.
-      worker_pool_.PopWorker(
-          spec,
-          [this, task_id, scheduling_class, work_it, is_detached_actor, owner_address](
-              const std::shared_ptr<WorkerInterface> worker,
-              PopWorkerStatus status,
-              const std::string &runtime_env_setup_error_message) -> bool {
-            return PoppedWorkerHandler(worker,
-                                       status,
-                                       task_id,
-                                       scheduling_class,
-                                       work_it,
-                                       is_detached_actor,
-                                       owner_address,
-                                       runtime_env_setup_error_message);
-          },
-          allocated_instances_serialized_json);
-      task_it++;
-    }
-    sched_class_infeasibility_map[scheduling_class] = is_infeasible;
-  }
-
-  for (auto it = info_by_sched_cls_.begin(); it != info_by_sched_cls_.end();) {
-    if (it->second.running_tasks.empty()) {
-      // Correctly handle the iterator when erasing from absl::flat_hash_map
-      auto to_erase = it++;  // Increment iterator first, then erase
-      info_by_sched_cls_.erase(to_erase);
-    } else {
-      ++it;  // Increment to avoid skipping elements
-    }
-  }
-  // After processing all tasks, handle infeasible scheduling classes or empty dispatch
-  // queues
-  for (auto it = tasks_to_dispatch_.begin(); it != tasks_to_dispatch_.end();) {
-    SchedulingClass sched_class = it->first;
-    auto &dispatch_queue = it->second;
-    bool is_infeasible = sched_class_infeasibility_map[sched_class];
-
-    if (is_infeasible || dispatch_queue.empty()) {
-      // Erase the scheduling class from tasks_to_dispatch_ map
-      auto to_erase = it++;
-      tasks_to_dispatch_.erase(to_erase);  // Correctly advance iterator after erasing
-    } else {
-      ++it;  // Only increment if no erasure happened
+      shapes_it++;
     }
   }
 }

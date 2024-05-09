@@ -203,7 +203,6 @@ class LocalTaskManager : public ILocalTaskManager {
                            const rpc::Address &owner_address,
                            const std::string &runtime_env_setup_error_message);
 
-  size_t GetTaskArgsSize(const TaskSpecification &spec);
   /// Attempts to dispatch all tasks which are ready to run. A task
   /// will be dispatched if it is on `tasks_to_dispatch_` and there are still
   /// available resources on the node.
