@@ -1,6 +1,7 @@
+import itertools
 import os
 import sys
-from typing import List, Tuple, Optional
+from typing import List, Set, Tuple, Optional
 
 import yaml
 import click
@@ -82,6 +83,16 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     help=("Run flaky tests."),
 )
 @click.option(
+    "--run-high-impact-tests",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help=(
+        "Run only high impact tests. "
+        "High impact tests are tests that often catch regressions in the past."
+    ),
+)
+@click.option(
     "--skip-ray-installation",
     is_flag=True,
     show_default=True,
@@ -149,6 +160,11 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     default="optimized",
 )
 @click.option(
+    "--bisect-run-test-target",
+    type=str,
+    help="Test target to run in bisection mode",
+)
+@click.option(
     "--operating-system",
     default="linux",
     type=click.Choice(["linux", "windows"]),
@@ -169,6 +185,7 @@ def main(
     except_tags: str,
     only_tags: str,
     run_flaky_tests: bool,
+    run_high_impact_tests: bool,
     skip_ray_installation: bool,
     build_only: bool,
     gpus: int,
@@ -178,6 +195,7 @@ def main(
     python_version: Optional[str],
     build_name: Optional[str],
     build_type: Optional[str],
+    bisect_run_test_target: Optional[str],
     tmp_filesystem: Optional[str],
 ) -> None:
     if not bazel_workspace_dir:
@@ -190,6 +208,9 @@ def main(
         # for wheel testing, we first build the wheel and then use it for running tests
         architecture = DEFAULT_ARCHITECTURE if build_type == "wheel" else "aarch64"
         BuilderContainer(DEFAULT_PYTHON_VERSION, DEFAULT_BUILD_TYPE, architecture).run()
+    bisect_run_test_target = bisect_run_test_target or os.environ.get(
+        "RAYCI_BISECT_TEST_TARGET"
+    )
     container = _get_container(
         team,
         operating_system,
@@ -209,14 +230,19 @@ def main(
         sys.exit(0)
     test_targets = _get_test_targets(
         container,
-        targets,
+        # use the bisect_run_test_target if it is provided
+        [bisect_run_test_target] if bisect_run_test_target else targets,
         team,
         operating_system,
         except_tags=_add_default_except_tags(except_tags),
         only_tags=only_tags,
         get_flaky_tests=run_flaky_tests,
+        get_high_impact_tests=run_high_impact_tests
+        or os.environ.get("RAYCI_MICROCHECK_RUN") == "1",
     )
-    success = container.run_tests(team, test_targets, test_arg)
+    success = container.run_tests(
+        team, test_targets, test_arg, is_bisect_run=bisect_run_test_target is not None
+    )
     sys.exit(0 if success else 42)
 
 
@@ -330,6 +356,7 @@ def _get_test_targets(
     only_tags: Optional[str] = "",
     yaml_dir: Optional[str] = None,
     get_flaky_tests: bool = False,
+    get_high_impact_tests: bool = False,
 ) -> List[str]:
     """
     Get test targets that are owned by a particular team
@@ -350,8 +377,34 @@ def _get_test_targets(
     flaky_tests = set(_get_flaky_test_targets(team, operating_system, yaml_dir))
 
     if get_flaky_tests:
-        return list(flaky_tests.intersection(test_targets))
-    return list(test_targets.difference(flaky_tests))
+        # run flaky test cases, so we include flaky tests in the list of targets
+        # provided by users
+        final_targets = flaky_tests.intersection(test_targets)
+    else:
+        # normal case, we want to exclude flaky tests from the list of targets provided
+        # by users
+        final_targets = test_targets.difference(flaky_tests)
+
+    if get_high_impact_tests:
+        # run high impact test cases, so we include only high impact tests in the list
+        # of targets provided by users
+        high_impact_tests = _get_high_impact_test_targets(team, operating_system)
+        final_targets = high_impact_tests.intersection(final_targets)
+
+    return list(final_targets)
+
+
+def _get_high_impact_test_targets(team: str, operating_system: str) -> Set[str]:
+    """
+    Get all test targets that are high impact
+    """
+    os_prefix = f"{operating_system}:"
+    step_id_to_tests = Test.gen_high_impact_tests(prefix=os_prefix)
+    return {
+        test.get_name().lstrip(os_prefix)
+        for test in itertools.chain.from_iterable(step_id_to_tests.values())
+        if test.get_oncall() == team
+    }
 
 
 def _get_flaky_test_targets(

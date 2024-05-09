@@ -19,28 +19,28 @@ azure-mgmt-core==1.4.0
 azure-mgmt-network==19.0.0
 azure-mgmt-resource==20.0.0
 backoff==1.10.0
-bcrypt==4.1.2
+bcrypt==4.1.3
 boltons @ file:///croot/boltons_1677628692245/work
 boto3==1.26.76
 botocore==1.29.165
-Brotli @ file:///tmp/abs_ecyw11_7ze/croots/recipe/brotli-split_1659616059936/work
+Brotli @ file:///croot/brotli-split_1714483155106/work
 cachetools==5.3.2
 certifi==2023.11.17
-cffi @ file:///croot/cffi_1700254295673/work
+cffi @ file:///croot/cffi_1714483155441/work
 charset-normalizer==3.3.2
 click==8.1.7
 cloudpickle==2.2.0
 colorful==0.5.5
 commonmark==0.9.1
-conda @ file:///home/conda/feedstock_root/build_artifacts/conda_1711445838568/work
-conda-content-trust @ file:///croot/conda-content-trust_1693490622020/work
+conda @ file:///croot/conda_1714403036266/work
+conda-content-trust @ file:///croot/conda-content-trust_1714483159009/work
 conda-libmamba-solver @ file:///croot/conda-libmamba-solver_1706733287605/work/src
-conda-package-handling @ file:///croot/conda-package-handling_1690999929514/work
+conda-package-handling @ file:///croot/conda-package-handling_1714483155348/work
 conda_package_streaming @ file:///croot/conda-package-streaming_1690987966409/work
 cryptography==38.0.1
 Cython==0.29.32
 distlib==0.3.7
-distro @ file:///croot/distro_1701455004953/work
+distro @ file:///croot/distro_1714488253808/work
 dm-tree==0.1.8
 exceptiongroup==1.2.1
 Farama-Notifications==0.0.4
@@ -73,11 +73,11 @@ jsonpointer==2.1
 jsonschema==4.17.3
 knack==0.10.1
 lazy_loader==0.3
-libmambapy @ file:///croot/mamba-split_1712091911343/work/libmambapy
+libmambapy @ file:///croot/mamba-split_1714483352891/work/libmambapy
 lz4==4.3.2
 MarkupSafe==2.1.3
 memray==1.10.0
-menuinst @ file:///croot/menuinst_1706732933928/work
+menuinst @ file:///croot/menuinst_1714510563922/work
 msal==1.18.0b1
 msal-extensions==1.0.0
 msgpack==1.0.7
@@ -110,7 +110,7 @@ py-spy==0.3.14
 pyarrow==12.0.1
 pyasn1==0.5.1
 pyasn1-modules==0.3.0
-pycosat @ file:///croot/pycosat_1696536503704/work
+pycosat @ file:///croot/pycosat_1714510623388/work
 pycparser @ file:///tmp/build/80754af9/pycparser_1636541352034/work
 pydantic==2.5.0
 pydantic_core==2.14.1
@@ -126,7 +126,7 @@ python-dotenv==1.0.1
 pytz==2022.7.1
 PyWavelets==1.5.0
 PyYAML==6.0.1
-ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=631ded1c019074c62cfdd2da13ec578caaecbe73555081ea4467b134fcdc2a80
+ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=6d0b481ea6083b9b319b6e6226155c32b8240edd02e9929b0c0af891bdadef4c
 redis==3.5.3
 requests @ file:///croot/requests_1707355572290/work
 requests-oauthlib==2.0.0
@@ -142,9 +142,9 @@ smart-open==6.2.0
 sniffio==1.3.0
 starlette==0.36.3
 tabulate==0.9.0
-tensorboardX==2.6
+tensorboardX==2.6.2.2
 tifffile==2023.7.10
-tqdm @ file:///croot/tqdm_1679561862951/work
+tqdm @ file:///croot/tqdm_1714567712644/work
 typer==0.9.0
 typing_extensions==4.8.0
 uritemplate==3.0.1
@@ -156,4 +156,4 @@ watchfiles==0.19.0
 websockets==11.0.3
 yarl==1.9.3
 zipp==3.17.0
-zstandard @ file:///croot/zstandard_1677013143055/work
+zstandard @ file:///croot/zstandard_1714677652653/work
