@@ -133,9 +133,10 @@ Now that we have access to the Dashboard port, we can submit jobs to the RayClus
 ray job submit --address http://localhost:8265 -- python -c "import ray; ray.init(); print(ray.cluster_resources())"
 ```
 
-## Step 5: Access the Ray Dashboard and submit a job
+## Step 5: Access the Ray Dashboard
 
-Visit `${YOUR_IP}:8265` in your browser for the Dashboard (e.g. `127.0.0.1:8265`)
+Visit `${YOUR_IP}:8265` in your browser for the Dashboard (e.g. `127.0.0.1:8265`).
+As shown in the screenshot below, you should see the job you submitted in Step 4 in the "Recent jobs" section.
 
 ![Ray Dashboard](../images/ray-dashboard.png)
 
