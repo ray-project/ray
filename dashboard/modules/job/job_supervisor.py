@@ -404,13 +404,7 @@ class JobSupervisor:
             )
         )
 
-        is_alive = True
-
         async for _ in ticker(interval_s=self.JOB_MONITOR_LOOP_INTERVAL_S):
-            if not is_alive:
-                self._logger.info("Exiting monitoring loop")
-                break
-
             try:
                 job_status = await self._job_info_client.get_status(self._job_id)
                 if job_status == JobStatus.PENDING:
@@ -446,9 +440,9 @@ class JobSupervisor:
                             JobStatus.FAILED,
                             message=err_msg,
                         )
-                        is_alive = False
                         self._logger.error(err_msg)
-                        continue
+                        # Break out of the monitoring loop
+                        break
 
                 # Check if job driver is running
                 running = await self.check_driver_running()
@@ -473,12 +467,11 @@ class JobSupervisor:
                                 "failed to get job supervisor."
                             ),
                         )
-                        is_alive = False
-                        continue
+
+                        # Break out of monitoring loop
+                        break
 
             except Exception as e:
-                is_alive = False
-
                 error_message = ""
                 job_status = await self._job_info_client.get_status(self._job_id)
 
@@ -541,6 +534,11 @@ class JobSupervisor:
                         self.event_logger.error(event_log, submission_id=self._job_id)
                     else:
                         self.event_logger.info(event_log, submission_id=self._job_id)
+
+                # Break out of the monitoring loop, in case there was any exception
+                break
+
+        self._logger.info("Exiting job supervisor's monitoring loop")
 
         # Kill the actor defensively to avoid leaking actors in unexpected error cases
         self._take_poison_pill(message="exiting monitoring loop")
