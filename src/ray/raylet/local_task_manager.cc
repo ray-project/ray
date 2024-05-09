@@ -139,19 +139,6 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
     }
     auto &sched_cls_info = info_by_sched_cls_.at(scheduling_class);
 
-    // Only dispatch if below fair share.
-    size_t total_running_tasks = 0;
-    for (auto &entry : info_by_sched_cls_) {
-      total_running_tasks += entry.second.running_tasks.size();
-    }
-    size_t num_classes = tasks_to_dispatch_.size();
-    size_t fair_share = (num_classes == 0) ? 0 : total_running_tasks / num_classes;
-
-    if (sched_cls_info.running_tasks.size() > fair_share) {
-      shapes_it++;
-      continue;
-    }
-
     /// We cap the maximum running tasks of a scheduling class to avoid
     /// scheduling too many tasks of a single type/depth, when there are
     /// deeper/other functions that should be run. We need to apply back
@@ -201,6 +188,18 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
 
           break;
         }
+      }
+
+      // Only dispatch if below fair share.
+      size_t total_running_tasks = 0;
+      for (auto &entry : info_by_sched_cls_) {
+        total_running_tasks += entry.second.running_tasks.size();
+      }
+      size_t num_classes = tasks_to_dispatch_.size();
+      size_t fair_share = (num_classes == 0) ? 0 : total_running_tasks / num_classes;
+
+      if (sched_cls_info.running_tasks.size() > fair_share) {
+        break;
       }
 
       bool args_missing = false;
