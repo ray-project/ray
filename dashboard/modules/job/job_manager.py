@@ -185,10 +185,10 @@ class JobManager:
                 logs_dir=self._logs_dir,
             )
 
-            # NOTE: Job execution process is async, however we await on the
-            #       `start` method to propagate any failures arising during
-            #       job driver's initiating sequence
-            await supervisor.start.remote(
+            # Job execution process is async, however we await on the
+            # `launch` method here to propagate right away any failures
+            # raised during job driver's launching sequence
+            await supervisor.launch.remote(
                 runtime_env=runtime_env,
                 metadata=metadata,
                 entrypoint_num_cpus=entrypoint_num_cpus,
@@ -201,8 +201,7 @@ class JobManager:
             tb_str = traceback.format_exc()
 
             logger.warning(
-                f"Failed to start supervisor actor for job {submission_id}: '{e}'"
-                f". Full traceback:\n{tb_str}"
+                f"Failed to start supervisor actor for job {submission_id}: {e}"
             )
 
             # TODO move to JS
