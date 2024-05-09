@@ -141,7 +141,7 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
 
     // Only dispatch if below fair share.
     size_t total_running_tasks = 0;
-    for (auto& entry : info_by_sched_cls_) {
+    for (auto &entry : info_by_sched_cls_) {
       total_running_tasks += entry.second.running_tasks.size();
     }
     size_t num_classes = tasks_to_dispatch_.size();
@@ -151,7 +151,6 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
       shapes_it++;
       continue;
     }
-
 
     /// We cap the maximum running tasks of a scheduling class to avoid
     /// scheduling too many tasks of a single type/depth, when there are
