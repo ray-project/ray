@@ -471,45 +471,48 @@ class JobSupervisor:
 
             except Exception as e:
                 is_alive = False
+
+                error_message = ""
                 job_status = await self._job_info_client.get_status(self._job_id)
 
-                job_error_message = ""
                 if job_status.is_terminal():
                     # If the job is already in a terminal state, then the actor
                     # exiting is expected.
                     pass
-                elif isinstance(e, RuntimeEnvSetupError):
-                    self._logger.info(f"Failed to set up runtime_env for job {self._job_id}.")
-                    job_error_message = f"runtime_env setup failed: {e}"
-                    job_status = JobStatus.FAILED
-                    await self._job_info_client.put_status(
-                        self._job_id,
-                        job_status,
-                        message=job_error_message,
-                    )
-                elif isinstance(e, ActorUnschedulableError):
-                    self._logger.info(
-                        f"Failed to schedule job {self._job_id} because the supervisor actor "
-                        f"could not be scheduled: {e}"
-                    )
-                    job_error_message = (
-                        f"Job supervisor actor could not be scheduled: {e}"
-                    )
-                    await self._job_info_client.put_status(
-                        self._job_id,
-                        JobStatus.FAILED,
-                        message=job_error_message,
-                    )
                 else:
-                    self._logger.warning(
-                        f"Job supervisor for job {self._job_id} failed unexpectedly: {e}."
-                    )
-                    job_error_message = f"Unexpected error occurred: {e}"
-                    job_status = JobStatus.FAILED
+                    if isinstance(e, RuntimeEnvSetupError):
+                        self._logger.error(
+                            f"Failed to set up runtime_env for job {self._job_id}: {repr(e)}",
+                            exc_info=e,
+                        )
+
+                        error_message = f"Runtime environment setup failed: {repr(e)}"
+                        job_status = JobStatus.FAILED
+
+                    elif isinstance(e, ActorUnschedulableError):
+                        self._logger.error(
+                            f"Failed to schedule job {self._job_id} because the supervisor actor "
+                            f"could not be scheduled: {repr(e)}",
+                            exc_info=e,
+                        )
+
+                        error_message = f"Job supervisor actor could not be scheduled: {repr(e)}"
+                        job_status = JobStatus.FAILED
+
+                    else:
+                        self._logger.error(
+                            f"Job supervisor for job {self._job_id} failed unexpectedly with: {repr(e)}.",
+                            exc_info=e,
+                        )
+
+                        error_message = f"Unexpected error occurred: {repr(e)}"
+                        job_status = JobStatus.FAILED
+
+                    # Update job's status in GCS
                     await self._job_info_client.put_status(
                         self._job_id,
                         job_status,
-                        message=job_error_message,
+                        message=error_message,
                     )
 
                 # TODO enable
@@ -521,13 +524,13 @@ class JobSupervisor:
                 #     with open(log_path, "a") as log_file:
                 #         log_file.write(job_error_message)
 
-                # Log events
+                # Record corresponding job event
                 if self.event_logger:
                     event_log = (
-                        f"Completed a ray job {self._job_id} with a status {job_status}."
+                        f"Completed a ray job {self._job_id} with a status {job_status}"
                     )
-                    if job_error_message:
-                        event_log += f" {job_error_message}"
+                    if error_message:
+                        event_log += f" (error: {error_message})"
                         self.event_logger.error(event_log, submission_id=self._job_id)
                     else:
                         self.event_logger.info(event_log, submission_id=self._job_id)
