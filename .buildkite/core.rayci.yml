@@ -322,9 +322,9 @@ steps:
       - gpu
     instance_type: gpu-large
     commands:
+      # This machine has 4 GPUs, and we need 2 GPUs, so allow 2 tests to run in
+      # parallel.
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... core
-        # This machine has 4 GPUs, and we need 2 GPUs, so allow 2 tests to run
-        # in parallel.
         --parallelism-per-worker 2 --gpus 2
         --build-name raycoregpubuild
         --only-tags multi_gpu
