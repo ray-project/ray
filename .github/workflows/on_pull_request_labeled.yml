@@ -1,0 +1,17 @@
+name: Pull request labeled
+on:
+  pull_request:
+    types:
+      - labeled
+jobs:
+  trigger-premerge:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.label.name == 'go' }}
+    steps:
+      - uses: buildkite/trigger-pipeline-action@v2.2.0
+        with:
+          buildkite_api_access_token: ${{ secrets.TRIGGER_BK_BUILD_TOKEN }}
+          pipeline: "ray-project/premerge"
+          branch: ${{ github.event.pull_request.head.ref }}
+          commit: ${{ github.event.pull_request.head.sha }}
+          pull_request_base_branch: ${{ github.event.pull_request.base.ref }}
