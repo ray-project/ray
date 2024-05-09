@@ -10,7 +10,7 @@ TEST_SCRIPT = "ci/ray_ci/bisect/macos_validator.sh"
 
 
 class MacOSValidator(Validator):
-    def run(self, test: Test) -> bool:
+    def run(self, test: Test, revision: str) -> bool:
         env = os.environ.copy()
         # We need to unset PYTHONPATH to avoid conflicts with the Python from the
         # Bazel runfiles.
