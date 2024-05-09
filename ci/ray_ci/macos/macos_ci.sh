@@ -107,6 +107,7 @@ _prelude() {
     rm -rf /tmp/bazel_event_logs
     (which bazel && bazel clean) || true;
   fi
+  brew install pkg-config nvm node || true
   . ./ci/ci.sh init && source ~/.zshenv
   source ~/.zshrc
   ./ci/ci.sh build
