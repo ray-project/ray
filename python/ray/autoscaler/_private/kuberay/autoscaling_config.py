@@ -269,7 +269,7 @@ def _get_ray_resources_from_group_spec(
         """Add TPU head resource, similar to the GCP node_provider.
         Sets the Ray resource TPU-{...}-head to ensure the Ray autoscaler
         has sufficient resources to make scaling decisions.
-        TPU worker groups treat each replica as a TPU podslice, with `NumOfHosts`
+        TPU worker groups treat each TPU podslice as a replica, with `NumOfHosts`
         specifying the number of workers per slice. Therefore, we can use the
         `replicas` of each TPU worker group as the number of TPU heads.
 
