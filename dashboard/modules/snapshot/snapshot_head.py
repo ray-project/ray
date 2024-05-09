@@ -234,7 +234,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                 timestamp=datetime.now().timestamp(),
             )
 
-    async def run(self, server):
+    async def run(self):
         self._gcs_job_info_stub = gcs_service_pb2_grpc.JobInfoGcsServiceStub(
             self._dashboard_head.aiogrpc_gcs_channel
         )

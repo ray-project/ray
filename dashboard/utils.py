@@ -15,7 +15,7 @@ from typing import Optional
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
-from ray._raylet import GcsClient
+from ray._raylet import GcsClient, GcsAioClient
 from ray._private.utils import split_address
 
 import aiosignal  # noqa: F401
@@ -50,7 +50,6 @@ class DashboardAgentModule(abc.ABC):
         """
         Run the module in an asyncio loop. An agent module can provide
         servicers to the server.
-        :param server: Asyncio GRPC server, or None if ray is minimal.
         """
 
     @staticmethod
@@ -75,7 +74,7 @@ class DashboardHeadModule(abc.ABC):
         self._dashboard_head = dashboard_head
 
     @abc.abstractmethod
-    async def run(self, server):
+    async def run(self):
         """
         Run the module in an asyncio loop. A head module can provide
         servicers to the server.
@@ -620,6 +619,20 @@ def ray_address_to_api_server_url(address: Optional[str]) -> str:
         )
     api_server_url = f"http://{api_server_url.decode()}"
     return api_server_url
+
+
+def try_get_api_server_url(gcs_aio_client: GcsAioClient) -> Optional[str]:
+    """
+    Try to get the Dashboard address from GCS only once, returning None if it fails.
+    """
+    try:
+        return gcs_aio_client.internal_kv_get(
+            key=ray_constants.DASHBOARD_ADDRESS,
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+        )
+    except Exception as e:
+        logger.error(f"Failed to get API server URL from GCS: {e}")
+        return None
 
 
 def get_address_for_submission_client(address: Optional[str]) -> str:

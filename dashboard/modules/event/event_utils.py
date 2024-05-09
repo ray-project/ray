@@ -7,11 +7,10 @@ import asyncio
 import itertools
 import collections
 import logging.handlers
-from ray._private.utils import get_or_create_event_loop
-
+from typing import List, Callable
 from concurrent.futures import ThreadPoolExecutor
 
-from ray._private.utils import run_background_task
+from ray._private.utils import get_or_create_event_loop, run_background_task
 from ray.dashboard.modules.event import event_consts
 from ray.dashboard.utils import async_loop_forever
 
@@ -97,7 +96,7 @@ def _read_file(
 
 def monitor_events(
     event_dir,
-    callback,
+    callback: Callable[[List[str]], None],
     monitor_thread_pool_executor: ThreadPoolExecutor,
     scan_interval_seconds=event_consts.SCAN_EVENT_DIR_INTERVAL_SECONDS,
     start_mtime=time.time() + event_consts.SCAN_EVENT_START_OFFSET_SECONDS,

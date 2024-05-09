@@ -109,7 +109,7 @@ class TestHead(dashboard_utils.DashboardHeadModule):
         logger.info("test file: %s", file_path)
         return aiohttp.web.FileResponse(file_path)
 
-    async def run(self, server):
+    async def run(self):
         pass
 
 

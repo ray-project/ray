@@ -397,7 +397,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 reply_dict = node_stats_to_dict(reply)
                 DataSource.node_stats[node_id] = reply_dict
 
-    async def run(self, server):
+    async def run(self):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
         self._gcs_node_info_stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(
             gcs_channel

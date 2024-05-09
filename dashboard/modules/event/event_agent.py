@@ -1,15 +1,13 @@
+import aiohttp
 import asyncio
 import time
 from concurrent.futures import ThreadPoolExecutor
 import logging
 import os
-from typing import Union
+from typing import Union, Optional, List
 
-import ray._private.ray_constants as ray_constants
-import ray._private.utils as utils
-import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
-from ray.core.generated import event_pb2, event_pb2_grpc
+from ray.core.generated import event_pb2
 from ray.dashboard.modules.event import event_consts
 from ray.dashboard.modules.event.event_utils import monitor_events
 from ray.dashboard.utils import async_loop_forever, create_task
@@ -23,12 +21,12 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
         self._event_dir = os.path.join(self._dashboard_agent.log_dir, "events")
         os.makedirs(self._event_dir, exist_ok=True)
         self._monitor: Union[asyncio.Task, None] = None
-        self._stub: Union[event_pb2_grpc.ReportEventServiceStub, None] = None
         self._cached_events = asyncio.Queue(event_consts.EVENT_AGENT_CACHE_SIZE)
         self._gcs_aio_client = dashboard_agent.gcs_aio_client
         self.monitor_thread_pool_executor = ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="event_monitor"
         )
+        self._dashboard_address: Optional[str] = None
         # Total number of event created from this agent.
         self.total_event_reported = 0
         # Total number of event report request sent.
@@ -37,53 +35,53 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
 
         logger.info("Event agent cache buffer size: %s", self._cached_events.maxsize)
 
-    async def _connect_to_dashboard(self):
-        """Connect to the dashboard. If the dashboard is not started, then
-        this method will never returns.
-
-        Returns:
-            The ReportEventServiceStub object.
+    async def report_events_once(self, data: List[str]):
         """
-        while True:
-            try:
-                dashboard_rpc_address = await self._gcs_aio_client.internal_kv_get(
-                    dashboard_consts.DASHBOARD_RPC_ADDRESS.encode(),
-                    namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-                    timeout=1,
-                )
-                dashboard_rpc_address = dashboard_rpc_address.decode()
-                if dashboard_rpc_address:
-                    logger.info("Report events to %s", dashboard_rpc_address)
-                    options = ray_constants.GLOBAL_GRPC_OPTIONS
-                    channel = utils.init_grpc_channel(
-                        dashboard_rpc_address, options=options, asynchronous=True
-                    )
-                    return event_pb2_grpc.ReportEventServiceStub(channel)
-            except Exception:
-                logger.exception("Connect to dashboard failed.")
-            await asyncio.sleep(
-                event_consts.RETRY_CONNECT_TO_DASHBOARD_INTERVAL_SECONDS
-            )
+        Report events to the dashboard once.
+
+        Raises exception if the request failed.
+
+        TODO(ryw): understand if this serialization needs to be in a thread pool.
+        """
+        assert self._dashboard_address is not None, "Dashboard address is not set."
+
+        request = event_pb2.ReportEventsRequest(event_strings=data)
+        serialized_proto = request.SerializeToString()
+        with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"http://{self._dashboard_address}/report_events",
+                data=serialized_proto,
+            ) as response:
+                response.raise_for_status()
+                self.total_request_sent += 1
 
     @async_loop_forever(event_consts.EVENT_AGENT_REPORT_INTERVAL_SECONDS)
     async def report_events(self):
         """Report events from cached events queue. Reconnect to dashboard if
         report failed. Log error after retry EVENT_AGENT_RETRY_TIMES.
 
-        This method will never returns.
+        A call to this coroutine never completes.
         """
+        if self._dashboard_address is None:
+            self._dashboard_address = await dashboard_utils.try_get_api_server_url(
+                self._gcs_aio_client
+            )
+            if self._dashboard_address is None:
+                logger.info(
+                    "Cannot get dashboard address. Maybe it's not started. Wait"
+                    " for the next loop."
+                )
+                return
+
         data = await self._cached_events.get()
         self.total_event_reported += len(data)
         for _ in range(event_consts.EVENT_AGENT_RETRY_TIMES):
             try:
-                logger.debug("Report %s events.", len(data))
-                request = event_pb2.ReportEventsRequest(event_strings=data)
-                await self._stub.ReportEvents(request)
-                self.total_request_sent += 1
-                break
+                logger.debug("Reporting %s events.", len(data))
+                await self.report_events_once(data)
             except Exception:
-                logger.exception("Report event failed, reconnect to the " "dashboard.")
-                self._stub = await self._connect_to_dashboard()
+                logger.exception("Report event failed, waiting 1s and retry...")
+                await asyncio.sleep(1)
         else:
             data_str = str(data)
             limit = event_consts.LOG_ERROR_EVENT_STRING_LENGTH_LIMIT
@@ -105,8 +103,6 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
         }
 
     async def run(self, server):
-        # Connect to dashboard.
-        self._stub = await self._connect_to_dashboard()
         # Start monitor task.
         self._monitor = monitor_events(
             self._event_dir,

@@ -319,7 +319,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             SessionName=self._session_name,
         ).set(float(self._dashboard_proc.memory_full_info().uss) / 1.0e6)
 
-    async def run(self, server):
+    async def run(self):
         self._create_default_grafana_configs()
         self._create_default_prometheus_configs()
 

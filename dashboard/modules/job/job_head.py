@@ -519,7 +519,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
         return ws
 
-    async def run(self, server):
+    async def run(self):
         if not self._job_info_client:
             self._job_info_client = JobInfoStorageClient(
                 self._dashboard_head.gcs_aio_client

@@ -252,7 +252,14 @@ def create_serve_rest_api(
 
                 return self._controller
 
-        async def run(self, server):
+        async def run(self, *args, **kwargs):
+            """
+            DashboardHeadModule requires `async def run(self)`
+            DashboardAgentModule requires `async def run(self, server)`
+
+            And here we support both cases. Hence, we capture the arguments. We don't
+            do anything anyway.
+            """
             pass
 
         @staticmethod
