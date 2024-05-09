@@ -442,7 +442,7 @@ class JobSupervisor:
                         continue
 
                 if self._runner is None:
-                    if job_status == JobStatus.PENDING:
+                    if job_status is None or job_status == JobStatus.PENDING:
                         # Maybe the Job Runner actor is not created yet.
                         # We will wait for the next loop.
                         continue
