@@ -1,32 +1,21 @@
 import asyncio
 import logging
-import os
 import random
 import string
-import time
-import traceback
 from typing import Any, Dict, Iterator, Optional, Union
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._private.event.event_logger import get_event_logger
 from ray._private.gcs_utils import GcsAioClient
-from ray._private.utils import run_background_task
 from ray.actor import ActorHandle
-from ray.core.generated.event_pb2 import Event
-from ray.dashboard.consts import (
-    DEFAULT_JOB_START_TIMEOUT_SECONDS,
-    RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR,
-)
 from ray.dashboard.modules.job.common import (
     JOB_ACTOR_NAME_TEMPLATE,
     SUPERVISOR_ACTOR_RAY_NAMESPACE,
     JobInfo,
-    JobInfoStorageClient,
+    JobInfoStorageClient, _get_actor_for_job,
 )
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.dashboard.modules.job.job_supervisor import JobSupervisor
-from ray.exceptions import ActorUnschedulableError, RuntimeEnvSetupError
 from ray.job_submission import JobStatus
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
@@ -275,15 +264,3 @@ class JobManager:
                 await asyncio.sleep(self.LOG_TAIL_SLEEP_S)
             else:
                 yield "".join(lines)
-
-
-def _get_actor_for_job(job_id: str) -> Optional[ActorHandle]:
-    """Fetches JobSupervisor actor for job identified by Ray Job (submission) id"""
-    try:
-        return ray.get_actor(
-            JOB_ACTOR_NAME_TEMPLATE.format(job_id=job_id),
-            namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
-        )
-    except ValueError as ve:  # Ray returns ValueError for nonexistent actor.
-        logger.warning(f"Job supervisor for job {job_id} not found: {str(ve)}")
-        return None
