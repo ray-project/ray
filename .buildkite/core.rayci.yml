@@ -315,3 +315,14 @@ steps:
       - forge
       - raycpubase
       - corebuild
+
+  - label: ":ray: core: accelerated dag tests"
+    tags:
+      - accelerated_dag
+      - gpu
+    instance_type: gpu-large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... core
+        --gpus 2
+        --build-name raycoregpubuild
+        --only-tags multi_gpu

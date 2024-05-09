@@ -9,7 +9,6 @@ import ray
 from ray.exceptions import RayTaskError
 from ray.experimental.channel import (
     _do_register_custom_serializers,
-    _get_channel_cls_for_output_type,
     ChannelInterface,
     ChannelOutputType,
     ReaderInterface,
@@ -50,17 +49,16 @@ def do_allocate_channel(
     Returns:
         The allocated channel.
     """
-    channel_cls = _get_channel_cls_for_output_type(typ)
     self_actor = None
     try:
         self_actor = ray.get_runtime_context().current_actor
     except RuntimeError:
         # This is the driver so there is no current actor handle.
         pass
-    output_channel = channel_cls(
+
+    output_channel = typ.create_channel(
         self_actor,
         readers,
-        typ,
     )
     return output_channel
 
@@ -540,10 +538,6 @@ class CompiledDAG:
             if cur_idx in visited:
                 continue
             visited.add(cur_idx)
-
-            # TODO: Check for GPU arguments. Find the actor upstream to that
-            # GPU argument. If both writer and reader actors are on GPUs, then
-            # add them.
 
             task = self.idx_to_task[cur_idx]
             # Create an output buffer for the actor method.

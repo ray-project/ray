@@ -22,10 +22,22 @@ class ChannelOutputType:
         """
         pass
 
-    def get_channel_class(self) -> type:
+    def create_channel(
+        self,
+        writer: Optional["ray.actor.ActorHandle"],
+        readers: List[Optional["ray.actor.ActorHandle"]],
+    ) -> "ChannelInterface":
         """
-        Get the ChannelInterface class that can be instantiated to pass data of
-        this type.
+        Instantiate a ChannelInterface class that can be used
+        to pass data of this type.
+
+        Args:
+            writer: The actor that may write to the channel. None signifies the driver.
+            readers: The actors that may read from the channel. None signifies
+                the driver.
+        Returns:
+            A ChannelInterface that can be used to pass data
+                of this type.
         """
         raise NotImplementedError
 
@@ -45,14 +57,6 @@ def _do_register_custom_serializers(
     """
     for typ in channel_output_types:
         typ.register_custom_serializer(self)
-
-
-def _get_channel_cls_for_output_type(channel_output_type: ChannelOutputType) -> type:
-    """
-    Get the ChannelInterface class that can be instantiated to pass data of
-    type channel_output_type.
-    """
-    return channel_output_type.get_channel_class()
 
 
 @DeveloperAPI

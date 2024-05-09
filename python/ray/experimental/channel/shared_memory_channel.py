@@ -12,6 +12,7 @@ from ray.util.annotations import PublicAPI
 logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_BUFFER_SIZE = int(100 * 1e6)  # 100MB
+MIN_BUFFER_SIZE = int(100 * 1e3)  # 100KB
 
 
 def _get_node_id(self) -> "ray.NodeID":
@@ -88,8 +89,24 @@ class SharedMemoryType(ChannelOutputType):
         """
         self.buffer_size_bytes = buffer_size_bytes
 
-    def get_channel_class(self):
-        return Channel
+    def create_channel(
+        self,
+        writer: Optional["ray.actor.ActorHandle"],
+        readers: List[Optional["ray.actor.ActorHandle"]],
+    ) -> "Channel":
+        """
+        Instantiate a ChannelInterface class that can be used
+        to pass data of this type.
+
+        Args:
+            writer: The actor that may write to the channel. None signifies the driver.
+            readers: The actors that may read from the channel. None signifies
+                the driver.
+        Returns:
+            A ChannelInterface that can be used to pass data
+                of this type.
+        """
+        return Channel(writer, readers)
 
 
 @PublicAPI(stability="alpha")
@@ -132,7 +149,8 @@ class Channel(ChannelInterface):
         if typ is None:
             typ = SharedMemoryType(DEFAULT_MAX_BUFFER_SIZE)
         elif isinstance(typ, int):
-            typ = SharedMemoryType(typ)
+            buffer_size_bytes = max(typ, MIN_BUFFER_SIZE)
+            typ = SharedMemoryType(buffer_size_bytes)
         elif not isinstance(typ, SharedMemoryType):
             raise ValueError(
                 "`typ` must be an `int` representing the max buffer size in "

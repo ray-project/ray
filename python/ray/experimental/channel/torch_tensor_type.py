@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Optional, Tuple
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
 import ray
 from ray.experimental.channel import ChannelOutputType
@@ -7,6 +7,11 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 if TYPE_CHECKING:
     import numpy as np
     import torch
+
+# Add this much padding to all shared memory buffers used to store tensors.
+# This shouldn't affect performance because the buffer is allocated once and
+# when transferring across nodes, only the serialized buffer is copied.
+TENSOR_BUFFER_PADDING_FRACTION = 0.2
 
 
 @PublicAPI(stability="alpha")
@@ -42,17 +47,53 @@ class TorchTensorType(ChannelOutputType):
 
         outer._torch_tensor_serializer = torch_tensor_serializer
 
-    def get_channel_class(self) -> type:
+    def create_channel(
+        self,
+        writer: Optional["ray.actor.ActorHandle"],
+        readers: List[Optional["ray.actor.ActorHandle"]],
+    ) -> type:
         if self.transport == "nccl":
             from ray.experimental.channel.torch_tensor_nccl_channel import (
                 TorchTensorNcclChannel,
             )
 
-            return TorchTensorNcclChannel
+            return TorchTensorNcclChannel(writer, readers, self)
         else:
+            import torch
+
             from ray.experimental.channel.shared_memory_channel import Channel
 
-            return Channel
+            TORCH_DTYPE_ITEMSIZE_MAP = {
+                # INT types
+                torch.int: 4,
+                torch.uint8: 1,
+                torch.int8: 1,
+                torch.int32: 4,
+                torch.int64: 8,
+                torch.long: 8,
+                # FLOAT types
+                torch.half: 2,
+                torch.float: 4,
+                torch.float16: 2,
+                torch.float32: 4,
+                torch.float64: 8,
+                torch.double: 8,
+            }
+
+            shape = self.shape
+            if isinstance(shape, int):
+                shape = (shape,)
+
+            num_elements = 1
+            for dim in shape:
+                num_elements *= dim
+            element_size_bytes = TORCH_DTYPE_ITEMSIZE_MAP[self.dtype]
+            buffer_size_bytes = int(
+                (num_elements * element_size_bytes)
+                * (1 + TENSOR_BUFFER_PADDING_FRACTION)
+            )
+
+            return Channel(writer, readers, buffer_size_bytes)
 
 
 @DeveloperAPI
