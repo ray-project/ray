@@ -21,6 +21,7 @@ from ray._private.event.event_logger import get_event_logger, EventLoggerAdapter
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray.actor import ActorHandle
+from ray.core.generated.event_pb2 import Event
 from ray.dashboard.consts import (
     RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR,
     RAY_STREAM_RUNTIME_ENV_LOG_TO_JOB_DRIVER_LOG_ENV_VAR,
@@ -43,7 +44,6 @@ from ray.util.scheduling_strategies import (
     SchedulingStrategyT, NodeAffinitySchedulingStrategy,
 )
 from ray.util.ticker import ticker
-from ray.workflow.common import Event
 
 # asyncio python version compatibility
 try:
