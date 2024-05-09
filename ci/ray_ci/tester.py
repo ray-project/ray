@@ -241,7 +241,11 @@ def main(
         or os.environ.get("RAYCI_MICROCHECK_RUN") == "1",
     )
     success = container.run_tests(
-        team, test_targets, test_arg, is_bisect_run=bisect_run_test_target is not None
+        team,
+        test_targets,
+        test_arg,
+        is_bisect_run=bisect_run_test_target is not None,
+        run_flaky_tests=run_flaky_tests,
     )
     sys.exit(0 if success else 42)
 
