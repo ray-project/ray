@@ -60,7 +60,7 @@ class NodeData:
 
     kind: NodeKind
     type: NodeType
-    multihost_replica: string
+    replica_index: Optional[str]
     ip: Optional[NodeIP]
     status: NodeStatus
 
@@ -168,8 +168,10 @@ class BatchingNodeProvider(NodeProvider):
         # Initialize multi-host replica to workers map
         self.multi_host_replicas_to_workers = defaultdict(list)
         for node_id in all_nodes:
-            multi_host_replica = self.node_data_dict[node_id].multihost_replica
-            self.multi_host_replicas_to_workers[multi_host_replica].append(node_id)
+            replica_index = self.node_data_dict[node_id].replica_index
+            # Only add node to map if it belongs to a TPU podslice
+            if replica_index:
+                self.replicas_to_nodes[replica_index].append(node_id)
         # Support filtering by TAG_RAY_NODE_KIND, TAG_RAY_NODE_STATUS, and
         # TAG_RAY_USER_NODE_TYPE.
         # The autoscaler only uses tag_filters={},
@@ -240,12 +242,12 @@ class BatchingNodeProvider(NodeProvider):
                 "NodeProvider attempted to request less than 0 workers of type "
                 f"{node_type}. Skipping termination request."
             )
-        
-        # Scale down entire replica if part of a multi-host group
-        node_multihost_replica = self.node_data_dict[node_id].multihost_replica
-        if node_multihost_replica != "":
-            for worker in self.multi_host_replicas_to_workers[node_multihost_replica]:
-                # Check if worker has already been scheduled to delete
+
+        # Scale down entire replica if part of a TPU podslice being deleted
+        node_replica_index = self.node_data_dict[node_id].replica_index
+        if node_replica_index:
+            for worker in self.replicas_to_nodes[node_replica_index]:
+                # Check if node has already been scheduled to delete
                 if node_id not in self.scale_request.workers_to_delete:
                     # Assume all workers in a group are of the same type
                     self.scale_request.desired_num_workers[node_type] -= 1

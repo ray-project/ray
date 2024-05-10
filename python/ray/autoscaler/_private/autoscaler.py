@@ -130,13 +130,15 @@ class NonTerminatedNodes:
         self.multi_host_replicas_to_workers = defaultdict(list)
 
         for node in self.all_node_ids:
-            node_kind = provider.node_tags(node)[TAG_RAY_NODE_KIND]
+            tags = self.provider.node_tags(node)
+            node_kind = tags[TAG_RAY_NODE_KIND]
             if node_kind == NODE_KIND_WORKER:
                 self.worker_ids.append(node)
             elif node_kind == NODE_KIND_HEAD:
                 self.head_id = node
-            node_multihost_replica = provider.node_tags(node)[TAG_RAY_MULTIHOST_REPLICA]
-            self.multi_host_replicas_to_workers.append(node)
+            if TAG_RAY_REPLICA_INDEX in tags:
+                node_replica_index = tags[TAG_RAY_REPLICA_INDEX]
+                self.replicas_to_nodes[node_replica_index].append(node)
 
         # Note: For typical use-cases, self.all_node_ids == self.worker_ids +
         # [self.head_id]. The difference being in the case of unmanaged nodes.
