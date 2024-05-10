@@ -413,9 +413,10 @@ class JobSupervisor:
         self._logger.info(f"Starting monitoring loop for job {self._job_id}")
 
         job_status: Optional[JobStatus] = None
+        error_message: Optional[str] = None
 
-        async for i in ticker(interval_s=self.JOB_MONITOR_LOOP_INTERVAL_S):
-            try:
+        try:
+            async for i in ticker(interval_s=self.JOB_MONITOR_LOOP_INTERVAL_S):
                 job_info = await self._job_info_client.get_info(self._job_id)
                 job_status = job_info.status if job_info else None
 
@@ -425,14 +426,14 @@ class JobSupervisor:
                     duration_s = self._get_duration_s(job_info)
 
                     if duration_s >= self._startup_timeout_s:
-                        message = (
+                        error_message = (
                             f"Job driver failed to start within {self._startup_timeout_s} seconds. "
                             f"This timeout can be configured by setting the environment variable "
                             f"{RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR}."
                         )
 
                         if self._has_entrypoint_resources_set(job_info):
-                            message += (
+                            error_message += (
                                 f" This may be because the job entrypoint's specified "
                                 f"resources (entrypoint_num_cpus={job_info.entrypoint_num_cpus}, "
                                 f"entrypoint_num_gpus={job_info.entrypoint_num_gpus}, "
@@ -442,15 +443,8 @@ class JobSupervisor:
                                 "You can check cluster's available resources with `ray status`"
                             )
 
-                        self._logger.error(message)
+                        self._logger.error(error_message)
 
-                        await self._job_info_client.put_status(
-                            self._job_id,
-                            JobStatus.FAILED,
-                            message=message,
-                        )
-
-                        # TODO log to job event logger
                         # Break out of the monitoring loop
                         break
 
@@ -474,81 +468,64 @@ class JobSupervisor:
                             f"Job driver is not running for job {self._job_id} (job status: {job_status})"
                         )
 
-                        await self._job_info_client.put_status(
-                            self._job_id,
-                            JobStatus.FAILED,
-                            message=(
-                                "Unexpected error occurred: job driver is not running"
-                            ),
-                        )
-
+                        error_message = "Unexpected error occurred: job driver is not running"
                         # Break out of the monitoring loop
                         break
 
-            except Exception as e:
-                # If the job is already in a terminal state, then the actor
-                # exiting is expected.
-                if isinstance(e, RuntimeEnvSetupError):
-                    self._logger.error(
-                        f"Failed to set up runtime_env for job {self._job_id}: {repr(e)}",
-                        exc_info=e,
-                    )
+        except Exception as e:
 
-                    error_message = f"Runtime environment setup failed: {repr(e)}"
+            if isinstance(e, RuntimeEnvSetupError):
+                self._logger.error(
+                    f"Failed to set up runtime_env for job {self._job_id}: {repr(e)}",
+                    exc_info=e,
+                )
 
-                elif isinstance(e, ActorUnschedulableError):
-                    self._logger.error(
-                        f"Failed to schedule job {self._job_id} because the supervisor actor "
-                        f"could not be scheduled: {repr(e)}",
-                        exc_info=e,
-                    )
+                error_message = f"Runtime environment setup failed: {repr(e)}"
 
-                    error_message = f"Job supervisor actor could not be scheduled: {repr(e)}"
+            elif isinstance(e, ActorUnschedulableError):
+                self._logger.error(
+                    f"Failed to schedule job {self._job_id} because the supervisor actor "
+                    f"could not be scheduled: {repr(e)}",
+                    exc_info=e,
+                )
 
-                else:
-                    self._logger.error(
-                        f"Job supervisor for job {self._job_id} failed unexpectedly with: {repr(e)}.",
-                        exc_info=e,
-                    )
+                error_message = f"Job supervisor actor could not be scheduled: {repr(e)}"
 
-                    error_message = f"Unexpected error occurred: {repr(e)}"
+            else:
+                self._logger.error(
+                    f"Job supervisor for job {self._job_id} failed unexpectedly with: {repr(e)}.",
+                    exc_info=e,
+                )
 
-                if job_status and not job_status.is_terminal():
-                    # Update job's status in GCS
-                    await self._job_info_client.put_status(
-                        self._job_id,
-                        JobStatus.FAILED,
-                        message=error_message,
-                    )
-                    job_status = JobStatus.FAILED
-
-                # TODO enable
-                # TODO move into job-runner
-                # Log error message to the job driver file for easy access.
-                # if job_error_message:
-                #     log_path = self._log_client.get_log_file_path(job_id)
-                #     os.makedirs(os.path.dirname(log_path), exist_ok=True)
-                #     with open(log_path, "a") as log_file:
-                #         log_file.write(job_error_message)
+        finally:
+            # Unless job reached terminal state mark job as failed
+            if job_status and not job_status.is_terminal() and error_message:
+                await self._job_info_client.put_status(
+                    self._job_id,
+                    JobStatus.FAILED,
+                    message=error_message,
+                )
 
                 # Record corresponding job event
                 if self.event_logger:
-                    event_log = (
-                        f"Completed a ray job {self._job_id} with a status {job_status}"
+                    self.event_logger.error(
+                        f"Completed Ray job {self._job_id} with a status {JobStatus.FAILED}: {error_message}",
+                        submission_id=self._job_id
                     )
-                    if error_message:
-                        event_log += f" (error: {error_message})"
-                        self.event_logger.error(event_log, submission_id=self._job_id)
-                    else:
-                        self.event_logger.info(event_log, submission_id=self._job_id)
 
-                # Break out of the monitoring loop, in case there was any exception
-                break
+            # TODO enable
+            # TODO move into job-runner
+            # Log error message to the job driver file for easy access.
+            # if job_error_message:
+            #     log_path = self._log_client.get_log_file_path(job_id)
+            #     os.makedirs(os.path.dirname(log_path), exist_ok=True)
+            #     with open(log_path, "a") as log_file:
+            #         log_file.write(job_error_message)
 
-        self._logger.info("Exiting job supervisor's monitoring loop")
+            self._logger.info("Exiting job supervisor's monitoring loop")
 
-        # Kill the actor defensively to avoid leaking actors in unexpected error cases
-        self._take_poison_pill(message="exiting monitoring loop")
+            # Kill the actor defensively to avoid leaking actors in unexpected error cases
+            self._take_poison_pill(message="exiting monitoring loop")
 
     def _take_poison_pill(self, *, message: str):
         job_supervisor_handle = _get_actor_for_job(self._job_id)
