@@ -31,6 +31,19 @@ class _NcclGroup:
         actors in the group, with the same arguments for world_size and
         comm_id.
 
+        NOTE: A concurrent NCCL group can coexist with this one but using the
+        two groups concurrently on different CUDA streams may cause deadlock.
+        See
+        https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/communicators.html
+        #using-multiple-nccl-communicators-concurrently.
+
+        If the user can guarantee that all involved actors execute the same ops
+        in the same order, then the other NCCL group should use the given
+        `cuda_stream`, and there will not be a concurrency issue. Otherwise,
+        the other stream needs to synchronize with the given `cuda_stream`
+        before and after it launches NCCL ops, e.g., at the beginning and end
+        of a DAG task.
+
         Args:
             world_size: The number of participating actors/devices.
             comm_id: A unique communicator ID returned by

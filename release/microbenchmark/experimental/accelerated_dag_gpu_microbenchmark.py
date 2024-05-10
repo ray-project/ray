@@ -350,6 +350,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Divide by 2 because we're using torch.float16.
-    SHAPE = (args.tensor_size_bytes // 2, )
+    SHAPE = (args.tensor_size_bytes // 2,)
 
     main()
