@@ -7,7 +7,7 @@ import ray.util.serialization
 from ray.experimental.channel import ChannelContext
 from ray.experimental.channel.common import ChannelInterface
 from ray.experimental.channel.nccl_group import _NcclGroup
-from ray.experimental.channel.shared_memory_channel import SharedMemoryType, Channel
+from ray.experimental.channel.shared_memory_channel import Channel, SharedMemoryType
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
@@ -87,9 +87,13 @@ class TorchTensorNcclChannel(ChannelInterface):
             self._reader_registered = True
 
         self._meta_channel: Optional[Channel] = _meta_channel
-        if self._meta_channel is None and self._writer_registered and (
-            self._typ.shape == TorchTensorType.AUTO
-            or self._typ.dtype == TorchTensorType.AUTO
+        if (
+            self._meta_channel is None
+            and self._writer_registered
+            and (
+                self._typ.shape == TorchTensorType.AUTO
+                or self._typ.dtype == TorchTensorType.AUTO
+            )
         ):
             # Allocate 1KiB for metadata.
             metadata_type = SharedMemoryType(buffer_size_bytes=1_000)
@@ -107,7 +111,10 @@ class TorchTensorNcclChannel(ChannelInterface):
         return self._reader_registered, "Actor is not a reader"
 
     def __reduce__(self):
-        return (self.__class__, (self._writer, self._readers, self._typ, self._device, self._meta_channel))
+        return (
+            self.__class__,
+            (self._writer, self._readers, self._typ, self._device, self._meta_channel),
+        )
 
     def write(
         self,
@@ -163,7 +170,7 @@ class TorchTensorNcclChannel(ChannelInterface):
         self._nccl_group.destroy()
 
 
-def _do_init_nccl_group(self, world_size, comm_id, rank, actor_ids_to_ranks):
+def _do_init_nccl_group(self, world_size, comm_id, rank, actor_handles):
     import torch
 
     assert (
@@ -175,7 +182,7 @@ def _do_init_nccl_group(self, world_size, comm_id, rank, actor_ids_to_ranks):
         world_size,
         comm_id,
         rank,
-        actor_ids_to_ranks,
+        actor_handles,
         torch.cuda.current_stream().cuda_stream,
     )
 
@@ -208,20 +215,15 @@ def _init_nccl_group(
                 "GPU assigned by Ray."
             )
 
-    actor_handles_to_ranks = {actor: rank for rank, actor in enumerate(actors)}
-    actor_ids_to_ranks = {
-        actor._ray_actor_id: rank for actor, rank in actor_handles_to_ranks.items()
-    }
-    assert len(actor_ids_to_ranks) == len(
-        actor_handles_to_ranks
-    ), "actors must be unique"
+    actor_ids = set(actor._ray_actor_id for actor in actors)
+    assert len(actor_ids) == len(actors), "Actors must be unique"
 
     # Allocate a communicator ID on one of the actors that will participate in
     # the group. This is in case the driver is not on the same node as one of
     # the NCCL actors.
     comm_id = ray.get(actors[0].__ray_call__.remote(_do_get_unique_nccl_id))
 
-    logger.info(f"Creating NCCL group on actors->ranks: {actor_handles_to_ranks}")
+    logger.info(f"Creating NCCL group on actor: {actors}")
 
     world_size = len(actors)
     init_tasks = [
@@ -230,9 +232,9 @@ def _init_nccl_group(
             world_size,
             comm_id,
             rank,
-            actor_ids_to_ranks,
+            actors,
         )
-        for actor, rank in actor_handles_to_ranks.items()
+        for rank, actor in enumerate(actors)
     ]
     try:
         ray.get(init_tasks, timeout=30)
@@ -248,6 +250,6 @@ def _init_nccl_group(
         world_size,
         comm_id,
         rank=None,
-        actor_ids_to_ranks=actor_ids_to_ranks,
+        actor_handles=actors,
         cuda_stream=None,
     )

@@ -101,17 +101,23 @@ class NcclWorker:
 
             torch.cuda.synchronize()
 
-        timeit("exec_nccl_gpu", _run)
+        return timeit("exec_nccl_gpu", _run)
 
 
-def exec_ray_dag(label, sender, receiver, use_nccl=False, use_adag=True):
+def exec_ray_dag(
+    label, sender, receiver, use_nccl=False, use_adag=True, dynamic_shape=False
+):
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
         dag = sender.send.bind(SHAPE, DTYPE, inp)
 
         if use_adag:
             dag = dag.with_type_hint(
-                TorchTensorType(SHAPE, DTYPE, transport="nccl" if use_nccl else None)
+                TorchTensorType(
+                    "auto" if dynamic_shape else SHAPE,
+                    "auto" if dynamic_shape else DTYPE,
+                    transport="nccl" if use_nccl else None,
+                )
             )
 
         dag = receiver.recv.bind(dag)
@@ -288,11 +294,17 @@ def exec_ray_dag_gpu_cpu_gpu():
     return exec_ray_dag("exec_ray_dag_gpu_cpu_gpu", sender, receiver)
 
 
-def exec_ray_dag_gpu_nccl():
+def exec_ray_dag_gpu_nccl(dynamic_shape: bool = False):
     time.sleep(1)
     sender = TorchTensorWorker.options(num_gpus=1).remote()
     receiver = TorchTensorWorker.options(num_gpus=1).remote()
-    return exec_ray_dag("exec_ray_dag_gpu_nccl", sender, receiver, use_nccl=True)
+    return exec_ray_dag(
+        "exec_ray_dag_gpu_nccl" + "_dynamic" if dynamic_shape else "",
+        sender,
+        receiver,
+        use_nccl=True,
+        dynamic_shape=dynamic_shape,
+    )
 
 
 def exec_ray_core_gpu():
@@ -316,21 +328,22 @@ def main():
         }
     )
 
-    results += timeit("exec_torch_cpu_cpu", _exec_torch_cpu_cpu)
-    results += timeit("exec_torch_gpu", _exec_torch_gpu)
-    results += timeit("exec_torch_gpu_cpu_gpu", _exec_torch_gpu_cpu_gpu)
+    # results += timeit("exec_torch_cpu_cpu", _exec_torch_cpu_cpu)
+    # results += timeit("exec_torch_gpu", _exec_torch_gpu)
+    # results += timeit("exec_torch_gpu_cpu_gpu", _exec_torch_gpu_cpu_gpu)
     results += exec_nccl_gpu()
 
-    results += timeit("exec_ray_put_cpu", _exec_ray_put_cpu)
-    results += timeit("exec_ray_put_np_zero_copy", _exec_ray_put_np_zero_copy)
-    results += timeit("exec_ray_put_gpu", _exec_ray_put_gpu)
+    # results += timeit("exec_ray_put_cpu", _exec_ray_put_cpu)
+    # results += timeit("exec_ray_put_np_zero_copy", _exec_ray_put_np_zero_copy)
+    # results += timeit("exec_ray_put_gpu", _exec_ray_put_gpu)
 
-    results += exec_ray_core_cpu()
-    results += exec_ray_dag_cpu()
-    results += exec_ray_core_gpu()
+    # results += exec_ray_core_cpu()
+    # results += exec_ray_dag_cpu()
+    # results += exec_ray_core_gpu()
     results += exec_ray_dag_gpu_cpu_gpu()
-    results += exec_ray_dag_gpu_nccl()
-    results += exec_ray_dag_gpu_ipc_gpu()
+    # results += exec_ray_dag_gpu_nccl()
+    results += exec_ray_dag_gpu_nccl(dynamic_shape=False)
+    # results += exec_ray_dag_gpu_ipc_gpu()
 
 
 if __name__ == "__main__":
@@ -341,11 +354,11 @@ if __name__ == "__main__":
         "--tensor-size-bytes",
         type=int,
         # 100KB
-        default=100_000,
+        default=1000_000,
     )
     args = parser.parse_args()
 
     # Divide by 2 because we're using torch.float16.
-    SHAPE = args.tensor_size_bytes // 2
+    SHAPE = (args.tensor_size_bytes // 2,)
 
     main()
