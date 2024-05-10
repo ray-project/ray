@@ -30,6 +30,33 @@ except ImportError:
         "`opentelemetry` or `opentelemetry.sdk.trace.export` not found"
     )
 
+CUSTOM_EXPORTER_OUTPUT_FILENAME = "spans.txt"
+
+
+def custom_tracing_exporter():
+    return [
+        SimpleSpanProcessor(
+            ConsoleSpanExporter(out=open(CUSTOM_EXPORTER_OUTPUT_FILENAME, "a"))
+        )
+    ]
+
+
+@pytest.fixture
+def use_custom_tracing_exporter():
+    yield "ray.anyscale.serve.tests.test_tracing_utils:custom_tracing_exporter"
+
+    # Clean up output file produced by custom exporter
+    if os.path.exists(CUSTOM_EXPORTER_OUTPUT_FILENAME):
+        os.remove(CUSTOM_EXPORTER_OUTPUT_FILENAME)
+
+
+@pytest.fixture
+def serve_and_ray_shutdown():
+    serve.shutdown()
+    ray.shutdown()
+    yield
+    serve.shutdown()
+
 
 def test_disable_tracing_exporter():
 
@@ -61,25 +88,57 @@ def test_default_tracing_exporter(ray_start_cluster):
         assert isinstance(span_processor, SimpleSpanProcessor)
 
 
-def custom_tracing_exporter():
-    return [SimpleSpanProcessor(ConsoleSpanExporter(out=open("spans.txt", "a")))]
+def test_custom_tracing_exporter(use_custom_tracing_exporter):
+    custom_tracing_exporter_path = use_custom_tracing_exporter
 
-
-def test_custom_tracing_exporter():
-    custom_tracing_exporter = (
-        "ray.anyscale.serve.tests.test_tracing_utils:custom_tracing_exporter"
+    span_processors = _load_span_processors(
+        custom_tracing_exporter_path, "mock_file.json"
     )
-
-    span_processors = _load_span_processors(custom_tracing_exporter, "mock_file.json")
 
     assert isinstance(span_processors, list)
 
     for span_processor in span_processors:
         assert isinstance(span_processor, SimpleSpanProcessor)
 
-    assert os.path.exists("spans.txt")
+    is_tracing_setup_successful = setup_tracing(
+        ServeComponentType.REPLICA,
+        "component_name",
+        "component_id",
+        custom_tracing_exporter_path,
+    )
 
-    os.remove("spans.txt")
+    # Validate that tracing is setup successfully
+    # and the tracing exporter created the output file
+    assert is_tracing_setup_successful
+    assert os.path.exists(CUSTOM_EXPORTER_OUTPUT_FILENAME)
+
+
+def test_tracing_sampler(use_custom_tracing_exporter):
+    custom_tracing_exporter_path = use_custom_tracing_exporter
+    tracing_sampling_ratio = 1
+
+    is_tracing_setup_successful = setup_tracing(
+        ServeComponentType.REPLICA,
+        "component_name",
+        "component_id",
+        custom_tracing_exporter_path,
+        tracing_sampling_ratio,
+    )
+
+    # Validate that tracing is setup successfully
+    # and the tracing exporter created the output file
+    assert is_tracing_setup_successful
+    assert os.path.exists(CUSTOM_EXPORTER_OUTPUT_FILENAME)
+
+    tracer = trace.get_tracer(__name__)
+    tracer_data = tracer.__dict__
+
+    assert "sampler" in tracer_data
+
+    sampler = tracer_data["sampler"]
+    sampler_data = sampler.__dict__
+    assert "_rate" in sampler_data
+    assert sampler_data["_rate"] == tracing_sampling_ratio
 
 
 def test_validate_tracing_exporter_with_string():
@@ -140,14 +199,6 @@ def test_missing_dependencies():
                 component_name="component_name",
                 component_id="component_id",
             )
-
-
-@pytest.fixture
-def serve_and_ray_shutdown():
-    serve.shutdown()
-    ray.shutdown()
-    yield
-    serve.shutdown()
 
 
 def test_tracing_e2e(serve_and_ray_shutdown):

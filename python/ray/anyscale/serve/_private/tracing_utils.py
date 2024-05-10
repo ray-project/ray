@@ -5,6 +5,7 @@ from typing import Any, Callable, List, Optional
 from ray._private.utils import import_attr
 from ray.anyscale.serve._private.constants import (
     ANYSCALE_TRACING_EXPORTER_IMPORT_PATH,
+    ANYSCALE_TRACING_SAMPLING_RATIO,
     DEFAULT_TRACING_EXPORTER_IMPORT_PATH,
 )
 from ray.serve._private.common import ServeComponentType
@@ -15,11 +16,14 @@ try:
     from opentelemetry import trace
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProcessor
+    from opentelemetry.sdk.trace.sampling import TraceIdRatioBased
+
 except ImportError:
     ConsoleSpanExporter = None
     SimpleSpanProcessor = None
     trace = None
     TracerProvider = None
+    TraceIdRatioBased = None
 
 
 # Default tracing exporter needs to map to DEFAULT_TRACING_EXPORTER_IMPORT_PATH
@@ -82,6 +86,7 @@ def setup_tracing(
     component_name: str,
     component_id: str,
     tracing_exporter_import_path: Optional[str] = ANYSCALE_TRACING_EXPORTER_IMPORT_PATH,
+    tracing_sampling_ratio: Optional[float] = ANYSCALE_TRACING_SAMPLING_RATIO,
 ) -> bool:
     """
     Set up tracing for a specific Serve component.
@@ -123,9 +128,11 @@ def setup_tracing(
     )
 
     # Intialize tracing
-    # Sets the tracer_provider. This is only allowed once per execution
+    # Sets the tracer_provider. This is only allowed once~ per execution
     # context and will log a warning if attempted multiple times.
-    trace.set_tracer_provider(TracerProvider())
+    sampler = TraceIdRatioBased(tracing_sampling_ratio)
+
+    trace.set_tracer_provider(TracerProvider(sampler=sampler))
 
     for span_processor in span_processors:
         trace.get_tracer_provider().add_span_processor(span_processor)
