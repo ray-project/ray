@@ -76,6 +76,7 @@ TEST_F(LocalResourceManagerTest, BasicGetResourceUsageMapTest) {
                            {ResourceID(pg_index_1_resource), 2.0}}),
       nullptr,
       nullptr,
+      nullptr,
       nullptr);
 
   ///
@@ -142,6 +143,7 @@ TEST_F(LocalResourceManagerTest, NodeDrainingTest) {
       CreateNodeResources({{ResourceID::CPU(), 8.0}}),
       nullptr,
       nullptr,
+      nullptr,
       nullptr);
 
   // Make the node non-idle.
@@ -172,6 +174,7 @@ TEST_F(LocalResourceManagerTest, ObjectStoreMemoryDrainingTest) {
       CreateNodeResources({{ResourceID::ObjectStoreMemory(), 100.0}}),
       /* get_used_object_store_memory */
       [&used_object_store]() { return *used_object_store; },
+      nullptr,
       nullptr,
       nullptr);
 
@@ -206,6 +209,7 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
                            {ResourceID(pg_index_1_resource), 2.0}}),
       /* get_used_object_store_memory */
       [&used_object_store]() { return *used_object_store; },
+      nullptr,
       nullptr,
       nullptr);
 
@@ -351,6 +355,7 @@ TEST_F(LocalResourceManagerTest, CreateSyncMessageNegativeResourceAvailability) 
           {{ResourceID::CPU(), 1.0}, {ResourceID::ObjectStoreMemory(), 100.0}}),
       /* get_used_object_store_memory */
       [&used_object_store]() { return *used_object_store; },
+      nullptr,
       nullptr,
       nullptr);
 

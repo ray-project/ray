@@ -125,10 +125,9 @@ void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
   node_info_delta->set_node_id(node->node_id());
   node_info_delta->set_state(node->state());
   node_info_delta->set_end_time_ms(node->end_time_ms());
-  auto on_put_done = [&, node_info_delta](const Status &status) {
+  auto on_put_done = [=](const Status &status) {
     RAY_LOG(DEBUG) << "Publishing node info, node id = " << node_id;
     RAY_CHECK_OK(gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta, nullptr));
-    RAY_LOG(DEBUG) << "Published node info, node id = " << node_id;
   };
   // Update node state to DEAD instead of deleting it.
   RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node, on_put_done));
@@ -138,7 +137,7 @@ void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
   reply->mutable_status()->set_message(status.message());
   send_reply_callback(
       status,
-      []() { RAY_LOG(DEBUG) << "HandleUnregisterNode reply successed"; },
+      []() { RAY_LOG(DEBUG) << "HandleUnregisterNode reply succeeded"; },
       []() { RAY_LOG(DEBUG) << "HandleUnregisterNode reply failed"; });
 }
 
