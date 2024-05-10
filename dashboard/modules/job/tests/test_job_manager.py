@@ -66,6 +66,7 @@ async def test_get_scheduling_strategy(
         entrypoint="/bin/bash echo 'Hi'",
         gcs_address=gcs_address,
         logs_dir="/tmp/logs",
+        startup_timeout_s=1,
     )
 
     # If no head node id is found, we should use "DEFAULT".
@@ -565,8 +566,8 @@ class TestShellScriptExecution:
             data = await job_manager.get_job_info(job_id)
             if data.status != JobStatus.FAILED:
                 return False
-            if "Exception: Script failed with exception !" not in data.message:
-                return False
+
+            assert "Exception: Script failed with exception !" in data.message
 
             return _get_actor_for_job(job_id) is None
 
