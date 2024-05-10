@@ -697,14 +697,10 @@ cdef CObjectLocationPtrToDict(CObjectLocation* c_object_location):
         - node_ids:
             The hex IDs of the nodes that have a copy of this object.
         - object_size:
-            The size of data + metadata in bytes. Can be None if it's -1 in the source.
+            The size of data + metadata in bytes, or nonexist if it's unknown.
         - did_spill:
             Whether or not this object was spilled.
     """
-    object_size = c_object_location.GetObjectSize()
-    if object_size <= 0:
-        object_size = None
-    did_spill = c_object_location.GetDidSpill()
 
     node_ids = set()
     c_node_ids = c_object_location.GetNodeIDs()
@@ -722,12 +718,16 @@ cdef CObjectLocationPtrToDict(CObjectLocation* c_object_location):
         node_ids.add(
             c_object_location.GetSpilledNodeID().Hex().decode("ascii"))
 
-    return {
+    ret = {
         "node_ids": list(node_ids),
-        "object_size": object_size,
-        "did_spill": did_spill,
+        "did_spill": c_object_location.GetDidSpill()
     }
 
+    object_size = c_object_location.GetObjectSize()
+    if object_size > 0:
+        ret["object_size"] = object_size
+
+    return ret
 
 @cython.auto_pickle(False)
 cdef class Language:

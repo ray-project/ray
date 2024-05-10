@@ -61,9 +61,9 @@ class MockPlasmaClient : public plasma::PlasmaClientInterface {
   ray::Status CreateAndSpillIfNeeded(const ObjectID &object_id,
                                      const ray::rpc::Address &owner_address,
                                      bool is_experimental_mutable_object,
-                                     int64_t data_size,
+                                     uint64_t data_size,
                                      const uint8_t *metadata,
-                                     int64_t metadata_size,
+                                     uint64_t metadata_size,
                                      std::shared_ptr<Buffer> *data,
                                      plasma::flatbuf::ObjectSource source,
                                      int device_num) {

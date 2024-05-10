@@ -120,7 +120,7 @@ class LocalObjectManager {
   /// \param callback A callback to call when the restoration is done.
   /// Status will contain the error during restoration, if any.
   void AsyncRestoreSpilledObject(const ObjectID &object_id,
-                                 int64_t object_size,
+                                 uint64_t object_size,
                                  const std::string &object_url,
                                  std::function<void(const ray::Status &)> callback);
 

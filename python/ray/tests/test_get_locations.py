@@ -127,13 +127,13 @@ def test_location_pending(ray_start_cluster):
     assert len(locations) == 1
     location = locations[object_ref]
     assert location["node_ids"] == []
-    assert location["object_size"] is None
+    assert "object_size" not in location
 
     local_locations = ray.experimental.get_local_object_locations([object_ref])
     assert len(local_locations) == 1
     local_location = local_locations[object_ref]
     assert local_location["node_ids"] == []
-    assert local_location["object_size"] is None
+    assert "object_size" not in local_location
 
 
 # Tests for `get_local_object_locations`. We use matrix test:

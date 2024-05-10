@@ -27,8 +27,8 @@ def get_object_locations(
           copy of this object. Objects less than 100KB will be in memory
           store not plasma store and therefore will have nodes_id = [].
 
-        - object_size (int): The size of data + metadata in bytes. Can be None if the
-          size is unknown yet (e.g. task not completed).
+        - object_size (int): The size of data + metadata in bytes. Can be nonexist if
+        the size is unknown yet (e.g. task not completed).
 
     Raises:
         RuntimeError: if the processes were not started by ray.init().
@@ -64,8 +64,8 @@ def get_local_object_locations(
           copy of this object. Objects less than 100KB will be in memory
           store not plasma store and therefore will have nodes_id = [].
 
-        - object_size (int): The size of data + metadata in bytes. Can be None if the
-          size is unknown yet (e.g. task not completed).
+        - object_size (int): The size of data + metadata in bytes. Can be nonexist if
+        the size is unknown yet (e.g. task not completed).
 
     Raises:
         RuntimeError: if the processes were not started by ray.init().

@@ -447,7 +447,7 @@ std::string LocalObjectManager::GetLocalSpilledObjectURL(const ObjectID &object_
 
 void LocalObjectManager::AsyncRestoreSpilledObject(
     const ObjectID &object_id,
-    int64_t object_size,
+    uint64_t object_size,
     const std::string &object_url,
     std::function<void(const ray::Status &)> callback) {
   if (objects_pending_restore_.count(object_id) > 0) {

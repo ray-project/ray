@@ -921,7 +921,7 @@ TEST_P(PullManagerWithAdmissionControlTest, TestQueue) {
   BundlePriority prio = GetParam();
   /// Test admission control for a queue of pull bundle requests. We should
   /// activate as many requests as we can, subject to the reported capacity.
-  int object_size = 2;
+  uint64_t object_size = 2;
   int num_oids_per_request = 2;
   int num_requests = 3;
 
@@ -948,8 +948,8 @@ TEST_P(PullManagerWithAdmissionControlTest, TestQueue) {
   }
 
   for (int capacity = 0; capacity < 20; capacity++) {
-    int num_requests_quota =
-        std::min(num_requests, capacity / (object_size * num_oids_per_request));
+    int num_requests_quota = std::min(
+        num_requests, static_cast<int>(capacity / (object_size * num_oids_per_request)));
     int num_requests_expected = std::max(1, num_requests_quota);
     if (GetParam() == BundlePriority::GET_REQUEST) {
       num_requests_expected = num_requests;
@@ -1059,7 +1059,7 @@ TEST_P(PullManagerWithAdmissionControlTest, TestCancel) {
 TEST_F(PullManagerWithAdmissionControlTest, TestPrioritizeWorkerRequests) {
   /// Test prioritizing worker requests over task argument requests during
   /// admission control, and gets over waits.
-  int object_size = 2;
+  uint64_t object_size = 2;
   std::vector<ObjectID> task_oids;
   std::vector<ObjectID> get_oids;
   std::vector<ObjectID> wait_oids;

@@ -267,8 +267,8 @@ ray::Status ObjectBufferPool::EnsureBufferExists(const ObjectID &object_id,
     }
   }
 
-  const int64_t object_size =
-      static_cast<int64_t>(data_size) - static_cast<int64_t>(metadata_size);
+  RAY_CHECK(data_size > metadata_size);
+  const uint64_t object_size = data_size - metadata_size;
   std::shared_ptr<Buffer> data;
 
   // Release pool_mutex_ during the blocking create call.
@@ -277,9 +277,9 @@ ray::Status ObjectBufferPool::EnsureBufferExists(const ObjectID &object_id,
       object_id,
       owner_address,
       /*is_mutable=*/false,
-      static_cast<int64_t>(object_size),
+      object_size,
       nullptr,
-      static_cast<int64_t>(metadata_size),
+      metadata_size,
       &data,
       plasma::flatbuf::ObjectSource::ReceivedFromRemoteRaylet);
 
