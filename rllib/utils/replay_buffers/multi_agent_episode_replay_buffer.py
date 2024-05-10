@@ -209,7 +209,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
                             eps_idx,
                             # Note, we add 1 b/c the first timestep is
                             # never sampled.
-                            existing_len + i + 1,
+                            existing_len + i,
                         )
                         for i in range(len(eps))
                     ]
@@ -224,7 +224,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
                 self.episodes.append(eps)
                 eps_idx = len(self.episodes) - 1 + self._num_episodes_evicted
                 self.episode_id_to_index[eps.id_] = eps_idx
-                self._indices.extend([(eps_idx, i + 1) for i in range(len(eps))])
+                self._indices.extend([(eps_idx, i) for i in range(len(eps))])
                 # Add new module indices.
                 self._add_new_module_indices(eps, eps_idx, False)
 
@@ -506,7 +506,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
                 if sa_episode_ts + actual_n_step > len(sa_episode):
                     continue
                 # Note, this will be the reward after executing action
-                # `a_(episode_ts-n_step+1)`. For `n_step>1` this will be the sum of
+                # `a_(episode_ts)`. For `n_step>1` this will be the sum of
                 # all rewards that were collected over the last n steps.
                 sa_raw_rewards = sa_episode.get_rewards(
                     slice(sa_episode_ts, sa_episode_ts + actual_n_step)
@@ -884,7 +884,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
                         # Keep the MAE index for sampling
                         episode_idx,
                         agent_id,
-                        existing_eps_len + i + 1,
+                        existing_eps_len + i,
                     )
                     for i in range(len(module_eps))
                 ]

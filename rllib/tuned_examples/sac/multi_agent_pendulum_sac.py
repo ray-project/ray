@@ -2,18 +2,17 @@ from ray.rllib.algorithms.sac import SACConfig
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentPendulum
 from ray.tune.registry import register_env
 
-from ray import train, tune
-
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
 parser = add_rllib_example_script_args()
 # Use `parser` to add your own custom command line options to this script
-# and (if needed) use their values toset up `config` below.
+# and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
 
 register_env(
-    "multi_agent_pendulum", lambda _: MultiAgentPendulum({"num_agents": 2})
-)  # args.num_agents or 1}))
+    "multi_agent_pendulum",
+    lambda _: MultiAgentPendulum({"num_agents": args.num_agents or 1}),
+)
 
 config = (
     SACConfig()
@@ -59,29 +58,15 @@ config = (
         policy_mapping_fn=lambda aid, *arg, **kw: f"p{aid}",
         policies={"p0", "p1"},
     )
-    .debugging(
-        log_level="DEBUG",
-    )
 )
 
 stop = {
     "num_env_steps_sampled_lifetime": 500000,
     # `episode_return_mean` is the sum of all agents/policies' returns.
-    "env_runner_results/episode_return_mean": -800.0,  # * (args.num_agents or 1),
+    "env_runner_results/episode_return_mean": -400.0 * (args.num_agents or 1),
 }
 
 if __name__ == "__main__":
-    # from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
+    from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
 
-    # run_rllib_example_script_experiment(config, args, stop=stop)
-
-    # TODO (simon): Use test_utils for this example
-    # and add to BUILD learning tests.
-    # import ray
-    # ray.init(local_mode=True)
-    tuner = tune.Tuner(
-        config.algo_class,
-        param_space=config,
-        run_config=train.RunConfig(stop=stop, verbose=2),
-    )
-    results = tuner.fit()
+    run_rllib_example_script_experiment(config, args, stop=stop)

@@ -300,6 +300,7 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
     def compute_gradients(
         self, loss_per_module: Dict[str, TensorType], **kwargs
     ) -> ParamDict:
+        # Set all grads to `None`.
         for optim in self._optimizer_parameters:
             optim.zero_grad(set_to_none=True)
 

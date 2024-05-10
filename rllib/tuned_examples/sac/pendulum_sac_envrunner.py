@@ -48,12 +48,3 @@ stop = {
     "num_env_steps_sampled_lifetime": 20000,
     "env_runner_results/episode_return_mean": -250.0,
 }
-from ray import train, tune
-import ray
-ray.init(local_mode=True)
-tuner = tune.Tuner(
-    config.algo_class,
-    param_space=config,
-    run_config=train.RunConfig(stop=stop, verbose=2),
-)
-results = tuner.fit()
