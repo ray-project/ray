@@ -561,7 +561,7 @@ class JobSupervisor:
         return time.time() - started_at
 
     @staticmethod
-    async def _has_entrypoint_resources_set(job_info: JobInfo):
+    def _has_entrypoint_resources_set(job_info: JobInfo):
         assert job_info
         return (
             (
