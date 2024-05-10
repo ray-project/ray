@@ -116,6 +116,7 @@ def _get_failed_prs(test: Test, test_history_length: int) -> Set[str]:
         for result in test.get_test_results(
             limit=test_history_length,
             aws_bucket=get_global_config()["state_machine_pr_aws_bucket"],
+            use_async=True,
         )
         if result.status == ResultStatus.ERROR.value
     ]

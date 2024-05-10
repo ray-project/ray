@@ -1,23 +1,25 @@
-import os
 import subprocess
 from typing import List, Optional
 
 from ci.ray_ci.utils import logger
 from ci.ray_ci.bisect.validator import Validator
+from ray_release.test import Test
 
 
 class Bisector:
     def __init__(
         self,
-        test: str,
+        test: Test,
         passing_revision: str,
         failing_revision: str,
         validator: Validator,
+        git_dir: str,
     ) -> None:
         self.test = test
         self.passing_revision = passing_revision
         self.failing_revision = failing_revision
         self.validator = validator
+        self.git_dir = git_dir
 
     def run(self) -> Optional[str]:
         """
@@ -50,7 +52,7 @@ class Bisector:
                     f"^{self.passing_revision}~",
                     self.failing_revision,
                 ],
-                cwd=os.environ["RAYCI_CHECKOUT_DIR"],
+                cwd=self.git_dir,
             )
             .decode("utf-8")
             .strip()
@@ -61,10 +63,6 @@ class Bisector:
         """
         Validate whether the test is passing or failing on the given revision
         """
-        subprocess.check_call(
-            ["git", "clean", "-df"], cwd=os.environ["RAYCI_CHECKOUT_DIR"]
-        )
-        subprocess.check_call(
-            ["git", "checkout", revision], cwd=os.environ["RAYCI_CHECKOUT_DIR"]
-        )
-        self.validator.run(self.test)
+        subprocess.check_call(["git", "clean", "-df"], cwd=self.git_dir)
+        subprocess.check_call(["git", "checkout", revision], cwd=self.git_dir)
+        self.validator.run(self.test, revision)
