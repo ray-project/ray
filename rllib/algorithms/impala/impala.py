@@ -680,6 +680,7 @@ class Impala(Algorithm):
             self.metrics.log_n_dicts(env_runner_metrics, key=ENV_RUNNER_RESULTS)
             # Log the average number of sample results (list of episodes) received.
             self.metrics.log_value(MEAN_NUM_EPISODE_LISTS_RECEIVED, len(episode_refs))
+            self.metrics.log_value("_mean_num_episode_ts_received", len(episode_refs) * self.config.num_envs_per_env_runner * self.config.get_rollout_fragment_length())
 
         # Log lifetime counts for env- and agent steps.
         if env_runner_metrics:
@@ -716,7 +717,14 @@ class Impala(Algorithm):
             )
             rl_module_state = None
             learner_results = None
+
+            __ts_sent = 0
+            __ts_received = 0
+
             for to_learner_group in episode_refs_for_learner_group:
+
+                __ts_sent += len(to_learner_group) * self.config.num_envs_per_env_runner * self.config.get_rollout_fragment_length()
+
                 learner_results = self.learner_group.update_from_episodes(
                     episodes=to_learner_group,
                     async_update=do_async_updates,
@@ -730,10 +738,20 @@ class Impala(Algorithm):
                         rl_module_state = r.pop(
                             "_rl_module_state_after_update", rl_module_state
                         )
+                        __ts_received += r["num_env_steps_trained"]
                     self.metrics.log_n_dicts(
                         stats_dicts=results_from_n_learners,
                         key=LEARNER_RESULTS,
                     )
+
+            self.metrics.log_value(
+                key="_mean_num_episode_ts_sent_to_learner_group",
+                value=__ts_sent,
+            )
+            self.metrics.log_value(
+                key="_mean_num_episode_ts_received_from_learner_group",
+                value=__ts_received,
+            )
 
         # Update LearnerGroup's own stats.
         self.metrics.log_dict(self.learner_group.get_stats(), key=LEARNER_GROUP)
@@ -858,16 +876,16 @@ class Impala(Algorithm):
         )
 
     def _pre_queue_episode_refs(self, episode_refs: List[ObjectRef]):
-        # Each element in this list is itself a (ObjRef) list of Episodes (returned
-        # by a single EnvRunner from a single sample() call).
-        episode_refs_for_learner_group: List[ObjectRef] = []
+        # Each element in this list is itself a list of ObjRef[Episodes].
+        # Each ObjRef was returned by one EnvRunner from a single sample() call.
+        episode_refs_for_learner_group: List[List[ObjectRef]] = []
 
         for ref in episode_refs:
             self.batch_being_built.append(ref)
             if (
                 len(self.batch_being_built)
-                * self.config.get_rollout_fragment_length()
                 * self.config.num_envs_per_env_runner
+                * self.config.get_rollout_fragment_length()
                 >= self.config.total_train_batch_size
             ):
                 episode_refs_for_learner_group.append(self.batch_being_built)

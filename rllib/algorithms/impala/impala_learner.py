@@ -124,6 +124,18 @@ class ImpalaLearner(Learner):
             episodes = tree.flatten(episodes)
             env_steps = sum(map(len, episodes))
 
+        #TODO next: return here with result dict to see whether not doing anything
+        #at all in Learner somehow alleviates the bottleneck problem that currently
+        #seems to exist with the parallel learner remote requests (given
+        #lots of input data incoming from lots of env runners).
+        #But also check 100% whether the train step vs env step counts are actually
+        #reliable now.
+        from ray.rllib.utils.metrics.stats import Stats
+        return {
+            "num_episodes": Stats(len(episodes), reduce="sum", clear_on_reduce=True),
+            "num_env_steps_trained": Stats(env_steps, reduce="sum", clear_on_reduce=True),
+        }
+
         # Call the learner connector pipeline.
         with self.metrics.log_time((ALL_MODULES, EPISODES_TO_BATCH_TIMER)):
             # TEST

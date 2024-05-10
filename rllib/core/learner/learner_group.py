@@ -183,6 +183,7 @@ class LearnerGroup:
             self._metrics_logger_old_and_hybrid_stack = MetricsLogger()
 
     # TODO (sven): Replace this with call to `self.metrics.peek()`?
+    #  Currently LearnerGroup does not have a metrics object.
     def get_stats(self) -> Dict[str, Any]:
         """Returns the current stats for the input queue for this learner group."""
         return {

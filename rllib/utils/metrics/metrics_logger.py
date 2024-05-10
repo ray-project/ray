@@ -369,9 +369,6 @@ class MetricsLogger:
                         ema_coeff=ema_coeff,
                         clear_on_reduce=clear_on_reduce,
                     )
-                # `key` not in self yet -> Create an empty Stats entry under that key.
-                if extended_key not in self.stats:
-                    self.stats[extended_key] = Stats.similar_to(stat_or_value)
 
                 # Create a new Stats object to merge everything into as parallel,
                 # equally weighted Stats.
@@ -388,9 +385,14 @@ class MetricsLogger:
             if len(more_stats) > 0:
                 base_stats.merge_in_parallel(*more_stats)
 
-            # Finally, merge `base_stats` into self's entry on time axis, meaning
-            # give the incoming values priority over already existing ones.
-            self.stats[extended_key].merge_on_time_axis(base_stats)
+            # `key` not in self yet -> Store merged stats under the new key.
+            if extended_key not in self.stats:
+                self.stats[extended_key] = base_stats
+            # `key` already exists in `self` -> Merge `base_stats` into self's entry
+            # on time axis, meaning give the incoming values priority over already
+            # existing ones.
+            else:
+                self.stats[extended_key].merge_on_time_axis(base_stats)
 
     def log_time(
         self,
