@@ -15,7 +15,7 @@ config = (
     .rollouts(
         env_runner_cls=MultiAgentEnvRunner,
         env_to_module_connector=lambda env: MeanStdFilter(multi_agent=True),
-        num_envs_per_worker=1,
+        num_envs_per_env_runner=1,
         num_rollout_workers=4,
     )
     .resources(

@@ -516,12 +516,12 @@ class LearnerGroup:
                     if episodes is None:
                         dropped = len(batch)
                     # List of Ray ObjectRefs (each object ref is a list of episodes of
-                    # total len=`rollout_fragment_length * num_envs_per_worker`)
+                    # total len=`rollout_fragment_length * num_envs_per_env_runner`)
                     elif isinstance(episodes[0], ObjectRef):
                         dropped = (
                             len(episodes)
                             * self.config.get_rollout_fragment_length()
-                            * self.config.num_envs_per_worker
+                            * self.config.num_envs_per_env_runner
                         )
                     else:
                         dropped = sum(len(e) for e in episodes)

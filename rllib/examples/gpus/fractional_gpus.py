@@ -34,7 +34,7 @@ parser.add_argument(
 parser.add_argument("--num-gpus", type=float, default=0.5)
 parser.add_argument("--num-workers", type=int, default=1)
 parser.add_argument("--num-gpus-per-worker", type=float, default=0.0)
-parser.add_argument("--num-envs-per-worker", type=int, default=1)
+parser.add_argument("--num-envs-per-env-runner", type=int, default=1)
 parser.add_argument(
     "--as-test",
     action="store_true",
@@ -100,7 +100,7 @@ if __name__ == "__main__":
             num_env_runners=args.num_workers,
             # This setting should not really matter as it does not affect the
             # number of GPUs reserved for each worker.
-            num_envs_per_env_runner=args.num_envs_per_worker,
+            num_envs_per_env_runner=args.num_envs_per_env_runner,
         )
         # 4 tune trials altogether.
         .training(lr=tune.grid_search([0.005, 0.003, 0.001, 0.0001]))
