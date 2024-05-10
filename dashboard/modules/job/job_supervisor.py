@@ -542,12 +542,12 @@ class JobSupervisor:
             self._logger.info("Exiting job supervisor's monitoring loop")
 
             # Kill the actor defensively to avoid leaking actors in unexpected error cases
-            self._take_poison_pill(message="exiting monitoring loop")
+            self._take_poison_pill()
 
-    def _take_poison_pill(self, *, message: str):
+    def _take_poison_pill(self):
         job_supervisor_handle = _get_actor_for_job(self._job_id)
         if job_supervisor_handle is not None:
-            self._logger.info(f"Shutting down Job Supervisor actor ({message})")
+            self._logger.info(f"Shutting down job supervisor actor")
 
             ray.kill(job_supervisor_handle, no_restart=True)
         else:
