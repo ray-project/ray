@@ -106,7 +106,7 @@ NodeManager::NodeManager(
     const NodeManagerConfig &config,
     const ObjectManagerConfig &object_manager_config,
     std::shared_ptr<gcs::GcsClient> gcs_client,
-    std::function<void(rpc::NodeDeathInfo)> shutdown_raylet_gracefully)
+    std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully)
     : self_node_id_(self_node_id),
       self_node_name_(self_node_name),
       io_service_(io_service),

@@ -59,7 +59,7 @@ class Raylet {
          std::shared_ptr<gcs::GcsClient> gcs_client,
          int metrics_export_port,
          bool is_head_node,
-         std::function<void(rpc::NodeDeathInfo)> shutdown_raylet_gracefully);
+         std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully);
 
   /// Start this raylet.
   void Start();

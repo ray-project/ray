@@ -136,7 +136,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
               const NodeManagerConfig &config,
               const ObjectManagerConfig &object_manager_config,
               std::shared_ptr<gcs::GcsClient> gcs_client,
-              std::function<void(rpc::NodeDeathInfo)> shutdown_raylet_gracefully);
+              std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully);
 
   /// Process a new client connection.
   ///
@@ -719,7 +719,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// A client connection to the GCS.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
   /// The function to shutdown raylet gracefully.
-  std::function<void(rpc::NodeDeathInfo)> shutdown_raylet_gracefully_;
+  std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully_;
   /// A pool of workers.
   WorkerPool worker_pool_;
   /// The `ClientCallManager` object that is shared by all `NodeManagerClient`s
