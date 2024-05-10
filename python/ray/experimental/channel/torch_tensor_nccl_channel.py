@@ -1,4 +1,5 @@
 import logging
+import uuid
 from types import ModuleType
 from typing import TYPE_CHECKING, List, Optional
 
@@ -42,8 +43,6 @@ class TorchTensorNcclChannel(ChannelInterface):
 
         self.torch: ModuleType = torch
 
-        self._nccl_group = None
-
         self._writer = writer
         self._writer_rank: Optional[int] = None
         self._readers = readers
@@ -64,7 +63,9 @@ class TorchTensorNcclChannel(ChannelInterface):
         self._typ: "TorchTensorType" = typ
 
         ctx = ChannelContext.get_current()
-        self._nccl_group = ctx.nccl_group
+        assert self._typ.transport_group_id is not None, "No NCCL group specified."
+        self._nccl_group_id: str = self._typ.transport_group_id
+        self._nccl_group: "_NcclGroup" = ctx.nccl_groups[self._typ.transport_group_id]
         assert (
             self._nccl_group is not None
         ), "ChannelContext.nccl_group is not initialized."
@@ -167,10 +168,16 @@ class TorchTensorNcclChannel(ChannelInterface):
         return
 
     def close(self) -> None:
+        if self._meta_channel is not None:
+            self._meta_channel.close()
+
         self._nccl_group.destroy()
+        ctx = ChannelContext.get_current()
+        if self._nccl_group_id in ctx.nccl_groups:
+            del ctx.nccl_groups[self._nccl_group_id]
 
 
-def _do_init_nccl_group(self, world_size, comm_id, rank, actor_handles):
+def _do_init_nccl_group(self, group_id, world_size, comm_id, rank, actor_handles):
     import torch
 
     assert (
@@ -178,13 +185,22 @@ def _do_init_nccl_group(self, world_size, comm_id, rank, actor_handles):
     ), "Actors participating in NCCL group must have at least one GPU assigned"
 
     ctx = ChannelContext.get_current()
-    ctx.nccl_group = _NcclGroup(
+    ctx.nccl_groups[group_id] = _NcclGroup(
         world_size,
         comm_id,
         rank,
         actor_handles,
         torch.cuda.current_stream().cuda_stream,
     )
+
+
+def _do_destroy_nccl_group(self, group_id):
+    ctx = ChannelContext.get_current()
+    if group_id not in ctx.nccl_groups:
+        return
+
+    ctx.nccl_groups[group_id].destroy()
+    del ctx.nccl_groups[group_id]
 
 
 def _do_check_has_gpu(self) -> bool:
@@ -199,10 +215,8 @@ def _do_get_unique_nccl_id(self) -> bool:
 
 def _init_nccl_group(
     actors: List[ray.actor.ActorHandle],
-):
+) -> str:
     ctx = ChannelContext.get_current()
-    if ctx.nccl_group is not None:
-        return
 
     has_gpus = ray.get(
         [actor.__ray_call__.remote(_do_check_has_gpu) for actor in actors]
@@ -221,16 +235,19 @@ def _init_nccl_group(
     # Allocate a communicator ID on one of the actors that will participate in
     # the group. This is in case the driver is not on the same node as one of
     # the NCCL actors.
-    comm_id = ray.get(actors[0].__ray_call__.remote(_do_get_unique_nccl_id))
+    nccl_comm_id = ray.get(actors[0].__ray_call__.remote(_do_get_unique_nccl_id))
+    # Used to uniquely identify this NCCL group.
+    group_id = str(uuid.uuid4())
 
-    logger.info(f"Creating NCCL group on actor: {actors}")
+    logger.info(f"Creating NCCL group on actors: {actors}")
 
     world_size = len(actors)
     init_tasks = [
         actor.__ray_call__.remote(
             _do_init_nccl_group,
+            group_id,
             world_size,
-            comm_id,
+            nccl_comm_id,
             rank,
             actors,
         )
@@ -246,10 +263,33 @@ def _init_nccl_group(
 
     logger.info("NCCL group created.")
 
-    ctx.nccl_group = _NcclGroup(
+    ctx.nccl_groups[group_id] = _NcclGroup(
         world_size,
-        comm_id,
+        nccl_comm_id,
         rank=None,
         actor_handles=actors,
         cuda_stream=None,
     )
+    return group_id
+
+
+def _destroy_nccl_group(group_id: str) -> None:
+    ctx = ChannelContext.get_current()
+    group = ctx.nccl_groups[group_id]
+    actors = group._get_actor_handles()
+    destroy_tasks = [
+        actor.__ray_call__.remote(
+            _do_destroy_nccl_group,
+            group_id,
+        )
+        for actor in actors
+    ]
+
+    _, unready = ray.wait(destroy_tasks, timeout=30, num_returns=len(destroy_tasks))
+    if unready:
+        logger.warning(
+            "NCCL group destruction not done after 30s. NCCL group destruction "
+            "may be hung."
+        )
+
+    del ctx.nccl_groups[group_id]

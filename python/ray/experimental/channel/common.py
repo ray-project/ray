@@ -2,7 +2,7 @@ import asyncio
 import concurrent
 import threading
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 import ray
 from ray.experimental.channel.nccl_group import _NcclGroup
@@ -62,8 +62,9 @@ def _do_register_custom_serializers(
 @DeveloperAPI
 @dataclass
 class ChannelContext:
-    # Used for the torch.Tensor NCCL transport.
-    nccl_group: Optional["_NcclGroup"] = None
+    def __init__(self):
+        # Used for the torch.Tensor NCCL transport.
+        self.nccl_groups: Dict[str, "_NcclGroup"] = {}
 
     @staticmethod
     def get_current() -> "ChannelContext":

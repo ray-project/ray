@@ -30,6 +30,7 @@ class TorchTensorType(ChannelOutputType):
         self.shape = shape
         self.dtype = dtype
         self.transport = transport
+        self.transport_group_id: Optional[str] = None
 
     @staticmethod
     def register_custom_serializer(outer: Any) -> None:

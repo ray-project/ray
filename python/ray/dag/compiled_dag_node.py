@@ -17,7 +17,6 @@ from ray.experimental.channel import (
     SynchronousWriter,
     AwaitableBackgroundReader,
     AwaitableBackgroundWriter,
-    _init_nccl_group,
 )
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -27,6 +26,10 @@ from ray.experimental.channel.shared_memory_channel import (
 from ray.experimental.channel.torch_tensor_type import (
     TorchTensorType,
     _TorchTensorWrapper,
+)
+from ray.experimental.channel.torch_tensor_nccl_channel import (
+    _init_nccl_group,
+    _destroy_nccl_group,
 )
 
 MAX_BUFFER_SIZE = int(100 * 1e6)  # 100MB
@@ -384,6 +387,10 @@ class CompiledDAG:
         # Type hints specified by the user for DAG (intermediate) outputs.
         self._type_hints = []
 
+        # Uniquely identifies the _NCCLGroup that will be used within this DAG,
+        # if any.
+        self._nccl_group_id: Optional[str] = None
+
     def _add_node(self, node: "ray.dag.DAGNode") -> None:
         idx = self.counter
         self.idx_to_task[idx] = CompiledTask(idx, node)
@@ -508,8 +515,8 @@ class CompiledDAG:
         nccl_actors = list(nccl_actors)
         if None in nccl_actors:
             raise ValueError("Driver cannot participate in the NCCL group.")
-        if nccl_actors:
-            _init_nccl_group(nccl_actors)
+        if nccl_actors and self._nccl_group_id is None:
+            self._nccl_group_id = _init_nccl_group(nccl_actors)
 
     def _get_or_compile(
         self,
@@ -549,6 +556,11 @@ class CompiledDAG:
             type_hint = task.dag_node.type_hint
             if type_hint is None:
                 type_hint = self._default_type_hint
+            if (
+                isinstance(type_hint, TorchTensorType)
+                and type_hint.transport == TorchTensorType.NCCL
+            ):
+                type_hint.transport_group_id = self._nccl_group_id
 
             if isinstance(task.dag_node, ClassMethodNode):
                 readers = [self.idx_to_task[idx] for idx in task.downstream_node_idxs]
@@ -774,6 +786,9 @@ class CompiledDAG:
                     except Exception:
                         logger.exception("Error cancelling worker task")
                         pass
+
+                if outer._nccl_group_id is not None:
+                    _destroy_nccl_group(outer._nccl_group_id)
 
                 if wait:
                     logger.info("Waiting for worker tasks to exit")

@@ -1,3 +1,4 @@
+import logging
 from types import ModuleType
 from typing import TYPE_CHECKING, List, Optional
 
@@ -6,6 +7,12 @@ import ray
 if TYPE_CHECKING:
     import cupy as cp
     import torch
+
+
+# Logger for this module. It should be configured at the entry point
+# into the program using Ray. Ray provides a default configuration at
+# entry/init points.
+logger = logging.getLogger(__name__)
 
 
 class _NcclGroup:
@@ -76,6 +83,9 @@ class _NcclGroup:
             )
 
         self._closed = False
+
+    def _get_actor_handles(self) -> List["ray.actor.ActorHandle"]:
+        return self._actor_handles
 
     def get_rank(self, actor: ray.actor.ActorHandle) -> int:
         """
@@ -163,6 +173,9 @@ class _NcclGroup:
             return
 
         self._closed = True
-        # Abort *after* setting the _closed flag.
-        self._comm.abort()
-        self._comm.destroy()
+
+        if self._comm is not None:
+            logger.info(f"Destructing NCCL group on actor: {ray.get_runtime_context().current_actor}")
+            # Abort *after* setting the _closed flag.
+            self._comm.abort()
+            self._comm.destroy()
