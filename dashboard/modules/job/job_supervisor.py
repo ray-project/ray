@@ -81,7 +81,11 @@ class JobSupervisor:
     """
 
     JOB_MONITOR_LOOP_INTERVAL_S = 1
-    JOB_STATUS_LOG_FREQUENCY_SECONDS = 600
+    # Interval of logging job status w/o the state changes (allowing
+    # us to track the progress of the monitoring loop)
+    JOB_STATUS_LOG_INTERVAL_S = 600
+    # Timeout to finalize job status after job driver exiting
+    JOB_STATUS_FINALIZATION_TIMEOUT_S = 60
 
     def __init__(
         self,
@@ -113,8 +117,10 @@ class JobSupervisor:
             self._monitor_job_internal()
         )
 
-        self._started_at = time.time()
         self._startup_timeout_s = startup_timeout_s
+
+        self._started_at: float = time.time()
+        self._driver_last_running_at: float = -1
 
         self.event_logger: Optional[EventLoggerAdapter] = self._create_job_events_logger(logs_dir)
 
@@ -133,6 +139,8 @@ class JobSupervisor:
             #       job's driver to complete its execution, we need to bubble it up
             self._waiting_task.result()
             return False
+
+        self._driver_last_running_at = time.time()
 
         return True
 
@@ -463,14 +471,17 @@ class JobSupervisor:
                         break
 
                     else:
-                        # Job has not reached terminal state, but job driver is not running
-                        self._logger.error(
-                            f"Job driver is not running for job {self._job_id} (job status: {job_status})"
-                        )
+                        duration_since_last_running_s = time.time() - self._driver_last_running_at
 
-                        error_message = "Unexpected error occurred: job driver is not running"
-                        # Break out of the monitoring loop
-                        break
+                        if duration_since_last_running_s > self.JOB_STATUS_FINALIZATION_TIMEOUT_S:
+                            # Job has not reached terminal state, but job driver is not running
+                            self._logger.error(
+                                f"Job driver has not been running for {duration_since_last_running_s}s but job has not finished yet (status: {job_status}))"
+                            )
+
+                            error_message = "Unexpected error occurred: job driver is not running"
+                            # Break out of the monitoring loop
+                            break
 
         except Exception as e:
 
