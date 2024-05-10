@@ -321,10 +321,11 @@ def test_dag_fault_tolerance_chain(ray_start_regular_shared):
 
     compiled_dag.teardown()
 
+    # All actors are still alive.
+    ray.get([actor.sleep.remote(0) for actor in actors])
+
     # Remaining actors can be reused.
     actors.pop(0)
-    ray.get([actor.echo.remote("hello") for actor in actors])
-
     with InputNode() as i:
         dag = i
         for a in actors:
@@ -368,7 +369,7 @@ def test_dag_fault_tolerance(ray_start_regular_shared):
     compiled_dag.teardown()
 
     # All actors are still alive.
-    ray.get([actor.echo.remote("hello") for actor in actors])
+    ray.get([actor.sleep.remote(0) for actor in actors])
 
     # Remaining actors can be reused.
     actors.pop(0)
