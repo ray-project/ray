@@ -118,14 +118,13 @@ class JobSupervisor:
 
         self.event_logger: Optional[EventLoggerAdapter] = self._create_job_events_logger(logs_dir)
 
-    async def check_driver_running(self) -> bool:
+    async def _check_driver_running(self) -> bool:
         """Checks whether the job driver is currently running"""
         if self._runner is None:
             return False
 
-        # Check if job's driver runner actor is alive and reachable
+        # Check if job's driver runner actor is alive and responsive
         await self._runner.ping.remote()
-
         # Check whether job's driver completed execution
         if self._waiting_task is None:
             return False
@@ -457,7 +456,7 @@ class JobSupervisor:
 
                 else:
                     # Check if job driver is running
-                    running = await self.check_driver_running()
+                    running = await self._check_driver_running()
 
                     if running:
                         # Log running status of the job's driver every JOB_STATUS_LOG_FREQUENCY_SECONDS
