@@ -210,20 +210,19 @@ class JobSupervisor:
                 "Please use a different submission_id."
             )
 
-        runner = await self._create_runner_actor(
-            runtime_env=runtime_env,
-            metadata=metadata,
-            entrypoint_num_cpus=entrypoint_num_cpus,
-            entrypoint_num_gpus=entrypoint_num_gpus,
-            entrypoint_memory=entrypoint_memory,
-            entrypoint_resources=entrypoint_resources
-        )
-
         # Job driver (entrypoint) is executed in an synchronous fashion,
         # therefore is performed as a background operation updating Ray Job's
         # state asynchronously upon job's driver completing the execution
         self._waiting_task = self._loop.create_task(
-            self._execute_sync(runner, _start_signal_actor=_start_signal_actor)
+            self._execute_sync(
+                runtime_env=runtime_env,
+                metadata=metadata,
+                entrypoint_num_cpus=entrypoint_num_cpus,
+                entrypoint_num_gpus=entrypoint_num_gpus,
+                entrypoint_memory=entrypoint_memory,
+                entrypoint_resources=entrypoint_resources,
+                _start_signal_actor=_start_signal_actor,
+            )
         )
 
         if self.event_logger:
@@ -233,13 +232,20 @@ class JobSupervisor:
 
     async def _execute_sync(
         self,
-        runner: ActorHandle,
         *,
-        _start_signal_actor: Optional[ActorHandle] = None
+        runtime_env: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, str]] = None,
+        entrypoint_num_cpus: Optional[Union[int, float]] = None,
+        entrypoint_num_gpus: Optional[Union[int, float]] = None,
+        entrypoint_memory: Optional[int] = None,
+        entrypoint_resources: Optional[Dict[str, float]] = None,
+        _start_signal_actor: Optional[ActorHandle] = None,
     ) -> JobStatus:
         message: Optional[str] = None
-        status: JobStatus = JobStatus.FAILED
+        status: JobStatus = None
         exit_code: Optional[int] = None
+
+        error_message: Optional[str] = None
 
         # TODO clean up
         if _start_signal_actor:
@@ -247,6 +253,15 @@ class JobSupervisor:
             await _start_signal_actor.wait.remote()
 
         try:
+            runner = await self._create_runner_actor(
+                runtime_env=runtime_env,
+                metadata=metadata,
+                entrypoint_num_cpus=entrypoint_num_cpus,
+                entrypoint_num_gpus=entrypoint_num_gpus,
+                entrypoint_memory=entrypoint_memory,
+                entrypoint_resources=entrypoint_resources
+            )
+
             driver_node_info: JobDriverNodeInfo = await runner.get_node_info.remote()
             driver_agent_http_address = f"http://{driver_node_info.node_ip}:{driver_node_info.dashboard_agent_port}"
 
@@ -278,14 +293,31 @@ class JobSupervisor:
             else:
                 status = JobStatus.FAILED
 
-        except Exception:
-            message = traceback.format_exc()
+        except Exception as e:
+            if isinstance(e, RuntimeEnvSetupError):
+                self._logger.error(
+                    f"Failed to set up runtime environment for job runner: {repr(e)}",
+                    exc_info=e,
+                )
+                error_message = f"Runtime environment setup failed: {repr(e)}"
+
+            elif isinstance(e, ActorUnschedulableError):
+                self._logger.error(
+                    f"Failed to schedule job runner actor: {repr(e)}",
+                    exc_info=e,
+                )
+                error_message = f"Job running actor could not be scheduled: {repr(e)}"
+
+            else:
+                self._logger.error(
+                    f"Unexpected failure while executing job: {repr(e)}.",
+                    exc_info=e,
+                )
+                error_message = f"Unexpected failure while executing job: {repr(e)}"
+
+            message = error_message
             status = JobStatus.FAILED
             exit_code = None
-
-            self._logger.error(
-                f"Got unexpected exception while executing job: {message}"
-            )
 
         finally:
             self._logger.info(f"Updating job status to {status}")
@@ -299,9 +331,16 @@ class JobSupervisor:
             )
             # Record corresponding job's event
             if self.event_logger:
-                self.event_logger.info(
-                    f"Ray job {self._job_id} completed with status {status}", submission_id=self._job_id
-                )
+                if error_message:
+                    self.event_logger.error(
+                        f"Ray job {self._job_id} completed with status {status}: {error_message}",
+                        submission_id=self._job_id
+                    )
+                else:
+                    self.event_logger.info(
+                        f"Ray job {self._job_id} completed with status {status}",
+                        submission_id=self._job_id
+                    )
 
             return status
 
@@ -324,68 +363,29 @@ class JobSupervisor:
             ]
         )
 
-        try:
-            scheduling_strategy = self._get_scheduling_strategy(resources_specified)
+        scheduling_strategy = self._get_scheduling_strategy(resources_specified)
 
-            self._runner = self._runner_actor_cls.options(
-                name=JOB_EXECUTOR_ACTOR_NAME_TEMPLATE.format(job_id=self._job_id),
-                num_cpus=entrypoint_num_cpus,
-                num_gpus=entrypoint_num_gpus,
-                memory=entrypoint_memory,
-                resources=entrypoint_resources,
-                scheduling_strategy=scheduling_strategy,
-                runtime_env=self._get_runner_runtime_env(
-                    user_runtime_env=runtime_env,
-                    submission_id=self._job_id,
-                    entrypoint_resources_specified=resources_specified,
-                ),
-                namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
-            ).remote(
-                job_id=self._job_id,
-                entrypoint=self._entrypoint,
-                user_metadata=metadata or {},
+        self._runner = self._runner_actor_cls.options(
+            name=JOB_EXECUTOR_ACTOR_NAME_TEMPLATE.format(job_id=self._job_id),
+            num_cpus=entrypoint_num_cpus,
+            num_gpus=entrypoint_num_gpus,
+            memory=entrypoint_memory,
+            resources=entrypoint_resources,
+            scheduling_strategy=scheduling_strategy,
+            runtime_env=self._get_runner_runtime_env(
+                user_runtime_env=runtime_env,
+                submission_id=self._job_id,
                 entrypoint_resources_specified=resources_specified,
-            )
+            ),
+            namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
+        ).remote(
+            job_id=self._job_id,
+            entrypoint=self._entrypoint,
+            user_metadata=metadata or {},
+            entrypoint_resources_specified=resources_specified,
+        )
 
-            return self._runner
-
-        except Exception as e:
-            if isinstance(e, RuntimeEnvSetupError):
-                self._logger.error(
-                    f"Failed to set up runtime environment for job runner: {repr(e)}",
-                    exc_info=e,
-                )
-
-                error_message = f"Runtime environment setup failed: {repr(e)}"
-            elif isinstance(e, ActorUnschedulableError):
-                self._logger.error(
-                    f"Failed to schedule job runner actor: {repr(e)}",
-                    exc_info=e,
-                )
-
-                error_message = f"Job running actor could not be scheduled: {repr(e)}"
-            else:
-                self._logger.error(
-                    f"Unexpected failure while creating job runner actor: {repr(e)}.",
-                    exc_info=e,
-                )
-
-                error_message = f"Unexpected failure while creating job runner: {repr(e)}"
-
-            # Update job status in GCS
-            await self._job_info_client.put_status(
-                self._job_id,
-                JobStatus.FAILED,
-                message=error_message,
-            )
-            # Record corresponding job's event
-            if self.event_logger:
-                self.event_logger.error(
-                    f"Ray job {self._job_id} completed with status {JobStatus.FAILED}",
-                    submission_id=self._job_id
-                )
-
-            raise e
+        return self._runner
 
     def _get_scheduling_strategy(self, resources_specified: bool) -> SchedulingStrategyT:
         """Get the scheduling strategy for the job.
