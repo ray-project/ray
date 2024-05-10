@@ -80,6 +80,7 @@ class JobSupervisor:
     Job supervisor actor should fate share with subprocess it created.
     """
 
+    # Interval of the monitoring loop iterations
     JOB_MONITOR_LOOP_INTERVAL_S = 1
     # Interval of logging job status w/o the state changes (allowing
     # us to track the progress of the monitoring loop)
@@ -291,6 +292,8 @@ class JobSupervisor:
             )
 
         finally:
+            self._logger.info(f"Updating job {self._job_id} status to {status}")
+
             await self._job_info_client.put_status(
                 self._job_id,
                 status,
@@ -462,7 +465,7 @@ class JobSupervisor:
 
                     if running:
                         # Log running status of the job's driver every JOB_STATUS_LOG_FREQUENCY_SECONDS
-                        if i % int(self.JOB_STATUS_LOG_FREQUENCY_SECONDS / self.JOB_MONITOR_LOOP_INTERVAL_S) == 0:
+                        if i % int(self.JOB_STATUS_LOG_INTERVAL_S / self.JOB_MONITOR_LOOP_INTERVAL_S) == 0:
                             self._logger.info(f"Job driver is still running (job status: {job_status}")
 
                     elif job_status.is_terminal():
