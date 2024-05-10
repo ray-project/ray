@@ -69,6 +69,26 @@
   variations:
     - __suffix__: aws
 
+- name: cpu_job_autoscaling_benchmark
+  group: data-tests
+  working_dir: anyscale/data
+
+  frequency: nightly
+  team: data
+  cluster:
+    byod:
+      pip:
+        - torchvision==0.15.2
+        - decord==0.6.0
+    cluster_compute: cpu_job_autoscaling_benchmark_compute.yaml
+
+  run:
+    timeout: 3600
+    script: python cpu_job_autoscaling_benchmark.py
+
+  variations:
+    - __suffix__: aws
+
 ###############
 # Rllib tests
 ###############
