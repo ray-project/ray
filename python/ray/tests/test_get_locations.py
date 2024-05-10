@@ -172,7 +172,7 @@ def assert_object_size_gt(obj_ref: ray.ObjectRef, size: int):
     assert d[obj_ref]["object_size"] > size
 
 
-def test_get_local_locations(ray_start_cluster):
+def test_get_local_locations(ray_start_regular):
     """
     caller and callee are in the same node.
     callee is a regular ray task.
@@ -183,7 +183,7 @@ def test_get_local_locations(ray_start_cluster):
     assert_object_size_gt(obj_ref, 3 * 100 * 1024 * 1024)
 
 
-def test_get_local_locations_generator(ray_start_cluster):
+def test_get_local_locations_generator(ray_start_regular):
     """
     caller and callee are in the same node.
     callee is a streaming generator.
@@ -194,12 +194,12 @@ def test_get_local_locations_generator(ray_start_cluster):
         assert_object_size_gt(obj_ref, 3 * 100 * 1024 * 1024)
 
 
-def test_get_local_locations_multi_nodes(ray_start_cluster_enabled):
+def test_get_local_locations_multi_nodes(ray_start_cluster):
     """
     caller and callee are in different nodes.
     callee is a regular ray task.
     """
-    cluster = ray_start_cluster_enabled
+    cluster = ray_start_cluster
     # head node
     head_node = cluster.add_node(num_cpus=1, object_store_memory=75 * 1024 * 1024)
     head_node_id = head_node.node_id
@@ -229,12 +229,12 @@ def test_get_local_locations_multi_nodes(ray_start_cluster_enabled):
     )
 
 
-def test_get_local_locations_generator_multi_nodes(ray_start_cluster_enabled):
+def test_get_local_locations_generator_multi_nodes(ray_start_cluster):
     """
     caller and callee are in different nodes.
     callee is a streaming generator.
     """
-    cluster = ray_start_cluster_enabled
+    cluster = ray_start_cluster
     # head node
     head_node = cluster.add_node(num_cpus=1, object_store_memory=75 * 1024 * 1024)
     head_node_id = head_node.node_id
