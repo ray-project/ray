@@ -47,14 +47,14 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 @click.argument("team", required=True, type=str, nargs=1)
 @click.option(
     "--workers",
-    default=1,
-    type=int,
+    default="1",
+    type=str,
     help=("Number of concurrent test jobs to run."),
 )
 @click.option(
     "--worker-id",
-    default=0,
-    type=int,
+    default="0",
+    type=str,
     help=("Index of the concurrent shard to run."),
 )
 @click.option(
@@ -180,8 +180,8 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 def main(
     targets: List[str],
     team: str,
-    workers: int,
-    worker_id: int,
+    workers: str,
+    worker_id: str,
     parallelism_per_worker: int,
     operating_system: str,
     except_tags: str,
@@ -216,8 +216,8 @@ def main(
     container = _get_container(
         team,
         operating_system,
-        workers,
-        worker_id,
+        int(workers) if workers else 1,
+        int(worker_id) if worker_id else 0,
         parallelism_per_worker,
         gpus,
         network=network,
