@@ -1,8 +1,7 @@
 import click
 
 from ci.ray_ci.utils import ci_init
-from ci.ray_ci.automation.determine_microcheck_tests import LINUX_TEST_PREFIX
-from ray_release.test import Test
+from ray_release.test import Test, LINUX_TEST_PREFIX
 
 
 @click.command()
