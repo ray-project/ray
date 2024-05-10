@@ -62,7 +62,7 @@ class AgentManager {
       bool start_agent = true /* for test */)
       : options_(std::move(options)),
         delay_executor_(std::move(delay_executor)),
-        shutdown_raylet_gracefully_(std::move(shutdown_raylet_gracefully)),
+        shutdown_raylet_gracefully_(shutdown_raylet_gracefully),
         fate_shares_(options_.fate_shares) {
     if (options_.agent_name.empty()) {
       RAY_LOG(FATAL) << "AgentManager agent_name must not be empty.";
