@@ -64,9 +64,11 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
             pynvml.nvmlInit()
         except pynvml.NVMLError as e:
             if NvidiaGPUAcceleratorManager._is_user_specified_resource:
-                logger.debug(f"NVIDIA GPU runs into error: {e}"
-                             "while initializing pynvml."
-                             "You can ignore this message if you are not using NVIDIA GPUs.")
+                logger.debug(
+                    f"NVIDIA GPU runs into error: {e}"
+                    "while initializing pynvml."
+                    "You can ignore this message if you are not using NVIDIA GPUs."
+                )
             return None  # pynvml init failed
         device_count = pynvml.nvmlDeviceGetCount()
         cuda_device_type = None

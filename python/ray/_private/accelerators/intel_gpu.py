@@ -49,8 +49,10 @@ class IntelGPUAcceleratorManager(AcceleratorManager):
             import dpctl
         except ImportError as e:
             if IntelGPUAcceleratorManager._is_user_specified_resource:
-                logger.warning("Intel GPU support requires the 'dpctl' package," 
-                            "which is not installed.")
+                logger.warning(
+                    "Intel GPU support requires the 'dpctl' package,"
+                    "which is not installed."
+                )
             dpctl = None
         if dpctl is None:
             return 0
@@ -62,9 +64,11 @@ class IntelGPUAcceleratorManager(AcceleratorManager):
             num_gpus = context.device_count
         except Exception as e:
             if IntelGPUAcceleratorManager._is_user_specified_resource:
-                logger.debug(f"Intel GPU ran into the following error while"
-                            "getting number of GPUs: {e},"
-                            "you can ignore this message if you are not using Intel GPUs.")
+                logger.debug(
+                    f"Intel GPU ran into the following error while"
+                    "getting number of GPUs: {e},"
+                    "you can ignore this message if you are not using Intel GPUs."
+                )
                 num_gpus = 0
         return num_gpus
 

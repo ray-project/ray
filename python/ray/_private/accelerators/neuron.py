@@ -77,9 +77,7 @@ class NeuronAcceleratorManager(AcceleratorManager):
                     nc_count += neuron_device.get("nc_count", 0)
         else:
             if NeuronAcceleratorManager._is_user_specified_resource:
-                logger.debug(
-                    "Neuron accelerator path not found."
-                )
+                logger.debug("Neuron accelerator path not found.")
         return nc_count
 
     @staticmethod

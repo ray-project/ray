@@ -71,10 +71,12 @@ class AMDGPUAcceleratorManager(AcceleratorManager):
                 )
             except Exception as e:
                 if AMDGPUAcceleratorManager._is_user_specified_resource:
-                    logger.debug(f"AMD ran into the following error"
-                                 "while getting number of GPUs: {e},"
-                                 "you can ignore this message if you are"
-                                 "not using AMD GPUs.")
+                    logger.debug(
+                        f"AMD ran into the following error"
+                        "while getting number of GPUs: {e},"
+                        "you can ignore this message if you are"
+                        "not using AMD GPUs."
+                    )
         return num_gpus
 
     @staticmethod

@@ -13,7 +13,6 @@ class AcceleratorManager(ABC):
         """Set the flag to indicate that the accelerator resource is user specified."""
         cls._is_user_specified_resource = value
 
-
     @staticmethod
     @abstractmethod
     def get_resource_name() -> str:
