@@ -41,18 +41,19 @@ bool IsCPUOrPlacementGroupCPUResource(ResourceID resource_id) {
   return false;
 }
 
-void LocalTaskManager::UpdateCpuRequests(const std::shared_ptr<internal::Work> &work, bool add) {
-    const auto &spec = work->task.GetTaskSpecification();
-    double cpu_requested = spec.GetRequiredResources().Get(ResourceID::CPU(), 0.0);
-    if (add) {
-        total_cpu_requests_ += cpu_requested;
-    } else {
-        total_cpu_requests_ -= cpu_requested;
-    }
-    RAY_LOG(DEBUG) << (add ? "Added " : "Removed ") << "CPU requests: " << cpu_requested 
-                   << ". Total CPU requests now: " << total_cpu_requests_;
+void LocalTaskManager::UpdateCpuRequests(const std::shared_ptr<internal::Work> &work,
+                                         bool add) {
+  const auto &spec = work->task.GetTaskSpecification();
+  // FixedPoint to Double
+  auto cpu_requested = spec.GetRequiredResources().Get(ResourceID::CPU()).Double();
+  if (add) {
+    total_cpu_requests_ += cpu_requested;
+  } else {
+    total_cpu_requests_ -= cpu_requested;
+  }
+  RAY_LOG(DEBUG) << (add ? "Added " : "Removed ") << "CPU requests: " << cpu_requested
+                 << ". Total CPU requests now: " << total_cpu_requests_;
 }
-
 
 LocalTaskManager::LocalTaskManager(
     const NodeID &self_node_id,
@@ -140,7 +141,6 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
   // blocking where a task which cannot be dispatched because
   // there are not enough available resources blocks other
   // tasks from being dispatched.
-  RAY_LOG(DEBUG)<<"tasks_to_dispatch_.size() "<<tasks_to_dispatch_.size();
   for (auto shapes_it = tasks_to_dispatch_.begin();
        shapes_it != tasks_to_dispatch_.end();) {
     auto &scheduling_class = shapes_it->first;
@@ -155,10 +155,13 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
     auto &sched_cls_info = info_by_sched_cls_.at(scheduling_class);
 
     // Apply fairness only when the total CPU requests exceed the node capacity
-    double total_cpus = cluster_resource_scheduler_->GetLocalResourceManager().GetNumCpus();
+    double total_cpus =
+        cluster_resource_scheduler_->GetLocalResourceManager().GetNumCpus();
     if (total_cpu_requests_ > total_cpus) {
-      RAY_LOG(DEBUG) << "Applying fairness policy. Total CPU requests in tasks_to_dispatch_ (" << total_cpu_requests_ 
-                       << ") exceed total CPUs available (" << total_cpus << ").";
+      RAY_LOG(DEBUG)
+          << "Applying fairness policy. Total CPU requests in tasks_to_dispatch_ ("
+          << total_cpu_requests_ << ") exceed total CPUs available (" << total_cpus
+          << ").";
       size_t total_running_tasks = 0;
       for (auto &entry : info_by_sched_cls_) {
         total_running_tasks += entry.second.running_tasks.size();
@@ -168,8 +171,8 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
 
       if (sched_cls_info.running_tasks.size() > fair_share) {
         RAY_LOG(DEBUG) << "Skipping dispatch for scheduling class " << scheduling_class
-                               << ". Running tasks (" << sched_cls_info.running_tasks.size()
-                               << ") exceed fair share (" << fair_share << ").";
+                       << ". Running tasks (" << sched_cls_info.running_tasks.size()
+                       << ") exceed fair share (" << fair_share << ").";
         shapes_it++;
         continue;
       }

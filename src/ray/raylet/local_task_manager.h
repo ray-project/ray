@@ -91,6 +91,9 @@ class LocalTaskManager : public ILocalTaskManager {
       int64_t sched_cls_cap_interval_ms =
           RayConfig::instance().worker_cap_initial_backoff_delay_ms());
 
+  /// Update total CPU requested in dispatch queue
+  void UpdateCpuRequests(const std::shared_ptr<internal::Work> &work, bool add);
+
   /// Queue task and schedule.
   void QueueAndScheduleTask(std::shared_ptr<internal::Work> work) override;
 
