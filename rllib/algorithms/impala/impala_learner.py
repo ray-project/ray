@@ -78,25 +78,25 @@ class ImpalaLearner(Learner):
         self._learner_thread_out_queue = Queue()
 
         # Create and start the GPU loader thread(s).
-        self._gpu_loader_threads = [
-            _GPULoaderThread(
-                in_queue=self._gpu_loader_in_queue,
-                out_queue=self._learner_thread_in_queue,
-                device=self._device,
-                metrics_logger=self.metrics,
-            ) for _ in range(self.config.num_gpu_loader_threads)
-        ]
-        for t in self._gpu_loader_threads:
-            t.start()
+        #self._gpu_loader_threads = [
+        #    _GPULoaderThread(
+        #        in_queue=self._gpu_loader_in_queue,
+        #        out_queue=self._learner_thread_in_queue,
+        #        device=self._device,
+        #        metrics_logger=self.metrics,
+        #    ) for _ in range(self.config.num_gpu_loader_threads)
+        #]
+        #for t in self._gpu_loader_threads:
+        #    t.start()
 
         # Create and start the Learner thread.
-        self._learner_thread = _LearnerThread(
-            update_method=self._update_from_batch_or_episodes,
-            in_queue=self._learner_thread_in_queue,
-            out_queue=self._learner_thread_out_queue,
-            metrics_logger=self.metrics,
-        )
-        self._learner_thread.start()
+        #self._learner_thread = _LearnerThread(
+        #    update_method=self._update_from_batch_or_episodes,
+        #    in_queue=self._learner_thread_in_queue,
+        #    out_queue=self._learner_thread_out_queue,
+        #    metrics_logger=self.metrics,
+        #)
+        #self._learner_thread.start()
 
     @override(Learner)
     def update_from_episodes(
@@ -132,8 +132,8 @@ class ImpalaLearner(Learner):
         #reliable now.
         from ray.rllib.utils.metrics.stats import Stats
         return {
-            "num_episodes": Stats(len(episodes), reduce="sum", clear_on_reduce=True),
-            "num_env_steps_trained": Stats(env_steps, reduce="sum", clear_on_reduce=True),
+            #"num_env_steps_trained": Stats(env_steps, reduce="sum", clear_on_reduce=True),
+            ALL_MODULES: {NUM_ENV_STEPS_TRAINED: Stats(env_steps, reduce="sum", clear_on_reduce=True)},
         }
 
         # Call the learner connector pipeline.

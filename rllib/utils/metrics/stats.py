@@ -532,7 +532,10 @@ class Stats:
 
         # Special case: Internal values list is empty -> return NaN.
         elif len(self.values) == 0:
-            return float("nan"), []
+            if self._reduce_method in ["min", "max", "mean"]:
+                return float("nan"), []
+            else:
+                return 0, []
         # Do EMA (always a "mean" reduction).
         elif self._ema_coeff is not None:
             # Perform EMA reduction over all values in internal values list.

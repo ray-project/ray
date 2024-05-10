@@ -678,9 +678,13 @@ class Impala(Algorithm):
             ) = self._sample_and_get_connector_states()
             # Reduce EnvRunner metrics over the n EnvRunners.
             self.metrics.log_n_dicts(env_runner_metrics, key=ENV_RUNNER_RESULTS)
+
             # Log the average number of sample results (list of episodes) received.
             self.metrics.log_value(MEAN_NUM_EPISODE_LISTS_RECEIVED, len(episode_refs))
             self.metrics.log_value("_mean_num_episode_ts_received", len(episode_refs) * self.config.num_envs_per_env_runner * self.config.get_rollout_fragment_length())
+            self.metrics.log_value("_mean_num_episode_ts_received_using_reduced_metrics", self.metrics.peek(
+                        ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED, default=0
+                    ))
 
         # Log lifetime counts for env- and agent steps.
         if env_runner_metrics:
@@ -718,12 +722,12 @@ class Impala(Algorithm):
             rl_module_state = None
             learner_results = None
 
-            __ts_sent = 0
-            __ts_received = 0
+            _ts_sent = 0
+            _ts_received = 0
 
             for to_learner_group in episode_refs_for_learner_group:
 
-                __ts_sent += len(to_learner_group) * self.config.num_envs_per_env_runner * self.config.get_rollout_fragment_length()
+                _ts_sent += len(to_learner_group) * self.config.num_envs_per_env_runner * self.config.get_rollout_fragment_length()
 
                 learner_results = self.learner_group.update_from_episodes(
                     episodes=to_learner_group,
@@ -738,19 +742,30 @@ class Impala(Algorithm):
                         rl_module_state = r.pop(
                             "_rl_module_state_after_update", rl_module_state
                         )
-                        __ts_received += r["num_env_steps_trained"]
+                        _ts_received += r[ALL_MODULES][NUM_ENV_STEPS_TRAINED].peek()
                     self.metrics.log_n_dicts(
                         stats_dicts=results_from_n_learners,
                         key=LEARNER_RESULTS,
+                        #_do_print=True,
                     )
 
             self.metrics.log_value(
                 key="_mean_num_episode_ts_sent_to_learner_group",
-                value=__ts_sent,
+                value=_ts_sent,
             )
             self.metrics.log_value(
                 key="_mean_num_episode_ts_received_from_learner_group",
-                value=__ts_received,
+                value=_ts_received,
+            )
+            if np.isnan(self.metrics.peek(
+                LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED, default=0
+            )):
+                assert False
+            self.metrics.log_value(
+                key="_mean_num_episode_ts_received_from_learner_group_using_reduced_metrics",
+                value=self.metrics.peek(
+                    LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED, default=0
+                ),
             )
 
         # Update LearnerGroup's own stats.
