@@ -15,6 +15,7 @@ examples:
       - computer vision
       - generative ai
     link: tutorials/stable-diffusion
+    related_technology: ml applications
   - title: Serve a Large Language Model
     skill_level: beginner
     use_cases:

@@ -1,4 +1,4 @@
-text: Below are examples for using Ray Train with a variety of frameworks and use cases. Ray Train makes it easy to scale out each of these examples to a large cluster of GPUs!
+text: Below are examples for using Ray Train with a variety of frameworks and use cases. Ray Train makes it easy to scale out each of these examples to a large cluster of GPUs.
 columns_to_show:
   - frameworks
 groupby: skill_level
