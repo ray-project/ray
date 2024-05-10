@@ -472,48 +472,41 @@ class JobSupervisor:
                         break
 
             except Exception as e:
-                error_message = ""
-                job_status = await self._job_info_client.get_status(self._job_id)
+                # If the job is already in a terminal state, then the actor
+                # exiting is expected.
+                if isinstance(e, RuntimeEnvSetupError):
+                    self._logger.error(
+                        f"Failed to set up runtime_env for job {self._job_id}: {repr(e)}",
+                        exc_info=e,
+                    )
 
-                if job_status.is_terminal():
-                    # If the job is already in a terminal state, then the actor
-                    # exiting is expected.
-                    pass
+                    error_message = f"Runtime environment setup failed: {repr(e)}"
+
+                elif isinstance(e, ActorUnschedulableError):
+                    self._logger.error(
+                        f"Failed to schedule job {self._job_id} because the supervisor actor "
+                        f"could not be scheduled: {repr(e)}",
+                        exc_info=e,
+                    )
+
+                    error_message = f"Job supervisor actor could not be scheduled: {repr(e)}"
+
                 else:
-                    if isinstance(e, RuntimeEnvSetupError):
-                        self._logger.error(
-                            f"Failed to set up runtime_env for job {self._job_id}: {repr(e)}",
-                            exc_info=e,
-                        )
+                    self._logger.error(
+                        f"Job supervisor for job {self._job_id} failed unexpectedly with: {repr(e)}.",
+                        exc_info=e,
+                    )
 
-                        error_message = f"Runtime environment setup failed: {repr(e)}"
-                        job_status = JobStatus.FAILED
+                    error_message = f"Unexpected error occurred: {repr(e)}"
 
-                    elif isinstance(e, ActorUnschedulableError):
-                        self._logger.error(
-                            f"Failed to schedule job {self._job_id} because the supervisor actor "
-                            f"could not be scheduled: {repr(e)}",
-                            exc_info=e,
-                        )
-
-                        error_message = f"Job supervisor actor could not be scheduled: {repr(e)}"
-                        job_status = JobStatus.FAILED
-
-                    else:
-                        self._logger.error(
-                            f"Job supervisor for job {self._job_id} failed unexpectedly with: {repr(e)}.",
-                            exc_info=e,
-                        )
-
-                        error_message = f"Unexpected error occurred: {repr(e)}"
-                        job_status = JobStatus.FAILED
-
+                if job_status and not job_status.is_terminal():
                     # Update job's status in GCS
                     await self._job_info_client.put_status(
                         self._job_id,
-                        job_status,
+                        JobStatus.FAILED,
                         message=error_message,
                     )
+                    job_status = JobStatus.FAILED
 
                 # TODO enable
                 # TODO move into job-runner
