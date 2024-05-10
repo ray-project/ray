@@ -1288,10 +1288,6 @@ async def test_job_pending_timeout(job_manager, monkeypatch):
         _start_signal_actor=start_signal_actor,
     )
 
-    # Trigger _recover_running_jobs while the job is still pending. This
-    # will pick up the new pending job.
-    await job_manager._recover_running_jobs()
-
     # Wait for the job to timeout.
     await async_wait_for_condition_async_predicate(
         check_job_failed, job_manager=job_manager, job_id=job_id
@@ -1300,7 +1296,7 @@ async def test_job_pending_timeout(job_manager, monkeypatch):
     # Check that the job timed out.
     job_info = await job_manager.get_job_info(job_id)
     assert job_info.status == JobStatus.FAILED
-    assert "Job supervisor actor failed to start within" in job_info.message
+    assert "Job driver failed to start within 0.1 seconds. This timeout can be configured by setting the environment variable RAY_JOB_START_TIMEOUT_SECONDS." in job_info.message
     assert job_info.driver_exit_code is None
 
 
