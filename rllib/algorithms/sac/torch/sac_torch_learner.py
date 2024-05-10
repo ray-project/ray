@@ -220,8 +220,6 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
         # Note further, we use here the Huber loss instead of the mean squared error
         # as it improves training performance.
         critic_loss = torch.mean(
-            # TODO (simon): Introduce priority weights when episode buffer is ready.
-            # batch[PRIO_WEIGHTS] *
             batch["weights"]
             * torch.nn.HuberLoss(reduction="none", delta=1.0)(
                 q_selected, q_selected_target
@@ -321,8 +319,8 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
                 )
                 grads.update(
                     {
-                        mid: p.grad
-                        for mid, p in self.filter_param_dict_for_optimizer(
+                        pid: p.grad
+                        for pid, p in self.filter_param_dict_for_optimizer(
                             self._params, self.get_optimizer(module_id, component)
                         ).items()
                     }
