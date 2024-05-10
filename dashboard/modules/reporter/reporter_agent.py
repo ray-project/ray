@@ -819,7 +819,7 @@ class ReporterAgent(
                 total_uss += float(mem_full_info.uss) / 1.0e6
             total_num_fds += int(stat.get("num_fds", 0))
 
-        tags = {"ip": self._ip, "Component": component_name}
+        tags = {"ip": self._ip, "Component": component_name, "Version": ray.__version__}
         if pid:
             tags["pid"] = pid
 

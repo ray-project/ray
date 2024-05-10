@@ -302,6 +302,7 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
                 assert sample.labels["SessionName"] == session_name
             if sample.name in _DASHBOARD_METRICS:
                 assert sample.labels["SessionName"] == session_name
+                assert sample.labels["Version"] == ray.__version__, sample
 
         # Make sure the numeric values are correct
         test_counter_sample = [m for m in metric_samples if "test_counter" in m.name][0]
@@ -400,6 +401,7 @@ def test_metrics_export_node_metrics(shutdown_only):
         for metric in _NODE_COMPONENT_METRICS:
             samples = avail_metrics[metric]
             for sample in samples:
+                assert sample.labels["Version"] == ray.__version__
                 components.add(sample.labels["Component"])
         assert components == {"raylet", "agent", "ray::IDLE"}
 
