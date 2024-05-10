@@ -12,9 +12,7 @@ from ci.ray_ci.automation.pypi_lib import upload_wheels_to_pypi
 def main(ray_version, commit_hash, pypi_env):
     with tempfile.TemporaryDirectory() as temp_dir:
         download_ray_wheels_from_s3(
-            commit_hash=commit_hash,
-            ray_version=ray_version,
-            directory_path=temp_dir,
+            commit_hash=commit_hash, ray_version=ray_version, directory_path=temp_dir
         )
         upload_wheels_to_pypi(pypi_env=pypi_env, directory_path=temp_dir)
 
