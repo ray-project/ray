@@ -75,6 +75,7 @@ class AddOneTsToEpisodesAndTruncate(ConnectorV2):
         check(episode2.is_truncated, False)
         check(episode2.is_terminated, True)
     """
+
     @override(ConnectorV2)
     def __call__(
         self,
@@ -101,7 +102,7 @@ class AddOneTsToEpisodesAndTruncate(ConnectorV2):
 
         shared_data["_sa_episodes_lengths"] = {}
         for sa_episode in self.single_agent_episode_iterator(
-                episodes, agents_that_stepped_only=False
+            episodes, agents_that_stepped_only=False
         ):
             len_ = len(sa_episode)
 

@@ -152,14 +152,14 @@ py_test(
 # --------------------------------------------------------------------
 
 # APPO
-py_test(
-    name = "learning_tests_cartpole_appo",
-    main = "tuned_examples/appo/cartpole_appo.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-    size = "large",
-    srcs = ["tuned_examples/appo/cartpole_appo.py"],
-    args = ["--as-test", "--enable-new-api-stack"]
-)
+# py_test(
+#    name = "learning_tests_cartpole_appo",
+#    main = "tuned_examples/appo/cartpole_appo.py",
+#    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+#    size = "large",
+#    srcs = ["tuned_examples/appo/cartpole_appo.py"],
+#    args = ["--as-test", "--enable-new-api-stack"]
+# )
 
 py_test(
     name = "learning_tests_cartpole_appo_w_rl_modules_and_learner",

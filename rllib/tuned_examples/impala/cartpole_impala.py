@@ -15,7 +15,7 @@ config = (
     .environment("CartPole-v1")
     .env_runners(
         num_env_runners=2,
-        #env_to_module_connector=lambda env: MeanStdFilter(),
+        # env_to_module_connector=lambda env: MeanStdFilter(),
     )
     .training(
         train_batch_size_per_learner=500,

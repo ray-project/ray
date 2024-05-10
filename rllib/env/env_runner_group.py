@@ -418,16 +418,20 @@ class EnvRunnerGroup:
         # local worker is the only operating worker and thus of course always holds
         # the reference connector state.
         if self.num_healthy_remote_workers() == 0:
-            self.local_worker().set_state({
-                **(
-                    {NUM_ENV_STEPS_SAMPLED_LIFETIME: env_steps_sampled}
-                    if env_steps_sampled is not None else {}
-                ),
-                **(
-                    {"rl_module": rl_module_state}
-                    if rl_module_state is not None else {}
-                ),
-            })
+            self.local_worker().set_state(
+                {
+                    **(
+                        {NUM_ENV_STEPS_SAMPLED_LIFETIME: env_steps_sampled}
+                        if env_steps_sampled is not None
+                        else {}
+                    ),
+                    **(
+                        {"rl_module": rl_module_state}
+                        if rl_module_state is not None
+                        else {}
+                    ),
+                }
+            )
             return
 
         # Also early out, if we a) don't use the remote states AND b) don't want to
@@ -443,11 +447,16 @@ class EnvRunnerGroup:
             else:
                 if connector_states is None:
                     connector_states = self.foreach_worker(
-                        lambda w: w.get_state(components=[
-                            "env_to_module_connector", "module_to_env_connector"
-                        ]),
+                        lambda w: w.get_state(
+                            components=[
+                                "env_to_module_connector",
+                                "module_to_env_connector",
+                            ]
+                        ),
                         local_worker=False,
-                        timeout_seconds=config.sync_filters_on_rollout_workers_timeout_s,
+                        timeout_seconds=(
+                            config.sync_filters_on_rollout_workers_timeout_s
+                        ),
                     )
                 env_to_module_states = [
                     s["env_to_module_connector"] for s in connector_states
@@ -467,9 +476,9 @@ class EnvRunnerGroup:
         # Ignore states from remote EnvRunners (use the current `from_worker` states
         # only).
         else:
-            env_runner_states = from_worker.get_state(components=[
-                "env_to_module_connector", "module_to_env_connector"
-            ])
+            env_runner_states = from_worker.get_state(
+                components=["env_to_module_connector", "module_to_env_connector"]
+            )
 
         # Update the global number of environment steps, if necessary.
         if env_steps_sampled is not None:
@@ -493,10 +502,10 @@ class EnvRunnerGroup:
             # Put the state dictionary into Ray's object store to avoid having to make n
             # pickled copies of the state dict.
             ref_env_runner_states = ray.put(env_runner_states)
-    
+
             def _update(_env_runner: EnvRunner) -> None:
                 _env_runner.set_state(ray.get(ref_env_runner_states))
-    
+
             # Broadcast updated states back to all workers.
             self.foreach_worker(
                 _update,

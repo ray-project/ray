@@ -586,7 +586,9 @@ class MultiAgentEnvRunner(EnvRunner):
                     episode_length += len(eps2)
                     episode_return += return_eps2
                     for sa_eps in eps2.agent_episodes.values():
-                        agent_episode_returns[str(sa_eps.agent_id)] += sa_eps.get_return()
+                        agent_episode_returns[
+                            str(sa_eps.agent_id)
+                        ] += sa_eps.get_return()
                         module_episode_returns[sa_eps.module_id] += sa_eps.get_return()
                         agent_steps[str(sa_eps.agent_id)] += len(sa_eps)
                     episode_duration_s += eps2.get_duration_s()

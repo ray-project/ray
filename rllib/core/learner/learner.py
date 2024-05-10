@@ -1256,7 +1256,9 @@ class Learner:
         """
         self._check_is_built()
         components = force_list(components) or [
-            "rl_module", "optimizer", "modules_to_be_updated"
+            "rl_module",
+            "optimizer",
+            "modules_to_be_updated",
         ]
         state = {}
         if "rl_module" in components:
@@ -1387,7 +1389,7 @@ class Learner:
         # Convert input batch into a tensor batch (MultiAgentBatch) on the correct
         # device (e.g. GPU). We move the batch already here to avoid having to move
         # every single minibatch that is created in the `batch_iter` below.
-        #batch = self._convert_batch_type(batch)
+        # batch = self._convert_batch_type(batch)
         batch = self._set_slicing_by_batch_id(batch, value=True)
 
         for tensor_minibatch in batch_iter(batch, minibatch_size, num_iters):
@@ -1693,7 +1695,8 @@ class Learner:
 
             _len = (
                 orig_lengths[sa_episode.id_]
-                if sa_episode.id_ in orig_lengths else len(sa_episode)
+                if sa_episode.id_ in orig_lengths
+                else len(sa_episode)
             )
             # TODO (sven): Decide, whether agent_ids should be part of LEARNER_RESULTS.
             #  Currently and historically, only ModuleID keys and ALL_MODULES were used

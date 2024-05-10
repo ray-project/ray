@@ -11,7 +11,6 @@ from typing import (
     Type,
     Union,
 )
-import uuid
 
 import tree  # pip install dm_tree
 
@@ -231,10 +230,10 @@ class LearnerGroup:
                 requests that have not been returned thus far.
             return_state: Whether to include one of the Learner worker's state from
                 after the update step in the returned results dict (under the
-                `_rl_module_state_after_update` key). Note that after an update, all Learner
-                workers' states should be identical, so we use the first Learner's state
-                here. Useful for avoiding an extra `get_weights()` call, e.g. for
-                synchronizing EnvRunner weights.
+                `_rl_module_state_after_update` key). Note that after an update, all
+                Learner workers' states should be identical, so we use the first
+                Learner's state here. Useful for avoiding an extra `get_weights()` call,
+                e.g. for synchronizing EnvRunner weights.
             minibatch_size: The minibatch size to use for the update.
             num_iters: The number of complete passes over all the sub-batches in the
                 input multi-agent batch.
@@ -298,10 +297,10 @@ class LearnerGroup:
                 requests that have not been returned thus far.
             return_state: Whether to include one of the Learner worker's state from
                 after the update step in the returned results dict (under the
-                `_rl_module_state_after_update` key). Note that after an update, all Learner
-                workers' states should be identical, so we use the first Learner's state
-                here. Useful for avoiding an extra `get_weights()` call, e.g. for
-                synchronizing EnvRunner weights.
+                `_rl_module_state_after_update` key). Note that after an update, all
+                Learner workers' states should be identical, so we use the first
+                Learner's state here. Useful for avoiding an extra `get_weights()` call,
+                e.g. for synchronizing EnvRunner weights.
             minibatch_size: The minibatch size to use for the update.
             num_iters: The number of complete passes over all the sub-batches in the
                 input multi-agent batch.
@@ -479,8 +478,6 @@ class LearnerGroup:
             if async_update:
                 # Retrieve all ready results (kicked off by prior calls to this method).
                 tags_to_get = []
-                #results = None
-                #assert len(self._update_request_tags) == 1  # only 1 in-flight right now possible
                 for tag in self._update_request_tags.keys():
                     result = self._worker_manager.fetch_ready_async_reqs(
                         tags=[str(tag)], timeout_seconds=0.0
@@ -494,19 +491,13 @@ class LearnerGroup:
                             )
 
                     # Still not done with this `tag` -> skip out early.
-                    ##force-fetch the results from
-                    ##the missing Learners.
-                    if self._update_request_tags[tag] > len(self._update_request_results[tag].result_or_errors) > 0:
-                        #more_results = self._worker_manager.fetch_ready_async_reqs(
-                        #    tags=[str(tag)], timeout_seconds=None
-                        #)
-                        #for result in more_results.result_or_errors:
-                        #    results.add_result(result.actor_id, result.result_or_error, tag)
-                        # If we did have to wait for some (slower) Learners results,
-                        # break out of this loop.
+                    if (
+                        self._update_request_tags[tag]
+                        > len(self._update_request_results[tag].result_or_errors)
+                        > 0
+                    ):
                         break
-                    else:
-                        tags_to_get.append(tag)
+                    tags_to_get.append(tag)
 
                 # Send out new request(s), if there is still capacity on the actors.
                 update_tag = self._update_request_tag
@@ -524,8 +515,8 @@ class LearnerGroup:
                     # Batch: Measure its length.
                     if episodes is None:
                         dropped = len(batch)
-                    # List of Ray ObjectRefs (each object ref is a list of episodes of total
-                    # len=`rollout_fragment_length * num_envs_per_worker`)
+                    # List of Ray ObjectRefs (each object ref is a list of episodes of
+                    # total len=`rollout_fragment_length * num_envs_per_worker`)
                     elif isinstance(episodes[0], ObjectRef):
                         dropped = (
                             len(episodes)
@@ -554,7 +545,6 @@ class LearnerGroup:
         # the old behavior of returning an already reduced dict (as if we had a
         # reduce_fn).
         if not self.config.enable_env_runner_and_connector_v2:
-            assert False
             # If we are doing an ansync update, we operate on a list (different async
             # requests that now have results ready) of lists (n Learner workers) here.
             if async_update:
@@ -581,7 +571,7 @@ class LearnerGroup:
                 raise result_or_error
         return processed_results
 
-    def _get_async_results(self, tags_to_get):#results):
+    def _get_async_results(self, tags_to_get):  # results):
         """Get results from the worker manager and group them by tag.
 
         Returns:
@@ -589,7 +579,7 @@ class LearnerGroup:
             for same tags.
 
         """
-        #if results is None:
+        # if results is None:
         #    return []
 
         unprocessed_results = defaultdict(list)
@@ -600,12 +590,12 @@ class LearnerGroup:
                 if result.ok:
                     if result.tag is None:
                         raise RuntimeError(
-                            "Cannot call `LearnerGroup._get_async_results()` on untagged "
-                            "async requests!"
+                            "Cannot call `LearnerGroup._get_async_results()` on "
+                            "untagged async requests!"
                         )
                     tag = int(result.tag)
                     unprocessed_results[tag].append(result_or_error)
-    
+
                     if tag in self._update_request_tags:
                         self._update_request_tags[tag] -= 1
                         if self._update_request_tags[tag] == 0:
@@ -617,7 +607,7 @@ class LearnerGroup:
                         self._additional_update_request_tags[tag] -= 1
                         if self._additional_update_request_tags[tag] == 0:
                             del self._additional_update_request_tags[tag]
-    
+
                 else:
                     raise result_or_error
 
@@ -626,7 +616,6 @@ class LearnerGroup:
     def additional_update(
         self,
         *,
-        async_update: bool = False,
         reduce_fn=DEPRECATED_VALUE,
         **kwargs,
     ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
@@ -637,13 +626,6 @@ class LearnerGroup:
 
         By default, this is a pass through that calls all Learner workers'
         `additional_update(**kwargs)` method.
-
-        Args:
-            async_update: Whether the `additional_update` request(s) to the Learner
-                workers should be sent asynchronously. If True, will return NOT the
-                results from the `additional_update` call, but all results from prior
-                asynchronous `additional_update()` requests that have not been returned
-                thus far.
 
         Returns:
             A list of dictionaries of results returned by the
@@ -661,43 +643,12 @@ class LearnerGroup:
             )
 
         if self.is_local:
-            if async_update:
-                raise ValueError(
-                    "Cannot call `additional_update(async_update=True, ...)` when"
-                    "running in local mode with `config.num_learner_workers=0`! Try "
-                    "setting `config.num_learner_workers` to >= 1."
-                )
             results = [self._learner.additional_update(**kwargs)]
         else:
-            if async_update:
-                # Retrieve all ready results (kicked off by prior calls to this method).
-                results = None
-                if self._additional_update_request_tags:
-                    results = self._worker_manager.fetch_ready_async_reqs(
-                        tags=list(self._additional_update_request_tags)
-                    )
-                update_tag = self._additional_update_request_tag
-                self._additional_update_request_tag += 1
-                num_sent_requests = self._worker_manager.foreach_actor_async(
-                    [lambda w: w.additional_update(**kwargs) for _ in self._workers],
-                    tag=update_tag,
-                )
-                if num_sent_requests:
-                    self._additional_update_request_tags[update_tag] = num_sent_requests
-
-                # NOTE: There is a strong assumption here that the requests launched to
-                # learner workers will return at the same time, since they are have a
-                # barrier inside of themselves for gradient aggregation. Therefore
-                # results should be a list of lists where each inner list should be the
-                # length of the number of learner workers, if results from an
-                # non-blocking update are ready.
-                results = self._get_async_results(results)
-
-            else:
-                results = self._worker_manager.foreach_actor(
-                    [lambda w: w.additional_update(**kwargs) for _ in self._workers]
-                )
-                results = self._get_results(results)
+            results = self._worker_manager.foreach_actor(
+                [lambda w: w.additional_update(**kwargs) for _ in self._workers]
+            )
+            results = self._get_results(results)
 
         # If we are on hybrid API stack (no EnvRunners), we need to emulate
         # the existing behavior of returning an already reduced dict (as if we had a

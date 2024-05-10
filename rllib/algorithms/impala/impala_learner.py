@@ -46,10 +46,6 @@ class ImpalaLearner(Learner):
     def build(self) -> None:
         super().build()
 
-        # TEST: Fake (CPU) batch to bypass LearnerConnector call.
-        #self.__batch = None
-        # END TEST
-
         # Dict mapping module IDs to the respective entropy Scheduler instance.
         self.entropy_coeff_schedulers_per_module: Dict[
             ModuleID, Scheduler
@@ -84,7 +80,8 @@ class ImpalaLearner(Learner):
                 out_queue=self._learner_thread_in_queue,
                 device=self._device,
                 metrics_logger=self.metrics,
-            ) for _ in range(self.config.num_gpu_loader_threads)
+            )
+            for _ in range(self.config.num_gpu_loader_threads)
         ]
         for t in self._gpu_loader_threads:
             t.start()
@@ -124,42 +121,14 @@ class ImpalaLearner(Learner):
             episodes = tree.flatten(episodes)
             env_steps = sum(map(len, episodes))
 
-        #TODO next: return here with result dict to see whether not doing anything
-        #at all in Learner somehow alleviates the bottleneck problem that currently
-        #seems to exist with the parallel learner remote requests (given
-        #lots of input data incoming from lots of env runners).
-        #But also check 100% whether the train step vs env step counts are actually
-        #reliable now.
-        #from ray.rllib.utils.metrics.stats import Stats
-        #return {
-        #    #"num_env_steps_trained": Stats(env_steps, reduce="sum", clear_on_reduce=True),
-        #    ALL_MODULES: {NUM_ENV_STEPS_TRAINED: Stats(env_steps, reduce="sum", clear_on_reduce=True)},
-        #}
-
         # Call the learner connector pipeline.
         with self.metrics.log_time((ALL_MODULES, EPISODES_TO_BATCH_TIMER)):
-            # TEST
-            #if self.__batch is None:
-            # END TEST
             batch = self._learner_connector(
                 rl_module=self.module,
                 data={},
                 episodes=episodes,
                 shared_data={},
             )
-            # TEST
-            #batch = self.__batch
-            # END TEST
-
-            # Convert to a batch (on the CPU).
-            # TODO (sven): Try to not require MultiAgentBatch anymore.
-            #batch = MultiAgentBatch(
-            #    {
-            #        module_id: SampleBatch(module_data)
-            #        for module_id, module_data in batch.items()
-            #    },
-            #    env_steps=sum(len(e) for e in episodes),
-            #)
 
         # Queue the CPU batch to the GPU-loader thread.
         self._gpu_loader_in_queue.put((batch, env_steps))
@@ -169,10 +138,13 @@ class ImpalaLearner(Learner):
 
         # Return all queued result dicts thus far (after reducing over them).
         results = {}
-        ts_trained = 0  # TODO (sven): Super hack! Needs to be removed before(!) we merge.
-                        # We currently only return the very last `reduced` snapshot of our metrics object (put in the output queue by the learner thread)
-                        # However, this way, any `clear_on_reduce` sums before this last snapshot (e.g. num-env-steps-trained) are lost!
-                        # Hence the way too low counts for steps trained.
+        # TODO (sven): Super hack! Needs to be removed before(!) we merge.
+        #  We currently only return the very last `reduced` snapshot of our metrics
+        #  object (put in the output queue by the learner thread). However, this way,
+        #  any `clear_on_reduce` sums before this last snapshot (e.g.
+        #  num-env-steps-trained) are lost! Hence the way too low counts for steps
+        #  trained.
+        ts_trained = 0
         try:
             while True:
                 results = self._learner_thread_out_queue.get(block=False)

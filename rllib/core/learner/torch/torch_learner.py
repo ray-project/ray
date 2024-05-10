@@ -362,17 +362,15 @@ class TorchLearner(Learner):
 
         # Log number of non-trainable and trainable parameters of our RLModule.
         num_trainable_params = {
-            (mid, NUM_TRAINABLE_PARAMETERS): sum(p.numel()
-            for p in rlm.parameters()
-            if p.requires_grad)
-
+            (mid, NUM_TRAINABLE_PARAMETERS): sum(
+                p.numel() for p in rlm.parameters() if p.requires_grad
+            )
             for mid, rlm in self.module._rl_modules.items()
         }
         num_non_trainable_params = {
-            (mid, NUM_NON_TRAINABLE_PARAMETERS): sum(p.numel()
-            for p in rlm.parameters()
-            if not p.requires_grad)
-
+            (mid, NUM_NON_TRAINABLE_PARAMETERS): sum(
+                p.numel() for p in rlm.parameters() if not p.requires_grad
+            )
             for mid, rlm in self.module._rl_modules.items()
         }
         self.metrics.log_dict(

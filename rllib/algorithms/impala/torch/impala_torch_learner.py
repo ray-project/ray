@@ -6,11 +6,9 @@ from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
     vtrace_torch,
     make_time_major,
 )
-from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import ENTROPY_KEY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
-from ray.rllib.core.models.base import CRITIC, ENCODER_OUT
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.framework import try_import_torch
@@ -50,7 +48,8 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
         # Behavior actions logp and target actions logp.
         behaviour_actions_logp = batch[Columns.ACTION_LOGP]
         target_policy_dist = (
-            self.module[module_id].unwrapped()
+            self.module[module_id]
+            .unwrapped()
             .get_train_action_dist_cls()
             .from_logits(fwd_out[Columns.ACTION_DIST_INPUTS])
         )
@@ -128,9 +127,7 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
 
         # The policy gradients loss.
         pi_loss = -torch.sum(
-            target_actions_logp_time_major
-            * pg_advantages
-            * loss_mask_time_major
+            target_actions_logp_time_major * pg_advantages * loss_mask_time_major
         )
         mean_pi_loss = pi_loss / size_loss_mask
 

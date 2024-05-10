@@ -414,7 +414,7 @@ class Stats:
 
     def numpy(self, value: Any = None) -> "Stats":
         """Converts all of self's internal values to numpy (if a tensor).
-        
+
         Args:
             value: An optional non-tensor value to set the internal values list to.
 

@@ -53,7 +53,6 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_TRAINED_LIFETIME,
     NUM_EPISODES,
     NUM_EPISODES_LIFETIME,
-    NUM_MODULE_STEPS_SAMPLED_LIFETIME,
     NUM_MODULE_STEPS_TRAINED,
     NUM_SYNCH_WORKER_WEIGHTS,
     NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS,
@@ -664,7 +663,6 @@ class Impala(Algorithm):
         if not self.config.enable_rl_module_and_learner:
             return self._training_step_old_and_hybrid_api_stacks()
 
-        local_worker = self.workers.local_worker()
         do_async_updates = self.config.num_learner_workers > 0
 
         # Asynchronously request all EnvRunners to sample and return their current
@@ -681,10 +679,16 @@ class Impala(Algorithm):
 
             # Log the average number of sample results (list of episodes) received.
             self.metrics.log_value(MEAN_NUM_EPISODE_LISTS_RECEIVED, len(episode_refs))
-            self.metrics.log_value("_mean_num_episode_ts_received", len(episode_refs) * self.config.num_envs_per_env_runner * self.config.get_rollout_fragment_length())
-            self.metrics.log_value("_mean_num_episode_ts_received_using_reduced_metrics", self.metrics.peek(
-                        ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED, default=0
-                    ))
+            self.metrics.log_value(
+                "_mean_num_episode_ts_received",
+                len(episode_refs)
+                * self.config.num_envs_per_env_runner
+                * self.config.get_rollout_fragment_length(),
+            )
+            self.metrics.log_value(
+                "_mean_num_episode_ts_received_using_reduced_metrics",
+                self.metrics.peek(ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED, default=0),
+            )
 
         # Log lifetime counts for env- and agent steps.
         if env_runner_metrics:
@@ -706,12 +710,7 @@ class Impala(Algorithm):
         # "Batch" collected episode refs into groups, such that exactly
         # `total_train_batch_size` timesteps are sent to
         # `LearnerGroup.update_from_episodes()`.
-        # TEST: sample only
-        episode_refs_for_learner_group = self._pre_queue_episode_refs(
-            episode_refs
-        )
-        #episode_refs_for_learner_group = []
-        # END TEST!
+        episode_refs_for_learner_group = self._pre_queue_episode_refs(episode_refs)
 
         # Call the LearnerGroup's `update_from_episodes` method.
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
@@ -722,13 +721,7 @@ class Impala(Algorithm):
             rl_module_state = None
             learner_results = None
 
-            _ts_sent = 0
-            #_ts_received = 0
-
             for to_learner_group in episode_refs_for_learner_group:
-
-                _ts_sent += len(to_learner_group) * self.config.num_envs_per_env_runner * self.config.get_rollout_fragment_length()
-
                 learner_results = self.learner_group.update_from_episodes(
                     episodes=to_learner_group,
                     async_update=do_async_updates,
@@ -742,31 +735,10 @@ class Impala(Algorithm):
                         rl_module_state = r.pop(
                             "_rl_module_state_after_update", rl_module_state
                         )
-                        #_ts_received += r[ALL_MODULES][NUM_ENV_STEPS_TRAINED].peek()
                     self.metrics.log_n_dicts(
                         stats_dicts=results_from_n_learners,
                         key=LEARNER_RESULTS,
-                        #_do_print=True,
                     )
-
-            self.metrics.log_value(
-                key="_mean_num_episode_ts_sent_to_learner_group",
-                value=_ts_sent,
-            )
-            #self.metrics.log_value(
-            #    key="_mean_num_episode_ts_received_from_learner_group",
-            #    value=_ts_received,
-            #)
-            if np.isnan(self.metrics.peek(
-                LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED, default=0
-            )):
-                assert False
-            self.metrics.log_value(
-                key="_mean_num_episode_ts_received_from_learner_group_using_reduced_metrics",
-                value=self.metrics.peek(
-                    LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED, default=0
-                ),
-            )
 
         # Update LearnerGroup's own stats.
         self.metrics.log_dict(self.learner_group.get_stats(), key=LEARNER_GROUP)
@@ -788,41 +760,16 @@ class Impala(Algorithm):
         self.metrics.log_value(
             NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS, 1, reduce="sum"
         )
-        if (
-            learner_results
-            and len(learner_results[0]) > 0
-            and learner_results[0][0]
-        ):
-            #update_results[ALL_MODULES].update(self.learner_group.get_stats())
-            #module_ids_to_update = (
-            #    set(k for l in learner_results for k in l[0].keys())
-            #    - {ALL_MODULES}
-            #)
-
-            # Perform additional updates on those modules that delivered results.
-            #additional_results = self.learner_group.additional_update(
-            #    async_update=do_async_updates,
-            #    module_ids_to_update=module_ids_to_update,
-            #    timestep=self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0),
-            #    # TODO (sven): Feels hacked, but solves the problem of algos inheriting
-            #    #  from IMPALA (like APPO). In the old stack, we didn't have this
-            #    #  problem b/c IMPALA didn't need to call any additional update methods
-            #    #  as the entropy- and lr-schedules were handled by
-            #    #  `Policy.on_global_var_update()`.
-            #    **self._get_additional_update_kwargs(learner_results),
-            #)
-            #if not do_async_updates:
-            #    additional_results = [additional_results]
-            #for results_from_n_learners in additional_results:
-            #    self.metrics.log_n_dicts(results_from_n_learners, key=LEARNER_RESULTS)
-
+        if learner_results and len(learner_results[0]) > 0 and learner_results[0][0]:
             # Merge available EnvRunner states into local worker's EnvRunner state.
             # Broadcast merged EnvRunner state AND new model weights back to all remote
             # EnvRunners.
-
-            if self.metrics.peek(
-                NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS
-            ) >= self.config.broadcast_interval:
+            if (
+                self.metrics.peek(
+                    NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS
+                )
+                >= self.config.broadcast_interval
+            ):
                 self.metrics.set_value(
                     NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS, 0
                 )
@@ -840,7 +787,6 @@ class Impala(Algorithm):
         return self.metrics.reduce()
 
     def _sample_and_get_connector_states(self):
-
         def _remote_sample_get_state_and_metrics(_worker):
             _episodes = _worker.sample()
             # Get the EnvRunner's connector states.
@@ -880,9 +826,11 @@ class Impala(Algorithm):
             episodes = self.workers.local_worker().sample()
             env_runner_metrics = [self.workers.local_worker().get_metrics()]
             episode_refs = [ray.put(episodes)]
-            connector_states = [self.workers.local_worker().get_state(
-                components=["env_to_module_connector", "module_to_env_connector"]
-            )]
+            connector_states = [
+                self.workers.local_worker().get_state(
+                    components=["env_to_module_connector", "module_to_env_connector"]
+                )
+            ]
 
         return (
             episode_refs,

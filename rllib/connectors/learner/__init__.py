@@ -14,7 +14,7 @@ from ray.rllib.connectors.learner.add_next_observations_from_episodes_to_train_b
     AddNextObservationsFromEpisodesToTrainBatch,
 )
 from ray.rllib.connectors.learner.add_one_ts_to_episodes_and_truncate import (
-    AddOneTsToEpisodesAndTruncate
+    AddOneTsToEpisodesAndTruncate,
 )
 from ray.rllib.connectors.learner.learner_connector_pipeline import (
     LearnerConnectorPipeline,

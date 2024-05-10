@@ -912,12 +912,14 @@ class Algorithm(Trainable, AlgorithmBase):
         #  inside the `training_step` as well. See the new IMPALA for an example.
         if self.config.enable_env_runner_and_connector_v2:
             if not self.config._dont_auto_sync_env_runner_states:
-                # Synchronize EnvToModule and ModuleToEnv connector states and broadcast new
-                # states back to all EnvRunners.
+                # Synchronize EnvToModule and ModuleToEnv connector states and broadcast
+                # new states back to all EnvRunners.
                 with self.metrics.log_time((TIMERS, SYNCH_ENV_CONNECTOR_STATES_TIMER)):
                     self.workers.sync_env_runner_states(
                         config=self.config,
-                        env_steps_sampled=self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME),
+                        env_steps_sampled=self.metrics.peek(
+                            NUM_ENV_STEPS_SAMPLED_LIFETIME
+                        ),
                     )
             # Compile final ResultDict from `train_results` and `eval_results`. Note
             # that, as opposed to the old API stack, EnvRunner stats should already be
@@ -3504,9 +3506,9 @@ class Algorithm(Trainable, AlgorithmBase):
         results.update(results["sampler_results"])
 
         results["num_healthy_workers"] = self.workers.num_healthy_remote_workers()
-        results["num_in_flight_async_sample_reqs"] = (
-            self.workers.num_in_flight_async_reqs()
-        )
+        results[
+            "num_in_flight_async_sample_reqs"
+        ] = self.workers.num_in_flight_async_reqs()
         results[
             "num_remote_worker_restarts"
         ] = self.workers.num_remote_worker_restarts()

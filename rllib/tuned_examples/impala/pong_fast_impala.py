@@ -17,6 +17,7 @@ def _env_creator(cfg):
         framestack=4,
     )
 
+
 register_env("env", _env_creator)
 
 
@@ -37,7 +38,9 @@ config = (
         },
         clip_rewards=True,
     )
-    .env_runners(num_envs_per_env_runner=5)  # TODO (sven): Maybe 5 like in old tuned_example?
+    .env_runners(
+        num_envs_per_env_runner=5
+    )  # TODO (sven): Maybe 5 like in old tuned_example?
     .training(
         train_batch_size_per_learner=500,
         grad_clip=100.0,

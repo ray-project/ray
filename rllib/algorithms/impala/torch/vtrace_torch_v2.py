@@ -35,7 +35,7 @@ def make_time_major(
         trajectory_len is None or recurrent_seq_len is None
     ), "Either trajectory_len or recurrent_seq_len must be set."
 
-    # Figure out the sizes of the final B and T axes. 
+    # Figure out the sizes of the final B and T axes.
     if recurrent_seq_len:
         B = recurrent_seq_len.shape[0]
         T = tensor.shape[0] // B
@@ -46,10 +46,16 @@ def make_time_major(
         B = tensor_0 // T
         if B != (tensor_0 / T):
             assert len(tensor.shape) == 1
-            tensor = torch.cat([
-                tensor,
-                torch.zeros(trajectory_len - tensor_0 % T, dtype=tensor.dtype, device=tensor.device),
-            ])
+            tensor = torch.cat(
+                [
+                    tensor,
+                    torch.zeros(
+                        trajectory_len - tensor_0 % T,
+                        dtype=tensor.dtype,
+                        device=tensor.device,
+                    ),
+                ]
+            )
             B += 1
 
     # Reshape tensor (break up B axis into 2 axes: B and T).

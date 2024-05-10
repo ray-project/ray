@@ -629,9 +629,11 @@ class SingleAgentEnvRunner(EnvRunner):
         inference_only: bool = True,
         module_ids=None,
     ) -> Dict[str, Any]:
-        components = force_list(components if components is not None else [
-            "rl_module", "env_to_module_connector", "module_to_env_connector"
-        ])
+        components = force_list(
+            components
+            if components is not None
+            else ["rl_module", "env_to_module_connector", "module_to_env_connector"]
+        )
         state = {
             WEIGHTS_SEQ_NO: self._weights_seq_no,
             NUM_ENV_STEPS_SAMPLED_LIFETIME: (
