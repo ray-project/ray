@@ -221,7 +221,7 @@ class JobSupervisor:
 
         self._runner = runner
 
-        # Job driver (entrypoint) is executed in a synchronous fashion,
+        # Job driver (entrypoint) is executed in an synchronous fashion,
         # therefore is performed as a background operation updating Ray Job's
         # state asynchronously upon job's driver completing the execution
         self._waiting_task = self._loop.create_task(
@@ -258,7 +258,7 @@ class JobSupervisor:
             driver_agent_http_address = f"http://{driver_node_info.node_ip}:{driver_node_info.dashboard_agent_port}"
 
             # TODO mark as running only after driver has been launched
-            # Mark the job as running
+            # Mark job as running
             await self._job_info_client.put_status(
                 self._job_id,
                 JobStatus.RUNNING,
@@ -267,6 +267,11 @@ class JobSupervisor:
                     "driver_node_id": driver_node_info.node_id,
                 },
             )
+            # Record corresponding job's event
+            if self.event_logger:
+                self.event_logger.info(
+                    f"Ray job {self._job_id} transitions to {JobStatus.RUNNING}", submission_id=self._job_id
+                )
 
             result: JobExecutionResult = await runner.execute_sync.remote(
                 resources_specified=resources_specified,
@@ -294,12 +299,18 @@ class JobSupervisor:
         finally:
             self._logger.info(f"Updating job status to {status}")
 
+            # Update job status in GCS
             await self._job_info_client.put_status(
                 self._job_id,
                 status,
                 driver_exit_code=exit_code,
                 message=message,
             )
+            # Record corresponding job's event
+            if self.event_logger:
+                self.event_logger.info(
+                    f"Ray job {self._job_id} completed with status {status}", submission_id=self._job_id
+                )
 
             return status
 
@@ -517,13 +528,13 @@ class JobSupervisor:
             if job_status and not job_status.is_terminal() and error_message:
                 self._logger.info(f"Updating job status to {job_status.FAILED} (current: {job_status})")
 
+                # Update job's status in GCS
                 await self._job_info_client.put_status(
                     self._job_id,
                     JobStatus.FAILED,
                     message=error_message,
                 )
-
-                # Record corresponding job event
+                # Record corresponding job's event
                 if self.event_logger:
                     self.event_logger.error(
                         f"Completed Ray job {self._job_id} with a status {JobStatus.FAILED}: {error_message}",
