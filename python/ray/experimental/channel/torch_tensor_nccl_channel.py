@@ -36,6 +36,7 @@ class TorchTensorNcclChannel(ChannelInterface):
         import torch
 
         from ray.air._internal import torch_utils
+        from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
         self.torch: ModuleType = torch
 
@@ -57,7 +58,8 @@ class TorchTensorNcclChannel(ChannelInterface):
                 f'Actor\'s default device has type "{self._device.type}", need "cuda"'
             )
 
-        assert typ.transport == "nccl"
+        assert isinstance(typ, TorchTensorType)
+        assert typ.transport == typ.NCCL
         self._typ = typ
 
         ctx = ChannelContext.get_current()
@@ -85,11 +87,9 @@ class TorchTensorNcclChannel(ChannelInterface):
 
     def ensure_registered_as_writer(self):
         assert self._nccl_group is not None, "Actor is not part of a NCCL group"
-        return self._writer_registered, "Actor is not the writer"
 
     def ensure_registered_as_reader(self) -> bool:
         assert self._nccl_group is not None, "Actor is not part of a NCCL group"
-        return self._reader_registered, "Actor is not a reader"
 
     def __reduce__(self):
         return (self.__class__, (self._writer, self._readers, self._typ, self._device))

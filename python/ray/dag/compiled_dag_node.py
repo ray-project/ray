@@ -231,15 +231,14 @@ class CompiledTask:
         # check type hints, if any.
         self.output_wrapper_fn = None
         if self.dag_node.type_hint is not None:
-            if isinstance(self.dag_node.type_hint, TorchTensorType):
+            if (
+                isinstance(self.dag_node.type_hint, TorchTensorType)
+                and dag_node.type_hint.transport != TorchTensorType.NCCL
+            ):
                 # Wrap outputs produced by this task to indicate that it
                 # should be specially serialized.
                 self.output_wrapper_fn = lambda t: _TorchTensorWrapper(
                     t, self.dag_node.type_hint
-                )
-            else:
-                raise ValueError(
-                    "DAGNode.with_type_hint may only be called on " "TorchTensorType"
                 )
 
     @property

@@ -104,9 +104,7 @@ class NcclWorker:
         timeit("exec_nccl_gpu", _run)
 
 
-def exec_ray_dag(
-    label, sender, receiver, use_nccl=False, use_adag=True
-):
+def exec_ray_dag(label, sender, receiver, use_nccl=False, use_adag=True):
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
         dag = sender.send.bind(SHAPE, DTYPE, inp)
@@ -162,6 +160,7 @@ def exec_ray_dag_ipc(label, sender, receiver, use_nccl=False):
         )
 
     compiled_dag = dag.experimental_compile(buffer_size_bytes=int(SHAPE[0] * 3))
+    # Flag that each run can set if it sees incorrect results.
     ok = [True]
 
     def _run():
@@ -301,9 +300,7 @@ def exec_ray_core_gpu():
     time.sleep(1)
     sender = TorchTensorWorker.options(num_gpus=1).remote()
     receiver = TorchTensorWorker.options(num_gpus=1).remote()
-    return exec_ray_dag(
-        "exec_ray_core_gpu", sender, receiver, use_adag=False
-    )
+    return exec_ray_dag("exec_ray_core_gpu", sender, receiver, use_adag=False)
 
 
 def main():
@@ -338,6 +335,8 @@ def main():
 
 
 if __name__ == "__main__":
+    import argparse
+
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--tensor-size-bytes",

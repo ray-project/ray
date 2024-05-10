@@ -60,6 +60,8 @@ class _NcclGroup:
 
         self._cuda_stream: Optional["cp.cuda.ExternalStream"] = None
         if cuda_stream is not None:
+            assert rank is not None, "NCCL actor has no rank assigned"
+
             import cupy as cp
 
             from ray.air._internal import torch_utils
