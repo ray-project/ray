@@ -12,7 +12,6 @@ from ray.util.annotations import PublicAPI
 logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_BUFFER_SIZE = int(100 * 1e6)  # 100MB
-MIN_BUFFER_SIZE = int(100 * 1e3)  # 100KB
 
 
 def _get_node_id(self) -> "ray.NodeID":
@@ -149,8 +148,7 @@ class Channel(ChannelInterface):
         if typ is None:
             typ = SharedMemoryType(DEFAULT_MAX_BUFFER_SIZE)
         elif isinstance(typ, int):
-            buffer_size_bytes = max(typ, MIN_BUFFER_SIZE)
-            typ = SharedMemoryType(buffer_size_bytes)
+            typ = SharedMemoryType(typ)
         elif not isinstance(typ, SharedMemoryType):
             raise ValueError(
                 "`typ` must be an `int` representing the max buffer size in "

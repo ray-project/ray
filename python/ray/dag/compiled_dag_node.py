@@ -156,7 +156,6 @@ def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
         input_reader.end_read()
         return False
 
-
     for idx, output in zip(task.input_channel_idxs, res):
         task.resolved_inputs[idx] = output
 

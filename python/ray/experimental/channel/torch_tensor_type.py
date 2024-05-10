@@ -12,6 +12,8 @@ if TYPE_CHECKING:
 # This shouldn't affect performance because the buffer is allocated once and
 # when transferring across nodes, only the serialized buffer is copied.
 TENSOR_BUFFER_PADDING_FRACTION = 0.2
+# 100KB so that we have room to store an exception if needed.
+MIN_TENSOR_BUFFER_SIZE = 100_000
 
 
 @PublicAPI(stability="alpha")
@@ -20,7 +22,10 @@ class TorchTensorType(ChannelOutputType):
     NCCL = "nccl"
 
     def __init__(
-        self, shape: Union[int, Tuple[int], str], dtype: "torch.dtype", transport: Optional[str] = None
+        self,
+        shape: Union[int, Tuple[int], str],
+        dtype: "torch.dtype",
+        transport: Optional[str] = None,
     ):
         self.shape = shape
         self.dtype = dtype
@@ -35,6 +40,8 @@ class TorchTensorType(ChannelOutputType):
         default_device = torch_utils.get_devices()[0]
         torch_tensor_serializer = _TorchTensorSerializer(default_device)
 
+        # TODO(swang): Custom serializer should only kick in if ChannelContext
+        # set.
         CUSTOM_SERIALIZERS = (
             (
                 _TorchTensorWrapper,
@@ -95,6 +102,7 @@ class TorchTensorType(ChannelOutputType):
                 (num_elements * element_size_bytes)
                 * (1 + TENSOR_BUFFER_PADDING_FRACTION)
             )
+            buffer_size_bytes = max(buffer_size_bytes, MIN_TENSOR_BUFFER_SIZE)
 
             return Channel(writer, readers, buffer_size_bytes)
 

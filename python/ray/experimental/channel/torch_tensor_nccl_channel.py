@@ -5,9 +5,9 @@ from typing import TYPE_CHECKING, List, Optional
 import ray
 import ray.util.serialization
 from ray.experimental.channel import ChannelContext
-from ray.experimental.channel.shared_memory_channel import SharedMemoryType
 from ray.experimental.channel.common import ChannelInterface
 from ray.experimental.channel.nccl_group import _NcclGroup
+from ray.experimental.channel.shared_memory_channel import SharedMemoryType
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
@@ -35,9 +35,9 @@ class TorchTensorNcclChannel(ChannelInterface):
         device: Optional["torch.device"] = None,
     ):
         import torch
-        from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
         from ray.air._internal import torch_utils
+        from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
         self.torch: ModuleType = torch
 
@@ -86,14 +86,16 @@ class TorchTensorNcclChannel(ChannelInterface):
             self._reader_registered = True
 
         self._meta_channel: Optional[Channel] = None
-        if self._writer_registered and (self._typ.shape == TorchTensorType.AUTO or self._typ.dtype ==
-            TorchTensorType.AUTO):
+        if self._writer_registered and (
+            self._typ.shape == TorchTensorType.AUTO
+            or self._typ.dtype == TorchTensorType.AUTO
+        ):
             # Allocate 1KiB for metadata.
             metadata_type = SharedMemoryType(buffer_size_bytes=1_000)
             self._meta_channel = metadata_type.create_channel(
-                    self._writer,
-                    self._readers,
-                    )
+                self._writer,
+                self._readers,
+            )
 
     def ensure_registered_as_writer(self):
         assert self._nccl_group is not None, "Actor is not part of a NCCL group"
@@ -149,9 +151,7 @@ class TorchTensorNcclChannel(ChannelInterface):
         # copied during deserialization.
         self._meta_channel.end_read()
 
-        buf = self.torch.zeros(
-            shape, dtype=dtype, device=self._device
-        )
+        buf = self.torch.zeros(shape, dtype=dtype, device=self._device)
         self._nccl_group.recv(buf, self._writer_rank)
         return buf
 
