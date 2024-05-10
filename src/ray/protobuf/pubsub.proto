@@ -93,7 +93,7 @@ message WorkerRefRemovedMessage {
 message WorkerObjectLocationsPubMessage {
   // The IDs of the nodes that this object appeared on or was evicted by.
   repeated bytes node_ids = 1;
-  // The size of the object in bytes.
+  // The size of the object in bytes. 0 means the size is unknown (e.g. Task not finished yet).
   uint64 object_size = 2;
   // The object has been spilled to this URL. This should be set xor the above
   // fields are set.

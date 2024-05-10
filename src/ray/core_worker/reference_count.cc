@@ -153,7 +153,7 @@ void ReferenceCounter::AddObjectRefStats(
     if (it != pinned_objects.end()) {
       ref_proto->set_pinned_in_memory(true);
       // If some info isn't available, fallback to getting it from the pinned info.
-      if (ref.second.object_size <= 0) {
+      if (ref.second.object_size == 0) {
         ref_proto->set_object_size(it->second.first);
       }
       if (ref.second.call_site.empty()) {
@@ -194,7 +194,7 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
                                       const std::vector<ObjectID> &inner_ids,
                                       const rpc::Address &owner_address,
                                       const std::string &call_site,
-                                      const int64_t object_size,
+                                      const uint64_t object_size,
                                       bool is_reconstructable,
                                       bool add_local_ref,
                                       const absl::optional<NodeID> &pinned_at_raylet_id) {
@@ -232,7 +232,7 @@ void ReferenceCounter::AddDynamicReturn(const ObjectID &object_id,
                                     {},
                                     owner_address,
                                     outer_it->second.call_site,
-                                    /*object_size=*/-1,
+                                    /*object_size=*/0,
                                     outer_it->second.is_reconstructable,
                                     /*add_local_ref=*/false,
                                     absl::optional<NodeID>()));
@@ -267,7 +267,7 @@ void ReferenceCounter::OwnDynamicStreamingTaskReturnRef(const ObjectID &object_i
                                     {},
                                     owner_address,
                                     outer_it->second.call_site,
-                                    /*object_size=*/-1,
+                                    /*object_size=*/0,
                                     outer_it->second.is_reconstructable,
                                     /*add_local_ref=*/true,
                                     absl::optional<NodeID>()));
@@ -316,7 +316,7 @@ bool ReferenceCounter::AddOwnedObjectInternal(
     const std::vector<ObjectID> &inner_ids,
     const rpc::Address &owner_address,
     const std::string &call_site,
-    const int64_t object_size,
+    const uint64_t object_size,
     bool is_reconstructable,
     bool add_local_ref,
     const absl::optional<NodeID> &pinned_at_raylet_id) {
@@ -363,7 +363,7 @@ bool ReferenceCounter::AddOwnedObjectInternal(
   return true;
 }
 
-void ReferenceCounter::UpdateObjectSize(const ObjectID &object_id, int64_t object_size) {
+void ReferenceCounter::UpdateObjectSize(const ObjectID &object_id, uint64_t object_size) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it != object_id_refs_.end()) {
@@ -1439,8 +1439,8 @@ absl::optional<LocalityData> ReferenceCounter::GetLocalityData(
   }
 
   // The size of this object.
-  const auto object_size = it->second.object_size;
-  if (object_size < 0) {
+  const uint64_t object_size = it->second.object_size;
+  if (object_size == 0) {
     // We don't know the object size so we can't returned valid locality data.
     RAY_LOG(DEBUG) << "Reference [" << it->second.call_site << "] for object "
                    << object_id
@@ -1461,8 +1461,7 @@ absl::optional<LocalityData> ReferenceCounter::GetLocalityData(
   }
 
   // We should only reach here if we have valid locality data to return.
-  absl::optional<LocalityData> locality_data(
-      {static_cast<uint64_t>(object_size), std::move(node_ids)});
+  absl::optional<LocalityData> locality_data({object_size, std::move(node_ids)});
   return locality_data;
 }
 
@@ -1539,7 +1538,7 @@ bool ReferenceCounter::IsObjectPendingCreation(const ObjectID &object_id) const 
 void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
   const auto &object_id = it->first;
   const auto &locations = it->second.locations;
-  auto object_size = it->second.object_size;
+  const auto object_size = it->second.object_size;
   const auto &spilled_url = it->second.spilled_url;
   const auto &spilled_node_id = it->second.spilled_node_id;
   const auto &optional_primary_node_id = it->second.pinned_at_raylet_id;
@@ -1579,10 +1578,7 @@ void ReferenceCounter::FillObjectInformationInternal(
   for (const auto &node_id : it->second.locations) {
     object_info->add_node_ids(node_id.Binary());
   }
-  int64_t object_size = it->second.object_size;
-  if (object_size > 0) {
-    object_info->set_object_size(it->second.object_size);
-  }
+  object_info->set_object_size(it->second.object_size);
   object_info->set_spilled_url(it->second.spilled_url);
   object_info->set_spilled_node_id(it->second.spilled_node_id.Binary());
   auto primary_node_id = it->second.pinned_at_raylet_id.value_or(NodeID::Nil());

@@ -634,7 +634,7 @@ TEST_F(TaskManagerTest, TestLocalityDataAdded) {
   auto spec = CreateTaskHelper(1, {});
   auto return_id = spec.ReturnId(0);
   auto node_id = NodeID::FromRandom();
-  int object_size = 100;
+  uint64_t object_size = 100;
   store_->GetAsync(return_id, [&](std::shared_ptr<RayObject> obj) {
     // By the time the return object is available to get, we should be able
     // to get the locality data too.

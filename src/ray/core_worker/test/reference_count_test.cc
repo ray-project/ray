@@ -645,7 +645,7 @@ TEST_F(ReferenceCountTest, TestHandleObjectSpilled) {
   rpc::Address address;
   address.set_ip_address("1234");
 
-  int64_t object_size = 100;
+  uint64_t object_size = 100;
   rc->AddOwnedObject(obj1,
                      {},
                      address,
@@ -675,7 +675,7 @@ TEST_F(ReferenceCountTest, TestGetLocalityData) {
 
   // Owned object with defined object size and pinned node location should return valid
   // locality data.
-  int64_t object_size = 100;
+  uint64_t object_size = 100;
   rc->AddOwnedObject(obj1,
                      {},
                      address,
