@@ -146,14 +146,16 @@ def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
     res = None
     try:
         res = input_reader.begin_read()
-    except ValueError as exc:
-        # ValueError is raised if a type hint was set and the returned
-        # type did not match the hint.
+    except IOError:
+        # Channel closed. Exit the loop.
+        return True
+    except Exception as exc:
+        # Previous task raised an application-level exception.
+        # Propagate it and skip the actual task.
         output_writer.write(exc)
         input_reader.end_read()
         return False
-    except IOError:
-        return True
+
 
     for idx, output in zip(task.input_channel_idxs, res):
         task.resolved_inputs[idx] = output
