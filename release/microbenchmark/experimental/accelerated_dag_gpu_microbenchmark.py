@@ -14,7 +14,7 @@ from ray.dag import InputNode
 from ray.tests.conftest import *  # noqa
 from ray.util.collective.collective_group import nccl_util
 
-from ray.dag.experimental.types import TorchTensorType
+from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray._private.ray_microbenchmark_helpers import timeit
 
 # from ray.experimental.torch_serializer import TorchTensor

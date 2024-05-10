@@ -121,13 +121,13 @@ class _TorchTensorWrapper:
                 "DAG nodes wrapped with ray.experimental.TorchTensor must return a "
                 "torch.Tensor."
             )
-        if tensor.shape != typ.shape:
+        if typ.shape != TorchTensorType.AUTO and tensor.shape != typ.shape:
             raise ValueError(
                 "DAG node wrapped with ray.experimental.TorchTensor(shape="
                 f"{typ.shape}) returned "
                 f"a torch.Tensor of the shape {tensor.shape}"
             )
-        if tensor.dtype != typ.dtype:
+        if typ.shape != TorchTensorType.AUTO and tensor.dtype != typ.dtype:
             raise ValueError(
                 "DAG node wrapped with ray.experimental.TorchTensor(dtype="
                 f"{typ.dtype}) returned "

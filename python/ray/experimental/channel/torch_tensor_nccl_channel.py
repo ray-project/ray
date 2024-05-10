@@ -7,7 +7,7 @@ import ray.util.serialization
 from ray.experimental.channel import ChannelContext
 from ray.experimental.channel.common import ChannelInterface
 from ray.experimental.channel.nccl_group import _NcclGroup
-from ray.experimental.channel.shared_memory_channel import SharedMemoryType
+from ray.experimental.channel.shared_memory_channel import SharedMemoryType, Channel
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
@@ -33,6 +33,7 @@ class TorchTensorNcclChannel(ChannelInterface):
         readers: List[ray.actor.ActorHandle],
         typ: "TorchTensorType",
         device: Optional["torch.device"] = None,
+        _meta_channel: Optional["Channel"] = None,
     ):
         import torch
 
@@ -85,8 +86,8 @@ class TorchTensorNcclChannel(ChannelInterface):
         ):
             self._reader_registered = True
 
-        self._meta_channel: Optional[Channel] = None
-        if self._writer_registered and (
+        self._meta_channel: Optional[Channel] = _meta_channel
+        if self._meta_channel is None and self._writer_registered and (
             self._typ.shape == TorchTensorType.AUTO
             or self._typ.dtype == TorchTensorType.AUTO
         ):
@@ -106,7 +107,7 @@ class TorchTensorNcclChannel(ChannelInterface):
         return self._reader_registered, "Actor is not a reader"
 
     def __reduce__(self):
-        return (self.__class__, (self._writer, self._readers, self._typ, self._device))
+        return (self.__class__, (self._writer, self._readers, self._typ, self._device, self._meta_channel))
 
     def write(
         self,
@@ -145,11 +146,11 @@ class TorchTensorNcclChannel(ChannelInterface):
     def begin_read(self) -> "torch.Tensor":
         if self._meta_channel is not None:
             shape, dtype = self._meta_channel.begin_read()
+            # It's safe to release the channel because shape and dtype should get
+            # copied during deserialization.
+            self._meta_channel.end_read()
         else:
-            shape, dtype = self._type.shape, self._type.dtype
-        # It's safe to release the channel because shape and dtype should get
-        # copied during deserialization.
-        self._meta_channel.end_read()
+            shape, dtype = self._typ.shape, self._typ.dtype
 
         buf = self.torch.zeros(shape, dtype=dtype, device=self._device)
         self._nccl_group.recv(buf, self._writer_rank)
