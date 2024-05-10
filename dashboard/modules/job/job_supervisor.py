@@ -324,29 +324,68 @@ class JobSupervisor:
             ]
         )
 
-        scheduling_strategy = self._get_scheduling_strategy(resources_specified)
+        try:
+            scheduling_strategy = self._get_scheduling_strategy(resources_specified)
 
-        self._runner = self._runner_actor_cls.options(
-            name=JOB_EXECUTOR_ACTOR_NAME_TEMPLATE.format(job_id=self._job_id),
-            num_cpus=entrypoint_num_cpus,
-            num_gpus=entrypoint_num_gpus,
-            memory=entrypoint_memory,
-            resources=entrypoint_resources,
-            scheduling_strategy=scheduling_strategy,
-            runtime_env=self._get_runner_runtime_env(
-                user_runtime_env=runtime_env,
-                submission_id=self._job_id,
+            self._runner = self._runner_actor_cls.options(
+                name=JOB_EXECUTOR_ACTOR_NAME_TEMPLATE.format(job_id=self._job_id),
+                num_cpus=entrypoint_num_cpus,
+                num_gpus=entrypoint_num_gpus,
+                memory=entrypoint_memory,
+                resources=entrypoint_resources,
+                scheduling_strategy=scheduling_strategy,
+                runtime_env=self._get_runner_runtime_env(
+                    user_runtime_env=runtime_env,
+                    submission_id=self._job_id,
+                    entrypoint_resources_specified=resources_specified,
+                ),
+                namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
+            ).remote(
+                job_id=self._job_id,
+                entrypoint=self._entrypoint,
+                user_metadata=metadata or {},
                 entrypoint_resources_specified=resources_specified,
-            ),
-            namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
-        ).remote(
-            job_id=self._job_id,
-            entrypoint=self._entrypoint,
-            user_metadata=metadata or {},
-            entrypoint_resources_specified=resources_specified,
-        )
+            )
 
-        return self._runner
+            return self._runner
+
+        except Exception as e:
+            if isinstance(e, RuntimeEnvSetupError):
+                self._logger.error(
+                    f"Failed to set up runtime environment for job runner: {repr(e)}",
+                    exc_info=e,
+                )
+
+                error_message = f"Runtime environment setup failed: {repr(e)}"
+            elif isinstance(e, ActorUnschedulableError):
+                self._logger.error(
+                    f"Failed to schedule job runner actor: {repr(e)}",
+                    exc_info=e,
+                )
+
+                error_message = f"Job running actor could not be scheduled: {repr(e)}"
+            else:
+                self._logger.error(
+                    f"Unexpected failure while creating job runner actor: {repr(e)}.",
+                    exc_info=e,
+                )
+
+                error_message = f"Unexpected failure while creating job runner: {repr(e)}"
+
+            # Update job status in GCS
+            await self._job_info_client.put_status(
+                self._job_id,
+                JobStatus.FAILED,
+                message=error_message,
+            )
+            # Record corresponding job's event
+            if self.event_logger:
+                self.event_logger.error(
+                    f"Ray job {self._job_id} completed with status {JobStatus.FAILED}",
+                    submission_id=self._job_id
+                )
+
+            raise e
 
     def _get_scheduling_strategy(self, resources_specified: bool) -> SchedulingStrategyT:
         """Get the scheduling strategy for the job.
@@ -493,28 +532,10 @@ class JobSupervisor:
                             break
 
         except Exception as e:
-
-            if isinstance(e, RuntimeEnvSetupError):
-                self._logger.error(
-                    f"Failed to set up runtime_env for job: {repr(e)}",
-                    exc_info=e,
-                )
-
-                error_message = f"Runtime environment setup failed: {repr(e)}"
-
-            elif isinstance(e, ActorUnschedulableError):
-                self._logger.error(
-                    f"Failed to schedule job because the supervisor actor could not be scheduled: {repr(e)}",
-                    exc_info=e,
-                )
-
-                error_message = f"Job supervisor actor could not be scheduled: {repr(e)}"
-
-            else:
-                self._logger.error(
-                    f"Job supervisor for job failed unexpectedly with: {repr(e)}.",
-                    exc_info=e,
-                )
+            self._logger.error(
+                f"Job supervisor monitoring loop failed unexpectedly with: {repr(e)}.",
+                exc_info=e,
+            )
 
         finally:
             # Refresh job's status (before updating)
