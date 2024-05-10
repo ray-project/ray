@@ -813,7 +813,7 @@ class JobRunner:
             # Set JobConfig for the child process (runtime_env, metadata).
             RAY_JOB_CONFIG_JSON_ENV_VAR: json.dumps(
                 {
-                    "runtime_env": self._get_driver_runtime_env(resources_specified),
+                    "runtime_env": self._get_driver_runtime_env(),
                     "metadata": self._metadata,
                 }
             ),
