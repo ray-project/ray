@@ -8,7 +8,10 @@ parser = add_rllib_example_script_args()
 # and (if needed) use their values toset up `config` below.
 args = parser.parse_args()
 
-register_env("multi_agent_pendulum", lambda _: MultiAgentPendulum({"num_agents": 2}))
+register_env(
+    "multi_agent_pendulum",
+    lambda _: MultiAgentPendulum({"num_agents": args.num_agents}),
+)
 
 config = (
     PPOConfig()
@@ -37,7 +40,7 @@ config = (
     )
     .multi_agent(
         policy_mapping_fn=lambda aid, *arg, **kw: f"p{aid}",
-        policies={"p0", "p1"},
+        policies={f"p{i}" for i in range(args.num_agents)},
     )
 )
 
