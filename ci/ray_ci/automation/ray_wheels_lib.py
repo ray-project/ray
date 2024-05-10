@@ -92,7 +92,7 @@ def download_ray_wheels_from_s3(
         directory_path: The directory to download the wheels to.
     """
     full_directory_path = os.path.join(bazel_workspace_dir, directory_path)
-    _, minor_version, _ = ray_version.split(".")
+    minor_version = ray_version.split(".")[1]
     full_platform = True if int(minor_version) % 10 == 0 else False
     wheels = _get_wheel_names(ray_version, full_platform)
     for wheel in wheels:
