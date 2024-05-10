@@ -6,6 +6,14 @@ class AcceleratorManager(ABC):
     """This class contains all the functions needed for supporting
     an accelerator family in Ray."""
 
+    _is_user_specified_resource = False
+
+    @classmethod
+    def set_user_specified_resource(cls, value=True):
+        """Set the flag to indicate that the accelerator resource is user specified."""
+        cls._is_user_specified_resource = value
+
+
     @staticmethod
     @abstractmethod
     def get_resource_name() -> str:

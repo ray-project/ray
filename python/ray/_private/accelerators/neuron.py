@@ -31,6 +31,8 @@ AWS_NEURON_INSTANCE_MAP = {
 class NeuronAcceleratorManager(AcceleratorManager):
     """AWS Inferentia and Trainium accelerators."""
 
+    _is_user_specified_resource = False
+
     @staticmethod
     def get_resource_name() -> str:
         return "neuron_cores"
@@ -73,6 +75,11 @@ class NeuronAcceleratorManager(AcceleratorManager):
                 neuron_devices = json.loads(result.stdout)
                 for neuron_device in neuron_devices:
                     nc_count += neuron_device.get("nc_count", 0)
+        else:
+            if NeuronAcceleratorManager._is_user_specified_resource:
+                logger.debug(
+                    "Neuron accelerator path not found."
+                )
         return nc_count
 
     @staticmethod

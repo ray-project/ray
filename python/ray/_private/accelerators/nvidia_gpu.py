@@ -18,6 +18,8 @@ NVIDIA_GPU_NAME_PATTERN = re.compile(r"\w+\s+([A-Z0-9]+)")
 class NvidiaGPUAcceleratorManager(AcceleratorManager):
     """Nvidia GPU accelerators."""
 
+    _is_user_specified_resource = False
+
     @staticmethod
     def get_resource_name() -> str:
         return "GPU"
@@ -60,7 +62,11 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
 
         try:
             pynvml.nvmlInit()
-        except pynvml.NVMLError:
+        except pynvml.NVMLError as e:
+            if NvidiaGPUAcceleratorManager._is_user_specified_resource:
+                logger.debug(f"NVIDIA GPU runs into error: {e}"
+                             "while initializing pynvml."
+                             "You can ignore this message if you are not using NVIDIA GPUs.")
             return None  # pynvml init failed
         device_count = pynvml.nvmlDeviceGetCount()
         cuda_device_type = None

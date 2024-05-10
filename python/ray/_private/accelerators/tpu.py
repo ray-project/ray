@@ -75,6 +75,8 @@ def _get_tpu_metadata(key: str) -> Optional[str]:
 class TPUAcceleratorManager(AcceleratorManager):
     """Google TPU accelerators."""
 
+    _is_user_specified_resource = False
+
     @staticmethod
     def get_resource_name() -> str:
         return "TPU"
@@ -116,7 +118,8 @@ class TPUAcceleratorManager(AcceleratorManager):
             numeric_entries = [int(entry) for entry in vfio_entries if entry.isdigit()]
             return len(numeric_entries)
         except FileNotFoundError as e:
-            logger.debug("Failed to detect number of TPUs: %s", e)
+            if TPUAcceleratorManager._is_user_specified_resource:
+                logger.debug("Failed to detect number of TPUs: %s", e)
             return 0
 
     @staticmethod

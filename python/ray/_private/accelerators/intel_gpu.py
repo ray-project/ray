@@ -15,6 +15,8 @@ ONEAPI_DEVICE_TYPE = "gpu"
 class IntelGPUAcceleratorManager(AcceleratorManager):
     """Intel GPU accelerators."""
 
+    _is_user_specified_resource = False
+
     @staticmethod
     def get_resource_name() -> str:
         return "GPU"
@@ -45,7 +47,10 @@ class IntelGPUAcceleratorManager(AcceleratorManager):
     def get_current_node_num_accelerators() -> int:
         try:
             import dpctl
-        except ImportError:
+        except ImportError as e:
+            if IntelGPUAcceleratorManager._is_user_specified_resource:
+                logger.warning("Intel GPU support requires the 'dpctl' package," 
+                            "which is not installed.")
             dpctl = None
         if dpctl is None:
             return 0
@@ -55,8 +60,12 @@ class IntelGPUAcceleratorManager(AcceleratorManager):
             dev_info = ONEAPI_DEVICE_BACKEND_TYPE + ":" + ONEAPI_DEVICE_TYPE
             context = dpctl.SyclContext(dev_info)
             num_gpus = context.device_count
-        except Exception:
-            num_gpus = 0
+        except Exception as e:
+            if IntelGPUAcceleratorManager._is_user_specified_resource:
+                logger.debug(f"Intel GPU ran into the following error while"
+                            "getting number of GPUs: {e},"
+                            "you can ignore this message if you are not using Intel GPUs.")
+                num_gpus = 0
         return num_gpus
 
     @staticmethod
