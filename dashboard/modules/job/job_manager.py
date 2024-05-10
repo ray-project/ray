@@ -184,7 +184,7 @@ class JobManager:
 
         except Exception as e:
             logger.error(
-                f"Failed to start supervisor actor for job {submission_id}: {e}"
+                f"Failed to start Job Supervisor and launch driver for job {submission_id}: {e}"
             )
 
             # TODO move to JS
@@ -192,7 +192,7 @@ class JobManager:
                 submission_id,
                 JobStatus.FAILED,
                 message=(
-                    f"Failed to start supervisor actor {submission_id}: {e}"
+                    f"Failed to start Job Supervisor and launch driver: {e}"
                 ),
             )
 
