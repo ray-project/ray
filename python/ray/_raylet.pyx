@@ -697,12 +697,10 @@ cdef CObjectLocationPtrToDict(CObjectLocation* c_object_location):
         - node_ids:
             The hex IDs of the nodes that have a copy of this object.
         - object_size:
-            The size of data + metadata in bytes.
+            The size of data + metadata in bytes, or nonexist if it's unknown.
         - did_spill:
             Whether or not this object was spilled.
     """
-    object_size = c_object_location.GetObjectSize()
-    did_spill = c_object_location.GetDidSpill()
 
     node_ids = set()
     c_node_ids = c_object_location.GetNodeIDs()
@@ -720,12 +718,16 @@ cdef CObjectLocationPtrToDict(CObjectLocation* c_object_location):
         node_ids.add(
             c_object_location.GetSpilledNodeID().Hex().decode("ascii"))
 
-    return {
+    ret = {
         "node_ids": list(node_ids),
-        "object_size": object_size,
-        "did_spill": did_spill,
+        "did_spill": c_object_location.GetDidSpill()
     }
 
+    object_size = c_object_location.GetObjectSize()
+    if object_size > 0:
+        ret["object_size"] = object_size
+
+    return ret
 
 @cython.auto_pickle(False)
 cdef class Language:
@@ -3829,6 +3831,27 @@ cdef class CoreWorker:
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker().Delete(
                 free_ids, local_only))
+
+    def get_local_object_locations(self, object_refs):
+        cdef:
+            c_vector[optional[CObjectLocation]] results
+            c_vector[CObjectID] lookup_ids = ObjectRefsToVector(object_refs)
+
+        with nogil:
+            check_status(
+                CCoreWorkerProcess.GetCoreWorker().GetLocalObjectLocations(
+                    lookup_ids, &results))
+
+        object_locations = {}
+        for i in range(results.size()):
+            # core_worker will return a nullptr for objects that couldn't be
+            # located
+            if not results[i].has_value():
+                continue
+            else:
+                object_locations[object_refs[i]] = \
+                    CObjectLocationPtrToDict(&results[i].value())
+        return object_locations
 
     def get_object_locations(self, object_refs, int64_t timeout_ms):
         cdef:

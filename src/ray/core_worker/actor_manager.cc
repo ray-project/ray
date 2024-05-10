@@ -135,7 +135,7 @@ bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                                        /*inner_ids=*/{},
                                        caller_address,
                                        call_site,
-                                       /*object_size*/ -1,
+                                       /*object_size=*/0,
                                        /*is_reconstructable=*/true,
                                        /*add_local_ref=*/false);
   }

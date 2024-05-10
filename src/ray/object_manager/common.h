@@ -45,7 +45,7 @@ using SpaceReleasedCallback = std::function<void()>;
 /// A callback to call when a spilled object needs to be returned to the object store.
 using RestoreSpilledObjectCallback =
     std::function<void(const ObjectID &,
-                       int64_t size,
+                       uint64_t size,
                        const std::string &,
                        std::function<void(const ray::Status &)>)>;
 
@@ -185,8 +185,8 @@ struct PlasmaObjectHeader {
 struct ObjectInfo {
   ObjectID object_id;
   bool is_mutable = false;
-  int64_t data_size = 0;
-  int64_t metadata_size = 0;
+  uint64_t data_size = 0;
+  uint64_t metadata_size = 0;
   /// Owner's raylet ID.
   NodeID owner_raylet_id;
   /// Owner's IP address.
@@ -196,7 +196,7 @@ struct ObjectInfo {
   /// Owner's worker ID.
   WorkerID owner_worker_id;
 
-  int64_t GetObjectSize() const {
+  uint64_t GetObjectSize() const {
     return data_size + metadata_size + (is_mutable ? sizeof(PlasmaObjectHeader) : 0);
   }
 

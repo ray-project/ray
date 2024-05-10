@@ -235,6 +235,7 @@ message GetObjectLocationsOwnerReply {
   // using the already defined WorkerObjectLocationsPubMessage.
   repeated WorkerObjectLocationsPubMessage object_location_infos = 1;
 }
+
 message KillActorRequest {
   // ID of the actor that is intended to be killed.
   bytes intended_actor_id = 1;

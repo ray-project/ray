@@ -633,7 +633,7 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSizeZero) {
 
   std::vector<ObjectID> object_ids;
   std::vector<std::unique_ptr<RayObject>> objects;
-  int64_t object_size = 1000;
+  uint64_t object_size = 1000;
 
   for (size_t i = 0; i < 3; i++) {
     ObjectID object_id = ObjectID::FromRandom();
@@ -667,8 +667,8 @@ TEST_F(LocalObjectManagerTest, TestSpillUptoMaxFuseCount) {
 
   std::vector<ObjectID> object_ids;
   std::vector<std::unique_ptr<RayObject>> objects;
-  int64_t total_size = 0;
-  int64_t object_size = 1000;
+  uint64_t total_size = 0;
+  uint64_t object_size = 1000;
 
   for (size_t i = 0; i < max_fused_object_count_ + 5; i++) {
     ObjectID object_id = ObjectID::FromRandom();
@@ -714,7 +714,7 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectNotEvictable) {
 
   std::vector<ObjectID> object_ids;
   std::vector<std::unique_ptr<RayObject>> objects;
-  int64_t object_size = 1000;
+  uint64_t object_size = 1000;
 
   const ObjectID object_id = ObjectID::FromRandom();
   object_ids.push_back(object_id);
@@ -745,7 +745,7 @@ TEST_F(LocalObjectManagerTest, TestSpillUptoMaxThroughput) {
 
   std::vector<ObjectID> object_ids;
   std::vector<std::unique_ptr<RayObject>> objects;
-  int64_t object_size = 1000;
+  uint64_t object_size = 1000;
   size_t total_objects = 3;
 
   // Pin 3 objects.
@@ -965,7 +965,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpilledObjects) {
   }
 
   // 2 objects should be spilled out of 3.
-  int64_t total_spill_size = 0;
+  uint64_t total_spill_size = 0;
   std::vector<ObjectID> object_ids_to_spill;
   int spilled_urls_size = free_objects_batch_size - 1;
   for (int i = 0; i < spilled_urls_size; i++) {
@@ -1415,7 +1415,7 @@ TEST_F(LocalObjectManagerFusedTest, TestMinSpillingSize) {
 
   std::vector<ObjectID> object_ids;
   std::vector<std::unique_ptr<RayObject>> objects;
-  int64_t object_size = 52;
+  uint64_t object_size = 52;
 
   for (size_t i = 0; i < 3; i++) {
     ObjectID object_id = ObjectID::FromRandom();
@@ -1477,7 +1477,7 @@ TEST_F(LocalObjectManagerFusedTest, TestMinSpillingSizeMaxFusionCount) {
   std::vector<std::unique_ptr<RayObject>> objects;
   // 20 of these objects are needed to hit the min spilling size, but
   // max_fused_object_count=15.
-  int64_t object_size = 5;
+  uint64_t object_size = 5;
 
   for (size_t i = 0; i < 40; i++) {
     ObjectID object_id = ObjectID::FromRandom();

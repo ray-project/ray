@@ -799,8 +799,9 @@ message ObjectRefInfo {
   bytes object_id = 1;
   // Language call site of the object reference (i.e., file and line number).
   string call_site = 2;
-  // Size of the object if this core worker is the owner, otherwise -1.
-  int64 object_size = 3;
+  // Size of the object if this core worker is the owner and the size is known,
+  // otherwise 0.
+  uint64 object_size = 3;
   // Number of local references to the object.
   int64 local_ref_count = 4;
   // Number of references in submitted tasks.

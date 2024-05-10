@@ -45,7 +45,7 @@ class ReferenceCounterInterface {
       const std::vector<ObjectID> &contained_ids,
       const rpc::Address &owner_address,
       const std::string &call_site,
-      const int64_t object_size,
+      const uint64_t object_size,
       bool is_reconstructable,
       bool add_local_ref,
       const absl::optional<NodeID> &pinned_at_raylet_id = absl::optional<NodeID>()) = 0;
@@ -172,7 +172,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// As long as the object_id is in scope, the inner objects should not be GC'ed.
   /// \param[in] owner_address The address of the object's owner.
   /// \param[in] call_site Description of the call site where the reference was created.
-  /// \param[in] object_size Object size if known, otherwise -1;
+  /// \param[in] object_size Object size if known, otherwise 0;
   /// \param[in] is_reconstructable Whether the object can be reconstructed
   /// through lineage re-execution.
   /// \param[in] add_local_ref Whether to initialize the local ref count to 1.
@@ -184,7 +184,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
                       const std::vector<ObjectID> &contained_ids,
                       const rpc::Address &owner_address,
                       const std::string &call_site,
-                      const int64_t object_size,
+                      const uint64_t object_size,
                       bool is_reconstructable,
                       bool add_local_ref,
                       const absl::optional<NodeID> &pinned_at_raylet_id =
@@ -250,7 +250,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   ///
   /// \param[in] object_id The ID of the object.
   /// \param[in] size The known size of the object.
-  void UpdateObjectSize(const ObjectID &object_id, int64_t object_size)
+  void UpdateObjectSize(const ObjectID &object_id, uint64_t object_size)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Add an object that we are borrowing.
@@ -619,12 +619,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
   struct Reference {
     /// Constructor for a reference whose origin is unknown.
     Reference() {}
-    Reference(std::string call_site, const int64_t object_size)
+    Reference(std::string call_site, const uint64_t object_size)
         : call_site(call_site), object_size(object_size) {}
     /// Constructor for a reference that we created.
     Reference(const rpc::Address &owner_address,
               std::string call_site,
-              const int64_t object_size,
+              const uint64_t object_size,
               bool is_reconstructable,
               const absl::optional<NodeID> &pinned_at_raylet_id)
         : call_site(call_site),
@@ -728,8 +728,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
     /// Description of the call site where the reference was created.
     std::string call_site = "<unknown>";
-    /// Object size if known, otherwise -1;
-    int64_t object_size = -1;
+    /// Object size if known, otherwise 0.
+    uint64_t object_size = 0;
     /// If this object is owned by us and stored in plasma, this contains all
     /// object locations.
     absl::flat_hash_set<NodeID> locations;
@@ -816,7 +816,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
                               const std::vector<ObjectID> &contained_ids,
                               const rpc::Address &owner_address,
                               const std::string &call_site,
-                              const int64_t object_size,
+                              const uint64_t object_size,
                               bool is_reconstructable,
                               bool add_local_ref,
                               const absl::optional<NodeID> &pinned_at_raylet_id)

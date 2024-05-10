@@ -33,7 +33,7 @@ TEST(FallbackPlasmaAllocatorTest, FallbackPassThroughTest) {
   auto plasma_directory = CreateTestDir();
   auto fallback_directory = CreateTestDir();
   int64_t kLimit = 256 * sizeof(size_t) + 2 * kMB;
-  int64_t object_size = 900 * 1024;
+  uint64_t object_size = 900 * 1024;
   PlasmaAllocator allocator(plasma_directory,
                             fallback_directory,
                             /* hugepage_enabled */ false,

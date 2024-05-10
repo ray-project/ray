@@ -262,7 +262,7 @@ class ObjectLocation {
   /// The ID of the node has the primary copy of the object.
   /// Nil if the object is pending resolution.
   const NodeID primary_node_id_;
-  /// The size of the object in bytes.
+  /// The size of the object in bytes. 0 if unknown.
   const uint64_t object_size_;
   /// The IDs of the nodes that this object appeared on or was evicted by.
   const std::vector<NodeID> node_ids_;

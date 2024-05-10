@@ -53,10 +53,10 @@ const std::string Serialize(const Allocation &allocation) {
                          allocation.mmap_size);
 }
 
-ObjectInfo CreateObjectInfo(ObjectID object_id, int64_t object_size) {
+ObjectInfo CreateObjectInfo(ObjectID object_id, uint64_t object_size) {
   ObjectInfo info;
   info.object_id = object_id;
-  info.data_size = Random<int64_t>(object_size);
+  info.data_size = Random<uint64_t>(object_size);
   info.metadata_size = object_size - info.data_size;
   info.owner_raylet_id = NodeID::FromRandom();
   info.owner_ip_address = "random_ip";
