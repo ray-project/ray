@@ -207,8 +207,6 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
                     [
                         (
                             eps_idx,
-                            # Note, we add 1 b/c the first timestep is
-                            # never sampled.
                             existing_len + i,
                         )
                         for i in range(len(eps))

@@ -15,7 +15,6 @@ from ray.rllib.algorithms.sac.sac_learner import (
     QF_TWIN_LOSS_KEY,
     QF_TWIN_PREDS,
     TD_ERROR_MEAN_KEY,
-    TD_ERROR_KEY,
     SACLearner,
 )
 from ray.rllib.core.columns import Columns
@@ -24,7 +23,7 @@ from ray.rllib.core.learner.learner import (
 )
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.metrics import ALL_MODULES
+from ray.rllib.utils.metrics import ALL_MODULES, TD_ERROR_KEY
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import ModuleID, ParamDict, TensorType
 

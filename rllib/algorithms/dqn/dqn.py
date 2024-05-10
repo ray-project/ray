@@ -16,7 +16,6 @@ import numpy as np
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.algorithms.dqn.dqn_rainbow_learner import TD_ERROR_KEY
 from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.algorithms.dqn.dqn_torch_policy import DQNTorchPolicy
 from ray.rllib.core.learner import Learner
@@ -64,6 +63,7 @@ from ray.rllib.utils.metrics import (
     REPLAY_BUFFER_UPDATE_PRIOS_TIMER,
     SAMPLE_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
+    TD_ERROR_KEY,
     TIMERS,
 )
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
