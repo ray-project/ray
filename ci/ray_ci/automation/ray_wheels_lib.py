@@ -94,7 +94,7 @@ def download_ray_wheels_from_s3(
     full_directory_path = os.path.join(bazel_workspace_dir, directory_path)
     minor_version = ray_version.split(".")[1]
     full_platform = True if int(minor_version) % 10 == 0 else False
-    wheels = _get_wheel_names(ray_version, full_platform)
+    wheels = _get_wheel_names(ray_version=ray_version, full_platform=full_platform)
     for wheel in wheels:
         s3_key = f"releases/{ray_version}/{commit_hash}/{wheel}.whl"
         download_wheel_from_s3(s3_key, full_directory_path)

@@ -167,7 +167,9 @@ def test_download_ray_wheels_from_s3(
             directory_path=tmp_dir,
         )
 
-        mock_get_wheel_names.assert_called_with(ray_version, True)
+        mock_get_wheel_names.assert_called_with(
+            ray_version=ray_version, full_platform=True
+        )
         assert mock_download_wheel.call_count == len(SAMPLE_WHEELS)
         for i, call_args in enumerate(mock_download_wheel.call_args_list):
             assert (
@@ -197,7 +199,9 @@ def test_download_ray_wheels_from_s3_partial_platform(
             directory_path=tmp_dir,
         )
 
-        mock_get_wheel_names.assert_called_with(ray_version, False)
+        mock_get_wheel_names.assert_called_with(
+            ray_version=ray_version, full_platform=False
+        )
         assert mock_download_wheel.call_count == len(SAMPLE_WHEELS)
         for i, call_args in enumerate(mock_download_wheel.call_args_list):
             assert (
