@@ -209,11 +209,6 @@ class JobSupervisor:
 
         self._runner = runner
 
-        # TODO clean up
-        if _start_signal_actor:
-            # Block in PENDING state until start signal received.
-            await _start_signal_actor.wait.remote()
-
         # Job driver (entrypoint) is executed in a synchronous fashion,
         # therefore is performed as a background operation updating Ray Job's
         # state asynchronously upon job's driver completing the execution
@@ -221,6 +216,7 @@ class JobSupervisor:
             self._execute_sync(
                 runner,
                 resources_specified=resources_specified,
+                _start_signal_actor=_start_signal_actor,
             )
         )
 
@@ -229,10 +225,21 @@ class JobSupervisor:
                 f"Started a ray job {self._job_id}.", submission_id=self._job_id
             )
 
-    async def _execute_sync(self, runner: ActorHandle, *, resources_specified: bool) -> JobStatus:
+    async def _execute_sync(
+        self,
+        runner: ActorHandle,
+        *,
+        resources_specified: bool,
+        _start_signal_actor: Optional[ActorHandle] = None
+    ) -> JobStatus:
         message: Optional[str] = None
         status: JobStatus = JobStatus.FAILED
         exit_code: Optional[int] = None
+
+        # TODO clean up
+        if _start_signal_actor:
+            # Block in PENDING state until start signal received.
+            await _start_signal_actor.wait.remote()
 
         try:
             driver_node_info: JobDriverNodeInfo = await runner.get_node_info.remote()
