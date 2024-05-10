@@ -23,7 +23,7 @@ from ray._private.ray_microbenchmark_helpers import timeit
 logger = logging.getLogger(__name__)
 
 
-SHAPE = (50_000,)
+SHAPE = None
 DTYPE = torch.float16
 
 NUM_ITERS = 10
@@ -58,17 +58,11 @@ class TorchTensorWorker:
     def __init__(self):
         self.device = torch_utils.get_devices()[0]
 
-    def send(self, shape, dtype, value: int, use_tensor):
+    def send(self, shape, dtype, value: int):
         t = torch.ones(shape, dtype=dtype, device=self.device) * value
-        if use_tensor:
-            return t
-
-        return t.numpy()
+        return t
 
     def recv(self, tensor):
-        if isinstance(tensor, np.ndarray):
-            tensor = torch.tensor(tensor)
-
         assert tensor.device == self.device
         return (tensor[0].item(), tensor.shape, tensor.dtype)
 
@@ -111,13 +105,13 @@ class NcclWorker:
 
 
 def exec_ray_dag(
-    label, sender, receiver, use_tensor=True, use_nccl=False, use_adag=True
+    label, sender, receiver, use_nccl=False, use_adag=True
 ):
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
-        dag = sender.send.bind(SHAPE, DTYPE, inp, use_tensor)
+        dag = sender.send.bind(SHAPE, DTYPE, inp)
 
-        if use_adag and use_tensor:
+        if use_adag:
             dag = dag.with_type_hint(
                 TorchTensorType(SHAPE, DTYPE, transport="nccl" if use_nccl else None)
             )
@@ -142,13 +136,21 @@ def exec_ray_dag(
             result = ray.get(dag.execute(i))
             assert result == (i, SHAPE, DTYPE)
 
-    timeit(label, _run)
+    results = timeit(label, _run)
 
     if use_adag:
         dag.teardown()
 
+    # Workaround for Ray bug in reusing GPUs too quickly.
+    # See https://github.com/ray-project/ray/issues/44821.
+    ray.kill(sender)
+    ray.kill(receiver)
+    time.sleep(1)
 
-def exec_ray_dag_ipc(label, sender, receiver, use_tensor=True, use_nccl=False):
+    return results
+
+
+def exec_ray_dag_ipc(label, sender, receiver, use_nccl=False):
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
         dag = sender.send.bind(SHAPE, DTYPE, inp)
@@ -201,12 +203,17 @@ def exec_nccl_gpu():
     comm_id = cupy.cuda.nccl.get_unique_id()
     workers = [NcclWorker.remote(2, i, comm_id) for i in range(2)]
     tasks = [worker.do_send_recv.remote(SHAPE, DTYPE) for worker in workers]
-    ray.wait(tasks, num_returns=1)
+    done_refs, _ = ray.wait(tasks, num_returns=1)
+
+    results = ray.get(done_refs[0])
 
     # Workaround for Ray bug in reusing GPUs too quickly.
+    # See https://github.com/ray-project/ray/issues/44821.
     for worker in workers:
         ray.kill(worker)
     time.sleep(1)
+
+    return results
 
 
 def _exec_torch_gpu_cpu_gpu():
@@ -244,16 +251,10 @@ def _exec_ray_put_cpu():
     ray.get(ray.put(t))
 
 
-def _exec_ray_put_np():
+def _exec_ray_put_np_zero_copy():
     i = np.random.randint(100)
     t = torch.ones(SHAPE, dtype=DTYPE) * i
     torch.as_tensor(ray.get(ray.put(t.numpy())))
-
-
-def _exec_ray_put_np_copy():
-    i = np.random.randint(100)
-    t = torch.ones(SHAPE, dtype=DTYPE) * i
-    torch.tensor(ray.get(ray.put(t.numpy())))
 
 
 def _exec_ray_put_gpu():
@@ -265,73 +266,49 @@ def _exec_ray_put_gpu():
 def exec_ray_dag_cpu():
     sender = TorchTensorWorker.options().remote()
     receiver = TorchTensorWorker.options().remote()
-    exec_ray_dag("exec_ray_dag_cpu", sender, receiver)
+    return exec_ray_dag("exec_ray_dag_cpu", sender, receiver)
 
 
-def exec_ray_core_dag_cpu():
+def exec_ray_core_cpu():
     time.sleep(1)
     sender = TorchTensorWorker.remote()
     receiver = TorchTensorWorker.remote()
-    exec_ray_dag("exec_ray_core_dag_cpu", sender, receiver, use_adag=False)
-
-
-def exec_ray_dag_np():
-    sender = TorchTensorWorker.options().remote()
-    receiver = TorchTensorWorker.options().remote()
-    exec_ray_dag("exec_ray_dag_np", sender, receiver, use_tensor=False)
+    return exec_ray_dag("exec_ray_core_cpu", sender, receiver, use_adag=False)
 
 
 def exec_ray_dag_gpu_ipc_gpu():
     time.sleep(1)
     sender = TorchIpcWorker.options(num_gpus=1).remote()
     receiver = TorchIpcWorker.options(num_gpus=1).remote()
-    exec_ray_dag_ipc("exec_ray_dag_gpu_ipc_gpu", sender, receiver)
-
-    # Workaround for Ray bug in reusing GPUs too quickly.
-    ray.kill(sender)
-    ray.kill(receiver)
-    time.sleep(1)
+    return exec_ray_dag_ipc("exec_ray_dag_gpu_ipc_gpu", sender, receiver)
 
 
 def exec_ray_dag_gpu_cpu_gpu():
     time.sleep(1)
     sender = TorchTensorWorker.options(num_gpus=1).remote()
     receiver = TorchTensorWorker.options(num_gpus=1).remote()
-    exec_ray_dag("exec_ray_dag_gpu_cpu_gpu", sender, receiver)
-
-    # Workaround for Ray bug in reusing GPUs too quickly.
-    ray.kill(sender)
-    ray.kill(receiver)
-    time.sleep(1)
+    return exec_ray_dag("exec_ray_dag_gpu_cpu_gpu", sender, receiver)
 
 
-def exec_ray_dag_gpu():
+def exec_ray_dag_gpu_nccl():
     time.sleep(1)
     sender = TorchTensorWorker.options(num_gpus=1).remote()
     receiver = TorchTensorWorker.options(num_gpus=1).remote()
-    exec_ray_dag("exec_ray_dag_gpu", sender, receiver, use_nccl=True)
-
-    # Workaround for Ray bug in reusing GPUs too quickly.
-    ray.kill(sender)
-    ray.kill(receiver)
-    time.sleep(1)
+    return exec_ray_dag("exec_ray_dag_gpu_nccl", sender, receiver, use_nccl=True)
 
 
-def exec_ray_core_dag_gpu():
+def exec_ray_core_gpu():
     time.sleep(1)
     sender = TorchTensorWorker.options(num_gpus=1).remote()
     receiver = TorchTensorWorker.options(num_gpus=1).remote()
-    exec_ray_dag(
-        "exec_ray_core_dag_gpu", sender, receiver, use_nccl=True, use_adag=False
+    return exec_ray_dag(
+        "exec_ray_core_gpu", sender, receiver, use_adag=False
     )
-
-    # Workaround for Ray bug in reusing GPUs too quickly.
-    ray.kill(sender)
-    ray.kill(receiver)
-    time.sleep(1)
 
 
 def main():
+    results = []
+
     ray.init(
         runtime_env={
             "env_vars": {
@@ -343,26 +320,34 @@ def main():
         }
     )
 
-    timeit("exec_torch_cpu_cpu", _exec_torch_cpu_cpu)
-    timeit("exec_torch_gpu", _exec_torch_gpu)
-    exec_nccl_gpu()
+    results += timeit("exec_torch_cpu_cpu", _exec_torch_cpu_cpu)
+    results += timeit("exec_torch_gpu", _exec_torch_gpu)
+    results += timeit("exec_torch_gpu_cpu_gpu", _exec_torch_gpu_cpu_gpu)
+    results += exec_nccl_gpu()
 
-    timeit("exec_torch_gpu_cpu_gpu", _exec_torch_gpu_cpu_gpu)
-    timeit("exec_pickle_cpu", _exec_pickle_cpu)
-    timeit("exec_pickle_gpu", _exec_pickle_gpu)
-    timeit("exec_ray_put_cpu", _exec_ray_put_cpu)
-    timeit("exec_ray_put_np", _exec_ray_put_np)
-    timeit("exec_ray_put_np_copy", _exec_ray_put_np_copy)
-    timeit("exec_ray_put_gpu", _exec_ray_put_gpu)
+    results += timeit("exec_ray_put_cpu", _exec_ray_put_cpu)
+    results += timeit("exec_ray_put_np_zero_copy", _exec_ray_put_np_zero_copy)
+    results += timeit("exec_ray_put_gpu", _exec_ray_put_gpu)
 
-    exec_ray_core_dag_cpu()
-    exec_ray_dag_cpu()
-    exec_ray_dag_np()
-    exec_ray_dag_gpu_cpu_gpu()
-    exec_ray_core_dag_gpu()
-    exec_ray_dag_gpu()
-    exec_ray_dag_gpu_ipc_gpu()
+    results += exec_ray_core_cpu()
+    results += exec_ray_dag_cpu()
+    results += exec_ray_core_gpu()
+    results += exec_ray_dag_gpu_cpu_gpu()
+    results += exec_ray_dag_gpu_nccl()
+    results += exec_ray_dag_gpu_ipc_gpu()
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--tensor-size-bytes",
+        type=int,
+        # 100KB
+        default=100_000,
+    )
+    args = parser.parse_args()
+
+    # Divide by 2 because we're using torch.float16.
+    SHAPE = args.tensor_size_bytes // 2
+
     main()
