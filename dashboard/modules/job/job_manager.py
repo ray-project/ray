@@ -167,6 +167,7 @@ class JobManager:
                 entrypoint=entrypoint,
                 gcs_address=self._gcs_address,
                 logs_dir=self._logs_dir,
+                startup_timeout_s=_get_job_startup_timeout_s()
             )
 
             # Job execution process is async, however we await on the
@@ -259,3 +260,12 @@ class JobManager:
                 await asyncio.sleep(self.LOG_TAIL_SLEEP_S)
             else:
                 yield "".join(lines)
+
+def _get_job_startup_timeout_s() -> float:
+    return float(
+        os.environ.get(
+            RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR,
+            DEFAULT_JOB_START_TIMEOUT_SECONDS,
+        )
+    )
+
