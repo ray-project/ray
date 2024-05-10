@@ -374,9 +374,6 @@ def _get_test_targets(
                 f'bazel query "{query}"',
             ]
         )
-        .decode("utf-8")
-        # CUDA image comes with a license header that we need to remove
-        .replace(CUDA_COPYRIGHT, "")
         .strip()
         .split(os.linesep)
     )
@@ -426,9 +423,6 @@ def _get_new_tests(prefix: str, container: TesterContainer) -> Set[str]:
     """
     local_test_targets = set(
         container.run_script_with_output(['bazel query "tests(//...)"'])
-        .decode("utf-8")
-        # CUDA image comes with a license header that we need to remove
-        .replace(CUDA_COPYRIGHT, "")
         .strip()
         .split(os.linesep)
     )
