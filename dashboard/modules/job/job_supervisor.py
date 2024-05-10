@@ -512,8 +512,12 @@ class JobSupervisor:
                 )
 
         finally:
+            # Refresh job's status (before updating)
+            job_status = await self._job_info_client.get_status(self._job_id)
             # Unless job reached terminal state mark job as failed
             if job_status and not job_status.is_terminal() and error_message:
+                self._logger.info(f"Updating job {self._job_id} status to {job_status.FAILED} (current: {job_status})")
+
                 await self._job_info_client.put_status(
                     self._job_id,
                     JobStatus.FAILED,
