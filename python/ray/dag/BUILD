@@ -1,8 +1,7 @@
 load("//bazel:python.bzl", "doctest")
-load("//bazel:python.bzl", "py_test_module_list")
 
 doctest(
-    files = glob(["**/*.py"], exclude=["**/experimental/**/*.py"]),
+    files = glob(["**/*.py"]),
     tags = ["team:core"],
     deps = [":dag_lib"]
 )

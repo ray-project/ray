@@ -108,7 +108,6 @@ if __name__ == "__main__":
     RAY_CI_WORKFLOW_AFFECTED = 0
     RAY_CI_RELEASE_TESTS_AFFECTED = 0
     RAY_CI_COMPILED_PYTHON_AFFECTED = 0
-    RAY_CI_ACCELERATED_DAG_AFFECTED = 0
 
     if is_pull_request():
         commit_range = get_commit_range()
@@ -259,14 +258,6 @@ if __name__ == "__main__":
                     if changed_file.endswith(compiled_extension):
                         RAY_CI_COMPILED_PYTHON_AFFECTED = 1
                         break
-
-                # Some accelerated DAG tests require GPUs so we only run them
-                # if Ray DAGs or experimental.channels were affected.
-                if changed_file.startswith("python/ray/dag") or changed_file.startswith(
-                    "python/ray/experimental/channel"
-                ):
-                    RAY_CI_ACCELERATED_DAG_AFFECTED = 1
-
             elif changed_file == ".buildkite/core.rayci.yml":
                 RAY_CI_PYTHON_AFFECTED = 1
                 RAY_CI_CORE_CPP_AFFECTED = 1
@@ -386,7 +377,6 @@ if __name__ == "__main__":
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
                 RAY_CI_DASHBOARD_AFFECTED = 1
                 RAY_CI_RELEASE_TESTS_AFFECTED = 1
-                RAY_CI_ACCELERATED_DAG_AFFECTED = 1
             else:
                 print(
                     "Unhandled source code change: {changed_file}".format(
@@ -467,9 +457,6 @@ if __name__ == "__main__":
             "RAY_CI_RELEASE_TESTS_AFFECTED={}".format(RAY_CI_RELEASE_TESTS_AFFECTED),
             "RAY_CI_COMPILED_PYTHON_AFFECTED={}".format(
                 RAY_CI_COMPILED_PYTHON_AFFECTED
-            ),
-            "RAY_CI_ACCELERATED_DAG_AFFECTED={}".format(
-                RAY_CI_ACCELERATED_DAG_AFFECTED
             ),
         ]
     )
