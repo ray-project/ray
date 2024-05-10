@@ -234,7 +234,7 @@ class JobSupervisor:
 
         if self.event_logger:
             self.event_logger.info(
-                f"Started a ray job {self._job_id}.", submission_id=self._job_id
+                f"Started Ray job {self._job_id}", submission_id=self._job_id
             )
 
     async def _execute_sync(
@@ -288,11 +288,11 @@ class JobSupervisor:
             exit_code = None
 
             self._logger.error(
-                f"Got unexpected exception while executing job {self._job_id}: {message}"
+                f"Got unexpected exception while executing job: {message}"
             )
 
         finally:
-            self._logger.info(f"Updating job {self._job_id} status to {status}")
+            self._logger.info(f"Updating job status to {status}")
 
             await self._job_info_client.put_status(
                 self._job_id,
@@ -469,7 +469,7 @@ class JobSupervisor:
                             self._logger.info(f"Job driver is still running (job status: {job_status}")
 
                     elif job_status.is_terminal():
-                        self._logger.info(f"Job reached terminal state (job status: {job_status})")
+                        self._logger.info(f"Job reached terminal state (status: {job_status})")
                         # Break out of the monitoring loop
                         break
 
@@ -490,7 +490,7 @@ class JobSupervisor:
 
             if isinstance(e, RuntimeEnvSetupError):
                 self._logger.error(
-                    f"Failed to set up runtime_env for job {self._job_id}: {repr(e)}",
+                    f"Failed to set up runtime_env for job: {repr(e)}",
                     exc_info=e,
                 )
 
@@ -498,8 +498,7 @@ class JobSupervisor:
 
             elif isinstance(e, ActorUnschedulableError):
                 self._logger.error(
-                    f"Failed to schedule job {self._job_id} because the supervisor actor "
-                    f"could not be scheduled: {repr(e)}",
+                    f"Failed to schedule job because the supervisor actor could not be scheduled: {repr(e)}",
                     exc_info=e,
                 )
 
@@ -507,7 +506,7 @@ class JobSupervisor:
 
             else:
                 self._logger.error(
-                    f"Job supervisor for job {self._job_id} failed unexpectedly with: {repr(e)}.",
+                    f"Job supervisor for job failed unexpectedly with: {repr(e)}.",
                     exc_info=e,
                 )
 
@@ -516,7 +515,7 @@ class JobSupervisor:
             job_status = await self._job_info_client.get_status(self._job_id)
             # Unless job reached terminal state mark job as failed
             if job_status and not job_status.is_terminal() and error_message:
-                self._logger.info(f"Updating job {self._job_id} status to {job_status.FAILED} (current: {job_status})")
+                self._logger.info(f"Updating job status to {job_status.FAILED} (current: {job_status})")
 
                 await self._job_info_client.put_status(
                     self._job_id,
@@ -869,7 +868,7 @@ class JobRunner:
             )
 
             if self._stop_event.is_set():
-                self._logger.info(f"Job {self._job_id} driver's has been interrupted (job stopped)")
+                self._logger.info(f"Job driver's has been interrupted (job stopped)")
 
                 # Cancel task polling the subprocess (unless already finished)
                 if not polling_task.done():
@@ -891,7 +890,7 @@ class JobRunner:
                 return_code = child_process_task.result()
 
                 self._logger.info(
-                    f"Job {self._job_id} driver's entrypoint command exited with code {return_code}"
+                    f"Job driver's entrypoint command exited with code {return_code}"
                 )
 
                 message: Optional[str] = None
@@ -918,8 +917,7 @@ class JobRunner:
         except Exception:
             exception_message = traceback.format_exc()
             self._logger.error(
-                f"Got unexpected exception while executing driver for job {self._job_id} "
-                f"command. {exception_message}"
+                f"Got unexpected exception while executing driver for job command: {exception_message}"
             )
 
             return JobExecutionResult(
@@ -958,13 +956,12 @@ class JobRunner:
                 await asyncio.wait_for(poll_job_stop_task, stop_job_wait_time)
 
                 self._logger.info(
-                    f"Job {self._job_id} has been terminated gracefully "
-                    f"with {stop_signal}."
+                    f"Job has been terminated gracefully with {stop_signal}"
                 )
 
             except asyncio.TimeoutError:
                 self._logger.warning(
-                    f"Attempt to gracefully terminate job {self._job_id} "
+                    f"Attempt to gracefully terminate job "
                     f"through {stop_signal} has timed out after "
                     f"{stop_job_wait_time} seconds. Job is now being "
                     "force-killed with SIGKILL."
