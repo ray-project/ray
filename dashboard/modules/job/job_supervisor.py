@@ -46,14 +46,6 @@ from ray.util.scheduling_strategies import (
 from ray.util.ticker import ticker
 
 
-JOB_START_UP_TIMEOUT_SECONDS = float(
-    os.getenv(
-        RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR,
-        DEFAULT_JOB_START_TIMEOUT_SECONDS,
-    )
-)
-
-
 # asyncio python version compatibility
 try:
     create_task = asyncio.create_task
@@ -96,7 +88,8 @@ class JobSupervisor:
         job_id: str,
         entrypoint: str,
         gcs_address: str,
-        logs_dir: str
+        logs_dir: str,
+        startup_timeout_s: float,
     ):
         self._job_id = job_id
         self._entrypoint = entrypoint
@@ -114,12 +107,13 @@ class JobSupervisor:
 
         # Job driver completion is tracked by a completion-waiting task
         self._waiting_task: Optional[asyncio.Task] = None
-        # Start up job monitoring thread immediately (in the background)
+        # TODO elaborate why monitoring loop is started in ctor
         self._monitoring_task: asyncio.Task = self._loop.create_task(
             self._monitor_job_internal()
         )
 
         self._started_at = time.time()
+        self._startup_timeout_s = startup_timeout_s
 
         self.event_logger: Optional[EventLoggerAdapter] = self._create_job_events_logger(logs_dir)
 
@@ -422,11 +416,11 @@ class JobSupervisor:
                         # We will wait for the next loop.
                         duration_s = self._get_duration_s(job_info)
 
-                        if duration_s > JOB_START_UP_TIMEOUT_SECONDS:
+                        if duration_s >= self._startup_timeout_s:
                             message = (
-                                f"Job driver failed to start within {JOB_START_UP_TIMEOUT_SECONDS} seconds. "
+                                f"Job driver failed to start within {self._startup_timeout_s} seconds. "
                                 f"This timeout can be configured by setting the environment variable "
-                                f"RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR."
+                                f"{RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR}."
                             )
 
                             if self._has_entrypoint_resources_set(job_info):
