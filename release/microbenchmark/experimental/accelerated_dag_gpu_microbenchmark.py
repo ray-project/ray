@@ -14,7 +14,7 @@ from ray.dag import InputNode
 from ray.tests.conftest import *  # noqa
 from ray.util.collective.collective_group import nccl_util
 
-from ray.dag.experimental.types import TorchTensorType
+from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray._private.ray_microbenchmark_helpers import timeit
 
 # from ray.experimental.torch_serializer import TorchTensor
@@ -101,7 +101,7 @@ class NcclWorker:
 
             torch.cuda.synchronize()
 
-        timeit("exec_nccl_gpu", _run)
+        return timeit("exec_nccl_gpu", _run)
 
 
 def exec_ray_dag(label, sender, receiver, use_nccl=False, use_adag=True):
@@ -172,10 +172,13 @@ def exec_ray_dag_ipc(label, sender, receiver, use_nccl=False):
             ok[0] = False
         output_channel.end_read()
 
-    timeit(label, _run)
+    results = timeit(label, _run)
+
     if not ok[0]:
         logger.warning("IPC DAG returned incorrect result")
     compiled_dag.teardown()
+
+    return results
 
 
 def _exec_torch_cpu_cpu():
@@ -347,6 +350,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Divide by 2 because we're using torch.float16.
-    SHAPE = args.tensor_size_bytes // 2
+    SHAPE = (args.tensor_size_bytes // 2, )
 
     main()
