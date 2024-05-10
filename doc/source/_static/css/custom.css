@@ -396,7 +396,7 @@ table.autosummary tr > td:first-child > p > a > code > span {
 }
 
 .bd-header-announcement {
-  color: var(--pst-color-dark);
+  color: var(--pst-color-light);
 }
 
 .bd-header-announcement::after {
@@ -404,6 +404,6 @@ table.autosummary tr > td:first-child > p > a > code > span {
 }
 
 .bd-header-announcement a {
-  color: var(--pst-color-dark);
+  color: var(--pst-color-light);
   text-decoration: underline;
 }

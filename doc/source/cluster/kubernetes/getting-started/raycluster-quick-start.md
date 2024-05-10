@@ -124,15 +124,7 @@ Now that we have the name of the service, we can use port-forwarding to access t
 ```sh
 # Execute this in a separate shell.
 kubectl port-forward service/raycluster-kuberay-head-svc 8265:8265
-
-# Visit ${YOUR_IP}:8265 in your browser for the Dashboard (e.g. 127.0.0.1:8265)
 ```
-
-Note: We use port-forwarding in this guide as a simple way to experiment with a RayCluster's services. For production use-cases, you would typically either 
-- Access the service from within the Kubernetes cluster or
-- Use an ingress controller to expose the service outside the cluster.
-
-See the {ref}`networking notes <kuberay-networking>` for details.
 
 Now that we have access to the Dashboard port, we can submit jobs to the RayCluster:
 
@@ -141,7 +133,14 @@ Now that we have access to the Dashboard port, we can submit jobs to the RayClus
 ray job submit --address http://localhost:8265 -- python -c "import ray; ray.init(); print(ray.cluster_resources())"
 ```
 
-## Step 5: Cleanup
+## Step 5: Access the Ray Dashboard
+
+Visit `${YOUR_IP}:8265` in your browser for the Dashboard. For example, `127.0.0.1:8265`.
+See the job you submitted in Step 4 in the **Recent jobs** pane as shown below.
+
+![Ray Dashboard](../images/ray-dashboard.png)
+
+## Step 6: Cleanup
 
 ```sh
 # [Step 5.1]: Delete the RayCluster CR
