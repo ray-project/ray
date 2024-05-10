@@ -210,7 +210,7 @@ class JobSupervisor:
                 "Please use a different submission_id."
             )
 
-        runner, resources_specified = await self._create_runner_actor(
+        runner = await self._create_runner_actor(
             runtime_env=runtime_env,
             metadata=metadata,
             entrypoint_num_cpus=entrypoint_num_cpus,
@@ -219,17 +219,11 @@ class JobSupervisor:
             entrypoint_resources=entrypoint_resources
         )
 
-        self._runner = runner
-
         # Job driver (entrypoint) is executed in an synchronous fashion,
         # therefore is performed as a background operation updating Ray Job's
         # state asynchronously upon job's driver completing the execution
         self._waiting_task = self._loop.create_task(
-            self._execute_sync(
-                runner,
-                resources_specified=resources_specified,
-                _start_signal_actor=_start_signal_actor,
-            )
+            self._execute_sync(runner, _start_signal_actor=_start_signal_actor)
         )
 
         if self.event_logger:
@@ -241,7 +235,6 @@ class JobSupervisor:
         self,
         runner: ActorHandle,
         *,
-        resources_specified: bool,
         _start_signal_actor: Optional[ActorHandle] = None
     ) -> JobStatus:
         message: Optional[str] = None
@@ -273,9 +266,7 @@ class JobSupervisor:
                     f"Ray job {self._job_id} transitions to {JobStatus.RUNNING}", submission_id=self._job_id
                 )
 
-            result: JobExecutionResult = await runner.execute_sync.remote(
-                resources_specified=resources_specified,
-            )
+            result: JobExecutionResult = await runner.execute_sync.remote()
 
             exit_code = result.driver_exit_code
             message = result.message
@@ -323,7 +314,7 @@ class JobSupervisor:
         entrypoint_num_gpus: Optional[Union[int, float]],
         entrypoint_memory: Optional[int],
         entrypoint_resources: Optional[Dict[str, float]],
-    ) -> Tuple[ActorHandle, bool]:
+    ) -> ActorHandle:
         resources_specified = any(
             [
                 entrypoint_num_cpus is not None and entrypoint_num_cpus > 0,
@@ -335,24 +326,27 @@ class JobSupervisor:
 
         scheduling_strategy = self._get_scheduling_strategy(resources_specified)
 
-        runner = self._runner_actor_cls.options(
+        self._runner = self._runner_actor_cls.options(
             name=JOB_EXECUTOR_ACTOR_NAME_TEMPLATE.format(job_id=self._job_id),
             num_cpus=entrypoint_num_cpus,
             num_gpus=entrypoint_num_gpus,
             memory=entrypoint_memory,
             resources=entrypoint_resources,
             scheduling_strategy=scheduling_strategy,
-            runtime_env=self._get_supervisor_runtime_env(
-                runtime_env, self._job_id, resources_specified
+            runtime_env=self._get_runner_runtime_env(
+                user_runtime_env=runtime_env,
+                submission_id=self._job_id,
+                entrypoint_resources_specified=resources_specified,
             ),
             namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
         ).remote(
             job_id=self._job_id,
             entrypoint=self._entrypoint,
-            user_metadata=metadata or {}
+            user_metadata=metadata or {},
+            entrypoint_resources_specified=resources_specified,
         )
 
-        return runner, resources_specified
+        return self._runner
 
     def _get_scheduling_strategy(self, resources_specified: bool) -> SchedulingStrategyT:
         """Get the scheduling strategy for the job.
@@ -383,17 +377,18 @@ class JobSupervisor:
         # env var, we will run the driver on the head node.
         return NodeAffinitySchedulingStrategy(node_id=ray.worker.global_worker.current_node_id.hex(), soft=True)
 
-    def _get_supervisor_runtime_env(
+    def _get_runner_runtime_env(
         self,
+        *,
         user_runtime_env: Dict[str, Any],
         submission_id: str,
-        resources_specified: bool = False,
+        entrypoint_resources_specified: bool,
     ) -> Dict[str, Any]:
         """Configure and return the runtime_env for the supervisor actor.
 
         Args:
             user_runtime_env: The runtime_env specified by the user.
-            resources_specified: Whether the user specified resources in the
+            entrypoint_resources_specified: Whether the user specified resources in the
                 submit_job() call. If so, we will skip the workaround introduced
                 in #24546 for GPU detection and just use the user's resource
                 requests, so that the behavior matches that of the user specifying
@@ -415,7 +410,7 @@ class JobSupervisor:
 
         env_vars[ray_constants.RAY_WORKER_NICENESS] = "0"
 
-        if not resources_specified:
+        if not entrypoint_resources_specified:
             # Don't set CUDA_VISIBLE_DEVICES for the supervisor actor so the
             # driver can use GPUs if it wants to. This will be removed from
             # the driver's runtime_env so it isn't inherited by tasks & actors.
@@ -627,14 +622,18 @@ class JobRunner:
 
     def __init__(
         self,
+        *,
         job_id: str,
         entrypoint: str,
         user_metadata: Dict[str, str],
+        entrypoint_resources_specified: bool,
     ):
         self._job_id = job_id
         self._entrypoint = entrypoint
 
         self._log_client = JobLogStorageClient()
+
+        self._entrypoint_resources_specified = entrypoint_resources_specified
 
         # Default metadata if not passed by the user.
         self._metadata = {JOB_ID_METADATA_KEY: job_id, JOB_NAME_METADATA_KEY: job_id}
@@ -650,25 +649,22 @@ class JobRunner:
         # (for easier discovery)
         self._logger = _create_file_logger(f"job-runner-{job_id}")
 
-    def _get_driver_runtime_env(
-        self, resources_specified: bool = False
-    ) -> Dict[str, Any]:
+    def _get_driver_runtime_env(self) -> Dict[str, Any]:
         """Get the runtime env that should be set in the job driver.
-
-        Args:
-            resources_specified: Whether the user specified resources (CPUs, GPUs,
-                custom resources) in the submit_job request. If so, we will skip
-                the workaround for GPU detection introduced in #24546, so that the
-                behavior matches that of the user specifying resources for any
-                other actor.
 
         Returns:
             The runtime env that should be set in the job driver.
         """
         # Get the runtime_env set for the supervisor actor.
         curr_runtime_env = dict(ray.get_runtime_context().runtime_env)
-        if resources_specified:
+
+        # In case when user specified resources for job's entrypoint (CPUs, GPUs,
+        # etc.), we will skip the workaround for GPU detection introduced in #24546,
+        # so that the behavior matches that of the user specifying resources for any
+        # other actor.
+        if self._entrypoint_resources_specified:
             return curr_runtime_env
+
         # Allow CUDA_VISIBLE_DEVICES to be set normally for the driver's tasks
         # & actors.
         env_vars = curr_runtime_env.get("env_vars", {})
@@ -779,7 +775,7 @@ class JobRunner:
 
             return child_process
 
-    def _get_driver_env_vars(self, resources_specified: bool) -> Dict[str, str]:
+    def _get_driver_env_vars(self) -> Dict[str, str]:
         """Returns environment variables that should be set in the driver."""
         # RAY_ADDRESS may be the dashboard URL but not the gcs address,
         # so when the environment variable is not empty, we force set RAY_ADDRESS
@@ -839,10 +835,7 @@ class JobRunner:
                 # Process is already dead
                 pass
 
-    async def execute_sync(
-        self,
-        resources_specified: bool = False,
-    ) -> JobExecutionResult:
+    async def execute_sync(self) -> JobExecutionResult:
         """
         TODO update
         Stop and start both happen asynchronously, coordinated by asyncio event
@@ -858,7 +851,7 @@ class JobRunner:
             # Configure environment variables for the child process. These
             # will *not* be set in the runtime_env, so they apply to the driver
             # only, not its tasks & actors.
-            os.environ.update(self._get_driver_env_vars(resources_specified))
+            os.environ.update(self._get_driver_env_vars())
 
             self._logger.info(f"Executing job {self._job_id} driver's entrypoint")
 
