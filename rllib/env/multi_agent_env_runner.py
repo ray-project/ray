@@ -302,8 +302,6 @@ class MultiAgentEnvRunner(EnvRunner):
                     extra_model_outputs[agent_id][col] = val
             extra_model_outputs = dict(extra_model_outputs)
 
-            if terminateds["__all__"] or truncateds["__all__"]:
-                print("Episode done.")
             # Record the timestep in the episode instance.
             self._episode.add_env_step(
                 obs,
@@ -598,9 +596,11 @@ class MultiAgentEnvRunner(EnvRunner):
                 module_episode_returns,
             )
 
-        # If no episodes at all, log NaN stats.
-        if len(self._done_episodes_for_metrics) == 0:
-            self._log_episode_metrics(np.nan, np.nan, np.nan)
+        # TODO (simon): This results in hundreds of warnings in the logs
+        # b/c reducing over NaNs is not supported.
+        # # If no episodes at all, log NaN stats.
+        # if len(self._done_episodes_for_metrics) == 0:
+        #     self._log_episode_metrics(np.nan, np.nan, np.nan)
 
         # Log num episodes counter for this iteration.
         self.metrics.log_value(

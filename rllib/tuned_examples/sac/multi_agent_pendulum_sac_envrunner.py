@@ -59,6 +59,9 @@ config = (
         policy_mapping_fn=lambda aid, *arg, **kw: f"p{aid}",
         policies={"p0", "p1"},
     )
+    .debugging(
+        log_level="DEBUG",
+    )
 )
 
 stop = {
