@@ -190,6 +190,8 @@ class LocalTaskManager : public ILocalTaskManager {
 
  private:
   struct SchedulingClassInfo;
+  // Track total CPU requests in tasks_to_dispatch_
+  double total_cpu_requests_ = 0.0;
 
   void RemoveFromRunningTasksIfExists(const RayTask &task);
 
