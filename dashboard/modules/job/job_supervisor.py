@@ -434,6 +434,8 @@ class JobSupervisor:
                                     "You can check cluster's available resources with `ray status`"
                                 )
 
+                            self._logger.error(message)
+
                             await self._job_info_client.put_status(
                                 self._job_id,
                                 JobStatus.FAILED,
