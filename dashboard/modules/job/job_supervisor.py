@@ -139,9 +139,12 @@ class JobSupervisor:
 
     async def stop(self):
         """Proxies request to job runner"""
-        assert self._runner, "Runner is not initialized!"
-        # Stop the job runner actor & killing the driver process
-        await self._runner.stop.remote()
+        if self._runner is None:
+            self._logger.info("Stopping of the job has been requested, but driver is already stopped; no action")
+        else:
+            self._logger.info("Stopping the job")
+            # Stop the job runner actor & killing the driver process
+            await self._runner.stop.remote()
 
     async def launch(
         self,
