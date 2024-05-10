@@ -47,9 +47,9 @@ class IntelGPUAcceleratorManager(AcceleratorManager):
     def get_current_node_num_accelerators() -> int:
         try:
             import dpctl
-        except ImportError as e:
+        except ImportError:
             if IntelGPUAcceleratorManager._is_user_specified_resource:
-                logger.warning(
+                logger.debug(
                     "Intel GPU support requires the 'dpctl' package,"
                     "which is not installed."
                 )
@@ -65,8 +65,8 @@ class IntelGPUAcceleratorManager(AcceleratorManager):
         except Exception as e:
             if IntelGPUAcceleratorManager._is_user_specified_resource:
                 logger.debug(
-                    f"Intel GPU ran into the following error while"
-                    "getting number of GPUs: {e},"
+                    "Intel GPU ran into the following error while"
+                    f"getting number of GPUs: {e},"
                     "you can ignore this message if you are not using Intel GPUs."
                 )
                 num_gpus = 0
