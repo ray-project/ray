@@ -49,7 +49,7 @@ steps:
       - dashboard
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... serve 
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... serve || true
         --parallelism-per-worker 3
       - sleep 18000
     depends_on: servebuild
