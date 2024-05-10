@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, List, Optional
 import ray
 import ray.util.serialization
 from ray.experimental.channel import ChannelContext
+from ray.experimental.channel.shared_memory_channel import SharedMemoryType
 from ray.experimental.channel.common import ChannelInterface
 from ray.experimental.channel.nccl_group import _NcclGroup
 from ray.util.annotations import DeveloperAPI
@@ -34,6 +35,7 @@ class TorchTensorNcclChannel(ChannelInterface):
         device: Optional["torch.device"] = None,
     ):
         import torch
+        from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
         from ray.air._internal import torch_utils
 
@@ -58,7 +60,7 @@ class TorchTensorNcclChannel(ChannelInterface):
             )
 
         assert typ.transport == "nccl"
-        self._typ = typ
+        self._typ: "TorchTensorType" = typ
 
         ctx = ChannelContext.get_current()
         self._nccl_group = ctx.nccl_group
@@ -83,6 +85,16 @@ class TorchTensorNcclChannel(ChannelInterface):
         ):
             self._reader_registered = True
 
+        self._meta_channel: Optional[Channel] = None
+        if self._writer_registered and (self._typ.shape == TorchTensorType.AUTO or self._typ.dtype ==
+            TorchTensorType.AUTO):
+            # Allocate 1KiB for metadata.
+            metadata_type = SharedMemoryType(buffer_size_bytes=1_000)
+            self._meta_channel = metadata_type.create_channel(
+                    self._writer,
+                    self._readers,
+                    )
+
     def ensure_registered_as_writer(self):
         assert self._nccl_group is not None, "Actor is not part of a NCCL group"
         return self._writer_registered, "Actor is not the writer"
@@ -99,33 +111,46 @@ class TorchTensorNcclChannel(ChannelInterface):
         wrapped: "_TorchTensorWrapper",
         readers: Optional[List[ray.actor.ActorHandle]] = None,
     ):
-        value = wrapped.tensor
-        if value.shape != self._typ.shape:
-            raise ValueError(
-                f"torch.Tensor has shape {value.shape}, expected {self._typ.shape}"
-            )
-        if value.dtype != self._typ.dtype:
-            raise ValueError(
-                f"torch.Tensor has dtype {value.dtype}, expected {self._typ.dtype}"
-            )
-        if value.device != self._device:
-            raise ValueError(
-                f"torch.Tensor must be on the default device: {self._device}"
-            )
-
         if readers is not None:
             raise NotImplementedError(
                 "TorchTensorNcclChannel.write() not supported for dynamically "
                 "passed readers."
             )
 
+        value = wrapped.tensor
+        if value.device != self._device:
+            raise ValueError(
+                f"torch.Tensor must be on the default device: {self._device}"
+            )
+
+        if self._meta_channel is not None:
+            meta = (value.shape, value.dtype)
+            self._meta_channel.write(meta)
+        else:
+            if value.shape != self._typ.shape:
+                raise ValueError(
+                    f"torch.Tensor has shape {value.shape}, expected {self._typ.shape}"
+                )
+            if value.dtype != self._typ.dtype:
+                raise ValueError(
+                    f"torch.Tensor has dtype {value.dtype}, expected {self._typ.dtype}"
+                )
+
         # TODO: If there are multiple readers, can replace with a broadcast.
         for rank in self._reader_ranks:
             self._nccl_group.send(value, rank)
 
     def begin_read(self) -> "torch.Tensor":
+        if self._meta_channel is not None:
+            shape, dtype = self._meta_channel.begin_read()
+        else:
+            shape, dtype = self._type.shape, self._type.dtype
+        # It's safe to release the channel because shape and dtype should get
+        # copied during deserialization.
+        self._meta_channel.end_read()
+
         buf = self.torch.zeros(
-            self._typ.shape, dtype=self._typ.dtype, device=self._device
+            shape, dtype=dtype, device=self._device
         )
         self._nccl_group.recv(buf, self._writer_rank)
         return buf

@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
 
 import ray
 from ray.experimental.channel import ChannelOutputType
@@ -16,8 +16,11 @@ TENSOR_BUFFER_PADDING_FRACTION = 0.2
 
 @PublicAPI(stability="alpha")
 class TorchTensorType(ChannelOutputType):
+    AUTO = "auto"
+    NCCL = "nccl"
+
     def __init__(
-        self, shape: Tuple[int], dtype: "torch.dtype", transport: Optional[str] = None
+        self, shape: Union[int, Tuple[int], str], dtype: "torch.dtype", transport: Optional[str] = None
     ):
         self.shape = shape
         self.dtype = dtype

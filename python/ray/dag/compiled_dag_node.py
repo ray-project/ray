@@ -162,6 +162,8 @@ def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
 
     try:
         output_val = method(*task.resolved_inputs)
+        # TODO(swang): Avoid output wrapper fn by setting ChannelContext
+        # instead.
         if task.output_wrapper_fn is not None:
             output_val = task.output_wrapper_fn(output_val)
     except Exception as exc:
