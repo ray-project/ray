@@ -259,9 +259,7 @@ const ApiLogViewer = ({
       path={path}
       downloadUrl={downloadUrl !== null ? downloadUrl : undefined}
       height={height}
-      onRefreshClick={() => {
-        refresh();
-      }}
+      onRefreshClick={refresh}
     />
   ) : (
     <Typography color="error">Failed to load</Typography>

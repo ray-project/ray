@@ -1314,7 +1314,7 @@ class Learner:
             # Call the learner connector pipeline.
             batch = self._learner_connector(
                 rl_module=self.module,
-                data=batch or {},
+                data=batch if batch is not None else {},
                 episodes=episodes,
                 shared_data=shared_data,
             )

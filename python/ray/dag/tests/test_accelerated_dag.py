@@ -41,6 +41,11 @@ class Actor:
                     raise ValueError("injected fault")
         return self.i
 
+    def double_and_inc(self, x):
+        self.i *= 2
+        self.i += x
+        return self.i
+
     def echo(self, x):
         return x
 
@@ -74,6 +79,73 @@ def test_basic(ray_start_regular):
 
     # Note: must teardown before starting a new Ray session, otherwise you'll get
     # a segfault from the dangling monitor thread upon the new Ray init.
+    compiled_dag.teardown()
+
+
+def test_actor_multi_methods(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as inp:
+        dag = a.inc.bind(inp)
+        dag = a.echo.bind(dag)
+
+    compiled_dag = dag.experimental_compile()
+    output_channel = compiled_dag.execute(1)
+    result = output_channel.begin_read()
+    assert result == 1
+    output_channel.end_read()
+
+    compiled_dag.teardown()
+
+
+def test_actor_methods_execution_order(ray_start_regular):
+    actor1 = Actor.remote(0)
+    actor2 = Actor.remote(0)
+    with InputNode() as inp:
+        branch1 = actor1.inc.bind(inp)
+        branch1 = actor2.double_and_inc.bind(branch1)
+        branch2 = actor2.inc.bind(inp)
+        branch2 = actor1.double_and_inc.bind(branch2)
+        dag = MultiOutputNode([branch2, branch1])
+
+    compiled_dag = dag.experimental_compile()
+    output_channel = compiled_dag.execute(1)
+    result = output_channel.begin_read()
+    # test that double_and_inc() is called after inc() on actor1
+    assert result == [4, 1]
+    output_channel.end_read()
+
+    compiled_dag.teardown()
+
+
+def test_actor_method_multi_binds(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as inp:
+        dag = a.inc.bind(inp)
+        dag = a.inc.bind(dag)
+
+    compiled_dag = dag.experimental_compile()
+    output_channel = compiled_dag.execute(1)
+    result = output_channel.begin_read()
+    assert result == 2
+    output_channel.end_read()
+
+    compiled_dag.teardown()
+
+
+def test_actor_method_bind_same_constant(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as inp:
+        dag = a.inc_two.bind(inp, 1)
+        dag2 = a.inc_two.bind(dag, 1)
+        # a.inc_two() binding the same constant "1" (i.e. non-DAGNode)
+        # multiple times should not throw an exception.
+
+    compiled_dag = dag2.experimental_compile()
+    output_channel = compiled_dag.execute(1)
+    result = output_channel.begin_read()
+    assert result == 5
+    output_channel.end_read()
+
     compiled_dag.teardown()
 
 
@@ -172,6 +244,17 @@ def test_dag_errors(ray_start_regular):
     ):
         dag.experimental_compile()
 
+    with InputNode() as inp:
+        dag = a.inc.bind(inp)
+        dag2 = a.inc.bind(inp)
+        dag3 = a.inc_two.bind(dag, dag2)
+    with pytest.raises(
+        NotImplementedError,
+        match=r"Compiled DAGs currently do not support binding the same input "
+        "on the same actor multiple times.*",
+    ):
+        dag3.experimental_compile()
+
     @ray.remote
     def f(x):
         return x
@@ -181,15 +264,6 @@ def test_dag_errors(ray_start_regular):
     with pytest.raises(
         NotImplementedError,
         match="Compiled DAGs currently only support actor method nodes",
-    ):
-        dag.experimental_compile()
-
-    with InputNode() as inp:
-        dag = a.inc.bind(inp)
-        dag = a.inc.bind(dag)
-    with pytest.raises(
-        NotImplementedError,
-        match="Compiled DAGs can contain at most one task per actor handle.",
     ):
         dag.experimental_compile()
 
