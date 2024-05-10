@@ -770,6 +770,17 @@ class Impala(Algorithm):
 
         # Update LearnerGroup's own stats.
         self.metrics.log_dict(self.learner_group.get_stats(), key=LEARNER_GROUP)
+        self.metrics.log_dict(
+            {
+                NUM_ENV_STEPS_TRAINED_LIFETIME: self.metrics.peek(
+                    LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED, default=0
+                ),
+                # NUM_MODULE_STEPS_TRAINED_LIFETIME: self.metrics.peek(
+                #    LEARNER_RESULTS, NUM_MODULE_STEPS_TRAINED
+                # ),
+            },
+            reduce="sum",
+        )
 
         # Figure out, whether we should sync/broadcast the (remote) EnvRunner states.
         # Note: `learner_results` is a List of n (num async calls) of Lists of m
@@ -782,17 +793,6 @@ class Impala(Algorithm):
             and len(learner_results[0]) > 0
             and learner_results[0][0]
         ):
-            self.metrics.log_dict(
-                {
-                    NUM_ENV_STEPS_TRAINED_LIFETIME: self.metrics.peek(
-                        LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED
-                    ),
-                    # NUM_MODULE_STEPS_TRAINED_LIFETIME: self.metrics.peek(
-                    #    LEARNER_RESULTS, NUM_MODULE_STEPS_TRAINED
-                    # ),
-                },
-                reduce="sum",
-            )
             #update_results[ALL_MODULES].update(self.learner_group.get_stats())
             #module_ids_to_update = (
             #    set(k for l in learner_results for k in l[0].keys())
