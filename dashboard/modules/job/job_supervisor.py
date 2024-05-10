@@ -81,6 +81,7 @@ class JobSupervisor:
     """
 
     JOB_MONITOR_LOOP_INTERVAL_S = 1
+    JOB_STATUS_LOG_FREQUENCY_SECONDS = 600
 
     def __init__(
         self,
@@ -409,49 +410,56 @@ class JobSupervisor:
     async def _monitor_job_internal(self):
         self._logger.info(f"Starting monitoring loop for job {self._job_id}")
 
-        async for _ in ticker(interval_s=self.JOB_MONITOR_LOOP_INTERVAL_S):
+        job_status: Optional[JobStatus] = None
+
+        async for i in ticker(interval_s=self.JOB_MONITOR_LOOP_INTERVAL_S):
             try:
                 job_info = await self._job_info_client.get_info(self._job_id)
                 job_status = job_info.status if job_info else None
 
-                # Check if job driver is running
-                running = await self.check_driver_running()
+                if job_status is None or job_status == JobStatus.PENDING:
+                    # Maybe the Job Runner actor is not created yet.
+                    # We will wait for the next loop.
+                    duration_s = self._get_duration_s(job_info)
 
-                if not running:
-                    if job_status is None or job_status == JobStatus.PENDING:
-                        # Maybe the Job Runner actor is not created yet.
-                        # We will wait for the next loop.
-                        duration_s = self._get_duration_s(job_info)
+                    if duration_s >= self._startup_timeout_s:
+                        message = (
+                            f"Job driver failed to start within {self._startup_timeout_s} seconds. "
+                            f"This timeout can be configured by setting the environment variable "
+                            f"{RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR}."
+                        )
 
-                        if duration_s >= self._startup_timeout_s:
-                            message = (
-                                f"Job driver failed to start within {self._startup_timeout_s} seconds. "
-                                f"This timeout can be configured by setting the environment variable "
-                                f"{RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR}."
+                        if self._has_entrypoint_resources_set(job_info):
+                            message += (
+                                f" This may be because the job entrypoint's specified "
+                                f"resources (entrypoint_num_cpus={job_info.entrypoint_num_cpus}, "
+                                f"entrypoint_num_gpus={job_info.entrypoint_num_gpus}, "
+                                f"entrypoint_resources={job_info.entrypoint_resources}, "
+                                f"entrypoint_memory={job_info.entrypoint_memory})"
+                                "aren't available in the cluster at the moment. "
+                                "You can check cluster's available resources with `ray status`"
                             )
 
-                            if self._has_entrypoint_resources_set(job_info):
-                                message += (
-                                    f" This may be because the job entrypoint's specified "
-                                    f"resources (entrypoint_num_cpus={job_info.entrypoint_num_cpus}, "
-                                    f"entrypoint_num_gpus={job_info.entrypoint_num_gpus}, "
-                                    f"entrypoint_resources={job_info.entrypoint_resources}, "
-                                    f"entrypoint_memory={job_info.entrypoint_memory})"
-                                    "aren't available in the cluster at the moment. "
-                                    "You can check cluster's available resources with `ray status`"
-                                )
+                        self._logger.error(message)
 
-                            self._logger.error(message)
+                        await self._job_info_client.put_status(
+                            self._job_id,
+                            JobStatus.FAILED,
+                            message=message,
+                        )
 
-                            await self._job_info_client.put_status(
-                                self._job_id,
-                                JobStatus.FAILED,
-                                message=message,
-                            )
+                        # TODO log to job event logger
+                        # Break out of the monitoring loop
+                        break
 
-                            # TODO log to job event logger
-                            # Break out of the monitoring loop
-                            break
+                else:
+                    # Check if job driver is running
+                    running = await self.check_driver_running()
+
+                    if running:
+                        # Log running status of the job's driver every JOB_STATUS_LOG_FREQUENCY_SECONDS
+                        if i % int(self.JOB_STATUS_LOG_FREQUENCY_SECONDS / self.JOB_MONITOR_LOOP_INTERVAL_S) == 0:
+                            self._logger.info(f"Job driver is still running (job status: {job_status}")
 
                     elif job_status.is_terminal():
                         self._logger.info(f"Job reached terminal state (job status: {job_status})")
@@ -471,7 +479,8 @@ class JobSupervisor:
                                 "Unexpected error occurred: job driver is not running"
                             ),
                         )
-                        # Break out of monitoring loop
+
+                        # Break out of the monitoring loop
                         break
 
             except Exception as e:
