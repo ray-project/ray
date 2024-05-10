@@ -790,6 +790,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 # Sync the weights from the learner group to the rollout workers.
                 weights = self.learner_group.get_weights()
                 local_worker.set_weights(weights)
+                self.workers.sync_weights(inference_only=True)
             # New stack/EnvRunner APIs: Use get/set_state (no more get/set_weights).
             else:
                 # Sync the weights from the learner group to the rollout workers.
@@ -797,17 +798,12 @@ class Algorithm(Trainable, AlgorithmBase):
                     inference_only=self.config.enable_env_runner_and_connector_v2
                 )
                 local_worker.set_state({"rl_module": weights})
-
-        # Ensure remote workers are initially in sync with the local worker.
-        # TODO (sven): Remove the `sync_weights()` call in favor of only calling
-        #  `sync_env_runner_states`.
-        self.workers.sync_weights(inference_only=True)
-        self.workers.sync_env_runner_states(
-            config=self.config,
-            env_steps_sampled=self.metrics.peek(
-                NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
-            ),
-        )
+                self.workers.sync_env_runner_states(
+                    config=self.config,
+                    env_steps_sampled=self.metrics.peek(
+                        NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
+                    ),
+                )
 
         # Run `on_algorithm_init` callback after initialization is done.
         self.callbacks.on_algorithm_init(algorithm=self, metrics_logger=self.metrics)
