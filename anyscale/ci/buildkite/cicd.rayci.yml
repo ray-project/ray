@@ -10,6 +10,7 @@ steps:
     instance_type: small
 
   - label: release ci_pipeline_scheduler
+    if: build.branch == "master"
     commands:
-      - ./anyscale/ci/release_ci_pipeline_scheduler.sh
+      - ./anyscale/ci/release_rayci_tool.sh ci_pipeline_scheduler //ci/ray_ci/pipeline:scheduler
     instance_type: small
