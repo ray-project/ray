@@ -723,7 +723,7 @@ class Impala(Algorithm):
             learner_results = None
 
             _ts_sent = 0
-            _ts_received = 0
+            #_ts_received = 0
 
             for to_learner_group in episode_refs_for_learner_group:
 
@@ -742,7 +742,7 @@ class Impala(Algorithm):
                         rl_module_state = r.pop(
                             "_rl_module_state_after_update", rl_module_state
                         )
-                        _ts_received += r[ALL_MODULES][NUM_ENV_STEPS_TRAINED].peek()
+                        #_ts_received += r[ALL_MODULES][NUM_ENV_STEPS_TRAINED].peek()
                     self.metrics.log_n_dicts(
                         stats_dicts=results_from_n_learners,
                         key=LEARNER_RESULTS,
@@ -753,10 +753,10 @@ class Impala(Algorithm):
                 key="_mean_num_episode_ts_sent_to_learner_group",
                 value=_ts_sent,
             )
-            self.metrics.log_value(
-                key="_mean_num_episode_ts_received_from_learner_group",
-                value=_ts_received,
-            )
+            #self.metrics.log_value(
+            #    key="_mean_num_episode_ts_received_from_learner_group",
+            #    value=_ts_received,
+            #)
             if np.isnan(self.metrics.peek(
                 LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED, default=0
             )):

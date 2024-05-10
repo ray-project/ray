@@ -164,7 +164,7 @@ class LearnerGroup:
                 #  (allowing for any arbitrary number of requests in-flight). Test with
                 #  3 first, then with unlimited, and if both show the same behavior on
                 #  an async algo, remove this restriction entirely.
-                max_remote_requests_in_flight_per_actor=100,
+                max_remote_requests_in_flight_per_actor=3,
             )
             # Counters for the tags for asynchronous update requests that are
             # in-flight. Used for keeping trakc of and grouping together the results of
