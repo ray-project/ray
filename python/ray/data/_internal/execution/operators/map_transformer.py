@@ -310,7 +310,7 @@ class BlocksToBatchesMapTransformFn(MapTransformFn):
         if first is None:
             return []
         blocks = itertools.chain([first], block_iter)
-        empty_block = BlockAccessor.for_block(first).builder().build()
+        empty_block = BlockAccessor.for_block(first).to_batch_format(self._batch_format)
         # Don't hold the first block in memory, so we reset the reference.
         first = None
 
