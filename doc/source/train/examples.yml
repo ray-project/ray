@@ -59,7 +59,7 @@ examples:
     frameworks:
       - accelerate
       - transformers
-    skill_level: beginner
+    skill_level: intermediate
     use_cases:
       - natural language processing
       - large language models
@@ -69,7 +69,7 @@ examples:
     frameworks:
       - accelerate
       - transformers
-    skill_level: beginner
+    skill_level: intermediate
     use_cases:
       - natural language processing
       - large language models
