@@ -1,5 +1,6 @@
 import collections
 import heapq
+import logging
 import random
 from typing import (
     TYPE_CHECKING,
@@ -35,6 +36,7 @@ from ray.data.block import (
     U,
 )
 from ray.data.context import DataContext
+from ray.util.debug import log_once
 
 try:
     import pyarrow
@@ -50,6 +52,7 @@ if TYPE_CHECKING:
 
 
 T = TypeVar("T")
+logger = logging.getLogger(__name__)
 
 
 # We offload some transformations to polars for performance.
@@ -135,12 +138,23 @@ class ArrowBlockBuilder(TableBlockBuilder):
     @staticmethod
     def _table_from_pydict(columns: Dict[str, List[Any]]) -> Block:
         for col_name, col in columns.items():
-            if col_name == TENSOR_COLUMN_NAME or isinstance(
-                next(iter(col), None), np.ndarray
-            ):
-                from ray.data.extensions.tensor_extension import ArrowTensorArray
+            try:
+                if col_name == TENSOR_COLUMN_NAME or isinstance(
+                    next(iter(col), None), np.ndarray
+                ):
+                    from ray.data.extensions.tensor_extension import ArrowTensorArray
 
-                columns[col_name] = ArrowTensorArray.from_numpy(col, col_name)
+                    columns[col_name] = ArrowTensorArray.from_numpy(col, col_name)
+                else:
+                    columns[col_name] = pyarrow.array(col)
+            except (
+                pyarrow.ArrowInvalid,
+                pyarrow.ArrowNotImplementedError,
+                pyarrow.ArrowTypeError,
+            ):
+                from ray.data.extensions.object_extension import ArrowPythonObjectArray
+
+                columns[col_name] = ArrowPythonObjectArray.from_objects(col)
         return pyarrow.Table.from_pydict(columns)
 
     @staticmethod
@@ -189,6 +203,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
     ) -> "pyarrow.Table":
         import pyarrow as pa
 
+        from ray.data.extensions.object_extension import ArrowPythonObjectArray
         from ray.data.extensions.tensor_extension import ArrowTensorArray
 
         if isinstance(batch, np.ndarray):
@@ -207,7 +222,20 @@ class ArrowBlockAccessor(TableBlockAccessor):
             col = convert_udf_returns_to_numpy(col)
             # Use Arrow's native *List types for 1-dimensional ndarrays.
             if col.dtype.type is np.object_ or col.ndim > 1:
-                col = ArrowTensorArray.from_numpy(col, col_name)
+                try:
+                    col = ArrowTensorArray.from_numpy(col, col_name)
+                except (
+                    pyarrow.ArrowInvalid,
+                    pyarrow.ArrowNotImplementedError,
+                    pyarrow.ArrowTypeError,
+                ):
+                    if log_once(f"arrow_object_pickle_{col_name}"):
+                        logger.warning(
+                            f"Failed to interpret {col_name} as "
+                            "multi-dimensional arrays. It will be pickled."
+                        )
+                    col = ArrowPythonObjectArray.from_objects(col)
+
             new_batch[col_name] = col
         return pa.Table.from_pydict(new_batch)
 

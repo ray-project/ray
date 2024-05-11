@@ -335,6 +335,8 @@ def _array_to_array_payload(a: "pyarrow.Array") -> "PicklableArrayPayload":
         a.type, ArrowVariableShapedTensorType
     ):
         return _tensor_array_to_array_payload(a)
+    elif isinstance(a.type, pa.ExtensionType):
+        return _extension_array_to_array_payload(a)
     else:
         raise ValueError("Unhandled Arrow array type:", a.type)
 
@@ -656,6 +658,16 @@ def _tensor_array_to_array_payload(a: "ArrowTensorArray") -> "PicklableArrayPayl
         offset=0,
         children=[storage_payload],
     )
+
+
+def _extension_array_to_array_payload(
+    a: "pyarrow.ExtensionArray",
+) -> "PicklableArrayPayload":
+    payload = _array_to_array_payload(a.storage)
+    payload.type = a.type
+    payload.length = len(a)
+    payload.null_count = a.null_count
+    return payload
 
 
 def _copy_buffer_if_needed(
