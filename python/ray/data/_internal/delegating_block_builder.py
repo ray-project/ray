@@ -47,7 +47,27 @@ class DelegatingBlockBuilder(BlockBuilder):
             return
         if self._builder is None:
             self._builder = accessor.builder()
-        self._builder.add_block(accessor.to_block())
+
+        import pandas as pd
+
+        from ray.data._internal.arrow_block import ArrowBlockBuilder
+        from ray.data._internal.pandas_block import PandasBlockBuilder
+
+        # TODO see BlockAccessor.batch_to_block, fallback maybe cause dataset refs
+        # both pandas and arrow exist. like issue https://github.com/ray-project/ray/issues/45236
+        # Added judgments and conversions to avoid errors when blocks merge
+        block = accessor.to_block()
+        if isinstance(block, pd.DataFrame):
+            if isinstance(self._builder, ArrowBlockBuilder):
+                accessor = BlockAccessor.for_block(block)
+                old_builder = self._builder
+                self._builder = accessor.builder()
+                self._builder.add_block(old_builder.build().to_pandas())
+        else:
+            if isinstance(self._builder, PandasBlockBuilder):
+                block = accessor.to_pandas()
+
+        self._builder.add_block(block)
 
     def will_build_yield_copy(self) -> bool:
         if self._builder is None:
