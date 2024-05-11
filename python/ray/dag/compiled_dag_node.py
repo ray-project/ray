@@ -512,9 +512,7 @@ class CompiledDAG:
         if None in nccl_actors:
             raise ValueError("Driver cannot participate in the NCCL group.")
         if nccl_actors and self._nccl_group_id is None:
-            print("INIT")
             self._nccl_group_id = _init_nccl_group(nccl_actors)
-            print("INIT DONE")
 
     def _get_or_compile(
         self,
