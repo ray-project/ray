@@ -230,18 +230,20 @@ def main(
     )
     if build_only:
         sys.exit(0)
-    test_targets = _get_test_targets(
-        container,
-        # use the bisect_run_test_target if it is provided
-        [bisect_run_test_target] if bisect_run_test_target else targets,
-        team,
-        operating_system,
-        except_tags=_add_default_except_tags(except_tags),
-        only_tags=only_tags,
-        get_flaky_tests=run_flaky_tests,
-        get_high_impact_tests=run_high_impact_tests
-        or os.environ.get("RAYCI_MICROCHECK_RUN") == "1",
-    )
+    if bisect_run_test_target:
+        test_targets = [bisect_run_test_target]
+    else:
+        test_targets = _get_test_targets(
+            container,
+            targets,
+            team,
+            operating_system,
+            except_tags=_add_default_except_tags(except_tags),
+            only_tags=only_tags,
+            get_flaky_tests=run_flaky_tests,
+            get_high_impact_tests=run_high_impact_tests
+            or os.environ.get("RAYCI_MICROCHECK_RUN") == "1",
+        )
     success = container.run_tests(
         team,
         test_targets,
