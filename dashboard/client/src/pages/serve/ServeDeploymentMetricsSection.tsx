@@ -1,4 +1,4 @@
-import { Button, MenuItem, Paper, TextField } from "@mui/material";
+import { Box, Button, MenuItem, Paper, TextField } from "@mui/material";
 import createStyles from "@mui/styles/createStyles";
 import makeStyles from "@mui/styles/makeStyles";
 import React, { useContext, useEffect, useState } from "react";
@@ -112,7 +112,7 @@ export const ServeReplicaMetricsSection = ({
     !replicaButtonUrl ? null : (
     <CollapsibleSection className={className} title="Metrics" startExpanded>
       <div>
-        <Paper className={classes.topBar}>
+        <Box className={classes.topBar}>
           <Button
             href={replicaButtonUrl}
             target="_blank"
@@ -137,7 +137,7 @@ export const ServeReplicaMetricsSection = ({
               </MenuItem>
             ))}
           </TextField>
-        </Paper>
+        </Box>
         <div className={classes.grafanaEmbedsContainer}>
           {METRICS_CONFIG.map(({ title, pathParams }) => {
             const path =

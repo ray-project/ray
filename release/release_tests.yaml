@@ -3508,6 +3508,22 @@
     timeout: 1800
     script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py --experimental
 
+- name: microbenchmark_gpu_unstable
+  group: core-daily-test
+  team: core
+  frequency: nightly
+  working_dir: microbenchmark
+
+  stable: false
+
+  cluster:
+    byod: {}
+    cluster_compute: experimental/compute_gpu_2_gce.yaml
+
+  run:
+    timeout: 1800
+    script: python experimental/accelerated_dag_gpu_microbenchmark.py
+
 - name: benchmark_worker_startup
   group: core-daily-test
   team: core

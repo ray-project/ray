@@ -2,6 +2,7 @@
 # Copy anyscale pin to requirements.txt and util.py
 anyscale
 bazel-runfiles
+aioboto3
 boto3
 click
 freezegun

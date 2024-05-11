@@ -11,7 +11,6 @@ from ray.dashboard.modules.metrics.metrics_head import (
     PrometheusQueryError,
 )
 from urllib.parse import quote
-import ray
 import logging
 
 logger = logging.getLogger(__name__)
@@ -62,7 +61,7 @@ class DataHead(dashboard_utils.DashboardHeadModule):
             from ray.data._internal.stats import _get_or_create_stats_actor
 
             _stats_actor = _get_or_create_stats_actor()
-            datasets = ray.get(_stats_actor.get_datasets.remote(job_id))
+            datasets = await _stats_actor.get_datasets.remote(job_id)
             # Initializes dataset metric values
             for dataset in datasets:
                 for metric, queries in DATASET_METRICS.items():

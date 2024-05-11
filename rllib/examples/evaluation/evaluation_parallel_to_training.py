@@ -66,6 +66,8 @@ the experiment takes considerably longer (~70sec vs ~80sec):
 |          81.7371 | 100000 |   494.68 |             494.68 |
 +------------------+--------+----------+--------------------+
 """
+from typing import Optional
+
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
@@ -75,6 +77,7 @@ from ray.rllib.utils.metrics import (
     NUM_EPISODES,
     NUM_ENV_STEPS_SAMPLED,
 )
+from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
@@ -124,7 +127,14 @@ parser.add_argument(
 
 
 class AssertEvalCallback(DefaultCallbacks):
-    def on_train_result(self, *, algorithm: Algorithm, result: ResultDict, **kwargs):
+    def on_train_result(
+        self,
+        *,
+        algorithm: Algorithm,
+        metrics_logger: Optional[MetricsLogger] = None,
+        result: ResultDict,
+        **kwargs,
+    ):
         # The eval results can be found inside the main `result` dict
         # (old API stack: "evaluation").
         eval_results = result.get(EVALUATION_RESULTS, result.get("evaluation", {}))

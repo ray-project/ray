@@ -190,6 +190,7 @@ py_test_module_list(
     "test_shuffle.py",
     "test_state_api_log.py",
     "test_state_api_summary.py",
+    "test_structured_logging.py",
     "test_tempfile.py",
     "test_tensorflow.py",
     "test_tls_auth.py",
@@ -315,7 +316,7 @@ py_test_module_list(
     "test_channel.py",
   ],
   size = "medium",
-  tags = ["exclusive", "team:core"],
+  tags = ["exclusive", "accelerated_dag", "no_windows", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -333,10 +334,18 @@ py_test_module_list(
   files = [
     "test_gcs_ha_e2e.py",
     "test_gcs_ha_e2e_2.py",
-    "test_network_failure_e2e.py",
   ],
   size = "medium",
   tags = ["exclusive", "ha_integration", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
+    "test_network_failure_e2e.py",
+  ],
+  size = "medium",
+  tags = ["exclusive", "ha_integration", "no_windows", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 

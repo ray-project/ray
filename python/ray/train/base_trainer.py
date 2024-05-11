@@ -571,8 +571,8 @@ class BaseTrainer(abc.ABC):
             A Result object containing the training result.
 
         Raises:
-            TrainingFailedError: If any failures during the execution of
-            ``self.as_trainable()``, or during the Tune execution loop.
+            TrainingFailedError: If any failures during the execution
+                of ``self.as_trainable()``, or during the Tune execution loop.
         """
         from ray.tune import ResumeConfig, TuneError
         from ray.tune.tuner import Tuner
