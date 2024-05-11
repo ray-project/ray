@@ -19,14 +19,6 @@ steps:
       IMAGE_TO: coregpubuild
       RAYCI_IS_GPU_BUILD: "true"
 
-  - name: coregpubuild
-    wanda: ci/docker/core.build.py39.wanda.yaml
-    depends_on: oss-ci-base_gpu
-    env:
-      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_gpu
-      IMAGE_TO: coregpubuild
-      RAYCI_IS_GPU_BUILD: "true"
-
   - name: corebuild-multipy
     label: "wanda: corebuild-py{{matrix}}"
     wanda: ci/docker/core.build.wanda.yaml
@@ -348,3 +340,4 @@ steps:
         --parallelism-per-worker 2 --gpus 2
         --build-name coregpubuild
         --only-tags multi_gpu
+    depends_on: coregpubuild
