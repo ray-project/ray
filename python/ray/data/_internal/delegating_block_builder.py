@@ -54,7 +54,8 @@ class DelegatingBlockBuilder(BlockBuilder):
         from ray.data._internal.pandas_block import PandasBlockBuilder
 
         # TODO see BlockAccessor.batch_to_block, fallback maybe cause dataset refs
-        # both pandas and arrow exist. like issue https://github.com/ray-project/ray/issues/45236
+        # both pandas and arrow exist. like issue
+        # https://github.com/ray-project/ray/issues/45236
         # Added judgments and conversions to avoid errors when blocks merge
         block = accessor.to_block()
         if isinstance(block, pd.DataFrame):
