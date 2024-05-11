@@ -190,6 +190,7 @@ py_test_module_list(
     "test_shuffle.py",
     "test_state_api_log.py",
     "test_state_api_summary.py",
+    "test_structured_logging.py",
     "test_tempfile.py",
     "test_tensorflow.py",
     "test_tls_auth.py",

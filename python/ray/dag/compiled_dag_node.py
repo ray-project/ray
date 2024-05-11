@@ -243,10 +243,6 @@ class CompiledTask:
                 self.output_wrapper_fn = lambda t: _TorchTensorWrapper(
                     t, self.dag_node.type_hint
                 )
-            else:
-                raise ValueError(
-                    "DAGNode.with_type_hint may only be called on " "TorchTensorType"
-                )
 
     @property
     def args(self) -> Tuple[Any]:
@@ -516,7 +512,9 @@ class CompiledDAG:
         if None in nccl_actors:
             raise ValueError("Driver cannot participate in the NCCL group.")
         if nccl_actors and self._nccl_group_id is None:
+            print("INIT")
             self._nccl_group_id = _init_nccl_group(nccl_actors)
+            print("INIT DONE")
 
     def _get_or_compile(
         self,

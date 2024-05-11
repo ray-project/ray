@@ -41,8 +41,6 @@ class TorchTensorType(ChannelOutputType):
         default_device = torch_utils.get_devices()[0]
         torch_tensor_serializer = _TorchTensorSerializer(default_device)
 
-        # TODO(swang): Custom serializer should only kick in if ChannelContext
-        # set.
         CUSTOM_SERIALIZERS = (
             (
                 _TorchTensorWrapper,
@@ -63,7 +61,7 @@ class TorchTensorType(ChannelOutputType):
         writer: Optional["ray.actor.ActorHandle"],
         readers: List[Optional["ray.actor.ActorHandle"]],
     ) -> type:
-        if self.transport == "nccl":
+        if self.transport == self.NCCL:
             from ray.experimental.channel.torch_tensor_nccl_channel import (
                 TorchTensorNcclChannel,
             )

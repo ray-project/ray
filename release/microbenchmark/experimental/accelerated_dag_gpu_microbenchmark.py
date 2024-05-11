@@ -166,6 +166,7 @@ def exec_ray_dag_ipc(label, sender, receiver, use_nccl=False):
         )
 
     compiled_dag = dag.experimental_compile(buffer_size_bytes=int(SHAPE[0] * 3))
+    # Flag that each run can set if it sees incorrect results.
     ok = [True]
 
     def _run():
@@ -177,11 +178,13 @@ def exec_ray_dag_ipc(label, sender, receiver, use_nccl=False):
             ok[0] = False
         output_channel.end_read()
 
-    timeit(label, _run)
+    results = timeit(label, _run)
+
     if not ok[0]:
         logger.warning("IPC DAG returned incorrect result")
     compiled_dag.teardown()
 
+    return results
 
 def _exec_torch_cpu_cpu():
     i = np.random.randint(100)
@@ -299,7 +302,7 @@ def exec_ray_dag_gpu_nccl(dynamic_shape: bool = False):
     sender = TorchTensorWorker.options(num_gpus=1).remote()
     receiver = TorchTensorWorker.options(num_gpus=1).remote()
     return exec_ray_dag(
-        "exec_ray_dag_gpu_nccl" + "_dynamic" if dynamic_shape else "",
+        "exec_ray_dag_gpu_nccl" + ("_dynamic" if dynamic_shape else ""),
         sender,
         receiver,
         use_nccl=True,
@@ -328,22 +331,22 @@ def main():
         }
     )
 
-    # results += timeit("exec_torch_cpu_cpu", _exec_torch_cpu_cpu)
-    # results += timeit("exec_torch_gpu", _exec_torch_gpu)
-    # results += timeit("exec_torch_gpu_cpu_gpu", _exec_torch_gpu_cpu_gpu)
-    results += exec_nccl_gpu()
+    #results += timeit("exec_torch_cpu_cpu", _exec_torch_cpu_cpu)
+    #results += timeit("exec_torch_gpu", _exec_torch_gpu)
+    #results += timeit("exec_torch_gpu_cpu_gpu", _exec_torch_gpu_cpu_gpu)
+    #results += exec_nccl_gpu()
 
-    # results += timeit("exec_ray_put_cpu", _exec_ray_put_cpu)
-    # results += timeit("exec_ray_put_np_zero_copy", _exec_ray_put_np_zero_copy)
-    # results += timeit("exec_ray_put_gpu", _exec_ray_put_gpu)
+    #results += timeit("exec_ray_put_cpu", _exec_ray_put_cpu)
+    #results += timeit("exec_ray_put_np_zero_copy", _exec_ray_put_np_zero_copy)
+    #results += timeit("exec_ray_put_gpu", _exec_ray_put_gpu)
 
-    # results += exec_ray_core_cpu()
-    # results += exec_ray_dag_cpu()
-    # results += exec_ray_core_gpu()
+    #results += exec_ray_core_cpu()
+    #results += exec_ray_dag_cpu()
+    #results += exec_ray_core_gpu()
     results += exec_ray_dag_gpu_cpu_gpu()
     results += exec_ray_dag_gpu_nccl(dynamic_shape=True)
     results += exec_ray_dag_gpu_nccl(dynamic_shape=False)
-    # results += exec_ray_dag_gpu_ipc_gpu()
+    results += exec_ray_dag_gpu_ipc_gpu()
 
 
 if __name__ == "__main__":
@@ -354,7 +357,7 @@ if __name__ == "__main__":
         "--tensor-size-bytes",
         type=int,
         # 100KB
-        default=1000_000,
+        default=100_000,
     )
     args = parser.parse_args()
 

@@ -6,7 +6,7 @@ from typing import Callable, Dict, List, Optional, Union
 
 from xgboost.core import Booster
 
-from ray import train
+import ray.train
 from ray.train import Checkpoint
 from ray.tune.utils import flatten_dict
 from ray.util.annotations import PublicAPI
@@ -118,6 +118,9 @@ class RayTrainReportCallback(TuneCallback):
         # so that the latest metrics can be reported with the checkpoint
         # at the end of training.
         self._evals_log = None
+        # Keep track of the last checkpoint iteration to avoid double-checkpointing
+        # when using `checkpoint_at_end=True`.
+        self._last_checkpoint_iteration = None
 
     @classmethod
     def get_model(
@@ -163,9 +166,13 @@ class RayTrainReportCallback(TuneCallback):
 
     @contextmanager
     def _get_checkpoint(self, model: Booster) -> Optional[Checkpoint]:
-        with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
-            model.save_model(Path(temp_checkpoint_dir, self._filename).as_posix())
-            yield Checkpoint(temp_checkpoint_dir)
+        # NOTE: The world rank returns None for Tune usage without Train.
+        if ray.train.get_context().get_world_rank() in (0, None):
+            with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+                model.save_model(Path(temp_checkpoint_dir, self._filename).as_posix())
+                yield Checkpoint(temp_checkpoint_dir)
+        else:
+            yield None
 
     def after_iteration(self, model: Booster, epoch: int, evals_log: Dict):
         self._evals_log = evals_log
@@ -178,17 +185,26 @@ class RayTrainReportCallback(TuneCallback):
 
         report_dict = self._get_report_dict(evals_log)
         if should_checkpoint:
+            self._last_checkpoint_iteration = epoch
             with self._get_checkpoint(model=model) as checkpoint:
-                train.report(report_dict, checkpoint=checkpoint)
+                ray.train.report(report_dict, checkpoint=checkpoint)
         else:
-            train.report(report_dict)
+            ray.train.report(report_dict)
 
-    def after_training(self, model: Booster):
+    def after_training(self, model: Booster) -> Booster:
         if not self._checkpoint_at_end:
+            return model
+
+        if (
+            self._last_checkpoint_iteration is not None
+            and model.num_boosted_rounds() - 1 == self._last_checkpoint_iteration
+        ):
+            # Avoids a duplicate checkpoint if the checkpoint frequency happens
+            # to align with the last iteration.
             return model
 
         report_dict = self._get_report_dict(self._evals_log) if self._evals_log else {}
         with self._get_checkpoint(model=model) as checkpoint:
-            train.report(report_dict, checkpoint=checkpoint)
+            ray.train.report(report_dict, checkpoint=checkpoint)
 
         return model

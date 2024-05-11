@@ -59,7 +59,9 @@ class TorchTensorNcclChannel(ChannelInterface):
                 f'Actor\'s default device has type "{self._device.type}", need "cuda"'
             )
 
-        assert typ.transport == "nccl"
+        assert isinstance(typ, TorchTensorType)
+        assert typ.transport == typ.NCCL
+        self._typ = typ
         self._typ: "TorchTensorType" = typ
 
         ctx = ChannelContext.get_current()
@@ -105,11 +107,9 @@ class TorchTensorNcclChannel(ChannelInterface):
 
     def ensure_registered_as_writer(self):
         assert self._nccl_group is not None, "Actor is not part of a NCCL group"
-        return self._writer_registered, "Actor is not the writer"
 
     def ensure_registered_as_reader(self) -> bool:
         assert self._nccl_group is not None, "Actor is not part of a NCCL group"
-        return self._reader_registered, "Actor is not a reader"
 
     def __reduce__(self):
         return (
@@ -120,14 +120,7 @@ class TorchTensorNcclChannel(ChannelInterface):
     def write(
         self,
         wrapped: "_TorchTensorWrapper",
-        readers: Optional[List[ray.actor.ActorHandle]] = None,
     ):
-        if readers is not None:
-            raise NotImplementedError(
-                "TorchTensorNcclChannel.write() not supported for dynamically "
-                "passed readers."
-            )
-
         value = wrapped.tensor
         if value.device != self._device:
             raise ValueError(
@@ -239,7 +232,7 @@ def _init_nccl_group(
     # Used to uniquely identify this NCCL group.
     group_id = str(uuid.uuid4())
 
-    logger.info(f"Creating NCCL group on actors: {actors}")
+    logger.info(f"Creating NCCL group {group_id} on actors: {actors}")
 
     world_size = len(actors)
     init_tasks = [

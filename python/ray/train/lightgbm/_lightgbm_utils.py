@@ -6,7 +6,7 @@ from typing import Callable, Dict, List, Optional, Union
 from lightgbm.basic import Booster
 from lightgbm.callback import CallbackEnv
 
-from ray import train
+import ray.train
 from ray.train import Checkpoint
 from ray.tune.utils import flatten_dict
 from ray.util.annotations import PublicAPI
@@ -142,25 +142,29 @@ class RayTrainReportCallback:
 
     @contextmanager
     def _get_checkpoint(self, model: Booster) -> Optional[Checkpoint]:
-        with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
-            model.save_model(Path(temp_checkpoint_dir, self._filename).as_posix())
-            yield Checkpoint.from_directory(temp_checkpoint_dir)
+        if ray.train.get_context().get_world_rank() in (0, None):
+            with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+                model.save_model(Path(temp_checkpoint_dir, self._filename).as_posix())
+                yield Checkpoint.from_directory(temp_checkpoint_dir)
+        else:
+            yield None
 
     def __call__(self, env: CallbackEnv) -> None:
         eval_result = self._get_eval_result(env)
         report_dict = self._get_report_dict(eval_result)
 
+        # Ex: if frequency=2, checkpoint_at_end=True and num_boost_rounds=11,
+        # you will checkpoint at iterations 1, 3, 5, ..., 9, and 10 (checkpoint_at_end)
+        # (iterations count from 0)
         on_last_iter = env.iteration == env.end_iteration - 1
-        checkpointing_disabled = self._frequency == 0
-        # Ex: if frequency=2, checkpoint_at_end=True and num_boost_rounds=10,
-        # you will checkpoint at iterations 1, 3, 5, ..., and 9 (checkpoint_at_end)
-        # (counting from 0)
-        should_checkpoint = (
-            not checkpointing_disabled and (env.iteration + 1) % self._frequency == 0
-        ) or (on_last_iter and self._checkpoint_at_end)
+        should_checkpoint_at_end = on_last_iter and self._checkpoint_at_end
+        should_checkpoint_with_frequency = (
+            self._frequency != 0 and (env.iteration + 1) % self._frequency == 0
+        )
+        should_checkpoint = should_checkpoint_at_end or should_checkpoint_with_frequency
 
         if should_checkpoint:
             with self._get_checkpoint(model=env.model) as checkpoint:
-                train.report(report_dict, checkpoint=checkpoint)
+                ray.train.report(report_dict, checkpoint=checkpoint)
         else:
-            train.report(report_dict)
+            ray.train.report(report_dict)
