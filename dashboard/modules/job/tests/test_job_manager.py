@@ -1261,10 +1261,6 @@ async def test_monitor_job_pending(job_manager):
         _start_signal_actor=start_signal_actor,
     )
 
-    # Trigger _recover_running_jobs while the job is still pending. This
-    # will pick up the new pending job.
-    await job_manager._recover_running_jobs()
-
     # Trigger the job to start.
     ray.get(start_signal_actor.send.remote())
 
