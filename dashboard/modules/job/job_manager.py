@@ -153,16 +153,14 @@ class JobManager:
         if submission_id is None:
             submission_id = generate_job_id()
 
-        # Wait for the actor to start up asynchronously so this call always
-        # returns immediately and we can catch errors with the actor starting
-        # up.
+        supervisor: Optional[ActorHandle] = None
+
         try:
             # NOTE: JobSupervisor is *always* scheduled onto the head-node
             head_node_scheduling_strategy = (
                 await self._get_head_node_scheduling_strategy()
             )
 
-            # TODO consider restarting JS actor
             supervisor = self._supervisor_actor_cls.options(
                 lifetime="detached",
                 name=JOB_ACTOR_NAME_TEMPLATE.format(job_id=submission_id),
@@ -195,14 +193,10 @@ class JobManager:
                 f"Failed to start Job Supervisor and launch driver for job {submission_id}: {e}"
             )
 
-            # TODO move to JS
-            await self._job_info_client.put_status(
-                submission_id,
-                JobStatus.FAILED,
-                message=(
-                    f"Failed to start Job Supervisor and launch driver: {e}"
-                ),
-            )
+            if supervisor is not None:
+                ray.kill(supervisor, no_restart=True)
+
+            raise e
 
         return submission_id
 
