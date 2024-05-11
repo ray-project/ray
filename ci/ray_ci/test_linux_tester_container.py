@@ -129,9 +129,10 @@ def test_run_tests_in_docker() -> None:
 
 
 def test_run_script_in_docker() -> None:
-    def _mock_check_output(input: List[str]) -> None:
+    def _mock_check_output(input: List[str]) -> bytes:
         input_str = " ".join(input)
         assert "/bin/bash -iecuo pipefail -- run command" in input_str
+        return b""
 
     with mock.patch(
         "subprocess.check_output", side_effect=_mock_check_output

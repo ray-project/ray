@@ -3,12 +3,11 @@ import aiohttp
 import logging
 import os
 import shutil
-
 from typing import Optional
-
 import psutil
-
 from urllib.parse import quote
+
+import ray
 from ray.dashboard.modules.metrics.grafana_dashboard_factory import (
     generate_default_grafana_dashboard,
     generate_serve_grafana_dashboard,
@@ -309,12 +308,14 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         self._dashboard_head.metrics.metrics_dashboard_cpu.labels(
             ip=self._ip,
             pid=self._pid,
+            Version=ray.__version__,
             Component=self._component,
             SessionName=self._session_name,
         ).set(float(self._dashboard_proc.cpu_percent()))
         self._dashboard_head.metrics.metrics_dashboard_mem.labels(
             ip=self._ip,
             pid=self._pid,
+            Version=ray.__version__,
             Component=self._component,
             SessionName=self._session_name,
         ).set(float(self._dashboard_proc.memory_full_info().uss) / 1.0e6)

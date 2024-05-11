@@ -5,7 +5,7 @@
 ## Prerequisites
 
 This guide focuses solely on the Ray Serve multi-application API, which is available starting from Ray version 2.4.0.
-This guide mainly focuses on the behavior of KubeRay v1.1.0 and Ray 2.9.0.
+This guide mainly focuses on the behavior of KubeRay v1.1.1 and Ray 2.9.0.
 
 * Ray 2.4.0 or newer.
 * KubeRay 0.6.0, KubeRay nightly, or newer.
@@ -41,7 +41,7 @@ Please note that the YAML file in this example uses `serveConfigV2` to specify a
 
 ```sh
 # Step 3.1: Download `ray-service.sample.yaml`
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/release-1.1.0/ray-operator/config/samples/ray-service.sample.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/release-1.1.1/ray-operator/config/samples/ray-service.sample.yaml
 
 # Step 3.2: Create a RayService
 kubectl apply -f ray-service.sample.yaml

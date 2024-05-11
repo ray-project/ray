@@ -230,7 +230,7 @@ struct PlacementGroupCreationOptions {
 class ObjectLocation {
  public:
   ObjectLocation(NodeID primary_node_id,
-                 uint64_t object_size,
+                 int64_t object_size,
                  std::vector<NodeID> node_ids,
                  bool is_spilled,
                  std::string spilled_url,
@@ -246,7 +246,7 @@ class ObjectLocation {
 
   const NodeID &GetPrimaryNodeID() const { return primary_node_id_; }
 
-  const uint64_t GetObjectSize() const { return object_size_; }
+  const int64_t GetObjectSize() const { return object_size_; }
 
   const std::vector<NodeID> &GetNodeIDs() const { return node_ids_; }
 
@@ -262,8 +262,8 @@ class ObjectLocation {
   /// The ID of the node has the primary copy of the object.
   /// Nil if the object is pending resolution.
   const NodeID primary_node_id_;
-  /// The size of the object in bytes.
-  const uint64_t object_size_;
+  /// The size of the object in bytes. -1 if unknown.
+  const int64_t object_size_;
   /// The IDs of the nodes that this object appeared on or was evicted by.
   const std::vector<NodeID> node_ids_;
   /// Whether this object has been spilled.
