@@ -425,8 +425,13 @@ def _grid_search_generator(
         yield unresolved_spec
         return
 
+    # create a skeleton spec that is easier to deepcopy
+    unresolved_spec_skeleton = copy.deepcopy(unresolved_spec)
+    for path, _ in grid_vars:
+        assign_value(unresolved_spec_skeleton, path, None)
+
     while value_indices[-1] < len(grid_vars[-1][1]):
-        spec = copy.deepcopy(unresolved_spec)
+        spec = copy.deepcopy(unresolved_spec_skeleton)
         for i, (path, values) in enumerate(grid_vars):
             assign_value(spec, path, values[value_indices[i]])
         yield spec
