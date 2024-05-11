@@ -97,18 +97,23 @@ class JobManager:
         _start_signal_actor: Optional[ActorHandle] = None,
     ) -> str:
         """
-        TODO update
+        Submits Ray Job for execution on a Ray cluster.
 
-        Job execution happens asynchronously.
+        Ray jobs are executed asynchronously in a set of following steps
 
-        1) Generate a new unique id for this job submission, each call of this
-            method assumes they're independent submission with its own new
-            ID, job supervisor actor, and child process.
-        2) Create new detached actor with same runtime_env as job spec
+        1. `JobSupervisor` actor is created, orchestrating execution (and monitoring)
+           of the Ray job (NOTE: supervisor is scheduled on a head-node!).
+        2. `JobSupervisor` subsequently creates `JobRunner` actor launching job's entrypoint, managing
+            its lifecycle and reporting its status.
 
-        Actual setting up runtime_env, subprocess group, driver command
-        execution, subprocess cleaning up and running status update to GCS
-        is all handled by job supervisor actor.
+        While, job execution process is asynchronous, we want to provide reasonable guarantees to the
+        caller about the status of the job execution process by the time job submission completes.
+
+        We provide following guarantees upon successful return of the Job Submission API:
+
+        1. Job's supervising actor (`JobSupervisor`) is launched
+        2. Job's execution (asynchronous) control loop is active (inside `JobSupervisor`)
+        3. Job's monitoring loop is active (inside `JobSupervisor`)
 
         Args:
             entrypoint: Driver command to execute in subprocess shell.
