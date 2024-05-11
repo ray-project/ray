@@ -30,8 +30,8 @@ def test_print_worker_logs_default_color() -> None:
         )
         output = get_print_worker_logs_output(data)
         assert output == (
-            f"{colorama.Fore.CYAN}(my_task pid={pid}, ip=10.0.0.1){colorama.Style.RESET_ALL} "
-            + "is running\n"
+            f"{colorama.Fore.CYAN}(my_task pid={pid}, ip=10.0.0.1)"
+            + f"{colorama.Style.RESET_ALL} is running\n"
         )
 
     # Special case
@@ -84,8 +84,8 @@ def test_print_worker_logs_multi_color() -> None:
     )
     output = get_print_worker_logs_output(data_pid_0)
     assert output == (
-        f"{colorama.Fore.MAGENTA}(my_task pid=0, ip=10.0.0.1){colorama.Style.RESET_ALL} "
-        + "is running\n"
+        f"{colorama.Fore.MAGENTA}(my_task pid=0, ip=10.0.0.1)"
+        + f"{colorama.Style.RESET_ALL} is running\n"
     )
 
     data_pid_2 = dict(
