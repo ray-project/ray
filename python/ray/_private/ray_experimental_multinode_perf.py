@@ -1,4 +1,25 @@
-# coding: utf-8
+"""
+This script runs performance benchmarks for the accelerated DAG channel, vanilla Ray
+communication (ray.put() and ray.get()), and pygloo (send(), recv(), and broadcast()).
+
+This is important for ensuring that accelerated DAG performance is competitive with
+these two baselines, and will inform future optimizations as needed.
+
+The benchmarks measure the overhead of a ping-pong. Actor A sends an object to Actor B,
+and then Actor B responds to A with the same object. We measure the roundtrip latency.
+
+Note that there are multiple instances of Actor B when num_readers is greater than 1. In
+this case, all instances of B read the data sent by A, but only one instance of B
+responds to A.
+
+These benchmarks measure roundtrip latency along multiple dimensions:
+(1) Remote vs. local communication
+(2) 1, 2, 4, and 8 readers
+(3) Object sizes of 1 byte, 1 KiB, 1 MiB, and 500 MiB
+We set a max object size of 500 MiB as Ray limits the gRPC payload size to 512 MiB (we
+leave some extra room for metadata, etc.).
+"""
+
 import logging
 import os
 import sys
@@ -35,28 +56,31 @@ def get_node_id(self):
     return _get_node_id(self)
 
 
+# Looks up and returns the worker node IDs. There must be exactly two worker nodes.
 def get_nodes(remote):
-    while True:
-        if remote:
-            node_ids = ray.get(
-                [get_node_id.options(num_cpus=1).remote(None) for _ in range(num_cpus)]
-            )
-            nodes = set()
-            for node_id in node_ids:
-                nodes.add(node_id)
-            assert len(nodes) == 2
-            a_node, b_node = nodes
-            if a_node != b_node:
-                break
-        else:
-            a_node = ray.get(get_node_id.options(num_cpus=1).remote(None))
-            b_node = a_node
-            if a_node == b_node:
-                break
+    if remote:
+        node_ids = ray.get(
+            [get_node_id.options(num_cpus=1).remote(None) for _ in range(num_cpus)]
+        )
+        nodes = set()
+        for node_id in node_ids:
+            nodes.add(node_id)
+        assert len(nodes) == 2
+        a_node, b_node = nodes
+        assert a_node != b_node
+    else:
+        a_node = ray.get(get_node_id.options(num_cpus=1).remote(None))
+        b_node = a_node
+        assert a_node == b_node
 
     return a_node, b_node
 
 
+# Tests the ping-pong (i.e., roundtrip) latency between two Actors, A and B, when they
+# communicate via the channel abstraction.
+# Note that there may be more than one instance of Actor B if num_readers is greater
+# than 1. In this case, all instances of B read the data sent by A, but only one
+# instance of B responds to A.
 def channel_ping_pong(remote, obj_size, name, num_ops, num_readers):
     a_node, b_node = get_nodes(remote)
 
@@ -165,6 +189,11 @@ def test_channel_ping_pong_local():
             channel_ping_pong(False, sizes[i], names[i], num_ops[i], num_r)
 
 
+# Tests the ping-pong (i.e., roundtrip) latency between two Actors, A and B, when they
+# communicate via the vanilla Ray communication abstractions (ray.put() and ray.get()).
+# Note that there may be more than one instance of Actor B if num_readers is greater
+# than 1. In this case, all instances of B read the data sent by A, but only one
+# instance of B responds to A.
 def vanilla_ray_ping_pong(remote, obj_size, name, num_ops, num_readers):
     a_node, b_node = get_nodes(remote)
 
@@ -187,8 +216,7 @@ def vanilla_ray_ping_pong(remote, obj_size, name, num_ops, num_readers):
                 work = []
                 for j in range(num_readers):
                     work.append(b_list[j].run.remote(object_ref, j == 0))
-                for w in work:
-                    ray.get(w)
+                ray.get(work)
             end = time.perf_counter()
             return end - start
 
@@ -237,6 +265,11 @@ def init_torch(self, ip_addr, rank, world_size):
     )
 
 
+# Tests the ping-pong (i.e., roundtrip) latency between two Actors, A and B, when they
+# communicate via pygloo (send(), recv(), and broadcast()).
+# Note that there may be more than one instance of Actor B if num_readers is greater
+# than 1. In this case, all instances of B read the data sent by A, but only one
+# instance of B responds to A.
 def gloo_ping_pong(remote, obj_size, name, num_ops, num_readers):
     a_node, b_node = get_nodes(remote)
 

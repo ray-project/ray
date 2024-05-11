@@ -17,6 +17,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     from ray._private.ray_experimental_multinode_perf import main
+
     results = main() or []
 
     result_dict = {
@@ -34,7 +35,9 @@ if __name__ == "__main__":
     ]
     result_dict["perf_metrics"] = perf_metrics
 
-    test_output_json = os.environ.get("TEST_OUTPUT_JSON", "/tmp/microbenchmark_multinode.json")
+    test_output_json = os.environ.get(
+        "TEST_OUTPUT_JSON", "/tmp/microbenchmark_multinode.json"
+    )
 
     with open(test_output_json, "wt") as f:
         json.dump(result_dict, f)
