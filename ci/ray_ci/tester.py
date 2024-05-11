@@ -47,14 +47,14 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 @click.argument("team", required=True, type=str, nargs=1)
 @click.option(
     "--workers",
-    default=1,
-    type=int,
+    default="1",
+    type=str,
     help=("Number of concurrent test jobs to run."),
 )
 @click.option(
     "--worker-id",
-    default=0,
-    type=int,
+    default="0",
+    type=str,
     help=("Index of the concurrent shard to run."),
 )
 @click.option(
@@ -155,6 +155,8 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
             "tsan-clang",
             # java build types
             "java",
+            # do not build ray
+            "skip",
         ]
     ),
     default="optimized",
@@ -178,8 +180,8 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 def main(
     targets: List[str],
     team: str,
-    workers: int,
-    worker_id: int,
+    workers: str,
+    worker_id: str,
     parallelism_per_worker: int,
     operating_system: str,
     except_tags: str,
@@ -214,8 +216,8 @@ def main(
     container = _get_container(
         team,
         operating_system,
-        workers,
-        worker_id,
+        int(workers) if workers else 1,
+        int(worker_id) if worker_id else 0,
         parallelism_per_worker,
         gpus,
         network=network,
@@ -241,7 +243,11 @@ def main(
         or os.environ.get("RAYCI_MICROCHECK_RUN") == "1",
     )
     success = container.run_tests(
-        team, test_targets, test_arg, is_bisect_run=bisect_run_test_target is not None
+        team,
+        test_targets,
+        test_arg,
+        is_bisect_run=bisect_run_test_target is not None,
+        run_flaky_tests=run_flaky_tests,
     )
     sys.exit(0 if success else 42)
 
@@ -368,9 +374,6 @@ def _get_test_targets(
                 f'bazel query "{query}"',
             ]
         )
-        .decode("utf-8")
-        # CUDA image comes with a license header that we need to remove
-        .replace(CUDA_COPYRIGHT, "")
         .strip()
         .split(os.linesep)
     )
@@ -388,23 +391,44 @@ def _get_test_targets(
     if get_high_impact_tests:
         # run high impact test cases, so we include only high impact tests in the list
         # of targets provided by users
-        high_impact_tests = _get_high_impact_test_targets(team, operating_system)
+        high_impact_tests = _get_high_impact_test_targets(
+            team, operating_system, container
+        )
         final_targets = high_impact_tests.intersection(final_targets)
 
     return list(final_targets)
 
 
-def _get_high_impact_test_targets(team: str, operating_system: str) -> Set[str]:
+def _get_high_impact_test_targets(
+    team: str, operating_system: str, container: TesterContainer
+) -> Set[str]:
     """
     Get all test targets that are high impact
     """
     os_prefix = f"{operating_system}:"
     step_id_to_tests = Test.gen_high_impact_tests(prefix=os_prefix)
-    return {
+    high_impact_tests = {
         test.get_name().lstrip(os_prefix)
         for test in itertools.chain.from_iterable(step_id_to_tests.values())
         if test.get_oncall() == team
     }
+    new_tests = _get_new_tests(os_prefix, container)
+
+    return high_impact_tests.union(new_tests)
+
+
+def _get_new_tests(prefix: str, container: TesterContainer) -> Set[str]:
+    """
+    Get all local test targets that are not in database
+    """
+    local_test_targets = set(
+        container.run_script_with_output(['bazel query "tests(//...)"'])
+        .strip()
+        .split(os.linesep)
+    )
+    db_test_targets = {test.get_target() for test in Test.gen_from_s3(prefix=prefix)}
+
+    return local_test_targets.difference(db_test_targets)
 
 
 def _get_flaky_test_targets(
@@ -416,27 +440,29 @@ def _get_flaky_test_targets(
     if not yaml_dir:
         yaml_dir = os.path.join(bazel_workspace_dir, "ci/ray_ci")
 
-    with open(f"{yaml_dir}/{team}.tests.yml", "rb") as f:
-        # load flaky tests from yaml
-        yaml_flaky_tests = set(yaml.safe_load(f)["flaky_tests"])
-        # load flaky tests from DB
-        s3_flaky_tests = {
-            # remove "linux:" prefix for linux tests to be consistent with the
-            # interface supported in the yaml file
-            test.get_name().lstrip("linux:")
-            for test in Test.gen_from_s3(prefix=f"{operating_system}:")
-            if test.get_oncall() == team and test.get_state() == TestState.FLAKY
-        }
-        all_flaky_tests = sorted(yaml_flaky_tests.union(s3_flaky_tests))
+    yaml_flaky_tests = set()
+    yaml_flaky_file = os.path.join(yaml_dir, f"{team}.tests.yml")
+    if os.path.exists(yaml_flaky_file):
+        with open(yaml_flaky_file, "rb") as f:
+            # load flaky tests from yaml
+            yaml_flaky_tests = set(yaml.safe_load(f)["flaky_tests"])
 
-        # linux tests are prefixed with "//"
-        if operating_system == "linux":
-            return [test for test in all_flaky_tests if test.startswith("//")]
+    # load flaky tests from DB
+    s3_flaky_tests = {
+        # remove "linux:" prefix for linux tests to be consistent with the
+        # interface supported in the yaml file
+        test.get_name().lstrip("linux:")
+        for test in Test.gen_from_s3(prefix=f"{operating_system}:")
+        if test.get_oncall() == team and test.get_state() == TestState.FLAKY
+    }
+    all_flaky_tests = sorted(yaml_flaky_tests.union(s3_flaky_tests))
 
-        # and other os tests are prefixed with "os:"
-        os_prefix = f"{operating_system}:"
-        return [
-            test.lstrip(os_prefix)
-            for test in all_flaky_tests
-            if test.startswith(os_prefix)
-        ]
+    # linux tests are prefixed with "//"
+    if operating_system == "linux":
+        return [test for test in all_flaky_tests if test.startswith("//")]
+
+    # and other os tests are prefixed with "os:"
+    os_prefix = f"{operating_system}:"
+    return [
+        test.lstrip(os_prefix) for test in all_flaky_tests if test.startswith(os_prefix)
+    ]

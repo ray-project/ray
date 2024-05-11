@@ -83,11 +83,6 @@ MutableObjectManager::~MutableObjectManager() {
     (void)SetErrorInternal(object_id);
     DestroySemaphores(object_id);
   }
-  for (const auto &[_, channel] : channels_) {
-    if (channel.reading) {
-      // channel.lock->Unlock();
-    }
-  }
   channels_.clear();
   destructor_lock_.Unlock();
 }
@@ -259,17 +254,24 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
   }
   // This lock ensures that there is only one reader at a time. The lock is released in
   // `ReadRelease()`.
-  channel->lock->Lock();
+  channel->lock->lock();
   channel->reading = true;
 
   PlasmaObjectHeader::Semaphores sem;
   if (!GetSemaphores(object_id, sem)) {
     channel->reading = false;
+    channel->lock->unlock();
     return Status::IOError("Channel has not been registered (cannot get semaphores)");
   }
   int64_t version_read = 0;
-  RAY_RETURN_NOT_OK(channel->mutable_object->header->ReadAcquire(
-      sem, channel->next_version_to_read, version_read));
+  Status s = channel->mutable_object->header->ReadAcquire(
+      sem, channel->next_version_to_read, version_read);
+  if (!s.ok()) {
+    // Failed because the error bit was set on the mutable object.
+    channel->reading = false;
+    channel->lock->unlock();
+    return s;
+  }
   RAY_CHECK_GT(version_read, 0);
   channel->next_version_to_read = version_read;
 
@@ -298,20 +300,27 @@ Status MutableObjectManager::ReadRelease(const ObjectID &object_id)
   if (!channel) {
     return Status::IOError("Channel has not been registered");
   }
+  if (!channel->reading) {
+    return Status::IOError("Must call ReadAcquire() on the channel before ReadRelease()");
+  }
 
   PlasmaObjectHeader::Semaphores sem;
-  if (!GetSemaphores(object_id, sem)) {
-    return Status::IOError("Channel has not been registered (cannot get semaphores)");
+  RAY_CHECK(GetSemaphores(object_id, sem));
+  Status s =
+      channel->mutable_object->header->ReadRelease(sem, channel->next_version_to_read);
+  if (!s.ok()) {
+    // Failed because the error bit was set on the mutable object.
+    channel->reading = false;
+    channel->lock->unlock();
+    return s;
   }
-  RAY_RETURN_NOT_OK(
-      channel->mutable_object->header->ReadRelease(sem, channel->next_version_to_read));
   // The next read needs to read at least this version.
   channel->next_version_to_read++;
 
   // This lock ensures that there is only one reader at a time. The lock is acquired in
   // `ReadAcquire()`.
   channel->reading = false;
-  channel->lock->Unlock();
+  channel->lock->unlock();
   return Status::OK();
 }
 
@@ -330,6 +339,7 @@ Status MutableObjectManager::SetErrorInternal(const ObjectID &object_id) {
     channel->mutable_object->header->SetErrorUnlocked(sem);
     channel->reader_registered = false;
     channel->writer_registered = false;
+    // TODO(jhumphri): Free the channel.
   } else {
     return Status::IOError("Channel has not been registered");
   }
