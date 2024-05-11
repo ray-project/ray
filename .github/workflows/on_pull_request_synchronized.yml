@@ -20,10 +20,12 @@ jobs:
                 }
               }
             }`;
+            console.log(context.repo.owner)
+            console.log(context.repo.repo)
             const prVariables = {
               owner: context.repo.owner,
               repo: context.repo.repo,
-              pullRequestNumber: context.issue.number
+              pullRequestNumber: 45261,
             }
             const prResult = await github.graphql(prQuery, prVariables)
             if (!prResult.repository.pullRequest.autoMergeRequest) {
