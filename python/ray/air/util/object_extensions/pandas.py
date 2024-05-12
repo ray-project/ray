@@ -23,7 +23,7 @@ class PythonObjectArray(pd.api.extensions.ExtensionArray):
         cls,
         scalars: collections.abc.Sequence[typing.Any],
         *,
-        dtype: Dtype | None = None,
+        dtype: typing.Union[Dtype, None] = None,
         copy: bool = False
     ) -> typing.Self:
         return PythonObjectArray(scalars)
