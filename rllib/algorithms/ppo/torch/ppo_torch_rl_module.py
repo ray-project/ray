@@ -8,7 +8,6 @@ from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 torch, nn = try_import_torch()
@@ -41,7 +40,7 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
             return state_dict
 
     @override(RLModule)
-    def _forward_inference(self, batch: NestedDict) -> Dict[str, Any]:
+    def _forward_inference(self, batch: Dict) -> Dict[str, Any]:
         output = {}
 
         # Encoder forward pass.
@@ -55,7 +54,7 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
         return output
 
     @override(RLModule)
-    def _forward_exploration(self, batch: NestedDict, **kwargs) -> Dict[str, Any]:
+    def _forward_exploration(self, batch: Dict, **kwargs) -> Dict[str, Any]:
         """PPO forward pass during exploration.
 
         Besides the action distribution, this method also returns the parameters of
@@ -88,7 +87,7 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
         return output
 
     @override(RLModule)
-    def _forward_train(self, batch: NestedDict) -> Dict[str, Any]:
+    def _forward_train(self, batch: Dict) -> Dict[str, Any]:
         if self.inference_only:
             raise RuntimeError(
                 "Trying to train a module that is not a learner module. Set the "

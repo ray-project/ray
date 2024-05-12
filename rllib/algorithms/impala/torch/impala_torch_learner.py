@@ -12,7 +12,6 @@ from ray.rllib.core.learner.learner import ENTROPY_KEY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.core.models.base import CRITIC, ENCODER_OUT
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import ModuleID, TensorType
@@ -29,7 +28,7 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
         *,
         module_id: ModuleID,
         config: ImpalaConfig,
-        batch: NestedDict,
+        batch: Dict,
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
         action_dist_class_train = (

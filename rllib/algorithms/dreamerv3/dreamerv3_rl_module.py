@@ -18,7 +18,6 @@ from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.policy.eager_tf_policy import _convert_to_tf
 from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import one_hot
 
 
@@ -112,7 +111,7 @@ class DreamerV3RLModule(RLModule, abc.ABC):
         self.critic.init_ema()
 
     @override(RLModule)
-    def get_initial_state(self) -> NestedDict:
+    def get_initial_state(self) -> Dict:
         # Use `DreamerModel`'s `get_initial_state` method.
         return self.dreamer_model.get_initial_state()
 

@@ -33,7 +33,6 @@ from ray.rllib.utils.annotations import (
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import ALL_MODULES
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.torch_utils import (
     convert_to_torch_tensor,
     copy_torch_tensors,
@@ -119,7 +118,7 @@ class TorchLearner(Learner):
 
     def _uncompiled_update(
         self,
-        batch: NestedDict,
+        batch: Dict,
         **kwargs,
     ):
         """Performs a single update given a batch of data."""
@@ -354,7 +353,7 @@ class TorchLearner(Learner):
         self._make_modules_ddp_if_necessary()
 
     @override(Learner)
-    def _update(self, batch: NestedDict) -> Tuple[Any, Any, Any]:
+    def _update(self, batch: Dict) -> Tuple[Any, Any, Any]:
         # Activate tensor-mode on our MetricsLogger.
         self.metrics.activate_tensor_mode()
 

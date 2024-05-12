@@ -1,12 +1,11 @@
 import functools
 import logging
 from collections import abc
-from typing import Union, Mapping, Any, Callable
+from typing import Dict, Union, Mapping, Any, Callable
 
 from ray.rllib.core.models.specs.specs_base import Spec, TypeSpec
-from ray.rllib.core.models.specs.specs_dict import SpecDict
+#from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.core.models.specs.typing import SpecType
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
@@ -21,7 +20,7 @@ class SpecCheckingError(Exception):
 
 
 @DeveloperAPI
-def convert_to_canonical_format(spec: SpecType) -> Union[Spec, SpecDict]:
+def convert_to_canonical_format(spec: SpecType):
     """Converts a spec type input to the canonical format.
 
     The canonical format is either
@@ -131,7 +130,7 @@ def _validate(
     spec: Spec,
     filter: bool = False,
     tag: str = "input",
-) -> NestedDict:
+) -> Dict:
     """Validate the data against the spec.
 
     Args:

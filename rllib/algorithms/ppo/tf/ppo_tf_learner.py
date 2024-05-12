@@ -16,7 +16,6 @@ from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import explained_variance
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import ModuleID, TensorType
 
 _, tf, _ = try_import_tf()
@@ -35,13 +34,12 @@ class PPOTfLearner(PPOLearner, TfLearner):
         *,
         module_id: ModuleID,
         config: PPOConfig,
-        batch: NestedDict,
+        batch: Dict,
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
-        # TODO (Kourosh): batch type is NestedDict.
         # TODO (Kourosh): We may or may not user module_id. For example if we have an
-        # agent based learning rate scheduler, we may want to use module_id to get the
-        # learning rate for that agent.
+        #  agent based learning rate scheduler, we may want to use module_id to get the
+        #  learning rate for that agent.
 
         # RNN case: Mask away 0-padded chunks at end of time axis.
         if self.module[module_id].is_stateful():

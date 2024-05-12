@@ -51,7 +51,6 @@ from ray.rllib.utils.minibatch_utils import (
     MiniBatchDummyIterator,
     MiniBatchCyclicIterator,
 )
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.serialization import serialize_type
@@ -814,8 +813,8 @@ class Learner:
     def compute_loss(
         self,
         *,
-        fwd_out: Union[MultiAgentBatch, NestedDict],
-        batch: Union[MultiAgentBatch, NestedDict],
+        fwd_out: Dict[ModuleID, TensorType],
+        batch: Dict,
     ) -> Union[TensorType, Dict[str, Any]]:
         """Computes the loss for the module being optimized.
 
@@ -870,7 +869,7 @@ class Learner:
         *,
         module_id: ModuleID,
         config: Optional["AlgorithmConfig"] = None,
-        batch: NestedDict,
+        batch: Dict,
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
         """Computes the loss for a single module.
@@ -1178,7 +1177,7 @@ class Learner:
     @abc.abstractmethod
     def _update(
         self,
-        batch: NestedDict,
+        batch: Dict,
         **kwargs,
     ) -> Tuple[Any, Any, Any]:
         """Contains all logic for an in-graph/traceable update step.
@@ -1189,7 +1188,7 @@ class Learner:
         with all the individual results.
 
         Args:
-            batch: The train batch already converted in to a (tensor) NestedDict.
+            batch: The train batch already converted in to a (tensor) Dict.
             kwargs: Forward compatibility kwargs.
 
         Returns:
@@ -1368,9 +1367,8 @@ class Learner:
         for tensor_minibatch in batch_iter(batch, minibatch_size, num_iters):
             # Make the actual in-graph/traced `_update` call. This should return
             # all tensor values (no numpy).
-            nested_tensor_minibatch = NestedDict(tensor_minibatch.policy_batches)
             fwd_out, loss_per_module, tensor_metrics = self._update(
-                nested_tensor_minibatch
+                tensor_minibatch.policy_batches
             )
 
             # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)

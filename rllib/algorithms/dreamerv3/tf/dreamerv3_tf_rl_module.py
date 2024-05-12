@@ -15,7 +15,6 @@ from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.nested_dict import NestedDict
 
 tf1, tf, _ = try_import_tf()
 
@@ -29,7 +28,7 @@ class DreamerV3TfRLModule(TfRLModule, DreamerV3RLModule):
     framework: str = "tf2"
 
     @override(RLModule)
-    def _forward_inference(self, batch: NestedDict) -> Dict[str, Any]:
+    def _forward_inference(self, batch: Dict) -> Dict[str, Any]:
         # Call the Dreamer-Model's forward_inference method and return a dict.
         actions, next_state = self.dreamer_model.forward_inference(
             observations=batch[Columns.OBS],
@@ -39,7 +38,7 @@ class DreamerV3TfRLModule(TfRLModule, DreamerV3RLModule):
         return {Columns.ACTIONS: actions, Columns.STATE_OUT: next_state}
 
     @override(RLModule)
-    def _forward_exploration(self, batch: NestedDict) -> Dict[str, Any]:
+    def _forward_exploration(self, batch: Dict) -> Dict[str, Any]:
         # Call the Dreamer-Model's forward_exploration method and return a dict.
         actions, next_state = self.dreamer_model.forward_exploration(
             observations=batch[Columns.OBS],
@@ -49,7 +48,7 @@ class DreamerV3TfRLModule(TfRLModule, DreamerV3RLModule):
         return {Columns.ACTIONS: actions, Columns.STATE_OUT: next_state}
 
     @override(RLModule)
-    def _forward_train(self, batch: NestedDict):
+    def _forward_train(self, batch: Dict):
         # Call the Dreamer-Model's forward_train method and return its outputs as-is.
         return self.dreamer_model.forward_train(
             observations=batch[Columns.OBS],

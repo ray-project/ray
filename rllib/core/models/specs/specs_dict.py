@@ -1,7 +1,6 @@
-from typing import Union, Mapping, Any
+from typing import Dict, Union, Mapping, Any
 
 from ray.rllib.utils.annotations import ExperimentalAPI, override
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.core.models.specs.specs_base import Spec
 
 
@@ -24,8 +23,8 @@ IS_NOT_PROPERTY = "Spec {} must be a property of the class {}."
 
 
 @ExperimentalAPI
-class SpecDict(NestedDict[Spec], Spec):
-    """A NestedDict containing `TensorSpec` and `Types`.
+class SpecDict(Dict[Spec], Spec):
+    """A Dict containing `TensorSpec` and `Types`.
 
     It can be used to validate an incoming data against a nested dictionary of specs.
 
@@ -115,7 +114,6 @@ class SpecDict(NestedDict[Spec], Spec):
         Raises:
             ValueError: If the data doesn't match the spec.
         """
-        data = NestedDict(data)
         data_keys_set = set(data.keys())
 
         for spec_key in self:
@@ -155,6 +153,5 @@ class SpecDict(NestedDict[Spec], Spec):
                     f"got {type(spec)}"
                 )
 
-    @override(NestedDict)
     def __repr__(self) -> str:
         return f"SpecDict({repr(self._data)})"

@@ -16,7 +16,6 @@ from ray.rllib.utils.annotations import (
     override,
     OverrideToImplementCustomLogic,
 )
-from ray.rllib.utils.nested_dict import NestedDict
 
 CRITIC_TARGET = "critic_target"
 QF_PREDS = "qf_preds"
@@ -176,7 +175,7 @@ class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
 
     @abstractmethod
     @OverrideToImplementCustomLogic
-    def _qf_forward_train(self, batch: NestedDict) -> Dict[str, Any]:
+    def _qf_forward_train(self, batch: Dict) -> Dict[str, Any]:
         """Forward pass through Q network.
 
         Note, this is only used in training.
@@ -184,7 +183,7 @@ class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
 
     @abstractmethod
     @OverrideToImplementCustomLogic
-    def _qf_twin_forward_train(self, batch: NestedDict) -> Dict[str, Any]:
+    def _qf_twin_forward_train(self, batch: Dict) -> Dict[str, Any]:
         """Forward pass through twin Q network.
 
         Note, this is only used in training and only if `twin_q=True`.
@@ -192,7 +191,7 @@ class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
 
     @abstractmethod
     @OverrideToImplementCustomLogic
-    def _qf_target_forward_train(self, batch: NestedDict) -> Dict[str, Any]:
+    def _qf_target_forward_train(self, batch: Dict) -> Dict[str, Any]:
         """Forward pass through target Q network.
 
         Note, this is only used in training.
@@ -200,7 +199,7 @@ class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
 
     @abstractmethod
     @OverrideToImplementCustomLogic
-    def _qf_target_twin_forward_train(self, batch: NestedDict) -> Dict[str, Any]:
+    def _qf_target_twin_forward_train(self, batch: Dict) -> Dict[str, Any]:
         """Forward pass through twin target Q network.
 
         Note, this is only used in training and only if `twin_q=True`.
@@ -209,12 +208,12 @@ class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
     @abstractmethod
     @OverrideToImplementCustomLogic
     def _qf_forward_train_helper(
-        self, batch: NestedDict, encoder: Encoder, head: Model
+        self, batch: Dict, encoder: Encoder, head: Model
     ) -> Dict[str, Any]:
         """Executes the forward pass for Q networks.
 
         Args:
-            batch: NestedDict containing a concatencated tensor with observations
+            batch: Dict containing a concatencated tensor with observations
                 and actions under the key `SampleBatch.OBS`.
             encoder: An `Encoder` model for the Q state-action encoder.
             head: A `Model` for the Q head.

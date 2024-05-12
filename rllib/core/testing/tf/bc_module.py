@@ -1,5 +1,5 @@
 import tensorflow as tf
-from typing import Any, Mapping
+from typing import Any, Dict, Mapping
 
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.specs.typing import SpecType
@@ -11,7 +11,6 @@ from ray.rllib.core.rl_module.marl_module import (
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.models.tf.tf_distributions import TfCategorical
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.nested_dict import NestedDict
 
 
 class DiscreteBCTFModule(TfRLModule):
@@ -54,22 +53,22 @@ class DiscreteBCTFModule(TfRLModule):
     def output_specs_train(self) -> SpecType:
         return [Columns.ACTION_DIST_INPUTS]
 
-    def _forward_shared(self, batch: NestedDict) -> Mapping[str, Any]:
+    def _forward_shared(self, batch: Dict) -> Mapping[str, Any]:
         # We can use a shared forward method because BC does not need to distinguish
         # between train, inference, and exploration.
         action_logits = self.policy(batch["obs"])
         return {Columns.ACTION_DIST_INPUTS: action_logits}
 
     @override(RLModule)
-    def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
+    def _forward_inference(self, batch: Dict) -> Mapping[str, Any]:
         return self._forward_shared(batch)
 
     @override(RLModule)
-    def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
+    def _forward_exploration(self, batch: Dict) -> Mapping[str, Any]:
         return self._forward_shared(batch)
 
     @override(RLModule)
-    def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
+    def _forward_train(self, batch: Dict) -> Mapping[str, Any]:
         return self._forward_shared(batch)
 
     @override(RLModule)

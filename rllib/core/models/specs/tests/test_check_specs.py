@@ -15,7 +15,6 @@ from ray.rllib.core.models.specs.checker import (
 from ray.rllib.core.models.specs.specs_base import TensorSpec, TypeSpec
 from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.nested_dict import NestedDict
 
 ONLY_ONE_KEY_ALLOWED = "Only one key is allowed in the data dict."
 
@@ -144,7 +143,7 @@ class TestCheckSpecs(unittest.TestCase):
 
         output = correct_module.check_input_and_output({"input": 2})
         # Output should also match the `output_specs`.
-        correct_module.output_specs.validate(NestedDict(output))
+        correct_module.output_specs.validate(output)
 
         # This should raise an error saying that the `input` key is missing.
         self.assertRaises(
@@ -159,7 +158,7 @@ class TestCheckSpecs(unittest.TestCase):
         # Output can be anything since ther is no `output_specs`.
         self.assertRaises(
             ValueError,
-            lambda: correct_module.output_specs.validate(NestedDict(output)),
+            lambda: correct_module.output_specs.validate(output),
         )
 
     def test_check_only_output(self):
@@ -168,7 +167,7 @@ class TestCheckSpecs(unittest.TestCase):
         # `input_specs`.
         output = correct_module.check_only_output({"not_input": 2})
         # Output should match the `output_specs`.
-        correct_module.output_specs.validate(NestedDict(output))
+        correct_module.output_specs.validate(output)
 
     def test_incorrect_implementation(self):
         incorrect_module = IncorrectImplementation()
@@ -191,7 +190,7 @@ class TestCheckSpecs(unittest.TestCase):
     def test_filter(self):
         # create an arbitrary large input dict and test the behavior with and without a
         # filter
-        input_dict = NestedDict({"input": 2})
+        input_dict = {"input": 2}
         for i in range(100):
             inds = (str(i),) + tuple(str(j) for j in range(i + 1, i + 11))
             input_dict[inds] = i
@@ -217,7 +216,7 @@ class TestCheckSpecs(unittest.TestCase):
         # we also check if cache is not working the second run is as slow as the first
         # run.
 
-        input_dict = NestedDict({"input": 2})
+        input_dict = {"input": 2}
         for i in range(100):
             inds = (str(i),) + tuple(str(j) for j in range(i + 1, i + 11))
             input_dict[inds] = i

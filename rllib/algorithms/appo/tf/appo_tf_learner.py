@@ -13,7 +13,6 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY_KEY
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import ModuleID, TensorType
 
 _, tf, _ = try_import_tf()
@@ -28,7 +27,7 @@ class APPOTfLearner(AppoLearner, ImpalaTfLearner):
         *,
         module_id: ModuleID,
         config: APPOConfig,
-        batch: NestedDict,
+        batch: Dict,
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
         values = fwd_out[Columns.VF_PREDS]

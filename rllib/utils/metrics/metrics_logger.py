@@ -6,7 +6,6 @@ import tree  # pip install dm_tree
 from ray.rllib.utils import force_tuple
 from ray.rllib.utils.metrics.stats import Stats
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.util.annotations import PublicAPI
 
 _, tf, _ = try_import_tf()
@@ -50,7 +49,7 @@ class MetricsLogger:
 
     def __init__(self):
         """Initializes a MetricsLogger instance."""
-        self.stats = NestedDict()
+        self.stats = {}
         self._tensor_mode = False
         self._tensor_keys = set()
 
@@ -166,20 +165,20 @@ class MetricsLogger:
 
         self._check_tensor(key, value)
 
-        if key not in self.stats:
-            self.stats[key] = Stats(
+        if not self._key_in_stats(key):
+            self._set_key(key, Stats(
                 value,
                 reduce=reduce,
                 window=window,
                 ema_coeff=ema_coeff,
                 clear_on_reduce=clear_on_reduce,
-            )
+            ))
         # If value itself is a stat, we merge it on time axis into `self`.
         elif isinstance(value, Stats):
-            self.stats[key].merge_on_time_axis(value)
+            self._get_key(key).merge_on_time_axis(value)
         # Otherwise, we just push the value into `self`.
         else:
-            self.stats[key].push(value)
+            self._get_key(key).push(value)
 
     def log_dict(
         self,
@@ -217,7 +216,7 @@ class MetricsLogger:
             )
             logger.log_dict({
                 "b": -0.2,
-            })  # don't have to repeat `window` if key already exists
+            })  # don't have to repeat `window` arg if key already exists
             logger.log_dict({
                 "a": 0.2,
                 "c": {"d": 5.0},  # can also introduce an entirely new (nested) key
@@ -265,24 +264,28 @@ class MetricsLogger:
                 in which the internal values list would otherwise grow indefinitely,
                 for example if reduce is None and there is no `window` provided.
         """
-        stats_dict = NestedDict(stats_dict)
         prefix_key = force_tuple(key)
 
-        for key, stat_or_value in stats_dict.items():
-            extended_key = prefix_key + key
+        def _map(path, stat_or_value):
+            extended_key = prefix_key + force_tuple(path)
+
+            _clear_on_reduce = clear_on_reduce
+
             # No reduction (continue appending to list) AND no window.
             # -> We'll force-reset our values upon `reduce()`.
             if reduce is None and (window is None or window == float("inf")):
-                clear_on_reduce = True
+                _clear_on_reduce = True
+
+            _has_extended_key = self._key_in_stats(extended_key)
 
             if not isinstance(stat_or_value, Stats):
                 self._check_tensor(extended_key, stat_or_value)
 
                 # `self` already has this key path -> Use c'tor options from self's
                 # Stats.
-                if extended_key in self.stats:
+                if _has_extended_key:
                     stat_or_value = Stats.similar_to(
-                        self.stats[extended_key], init_value=stat_or_value
+                        self._get_key(extended_key), init_value=stat_or_value
                     )
                 else:
                     stat_or_value = Stats(
@@ -290,19 +293,22 @@ class MetricsLogger:
                         reduce=reduce,
                         window=window,
                         ema_coeff=ema_coeff,
-                        clear_on_reduce=clear_on_reduce,
+                        clear_on_reduce=_clear_on_reduce,
                     )
 
             # Merge incoming Stats into existing one (as a next timestep on top of
             # existing data).
-            if extended_key in self.stats:
-                self.stats[extended_key].merge_on_time_axis(stat_or_value)
+            if _has_extended_key:
+                self._get_key(extended_key).merge_on_time_axis(stat_or_value)
             # Use incoming Stats object's values, but create a new Stats object (around
             # these values) to not mess with the original Stats object.
             else:
-                self.stats[extended_key] = Stats.similar_to(
-                    stat_or_value, init_value=stat_or_value.values
+                self._set_key(
+                    extended_key,
+                    Stats.similar_to(stat_or_value, init_value=stat_or_value.values),
                 )
+
+        tree.map_structure_with_path(_map, stats_dict)
 
     def log_n_dicts(
         self,
@@ -340,7 +346,6 @@ class MetricsLogger:
                 in which the internal values list would otherwise grow indefinitely,
                 for example if reduce is None and there is no `window` provided.
         """
-        stats_dicts = [NestedDict(s) for s in stats_dicts]
         prefix_key = force_tuple(key)
 
         all_keys = set()
@@ -448,7 +453,7 @@ class MetricsLogger:
         if reduce is None and (window is None or window == float("inf")):
             clear_on_reduce = True
 
-        if key not in self.stats:
+        if not self._key_in_stats(key):
             # TODO (sven): Figure out how to best implement an additional throughput
             #  measurement.
             # measure_throughput = None
@@ -456,7 +461,7 @@ class MetricsLogger:
             #    measure_throughput = True
             #    throughput_key = throughput_key or (key + "_throughput_per_s")
 
-            self.stats[key] = Stats(
+            self._set_key(key, Stats(
                 reduce=reduce,
                 window=window,
                 ema_coeff=ema_coeff,
@@ -473,10 +478,10 @@ class MetricsLogger:
                 #        )
                 #    ),
                 # ),
-            )
+            ))
 
         # Return the Stats object, so a `with` clause can enter and exit it.
-        return self.stats[key]
+        return self._get_key(key)
 
     def activate_tensor_mode(self):
         """Switches to tensor-mode, in which in-graph tensors can be logged.
@@ -499,7 +504,7 @@ class MetricsLogger:
         assert self.tensor_mode
         self._tensor_mode = False
         # Return all logged tensors (logged during the tensor-mode phase).
-        ret = {key: self.stats[key].peek() for key in self._tensor_keys}
+        ret = {key: self._get_key(key).peek() for key in self._tensor_keys}
         # Clear out logged tensor keys.
         self._tensor_keys.clear()
         return ret
@@ -507,8 +512,8 @@ class MetricsLogger:
     def tensors_to_numpy(self, tensor_metrics):
         """Converts all previously logged and returned tensors back to numpy values."""
         for key, value in tensor_metrics.items():
-            assert key in self.stats
-            self.stats[key].numpy(value)
+            assert self._key_in_stats(key)
+            self._get_key(key).numpy(value)
 
     @property
     def tensor_mode(self):
@@ -568,15 +573,11 @@ class MetricsLogger:
             KeyError: If `key` cannot be found AND `default` is not provided.
         """
         # Use default value, b/c `key` cannot be found in our stats.
-        if key not in self.stats and default is not None:
+        if not self._key_in_stats(key) and default is not None:
             return default
 
         # Create a reduced view of the requested sub-structure or leaf (Stats object).
-        ret = tree.map_structure(lambda s: s.peek(), self.stats[key])
-
-        # `key` only reached to a deeper NestedDict -> Have to convert to dict.
-        if isinstance(ret, NestedDict):
-            return ret.asdict()
+        ret = tree.map_structure(lambda s: s.peek(), self._get_key(key))
 
         # Otherwise, return the reduced Stats' (peek) value.
         return ret
@@ -628,8 +629,8 @@ class MetricsLogger:
                 Note that this is only applied if `key` does not exist in `self` yet.
         """
         # Key already in self -> Erase internal values list with [`value`].
-        if key in self.stats:
-            self.stats[key].values = [value]
+        if self._key_in_stats(key):
+            self._get_key(key).values = [value]
         # Key cannot be found in `self` -> Simply log as a (new) value.
         else:
             self.log_value(
@@ -712,7 +713,6 @@ class MetricsLogger:
             # We execute similarly useful merging strategies for other reduce settings,
             # such as EMA, max/min/sum-reducing, etc..
             end_result = downstream_logger.reduce(return_stats_obj=False)
-
             check(end_result, {"a": 2.5})
 
         Args:
@@ -732,25 +732,16 @@ class MetricsLogger:
         """
         # Create a shallow copy of `self.stats` in case we need to reset some of our
         # stats due to this `reduce()` call (and the Stat having self.clear_on_reduce
-        # set to True).
+        # set to True). In case we clear the Stats upon `reduce`, we get returned a
+        # new empty `Stats` object from `stat.reduce()` with the same settings as
+        # existing one and can now re-assign it to `self.stats[key]` (while we return
+        # from this method the properly reduced, but not cleared/emptied new `Stats`).
         if key is not None:
-            stats_to_return = self.stats[key].copy()
+            stats_to_return = self._get_key(key).copy()
+            self._set_key(key, tree.map_structure(lambda s: s.reduce(), stats_to_return))
         else:
             stats_to_return = self.stats.copy()
-
-        # Reduce all stats according to each of their reduce-settings.
-        for sub_key, stat in stats_to_return.items():
-            # In case we clear the Stats upon `reduce`, we get returned a new empty
-            # `Stats` object from `stat.reduce()` with the same settings as existing one
-            # and can now re-assign it to `self.stats[key]` (while we return from this
-            # method the properly reduced, but not cleared/emptied new `Stats`).
-            if key is not None:
-                self.stats[key][sub_key] = stat.reduce()
-            else:
-                self.stats[sub_key] = stat.reduce()
-
-        # Return reduced values as dict (not NestedDict).
-        stats_to_return = stats_to_return.asdict()
+            self.stats = tree.map_structure(lambda s: s.reduce(), stats_to_return)
 
         if return_stats_obj:
             return stats_to_return
@@ -763,9 +754,14 @@ class MetricsLogger:
         Note that the state is merely the combination of all states of the individual
         `Stats` objects stored under `self.stats`.
         """
-        return {
-            "stats": {key: stat.get_state() for key, stat in self.stats.items()},
-        }
+        stats_dict = {}
+
+        def _map(path, stats):
+            stats_dict[force_tuple(path)] = stats.get_state()
+
+        tree.map_structure_with_path(_map, self.stats)
+
+        return {"stats": stats_dict}
 
     def set_state(self, state: Dict[str, Any]) -> None:
         """Sets the state of `self` to the given `state`.
@@ -773,12 +769,8 @@ class MetricsLogger:
         Args:
             state: The state to set `self` to.
         """
-        self.stats = NestedDict(
-            {
-                key: Stats.from_state(stat_state)
-                for key, stat_state in state["stats"].items()
-            }
-        )
+        for flat_key, stats_state in state["stats"].items():
+            self._set_key(flat_key, Stats.from_state(stats_state))
 
     def _check_tensor(self, key, value) -> None:
         # `value` is a tensor -> Log it in our keys set.
@@ -786,3 +778,31 @@ class MetricsLogger:
             (torch and torch.is_tensor(value)) or (tf and tf.is_tensor(value))
         ):
             self._tensor_keys.add(key)
+
+    def _key_in_stats(self, flat_key):
+        flat_key = force_tuple(flat_key)
+        _dict = self.stats
+        for key in flat_key:
+            if key not in _dict:
+                return False
+            _dict = _dict[key]
+        return True
+
+    def _get_key(self, flat_key):
+        flat_key = force_tuple(flat_key)
+        _dict = self.stats
+        for key in flat_key:
+            _dict = _dict[key]
+        return _dict
+
+    def _set_key(self, flat_key, stats):
+        flat_key = force_tuple(flat_key)
+        _dict = self.stats
+        for i, key in enumerate(flat_key):
+            if key not in _dict:
+                if i == len(flat_key) - 1:
+                    _dict[key] = stats
+                    return
+                else:
+                    _dict[key] = {}
+            _dict = _dict[key]
