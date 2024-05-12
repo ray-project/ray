@@ -199,7 +199,7 @@ def test_strict_schema(ray_start_regular_shared):
     assert schema.types == [
         pa.int64(),
         object,
-        object,
+        pa.list_(pa.int64()),
     ]
 
     ds = ray.data.from_numpy(np.ones((100, 10)))

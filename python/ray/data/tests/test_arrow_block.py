@@ -42,6 +42,36 @@ assert str(schema) == \"\"\"{1}\"\"\"
     run_string_as_driver(driver_script)
 
 
+def test_dict_doesnt_fallback_to_pandas_block(ray_start_regular_shared):
+    # If the UDF returns a column with dict, previously, we would
+    # fall back to pandas, because we couldn't convert it to
+    # an Arrow block. This test checks that the block
+    # construction now correctly goes to Arrow.
+    def fn(batch):
+        batch["data_dict"] = [{"data": 0} for _ in range(len(batch["id"]))]
+        return batch
+
+    ds = ray.data.range(10).map_batches(fn)
+    ds = ds.materialize()
+    block = ray.get(ds.get_internal_block_refs()[0])
+    # TODO: Once we support converting dict to a supported arrow type,
+    # the block type should be Arrow.
+    assert isinstance(block, pa.Table)
+    df_from_block = block.to_pandas()
+    assert df_from_block["data_dict"].iloc[0] == {"data": 0}
+
+    def fn2(batch):
+        batch["data_none"] = [None for _ in range(len(batch["id"]))]
+        return batch
+
+    ds2 = ray.data.range(10).map_batches(fn2)
+    ds2 = ds2.materialize()
+    block = ray.get(ds2.get_internal_block_refs()[0])
+    assert isinstance(block, pa.Table)
+    df_from_block = block.to_pandas()
+    assert df_from_block["data_none"].iloc[0] is None
+
+
 if __name__ == "__main__":
     import sys
 

@@ -11,7 +11,7 @@ from ray._private.utils import _get_pyarrow_version
 from ray.util.annotations import PublicAPI
 
 MIN_PYARROW_VERSION_SCALAR_SUBCLASS = parse_version("9.0.0")
-PYARROW_VERSION = _get_pyarrow_version()
+PYARROW_VERSION = parse_version(_get_pyarrow_version())
 
 
 def object_extension_type_allowed() -> bool:
@@ -69,8 +69,8 @@ class ArrowPythonObjectArray(pa.ExtensionArray):
                 obj, "Error pickling object to convert to Arrow"
             )
             all_dumped_bytes.append(dumped_bytes)
-        arr = pa.array(all_dumped_bytes, type=type_)
-        return arr
+        arr = pa.array(all_dumped_bytes, type=type_.storage_type)
+        return ArrowPythonObjectArray.from_storage(type_, arr)
 
     def to_numpy(self, zero_copy_only: bool = False) -> np.ndarray:
         arr = np.empty(len(self), dtype=object)
@@ -78,4 +78,8 @@ class ArrowPythonObjectArray(pa.ExtensionArray):
         return arr
 
 
-pa.register_extension_type(ArrowPythonObjectType())
+try:
+    pa.register_extension_type(ArrowPythonObjectType())
+except pa.ArrowKeyError:
+    # Already registered
+    pass

@@ -24,7 +24,7 @@ class PythonObjectArray(pd.api.extensions.ExtensionArray):
         scalars: collections.abc.Sequence[typing.Any],
         *,
         dtype: typing.Union[Dtype, None] = None,
-        copy: bool = False
+        copy: bool = False,
     ) -> "PythonObjectArray":
         return PythonObjectArray(scalars)
 
@@ -81,6 +81,12 @@ class PythonObjectArray(pd.api.extensions.ExtensionArray):
 @PublicAPI(stability="alpha")
 @pd.api.extensions.register_extension_dtype
 class PythonObjectDtype(pd.api.extensions.ExtensionDtype):
+    @classmethod
+    def construct_from_string(cls, string: str):
+        if string != "python_object()":
+            raise TypeError(f"Cannot construct a '{cls.__name__}' from '{string}'")
+        return cls()
+
     @property
     def type(self):
         """
@@ -90,11 +96,11 @@ class PythonObjectDtype(pd.api.extensions.ExtensionDtype):
         that value is valid (not NA). NA values do not need to be
         instances of `type`.
         """
-        return np.object_
+        return object
 
     @property
     def name(self) -> str:
-        return "object"
+        return "python_object()"
 
     @classmethod
     def construct_array_type(cls: type) -> type:

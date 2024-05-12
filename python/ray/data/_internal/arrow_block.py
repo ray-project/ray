@@ -209,7 +209,10 @@ class ArrowBlockAccessor(TableBlockAccessor):
     ) -> "pyarrow.Table":
         import pyarrow as pa
 
-        from ray.data.extensions.object_extension import ArrowPythonObjectArray
+        from ray.data.extensions.object_extension import (
+            ArrowPythonObjectArray,
+            object_extension_type_allowed,
+        )
         from ray.data.extensions.tensor_extension import ArrowTensorArray
 
         if isinstance(batch, np.ndarray):
@@ -235,12 +238,15 @@ class ArrowBlockAccessor(TableBlockAccessor):
                     pyarrow.ArrowNotImplementedError,
                     pyarrow.ArrowTypeError,
                 ):
-                    if log_once(f"arrow_object_pickle_{col_name}"):
-                        logger.warning(
-                            f"Failed to interpret {col_name} as "
-                            "multi-dimensional arrays. It will be pickled."
-                        )
-                    col = ArrowPythonObjectArray.from_objects(col)
+                    if object_extension_type_allowed():
+                        if log_once(f"arrow_object_pickle_{col_name}"):
+                            logger.warning(
+                                f"Failed to interpret {col_name} as "
+                                "multi-dimensional arrays. It will be pickled."
+                            )
+                        col = ArrowPythonObjectArray.from_objects(col)
+                    else:
+                        raise
 
             new_batch[col_name] = col
         return pa.Table.from_pydict(new_batch)
