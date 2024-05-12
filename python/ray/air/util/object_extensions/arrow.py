@@ -44,6 +44,12 @@ class ArrowPythonObjectType(pa.ExtensionType):
     def to_pandas_dtype(self):
         return ray.air.util.object_extensions.pandas.PythonObjectDtype()
 
+    def __reduce__(self):
+        return self.__arrow_ext_deserialize__, (
+            self.storage_type,
+            self.__arrow_ext_serialize__(),
+        )
+
 
 @PublicAPI(stability="alpha")
 class ArrowPythonObjectScalar(pa.ExtensionScalar):
