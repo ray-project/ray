@@ -25,7 +25,7 @@ class PythonObjectArray(pd.api.extensions.ExtensionArray):
         *,
         dtype: typing.Union[Dtype, None] = None,
         copy: bool = False
-    ) -> typing.Self:
+    ) -> "PythonObjectArray":
         return PythonObjectArray(scalars)
 
     @classmethod

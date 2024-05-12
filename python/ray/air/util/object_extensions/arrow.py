@@ -6,6 +6,7 @@ import pyarrow as pa
 from packaging.version import parse as parse_version
 
 import ray.air.util.object_extensions.pandas
+from ray._private.serialization import pickle_dumps
 from ray._private.utils import _get_pyarrow_version
 from ray.util.annotations import PublicAPI
 
@@ -64,7 +65,9 @@ class ArrowPythonObjectArray(pa.ExtensionArray):
         type_ = ArrowPythonObjectType()
         all_dumped_bytes = []
         for obj in objects:
-            dumped_bytes = pickle.dumps(obj, protocol=pickle.HIGHEST_PROTOCOL)
+            dumped_bytes = pickle_dumps(
+                obj, "Error pickling object to convert to Arrow"
+            )
             all_dumped_bytes.append(dumped_bytes)
         arr = pa.array(all_dumped_bytes, type=type_)
         return arr

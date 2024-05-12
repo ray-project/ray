@@ -223,15 +223,17 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
                     [chunk for ca in col_chunked_arrays for chunk in ca.chunks]
                 )
             elif isinstance(schema.field(col_name).type, ArrowPythonObjectType):
+                chunks_to_concat = []
                 # Cast everything to objects if concatenated with an object column
-                col = ArrowPythonObjectArray.from_objects(
-                    [
-                        obj
-                        for ca in col_chunked_arrays
-                        for chunk in ca.chunks
-                        for obj in chunk.to_pylist()
-                    ]
-                )
+                for ca in col_chunked_arrays:
+                    for chunk in ca.chunks:
+                        if isinstance(ca.type, ArrowPythonObjectType):
+                            chunks_to_concat.append(chunk)
+                        else:
+                            chunks_to_concat.append(
+                                ArrowPythonObjectArray.from_objects(chunk.to_pylist())
+                            )
+                col = pa.chunked_array(chunks_to_concat)
             else:
                 if col_name in cols_with_null_list:
                     # For each opaque list column, iterate through all schemas until

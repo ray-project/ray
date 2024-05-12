@@ -32,3 +32,9 @@ def test_arrow_python_object_array_slice():
     ata = ArrowPythonObjectArray.from_objects(arr)
     assert list(ata[1:3].to_pandas()) == [20, "test2"]
     assert ata[2:4].to_pylist() == ["test2", 40]
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))
