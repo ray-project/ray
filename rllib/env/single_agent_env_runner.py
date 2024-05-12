@@ -815,26 +815,33 @@ class SingleAgentEnvRunner(EnvRunner):
 
     def _increase_sampled_metrics(self, num_steps):
         # Per sample cycle stats.
-        self.metrics.log_dict(
-            {
-                NUM_ENV_STEPS_SAMPLED: num_steps,
-                NUM_AGENT_STEPS_SAMPLED: {DEFAULT_AGENT_ID: num_steps},
-                NUM_MODULE_STEPS_SAMPLED: {DEFAULT_MODULE_ID: num_steps},
-            },
-            reduce="sum",
-            clear_on_reduce=True,
-        )
+        self.metrics.log_value(NUM_ENV_STEPS_SAMPLED, num_steps, reduce="sum", clear_on_reduce=True)
+        self.metrics.log_value((NUM_AGENT_STEPS_SAMPLED, DEFAULT_AGENT_ID), num_steps, reduce="sum", clear_on_reduce=True)
+        self.metrics.log_value((NUM_MODULE_STEPS_SAMPLED, DEFAULT_MODULE_ID), num_steps, reduce="sum", clear_on_reduce=True)
+        #self.metrics.log_dict(
+        #    {
+        #        NUM_ENV_STEPS_SAMPLED: num_steps,
+        #        NUM_AGENT_STEPS_SAMPLED: {DEFAULT_AGENT_ID: num_steps},
+        #        NUM_MODULE_STEPS_SAMPLED: {DEFAULT_MODULE_ID: num_steps},
+        #    },
+        #    reduce="sum",
+        #    clear_on_reduce=True,
+        #)
         # Lifetime stats.
-        self.metrics.log_dict(
-            {
-                NUM_ENV_STEPS_SAMPLED_LIFETIME: num_steps,
-                NUM_AGENT_STEPS_SAMPLED_LIFETIME: {DEFAULT_AGENT_ID: num_steps},
-                NUM_MODULE_STEPS_SAMPLED_LIFETIME: {
-                    DEFAULT_MODULE_ID: num_steps,
-                },
-            },
-            reduce="sum",
-        )
+        self.metrics.log_value(NUM_ENV_STEPS_SAMPLED_LIFETIME, num_steps, reduce="sum")
+        self.metrics.log_value((NUM_AGENT_STEPS_SAMPLED_LIFETIME, DEFAULT_AGENT_ID), num_steps, reduce="sum")
+        self.metrics.log_value((NUM_MODULE_STEPS_SAMPLED_LIFETIME, DEFAULT_MODULE_ID), num_steps, reduce="sum")
+
+        #self.metrics.log_dict(
+        #    {
+        #        NUM_ENV_STEPS_SAMPLED_LIFETIME: num_steps,
+        #        NUM_AGENT_STEPS_SAMPLED_LIFETIME: {DEFAULT_AGENT_ID: num_steps},
+        #        NUM_MODULE_STEPS_SAMPLED_LIFETIME: {
+        #            DEFAULT_MODULE_ID: num_steps,
+        #        },
+        #    },
+        #    reduce="sum",
+        #)
         return num_steps
 
     def _log_episode_metrics(self, length, ret, sec):

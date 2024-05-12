@@ -23,6 +23,9 @@ config = (
         grad_clip_by="global_norm",
         lr=0.0005,
         vf_loss_coeff=0.05,
+        # model={
+        #    "vf_share_layers": True,
+        # },
     )
     .rl_module(
         model_config_dict={

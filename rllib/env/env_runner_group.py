@@ -899,8 +899,7 @@ class EnvRunnerGroup:
         func: Callable[[int, EnvRunner], T],
         *,
         local_worker: bool = True,
-        # TODO(jungong) : switch to True once Algorithm is migrated.
-        healthy_only: bool = False,
+        healthy_only: bool = True,
         remote_worker_ids: List[int] = None,
         timeout_seconds: Optional[float] = None,
     ) -> List[T]:
@@ -945,8 +944,7 @@ class EnvRunnerGroup:
         self,
         func: Callable[[EnvRunner], T],
         *,
-        # TODO(jungong) : switch to True once Algorithm is migrated.
-        healthy_only: bool = False,
+        healthy_only: bool = True,
         remote_worker_ids: List[int] = None,
     ) -> int:
         """Calls the given function asynchronously with each worker as the argument.

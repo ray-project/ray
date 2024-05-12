@@ -801,17 +801,16 @@ class Impala(Algorithm):
 
         # Perform asynchronous sampling on all (healthy) remote rollout workers.
         if num_healthy_remote_workers > 0:
-            self.workers.foreach_worker_async(
-                _remote_sample_get_state_and_metrics, healthy_only=True
-            )
+            self.workers.foreach_worker_async(_remote_sample_get_state_and_metrics)
             async_results: List[
                 Tuple[int, ObjectRef]
             ] = self.workers.fetch_ready_async_reqs(
                 timeout_seconds=self.config.timeout_s_sampler_manager,
-                return_obj_refs=True,
+                return_obj_refs=False,
             )
             # Get results from the n different async calls.
-            results = ray.get([res[1] for res in async_results])
+            #results = ray.get([res[1] for res in async_results])
+            results = [r[1] for r in async_results]
 
             for (episodes, states, metrics) in results:
                 episode_refs.append(episodes)

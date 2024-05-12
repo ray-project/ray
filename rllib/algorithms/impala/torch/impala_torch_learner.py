@@ -142,10 +142,10 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
 
         # The summed weighted loss.
         total_loss = (
-            pi_loss
-            + vf_loss * config.vf_loss_coeff
+            mean_pi_loss
+            + mean_vf_loss * config.vf_loss_coeff
             + (
-                entropy_loss
+                mean_entropy_loss
                 * self.entropy_coeff_schedulers_per_module[
                     module_id
                 ].get_current_value()
