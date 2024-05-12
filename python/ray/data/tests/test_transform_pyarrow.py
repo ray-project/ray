@@ -1,4 +1,5 @@
 import os
+import types
 
 import numpy as np
 import pandas as pd
@@ -9,6 +10,8 @@ import ray
 from ray.data._internal.arrow_ops.transform_pyarrow import concat, unify_schemas
 from ray.data.block import BlockAccessor
 from ray.data.extensions import (
+    ArrowPythonObjectArray,
+    ArrowPythonObjectType,
     ArrowTensorArray,
     ArrowTensorType,
     ArrowVariableShapedTensorType,
@@ -179,6 +182,29 @@ def test_arrow_concat_tensor_extension_uniform_but_different():
         np.testing.assert_array_equal(o, e)
     # NOTE: We don't check equivalence with pyarrow.concat_tables since it currently
     # fails for this case.
+
+
+def test_arrow_concat_with_objects():
+    obj = types.SimpleNamespace(a=1, b="test")
+    t1 = pa.table({"a": [3, 4], "b": [7, 8]})
+    t2 = pa.table({"a": ArrowPythonObjectArray.from_objects([obj, obj]), "b": [0, 1]})
+    t3 = concat([t1, t2])
+    assert isinstance(t3, pa.Table)
+    assert len(t3) == 4
+    assert isinstance(t3.schema.field("a").type, ArrowPythonObjectType)
+    assert pa.types.is_integer(t3.schema.field("b").type)
+    assert t3.column("a").to_pylist() == [3, 4, obj, obj]
+    assert t3.column("b").to_pylist() == [7, 8, 0, 1]
+
+
+def test_arrow_concat_object_with_tensor_fails():
+    obj = types.SimpleNamespace(a=1, b="test")
+    t1 = pa.table({"a": ArrowPythonObjectArray.from_objects([obj, obj]), "b": [0, 1]})
+    t2 = pa.table(
+        {"a": ArrowTensorArray.from_numpy([np.zeros((10, 10))] * 2), "b": [7, 8]}
+    )
+    with pytest.raises(ValueError, match="objects and tensors"):
+        concat([t1, t2])
 
 
 def test_unify_schemas():

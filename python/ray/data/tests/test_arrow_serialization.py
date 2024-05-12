@@ -1,6 +1,7 @@
 import logging
 import os
 import sys
+import types
 from unittest import mock
 
 import numpy as np
@@ -542,7 +543,7 @@ def test_arrow_scalar_conversion(ray_start_regular_shared):
 
 
 def test_arrow_object_and_array_support(ray_start_regular_shared):
-    obj = ray.train.ScalingConfig(num_workers=4)
+    obj = types.SimpleNamespace(some_attribute="test")
 
     def f(batch):
         batch_size = len(batch["id"])
@@ -554,7 +555,7 @@ def test_arrow_object_and_array_support(ray_start_regular_shared):
     res = ray.data.range(5).map_batches(f, batch_size=None).take(1)
     assert res[0]["array"].shape == (32, 32, 3)
     assert np.all(res[0]["array"] == 0)
-    assert isinstance(res[0]["unsupported"], ray.train.ScalingConfig)
+    assert res[0]["unsupported"] == obj
 
 
 def test_custom_arrow_data_serializer_parquet_roundtrip(

@@ -152,9 +152,15 @@ class ArrowBlockBuilder(TableBlockBuilder):
                 pyarrow.ArrowNotImplementedError,
                 pyarrow.ArrowTypeError,
             ):
-                from ray.data.extensions.object_extension import ArrowPythonObjectArray
+                from ray.data.extensions.object_extension import (
+                    ArrowPythonObjectArray,
+                    object_extension_type_allowed,
+                )
 
-                columns[col_name] = ArrowPythonObjectArray.from_objects(col)
+                if object_extension_type_allowed():
+                    columns[col_name] = ArrowPythonObjectArray.from_objects(col)
+                else:
+                    raise
         return pyarrow.Table.from_pydict(columns)
 
     @staticmethod
