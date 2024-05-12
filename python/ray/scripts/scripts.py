@@ -453,7 +453,8 @@ Windows powershell users need additional escaping:
     "--dashboard-grpc-port",
     type=int,
     default=None,
-    help="The port for the dashboard head to listen for grpc on.",
+    hidden=True,
+    help="No logner used. Please don't set.",
 )
 @click.option(
     "--runtime-env-agent-port",

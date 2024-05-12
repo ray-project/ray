@@ -61,21 +61,13 @@ message Event {
   // searching index and tag
   string label = 6;
   // message is main information of this event
+  // TODO(ryw): now it's a JSON string. Make this typed to avoid extra parsing.
   string message = 7;
   // timestamp is the report milliseconds since 00:00, Jan 1 1970 UTC
   int64 timestamp = 8;
   // store custom key such as node_id, job_id, task_id
   map<string, string> custom_fields = 9;
 }
-
-message ReportEventsReply {
-  bool send_success = 1;
-}
-
 message ReportEventsRequest {
   repeated string event_strings = 1;
-}
-
-service ReportEventService {
-  rpc ReportEvents(ReportEventsRequest) returns (ReportEventsReply);
 }

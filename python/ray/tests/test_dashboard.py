@@ -184,32 +184,18 @@ def run_tasks_with_runtime_env():
     [f"ray start --head --num-cpus=1 --dashboard-grpc-port={configured_test_port}"],
     indirect=True,
 )
-def test_configured_dashboard_grpc_port(call_ray_start):
+def test_warning_on_dashboard_grpc_port(call_ray_start, caplog):
+    with caplog.at_level(20):
+        address = call_ray_start
+        ray.init(address=address)
+        assert (
+            "Dashboard grpc port (--dashboard-grpc-port) is no longer"
+            " used. You can remove it from your code"
+        ) in caplog.text
+
     address = call_ray_start
     addresses = ray.init(address=address)
     assert addresses.dashboard_url == "127.0.0.1:8265"
-
-
-@pytest.mark.parametrize(
-    "listen_port",
-    [conflict_port],
-    indirect=True,
-)
-def test_dashboard_grpc_port_conflict(listen_port, call_ray_stop_only, shutdown_only):
-    try:
-        subprocess.check_output(
-            [
-                "ray",
-                "start",
-                "--head",
-                "--dashboard-grpc-port",
-                f"{conflict_port}",
-                "--include-dashboard=True",
-            ],
-            stderr=subprocess.PIPE,
-        )
-    except subprocess.CalledProcessError as e:
-        assert f"Failed to bind to address 0.0.0.0:{conflict_port}".encode() in e.stderr
 
 
 @pytest.mark.skipif(

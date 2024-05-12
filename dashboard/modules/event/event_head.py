@@ -15,7 +15,6 @@ from ray.dashboard.modules.event.event_utils import (
     monitor_events,
 )
 from ray.core.generated import event_pb2
-from ray.core.generated import event_pb2_grpc
 from ray.dashboard.datacenter import DataSource
 
 logger = logging.getLogger(__name__)
@@ -27,14 +26,17 @@ dashboard_utils._json_compatible_types.add(JobEvents)
 MAX_EVENTS_TO_CACHE = int(os.environ.get("RAY_DASHBOARD_MAX_EVENTS_TO_CACHE", 10000))
 
 
-class EventHead(
-    dashboard_utils.DashboardHeadModule, event_pb2_grpc.ReportEventServiceServicer
-):
+class EventHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
         self._event_dir = os.path.join(self._dashboard_head.log_dir, "events")
         os.makedirs(self._event_dir, exist_ok=True)
         self._monitor: Union[asyncio.Task, None] = None
+        # Not setting max_workers to 1 because this thread pool may be busy with
+        # thousands of concurrent events from each worker.
+        self.receive_event_thread_pool_executor = ThreadPoolExecutor(
+            thread_name_prefix="event_receiver"
+        )
         self.monitor_thread_pool_executor = ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="event_monitor"
         )
@@ -68,15 +70,41 @@ class EventHead(
                 while len(events) > MAX_EVENTS_TO_CACHE:
                     events.popitem(last=False)
 
-    async def ReportEvents(self, request, context):
+    def report_events_raw(self, binary_proto: bytes):
+        """
+        Receives a binary protobuf ReportEventsRequest and updates the event cache.
+        """
+        proto = event_pb2.ReportEventsRequest()
+        proto.ParseFromString(binary_proto)
         received_events = []
-        if request.event_strings:
-            received_events.extend(parse_event_strings(request.event_strings))
+        if proto.event_strings:
+            received_events.extend(parse_event_strings(proto.event_strings))
         logger.debug("Received %d events", len(received_events))
         self._update_events(received_events)
         self.total_report_events_count += 1
         self.total_events_received += len(received_events)
-        return event_pb2.ReportEventsReply(send_success=True)
+
+    @routes.post("/events")
+    async def report_events(self, request):
+        """
+        POST /events with payload is a serialized protobuf ReportEventsRequest.
+
+        On success: Replies 200 OK with payload = JSON {"result":true}.
+        On error: Replies non-OK with payload = JSON
+            {"result":false, "message": "error message"}.
+
+        Note: Parsing protobuf and inner JSON can be CPU intensive so we use a thread
+        pool.
+        """
+        try:
+            data = await request.read()
+            await self.receive_event_thread_pool_executor.submit(
+                self.report_events_raw, data
+            )
+            return dashboard_optional_utils.rest_response(success=True)
+        except Exception as e:
+            logger.exception("Error processing event report")
+            return dashboard_optional_utils.rest_response(success=False, message=str(e))
 
     async def _periodic_state_print(self):
         if self.total_events_received <= 0 or self.total_report_events_count <= 0:
@@ -110,8 +138,7 @@ class EventHead(
             events=list(job_events.values()),
         )
 
-    async def run(self, server):
-        event_pb2_grpc.add_ReportEventServiceServicer_to_server(self, server)
+    async def run(self):
         self._monitor = monitor_events(
             self._event_dir,
             lambda data: self._update_events(parse_event_strings(data)),

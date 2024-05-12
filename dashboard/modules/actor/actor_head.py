@@ -261,7 +261,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             success=True, message="Actor details fetched.", detail=actors[actor_id]
         )
 
-    async def run(self, server):
+    async def run(self):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
         self._gcs_actor_info_stub = gcs_service_pb2_grpc.ActorInfoGcsServiceStub(
             gcs_channel
