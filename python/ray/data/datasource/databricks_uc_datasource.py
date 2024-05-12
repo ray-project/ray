@@ -51,13 +51,14 @@ class DatabricksUCDatasource(Datasource):
             }
         )
 
-        req_auth = ("token", self.token)
-        req_headers = {"Content-Type": "application/json"}
+        req_headers = {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + self.token,
+        }
 
         response = requests.post(
             url_base,
-            auth=("token", self.token),
-            headers={"Content-Type": "application/json"},
+            headers=req_headers,
             data=payload,
         )
         response.raise_for_status()
@@ -71,7 +72,6 @@ class DatabricksUCDatasource(Datasource):
                 time.sleep(_STATEMENT_EXEC_POLL_TIME_S)
                 response = requests.get(
                     urljoin(url_base, statement_id) + "/",
-                    auth=req_auth,
                     headers=req_headers,
                 )
                 response.raise_for_status()
@@ -80,7 +80,6 @@ class DatabricksUCDatasource(Datasource):
             # User cancel the command, so we cancel query execution.
             requests.post(
                 urljoin(url_base, f"{statement_id}/cancel"),
-                auth=req_auth,
                 headers=req_headers,
             )
             try:
@@ -139,7 +138,7 @@ class DatabricksUCDatasource(Datasource):
                     )
 
                     resolve_response = requests.get(
-                        resolve_external_link_url, auth=req_auth, headers=req_headers
+                        resolve_external_link_url, headers=req_headers
                     )
                     resolve_response.raise_for_status()
                     external_url = resolve_response.json()["external_links"][0][
