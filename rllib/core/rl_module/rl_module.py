@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Mapping, Any, TYPE_CHECKING, Optional, Type, Dict, Union
 
 import gymnasium as gym
-import tree
+import tree  # pip install dm_tree
 
 if TYPE_CHECKING:
     from ray.rllib.core.rl_module.marl_module import (
@@ -19,11 +19,11 @@ import ray
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.specs.typing import SpecType
-#from ray.rllib.core.models.specs.checker import (
-#    check_input_specs,
-#    check_output_specs,
-#    convert_to_canonical_format,
-#)
+from ray.rllib.core.models.specs.checker import (
+    check_input_specs,
+    check_output_specs,
+    convert_to_canonical_format,
+)
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.policy.policy import get_gym_space_from_struct_of_tensors
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -410,45 +410,45 @@ class RLModule(abc.ABC):
         self.setup()
         self._is_setup = True
 
-    #def __init_subclass__(cls, **kwargs):
+    def __init_subclass__(cls, **kwargs):
         # Automatically add a __post_init__ method to all subclasses of RLModule.
         # This method is called after the __init__ method of the subclass.
-    #    def init_decorator(previous_init):
-    #        def new_init(self, *args, **kwargs):
-    #            previous_init(self, *args, **kwargs)
-    #            if type(self) is cls:
-    #                self.__post_init__()
+        def init_decorator(previous_init):
+            def new_init(self, *args, **kwargs):
+                previous_init(self, *args, **kwargs)
+                if type(self) is cls:
+                    self.__post_init__()
 
-    #        return new_init
+            return new_init
 
-    #    cls.__init__ = init_decorator(cls.__init__)
+        cls.__init__ = init_decorator(cls.__init__)
 
-    #def __post_init__(self):
-    #    """Called automatically after the __init__ method of the subclass.
+    def __post_init__(self):
+        """Called automatically after the __init__ method of the subclass.
 
-    #    The module first calls the __init__ method of the subclass, With in the
-    #    __init__ you should call the super().__init__ method. Then after the __init__
-    #    method of the subclass is called, the __post_init__ method is called.
+        The module first calls the __init__ method of the subclass, With in the
+        __init__ you should call the super().__init__ method. Then after the __init__
+        method of the subclass is called, the __post_init__ method is called.
 
-    #    This is a good place to do any initialization that requires access to the
-    #    subclass's attributes.
-    #    """
-    #    self._input_specs_train = convert_to_canonical_format(self.input_specs_train())
-    #    self._output_specs_train = convert_to_canonical_format(
-    #        self.output_specs_train()
-    #    )
-    #    self._input_specs_exploration = convert_to_canonical_format(
-    #        self.input_specs_exploration()
-    #    )
-    #    self._output_specs_exploration = convert_to_canonical_format(
-    #        self.output_specs_exploration()
-    #    )
-    #    self._input_specs_inference = convert_to_canonical_format(
-    #        self.input_specs_inference()
-    #    )
-    #    self._output_specs_inference = convert_to_canonical_format(
-    #        self.output_specs_inference()
-    #    )
+        This is a good place to do any initialization that requires access to the
+        subclass's attributes.
+        """
+        self._input_specs_train = convert_to_canonical_format(self.input_specs_train())
+        self._output_specs_train = convert_to_canonical_format(
+            self.output_specs_train()
+        )
+        self._input_specs_exploration = convert_to_canonical_format(
+            self.input_specs_exploration()
+        )
+        self._output_specs_exploration = convert_to_canonical_format(
+            self.output_specs_exploration()
+        )
+        self._input_specs_inference = convert_to_canonical_format(
+            self.input_specs_inference()
+        )
+        self._output_specs_inference = convert_to_canonical_format(
+            self.output_specs_inference()
+        )
 
     @OverrideToImplementCustomLogic
     def setup(self):
@@ -633,8 +633,8 @@ class RLModule(abc.ABC):
         """Returns the default input specs."""
         return [Columns.OBS]
 
-    #@check_input_specs("_input_specs_inference")
-    #@check_output_specs("_output_specs_inference")
+    @check_input_specs("_input_specs_inference")
+    @check_output_specs("_output_specs_inference")
     def forward_inference(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
         """Forward-pass during evaluation, called from the sampler.
 
@@ -656,8 +656,8 @@ class RLModule(abc.ABC):
     def _forward_inference(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
         """Forward-pass during evaluation. See forward_inference for details."""
 
-    #@check_input_specs("_input_specs_exploration")
-    #@check_output_specs("_output_specs_exploration")
+    @check_input_specs("_input_specs_exploration")
+    @check_output_specs("_output_specs_exploration")
     def forward_exploration(
         self, batch: SampleBatchType, **kwargs
     ) -> Mapping[str, Any]:
@@ -681,8 +681,8 @@ class RLModule(abc.ABC):
     def _forward_exploration(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
         """Forward-pass during exploration. See forward_exploration for details."""
 
-    #@check_input_specs("_input_specs_train")
-    #@check_output_specs("_output_specs_train")
+    @check_input_specs("_input_specs_train")
+    @check_output_specs("_output_specs_train")
     def forward_train(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
         """Forward-pass during training called from the learner. This method should
         not be overriden. Instead, override the _forward_train method.

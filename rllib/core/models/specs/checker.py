@@ -168,12 +168,12 @@ def _validate(
 
 
 @DeveloperAPI(stability="alpha")
-def XYZ_check_input_specs(
+def check_input_specs(
     input_specs: str,
     *,
     only_check_on_retry: bool = True,
     filter: bool = False,
-    cache: bool = False,
+    cache: bool = True,
 ):
     """A general-purpose spec checker decorator for neural network base classes.
 
@@ -241,8 +241,6 @@ def XYZ_check_input_specs(
         def wrapper(self, input_data, **kwargs):
             if cache and not hasattr(self, "__checked_input_specs_cache__"):
                 self.__checked_input_specs_cache__ = {}
-            if cache and func.__name__ not in self.__checked_input_specs_cache__:
-                self.__checked_input_specs_cache__[func.__name__] = True
 
             initial_exception = None
             if only_check_on_retry:
@@ -256,40 +254,48 @@ def XYZ_check_input_specs(
                     # check fails.
                     initial_exception = e
                     logger.error(
-                        f"Exception {e} raised on function call without checkin "
+                        f"Exception {e} raised on function call without checking "
                         f"input specs. RLlib will now attempt to check the spec "
-                        f"before calling the function again."
+                        f"before calling the function again ..."
                     )
 
             # If the function was not executed successfully yet, we check specs
             checked_data = input_data
-            #if input_specs:
-            #    if hasattr(self, input_specs):
-            #        spec = getattr(self, input_specs)
-            #    else:
-            #        raise SpecCheckingError(
-            #            f"object {self} has no attribute {input_specs}."
-            #        )
 
-                #if spec is not None:
-                #    spec = convert_to_canonical_format(spec)
-                #    checked_data = _validate(
-                #        cls_instance=self,
-                #        method=func,
-                #        data=input_data,
-                #        spec=spec,
-                #        filter=filter,
-                #        tag="input",
-                #    )
+            if input_specs and (
+                initial_exception
+                or not cache
+                or func.__name__ not in self.__checked_input_specs_cache__
+            ):
+                if hasattr(self, input_specs):
+                    spec = getattr(self, input_specs)
+                else:
+                    raise SpecCheckingError(
+                        f"object {self} has no attribute {input_specs}."
+                    )
 
-                #    if filter and isinstance(checked_data, NestedDict):
-                #        # filtering should happen regardless of cache
-                #        checked_data = checked_data.filter(spec)
+                if spec is not None:
+                    spec = convert_to_canonical_format(spec)
+                    checked_data = _validate(
+                        cls_instance=self,
+                        method=func,
+                        data=input_data,
+                        spec=spec,
+                        filter=filter,
+                        tag="input",
+                    )
+
+                    if filter and isinstance(checked_data, NestedDict):
+                        # filtering should happen regardless of cache
+                        checked_data = checked_data.filter(spec)
 
             # If we have encountered an exception from calling `func` already,
             # we raise it again here and don't need to call func again.
             if initial_exception:
                 raise initial_exception
+
+            if cache and func.__name__ not in self.__checked_input_specs_cache__:
+                self.__checked_input_specs_cache__[func.__name__] = True
 
             return func(self, checked_data, **kwargs)
 
@@ -300,10 +306,10 @@ def XYZ_check_input_specs(
 
 
 @DeveloperAPI(stability="alpha")
-def XYZ_check_output_specs(
+def check_output_specs(
     output_specs: str,
     *,
-    cache: bool = False,
+    cache: bool = True,
 ):
     """A general-purpose spec checker decorator for Neural Network base classes.
 
@@ -360,7 +366,9 @@ def XYZ_check_output_specs(
 
             output_data = func(self, input_data, **kwargs)
 
-            if output_specs:
+            if output_specs and (
+                not cache or func.__name__ not in self.__checked_output_specs_cache__
+            ):
                 if hasattr(self, output_specs):
                     spec = getattr(self, output_specs)
                 else:
