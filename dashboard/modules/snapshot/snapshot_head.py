@@ -11,6 +11,7 @@ import aiohttp.web
 from ray.dashboard.consts import RAY_CLUSTER_ACTIVITY_HOOK
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
+from ray._private.gcs_aio_client import GcsAioClient
 from ray._private.storage import _load_class
 from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
 from ray.dashboard.modules.job.common import JobInfoStorageClient
@@ -78,7 +79,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         super().__init__(dashboard_head)
         self._gcs_actor_info_stub = None
         self._dashboard_head = dashboard_head
-        self._gcs_aio_client = dashboard_head.gcs_aio_client
+        self._gcs_aio_client: GcsAioClient = dashboard_head.gcs_aio_client
         self._job_info_client = None
         # For offloading CPU intensive work.
         self._thread_pool = concurrent.futures.ThreadPoolExecutor(
@@ -183,7 +184,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
 
             num_active_drivers = 0
             latest_job_end_time = 0
-            for job_table_entry in reply.job_info_list.values():
+            for job_table_entry in reply.values():
                 is_dead = bool(job_table_entry.is_dead)
                 in_internal_namespace = job_table_entry.config.ray_namespace.startswith(
                     "_ray_internal_"
