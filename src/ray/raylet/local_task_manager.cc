@@ -45,7 +45,7 @@ void LocalTaskManager::UpdateCpuRequests(const std::shared_ptr<internal::Work> &
                                          bool add) {
   const auto &spec = work->task.GetTaskSpecification();
   // FixedPoint to Double
-  auto cpu_requested = spec.GetRequiredResources().Get(ResourceID::CPU()).Double();
+  auto cpu_requested = spec.GetRequiredResources().Get(scheduling::ResourceID::CPU()).Double();
   if (add) {
     total_cpu_requests_ += cpu_requested;
   } else {
