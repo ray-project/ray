@@ -168,7 +168,7 @@ def _validate(
 
 
 @DeveloperAPI(stability="alpha")
-def check_input_specs(
+def XYZ_check_input_specs(
     input_specs: str,
     *,
     only_check_on_retry: bool = True,
@@ -263,28 +263,28 @@ def check_input_specs(
 
             # If the function was not executed successfully yet, we check specs
             checked_data = input_data
-            if input_specs:
-                if hasattr(self, input_specs):
-                    spec = getattr(self, input_specs)
-                else:
-                    raise SpecCheckingError(
-                        f"object {self} has no attribute {input_specs}."
-                    )
+            #if input_specs:
+            #    if hasattr(self, input_specs):
+            #        spec = getattr(self, input_specs)
+            #    else:
+            #        raise SpecCheckingError(
+            #            f"object {self} has no attribute {input_specs}."
+            #        )
 
-                if spec is not None:
-                    spec = convert_to_canonical_format(spec)
-                    checked_data = _validate(
-                        cls_instance=self,
-                        method=func,
-                        data=input_data,
-                        spec=spec,
-                        filter=filter,
-                        tag="input",
-                    )
+                #if spec is not None:
+                #    spec = convert_to_canonical_format(spec)
+                #    checked_data = _validate(
+                #        cls_instance=self,
+                #        method=func,
+                #        data=input_data,
+                #        spec=spec,
+                #        filter=filter,
+                #        tag="input",
+                #    )
 
-                    if filter and isinstance(checked_data, NestedDict):
-                        # filtering should happen regardless of cache
-                        checked_data = checked_data.filter(spec)
+                #    if filter and isinstance(checked_data, NestedDict):
+                #        # filtering should happen regardless of cache
+                #        checked_data = checked_data.filter(spec)
 
             # If we have encountered an exception from calling `func` already,
             # we raise it again here and don't need to call func again.
@@ -300,7 +300,7 @@ def check_input_specs(
 
 
 @DeveloperAPI(stability="alpha")
-def check_output_specs(
+def XYZ_check_output_specs(
     output_specs: str,
     *,
     cache: bool = False,
