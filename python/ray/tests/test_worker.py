@@ -1,9 +1,11 @@
 import io
 import os
+import sys
 from typing import Dict
 from unittest import mock
 
 import colorama
+import pytest
 
 from ray._private.worker import print_worker_logs
 
@@ -100,3 +102,7 @@ def test_print_worker_logs_multi_color() -> None:
         f"{colorama.Fore.GREEN}(my_task pid=2, ip=10.0.0.1){colorama.Style.RESET_ALL} "
         + "is running\n"
     )
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-sv", __file__]))
