@@ -17,9 +17,9 @@
 #include <boost/asio.hpp>
 #include <boost/bind/bind.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
-#include <iostream>
 
 #include "ray/common/client_connection.h"
+#include "ray/common/scheduling/resource_set.h"
 #include "ray/common/status.h"
 #include "ray/util/util.h"
 
@@ -100,11 +100,13 @@ Raylet::Raylet(instrumented_io_context &main_service,
 
   // Setting up autoscaler related fields from ENV
   auto instance_id = std::getenv(kNodeCloudInstanceIdEnv);
-  self_node_info_.set_instance_id(instance_id ? instance_id : "");
+  self_node_info_.set_instance_id((instance_id != nullptr) ? instance_id : "");
   auto cloud_node_type_name = std::getenv(kNodeTypeNameEnv);
-  self_node_info_.set_node_type_name(cloud_node_type_name ? cloud_node_type_name : "");
+  self_node_info_.set_node_type_name(
+      (cloud_node_type_name != nullptr) ? cloud_node_type_name : "");
   auto instance_type_name = std::getenv(kNodeCloudInstanceTypeNameEnv);
-  self_node_info_.set_instance_type_name(instance_type_name ? instance_type_name : "");
+  self_node_info_.set_instance_type_name(
+      (instance_type_name != nullptr) ? instance_type_name : "");
 }
 
 Raylet::~Raylet() {}
