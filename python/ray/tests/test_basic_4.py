@@ -249,6 +249,29 @@ def test_fair_queueing(shutdown_only):
     assert len(ready) == 1000, len(ready)
 
 
+def test_fair_dispatching(shutdown_only):
+    ray.init(num_cpus=3)
+
+    @ray.remote
+    def f(i):
+        time.sleep(i)
+        return 0
+
+    @ray.remote
+    def g():
+        return 1
+
+    _ = [f.remote(3) for _ in range(2)]
+
+    timeout = 5
+    ready, _ = ray.wait(
+        [f.remote(10), f.remote(10), f.remote(10), g.remote(), g.remote()],
+        timeout=timeout,
+        num_returns=5,
+    )
+    assert len(ready) == 2, len(ready)
+
+
 if __name__ == "__main__":
     import os
 
