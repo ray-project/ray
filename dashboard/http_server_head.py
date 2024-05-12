@@ -15,7 +15,6 @@ import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._private.utils import get_or_create_event_loop
-from ray._raylet import GcsClient
 from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 
 # All third-party dependencies that are not included in the minimal Ray
@@ -60,7 +59,6 @@ class HttpServerDashboardHead:
         http_port: int,
         http_port_retries: int,
         gcs_address: str,
-        gcs_client: GcsClient,
         session_name: str,
         metrics: DashboardPrometheusMetrics,
     ):
@@ -68,7 +66,6 @@ class HttpServerDashboardHead:
         self.http_host = http_host
         self.http_port = http_port
         self.http_port_retries = http_port_retries
-        self.gcs_client = gcs_client
         self.head_node_ip = gcs_address.split(":")[0]
         self.metrics = metrics
         self._session_name = session_name
