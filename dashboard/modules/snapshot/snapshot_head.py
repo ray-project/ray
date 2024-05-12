@@ -76,7 +76,6 @@ class RayActivityResponse(BaseModel, extra=Extra.allow):
 class APIHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
-        self._gcs_job_info_stub = None
         self._gcs_actor_info_stub = None
         self._dashboard_head = dashboard_head
         self._gcs_aio_client = dashboard_head.gcs_aio_client
@@ -180,14 +179,11 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         # This includes the _ray_internal_dashboard job that gets automatically
         # created with every cluster
         try:
-            request = gcs_service_pb2.GetAllJobInfoRequest()
-            reply = await self._gcs_job_info_stub.GetAllJobInfo(
-                request, timeout=timeout
-            )
+            reply = await self._gcs_aio_client.get_all_job_info(timeout=timeout)
 
             num_active_drivers = 0
             latest_job_end_time = 0
-            for job_table_entry in reply.job_info_list:
+            for job_table_entry in reply.job_info_list.values():
                 is_dead = bool(job_table_entry.is_dead)
                 in_internal_namespace = job_table_entry.config.ray_namespace.startswith(
                     "_ray_internal_"
@@ -235,9 +231,6 @@ class APIHead(dashboard_utils.DashboardHeadModule):
             )
 
     async def run(self, server):
-        self._gcs_job_info_stub = gcs_service_pb2_grpc.JobInfoGcsServiceStub(
-            self._dashboard_head.aiogrpc_gcs_channel
-        )
         self._gcs_actor_info_stub = gcs_service_pb2_grpc.ActorInfoGcsServiceStub(
             self._dashboard_head.aiogrpc_gcs_channel
         )
