@@ -52,14 +52,18 @@ steps:
 
   # bot
   - label: ":robot_face: CI weekly green metric"
-    tags: skip-on-premerge
+    tags:
+      - skip-on-premerge
+      - oss
     if: build.branch == "master"
     instance_type: small
     commands:
       - bazel run //ci/ray_ci/automation:weekly_green_metric -- --production
 
   - label: ":robot_face: {{matrix}} microcheck test coverage"
-    tags: skip-on-premerge
+    tags:
+      - skip-on-premerge
+      - oss
     if: build.branch == "master"
     instance_type: small
     commands:

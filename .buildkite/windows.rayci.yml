@@ -12,6 +12,7 @@ steps:
   - label: ":windows: wheel {{matrix}}"
     # we have linux/mac wheels tag, but do not have a windows wheels tag..
     # so using python and core_cpp here, to make sure at least it builds
+    key: windows_wheels
     tags:
       - oss
       - python
