@@ -338,6 +338,7 @@ steps:
       # parallel.
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... core
         --parallelism-per-worker 2 --gpus 2
+        --test-env=CUDA_VISIBLE_DEVICES=0,1
         --build-name coregpubuild
         --only-tags multi_gpu
     depends_on: coregpubuild
