@@ -2051,7 +2051,7 @@ void NodeManager::HandleCancelWorkerLease(rpc::CancelWorkerLeaseRequest request,
 }
 
 void NodeManager::MarkObjectsAsFailed(const ErrorType &error_type,
-                                      std::vector<rpc::ObjectReference> &objects_to_fail,
+                                      const std::vector<rpc::ObjectReference> &objects_to_fail,
                                       const JobID &job_id) {
   // TODO(swang): Ideally we should return the error directly to the client
   // that needs this object instead of storing the object in plasma, which is
