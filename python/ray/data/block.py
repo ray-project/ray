@@ -73,8 +73,7 @@ CallableClass = type
 
 
 class _CallableClassProtocol(Protocol[T, U]):
-    def __call__(self, __arg: T) -> Union[U, Iterator[U]]:
-        ...
+    def __call__(self, __arg: T) -> Union[U, Iterator[U]]: ...
 
 
 # A user defined function passed to map, map_batches, ec.
@@ -387,7 +386,6 @@ class BlockAccessor:
             else:
                 assert block_type == BlockType.PANDAS
                 return cls.batch_to_pandas_block(batch)
-        return batch
 
     @classmethod
     def batch_to_arrow_block(cls, batch: Dict[str, Any]) -> Block:
@@ -399,9 +397,9 @@ class BlockAccessor:
     @classmethod
     def batch_to_pandas_block(cls, batch: Dict[str, Any]) -> Block:
         """Create a Pandas block from user-facing data formats."""
-        import pandas as pd
+        from ray.data._internal.pandas_block import PandasBlockAccessor
 
-        return pd.DataFrame(dict(batch))
+        return PandasBlockAccessor.numpy_to_block(batch)
 
     @staticmethod
     def for_block(block: Block) -> "BlockAccessor[T]":
