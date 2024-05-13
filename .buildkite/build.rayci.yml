@@ -1,6 +1,7 @@
 group: build
 steps:
   - label: ":tapioca: build: wheel {{matrix}} (x86_64)"
+    key: linux_wheels
     tags:
       - linux_wheels
       - oss
