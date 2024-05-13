@@ -1510,7 +1510,6 @@ def init(
     if job_config is None:
         job_config = ray.job_config.JobConfig()
 
-    logger.info("Runtime env setup started.")
     if RAY_JOB_CONFIG_JSON_ENV_VAR in os.environ:
         injected_job_config_json = json.loads(
             os.environ.get(RAY_JOB_CONFIG_JSON_ENV_VAR)
@@ -1557,7 +1556,6 @@ def init(
         if runtime_env:
             # Set runtime_env in job_config if passed in as part of ray.init()
             job_config.set_runtime_env(runtime_env)
-    logger.info("Runtime env setup finished.")
 
     redis_address, gcs_address = None, None
     bootstrap_address = services.canonicalize_bootstrap_address(address, _temp_dir)

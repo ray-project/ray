@@ -508,6 +508,9 @@ class JobManager:
                 self.event_logger.info(
                     f"Started a ray job {submission_id}.", submission_id=submission_id
                 )
+
+            driver_logger = self._log_client.configure_driver_logger(submission_id)
+            driver_logger.info("Runtime env setup started")
             supervisor = self._supervisor_actor_cls.options(
                 lifetime="detached",
                 name=JOB_ACTOR_NAME_TEMPLATE.format(job_id=submission_id),

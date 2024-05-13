@@ -292,6 +292,41 @@ async def test_job_supervisor_logs_saved(
     wait_for_condition(lambda: log_message in capsys.readouterr().err)
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head"],
+    indirect=True,
+)
+async def test_runtime_env_setup_logged_to_job_driver_logs(
+    call_ray_start, tmp_path  # noqa: F811
+):
+    """Test runtime env setup messages are logged to jobs driver log"""
+    address_info = ray.init(address=call_ray_start)
+    gcs_aio_client = GcsAioClient(
+        address=address_info["gcs_address"], nums_reconnect_retry=0
+    )
+    job_manager = JobManager(gcs_aio_client, tmp_path)
+    job_id = await job_manager.submit_job(
+        entrypoint="echo hello 1", submission_id="job_1"
+    )
+    await async_wait_for_condition_async_predicate(
+        check_job_succeeded, job_manager=job_manager, job_id=job_id
+    )
+
+    # Verify logs saved to file
+    supervisor_log_path = os.path.join(
+        ray._private.worker._global_node.get_logs_dir_path(),
+        f"job-driver-{job_id}.log",
+    )
+    start_message = "Runtime env setup started"
+    finished_message = "Runtime env setup finished"
+    with open(supervisor_log_path, "r") as f:
+        logs = f.read()
+        assert start_message in logs
+        assert finished_message in logs
+
+
 @pytest.fixture(scope="module")
 def shared_ray_instance():
     # Remove ray address for test ray cluster in case we have

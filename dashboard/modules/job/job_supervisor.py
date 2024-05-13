@@ -286,13 +286,17 @@ class JobSupervisor:
     ):
         """
         Stop and start both happen asynchronously, coordinated by asyncio event
-        and coroutine, respectively.
+        and coroutine, respectively. Also log runtime env setup finished message to
+        the job driver logs.
 
         1) Sets job status as running
         2) Pass runtime env and metadata to subprocess as serialized env
             variables.
         3) Handle concurrent events of driver execution and
         """
+        driver_logger = self._log_client.configure_driver_logger(self._job_id)
+        driver_logger.info("Runtime env setup finished")
+
         curr_info = await self._job_info_client.get_info(self._job_id)
         if curr_info is None:
             raise RuntimeError(f"Status could not be retrieved for job {self._job_id}.")
