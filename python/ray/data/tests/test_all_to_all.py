@@ -1,6 +1,7 @@
 import math
 import random
 import time
+from typing import Optional
 from unittest.mock import patch
 
 import numpy as np
@@ -147,6 +148,44 @@ def test_map_groups_with_gpus(shutdown_only):
     )
 
     assert rows == [{"id": 0}]
+
+
+def test_map_groups_with_actors(ray_start_regular_shared):
+    class Identity:
+        def __call__(self, batch):
+            return batch
+
+    rows = (
+        ray.data.range(1).groupby("id").map_groups(Identity, concurrency=1).take_all()
+    )
+
+    assert rows == [{"id": 0}]
+
+
+def test_map_groups_with_actors_and_args(ray_start_regular_shared):
+    class Fn:
+        def __init__(self, x: int, y: Optional[int] = None):
+            self.x = x
+            self.y = y
+
+        def __call__(self, batch, q: int, r: Optional[int] = None):
+            return {"x": [self.x], "y": [self.y], "q": [q], "r": [r]}
+
+    rows = (
+        ray.data.range(1)
+        .groupby("id")
+        .map_groups(
+            Fn,
+            concurrency=1,
+            fn_constructor_args=[0],
+            fn_constructor_kwargs={"y": 1},
+            fn_args=[2],
+            fn_kwargs={"r": 3},
+        )
+        .take_all()
+    )
+
+    assert rows == [{"x": 0, "y": 1, "q": 2, "r": 3}]
 
 
 def test_groupby_large_udf_returns(ray_start_regular_shared):
