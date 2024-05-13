@@ -27,7 +27,6 @@ steps:
       branch: "${BUILDKITE_BRANCH}"
       message: "Triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
       env:
-        RAYCI_CONTINUOUS_BUILD: 1
         RAYCI_WEEKLY_RELEASE: 1
   
   - label: "Trigger Postmerge nightly build & test"
@@ -40,7 +39,6 @@ steps:
       branch: "${BUILDKITE_BRANCH}"
       message: "Triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
       env:
-        RAYCI_CONTINUOUS_BUILD: 1
         RAYCI_WEEKLY_RELEASE: 1
         RAYCI_SCHEDULE: "nightly"
 
