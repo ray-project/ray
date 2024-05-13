@@ -30,6 +30,9 @@ from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
+# TODO (simon): Move all regular keys to the metric constants file.
+TD_ERROR_KEY = "td_error"
+
 
 @DeveloperAPI
 def update_priorities_in_episode_replay_buffer(
