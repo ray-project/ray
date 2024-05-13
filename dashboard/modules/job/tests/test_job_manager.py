@@ -312,20 +312,20 @@ async def test_runtime_env_setup_logged_to_job_driver_logs(
     # job finishes.
     job_manager.JOB_MONITOR_LOOP_PERIOD_S = 0
     job_id = await job_manager.submit_job(
-        entrypoint="echo hello 1", submission_id="job_1"
+        entrypoint="echo hello 1", submission_id="test_runtime_env_setup_logs"
     )
     await async_wait_for_condition_async_predicate(
         check_job_succeeded, job_manager=job_manager, job_id=job_id
     )
 
     # Verify logs saved to file
-    supervisor_log_path = os.path.join(
+    job_driver_log_path = os.path.join(
         ray._private.worker._global_node.get_logs_dir_path(),
         f"job-driver-{job_id}.log",
     )
     start_message = "Runtime env setup started"
     finished_message = "Runtime env setup finished"
-    with open(supervisor_log_path, "r") as f:
+    with open(job_driver_log_path, "r") as f:
         logs = f.read()
         assert start_message in logs
         assert finished_message in logs
