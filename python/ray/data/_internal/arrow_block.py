@@ -21,11 +21,11 @@ from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
 from ray.data._internal.numpy_support import (
     convert_udf_returns_to_numpy,
-    is_valid_udf_return,
+    validate_numpy_batch,
 )
 from ray.data._internal.row import TableRow
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
-from ray.data._internal.util import _truncated_repr, find_partitions
+from ray.data._internal.util import find_partitions
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -185,22 +185,14 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
     @staticmethod
     def numpy_to_block(
-        batch: Union[np.ndarray, Dict[str, np.ndarray], Dict[str, list]],
+        batch: Union[Dict[str, np.ndarray], Dict[str, list]],
     ) -> "pyarrow.Table":
         import pyarrow as pa
 
         from ray.data.extensions.tensor_extension import ArrowTensorArray
 
-        if isinstance(batch, np.ndarray):
-            batch = {TENSOR_COLUMN_NAME: batch}
-        elif not isinstance(batch, collections.abc.Mapping) or any(
-            not is_valid_udf_return(col) for col in batch.values()
-        ):
-            raise ValueError(
-                "Batch must be an ndarray or dictionary of ndarrays when converting "
-                f"a numpy batch to a block, got: {type(batch)} "
-                f"({_truncated_repr(batch)})"
-            )
+        validate_numpy_batch(batch)
+
         new_batch = {}
         for col_name, col in batch.items():
             # Coerce to np.ndarray format if possible.
