@@ -643,6 +643,9 @@ TEST(MutableObjectTest, TestMutableObjectManagerDestruct) {
     ASSERT_TRUE(
         manager2.RegisterChannel(object_id, std::move(object2), /*reader=*/false).ok());
   }
+  // The purpose of this test is to ensure that neither the MutableObjectManager instance
+  // destructor crashes when the two instances go out of scope below at the end of this
+  // function.
 }
 
 #endif  // defined(__APPLE__) || defined(__linux__)
