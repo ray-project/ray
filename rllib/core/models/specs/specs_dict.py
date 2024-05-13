@@ -17,13 +17,13 @@ _TYPE_MISMATCH = (
     "{} has type {} (expected type {})."
 )
 
-DATA_TYPE = Union[NestedDict[Any], Mapping[str, Any]]
+DATA_TYPE = Mapping[str, Any]
 
 IS_NOT_PROPERTY = "Spec {} must be a property of the class {}."
 
 
 @ExperimentalAPI
-class SpecDict(Dict[Spec], Spec):
+class SpecDict(Dict[str, Spec], Spec):
     """A Dict containing `TensorSpec` and `Types`.
 
     It can be used to validate an incoming data against a nested dictionary of specs.

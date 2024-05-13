@@ -4,8 +4,9 @@ from collections import abc
 from typing import Dict, Union, Mapping, Any, Callable
 
 from ray.rllib.core.models.specs.specs_base import Spec, TypeSpec
-#from ray.rllib.core.models.specs.specs_dict import SpecDict
+from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.core.models.specs.typing import SpecType
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
@@ -128,8 +129,8 @@ def _validate(
     method: Callable,
     data: Mapping[str, Any],
     spec: Spec,
-    filter: bool = False,
     tag: str = "input",
+    filter=DEPRECATED_VALUE,
 ) -> Dict:
     """Validate the data against the spec.
 
@@ -138,20 +139,21 @@ def _validate(
         method: The method to apply the spec checking to.
         data: The data to validate.
         spec: The spec to validate against.
-        filter: If True, the data will be filtered to only include the keys that are
-            specified in the spec.
         tag: The tag of the spec to check. Either "input" or "output". This is used
             internally to defined an internal cache storage attribute based on the tag.
 
     Returns:
         The data, filtered if filter is True.
     """
+    if filter != DEPRECATED_VALUE:
+        deprecation_warning(old="_validate(filter=...)", error=True)
+
     cache_miss = _should_validate(cls_instance, method, tag=tag)
 
     if isinstance(spec, SpecDict):
         if not isinstance(data, abc.Mapping):
             raise ValueError(f"{tag} must be a Mapping, got {type(data).__name__}")
-        if cache_miss or filter:
+        if cache_miss:
             data = NestedDict(data)
 
     if cache_miss:
@@ -171,8 +173,8 @@ def check_input_specs(
     input_specs: str,
     *,
     only_check_on_retry: bool = True,
-    filter: bool = False,
     cache: bool = False,
+    filter=DEPRECATED_VALUE,
 ):
     """A general-purpose spec checker decorator for neural network base classes.
 
@@ -180,10 +182,6 @@ def check_input_specs(
     (https://realpython.com/primer-on-python-decorators/#stateful-decorators) to
     enforce input specs for any instance method that has an argument named
     `input_data` in its args.
-
-    It also allows you to filter the input data dictionary to only include those keys
-    that are specified in the model specs. It also allows you to cache the validation
-    to make sure the spec is only validated once in the entire lifetime of the instance.
 
     See more examples in ../tests/test_specs_dict.py)
 
@@ -219,10 +217,6 @@ def check_input_specs(
         only_check_on_retry: If True, the spec will not be checked. Only if the
             decorated method raises an Exception, we check the spec to provide a more
             informative error message.
-        filter: If True, and `input_data` is a nested dict the `input_data` will be
-            filtered by its corresponding spec tree structure and then passed into the
-            implemented function to make sure user is not confounded with unnecessary
-            data.
         cache: If True, only checks the data validation for the first time the
             instance method is called.
 
@@ -234,6 +228,9 @@ def check_input_specs(
         method also has a special attribute `__checked_input_specs__` that marks the
         method as decorated.
     """
+
+    if filter != DEPRECATED_VALUE:
+        deprecation_warning(old="check_input_specs(filter=...)", error=True)
 
     def decorator(func):
         @functools.wraps(func)
@@ -277,13 +274,8 @@ def check_input_specs(
                         method=func,
                         data=input_data,
                         spec=spec,
-                        filter=filter,
                         tag="input",
                     )
-
-                    if filter and isinstance(checked_data, NestedDict):
-                        # filtering should happen regardless of cache
-                        checked_data = checked_data.filter(spec)
 
             # If we have encountered an exception from calling `func` already,
             # we raise it again here and don't need to call func again.

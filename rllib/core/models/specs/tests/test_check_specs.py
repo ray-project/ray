@@ -34,7 +34,7 @@ class AbstractInterfaceClass(abc.ABC):
         pass
 
     @check_input_specs(
-        "input_specs", filter=True, cache=False, only_check_on_retry=False
+        "input_specs", cache=False, only_check_on_retry=False
     )
     @check_output_specs("output_specs", cache=False)
     def check_input_and_output(self, input_dict: Dict[str, Any]) -> Dict[str, Any]:
@@ -45,7 +45,7 @@ class AbstractInterfaceClass(abc.ABC):
         pass
 
     @check_input_specs(
-        "input_specs", filter=True, cache=False, only_check_on_retry=False
+        "input_specs", cache=False, only_check_on_retry=False
     )
     def check_only_input(self, input_dict: Dict[str, Any]) -> Dict[str, Any]:
         """should not override this method"""
@@ -65,7 +65,7 @@ class AbstractInterfaceClass(abc.ABC):
         pass
 
     @check_input_specs(
-        "input_specs", filter=True, cache=True, only_check_on_retry=False
+        "input_specs", cache=True, only_check_on_retry=False
     )
     @check_output_specs("output_specs", cache=True)
     def check_input_and_output_with_cache(
@@ -75,7 +75,7 @@ class AbstractInterfaceClass(abc.ABC):
         return self._check_input_and_output(input_dict)
 
     @check_input_specs(
-        "input_specs", filter=False, cache=False, only_check_on_retry=False
+        "input_specs", cache=False, only_check_on_retry=False
     )
     @check_output_specs("output_specs", cache=False)
     def check_input_and_output_wo_filter(self, input_dict) -> Dict[str, Any]:
@@ -103,14 +103,14 @@ class CorrectImplementation(InputNumberOutputFloat):
     @override(AbstractInterfaceClass)
     def _check_input_and_output(self, input_dict: Dict[str, Any]) -> Dict[str, Any]:
         # check if there is any key other than input in the input_dict
-        if len(input_dict) > 1 or "input" not in input_dict:
+        if "input" not in input_dict:
             raise ValueError(ONLY_ONE_KEY_ALLOWED)
         return self.run(input_dict)
 
     @override(AbstractInterfaceClass)
     def _check_only_input(self, input_dict: Dict[str, Any]) -> Dict[str, Any]:
         # check if there is any key other than input in the input_dict
-        if len(input_dict) > 1 or "input" not in input_dict:
+        if "input" not in input_dict:
             raise ValueError(ONLY_ONE_KEY_ALLOWED)
 
         out = self.run(input_dict)
