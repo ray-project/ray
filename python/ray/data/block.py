@@ -387,6 +387,7 @@ class BlockAccessor:
             else:
                 assert block_type == BlockType.PANDAS
                 return cls.batch_to_pandas_block(batch)
+        return batch
 
     @classmethod
     def batch_to_arrow_block(cls, batch: Dict[str, Any]) -> Block:
