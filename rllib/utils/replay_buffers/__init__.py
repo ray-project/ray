@@ -6,6 +6,9 @@ from ray.rllib.utils.replay_buffers.multi_agent_mixin_replay_buffer import (
 from ray.rllib.utils.replay_buffers.multi_agent_episode_replay_buffer import (
     MultiAgentEpisodeReplayBuffer,
 )
+from ray.rllib.utils.replay_buffers.multi_agent_prioritized_episode_replay_buffer import (
+    MultiAgentPrioritizedEpisodeReplayBuffer,
+)   
 from ray.rllib.utils.replay_buffers.multi_agent_prioritized_replay_buffer import (
     MultiAgentPrioritizedReplayBuffer,
 )
@@ -28,6 +31,7 @@ __all__ = [
     "FifoReplayBuffer",
     "MultiAgentEpisodeReplayBuffer",
     "MultiAgentMixInReplayBuffer",
+    "MultiAgentPrioritizedEpisodeReplayBuffer",
     "MultiAgentPrioritizedReplayBuffer",
     "MultiAgentReplayBuffer",
     "PrioritizedEpisodeReplayBuffer",

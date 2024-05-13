@@ -563,6 +563,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             self._min_segment[idx] = priority**self._alpha
             # Update the maximal priority.
             self._max_priority = max(self._max_priority, priority)
+        self._last_sampled_indices.clear()
 
     def _get_free_node_and_assign(self, sample_index, weight: float = 1.0) -> int:
         """Gets the next free node in the segment trees.

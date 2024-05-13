@@ -52,7 +52,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
         capacity: int = 10000,
         *,
         batch_size_B: int = 16,
-        batch_length_T: int = 64,
+        batch_length_T: int = 1,
         **kwargs,
     ):
         """Initializes a multi-agent episode replay buffer.
@@ -240,7 +240,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
         replay_mode: str = "independent",
         modules_to_sample: Optional[List[ModuleID]] = None,
         **kwargs,
-    ) -> SampleBatchType:
+    ) -> Union[List["MultiAgentEpisode"], List["SingleAgentEpisode"]]:
         """Samples a batch of multi-agent transitions.
 
         Multi-agent transitions can be sampled either `"independent"` or
@@ -459,7 +459,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
         include_infos: bool,
         include_extra_model_outputs: bool,
         modules_to_sample: Optional[List[ModuleID]],
-    ) -> SampleBatchType:
+    ) -> Union[List["MultiAgentEpisode"], List["SingleAgentEpisode"]]:
         """Samples a batch of independent multi-agent transitions."""
 
         actual_n_step = n_step or 1

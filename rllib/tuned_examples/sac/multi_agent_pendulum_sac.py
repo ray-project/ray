@@ -11,7 +11,7 @@ args = parser.parse_args()
 
 register_env(
     "multi_agent_pendulum",
-    lambda _: MultiAgentPendulum({"num_agents": args.num_agents or 1}),
+    lambda _: MultiAgentPendulum({"num_agents": 2})#args.num_agents or 1}),
 )
 
 config = (
@@ -45,8 +45,10 @@ config = (
         train_batch_size_per_learner=256,
         target_network_update_freq=1,
         replay_buffer_config={
-            "type": "MultiAgentEpisodeReplayBuffer",
+            "type": "MultiAgentPrioritizedEpisodeReplayBuffer",
             "capacity": 100000,
+            "alpha": 0.6,
+            "beta": 0.4,
         },
         num_steps_sampled_before_learning_starts=256,
     )
@@ -67,6 +69,18 @@ stop = {
 }
 
 if __name__ == "__main__":
-    from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
+    # from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
 
-    run_rllib_example_script_experiment(config, args, stop=stop)
+    # run_rllib_example_script_experiment(config, args, stop=stop)
+    from ray import tune, train
+    import ray 
+
+    ray.init(local_mode=True)
+    tuner = tune.Tuner(
+        "SAC",
+        param_space=config,
+        run_config=train.RunConfig(
+            stop=stop,
+        ),
+    )
+    tuner.fit()
