@@ -270,7 +270,7 @@ class MetricsLogger:
         prefix_key = force_tuple(key)
 
         def _map(path, stat_or_value):
-            extended_key = prefix_key + force_tuple(path)
+            extended_key = prefix_key + force_tuple(tree.flatten(path))
 
             self.log_value(
                 extended_key,
@@ -820,10 +820,9 @@ class MetricsLogger:
         flat_key = force_tuple(flat_key)
         _dict = self.stats
         for i, key in enumerate(flat_key):
+            if i == len(flat_key) - 1:
+                _dict[key] = stats
+                return
             if key not in _dict:
-                if i == len(flat_key) - 1:
-                    _dict[key] = stats
-                    return
-                else:
-                    _dict[key] = {}
+                _dict[key] = {}
             _dict = _dict[key]
