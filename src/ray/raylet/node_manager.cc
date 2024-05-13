@@ -20,6 +20,8 @@
 #include <fstream>
 #include <memory>
 
+#include "absl/functional/bind_front.h"
+#include "absl/synchronization/notification.h"
 #include "absl/time/clock.h"
 #include "boost/system/error_code.hpp"
 #include "ray/common/asio/asio_util.h"
@@ -219,6 +221,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
             ref.set_object_id(object_id.Binary());
             MarkObjectsAsFailed(error_type, {ref}, JobID::Nil());
           }),
+      store_client_(std::make_shared<plasma::PlasmaClient>()),
       periodical_runner_(io_service),
       report_resources_period_ms_(config.report_resources_period_ms),
       temp_dir_(config.temp_dir),
@@ -357,7 +360,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       RayConfig::instance().worker_cap_initial_backoff_delay_ms(),
       "NodeManager.ScheduleAndDispatchTasks");
 
-  RAY_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
+  RAY_CHECK_OK(store_client_->Connect(config.store_socket_name.c_str()));
   // Run the node manger rpc server.
   node_manager_server_.RegisterService(node_manager_service_, false /* token_auth */);
   node_manager_server_.RegisterService(ray_syncer_service_);
@@ -384,7 +387,23 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
   periodical_runner_.RunFnPeriodically([this]() { GCTaskFailureReason(); },
                                        RayConfig::instance().task_failure_entry_ttl_ms(),
                                        "NodeManager.GCTaskFailureReason");
+
+  mutable_object_provider_ = std::make_unique<core::experimental::MutableObjectProvider>(
+      store_client_, absl::bind_front(&NodeManager::CreateRayletClient, this));
 }
+
+std::shared_ptr<raylet::RayletClient> NodeManager::CreateRayletClient(
+    const NodeID &node_id) {
+  const rpc::GcsNodeInfo *node_info = gcs_client_->Nodes().Get(node_id);
+  RAY_CHECK(node_info) << "No GCS info for node " << node_id;
+  std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client =
+      rpc::NodeManagerWorkerClient::make(
+          node_info->node_manager_address(),
+          node_info->node_manager_port(),
+          *mutable_object_provider_->client_call_manager());
+  return std::shared_ptr<raylet::RayletClient>(
+      new raylet::RayletClient(std::move(grpc_client)));
+};
 
 bool NodeManager::IsWorkerDead(const WorkerID &worker_id, const NodeID &node_id) const {
   return failed_workers_cache_.count(worker_id) > 0 ||
@@ -597,6 +616,31 @@ void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_
 void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job_data) {
   RAY_LOG(DEBUG) << "HandleJobFinished " << job_id;
   RAY_CHECK(job_data.is_dead());
+  // Force kill all the worker processes belonging to the finished job
+  // so that no worker processes is leaked.
+  for (const auto &pair : leased_workers_) {
+    auto &worker = pair.second;
+    RAY_CHECK(!worker->GetAssignedJobId().IsNil());
+    if (worker->GetRootDetachedActorId().IsNil() &&
+        (worker->GetAssignedJobId() == job_id)) {
+      // Don't kill worker processes belonging to the detached actor
+      // since those are expected to outlive the job.
+      RAY_LOG(INFO) << "The leased worker " << worker->WorkerId()
+                    << " is killed because the job " << job_id << " finished.";
+      rpc::ExitRequest request;
+      request.set_force_exit(true);
+      worker->rpc_client()->Exit(
+          request, [this, worker](const ray::Status &status, const rpc::ExitReply &r) {
+            if (!status.ok()) {
+              RAY_LOG(WARNING) << "Failed to send exit request to worker "
+                               << worker->WorkerId() << ": " << status.ToString()
+                               << ". Killing it using SIGKILL instead.";
+              // Just kill-9 as a last resort.
+              KillWorker(worker, /* force */ true);
+            }
+          });
+    }
+  }
   worker_pool_.HandleJobFinished(job_id);
 }
 
@@ -757,6 +801,26 @@ void NodeManager::HandleGetTaskFailureCause(rpc::GetTaskFailureCauseRequest requ
     RAY_LOG(INFO) << "didn't find failure cause for task " << task_id;
   }
 
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void NodeManager::HandleRegisterMutableObject(
+    rpc::RegisterMutableObjectRequest request,
+    rpc::RegisterMutableObjectReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  ObjectID writer_object_id = ObjectID::FromBinary(request.writer_object_id());
+  int64_t num_readers = request.num_readers();
+  ObjectID reader_object_id = ObjectID::FromBinary(request.reader_object_id());
+
+  mutable_object_provider_->HandleRegisterMutableObject(
+      writer_object_id, num_readers, reader_object_id);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void NodeManager::HandlePushMutableObject(rpc::PushMutableObjectRequest request,
+                                          rpc::PushMutableObjectReply *reply,
+                                          rpc::SendReplyCallback send_reply_callback) {
+  mutable_object_provider_->HandlePushMutableObject(request, reply);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -1014,8 +1078,6 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::WorkerDeltaData &data
     RAY_LOG(DEBUG) << "Lease " << worker->WorkerId() << " owned by " << owner_worker_id;
     RAY_CHECK(!owner_worker_id.IsNil() && !owner_node_id.IsNil());
     if (!worker->IsDetachedActor()) {
-      // TODO (Alex): Cancel all pending child tasks of the tasks whose owners have failed
-      // because the owner could've submitted lease requests before failing.
       if (!worker_id.IsNil()) {
         // If the failed worker was a leased worker's owner, then kill the leased worker.
         if (owner_worker_id == worker_id) {
@@ -1224,7 +1286,6 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   const int runtime_env_hash = static_cast<int>(message->runtime_env_hash());
   WorkerID worker_id = from_flatbuf<WorkerID>(*message->worker_id());
   pid_t pid = message->worker_pid();
-  std::string entrypoint = string_from_flatbuf(*message->entrypoint());
   StartupToken worker_startup_token = message->startup_token();
   std::string worker_ip_address = string_from_flatbuf(*message->ip_address());
   // TODO(suquark): Use `WorkerType` in `common.proto` without type converting.
@@ -1264,7 +1325,8 @@ void NodeManager::ProcessRegisterClientRequestMessage(
             DisconnectClient(client,
                              rpc::WorkerExitType::SYSTEM_ERROR,
                              "Worker is failed because the raylet couldn't reply the "
-                             "registration request.");
+                             "registration request: " +
+                                 status.ToString());
           }
         });
   };
@@ -1291,34 +1353,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     worker->AssignTaskId(driver_task_id);
     rpc::JobConfig job_config;
     job_config.ParseFromString(message->serialized_job_config()->str());
-
-    // Send the reply callback only after registration fully completes at the GCS.
-    auto cb = [this,
-               worker_ip_address,
-               worker_id,
-               pid,
-               job_id,
-               job_config,
-               entrypoint,
-               send_reply_callback = std::move(send_reply_callback)](const Status &status,
-                                                                     int assigned_port) {
-      if (status.ok()) {
-        rpc::Address driver_address;
-        // Assume raylet ID is the same as the node ID.
-        driver_address.set_raylet_id(self_node_id_.Binary());
-        driver_address.set_ip_address(worker_ip_address);
-        driver_address.set_port(assigned_port);
-        driver_address.set_worker_id(worker_id.Binary());
-        auto job_data_ptr = gcs::CreateJobTableData(
-            job_id, /*is_dead*/ false, driver_address, pid, entrypoint, job_config);
-
-        RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(
-            job_data_ptr,
-            [send_reply_callback = std::move(send_reply_callback), assigned_port](
-                Status status) { send_reply_callback(status, assigned_port); }));
-      }
-    };
-    RAY_UNUSED(worker_pool_.RegisterDriver(worker, job_config, std::move(cb)));
+    RAY_UNUSED(worker_pool_.RegisterDriver(worker, job_config, send_reply_callback));
   }
 }
 
@@ -1339,6 +1374,51 @@ void NodeManager::ProcessAnnounceWorkerPortMessage(
   if (is_worker) {
     worker_pool_.OnWorkerStarted(worker);
     HandleWorkerAvailable(worker);
+  } else {
+    // Driver is ready. Add the job to GCS.
+    JobID job_id = worker->GetAssignedJobId();
+    boost::optional<const rpc::JobConfig &> job_config =
+        worker_pool_.GetJobConfig(job_id);
+    RAY_CHECK(job_config.has_value());
+
+    rpc::Address driver_address;
+    // Assume raylet ID is the same as the node ID.
+    driver_address.set_raylet_id(self_node_id_.Binary());
+    driver_address.set_ip_address(worker->IpAddress());
+    driver_address.set_port(port);
+    driver_address.set_worker_id(worker->WorkerId().Binary());
+    auto job_data_ptr =
+        gcs::CreateJobTableData(job_id,
+                                /*is_dead=*/false,
+                                driver_address,
+                                worker->GetProcess().GetId(),
+                                string_from_flatbuf(*message->entrypoint()),
+                                *job_config);
+
+    RAY_CHECK_OK(
+        gcs_client_->Jobs().AsyncAdd(job_data_ptr, [this, client](Status status) {
+          if (!status.ok()) {
+            RAY_LOG(ERROR) << "Failed to add job to GCS: " << status.ToString();
+          }
+          // Write the reply back.
+          flatbuffers::FlatBufferBuilder fbb;
+          auto message = protocol::CreateAnnounceWorkerPortReply(
+              fbb, status.ok(), fbb.CreateString(status.ToString()));
+          fbb.Finish(message);
+
+          client->WriteMessageAsync(
+              static_cast<int64_t>(protocol::MessageType::AnnounceWorkerPortReply),
+              fbb.GetSize(),
+              fbb.GetBufferPointer(),
+              [this, client](const ray::Status &status) {
+                if (!status.ok()) {
+                  DisconnectClient(client,
+                                   rpc::WorkerExitType::SYSTEM_ERROR,
+                                   "Failed to send AnnounceWorkerPortReply to client: " +
+                                       status.ToString());
+                }
+              });
+        }));
   }
 }
 
@@ -1984,7 +2064,7 @@ void NodeManager::MarkObjectsAsFailed(
                    << error_type;
     std::shared_ptr<Buffer> data;
     Status status;
-    status = store_client_.TryCreateImmediately(
+    status = store_client_->TryCreateImmediately(
         object_id,
         ref.owner_address(),
         0,
@@ -1993,7 +2073,7 @@ void NodeManager::MarkObjectsAsFailed(
         &data,
         plasma::flatbuf::ObjectSource::ErrorStoredByRaylet);
     if (status.ok()) {
-      status = store_client_.Seal(object_id);
+      status = store_client_->Seal(object_id);
     }
     if (!status.ok() && !status.IsObjectExists()) {
       RAY_LOG(DEBUG) << "Marking plasma object failed " << object_id;
@@ -2319,7 +2399,7 @@ bool NodeManager::GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
   // since we must wait for the plasma store's reply. We should consider using
   // an `AsyncGet` instead.
   if (!store_client_
-           .Get(object_ids, /*timeout_ms=*/0, &plasma_results, /*is_from_worker=*/false)
+           ->Get(object_ids, /*timeout_ms=*/0, &plasma_results, /*is_from_worker=*/false)
            .ok()) {
     return false;
   }
@@ -2644,7 +2724,7 @@ void NodeManager::TriggerGlobalGC() {
 
 void NodeManager::Stop() {
   // This never fails.
-  RAY_CHECK_OK(store_client_.Disconnect());
+  RAY_CHECK_OK(store_client_->Disconnect());
   object_manager_.Stop();
   dashboard_agent_manager_.reset();
   runtime_env_agent_manager_.reset();
@@ -2714,8 +2794,6 @@ void NodeManager::PublishInfeasibleTaskError(const RayTask &task) const {
 
   // Push a warning to the task's driver that this task is currently infeasible.
   if (!suppress_warning) {
-    // TODO(rkn): Define this constant somewhere else.
-    std::string type = "infeasible_task";
     std::ostringstream error_message;
     error_message
         << "The actor or task with ID " << task.GetTaskSpecification().TaskId()

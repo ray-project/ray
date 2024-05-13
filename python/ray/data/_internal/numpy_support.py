@@ -1,12 +1,10 @@
-from typing import Any, List
+import collections
+from typing import Any, Dict, List, Union
 
 import numpy as np
 
 from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
-from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.util import _truncated_repr
-
-logger = DatasetLogger(__name__)
 
 
 def is_array_like(value: Any) -> bool:
@@ -29,6 +27,17 @@ def is_nested_list(udf_return_col: List[Any]) -> bool:
         if isinstance(e, list):
             return True
     return False
+
+
+def validate_numpy_batch(batch: Union[Dict[str, np.ndarray], Dict[str, list]]) -> None:
+    if not isinstance(batch, collections.abc.Mapping) or any(
+        not is_valid_udf_return(col) for col in batch.values()
+    ):
+        raise ValueError(
+            "Batch must be an ndarray or dictionary of ndarrays when converting "
+            f"a numpy batch to a block, got: {type(batch)} "
+            f"({_truncated_repr(batch)})"
+        )
 
 
 def convert_udf_returns_to_numpy(udf_return_col: Any) -> Any:

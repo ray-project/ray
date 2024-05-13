@@ -1,4 +1,5 @@
 import collections
+import logging
 import threading
 import time
 from contextlib import contextmanager
@@ -11,7 +12,6 @@ import numpy as np
 import ray
 from ray.actor import ActorHandle
 from ray.data._internal.block_list import BlockList
-from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
 from ray.data._internal.util import capfirst
 from ray.data.block import BlockMetadata
@@ -20,7 +20,7 @@ from ray.util.annotations import DeveloperAPI
 from ray.util.metrics import Gauge
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
-logger = DatasetLogger(__name__)
+logger = logging.getLogger(__name__)
 
 STATS_ACTOR_NAME = "datasets_stats_actor"
 STATS_ACTOR_NAMESPACE = "_dataset_stats_actor"
@@ -408,8 +408,9 @@ class _StatsActor:
         self.iter_user_s.set(0, tags)
         self.iter_initialize_s.set(0, tags)
 
-    def register_dataset(self, dataset_tag: str, operator_tags: List[str]):
+    def register_dataset(self, job_id: str, dataset_tag: str, operator_tags: List[str]):
         self.datasets[dataset_tag] = {
+            "job_id": job_id,
             "state": "RUNNING",
             "progress": 0,
             "total": 0,
@@ -428,8 +429,10 @@ class _StatsActor:
     def update_dataset(self, dataset_tag, state):
         self.datasets[dataset_tag].update(state)
 
-    def get_datasets(self):
-        return self.datasets
+    def get_datasets(self, job_id: Optional[str] = None):
+        if not job_id:
+            return self.datasets
+        return {k: v for k, v in self.datasets.items() if v["job_id"] == job_id}
 
     def _create_tags(self, dataset_tag: str, operator_tag: Optional[str] = None):
         tags = {"dataset": dataset_tag}
@@ -552,8 +555,9 @@ class _StatsManager:
                                 )
                                 iter_stats_inactivity = 0
                             except Exception:
-                                logger.get_logger(log_to_stdout=False).exception(
-                                    "Error occurred during remote call to _StatsActor."
+                                logger.debug(
+                                    "Error occurred during remote call to _StatsActor.",
+                                    exc_info=True,
                                 )
                                 return
                         else:
@@ -562,7 +566,7 @@ class _StatsManager:
                                 iter_stats_inactivity
                                 >= _StatsManager.UPDATE_THREAD_INACTIVITY_LIMIT
                             ):
-                                logger.get_logger(log_to_stdout=False).info(
+                                logger.debug(
                                     "Terminating StatsManager thread due to inactivity."
                                 )
                                 return
@@ -628,7 +632,11 @@ class _StatsManager:
     # Other methods
 
     def register_dataset_to_stats_actor(self, dataset_tag, operator_tags):
-        self._stats_actor().register_dataset.remote(dataset_tag, operator_tags)
+        self._stats_actor().register_dataset.remote(
+            ray.get_runtime_context().get_job_id(),
+            dataset_tag,
+            operator_tags,
+        )
 
     def get_dataset_id_from_stats_actor(self) -> str:
         try:

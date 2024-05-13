@@ -365,15 +365,14 @@ class BlockAccessor:
             import pyarrow as pa
 
             from ray.data._internal.arrow_block import ArrowBlockAccessor
+            from ray.data._internal.pandas_block import PandasBlockAccessor
 
             try:
                 return ArrowBlockAccessor.numpy_to_block(batch)
             except (pa.ArrowNotImplementedError, pa.ArrowInvalid, pa.ArrowTypeError):
-                import pandas as pd
-
                 # TODO(ekl) once we support Python objects within Arrow blocks, we
                 # don't need this fallback path.
-                return pd.DataFrame(dict(batch))
+                return PandasBlockAccessor.numpy_to_block(batch)
         return batch
 
     @staticmethod

@@ -142,7 +142,7 @@ if __name__ == "__main__":
         )
 
     stop = {
-        "episode_reward_mean": args.stop,
+        "env_runner_results/episode_return_mean": args.stop,
     }
 
     tuner = tune.Tuner(

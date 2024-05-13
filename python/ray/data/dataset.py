@@ -250,6 +250,7 @@ class Dataset:
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+        ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Apply the given function to each row of this dataset.
@@ -316,6 +317,12 @@ class Dataset:
             concurrency: The number of Ray workers to use concurrently. For a fixed-sized
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
                 worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
+            ray_remote_args_fn: A function that returns a dictionary of remote args
+                passed to each map worker. The purpose of this argument is to generate
+                dynamic arguments for each actor/task, and will be called each time prior
+                to initializing the worker. Args returned from this dict will always
+                override the args in ``ray_remote_args``. Note: this is an advanced,
+                experimental feature.
             ray_remote_args: Additional resource requirements to request from
                 Ray for each map worker.
 
@@ -351,6 +358,7 @@ class Dataset:
             fn_constructor_args=fn_constructor_args,
             fn_constructor_kwargs=fn_constructor_kwargs,
             compute=compute,
+            ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(map_op)
@@ -383,6 +391,7 @@ class Dataset:
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+        ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Apply the given function to batches of data.
@@ -521,6 +530,12 @@ class Dataset:
             concurrency: The number of Ray workers to use concurrently. For a fixed-sized
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
                 worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
+            ray_remote_args_fn: A function that returns a dictionary of remote args
+                passed to each map worker. The purpose of this argument is to generate
+                dynamic arguments for each actor/task, and will be called each time prior
+                to initializing the worker. Args returned from this dict will always
+                override the args in ``ray_remote_args``. Note: this is an advanced,
+                experimental feature.
             ray_remote_args: Additional resource requirements to request from
                 ray for each map worker.
 
@@ -566,9 +581,8 @@ class Dataset:
             # Enable blocks bundling when batch_size is specified by caller.
             min_rows_per_bundled_input = batch_size
 
-        batch_size = _apply_batch_size(
-            batch_size, use_gpu="num_gpus" in ray_remote_args
-        )
+        use_gpu = ray_remote_args.get("num_gpus", 0) > 0
+        batch_size = _apply_batch_size(batch_size, use_gpu)
 
         if batch_format not in VALID_BATCH_FORMATS:
             raise ValueError(
@@ -589,6 +603,7 @@ class Dataset:
             fn_constructor_args=fn_constructor_args,
             fn_constructor_kwargs=fn_constructor_kwargs,
             compute=compute,
+            ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(map_batches_op)
@@ -647,7 +662,7 @@ class Dataset:
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
 
-        def process_batch(batch: "pandas.DataFrame") -> "pandas.DataFrame":
+        def add_column(batch: "pandas.DataFrame") -> "pandas.DataFrame":
             batch.loc[:, col] = fn(batch)
             return batch
 
@@ -655,7 +670,7 @@ class Dataset:
             raise ValueError("`fn` must be callable, got {}".format(fn))
 
         return self.map_batches(
-            process_batch,
+            add_column,
             batch_format="pandas",  # TODO(ekl) we should make this configurable.
             compute=compute,
             concurrency=concurrency,
@@ -706,11 +721,11 @@ class Dataset:
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """  # noqa: E501
 
-        def fn(batch):
+        def drop_columns(batch):
             return batch.drop(columns=cols)
 
         return self.map_batches(
-            fn,
+            drop_columns,
             batch_format="pandas",
             zero_copy_batch=True,
             compute=compute,
@@ -761,11 +776,11 @@ class Dataset:
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """  # noqa: E501
 
-        def fn(batch):
+        def select_columns(batch):
             return BlockAccessor.for_block(batch).select(columns=cols)
 
         return self.map_batches(
-            fn,
+            select_columns,
             batch_format="pandas",
             zero_copy_batch=True,
             compute=compute,
@@ -785,6 +800,7 @@ class Dataset:
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+        ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Apply the given function to each row and then flatten results.
@@ -846,6 +862,12 @@ class Dataset:
                 fixed-sized worker pool of size ``n``, specify ``concurrency=n``.
                 For an autoscaling worker pool from ``m`` to ``n`` workers, specify
                 ``concurrency=(m, n)``.
+            ray_remote_args_fn: A function that returns a dictionary of remote args
+                passed to each map worker. The purpose of this argument is to generate
+                dynamic arguments for each actor/task, and will be called each time
+                prior to initializing the worker. Args returned from this dict will
+                always override the args in ``ray_remote_args``. Note: this is an
+                advanced, experimental feature.
             ray_remote_args: Additional resource requirements to request from
                 ray for each map worker.
 
@@ -879,6 +901,7 @@ class Dataset:
             fn_constructor_args=fn_constructor_args,
             fn_constructor_kwargs=fn_constructor_kwargs,
             compute=compute,
+            ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(op)
@@ -890,6 +913,7 @@ class Dataset:
         *,
         compute: Union[str, ComputeStrategy] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+        ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Filter out rows that don't satisfy the given predicate.
@@ -921,6 +945,12 @@ class Dataset:
                 fixed-sized worker pool of size ``n``, specify ``concurrency=n``.
                 For an autoscaling worker pool from ``m`` to ``n`` workers, specify
                 ``concurrency=(m, n)``.
+            ray_remote_args_fn: A function that returns a dictionary of remote args
+                passed to each map worker. The purpose of this argument is to generate
+                dynamic arguments for each actor/task, and will be called each time
+                prior to initializing the worker. Args returned from this dict will
+                always override the args in ``ray_remote_args``. Note: this is an
+                advanced, experimental feature.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
@@ -935,6 +965,7 @@ class Dataset:
             input_op=self._logical_plan.dag,
             fn=fn,
             compute=compute,
+            ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(op)
@@ -1119,7 +1150,7 @@ class Dataset:
         if seed is not None:
             random.seed(seed)
 
-        def process_batch(batch):
+        def random_sample(batch):
             if isinstance(batch, list):
                 return [row for row in batch if random.random() <= fraction]
             if isinstance(batch, pa.Table):
@@ -1135,7 +1166,7 @@ class Dataset:
                 )
             raise ValueError(f"Unsupported batch type: {type(batch)}")
 
-        return self.map_batches(process_batch, batch_format=None)
+        return self.map_batches(random_sample, batch_format=None)
 
     @ConsumptionAPI
     def streaming_split(
@@ -1894,15 +1925,17 @@ class Dataset:
                 ds = ray.data.from_items([{"number": i} for i in range(1, 10)])
                 aggregation = AggregateFn(
                     init=lambda column: 1,
+                    # Apply this to each row to produce a partial aggregate result
                     accumulate_row=lambda a, row: a * row["number"],
-                    merge = lambda a1, a2: a1 + a2,
+                    # Apply this to merge partial aggregate results into a final result
+                    merge=lambda a1, a2: a1 * a2,
                     name="prod"
                 )
                 print(ds.aggregate(aggregation))
 
             .. testoutput::
 
-                {'prod': 45}
+                {'prod': 362880}
 
         Time complexity: O(dataset size / parallelism)
 
@@ -3609,7 +3642,7 @@ class Dataset:
 
     @ConsumptionAPI
     def iter_rows(
-        self, *, prefetch_batches: int = 0, prefetch_blocks: int = 0
+        self, *, prefetch_batches: int = 1, prefetch_blocks: int = 0
     ) -> Iterable[Dict[str, Any]]:
         """Return an iterable over the rows in this dataset.
 
@@ -4393,7 +4426,7 @@ class Dataset:
         One DataFrame is created for each block in this Dataset.
 
         This function induces a copy of the data. For zero-copy access to the
-        underlying data, consider using :meth:`Dataset.to_arrow` or
+        underlying data, consider using :meth:`Dataset.to_arrow_refs` or
         :meth:`Dataset.get_internal_block_refs`.
 
         Examples:
@@ -4421,7 +4454,7 @@ class Dataset:
 
         This is only supported for datasets convertible to NumPy ndarrays.
         This function induces a copy of the data. For zero-copy access to the
-        underlying data, consider using :meth:`Dataset.to_arrow` or
+        underlying data, consider using :meth:`Dataset.to_arrow_refs` or
         :meth:`Dataset.get_internal_block_refs`.
 
         Examples:

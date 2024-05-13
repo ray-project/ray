@@ -110,12 +110,12 @@ struct PlasmaObjectHeader {
   // num_read_releases_remaining protects against too many readers. However,
   // this allows us to throw an error as soon as the n+1-th reader begins,
   // instead of waiting to error until the n+1-th reader is done reading.
-  int64_t num_read_acquires_remaining = 0;
+  uint64_t num_read_acquires_remaining = 0;
   // The number of readers who must release the current version before a new
   // version can be written. For mutable objects, readers must decrement this
   // when they are done reading the current version. Once this value reaches 0,
   // the reader should signal to the writer that they can write again.
-  int64_t num_read_releases_remaining = 0;
+  uint64_t num_read_releases_remaining = 0;
   // The valid data and metadata size of the Ray object.
   // Not used for immutable objects.
   // For mutable objects, this should be modified when the new object has a
@@ -151,7 +151,7 @@ struct PlasmaObjectHeader {
   /// 0. Otherwise, the current version.
   /// \return Whether the correct version was read and there were still
   /// reads remaining.
-  Status ReadAcquire(Semaphores &sem, int64_t version_to_read, int64_t *version_read);
+  Status ReadAcquire(Semaphores &sem, int64_t version_to_read, int64_t &version_read);
 
   // Finishes the read. If all reads are done, signals to the writer. This is
   // not necessary to call for objects that have num_readers=-1.

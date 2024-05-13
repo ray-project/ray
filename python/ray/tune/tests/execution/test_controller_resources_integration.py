@@ -1,22 +1,20 @@
 import os
+import sys
 import time
 from collections import Counter
 
 import pytest
-import sys
 
 import ray
 from ray import tune
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
+from ray.train.tests.util import mock_storage_context
 from ray.tune import PlacementGroupFactory, TuneError
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.search import BasicVariantGenerator
 from ray.tune.utils.mock import TrialStatusSnapshot, TrialStatusSnapshotTaker
-
-from ray.train.tests.util import mock_storage_context
-
 
 STORAGE = mock_storage_context()
 

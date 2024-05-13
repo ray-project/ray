@@ -26,7 +26,7 @@ class TestAPPOOffPolicyNess(unittest.TestCase):
             appo.APPOConfig()
             .environment("CartPole-v1")
             .resources(num_gpus=1)
-            .rollouts(num_rollout_workers=4)
+            .env_runners(num_env_runners=4)
         )
         num_iterations = 3
 

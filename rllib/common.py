@@ -124,7 +124,7 @@ example_help = dict(
 train_help = dict(
     env="The environment specifier to use. This could be an Farama-Foundation "
     "Gymnasium specifier (e.g. `CartPole-v1`) or a full class-path (e.g. "
-    "`ray.rllib.examples.env.simple_corridor.SimpleCorridor`).",
+    "`ray.rllib.examples.envs.classes.simple_corridor.SimpleCorridor`).",
     config_file="Use the algorithm configuration from this file.",
     filetype="The file type of the config file. Defaults to 'yaml' and can also be "
     "'python'.",
@@ -170,7 +170,7 @@ eval_help = dict(
     "function or class registered in the Tune registry.",
     env="The environment specifier to use. This could be an Farama-Foundation gymnasium"
     " specifier (e.g. `CartPole-v1`) or a full class-path (e.g. "
-    "`ray.rllib.examples.env.simple_corridor.SimpleCorridor`).",
+    "`ray.rllib.examples.envs.classes.simple_corridor.SimpleCorridor`).",
     local_mode="Run Ray in local mode for easier debugging.",
     render="Render the environment while evaluating. Off by default",
     video_dir="Specifies the directory into which videos of all episode"

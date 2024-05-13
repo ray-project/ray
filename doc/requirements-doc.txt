@@ -14,9 +14,7 @@ sphinxcontrib-redoc==1.6.0
 sphinx-remove-toctrees==0.0.3
 sphinx_design==0.5.0
 pydata-sphinx-theme==0.14.1
-# Supporrt v1 pydantic schema.
-# https://autodoc-pydantic.readthedocs.io/en/stable/users/faq.html#migration-guide-from-v1-to-v2
-autodoc_pydantic==1.9.0
+autodoc_pydantic==2.2.0
 
 pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3
 

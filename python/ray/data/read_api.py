@@ -54,6 +54,7 @@ from ray.data.datasource import (
     Datasource,
     ImageDatasource,
     JSONDatasource,
+    LanceDatasource,
     MongoDatasource,
     NumpyDatasource,
     ParquetBaseDatasource,
@@ -142,7 +143,7 @@ def from_items(
     if parallelism == 0:
         raise ValueError(f"parallelism must be -1 or > 0, got: {parallelism}")
 
-    detected_parallelism, _, _, _ = _autodetect_parallelism(
+    detected_parallelism, _, _ = _autodetect_parallelism(
         parallelism,
         ray.util.get_current_placement_group(),
         DataContext.get_current(),
@@ -385,7 +386,7 @@ def read_datasource(
         )
 
     cur_pg = ray.util.get_current_placement_group()
-    requested_parallelism, _, _, inmemory_size = _autodetect_parallelism(
+    requested_parallelism, _, inmemory_size = _autodetect_parallelism(
         parallelism,
         ctx.target_max_block_size,
         DataContext.get_current(),
@@ -2727,26 +2728,37 @@ def from_huggingface(
         A :class:`~ray.data.Dataset` holding rows from the `Hugging Face Datasets Dataset`_.
     """  # noqa: E501
     import datasets
+    from aiohttp.client_exceptions import ClientResponseError
 
     from ray.data.datasource.huggingface_datasource import HuggingFaceDatasource
 
     if isinstance(dataset, (datasets.IterableDataset, datasets.Dataset)):
-        # Attempt to read data via Hugging Face Hub parquet files. If the
-        # returned list of files is empty, attempt read via other methods.
-        file_urls = HuggingFaceDatasource.list_parquet_urls_from_dataset(dataset)
-        if len(file_urls) > 0:
-            # If file urls are returned, the parquet files are available via API
-            # TODO: Add support for reading from http filesystem in FileBasedDatasource
-            # GH Issue: https://github.com/ray-project/ray/issues/42706
-            import fsspec.implementations.http
+        try:
+            # Attempt to read data via Hugging Face Hub parquet files. If the
+            # returned list of files is empty, attempt read via other methods.
+            file_urls = HuggingFaceDatasource.list_parquet_urls_from_dataset(dataset)
+            if len(file_urls) > 0:
+                # If file urls are returned, the parquet files are available via API
+                # TODO: Add support for reading from http filesystem in
+                # FileBasedDatasource. GH Issue:
+                # https://github.com/ray-project/ray/issues/42706
+                import fsspec.implementations.http
 
-            http = fsspec.implementations.http.HTTPFileSystem()
-            return read_parquet(
-                file_urls,
-                parallelism=parallelism,
-                filesystem=http,
-                concurrency=concurrency,
-                override_num_blocks=override_num_blocks,
+                http = fsspec.implementations.http.HTTPFileSystem()
+                return read_parquet(
+                    file_urls,
+                    parallelism=parallelism,
+                    filesystem=http,
+                    concurrency=concurrency,
+                    override_num_blocks=override_num_blocks,
+                    ray_remote_args={
+                        "retry_exceptions": [FileNotFoundError, ClientResponseError]
+                    },
+                )
+        except (FileNotFoundError, ClientResponseError):
+            logger.warning(
+                "Distrubuted read via Hugging Face Hub parquet files failed, "
+                "falling back on single node read."
             )
 
     if isinstance(dataset, datasets.IterableDataset):
@@ -2840,6 +2852,7 @@ def from_tf(
 @PublicAPI
 def from_torch(
     dataset: "torch.utils.data.Dataset",
+    local_read: bool = False,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from a
     `Torch Dataset <https://pytorch.org/docs/stable/data.html#torch.utils.data.Dataset/>`_.
@@ -2860,23 +2873,92 @@ def from_torch(
 
     Args:
         dataset: A `Torch Dataset`_.
+        local_read: If ``True``, perform the read as a local read.
 
     Returns:
         A :class:`~ray.data.Dataset` containing the Torch dataset samples.
     """  # noqa: E501
 
     # Files may not be accessible from all nodes, run the read task on current node.
-    ray_remote_args = {
-        "scheduling_strategy": NodeAffinitySchedulingStrategy(
-            ray.get_runtime_context().get_node_id(),
-            soft=False,
-        )
-    }
+    ray_remote_args = {}
+    if local_read:
+        ray_remote_args = {
+            "scheduling_strategy": NodeAffinitySchedulingStrategy(
+                ray.get_runtime_context().get_node_id(),
+                soft=False,
+            ),
+            # The user might have initialized Ray to have num_cpus = 0 for the head
+            # node. For a local read we expect the read task to be executed on the
+            # head node, so we should set num_cpus = 0 for the task to allow it to
+            # run regardless of the user's head node configuration.
+            "num_cpus": 0,
+        }
     return read_datasource(
         TorchDatasource(dataset=dataset),
         ray_remote_args=ray_remote_args,
         # Only non-parallel, streaming read is currently supported
         override_num_blocks=1,
+    )
+
+
+@PublicAPI
+def read_lance(
+    uri: str,
+    *,
+    columns: Optional[List[str]] = None,
+    filter: Optional[str] = None,
+    storage_options: Optional[Dict[str, str]] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    """
+    Create a :class:`~ray.data.Dataset` from a
+    `Lance Dataset <https://lancedb.github.io/lance/api/python/lance.html#lance.LanceDataset>`_.
+
+    Examples:
+        >>> import ray
+        >>> ds = ray.data.read_lance( # doctest: +SKIP
+        ...     uri="./db_name.lance",
+        ...     columns=["image", "label"],
+        ...     filter="label = 2 AND text IS NOT NULL",
+        ... )
+
+    Args:
+        uri: The URI of the Lance dataset to read from. Local file paths, S3, and GCS
+            are supported.
+        columns: The columns to read. By default, all columns are read.
+        filter: Read returns only the rows matching the filter. By default, no
+            filter is applied.
+        storage_options: Extra options that make sense for a particular storage
+            connection. This is used to store connection parameters like credentials,
+            endpoint, etc. For more information, see `Object Store Configuration <https\
+                ://lancedb.github.io/lance/read_and_write.html#object-store-configuration>`_.
+        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
+
+    Returns:
+        A :class:`~ray.data.Dataset` producing records read from the Lance dataset.
+    """  # noqa: E501
+    datasource = LanceDatasource(
+        uri=uri,
+        columns=columns,
+        filter=filter,
+        storage_options=storage_options,
+    )
+
+    return read_datasource(
+        datasource=datasource,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_locks=override_num_blocks,
     )
 
 
