@@ -390,10 +390,7 @@ class MultiAgentEpisode:
         )
         # Case 2: Some agents are truncated and the others are terminated -> Declare
         # this episode as terminated.
-        if (
-            all(aid in set(agents_done) for aid in self.agent_ids)
-            and not self.is_truncated
-        ):
+        if all(aid in set(agents_done) for aid in self.agent_ids):
             self.is_terminated = True
 
         # For all agents that are not stepping in this env step, but that are not done
@@ -435,13 +432,8 @@ class MultiAgentEpisode:
             _action = actions.get(agent_id)
             _reward = rewards.get(agent_id)
             _infos = infos.get(agent_id)
-            # _terminated = terminateds.get(agent_id, False) or self.is_terminated
+            _terminated = terminateds.get(agent_id, False) or self.is_terminated
             _truncated = truncateds.get(agent_id, False) or self.is_truncated
-            _terminated = (
-                terminateds.get(0, False) or self.is_terminated
-                if not _truncated
-                else False
-            )
             _extra_model_outputs = extra_model_outputs.get(agent_id)
 
             # The value to place into the env- to agent-step map for this agent ID.
