@@ -36,6 +36,10 @@ def test_put_local_get(ray_start_regular):
 def test_set_error_before_read(ray_start_regular):
     @ray.remote
     class Actor:
+        def create_channel(self, writer, readers):
+            self._channel = ray_channel.Channel(writer, readers, 1000)
+            return self._channel
+
         def pass_channel(self, channel):
             self._channel = channel
 
@@ -55,8 +59,7 @@ def test_set_error_before_read(ray_start_regular):
         a = Actor.remote()
         b = Actor.remote()
 
-        chan = ray_channel.Channel([b], 1000)
-        ray.get(a.pass_channel.remote(chan))
+        chan = ray.get(a.create_channel.remote(a, [b]))
         ray.get(b.pass_channel.remote(chan))
 
         # Indirectly registers the channel for both the writer and the reader.
