@@ -24,8 +24,8 @@ pip install -U --ignore-installed  \
   -r python/requirements/test-requirements.txt
 
 if [[ "$RAYCI_IS_GPU_BUILD" == "true" ]]; then
-  pip install -U --ignore-installed r ./python/requirements/ml/dl-gpu-requirements.txt; else
-  pip install -U --ignore-installed r ./python/requirements/ml/dl-cpu-requirements.txt
+  pip install -U --ignore-installed -r ./python/requirements/ml/dl-gpu-requirements.txt; else
+  pip install -U --ignore-installed -r ./python/requirements/ml/dl-cpu-requirements.txt
 fi
 
 EOF
