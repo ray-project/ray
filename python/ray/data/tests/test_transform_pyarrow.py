@@ -15,6 +15,7 @@ from ray.data.extensions import (
     ArrowTensorArray,
     ArrowTensorType,
     ArrowVariableShapedTensorType,
+    object_extension_type_allowed,
 )
 
 
@@ -184,6 +185,9 @@ def test_arrow_concat_tensor_extension_uniform_but_different():
     # fails for this case.
 
 
+@pytest.mark.skipif(
+    not object_extension_type_allowed(), reason="Object extension type not supported."
+)
 def test_arrow_concat_with_objects():
     obj = types.SimpleNamespace(a=1, b="test")
     t1 = pa.table({"a": [3, 4], "b": [7, 8]})

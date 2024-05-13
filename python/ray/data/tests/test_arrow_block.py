@@ -5,6 +5,7 @@ import pytest
 import ray
 from ray._private.test_utils import run_string_as_driver
 from ray.data._internal.arrow_block import ArrowBlockAccessor
+from ray.data.extensions.object_extension import object_extension_type_allowed
 
 
 def test_append_column(ray_start_regular_shared):
@@ -42,6 +43,9 @@ assert str(schema) == \"\"\"{1}\"\"\"
     run_string_as_driver(driver_script)
 
 
+@pytest.mark.skipif(
+    not object_extension_type_allowed(), reason="Object extension type not supported."
+)
 def test_dict_doesnt_fallback_to_pandas_block(ray_start_regular_shared):
     # If the UDF returns a column with dict, previously, we would
     # fall back to pandas, because we couldn't convert it to
@@ -56,7 +60,7 @@ def test_dict_doesnt_fallback_to_pandas_block(ray_start_regular_shared):
     block = ray.get(ds.get_internal_block_refs()[0])
     # TODO: Once we support converting dict to a supported arrow type,
     # the block type should be Arrow.
-    assert isinstance(block, pa.Table)
+    assert isinstance(block, pa.Table), type(block)
     df_from_block = block.to_pandas()
     assert df_from_block["data_dict"].iloc[0] == {"data": 0}
 
@@ -67,7 +71,7 @@ def test_dict_doesnt_fallback_to_pandas_block(ray_start_regular_shared):
     ds2 = ray.data.range(10).map_batches(fn2)
     ds2 = ds2.materialize()
     block = ray.get(ds2.get_internal_block_refs()[0])
-    assert isinstance(block, pa.Table)
+    assert isinstance(block, pa.Table), type(block)
     df_from_block = block.to_pandas()
     assert df_from_block["data_none"].iloc[0] is None
 
