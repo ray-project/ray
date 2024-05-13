@@ -138,6 +138,17 @@ def test_groupby_errors(ray_start_regular_shared):
         ds.groupby("foo").count().show()
 
 
+def test_map_groups_with_gpus(shutdown_only):
+    ray.shutdown()
+    ray.init(num_gpus=1)
+
+    rows = (
+        ray.data.range(1).groupby("id").map_groups(lambda x: x, num_gpus=1).take_all()
+    )
+
+    assert rows == [{"id": 0}]
+
+
 def test_groupby_large_udf_returns(ray_start_regular_shared):
     # Test for https://github.com/ray-project/ray/issues/44861.
 
