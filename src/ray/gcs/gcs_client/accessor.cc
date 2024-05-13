@@ -445,27 +445,14 @@ Status NodeInfoAccessor::UnregisterSelf(const rpc::NodeDeathInfo &node_death_inf
                                         std::function<void()> unregister_done_callback) {
   if (local_node_id_.IsNil()) {
     RAY_LOG(INFO) << "The node is already unregistered.";
-    // This node is already unregistered.
     return Status::OK();
   }
   auto node_id = NodeID::FromBinary(local_node_info_.node_id());
-  RAY_LOG(INFO) << "Unregistering node info, node id = " << node_id;
+  RAY_LOG(INFO) << "Unregistering node, node id = " << node_id;
+
   rpc::UnregisterNodeRequest request;
   request.set_node_id(local_node_info_.node_id());
   request.mutable_node_death_info()->CopyFrom(node_death_info);
-  // Unregister the node synchronously because this method is only called in the
-  // raylet shutdown path: waiting is not an issue and actually desired.
-
-  // rpc::UnregisterNodeReply reply;
-  // Status status = client_impl_->GetGcsRpcClient().SyncUnregisterNode(request, &reply);
-  // RAY_LOG(INFO) << "Finished unregistering node info, status = " << status
-  //             << ", node id = " << node_id;
-  // if (status.ok()) {
-  //   local_node_info_.set_state(GcsNodeInfo::DEAD);
-  //   local_node_id_ = NodeID::Nil();
-  // }
-  // return status;
-
   client_impl_->GetGcsRpcClient().UnregisterNode(
       request,
       [this, node_id, unregister_done_callback](const Status &status,
@@ -477,7 +464,6 @@ Status NodeInfoAccessor::UnregisterSelf(const rpc::NodeDeathInfo &node_death_inf
         RAY_LOG(INFO) << "Finished unregistering node info, status = " << status
                       << ", node id = " << node_id;
         unregister_done_callback();
-        RAY_LOG(INFO) << "Finished executing unregister_done_callback.";
       });
   return Status::OK();
 }

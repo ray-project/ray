@@ -182,7 +182,7 @@ TEST_F(LocalResourceManagerTest, ObjectStoreMemoryDrainingTest) {
   *used_object_store = 1;
   manager->UpdateAvailableObjectStoreMemResource();
 
-  rpc::NodeDeathInfo node_death_info;  // TODO: fill in values
+  rpc::NodeDeathInfo node_death_info;
   manager->SetLocalNodeDraining(std::numeric_limits<int64_t>::max(), node_death_info);
   ASSERT_TRUE(manager->IsLocalNodeDraining());
 

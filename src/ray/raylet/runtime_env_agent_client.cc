@@ -289,7 +289,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
     rpc::NodeDeathInfo node_death_info;
     node_death_info.set_reason(
         rpc::NodeDeathInfo_Reason::NodeDeathInfo_Reason_UNEXPECTED_TERMINATION);
-    node_death_info.set_reason_message("Runtime Env Agent timed out");
+    node_death_info.set_reason_message("Raylet could not connect to Runtime Env Agent");
     shutdown_raylet_gracefully_(node_death_info);
     // If the process is not terminated within 10 seconds, forcefully kill itself.
     delay_executor_([]() { QuickExit(); }, /*ms*/ 10000);

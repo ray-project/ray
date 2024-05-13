@@ -68,6 +68,10 @@ class Raylet {
   void Stop();
 
   /// Unregister this raylet from the GCS.
+  ///
+  /// \param node_death_info The death information regarding why to unregister self.
+  /// \param unregister_done_callback The callback to call when the unregistration is
+  /// done.
   void UnregisterSelf(const rpc::NodeDeathInfo &node_death_info,
                       std::function<void()> unregister_done_callback);
 

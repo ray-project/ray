@@ -743,7 +743,7 @@ TEST_F(ClusterTaskManagerTest, DrainingWhileResolving) {
   ASSERT_EQ(pool_.workers.size(), 1);
 
   // Drain the local node.
-  rpc::NodeDeathInfo node_death_info;  // TODO: fill in values
+  rpc::NodeDeathInfo node_death_info;
   scheduler_->GetLocalResourceManager().SetLocalNodeDraining(
       std::numeric_limits<int64_t>::max(), node_death_info);
 
@@ -1078,7 +1078,7 @@ TEST_F(ClusterTaskManagerTest, NotOKPopWorkerAfterDrainingTest) {
   AddNode(remote_node_id, 5);
 
   // Drain the local node.
-  rpc::NodeDeathInfo node_death_info;  // TODO: fill in values
+  rpc::NodeDeathInfo node_death_info;
   scheduler_->GetLocalResourceManager().SetLocalNodeDraining(
       std::numeric_limits<int64_t>::max(), node_death_info);
 
@@ -2622,7 +2622,7 @@ TEST_F(ClusterTaskManagerTest, PopWorkerBeforeDraining) {
   task_manager_.QueueAndScheduleTask(task, false, false, &reply, callback);
 
   // Drain the local node.
-  rpc::NodeDeathInfo node_death_info;  // TODO: fill in values
+  rpc::NodeDeathInfo node_death_info;
   scheduler_->GetLocalResourceManager().SetLocalNodeDraining(
       std::numeric_limits<int64_t>::max(), node_death_info);
 
@@ -2662,7 +2662,7 @@ TEST_F(ClusterTaskManagerTest, UnscheduleableWhileDraining) {
   AddNode(remote_node_id, 5);
 
   // Drain the local node.
-  rpc::NodeDeathInfo node_death_info;  // TODO: fill in values
+  rpc::NodeDeathInfo node_death_info;
   scheduler_->GetLocalResourceManager().SetLocalNodeDraining(
       std::numeric_limits<int64_t>::max(), node_death_info);
 

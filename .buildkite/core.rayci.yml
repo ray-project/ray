@@ -310,7 +310,6 @@ steps:
       - docker build --progress=plain --build-arg BASE_IMAGE="rayproject/ray:test_container"
         -t rayproject/ray:runtime_env_container -f docker/runtime_env_container/Dockerfile .
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core --only-tags container
-      - sleep 18000
     depends_on:
       - manylinux
       - forge
