@@ -559,7 +559,8 @@ class Dataset:
                 Call this method to transform one record at time.
 
         """  # noqa: E501
-        if num_gpus > 0 and (batch_size is None or batch_size == "default"):
+        use_gpus = num_gpus is not None and num_gpus > 0
+        if use_gpus and (batch_size is None or batch_size == "default"):
             raise ValueError(
                 "You must provide `batch_size` to `map_batches` when requesting GPUs. "
                 "The optimal batch size depends on the model, data, and GPU used. "
