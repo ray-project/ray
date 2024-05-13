@@ -191,7 +191,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param object_ids The object ids to store error messages into.
   /// \param job_id The optional job to push errors to if the writes fail.
   void MarkObjectsAsFailed(const ErrorType &error_type,
-                           std::vector<rpc::ObjectReference> object_ids,
+                           std::vector<rpc::ObjectReference> &object_ids,
                            const JobID &job_id);
 
   /// Stop this node manager.
