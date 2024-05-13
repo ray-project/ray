@@ -2718,7 +2718,7 @@ blocking_wait_inside_async_warned = False
 @PublicAPI
 @client_mode_hook
 def wait(
-    ray_waitables: Union["ObjectRef[R]", "ObjectRefGenerator[R]"],
+    ray_waitables: List[Union["ObjectRef[R]", "ObjectRefGenerator[R]"]],
     *,
     num_returns: int = 1,
     timeout: Optional[float] = None,
