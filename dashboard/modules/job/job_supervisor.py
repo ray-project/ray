@@ -72,6 +72,7 @@ class JobSupervisor:
         self._job_info_client = JobInfoStorageClient(gcs_aio_client)
         self._log_client = JobLogStorageClient()
         self._entrypoint = entrypoint
+        self.run_called: bool = False
 
         # Default metadata if not passed by the user.
         self._metadata = {JOB_ID_METADATA_KEY: job_id, JOB_NAME_METADATA_KEY: job_id}
@@ -100,6 +101,9 @@ class JobSupervisor:
         os.makedirs(os.path.dirname(supervisor_log_file_name), exist_ok=True)
         self._logger.addHandler(logging.StreamHandler())
         self._logger.addHandler(logging.FileHandler(supervisor_log_file_name))
+
+    def is_run_called(self) -> bool:
+        return self.run_called
 
     def _get_driver_runtime_env(
         self, resources_specified: bool = False
@@ -286,16 +290,14 @@ class JobSupervisor:
     ):
         """
         Stop and start both happen asynchronously, coordinated by asyncio event
-        and coroutine, respectively. Also log runtime env setup finished message to
-        the job driver logs.
+        and coroutine, respectively.
 
         1) Sets job status as running
         2) Pass runtime env and metadata to subprocess as serialized env
             variables.
         3) Handle concurrent events of driver execution and
         """
-        driver_logger = self._log_client.configure_driver_logger(self._job_id)
-        driver_logger.info("Runtime env setup finished")
+        self.run_called = True
 
         curr_info = await self._job_info_client.get_info(self._job_id)
         if curr_info is None:

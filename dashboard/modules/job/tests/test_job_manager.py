@@ -307,6 +307,10 @@ async def test_runtime_env_setup_logged_to_job_driver_logs(
         address=address_info["gcs_address"], nums_reconnect_retry=0
     )
     job_manager = JobManager(gcs_aio_client, tmp_path)
+
+    # Shorten the iteration period so the finished message can be logged before the
+    # job finishes.
+    job_manager.JOB_MONITOR_LOOP_PERIOD_S = 0
     job_id = await job_manager.submit_job(
         entrypoint="echo hello 1", submission_id="job_1"
     )
@@ -364,8 +368,6 @@ async def _run_hanging_command(job_manager, tmp_dir, start_signal_actor=None):
     if start_signal_actor:
         for _ in range(10):
             assert status == JobStatus.PENDING
-            logs = job_manager.get_job_logs(job_id)
-            assert logs == ""
             await asyncio.sleep(0.01)
     else:
         await async_wait_for_condition_async_predicate(
@@ -528,7 +530,7 @@ class TestShellScriptExecution:
         await async_wait_for_condition_async_predicate(
             check_job_succeeded, job_manager=job_manager, job_id=job_id
         )
-        assert job_manager.get_job_logs(job_id) == "hello\n"
+        assert "hello\n" in job_manager.get_job_logs(job_id)
 
     async def test_submit_stderr(self, job_manager):
         job_id = await job_manager.submit_job(entrypoint="echo error 1>&2")
@@ -536,7 +538,7 @@ class TestShellScriptExecution:
         await async_wait_for_condition_async_predicate(
             check_job_succeeded, job_manager=job_manager, job_id=job_id
         )
-        assert job_manager.get_job_logs(job_id) == "error\n"
+        assert "error\n" in job_manager.get_job_logs(job_id)
 
     async def test_submit_ls_grep(self, job_manager):
         grep_cmd = f"ls {os.path.dirname(__file__)} | grep test_job_manager.py"
@@ -545,7 +547,7 @@ class TestShellScriptExecution:
         await async_wait_for_condition_async_predicate(
             check_job_succeeded, job_manager=job_manager, job_id=job_id
         )
-        assert job_manager.get_job_logs(job_id) == "test_job_manager.py\n"
+        assert "test_job_manager.py\n" in job_manager.get_job_logs(job_id)
 
     async def test_subprocess_exception(self, job_manager):
         """
@@ -578,8 +580,8 @@ class TestShellScriptExecution:
         await async_wait_for_condition_async_predicate(
             check_job_succeeded, job_manager=job_manager, job_id=job_id
         )
-        assert (
-            job_manager.get_job_logs(job_id) == "Executing main() from script.py !!\n"
+        assert "Executing main() from script.py !!\n" in job_manager.get_job_logs(
+            job_id
         )
 
     async def test_submit_with_file_runtime_env(self, job_manager):
@@ -595,9 +597,8 @@ class TestShellScriptExecution:
             await async_wait_for_condition_async_predicate(
                 check_job_succeeded, job_manager=job_manager, job_id=job_id
             )
-            assert (
-                job_manager.get_job_logs(job_id)
-                == "Executing main() from script.py !!\n"
+            assert "Executing main() from script.py !!\n" in job_manager.get_job_logs(
+                job_id
             )
 
 
@@ -615,7 +616,7 @@ class TestRuntimeEnv:
         await async_wait_for_condition_async_predicate(
             check_job_succeeded, job_manager=job_manager, job_id=job_id
         )
-        assert job_manager.get_job_logs(job_id) == "233\n"
+        assert "233\n" in job_manager.get_job_logs(job_id)
 
     async def test_niceness(self, job_manager):
         job_id = await job_manager.submit_job(
@@ -931,7 +932,10 @@ class TestTailLogs:
     ):
         i = 0
         async for lines in job_manager.tail_job_logs(job_id):
-            assert all(s == expected_log for s in lines.strip().split("\n"))
+            assert all(
+                s == expected_log or "Runtime env setup" in s
+                for s in lines.strip().split("\n")
+            )
             print(lines, end="")
             if i == num_iteration:
                 break
@@ -968,7 +972,10 @@ class TestTailLogs:
                 print("hello", file=f)
 
             async for lines in job_manager.tail_job_logs(job_id):
-                assert all(s == "Waiting..." for s in lines.strip().split("\n"))
+                assert all(
+                    s == "Waiting..." or "Runtime env setup" in s
+                    for s in lines.strip().split("\n")
+                )
                 print(lines, end="")
 
             await async_wait_for_condition_async_predicate(
@@ -989,7 +996,10 @@ class TestTailLogs:
                 os.kill(int(f.read()), signal.SIGKILL)
 
             async for lines in job_manager.tail_job_logs(job_id):
-                assert all(s == "Waiting..." for s in lines.strip().split("\n"))
+                assert all(
+                    s == "Waiting..." or "Runtime env setup" in s
+                    for s in lines.strip().split("\n")
+                )
                 print(lines, end="")
 
             await async_wait_for_condition_async_predicate(
@@ -1013,7 +1023,7 @@ class TestTailLogs:
 
             async for lines in job_manager.tail_job_logs(job_id):
                 assert all(
-                    s == "Waiting..." or s == "Terminated"
+                    s == "Waiting..." or s == "Terminated" or "Runtime env setup" in s
                     for s in lines.strip().split("\n")
                 )
                 print(lines, end="")

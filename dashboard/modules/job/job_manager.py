@@ -81,6 +81,23 @@ class JobManager:
         self._recover_running_jobs_event = asyncio.Event()
         run_background_task(self._recover_running_jobs())
 
+    def _get_job_driver_logger(self, job_id: str) -> logging.Logger:
+        """Return job driver logger to log messages to the job driver log file.
+
+        If this function is called for the first time, configure the logger.
+        """
+        job_driver_logger = logging.getLogger(f"{__name__}.driver-{job_id}")
+
+        # Configure the logger if it's not already configured.
+        if not job_driver_logger.handlers:
+            job_driver_log_path = self._log_client.get_log_file_path(job_id)
+            job_driver_handler = logging.FileHandler(job_driver_log_path)
+            job_driver_formatter = logging.Formatter(ray_constants.LOGGER_FORMAT)
+            job_driver_handler.setFormatter(job_driver_formatter)
+            job_driver_logger.addHandler(job_driver_handler)
+
+        return job_driver_logger
+
     async def _recover_running_jobs(self):
         """Recovers all running jobs from the status client.
 
@@ -136,9 +153,16 @@ class JobManager:
         )
 
         is_alive = True
+        runtime_env_finished_message_logged = False
 
         while is_alive:
             try:
+                is_run_called = await job_supervisor.is_run_called.remote()
+                if is_run_called and not runtime_env_finished_message_logged:
+                    driver_logger = self._get_job_driver_logger(job_id)
+                    driver_logger.info("Runtime env setup finished")
+                    runtime_env_finished_message_logged = True
+
                 job_status = await self._job_info_client.get_status(job_id)
                 if job_status == JobStatus.PENDING:
                     # Compare the current time with the job start time.
@@ -509,7 +533,7 @@ class JobManager:
                     f"Started a ray job {submission_id}.", submission_id=submission_id
                 )
 
-            driver_logger = self._log_client.configure_driver_logger(submission_id)
+            driver_logger = self._get_job_driver_logger(submission_id)
             driver_logger.info("Runtime env setup started")
             supervisor = self._supervisor_actor_cls.options(
                 lifetime="detached",

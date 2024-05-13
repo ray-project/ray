@@ -1,10 +1,8 @@
-import logging
 import os
 from collections import deque
 from typing import Iterator, List, Tuple
 
 import ray
-from ray._private.ray_constants import LOGGER_FORMAT
 from ray.dashboard.modules.job.common import JOB_LOGS_PATH_TEMPLATE
 from ray.dashboard.modules.job.utils import file_tail_iterator
 
@@ -62,17 +60,3 @@ class JobLogStorageClient:
             ray._private.worker._global_node.get_logs_dir_path(),
             JOB_LOGS_PATH_TEMPLATE.format(submission_id=job_id),
         )
-
-    def configure_driver_logger(self, job_id: str) -> logging.Logger:
-        """
-        configure job driver logger to log messages to the job driver log file.
-
-        Note: the logger needs to be reconfigured if used in different processes.
-        """
-        job_driver_logger = logging.getLogger(f"{__name__}.driver-{job_id}")
-        job_driver_log_path = self.get_log_file_path(job_id)
-        job_driver_handler = logging.FileHandler(job_driver_log_path)
-        job_driver_formatter = logging.Formatter(LOGGER_FORMAT)
-        job_driver_handler.setFormatter(job_driver_formatter)
-        job_driver_logger.addHandler(job_driver_handler)
-        return job_driver_logger
