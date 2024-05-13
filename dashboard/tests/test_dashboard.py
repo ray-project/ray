@@ -940,7 +940,11 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
     os.environ.get("RAY_MINIMAL") == "1",
     reason="This test is not supposed to work for minimal installation.",
 )
-def test_gcs_check_alive(fast_gcs_failure_detection, ray_start_with_dashboard):
+def test_gcs_check_alive(
+    fast_gcs_failure_detection, ray_start_with_dashboard, call_ray_stop_only
+):
+    # call_ray_stop_only is used to ensure a clean environment (especially
+    # killing dashboard agent in time) before the next test runs.
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
 
     all_processes = ray._private.worker._global_node.all_processes
