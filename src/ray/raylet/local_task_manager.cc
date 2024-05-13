@@ -45,8 +45,7 @@ void LocalTaskManager::UpdateCpuRequests(const std::shared_ptr<internal::Work> &
                                          bool add) {
   const auto &spec = work->task.GetTaskSpecification();
   // FixedPoint to Double
-  auto cpu_requested =
-      spec.GetRequiredResources().Get(scheduling::ResourceID::CPU()).Double();
+  auto cpu_requested = spec.GetRequiredResources().Get(ResourceID::CPU()).Double();
   if (add) {
     total_cpu_requests_ += cpu_requested;
   } else {
@@ -156,19 +155,39 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
     auto &sched_cls_info = info_by_sched_cls_.at(scheduling_class);
 
     // Apply fairness only when the total CPU requests exceed the node capacity
+    const auto &sched_cls_desc =
+        TaskSpecification::GetSchedulingClassDescriptor(scheduling_class);
     double total_cpus =
         cluster_resource_scheduler_->GetLocalResourceManager().GetNumCpus();
-    if (total_cpu_requests_ > total_cpus) {
+    if (sched_cls_desc.resource_set.Get(ResourceID::CPU()).Double() > 0 &&
+        total_cpu_requests_ > total_cpus) {
       RAY_LOG(DEBUG)
           << "Applying fairness policy. Total CPU requests in tasks_to_dispatch_ ("
           << total_cpu_requests_ << ") exceed total CPUs available (" << total_cpus
           << ").";
-      size_t total_running_tasks = 0;
+      size_t total_cpu_running_tasks = 0;
       for (auto &entry : info_by_sched_cls_) {
-        total_running_tasks += entry.second.running_tasks.size();
+        // Only consider CPU requests
+        const auto &sched_cls_desc =
+            TaskSpecification::GetSchedulingClassDescriptor(entry.first);
+        if (sched_cls_desc.resource_set.Get(ResourceID::CPU()).Double() > 0) {
+          total_cpu_running_tasks += entry.second.running_tasks.size();
+        }
       }
-      size_t num_classes = tasks_to_dispatch_.size();
-      size_t fair_share = (num_classes == 0) ? 0 : total_running_tasks / num_classes;
+
+      size_t num_classes_with_cpu = 0;
+      for (auto &entry : tasks_to_dispatch_) {
+        // Only consider CPU requests
+        const auto &entry_sched_cls_desc =
+            TaskSpecification::GetSchedulingClassDescriptor(entry.first);
+        if (entry_sched_cls_desc.resource_set.Get(ResourceID::CPU()).Double() > 0) {
+          num_classes_with_cpu++;
+        }
+      }
+
+      size_t fair_share = (num_classes_with_cpu == 0)
+                              ? 0
+                              : total_cpu_running_tasks / num_classes_with_cpu;
 
       if (sched_cls_info.running_tasks.size() > fair_share) {
         RAY_LOG(DEBUG) << "Skipping dispatch for scheduling class " << scheduling_class
@@ -241,10 +260,10 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
           // Insert the task at the head of the waiting queue because we
           // prioritize spilling from the end of the queue.
           // TODO(scv119): where does pulling happen?
-          UpdateCpuRequests(*work_it, false);
           auto it = waiting_task_queue_.insert(waiting_task_queue_.begin(),
                                                std::move(*work_it));
           RAY_CHECK(waiting_tasks_index_.emplace(task_id, it).second);
+          UpdateCpuRequests(*work_it, false);
           work_it = dispatch_queue.erase(work_it);
         } else {
           // The task's args cannot be pinned due to lack of memory. We should
@@ -568,11 +587,6 @@ bool LocalTaskManager::PoppedWorkerHandler(
             task_id,
             rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED,
             /*scheduling_failure_message*/ runtime_env_setup_error_message);
-      } else if (status == PopWorkerStatus::JobFinished) {
-        // The task job finished.
-        // Just remove the task from dispatch queue.
-        RAY_LOG(DEBUG) << "Call back to a job finished task, task id = " << task_id;
-        erase_from_dispatch_queue_fn(work, scheduling_class);
       } else {
         // In other cases, set the work status `WAITING` to make this task
         // could be re-dispatched.
