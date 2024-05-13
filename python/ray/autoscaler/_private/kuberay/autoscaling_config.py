@@ -264,7 +264,10 @@ def _get_ray_resources_from_group_spec(
         resources["GPU"] = num_gpus
 
     if num_tpus is not None:
-        resources["TPU"] = num_tpus
+        # Add TPU Ray resource if not already added by ray_start_params,
+        # but specified in k8s_resource_limits.
+        if "TPU" not in custom_resource_dict:
+            resources["TPU"] = num_tpus
 
         """Add TPU head resource, similar to the GCP node_provider.
         Sets the Ray resource TPU-{...}-head to ensure the Ray autoscaler
@@ -363,16 +366,15 @@ def _get_num_tpus(
     k8s_resource_limits: Dict[str, Any],
     group_name: str,
 ) -> Optional[int]:
-    """Get memory resource annotation from ray_start_params or k8s_resource_limits,
+    """Get TPU custom resource annotation from ray_start_params or k8s_resource_limits,
     with priority for ray_start_params.
     """
 
-    if "num-tpus" in ray_start_params:
-        return int(ray_start_params["num-tpus"])
+    if "TPU" in ray_start_params:
+        return int(ray_start_params["TPU"])
     else:
         for key in k8s_resource_limits:
-            # e.g. google.com/tpu
-            if key.endswith("tpu"):
+            if key == "google.com/tpu":
                 # Typically, this is a string representing an integer, e.g. "1".
                 tpu_resource_quantity = k8s_resource_limits[key]
                 # Convert to int, making no assumptions on the tpu_resource_quantity,
