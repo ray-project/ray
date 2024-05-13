@@ -29,7 +29,7 @@ A RayService manages these components:
 ## Step 1: Create a Kubernetes cluster with Kind
 
 ```sh
-kind create cluster --image=kindest/node:v1.23.0
+kind create cluster --image=kindest/node:v1.26.0
 ```
 
 ## Step 2: Install the KubeRay operator
