@@ -1,0 +1,9 @@
+name: "min-py$PYTHON_VERSION-cpu-base"
+froms: ["ubuntu:22.04"]
+dockerfile: anyscale/docker/base-deps/Dockerfile
+build_args:
+  - PYTHON_VERSION
+  - PYTHON_GPG_KEY
+  - BASE_IMAGE=ubuntu:22.04
+tags:
+  - cr.ray.io/rayproject/min-py$PYTHON_VERSION-cpu-base
