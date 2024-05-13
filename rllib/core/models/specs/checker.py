@@ -266,6 +266,7 @@ def check_input_specs(
                 initial_exception
                 or not cache
                 or func.__name__ not in self.__checked_input_specs_cache__
+                or filter
             ):
                 if hasattr(self, input_specs):
                     spec = getattr(self, input_specs)
