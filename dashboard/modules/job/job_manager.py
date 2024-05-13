@@ -157,12 +157,6 @@ class JobManager:
 
         while is_alive:
             try:
-                is_run_called = await job_supervisor.is_run_called.remote()
-                if is_run_called and not runtime_env_finished_message_logged:
-                    driver_logger = self._get_job_driver_logger(job_id)
-                    driver_logger.info("Runtime env setup finished")
-                    runtime_env_finished_message_logged = True
-
                 job_status = await self._job_info_client.get_status(job_id)
                 if job_status == JobStatus.PENDING:
                     # Compare the current time with the job start time.
@@ -240,6 +234,12 @@ class JobManager:
                         continue
 
                 await job_supervisor.ping.remote()
+
+                is_run_called = await job_supervisor.is_run_called.remote()
+                if is_run_called and not runtime_env_finished_message_logged:
+                    driver_logger = self._get_job_driver_logger(job_id)
+                    driver_logger.info("Runtime env setup finished")
+                    runtime_env_finished_message_logged = True
 
                 await asyncio.sleep(self.JOB_MONITOR_LOOP_PERIOD_S)
             except Exception as e:
