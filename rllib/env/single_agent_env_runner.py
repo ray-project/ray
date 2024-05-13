@@ -292,7 +292,8 @@ class SingleAgentEnvRunner(EnvRunner):
                 # RLModule forward pass: Explore or not.
                 if explore:
                     env_steps_lifetime = (
-                        self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0) + ts
+                        self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
+                        + ts
                     )
                     to_env = self.module.forward_exploration(
                         to_module, t=env_steps_lifetime
@@ -487,7 +488,8 @@ class SingleAgentEnvRunner(EnvRunner):
                 # RLModule forward pass: Explore or not.
                 if explore:
                     env_steps_lifetime = (
-                        self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0) + ts
+                        self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
+                        + ts
                     )
                     to_env = self.module.forward_exploration(
                         to_module, t=env_steps_lifetime

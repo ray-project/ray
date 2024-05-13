@@ -593,8 +593,7 @@ class Impala(Algorithm):
                     (
                         AggregationWorker
                         if self.config.enable_env_runner_and_connector_v2
-                        else
-                        AggregatorWorker_OldAPIStack,
+                        else AggregatorWorker_OldAPIStack,
                         [
                             self.config,
                         ],
@@ -696,8 +695,10 @@ class Impala(Algorithm):
         # If we do tree aggregation, we perform the LearnerConnector pass on the
         # aggregation workers.
         if self.config.num_aggregation_workers:
-            data_packages_for_learner_group = self._process_env_runner_data_via_aggregation(
-                data_packages_for_learner_group
+            data_packages_for_learner_group = (
+                self._process_env_runner_data_via_aggregation(
+                    data_packages_for_learner_group
+                )
             )
 
         # Call the LearnerGroup's `update_from_episodes` method.
@@ -738,17 +739,16 @@ class Impala(Algorithm):
 
         # Update LearnerGroup's own stats.
         self.metrics.log_dict(self.learner_group.get_stats(), key=LEARNER_GROUP)
-        self.metrics.log_dict(
-            {
-                NUM_ENV_STEPS_TRAINED_LIFETIME: self.metrics.peek(
-                    LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED, default=0
-                ),
-                # NUM_MODULE_STEPS_TRAINED_LIFETIME: self.metrics.peek(
-                #    LEARNER_RESULTS, NUM_MODULE_STEPS_TRAINED
-                # ),
-            },
+        self.metrics.log_value(
+            NUM_ENV_STEPS_TRAINED_LIFETIME,
+            self.metrics.peek(
+                LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED, default=0
+            ),
             reduce="sum",
         )
+        # self.metrics.log_value(NUM_MODULE_STEPS_TRAINED_LIFETIME, self.metrics.peek(
+        #    LEARNER_RESULTS, NUM_MODULE_STEPS_TRAINED
+        # ), reduce="sum")
 
         # Figure out, whether we should sync/broadcast the (remote) EnvRunner states.
         # Note: `learner_results` is a List of n (num async calls) of Lists of m
@@ -780,7 +780,9 @@ class Impala(Algorithm):
                         rl_module_state=rl_module_state,
                     )
 
-        return self.metrics.reduce()
+        if env_runner_metrics or learner_results:
+            return self.metrics.reduce()
+        return {}
 
     def _sample_and_get_connector_states(self):
         def _remote_sample_get_state_and_metrics(_worker):
@@ -809,7 +811,6 @@ class Impala(Algorithm):
                 return_obj_refs=False,
             )
             # Get results from the n different async calls.
-            #results = ray.get([res[1] for res in async_results])
             results = [r[1] for r in async_results]
 
             for (episodes, states, metrics) in results:
@@ -833,7 +834,9 @@ class Impala(Algorithm):
             env_runner_metrics,
         )
 
-    def _pre_queue_episode_refs(self, episode_refs: List[ObjectRef]) -> List[List[ObjectRef]]:
+    def _pre_queue_episode_refs(
+        self, episode_refs: List[ObjectRef]
+    ) -> List[List[ObjectRef]]:
         # Each element in this list is itself a list of ObjRef[Episodes].
         # Each ObjRef was returned by one EnvRunner from a single sample() call.
         episode_refs_for_learner_group: List[List[ObjectRef]] = []
