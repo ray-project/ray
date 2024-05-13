@@ -261,8 +261,11 @@ def test_fair_dispatching(shutdown_only):
     def g():
         return 1
 
+    # First, we submit 2 task f. Currently, 2 CPUs are used and 1 CPU is free.
     _ = [f.remote(3) for _ in range(2)]
 
+    # If it's fair dispatching, as currently there are more tasks of f running,
+    # task g will execute first; otherwise, after a 5-second timeout, ready is empty.
     timeout = 5
     ready, _ = ray.wait(
         [f.remote(10), f.remote(10), f.remote(10), g.remote(), g.remote()],

@@ -45,7 +45,8 @@ void LocalTaskManager::UpdateCpuRequests(const std::shared_ptr<internal::Work> &
                                          bool add) {
   const auto &spec = work->task.GetTaskSpecification();
   // FixedPoint to Double
-  auto cpu_requested = spec.GetRequiredResources().Get(scheduling::ResourceID::CPU()).Double();
+  auto cpu_requested =
+      spec.GetRequiredResources().Get(scheduling::ResourceID::CPU()).Double();
   if (add) {
     total_cpu_requests_ += cpu_requested;
   } else {
@@ -240,10 +241,10 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
           // Insert the task at the head of the waiting queue because we
           // prioritize spilling from the end of the queue.
           // TODO(scv119): where does pulling happen?
+          UpdateCpuRequests(*work_it, false);
           auto it = waiting_task_queue_.insert(waiting_task_queue_.begin(),
                                                std::move(*work_it));
           RAY_CHECK(waiting_tasks_index_.emplace(task_id, it).second);
-          UpdateCpuRequests(*work_it, false);
           work_it = dispatch_queue.erase(work_it);
         } else {
           // The task's args cannot be pinned due to lack of memory. We should
