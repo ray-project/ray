@@ -73,7 +73,8 @@ CallableClass = type
 
 
 class _CallableClassProtocol(Protocol[T, U]):
-    def __call__(self, __arg: T) -> Union[U, Iterator[U]]: ...
+    def __call__(self, __arg: T) -> Union[U, Iterator[U]]:
+        ...
 
 
 # A user defined function passed to map, map_batches, ec.
