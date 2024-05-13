@@ -2,8 +2,10 @@ import collections
 import os
 import time
 from dataclasses import dataclass
+from enum import Enum
 from typing import (
     TYPE_CHECKING,
+    Any,
     Callable,
     Dict,
     Iterator,
@@ -20,6 +22,7 @@ import numpy as np
 
 import ray
 from ray import DynamicObjectRefGenerator
+from ray.air.util.tensor_extensions.arrow import ArrowConversionError
 from ray.data._internal.util import _check_pyarrow_version, _truncated_repr
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI
@@ -52,6 +55,13 @@ AggType = TypeVar("AggType")
 # Block data can be accessed in a uniform way via ``BlockAccessors`` like`
 # ``ArrowBlockAccessor``.
 Block = Union["pyarrow.Table", "pandas.DataFrame"]
+
+
+@DeveloperAPI
+class BlockType(Enum):
+    ARROW = "arrow"
+    PANDAS = "pandas"
+
 
 # User-facing data batch type. This is the data type for data that is supplied to and
 # returned from batch UDFs.
@@ -349,8 +359,12 @@ class BlockAccessor:
         """Create a builder for this block type."""
         raise NotImplementedError
 
-    @staticmethod
-    def batch_to_block(batch: DataBatch) -> Block:
+    @classmethod
+    def batch_to_block(
+        cls,
+        batch: DataBatch,
+        block_type: Optional[BlockType] = None,
+    ) -> Block:
         """Create a block from user-facing data formats."""
 
         if isinstance(batch, np.ndarray):
@@ -362,18 +376,32 @@ class BlockAccessor:
             )
 
         elif isinstance(batch, collections.abc.Mapping):
-            import pyarrow as pa
-
-            from ray.data._internal.arrow_block import ArrowBlockAccessor
-            from ray.data._internal.pandas_block import PandasBlockAccessor
-
-            try:
-                return ArrowBlockAccessor.numpy_to_block(batch)
-            except (pa.ArrowNotImplementedError, pa.ArrowInvalid, pa.ArrowTypeError):
-                # TODO(ekl) once we support Python objects within Arrow blocks, we
-                # don't need this fallback path.
-                return PandasBlockAccessor.numpy_to_block(batch)
+            if block_type is None or block_type == BlockType.ARROW:
+                try:
+                    return cls.batch_to_arrow_block(batch)
+                except ArrowConversionError as e:
+                    if block_type is None:
+                        return cls.batch_to_pandas_block(batch)
+                    else:
+                        raise e
+            else:
+                assert block_type == BlockType.PANDAS
+                return cls.batch_to_pandas_block(batch)
         return batch
+
+    @classmethod
+    def batch_to_arrow_block(cls, batch: Dict[str, Any]) -> Block:
+        """Create an Arrow block from user-facing data formats."""
+        from ray.data._internal.arrow_block import ArrowBlockAccessor
+
+        return ArrowBlockAccessor.numpy_to_block(batch)
+
+    @classmethod
+    def batch_to_pandas_block(cls, batch: Dict[str, Any]) -> Block:
+        """Create a Pandas block from user-facing data formats."""
+        from ray.data._internal.pandas_block import PandasBlockAccessor
+
+        return PandasBlockAccessor.numpy_to_block(batch)
 
     @staticmethod
     def for_block(block: Block) -> "BlockAccessor[T]":
@@ -431,4 +459,8 @@ class BlockAccessor:
         blocks: List[Block], key: Optional[str], agg: "AggregateFn"
     ) -> Tuple[Block, BlockMetadata]:
         """Aggregate partially combined and sorted blocks."""
+        raise NotImplementedError
+
+    def block_type(self) -> BlockType:
+        """Return the block type of this block."""
         raise NotImplementedError
