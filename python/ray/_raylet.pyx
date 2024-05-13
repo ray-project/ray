@@ -80,6 +80,9 @@ from ray.includes.common cimport (
     CRayStatus,
     CActorTableData,
     CErrorTableData,
+    PyStringCallback,
+    CGcsClient,
+    # CCoreWorker,
     CGcsClientOptions,
     CGcsNodeInfo,
     CJobTableData,
@@ -2689,6 +2692,73 @@ def _auto_reconnect(f):
 
     return wrapper
 
+cdef class MyGcsClient:
+    cdef:
+        shared_ptr[CGcsClient] inner
+    """
+    cdef get_actor_info(self, actor_id: ActorID):
+        cdef CActorID c_actor_id = actor_id.native()
+        cdef PyStringCallback[CActorTableData] cy_callback
+        cdef CRayStatus status
+
+        from asyncio import Future
+        future = Future()
+        def py_callback(serialized: str):
+            future.set_result(serialized)
+        cy_callback = PyStringCallback[CActorTableData](py_callback)
+
+        # with nogil:
+        
+        check_status(self.inner.get().Actors().AsyncGet(c_actor_id, cy_callback))
+        return future
+    """
+    cdef c_get_next_job_id(self, py_callback):
+        cdef CJobID c_job_id
+        cdef PyStringCallback[CJobID] cy_callback = PyStringCallback[CJobID](py_callback)
+        cdef CRayStatus status
+        logger.error(f"c_get_next_job_id py_callback {py_callback}")
+        with nogil:
+            check_status(self.inner.get().Jobs().AsyncGetNextJobID(cy_callback))
+
+    def get_next_job_id(self):
+        py_callback = PyAwaitableCallback()
+        assert callable(py_callback)
+        self.c_get_next_job_id(py_callback)
+        return py_callback
+
+cdef class PyAwaitableCallback:
+    """
+    Cython seems to have difficulties keeping captures in binding calls, so we need a class.
+    """
+    cdef:
+        object future
+        object loop
+    def __cinit__(self):
+        self.loop = asyncio.get_event_loop()
+        self.future = self.loop.create_future()
+        print(f"cinit {self.future}, {self.loop}")
+
+    def __call__(self, result):
+        logger.error(f"PyAwaitableCallback: {result}")
+        print(self, self.future, self.loop)
+        self.loop.call_soon_threadsafe(self.future.set_result, result)
+
+    """    def __await__(self):
+            return self.future.__await__()
+    """
+    @property
+    def future(self):
+        return self.future
+    
+
+cdef make_my_gcs_client():
+    cdef shared_ptr[CGcsClient] inner = CCoreWorkerProcess.GetCoreWorker().GetGcsClient()
+    my = MyGcsClient()
+    my.inner = inner
+    return my
+
+def my_gcs_client():
+    return make_my_gcs_client()
 
 cdef class GcsClient:
     """Cython wrapper class of C++ `ray::gcs::GcsClient`."""

@@ -2349,12 +2349,18 @@ flatbuffer_cc_library(
     out_prefix = "ray/raylet/format/",
 )
 
+ray_cc_library(
+    name = "python_callbacks",
+    hdrs = ["src/ray/gcs/gcs_client/python_callbacks.h"],
+)
+
 pyx_library(
     name = "_raylet",
     srcs = glob([
         "python/ray/__init__.py",
         "python/ray/_raylet.pxd",
         "python/ray/_raylet.pyx",
+        "python/ray/_gcs_client.pyx",
         "python/ray/includes/*.pxd",
         "python/ray/includes/*.pxi",
     ]),
@@ -2380,6 +2386,7 @@ pyx_library(
         "//:core_worker_lib",
         "//:exported_internal",
         "//:gcs_server_lib",
+        "//:python_callbacks",
         "//:global_state_accessor_lib",
         "//:raylet_lib",
         "//:redis_client",
