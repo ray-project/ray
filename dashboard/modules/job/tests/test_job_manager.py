@@ -1332,21 +1332,32 @@ async def test_actor_creation_error_not_overwritten(shared_ray_instance, tmp_pat
 
     Without the fix in place, this test failed consistently.
     """
+
+    submitted_job_ids = []
+
+    job_manager = create_job_manager(shared_ray_instance, tmp_path)
+
     for _ in range(10):
         # Race condition existed when a job was submitted just after constructing the
-        # `JobManager`, so make a new one in each test iteration.
-        job_manager = create_job_manager(shared_ray_instance, tmp_path)
+        # `JobSupervisor`
         job_id = await job_manager.submit_job(
             entrypoint="doesn't matter", runtime_env={"working_dir": "path_not_exist"}
         )
 
-        # `await` many times to yield the `asyncio` loop and verify that the error
-        # message does not get overwritten.
-        for _ in range(100):
-            data = await job_manager.get_job_info(job_id)
-            assert data.status == JobStatus.FAILED
-            assert "path_not_exist is not a valid URI" in data.message
-            assert data.driver_exit_code is None
+        submitted_job_ids.append(job_id)
+
+    # `await` many times to yield the `asyncio` loop and verify that the error
+    # message does not get overwritten.
+    for job_id in submitted_job_ids:
+        await async_wait_for_condition_async_predicate(
+            check_job_failed, job_manager=job_manager, job_id=job_id
+        )
+
+        data = await job_manager.get_job_info(job_id)
+
+        assert data.status == JobStatus.FAILED
+        assert "path_not_exist is not a valid URI" in data.message
+        assert data.driver_exit_code is None
 
 
 if __name__ == "__main__":
