@@ -12,8 +12,11 @@ def test_node_death(ray_start_cluster):
     worker_node_id = worker_node.node_id
     cluster.remove_node(worker_node)
 
-    worker_node_info = [node for node in ray.nodes() if node["NodeID"] == worker_node_id][0]
-    assert worker_node_info["Alive"] == False
-    assert worker_node_info["DeathReason"] == gcs_pb2.NodeDeathInfo.Reason.Value("EXPECTED_TERMINATION")
+    worker_node_info = [
+        node for node in ray.nodes() if node["NodeID"] == worker_node_id
+    ][0]
+    assert not worker_node_info["Alive"]
+    assert worker_node_info["DeathReason"] == gcs_pb2.NodeDeathInfo.Reason.Value(
+        "EXPECTED_TERMINATION"
+    )
     assert worker_node_info["DeathReasonMessage"] == "Received SIGTERM"
-

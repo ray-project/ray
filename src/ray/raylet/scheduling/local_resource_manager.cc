@@ -382,7 +382,7 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
 
 void LocalResourceManager::OnResourceOrStateChanged() {
   if (IsLocalNodeDraining() && IsLocalNodeIdle()) {
-    RAY_LOG(INFO) << "The node is drained, exiting...";
+    RAY_LOG(INFO) << "The node is drained, continue to shut down raylet...";
     shutdown_raylet_gracefully_(node_death_info_);
   }
 
