@@ -509,6 +509,10 @@ message TaskSpec {
   int64 generator_backpressure_num_objects = 38;
   // Boolean if task events enabled, i.e tasks events would be reported.
   bool enable_task_events = 39;
+  // If this task is originated from a detached actor,
+  // this field contains the detached actor id.
+  // Otherwise it's empty and is originated from a driver.
+  bytes root_detached_actor_id = 40;
 }
 
 message TaskInfoEntry {

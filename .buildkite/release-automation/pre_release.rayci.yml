@@ -27,8 +27,8 @@ steps:
       branch: "${BUILDKITE_BRANCH}"
       message: "Triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
       env:
-        RAYCI_CONTINUOUS_BUILD: 1
-        RAYCI_WEEKLY_RELEASE: 1
+        RAYCI_RELEASE: 1
+        RAYCI_FULL_PLATFORM_RELEASE: "${RAYCI_FULL_PLATFORM_RELEASE}"
   
   - label: "Trigger Postmerge nightly build & test"
     if: build.env("RAYCI_WEEKLY_RELEASE_NIGHTLY") == "1"
@@ -40,17 +40,19 @@ steps:
       branch: "${BUILDKITE_BRANCH}"
       message: "Triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
       env:
-        RAYCI_CONTINUOUS_BUILD: 1
-        RAYCI_WEEKLY_RELEASE: 1
+        RAYCI_RELEASE: 1
         RAYCI_SCHEDULE: "nightly"
 
   - label: "Trigger Postmerge MacOS test"
+    key: trigger-postmerge-macos
     trigger: "postmerge-macos"
     depends_on: check-commit-hash
     build:
       commit: "${BUILDKITE_COMMIT}"
       branch: "${BUILDKITE_BRANCH}"
       message: "Triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
+      env:
+        RAYCI_RELEASE: 1
 
   - block: "Trigger Release nightly test"
     if: build.env("RAYCI_WEEKLY_RELEASE_NIGHTLY") != "1"
@@ -92,6 +94,7 @@ steps:
     depends_on: check-commit-hash
 
   - label: "Trigger Release weekly test"
+    key: trigger-release-weekly
     trigger: "release"
     depends_on: block-release-weekly-test
     build:
@@ -103,6 +106,7 @@ steps:
         RELEASE_FREQUENCY: "weekly"
 
   - label: "Check Ray commit in {{matrix}} nightly images"
+    key: check-ray-commit
     if: build.branch !~ /^releases\// && build.env("RAYCI_WEEKLY_RELEASE_NIGHTLY") == "1"
     depends_on: trigger-postmerge-nightly
     allow_dependency_failure: true

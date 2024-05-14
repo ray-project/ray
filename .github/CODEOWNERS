@@ -126,3 +126,5 @@
 /release/ray_release @ray-project/ray-ci-reviewers
 
 /.github/ISSUE_TEMPLATE/ @ericl @stephanie-wang @scv119 @pcmoritz
+
+/.github/workflows/ @ray-project/ray-ci-reviewers
