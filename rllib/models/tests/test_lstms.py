@@ -67,7 +67,7 @@ class TestLSTMs(unittest.TestCase):
             tune.Tuner(
                 "PPO",
                 param_space=config.to_dict(),
-                run_config=air.RunConfig(stop={"training_iteration": 1}, verbose=1),
+                run_config=air.RunConfig(stop={TRAINING_ITERATION: 1}, verbose=1),
             ).fit()
 
 

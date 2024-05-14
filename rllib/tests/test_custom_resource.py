@@ -24,7 +24,7 @@ def test_custom_resource(algorithm):
         .env_runners(num_env_runners=1)
         .resources(num_gpus=0, custom_resources_per_worker={"custom_resource": 0.01})
     )
-    stop = {"training_iteration": 1}
+    stop = {TRAINING_ITERATION: 1}
 
     tune.Tuner(
         algorithm,

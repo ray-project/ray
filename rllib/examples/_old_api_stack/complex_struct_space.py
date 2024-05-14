@@ -46,9 +46,7 @@ if __name__ == "__main__":
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
     )
 
-    stop = {
-        "num_env_steps_sampled_lifetime": 1,
-    }
+    stop = {NUM_ENV_STEPS_SAMPLED_LIFETIME: 1}
 
     tuner = tune.Tuner(
         "PPO",

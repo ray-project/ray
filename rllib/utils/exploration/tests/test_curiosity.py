@@ -33,7 +33,7 @@ class MyCallBack(DefaultCallbacks):
         policies,
         postprocessed_batch,
         original_batches,
-        **kwargs
+        **kwargs,
     ):
         pos = np.argmax(postprocessed_batch["obs"], -1)
         x, y = pos % 8, pos // 8
@@ -268,8 +268,8 @@ class TestCuriosity(unittest.TestCase):
 
         min_reward = 0.001
         stop = {
-            "training_iteration": 25,
-            "episode_reward_mean": min_reward,
+            TRAINING_ITERATION: 25,
+            f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": min_reward,
         }
         for _ in framework_iterator(config, frameworks="torch"):
             # To replay:
@@ -291,13 +291,13 @@ class TestCuriosity(unittest.TestCase):
                 run_config=air.RunConfig(stop=stop, verbose=1),
             ).fit()
             check_learning_achieved(results, min_reward)
-            iters = results.get_best_result().metrics["training_iteration"]
+            iters = results.get_best_result().metrics[TRAINING_ITERATION]
             print("Reached in {} iterations.".format(iters))
 
             # config_wo = config.copy()
             # config_wo["exploration_config"] = {"type": "StochasticSampling"}
             # stop_wo = stop.copy()
-            # stop_wo["training_iteration"] = iters
+            # stop_wo[TRAINING_ITERATION] = iters
             # results = tune.Tuner(
             #     "PPO", param_space=config_wo, stop=stop_wo, verbose=1).fit()
             # try:

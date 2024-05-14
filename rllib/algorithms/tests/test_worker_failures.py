@@ -862,7 +862,11 @@ class TestWorkerFailures(unittest.TestCase):
         )
         algo = config.build()
         results = algo.train()
-        self.assertTrue(np.isnan(results["evaluation_results"]["episode_return_mean"]))
+        self.assertTrue(
+            np.isnan(
+                results[EVALUATION_RESULTS][ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
+            )
+        )
 
 
 if __name__ == "__main__":

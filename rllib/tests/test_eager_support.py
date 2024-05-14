@@ -29,7 +29,7 @@ def check_support(alg, config, test_eager=False, test_trace=True):
             tune.Tuner(
                 a,
                 param_space=config,
-                run_config=air.RunConfig(stop={"training_iteration": 1}, verbose=1),
+                run_config=air.RunConfig(stop={TRAINING_ITERATION: 1}, verbose=1),
             ).fit()
         if test_trace:
             config["eager_tracing"] = True
@@ -37,7 +37,7 @@ def check_support(alg, config, test_eager=False, test_trace=True):
             tune.Tuner(
                 a,
                 param_space=config,
-                run_config=air.RunConfig(stop={"training_iteration": 1}, verbose=1),
+                run_config=air.RunConfig(stop={TRAINING_ITERATION: 1}, verbose=1),
             ).fit()
 
 

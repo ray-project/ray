@@ -100,7 +100,7 @@ if __name__ == "__main__":
     # iterations with each other, respectively.
     # Setting scope to "avg" will compare (using `mode`=min|max) the average
     # values over the entire run.
-    metric = "env_runner_results/num_episodes"
+    metric = "env_runners/num_episodes"
     # notice here `scope` is `all`, meaning for each trial,
     # all results (not just the last one) will be examined.
     best_result = results.get_best_result(metric=metric, mode="min", scope="all")

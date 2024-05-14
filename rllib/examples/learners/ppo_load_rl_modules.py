@@ -68,7 +68,7 @@ if __name__ == "__main__":
         "PPO",
         param_space=config.to_dict(),
         run_config=air.RunConfig(
-            stop={"training_iteration": 1},
+            stop={TRAINING_ITERATION: 1},
             failure_config=air.FailureConfig(fail_fast="raise"),
         ),
     )

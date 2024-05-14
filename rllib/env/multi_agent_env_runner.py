@@ -847,9 +847,9 @@ class MultiAgentEnvRunner(EnvRunner):
         # Log general episode metrics.
         self.metrics.log_dict(
             {
-                "episode_len_mean": length,
-                "episode_return_mean": ret,
-                "episode_duration_sec_mean": sec,
+                EPISODE_LEN_MEAN: length,
+                EPISODE_RETURN_MEAN: ret,
+                EPISODE_DURATION_SEC_MEAN: sec,
                 **(
                     {
                         # Per-agent returns.
@@ -868,15 +868,15 @@ class MultiAgentEnvRunner(EnvRunner):
         # For some metrics, log min/max as well.
         self.metrics.log_dict(
             {
-                "episode_len_min": length,
-                "episode_return_min": ret,
+                EPISODE_LEN_MIN: length,
+                EPISODE_RETURN_MIN: ret,
             },
             reduce="min",
         )
         self.metrics.log_dict(
             {
-                "episode_len_max": length,
-                "episode_return_max": ret,
+                EPISODE_LEN_MAX: length,
+                EPISODE_RETURN_MAX: ret,
             },
             reduce="max",
         )

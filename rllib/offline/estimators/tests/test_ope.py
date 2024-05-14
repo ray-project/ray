@@ -232,7 +232,7 @@ class TestOPE(unittest.TestCase):
         # Test OPE in DQN, during training as well as by calling evaluate()
         algo = self.config_dqn_on_cartpole.build()
         results = algo.train()
-        ope_results = results["evaluation_results"]["off_policy_estimator"]
+        ope_results = results[EVALUATION_RESULTS]["off_policy_estimator"]
         # Check that key exists AND is not {}
         self.assertEqual(set(ope_results.keys()), {"is", "wis", "dm_fqe", "dr_fqe"})
 

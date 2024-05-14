@@ -43,9 +43,7 @@ class TestRayClient(unittest.TestCase):
                 "env": StatelessCartPole,
             }
 
-            stop = {
-                "training_iteration": 3,
-            }
+            stop = {TRAINING_ITERATION: 3}
 
             tune.Tuner(
                 "PPO",

@@ -101,8 +101,8 @@ if __name__ == "__main__":
         )
 
     stop = {
-        "training_iteration": args.stop_iters,
-        "evaluation_results/env_runner_results/episode_return_mean": args.stop_reward,
-        "num_env_steps_sampled_lifetime": args.stop_timesteps,
+        TRAINING_ITERATION: args.stop_iters,
+        f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
+        NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
     }
     run_rllib_example_script_experiment(config, args, stop=stop)

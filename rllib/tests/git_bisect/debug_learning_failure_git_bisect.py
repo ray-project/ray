@@ -147,7 +147,7 @@ if __name__ == "__main__":
     stop = experiment_config.get("stop", {})
     # .. but override with command line provided ones.
     if args.stop_iters:
-        stop["training_iteration"] = args.stop_iters
+        stop[TRAINING_ITERATION] = args.stop_iters
     if args.stop_timesteps:
         stop[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"] = args.stop_timesteps
     if args.stop_reward:
@@ -224,7 +224,7 @@ if __name__ == "__main__":
 
     # Criterion is to have reached some min reward within given
     # wall time, iters, or timesteps.
-    if stop.get("episode_return_mean") is not None:
+    if stop.get(EPISODE_RETURN_MEAN) is not None:
         max_avg_reward = np.max(
             [r[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN] for r in last_results]
         )

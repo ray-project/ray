@@ -326,11 +326,11 @@ def rollout(
             # Increase time-step and episode counters.
             eps = agent.config["evaluation_duration"]
             episodes += eps
-            steps += eps * eval_result["episode_len_mean"]
+            steps += eps * eval_result[ENV_RUNNER_RESULTS][EPISODE_LEN_MEAN]
             # Print out results and continue.
             print(
                 "Episode #{}: reward: {}".format(
-                    episodes, eval_result["episode_return_mean"]
+                    episodes, eval_result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
                 )
             )
             saver.end_rollout()

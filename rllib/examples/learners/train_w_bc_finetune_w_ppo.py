@@ -129,7 +129,7 @@ def train_ppo_agent_from_checkpointed_module(
         "PPO",
         param_space=config.to_dict(),
         run_config=RunConfig(
-            stop={"training_iteration": 20},
+            stop={TRAINING_ITERATION: 20},
             failure_config=FailureConfig(fail_fast="raise"),
             verbose=2,
         ),

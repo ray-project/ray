@@ -77,7 +77,7 @@ class TestGPUs(unittest.TestCase):
                                     "PPO",
                                     param_space=config,
                                     run_config=air.RunConfig(
-                                        stop={"training_iteration": 0}
+                                        stop={TRAINING_ITERATION: 0}
                                     ),
                                 ).fit()
         ray.shutdown()
@@ -105,7 +105,7 @@ class TestGPUs(unittest.TestCase):
                     tune.Tuner(
                         "PPO",
                         param_space=config,
-                        run_config=air.RunConfig(stop={"training_iteration": 0}),
+                        run_config=air.RunConfig(stop={TRAINING_ITERATION: 0}),
                     ).fit()
 
         ray.shutdown()

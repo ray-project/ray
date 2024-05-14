@@ -103,9 +103,7 @@ def main(checkpoint_dir):
         )
     )
 
-    stop = {
-        "training_iteration": args.train_iteration,
-    }
+    stop = {TRAINING_ITERATION: args.train_iteration}
 
     # Train the "main" policy to play really well using self-play.
     tuner = tune.Tuner(
@@ -120,7 +118,7 @@ def main(checkpoint_dir):
             verbose=2,
             progress_reporter=CLIReporter(
                 metric_columns={
-                    "training_iteration": "iter",
+                    TRAINING_ITERATION: "iter",
                     "time_total_s": "time_total_s",
                     f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": "ts",
                     f"{ENV_RUNNER_RESULTS}/{NUM_EPISODES}": "train_episodes",

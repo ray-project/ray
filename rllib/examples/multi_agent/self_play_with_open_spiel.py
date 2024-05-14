@@ -22,6 +22,7 @@ import functools
 
 import numpy as np
 
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.env.utils import try_import_pyspiel, try_import_open_spiel
@@ -179,8 +180,8 @@ if __name__ == "__main__":
         config.training(num_sgd_iter=20)
 
     stop = {
-        "num_env_steps_sampled_lifetime": args.stop_timesteps,
-        "training_iteration": args.stop_iters,
+        NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
+        TRAINING_ITERATION: args.stop_iters,
         "league_size": args.min_league_size,
     }
 

@@ -185,8 +185,8 @@ if __name__ == "__main__":
         config.training(model={"use_attention": True})
 
     stop = {
-        "training_iteration": args.stop_iters,
-        "num_env_steps_sampled_lifetime": args.stop_timesteps,
+        TRAINING_ITERATION: args.stop_iters,
+        NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
         f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
     }
 

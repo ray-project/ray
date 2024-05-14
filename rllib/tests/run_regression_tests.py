@@ -270,16 +270,16 @@ if __name__ == "__main__":
                 # we evaluate against an actual environment.
                 check_eval = bool(exp["config"].get("evaluation_interval"))
                 reward_mean = (
-                    t.last_result["evaluation_results"]["env_runner_results"][
-                        "episode_return_mean"
+                    t.last_result[EVALUATION_RESULTS][ENV_RUNNER_RESULTS][
+                        EPISODE_RETURN_MEAN
                     ]
                     if check_eval
                     else (
                         # Some algos don't store sampler results under `env_runners`
                         # e.g. ARS. Need to keep this logic around for now.
-                        t.last_result["env_runner_results"]["episode_return_mean"]
-                        if "env_runner_results" in t.last_result
-                        else t.last_result["episode_return_mean"]
+                        t.last_result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
+                        if ENV_RUNNER_RESULTS in t.last_result
+                        else t.last_result[EPISODE_RETURN_MEAN]
                     )
                 )
 
@@ -288,7 +288,7 @@ if __name__ == "__main__":
                 # not, use `episode_return_mean`.
                 if check_eval:
                     min_reward = t.stopping_criterion.get(
-                        "evaluation_results/env_runner_results/episode_return_mean",
+                        f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}",
                         t.stopping_criterion.get(
                             f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
                         ),

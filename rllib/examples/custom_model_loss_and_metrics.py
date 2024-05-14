@@ -87,9 +87,7 @@ if __name__ == "__main__":
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
     )
 
-    stop = {
-        "training_iteration": args.stop_iters,
-    }
+    stop = {TRAINING_ITERATION: args.stop_iters}
 
     tuner = tune.Tuner(
         args.run,

@@ -1,6 +1,7 @@
 import argparse
 
 from ray import tune, air
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.ppo import PPOConfig
 
 # Note:
@@ -72,7 +73,7 @@ def main(pargs):
     tuner = tune.Tuner(
         "PPO",
         run_config=air.RunConfig(
-            stop={"training_iteration": 1 if pargs.smoke_test else pargs.num_iters},
+            stop={TRAINING_ITERATION: 1 if pargs.smoke_test else pargs.num_iters},
         ),
         param_space=config,
     )

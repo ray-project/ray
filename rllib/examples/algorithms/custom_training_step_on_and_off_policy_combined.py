@@ -10,6 +10,7 @@ import os
 
 import ray
 from ray import air, tune
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dqn.dqn import DQNConfig
@@ -32,6 +33,7 @@ from ray.rllib.utils.metrics import (
     EPISODE_RETURN_MEAN,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_TARGET_UPDATES,
     LAST_TARGET_UPDATE_TS,
 )
@@ -205,8 +207,8 @@ if __name__ == "__main__":
     )
 
     stop = {
-        "training_iteration": args.stop_iters,
-        "num_env_steps_sampled_lifetime": args.stop_timesteps,
+        TRAINING_ITERATION: args.stop_iters,
+        NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
         f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
     }
 

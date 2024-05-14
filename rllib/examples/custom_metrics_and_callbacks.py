@@ -197,9 +197,7 @@ if __name__ == "__main__":
     tuner = tune.Tuner(
         "PPO",
         run_config=air.RunConfig(
-            stop={
-                "training_iteration": args.stop_iters,
-            },
+            stop={TRAINING_ITERATION: args.stop_iters},
         ),
         param_space=config,
     )

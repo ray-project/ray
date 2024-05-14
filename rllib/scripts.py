@@ -108,7 +108,7 @@ def run(example_id: str = typer.Argument(..., help="Example ID to run.")):
         checkpoint_freq=1,
         checkpoint_at_end=True,
         keep_checkpoints_num=None,
-        checkpoint_score_attr="training_iteration",
+        checkpoint_score_attr=TRAINING_ITERATION,
         framework=FrameworkEnum.tf2,
         v=True,
         vv=False,

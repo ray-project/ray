@@ -60,18 +60,18 @@ my_multi_agent_progress_reporter = tune.CLIReporter(
     # exact path.
     metric_columns={
         **{
-            "training_iteration": "iter",
+            TRAINING_ITERATION: "iter",
             "time_total_s": "total time (s)",
-            "num_env_steps_sampled_lifetime": "ts",
+            NUM_ENV_STEPS_SAMPLED_LIFETIME: "ts",
             # RLlib always sums up all agents' rewards and reports it under:
-            # result_dict[env_runner_results][episode_return_mean].
+            # result_dict[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN].
             f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": "combined return",
         },
         # Because RLlib sums up all returns of all agents, we would like to also
         # see the individual agents' returns. We can find these under the result dict's
-        # 'env_runner_results/module_episode_returns_mean/' key (then the policy ID):
+        # 'env_runners/module_episode_returns_mean/' key (then the policy ID):
         **{
-            f"env_runner_results/module_episode_returns_mean/{pid}": f"return {pid}"
+            f"{ENV_RUNNER_RESULTS}/module_episode_returns_mean/{pid}": f"return {pid}"
             for pid in ["policy1", "policy2", "policy3"]
         },
     },

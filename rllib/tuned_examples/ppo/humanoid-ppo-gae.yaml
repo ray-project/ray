@@ -2,7 +2,7 @@ humanoid-ppo-gae:
     env: Humanoid-v1
     run: PPO
     stop:
-        env_runner_results/episode_return_mean: 6000
+        env_runners/episode_return_mean: 6000
     config:
         # Works for both torch and tf.
         framework: torch

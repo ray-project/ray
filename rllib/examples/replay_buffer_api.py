@@ -65,8 +65,8 @@ if __name__ == "__main__":
     )
 
     stop_config = {
-        "num_env_steps_sampled_lifetime": args.stop_timesteps,
-        "training_iteration": args.stop_iters,
+        NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
+        TRAINING_ITERATION: args.stop_iters,
     }
 
     results = tune.Tuner(

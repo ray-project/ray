@@ -92,7 +92,7 @@ if __name__ == "__main__":
         "PPO",
         param_space=config.to_dict(),
         run_config=air.RunConfig(
-            stop={"training_iteration": args.pre_training_iters},
+            stop={TRAINING_ITERATION: args.pre_training_iters},
             verbose=1,
             checkpoint_config=air.CheckpointConfig(
                 checkpoint_frequency=1, checkpoint_at_end=True
@@ -114,8 +114,8 @@ if __name__ == "__main__":
     # Start our actual experiment.
     stop = {
         f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
-        "num_env_steps_sampled_lifetime": args.stop_timesteps,
-        "training_iteration": args.stop_iters,
+        NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
+        TRAINING_ITERATION: args.stop_iters,
     }
 
     class RestoreWeightsCallback(DefaultCallbacks):

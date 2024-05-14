@@ -73,9 +73,11 @@ from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
     EVALUATION_RESULTS,
     NUM_EPISODES,
     NUM_ENV_STEPS_SAMPLED,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.test_utils import (
@@ -191,13 +193,11 @@ class AssertEvalCallback(DefaultCallbacks):
                     "Number of run evaluation timesteps: "
                     f"{num_timesteps_reported} (ok)!"
                 )
-        # Expect at least evaluation_results/env_runner_results to be always available.
+        # Expect at least evaluation/env_runners to be always available.
         elif algorithm.config.always_attach_evaluation_results and (
             not eval_env_runner_results
         ):
-            raise KeyError(
-                "`evaluation_results->env_runner_results` not found in result dict!"
-            )
+            raise KeyError("`evaluation->env_runners` not found in result dict!")
 
 
 if __name__ == "__main__":
@@ -263,9 +263,9 @@ if __name__ == "__main__":
         )
 
     stop = {
-        "training_iteration": args.stop_iters,
-        "evaluation_results/env_runner_results/episode_return_mean": args.stop_reward,
-        "num_env_steps_sampled_lifetime": args.stop_timesteps,
+        TRAINING_ITERATION: args.stop_iters,
+        f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": args.stop_timesteps,
     }
 
     run_rllib_example_script_experiment(
@@ -273,7 +273,7 @@ if __name__ == "__main__":
         args,
         stop=stop,
         success_metric={
-            "evaluation_results/env_runner_results/episode_return_mean": (
+            f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": (
                 args.stop_reward
             ),
         },

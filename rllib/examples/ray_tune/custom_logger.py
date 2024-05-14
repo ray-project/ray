@@ -70,7 +70,7 @@ class MyPrintLogger(Logger):
 
     def on_result(self, result: dict):
         # Define, what should happen on receiving a `result` (dict).
-        mean_return = result["env_runner_results"]["episode_return_mean"]
+        mean_return = result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
         pi_loss = result["learner_results"]["default_policy"]["policy_loss"]
         print(f"{self.prefix} " f"Avg-return: {mean_return} " f"pi-loss: {pi_loss}")
 

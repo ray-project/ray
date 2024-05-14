@@ -31,6 +31,7 @@ from typing import (
 import tree  # pip install dm_tree
 
 import ray
+from ray.air.constants import TRAINING_ITERATION
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.actor import ActorHandle
 from ray.train import Checkpoint
@@ -2876,7 +2877,7 @@ class Algorithm(Trainable, AlgorithmBase):
             state["counters"] = self._counters
 
         # Save current `training_iteration`.
-        state["training_iteration"] = self.training_iteration
+        state[TRAINING_ITERATION] = self.training_iteration
 
         return state
 
@@ -2949,8 +2950,8 @@ class Algorithm(Trainable, AlgorithmBase):
         if "counters" in state:
             self._counters = state["counters"]
 
-        if "training_iteration" in state:
-            self._iteration = state["training_iteration"]
+        if TRAINING_ITERATION in state:
+            self._iteration = state[TRAINING_ITERATION]
 
     @staticmethod
     def _checkpoint_info_to_algorithm_state(

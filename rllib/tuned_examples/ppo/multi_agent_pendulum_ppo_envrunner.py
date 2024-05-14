@@ -41,7 +41,7 @@ config = (
 )
 
 stop = {
-    "num_env_steps_sampled_lifetime": 500000,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME: 500000,
     # Divide by num_agents for actual reward per agent.
     f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": -800.0,
 }

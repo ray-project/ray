@@ -20,6 +20,10 @@ NUM_ENV_STEPS_SAMPLED_FOR_EVALUATION_THIS_ITER = (
 NUM_MODULE_STEPS_SAMPLED = "num_module_steps_sampled"
 NUM_MODULE_STEPS_SAMPLED_LIFETIME = "num_module_steps_sampled_lifetime"
 
+EPISODE_DURATION_SEC_MEAN = "episode_duration_sec_mean"
+EPISODE_LEN_MEAN = "episode_len_mean"
+EPISODE_LEN_MAX = "episode_len_max"
+EPISODE_LEN_MIN = "episode_len_min"
 EPISODE_RETURN_MEAN = "episode_return_mean"
 EPISODE_RETURN_MAX = "episode_return_max"
 EPISODE_RETURN_MIN = "episode_return_min"
