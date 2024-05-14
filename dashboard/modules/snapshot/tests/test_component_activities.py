@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+from typing import Optional
 import jsonschema
 
 import pprint
@@ -169,6 +170,80 @@ time.sleep({sleep_time_s})
         return True
 
     wait_for_condition(verify_driver_response)
+
+
+def test_component_activity_pending_task(ray_start_with_dashboard):
+    # Verify pending tasks are affecting active status.
+
+    webui_url = ray_start_with_dashboard["webui_url"]
+    webui_url = format_web_url(webui_url)
+
+    driver_template = """
+import ray
+import time
+
+ray.init(address="auto", namespace="{namespace}")
+
+@ray.remote
+def f(timeout):
+    time.sleep(timeout)
+    return 0
+
+# First should be inactive for {timeout} seconds
+time.sleep({timeout})
+# Second it will be active for {timeout} seconds
+ray.get([f.remote({timeout})])
+# Third it will be inactive.
+"""
+    run_string_as_driver_nonblocking(
+        driver_template.format(namespace="my_namespace", timeout=5), None
+    )
+
+    def verify_driver_response(is_active: bool, min_last_activity_at: Optional[float]):
+        response = requests.get(
+            f"{webui_url}/api/component_activities?use_pending_tasks=true"
+        )
+        response.raise_for_status()
+
+        # Validate schema of response
+        data = response.json()
+        schema_path = os.path.join(
+            os.path.dirname(dashboard.__file__),
+            "modules/snapshot/component_activities_schema.json",
+        )
+
+        jsonschema.validate(instance=data, schema=json.load(open(schema_path)))
+
+        # Validate ray_activity_response field can be cast to RayActivityResponse object
+        driver_ray_activity_response = RayActivityResponse(**data["driver"])
+        print(driver_ray_activity_response)
+
+        assert (
+            driver_ray_activity_response.is_active == "ACTIVE"
+            if is_active
+            else "INACTIVE"
+        )
+
+        # if min_last_activity_at is not None, verify last_activity_at is updated
+        if min_last_activity_at is not None:
+            assert driver_ray_activity_response.last_activity_at is not None
+            assert driver_ray_activity_response.last_activity_at >= min_last_activity_at
+
+        return driver_ray_activity_response.timestamp
+
+    # Verify driver is not considered active for the first timeout
+    timestamp = verify_driver_response(is_active=False, min_last_activity_at=None)
+
+    # Verify driver is then switched to active as it handles pending tasks
+    wait_for_condition(
+        lambda: verify_driver_response(is_active=True, min_last_activity_at=None)
+    )
+
+    # Verify driver is back to inactive after task completes
+    wait_for_condition(
+        lambda: verify_driver_response(is_active=False, min_last_activity_at=timestamp),
+        timeout=30,
+    )
 
 
 if __name__ == "__main__":

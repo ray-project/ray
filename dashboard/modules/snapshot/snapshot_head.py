@@ -15,6 +15,13 @@ from ray._private.storage import _load_class
 from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
 from ray.dashboard.modules.job.common import JobInfoStorageClient
 from ray._private.pydantic_compat import BaseModel, Extra, Field, validator
+from ray.util.state.state_manager import (
+    StateDataSourceClient,
+)
+from ray.dashboard.state_aggregator import StateAPIManager
+from ray.util.state.common import (
+    ListApiOptions,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -85,6 +92,11 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         self._thread_pool = concurrent.futures.ThreadPoolExecutor(
             max_workers=2, thread_name_prefix="api_head"
         )
+        self._state_api_data_source_client = StateDataSourceClient(
+            dashboard_head.aiogrpc_gcs_channel, self._dashboard_head.gcs_aio_client
+        )
+        # Set up the state API in order to fetch task information.
+        self._state_api = StateAPIManager(self._state_api_data_source_client)
 
     @routes.get("/api/actors/kill")
     async def kill_actor_gcs(self, req) -> aiohttp.web.Response:
@@ -116,13 +128,19 @@ class APIHead(dashboard_utils.DashboardHeadModule):
     @routes.get("/api/component_activities")
     async def get_component_activities(self, req) -> aiohttp.web.Response:
         timeout = req.query.get("timeout", None)
+        use_pending_tasks = req.query.get("use_pending_tasks", False) in (
+            "true",
+            "True",
+        )
         if timeout and timeout.isdigit():
             timeout = int(timeout)
         else:
             timeout = SNAPSHOT_API_TIMEOUT_SECONDS
 
         # Get activity information for driver
-        driver_activity_info = await self._get_job_activity_info(timeout=timeout)
+        driver_activity_info = await self._get_job_activity_info(
+            timeout=timeout, use_pending_tasks=use_pending_tasks
+        )
         resp = {"driver": dict(driver_activity_info)}
 
         if RAY_CLUSTER_ACTIVITY_HOOK in os.environ:
@@ -173,7 +191,9 @@ class APIHead(dashboard_utils.DashboardHeadModule):
             status=aiohttp.web.HTTPOk.status_code,
         )
 
-    async def _get_job_activity_info(self, timeout: int) -> RayActivityResponse:
+    async def _get_job_activity_info(
+        self, timeout: int, use_pending_tasks: bool
+    ) -> RayActivityResponse:
         # Returns if there is Ray activity from drivers (job).
         # Drivers in namespaces that start with _ray_internal_ are not
         # considered activity.
@@ -189,6 +209,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
             latest_job_end_time = 0
             for job_table_entry in reply.job_info_list:
                 is_dead = bool(job_table_entry.is_dead)
+                is_running_tasks = bool(job_table_entry.is_running_tasks)
                 in_internal_namespace = job_table_entry.config.ray_namespace.startswith(
                     "_ray_internal_"
                 )
@@ -197,8 +218,34 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                     if job_table_entry.end_time
                     else latest_job_end_time
                 )
+
                 if not is_dead and not in_internal_namespace:
-                    num_active_drivers += 1
+                    if not use_pending_tasks or is_running_tasks:
+                        num_active_drivers += 1
+                    else:
+                        # For alive idle drivers, the latest job end time should be
+                        # the latest end time of its tasks.
+                        option = ListApiOptions(
+                            filters=[
+                                ("job_id", "=", job_table_entry.job_id.hex()),
+                            ],
+                            detail=True,
+                            timeout=timeout,
+                        )
+                        tasks = await self._state_api.list_tasks(option=option)
+                        if tasks.result:
+                            task_max_end_time = 0
+                            [
+                                task_max_end_time := max(
+                                    task_max_end_time, task.get("end_time_ms", 0) or 0
+                                )
+                                for task in tasks.result
+                            ]
+                            latest_job_end_time = (
+                                max(latest_job_end_time, task_max_end_time)
+                                if task_max_end_time
+                                else latest_job_end_time
+                            )
 
             current_timestamp = datetime.now().timestamp()
             # Latest job end time must be before or equal to the current timestamp.
