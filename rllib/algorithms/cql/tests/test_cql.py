@@ -64,9 +64,9 @@ class TestCQL(unittest.TestCase):
                 evaluation_duration=10,
                 evaluation_config=cql.CQLConfig.overrides(input_="sampler"),
                 evaluation_parallel_to_training=False,
-                evaluation_num_workers=2,
+                evaluation_num_env_runners=2,
             )
-            .rollouts(num_rollout_workers=0)
+            .env_runners(num_env_runners=0)
             .reporting(min_time_s_per_iteration=0)
         )
         num_iterations = 4

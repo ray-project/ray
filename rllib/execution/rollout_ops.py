@@ -2,7 +2,7 @@ import logging
 from typing import List, Optional, Union
 import tree
 
-from ray.rllib.evaluation.worker_set import WorkerSet
+from ray.rllib.env.env_runner_group import EnvRunnerGroup
 from ray.rllib.policy.sample_batch import (
     SampleBatch,
     DEFAULT_POLICY_ID,
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 @ExperimentalAPI
 def synchronous_parallel_sample(
     *,
-    worker_set: WorkerSet,
+    worker_set: EnvRunnerGroup,
     max_agent_steps: Optional[int] = None,
     max_env_steps: Optional[int] = None,
     concat: bool = True,
@@ -38,7 +38,7 @@ def synchronous_parallel_sample(
     `remote_fn()`, which will be applied to the worker(s) instead.
 
     Args:
-        worker_set: The WorkerSet to use for sampling.
+        worker_set: The EnvRunnerGroup to use for sampling.
         remote_fn: If provided, use `worker.apply.remote(remote_fn)` instead
             of `worker.sample.remote()` to generate the requests.
         max_agent_steps: Optional number of agent steps to be included in the
@@ -98,10 +98,9 @@ def synchronous_parallel_sample(
                 (
                     (lambda w: w.sample())
                     if not _return_metrics
-                    else (lambda w: (w.sample(), w.get_metrics))
+                    else (lambda w: (w.sample(), w.get_metrics()))
                 ),
                 local_worker=False,
-                healthy_only=True,
                 timeout_seconds=sample_timeout_s,
             )
             # Nothing was returned (maybe all workers are stalling) or no healthy
@@ -114,7 +113,7 @@ def synchronous_parallel_sample(
                         "No samples returned from remote workers. If you have a "
                         "slow environment or model, consider increasing the "
                         "`sample_timeout_s` or decreasing the "
-                        "`rollout_fragment_length` in `AlgorithmConfig.rollouts()."
+                        "`rollout_fragment_length` in `AlgorithmConfig.env_runners()."
                     )
                 elif worker_set.num_healthy_remote_workers() <= 0:
                     logger.warning(
@@ -123,8 +122,8 @@ def synchronous_parallel_sample(
                 break
 
             if _return_metrics:
-                sampled_data = [s[0] for s in sampled_data]
                 stats_dicts = [s[1] for s in sampled_data]
+                sampled_data = [s[0] for s in sampled_data]
 
         # Update our counters for the stopping criterion of the while loop.
         if _return_metrics:

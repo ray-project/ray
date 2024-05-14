@@ -447,7 +447,7 @@ def _validate_batch_wait_timeout_s(batch_wait_timeout_s):
 
 T = TypeVar("T")
 R = TypeVar("R")
-F = TypeVar("F", bound=Callable[[List[T]], List[R]])
+F = TypeVar("F", Callable[[List[T]], List[R]], Callable[[Any, List[T]], List[R]])
 G = TypeVar("G", bound=Callable[[T], R])
 
 

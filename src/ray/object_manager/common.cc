@@ -14,6 +14,7 @@
 
 #include "ray/object_manager/common.h"
 
+#include "absl/functional/bind_front.h"
 #include "absl/strings/str_format.h"
 
 namespace ray {
@@ -113,8 +114,8 @@ Status PlasmaObjectHeader::WriteAcquire(Semaphores &sem,
   RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.object_sem));
   RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem));
 
-  RAY_CHECK_EQ(num_read_acquires_remaining, 0);
-  RAY_CHECK_EQ(num_read_releases_remaining, 0);
+  RAY_CHECK_EQ(num_read_acquires_remaining, 0UL);
+  RAY_CHECK_EQ(num_read_releases_remaining, 0UL);
 
   version++;
   is_sealed = false;
@@ -140,11 +141,12 @@ Status PlasmaObjectHeader::WriteRelease(Semaphores &sem) {
 
 Status PlasmaObjectHeader::ReadAcquire(Semaphores &sem,
                                        int64_t version_to_read,
-                                       int64_t *version_read) {
+                                       int64_t &version_read) {
   RAY_CHECK(sem.header_sem);
 
   RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem));
 
+  // TODO(jhumphri): Wouldn't a futex be better here than polling?
   // Wait for the requested version (or a more recent one) to be sealed.
   while (version < version_to_read || !is_sealed) {
     RAY_CHECK_EQ(sem_post(sem.header_sem), 0);
@@ -155,10 +157,10 @@ Status PlasmaObjectHeader::ReadAcquire(Semaphores &sem,
   bool success = false;
   if (num_readers == -1) {
     // Object is a normal immutable object. Read succeeds.
-    *version_read = 0;
+    version_read = 0;
     success = true;
   } else {
-    *version_read = version;
+    version_read = version;
     if (version == version_to_read && num_read_acquires_remaining > 0) {
       // This object is at the right version and still has reads remaining. Read
       // succeeds.
@@ -187,8 +189,9 @@ Status PlasmaObjectHeader::ReadRelease(Semaphores &sem, int64_t read_version) {
       << " at read start";
 
   if (num_readers != -1) {
+    RAY_CHECK_GT(num_read_releases_remaining, 0UL);
     num_read_releases_remaining--;
-    RAY_CHECK_GE(num_read_releases_remaining, 0);
+    RAY_CHECK_GE(num_read_releases_remaining, 0UL);
     all_readers_done = !num_read_releases_remaining;
   }
 
@@ -220,7 +223,7 @@ Status PlasmaObjectHeader::WriteRelease(Semaphores &sem) {
 
 Status PlasmaObjectHeader::ReadAcquire(Semaphores &sem,
                                        int64_t version_to_read,
-                                       int64_t *version_read) {
+                                       int64_t &version_read) {
   return Status::NotImplemented("Not supported on Windows.");
 }
 

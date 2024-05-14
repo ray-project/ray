@@ -263,9 +263,9 @@ class ParquetMetadataProvider(FileMetadataProvider):
     ) -> Optional[List[Any]]:
         """Pre-fetches file metadata for all Parquet file fragments in a single batch.
 
-        Subsets of the metadata returned will be provided as input to
-        subsequent calls to :meth:`~FileMetadataProvider._get_block_metadata` together
-        with their corresponding Parquet file fragments.
+        Subsets of the metadata returned will be provided as input to subsequent calls
+        to ``_get_block_metadata`` together with their corresponding Parquet file
+        fragments.
 
         Implementations that don't support pre-fetching file metadata shouldn't
         override this method.

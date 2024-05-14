@@ -6,7 +6,7 @@ from ray.rllib.algorithms.sac import SACConfig
 
 def create_appo_cartpole_checkpoint(output_dir):
     # enable_connectors defaults to True. Just trying to be explicit here.
-    config = APPOConfig().environment("CartPole-v1").rollouts(enable_connectors=True)
+    config = APPOConfig().environment("CartPole-v1").env_runners(enable_connectors=True)
     # Build algorithm object.
     algo = config.build()
     algo.save(checkpoint_dir=output_dir)
@@ -22,9 +22,9 @@ def create_open_spiel_checkpoint(output_dir):
         # Intentionally create a TF2 policy to demonstrate that we can restore
         # and use a TF policy in a Torch training stack.
         .framework("tf2")
-        .rollouts(
-            num_rollout_workers=1,
-            num_envs_per_worker=5,
+        .env_runners(
+            num_env_runners=1,
+            num_envs_per_env_runner=5,
             # We will be restoring a TF2 policy.
             # So tell the RolloutWorkers to enable TF eager exec as well, even if
             # framework is set to torch.

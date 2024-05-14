@@ -190,6 +190,7 @@ py_test_module_list(
     "test_shuffle.py",
     "test_state_api_log.py",
     "test_state_api_summary.py",
+    "test_structured_logging.py",
     "test_tempfile.py",
     "test_tensorflow.py",
     "test_tls_auth.py",
@@ -284,7 +285,6 @@ py_test_module_list(
     "test_annotations.py",
     "test_args.py",
     "test_asyncio_cluster.py",
-    "test_channel.py",
     "test_concurrency_group.py",
     "test_component_failures.py",
     "test_cross_language.py",
@@ -313,6 +313,15 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_channel.py",
+  ],
+  size = "medium",
+  tags = ["exclusive", "accelerated_dag", "no_windows", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
       "test_redis_tls.py",
   ],
   size = "small",
@@ -328,6 +337,15 @@ py_test_module_list(
   ],
   size = "medium",
   tags = ["exclusive", "ha_integration", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
+    "test_network_failure_e2e.py",
+  ],
+  size = "medium",
+  tags = ["exclusive", "ha_integration", "no_windows", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 

@@ -11,9 +11,6 @@ from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionResources,
 )
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
-from ray.data._internal.execution.operators.actor_pool_map_operator import (
-    ActorPoolMapOperator,
-)
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
@@ -419,16 +416,14 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             )
             # Calculate the minimum amount of resources to reserve.
             # 1. Make sure the reserved resources are at least to allow one task.
-            min_reserved = op.incremental_resource_usage(
-                consider_autoscaling=False
-            ).copy()
+            min_reserved = op.incremental_resource_usage().copy()
             # 2. To ensure that all GPUs are utilized, reserve enough resource budget
             # to launch one task for each worker.
-            if (
-                isinstance(op, ActorPoolMapOperator)
-                and op.base_resource_usage().gpu > 0
-            ):
-                min_reserved.object_store_memory *= op._autoscaling_policy.min_workers
+            if op.base_resource_usage().gpu > 0:
+                min_workers = sum(
+                    pool.min_size() for pool in op.get_autoscaling_actor_pools()
+                )
+                min_reserved.object_store_memory *= min_workers
             # Also include `reserved_for_op_outputs`.
             min_reserved.object_store_memory += self._reserved_for_op_outputs[op]
             # Total resources we want to reserve for this operator.

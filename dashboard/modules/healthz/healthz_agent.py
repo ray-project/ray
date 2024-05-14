@@ -50,4 +50,4 @@ class HealthzAgent(dashboard_utils.DashboardAgentModule):
 
     @staticmethod
     def is_minimal_module():
-        return True
+        return False

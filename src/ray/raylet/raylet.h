@@ -16,12 +16,10 @@
 
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
-#include <list>
 
 // clang-format off
 #include "ray/raylet/node_manager.h"
 #include "ray/object_manager/object_manager.h"
-#include "ray/common/scheduling/resource_set.h"
 #include "ray/common/asio/instrumented_io_context.h"
 // clang-format on
 
@@ -70,6 +68,8 @@ class Raylet {
   ~Raylet();
 
   NodeID GetNodeId() const { return self_node_id_; }
+
+  NodeManager &node_manager() { return node_manager_; }
 
  private:
   /// Register GCS client.

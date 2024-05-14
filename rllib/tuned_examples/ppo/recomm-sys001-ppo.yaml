@@ -43,7 +43,7 @@ recomm-sys001-ppo:
 
         # Evaluation settings.
         evaluation_interval: 1
-        evaluation_num_workers: 4
+        evaluation_num_env_runners: 4
         evaluation_duration: 200
         evaluation_duration_unit: episodes
         evaluation_parallel_to_training: true

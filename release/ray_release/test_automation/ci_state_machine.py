@@ -31,8 +31,10 @@ class CITestStateMachine(TestStateMachine):
         change = (from_state, to_state)
         if change == (TestState.PASSING, TestState.CONSITENTLY_FAILING):
             self._create_github_issue()
+            self._trigger_bisect()
         elif change == (TestState.FAILING, TestState.CONSITENTLY_FAILING):
             self._create_github_issue()
+            self._trigger_bisect()
         elif change == (TestState.CONSITENTLY_FAILING, TestState.PASSING):
             self._close_github_issue()
         elif change == (TestState.CONSITENTLY_FAILING, TestState.FLAKY):

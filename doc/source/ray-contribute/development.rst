@@ -135,7 +135,7 @@ To build Ray on Ubuntu, run the following commands:
                 --slave /usr/bin/g++ g++ /usr/bin/g++-9 \
                 --slave /usr/bin/gcov gcov /usr/bin/gcov-9
 
-  # Install Bazel.
+  # Install Bazelisk.
   ci/env/install-bazel.sh
 
   # Install node version manager and node 14
@@ -143,6 +143,9 @@ To build Ray on Ubuntu, run the following commands:
   nvm install 14
   nvm use 14
 
+.. note::
+  The `install-bazel.sh` script installs `bazelisk` for building Ray. 
+  If you prefer to use `bazel`, only version `5.4.1` is currently supported.
 
 For RHELv8 (Redhat EL 8.0-64 Minimal), run the following commands:
 
@@ -177,7 +180,7 @@ Enter into the project directory, for example:
 
 .. code-block:: shell
 
-    cd ray
+  cd ray
 
 Now you can build the dashboard. From inside of your local Ray project directory enter into the dashboard client directory:
 
@@ -207,7 +210,9 @@ Enter into the ``python/`` directory inside of the Ray project directory and ins
 
   # Install Ray.
   cd python/
-  # You may need to set the following two env vars if your platform is MacOS ARM64(M1).
+  # Install required dependencies.
+  pip install -r requirements.txt
+  # You may need to set the following two env vars if you have a macOS ARM64(M1) platform.
   # See https://github.com/grpc/grpc/issues/25082 for more details.
   # export GRPC_PYTHON_BUILD_SYSTEM_OPENSSL=1
   # export GRPC_PYTHON_BUILD_SYSTEM_ZLIB=1
@@ -318,7 +323,7 @@ Dependencies for the linter (``scripts/format.sh``) can be installed with:
 
 .. code-block:: shell
 
- pip install -r python/requirements/lint-requirements.txt
+ pip install -c python/requirements_compiled.txt -r python/requirements/lint-requirements.txt
 
 Dependencies for running Ray unit tests under ``python/ray/tests`` can be installed with:
 
@@ -338,7 +343,7 @@ the moment, we have configured a ``.pre-commit-config.yaml`` which runs all the 
 opt-in, with any formatting changes made by ``scripts/format.sh`` expected to be caught by
 ``pre-commit`` as well. To start using ``pre-commit``:
 
-.. code-block: shell
+.. code-block:: shell
 
    pip install pre-commit
    pre-commit install
@@ -347,7 +352,7 @@ This will install pre-commit into the current environment, and enable pre-commit
 you commit new code changes with git. To temporarily skip pre-commit checks, use the ``-n`` or
 ``--no-verify`` flag when committing:
 
-.. code-block: shell
+.. code-block:: shell
 
    git commit -n
 

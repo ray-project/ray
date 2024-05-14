@@ -1,4 +1,3 @@
-
 // Copyright 2017 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -98,14 +97,32 @@ ObjectLocation CreateObjectLocation(
     node_ids.push_back(NodeID::FromBinary(object_info.node_ids(i)));
   }
   bool is_spilled = !object_info.spilled_url().empty();
+  // If the object size is unknown it's unset, and we use -1 to indicate that.
+  int64_t object_size = object_info.object_size() == 0 ? -1 : object_info.object_size();
   return ObjectLocation(NodeID::FromBinary(object_info.primary_node_id()),
-                        object_info.object_size(),
+                        object_size,
                         std::move(node_ids),
                         is_spilled,
                         object_info.spilled_url(),
                         NodeID::FromBinary(object_info.spilled_node_id()),
                         object_info.did_spill());
 }
+
+std::optional<ObjectLocation> TryGetLocalObjectLocation(
+    ReferenceCounter &reference_counter, const ObjectID &object_id) {
+  if (!reference_counter.HasReference(object_id)) {
+    return std::nullopt;
+  }
+  rpc::WorkerObjectLocationsPubMessage object_info;
+  reference_counter.FillObjectInformation(object_id, &object_info);
+  // Note: there can be a TOCTOU race condition: HasReference returned true, but before
+  // FillObjectInformation the object is released. Hence we check the ref_removed field.
+  if (object_info.ref_removed()) {
+    return std::nullopt;
+  }
+  return CreateObjectLocation(object_info);
+}
+
 }  // namespace
 
 CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_id)
@@ -380,8 +397,22 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       }));
 
 #if defined(__APPLE__) || defined(__linux__)
-  experimental_mutable_object_manager_ =
-      std::make_shared<experimental::MutableObjectManager>();
+  // TODO(jhumphri): Combine with implementation in NodeManager.
+  // TODO(jhumphri): Pool these connections with the other clients in CoreWorker connected
+  // to the raylet.
+  auto raylet_channel_client_factory = [this](const NodeID &node_id) {
+    auto node_info = gcs_client_->Nodes().Get(node_id);
+    RAY_CHECK(node_info) << "No GCS info for node " << node_id;
+    auto grpc_client = rpc::NodeManagerWorkerClient::make(
+        node_info->node_manager_address(),
+        node_info->node_manager_port(),
+        *experimental_mutable_object_provider_->client_call_manager());
+    return std::shared_ptr<raylet::RayletClient>(
+        new raylet::RayletClient(std::move(grpc_client)));
+  };
+  experimental_mutable_object_provider_ =
+      std::make_shared<experimental::MutableObjectProvider>(
+          plasma_store_provider_->store_client(), raylet_channel_client_factory);
 #endif
 
   auto push_error_callback = [this](const JobID &job_id,
@@ -1384,16 +1415,16 @@ Status CoreWorker::ExperimentalChannelWriteAcquire(
     uint64_t data_size,
     int64_t num_readers,
     std::shared_ptr<Buffer> *data) {
-  return experimental_mutable_object_manager_->WriteAcquire(
+  return experimental_mutable_object_provider_->WriteAcquire(
       object_id, data_size, metadata->Data(), metadata->Size(), num_readers, *data);
 }
 
 Status CoreWorker::ExperimentalChannelWriteRelease(const ObjectID &object_id) {
-  return experimental_mutable_object_manager_->WriteRelease(object_id);
+  return experimental_mutable_object_provider_->WriteRelease(object_id);
 }
 
 Status CoreWorker::ExperimentalChannelSetError(const ObjectID &object_id) {
-  return experimental_mutable_object_manager_->SetError(object_id);
+  return experimental_mutable_object_provider_->SetError(object_id);
 }
 
 Status CoreWorker::SealOwned(const ObjectID &object_id,
@@ -1441,56 +1472,92 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
 
 Status CoreWorker::ExperimentalChannelReadRelease(
     const std::vector<ObjectID> &object_ids) {
-  RAY_CHECK(object_ids.size() == 1);
-  return experimental_mutable_object_manager_->ReadRelease(object_ids[0]);
+  RAY_CHECK_EQ(object_ids.size(), 1UL);
+  return experimental_mutable_object_provider_->ReadRelease(object_ids[0]);
 }
 
-Status CoreWorker::ExperimentalChannelRegisterReader(const ObjectID &object_id) {
-  return ExperimentalChannelRegisterWriterOrReader(object_id, /*is_writer=*/false);
+Status CoreWorker::ExperimentalRegisterMutableObjectWriter(const ObjectID &object_id,
+                                                           const NodeID *node_id) {
+  experimental_mutable_object_provider_->RegisterWriterChannel(object_id, node_id);
+  return Status::OK();
 }
 
-Status CoreWorker::ExperimentalChannelRegisterWriter(const ObjectID &object_id) {
-  return ExperimentalChannelRegisterWriterOrReader(object_id, /*is_writer=*/true);
-}
-
-Status CoreWorker::ExperimentalChannelRegisterWriterOrReader(const ObjectID &object_id,
-                                                             bool is_writer) {
-  std::unique_ptr<plasma::MutableObject> object = nullptr;
-  RAY_RETURN_NOT_OK(
-      plasma_store_provider_->GetExperimentalMutableObject(object_id, &object));
-  RAY_CHECK(object) << "Mutable object must be local to be registered";
-  if (is_writer) {
-    RAY_RETURN_NOT_OK(experimental_mutable_object_manager_->RegisterWriterChannel(
-        object_id, std::move(object)));
-  } else {
-    RAY_RETURN_NOT_OK(experimental_mutable_object_manager_->RegisterReaderChannel(
-        object_id, std::move(object)));
+Status CoreWorker::ExperimentalRegisterMutableObjectReaderRemote(
+    const ObjectID &writer_object_id,
+    const ActorID &reader_actor,
+    int64_t num_readers,
+    const ObjectID &reader_object_id) {
+  rpc::Address addr;
+  {
+    std::promise<void> promise;
+    RAY_CHECK(gcs_client_->Actors()
+                  .AsyncGet(reader_actor,
+                            [&addr, &promise](
+                                Status status,
+                                const boost::optional<rpc::ActorTableData> &result) {
+                              RAY_CHECK(result);
+                              if (result) {
+                                addr.set_ip_address(result->address().ip_address());
+                                addr.set_port(result->address().port());
+                                addr.set_worker_id(result->address().worker_id());
+                              }
+                              promise.set_value();
+                            })
+                  .ok());
+    promise.get_future().wait();
   }
+
+  // TODO(jhumphri): Support case where there are readers on multiple different nodes.
+  // Currently, this code only supports the case where all readers are on a single node.
+  {
+    std::shared_ptr<rpc::CoreWorkerClientInterface> conn =
+        core_worker_client_pool_->GetOrConnect(addr);
+
+    rpc::RegisterMutableObjectReaderRequest req;
+    req.set_writer_object_id(writer_object_id.Binary());
+    req.set_num_readers(num_readers);
+    req.set_reader_object_id(reader_object_id.Binary());
+    rpc::RegisterMutableObjectReaderReply reply;
+
+    std::promise<void> promise;
+    conn->RegisterMutableObjectReader(
+        req,
+        [&promise](const Status &status,
+                   const rpc::RegisterMutableObjectReaderReply &reply) {
+          RAY_CHECK(status.ok());
+          promise.set_value();
+        });
+    promise.get_future().wait();
+  }
+
+  return Status::OK();
+}
+
+Status CoreWorker::ExperimentalRegisterMutableObjectReader(const ObjectID &object_id) {
+  experimental_mutable_object_provider_->RegisterReaderChannel(object_id);
   return Status::OK();
 }
 
 Status CoreWorker::Get(const std::vector<ObjectID> &ids,
                        const int64_t timeout_ms,
-                       std::vector<std::shared_ptr<RayObject>> *results) {
+                       std::vector<std::shared_ptr<RayObject>> &results) {
   std::unique_ptr<ScopedTaskMetricSetter> state = nullptr;
   if (options_.worker_type == WorkerType::WORKER) {
     // We track the state change only from workers.
     state = std::make_unique<ScopedTaskMetricSetter>(
         worker_context_, task_counter_, rpc::TaskStatus::RUNNING_IN_RAY_GET);
   }
-  results->resize(ids.size(), nullptr);
+  results.resize(ids.size(), nullptr);
 
   // Check whether these are experimental.Channel objects.
   bool is_experimental_channel = false;
-  for (const auto &id : ids) {
-    if (experimental_mutable_object_manager_->ReaderChannelRegistered(id)) {
+  for (const ObjectID &id : ids) {
+    if (experimental_mutable_object_provider_->ReaderChannelRegistered(id)) {
       is_experimental_channel = true;
-    } else {
-      if (is_experimental_channel) {
-        return Status::NotImplemented(
-            "ray.get can only be called on all normal objects, or all "
-            "experimental.Channel objects");
-      }
+    } else if (is_experimental_channel) {
+      return Status::NotImplemented(
+          "ray.get can only be called on all normal objects, or all "
+          "experimental.Channel objects");
     }
   }
 
@@ -1501,23 +1568,23 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
           "non-infinity timeout_ms not supported for experimental channels");
     }
     return GetExperimentalMutableObjects(ids, results);
-  } else {
-    return GetObjects(ids, timeout_ms, results);
   }
+
+  return GetObjects(ids, timeout_ms, results);
 }
 
 Status CoreWorker::GetExperimentalMutableObjects(
-    const std::vector<ObjectID> &ids, std::vector<std::shared_ptr<RayObject>> *results) {
+    const std::vector<ObjectID> &ids, std::vector<std::shared_ptr<RayObject>> &results) {
   for (size_t i = 0; i < ids.size(); i++) {
     RAY_RETURN_NOT_OK(
-        experimental_mutable_object_manager_->ReadAcquire(ids[i], (*results)[i]));
+        experimental_mutable_object_provider_->ReadAcquire(ids[i], results[i]));
   }
   return Status::OK();
 }
 
 Status CoreWorker::GetObjects(const std::vector<ObjectID> &ids,
                               const int64_t timeout_ms,
-                              std::vector<std::shared_ptr<RayObject>> *results) {
+                              std::vector<std::shared_ptr<RayObject>> &results) {
   // Normal ray.get path for immutable in-memory and shared memory objects.
   absl::flat_hash_set<ObjectID> plasma_object_ids;
   absl::flat_hash_set<ObjectID> memory_object_ids(ids.begin(), ids.end());
@@ -1591,7 +1658,7 @@ Status CoreWorker::GetObjects(const std::vector<ObjectID> &ids,
   for (size_t i = 0; i < ids.size(); i++) {
     const auto pair = result_map.find(ids[i]);
     if (pair != result_map.end()) {
-      (*results)[i] = pair->second;
+      results[i] = pair->second;
       RAY_CHECK(!pair->second->IsInPlasmaError());
       if (pair->second->IsException()) {
         // The language bindings should throw an exception if they see this
@@ -2126,10 +2193,15 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       /*generator_backpressure_num_objects*/
                       task_options.generator_backpressure_num_objects,
                       /*enable_task_event*/ task_options.enable_task_events);
+  ActorID root_detached_actor_id;
+  if (!worker_context_.GetRootDetachedActorID().IsNil()) {
+    root_detached_actor_id = worker_context_.GetRootDetachedActorID();
+  }
   builder.SetNormalTaskSpec(max_retries,
                             retry_exceptions,
                             serialized_retry_exception_allowlist,
-                            scheduling_strategy);
+                            scheduling_strategy,
+                            root_detached_actor_id);
   TaskSpecification task_spec = builder.Build();
   RAY_LOG(DEBUG) << "Submitting normal task " << task_spec.DebugString();
   std::vector<rpc::ObjectReference> returned_refs;
@@ -2234,6 +2306,12 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_creation_options.enable_task_events);
   std::string serialized_actor_handle;
   actor_handle->Serialize(&serialized_actor_handle);
+  ActorID root_detached_actor_id;
+  if (is_detached) {
+    root_detached_actor_id = actor_id;
+  } else if (!worker_context_.GetRootDetachedActorID().IsNil()) {
+    root_detached_actor_id = worker_context_.GetRootDetachedActorID();
+  }
   builder.SetActorCreationTaskSpec(actor_id,
                                    serialized_actor_handle,
                                    actor_creation_options.scheduling_strategy,
@@ -2247,7 +2325,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                                    actor_creation_options.is_asyncio,
                                    actor_creation_options.concurrency_groups,
                                    extension_data,
-                                   actor_creation_options.execute_out_of_order);
+                                   actor_creation_options.execute_out_of_order,
+                                   root_detached_actor_id);
   // Add the actor handle before we submit the actor creation task, since the
   // actor handle must be in scope by the time the GCS sends the
   // WaitForActorOutOfScopeRequest.
@@ -3819,6 +3898,20 @@ void CoreWorker::ProcessSubscribeObjectLocations(
   reference_counter_->PublishObjectLocationSnapshot(object_id);
 }
 
+Status CoreWorker::GetLocalObjectLocations(
+    const std::vector<ObjectID> &object_ids,
+    std::vector<std::optional<ObjectLocation>> *results) {
+  results->clear();
+  results->reserve(object_ids.size());
+  if (object_ids.empty()) {
+    return Status::OK();
+  }
+  for (size_t i = 0; i < object_ids.size(); i++) {
+    results->emplace_back(TryGetLocalObjectLocation(*reference_counter_, object_ids[i]));
+  }
+  return Status::OK();
+}
+
 void CoreWorker::HandleGetObjectLocationsOwner(
     rpc::GetObjectLocationsOwnerRequest request,
     rpc::GetObjectLocationsOwnerReply *reply,
@@ -3829,7 +3922,7 @@ void CoreWorker::HandleGetObjectLocationsOwner(
   }
   for (int i = 0; i < request.object_ids_size(); ++i) {
     auto object_id = ObjectID::FromBinary(request.object_ids(i));
-    auto object_info = reply->add_object_location_infos();
+    auto *object_info = reply->add_object_location_infos();
     reference_counter_->FillObjectInformation(object_id, object_info);
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -4060,6 +4153,21 @@ void CoreWorker::HandleKillActor(rpc::KillActorRequest request,
   }
 }
 
+void CoreWorker::HandleRegisterMutableObjectReader(
+    rpc::RegisterMutableObjectReaderRequest request,
+    rpc::RegisterMutableObjectReaderReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  local_raylet_client_->RegisterMutableObjectReader(
+      ObjectID::FromBinary(request.writer_object_id()),
+      request.num_readers(),
+      ObjectID::FromBinary(request.reader_object_id()),
+      [send_reply_callback](const Status &status,
+                            const rpc::RegisterMutableObjectReply &r) {
+        RAY_CHECK(status.ok());
+        send_reply_callback(Status::OK(), nullptr, nullptr);
+      });
+}
+
 int64_t CoreWorker::GetLocalMemoryStoreBytesUsed() const {
   MemoryStoreStats memory_store_stats = memory_store_->GetMemoryStoreStatisticalData();
   return memory_store_stats.num_local_objects_bytes;
@@ -4236,26 +4344,31 @@ void CoreWorker::HandleDeleteSpilledObjects(rpc::DeleteSpilledObjectsRequest req
 void CoreWorker::HandleExit(rpc::ExitRequest request,
                             rpc::ExitReply *reply,
                             rpc::SendReplyCallback send_reply_callback) {
-  bool own_objects = reference_counter_->OwnObjects();
-  int64_t pins_in_flight = local_raylet_client_->GetPinsInFlight();
+  const bool own_objects = reference_counter_->OwnObjects();
+  const size_t num_pending_tasks = task_manager_->NumPendingTasks();
+  const int64_t pins_in_flight = local_raylet_client_->GetPinsInFlight();
   // We consider the worker to be idle if it doesn't own any objects and it doesn't have
-  // any object pinning RPCs in flight.
-  bool is_idle = !own_objects && pins_in_flight == 0;
+  // any object pinning RPCs in flight and it doesn't have pending tasks.
+  bool is_idle = !own_objects && (pins_in_flight == 0) && (num_pending_tasks == 0);
   bool force_exit = request.force_exit();
   RAY_LOG(DEBUG) << "Exiting: is_idle: " << is_idle << " force_exit: " << force_exit;
   if (!is_idle && force_exit) {
     RAY_LOG(INFO) << "Force exiting worker that owns object. This may cause other "
                      "workers that depends on the object to lose it. "
                   << "Own objects: " << own_objects
-                  << " # Pins in flight: " << pins_in_flight;
+                  << " # Pins in flight: " << pins_in_flight
+                  << " # pending tasks: " << num_pending_tasks;
   }
   bool will_exit = is_idle || force_exit;
   reply->set_success(will_exit);
   send_reply_callback(
       Status::OK(),
-      [this, will_exit]() {
+      [this, will_exit, force_exit]() {
         // If the worker is idle, we exit.
-        if (will_exit) {
+        if (force_exit) {
+          ForceExit(rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
+                    "Worker force exits because its job has finished");
+        } else if (will_exit) {
           Exit(rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
                "Worker exits because it was idle (it doesn't have objects it owns while "
                "no task or actor has been scheduled) for a long time.");
@@ -4360,7 +4473,7 @@ void CoreWorker::PlasmaCallback(SetResultCallback success,
   bool object_is_local = false;
   if (Contains(object_id, &object_is_local).ok() && object_is_local) {
     std::vector<std::shared_ptr<RayObject>> vec;
-    if (Get(std::vector<ObjectID>{object_id}, 0, &vec).ok()) {
+    if (Get(std::vector<ObjectID>{object_id}, 0, vec).ok()) {
       RAY_CHECK(vec.size() > 0)
           << "Failed to get local object but Raylet notified object is local.";
       return success(vec.front(), object_id, py_future);

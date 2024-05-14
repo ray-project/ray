@@ -118,8 +118,8 @@ class RunningStat:
             )
 
     def update(self, other):
-        n1 = self.num_pushes
-        n2 = other.num_pushes
+        n1 = float(self.num_pushes)
+        n2 = float(other.num_pushes)
         n = n1 + n2
         if n == 0:
             # Avoid divide by zero, which creates nans

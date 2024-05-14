@@ -189,7 +189,7 @@ if __name__ == "__main__":
         .framework(args.framework)
         .callbacks(MyCallbacks)
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
-        .rollouts(enable_connectors=False)
+        .env_runners(enable_connectors=False)
         .reporting(keep_per_episode_custom_metrics=True)
     )
 
