@@ -342,26 +342,7 @@ class Channel(ChannelInterface):
             self._reader_ref,
         )
 
-    def write(self, value: Any):
-        self.ensure_registered_as_writer()
-
-        if not isinstance(value, SerializedObject):
-            try:
-                serialized_value = self._worker.get_serialization_context().serialize(
-                    value
-                )
-            except TypeError as e:
-                sio = io.StringIO()
-                ray.util.inspect_serializability(value, print_file=sio)
-                msg = (
-                    "Could not serialize the put value "
-                    f"{repr(value)}:\n"
-                    f"{sio.getvalue()}"
-                )
-                raise TypeError(msg) from e
-        else:
-            serialized_value = value
-
+    def resize_channel_if_needed(self, serialized_value):
         # serialized_value.total_bytes *only* includes the size of the data. It does not
         # include the size of the metadata, so we must account for the size of the
         # metadata explicitly.
@@ -399,11 +380,34 @@ class Channel(ChannelInterface):
                 self._num_readers,
             )
 
+    def write(self, value: Any):
+        self.ensure_registered_as_writer()
+
+        if not isinstance(value, SerializedObject):
+            try:
+                serialized_value = self._worker.get_serialization_context().serialize(
+                    value
+                )
+            except TypeError as e:
+                sio = io.StringIO()
+                ray.util.inspect_serializability(value, print_file=sio)
+                msg = (
+                    "Could not serialize the put value "
+                    f"{repr(value)}:\n"
+                    f"{sio.getvalue()}"
+                )
+                raise TypeError(msg) from e
+        else:
+            serialized_value = value
+
+        self.resize_channel_if_needed(serialized_value)
+
         self._worker.core_worker.experimental_channel_put_serialized(
             serialized_value,
             self._writer_ref,
             self._num_readers,
         )
+
 
     def begin_read(self) -> Any:
         self.ensure_registered_as_reader()
