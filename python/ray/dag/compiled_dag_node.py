@@ -151,7 +151,9 @@ def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
         return True
     except Exception as exc:
         # Previous task raised an application-level exception.
-        # Propagate it and skip the actual task.
+        # Propagate it and skip the actual task. We don't need to wrap the
+        # exception in a RayTaskError here because it has already been wrapped
+        # by the previous task.
         output_writer.write(exc)
         input_reader.end_read()
         return False
