@@ -88,7 +88,7 @@ class SingleAgentEnvRunner(EnvRunner):
             #  actually hold the spaces for a single env, but for boxes the
             #  shape is (1, 1) which brings a problem with the action dists.
             #  shape=(1,) is expected.
-            module_spec.action_space = self.env.envs[0].action_space
+            module_spec.action_space = self.env.single_action_space
             module_spec.model_config_dict = self.config.model_config
             # Only load a light version of the module, if available. This is useful
             # if the the module has target or critic networks not needed in sampling
@@ -249,6 +249,8 @@ class SingleAgentEnvRunner(EnvRunner):
                     observation=obs[env_index],
                     infos=infos[env_index],
                 )
+            self._was_terminated = [False for _ in range(self.num_envs)]
+            self._was_truncated = [False for _ in range(self.num_envs)]
 
         # Loop through timesteps.
         ts = 0
@@ -306,43 +308,10 @@ class SingleAgentEnvRunner(EnvRunner):
             ts += self.num_envs
 
             for env_index in range(self.num_envs):
-                # TODO (simon): This might be unfortunate if a user needs to set a
-                #  certain env parameter during different episodes (for example for
-                #  benchmarking).
-                extra_model_output = {k: v[env_index] for k, v in to_env.items()}
-
-                # In inference, we have only the action logits.
-                if terminateds[env_index] or truncateds[env_index]:
-                    # Finish the episode with the actual terminal observation stored in
-                    # the info dict.
-                    self._episodes[env_index].add_env_step(
-                        # Gym vector env provides the `"final_observation"`.
-                        # Pop these out of the infos dict so this information doesn't
-                        # appear in the next episode as well (at index=0).
-                        infos[env_index].pop("final_observation"),
-                        actions[env_index],
-                        rewards[env_index],
-                        infos=infos[env_index].pop("final_info"),
-                        terminated=terminateds[env_index],
-                        truncated=truncateds[env_index],
-                        extra_model_outputs=extra_model_output,
-                    )
-                    # We have to perform an extra env-to-module pass here, just in case
-                    # the user's connector pipeline performs (permanent) transforms
-                    # on each observation (including this final one here). Without such
-                    # a call and in case the structure of the observations change
-                    # sufficiently, the following `finalize()` call on the episode will
-                    # fail.
-                    if self.module is not None:
-                        self._env_to_module(
-                            episodes=[self._episodes[env_index]],
-                            explore=explore,
-                            rl_module=self.module,
-                            shared_data=self._shared_data,
-                        )
+                if self._was_terminated[env_index] or self._was_truncated[env_index]:
                     # Make the `on_episode_step` and `on_episode_end` callbacks (before
                     # finalizing the episode object).
-                    self._make_on_episode_callback("on_episode_step", env_index)
+                    #self._make_on_episode_callback("on_episode_step", env_index)
                     self._make_on_episode_callback("on_episode_end", env_index)
 
                     # Then finalize (numpy'ize) the episode.
@@ -355,21 +324,67 @@ class SingleAgentEnvRunner(EnvRunner):
                         observation_space=self.env.single_observation_space,
                         action_space=self.env.single_action_space,
                     )
-
+    
                     # Make the `on_episode_start` callback.
                     self._make_on_episode_callback("on_episode_start", env_index)
 
                 else:
+                    # TODO (simon): This might be unfortunate if a user needs to set a
+                    #  certain env parameter during different episodes (for example for
+                    #  benchmarking).
+                    extra_model_output = {k: v[env_index] for k, v in to_env.items()}
+    
                     self._episodes[env_index].add_env_step(
                         obs[env_index],
                         actions[env_index],
                         rewards[env_index],
                         infos=infos[env_index],
+                        terminated=bool(terminateds[env_index]),
+                        truncated=bool(truncateds[env_index]),
                         extra_model_outputs=extra_model_output,
                     )
 
                     # Make the `on_episode_step` callback.
                     self._make_on_episode_callback("on_episode_step", env_index)
+
+                #if terminateds[env_index] or truncateds[env_index]:
+                    # Finish the episode with the actual terminal observation stored in
+                    # the info dict.
+                    #self._episodes[env_index].add_env_step(
+                    #    # Gym vector env provides the `"final_observation"`.
+                    #    # Pop these out of the infos dict so this information doesn't
+                    #    # appear in the next episode as well (at index=0).
+                    #    infos[env_index].pop("final_observation"),
+                    #    actions[env_index],
+                    #    rewards[env_index],
+                    #    infos=infos[env_index].pop("final_info"),
+                    #    terminated=terminateds[env_index],
+                    #    truncated=truncateds[env_index],
+                    #    extra_model_outputs=extra_model_output,
+                    #)
+                    # We have to perform an extra env-to-module pass here, just in case
+                    # the user's connector pipeline performs (permanent) transforms
+                    # on each observation (including this final one here). Without such
+                    # a call and in case the structure of the observations change
+                    # sufficiently, the following `finalize()` call on the episode will
+                    # fail.
+                    #if self.module is not None:
+                    #    self._env_to_module(
+                    #        episodes=[self._episodes[env_index]],
+                    #        explore=explore,
+                    #        rl_module=self.module,
+                    #        shared_data=self._shared_data,
+                    #    )
+                    # Make the `on_episode_step` and `on_episode_end` callbacks (before
+                    # finalizing the episode object).
+                    #self._make_on_episode_callback("on_episode_step", env_index)
+                    #self._make_on_episode_callback("on_episode_end", env_index)
+
+                    # Then finalize (numpy'ize) the episode.
+                    #done_episodes_to_return.append(self._episodes[env_index].finalize())
+
+            self._was_terminated = terminateds
+            self._was_truncated = truncateds
 
         # Already perform env-to-module connector call for next call to
         # `_sample_timesteps()`. See comment in c'tor for `self._cached_to_module`.
@@ -690,11 +705,13 @@ class SingleAgentEnvRunner(EnvRunner):
         gym.register("rllib-single-agent-env-v0", entry_point=entry_point)
 
         # Wrap into `DictInfoToList` wrapper to get infos as lists.
-        self.env: gym.Wrapper = gym.wrappers.DictInfoToList(
-            gym.vector.make(
+        self.env: gym.Wrapper = gym.wrappers.vector.DictInfoToList(
+            gym.make_vec(
                 "rllib-single-agent-env-v0",
                 num_envs=self.config.num_envs_per_env_runner,
-                asynchronous=self.config.remote_worker_envs,
+                vectorization_mode=(
+                    "async" if self.config.remote_worker_envs else "sync"
+                ),
             )
         )
         self.num_envs: int = self.env.num_envs
