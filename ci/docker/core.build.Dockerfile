@@ -18,14 +18,10 @@ RUN <<EOF
 
 set -euo pipefail
 
-pip install -U --ignore-installed  \
-  -c python/requirements_compiled.txt \
-  -r python/requirements.txt \
-  -r python/requirements/test-requirements.txt
+DOC_TESTING=1 DL=1 ./ci/env/install-dependencies.sh
 
 if [[ "$RAYCI_IS_GPU_BUILD" == "true" ]]; then
-  pip install -U --ignore-installed -r ./python/requirements/ml/dl-gpu-requirements.txt; else
-  pip install -U --ignore-installed -r ./python/requirements/ml/dl-cpu-requirements.txt
+  pip install -U --ignore-installed -r ./python/requirements/ml/dl-gpu-requirements.txt
 fi
 
 EOF
