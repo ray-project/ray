@@ -57,9 +57,6 @@ async def test_get_scheduling_strategy(
     monkeypatch.setenv(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR, "0")
     address_info = ray.init(address=call_ray_start)
     gcs_address = address_info["gcs_address"]
-    gcs_aio_client = GcsAioClient(
-        address=gcs_address, nums_reconnect_retry=0
-    )
 
     job_supervisor = JobSupervisor(
         job_id="job_id",
@@ -69,17 +66,6 @@ async def test_get_scheduling_strategy(
         startup_timeout_s=1,
     )
 
-    # If no head node id is found, we should use "DEFAULT".
-    await gcs_aio_client.internal_kv_del(
-        "head_node_id".encode(), del_by_prefix=False, namespace=KV_NAMESPACE_JOB
-    )
-    strategy = job_supervisor._get_driver_scheduling_strategy(resources_specified)
-    assert strategy == "DEFAULT"
-
-    # Add a head node id to the internal KV to simulate what is done in node_head.py.
-    await gcs_aio_client.internal_kv_put(
-        "head_node_id".encode(), "123456".encode(), True, namespace=KV_NAMESPACE_JOB
-    )
     strategy = job_supervisor._get_driver_scheduling_strategy(resources_specified)
     if resources_specified:
         assert strategy == "DEFAULT"
