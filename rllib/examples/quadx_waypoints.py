@@ -12,7 +12,7 @@ parser.add_argument(
 parser.add_argument("--num-cpus", type=int, default=4)
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "torch"],
+    choices=["tf2", "torch"],
     default="torch",
     help="The DL framework specifier.",
 )
@@ -70,15 +70,24 @@ if __name__ == "__main__":
     algo_cls = get_trainable_cls(args.run)
     config = algo_cls.get_default_config()
 
-    config.environment(env="quadx_waypoints").resources(
+    config.environment(
+        env="quadx_waypoints"
+    ).resources(
         num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
-    ).framework(args.framework).reporting(min_time_s_per_iteration=0.1).training(
-        model={
+    ).framework(
+        args.framework
+    ).api_stack(
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
+    ).rl_module(
+        model_config_dict={
             "use_lstm": True,
             "lstm_cell_size": 32,
             "lstm_use_prev_action": args.use_prev_action,
             "lstm_use_prev_reward": args.use_prev_reward,
         }
+    ).reporting(
+        min_time_s_per_iteration=0.1
     )
 
     if args.run == "PPO":
@@ -92,7 +101,7 @@ if __name__ == "__main__":
     stop = {
         "training_iteration": args.stop_iters,
         "timesteps_total": args.stop_timesteps,
-        "episode_reward_mean": args.stop_reward,
+        "episode_return_mean": args.stop_reward,
     }
 
     tuner = tune.Tuner(
