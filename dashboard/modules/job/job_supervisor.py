@@ -363,7 +363,7 @@ class JobSupervisor:
             ]
         )
 
-        scheduling_strategy = self._get_scheduling_strategy(resources_specified)
+        driver_scheduling_strategy = self._get_driver_scheduling_strategy(resources_specified)
 
         self._runner = self._runner_actor_cls.options(
             name=JOB_EXECUTOR_ACTOR_NAME_TEMPLATE.format(job_id=self._job_id),
@@ -371,7 +371,7 @@ class JobSupervisor:
             num_gpus=entrypoint_num_gpus,
             memory=entrypoint_memory,
             resources=entrypoint_resources,
-            scheduling_strategy=scheduling_strategy,
+            scheduling_strategy=driver_scheduling_strategy,
             runtime_env=self._get_runner_runtime_env(
                 user_runtime_env=runtime_env,
                 submission_id=self._job_id,
@@ -387,7 +387,7 @@ class JobSupervisor:
 
         return self._runner
 
-    def _get_scheduling_strategy(self, resources_specified: bool) -> SchedulingStrategyT:
+    def _get_driver_scheduling_strategy(self, resources_specified: bool) -> SchedulingStrategyT:
         """Get the scheduling strategy for the job.
 
         If resources_specified is true, or if the environment variable is set to
@@ -414,6 +414,8 @@ class JobSupervisor:
 
         # If the user did not specify any resources or set the driver on worker nodes
         # env var, we will run the driver on the head node.
+        #
+        # NOTE: This is preserved for compatibility reasons
         return NodeAffinitySchedulingStrategy(node_id=ray.worker.global_worker.current_node_id.hex(), soft=True)
 
     def _get_runner_runtime_env(
