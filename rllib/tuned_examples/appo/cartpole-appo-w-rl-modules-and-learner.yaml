@@ -8,7 +8,6 @@ cartpole-appo-w-rl-modules-and-learner:
         # Run with Learner- and RLModule API (new stack).
         enable_rl_module_and_learner: true
 
-        # Works for both torch and tf.
         framework: torch
         num_envs_per_env_runner: 5
         num_workers: 1

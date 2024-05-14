@@ -77,29 +77,23 @@ class TestAPPOTfLearner(unittest.TestCase):
         # config.env_runners() only deep-updates it
         config.exploration_config = {}
 
-        for fw in framework_iterator(config, frameworks=("torch", "tf2")):
-            algo = config.build()
+        algo = config.build()
 
-            if fw == "tf2":
-                train_batch = SampleBatch(
-                    tree.map_structure(lambda x: tf.convert_to_tensor(x), FAKE_BATCH)
-                )
-            else:
-                train_batch = SampleBatch(
-                    tree.map_structure(lambda x: convert_to_torch_tensor(x), FAKE_BATCH)
-                )
+        train_batch = SampleBatch(
+            tree.map_structure(lambda x: convert_to_torch_tensor(x), FAKE_BATCH)
+        )
 
-            algo_config = config.copy(copy_frozen=False)
-            algo_config.resources(num_learner_workers=0)
-            algo_config.validate()
+        algo_config = config.copy(copy_frozen=False)
+        algo_config.resources(num_learner_workers=0)
+        algo_config.validate()
 
-            learner_group = algo_config.build_learner_group(
-                env=algo.workers.local_worker().env
-            )
-            learner_group.set_weights(algo.get_weights())
-            learner_group.update_from_batch(batch=train_batch.as_multi_agent())
+        learner_group = algo_config.build_learner_group(
+            env=algo.workers.local_worker().env
+        )
+        learner_group.set_weights(algo.get_weights())
+        learner_group.update_from_batch(batch=train_batch.as_multi_agent())
 
-            algo.stop()
+        algo.stop()
 
     def test_kl_coeff_changes(self):
         initial_kl_coeff = 0.01
@@ -126,18 +120,17 @@ class TestAPPOTfLearner(unittest.TestCase):
                 kl_coeff=initial_kl_coeff,
             )
         )
-        for _ in framework_iterator(config, frameworks=("torch", "tf2")):
-            algo = config.build()
-            # Call train while results aren't returned because this is
-            # a asynchronous algorithm and results are returned asynchronously.
-            while True:
-                results = algo.train()
-                if results.get("info", {}).get(LEARNER_INFO, {}).get(DEFAULT_MODULE_ID):
-                    break
-            curr_kl_coeff = results["info"][LEARNER_INFO][DEFAULT_MODULE_ID][
-                LEARNER_RESULTS_CURR_KL_COEFF_KEY
-            ]
-            self.assertNotEqual(curr_kl_coeff, initial_kl_coeff)
+        algo = config.build()
+        # Call train while results aren't returned because this is
+        # a asynchronous algorithm and results are returned asynchronously.
+        while True:
+            results = algo.train()
+            if results.get("info", {}).get(LEARNER_INFO, {}).get(DEFAULT_MODULE_ID):
+                break
+        curr_kl_coeff = results["info"][LEARNER_INFO][DEFAULT_MODULE_ID][
+            LEARNER_RESULTS_CURR_KL_COEFF_KEY
+        ]
+        self.assertNotEqual(curr_kl_coeff, initial_kl_coeff)
 
 
 if __name__ == "__main__":
