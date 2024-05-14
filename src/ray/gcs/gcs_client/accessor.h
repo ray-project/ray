@@ -294,14 +294,6 @@ class NodeInfoAccessor {
   virtual void UnregisterSelf(const rpc::NodeDeathInfo &node_death_info,
                               std::function<void()> unregister_done_callback);
 
-  /// Drain (remove the information of the node from the cluster) the local node from GCS
-  /// synchronously.
-  ///
-  /// Once the RPC is replied, it is guaranteed that GCS drains the information of the
-  /// local node, and all the nodes in the cluster will "eventually" be informed that the
-  /// node is drained. \return Status
-  virtual Status DrainSelf();
-
   /// Get id of local node which was registered by 'RegisterSelf'.
   ///
   /// \return NodeID

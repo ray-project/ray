@@ -2022,7 +2022,7 @@ void NodeManager::HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
     // itself.
     rpc::NodeDeathInfo node_death_info;
     node_death_info.set_reason(rpc::NodeDeathInfo::EXPECTED_TERMINATION);
-    node_death_info.set_reason_message("ShutdownRaylet RPC has been received.");
+    node_death_info.set_reason_message("Terminated by autoscaler.");
     shutdown_raylet_gracefully_(node_death_info);
   };
   is_shutdown_request_received_ = true;

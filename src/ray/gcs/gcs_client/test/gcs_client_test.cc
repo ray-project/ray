@@ -321,11 +321,6 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     return status.ok();
   }
 
-  bool DrainSelf() {
-    Status status = gcs_client_->Nodes().DrainSelf();
-    return status.ok();
-  }
-
   bool RegisterNode(const rpc::GcsNodeInfo &node_info) {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncRegister(
@@ -557,9 +552,6 @@ TEST_P(GcsClientTest, TestNodeInfo) {
   ASSERT_TRUE(gcs_client_->Nodes().Get(node1_id));
   EXPECT_EQ(gcs_client_->Nodes().GetAll().size(), 2);
 
-  // Cancel registration of local node to GCS.
-  ASSERT_TRUE(DrainSelf());
-
   // Cancel registration of a node to GCS.
   ASSERT_TRUE(DrainNode(node2_id));
   WaitForExpectedCount(unregister_count, 2);
@@ -567,10 +559,8 @@ TEST_P(GcsClientTest, TestNodeInfo) {
   // Get information of all nodes from GCS.
   node_list = GetNodeInfoList();
   EXPECT_EQ(node_list.size(), 2);
-  EXPECT_EQ(node_list[0].state(),
-            rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
-  EXPECT_EQ(node_list[1].state(),
-            rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
+  EXPECT_EQ(node_list[0].state(), rpc::GcsNodeInfo::ALIVE);
+  EXPECT_EQ(node_list[1].state(), rpc::GcsNodeInfo::DEAD);
   ASSERT_TRUE(gcs_client_->Nodes().IsRemoved(node2_id));
 }
 
