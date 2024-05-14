@@ -1268,45 +1268,6 @@ def test_dashboard_not_included_ray_minimal(shutdown_only, capsys):
     os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == "1",
     reason="This test is not supposed to work for minimal or default installation.",
 )
-def test_dashboard_log_warning_on_slow_task(
-    enable_test_module, monkeypatch, shutdown_only
-):
-    monkeypatch.setenv("RAY_enable_dashboard_slow_task_warning", "1")
-
-    ray_context = ray.init(include_dashboard=True)
-
-    # Blocks the event loop for 1 second.
-    assert wait_until_server_available(ray_context["webui_url"]) is True
-    webui_url = ray_context["webui_url"]
-    webui_url = format_web_url(webui_url)
-    response = requests.get(webui_url + "/test/block_event_loop?seconds=1")
-    response.raise_for_status()
-
-    # Check if the warning message is logged. Example log:
-    #
-    # RaySlowTaskWarning: <Task finished name='Task-47'
-    # coro=<TestHead.blocking_async_func() done, defined at
-    # $RAY/dashboard/modules/tests/test_head.py:113> result=1.0> took 1.0036689169937745
-    # seconds.
-    #
-    session_dir = ray_context["session_dir"]
-    dashboard_log_path = Path(session_dir) / "logs" / "dashboard.log"
-    with open(dashboard_log_path, "r") as f:
-        warning_lines = [
-            line
-            for line in f.readlines()
-            if dashboard_consts.RAY_SLOW_TASK_WARNING in line
-        ]
-        assert len(warning_lines) == 1, warning_lines
-        line = warning_lines[0]
-        print(line)
-        assert "TestHead.blocking_async_func" in line, line
-
-
-@pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == "1",
-    reason="This test is not supposed to work for minimal or default installation.",
-)
 @pytest.mark.asyncio
 async def test_dashboard_exports_metric_on_event_loop_lag(
     enable_test_module, ray_start_with_dashboard

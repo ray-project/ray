@@ -16,45 +16,12 @@
 
 # Modifications:
 # - Removed the dependency to `logwood`.
-# - Ranamed `log_slow_callbacks.enable()` to just `enable_log_slow_callbacks()`.
 # - Renamed `monitor_loop_lag.enable()` to just `enable_monitor_loop_lag()`.
 # - Miscellaneous changes to make it work with Ray.
 
-from asyncio.base_events import _format_handle
 from typing import Callable, Optional
 import asyncio
 import asyncio.events
-import time
-
-
-def enable_log_slow_callbacks(
-    slow_duration: float, on_slow_callback: Callable[[str, float], None] = None
-) -> None:
-    """
-    Patch ``asyncio.events.Handle`` to log warnings every time a callback takes
-    ``slow_duration`` seconds or more to run.
-
-    Note: this relies on private implementation details of asyncio and may break in
-    future versions. When we update Python version we may need to update this code.
-
-    Note: this only works with asyncio's default event loop, not with uvloop.
-
-    :param on_slow_callback: Receives a formatted name of a slow callback
-        and the time (in seconds) it took to execute.
-    """
-    if on_slow_callback is None:
-        raise ValueError("on_slow_callback is required")
-    _run = asyncio.events.Handle._run
-
-    def instrumented(self):
-        t0 = time.monotonic()
-        return_value = _run(self)
-        dt = time.monotonic() - t0
-        if dt >= slow_duration:
-            on_slow_callback(_format_handle(self), dt)
-        return return_value
-
-    asyncio.events.Handle._run = instrumented
 
 
 def enable_monitor_loop_lag(

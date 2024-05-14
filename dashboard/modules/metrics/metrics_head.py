@@ -1,11 +1,11 @@
 import asyncio
-from ray._private.async_utils import enable_monitor_loop_lag, enable_log_slow_callbacks
+from ray._private.async_utils import enable_monitor_loop_lag
 import aiohttp
 import logging
 import os
 import shutil
 
-from typing import Optional
+from typing import Optional, List
 
 import psutil
 
@@ -28,8 +28,6 @@ from ray.dashboard.consts import (
     AVAILABLE_COMPONENT_NAMES_FOR_METRICS,
     METRICS_INPUT_ROOT,
     PROMETHEUS_CONFIG_INPUT_PATH,
-    RAY_SLOW_TASK_WARNING,
-    RAY_ENABLE_DASHBOARD_SLOW_TASK_WARNING,
 )
 
 logger = logging.getLogger(__name__)
@@ -100,7 +98,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         self._session_name = dashboard_head.session_name
         assert self._component in AVAILABLE_COMPONENT_NAMES_FOR_METRICS
 
-        self.event_loop_lag_s = 0.0
+        self._event_loop_lag_samples: List[float] = []
 
     @routes.get("/api/grafana_health")
     async def grafana_health(self, req) -> aiohttp.web.Response:
@@ -323,35 +321,26 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             Component=self._component,
             SessionName=self._session_name,
         ).set(float(dashboard_proc.memory_full_info().uss) / 1.0e6)
+
+        # Report the max lag since the last export.
+        max_lag = max(self._event_loop_lag_samples)
+        self._event_loop_lag_samples = []
         self._dashboard_head.metrics.metrics_event_loop_lag.labels(
             ip=self._ip,
             pid=self._pid,
             Component=self._component,
             SessionName=self._session_name,
-        ).set(float(self.event_loop_lag_s))
+        ).set(float(max_lag))
 
     async def run(self, server):
         self._create_default_grafana_configs()
         self._create_default_prometheus_configs()
-        head = self
 
         def on_new_lag(lag_s):
-            # Keep the lag. It's exported in `record_dashboard_metrics`
-            head.event_loop_lag_s = lag_s
+            # Record the lag. It's exported in `record_dashboard_metrics`
+            self._event_loop_lag_samples.append(lag_s)
 
         enable_monitor_loop_lag(on_new_lag)
-
-        if RAY_ENABLE_DASHBOARD_SLOW_TASK_WARNING:
-            # Logs warnings if a task ran for more than 100ms. Limitation: it only logs
-            # the task name and duration, e.g. if the blocker is in a aiohttp handler it
-            # only logs `RequestHandler._handle_request()` instead of the actual
-            # handler.
-            enable_log_slow_callbacks(
-                slow_duration=0.1,
-                on_slow_callback=lambda name, duration: logger.warning(
-                    f"{RAY_SLOW_TASK_WARNING}: {name} took {duration} seconds."
-                ),
-            )
         # TODO: if needed, adapt `aiodebug.hang_inspection` to record stack trace of the
         # slow coroutine.
         await asyncio.gather(self.record_dashboard_metrics())
