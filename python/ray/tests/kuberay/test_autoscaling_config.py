@@ -12,6 +12,7 @@ from ray.autoscaler._private.kuberay.autoscaling_config import (
     _derive_autoscaling_config_from_ray_cr,
     AutoscalingConfigProducer,
     _round_up_k8s_quantity,
+    _get_num_tpus,
 )
 
 AUTOSCALING_CONFIG_MODULE_PATH = "ray.autoscaler._private.kuberay.autoscaling_config"
@@ -207,6 +208,21 @@ def _get_ray_cr_with_autoscaler_options() -> dict:
     return cr
 
 
+def _get_ray_cr_with_tpu_custom_resource() -> dict:
+    cr = get_basic_ray_cr()
+    cr["spec"]["workerGroupSpecs"][2]["rayStartParams"]["TPU"] = 4
+
+    return cr
+
+
+def _get_ray_cr_with_no_tpus() -> dict:
+    cr = get_basic_ray_cr()
+    # remove TPU worker group
+    cr["spec"]["workerGroupSpecs"].pop(2)
+
+    return cr
+
+
 def _get_autoscaling_config_with_options() -> dict:
     config = _get_basic_autoscaling_config()
     config["upscaling_speed"] = 1
@@ -274,6 +290,14 @@ TEST_DATA = (
             None,
             None,
             id="autoscaler-options",
+        ),
+        pytest.param(
+            _get_ray_cr_with_tpu_custom_resource(),
+            _get_basic_autoscaling_config(),
+            None,
+            None,
+            None,
+            id="tpu-custom-resource",
         ),
     ]
 )
@@ -363,6 +387,52 @@ def test_autoscaling_config_fetch_retries(exception, num_exceptions):
         else:
             out = config_producer._fetch_ray_cr_from_k8s_with_retries()
             assert out == {"ok-key": "ok-value"}
+
+
+TPU_PARAM_ARGS = ",".join(
+    [
+        "ray_cr_in",
+        "expected_num_tpus",
+    ]
+)
+TPU_TEST_DATA = (
+    pytest.param(
+        get_basic_ray_cr(),
+        4,
+        id="tpu-k8s-resource-limits",
+    ),
+    pytest.param(
+        _get_ray_cr_with_tpu_custom_resource(),
+        4,
+        id="tpu-custom-resource-ray-start-params",
+    ),
+    pytest.param(
+        _get_ray_cr_with_no_tpus(),
+        0,
+        id="no-tpus-requested",
+    ),
+)
+
+
+@pytest.mark.parametrize(TPU_PARAM_ARGS, TPU_TEST_DATA)
+def test_get_num_tpus(ray_cr_in: Dict[str, Any], expected_num_tpus: int):
+    """Verify that _get_num_tpus correctly returns the number of requested TPUs."""
+    for worker_group in ray_cr_in["spec"]["workerGroupSpecs"]:
+        ray_start_params = worker_group["template"]["spec"]["containers"][0][
+            "resources"
+        ]["limits"]
+        k8s_resource_limits = worker_group["template"]["spec"]["containers"][0][
+            "resources"
+        ]["limits"]
+
+        num_tpus = _get_num_tpus(
+            ray_start_params, k8s_resource_limits, worker_group["groupName"]
+        )
+
+        if worker_group["groupName"] == "tpu-group":
+            assert num_tpus == expected_num_tpus
+        else:
+            assert num_tpus is None
 
 
 if __name__ == "__main__":
