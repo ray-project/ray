@@ -11,6 +11,7 @@ from typing import Mapping
 
 import ray
 from ray import tune
+from ray.air.constants import TRAINING_ITERATION
 from ray.train import RunConfig, FailureConfig
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule

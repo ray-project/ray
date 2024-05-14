@@ -32,6 +32,7 @@ import os
 import subprocess
 import yaml
 
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,

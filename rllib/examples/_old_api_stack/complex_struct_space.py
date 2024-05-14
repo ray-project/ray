@@ -19,6 +19,7 @@ from ray.rllib.examples._old_api_stack.models.simple_rpg_model import (
     CustomTorchRPGModel,
     CustomTFRPGModel,
 )
+from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME
 
 parser = argparse.ArgumentParser()
 parser.add_argument(

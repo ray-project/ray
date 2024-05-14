@@ -2,6 +2,7 @@ import unittest
 
 import ray
 from ray import air
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import framework_iterator

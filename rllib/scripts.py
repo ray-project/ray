@@ -5,6 +5,7 @@ from rich.console import Console
 from rich.table import Table
 import typer
 
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib import train as train_module
 from ray.rllib.common import CLIArguments as cli
 from ray.rllib.common import (

@@ -40,6 +40,7 @@ import os
 
 import ray
 from ray import air, tune
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.examples.envs.classes.correlated_actions_env import CorrelatedActionsEnv
 from ray.rllib.examples._old_api_stack.models.autoregressive_action_model import (
     AutoregressiveActionModel,

@@ -7,12 +7,14 @@ import unittest
 
 import ray
 from ray import air, tune
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.utils.test_utils import check_learning_achieved, framework_iterator
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MAX,
+    EPISODE_RETURN_MEAN,
 )
 from ray.rllib.utils.numpy import one_hot
 from ray.tune import register_env

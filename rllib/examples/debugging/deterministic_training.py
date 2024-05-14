@@ -8,6 +8,7 @@ import argparse
 
 import ray
 from ray import air, tune
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.examples.envs.classes.env_using_remote_actor import (
     CartPoleWithRemoteParamServer,

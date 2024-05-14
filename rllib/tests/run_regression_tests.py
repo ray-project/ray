@@ -33,6 +33,7 @@ from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
+    EVALUATION_RESULTS,
 )
 from ray.tune import run_experiments
 
@@ -288,7 +289,8 @@ if __name__ == "__main__":
                 # not, use `episode_return_mean`.
                 if check_eval:
                     min_reward = t.stopping_criterion.get(
-                        f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}",
+                        f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/"
+                        f"{EPISODE_RETURN_MEAN}",
                         t.stopping_criterion.get(
                             f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
                         ),

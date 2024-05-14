@@ -44,6 +44,7 @@ import numpy as np
 from ray import train, tune
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME
 
 torch, _ = try_import_torch()
 

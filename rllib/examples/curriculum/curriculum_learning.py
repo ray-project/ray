@@ -56,6 +56,7 @@ Policy NOT using the curriculum (trying to solve the hardest task right away):
 """
 from functools import partial
 
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.connectors.env_to_module import (
@@ -63,7 +64,11 @@ from ray.rllib.connectors.env_to_module import (
     FlattenObservations,
     WriteObservationsToEpisodes,
 )
-from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,

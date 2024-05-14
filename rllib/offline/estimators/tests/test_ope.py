@@ -28,6 +28,7 @@ from ray.rllib.offline.estimators import (
 from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
 from ray.rllib.policy.sample_batch import SampleBatch, concat_samples
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.metrics import EVALUATION_RESULTS
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.test_utils import check
 

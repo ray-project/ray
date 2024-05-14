@@ -1,8 +1,8 @@
 import unittest
 
 import ray
-from ray import air
-from ray import tune
+from ray import air, tune
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.utils.framework import try_import_tf
 from ray.tune.registry import get_trainable_cls
 

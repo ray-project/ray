@@ -30,6 +30,7 @@ import yaml
 
 import ray
 from ray import air, tune
+from ray.air.constants import TRAINING_ITERATION
 from ray.air.integrations.wandb import WandbLoggerCallback
 from ray.rllib.common import SupportedFileType
 from ray.rllib.env.wrappers.atari_wrappers import is_atari, wrap_deepmind

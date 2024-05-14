@@ -1,4 +1,10 @@
 from ray.rllib.algorithms.dqn import DQNConfig
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    EVALUATION_RESULTS,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
 
 config = (
     DQNConfig()

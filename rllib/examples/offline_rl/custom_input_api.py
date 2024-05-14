@@ -17,6 +17,7 @@ import os
 
 import ray
 from ray import air, tune
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.offline import JsonReader, ShuffledInput, IOContext, InputReader
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,

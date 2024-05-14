@@ -3,6 +3,7 @@ import unittest
 
 import ray
 from ray import air, tune
+from ray.air.constants import TRAINING_ITERATION
 import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
 from ray.util.client.ray_client_helpers import ray_start_client_server

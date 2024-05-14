@@ -21,6 +21,7 @@ import os
 
 import ray
 from ray import air, tune
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.examples._old_api_stack.models.custom_loss_model import (
     CustomLossModel,

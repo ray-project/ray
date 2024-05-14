@@ -14,6 +14,7 @@ import os
 
 import ray
 from ray import air, tune
+from ray.air.constants import TRAINING_ITERATION
 from ray.tune.registry import register_env
 from ray.rllib.examples.envs.classes.repeat_after_me_env import RepeatAfterMeEnv
 from ray.rllib.examples.envs.classes.repeat_initial_obs_env import RepeatInitialObsEnv
@@ -31,6 +32,7 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.rllib.core.models.configs import ModelConfig

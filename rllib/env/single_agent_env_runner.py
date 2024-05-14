@@ -19,6 +19,13 @@ from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import (
+    EPISODE_DURATION_SEC_MEAN,
+    EPISODE_LEN_MAX,
+    EPISODE_LEN_MEAN,
+    EPISODE_LEN_MIN,
+    EPISODE_RETURN_MAX,
+    EPISODE_RETURN_MEAN,
+    EPISODE_RETURN_MIN,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_SAMPLED,

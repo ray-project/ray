@@ -2,6 +2,7 @@ from ray.rllib.algorithms.sac.sac import SACConfig
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
 
 config = (

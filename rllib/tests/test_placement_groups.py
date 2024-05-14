@@ -2,10 +2,10 @@ import os
 import unittest
 
 import ray
-from ray import air
-from ray import tune
-from ray.tune import Callback
+from ray import air, tune
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.ppo import PPO, PPOConfig
+from ray.tune import Callback
 from ray.tune.experiment import Trial
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 

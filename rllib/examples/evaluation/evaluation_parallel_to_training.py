@@ -68,6 +68,7 @@ the experiment takes considerably longer (~70sec vs ~80sec):
 """
 from typing import Optional
 
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
@@ -264,7 +265,9 @@ if __name__ == "__main__":
 
     stop = {
         TRAINING_ITERATION: args.stop_iters,
-        f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
+        f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": (
+            args.stop_reward
+        ),
         f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": args.stop_timesteps,
     }
 

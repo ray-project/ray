@@ -8,6 +8,7 @@ Run example: python sb2rllib_rllib_example.py
 import gymnasium as gym
 from ray import tune, air
 import ray.rllib.algorithms.ppo as ppo
+from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME
 
 # settings used for both stable baselines and rllib
 env_name = "CartPole-v1"
