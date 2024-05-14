@@ -374,7 +374,7 @@ cryptography==38.0.1
     #   trustme
 cycler==0.12.1
     # via matplotlib
-cython==0.29.32
+cython==3.0.10
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   gpy
@@ -2207,7 +2207,7 @@ tensorflow-estimator==2.15.0
     # via
     #   -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
     #   tensorflow
-tensorflow-io-gcs-filesystem==0.31.0
+tensorflow-io-gcs-filesystem==0.37.0
     # via
     #   -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
     #   tensorflow

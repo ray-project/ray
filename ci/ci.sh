@@ -345,7 +345,7 @@ build_dashboard_front_end() {
       if [ -z "${BUILDKITE-}" ] || [[ "${OSTYPE}" != linux* ]]; then
         set +x  # suppress set -x since it'll get very noisy here
         . "${HOME}/.nvm/nvm.sh"
-        NODE_VERSION="14"
+        NODE_VERSION="20"
         nvm install $NODE_VERSION
         nvm use --silent $NODE_VERSION
       fi
@@ -409,7 +409,7 @@ install_ray() {
   # TODO(mehrdadn): This function should be unified with the one in python/build-wheel-windows.sh.
   (
     cd "${WORKSPACE_DIR}"/python
-    build_dashboard_front_end
+    # build_dashboard_front_end
     keep_alive pip install -v -e .
   )
   (
