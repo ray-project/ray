@@ -14,7 +14,7 @@ from ray.dashboard.modules.job.common import (
     JOB_ACTOR_NAME_TEMPLATE,
     SUPERVISOR_ACTOR_RAY_NAMESPACE,
     JobInfo,
-    JobInfoStorageClient, _get_actor_for_job,
+    JobInfoStorageClient, _get_supervisor_actor_for_job,
 )
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.dashboard.modules.job.job_supervisor import JobSupervisor
@@ -205,7 +205,7 @@ class JobManager:
 
         Returns whether or not the job was running.
         """
-        job_supervisor_actor = _get_actor_for_job(job_id)
+        job_supervisor_actor = _get_supervisor_actor_for_job(job_id)
         if job_supervisor_actor is not None:
             # Actor is still alive, signal it to stop the driver, fire and
             # forget

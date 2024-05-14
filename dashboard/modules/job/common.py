@@ -470,7 +470,7 @@ class JobLogsResponse:
     logs: str
 
 
-def _get_actor_for_job(job_id: str) -> Optional[ActorHandle]:
+def _get_supervisor_actor_for_job(job_id: str) -> Optional[ActorHandle]:
     """Fetches JobSupervisor actor for job identified by Ray Job (submission) id"""
     try:
         return ray.get_actor(
@@ -479,4 +479,16 @@ def _get_actor_for_job(job_id: str) -> Optional[ActorHandle]:
         )
     except ValueError as ve:  # Ray returns ValueError for nonexistent actor.
         logger.warning(f"Job supervisor for job {job_id} not found: {str(ve)}")
+        return None
+
+
+def _get_executor_actor_for_job(job_id: str) -> Optional[ActorHandle]:
+    """Fetches JobRunner actor for job identified by Ray Job (submission) id"""
+    try:
+        return ray.get_actor(
+            JOB_EXECUTOR_ACTOR_NAME_TEMPLATE.format(job_id=job_id),
+            namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
+        )
+    except ValueError as ve:  # Ray returns ValueError for nonexistent actor.
+        logger.warning(f"Job executor for job {job_id} not found: {str(ve)}")
         return None
