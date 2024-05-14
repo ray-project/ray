@@ -247,11 +247,6 @@ class JobSupervisor:
 
         error_message: Optional[str] = None
 
-        # TODO clean up
-        if _start_signal_actor:
-            # Block in PENDING state until start signal received.
-            await _start_signal_actor.wait.remote()
-
         try:
             runner = await self._create_runner_actor(
                 runtime_env=runtime_env,
@@ -261,6 +256,11 @@ class JobSupervisor:
                 entrypoint_memory=entrypoint_memory,
                 entrypoint_resources=entrypoint_resources
             )
+
+            # NOTE: This is only used in testing
+            if _start_signal_actor:
+                # Block in PENDING state until start signal received.
+                await _start_signal_actor.wait.remote()
 
             driver_node_info: JobDriverNodeInfo = await runner.get_node_info.remote()
             driver_agent_http_address = f"http://{driver_node_info.node_ip}:{driver_node_info.dashboard_agent_port}"
