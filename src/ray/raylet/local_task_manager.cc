@@ -45,7 +45,8 @@ void LocalTaskManager::UpdateCpuRequests(const std::shared_ptr<internal::Work> &
                                          bool add) {
   const auto &spec = work->task.GetTaskSpecification();
   // FixedPoint to Double
-  auto cpu_requested = spec.GetRequiredResources().Get(ResourceID::CPU()).Double();
+  auto cpu_requested =
+      spec.GetRequiredResources().Get(scheduling::ResourceID::CPU()).Double();
   if (add) {
     total_cpu_requests_ += cpu_requested;
   } else {
@@ -159,7 +160,7 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
         TaskSpecification::GetSchedulingClassDescriptor(scheduling_class);
     double total_cpus =
         cluster_resource_scheduler_->GetLocalResourceManager().GetNumCpus();
-    if (sched_cls_desc.resource_set.Get(ResourceID::CPU()).Double() > 0 &&
+    if (sched_cls_desc.resource_set.Get(scheduling::ResourceID::CPU()).Double() > 0 &&
         total_cpu_requests_ > total_cpus) {
       RAY_LOG(DEBUG)
           << "Applying fairness policy. Total CPU requests in tasks_to_dispatch_ ("
@@ -170,18 +171,22 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
         // Only consider CPU requests
         const auto &sched_cls_desc =
             TaskSpecification::GetSchedulingClassDescriptor(entry.first);
-        if (sched_cls_desc.resource_set.Get(ResourceID::CPU()).Double() > 0) {
+        if (sched_cls_desc.resource_set.Get(scheduling::ResourceID::CPU()).Double() > 0) {
           total_cpu_running_tasks += entry.second.running_tasks.size();
         }
       }
 
       size_t num_classes_with_cpu = 0;
-      for (auto &entry : tasks_to_dispatch_) {
-        // Only consider CPU requests
-        const auto &entry_sched_cls_desc =
-            TaskSpecification::GetSchedulingClassDescriptor(entry.first);
-        if (entry_sched_cls_desc.resource_set.Get(ResourceID::CPU()).Double() > 0) {
-          num_classes_with_cpu++;
+      for (const auto &entry : tasks_to_dispatch_) {
+        const auto &dispatch_queue = entry.second;
+        for (const auto &work : dispatch_queue) {
+          const auto &task_spec = work->task.GetTaskSpecification();
+          if (task_spec.GetRequiredResources()
+                  .Get(scheduling::ResourceID::CPU())
+                  .Double() > 0) {
+            num_classes_with_cpu++;
+            break;
+          }
         }
       }
 
