@@ -84,7 +84,7 @@ class JobSupervisor:
     JOB_MONITOR_LOOP_INTERVAL_S = 1
     # Interval of logging job status w/o the state changes (allowing
     # us to track the progress of the monitoring loop)
-    JOB_STATUS_LOG_INTERVAL_S = 600
+    JOB_STATUS_LOG_INTERVAL_S = 300
     # Timeout to finalize job status after job driver exiting
     JOB_STATUS_FINALIZATION_TIMEOUT_S = 60
 
@@ -470,7 +470,6 @@ class JobSupervisor:
     async def _monitor_job_internal(self):
         self._logger.info(f"Starting monitoring loop for job {self._job_id}")
 
-        job_status: Optional[JobStatus] = None
         error_message: Optional[str] = None
 
         try:
