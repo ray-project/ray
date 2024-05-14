@@ -239,7 +239,7 @@ int main(int argc, char *argv[]) {
 
   // Shut down raylet gracefully, in a synchronous fashion.
   // This is an internal method and should only be run on the main_service.
-  auto _shutdown_raylet_gracefully_sync =
+  auto shutdown_raylet_gracefully_internal =
       [&raylet, shutted_down, shutdown_raylet_after_unregistration](
           const ray::rpc::NodeDeathInfo &node_death_info) {
         // Make the shutdown method idempotent since graceful shutdown can be triggered
@@ -257,13 +257,13 @@ int main(int argc, char *argv[]) {
         raylet->UnregisterSelf(node_death_info, shutdown_raylet_after_unregistration);
       };
 
-  auto shutdown_raylet_gracefully = [&main_service, _shutdown_raylet_gracefully_sync](
+  auto shutdown_raylet_gracefully = [&main_service, shutdown_raylet_gracefully_internal](
                                         const ray::rpc::NodeDeathInfo &node_death_info) {
     main_service.post(
-        [_shutdown_raylet_gracefully_sync, node_death_info]() {
-          _shutdown_raylet_gracefully_sync(node_death_info);
+        [shutdown_raylet_gracefully_internal, node_death_info]() {
+          shutdown_raylet_gracefully_internal(node_death_info);
         },
-        "_shutdown_raylet_gracefully_sync");
+        "shutdown_raylet_gracefully_internal");
   };
 
   RAY_CHECK_OK(gcs_client->Nodes().AsyncGetInternalConfig(
@@ -439,12 +439,12 @@ int main(int argc, char *argv[]) {
         raylet->Start();
       }));
 
-  auto signal_handler = [_shutdown_raylet_gracefully_sync](
+  auto signal_handler = [shutdown_raylet_gracefully_internal](
                             const boost::system::error_code &error, int signal_number) {
     ray::rpc::NodeDeathInfo node_death_info;
     node_death_info.set_reason(ray::rpc::NodeDeathInfo::EXPECTED_TERMINATION);
     node_death_info.set_reason_message("Received SIGTERM");
-    _shutdown_raylet_gracefully_sync(node_death_info);
+    shutdown_raylet_gracefully_internal(node_death_info);
   };
   boost::asio::signal_set signals(main_service);
 #ifdef _WIN32

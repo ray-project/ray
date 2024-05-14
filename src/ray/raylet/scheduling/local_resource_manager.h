@@ -233,6 +233,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
   // 0 if there is no deadline.
   int64_t local_node_draining_deadline_timestamp_ms_ = -1;
 
+  /// This is set when the node is being drained and indicates the reason for draining.
   rpc::NodeDeathInfo node_death_info_;
 
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest);
