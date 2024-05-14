@@ -78,6 +78,7 @@ if __name__ == "__main__":
 
     import cProfile
     import pstats
+
     algo = config.build()
     # Create a profiler object
     profiler = cProfile.Profile()
@@ -92,7 +93,7 @@ if __name__ == "__main__":
     #     ),
     # )
     # tuner.fit()
-    
+
     for i in range(1):
         print("------------- Training iteration: ", i)
         results = algo.train()
@@ -105,7 +106,7 @@ if __name__ == "__main__":
     stats = pstats.Stats(profiler)
 
     # Sort the statistics by the cumulative time spent in the function
-    stats.sort_stats('cumulative')
+    stats.sort_stats("cumulative")
 
     # Print out all the statistics
     # You can limit the output to the top significant lines using 'print_stats(number_of_lines)'
