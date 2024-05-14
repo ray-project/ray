@@ -702,7 +702,7 @@ gym==0.26.2
     #   recsim
 gym-notices==0.0.8
     # via gym
-gymnasium==0.28.1
+gymnasium==1.0.0a1
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
