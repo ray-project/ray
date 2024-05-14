@@ -88,7 +88,9 @@ def test_errors(ray_start_regular):
     @ray.remote
     class Actor:
         def make_chan(self, do_write=True):
-            self.chan = ray_channel.Channel(None, [None], 1000)
+            self.chan = ray_channel.Channel(
+                ray.get_runtime_context().current_actor, [None], 1000
+            )
             if do_write:
                 self.chan.write(b"hello")
             return self.chan
