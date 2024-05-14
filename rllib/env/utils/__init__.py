@@ -107,6 +107,7 @@ def _gym_env_creator(
     # from ale_py.
     if isinstance(env_descriptor, str) and env_descriptor.startswith("ALE/"):
         import ale_py
+
         gym.register_envs(ale_py)
 
     # Try creating a gym env. If this fails we can output a

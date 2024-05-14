@@ -311,7 +311,7 @@ class SingleAgentEnvRunner(EnvRunner):
                 if self._was_terminated[env_index] or self._was_truncated[env_index]:
                     # Make the `on_episode_step` and `on_episode_end` callbacks (before
                     # finalizing the episode object).
-                    #self._make_on_episode_callback("on_episode_step", env_index)
+                    # self._make_on_episode_callback("on_episode_step", env_index)
                     self._make_on_episode_callback("on_episode_end", env_index)
 
                     # Then finalize (numpy'ize) the episode.
@@ -324,7 +324,7 @@ class SingleAgentEnvRunner(EnvRunner):
                         observation_space=self.env.single_observation_space,
                         action_space=self.env.single_action_space,
                     )
-    
+
                     # Make the `on_episode_start` callback.
                     self._make_on_episode_callback("on_episode_start", env_index)
 
@@ -333,7 +333,7 @@ class SingleAgentEnvRunner(EnvRunner):
                     #  certain env parameter during different episodes (for example for
                     #  benchmarking).
                     extra_model_output = {k: v[env_index] for k, v in to_env.items()}
-    
+
                     self._episodes[env_index].add_env_step(
                         obs[env_index],
                         actions[env_index],
@@ -346,42 +346,6 @@ class SingleAgentEnvRunner(EnvRunner):
 
                     # Make the `on_episode_step` callback.
                     self._make_on_episode_callback("on_episode_step", env_index)
-
-                #if terminateds[env_index] or truncateds[env_index]:
-                    # Finish the episode with the actual terminal observation stored in
-                    # the info dict.
-                    #self._episodes[env_index].add_env_step(
-                    #    # Gym vector env provides the `"final_observation"`.
-                    #    # Pop these out of the infos dict so this information doesn't
-                    #    # appear in the next episode as well (at index=0).
-                    #    infos[env_index].pop("final_observation"),
-                    #    actions[env_index],
-                    #    rewards[env_index],
-                    #    infos=infos[env_index].pop("final_info"),
-                    #    terminated=terminateds[env_index],
-                    #    truncated=truncateds[env_index],
-                    #    extra_model_outputs=extra_model_output,
-                    #)
-                    # We have to perform an extra env-to-module pass here, just in case
-                    # the user's connector pipeline performs (permanent) transforms
-                    # on each observation (including this final one here). Without such
-                    # a call and in case the structure of the observations change
-                    # sufficiently, the following `finalize()` call on the episode will
-                    # fail.
-                    #if self.module is not None:
-                    #    self._env_to_module(
-                    #        episodes=[self._episodes[env_index]],
-                    #        explore=explore,
-                    #        rl_module=self.module,
-                    #        shared_data=self._shared_data,
-                    #    )
-                    # Make the `on_episode_step` and `on_episode_end` callbacks (before
-                    # finalizing the episode object).
-                    #self._make_on_episode_callback("on_episode_step", env_index)
-                    #self._make_on_episode_callback("on_episode_end", env_index)
-
-                    # Then finalize (numpy'ize) the episode.
-                    #done_episodes_to_return.append(self._episodes[env_index].finalize())
 
             self._was_terminated = terminateds
             self._was_truncated = truncateds
@@ -452,6 +416,9 @@ class SingleAgentEnvRunner(EnvRunner):
             self._make_on_episode_callback("on_episode_created", env_index, episodes)
         _shared_data = {}
 
+        _was_terminated = [False for _ in range(self.num_envs)]
+        _was_truncated = [False for _ in range(self.num_envs)]
+
         for env_index in range(self.num_envs):
             episodes[env_index].add_env_reset(
                 observation=obs[env_index],
@@ -513,25 +480,12 @@ class SingleAgentEnvRunner(EnvRunner):
             ts += self.num_envs
 
             for env_index in range(self.num_envs):
-                extra_model_output = {k: v[env_index] for k, v in to_env.items()}
-
-                if terminateds[env_index] or truncateds[env_index]:
+                if _was_terminated[env_index] or _was_truncated[env_index]:
                     eps += 1
 
-                    episodes[env_index].add_env_step(
-                        infos[env_index].pop("final_observation"),
-                        actions[env_index],
-                        rewards[env_index],
-                        infos=infos[env_index].pop("final_info"),
-                        terminated=terminateds[env_index],
-                        truncated=truncateds[env_index],
-                        extra_model_outputs=extra_model_output,
-                    )
-                    # Make `on_episode_step` and `on_episode_end` callbacks before
-                    # finalizing the episode.
-                    self._make_on_episode_callback(
-                        "on_episode_step", env_index, episodes
-                    )
+                    # Make the `on_episode_step` and `on_episode_end` callbacks (before
+                    # finalizing the episode object).
+                    # self._make_on_episode_callback("on_episode_step", env_index)
                     self._make_on_episode_callback(
                         "on_episode_end", env_index, episodes
                     )
@@ -544,29 +498,39 @@ class SingleAgentEnvRunner(EnvRunner):
                     if eps == num_episodes:
                         break
 
-                    # Create a new episode object.
+                    # Create a new episode object with already the reset data in it.
                     episodes[env_index] = SingleAgentEpisode(
                         observations=[obs[env_index]],
                         infos=[infos[env_index]],
                         observation_space=self.env.single_observation_space,
                         action_space=self.env.single_action_space,
                     )
+
                     # Make `on_episode_start` callback.
                     self._make_on_episode_callback(
                         "on_episode_start", env_index, episodes
                     )
+
                 else:
+                    extra_model_output = {k: v[env_index] for k, v in to_env.items()}
+
                     episodes[env_index].add_env_step(
                         obs[env_index],
                         actions[env_index],
                         rewards[env_index],
                         infos=infos[env_index],
+                        terminated=terminateds[env_index],
+                        truncated=truncateds[env_index],
                         extra_model_outputs=extra_model_output,
                     )
-                    # Make `on_episode_step` callback.
+                    # Make `on_episode_step` and `on_episode_end` callbacks before
+                    # finalizing the episode.
                     self._make_on_episode_callback(
                         "on_episode_step", env_index, episodes
                     )
+
+            _was_terminated = terminateds
+            _was_truncated = truncateds
 
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
 
