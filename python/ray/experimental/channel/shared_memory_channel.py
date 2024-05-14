@@ -271,8 +271,8 @@ class Channel(ChannelInterface):
     def is_remote(self):
         return self._writer_node_id != self._reader_node_id
 
-    def ensure_registered_as_writer(self, force=False) -> None:
-        if self._writer_registered and not force:
+    def ensure_registered_as_writer(self) -> None:
+        if self._writer_registered:
             return
 
         if not self.is_local_node(self._writer_node_id):
@@ -300,8 +300,8 @@ class Channel(ChannelInterface):
         )
         self._writer_registered = True
 
-    def ensure_registered_as_reader(self, force=False) -> None:
-        if self._reader_registered and not force:
+    def ensure_registered_as_reader(self) -> None:
+        if self._reader_registered:
             return
 
         self._worker.core_worker.experimental_channel_register_reader(
@@ -374,7 +374,8 @@ class Channel(ChannelInterface):
             prev_writer_ref = self._writer_ref
             self._writer_ref = _create_channel_ref(self, self._typ.buffer_size_bytes)
             # We need to register the new writer_ref.
-            self.ensure_registered_as_writer(force=True)
+            self._writer_registered = False
+            self.ensure_registered_as_writer()
 
             if len(self._readers) > 0 and self.is_remote():
                 # We need to allocate the reader_ref on the reader node if the reader(s)
@@ -413,7 +414,8 @@ class Channel(ChannelInterface):
             # resize).
             self._reader_ref = ret._reader_ref
             # We need to register the new reader_ref.
-            self.ensure_registered_as_reader(force=True)
+            self._reader_registered = False
+            self.ensure_registered_as_reader()
             ret = ray.get(self._reader_ref)
 
         return ret
