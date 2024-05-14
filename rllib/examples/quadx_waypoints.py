@@ -1,11 +1,9 @@
 import argparse
 import os
 
-from ray.rllib.examples.envs.classes.pyflyt_quadx_waypoints_env import (
-    create_quadx_waypoints_env,
-)
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.registry import get_trainable_cls
+import gymnasium as gym
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -36,6 +34,28 @@ parser.add_argument(
     "--stop-reward", type=float, default=90.0, help="Reward at which we stop training."
 )
 
+class RewardWrapper(gym.RewardWrapper):
+    def __init__(self, env):
+        super().__init__(env)
+
+    def reward(self, reward):
+        # Scale rewards:
+        if reward >= 99.0 or reward <= -99.0:
+            return reward / 10
+        return reward
+
+
+def create_quadx_waypoints_env(env_config):
+    import PyFlyt.gym_envs  # noqa
+    from PyFlyt.gym_envs import FlattenWaypointEnv
+
+    env = gym.make("PyFlyt/QuadX-Waypoints-v1")
+    # Wrap Environment to use max 10 and -10 for rewards
+    env = RewardWrapper(env)
+
+    return FlattenWaypointEnv(env, context_length=1)
+
+
 if __name__ == "__main__":
     import ray
     from ray import air, tune
@@ -45,7 +65,7 @@ if __name__ == "__main__":
 
     ray.init()
 
-    register_env("quadx_waypoints", create_quadx_waypoints_env)
+    register_env("quadx_waypoints", env_creator=create_quadx_waypoints_env)
 
     algo_cls = get_trainable_cls(args.run)
     config = algo_cls.get_default_config()
