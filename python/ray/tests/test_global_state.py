@@ -524,6 +524,24 @@ def test_get_draining_nodes(ray_start_cluster):
     wait_for_condition(lambda: ray._private.state.state.get_draining_nodes() == {})
 
 
+@pytest.mark.asyncio
+async def test_my_gcs_client(ray_start_regular):
+    my_gcs_client = ray._raylet.my_gcs_client()
+    # Test 1: get_next_job_id
+    job_id = await my_gcs_client.get_next_job_id()
+    assert isinstance(job_id, ray.JobID)
+
+    # Test 2: internal_kv_put and get
+    ns = b"ns"
+    k = b"key"
+    v = b"valvalvalval"
+    addcnt = await my_gcs_client.async_internal_kv_put(k, v, namespace=ns)
+    assert addcnt == 1
+
+    retrieved = await my_gcs_client.async_internal_kv_get(k, namespace=ns)
+    assert retrieved == v
+
+
 if __name__ == "__main__":
     import sys
 
