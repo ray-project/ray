@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Mapping, Any, TYPE_CHECKING, Optional, Type, Dict, Union
 
 import gymnasium as gym
-import tree
+import tree  # pip install dm_tree
 
 if TYPE_CHECKING:
     from ray.rllib.core.rl_module.marl_module import (

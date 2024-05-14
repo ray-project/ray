@@ -127,7 +127,7 @@ def _validate(
     *,
     cls_instance: object,
     method: Callable,
-    data: Mapping[str, Any],
+    data: Dict[str, Any],
     spec: Spec,
     tag: str = "input",
     filter=DEPRECATED_VALUE,
@@ -153,8 +153,8 @@ def _validate(
     if isinstance(spec, SpecDict):
         if not isinstance(data, abc.Mapping):
             raise ValueError(f"{tag} must be a Mapping, got {type(data).__name__}")
-        if cache_miss:
-            data = NestedDict(data)
+        #if cache_miss:
+        #    data = NestedDict(data)
 
     if cache_miss:
         try:
@@ -173,7 +173,7 @@ def check_input_specs(
     input_specs: str,
     *,
     only_check_on_retry: bool = True,
-    cache: bool = False,
+    cache: bool = True,
     filter=DEPRECATED_VALUE,
 ):
     """A general-purpose spec checker decorator for neural network base classes.
@@ -237,8 +237,6 @@ def check_input_specs(
         def wrapper(self, input_data, **kwargs):
             if cache and not hasattr(self, "__checked_input_specs_cache__"):
                 self.__checked_input_specs_cache__ = {}
-            if cache and func.__name__ not in self.__checked_input_specs_cache__:
-                self.__checked_input_specs_cache__[func.__name__] = True
 
             initial_exception = None
             if only_check_on_retry:
@@ -252,14 +250,20 @@ def check_input_specs(
                     # check fails.
                     initial_exception = e
                     logger.error(
-                        f"Exception {e} raised on function call without checkin "
+                        f"Exception {e} raised on function call without checking "
                         f"input specs. RLlib will now attempt to check the spec "
-                        f"before calling the function again."
+                        f"before calling the function again ..."
                     )
 
             # If the function was not executed successfully yet, we check specs
             checked_data = input_data
-            if input_specs:
+
+            if input_specs and (
+                initial_exception
+                or not cache
+                or func.__name__ not in self.__checked_input_specs_cache__
+                or filter
+            ):
                 if hasattr(self, input_specs):
                     spec = getattr(self, input_specs)
                 else:
@@ -282,6 +286,9 @@ def check_input_specs(
             if initial_exception:
                 raise initial_exception
 
+            if cache and func.__name__ not in self.__checked_input_specs_cache__:
+                self.__checked_input_specs_cache__[func.__name__] = True
+
             return func(self, checked_data, **kwargs)
 
         wrapper.__checked_input_specs__ = True
@@ -294,7 +301,7 @@ def check_input_specs(
 def check_output_specs(
     output_specs: str,
     *,
-    cache: bool = False,
+    cache: bool = True,
 ):
     """A general-purpose spec checker decorator for Neural Network base classes.
 
@@ -351,7 +358,9 @@ def check_output_specs(
 
             output_data = func(self, input_data, **kwargs)
 
-            if output_specs:
+            if output_specs and (
+                not cache or func.__name__ not in self.__checked_output_specs_cache__
+            ):
                 if hasattr(self, output_specs):
                     spec = getattr(self, output_specs)
                 else:

@@ -67,10 +67,12 @@ steps:
     if: build.branch == "master"
     instance_type: small
     commands:
-      - bazel run //ci/ray_ci/automation:determine_microcheck_tests -- {{matrix}} 95 --production
+      - bazel run //ci/ray_ci/automation:determine_microcheck_tests -- {{matrix}} 100 --production
     matrix:
       - "core"
+      - "serverless"
       - "serve"
       - "data"
       - "ml"
       - "rllib"
+      - "ci"

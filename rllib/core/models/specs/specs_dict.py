@@ -1,5 +1,6 @@
 from typing import Dict, Union, Mapping, Any
 
+import tree
 from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.core.models.specs.specs_base import Spec
 
@@ -109,22 +110,33 @@ class SpecDict(Dict[str, Spec], Spec):
         Args:
             data: The data which should match the spec. It can also be a spec.
             exact_match: If true, the data and the spec must be exactly identical.
-                Otherwise, the data is validated as long as it contains at least the
-                elements of the spec, but can contain more entries.
+                Otherwise, the data is considered valid as long as it contains at least
+                the elements of the spec, but can contain more entries.
         Raises:
             ValueError: If the data doesn't match the spec.
         """
-        data_keys_set = set(data.keys())
+        # Collect all (nested) keys in `data`.
+        data_keys_set = set()
 
-        for spec_key in self:
-            if spec_key not in data:
+        def _map(path, s):
+            data_keys_set.add(force_tuple(path))
+
+        tree.map_structure_with_path(_map, data)
+
+        # Check, whether all (nested) keys in `self` (the Spec) also exist in `data`.
+        def _map(path, s):
+            path = force_tuple(path)
+            if path not in data_keys_set:
                 raise ValueError(
-                    _MISSING_KEYS_FROM_DATA.format(spec_key, data_keys_set)
+                    _MISSING_KEYS_FROM_DATA.format(path, data_keys_set)
                 )
 
+        tree.map_structure_with_path(_check, self)
+
         if exact_match:
-            data_spec_missing_keys = data_keys_set.difference(self._keys_set)
-            if data_spec_missing_keys:
+            try:
+                tree.assert_same_structure(data, self, check_types=False)
+            except ValueError:
                 raise ValueError(_MISSING_KEYS_FROM_SPEC.format(data_spec_missing_keys))
 
         for spec_name, spec in self.items():
