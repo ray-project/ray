@@ -19,6 +19,8 @@ parser.add_argument(
     help="The DL framework specifier.",
 )
 
+parser.add_argument("--as-test", type=bool, default=True)
+
 parser.add_argument(
     "--stop-iters", type=int, default=500, help="Number of iterations to train."
 )
@@ -54,6 +56,7 @@ if __name__ == "__main__":
     from ray.tune.registry import register_env
 
     args = parser.parse_args()
+    num_gpus = int(os.environ.get("RLLIB_NUM_GPUS", "0"))
 
     ray.init()
 
@@ -65,15 +68,16 @@ if __name__ == "__main__":
     config.environment(
         env=args.env_name
     ).resources(
-        num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+        num_learner_workers=num_gpus,
+        num_gpus_per_learner_worker=num_gpus,
     ).rollouts(
         num_rollout_workers=args.num_cpus,
         num_envs_per_worker=args.num_envs_per_worker,
     ).framework(
         args.framework
     ).api_stack(
-            enable_rl_module_and_learner=True,
-            enable_env_runner_and_connector_v2=True,
+        enable_rl_module_and_learner=True,
+        enable_env_runner_and_connector_v2=True,
     ).reporting(
         min_time_s_per_iteration=0.1
     )
