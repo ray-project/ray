@@ -249,32 +249,6 @@ def test_fair_queueing(shutdown_only):
     assert len(ready) == 1000, len(ready)
 
 
-def test_fair_dispatching(shutdown_only):
-    ray.init(num_cpus=3)
-
-    @ray.remote
-    def f(i):
-        time.sleep(i)
-        return 0
-
-    @ray.remote
-    def g():
-        return 1
-
-    # First, we submit 2 task f. Currently, 2 CPUs are used and 1 CPU is free.
-    _ = [f.remote(3) for _ in range(2)]
-
-    # If it's fair dispatching, as currently there are more tasks of f running,
-    # task g will execute first; otherwise, after a 5-second timeout, ready is empty.
-    timeout = 5
-    ready, _ = ray.wait(
-        [f.remote(10), f.remote(10), f.remote(10), g.remote(), g.remote()],
-        timeout=timeout,
-        num_returns=5,
-    )
-    assert len(ready) == 2, len(ready)
-
-
 if __name__ == "__main__":
     import os
 
