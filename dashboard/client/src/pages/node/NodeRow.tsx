@@ -127,6 +127,9 @@ export const NodeRow = ({
       <TableCell>
         <StatusChip type="node" status={raylet.state} />
       </TableCell>
+      <TableCell>
+        <Box minWidth={TEXT_COL_MIN_WIDTH}>message={raylet.death_info.reason_message}</Box>
+      </TableCell>
       <TableCell align="center">
         <Tooltip title={raylet.nodeId} arrow>
           <div>

@@ -49,6 +49,7 @@ const codeTextStyle = {
 const columns = [
   { label: "" }, // Expand button
   { label: "Host / Worker Process name" },
+  { label: "Message" },
   { label: "State" },
   { label: "ID" },
   { label: "IP / PID" },
