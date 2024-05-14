@@ -81,11 +81,19 @@ class TestBC(unittest.TestCase):
                         if eval_results:
                             print(
                                 "iter={} R={}".format(
-                                    i, eval_results[f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"]
+                                    i,
+                                    eval_results[
+                                        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
+                                    ],
                                 )
                             )
                             # Learn until good reward is reached in the actual env.
-                            if eval_results[f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"] > min_reward:
+                            if (
+                                eval_results[
+                                    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
+                                ]
+                                > min_reward
+                            ):
                                 print("learnt!")
                                 learnt = True
                                 break

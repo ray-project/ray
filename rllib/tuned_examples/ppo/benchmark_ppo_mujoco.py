@@ -62,7 +62,9 @@ class BenchmarkStopper(Stopper):
         # Stop training if the mean reward is reached.
         if (
             result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
-            >= self.benchmark_envs[result["env"]][f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"]
+            >= self.benchmark_envs[result["env"]][
+                f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
+            ]
         ):
             return True
         # Otherwise check, if the total number of timesteps is exceeded.

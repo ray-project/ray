@@ -81,7 +81,7 @@ if __name__ == "__main__":
             "framework": args.framework,
             "action_mask_key": "valid_avail_actions_mask",
         },
-        **cfg
+        **cfg,
     )
 
     stop = {

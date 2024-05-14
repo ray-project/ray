@@ -336,7 +336,10 @@ class TestAlgorithm(unittest.TestCase):
             config.create_env_on_local_worker = True
             algo_w_env_on_local_worker = config.build()
             results = algo_w_env_on_local_worker.evaluate()
-            assert ENV_RUNNER_RESULTS in results and EPISODE_RETURN_MEAN in results[ENV_RUNNER_RESULTS]
+            assert (
+                ENV_RUNNER_RESULTS in results
+                and EPISODE_RETURN_MEAN in results[ENV_RUNNER_RESULTS]
+            )
             algo_w_env_on_local_worker.stop()
             config.create_env_on_local_worker = False
 

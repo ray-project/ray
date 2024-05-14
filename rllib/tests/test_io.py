@@ -115,7 +115,9 @@ class AgentIOTest(unittest.TestCase):
             print("WROTE TO: ", self.test_dir)
             algo = config.build()
             result = algo.train()
-            self.assertEqual(result[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"], 250)  # read from input
+            self.assertEqual(
+                result[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"], 250
+            )  # read from input
             self.assertTrue(np.isnan(result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]))
 
     def test_split_by_episode(self):
@@ -164,7 +166,9 @@ class AgentIOTest(unittest.TestCase):
 
             algo = config.build()
             result = algo.train()
-            self.assertEqual(result[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"], 250)  # read from input
+            self.assertEqual(
+                result[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"], 250
+            )  # read from input
             self.assertTrue(np.isnan(result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]))
             algo.stop()
 
@@ -207,7 +211,9 @@ class AgentIOTest(unittest.TestCase):
             config.offline_data(input_=glob.glob(self.test_dir + fw + "/*.json"))
             algo = config.build()
             result = algo.train()
-            self.assertEqual(result[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"], 250)  # read from input
+            self.assertEqual(
+                result[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"], 250
+            )  # read from input
             self.assertTrue(np.isnan(result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]))
             algo.stop()
 
@@ -223,7 +229,9 @@ class AgentIOTest(unittest.TestCase):
             )
             algo = config.build()
             result = algo.train()
-            self.assertTrue(not np.isnan(result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]))
+            self.assertTrue(
+                not np.isnan(result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN])
+            )
             algo.stop()
 
     def test_custom_input_procedure(self):
@@ -256,7 +264,9 @@ class AgentIOTest(unittest.TestCase):
                 algo = config.build()
                 result = algo.train()
                 self.assertEqual(result[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"], 4000)
-                self.assertTrue(np.isnan(result[f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"]))
+                self.assertTrue(
+                    np.isnan(result[f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"])
+                )
                 algo.stop()
 
     def test_multiple_output_workers(self):

@@ -223,7 +223,10 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             sample = rw.sample()
             assert sample.count == algo.config.get_rollout_fragment_length()
             results = algo.train()
-            assert results[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"] == config["train_batch_size"]
+            assert (
+                results[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"]
+                == config["train_batch_size"]
+            )
             algo.stop()
 
     def test_traj_view_next_action(self):
@@ -353,7 +356,10 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         results = None
         for i in range(num_iterations):
             results = algo.train()
-        self.assertEqual(results["agent_timesteps_total"], results[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"])
+        self.assertEqual(
+            results["agent_timesteps_total"],
+            results[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"],
+        )
         self.assertEqual(
             results["num_env_steps_trained"] * num_agents,
             results["num_agent_steps_trained"],

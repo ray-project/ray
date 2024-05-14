@@ -113,7 +113,9 @@ if __name__ == "__main__":
         print(f"Iter {i}")
         eval_results = cql_algorithm.train().get("evaluation")
         if eval_results:
-            print("... R={}".format(eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]))
+            print(
+                "... R={}".format(eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN])
+            )
             # Learn until some reward is reached on an actual live env.
             if eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN] >= min_reward:
                 # Test passed gracefully.

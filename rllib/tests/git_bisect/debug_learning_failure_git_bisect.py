@@ -32,7 +32,11 @@ import os
 import subprocess
 import yaml
 
-from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -153,7 +157,8 @@ if __name__ == "__main__":
 
     # Invalid pass criteria.
     if stop.get("episode_reward_mean") is None and (
-        stop.get(f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}") is None or stop.get("time_total_s") is None
+        stop.get(f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}") is None
+        or stop.get("time_total_s") is None
     ):
         raise ValueError(
             "Invalid pass criterium! Must use either "
@@ -220,15 +225,21 @@ if __name__ == "__main__":
     # Criterion is to have reached some min reward within given
     # wall time, iters, or timesteps.
     if stop.get("episode_return_mean") is not None:
-        max_avg_reward = np.max([r[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN] for r in last_results])
+        max_avg_reward = np.max(
+            [r[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN] for r in last_results]
+        )
         if max_avg_reward < stop[f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"]:
             raise ValueError(
-                "`stop-reward` of {} not reached!".format(stop[f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"])
+                "`stop-reward` of {} not reached!".format(
+                    stop[f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"]
+                )
             )
     # Criterion is to have run through n env timesteps in some wall time m
     # (minimum throughput).
     else:
-        total_timesteps = np.sum([r[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"] for r in last_results])
+        total_timesteps = np.sum(
+            [r[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"] for r in last_results]
+        )
         total_time = np.sum([r["time_total_s"] for r in last_results])
         desired_speed = stop[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"] / stop["time_total_s"]
         actual_speed = total_timesteps / total_time

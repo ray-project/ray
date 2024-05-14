@@ -74,7 +74,7 @@ class FillInActions(DefaultCallbacks):
         policies,
         postprocessed_batch,
         original_batches,
-        **kwargs
+        **kwargs,
     ):
         to_update = postprocessed_batch[SampleBatch.CUR_OBS]
         other_id = 1 if agent_id == 0 else 0

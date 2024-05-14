@@ -53,6 +53,7 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.logger import pretty_print

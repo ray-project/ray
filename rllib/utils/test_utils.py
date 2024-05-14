@@ -40,10 +40,12 @@ from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_
 from ray.rllib.utils.metrics import (
     DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
     ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
     EVALUATION_RESULTS,
-    NUM_ENV_STEPS_SAMPLED,
-    NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_TRAINED,
+    NUM_ENV_STEPS_TRAINED_LIFETIME,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+    NUM_EPISODES_LIFETIME,
 )
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import ResultDict
@@ -1146,7 +1148,10 @@ def run_learning_tests_from_yaml_or_py(
                     NUM_ENV_STEPS_TRAINED_LIFETIME: "ts (trained)",
                     NUM_EPISODES_LIFETIME: "train_episodes",
                     f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": "reward_mean",
-                    f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": "eval_reward_mean",
+                    (
+                        f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/"
+                        f"{EPISODE_RETURN_MEAN}"
+                    ): "eval_reward_mean",
                 },
                 parameter_columns=["framework"],
                 sort_by_metric=True,
@@ -1189,7 +1194,8 @@ def run_learning_tests_from_yaml_or_py(
                     episode_reward_mean = np.mean(
                         [
                             t.metric_analysis[
-                                f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
+                                f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/"
+                                f"{EPISODE_RETURN_MEAN}"
                             ]["max"]
                             for t in trials_for_experiment
                         ]
@@ -1197,9 +1203,9 @@ def run_learning_tests_from_yaml_or_py(
                 else:
                     episode_reward_mean = np.mean(
                         [
-                            t.metric_analysis[f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"][
-                                "max"
-                            ]
+                            t.metric_analysis[
+                                f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
+                            ]["max"]
                             for t in trials_for_experiment
                         ]
                     )

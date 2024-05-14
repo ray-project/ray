@@ -627,7 +627,9 @@ class TestMultiAgentEnv(unittest.TestCase):
             result = algo.train()
             print(
                 "Iteration {}, reward {}, timesteps {}".format(
-                    i, result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN], result[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"]
+                    i,
+                    result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN],
+                    result[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"],
                 )
             )
         algo.stop()
@@ -689,7 +691,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                 episodes=None,
                 explore=True,
                 timestep=None,
-                **kwargs
+                **kwargs,
             ):
                 obs_shape = (len(obs_batch),)
                 actions = np.zeros(obs_shape, dtype=np.int32)
@@ -824,7 +826,9 @@ class TestMultiAgentEnv(unittest.TestCase):
             result = algo.train()
             print(
                 "Iteration {}, reward {}, timesteps {}".format(
-                    i, result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN], result[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"]
+                    i,
+                    result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN],
+                    result[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"],
                 )
             )
             if result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN] >= 50 * n:
@@ -868,7 +872,9 @@ class TestMultiAgentEnv(unittest.TestCase):
             result = algo.train()
             print(
                 "Iteration {}, reward {}, timesteps {}".format(
-                    i, result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN], result[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"]
+                    i,
+                    result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN],
+                    result[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"],
                 )
             )
         self.assertTrue(

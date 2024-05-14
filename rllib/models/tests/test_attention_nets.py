@@ -104,7 +104,7 @@ class TestAttentionNets(unittest.TestCase):
                         "position_wise_mlp_dim": 32,
                     },
                 },
-            }
+            },
         )
         tune.Tuner(
             "PPO",

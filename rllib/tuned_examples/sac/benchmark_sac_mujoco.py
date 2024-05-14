@@ -1,4 +1,9 @@
 from ray.rllib.algorithms.sac.sac import SACConfig
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
 from ray.tune import Stopper
 from ray import train, tune
 
@@ -27,7 +32,10 @@ benchmark_envs = {
         f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 8000,
         f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 10000000,
     },
-    "Ant-v4": {f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 5500, f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 3000000},
+    "Ant-v4": {
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 5500,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 3000000,
+    },
     "Walker2d-v4": {
         f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 6000,
         f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 3000000,
@@ -45,7 +53,9 @@ class BenchmarkStopper(Stopper):
         # Stop training if the mean reward is reached.
         if (
             result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
-            >= self.benchmark_envs[result["env"]][f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"]
+            >= self.benchmark_envs[result["env"]][
+                f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
+            ]
         ):
             return True
         # Otherwise check, if the total number of timesteps is exceeded.
