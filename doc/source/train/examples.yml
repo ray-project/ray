@@ -80,6 +80,7 @@ examples:
     use_cases:
       - computer vision
       - generative ai
+    contributor: community
     link: examples/intel_gaudi/sd
   - title: Train with PyTorch Lightning and Ray Data
     frameworks:
