@@ -331,6 +331,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         self._dashboard_head.metrics.metrics_event_loop_lag.labels(
             ip=self._ip,
             pid=self._pid,
+            Version=ray.__version__,
             Component=self._component,
             SessionName=self._session_name,
         ).set(float(max_lag))
