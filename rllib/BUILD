@@ -187,7 +187,7 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_cartpole_w_100_policies_appo",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
     size = "enormous",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/appo/multi-agent-cartpole-w-100-policies-appo.py"],
@@ -283,10 +283,10 @@ py_test(
 # )
 
 py_test(
-    name = "learning_tests_carpole_dqn_envrunner",
+    name = "learning_tests_cartpole_dqn_envrunner",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_cartpole", "learning_tests_discrete"],
-    size = "large",
+    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_cartpole", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
+    size = "enormous",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/dqn/cartpole_dqn_envrunner.py"],
     args = ["--dir=tuned_examples/dqn"]
@@ -2276,6 +2276,24 @@ py_test(
     size = "medium",
     srcs = ["examples/envs/custom_gym_env.py"],
     args = ["--enable-new-api-stack", "--as-test"]
+)
+
+py_test(
+    name = "examples/envs/custom_env_render_method",
+    main = "examples/envs/custom_env_render_method.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/envs/custom_env_render_method.py"],
+    args = ["--enable-new-api-stack", "--num-agents=0"]
+)
+
+py_test(
+    name = "examples/envs/custom_env_render_method_multi_agent",
+    main = "examples/envs/custom_env_render_method.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/envs/custom_env_render_method.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2"]
 )
 
 py_test(

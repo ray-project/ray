@@ -14,7 +14,7 @@ LINUX_TEST_PREFIX = "linux:__"
 @click.command()
 @click.argument("team", required=True, type=str)
 @click.argument("coverage", required=True, type=int)
-@click.option("--test-history-length", default=100, type=int)
+@click.option("--test-history-length", default=500, type=int)
 @click.option("--test-prefix", default=LINUX_TEST_PREFIX, type=str)
 @click.option("--production", is_flag=True, default=False)
 def main(
@@ -116,6 +116,7 @@ def _get_failed_prs(test: Test, test_history_length: int) -> Set[str]:
         for result in test.get_test_results(
             limit=test_history_length,
             aws_bucket=get_global_config()["state_machine_pr_aws_bucket"],
+            use_async=True,
         )
         if result.status == ResultStatus.ERROR.value
     ]

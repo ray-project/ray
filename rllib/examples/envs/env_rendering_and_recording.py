@@ -19,7 +19,9 @@ How to run this script
 --wandb-run-name=[optional: WandB run name within --wandb-project]`
 
 In order to see the actual videos, you need to have a WandB account and provide your
-API key and a project name on the command line (see above).
+API key and a project name on the command line (see above). To log the videos in WandB
+you need to have the `wandb` and `moviepy` packages installed (`pip install wandb
+moviepy`).
 
 Use the `--env` flag to control, which Atari env is used. Note that this example
 only works with Atari envs.
@@ -103,6 +105,7 @@ class EnvRenderCallback(DefaultCallbacks):
         *,
         episode,
         env_runner,
+        metrics_logger,
         env,
         env_index,
         rl_module,
@@ -137,6 +140,7 @@ class EnvRenderCallback(DefaultCallbacks):
         *,
         episode,
         env_runner,
+        metrics_logger,
         env,
         env_index,
         rl_module,

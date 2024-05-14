@@ -796,7 +796,7 @@ class Algorithm(Trainable, AlgorithmBase):
             self.workers.sync_weights(inference_only=True)
 
         # Run `on_algorithm_init` callback after initialization is done.
-        self.callbacks.on_algorithm_init(algorithm=self)
+        self.callbacks.on_algorithm_init(algorithm=self, metrics_logger=self.metrics)
 
     @OverrideToImplementCustomLogic
     @classmethod
@@ -999,7 +999,7 @@ class Algorithm(Trainable, AlgorithmBase):
                     config=self.evaluation_config,
                 )
 
-        self.callbacks.on_evaluate_start(algorithm=self)
+        self.callbacks.on_evaluate_start(algorithm=self, metrics_logger=self.metrics)
 
         env_steps = agent_steps = 0
         batches = []
@@ -1097,7 +1097,11 @@ class Algorithm(Trainable, AlgorithmBase):
                     eval_results["off_policy_estimator"][name] = avg_estimate
 
         # Trigger `on_evaluate_end` callback.
-        self.callbacks.on_evaluate_end(algorithm=self, evaluation_metrics=eval_results)
+        self.callbacks.on_evaluate_end(
+            algorithm=self,
+            metrics_logger=self.metrics,
+            evaluation_metrics=eval_results,
+        )
 
         # Also return the results here for convenience.
         return eval_results
@@ -2447,9 +2451,13 @@ class Algorithm(Trainable, AlgorithmBase):
     def log_result(self, result: ResultDict) -> None:
         # Log after the callback is invoked, so that the user has a chance
         # to mutate the result.
-        # TODO: Remove `algorithm` arg at some point to fully deprecate the old
-        #  signature.
-        self.callbacks.on_train_result(algorithm=self, result=result)
+        # TODO (sven): It might not make sense to pass in the MetricsLogger at this late
+        #  point in time. In here, the result dict has already been "compiled" (reduced)
+        #  by the MetricsLogger and there is probably no point in adding more Stats
+        #  here.
+        self.callbacks.on_train_result(
+            algorithm=self, metrics_logger=self.metrics, result=result
+        )
         # Then log according to Trainable's logging logic.
         Trainable.log_result(self, result)
 
@@ -3264,7 +3272,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 config=self.evaluation_config,
             )
 
-        self.callbacks.on_evaluate_start(algorithm=self)
+        self.callbacks.on_evaluate_start(algorithm=self, metrics_logger=self.metrics)
 
         env_steps = agent_steps = 0
 

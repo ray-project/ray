@@ -25,7 +25,9 @@ class MockTest(dict):
     def get_name(self) -> str:
         return self.get("name", "")
 
-    def get_test_results(self, limit: int, aws_bucket: str) -> List[TestResult]:
+    def get_test_results(
+        self, limit: int, aws_bucket: str, use_async: bool
+    ) -> List[TestResult]:
         return self.get("test_results", [])
 
     def persist_to_s3(self) -> None:
@@ -40,6 +42,7 @@ def stub_test_result(status: ResultStatus, branch: str) -> TestResult:
         url="",
         timestamp=0,
         pull_request="",
+        rayci_step_id="",
     )
 
 

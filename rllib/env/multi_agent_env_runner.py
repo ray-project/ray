@@ -60,6 +60,10 @@ class MultiAgentEnvRunner(EnvRunner):
         # Get the worker index on which this instance is running.
         self.worker_index: int = kwargs.get("worker_index")
 
+        # Set up all metrics-related structures and counters.
+        self.metrics: Optional[MetricsLogger] = None
+        self._setup_metrics()
+
         # Create our callbacks object.
         self._callbacks: DefaultCallbacks = self.config.callbacks_class()
 
@@ -85,10 +89,6 @@ class MultiAgentEnvRunner(EnvRunner):
 
         # Create the two connector pipelines: env-to-module and module-to-env.
         self._module_to_env = self.config.build_module_to_env_connector(self.env)
-
-        # Set up all metrics-related structures and counters.
-        self.metrics: Optional[MetricsLogger] = None
-        self._setup_metrics()
 
         self._needs_initial_reset: bool = True
         self._episode: Optional[MultiAgentEpisode] = None
@@ -749,6 +749,7 @@ class MultiAgentEnvRunner(EnvRunner):
         # Call the `on_environment_created` callback.
         self._callbacks.on_environment_created(
             env_runner=self,
+            metrics_logger=self.metrics,
             env=self.env,
             env_context=env_ctx,
         )
@@ -812,29 +813,34 @@ class MultiAgentEnvRunner(EnvRunner):
         )
 
     def _increase_sampled_metrics(self, num_steps, next_obs, episode):
-        self.metrics.log_dict(
-            {
-                NUM_ENV_STEPS_SAMPLED: num_steps,
-                # TODO (sven): obs is not-vectorized. Support vectorized MA envs.
-                NUM_AGENT_STEPS_SAMPLED: {str(aid): 1 for aid in next_obs},
-                NUM_MODULE_STEPS_SAMPLED: {
-                    episode.module_for(aid): 1 for aid in next_obs
-                },
-            },
-            reduce="sum",
-            clear_on_reduce=True,
+        self.metrics.log_value(
+            NUM_ENV_STEPS_SAMPLED, num_steps, reduce="sum", clear_on_reduce=True
         )
-        self.metrics.log_dict(
-            {
-                NUM_ENV_STEPS_SAMPLED_LIFETIME: num_steps,
-                # TODO (sven): obs is not-vectorized. Support vectorized MA envs.
-                NUM_AGENT_STEPS_SAMPLED_LIFETIME: {str(aid): 1 for aid in next_obs},
-                NUM_MODULE_STEPS_SAMPLED_LIFETIME: {
-                    episode.module_for(aid): 1 for aid in next_obs
-                },
-            },
-            reduce="sum",
-        )
+        self.metrics.log_value(NUM_ENV_STEPS_SAMPLED_LIFETIME, num_steps, reduce="sum")
+        # TODO (sven): obs is not-vectorized. Support vectorized MA envs.
+        for aid in next_obs:
+            self.metrics.log_value(
+                (NUM_AGENT_STEPS_SAMPLED, str(aid)),
+                1,
+                reduce="sum",
+                clear_on_reduce=True,
+            )
+            self.metrics.log_value(
+                (NUM_AGENT_STEPS_SAMPLED_LIFETIME, str(aid)),
+                1,
+                reduce="sum",
+            )
+            self.metrics.log_value(
+                (NUM_MODULE_STEPS_SAMPLED, episode.module_for(aid)),
+                1,
+                reduce="sum",
+                clear_on_reduce=True,
+            )
+            self.metrics.log_value(
+                (NUM_MODULE_STEPS_SAMPLED_LIFETIME, episode.module_for(aid)),
+                1,
+                reduce="sum",
+            )
         return num_steps
 
     def _log_episode_metrics(self, length, ret, sec, agents=None, modules=None):
