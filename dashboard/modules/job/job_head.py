@@ -21,6 +21,7 @@ from ray._private.runtime_env.packaging import (
     pin_runtime_env_uri,
     upload_package_to_gcs,
 )
+from ray._private.utils import get_or_create_event_loop
 from ray.dashboard.modules.job.common import (
     JobDeleteResponse,
     http_uri_components_to_uri,
@@ -266,8 +267,11 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         logger.info(f"Uploading package {package_uri} to the GCS.")
         try:
             data = await req.read()
-            await self._upload_package_thread_pool_executor.submit(
-                upload_package_to_gcs, package_uri, data
+            await get_or_create_event_loop().run_in_executor(
+                self._upload_package_thread_pool_executor,
+                upload_package_to_gcs,
+                package_uri,
+                data,
             )
         except Exception:
             return Response(
