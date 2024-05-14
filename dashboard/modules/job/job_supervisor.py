@@ -34,7 +34,7 @@ from ray.dashboard.modules.job.common import (
     JOB_EXECUTOR_ACTOR_NAME_TEMPLATE,
     SUPERVISOR_ACTOR_RAY_NAMESPACE,
     JobInfoStorageClient,
-    JobInfo, _get_actor_for_job,
+    JobInfo, _get_supervisor_actor_for_job,
 )
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.exceptions import RuntimeEnvSetupError, ActorUnschedulableError
@@ -187,7 +187,7 @@ class JobSupervisor:
                 actors launched by it.
         """
 
-        self._logger.info(f"Starting job {self._job_id}")
+        self._logger.info(f"Starting job with submission_id: {self._job_id}")
 
         job_info = JobInfo(
             entrypoint=self._entrypoint,
@@ -574,7 +574,7 @@ class JobSupervisor:
             self._take_poison_pill()
 
     def _take_poison_pill(self):
-        job_supervisor_handle = _get_actor_for_job(self._job_id)
+        job_supervisor_handle = _get_supervisor_actor_for_job(self._job_id)
         if job_supervisor_handle is not None:
             self._logger.info(f"Shutting down job supervisor actor")
 
