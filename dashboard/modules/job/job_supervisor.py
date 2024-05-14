@@ -478,12 +478,24 @@ class JobSupervisor:
                 job_info = await self._job_info_client.get_info(self._job_id)
                 job_status = job_info.status if job_info else None
 
-                if job_status is None or job_status == JobStatus.PENDING:
-                    # Maybe the Job Runner actor is not created yet.
-                    # We will wait for the next loop.
-                    duration_s = self._get_duration_s(job_info)
+                # Check if job driver is running
+                running = await self._check_driver_running()
 
-                    if duration_s >= self._startup_timeout_s:
+                if running:
+                    # In case job executor is running successfully, reachable and responsive, log
+                    # running status of the job's driver every JOB_STATUS_LOG_FREQUENCY_SECONDS
+                    # (to keep it as heart-beat check, but avoid logging it on every iteration)
+                    if i % int(self.JOB_STATUS_LOG_INTERVAL_S / self.JOB_MONITOR_LOOP_INTERVAL_S) == 0:
+                        self._logger.info(f"Job driver is still running (job status: {job_status}")
+
+                elif job_status is None or job_status == JobStatus.PENDING:
+                    # In case of executor not running and job still remaining in PENDING state (ie
+                    # job's driver not started successfully yet), check whether job should be
+                    # considered failed to start up w/in predetermined period defined via
+                    # `RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR`
+                    pending_duration_s = time.time() - self._get_job_started_at(job_info)
+
+                    if pending_duration_s >= self._startup_timeout_s:
                         error_message = (
                             f"Job driver failed to start within {self._startup_timeout_s} seconds. "
                             f"This timeout can be configured by setting the environment variable "
@@ -502,36 +514,33 @@ class JobSupervisor:
                             )
 
                         self._logger.error(error_message)
-
                         # Break out of the monitoring loop
                         break
+
+                elif job_status.is_terminal():
+                    # In case job already reached terminal state we can conclude monitoring
+                    # loop
+                    self._logger.info(f"Job reached terminal state (status: {job_status})")
+                    break
 
                 else:
-                    # Check if job driver is running
-                    running = await self._check_driver_running()
+                    duration_since_last_running_s = time.time() - self._driver_last_running_at
+                    # In case, when job has not yet reached terminal state, but job executor runner
+                    # isn't running anymore monitoring loop assumes job failed (after expiration of
+                    # `JOB_STATUS_FINALIZATION_TIMEOUT_S` period)
+                    #
+                    # NOTE: We wait for `JOB_STATUS_FINALIZATION_TIMEOUT_S` before letting monitoring
+                    #       loop mark job as failed to avoid race-conditions with execution sequence,
+                    #       giving it `JOB_STATUS_FINALIZATION_TIMEOUT_S` to finalize state job after
+                    #       the job execution has completed
+                    if duration_since_last_running_s > self.JOB_STATUS_FINALIZATION_TIMEOUT_S:
+                        self._logger.error(
+                            f"Job driver has not been running for {duration_since_last_running_s}s but job has not finished yet (status: {job_status}))"
+                        )
 
-                    if running:
-                        # Log running status of the job's driver every JOB_STATUS_LOG_FREQUENCY_SECONDS
-                        if i % int(self.JOB_STATUS_LOG_INTERVAL_S / self.JOB_MONITOR_LOOP_INTERVAL_S) == 0:
-                            self._logger.info(f"Job driver is still running (job status: {job_status}")
-
-                    elif job_status.is_terminal():
-                        self._logger.info(f"Job reached terminal state (status: {job_status})")
+                        error_message = "Unexpected error occurred: job driver is not running"
                         # Break out of the monitoring loop
                         break
-
-                    else:
-                        duration_since_last_running_s = time.time() - self._driver_last_running_at
-
-                        if duration_since_last_running_s > self.JOB_STATUS_FINALIZATION_TIMEOUT_S:
-                            # Job has not reached terminal state, but job driver is not running
-                            self._logger.error(
-                                f"Job driver has not been running for {duration_since_last_running_s}s but job has not finished yet (status: {job_status}))"
-                            )
-
-                            error_message = "Unexpected error occurred: job driver is not running"
-                            # Break out of the monitoring loop
-                            break
 
         except Exception as e:
             self._logger.error(
@@ -582,13 +591,11 @@ class JobSupervisor:
         else:
             self._logger.info(f"Job Supervisor actor not found, assuming it already shutdown")
 
-    def _get_duration_s(self, job_info: Optional[JobInfo]) -> float:
+    def _get_job_started_at(self, job_info: Optional[JobInfo]) -> float:
         # NOTE: Job start-up time is captured in millis. However, if there's
         #       no corresponding  record in the GCS, we assume Job Supervisor
         #       start-up timestamp as job's one
-        started_at = job_info.start_time / 1000 if job_info else self._started_at
-
-        return time.time() - started_at
+        return job_info.start_time / 1000 if job_info else self._started_at
 
     @staticmethod
     def _has_entrypoint_resources_set(job_info: JobInfo):
