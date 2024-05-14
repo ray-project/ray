@@ -446,7 +446,7 @@ message DrainNodeRequest {
 }
 
 message DrainNodeStatus {
-  // The node id that is successfully drained from GCS.
+  // The node id that is acknowledged for draining by GCS.
   bytes node_id = 1;
 }
 
