@@ -3,7 +3,7 @@ import ray
 from ray.core.generated import gcs_pb2
 
 
-def test_node_death(ray_start_cluster):
+def test_normal_termination(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(resources={"head": 1})
     ray.init(address=cluster.address)
