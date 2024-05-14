@@ -155,7 +155,7 @@ TEST_F(LocalResourceManagerTest, NodeDrainingTest) {
     manager->AllocateLocalTaskResources(resource_request, task_allocation);
   }
 
-  rpc::NodeDeathInfo node_death_info;  // TODO: fill in values
+  rpc::NodeDeathInfo node_death_info;
   manager->SetLocalNodeDraining(std::numeric_limits<int64_t>::max(), node_death_info);
   ASSERT_TRUE(manager->IsLocalNodeDraining());
 
