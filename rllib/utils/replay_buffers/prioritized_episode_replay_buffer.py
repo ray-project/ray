@@ -11,7 +11,7 @@ from ray.rllib.execution.segment_tree import MinSegmentTree, SumSegmentTree
 from ray.rllib.utils import force_list
 from ray.rllib.utils.replay_buffers.episode_replay_buffer import EpisodeReplayBuffer
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import SampleBatchType
+from ray.rllib.utils.typing import ModuleID, SampleBatchType
 
 
 class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
@@ -539,7 +539,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         # TODO (sven, simon): Do we need these?
         self._last_sampled_indices = state["_last_sampled_indices"]
 
-    def update_priorities(self, priorities: NDArray) -> None:
+    def update_priorities(self, priorities: NDArray, module_id: ModuleID) -> None:
         """Update the priorities of items at corresponding indices.
 
         Usually, incoming priorities are TD-errors.

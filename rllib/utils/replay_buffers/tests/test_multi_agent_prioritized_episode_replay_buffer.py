@@ -216,9 +216,8 @@ class TestMultiAgentPrioritizedEpisodeReplayBuffer(unittest.TestCase):
         # Now sample from the buffer and update priorities.
         sample = buffer.sample(batch_size_B=16, n_step=1)
         module_ids = {eps.module_id for eps in sample}
-        
-        # weights = sample["weights"]
 
+        # weights = sample["weights"]
 
         # # Make sure the initial weights are 1.0.
         # tolerance = 1e-5

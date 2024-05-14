@@ -319,7 +319,7 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
         self._sample_idx_to_tree_idx[sample_index] = idx
         # Return the index.
         return idx
-    
+
     def _get_free_node_per_module_and_assign(
         self, module_id: ModuleID, sample_index, weight: float = 1.0
     ) -> int:
@@ -581,7 +581,9 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
         return sampled_episodes
 
     @override(PrioritizedEpisodeReplayBuffer)
-    def update_priorities(self, priorities: Union[NDArray, Dict[ModuleID, NDArray]]) -> None:
+    def update_priorities(
+        self, priorities: Union[NDArray, Dict[ModuleID, NDArray]], module_id: ModuleID,
+    ) -> None:
         """Update the priorities of items at corresponding indices.
 
         Usually, incoming priorities are TD-errors.
@@ -590,50 +592,51 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
             priorities: Numpy array containing the new priorities to be used
                 in sampling for the items in the last sampled batch.
         """
-        if isinstance(priorities, dict):
-            assert set(priorities.keys()) == set(self._module_to_last_sampled_indices.keys())
-            ma_episode_indices = []
-            for module_id, module_priorities in priorities.items():
-                assert len(module_priorities) == len(self._module_to_last_sampled_indices[module_id])
-                for idx, priority in zip(self._module_to_last_sampled_indices[module_id], module_priorities):
-                    sample_idx = self._module_to_tree_idx_to_sample_idx[module_id][idx]
-                    ma_episode_idx = self._module_to_indices[module_id][sample_idx][0] - self._num_episodes_evicted
-                    
-                    ma_episode_indices.append(ma_episode_idx)
-                    # Note, TD-errors come in as absolute values or results from
-                    # cross-entropy loss calculations.
-                    # assert priority > 0, f"priority was {priority}"
-                    priority = max(priority, 1e-12)
-                    assert 0 <= idx < self._module_to_sum_segment[module_id].capacity
-                    # TODO (simon): Create metrics.
-                    # delta = priority**self._alpha - self._sum_segment[idx]
-                    # Update the priorities in the segment trees.
-                    self._module_to_sum_segment[module_id][idx] = priority**self._alpha
-                    self._module_to_min_segment[module_id][idx] = priority**self._alpha
-                    # Update the maximal priority.
-                    self._module_to_max_priority[module_id] = max(
-                        self._module_to_max_priority[module_id], priority
-                    )
-                # Clear the corresponding index list for the module.
-                self._module_to_last_sampled_indices[module_id].clear()
-            
+       
+        assert len(priorities) == len(
+            self._module_to_last_sampled_indices[module_id]
+        )
+        for idx, priority in zip(
+            self._module_to_last_sampled_indices[module_id], priorities
+        ):
+            # sample_idx = self._module_to_tree_idx_to_sample_idx[module_id][idx]
+            # ma_episode_idx = (
+            #     self._module_to_indices[module_id][sample_idx][0]
+            #     - self._num_episodes_evicted
+            # )
+
+            #ma_episode_indices.append(ma_episode_idx)
+            # Note, TD-errors come in as absolute values or results from
+            # cross-entropy loss calculations.
+            # assert priority > 0, f"priority was {priority}"
+            priority = max(priority, 1e-12)
+            assert 0 <= idx < self._module_to_sum_segment[module_id].capacity
+            # TODO (simon): Create metrics.
+            # delta = priority**self._alpha - self._sum_segment[idx]
+            # Update the priorities in the segment trees.
+            self._module_to_sum_segment[module_id][idx] = (
+                priority**self._alpha
+            )
+            self._module_to_min_segment[module_id][idx] = (
+                priority**self._alpha
+            )
+            # Update the maximal priority.
+            self._module_to_max_priority[module_id] = max(
+                self._module_to_max_priority[module_id], priority
+            )
+        # Clear the corresponding index list for the module.
+        self._module_to_last_sampled_indices[module_id].clear()
+
             # for ma_episode_idx in ma_episode_indices:
             #     ma_episode_tree_idx = self._sample_idx_to_tree_idx(ma_episode_idx)
-            #     ma_episode_idx = 
+            #     ma_episode_idx =
 
-            #     # Update the weights 
-                # self._sum_segment[tree_idx] = sum(
-                #     self._module_to_sum_segment[module_id][idx]
-                #     for module_id, idx in self._tree_idx_to_sample_idx[tree_idx]
-                # )
-                # self._min_segment[tree_idx] = min(
-                #     self._module_to_min_segment[module_id][idx]
-                #     for module_id, idx in self._tree_idx_to_sample_idx[tree_idx]
-                # )
-
-    
-
-            
-                
-
-        
+            #     # Update the weights
+            # self._sum_segment[tree_idx] = sum(
+            #     self._module_to_sum_segment[module_id][idx]
+            #     for module_id, idx in self._tree_idx_to_sample_idx[tree_idx]
+            # )
+            # self._min_segment[tree_idx] = min(
+            #     self._module_to_min_segment[module_id][idx]
+            #     for module_id, idx in self._tree_idx_to_sample_idx[tree_idx]
+            # )

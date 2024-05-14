@@ -839,8 +839,9 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
                 module_id = ma_episode._agent_to_module_mapping[agent_id]
                 self._num_module_timesteps[module_id] += agent_steps
                 self._num_module_timesteps_added[module_id] += agent_steps
-                # Also add to the module episode counter.
-                self._num_module_episodes[module_id] += 1
+                if ma_episode.agent_episodes[agent_id].is_done:
+                    # Also add to the module episode counter.
+                    self._num_module_episodes[module_id] += 1
 
     def _add_new_module_indices(
         self, ma_episode: MultiAgentEpisode, episode_idx: int, exists: bool = True

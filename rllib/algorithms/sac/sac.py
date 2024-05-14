@@ -359,8 +359,6 @@ class SACConfig(AlgorithmConfig):
                 "When using the new `EnvRunner API` the replay buffer must be of type "
                 "`EpisodeReplayBuffer`."
             )
-        
-        
 
     @override(AlgorithmConfig)
     def get_rollout_fragment_length(self, worker_index: int = 0) -> int:

@@ -64,7 +64,7 @@ def update_priorities_in_episode_replay_buffer(
             # )
             # TODO (simon): Implement for stateful modules.
 
-            replay_buffer.update_priorities(td_error[TD_ERROR_KEY])
+            replay_buffer.update_priorities(td_error[TD_ERROR_KEY], module_id)
 
 
 @OldAPIStack
