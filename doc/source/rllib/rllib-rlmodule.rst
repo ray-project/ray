@@ -4,10 +4,6 @@
 
 .. include:: /_includes/rllib/new_api_stack_component.rst
 
-.. |tensorflow| image:: images/tensorflow.png
-    :class: inline-figure
-    :width: 16
-
 .. |pytorch| image:: images/pytorch.png
     :class: inline-figure
     :width: 16
@@ -35,21 +31,21 @@ RL Modules (Alpha)
          - RNN support (LSTM)
          - Complex observations (ComplexNet)
        * - **PPO**
-         - |pytorch| |tensorflow|
-         - |pytorch| |tensorflow|
-         - |pytorch| |tensorflow|
+         - |pytorch|
+         - |pytorch|
+         - |pytorch|
          -
          - |pytorch|
        * - **Impala**
-         - |pytorch| |tensorflow|
-         - |pytorch| |tensorflow|
-         - |pytorch| |tensorflow|
+         - |pytorch|
+         - |pytorch|
+         - |pytorch|
          -
          - |pytorch|
        * - **APPO**
-         - |pytorch| |tensorflow|
-         - |pytorch| |tensorflow|
-         - |pytorch| |tensorflow|
+         - |pytorch|
+         - |pytorch|
+         - |pytorch|
          - 
          - 
 
@@ -131,10 +127,9 @@ RLlib treats single-agent modules as a special case of :py:class:`~ray.rllib.cor
     :start-after: __convert-sa-to-ma-begin__
     :end-before: __convert-sa-to-ma-end__
 
-RLlib implements the following abstract framework specific base classes:
+RLlib implements the following abstract base class for PyTorch:
 
 - :class:`TorchRLModule <ray.rllib.core.rl_module.torch_rl_module.TorchRLModule>`: For PyTorch-based RL Modules.
-- :class:`TfRLModule <ray.rllib.core.rl_module.tf.tf_rl_module.TfRLModule>`: For TensorFlow-based RL Modules.
 
 The minimum requirement is for sub-classes of :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` is to implement the following methods:
 
@@ -165,8 +160,8 @@ If you don't return the "actions" key:
     the :py:meth:`~ray.rllib.models.distributions.Distribution.to_deterministic` utility before a possible action sample step.
     Thus, for example, sampling from a Categorical distribution will be reduced to simply selecting the argmax actions from the distribution's logits/probs.
 
-Commonly used distribution implementations can be found under ``ray.rllib.models.tf.tf_distributions`` for tensorflow and
-``ray.rllib.models.torch.torch_distributions`` for torch. You can choose to return determinstic actions, by creating a determinstic distribution instance.
+Commonly used distribution implementations can be found under ``ray.rllib.models.torch.torch_distributions`` for PyTorch.
+You can choose to return determinstic actions, by creating a determinstic distribution instance.
 
 
 .. tab-set::
@@ -241,7 +236,7 @@ When writing RL Modules, you need to use these fields to construct your model.
 
 .. tab-set::
 
-    .. tab-item:: Single Agent (torch)
+    .. tab-item:: Single Agent (PyTorch)
 
         .. literalinclude:: doc_code/rlmodule_guide.py
             :language: python
@@ -249,15 +244,9 @@ When writing RL Modules, you need to use these fields to construct your model.
             :end-before: __write-custom-sa-rlmodule-torch-end__
 
 
-    .. tab-item:: Single Agent (tensorflow)
-
-        .. literalinclude:: doc_code/rlmodule_guide.py
-            :language: python
-            :start-after: __write-custom-sa-rlmodule-tf-begin__
-            :end-before: __write-custom-sa-rlmodule-tf-end__
-
-
-In :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` you can enforce the checking for the existence of certain input or output keys in the data that is communicated into and out of RL Modules. This serves multiple purposes:
+In :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` you can enforce the checking
+for the existence of certain input or output keys in the data that is communicated into
+and out of RL Modules. This serves multiple purposes:
 
 - For the I/O requirement of each method to be self-documenting.
 - For failures to happen quickly. If users extend the modules and implement something that does not match the assumptions of the I/O specs, the check reports missing keys and their expected format. For example, RLModule should always have an ``obs`` key in the input batch and an ``action_dist`` key in the output.
@@ -334,7 +323,7 @@ To construct this custom multi-agent RL module, pass the class to the :py:class:
 Extending Existing RLlib RL Modules
 -----------------------------------
 
-RLlib provides a number of RL Modules for different frameworks (e.g., PyTorch, TensorFlow, etc.).
+RLlib provides an RL Module baseclass for PyTorch.
 To customize existing RLModules you can change the RLModule directly by inheriting the class and changing the
 :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.setup` or other methods.
 For example, extend :py:class:`~ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module.PPOTorchRLModule` and augment it with your own customization.
@@ -421,7 +410,17 @@ The following example shows how these methods can be used outside of, or in conj
 Migrating from Custom Policies and Models to RL Modules
 -------------------------------------------------------
 
-This document is for those who have implemented custom policies and models in RLlib and want to migrate to the new `~ray.rllib.core.rl_module.rl_module.RLModule` API. If you have implemented custom policies that extended the `~ray.rllib.policy.eager_tf_policy_v2.EagerTFPolicyV2` or `~ray.rllib.policy.torch_policy_v2.TorchPolicyV2` classes, you likely did so that you could either modify the behavior of constructing models and distributions (via overriding `~ray.rllib.policy.torch_policy_v2.TorchPolicyV2.make_model`, `~ray.rllib.policy.torch_policy_v2.TorchPolicyV2.make_model_and_action_dist`), control the action sampling logic (via overriding `~ray.rllib.policy.eager_tf_policy_v2.EagerTFPolicyV2.action_distribution_fn` or `~ray.rllib.policy.eager_tf_policy_v2.EagerTFPolicyV2.action_sampler_fn`), or control the logic for infernce (via overriding `~ray.rllib.policy.policy.Policy.compute_actions_from_input_dict`, `~ray.rllib.policy.policy.Policy.compute_actions`, or `~ray.rllib.policy.policy.Policy.compute_log_likelihoods`). These APIs were built with `ray.rllib.models.modelv2.ModelV2` models in mind to enable you to customize the behavior of those functions. However `~ray.rllib.core.rl_module.rl_module.RLModule` is a more general abstraction that will reduce the amount of functions that you need to override.
+This document is for those who have implemented custom policies and models in RLlib and want
+to migrate to the new `~ray.rllib.core.rl_module.rl_module.RLModule` API. If you have
+implemented custom policies that extended the `~ray.rllib.policy.torch_policy_v2.TorchPolicyV2` class,
+you likely did so that you could either modify the behavior of constructing models and
+distributions (via overriding `~ray.rllib.policy.torch_policy_v2.TorchPolicyV2.make_model`,
+`~ray.rllib.policy.torch_policy_v2.TorchPolicyV2.make_model_and_action_dist`) or control
+the logic for infernce (via overriding `~ray.rllib.policy.policy.Policy.compute_actions_from_input_dict`,
+`~ray.rllib.policy.policy.Policy.compute_actions`, or `~ray.rllib.policy.policy.Policy.compute_log_likelihoods`).
+These APIs were built with `ray.rllib.models.modelv2.ModelV2` models in mind to enable
+you to customize the behavior of those functions. However `~ray.rllib.core.rl_module.rl_module.RLModule`
+is a more general abstraction that will reduce the amount of functions that you need to override.
 
 In the new `~ray.rllib.core.rl_module.rl_module.RLModule` API the construction of the models and the action distribution class that should be used are best defined in the constructor. That RL Module is constructed automatically if users follow the instructions outlined in the sections `Enabling RL Modules in the Configuration`_ and `Constructing RL Modules`_. `~ray.rllib.policy.policy.Policy.compute_actions` and `~ray.rllib.policy.policy.Policy.compute_actions_from_input_dict` can still be used for sampling actions for inference or exploration by using the ``explore=True|False`` parameter. If called with ``explore=True`` these functions will invoke `~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration` and if ``explore=False`` then they will call `~ray.rllib.core.rl_module.rl_module.RLModule.forward_inference`.
 

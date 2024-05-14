@@ -4,10 +4,6 @@
 
 .. include:: /_includes/rllib/new_api_stack_component.rst
 
-.. |tensorflow| image:: images/tensorflow.png
-    :class: inline-figure
-    :width: 16
-
 .. |pytorch| image:: images/pytorch.png
     :class: inline-figure
     :width: 16
@@ -89,11 +85,11 @@ arguments in the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConf
        * - Algorithm
          - Supported Framework
        * - **PPO**
-         - |pytorch| |tensorflow|
+         - |pytorch|
        * - **Impala**
-         - |pytorch| |tensorflow|
+         - |pytorch|
        * - **APPO**
-         - |pytorch| |tensorflow|
+         - |pytorch|
 
 
 Basic usage
