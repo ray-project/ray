@@ -295,8 +295,8 @@ class SingleAgentEnvRunner(EnvRunner):
                 # Episode was done in previous timestep -> We now have the reset obs
                 # and infos.
                 if self._was_terminated[env_index] or self._was_truncated[env_index]:
-                    # Make the `on_episode_end` callback (before finalizing the
-                    # episode object).
+                    # Make the `on_episode_end` callback (before finalizing the episode
+                    # object).
                     self._make_on_episode_callback("on_episode_end", env_index)
 
                     # Then finalize (numpy'ize) the episode.
