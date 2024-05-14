@@ -33,7 +33,6 @@
 #include "ray/common/task/task_common.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/raylet/format/node_manager_generated.h"
-#include "ray/raylet/raylet_util.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/raylet/worker_killing_policy.h"
 #include "ray/rpc/node_manager/node_manager_client.h"

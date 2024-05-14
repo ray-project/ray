@@ -19,7 +19,6 @@
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/ray_config.h"
-#include "ray/raylet/raylet_util.h"
 
 namespace ray {
 
@@ -383,17 +382,8 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
 
 void LocalResourceManager::OnResourceOrStateChanged() {
   if (IsLocalNodeDraining() && IsLocalNodeIdle()) {
-    // The node is drained.
-
-    if (shutdown_raylet_gracefully_ == nullptr) {
-      RAY_LOG(ERROR)
-          << "shutdown_raylet_gracefully_ callback is not set, "
-          << "please check the LocalResourceManager constructor."
-          << "Using deprecated ShutdownRayletGracefully (sending SIGTERM) instead.";
-      raylet::ShutdownRayletGracefully();
-    } else {
-      shutdown_raylet_gracefully_(node_death_info_);
-    }
+    // The node is drained, continue with shutdown
+    shutdown_raylet_gracefully_(node_death_info_);
   }
 
   ++version_;

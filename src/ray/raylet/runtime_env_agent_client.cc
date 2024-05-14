@@ -27,7 +27,6 @@
 #include "absl/strings/str_format.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
-#include "ray/raylet/raylet_util.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/runtime_env_agent.pb.h"
 

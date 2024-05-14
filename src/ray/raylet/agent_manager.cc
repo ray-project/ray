@@ -17,7 +17,6 @@
 #include <thread>
 
 #include "ray/common/ray_config.h"
-#include "ray/raylet/raylet_util.h"
 #include "ray/util/event.h"
 #include "ray/util/event_label.h"
 #include "ray/util/logging.h"
