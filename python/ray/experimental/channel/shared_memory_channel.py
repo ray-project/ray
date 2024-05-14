@@ -362,7 +362,10 @@ class Channel(ChannelInterface):
         else:
             serialized_value = value
 
-        size = serialized_value.total_bytes
+        # serialized_value.total_bytes *only* includes the size of the data. It does not
+        # include the size of the metadata, so we must account for the size of the
+        # metadata explicitly.
+        size = serialized_value.total_bytes + len(serialized_value.metadata)
         if size > self._typ.buffer_size_bytes:
             # Now make the channel backing store larger.
             self._typ.buffer_size_bytes = size
