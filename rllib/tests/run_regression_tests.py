@@ -30,6 +30,10 @@ from ray.rllib import _register_all
 from ray.rllib.common import SupportedFileType
 from ray.rllib.train import load_experiments_from_file
 from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+)
 from ray.tune import run_experiments
 
 parser = argparse.ArgumentParser()
@@ -193,7 +197,7 @@ if __name__ == "__main__":
         # long learning tests such as sac and ddpg on the pendulum environment.
         if args.override_mean_reward != 0.0:
             exp["stop"][
-                "env_runner_results/episode_return_mean"
+                f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
             ] = args.override_mean_reward
 
         # Checkpoint settings.
@@ -271,7 +275,7 @@ if __name__ == "__main__":
                     ]
                     if check_eval
                     else (
-                        # Some algos don't store sampler results under `sampler_results`
+                        # Some algos don't store sampler results under `env_runners`
                         # e.g. ARS. Need to keep this logic around for now.
                         t.last_result["env_runner_results"]["episode_return_mean"]
                         if "env_runner_results" in t.last_result
@@ -281,18 +285,18 @@ if __name__ == "__main__":
 
                 # If we are using evaluation workers, we may have
                 # a stopping criterion under the "evaluation/" scope. If
-                # not, use `episode_reward_mean`.
+                # not, use `episode_return_mean`.
                 if check_eval:
                     min_reward = t.stopping_criterion.get(
                         "evaluation_results/env_runner_results/episode_return_mean",
                         t.stopping_criterion.get(
-                            "env_runner_results/episode_return_mean"
+                            f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
                         ),
                     )
-                # Otherwise, expect `episode_reward_mean` to be set.
+                # Otherwise, expect `env_runners/episode_return_mean` to be set.
                 else:
                     min_reward = t.stopping_criterion.get(
-                        "env_runner_results/episode_return_mean"
+                        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
                     )
 
                 # If min reward not defined, always pass.

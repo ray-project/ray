@@ -18,6 +18,11 @@ from ray.rllib.examples._old_api_stack.connectors.prepare_checkpoint import (
     create_open_spiel_checkpoint,
 )
 from ray.rllib.policy.policy import Policy
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+    NUM_EPISODES,
+)
 from ray.tune import CLIReporter, register_env
 
 
@@ -117,10 +122,10 @@ def main(checkpoint_dir):
                 metric_columns={
                     "training_iteration": "iter",
                     "time_total_s": "time_total_s",
-                    "num_env_steps_sampled_lifetime": "ts",
-                    "env_runner_results/num_episodes": "train_episodes",
+                    f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": "ts",
+                    f"{ENV_RUNNER_RESULTS}/{NUM_EPISODES}": "train_episodes",
                     (
-                        "env_runner_results/module_episode_returns_mean/" "main"
+                        f"{ENV_RUNNER_RESULTS}/module_episode_returns_mean/" "main"
                     ): "reward_main",
                 },
                 sort_by_metric=True,

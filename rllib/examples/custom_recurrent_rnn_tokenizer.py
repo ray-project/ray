@@ -28,6 +28,10 @@ from ray.rllib.core.models.tf.base import TfModel
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+)
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.rllib.core.models.configs import ModelConfig
 
@@ -187,7 +191,7 @@ if __name__ == "__main__":
     stop = {
         "training_iteration": args.stop_iters,
         "num_env_steps_sampled_lifetime": args.stop_timesteps,
-        "env_runner_results/episode_return_mean": args.stop_reward,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
     }
 
     tuner = tune.Tuner(

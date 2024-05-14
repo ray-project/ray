@@ -30,6 +30,10 @@ import ray
 from ray import air, tune
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.wrappers.unity3d_env import Unity3DEnv
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+)
 from ray.rllib.utils.test_utils import check_learning_achieved
 
 parser = argparse.ArgumentParser()
@@ -183,7 +187,7 @@ if __name__ == "__main__":
     stop = {
         "training_iteration": args.stop_iters,
         "num_env_steps_sampled_lifetime": args.stop_timesteps,
-        "env_runner_results/episode_return_mean": args.stop_reward,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
     }
 
     # Run the experiment.

@@ -10,6 +10,10 @@ from ray import air, tune
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.utils.test_utils import check_learning_achieved, framework_iterator
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MAX,
+)
 from ray.rllib.utils.numpy import one_hot
 from ray.tune import register_env
 
@@ -195,7 +199,7 @@ class TestCuriosity(unittest.TestCase):
             for i in range(num_iterations):
                 result = algo.train()
                 print(result)
-                if result["episode_reward_max"] > 0.0:
+                if result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MAX] > 0.0:
                     print("Reached goal after {} iters!".format(i))
                     learnt = True
                     break
@@ -213,7 +217,7 @@ class TestCuriosity(unittest.TestCase):
             #    rewards_wo = 0.0
             #    for _ in range(num_iterations):
             #        result = algo.train()
-            #        rewards_wo += result["episode_reward_mean"]
+            #        rewards_wo += result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
             #        print(result)
             #    algo.stop()
             #    self.assertTrue(rewards_wo == 0.0)

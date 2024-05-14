@@ -20,6 +20,10 @@ from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+)
 from ray.rllib.utils.test_utils import check_learning_achieved
 
 tf1, tf, tfv = try_import_tf()
@@ -109,7 +113,7 @@ if __name__ == "__main__":
 
     # Start our actual experiment.
     stop = {
-        "env_runner_results/episode_return_mean": args.stop_reward,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
         "num_env_steps_sampled_lifetime": args.stop_timesteps,
         "training_iteration": args.stop_iters,
     }

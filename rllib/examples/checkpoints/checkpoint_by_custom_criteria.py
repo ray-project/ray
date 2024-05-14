@@ -58,6 +58,10 @@ rates used here:
 """
 
 from ray import tune
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+)
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
@@ -102,7 +106,7 @@ if __name__ == "__main__":
     best_result = results.get_best_result(metric=metric, mode="min", scope="all")
     value_best_metric = best_result.metrics_dataframe[metric].min()
     best_return_best = best_result.metrics_dataframe[
-        "env_runner_results/episode_return_mean"
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
     ].max()
     print(
         f"Best trial was the one with lr={best_result.metrics['config']['lr']}. "

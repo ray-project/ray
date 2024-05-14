@@ -9,6 +9,11 @@ import ray
 from ray import air, tune
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    EVALUATION_RESULTS,
+)
 from ray.rllib.utils.test_utils import framework_iterator
 from ray.tune.registry import get_trainable_cls
 
@@ -201,7 +206,7 @@ def learn_test_multi_agent_plus_evaluate(algo: str):
             )
         )
 
-        stop = {"episode_reward_mean": 100.0}
+        stop = {f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 100.0}
 
         with mock.patch.dict({"TEST_TMPDIR": tmp_dir}):
             results = tune.Tuner(
@@ -219,7 +224,7 @@ def learn_test_multi_agent_plus_evaluate(algo: str):
 
         # Find last checkpoint and use that for the rollout.
         best_checkpoint = results.get_best_result(
-            metric="episode_reward_mean",
+            metric=f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}",
             mode="max",
         ).checkpoint
 

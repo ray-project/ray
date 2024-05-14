@@ -35,7 +35,12 @@ from ray.rllib.policy.sample_batch import (
     convert_ma_batch_to_sample_batch,
 )
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.metrics import NUM_AGENT_STEPS_SAMPLED, NUM_AGENT_STEPS_TRAINED
+from ray.rllib.utils.metrics import (
+    NUM_AGENT_STEPS_SAMPLED,
+    NUM_AGENT_STEPS_TRAINED,
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+)
 from ray.rllib.utils.test_utils import check, framework_iterator
 from ray.tune.registry import register_env
 
@@ -490,12 +495,12 @@ class TestRolloutWorker(unittest.TestCase):
         result = collect_metrics(ws, [])
         # Shows different behavior when connector is on/off.
         if config.enable_connectors:
-            # episode_reward_mean shows the correct clipped value.
-            self.assertEqual(result["episode_reward_mean"], 10)
+            # episode_return_mean shows the correct clipped value.
+            self.assertEqual(result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN], 10)
         else:
-            # episode_reward_mean shows the unclipped raw value
+            # episode_return_mean shows the unclipped raw value
             # when connector is off, and old env_runner v1 is used.
-            self.assertEqual(result["episode_reward_mean"], 1000)
+            self.assertEqual(result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN], 1000)
         ev.stop()
 
         # Clipping in certain range (-2.0, 2.0).
@@ -534,7 +539,7 @@ class TestRolloutWorker(unittest.TestCase):
         )
         self.assertEqual(max(sample["rewards"]), 100)
         result2 = collect_metrics(ws2, [])
-        self.assertEqual(result2["episode_reward_mean"], 1000)
+        self.assertEqual(result2[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN], 1000)
         ev2.stop()
 
     def test_metrics(self):
@@ -564,7 +569,7 @@ class TestRolloutWorker(unittest.TestCase):
         ray.get(remote_ev.sample.remote())
         result = collect_metrics(ws)
         self.assertEqual(result["episodes_this_iter"], 20)
-        self.assertEqual(result["episode_reward_mean"], 10)
+        self.assertEqual(result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN], 10)
         ev.stop()
 
     def test_auto_vectorization(self):

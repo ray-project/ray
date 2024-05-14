@@ -43,6 +43,10 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+)
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.rllib.utils.tf_utils import explained_variance, make_tf_callable
@@ -298,7 +302,7 @@ if __name__ == "__main__":
     stop = {
         "training_iteration": args.stop_iters,
         "num_env_steps_sampled_lifetime": args.stop_timesteps,
-        "env_runner_results/episode_return_mean": args.stop_reward,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
     }
 
     tuner = tune.Tuner(

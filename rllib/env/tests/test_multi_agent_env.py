@@ -26,6 +26,11 @@ from ray.rllib.policy.sample_batch import (
     convert_ma_batch_to_sample_batch,
 )
 from ray.rllib.tests.test_nested_observation_spaces import NestedMultiAgentEnv
+from ray.rllib.utils.metrics import (
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+)
 from ray.rllib.utils.numpy import one_hot
 from ray.rllib.utils.test_utils import check
 
@@ -600,7 +605,9 @@ class TestMultiAgentEnv(unittest.TestCase):
             result = algo.train()
             print(
                 "Iteration {}, reward {}, timesteps {}".format(
-                    i, result["episode_reward_mean"], result["timesteps_total"]
+                    i,
+                    result[f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"],
+                    result[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"],
                 )
             )
         algo.stop()
@@ -620,7 +627,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             result = algo.train()
             print(
                 "Iteration {}, reward {}, timesteps {}".format(
-                    i, result["episode_reward_mean"], result["timesteps_total"]
+                    i, result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN], result[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"]
                 )
             )
         algo.stop()
@@ -817,10 +824,10 @@ class TestMultiAgentEnv(unittest.TestCase):
             result = algo.train()
             print(
                 "Iteration {}, reward {}, timesteps {}".format(
-                    i, result["episode_reward_mean"], result["timesteps_total"]
+                    i, result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN], result[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"]
                 )
             )
-            if result["episode_reward_mean"] >= 50 * n:
+            if result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN] >= 50 * n:
                 algo.stop()
                 return
         raise Exception("failed to improve reward")
@@ -861,7 +868,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             result = algo.train()
             print(
                 "Iteration {}, reward {}, timesteps {}".format(
-                    i, result["episode_reward_mean"], result["timesteps_total"]
+                    i, result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN], result[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"]
                 )
             )
         self.assertTrue(

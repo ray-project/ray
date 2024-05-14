@@ -614,8 +614,8 @@ def check_learning_achieved(
     Args:
         tune_results: The tune.Tuner().fit() returned results object.
         min_reward: The min reward that must be reached.
-        evaluation: If True, use `evaluation/sampler_results/[metric]`, if False, use
-            `sampler_results/[metric]`, if None, use evaluation sampler results if
+        evaluation: If True, use `evaluation/env_runners/[metric]`, if False, use
+            `env_runners/[metric]`, if None, use evaluation sampler results if
             available otherwise, use train sampler results.
 
     Raises:
@@ -1064,9 +1064,9 @@ def run_learning_tests_from_yaml_or_py(
 
             check_eval = should_check_eval(e)
             episode_reward_key = (
-                "sampler_results/episode_reward_mean"
+                f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
                 if not check_eval
-                else "evaluation/sampler_results/episode_reward_mean"
+                else f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
             )
 
             # For smoke-tests, we just run for n min.
@@ -1142,11 +1142,11 @@ def run_learning_tests_from_yaml_or_py(
                 metric_columns={
                     "training_iteration": "iter",
                     "time_total_s": "time_total_s",
-                    NUM_ENV_STEPS_SAMPLED: "ts (sampled)",
-                    NUM_ENV_STEPS_TRAINED: "ts (trained)",
-                    "episodes_this_iter": "train_episodes",
-                    "episode_reward_mean": "reward_mean",
-                    "evaluation/episode_reward_mean": "eval_reward_mean",
+                    NUM_ENV_STEPS_SAMPLED_LIFETIME: "ts (sampled)",
+                    NUM_ENV_STEPS_TRAINED_LIFETIME: "ts (trained)",
+                    NUM_EPISODES_LIFETIME: "train_episodes",
+                    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": "reward_mean",
+                    f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": "eval_reward_mean",
                 },
                 parameter_columns=["framework"],
                 sort_by_metric=True,
@@ -1189,7 +1189,7 @@ def run_learning_tests_from_yaml_or_py(
                     episode_reward_mean = np.mean(
                         [
                             t.metric_analysis[
-                                "evaluation/sampler_results/episode_reward_mean"
+                                f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
                             ]["max"]
                             for t in trials_for_experiment
                         ]
@@ -1197,7 +1197,7 @@ def run_learning_tests_from_yaml_or_py(
                 else:
                     episode_reward_mean = np.mean(
                         [
-                            t.metric_analysis["sampler_results/episode_reward_mean"][
+                            t.metric_analysis[f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"][
                                 "max"
                             ]
                             for t in trials_for_experiment
@@ -1329,8 +1329,8 @@ def run_rllib_example_script_experiment(
             }
         success_metric: Only relevant if `args.as_test` is True.
             A dict mapping a single(!) ResultDict key string (using "/" in
-            case of nesting, e.g. "env_runner_results/episode_return_mean" for referring
-            to `result_dict['env_runner_results']['episode_return_mean']` to a single(!)
+            case of nesting, e.g. "env_runners/episode_return_mean" for referring
+            to `result_dict['env_runners']['episode_return_mean']` to a single(!)
             minimum value to be reached in order for the experiment to count as
             successful. If `args.as_test` is True AND this `success_metric` is not
             reached with the bounds defined by `stop`, will raise an Exception.

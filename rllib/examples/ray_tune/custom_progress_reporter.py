@@ -46,6 +46,10 @@ You should see something similar to the following in your console output:
 from ray import air, tune
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+)
 
 
 my_multi_agent_progress_reporter = tune.CLIReporter(
@@ -61,7 +65,7 @@ my_multi_agent_progress_reporter = tune.CLIReporter(
             "num_env_steps_sampled_lifetime": "ts",
             # RLlib always sums up all agents' rewards and reports it under:
             # result_dict[env_runner_results][episode_return_mean].
-            "env_runner_results/episode_return_mean": "combined return",
+            f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": "combined return",
         },
         # Because RLlib sums up all returns of all agents, we would like to also
         # see the individual agents' returns. We can find these under the result dict's
@@ -102,7 +106,7 @@ if __name__ == "__main__":
         )
     )
 
-    stop = {"env_runner_results/episode_return_mean": 200.0}
+    stop = {f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 200.0}
 
     # Run the actual experiment (using Tune).
     results = tune.Tuner(

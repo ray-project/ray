@@ -139,9 +139,9 @@ class AssertEvalCallback(DefaultCallbacks):
         # (old API stack: "evaluation").
         eval_results = result.get(EVALUATION_RESULTS, result.get("evaluation", {}))
         # In there, there is a sub-key: ENV_RUNNER_RESULTS
-        # (old API stack: "sampler_results")
+        # (old API stack: "env_runners")
         eval_env_runner_results = eval_results.get(
-            ENV_RUNNER_RESULTS, eval_results.get("sampler_results")
+            ENV_RUNNER_RESULTS, eval_results.get(ENV_RUNNER_RESULTS)
         )
         # Make sure we always run exactly the given evaluation duration,
         # no matter what the other settings are (such as
