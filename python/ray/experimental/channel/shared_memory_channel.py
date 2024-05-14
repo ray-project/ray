@@ -271,8 +271,8 @@ class Channel(ChannelInterface):
     def is_remote(self):
         return self._writer_node_id != self._reader_node_id
 
-    def ensure_registered_as_writer(self) -> None:
-        if self._writer_registered:
+    def ensure_registered_as_writer(self, force=False) -> None:
+        if self._writer_registered and not force:
             return
 
         if not self.is_local_node(self._writer_node_id):
@@ -300,8 +300,8 @@ class Channel(ChannelInterface):
         )
         self._writer_registered = True
 
-    def ensure_registered_as_reader(self) -> None:
-        if self._reader_registered:
+    def ensure_registered_as_reader(self, force=False) -> None:
+        if self._reader_registered and not force:
             return
 
         self._worker.core_worker.experimental_channel_register_reader(
@@ -370,25 +370,30 @@ class Channel(ChannelInterface):
             # freed when the reference to it is destroyed in the line below?
             prev_writer_ref = self._writer_ref
             self._writer_ref = _create_channel_ref(self, self._typ.buffer_size_bytes)
+            # We need to register the new writer_ref.
+            self.ensure_registered_as_writer(force=True)
 
             if len(self._readers) > 0 and self.is_remote():
+                # We need to allocate the reader_ref on the reader node if the reader(s)
+                # are on a different node than the writer.
+                # If they are on the same node, this is not necessary because the
+                # writer_ref allocated above is already accessible to the reader.
                 fn = self._readers[0].__ray_call__
                 self._reader_ref = ray.get(
                     fn.remote(_create_channel_ref, self._typ.buffer_size_bytes)
                 )
-                # Write a special message to the channel so that the readers know to
-                # stop using the current reader_ref.
-                special_message = ResizeChannel(self._reader_ref)
-                special_message_serialized = (
-                    self._worker.get_serialization_context().serialize(special_message)
-                )
-                self._worker.core_worker.experimental_channel_put_serialized(
-                    special_message_serialized,
-                    prev_writer_ref,
-                    self._num_readers,
-                )
-            else:
-                self._reader_ref = self._writer_ref
+
+            # Write a special message to the channel so that the readers know to
+            # stop using the current reader_ref.
+            special_message = ResizeChannel(self._writer_ref)
+            special_message_serialized = (
+                self._worker.get_serialization_context().serialize(special_message)
+            )
+            self._worker.core_worker.experimental_channel_put_serialized(
+                special_message_serialized,
+                prev_writer_ref,
+                self._num_readers,
+            )
 
         self._worker.core_worker.experimental_channel_put_serialized(
             serialized_value,
@@ -397,13 +402,18 @@ class Channel(ChannelInterface):
         )
 
     def begin_read(self) -> Any:
-        while True:
-            self.ensure_registered_as_reader()
+        self.ensure_registered_as_reader()
+        ret = ray.get(self._reader_ref)
+
+        if isinstance(ret, ResizeChannel):
+            # The writer says we need to update the channel backing store (due to a
+            # resize).
+            self._reader_ref = ret._reader_ref
+            # We need to register the new reader_ref.
+            self.ensure_registered_as_reader(force=True)
             ret = ray.get(self._reader_ref)
-            if isinstance(ret, ResizeChannel):
-                self._reader_ref = ret.reader_ref
-                continue
-            return ret
+
+        return ret
 
     def end_read(self):
         self.ensure_registered_as_reader()
