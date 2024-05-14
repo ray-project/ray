@@ -1,3 +1,7 @@
+import os
+import sys
+import pytest
+
 import ray
 
 from ray.core.generated import gcs_pb2
@@ -20,3 +24,10 @@ def test_normal_termination(ray_start_cluster):
         "EXPECTED_TERMINATION"
     )
     assert worker_node_info["DeathReasonMessage"] == "Received SIGTERM"
+
+
+if __name__ == "__main__":
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))
