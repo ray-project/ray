@@ -320,7 +320,7 @@ class JobSupervisor:
             exit_code = None
 
         finally:
-            self._logger.info(f"Updating job status to {status}")
+            self._logger.info(f"Updating job status to {status} (exit code is {exit_code})")
 
             # Update job status in GCS
             await self._job_info_client.put_status(
