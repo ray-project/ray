@@ -813,29 +813,34 @@ class MultiAgentEnvRunner(EnvRunner):
         )
 
     def _increase_sampled_metrics(self, num_steps, next_obs, episode):
-        self.metrics.log_dict(
-            {
-                NUM_ENV_STEPS_SAMPLED: num_steps,
-                # TODO (sven): obs is not-vectorized. Support vectorized MA envs.
-                NUM_AGENT_STEPS_SAMPLED: {str(aid): 1 for aid in next_obs},
-                NUM_MODULE_STEPS_SAMPLED: {
-                    episode.module_for(aid): 1 for aid in next_obs
-                },
-            },
-            reduce="sum",
-            clear_on_reduce=True,
+        self.metrics.log_value(
+            NUM_ENV_STEPS_SAMPLED, num_steps, reduce="sum", clear_on_reduce=True
         )
-        self.metrics.log_dict(
-            {
-                NUM_ENV_STEPS_SAMPLED_LIFETIME: num_steps,
-                # TODO (sven): obs is not-vectorized. Support vectorized MA envs.
-                NUM_AGENT_STEPS_SAMPLED_LIFETIME: {str(aid): 1 for aid in next_obs},
-                NUM_MODULE_STEPS_SAMPLED_LIFETIME: {
-                    episode.module_for(aid): 1 for aid in next_obs
-                },
-            },
-            reduce="sum",
-        )
+        self.metrics.log_value(NUM_ENV_STEPS_SAMPLED_LIFETIME, num_steps, reduce="sum")
+        # TODO (sven): obs is not-vectorized. Support vectorized MA envs.
+        for aid in next_obs:
+            self.metrics.log_value(
+                (NUM_AGENT_STEPS_SAMPLED, str(aid)),
+                1,
+                reduce="sum",
+                clear_on_reduce=True,
+            )
+            self.metrics.log_value(
+                (NUM_AGENT_STEPS_SAMPLED_LIFETIME, str(aid)),
+                1,
+                reduce="sum",
+            )
+            self.metrics.log_value(
+                (NUM_MODULE_STEPS_SAMPLED, episode.module_for(aid)),
+                1,
+                reduce="sum",
+                clear_on_reduce=True,
+            )
+            self.metrics.log_value(
+                (NUM_MODULE_STEPS_SAMPLED_LIFETIME, episode.module_for(aid)),
+                1,
+                reduce="sum",
+            )
         return num_steps
 
     def _log_episode_metrics(self, length, ret, sec, agents=None, modules=None):

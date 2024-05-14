@@ -316,7 +316,7 @@ py_test_module_list(
     "test_channel.py",
   ],
   size = "medium",
-  tags = ["exclusive", "team:core"],
+  tags = ["exclusive", "accelerated_dag", "no_windows", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
