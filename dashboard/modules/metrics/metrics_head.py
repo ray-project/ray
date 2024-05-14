@@ -339,6 +339,13 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
     async def run(self, server):
         self._create_default_grafana_configs()
         self._create_default_prometheus_configs()
+
+        def on_new_lag(lag_s):
+            # Record the lag. It's exported in `record_dashboard_metrics`
+            self._event_loop_lag_samples.append(lag_s)
+
+        enable_monitor_loop_lag(on_new_lag)
+
         await asyncio.gather(self.record_dashboard_metrics())
 
         logger.info(
