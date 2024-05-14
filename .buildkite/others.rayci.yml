@@ -52,21 +52,27 @@ steps:
 
   # bot
   - label: ":robot_face: CI weekly green metric"
-    tags: skip-on-premerge
-    if: build.branch == "master" && build.env("RAYCI_CONTINUOUS_BUILD") == "1"
+    tags:
+      - skip-on-premerge
+      - oss
+    if: build.branch == "master"
     instance_type: small
     commands:
       - bazel run //ci/ray_ci/automation:weekly_green_metric -- --production
 
   - label: ":robot_face: {{matrix}} microcheck test coverage"
-    tags: skip-on-premerge
-    if: build.branch == "master" && build.env("RAYCI_CONTINUOUS_BUILD") == "1"
+    tags:
+      - skip-on-premerge
+      - oss
+    if: build.branch == "master"
     instance_type: small
     commands:
-      - bazel run //ci/ray_ci/automation:determine_microcheck_tests -- {{matrix}} 95 --production
+      - bazel run //ci/ray_ci/automation:determine_microcheck_tests -- {{matrix}} 100 --production
     matrix:
       - "core"
+      - "serverless"
       - "serve"
       - "data"
       - "ml"
       - "rllib"
+      - "ci"
