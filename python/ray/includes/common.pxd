@@ -43,14 +43,27 @@ cdef extern from * namespace "polyfill" nogil:
     cdef T move[T](T)
 
 
-cdef extern from "ray/common/status.h" namespace "ray" nogil:
-    cdef cppclass StatusCode:
+cdef extern from "ray/common/status.h" nogil:
+    cdef cppclass StatusCode "ray::StatusCode":
         pass
+    cdef StatusCode StatusCode_OK "ray::StatusCode::OK"
+    cdef StatusCode StatusCode_OutOfMemory "ray::StatusCode::OutOfMemory"
+    cdef StatusCode StatusCode_KeyError "ray::StatusCode::KeyError"
+    cdef StatusCode StatusCode_TypeError "ray::StatusCode::TypeError"
+    cdef StatusCode StatusCode_Invalid "ray::StatusCode::Invalid"
+    cdef StatusCode StatusCode_IOError "ray::StatusCode::IOError"
+    cdef StatusCode StatusCode_UnknownError "ray::StatusCode::UnknownError"
+    cdef StatusCode StatusCode_NotImplemented "ray::StatusCode::NotImplemented"
+    cdef StatusCode StatusCode_RedisError "ray::StatusCode::RedisError"
 
+    bint operator==(StatusCode, StatusCode)
+
+cdef extern from "ray/common/status.h" namespace "ray" nogil:
     cdef cppclass CRayStatus "ray::Status":
-        RayStatus()
-        RayStatus(StatusCode code, const c_string &msg)
-        RayStatus(const CRayStatus &s)
+        CRayStatus()
+        CRayStatus(StatusCode code, const c_string &msg)
+        CRayStatus(StatusCode code, const c_string &msg, int rpc_code)
+        CRayStatus(const CRayStatus &s)
 
         @staticmethod
         CRayStatus OK()
@@ -140,19 +153,6 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
     cdef CRayStatus RayStatus_OK "Status::OK"()
     cdef CRayStatus RayStatus_Invalid "Status::Invalid"()
     cdef CRayStatus RayStatus_NotImplemented "Status::NotImplemented"()
-
-
-cdef extern from "ray/common/status.h" namespace "ray::StatusCode" nogil:
-    cdef StatusCode StatusCode_OK "OK"
-    cdef StatusCode StatusCode_OutOfMemory "OutOfMemory"
-    cdef StatusCode StatusCode_KeyError "KeyError"
-    cdef StatusCode StatusCode_TypeError "TypeError"
-    cdef StatusCode StatusCode_Invalid "Invalid"
-    cdef StatusCode StatusCode_IOError "IOError"
-    cdef StatusCode StatusCode_UnknownError "UnknownError"
-    cdef StatusCode StatusCode_NotImplemented "NotImplemented"
-    cdef StatusCode StatusCode_RedisError "RedisError"
-
 
 cdef extern from "ray/common/id.h" namespace "ray" nogil:
     const CTaskID GenerateTaskId(const CJobID &job_id,
@@ -373,23 +373,49 @@ cdef extern from "ray/core_worker/common.h" nogil:
         const CNodeID &GetSpilledNodeID() const
         const c_bool GetDidSpill() const
 cdef extern from "ray/gcs/gcs_client/python_callbacks.h" namespace "ray" nogil:
-    cdef cppclass PyStringCallback[T]:
-        # Placeholder ctor for .pyx files to place it on stack
-        PyStringCallback()
-        PyStringCallback(object py_callback)
-        void operator()(const T &s)
+    # Each type needs default constructors asked by cython.
+    cdef cppclass PyStatusCallback:
+        PyStatusCallback()
+        PyStatusCallback(object py_callback)
+    cdef cppclass PyOptionalBytesCallback:
+        PyOptionalBytesCallback()
+        PyOptionalBytesCallback(object py_callback)
+    cdef cppclass PyOptionalIntCallback:
+        PyOptionalIntCallback()
+        PyOptionalIntCallback(object py_callback)
+    cdef cppclass PyMultiBytesCallback:
+        PyMultiBytesCallback()
+        PyMultiBytesCallback(object py_callback)
+    cdef cppclass PyBytesCallback:
+        PyBytesCallback()
+        PyBytesCallback(object py_callback)
+    cdef cppclass PyMapCallback:
+        PyMapCallback()
+        PyMapCallback(object py_callback)
+    cdef cppclass PyPairBytesCallback:
+        PyPairBytesCallback()
+        PyPairBytesCallback(object py_callback)
 
-# cdef extern from "ray/gcs/callback.h" nogil:
-#    ctypedef COptionalItemCallback "ray::gcs::OptionalItemCallback"
 cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
     cdef cppclass CActorInfoAccessor "ray::gcs::ActorInfoAccessor":
         pass
-        # CRayStatus AsyncGet(
-        #    const CActorID &actor_id,
-        #    const PyStringCallback[CActorTableData] &callback)
     cdef cppclass CJobInfoAccessor "ray::gcs::JobInfoAccessor":
         CRayStatus AsyncGetNextJobID(
-            const PyStringCallback[CJobID] &callback)
+            const PyBytesCallback &callback)
+    cdef cppclass CInternalKVAccessor "ray::gcs::InternalKVAccessor":
+        # TODO: no timeout args. Now, C++ GcsClient has fixed timeout = gcs_server_request_timeout_seconds
+        CRayStatus AsyncInternalKVKeys(const c_string &ns, const c_string &prefix, const PyMultiBytesCallback &callback)
+        CRayStatus AsyncInternalKVGet(const c_string &ns, const c_string &key, const PyOptionalBytesCallback &callback)
+        CRayStatus AsyncInternalKVPut(const c_string &ns, const c_string &key, const c_string &value, c_bool overwrite, const PyOptionalIntCallback &callback)
+        CRayStatus AsyncInternalKVExists(const c_string &ns, const c_string &key, const PyOptionalBytesCallback &callback)
+        CRayStatus AsyncInternalKVDel(const c_string &ns, const c_string &key, c_bool del_by_prefix, const PyStatusCallback &callback)
+        CRayStatus Keys(const c_string &ns, const c_string &prefix, c_vector[c_string] &value)
+        CRayStatus Put(const c_string &ns, const c_string &key, const c_string &value, c_bool overwrite, c_bool &added)
+        CRayStatus Get(const c_string &ns, const c_string &key, c_string &value)
+        CRayStatus Del(const c_string &ns, const c_string &key, c_bool del_by_prefix)
+        CRayStatus Exists(const c_string &ns, const c_string &key, c_bool &exist)
+
+    
 cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
     cdef enum CGrpcStatusCode "grpc::StatusCode":
         UNAVAILABLE "grpc::StatusCode::UNAVAILABLE",
@@ -406,6 +432,7 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
 
         CActorInfoAccessor& Actors()
         CJobInfoAccessor& Jobs()
+        CInternalKVAccessor& InternalKV()
 
 
     cdef cppclass CPythonGcsClient "ray::gcs::PythonGcsClient":
