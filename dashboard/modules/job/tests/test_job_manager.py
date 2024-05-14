@@ -57,6 +57,9 @@ async def test_get_scheduling_strategy(
     monkeypatch.setenv(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR, "0")
     address_info = ray.init(address=call_ray_start)
     gcs_address = address_info["gcs_address"]
+    gcs_aio_client = GcsAioClient(
+        address=gcs_address, nums_reconnect_retry=0
+    )
 
     job_supervisor = JobSupervisor(
         job_id="job_id",
@@ -70,7 +73,10 @@ async def test_get_scheduling_strategy(
     if resources_specified:
         assert strategy == "DEFAULT"
     else:
-        expected_strategy = NodeAffinitySchedulingStrategy("123456", soft=False)
+        head_node_id = await gcs_aio_client.internal_kv_get("head_node_id".encode(), namespace=KV_NAMESPACE_JOB)
+
+        expected_strategy = NodeAffinitySchedulingStrategy(str(head_node_id, 'ascii'), soft=True)
+
         assert expected_strategy.node_id == strategy.node_id
         assert expected_strategy.soft == strategy.soft
 
