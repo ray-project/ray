@@ -37,7 +37,7 @@ from ray.dashboard.modules.job.common import (
     JobInfo, _get_supervisor_actor_for_job,
 )
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
-from ray.exceptions import RuntimeEnvSetupError, ActorUnschedulableError
+from ray.exceptions import RuntimeEnvSetupError, ActorUnschedulableError, ActorDiedError
 from ray.job_submission import JobStatus
 from ray.runtime_env import RuntimeEnvConfig
 from ray.util.scheduling_strategies import (
@@ -470,7 +470,7 @@ class JobSupervisor:
     async def _monitor_job_internal(self):
         self._logger.info(f"Starting monitoring loop for job {self._job_id}")
 
-        error_message: Optional[str] = None
+        failure_reason: Optional[str] = None
 
         try:
             async for i in ticker(interval_s=self.JOB_MONITOR_LOOP_INTERVAL_S):
@@ -495,14 +495,14 @@ class JobSupervisor:
                     pending_duration_s = time.time() - self._get_job_started_at(job_info)
 
                     if pending_duration_s >= self._startup_timeout_s:
-                        error_message = (
+                        failure_reason = (
                             f"Job driver failed to start within {self._startup_timeout_s} seconds. "
                             f"This timeout can be configured by setting the environment variable "
                             f"{RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR}."
                         )
 
                         if self._has_entrypoint_resources_set(job_info):
-                            error_message += (
+                            failure_reason += (
                                 f" This may be because the job entrypoint's specified "
                                 f"resources (entrypoint_num_cpus={job_info.entrypoint_num_cpus}, "
                                 f"entrypoint_num_gpus={job_info.entrypoint_num_gpus}, "
@@ -512,7 +512,7 @@ class JobSupervisor:
                                 "You can check cluster's available resources with `ray status`"
                             )
 
-                        self._logger.error(error_message)
+                        self._logger.error(failure_reason)
                         # Break out of the monitoring loop
                         break
 
@@ -537,44 +537,46 @@ class JobSupervisor:
                             f"Job driver has not been running for {duration_since_last_running_s}s but job has not finished yet (status: {job_status}))"
                         )
 
-                        error_message = "Unexpected error occurred: job driver is not running"
+                        failure_reason = "Unexpected error occurred: job driver is not running"
                         # Break out of the monitoring loop
                         break
 
         except Exception as e:
             self._logger.error(
-                f"Job supervisor monitoring loop failed unexpectedly with: {repr(e)}.",
+                f"Job supervisor monitoring loop failed unexpectedly: {repr(e)}",
                 exc_info=e,
             )
 
+            if isinstance(e, ActorDiedError):
+                failure_reason = f"Job executor actor is dead: {repr(e)}"
+            else:
+                failure_reason = f"Unexpected failure in supervisor monitoring loop: {repr(e)}"
+
         finally:
-            # Refresh job's status (before updating)
+            # NOTE: Though we refresh the state of the job before deciding whether
+            #       to update it, this is still exposed to a possibility of race-condition
+            #       with execution sequence potentially updating job status at the same
+            #       time (albeit unlikely to occur)
             job_status = await self._job_info_client.get_status(self._job_id)
-            # Unless job reached terminal state mark job as failed
-            if job_status and not job_status.is_terminal() and error_message:
+
+            # We marked job as FAILED in case both of the following is true
+            #   - Failure-reason is set
+            #   - Job has not reached terminal state yet
+            if failure_reason and job_status and not job_status.is_terminal():
                 self._logger.info(f"Updating job status to {job_status.FAILED} (current: {job_status})")
 
                 # Update job's status in GCS
                 await self._job_info_client.put_status(
                     self._job_id,
                     JobStatus.FAILED,
-                    message=error_message,
+                    message=failure_reason,
                 )
                 # Record corresponding job's event
                 if self.event_logger:
                     self.event_logger.error(
-                        f"Completed Ray job {self._job_id} with a status {JobStatus.FAILED}: {error_message}",
+                        f"Completed Ray job {self._job_id} with a status {JobStatus.FAILED}: {failure_reason}",
                         submission_id=self._job_id
                     )
-
-            # TODO enable
-            # TODO move into job-runner
-            # Log error message to the job driver file for easy access.
-            # if job_error_message:
-            #     log_path = self._log_client.get_log_file_path(job_id)
-            #     os.makedirs(os.path.dirname(log_path), exist_ok=True)
-            #     with open(log_path, "a") as log_file:
-            #         log_file.write(job_error_message)
 
             self._logger.info("Exiting job supervisor's monitoring loop")
 
