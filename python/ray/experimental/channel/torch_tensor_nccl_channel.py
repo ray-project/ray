@@ -26,6 +26,86 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+class NestedTorchTensorNcclChannel(ChannelInterface):
+    def __init__(
+        self,
+        writer: ray.actor.ActorHandle,
+        readers: List[ray.actor.ActorHandle],
+        metadata_typ: "SharedMemoryType",
+        gpu_data_typ: "TorchTensorType",
+        data_typ: Optional["SharedMemoryType"] = None,
+        _meta_channel: Optional["Channel"] = None,
+        _gpu_data_channel: Optional["TorchTensorNcclChannel"] = None,
+        _cpu_data_channel: Optional["Channel"] = None,
+    ):
+        self._writer = writer
+        self._readers = readers
+
+        if _meta_channel is not None:
+            self._meta_channel = _meta_channel
+            self._gpu_data_channel = _gpu_data_channel
+            self._cpu_data_channel = _cpu_data_channel
+        else:
+            self._meta_channel: Channel = metadata_typ.create_channel(writer, readers)
+            self._cpu_data_channel: Optional[Channel] = None
+            self._gpu_data_channel: TorchTensorNcclChannel = gpu_data_typ.create_channel(writer, readers)
+            if data_typ is not None:
+                self._cpu_data_channel = data_typ.create_channel(writer, readers)
+
+    @classmethod
+    def from_channels(cls,
+        meta_channel: "Channel",
+        gpu_data_channel: "TorchTensorNcclChannel",
+        cpu_data_channel: Optional["Channel"],
+        ):
+        return cls(
+                writer=None,
+                readers=None,
+                metadata_typ=None,
+                gpu_data_typ=None,
+                data_typ=None,
+                _meta_channel=meta_channel,
+                _gpu_data_channel=gpu_data_channel,
+                _cpu_data_channel=cpu_data_channel,
+                )
+
+    def __reduce__(self):
+        return (
+            NestedTorchTensorNcclChannel.from_channels,
+            (self._meta_channel, self._gpu_data_channel, self._cpu_data_channel),
+        )
+
+    def ensure_registered_as_writer(self):
+        self._meta_channel.ensure_registered_as_writer()
+        self._gpu_data_channel.ensure_registered_as_writer()
+        if self._cpu_data_channel is not None:
+            self._cpu_data_channel.ensure_registered_as_writer()
+
+    def ensure_registered_as_reader(self):
+        self._meta_channel.ensure_registered_as_reader()
+        self._gpu_data_channel.ensure_registered_as_reader()
+        if self._cpu_data_channel is not None:
+            self._cpu_data_channel.ensure_registered_as_reader()
+
+    def write(self):
+        # TODO
+        pass
+
+    def begin_read(self) -> Any:
+        # TODO
+        pass
+
+    def end_read(self) -> None:
+        # TODO
+        pass
+
+    def close(self) -> None:
+        self._meta_channel.close()
+        self._gpu_data_channel.close()
+        if self._cpu_data_channel is not None:
+            self._cpu_data_channel.close()
+
+
 @DeveloperAPI
 class TorchTensorNcclChannel(ChannelInterface):
     def __init__(
@@ -33,13 +113,15 @@ class TorchTensorNcclChannel(ChannelInterface):
         writer: ray.actor.ActorHandle,
         readers: List[ray.actor.ActorHandle],
         typ: "TorchTensorType",
-        device: Optional["torch.device"] = None,
         _meta_channel: Optional["Channel"] = None,
     ):
         import torch
 
         from ray.air._internal import torch_utils
-        from ray.experimental.channel.torch_tensor_type import TorchTensorType
+        from ray.experimental.channel.torch_tensor_type import (
+                _get_default_torch_device,
+                TorchTensorType,
+                )
 
         self.torch: ModuleType = torch
 
@@ -50,10 +132,8 @@ class TorchTensorNcclChannel(ChannelInterface):
         self._writer_registered: bool = False
         self._reader_registered: bool = False
 
-        self._device = device
-        if self._device is None:
-            # TODO(swang): Allow default device to be overridden.
-            self._device = torch_utils.get_devices()[0]
+        # TODO(swang): Allow default device to be overridden.
+        self._device = _get_default_torch_device()
         if self._device.type != "cuda":
             raise ValueError(
                 f'Actor\'s default device has type "{self._device.type}", need "cuda"'

@@ -18,6 +18,18 @@ TENSOR_BUFFER_PADDING_FRACTION = 0.2
 # 100KB so that we have room to store an exception if needed.
 MIN_TENSOR_BUFFER_SIZE = 100_000
 
+def _get_default_torch_device() -> "torch.device":
+    from ray.air._internal import torch_utils
+
+    if ray.get_gpu_ids():
+        import torch
+
+        # torch_utils defaults to returning GPU 0 if no GPU IDs were assigned
+        # by Ray. We instead want the default to be CPU.
+        return torch.device("cpu")
+
+    return torch_utils.get_devices()[0]
+
 
 @PublicAPI(stability="alpha")
 class TorchTensorType(ChannelOutputType):
@@ -39,11 +51,8 @@ class TorchTensorType(ChannelOutputType):
     def register_custom_serializer(outer: Any) -> None:
         # Helper method to run on the DAG driver and actors to register custom
         # serializers.
-        from ray.air._internal import torch_utils
-        import torch
 
-        default_device = torch_utils.get_devices()[0]
-
+        default_device = _get_default_torch_device()
         ctx = ChannelContext.get_current()
         if ctx.torch_tensor_serialization_context is None:
             ctx.torch_tensor_serialization_context = _TorchTensorSerializer(default_device)
