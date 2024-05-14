@@ -1,7 +1,10 @@
 from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
 
 import ray
-from ray.experimental.channel import ChannelOutputType
+from ray.experimental.channel import (
+        ChannelContext,
+        ChannelOutputType,
+        )
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
@@ -37,15 +40,19 @@ class TorchTensorType(ChannelOutputType):
         # Helper method to run on the DAG driver and actors to register custom
         # serializers.
         from ray.air._internal import torch_utils
+        import torch
 
         default_device = torch_utils.get_devices()[0]
-        torch_tensor_serializer = _TorchTensorSerializer(default_device)
+
+        ctx = ChannelContext.get_current()
+        if ctx.torch_tensor_serialization_context is None:
+            ctx.torch_tensor_serialization_context = _TorchTensorSerializer(default_device)
 
         CUSTOM_SERIALIZERS = (
             (
-                _TorchTensorWrapper,
-                torch_tensor_serializer.serialize_to_numpy,
-                torch_tensor_serializer.deserialize_from_numpy,
+                torch.Tensor,
+                ctx.torch_tensor_serialization_context.serialize,
+                ctx.torch_tensor_serialization_context.deserialize,
             ),
         )
 
@@ -53,8 +60,6 @@ class TorchTensorType(ChannelOutputType):
             ray.util.serialization.register_serializer(
                 cls, serializer=serializer, deserializer=deserializer
             )
-
-        outer._torch_tensor_serializer = torch_tensor_serializer
 
     def create_channel(
         self,
@@ -66,6 +71,19 @@ class TorchTensorType(ChannelOutputType):
                 TorchTensorNcclChannel,
             )
 
+            # TODO(swang): If shape is auto or dtype is auto, create a shared
+            # memory channel to wrap the NCCL channel.
+
+            # During serialization, set a flag on the serialization context to
+            # indicate whether we should transfer with p2p or via CPU.
+
+            # Every time we serialize data to write to the channel, if flag is
+            # set, track the torch tensors that we encounter with a
+            # placeholder. After serialization is done, if there are tensors to
+            # send via NCCL, write them in order to the NCCL channel.
+
+            # When deserializing, call NCCL recv ops based on placeholder.
+            # Replace placeholders with the received tensors.
             return TorchTensorNcclChannel(writer, readers, self)
         else:
             import torch
@@ -106,11 +124,9 @@ class TorchTensorType(ChannelOutputType):
             return Channel(writer, readers, buffer_size_bytes)
 
 
-@DeveloperAPI
-class _TorchTensorWrapper:
+class _TorchTensorPlaceholder:
     def __init__(
         self,
-        tensor: "torch.Tensor",
         typ: TorchTensorType,
     ):
         import torch
@@ -140,10 +156,41 @@ class _TorchTensorWrapper:
 class _TorchTensorSerializer:
     def __init__(self, device: "torch.device"):
         self.device = device
+        self.tensor_typ: Optional["TorchTensorType"] = None
+        self.tensors: List["torch.Tensor"] = []
 
-    @staticmethod
-    def serialize_to_numpy(instance: "_TorchTensorWrapper") -> "np.ndarray":
-        tensor = instance.tensor
+    def set_tensor_type(self, typ: Optional["TorchTensorType"]) -> None:
+        self.tensor_typ = typ
+
+    def reset_tensors(self, tensors: List["torch.Tensor"]) -> List["torch.Tensor"]:
+        prev_tensors = self.tensors
+        self.tensors = []
+        return prev_tensors
+
+    def serialize(self, tensor: "torch.Tensor") -> Union[int, "np.ndarray"]:
+        if self.tensor_typ.shape != TorchTensorType.AUTO and tensor.shape != self.tensor_typ.shape:
+            raise ValueError(
+                "DAG node wrapped with ray.experimental.TorchTensor(shape="
+                f"{self.tensor_typ.shape}) returned "
+                f"a torch.Tensor of the shape {tensor.shape}"
+            )
+        if self.tensor_typ.shape != TorchTensorType.AUTO and tensor.dtype != self.tensor_typ.dtype:
+            raise ValueError(
+                "DAG node wrapped with ray.experimental.TorchTensor(dtype="
+                f"{self.tensor_typ.dtype}) returned "
+                f"a torch.Tensor of the dtype {tensor.dtype}"
+            )
+
+        if self.tensor_typ.transport == TorchTensorType.NCCL:
+            # Add the actual tensor to a buffer. The buffer of tensors will be
+            # sent via NCCL.
+            self.tensors.append(tensor)
+            # Return a placeholder.
+            return len(self.tensors) - 1
+
+        return self.serialize_to_numpy(tensor)
+
+    def serialize_to_numpy(self, tensor: "torch.Tensor") -> "np.ndarray":
         # Transfer through Ray's shared memory store for now.
         # TODO(swang): This requires two copies, one to transfer from GPU to
         # CPU and another from CPU to shared memory. Ideally we should elide
@@ -153,6 +200,15 @@ class _TorchTensorSerializer:
             tensor = tensor.to("cpu")
 
         return tensor.numpy()
+
+    def deserialize(self, val: Union["np.ndarray", int]):
+        # Found a placeholder for a tensor that was serialized via NCCL.
+        # Replace it with the corresponding deserialized tensor.
+        if isinstance(val, int):
+            return self.deserialized_tensors[val]
+
+        assert isinstance(val, np.ndarray)
+        return self.deserialize_from_numpy(val)
 
     def deserialize_from_numpy(self, np_array: "np.ndarray"):
         import torch

@@ -62,6 +62,8 @@ def _do_register_custom_serializers(
 @DeveloperAPI
 @dataclass
 class ChannelContext:
+    torch_tensor_serialization_context: Optional["_TorchTensorSerializationContext"] = None
+
     def __init__(self):
         # Used for the torch.Tensor NCCL transport.
         self.nccl_groups: Dict[str, "_NcclGroup"] = {}
