@@ -2160,7 +2160,7 @@ statsmodels==0.14.0
     # via
     #   hpbandster
     #   statsforecast
-supersuit==3.8.0
+supersuit==3.9.0
     # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
 sympy==1.12
     # via
