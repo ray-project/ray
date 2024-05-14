@@ -49,7 +49,6 @@ class GetActions(ConnectorV2):
 
         # ACTION_DIST_INPUTS field returned by `forward_exploration|inference()` ->
         # Create a new action distribution object.
-        action_dist = None
         if Columns.ACTION_DIST_INPUTS in data:
             if explore:
                 action_dist_class = sa_rl_module.get_exploration_action_dist_cls()

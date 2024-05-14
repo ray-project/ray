@@ -32,7 +32,7 @@ class TestIMPALAOffPolicyNess(unittest.TestCase):
         num_aggregation_workers_options = [0, 1]
 
         for num_aggregation_workers in num_aggregation_workers_options:
-            for _ in framework_iterator(config, frameworks=("tf2", "torch")):
+            for _ in framework_iterator(config, frameworks=("torch", "tf2")):
 
                 # We have to set exploration_config here manually because setting
                 # it through config.env_runners() only deepupdates it

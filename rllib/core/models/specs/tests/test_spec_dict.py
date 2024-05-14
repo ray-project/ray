@@ -163,12 +163,16 @@ class TestSpecDict(unittest.TestCase):
             def spec_with_type_and_tensor_leaves(self):
                 return {"a": TypeClass1, "b": TensorSpec("b, h", h=3, framework="np")}
 
-            @check_input_specs("nested_key_spec", only_check_on_retry=False)
+            @check_input_specs(
+                "nested_key_spec",
+                only_check_on_retry=False,
+                cache=False,
+            )
             def forward_nested_key(self, input_dict):
                 return input_dict
 
             @check_input_specs(
-                "dict_key_spec_with_none_leaves", only_check_on_retry=False
+                "dict_key_spec_with_none_leaves", only_check_on_retry=False, cache=False
             )
             def forward_dict_key_with_none_leaves(self, input_dict):
                 return input_dict
