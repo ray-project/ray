@@ -627,7 +627,7 @@ class JobDriverNodeInfo:
 
 @dataclass
 class JobExecutionResult:
-    driver_exit_code: int
+    driver_exit_code: Optional[int]
     message: Optional[str] = None
     stopped: bool = False
 
@@ -902,7 +902,7 @@ class JobRunner:
                 await self.stop_process(child_process.pid)
 
                 return JobExecutionResult(
-                    driver_exit_code=-1,
+                    driver_exit_code=None,
                     stopped=True,
                 )
             else:
@@ -946,7 +946,7 @@ class JobRunner:
             )
 
             return JobExecutionResult(
-                driver_exit_code=-1,
+                driver_exit_code=None,
                 message=exception_message,
             )
 
