@@ -109,6 +109,8 @@ class GroupedData:
         batch_format: Optional[str] = "default",
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
+        num_cpus: Optional[float] = None,
+        num_gpus: Optional[float] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Apply the given function to each group of records of this dataset.
@@ -162,6 +164,10 @@ class GroupedData:
                 exactly as is with no additional formatting.
             fn_args: Arguments to `fn`.
             fn_kwargs: Keyword arguments to `fn`.
+            num_cpus: The number of CPUs to reserve for each parallel map worker.
+            num_gpus: The number of GPUs to reserve for each parallel map worker. For
+                example, specify `num_gpus=1` to request 1 GPU for each parallel map
+                worker.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
 
@@ -221,13 +227,20 @@ class GroupedData:
 
         # Note we set batch_size=None here, so it will use the entire block as a batch,
         # which ensures that each group will be contained within a batch in entirety.
-        return sorted_ds.map_batches(
+        return sorted_ds._map_batches_without_batch_size_validation(
             group_fn,
             batch_size=None,
             compute=compute,
             batch_format=batch_format,
+            zero_copy_batch=False,
             fn_args=fn_args,
             fn_kwargs=fn_kwargs,
+            fn_constructor_args=None,
+            fn_constructor_kwargs=None,
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            concurrency=None,
+            ray_remote_args_fn=None,
             **ray_remote_args,
         )
 
