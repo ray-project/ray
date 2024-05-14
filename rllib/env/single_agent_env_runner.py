@@ -63,31 +63,18 @@ class SingleAgentEnvRunner(EnvRunner):
         self._callbacks: DefaultCallbacks = self.config.callbacks_class()
 
         # Create the vectorized gymnasium env.
-        self.env: Optional[gym.Wrapper] = None
+        self.env: Optional[gym.vector.VectorWrapper] = None
         self.num_envs: int = 0
         self.make_env()
 
         # Create the env-to-module connector pipeline.
         self._env_to_module = self.config.build_env_to_module_connector(self.env)
-        # Cached env-to-module results taken at the end of a `_sample_timesteps()`
-        # call to make sure the final observation (before an episode cut) gets properly
-        # processed (and maybe postprocessed and re-stored into the episode).
-        # For example, if we had a connector that normalizes observations and directly
-        # re-inserts these new obs back into the episode, the last observation in each
-        # sample call would NOT be processed, which could be very harmful in cases,
-        # in which value function bootstrapping of those (truncation) observations is
-        # required in the learning step.
-        self._cached_to_module = None
 
         # Create our own instance of the (single-agent) `RLModule` (which
         # the needs to be weight-synched) each iteration.
         try:
             module_spec: SingleAgentRLModuleSpec = self.config.rl_module_spec
             module_spec.observation_space = self._env_to_module.observation_space
-            # TODO (simon): The `gym.Wrapper` for `gym.vector.VectorEnv` should
-            #  actually hold the spaces for a single env, but for boxes the
-            #  shape is (1, 1) which brings a problem with the action dists.
-            #  shape=(1,) is expected.
             module_spec.action_space = self.env.single_action_space
             module_spec.model_config_dict = self.config.model_config
             # Only load a light version of the module, if available. This is useful
@@ -218,10 +205,9 @@ class SingleAgentEnvRunner(EnvRunner):
         # Have to reset the env (on all vector sub_envs).
         if force_reset or self._needs_initial_reset:
             # Create n new episodes and make the `on_episode_created` callbacks.
-            self._episodes = []
+            self._episodes = [None for _ in range(self.num_envs)]
             for env_index in range(self.num_envs):
-                self._episodes.append(self._new_episode())
-                self._make_on_episode_callback("on_episode_created", env_index)
+                self._new_episode(env_index)
             self._shared_data = {}
 
             # Erase all cached ongoing episodes (these will never be completed and
@@ -233,7 +219,6 @@ class SingleAgentEnvRunner(EnvRunner):
             # TODO (simon): Check, if we need here the seed from the config.
             obs, infos = self.env.reset()
             obs = unbatch(obs)
-            self._cached_to_module = None
 
             # Call `on_episode_start()` callbacks.
             for env_index in range(self.num_envs):
@@ -264,13 +249,12 @@ class SingleAgentEnvRunner(EnvRunner):
             # Compute an action using the RLModule.
             else:
                 # Env-to-module connector.
-                to_module = self._cached_to_module or self._env_to_module(
+                to_module = self._env_to_module(
                     rl_module=self.module,
                     episodes=self._episodes,
                     explore=explore,
                     shared_data=self._shared_data,
                 )
-                self._cached_to_module = None
 
                 # RLModule forward pass: Explore or not.
                 if explore:
@@ -308,23 +292,23 @@ class SingleAgentEnvRunner(EnvRunner):
             ts += self.num_envs
 
             for env_index in range(self.num_envs):
+                # Episode was done in previous timestep -> We now have the reset obs
+                # and infos.
                 if self._was_terminated[env_index] or self._was_truncated[env_index]:
-                    # Make the `on_episode_step` and `on_episode_end` callbacks (before
-                    # finalizing the episode object).
-                    # self._make_on_episode_callback("on_episode_step", env_index)
+                    # Make the `on_episode_end` callback (before finalizing the
+                    # episode object).
                     self._make_on_episode_callback("on_episode_end", env_index)
 
                     # Then finalize (numpy'ize) the episode.
                     done_episodes_to_return.append(self._episodes[env_index].finalize())
 
                     # Create a new episode object with already the reset data in it.
-                    self._episodes[env_index] = SingleAgentEpisode(
-                        observations=[obs[env_index]],
-                        infos=[infos[env_index]],
-                        observation_space=self.env.single_observation_space,
-                        action_space=self.env.single_action_space,
-                    )
+                    self._new_episode(env_index)
 
+                    self._episodes[env_index].add_env_reset(
+                        obs[env_index],
+                        infos[env_index],
+                    )
                     # Make the `on_episode_start` callback.
                     self._make_on_episode_callback("on_episode_start", env_index)
 
@@ -350,38 +334,29 @@ class SingleAgentEnvRunner(EnvRunner):
             self._was_terminated = terminateds
             self._was_truncated = truncateds
 
-        # Already perform env-to-module connector call for next call to
-        # `_sample_timesteps()`. See comment in c'tor for `self._cached_to_module`.
-        if self.module is not None:
-            self._cached_to_module = self._env_to_module(
-                rl_module=self.module,
-                episodes=self._episodes,
-                explore=explore,
-                shared_data=self._shared_data,
-            )
-
-        # Return done episodes ...
-        # TODO (simon): Check, how much memory this attribute uses.
-        self._done_episodes_for_metrics.extend(done_episodes_to_return)
-        # ... and all ongoing episode chunks.
-
         # Also, make sure we start new episode chunks (continuing the ongoing episodes
         # from the to-be-returned chunks).
-        ongoing_episodes_continuations = [
-            eps.cut(len_lookback_buffer=self.config.episode_lookback_horizon)
-            for eps in self._episodes
-        ]
-
+        ongoing_episodes_continuations = []
         ongoing_episodes_to_return = []
         for eps in self._episodes:
-            # Just started Episodes do not have to be returned. There is no data
-            # in them anyway.
-            if eps.t == 0:
-                continue
             eps.validate()
-            self._ongoing_episodes_for_metrics[eps.id_].append(eps)
-            # Return finalized (numpy'ized) Episodes.
-            ongoing_episodes_to_return.append(eps.finalize())
+            # - Just done episodes are not returned yet, they need to be finalized in
+            # the next step (after subsequent sub-env's reset obs/info are available).
+            # - Just started Episodes do not have to be returned. There is no data
+            # in them anyway.
+            if eps.is_done or eps.t == 0:
+                ongoing_episodes_continuations.append(eps)
+            else:
+                ongoing_episodes_continuations.append(
+                    eps.cut(len_lookback_buffer=self.config.episode_lookback_horizon)
+                )
+                self._ongoing_episodes_for_metrics[eps.id_].append(eps)
+                # Return finalized (numpy'ized) Episodes.
+                ongoing_episodes_to_return.append(eps.finalize())
+
+        # Return done episodes ...
+        self._done_episodes_for_metrics.extend(done_episodes_to_return)
+        # ... and all ongoing episode chunks.
 
         # Continue collecting into the cut Episode chunks.
         self._episodes = ongoing_episodes_continuations
@@ -410,10 +385,9 @@ class SingleAgentEnvRunner(EnvRunner):
         # Reset the environment.
         # TODO (simon): Check, if we need here the seed from the config.
         obs, infos = self.env.reset()
-        episodes = []
+        episodes = [None for _ in range(self.num_envs)]
         for env_index in range(self.num_envs):
-            episodes.append(self._new_episode())
-            self._make_on_episode_callback("on_episode_created", env_index, episodes)
+            self._new_episode(env_index, episodes)
         _shared_data = {}
 
         _was_terminated = [False for _ in range(self.num_envs)]
@@ -480,33 +454,14 @@ class SingleAgentEnvRunner(EnvRunner):
             ts += self.num_envs
 
             for env_index in range(self.num_envs):
+                # Episode was done in previous timestep -> We now have the reset obs
+                # and infos.
                 if _was_terminated[env_index] or _was_truncated[env_index]:
-                    eps += 1
-
-                    # Make the `on_episode_step` and `on_episode_end` callbacks (before
-                    # finalizing the episode object).
-                    # self._make_on_episode_callback("on_episode_step", env_index)
-                    self._make_on_episode_callback(
-                        "on_episode_end", env_index, episodes
+                    episodes[env_index].add_env_reset(
+                        obs[env_index],
+                        infos[env_index],
                     )
-
-                    # Finalize (numpy'ize) the episode.
-                    done_episodes_to_return.append(episodes[env_index].finalize())
-
-                    # Also early-out if we reach the number of episodes within this
-                    # for-loop.
-                    if eps == num_episodes:
-                        break
-
-                    # Create a new episode object with already the reset data in it.
-                    episodes[env_index] = SingleAgentEpisode(
-                        observations=[obs[env_index]],
-                        infos=[infos[env_index]],
-                        observation_space=self.env.single_observation_space,
-                        action_space=self.env.single_action_space,
-                    )
-
-                    # Make `on_episode_start` callback.
+                    # Make the `on_episode_start` callback.
                     self._make_on_episode_callback(
                         "on_episode_start", env_index, episodes
                     )
@@ -528,6 +483,26 @@ class SingleAgentEnvRunner(EnvRunner):
                     self._make_on_episode_callback(
                         "on_episode_step", env_index, episodes
                     )
+
+                    if terminateds[env_index] or truncateds[env_index]:
+                        eps += 1
+
+                        # Make the `on_episode_step` and `on_episode_end` callbacks
+                        # (before finalizing the episode object).
+                        self._make_on_episode_callback(
+                            "on_episode_end", env_index, episodes
+                        )
+
+                        # Finalize (numpy'ize) the episode.
+                        done_episodes_to_return.append(episodes[env_index].finalize())
+
+                        # Also early-out if we reach the number of episodes within this
+                        # for-loop.
+                        if eps == num_episodes:
+                            break
+
+                        # Create a new episode object with already the reset data in it.
+                        self._new_episode(env_index, episodes)
 
             _was_terminated = terminateds
             _was_truncated = truncateds
@@ -697,11 +672,13 @@ class SingleAgentEnvRunner(EnvRunner):
         # Close our env object via gymnasium's API.
         self.env.close()
 
-    def _new_episode(self):
-        return SingleAgentEpisode(
+    def _new_episode(self, env_index, episodes=None):
+        episodes = episodes if episodes is not None else self._episodes
+        episodes[env_index] = SingleAgentEpisode(
             observation_space=self.env.single_observation_space,
             action_space=self.env.single_action_space,
         )
+        self._make_on_episode_callback("on_episode_created", env_index, episodes)
 
     def _make_on_episode_callback(self, which: str, idx: int, episodes=None):
         episodes = episodes if episodes is not None else self._episodes
