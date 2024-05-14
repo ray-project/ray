@@ -333,6 +333,11 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
+  void UnregisterSelf(const rpc::NodeDeathInfo &node_death_info,
+                      std::function<void()> unregister_done_callback) {
+    gcs_client_->Nodes().UnregisterSelf(node_death_info, unregister_done_callback);
+  }
+
   std::vector<rpc::GcsNodeInfo> GetNodeInfoList() {
     std::promise<bool> promise;
     std::vector<rpc::GcsNodeInfo> nodes;
@@ -567,6 +572,35 @@ TEST_P(GcsClientTest, TestNodeInfo) {
   EXPECT_EQ(node_list[1].state(),
             rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
   ASSERT_TRUE(gcs_client_->Nodes().IsRemoved(node2_id));
+}
+
+TEST_P(GcsClientTest, TestUnregisterNode) {
+  // Create gcs node info.
+  auto gcs_node_info = Mocker::GenNodeInfo();
+  NodeID node_id = NodeID::FromBinary(gcs_node_info->node_id());
+
+  // Register local node to GCS.
+  ASSERT_TRUE(RegisterSelf(*gcs_node_info));
+  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+  EXPECT_EQ(gcs_client_->Nodes().GetSelfId(), node_id);
+  EXPECT_EQ(gcs_client_->Nodes().GetSelfInfo().node_id(), gcs_node_info->node_id());
+  EXPECT_EQ(gcs_client_->Nodes().GetSelfInfo().state(), gcs_node_info->state());
+
+  // Unregister local node from GCS.
+  rpc::NodeDeathInfo node_death_info;
+  node_death_info.set_reason(rpc::NodeDeathInfo::EXPECTED_TERMINATION);
+  auto reason_message = "Testing unregister node from GCS.";
+  node_death_info.set_reason_message(reason_message);
+
+  std::promise<bool> promise;
+  UnregisterSelf(node_death_info, [&promise]() { promise.set_value(true); });
+  WaitReady(promise.get_future(), timeout_ms_);
+
+  auto node_list = GetNodeInfoList();
+  EXPECT_EQ(node_list.size(), 1);
+  EXPECT_EQ(node_list[0].state(), rpc::GcsNodeInfo::DEAD);
+  EXPECT_EQ(node_list[0].death_info().reason(), rpc::NodeDeathInfo::EXPECTED_TERMINATION);
+  EXPECT_EQ(node_list[0].death_info().reason_message(), reason_message);
 }
 
 TEST_P(GcsClientTest, TestGetAllAvailableResources) {
