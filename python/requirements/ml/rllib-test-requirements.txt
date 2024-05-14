@@ -10,14 +10,11 @@ mujoco==2.3.6
 dm_control==1.0.12
 
 # For tests on PettingZoo's multi-agent envs.
-pettingzoo==1.23.1
-# When installing pettingzoo, chess is missing, even though its a dependancy
-# TODO: remove if a future pettingzoo and/or ray version fixes this dependancy issue.
-chess==1.7.0
+pettingzoo==1.24.3
 pymunk==6.2.1
-supersuit==3.8.0
 tinyscaler==1.2.6
 shimmy
+supersuit==3.9.0
 
 # Kaggle envs.
 kaggle_environments==1.7.11
