@@ -72,7 +72,7 @@ examples:
       - computer vision
       - generative ai
     link: examples/pytorch/dreambooth_finetuning
-  - title: Finetune Stable Diffusion and generate images with Intel Habana Gaudi
+  - title: Finetune Stable Diffusion and generate images with Intel Gaudi
     skill_level: intermediate
     frameworks:
       - accelerate
