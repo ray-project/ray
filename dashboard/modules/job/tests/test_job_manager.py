@@ -23,7 +23,8 @@ from ray._private.test_utils import (
     async_wait_for_condition_async_predicate,
     wait_for_condition,
 )
-from ray.dashboard.modules.job.common import JOB_ID_METADATA_KEY, JOB_NAME_METADATA_KEY, _get_actor_for_job
+from ray.dashboard.modules.job.common import JOB_ID_METADATA_KEY, JOB_NAME_METADATA_KEY, _get_supervisor_actor_for_job, \
+    _get_executor_actor_for_job
 from ray.dashboard.modules.job.job_supervisor import JobRunner, JobSupervisor
 from ray.dashboard.modules.job.job_manager import (
     JobLogStorageClient,
@@ -57,9 +58,6 @@ async def test_get_scheduling_strategy(
     monkeypatch.setenv(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR, "0")
     address_info = ray.init(address=call_ray_start)
     gcs_address = address_info["gcs_address"]
-    gcs_aio_client = GcsAioClient(
-        address=gcs_address, nums_reconnect_retry=0
-    )
 
     job_supervisor = JobSupervisor(
         job_id="job_id",
@@ -73,10 +71,7 @@ async def test_get_scheduling_strategy(
     if resources_specified:
         assert strategy == "DEFAULT"
     else:
-        head_node_id = await gcs_aio_client.internal_kv_get("head_node_id".encode(), namespace=KV_NAMESPACE_JOB)
-
-        expected_strategy = NodeAffinitySchedulingStrategy(str(head_node_id, 'ascii'), soft=True)
-
+        expected_strategy = NodeAffinitySchedulingStrategy("123456", soft=False)
         assert expected_strategy.node_id == strategy.node_id
         assert expected_strategy.soft == strategy.soft
 
@@ -574,7 +569,7 @@ class TestShellScriptExecution:
 
             assert "Exception: Script failed with exception !" in data.message
 
-            return _get_actor_for_job(job_id) is None
+            return _get_supervisor_actor_for_job(job_id) is None
 
         await async_wait_for_condition_async_predicate(cleaned_up)
 
@@ -832,7 +827,7 @@ class TestAsyncAPI:
             # Assert stopping non-existent job returns False
             assert job_manager.stop_job(str(uuid4())) is False
 
-    async def test_kill_job_actor_in_before_driver_finish(self, job_manager):
+    async def test_kill_job_executor_actor_in_before_driver_finish(self, job_manager):
         """
         Test submitting a long running / blocker driver script, and kill
         the job supervisor actor before script returns and ensure
@@ -847,8 +842,8 @@ class TestAsyncAPI:
                 pid = int(file.read())
                 assert psutil.pid_exists(pid), "driver subprocess should be running"
 
-            actor = _get_actor_for_job(job_id)
-            ray.kill(actor, no_restart=True)
+            executor_actor = _get_executor_actor_for_job(job_id)
+            ray.kill(executor_actor, no_restart=True)
             await async_wait_for_condition_async_predicate(
                 check_job_failed, job_manager=job_manager, job_id=job_id
             )
@@ -883,7 +878,7 @@ class TestAsyncAPI:
                 check_job_stopped, job_manager=job_manager, job_id=job_id
             )
 
-    async def test_kill_job_actor_in_pending(self, job_manager):
+    async def test_kill_job_executor_actor_in_pending(self, job_manager):
         """
         Kick off a job that is in PENDING state, kill the job actor and ensure
 
@@ -901,7 +896,7 @@ class TestAsyncAPI:
                 "driver subprocess should NOT be running while job is " "still PENDING."
             )
 
-            actor = _get_actor_for_job(job_id)
+            actor = _get_executor_actor_for_job(job_id)
             ray.kill(actor, no_restart=True)
             await async_wait_for_condition_async_predicate(
                 check_job_failed, job_manager=job_manager, job_id=job_id
