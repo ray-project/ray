@@ -120,8 +120,7 @@ void Raylet::Start() {
 
 void Raylet::UnregisterSelf(const rpc::NodeDeathInfo &node_death_info,
                             std::function<void()> unregister_done_callback) {
-  RAY_CHECK_OK(
-      gcs_client_->Nodes().UnregisterSelf(node_death_info, unregister_done_callback));
+  gcs_client_->Nodes().UnregisterSelf(node_death_info, unregister_done_callback);
 }
 
 void Raylet::Stop() {

@@ -118,17 +118,22 @@ void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
     RAY_LOG(INFO) << "Node " << node_id << " is already removed";
     return;
   }
+
   node->set_state(rpc::GcsNodeInfo::DEAD);
+  node->mutable_death_info()->CopyFrom(request.node_death_info());
   node->set_end_time_ms(current_sys_time_ms());
+
   AddDeadNodeToCache(node);
+
   auto node_info_delta = std::make_shared<rpc::GcsNodeInfo>();
   node_info_delta->set_node_id(node->node_id());
+  node_info_delta->mutable_death_info()->CopyFrom(request.node_death_info());
   node_info_delta->set_state(node->state());
   node_info_delta->set_end_time_ms(node->end_time_ms());
+
   auto on_put_done = [=](const Status &status) {
     RAY_CHECK_OK(gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta, nullptr));
   };
-
   RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node, on_put_done));
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
