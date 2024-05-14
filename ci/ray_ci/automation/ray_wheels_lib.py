@@ -1,5 +1,5 @@
 import boto3
-from typing import List
+from typing import List, Optional
 import os
 
 from ci.ray_ci.utils import logger
@@ -7,12 +7,17 @@ from ci.ray_ci.utils import logger
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 
 PYTHON_VERSIONS = ["cp39-cp39", "cp310-cp310", "cp311-cp311"]
-PLATFORMS = [
+FULL_PLATFORMS = [
     "manylinux2014_x86_64",
     "manylinux2014_aarch64",
     "macosx_10_15_x86_64",
     "macosx_11_0_arm64",
     "win_amd64",
+]
+PARTIAL_PLATFORMS = [
+    "manylinux2014_x86_64",
+    "macosx_10_15_x86_64",
+    "macosx_11_0_arm64",
 ]
 RAY_TYPES = ["ray", "ray_cpp"]
 
@@ -41,11 +46,14 @@ def _check_downloaded_wheels(directory_path: str, wheels: List[str]) -> None:
     )
 
 
-def _get_wheel_names(ray_version: str) -> List[str]:
+def _get_wheel_names(
+    ray_version: str, full_platform: Optional[bool] = False
+) -> List[str]:
     """List all wheel names for the given ray version."""
     wheel_names = []
+    platforms = FULL_PLATFORMS if full_platform else PARTIAL_PLATFORMS
     for python_version in PYTHON_VERSIONS:
-        for platform in PLATFORMS:
+        for platform in platforms:
             for ray_type in RAY_TYPES:
                 wheel_name = f"{ray_type}-{ray_version}-{python_version}-{platform}"
                 wheel_names.append(wheel_name)
@@ -71,7 +79,9 @@ def download_wheel_from_s3(key: str, directory_path: str) -> None:
 
 
 def download_ray_wheels_from_s3(
-    commit_hash: str, ray_version: str, directory_path: str
+    commit_hash: str,
+    ray_version: str,
+    directory_path: str,
 ) -> None:
     """
     Download Ray wheels from S3 to the given directory.
@@ -82,8 +92,9 @@ def download_ray_wheels_from_s3(
         directory_path: The directory to download the wheels to.
     """
     full_directory_path = os.path.join(bazel_workspace_dir, directory_path)
-
-    wheels = _get_wheel_names(ray_version)
+    minor_version = ray_version.split(".")[1]
+    full_platform = True if int(minor_version) % 10 == 0 else False
+    wheels = _get_wheel_names(ray_version=ray_version, full_platform=full_platform)
     for wheel in wheels:
         s3_key = f"releases/{ray_version}/{commit_hash}/{wheel}.whl"
         download_wheel_from_s3(s3_key, full_directory_path)

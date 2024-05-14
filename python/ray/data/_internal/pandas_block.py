@@ -28,6 +28,7 @@ from ray.data.block import (
     BlockAccessor,
     BlockExecStats,
     BlockMetadata,
+    BlockType,
     KeyType,
     U,
 )
@@ -146,6 +147,9 @@ class PandasBlockBuilder(TableBlockBuilder):
     def _empty_table() -> "pandas.DataFrame":
         pandas = lazy_import_pandas()
         return pandas.DataFrame()
+
+    def block_type(self) -> BlockType:
+        return BlockType.PANDAS
 
 
 # This is to be compatible with pyarrow.lib.schema
@@ -625,3 +629,6 @@ class PandasBlockAccessor(TableBlockAccessor):
         return ret, PandasBlockAccessor(ret).get_metadata(
             None, exec_stats=stats.build()
         )
+
+    def block_type(self) -> BlockType:
+        return BlockType.PANDAS
