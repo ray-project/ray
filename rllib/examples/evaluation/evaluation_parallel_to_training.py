@@ -140,12 +140,9 @@ class AssertEvalCallback(DefaultCallbacks):
     ):
         # The eval results can be found inside the main `result` dict
         # (old API stack: "evaluation").
-        eval_results = result.get(EVALUATION_RESULTS, result.get("evaluation", {}))
-        # In there, there is a sub-key: ENV_RUNNER_RESULTS
-        # (old API stack: "env_runners")
-        eval_env_runner_results = eval_results.get(
-            ENV_RUNNER_RESULTS, eval_results.get(ENV_RUNNER_RESULTS)
-        )
+        eval_results = result.get(EVALUATION_RESULTS, {})
+        # In there, there is a sub-key: ENV_RUNNER_RESULTS.
+        eval_env_runner_results = eval_results.get(ENV_RUNNER_RESULTS)
         # Make sure we always run exactly the given evaluation duration,
         # no matter what the other settings are (such as
         # `evaluation_num_env_runners` or `evaluation_parallel_to_training`).
@@ -268,7 +265,7 @@ if __name__ == "__main__":
         f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": (
             args.stop_reward
         ),
-        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": args.stop_timesteps,
+        NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
     }
 
     run_rllib_example_script_experiment(

@@ -647,7 +647,7 @@ class Algorithm(Trainable, AlgorithmBase):
             default_policy_class=self.get_default_policy_class(self.config),
             config=self.config,
             num_workers=self.config.num_env_runners,
-            local_worker=True,
+            local_env_runner=True,
             logdir=self.logdir,
         )
 

@@ -201,7 +201,7 @@ if __name__ == "__main__":
     stop = {
         TRAINING_ITERATION: args.stop_iters,
         f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": (
-            args.stop_reward,
+            args.stop_reward
         ),
         NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
     }

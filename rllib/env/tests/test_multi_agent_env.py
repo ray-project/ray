@@ -606,8 +606,8 @@ class TestMultiAgentEnv(unittest.TestCase):
             print(
                 "Iteration {}, reward {}, timesteps {}".format(
                     i,
-                    result[f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"],
-                    result[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"],
+                    result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN],
+                    result[NUM_ENV_STEPS_SAMPLED_LIFETIME],
                 )
             )
         algo.stop()
@@ -629,7 +629,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                 "Iteration {}, reward {}, timesteps {}".format(
                     i,
                     result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN],
-                    result[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"],
+                    result[NUM_ENV_STEPS_SAMPLED_LIFETIME],
                 )
             )
         algo.stop()
@@ -828,7 +828,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                 "Iteration {}, reward {}, timesteps {}".format(
                     i,
                     result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN],
-                    result[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"],
+                    result[NUM_ENV_STEPS_SAMPLED_LIFETIME],
                 )
             )
             if result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN] >= 50 * n:
@@ -874,7 +874,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                 "Iteration {}, reward {}, timesteps {}".format(
                     i,
                     result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN],
-                    result[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"],
+                    result[NUM_ENV_STEPS_SAMPLED_LIFETIME],
                 )
             )
         self.assertTrue(

@@ -85,7 +85,7 @@ class TestCQL(unittest.TestCase):
                 eval_results = results["evaluation"]
                 print(
                     f"iter={algo.iteration} "
-                    f"R={eval_results[ENV_RUNNER_RESULTS + '/' + EPISODE_RETURN_MEAN]}"
+                    f"R={eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]}"
                 )
             check_compute_single_action(algo)
 
