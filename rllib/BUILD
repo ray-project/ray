@@ -2694,7 +2694,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples", "multi_gpu"],
     size = "large",
     srcs = ["examples/multi_agent/multi_agent_pendulum.py"],
-    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=-500.0", "--num-cpus=4", "--num-gpus=2"]
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=-500.0", "--num-cpus=5", "--num-gpus=2"]
 )
 
 py_test(

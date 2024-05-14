@@ -71,8 +71,3 @@ stop = {
     "evaluation/sampler_results/episode_reward_mean": 500.0,
     "num_env_steps_sampled": 2000000,
 }
-
-if __name__ == "__main__":
-    algo = config.framework("tf2").build()
-    for _ in range(1000):
-        print(algo.train())
