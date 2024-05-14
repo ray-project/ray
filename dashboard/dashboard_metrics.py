@@ -53,7 +53,7 @@ try:
             self.metrics_request_duration = Histogram(
                 "dashboard_api_requests_duration_seconds",
                 "Total duration in seconds per endpoint",
-                ("endpoint", "http_status", "SessionName", "Component"),
+                ("endpoint", "http_status", "Version", "SessionName", "Component"),
                 unit="seconds",
                 namespace="ray",
                 registry=self.registry,
@@ -62,7 +62,14 @@ try:
             self.metrics_request_count = Counter(
                 "dashboard_api_requests_count",
                 "Total requests count per endpoint",
-                ("method", "endpoint", "http_status", "SessionName", "Component"),
+                (
+                    "method",
+                    "endpoint",
+                    "http_status",
+                    "Version",
+                    "SessionName",
+                    "Component",
+                ),
                 unit="requests",
                 namespace="ray",
                 registry=self.registry,

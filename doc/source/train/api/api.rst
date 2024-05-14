@@ -178,6 +178,7 @@ Trainer Base Classes
 
     ~train.trainer.BaseTrainer
     ~train.data_parallel_trainer.DataParallelTrainer
+    ~train.base_trainer.TrainingFailedError
 
 
 Train Backend Base Classes

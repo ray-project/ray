@@ -171,7 +171,7 @@ class TestMultiAgentEpisodeReplayBuffer(unittest.TestCase):
                     sample[module_id]["terminateds"],
                     sample[module_id]["truncateds"],
                     sample[module_id]["weights"],
-                    sample[module_id]["n_steps"],
+                    sample[module_id]["n_step"],
                 )
 
                 # Make sure terminated and truncated are never both True.
@@ -238,7 +238,7 @@ class TestMultiAgentEpisodeReplayBuffer(unittest.TestCase):
                     sample[module_id]["terminateds"],
                     sample[module_id]["truncateds"],
                     sample[module_id]["weights"],
-                    sample[module_id]["n_steps"],
+                    sample[module_id]["n_step"],
                 )
 
                 # Make sure terminated and truncated are never both True.
@@ -309,7 +309,7 @@ class TestMultiAgentEpisodeReplayBuffer(unittest.TestCase):
                     sample[module_id]["terminateds"],
                     sample[module_id]["truncateds"],
                     sample[module_id]["weights"],
-                    sample[module_id]["n_steps"],
+                    sample[module_id]["n_step"],
                 )
 
                 # Make sure terminated and truncated are never both True.
@@ -341,6 +341,24 @@ class TestMultiAgentEpisodeReplayBuffer(unittest.TestCase):
 
                 # Assert that all n-steps are 1.0 as passed into `sample`.
                 self.assertTrue(np.all(n_steps - 1.0 < tolerance))
+
+    # def test_get_state_and_set_state(self):
+    #     # Create a buffer.
+    #     buffer = MultiAgentEpisodeReplayBuffer(capacity=10000)
+    #     # Fill it with episodes.
+    #     for _ in range(200):
+    #         episode = self._get_episode()
+    #         buffer.add(episode)
+
+    #     # Now get the state of the buffer.
+    #     state = buffer.get_state()
+
+    #     # Create a new buffer and set the state.
+    #     new_buffer = MultiAgentEpisodeReplayBuffer(capacity=10000)
+    #     new_buffer.set_state(state)
+
+    #     # Ensure that the timesteps are the same.
+    #     self.assertTrue(buffer.get_num_timesteps() == new_buffer.get_num_timesteps())
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Dict, Iterable, Iterator, List, Optional, Unio
 import numpy as np
 import pyarrow
 
+from ray.air.util.tensor_extensions.arrow import pyarrow_table_from_pydict
 from ray.data.aggregate import AggregateFn
 from ray.data.block import Block
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
@@ -79,7 +80,6 @@ class TFRecordDatasource(FileBasedDatasource):
     def _default_read_stream(
         self, f: "pyarrow.NativeFile", path: str
     ) -> Iterator[Block]:
-        import pyarrow as pa
         import tensorflow as tf
         from google.protobuf.message import DecodeError
 
@@ -94,7 +94,7 @@ class TFRecordDatasource(FileBasedDatasource):
                     f"file contains a message type other than `tf.train.Example`: {e}"
                 )
 
-            yield pa.Table.from_pydict(
+            yield pyarrow_table_from_pydict(
                 _convert_example_to_dict(example, self._tf_schema)
             )
 
