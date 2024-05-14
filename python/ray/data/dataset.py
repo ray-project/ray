@@ -1912,7 +1912,9 @@ class Dataset:
         # Always allow None since groupby interprets that as grouping all
         # records into a single global group.
         if key is not None:
-            SortKey(key).validate_schema(self.schema(fetch_if_missing=True))
+            # Fetching the schema can trigger execution, so don't fetch it for
+            # input validation.
+            SortKey(key).validate_schema(self.schema(fetch_if_missing=False))
 
         return GroupedData(self, key)
 
