@@ -18,6 +18,7 @@ import ray._private.services
 from ray.autoscaler._private.spark.node_provider import HEAD_NODE_ID
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray._private.storage import _load_class
+from ray._private import ray_constants
 
 from .utils import (
     exec_cmd,
@@ -41,10 +42,8 @@ from .start_hook_base import RayOnSparkStartHook
 from .databricks_hook import DefaultDatabricksRayOnSparkStartHook
 from threading import Event
 
-
 _logger = logging.getLogger("ray.util.spark")
-_logger.setLevel(logging.INFO)
-
+_logger.setLevel(ray_constants.LOGGER_LEVEL.upper())
 
 RAY_ON_SPARK_START_HOOK = "RAY_ON_SPARK_START_HOOK"
 
@@ -52,7 +51,7 @@ MAX_NUM_WORKER_NODES = -1
 
 RAY_ON_SPARK_COLLECT_LOG_TO_PATH = "RAY_ON_SPARK_COLLECT_LOG_TO_PATH"
 RAY_ON_SPARK_START_RAY_PARENT_PID = "RAY_ON_SPARK_START_RAY_PARENT_PID"
-
+RAY_ON_SPARK_LOGGER_LEVEL = "RAY_ON_SPARK_LOGGER_LEVEL"
 
 def _check_system_environment():
     if os.name != "posix":
@@ -245,6 +244,8 @@ class RayClusterOnSpark:
                         )
             try:
                 self.head_proc.terminate()
+                _logger.debug(f"terminated process from {os.getpid()}")
+                time.sleep(5)
             except Exception as e:
                 # swallow exception.
                 _logger.warning(
@@ -705,6 +706,8 @@ def _setup_ray_cluster(
             ray_head_node_cmd,
             synchronous=False,
             extra_env={
+                "PYTHONPATH": ":".join(sys.path)[1:],
+                RAY_ON_SPARK_LOGGER_LEVEL: ray_constants.LOGGER_LEVEL,
                 RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or "",
                 RAY_ON_SPARK_START_RAY_PARENT_PID: str(os.getpid()),
                 **start_hook.custom_environment_variables(),
@@ -799,9 +802,11 @@ def _setup_ray_cluster(
                     ray_cluster_handler.shutdown(cancel_background_job=False)
 
         try:
-            threading.Thread(
+            background_job_thread = threading.Thread(
                 target=inheritable_thread_target(background_job_thread_fn), args=()
-            ).start()
+            )
+            background_job_thread.name = f"ray-backg-{background_job_thread.name}"
+            background_job_thread.start()
 
             # Call hook immediately after spark job started.
             start_hook.on_cluster_created(ray_cluster_handler)
@@ -1312,7 +1317,6 @@ def _setup_ray_cluster_internal(
     remote_connection_address = f"ray://{head_ip}:{cluster.ray_client_server_port}"
     return cluster.address, remote_connection_address
 
-
 @PublicAPI
 def setup_ray_cluster(
     *,
@@ -1479,7 +1483,6 @@ def setup_ray_cluster(
         **kwargs,
     )
 
-
 @PublicAPI
 def setup_global_ray_cluster(
     *,
@@ -1641,6 +1644,8 @@ def _start_ray_worker_nodes(
         hook_entry = _create_hook_entry(is_global=(ray_temp_dir is None))
 
         ray_worker_node_extra_envs = {
+            "PYTHONPATH": ":".join(sys.path)[1:],
+            RAY_ON_SPARK_LOGGER_LEVEL: ray_constants.LOGGER_LEVEL,
             RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or "",
             RAY_ON_SPARK_START_RAY_PARENT_PID: str(os.getpid()),
             "RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER": "1",
@@ -1849,6 +1854,7 @@ class AutoscalingCluster:
         """
         from ray.util.spark.cluster_init import (
             RAY_ON_SPARK_COLLECT_LOG_TO_PATH,
+            RAY_ON_SPARK_LOGGER_LEVEL,
             _append_resources_config,
             _convert_ray_node_options,
             exec_cmd,
@@ -1913,7 +1919,9 @@ class AutoscalingCluster:
         hook_entry = _create_hook_entry(is_global=(ray_temp_dir is None))
 
         extra_env = {
+            "PYTHONPATH": ":".join(sys.path)[1:],
             "AUTOSCALER_UPDATE_INTERVAL_S": "1",
+            RAY_ON_SPARK_LOGGER_LEVEL: ray_constants.LOGGER_LEVEL,
             RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or "",
             RAY_ON_SPARK_START_RAY_PARENT_PID: str(os.getpid()),
             **hook_entry.custom_environment_variables(),
