@@ -124,7 +124,6 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
               RegisterSelf,
               (const rpc::GcsNodeInfo &local_node_info, const StatusCallback &callback),
               (override));
-  MOCK_METHOD(Status, DrainSelf, (), (override));
   MOCK_METHOD(const NodeID &, GetSelfId, (), (const, override));
   MOCK_METHOD(const rpc::GcsNodeInfo &, GetSelfInfo, (), (const, override));
   MOCK_METHOD(Status,
