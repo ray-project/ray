@@ -190,7 +190,7 @@ Here's an example that uses one of the examples hosted in the Ray GitHub reposit
     </span>
     <span data-ty="input">ray-project/ray/master/rllib/tuned_examples/\
     </span>
-    <span data-ty="input">ppo/cartpole_ppo.py -t python
+    <span data-ty="input">ppo/cartpole_ppo_envrunner.py -t python
     </span>
 </div>
 
@@ -200,7 +200,7 @@ The `-t` or `--type` option is used to specify the type of the configuration fil
 in this case `python`, since we're using a Python file.
 This is what the Python configuration of this example looks like:
 
-```{literalinclude} ../../../rllib/tuned_examples/ppo/cartpole_ppo.py
+```{literalinclude} ../../../rllib/tuned_examples/ppo/cartpole_ppo_envrunner.py
 :language: python
 ```
 
