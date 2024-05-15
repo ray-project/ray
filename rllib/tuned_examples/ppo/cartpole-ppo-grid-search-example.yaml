@@ -2,7 +2,7 @@ cartpole-ppo-grid-search-example:
     env: CartPole-v1
     run: PPO
     stop:
-        episode_reward_mean: 200
+        env_runners/episode_return_mean: 200
         time_total_s: 180
     config:
         # Works for both torch and tf.
