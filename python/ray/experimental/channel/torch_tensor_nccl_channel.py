@@ -222,7 +222,7 @@ class TorchTensorNcclChannel(ChannelInterface):
             (self._writer, self._readers, self._typ, self._meta_channel),
         )
 
-    def _write_single_tensor(
+    def _get_tensor_meta(
         self, tensor: "torch.Tensor"
     ) -> Optional["TorchTensorType"]:
         if not isinstance(tensor, self.torch.Tensor):
@@ -245,29 +245,40 @@ class TorchTensorNcclChannel(ChannelInterface):
                 f"torch.Tensor has dtype {tensor.dtype}, expected {self._typ.dtype}"
             )
 
-        # TODO: If there are multiple readers, can replace with a broadcast.
-        for rank in self._reader_ranks:
-            self._nccl_group.send(tensor, rank)
-
         return meta
 
     def write(
         self,
         tensors: Union["torch.Tensor", List["torch.Tensor"]],
     ):
-        if isinstance(tensors, self.torch.Tensor):
-            meta = self._write_single_tensor(tensors)
-            if meta is not None:
-                self._meta_channel.write(meta)
-        elif isinstance(tensors, ray.exceptions.RayTaskError):
+        if isinstance(tensors, ray.exceptions.RayTaskError):
             # TODO(swang): Write exceptions to the meta channel if it is
             # available.
             raise tensors
-        else:
+
+        if isinstance(tensors, list):
             meta_list = []
             for tensor in tensors:
-                meta_list.append(self._write_single_tensor(tensor))
+                meta_list.append(self._get_tensor_meta(tensor))
             self._meta_channel.write(meta_list)
+        else:
+            meta = self._get_tensor_meta(tensors)
+            if meta is not None:
+                self._meta_channel.write(meta)
+            tensors = [tensors]
+
+        # NOTE(swang): We must send the metadata *before* launching the NCCL
+        # send. We are using blocking NCCL ops, so the following calls will
+        # block until the kernel has been enqueued. Also, peers must launch the
+        # kernel together before either can proceed. Therefore, we send the
+        # metadata first so that the receiver can read the metadata and then
+        # launch the same NCCL op.
+        for tensor in tensors:
+            # TODO: If there are multiple readers, can replace with a
+            # broadcast.
+            for rank in self._reader_ranks:
+                self._nccl_group.send(tensor, rank)
+
 
     def _begin_read_single_tensor(self, typ: "TorchTensorType") -> "torch.Tensor":
         buf = self.torch.zeros(typ.shape, dtype=typ.dtype, device=self._device)
