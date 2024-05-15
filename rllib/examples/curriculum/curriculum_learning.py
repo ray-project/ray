@@ -63,6 +63,7 @@ from ray.rllib.connectors.env_to_module import (
     FlattenObservations,
     WriteObservationsToEpisodes,
 )
+from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
@@ -148,6 +149,7 @@ class EnvTaskCallback(DefaultCallbacks):
         self,
         *,
         algorithm: Algorithm,
+        metrics_logger=None,
         result: dict,
         **kwargs,
     ) -> None:
@@ -161,7 +163,7 @@ class EnvTaskCallback(DefaultCallbacks):
         # to a more difficult task (if possible). If we already mastered the most
         # difficult task, we publish our victory in the result dict.
         result["task_solved"] = 0.0
-        current_return = result["sampler_results"]["episode_reward_mean"]
+        current_return = result[ENV_RUNNER_RESULTS]["episode_return_mean"]
         if current_return > args.upgrade_task_threshold:
             if current_task < 2:
                 new_task = current_task + 1
@@ -212,8 +214,8 @@ if __name__ == "__main__":
             lr=0.0002,
             model={"vf_share_layers": True},
         )
-        .rollouts(
-            num_envs_per_worker=5,
+        .env_runners(
+            num_envs_per_env_runner=5,
             env_to_module_connector=lambda env: [
                 AddObservationsFromEpisodesToBatch(),
                 FlattenObservations(),
@@ -229,7 +231,7 @@ if __name__ == "__main__":
         # But we DO want to stop, once the entire task is learned (policy achieves
         # return of 1.0 on the most difficult task=2).
         "task_solved": 1.0,
-        "timesteps_total": args.stop_timesteps,
+        "num_env_steps_sampled_lifetime": args.stop_timesteps,
     }
 
     run_rllib_example_script_experiment(

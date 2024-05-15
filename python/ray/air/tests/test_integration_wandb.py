@@ -34,42 +34,35 @@ Template for testing with these mocks:
 """
 
 import gc
+import os
+import tempfile
+import time
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 import numpy as np
-import os
 import pytest
-import time
-import tempfile
-from unittest.mock import (
-    Mock,
-    patch,
-)
-
 
 import ray
-from ray.exceptions import RayActorError
-from ray.air.integrations.wandb import (
-    WandbLoggerCallback,
-    _QueueItem,
-    _WandbLoggingActor,
-)
 from ray.air.integrations.wandb import (
     WANDB_ENV_VAR,
     WANDB_GROUP_ENV_VAR,
     WANDB_POPULATE_RUN_LOCATION_HOOK,
     WANDB_PROJECT_ENV_VAR,
     WANDB_SETUP_API_KEY_HOOK,
+    WandbLoggerCallback,
+    _QueueItem,
+    _WandbLoggingActor,
 )
-from ray.tune.execution.placement_groups import PlacementGroupFactory
-
 from ray.air.tests.mocked_wandb_integration import (
-    _MockWandbAPI,
-    _MockWandbLoggingActor,
     Trial,
     WandbTestExperimentLogger,
+    _MockWandbAPI,
+    _MockWandbLoggingActor,
     get_mock_wandb_logger,
 )
+from ray.exceptions import RayActorError
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -518,7 +511,8 @@ def test_wandb_logging_process_run_info_hook(monkeypatch):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

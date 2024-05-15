@@ -108,7 +108,7 @@ class PPORemoteInference(PPO):
                 {
                     # Different bundle (meaning: possibly different node)
                     # for your n "remote" envs (set remote_worker_envs=True).
-                    "CPU": cf.num_envs_per_worker,
+                    "CPU": cf.num_envs_per_env_runner,
                 },
             ],
             strategy=cf.placement_strategy,
@@ -124,16 +124,16 @@ if __name__ == "__main__":
         PPOConfig()
         .environment("CartPole-v1")
         .framework(args.framework)
-        .rollouts(
+        .env_runners(
             # Force sub-envs to be ray.actor.ActorHandles, so we can step
             # through them in parallel.
             remote_worker_envs=True,
-            num_envs_per_worker=args.num_envs_per_worker,
+            num_envs_per_env_runner=args.num_envs_per_worker,
             # Use a single worker (however, with n parallelized remote envs, maybe
             # even running on another node).
             # Action computations occur on the "main" (GPU?) node, while
             # the envs run on one or more CPU node(s).
-            num_rollout_workers=0,
+            num_env_runners=0,
         )
         .resources(
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
@@ -163,8 +163,8 @@ if __name__ == "__main__":
     else:
         stop = {
             "training_iteration": args.stop_iters,
-            "timesteps_total": args.stop_timesteps,
-            "episode_reward_mean": args.stop_reward,
+            "num_env_steps_sampled_lifetime": args.stop_timesteps,
+            "env_runner_results/episode_return_mean": args.stop_reward,
         }
 
         results = tune.Tuner(

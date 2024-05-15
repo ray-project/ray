@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
     from ray.rllib.policy.view_requirement import ViewRequirement
     from ray.rllib.utils import try_import_jax, try_import_tf, try_import_torch
+    from ray.rllib.utils.nested_dict import NestedDict
 
     _, tf, _ = try_import_tf()
     torch, _ = try_import_torch()
@@ -154,8 +155,11 @@ FileType = Any
 # ViewRequirement objects.
 ViewRequirementsDict = Dict[str, "ViewRequirement"]
 
-# Represents the result dict returned by Algorithm.train().
-ResultDict = dict
+# Represents the result dict returned by Algorithm.train() and algorithm components,
+# such as EnvRunners, LearnerGroup, etc.. Also, the MetricsLogger used by all these
+# components returns this upon its `reduce()` method call, so a ResultDict can further
+# be accumulated (and reduced again) by downstream components.
+ResultDict = Union[dict, "NestedDict"]
 
 # A tf or torch local optimizer object.
 LocalOptimizer = Union["torch.optim.Optimizer", "tf.keras.optimizers.Optimizer"]

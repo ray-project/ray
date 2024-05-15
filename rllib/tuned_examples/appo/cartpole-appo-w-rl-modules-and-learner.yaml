@@ -6,11 +6,11 @@ cartpole-appo-w-rl-modules-and-learner:
         timesteps_total: 200000
     config:
         # Run with Learner- and RLModule API (new stack).
-        _enable_new_api_stack: true
+        enable_rl_module_and_learner: true
 
         # Works for both torch and tf.
         framework: torch
-        num_envs_per_worker: 5
+        num_envs_per_env_runner: 5
         num_workers: 1
         num_gpus: 0
         observation_filter: MeanStdFilter

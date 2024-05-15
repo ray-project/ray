@@ -1,19 +1,19 @@
 import collections
 import logging
 import numpy as np
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import List, Optional, TYPE_CHECKING
 
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import GradInfoDict, LearnerStatsDict, ResultDict
 
 if TYPE_CHECKING:
-    from ray.rllib.evaluation.worker_set import WorkerSet
+    from ray.rllib.env.env_runner_group import EnvRunnerGroup
 
 logger = logging.getLogger(__name__)
 
-RolloutMetrics = DeveloperAPI(
+RolloutMetrics = OldAPIStack(
     collections.namedtuple(
         "RolloutMetrics",
         [
@@ -32,20 +32,7 @@ RolloutMetrics = DeveloperAPI(
 RolloutMetrics.__new__.__defaults__ = (0, 0, {}, {}, {}, {}, {}, False, {})
 
 
-def _extract_stats(stats: Dict, key: str) -> Dict[str, Any]:
-    if key in stats:
-        return stats[key]
-
-    multiagent_stats = {}
-    for k, v in stats.items():
-        if isinstance(v, dict):
-            if key in v:
-                multiagent_stats[k] = v[key]
-
-    return multiagent_stats
-
-
-@DeveloperAPI
+@OldAPIStack
 def get_learner_stats(grad_info: GradInfoDict) -> LearnerStatsDict:
     """Return optimization stats reported from the policy.
 
@@ -74,9 +61,9 @@ def get_learner_stats(grad_info: GradInfoDict) -> LearnerStatsDict:
     return multiagent_stats
 
 
-@DeveloperAPI
+@OldAPIStack
 def collect_metrics(
-    workers: "WorkerSet",
+    workers: "EnvRunnerGroup",
     remote_worker_ids: Optional[List[int]] = None,
     timeout_seconds: int = 180,
     keep_custom_metrics: bool = False,
@@ -84,7 +71,7 @@ def collect_metrics(
     """Gathers episode metrics from rollout worker set.
 
     Args:
-        workers: WorkerSet.
+        workers: EnvRunnerGroup.
         remote_worker_ids: Optional list of IDs of remote workers to collect
             metrics from.
         timeout_seconds: Timeout in seconds for collecting metrics from remote workers.
@@ -103,16 +90,16 @@ def collect_metrics(
     return metrics
 
 
-@DeveloperAPI
+@OldAPIStack
 def collect_episodes(
-    workers: "WorkerSet",
+    workers: "EnvRunnerGroup",
     remote_worker_ids: Optional[List[int]] = None,
     timeout_seconds: int = 180,
 ) -> List[RolloutMetrics]:
     """Gathers new episodes metrics tuples from the given RolloutWorkers.
 
     Args:
-        workers: WorkerSet.
+        workers: EnvRunnerGroup.
         remote_worker_ids: Optional list of IDs of remote workers to collect
             metrics from.
         timeout_seconds: Timeout in seconds for collecting metrics from remote workers.
@@ -139,7 +126,7 @@ def collect_episodes(
     return episodes
 
 
-@DeveloperAPI
+@OldAPIStack
 def summarize_episodes(
     episodes: List[RolloutMetrics],
     new_episodes: List[RolloutMetrics] = None,
@@ -265,4 +252,11 @@ def summarize_episodes(
         sampler_perf=dict(perf_stats),
         num_faulty_episodes=num_faulty_episodes,
         connector_metrics=mean_connector_metrics,
+        # Added these (duplicate) values here for forward compatibility with the new API
+        # stack's metrics structure. This allows us to unify our test cases and keeping
+        # the new API stack clean of backward-compatible keys.
+        num_episodes=len(new_episodes),
+        episode_return_max=max_reward,
+        episode_return_min=min_reward,
+        episode_return_mean=avg_reward,
     )

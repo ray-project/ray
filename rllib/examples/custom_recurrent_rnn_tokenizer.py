@@ -165,7 +165,7 @@ if __name__ == "__main__":
         PPOConfig()
         .environment(args.env, env_config={"repeat_delay": 2})
         .framework(args.framework)
-        .rollouts(num_rollout_workers=0, num_envs_per_worker=20)
+        .env_runners(num_env_runners=0, num_envs_per_env_runner=20)
         .training(
             model={
                 "vf_share_layers": False,
@@ -186,8 +186,8 @@ if __name__ == "__main__":
 
     stop = {
         "training_iteration": args.stop_iters,
-        "timesteps_total": args.stop_timesteps,
-        "episode_reward_mean": args.stop_reward,
+        "num_env_steps_sampled_lifetime": args.stop_timesteps,
+        "env_runner_results/episode_return_mean": args.stop_reward,
     }
 
     tuner = tune.Tuner(

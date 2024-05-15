@@ -1,6 +1,7 @@
 import math
 import random
 import time
+from typing import Optional
 from unittest.mock import patch
 
 import numpy as np
@@ -136,6 +137,71 @@ def test_groupby_errors(ray_start_regular_shared):
         ds.groupby(lambda x: x % 2).count().show()
     with pytest.raises(ValueError):
         ds.groupby("foo").count().show()
+
+
+def test_map_groups_with_gpus(shutdown_only):
+    ray.shutdown()
+    ray.init(num_gpus=1)
+
+    rows = (
+        ray.data.range(1).groupby("id").map_groups(lambda x: x, num_gpus=1).take_all()
+    )
+
+    assert rows == [{"id": 0}]
+
+
+def test_map_groups_with_actors(ray_start_regular_shared):
+    class Identity:
+        def __call__(self, batch):
+            return batch
+
+    rows = (
+        ray.data.range(1).groupby("id").map_groups(Identity, concurrency=1).take_all()
+    )
+
+    assert rows == [{"id": 0}]
+
+
+def test_map_groups_with_actors_and_args(ray_start_regular_shared):
+    class Fn:
+        def __init__(self, x: int, y: Optional[int] = None):
+            self.x = x
+            self.y = y
+
+        def __call__(self, batch, q: int, r: Optional[int] = None):
+            return {"x": [self.x], "y": [self.y], "q": [q], "r": [r]}
+
+    rows = (
+        ray.data.range(1)
+        .groupby("id")
+        .map_groups(
+            Fn,
+            concurrency=1,
+            fn_constructor_args=[0],
+            fn_constructor_kwargs={"y": 1},
+            fn_args=[2],
+            fn_kwargs={"r": 3},
+        )
+        .take_all()
+    )
+
+    assert rows == [{"x": 0, "y": 1, "q": 2, "r": 3}]
+
+
+def test_groupby_large_udf_returns(ray_start_regular_shared):
+    # Test for https://github.com/ray-project/ray/issues/44861.
+
+    # Each UDF return is 128 MiB. If Ray Data doesn't incrementally yield outputs, the
+    # combined output size is 128 MiB * 1024 = 128 GiB and Arrow errors.
+    def create_large_data(group):
+        return {"item": np.zeros((1, 128 * 1024 * 1024), dtype=np.uint8)}
+
+    ds = (
+        ray.data.range(1024, override_num_blocks=1)
+        .groupby(key="id")
+        .map_groups(create_large_data)
+    )
+    ds.take(1)
 
 
 def test_agg_errors(ray_start_regular_shared):

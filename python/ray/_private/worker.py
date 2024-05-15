@@ -2718,7 +2718,7 @@ blocking_wait_inside_async_warned = False
 @PublicAPI
 @client_mode_hook
 def wait(
-    ray_waitables: Union["ObjectRef[R]", "ObjectRefGenerator[R]"],
+    ray_waitables: List[Union["ObjectRef[R]", "ObjectRefGenerator[R]"]],
     *,
     num_returns: int = 1,
     timeout: Optional[float] = None,
@@ -3189,7 +3189,7 @@ def remote(__t: type) -> Any:
 @overload
 def remote(
     *,
-    num_returns: Union[int, float] = Undefined,
+    num_returns: Union[int, Literal["streaming"]] = Undefined,
     num_cpus: Union[int, float] = Undefined,
     num_gpus: Union[int, float] = Undefined,
     resources: Dict[str, float] = Undefined,

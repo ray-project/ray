@@ -115,16 +115,16 @@ if __name__ == "__main__":
         .framework(args.framework)
         # Set up our own callbacks.
         .callbacks(TaskSettingCallback)
-        .rollouts(
+        .env_runners(
             # Force sub-envs to be ray.actor.ActorHandles, so we can step
             # through them in parallel.
             remote_worker_envs=True,
             # How many RolloutWorkers (each with n environment copies:
-            # `num_envs_per_worker`)?
-            num_rollout_workers=args.num_workers,
+            # `num_envs_per_env_runner`)?
+            num_env_runners=args.num_workers,
             # This setting should not really matter as it does not affect the
             # number of GPUs reserved for each worker.
-            num_envs_per_worker=args.num_envs_per_worker,
+            num_envs_per_env_runner=args.num_envs_per_env_runner,
         )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
@@ -132,8 +132,8 @@ if __name__ == "__main__":
 
     stop = {
         "training_iteration": args.stop_iters,
-        "timesteps_total": args.stop_timesteps,
-        "episode_reward_mean": args.stop_reward,
+        "num_env_steps_sampled_lifetime": args.stop_timesteps,
+        "env_runner_results/episode_return_mean": args.stop_reward,
     }
 
     results = tune.Tuner(

@@ -166,7 +166,7 @@ Unblocking wait is possible with the Ray generator in the following ways:
 **Wait until a generator task completes**
 
 ``ObjectRefGenerator`` has an API ``completed``. It returns an object reference that is available when a generator task finishes or errors.
-For example, you can do ``ray.get(<generator_instance>.compelted())`` to wait until a task completes. Note that using ``ray.get`` to ``ObjectRefGenerator`` isn't allowed.
+For example, you can do ``ray.get(<generator_instance>.completed())`` to wait until a task completes. Note that using ``ray.get`` to ``ObjectRefGenerator`` isn't allowed.
 
 **Use asyncio and await**
 

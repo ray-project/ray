@@ -10,6 +10,7 @@ from math import floor
 
 from packaging.version import Version
 
+import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
@@ -179,6 +180,7 @@ class HttpServerDashboardHead:
                 self.metrics.metrics_request_duration.labels(
                     endpoint=handler.__name__,
                     http_status=status_tag,
+                    Version=ray.__version__,
                     SessionName=self._session_name,
                     Component="dashboard",
                 ).observe(resp_time)
@@ -186,6 +188,7 @@ class HttpServerDashboardHead:
                     method=request.method,
                     endpoint=handler.__name__,
                     http_status=status_tag,
+                    Version=ray.__version__,
                     SessionName=self._session_name,
                     Component="dashboard",
                 ).inc()
