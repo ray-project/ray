@@ -3,12 +3,10 @@ import logging
 from typing import Any, List, Optional, Union
 
 import ray
+from ray._raylet import SerializedObject
 from ray.experimental.channel.common import ChannelInterface, ChannelOutputType
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.util.annotations import PublicAPI
-from ray._raylet import (
-        SerializedObject,
-        )
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -315,20 +313,17 @@ class Channel(ChannelInterface):
     def write(self, value: Any):
         self.ensure_registered_as_writer()
 
-        if not isinstance(value, SerializedObject):
-            try:
-                serialized_value = self._worker.get_serialization_context().serialize(value)
-            except TypeError as e:
-                sio = io.StringIO()
-                ray.util.inspect_serializability(value, print_file=sio)
-                msg = (
-                    "Could not serialize the put value "
-                    f"{repr(value)}:\n"
-                    f"{sio.getvalue()}"
-                )
-                raise TypeError(msg) from e
-        else:
-            serialized_value = value
+        try:
+            serialized_value = self._worker.get_serialization_context().serialize(value)
+        except TypeError as e:
+            sio = io.StringIO()
+            ray.util.inspect_serializability(value, print_file=sio)
+            msg = (
+                "Could not serialize the put value "
+                f"{repr(value)}:\n"
+                f"{sio.getvalue()}"
+            )
+            raise TypeError(msg) from e
 
         self._worker.core_worker.experimental_channel_put_serialized(
             serialized_value,

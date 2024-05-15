@@ -101,6 +101,8 @@ class TorchTensorNcclChannel(ChannelInterface):
             )
 
         if self._meta_channel is None:
+            # If there is no metadata channel, then we can only pass tensors of
+            # static shape and dtype.
             assert self.has_static_type()
 
     def ensure_registered_as_writer(self):
@@ -147,32 +149,16 @@ class TorchTensorNcclChannel(ChannelInterface):
 
     def write(
         self,
-        tensors: Union["torch.Tensor", List["torch.Tensor"]],
+        tensor: "torch.Tensor",
     ):
-        if isinstance(tensors, ray.exceptions.RayTaskError):
+        if isinstance(tensor, ray.exceptions.RayTaskError):
             # TODO(swang): Write exceptions to the meta channel if it is
             # available.
-            raise tensors
+            raise tensor
 
-        if isinstance(tensors, list):
-            meta_list = []
-            for tensor in tensors:
-                meta_list.append(self._get_tensor_meta(tensor))
-            if self._meta_channel is None:
-                if meta_list != [None]:
-                    raise ValueError(
-                    "DAGNode annotated `.with_contains_type_hint("
-                    "TorchTensorType(shape=shape, dtype=dtype))` can return at "
-                    "most one tensor with the declared `shape` and `dtype`. "
-                    "Use TorchTensorType() if value contains more than one "
-                    "tensor or tensor of dynamic size.")
-            else:
-                self._meta_channel.write(meta_list)
-        else:
-            meta = self._get_tensor_meta(tensors)
-            if meta is not None:
-                self._meta_channel.write(meta)
-            tensors = [tensors]
+        meta = self._get_tensor_meta(tensor)
+        if meta is not None:
+            self._meta_channel.write(meta)
 
         # NOTE(swang): We must send the metadata *before* launching the NCCL
         # send. We are using blocking NCCL ops, so the following calls will
@@ -180,35 +166,23 @@ class TorchTensorNcclChannel(ChannelInterface):
         # kernel together before either can proceed. Therefore, we send the
         # metadata first so that the receiver can read the metadata and then
         # launch the same NCCL op.
-        for tensor in tensors:
-            # TODO: If there are multiple readers, can replace with a
-            # broadcast.
-            for rank in self._reader_ranks:
-                self._nccl_group.send(tensor, rank)
+        # TODO: If there are multiple readers, can replace with a
+        # broadcast.
+        for rank in self._reader_ranks:
+            self._nccl_group.send(tensor, rank)
 
-    def _begin_read_single_tensor(self, typ: "TorchTensorType") -> "torch.Tensor":
-        buf = self.torch.zeros(typ.shape, dtype=typ.dtype, device=self._device)
-        self._nccl_group.recv(buf, self._writer_rank)
-        return buf
-
-    def begin_read(self) -> Union["torch.Tensor", List["torch.Tensor"]]:
+    def begin_read(self) -> "torch.Tensor":
         if self._meta_channel is not None:
-            meta = self._meta_channel.begin_read()
+            typ = self._meta_channel.begin_read()
             # It's safe to release the channel because shape and dtype should get
             # copied during deserialization.
             self._meta_channel.end_read()
         else:
-            meta = self._typ
+            typ = self._typ
 
-        if not isinstance(meta, list):
-            return self._begin_read_single_tensor(meta)
-
-        bufs: List["torch.Tensor"] = []
-        for typ in meta:
-            bufs.append(self._begin_read_single_tensor(typ))
-        # TODO: Sync CUDA stream after receiving all tensors, instead of after
-        # each tensor.
-        return bufs
+        buf = self.torch.zeros(typ.shape, dtype=typ.dtype, device=self._device)
+        self._nccl_group.recv(buf, self._writer_rank)
+        return buf
 
     def end_read(self) -> None:
         return
@@ -223,7 +197,10 @@ class TorchTensorNcclChannel(ChannelInterface):
             del ctx.nccl_groups[self._nccl_group_id]
 
     def has_static_type(self) -> bool:
-        return self._typ.shape != self.TorchTensorType.AUTO and self._typ.dtype != self.TorchTensorType.AUTO
+        return (
+            self._typ.shape != self.TorchTensorType.AUTO
+            and self._typ.dtype != self.TorchTensorType.AUTO
+        )
 
 
 def _do_init_nccl_group(self, group_id, world_size, comm_id, rank, actor_handles):

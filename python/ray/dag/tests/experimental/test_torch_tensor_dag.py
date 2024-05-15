@@ -36,9 +36,9 @@ class TorchTensorWorker:
     def send_dict_with_tuple_args(self, args):
         shape, dtype, value = args
         return {
-                i: torch.ones(shape, dtype=dtype, device=self.device) * i
-                for i in range(value)
-                }
+            i: torch.ones(shape, dtype=dtype, device=self.device) * i
+            for i in range(value)
+        }
 
     def send_with_tuple_args(self, args):
         # Hack because InputNode can currently only contain one arg.
@@ -144,15 +144,15 @@ def test_torch_tensor_as_dag_input(ray_start_regular):
 
     # Passing tensors of a similar or smaller shape is okay.
     for i in range(3):
-        output_channel = compiled_dag.execute(torch.ones((20, ), dtype=dtype) * i)
+        output_channel = compiled_dag.execute(torch.ones((20,), dtype=dtype) * i)
         # TODO(swang): Replace with fake ObjectRef.
         result = output_channel.begin_read()
-        assert result == (i, (20, ), dtype)
+        assert result == (i, (20,), dtype)
         output_channel.end_read()
 
     # Passing a much larger tensor will error.
     with pytest.raises(ValueError):
-        output_channel = compiled_dag.execute(torch.ones((1_000_000, ), dtype=dtype) * i)
+        output_channel = compiled_dag.execute(torch.ones((1_000_000,), dtype=dtype) * i)
 
     compiled_dag.teardown()
 

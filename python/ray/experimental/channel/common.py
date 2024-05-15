@@ -18,7 +18,9 @@ _context_lock = threading.Lock()
 class ChannelOutputType:
     def register_custom_serializer(self) -> None:
         """
-        Register any custom serializers needed to pass data of this type.
+        Register any custom serializers needed to pass data of this type. This
+        method should be run on the reader(s) and writer of a channel, which
+        are the driver and/or Ray actors.
         """
         pass
 

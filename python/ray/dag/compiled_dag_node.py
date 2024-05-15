@@ -441,7 +441,6 @@ class CompiledDAG:
                 if dag_node.type_hint.requires_nccl():
                     raise ValueError("DAG inputs cannot be transferred via NCCL")
 
-            
             if type(task.dag_node.type_hint) == ChannelOutputType:
                 # No type hint specified by the user. Replace
                 # with the default type hint for this DAG.
