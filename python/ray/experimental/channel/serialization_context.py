@@ -11,45 +11,26 @@ if TYPE_CHECKING:
 class _SerializationContext:
     def __init__(self):
         self.torch_device: Optional["torch.device"] = None
-        self.serialize_typ: Optional["ChannelOutputType"] = None
+        self.use_external_transport: bool = False
         self.tensors: List["torch.Tensor"] = []
 
-    def set_serialize_type(self, typ: Optional["TorchTensorType"]) -> None:
-        self.serialize_typ = typ
+    def set_use_external_transport(self, use_external_transport: bool) -> None:
+        self.use_external_transport = use_external_transport
 
     def set_torch_device(self, torch_device: "torch.device") -> None:
         self.torch_device = torch_device
 
     def reset_tensors(self, tensors: List["torch.Tensor"]) -> List["torch.Tensor"]:
         prev_tensors = self.tensors
-        self.tensors = []
+        self.tensors = tensors
         return prev_tensors
 
     def serialize_tensor(self, tensor: "torch.Tensor") -> Union[int, "np.ndarray"]:
         from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
-        if (
-            self.serialize_typ.shape != TorchTensorType.AUTO
-            and tensor.shape != self.serialize_typ.shape
-        ):
-            raise ValueError(
-                "DAG node wrapped with ray.experimental.TorchTensor(shape="
-                f"{self.serialize_typ.shape}) returned "
-                f"a torch.Tensor of the shape {tensor.shape}"
-            )
-        if (
-            self.serialize_typ.shape != TorchTensorType.AUTO
-            and tensor.dtype != self.serialize_typ.dtype
-        ):
-            raise ValueError(
-                "DAG node wrapped with ray.experimental.TorchTensor(dtype="
-                f"{self.serialize_typ.dtype}) returned "
-                f"a torch.Tensor of the dtype {tensor.dtype}"
-            )
-
-        if self.serialize_typ.transport == TorchTensorType.NCCL:
-            # Add the actual tensor to a buffer. The buffer of tensors will be
-            # sent via NCCL.
+        if self.use_external_transport:
+            # Add the actual tensor to a buffer. The buffer of tensors should
+            # later be popped by the caller and sent via external transport.
             self.tensors.append(tensor)
             # Return a placeholder.
             return len(self.tensors) - 1
@@ -71,7 +52,7 @@ class _SerializationContext:
         # Found a placeholder for a tensor that was serialized via NCCL.
         # Replace it with the corresponding deserialized tensor.
         if isinstance(val, int):
-            return self.deserialized_tensors[val]
+            return self.tensors[val]
 
         return self.deserialize_from_numpy(val)
 

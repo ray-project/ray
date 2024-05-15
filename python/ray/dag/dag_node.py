@@ -2,6 +2,7 @@ import ray
 from ray.dag.base import DAGNodeBase
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.util.annotations import DeveloperAPI
+import copy
 
 from typing import (
     Optional,
@@ -66,7 +67,7 @@ class DAGNode(DAGNodeBase):
 
     def with_type_hint(self, typ: ChannelOutputType):
         old_contains_typ = self._type_hint.contains_type
-        self._type_hint = typ
+        self._type_hint = copy.deepcopy(typ)
         if old_contains_typ is not None and typ.contains_type is None:
             # The contained type was set before the return
             # type, and the new return type doesn't have a

@@ -33,7 +33,14 @@ class TorchTensorWorker:
     def send(self, shape, dtype, value: int):
         return torch.ones(shape, dtype=dtype, device=self.device) * value
 
-    def send_tuple(self, args):
+    def send_dict_with_tuple_args(self, args):
+        shape, dtype, value = args
+        return {
+                i: torch.ones(shape, dtype=dtype, device=self.device) * i
+                for i in range(value)
+                }
+
+    def send_with_tuple_args(self, args):
         # Hack because InputNode can currently only contain one arg.
         shape, dtype, value = args
         return torch.ones(shape, dtype=dtype, device=self.device) * value

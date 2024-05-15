@@ -41,6 +41,10 @@ class TorchTensorType(ChannelOutputType):
     ):
         super().__init__()
 
+        if isinstance(shape, str):
+            shape = shape.lower()
+        if isinstance(dtype, str):
+            dtype = dtype.lower()
         self.shape = shape
         self.dtype = dtype
         self.transport = transport
@@ -68,6 +72,9 @@ class TorchTensorType(ChannelOutputType):
             serializer=serialize,
             deserializer=deserialize,
         )
+
+    def set_contains_type(self, typ: "ChannelOutputType") -> None:
+        raise ValueError("TorchTensorType cannot contain other types")
 
     def create_channel(
         self,

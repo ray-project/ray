@@ -205,6 +205,9 @@ class TorchTensorNcclChannel(ChannelInterface):
                 self._readers,
             )
 
+        if self._meta_channel is None:
+            assert self._typ.shape != TorchTensorType.AUTO and self._typ.dtype != TorchTensorType.AUTO
+
     def ensure_registered_as_writer(self):
         assert self._nccl_group is not None, "Actor is not part of a NCCL group"
         assert self._writer_registered

@@ -146,7 +146,7 @@ def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
     Returns:
         True if we are done executing all tasks of this actor, False otherwise.
     """
-    self._serialization_ctx.set_serialize_type(task.output_type_hint)
+    self._serialization_ctx.set_use_external_transport(task.output_type_hint.requires_nccl())
 
     # TODO: for cases where output is passed as input to a task on
     # the same actor, introduce a "LocalChannel" to avoid the overhead
@@ -450,6 +450,13 @@ class CompiledDAG:
                 if dag_node.type_hint.requires_nccl():
                     raise ValueError("DAG inputs cannot be transferred via NCCL")
 
+            
+            if type(task.dag_node.type_hint) == ChannelOutputType:
+                # No type hint specified by the user. Replace
+                # with the default type hint for this DAG.
+                default_type_hint = copy.deepcopy(self._default_type_hint)
+                task.dag_node.with_type_hint(default_type_hint)
+
             for arg_idx, arg in enumerate(task.args):
                 if not isinstance(arg, DAGNode):
                     continue
@@ -542,13 +549,6 @@ class CompiledDAG:
             assert task.output_channel is None
 
             type_hint = task.dag_node.type_hint
-            if type(type_hint) == ChannelOutputType:
-                # No type hint specified by the user. Replace
-                # with the default type hint for this DAG.
-                type_hint = copy.deepcopy(self._default_type_hint)
-                contained_typ = task.dag_node.type_hint.contains_type
-                if contained_typ is not None:
-                    type_hint.set_contains_type(contained_typ)
             if type_hint.requires_nccl():
                 type_hint.set_nccl_group_id(self._nccl_group_id)
 
@@ -681,7 +681,7 @@ class CompiledDAG:
         input_task.dag_node.type_hint.register_custom_serializer()
         ctx = ChannelContext.get_current()
         self.serialization_ctx = ctx.serialization_context
-        self.serialization_ctx.set_serialize_type(input_task.dag_node.type_hint)
+        self.serialization_ctx.set_use_external_transport(input_task.dag_node.type_hint.requires_nccl())
 
         self.dag_input_channel = input_task.output_channel
 
