@@ -16,9 +16,9 @@ def main() -> None:
     """
     ci_init()
     steps = (
-        Test.gen_high_impact_tests(LINUX_TEST_PREFIX).keys()
-        + Test.gen_high_impact_tests(WINDOWS_TEST_PREFIX).keys()
-        + Test.gen_high_impact_tests(MACOS_TEST_PREFIX).keys()
+        list(Test.gen_high_impact_tests(LINUX_TEST_PREFIX).keys())
+        + list(Test.gen_high_impact_tests(WINDOWS_TEST_PREFIX).keys())
+        + list(Test.gen_high_impact_tests(MACOS_TEST_PREFIX).keys())
     )
 
     print(",".join(steps))
