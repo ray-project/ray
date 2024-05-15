@@ -9,7 +9,6 @@ import copy
 import ray
 from ray.exceptions import RayTaskError
 from ray.experimental.channel import (
-    ChannelContext,
     ChannelInterface,
     ChannelOutputType,
     ReaderInterface,

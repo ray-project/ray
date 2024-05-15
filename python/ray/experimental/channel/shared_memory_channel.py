@@ -3,9 +3,7 @@ import logging
 from typing import Any, List, Optional, Union
 
 import ray
-from ray._raylet import SerializedObject
 from ray.experimental.channel.common import ChannelInterface, ChannelOutputType
-from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.util.annotations import PublicAPI
 
 # Logger for this module. It should be configured at the entry point

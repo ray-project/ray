@@ -1,11 +1,8 @@
-from typing import TYPE_CHECKING, List, Optional, Union
+from typing import TYPE_CHECKING, List, Optional
 
 if TYPE_CHECKING:
     import numpy as np
     import torch
-
-    from ray.experimenal.channel import ChannelOutputType
-    from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
 
 class _SerializationContext:
