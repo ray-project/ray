@@ -320,7 +320,7 @@ async def test_runtime_env_setup_logged_to_job_driver_logs(
         ray._private.worker._global_node.get_logs_dir_path(),
         f"job-driver-{job_id}.log",
     )
-    start_message = "Runtime env setup is starting up"
+    start_message = "Runtime env is setting up."
     with open(job_driver_log_path, "r") as f:
         logs = f.read()
         assert start_message in logs
@@ -928,7 +928,7 @@ class TestTailLogs:
         i = 0
         async for lines in job_manager.tail_job_logs(job_id):
             assert all(
-                s == expected_log or "Runtime env setup" in s
+                s == expected_log or "Runtime env" in s
                 for s in lines.strip().split("\n")
             )
             print(lines, end="")
@@ -968,7 +968,7 @@ class TestTailLogs:
 
             async for lines in job_manager.tail_job_logs(job_id):
                 assert all(
-                    s == "Waiting..." or "Runtime env setup" in s
+                    s == "Waiting..." or "Runtime env" in s
                     for s in lines.strip().split("\n")
                 )
                 print(lines, end="")
@@ -992,7 +992,7 @@ class TestTailLogs:
 
             async for lines in job_manager.tail_job_logs(job_id):
                 assert all(
-                    s == "Waiting..." or "Runtime env setup" in s
+                    s == "Waiting..." or "Runtime env" in s
                     for s in lines.strip().split("\n")
                 )
                 print(lines, end="")
@@ -1018,7 +1018,7 @@ class TestTailLogs:
 
             async for lines in job_manager.tail_job_logs(job_id):
                 assert all(
-                    s == "Waiting..." or s == "Terminated" or "Runtime env setup" in s
+                    s == "Waiting..." or s == "Terminated" or "Runtime env" in s
                     for s in lines.strip().split("\n")
                 )
                 print(lines, end="")
