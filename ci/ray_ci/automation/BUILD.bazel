@@ -92,6 +92,7 @@ py_test(
 py_binary(
     name = "update_version",
     srcs = ["update_version.py"],
+    exec_compatible_with = ["//:hermetic_python"],
     deps = [
         ci_require("click"),
         ":update_version_lib",
