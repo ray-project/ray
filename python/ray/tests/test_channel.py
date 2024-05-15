@@ -140,11 +140,67 @@ def test_put_different_meta(ray_start_regular):
     _test(1000)
     _test(np.random.rand(10))
 
-    # Cannot put a serialized value larger than the allocated buffer.
-    # with pytest.raises(ValueError):
+
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "darwin",
+    reason="Requires Linux or Mac.",
+)
+def test_resize_channel_on_same_node(ray_start_regular):
+    chan = ray_channel.Channel(None, [None], 1000)
+
+    def _test(val):
+        chan.write(val)
+
+        read_val = chan.begin_read()
+        if isinstance(val, np.ndarray):
+            assert np.array_equal(read_val, val)
+        else:
+            assert read_val == val
+        chan.end_read()
+
+    # `np.random.rand(100)` requires more than 1000 bytes of storage. The channel is
+    # allocated above with a backing store size of 1000 bytes.
     _test(np.random.rand(100))
 
-    _test(np.random.rand(1))
+    # Check that another write still works.
+    _test(np.random.rand(5))
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "darwin",
+    reason="Requires Linux or Mac.",
+)
+def test_resize_channel_on_different_nodes(ray_start_regular):
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            pass
+
+        def send_channel(self, channel):
+            self._channel = channel
+
+        def read(self, val):
+            read_val = self._channel.begin_read()
+            if isinstance(val, np.ndarray):
+                assert np.array_equal(read_val, val)
+            else:
+                assert read_val == val
+            self._channel.end_read()
+
+    def _test(channel, actor, val):
+        channel.write(val)
+        ray.get(actor.read.remote(val))
+
+    a = Actor.remote()
+    chan = ray_channel.Channel(None, [a], 1000)
+    ray.get(a.send_channel.remote(chan))
+
+    # `np.random.rand(100)` requires more than 1000 bytes of storage. The channel is
+    # allocated above with a backing store size of 1000 bytes.
+    _test(chan, a, np.random.rand(100))
+
+    # Check that another write still works.
+    _test(chan, a, np.random.rand(5))
 
 
 @pytest.mark.skipif(

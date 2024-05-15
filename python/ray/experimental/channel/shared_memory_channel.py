@@ -13,7 +13,10 @@ from ray.util.annotations import PublicAPI
 # entry/init points.
 logger = logging.getLogger(__name__)
 
-DEFAULT_MAX_BUFFER_SIZE = int(100 * 1e6)  # 100MB
+DEFAULT_MAX_BUFFER_SIZE = int(100 * 1e6)  # 100 mB
+# The min buffer size must be large enough to at least fit an instance of the
+# ResizeChannel class along with any metadata.
+MIN_BUFFER_SIZE = int(1000)  # 1000 bytes
 
 
 def _get_node_id(self) -> "ray.NodeID":
@@ -189,6 +192,9 @@ class Channel(ChannelInterface):
                 "`typ` must be an `int` representing the max buffer size in "
                 "bytes or a SharedMemoryType"
             )
+
+        if typ.buffer_size_bytes < MIN_BUFFER_SIZE:
+            raise ValueError("typ.buffer_size_bytes must be at least MIN_BUFFER_SIZE")
 
         if _writer_ref is None:
             # We are the writer. Check that the passed handle matches the
@@ -416,6 +422,9 @@ class Channel(ChannelInterface):
         if isinstance(ret, ResizeChannel):
             # The writer says we need to update the channel backing store (due to a
             # resize).
+            self._worker.core_worker.experimental_channel_read_release(
+                [self._reader_ref]
+            )
             self._reader_ref = ret._reader_ref
             # We need to register the new reader_ref.
             self._reader_registered = False
