@@ -9,4 +9,3 @@ steps:
     commands:
       - bazel build --build_python_zip //ci/ray_ci/automation:update_version
       - bash -i .buildkite/release-automation/test.sh
-
