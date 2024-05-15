@@ -18,7 +18,7 @@ MIN_TENSOR_BUFFER_SIZE = 100_000
 def _get_default_torch_device() -> "torch.device":
     from ray.air._internal import torch_utils
 
-    if ray.get_gpu_ids():
+    if not ray.get_gpu_ids():
         import torch
 
         # torch_utils defaults to returning GPU 0 if no GPU IDs were assigned
