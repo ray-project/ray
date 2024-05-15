@@ -51,7 +51,8 @@ class TorchTensorType(ChannelOutputType):
                 shape, this may be statically or dynamically declared.
             transport: "auto" (default) means that tensors will be passed via
                 host memory, using numpy as the serialization format. Pass
-                TorchTensorType.NCCL or "nccl" to use NCCL instead, avoiding the host memory copy.
+                TorchTensorType.NCCL or "nccl" to use NCCL instead, avoiding
+                the host memory copy.
         """
         super().__init__()
 
