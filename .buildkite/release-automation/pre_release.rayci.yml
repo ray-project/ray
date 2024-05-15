@@ -22,7 +22,7 @@ steps:
     instance_type: default
     job_env: forge
     commands:
-      - bazel build --build_python_zip //ci/ray_ci/automation:update_version
+      - bazel build --build_python_zip --incompatible_use_python_toolchains=false --python_path=python //ci/ray_ci/automation:update_version
       - cp bazel-bin/ci/ray_ci/automation/update_version.zip /artifact-mount/
 
   - label: "Trigger Postmerge test"
