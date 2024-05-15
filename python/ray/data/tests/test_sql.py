@@ -146,12 +146,13 @@ def test_databricks_uc_datasource():
         def request_post_mock(url, data=None, json=None, **kwargs):
             import json as jsonlib
 
-            auth = kwargs["auth"]
             headers = kwargs["headers"]
 
             if url == "https://test_shard/api/2.0/sql/statements/":
-                assert auth == ("token", token)
-                assert headers == {"Content-Type": "application/json"}
+                assert headers == {
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer " + token,
+                }
                 assert jsonlib.loads(data) == {
                     "statement": query,
                     "warehouse_id": warehouse_id,
@@ -177,15 +178,16 @@ def test_databricks_uc_datasource():
             assert False, "Invalid request."
 
         def request_get_mock(url, params=None, **kwargs):
-            auth = kwargs["auth"]
             headers = kwargs["headers"]
 
             if match := re.match(
                 r"^https://test_shard/api/2\.0/sql/statements/([^/]*)/$", url
             ):
                 statement_id = match.group(1)
-                assert auth == ("token", token)
-                assert headers == {"Content-Type": "application/json"}
+                assert headers == {
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer " + token,
+                }
 
                 assert statement_id in valid_statement_ids
 
@@ -206,8 +208,10 @@ def test_databricks_uc_datasource():
                 r"statements/([^/]*)/result/chunks/([^/]*)$",
                 url,
             ):
-                assert auth == ("token", token)
-                assert headers == {"Content-Type": "application/json"}
+                assert headers == {
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer " + token,
+                }
 
                 chunk_index = match.group(2)
 
@@ -225,7 +229,6 @@ def test_databricks_uc_datasource():
                 )
 
             if match := re.match(r"^https://test_external_link/([^/]*)$", url):
-                assert auth is None
                 assert headers is None
 
                 chunk_index = int(match.group(1))

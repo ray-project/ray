@@ -18,19 +18,21 @@ import numpy as np
 
 from ray._private.utils import _get_pyarrow_version
 from ray.air.constants import TENSOR_COLUMN_NAME
+from ray.air.util.tensor_extensions.arrow import pyarrow_table_from_pydict
 from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
 from ray.data._internal.numpy_support import (
     convert_udf_returns_to_numpy,
-    is_valid_udf_return,
+    validate_numpy_batch,
 )
 from ray.data._internal.row import TableRow
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
-from ray.data._internal.util import _truncated_repr, find_partitions
+from ray.data._internal.util import find_partitions
 from ray.data.block import (
     Block,
     BlockAccessor,
     BlockExecStats,
     BlockMetadata,
+    BlockType,
     KeyType,
     U,
 )
@@ -141,7 +143,7 @@ class ArrowBlockBuilder(TableBlockBuilder):
                 from ray.data.extensions.tensor_extension import ArrowTensorArray
 
                 columns[col_name] = ArrowTensorArray.from_numpy(col, col_name)
-        return pyarrow.Table.from_pydict(columns)
+        return pyarrow_table_from_pydict(columns)
 
     @staticmethod
     def _concat_tables(tables: List[Block]) -> Block:
@@ -153,7 +155,10 @@ class ArrowBlockBuilder(TableBlockBuilder):
 
     @staticmethod
     def _empty_table() -> "pyarrow.Table":
-        return pyarrow.Table.from_pydict({})
+        return pyarrow_table_from_pydict({})
+
+    def block_type(self) -> BlockType:
+        return BlockType.ARROW
 
 
 class ArrowBlockAccessor(TableBlockAccessor):
@@ -185,22 +190,12 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
     @staticmethod
     def numpy_to_block(
-        batch: Union[np.ndarray, Dict[str, np.ndarray], Dict[str, list]],
+        batch: Union[Dict[str, np.ndarray], Dict[str, list]],
     ) -> "pyarrow.Table":
-        import pyarrow as pa
-
         from ray.data.extensions.tensor_extension import ArrowTensorArray
 
-        if isinstance(batch, np.ndarray):
-            batch = {TENSOR_COLUMN_NAME: batch}
-        elif not isinstance(batch, collections.abc.Mapping) or any(
-            not is_valid_udf_return(col) for col in batch.values()
-        ):
-            raise ValueError(
-                "Batch must be an ndarray or dictionary of ndarrays when converting "
-                f"a numpy batch to a block, got: {type(batch)} "
-                f"({_truncated_repr(batch)})"
-            )
+        validate_numpy_batch(batch)
+
         new_batch = {}
         for col_name, col in batch.items():
             # Coerce to np.ndarray format if possible.
@@ -209,7 +204,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
             if col.dtype.type is np.object_ or col.ndim > 1:
                 col = ArrowTensorArray.from_numpy(col, col_name)
             new_batch[col_name] = col
-        return pa.Table.from_pydict(new_batch)
+        return pyarrow_table_from_pydict(new_batch)
 
     @staticmethod
     def _build_tensor_row(
@@ -678,6 +673,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
         ret = builder.build()
         return ret, ArrowBlockAccessor(ret).get_metadata(None, exec_stats=stats.build())
+
+    def block_type(self) -> BlockType:
+        return BlockType.ARROW
 
 
 def _copy_table(table: "pyarrow.Table") -> "pyarrow.Table":

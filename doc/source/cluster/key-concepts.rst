@@ -76,7 +76,7 @@ The worker that runs the Python script is known as the *driver* of the job.
 There are two ways to run a Ray job on a Ray cluster:
 
 1. (Recommended) Submit the job using the :ref:`Ray Jobs API <jobs-overview>`.
-2. Run the driver script directly on any node of the Ray cluster, for interactive development.
+2. Run the driver script directly on the Ray cluster, for interactive development.
 
 For details on these workflows, refer to the :ref:`Ray Jobs API guide <jobs-overview>`.
 
