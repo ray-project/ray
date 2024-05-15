@@ -113,6 +113,13 @@ class NestedTorchTensorNcclChannel(ChannelInterface):
     def begin_read(self) -> Any:
         tensors = self._gpu_data_channel.begin_read()
 
+        if self._gpu_data_channel.has_static_type():
+            # If the channel was declared with a static TorchTensorType, then
+            # the task is allowed to return at most one tensor, and its shape
+            # and dtype must match the declared type. Wrap the tensor in a
+            # list since the following calls expect a list.
+            tensors = [tensors]
+
         self.serialization_ctx.reset_tensors(tensors)
         data = self._cpu_data_channel.begin_read()
         self.serialization_ctx.reset_tensors([])
@@ -206,7 +213,7 @@ class TorchTensorNcclChannel(ChannelInterface):
             )
 
         if self._meta_channel is None:
-            assert self._typ.shape != TorchTensorType.AUTO and self._typ.dtype != TorchTensorType.AUTO
+            assert self.has_static_type()
 
     def ensure_registered_as_writer(self):
         assert self._nccl_group is not None, "Actor is not part of a NCCL group"
@@ -263,7 +270,16 @@ class TorchTensorNcclChannel(ChannelInterface):
             meta_list = []
             for tensor in tensors:
                 meta_list.append(self._get_tensor_meta(tensor))
-            self._meta_channel.write(meta_list)
+            if self._meta_channel is None:
+                if meta_list != [None]:
+                    raise ValueError(
+                    "DAGNode annotated `.with_contains_type_hint("
+                    "TorchTensorType(shape=shape, dtype=dtype))` can return at "
+                    "most one tensor with the declared `shape` and `dtype`. "
+                    "Use TorchTensorType() if value contains more than one "
+                    "tensor or tensor of dynamic size.")
+            else:
+                self._meta_channel.write(meta_list)
         else:
             meta = self._get_tensor_meta(tensors)
             if meta is not None:
@@ -317,6 +333,9 @@ class TorchTensorNcclChannel(ChannelInterface):
         ctx = ChannelContext.get_current()
         if self._nccl_group_id in ctx.nccl_groups:
             del ctx.nccl_groups[self._nccl_group_id]
+
+    def has_static_type(self) -> bool:
+        return self._typ.shape != self.TorchTensorType.AUTO and self._typ.dtype != self.TorchTensorType.AUTO
 
 
 def _do_init_nccl_group(self, group_id, world_size, comm_id, rank, actor_handles):
