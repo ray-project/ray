@@ -323,12 +323,10 @@ async def test_runtime_env_setup_logged_to_job_driver_logs(
         ray._private.worker._global_node.get_logs_dir_path(),
         f"job-driver-{job_id}.log",
     )
-    start_message = "Runtime env setup started"
-    finished_message = "Runtime env setup finished"
+    start_message = "Runtime env setup is starting up"
     with open(job_driver_log_path, "r") as f:
         logs = f.read()
         assert start_message in logs
-        assert finished_message in logs
 
 
 @pytest.fixture(scope="module")

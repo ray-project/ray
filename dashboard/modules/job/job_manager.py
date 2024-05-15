@@ -153,7 +153,6 @@ class JobManager:
         )
 
         is_alive = True
-        runtime_env_finished_message_logged = False
 
         while is_alive:
             try:
@@ -234,12 +233,6 @@ class JobManager:
                         continue
 
                 await job_supervisor.ping.remote()
-
-                is_run_called = await job_supervisor.is_run_called.remote()
-                if is_run_called and not runtime_env_finished_message_logged:
-                    driver_logger = self._get_job_driver_logger(job_id)
-                    driver_logger.info("Runtime env setup finished")
-                    runtime_env_finished_message_logged = True
 
                 await asyncio.sleep(self.JOB_MONITOR_LOOP_PERIOD_S)
             except Exception as e:
@@ -534,7 +527,7 @@ class JobManager:
                 )
 
             driver_logger = self._get_job_driver_logger(submission_id)
-            driver_logger.info("Runtime env setup started")
+            driver_logger.info("Runtime env setup is starting up")
             supervisor = self._supervisor_actor_cls.options(
                 lifetime="detached",
                 name=JOB_ACTOR_NAME_TEMPLATE.format(job_id=submission_id),
