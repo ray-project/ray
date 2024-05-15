@@ -445,6 +445,9 @@ class CompiledDAG:
                 if dag_node.type_hint.requires_nccl():
                     # Add all writers to the NCCL group.
                     nccl_actors.add(actor_handle)
+            elif isinstance(dag_node, InputNode):
+                if dag_node.type_hint.requires_nccl():
+                    raise ValueError("DAG inputs cannot be transferred via NCCL")
 
             for arg_idx, arg in enumerate(task.args):
                 if not isinstance(arg, DAGNode):

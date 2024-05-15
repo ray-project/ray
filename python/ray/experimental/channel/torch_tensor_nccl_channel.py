@@ -159,10 +159,6 @@ class TorchTensorNcclChannel(ChannelInterface):
 
         # TODO(swang): Allow default device to be overridden.
         self._device = _get_default_torch_device()
-        if self._device.type != "cuda":
-            raise ValueError(
-                f'Actor\'s default device has type "{self._device.type}", need "cuda"'
-            )
 
         assert isinstance(typ, TorchTensorType)
         assert typ.transport == typ.NCCL
@@ -212,20 +208,24 @@ class TorchTensorNcclChannel(ChannelInterface):
 
     def ensure_registered_as_writer(self):
         assert self._nccl_group is not None, "Actor is not part of a NCCL group"
+        assert self._writer_registered
+        assert self._device.type == "cuda"
 
     def ensure_registered_as_reader(self) -> bool:
         assert self._nccl_group is not None, "Actor is not part of a NCCL group"
+        assert self._reader_registered
+        assert self._device.type == "cuda"
 
     def __reduce__(self):
         return (
             self.__class__,
-            (self._writer, self._readers, self._typ, self._device, self._meta_channel),
+            (self._writer, self._readers, self._typ, self._meta_channel),
         )
 
     def _write_single_tensor(
         self, tensor: "torch.Tensor"
     ) -> Optional["TorchTensorType"]:
-        if not isinstance(tensor):
+        if not isinstance(tensor, self.torch.Tensor):
             raise ValueError("Task must return torch.Tensors")
 
         if tensor.device != self._device:
@@ -234,7 +234,7 @@ class TorchTensorNcclChannel(ChannelInterface):
             )
 
         meta: Optional["TorchTensorType"] = None
-        if self._typ.shape == self.AUTO or self._typ.dtype == self.AUTO:
+        if self._typ.shape == self.TorchTensorType.AUTO or self._typ.dtype == self.TorchTensorType.AUTO:
             meta = self.TorchTensorType(shape=tensor.shape, dtype=tensor.dtype)
         elif tensor.shape != self._typ.shape:
             raise ValueError(
@@ -255,11 +255,12 @@ class TorchTensorNcclChannel(ChannelInterface):
         self,
         tensors: Union["torch.Tensor", List["torch.Tensor"]],
     ):
-        if isinstance(tensors, torch.Tensor):
+        if isinstance(tensors, self.torch.Tensor):
             meta = self._write_single_tensor(tensors)
             if meta is not None:
                 self._meta_channel.write(meta)
         else:
+            # TODO(swang): Handle exceptions being written to the meta channel.
             meta_list = []
             for tensor in tensors:
                 meta_list.append(self._write_single_tensor(tensor))
@@ -279,7 +280,7 @@ class TorchTensorNcclChannel(ChannelInterface):
         else:
             meta = self._typ
 
-        if isinstance(meta, TorchTensorType):
+        if not isinstance(meta, list):
             return self._begin_read_single_tensor(meta)
 
         bufs: List["torch.Tensor"] = []
