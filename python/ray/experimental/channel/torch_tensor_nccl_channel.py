@@ -222,9 +222,7 @@ class TorchTensorNcclChannel(ChannelInterface):
             (self._writer, self._readers, self._typ, self._meta_channel),
         )
 
-    def _get_tensor_meta(
-        self, tensor: "torch.Tensor"
-    ) -> Optional["TorchTensorType"]:
+    def _get_tensor_meta(self, tensor: "torch.Tensor") -> Optional["TorchTensorType"]:
         if not isinstance(tensor, self.torch.Tensor):
             raise ValueError("Task must return torch.Tensors")
 
@@ -234,7 +232,10 @@ class TorchTensorNcclChannel(ChannelInterface):
             )
 
         meta: Optional["TorchTensorType"] = None
-        if self._typ.shape == self.TorchTensorType.AUTO or self._typ.dtype == self.TorchTensorType.AUTO:
+        if (
+            self._typ.shape == self.TorchTensorType.AUTO
+            or self._typ.dtype == self.TorchTensorType.AUTO
+        ):
             meta = self.TorchTensorType(shape=tensor.shape, dtype=tensor.dtype)
         elif tensor.shape != self._typ.shape:
             raise ValueError(
@@ -278,7 +279,6 @@ class TorchTensorNcclChannel(ChannelInterface):
             # broadcast.
             for rank in self._reader_ranks:
                 self._nccl_group.send(tensor, rank)
-
 
     def _begin_read_single_tensor(self, typ: "TorchTensorType") -> "torch.Tensor":
         buf = self.torch.zeros(typ.shape, dtype=typ.dtype, device=self._device)

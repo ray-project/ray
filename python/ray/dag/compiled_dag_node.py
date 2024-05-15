@@ -277,7 +277,7 @@ class ExecutableTask:
         self.output_channel = task.output_channel
         self.resolved_args = resolved_args
         self.input_type_hints: List["ChannelOutputType"] = task.arg_type_hints
-        self.output_type_hint: "ChannelOutputType"  = task.dag_node.type_hint
+        self.output_type_hint: "ChannelOutputType" = task.dag_node.type_hint
 
         self.resolved_inputs: List[Union[Any, ChannelInterface]] = []
         self.input_channels: List[ChannelInterface] = []
