@@ -58,9 +58,11 @@ rates used here:
 """
 
 from ray import tune
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
+    LEARNER_RESULTS,
 )
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
@@ -124,7 +126,7 @@ if __name__ == "__main__":
     # Get the best checkpoints from the trial, based on different metrics.
     # Checkpoint with the lowest policy loss value:
     if args.enable_new_api_stack:
-        policy_loss_key = "learner_results/default_policy/policy_loss"
+        policy_loss_key = f"{LEARNER_RESULTS}/{DEFAULT_MODULE_ID}/policy_loss"
     else:
         policy_loss_key = "info/learner/default_policy/learner_stats/policy_loss"
     best_result = results.get_best_result(metric=policy_loss_key, mode="min")
@@ -134,7 +136,7 @@ if __name__ == "__main__":
 
     # Checkpoint with the highest value-function loss:
     if args.enable_new_api_stack:
-        vf_loss_key = "learner_results/default_policy/vf_loss"
+        vf_loss_key = f"{LEARNER_RESULTS}/{DEFAULT_MODULE_ID}/vf_loss"
     else:
         vf_loss_key = "info/learner/default_policy/learner_stats/vf_loss"
     best_result = results.get_best_result(metric=vf_loss_key, mode="max")
