@@ -1,4 +1,5 @@
 group: Validate Linux arm64 wheels
+sort_key: "4"
 steps:
   - block: "Download & validate Ray wheels from TestPyPI Linux arm64"
     key: block-validate-linux-arm64-wheels

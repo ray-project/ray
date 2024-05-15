@@ -1,4 +1,5 @@
 group: Validate MacOS wheels
+sort_key: "5"
 steps:
   - block: "Download & validate Ray wheels from TestPyPI Mac"
     key: block-validate-macos-wheels

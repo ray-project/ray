@@ -1,4 +1,5 @@
 group: Pre-release checks
+sort_key: "1"
 depends_on:
   - forge
 steps:

@@ -1,4 +1,5 @@
 group: Validate Linux x86_64 wheels
+sort_key: "3"
 steps:
   - block: "Download & validate Ray wheels from TestPyPI Linux x86_64"
     key: block-validate-linux-x86_64-wheels

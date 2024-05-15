@@ -1,4 +1,5 @@
-group: Upload wheels
+group: Upload wheels to TestPyPI
+sort_key: "2"
 steps:
   - block: "Upload wheels from S3 to TestPyPI"
     key: block-upload-wheels-testpypi
@@ -15,15 +16,3 @@ steps:
         --commit_hash="$BUILDKITE_COMMIT"
         --pypi_env=test
 
-  - block: "Upload wheels to PyPI"
-    key: block-upload-wheels-pypi
-
-  - label: "Upload wheels to PyPI"
-    key: upload-wheels-pypi
-    job_env: forge
-    instance_type: small_branch
-    commands:
-      - bazel run //ci/ray_ci/automation:upload_wheels_pypi -- 
-        --ray_version="$RAY_VERSION" 
-        --commit_hash="$BUILDKITE_COMMIT" 
-        --pypi_env=prod
