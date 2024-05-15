@@ -7,12 +7,8 @@ from ray.util.annotations import PublicAPI
 if TYPE_CHECKING:
     import torch
 
-# Add this much padding to all shared memory buffers used to store tensors.
-# This shouldn't affect performance because the buffer is allocated once and
-# when transferring across nodes, only the serialized buffer is copied.
-TENSOR_BUFFER_PADDING_FRACTION = 0.2
-# 100KB so that we have room to store an exception if needed.
-MIN_TENSOR_BUFFER_SIZE = 100_000
+# 100KB to store metadata and/or exceptions.
+TENSOR_PADDING_SIZE_BYTES = 100_000
 
 
 def _get_default_torch_device() -> "torch.device":
@@ -39,6 +35,24 @@ class TorchTensorType(ChannelOutputType):
         dtype: "torch.dtype" = AUTO,
         transport: Optional[str] = None,
     ):
+        """
+        A type hint that can be used to annotate DAG nodes that return a
+        torch.Tensor.
+
+        Args:
+            shape: The expected shape of the torch.Tensor. "auto" (default)
+                means that the shape will be dynamically inferred. For tensors
+                passed via host memory (default), the shape is a hint for the
+                maximum size of the tensor. If a DAG node's returned serialized
+                tensor exceeds this size, the task will error. For tensors
+                passed via NCCL, the returned tensor must *match* the given
+                shape; if it does not match, the task will error.
+            dtype: The expected dtype of the torch.Tensor. Similar to the
+                shape, this may be statically or dynamically declared.
+            transport: "auto" (default) means that tensors will be passed via
+                host memory, using numpy as the serialization format. Pass
+                TorchTensorType.NCCL or "nccl" to use NCCL instead, avoiding the host memory copy.
+        """
         super().__init__()
 
         if isinstance(shape, str):
@@ -72,9 +86,6 @@ class TorchTensorType(ChannelOutputType):
             serializer=serialize,
             deserializer=deserialize,
         )
-
-    def set_contains_type(self, typ: "ChannelOutputType") -> None:
-        raise ValueError("TorchTensorType cannot contain other types")
 
     def create_channel(
         self,
@@ -118,10 +129,8 @@ class TorchTensorType(ChannelOutputType):
         for dim in shape:
             num_elements *= dim
         element_size_bytes = TORCH_DTYPE_ITEMSIZE_MAP[self.dtype]
-        buffer_size_bytes = int(
-            (num_elements * element_size_bytes) * (1 + TENSOR_BUFFER_PADDING_FRACTION)
-        )
-        buffer_size_bytes = max(buffer_size_bytes, MIN_TENSOR_BUFFER_SIZE)
+        buffer_size_bytes = int(num_elements * element_size_bytes)
+        buffer_size_bytes += TENSOR_PADDING_SIZE_BYTES
 
         return Channel(writer, readers, buffer_size_bytes)
 
@@ -130,32 +139,3 @@ class TorchTensorType(ChannelOutputType):
 
     def set_nccl_group_id(self, group_id: str) -> None:
         self.nccl_group_id = group_id
-
-
-# class _TorchTensorPlaceholder:
-#    def __init__(
-#        self,
-#        typ: TorchTensorType,
-#    ):
-#        import torch
-#
-#        if not isinstance(tensor, torch.Tensor):
-#            raise ValueError(
-#                "DAG nodes wrapped with ray.experimental.TorchTensor must return a "
-#                "torch.Tensor."
-#            )
-#        if typ.shape != TorchTensorType.AUTO and tensor.shape != typ.shape:
-#            raise ValueError(
-#                "DAG node wrapped with ray.experimental.TorchTensor(shape="
-#                f"{typ.shape}) returned "
-#                f"a torch.Tensor of the shape {tensor.shape}"
-#            )
-#        if typ.shape != TorchTensorType.AUTO and tensor.dtype != typ.dtype:
-#            raise ValueError(
-#                "DAG node wrapped with ray.experimental.TorchTensor(dtype="
-#                f"{typ.dtype}) returned "
-#                f"a torch.Tensor of the dtype {tensor.dtype}"
-#            )
-#
-#        self.tensor = tensor
-#        self.typ = typ
