@@ -138,7 +138,6 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
             self._num_timesteps_added += eps.env_steps()
 
         # Evict old episodes.
-        eps_evicted: List["MultiAgentEpisode"] = []
         eps_evicted_ids: List[Union[str, int]] = []
         eps_evicted_idxs: List[int] = []
         while (
@@ -147,7 +146,6 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
         ):
             # Evict episode.
             evicted_episode = self.episodes.popleft()
-            eps_evicted.append(evicted_episode)
             eps_evicted_ids.append(evicted_episode.id_)
             eps_evicted_idxs.append(self.episode_id_to_index.pop(evicted_episode.id_))
             # If this episode has a new chunk in the new episodes added,
@@ -165,6 +163,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
             self._num_episodes_evicted += 1
             # Remove the module timesteps of the evicted episode from the counters.
             self._evict_module_episodes(evicted_episode)
+            del evicted_episode
 
         # Add agent and module steps.
         for eps in episodes:
@@ -175,25 +174,28 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
 
         # Remove corresponding indices, if episodes were evicted.
         if eps_evicted_idxs:
-            new_indices = []
-            # Each index 2-tuple is of the form (ma_episode_idx, timestep) and
+            # If the episode is not exviected, we keep the index.
+            # Note, ach index 2-tuple is of the form (ma_episode_idx, timestep) and
             # refers to a certain environment timestep in a certain multi-agent
             # episode.
-            for idx_tuple in self._indices:
-                # If episode index is not from an evicted episode, keep it.
-                if idx_tuple[0] not in eps_evicted_idxs:
-                    new_indices.append(idx_tuple)
-            # Assign the new list of indices.
-            self._indices = new_indices
+            new_indices = [
+                idx_tuple
+                for idx_tuple in self._indices
+                if idx_tuple[0] not in eps_evicted_idxs
+            ]
+            # Assign the new indices.
+            self._indicdes = new_indices
             # Also remove corresponding module indices.
             for module_id, module_indices in self._module_to_indices.items():
-                new_module_indices = []
                 # Each index 3-tuple is of the form
                 # (ma_episode_idx, agent_id, timestep) and refers to a certain
                 # agent timestep in a certain multi-agent episode.
-                for idx_triplet in module_indices:
-                    if idx_triplet[0] not in eps_evicted_idxs:
-                        new_module_indices.append(idx_triplet)
+                new_module_indices = [
+                    idx_triplet
+                    for idx_triplet in module_indices
+                    if idx_triplet[0] not in eps_evicted_idxs
+                ]
+                # Assign the new module indices.
                 self._module_to_indices[module_id] = new_module_indices
 
         for eps in episodes:
@@ -201,7 +203,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
             # If the episode is part of an already existing episode, concatenate.
             if eps.id_ in self.episode_id_to_index:
                 eps_idx = self.episode_id_to_index[eps.id_]
-                existing_eps = self.episodes[eps_idx]
+                existing_eps = self.episodes[eps_idx - self._num_episodes_evicted]
                 existing_len = len(existing_eps)
                 self._indices.extend(
                     [
@@ -871,7 +873,9 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
                 sa_episode_in_buffer = False
             if sa_episode_in_buffer:
                 existing_eps_len = len(
-                    self.episodes[episode_idx].agent_episodes[agent_id]
+                    self.episodes[
+                        episode_idx - self._num_episodes_evicted
+                    ].agent_episodes[agent_id]
                 )
             else:
                 existing_eps_len = 0
