@@ -4,6 +4,10 @@ from typing import Any, List, Optional, Union
 
 import ray
 from ray.experimental.channel.common import ChannelInterface, ChannelOutputType
+from ray.experimental.channel.torch_tensor_nccl_channel import (
+    NestedTorchTensorNcclChannel,
+)
+from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.util.annotations import PublicAPI
 
 # Logger for this module. It should be configured at the entry point

@@ -22,10 +22,11 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.experimental.channel.shared_memory_channel import (
     SharedMemoryType,
 )
-from ray.experimental.channel.torch_tensor_type import (
-    TorchTensorType,
-    _TorchTensorWrapper,
-)
+
+# from ray.experimental.channel.torch_tensor_type import (
+#    TorchTensorType,
+#    _TorchTensorWrapper,
+# )
 from ray.experimental.channel.torch_tensor_nccl_channel import (
     _init_nccl_group,
     _destroy_nccl_group,
@@ -234,13 +235,13 @@ class CompiledTask:
         # If set, a lambda to apply to the task output. This can be used to
         # check type hints, if any.
         self.output_wrapper_fn = None
-        if self.dag_node.type_hint is not None:
-            if isinstance(self.dag_node.type_hint, TorchTensorType):
-                # Wrap outputs produced by this task to indicate that it
-                # should be specially serialized.
-                self.output_wrapper_fn = lambda t: _TorchTensorWrapper(
-                    t, self.dag_node.type_hint
-                )
+        # if self.dag_node.type_hint is not None:
+        #    if isinstance(self.dag_node.type_hint, TorchTensorType):
+        #        # Wrap outputs produced by this task to indicate that it
+        #        # should be specially serialized.
+        #        self.output_wrapper_fn = lambda t: _TorchTensorWrapper(
+        #            t, self.dag_node.type_hint
+        #        )
 
     @property
     def args(self) -> Tuple[Any]:
@@ -447,7 +448,7 @@ class CompiledDAG:
                     )
                 self.actor_task_count[actor_handle._actor_id] += 1
 
-                if dag - node.type_hint.requires_nccl():
+                if dag_node.type_hint.requires_nccl():
                     # Add all writers to the NCCL group.
                     nccl_actors.add(actor_handle)
 

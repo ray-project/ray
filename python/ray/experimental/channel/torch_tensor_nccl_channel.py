@@ -1,7 +1,8 @@
+import io
 import logging
 import uuid
 from types import ModuleType
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Any, List, Optional, Union
 
 import ray
 import ray.util.serialization
@@ -14,10 +15,7 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     import torch
 
-    from ray.experimental.channel.torch_tensor_type import (
-        TorchTensorType,
-        _TorchTensorWrapper,
-    )
+    from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
 
 # Logger for this module. It should be configured at the entry point
@@ -141,7 +139,6 @@ class TorchTensorNcclChannel(ChannelInterface):
     ):
         import torch
 
-        from ray.air._internal import torch_utils
         from ray.experimental.channel.torch_tensor_type import (
             TorchTensorType,
             _get_default_torch_device,
@@ -221,9 +218,9 @@ class TorchTensorNcclChannel(ChannelInterface):
             (self._writer, self._readers, self._typ, self._device, self._meta_channel),
         )
 
-    def _write_one(self, tensor: "torch.Tensor") -> Optional[TorchTensorType]:
+    def _write_single_tensor(self, tensor: "torch.Tensor") -> Optional[TorchTensorType]:
         if not isinstance(tensor):
-            raise ValueError(f"Task must return torch.Tensors")
+            raise ValueError("Task must return torch.Tensors")
 
         if tensor.device != self._device:
             raise ValueError(
@@ -244,7 +241,7 @@ class TorchTensorNcclChannel(ChannelInterface):
 
         # TODO: If there are multiple readers, can replace with a broadcast.
         for rank in self._reader_ranks:
-            self._nccl_group.send(value, rank)
+            self._nccl_group.send(tensor, rank)
 
         return meta
 
@@ -253,17 +250,17 @@ class TorchTensorNcclChannel(ChannelInterface):
         tensors: Union["torch.Tensor", List["torch.Tensor"]],
     ):
         if isinstance(tensors, torch.Tensor):
-            meta = self._write_one(tensors)
+            meta = self._write_single_tensor(tensors)
             if meta is not None:
                 self._meta_channel.write(meta)
         else:
             meta_list = []
             for tensor in tensors:
-                meta_list.append(self._write_one(tensor))
+                meta_list.append(self._write_single_tensor(tensor))
             self._meta_channel.write(meta_list)
 
-    def _begin_read_one(self, typ: "TorchTensorType") -> "torch.Tensor":
-        buf = self.torch.zeros(shape, dtype=dtype, device=self._device)
+    def _begin_read_single_tensor(self, typ: "TorchTensorType") -> "torch.Tensor":
+        buf = self.torch.zeros(typ.shape, dtype=typ.dtype, device=self._device)
         self._nccl_group.recv(buf, self._writer_rank)
         return buf
 
@@ -277,12 +274,13 @@ class TorchTensorNcclChannel(ChannelInterface):
             meta = self._typ
 
         if isinstance(meta, TorchTensorType):
-            return self._begin_read_one(meta)
+            return self._begin_read_single_tensor(meta)
 
         bufs: List["torch.Tensor"] = []
         for typ in meta:
-            bufs.append(self._begin_read_one(typ))
-        # TODO: Sync CUDA stream after receiving all tensors, instead of after each tensor.
+            bufs.append(self._begin_read_single_tensor(typ))
+        # TODO: Sync CUDA stream after receiving all tensors, instead of after
+        # each tensor.
         return bufs
 
     def end_read(self) -> None:
@@ -350,7 +348,7 @@ def _init_nccl_group(
                 "GPU assigned by Ray."
             )
 
-    actor_ids = set(actor._ray_actor_id for actor in actors)
+    actor_ids = {actor._ray_actor_id for actor in actors}
     assert len(actor_ids) == len(actors), "Actors must be unique"
 
     # Allocate a communicator ID on one of the actors that will participate in
