@@ -43,7 +43,7 @@ def main(
     }
     high_impact_tests = _get_test_with_minimal_coverage(test_to_prs, coverage)
     if consider_master_branch:
-        high_impact_tests.add(
+        high_impact_tests = high_impact_tests.union(
             _get_failed_tests_from_master_branch(tests, test_history_length)
         )
     if production:
@@ -78,16 +78,16 @@ def _get_failed_tests_from_master_branch(
             result
             for result in test.get_test_results(
                 limit=test_history_length,
-                aws_bucket=get_global_config()["state_machine_aws_bucket"],
+                aws_bucket=get_global_config()["state_machine_branch_aws_bucket"],
                 use_async=True,
                 refresh=True,
             )
-            if result["branch"] == "master"
+            if result.branch == "master"
         ]
         consecutive_failures = 0
         # If a test fails 2 times in a row, we consider it as a failed test
         for result in results:
-            if result["status"] == ResultStatus.ERROR.value:
+            if result.status == ResultStatus.ERROR.value:
                 consecutive_failures += 1
             else:
                 consecutive_failures = 0
