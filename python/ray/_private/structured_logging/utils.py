@@ -18,14 +18,14 @@ LOG_MODE_DICT = {
         },
         "handlers": {
             "console": {
-                "level": "DEBUG",
+                "level": "WARNING",
                 "class": "logging.StreamHandler",
                 "formatter": "logfmt",
                 "filters": ["core_context"],
             },
         },
         "root": {
-            "level": "DEBUG",
+            "level": "WARNING",
             "handlers": ["console"],
         },
     },
@@ -36,7 +36,7 @@ def get_log_config(encoding_type: str) -> dict:
     """Get the logging configuration based on the encoding type.
 
     Args:
-        encoding_type (str): The encoding type of the logging configuration.
+        encoding_type: The encoding type of the logging configuration.
 
     Returns:
         dict: The logging configuration.

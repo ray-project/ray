@@ -11,6 +11,8 @@ from typing import List
 from pathlib import Path
 import pytest
 
+import ray.cloudpickle as pickle
+
 import ray
 from ray._private.test_utils import (
     run_string_as_driver,
@@ -187,6 +189,29 @@ def test_config_metadata(shutdown_only):
     from_worker = ray._private.worker.global_worker.core_worker.get_job_config()
 
     assert dict(from_worker.metadata) == job_config.metadata
+
+
+class TestPyLogConfig:
+    def test_serialized_log_config_dict(self):
+        log_config_dict = {"abc": "xyz"}
+        serialized_log_config_dict = pickle.dumps(log_config_dict)
+        job_config = JobConfig(py_log_config=log_config_dict)
+        pb = job_config._get_proto_job_config()
+        assert pb.serialized_log_config_dict == serialized_log_config_dict
+
+    def test_log_config_str(self):
+        log_config_str = "log_config_str"
+        job_config = JobConfig(py_log_config=log_config_str)
+        pb = job_config._get_proto_job_config()
+        assert pb.log_config_str == log_config_str
+
+    def test_read_log_config_from_json(self):
+        log_config_dict = {"abc": "xyz"}
+        serialized_log_config_dict = pickle.dumps(log_config_dict)
+        job_config_json = {"py_log_config": log_config_dict}
+        job_config = JobConfig.from_json(job_config_json)
+        pb = job_config._get_proto_job_config()
+        assert pb.serialized_log_config_dict == serialized_log_config_dict
 
 
 def test_get_entrypoint():
