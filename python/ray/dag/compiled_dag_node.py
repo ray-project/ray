@@ -1,6 +1,6 @@
 import asyncio
 from collections import defaultdict
-from typing import Any, Callable, Dict, List, Tuple, Union, Optional, Set
+from typing import Any, Dict, List, Tuple, Union, Optional, Set
 import logging
 import traceback
 import threading
@@ -8,6 +8,7 @@ import threading
 import ray
 from ray.exceptions import RayTaskError
 from ray.experimental.channel import (
+    ChannelContext,
     ChannelInterface,
     ChannelOutputType,
     ReaderInterface,
@@ -71,7 +72,6 @@ def do_allocate_channel(
 def do_exec_tasks(
     self,
     tasks: List["ExecutableTask"],
-    type_hints: List[type],
 ) -> None:
     """Generic actor method to begin executing the tasks belonging to an actor.
     This runs an infinite loop to run each task in turn (following the order specified
@@ -139,6 +139,10 @@ def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
     Returns:
         True if we are done executing all tasks of this actor, False otherwise.
     """
+    ctx = ChannelContext.get_current()
+    self.serialization_ctx = ctx.serialization_context
+    self.serialization_ctx.set_serialize_type(task.type_hint)
+
     # TODO: for cases where output is passed as input to a task on
     # the same actor, introduce a "LocalChannel" to avoid the overhead
     # of serialization/deserialization and synchronization.
@@ -163,14 +167,9 @@ def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
 
     try:
         output_val = method(*task.resolved_inputs)
-        # TODO(swang): Avoid output wrapper fn by setting ChannelContext
-        # instead.
-        if task.output_wrapper_fn is not None:
-            output_val = task.output_wrapper_fn(output_val)
+        output_writer.write(output_val)
     except Exception as exc:
         output_writer.write(_wrap_exception(exc))
-    else:
-        output_writer.write(output_val)
 
     try:
         input_reader.end_read()
@@ -232,17 +231,6 @@ class CompiledTask:
         self.downstream_node_idxs: Dict[int, "ray.actor.ActorHandle"] = {}
         self.output_channel = None
 
-        # If set, a lambda to apply to the task output. This can be used to
-        # check type hints, if any.
-        self.output_wrapper_fn = None
-        # if self.dag_node.type_hint is not None:
-        #    if isinstance(self.dag_node.type_hint, TorchTensorType):
-        #        # Wrap outputs produced by this task to indicate that it
-        #        # should be specially serialized.
-        #        self.output_wrapper_fn = lambda t: _TorchTensorWrapper(
-        #            t, self.dag_node.type_hint
-        #        )
-
     @property
     def args(self) -> Tuple[Any]:
         return self.dag_node.get_args()
@@ -281,8 +269,8 @@ class ExecutableTask:
         self.method_name = task.dag_node.get_method_name()
         self.bind_index = task.dag_node._get_bind_index()
         self.output_channel = task.output_channel
-        self.output_wrapper_fn = task.output_wrapper_fn
         self.resolved_args = resolved_args
+        self.type_hint = task.dag_node.type_hint
 
         self.resolved_inputs: List[Union[Any, ChannelInterface]] = []
         self.input_channels: List[ChannelInterface] = []
@@ -356,7 +344,6 @@ class CompiledDAG:
         # Attributes that are set during preprocessing.
         # Preprocessing identifies the input node and output node.
         self.input_task_idx: Optional[int] = None
-        self.input_wrapper_fn: Optional[Callable[[Any], Any]] = None
         self.output_task_idx: Optional[int] = None
         self.has_single_output: bool = False
         self.actor_task_count: Dict["ray._raylet.ActorID", int] = defaultdict(int)
@@ -672,9 +659,12 @@ class CompiledDAG:
                 executable_tasks,
             )
 
-        # Wrapper function for inputs provided to dag.execute().
         input_task = self.idx_to_task[self.input_task_idx]
-        self.input_wrapper_fn = input_task.output_wrapper_fn
+        # Register custom serializers for inputs provided to dag.execute().
+        ctx = ChannelContext.get_current()
+        self.serialization_ctx = ctx.serialization_context
+        self.serialization_ctx.set_serialize_type(input_task.dag_node.type_hint)
+
         self.dag_input_channel = input_task.output_channel
 
         self.dag_output_channels = []
@@ -819,9 +809,6 @@ class CompiledDAG:
         self._get_or_compile()
 
         inp = args[0]
-        if self.input_wrapper_fn is not None:
-            inp = self.input_wrapper_fn(inp)
-
         self._dag_submitter.write(inp)
 
         return self._dag_output_fetcher
@@ -855,8 +842,6 @@ class CompiledDAG:
         self._get_or_compile()
         async with self._dag_submission_lock:
             inp = args[0]
-            if self.input_wrapper_fn is not None:
-                inp = self.input_wrapper_fn(inp)
 
             await self._dag_submitter.write(inp)
             # Allocate a future that the caller can use to get the result.

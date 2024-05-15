@@ -2,17 +2,12 @@ import asyncio
 import concurrent
 import threading
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import ray
 from ray.experimental.channel.nccl_group import _NcclGroup
-from ray.experimental.channel.torch_tensor_type import TorchTensorType
+from ray.experimental.channel.serialization_context import _SerializationContext
 from ray.util.annotations import DeveloperAPI, PublicAPI
-
-if TYPE_CHECKING:
-    from ray.experimental.channel.torch_tensor_type import (
-        _TorchTensorSerializationContext,
-    )
 
 # The context singleton on this process.
 _default_context: "Optional[ChannelContext]" = None
@@ -28,14 +23,17 @@ class ChannelOutputType:
         """
         Register any custom serializers needed to pass data of this type.
         """
-        self._contains_type.register_custom_serializer()
+        if self._contains_type is not None:
+            self._contains_type.register_custom_serializer()
 
     @property
     def contains_type(self) -> "ChannelOutputType":
         return self._contains_type
 
     def set_contains_type(self, typ: "ChannelOutputType") -> None:
-        if not isinstance(self._contains_type, TorchTensorType):
+        from ray.experimental.channel.torch_tensor_type import TorchTensorType
+
+        if typ is not None and not isinstance(typ, TorchTensorType):
             raise ValueError("Contained type must be of type TorchTensorType")
         self._contains_type = typ
 
@@ -73,9 +71,7 @@ class ChannelOutputType:
 @DeveloperAPI
 @dataclass
 class ChannelContext:
-    torch_tensor_serialization_context: Optional[
-        "_TorchTensorSerializationContext"
-    ] = None
+    serialization_context = _SerializationContext()
 
     def __init__(self):
         # Used for the torch.Tensor NCCL transport.

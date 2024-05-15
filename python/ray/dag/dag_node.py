@@ -62,7 +62,7 @@ class DAGNode(DAGNodeBase):
         # Cached values from last call to execute()
         self.cache_from_last_execute = {}
 
-        self._type_hint: Optional[ChannelOutputType] = None
+        self._type_hint: Optional[ChannelOutputType] = ChannelOutputType()
 
     def with_type_hint(self, typ: ChannelOutputType):
         old_contains_typ = self._type_hint.contains_type

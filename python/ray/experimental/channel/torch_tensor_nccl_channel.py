@@ -9,12 +9,13 @@ import ray.util.serialization
 from ray.experimental.channel import ChannelContext
 from ray.experimental.channel.common import ChannelInterface
 from ray.experimental.channel.nccl_group import _NcclGroup
-from ray.experimental.channel.shared_memory_channel import Channel, SharedMemoryType
+from ray.experimental.channel.shared_memory_channel import SharedMemoryType
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     import torch
 
+    from ray.experimental.channel.shared_memory_channel import Channel
     from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
 
@@ -44,13 +45,17 @@ class NestedTorchTensorNcclChannel(ChannelInterface):
             self._gpu_data_channel: TorchTensorNcclChannel = (
                 gpu_data_typ.create_channel(writer, readers)
             )
-            self._cpu_data_channel: Optional[Channel] = None
+            self._cpu_data_channel: Optional["Channel"] = None
             if data_typ is not None:
                 self._cpu_data_channel = data_typ.create_channel(writer, readers)
 
         # Used for serialization.
         self._worker = ray._private.worker.global_worker
         self._worker.check_connected()
+
+        ctx = ChannelContext.get_current()
+        self.serialization_ctx = ctx.torch_tensor_serialization_context
+        assert self.serialization_ctx is not None
 
     @classmethod
     def from_channels(
@@ -85,9 +90,7 @@ class NestedTorchTensorNcclChannel(ChannelInterface):
             self._cpu_data_channel.ensure_registered_as_reader()
 
     def write(self, value: Any):
-        ctx = ChannelContext.get_current()
-        serialization_ctx = ctx.torch_tensor_serialization_context
-        serialization_ctx.reset_tensors([])
+        self.serialization_ctx.reset_tensors([])
 
         try:
             serialized_cpu_data = self._worker.get_serialization_context().serialize(
@@ -103,7 +106,7 @@ class NestedTorchTensorNcclChannel(ChannelInterface):
             )
             raise TypeError(msg) from e
 
-        tensors_to_send = serialization_ctx.reset_tensors([])
+        tensors_to_send = self.serialization_ctx.reset_tensors([])
 
         self._gpu_data_channel.write(tensors_to_send)
         self._cpu_data_channel.write(serialized_cpu_data)
@@ -111,10 +114,10 @@ class NestedTorchTensorNcclChannel(ChannelInterface):
     def begin_read(self) -> Any:
         tensors = self._gpu_data_channel.begin_read()
 
-        ctx = ChannelContext.get_current()
-        serialization_ctx = ctx.torch_tensor_serialization_context
-        serialization_ctx.reset_tensors(tensors)
+        self.serialization_ctx.reset_tensors(tensors)
         data = self._cpu_data_channel.begin_read()
+        self.serialization_ctx.reset_tensors([])
+
         return data
 
     def end_read(self) -> None:
@@ -145,6 +148,7 @@ class TorchTensorNcclChannel(ChannelInterface):
         )
 
         self.torch: ModuleType = torch
+        self.TorchTensorType = TorchTensorType
 
         self._writer = writer
         self._writer_rank: Optional[int] = None
@@ -218,7 +222,9 @@ class TorchTensorNcclChannel(ChannelInterface):
             (self._writer, self._readers, self._typ, self._device, self._meta_channel),
         )
 
-    def _write_single_tensor(self, tensor: "torch.Tensor") -> Optional[TorchTensorType]:
+    def _write_single_tensor(
+        self, tensor: "torch.Tensor"
+    ) -> Optional["TorchTensorType"]:
         if not isinstance(tensor):
             raise ValueError("Task must return torch.Tensors")
 
@@ -227,9 +233,9 @@ class TorchTensorNcclChannel(ChannelInterface):
                 f"torch.Tensor must be on the default device: {self._device}"
             )
 
-        meta: Optional[TorchTensorType] = None
+        meta: Optional["TorchTensorType"] = None
         if self._typ.shape == self.AUTO or self._typ.dtype == self.AUTO:
-            meta = TorchTensorType(shape=tensor.shape, dtype=tensor.dtype)
+            meta = self.TorchTensorType(shape=tensor.shape, dtype=tensor.dtype)
         elif tensor.shape != self._typ.shape:
             raise ValueError(
                 f"torch.Tensor has shape {tensor.shape}, expected {self._typ.shape}"

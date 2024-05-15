@@ -4,9 +4,6 @@ from typing import Any, List, Optional, Union
 
 import ray
 from ray.experimental.channel.common import ChannelInterface, ChannelOutputType
-from ray.experimental.channel.torch_tensor_nccl_channel import (
-    NestedTorchTensorNcclChannel,
-)
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.util.annotations import PublicAPI
 
@@ -90,6 +87,7 @@ class SharedMemoryType(ChannelOutputType):
                 metadata. Writes to the channel must produce serialized data and
                 metadata less than or equal to this value.
         """
+        super().__init__()
         self.buffer_size_bytes = buffer_size_bytes
 
     def create_channel(
@@ -113,6 +111,11 @@ class SharedMemoryType(ChannelOutputType):
             assert isinstance(
                 self._contains_type, TorchTensorType
             ), "_contains_type must be of type TorchTensorType"
+
+            from ray.experimental.channel.torch_tensor_nccl_channel import (
+                NestedTorchTensorNcclChannel,
+            )
+
             if self._contains_type.transport == TorchTensorType.NCCL:
                 return NestedTorchTensorNcclChannel(
                     writer,
