@@ -1,11 +1,10 @@
-import os
-
 import click
 
 from ci.ray_ci.automation.update_version_lib import (
     get_current_version,
     update_file_version,
 )
+
 
 @click.command()
 @click.option("--root_dir", required=True, type=str)
