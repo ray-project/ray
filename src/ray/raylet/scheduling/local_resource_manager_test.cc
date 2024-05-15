@@ -143,7 +143,7 @@ TEST_F(LocalResourceManagerTest, NodeDrainingTest) {
       CreateNodeResources({{ResourceID::CPU(), 8.0}}),
       nullptr,
       nullptr,
-      nullptr,
+      [](const rpc::NodeDeathInfo &node_death_info) { _Exit(1); },
       nullptr);
 
   // Make the node non-idle.
@@ -175,7 +175,7 @@ TEST_F(LocalResourceManagerTest, ObjectStoreMemoryDrainingTest) {
       /* get_used_object_store_memory */
       [&used_object_store]() { return *used_object_store; },
       nullptr,
-      nullptr,
+      [](const rpc::NodeDeathInfo &node_death_info) { _Exit(1); },
       nullptr);
 
   // Make the node non-idle.
