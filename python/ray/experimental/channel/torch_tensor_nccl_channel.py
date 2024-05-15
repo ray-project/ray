@@ -404,6 +404,9 @@ def _init_nccl_group(
 
 def _destroy_nccl_group(group_id: str) -> None:
     ctx = ChannelContext.get_current()
+    if group_id not in ctx.nccl_groups:
+        return
+
     group = ctx.nccl_groups[group_id]
     actors = group._get_actor_handles()
     destroy_tasks = [

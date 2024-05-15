@@ -724,6 +724,9 @@ class CompiledDAG:
             def __init__(self):
                 super().__init__(daemon=True)
                 self.in_teardown = False
+                # Lock to make sure that we only perform teardown for this DAG
+                # once.
+                self.in_teardown_lock = threading.Lock()
 
             def wait_teardown(self):
                 for actor, ref in outer.worker_task_refs.items():
@@ -751,7 +754,14 @@ class CompiledDAG:
                         pass
 
             def teardown(self, wait: bool):
-                if self.in_teardown:
+                do_teardown = False
+                with self.in_teardown_lock:
+                    if not self.in_teardown:
+                        do_teardown = True
+                        self.in_teardown = True
+
+                if not do_teardown:
+                    # Teardown is already being performed.
                     if wait:
                         self.wait_teardown()
                     return
@@ -761,7 +771,6 @@ class CompiledDAG:
                 outer._dag_submitter.close()
                 outer._dag_output_fetcher.close()
 
-                self.in_teardown = True
                 for actor in outer.actor_refs:
                     logger.info(f"Cancelling compiled worker on actor: {actor}")
                 for actor, tasks in outer.actor_to_executable_tasks.items():
@@ -788,8 +797,6 @@ class CompiledDAG:
                     ray.get(list(outer.worker_task_refs.values()))
                 except Exception as e:
                     logger.debug(f"Handling exception from worker tasks: {e}")
-                    if self.in_teardown:
-                        return
                     self.teardown(wait=True)
 
         monitor = Monitor()
