@@ -15,12 +15,24 @@ _context_lock = threading.Lock()
 
 @PublicAPI(stability="alpha")
 class ChannelOutputType:
+    def __init__(self):
+        self._contains_type: Optional[ChannelOutputType] = None
+
     @staticmethod
     def register_custom_serializer() -> None:
         """
         Register any custom serializers needed to pass data of this type.
         """
-        pass
+        self._contains_type.register_custom_serializer()
+
+    @property
+    def contains_type(self) -> ChannelOutputType:
+        return self._contains_type
+
+    def set_contains_type(self, typ: ChannelOutputType) -> None:
+        if not isinstance(self._contains_type, TorchTensorType):
+            raise ValueError("Contained type must be of type TorchTensorType")
+        self._contains_type = typ
 
     def create_channel(
         self,
@@ -41,28 +53,24 @@ class ChannelOutputType:
         """
         raise NotImplementedError
 
+    def requires_nccl(self) -> bool:
+        if self._contains_type is not None:
+            if self._contains_type.requires_nccl():
+                return True
 
-def _do_register_custom_serializers(
-    self: Any, channel_output_types: List[type]
-) -> None:
-    """
-    Register custom serializers for the given channel types. This method should
-    be run on the reader(s) and writer of a channel, which are the driver
-    and/or Ray actors.
+        # By default, channels do not require NCCL.
+        return False
 
-    Args:
-        self: This method should be run on the driver or the Ray actor. The Ray
-            actor should be passed as `self`.
-        channel_output_types: The list of channel output types to register.
-    """
-    for typ in channel_output_types:
-        typ.register_custom_serializer(self)
+    def set_nccl_group_id(self, group_id: str) -> None:
+        raise NotImplementedError
 
 
 @DeveloperAPI
 @dataclass
 class ChannelContext:
-    torch_tensor_serialization_context: Optional["_TorchTensorSerializationContext"] = None
+    torch_tensor_serialization_context: Optional[
+        "_TorchTensorSerializationContext"
+    ] = None
 
     def __init__(self):
         # Used for the torch.Tensor NCCL transport.

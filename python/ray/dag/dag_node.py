@@ -65,7 +65,16 @@ class DAGNode(DAGNodeBase):
         self._type_hint: Optional[ChannelOutputType] = None
 
     def with_type_hint(self, typ: ChannelOutputType):
+        old_contains_typ = self._type_hint.contains_type
         self._type_hint = typ
+        self._type_hint.set_contains_type(old_contains_typ)
+        return self
+
+    def with_contains_type_hint(self, typ: ChannelOutputType):
+        if self._type_hint is None:
+            self._type_hint = ChannelOutputType()
+
+        self._type_hint.set_contains_type(typ)
         return self
 
     @property

@@ -186,6 +186,7 @@ def exec_ray_dag_ipc(label, sender, receiver, use_nccl=False):
 
     return results
 
+
 def _exec_torch_cpu_cpu():
     i = np.random.randint(100)
     t = torch.ones(SHAPE, dtype=DTYPE) * i
@@ -331,18 +332,18 @@ def main():
         }
     )
 
-    #results += timeit("exec_torch_cpu_cpu", _exec_torch_cpu_cpu)
-    #results += timeit("exec_torch_gpu", _exec_torch_gpu)
-    #results += timeit("exec_torch_gpu_cpu_gpu", _exec_torch_gpu_cpu_gpu)
-    #results += exec_nccl_gpu()
+    # results += timeit("exec_torch_cpu_cpu", _exec_torch_cpu_cpu)
+    # results += timeit("exec_torch_gpu", _exec_torch_gpu)
+    # results += timeit("exec_torch_gpu_cpu_gpu", _exec_torch_gpu_cpu_gpu)
+    # results += exec_nccl_gpu()
 
-    #results += timeit("exec_ray_put_cpu", _exec_ray_put_cpu)
-    #results += timeit("exec_ray_put_np_zero_copy", _exec_ray_put_np_zero_copy)
-    #results += timeit("exec_ray_put_gpu", _exec_ray_put_gpu)
+    # results += timeit("exec_ray_put_cpu", _exec_ray_put_cpu)
+    # results += timeit("exec_ray_put_np_zero_copy", _exec_ray_put_np_zero_copy)
+    # results += timeit("exec_ray_put_gpu", _exec_ray_put_gpu)
 
-    #results += exec_ray_core_cpu()
-    #results += exec_ray_dag_cpu()
-    #results += exec_ray_core_gpu()
+    # results += exec_ray_core_cpu()
+    # results += exec_ray_dag_cpu()
+    # results += exec_ray_core_gpu()
     results += exec_ray_dag_gpu_cpu_gpu()
     results += exec_ray_dag_gpu_nccl(dynamic_shape=True)
     results += exec_ray_dag_gpu_nccl(dynamic_shape=False)

@@ -190,7 +190,9 @@ class _NcclGroup:
         self._closed = True
 
         if self._comm is not None:
-            logger.info(f"Destructing NCCL group on actor: {ray.get_runtime_context().current_actor}")
+            logger.info(
+                f"Destructing NCCL group on actor: {ray.get_runtime_context().current_actor}"
+            )
             # Abort *after* setting the _closed flag.
             self._comm.abort()
             self._comm.destroy()

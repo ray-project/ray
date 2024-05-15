@@ -8,7 +8,6 @@ import threading
 import ray
 from ray.exceptions import RayTaskError
 from ray.experimental.channel import (
-    _do_register_custom_serializers,
     ChannelInterface,
     ChannelOutputType,
     ReaderInterface,
@@ -59,6 +58,7 @@ def do_allocate_channel(
         # This is the driver so there is no current actor handle.
         pass
 
+    typ.register_custom_serializer()
     output_channel = typ.create_channel(
         self_actor,
         readers,
@@ -81,8 +81,6 @@ def do_exec_tasks(
         tasks: the executable tasks corresponding to the actor methods.
     """
     try:
-        _do_register_custom_serializers(self, type_hints)
-
         self._input_readers = []
         self._output_writers = []
         for task in tasks:
@@ -449,10 +447,7 @@ class CompiledDAG:
                     )
                 self.actor_task_count[actor_handle._actor_id] += 1
 
-                if (
-                    isinstance(dag_node.type_hint, TorchTensorType)
-                    and dag_node.type_hint.transport == "nccl"
-                ):
+                if dag - node.type_hint.requires_nccl():
                     # Add all writers to the NCCL group.
                     nccl_actors.add(actor_handle)
 
@@ -467,10 +462,7 @@ class CompiledDAG:
                     downstream_actor_handle = task.dag_node._get_actor_handle()
                 upstream_node.downstream_node_idxs[node_idx] = downstream_actor_handle
 
-                if (
-                    isinstance(upstream_node.dag_node.type_hint, TorchTensorType)
-                    and upstream_node.dag_node.type_hint.transport == "nccl"
-                ):
+                if upstream_node.dag_node.type_hint.requires_nccl():
                     # Add all readers to the NCCL group.
                     nccl_actors.add(downstream_actor_handle)
 
@@ -550,13 +542,10 @@ class CompiledDAG:
             assert task.output_channel is None
 
             type_hint = task.dag_node.type_hint
-            if type_hint is None:
+            if type_hint is None or type(type_hint) == ChannelOutputType:
                 type_hint = self._default_type_hint
-            if (
-                isinstance(type_hint, TorchTensorType)
-                and type_hint.transport == TorchTensorType.NCCL
-            ):
-                type_hint.transport_group_id = self._nccl_group_id
+            if type_hint.requires_nccl():
+                type_hint.set_nccl_group_id(self._nccl_group_id)
 
             if isinstance(task.dag_node, ClassMethodNode):
                 readers = [self.idx_to_task[idx] for idx in task.downstream_node_idxs]
@@ -680,14 +669,12 @@ class CompiledDAG:
             ] = worker_fn.options(concurrency_group="_ray_system").remote(
                 do_exec_tasks,
                 executable_tasks,
-                type_hints=list(set(self._type_hints)),
             )
 
         # Wrapper function for inputs provided to dag.execute().
         input_task = self.idx_to_task[self.input_task_idx]
         self.input_wrapper_fn = input_task.output_wrapper_fn
         self.dag_input_channel = input_task.output_channel
-        _do_register_custom_serializers(self, list(set(self._type_hints)))
 
         self.dag_output_channels = []
         for output in self.idx_to_task[self.output_task_idx].args:

@@ -105,7 +105,26 @@ class SharedMemoryType(ChannelOutputType):
             A ChannelInterface that can be used to pass data
                 of this type.
         """
+        if self._contains_type is not None:
+            assert isinstance(
+                self._contains_type, TorchTensorType
+            ), "_contains_type must be of type TorchTensorType"
+            if self._contains_type.transport == TorchTensorType.NCCL:
+                return NestedTorchTensorNcclChannel(
+                    writer,
+                    readers,
+                    gpu_data_typ=self._contains_type,
+                    cpu_data_typ=self,
+                )
+
         return Channel(writer, readers)
+
+    def set_nccl_group_id(self, group_id: str) -> None:
+        assert self.requires_nccl()
+
+        # Shared memory channels don't need NCCL but they can
+        # contain objects that use NCCL.
+        self._contains_type.set_nccl_group_id(group_id)
 
 
 @PublicAPI(stability="alpha")
