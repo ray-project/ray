@@ -1,0 +1,18 @@
+group: Validate Linux x86_64 wheels
+steps:
+  - block: "Download & validate Ray wheels from TestPyPI Linux x86_64"
+    key: block-validate-linux-x86_64-wheels
+    depends_on:
+      - forge
+
+  - label: "Linux x86_64 Python {{matrix}}"
+    key: validate-linux-x86_64-wheels
+    job_env: forge
+    commands:
+      - export PYTHON_VERSION={{matrix}}
+      - export RAY_VERSION="$RAY_VERSION"
+      - bash -i .buildkite/release-automation/verify-linux-wheels.sh
+    matrix:
+      - "3.9"
+      - "3.10"
+      - "3.11"

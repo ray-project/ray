@@ -1,0 +1,19 @@
+group: Validate Linux arm64 wheels
+steps:
+  - block: "Download & validate Ray wheels from TestPyPI Linux arm64"
+    key: block-validate-linux-arm64-wheels
+    depends_on:
+      - forge_arm64
+
+  - label: "Linux arm64 Python {{matrix}}"
+    key: validate-linux-arm64-wheels
+    instance_type: medium-arm64
+    job_env: forge-arm64
+    commands:
+      - export PYTHON_VERSION={{matrix}}
+      - export RAY_VERSION="$RAY_VERSION"
+      - bash -i .buildkite/release-automation/verify-linux-wheels.sh
+    matrix:
+      - "3.9"
+      - "3.10"
+      - "3.11"
