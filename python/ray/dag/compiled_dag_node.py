@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Tuple, Union, Optional, Set
 import logging
 import traceback
 import threading
+import copy
 
 import ray
 from ray.exceptions import RayTaskError
@@ -541,8 +542,13 @@ class CompiledDAG:
             assert task.output_channel is None
 
             type_hint = task.dag_node.type_hint
-            if type_hint is None or type(type_hint) == ChannelOutputType:
-                type_hint = self._default_type_hint
+            if type(type_hint) == ChannelOutputType:
+                # No type hint specified by the user. Replace
+                # with the default type hint for this DAG.
+                type_hint = copy.deepcopy(self._default_type_hint)
+                contained_typ = task.dag_node.type_hint.contains_type
+                if contained_typ is not None:
+                    type_hint.set_contains_type(contained_typ)
             if type_hint.requires_nccl():
                 type_hint.set_nccl_group_id(self._nccl_group_id)
 

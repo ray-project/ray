@@ -67,13 +67,14 @@ class DAGNode(DAGNodeBase):
     def with_type_hint(self, typ: ChannelOutputType):
         old_contains_typ = self._type_hint.contains_type
         self._type_hint = typ
-        self._type_hint.set_contains_type(old_contains_typ)
+        if old_contains_typ is not None and typ.contains_type is None:
+            # The contained type was set before the return
+            # type, and the new return type doesn't have a
+            # contained type set.
+            self._type_hint.set_contains_type(old_contains_typ)
         return self
 
     def with_contains_type_hint(self, typ: ChannelOutputType):
-        if self._type_hint is None:
-            self._type_hint = ChannelOutputType()
-
         self._type_hint.set_contains_type(typ)
         return self
 

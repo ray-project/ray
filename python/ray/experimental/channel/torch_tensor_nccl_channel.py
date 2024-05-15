@@ -31,7 +31,7 @@ class NestedTorchTensorNcclChannel(ChannelInterface):
         writer: ray.actor.ActorHandle,
         readers: List[ray.actor.ActorHandle],
         gpu_data_typ: "TorchTensorType",
-        data_typ: Optional["SharedMemoryType"] = None,
+        cpu_data_typ: Optional["SharedMemoryType"] = None,
         _gpu_data_channel: Optional["TorchTensorNcclChannel"] = None,
         _cpu_data_channel: Optional["Channel"] = None,
     ):
@@ -46,15 +46,15 @@ class NestedTorchTensorNcclChannel(ChannelInterface):
                 gpu_data_typ.create_channel(writer, readers)
             )
             self._cpu_data_channel: Optional["Channel"] = None
-            if data_typ is not None:
-                self._cpu_data_channel = data_typ.create_channel(writer, readers)
+            if cpu_data_typ is not None:
+                self._cpu_data_channel = cpu_data_typ.create_channel(writer, readers)
 
         # Used for serialization.
         self._worker = ray._private.worker.global_worker
         self._worker.check_connected()
 
         ctx = ChannelContext.get_current()
-        self.serialization_ctx = ctx.torch_tensor_serialization_context
+        self.serialization_ctx = ctx.serialization_context
         assert self.serialization_ctx is not None
 
     @classmethod
@@ -66,9 +66,8 @@ class NestedTorchTensorNcclChannel(ChannelInterface):
         return cls(
             writer=None,
             readers=None,
-            metadata_typ=None,
             gpu_data_typ=None,
-            data_typ=None,
+            cpu_data_typ=None,
             _gpu_data_channel=gpu_data_channel,
             _cpu_data_channel=cpu_data_channel,
         )
