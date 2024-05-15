@@ -2,7 +2,7 @@ import abc
 import datetime
 import json
 import pathlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Mapping, Any, TYPE_CHECKING, Optional, Type, Dict, Union
 
 import gymnasium as gym
@@ -203,7 +203,7 @@ class RLModuleConfig:
 
     observation_space: gym.Space = None
     action_space: gym.Space = None
-    model_config_dict: Dict[str, Any] = None
+    model_config_dict: Dict[str, Any] = field(default_factory=dict)
     catalog_class: Type["Catalog"] = None
 
     def get_catalog(self) -> "Catalog":
@@ -456,7 +456,8 @@ class RLModule(abc.ABC):
 
         This is called automatically during the __init__ method of this class,
         therefore, the subclass should call super.__init__() in its constructor. This
-        abstraction can be used to create any component that your RLModule needs.
+        abstraction can be used to create any components (e.g. NN layers) that your
+        RLModule needs.
         """
         return None
 
@@ -596,9 +597,7 @@ class RLModule(abc.ABC):
         a dict that has `action_dist` key and its value is an instance of
         `Distribution`.
         """
-        # TODO (sven): We should probably change this to [ACTION_DIST_INPUTS], b/c this
-        #  is what most algos will do.
-        return {"action_dist": Distribution}
+        return [Columns.ACTION_DIST_INPUTS]
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def output_specs_exploration(self) -> SpecType:
@@ -609,9 +608,7 @@ class RLModule(abc.ABC):
         a dict that has `action_dist` key and its value is an instance of
         `Distribution`.
         """
-        # TODO (sven): We should probably change this to [ACTION_DIST_INPUTS], b/c this
-        #  is what most algos will do.
-        return {"action_dist": Distribution}
+        return [Columns.ACTION_DIST_INPUTS]
 
     def output_specs_train(self) -> SpecType:
         """Returns the output specs of the forward_train method."""
