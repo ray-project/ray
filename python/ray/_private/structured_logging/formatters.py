@@ -3,7 +3,9 @@ import json
 from ray._private.structured_logging.constants import LogKey, LOGRECORD_STANDARD_ATTRS
 
 
-def generate_record_format_attrs(formatter: logging.Formatter, record: logging.LogRecord) -> dict:
+def generate_record_format_attrs(
+    formatter: logging.Formatter, record: logging.LogRecord
+) -> dict:
     record_format_attrs = {
         LogKey.ASCTIME: formatter.formatTime(record),
         LogKey.LEVELNAME: record.levelname,
@@ -22,12 +24,16 @@ def generate_record_format_attrs(formatter: logging.Formatter, record: logging.L
             record_format_attrs[key] = value
     return record_format_attrs
 
+
 class JSONFormatter(logging.Formatter):
     def format(self, record):
         record_format_attrs = generate_record_format_attrs(self, record)
         return json.dumps(record_format_attrs)
-    
+
+
 class LogfmtFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         record_format_attrs = generate_record_format_attrs(self, record)
-        return " ".join([f"{key}={value}" for key, value in record_format_attrs.items()])
+        return " ".join(
+            [f"{key}={value}" for key, value in record_format_attrs.items()]
+        )
