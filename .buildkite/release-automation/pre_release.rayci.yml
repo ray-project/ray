@@ -8,5 +8,8 @@ steps:
     instance_type: small_branch
     commands:
       - bazel build --build_python_zip //ci/ray_ci/automation:update_version
-      - bazel info bazel-bin
+      - bash -i .buildkite/release-automation/test.sh
+    artifact_paths:
+      - "bazel-bin/ci/ray_ci/automation/update_version.zip"
+      - "ci/ray_ci/automation/update_version.zip"
 
