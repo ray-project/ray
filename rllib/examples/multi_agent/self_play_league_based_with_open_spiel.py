@@ -34,6 +34,7 @@ import functools
 import numpy as np
 
 import ray
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.env.utils import try_import_pyspiel, try_import_open_spiel
@@ -46,6 +47,7 @@ from ray.rllib.examples.multi_agent.utils import (
 from ray.rllib.examples._old_api_stack.policy.random_policy import RandomPolicy
 from ray.rllib.examples.rl_modules.classes.random_rlm import RandomRLModule
 from ray.rllib.policy.policy import PolicySpec
+from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
@@ -217,8 +219,8 @@ if __name__ == "__main__":
     results = None
     if not args.from_checkpoint:
         stop = {
-            "num_env_steps_sampled_lifetime": args.stop_timesteps,
-            "training_iteration": args.stop_iters,
+            NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
+            TRAINING_ITERATION: args.stop_iters,
             "league_size": args.min_league_size,
         }
         results = run_rllib_example_script_experiment(config, args, stop=stop)

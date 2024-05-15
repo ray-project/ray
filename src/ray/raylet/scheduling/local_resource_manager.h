@@ -58,6 +58,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
       const NodeResources &node_resources,
       std::function<int64_t(void)> get_used_object_store_memory,
       std::function<bool(void)> get_pull_manager_at_capacity,
+      std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
       std::function<void(const NodeResources &)> resource_change_subscriber);
 
   scheduling::NodeID GetNodeId() const { return local_node_id_; }
@@ -153,7 +154,8 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   /// Change the local node to the draining state.
   /// After that, no new tasks can be scheduled onto the local node.
-  void SetLocalNodeDraining(int64_t draining_deadline_timestamp_ms);
+  void SetLocalNodeDraining(int64_t draining_deadline_timestamp_ms,
+                            const rpc::NodeDeathInfo &node_death_info);
 
   bool IsLocalNodeDraining() const { return is_local_node_draining_; }
 
@@ -215,6 +217,9 @@ class LocalResourceManager : public syncer::ReporterInterface {
   std::function<int64_t(void)> get_used_object_store_memory_;
   /// Function to get whether the pull manager is at capacity.
   std::function<bool(void)> get_pull_manager_at_capacity_;
+  /// Function to shutdown the raylet gracefully.
+  std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully_;
+
   /// Subscribes to resource changes.
   std::function<void(const NodeResources &)> resource_change_subscriber_;
 
@@ -227,6 +232,9 @@ class LocalResourceManager : public syncer::ReporterInterface {
   // the node will be force killed.
   // 0 if there is no deadline.
   int64_t local_node_draining_deadline_timestamp_ms_ = -1;
+
+  /// This is set when the node is being drained and indicates the reason for draining.
+  rpc::NodeDeathInfo node_death_info_;
 
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, AvailableResourceInstancesOpsTest);

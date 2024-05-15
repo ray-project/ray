@@ -32,6 +32,13 @@ import os
 import subprocess
 import yaml
 
+from ray.air.constants import TRAINING_ITERATION
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
+
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--run",
@@ -141,9 +148,9 @@ if __name__ == "__main__":
     stop = experiment_config.get("stop", {})
     # .. but override with command line provided ones.
     if args.stop_iters:
-        stop["training_iteration"] = args.stop_iters
+        stop[TRAINING_ITERATION] = args.stop_iters
     if args.stop_timesteps:
-        stop["timesteps_total"] = args.stop_timesteps
+        stop[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"] = args.stop_timesteps
     if args.stop_reward:
         stop["episode_reward_mean"] = args.stop_reward
     if args.stop_time:
@@ -151,7 +158,8 @@ if __name__ == "__main__":
 
     # Invalid pass criteria.
     if stop.get("episode_reward_mean") is None and (
-        stop.get("timesteps_total") is None or stop.get("time_total_s") is None
+        stop.get(f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}") is None
+        or stop.get("time_total_s") is None
     ):
         raise ValueError(
             "Invalid pass criterium! Must use either "
@@ -217,25 +225,31 @@ if __name__ == "__main__":
 
     # Criterion is to have reached some min reward within given
     # wall time, iters, or timesteps.
-    if stop.get("episode_reward_mean") is not None:
-        max_avg_reward = np.max([r["episode_reward_mean"] for r in last_results])
-        if max_avg_reward < stop["episode_reward_mean"]:
+    if stop.get(EPISODE_RETURN_MEAN) is not None:
+        max_avg_reward = np.max(
+            [r[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN] for r in last_results]
+        )
+        if max_avg_reward < stop[f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"]:
             raise ValueError(
-                "`stop-reward` of {} not reached!".format(stop["episode_reward_mean"])
+                "`stop-reward` of {} not reached!".format(
+                    stop[f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"]
+                )
             )
     # Criterion is to have run through n env timesteps in some wall time m
     # (minimum throughput).
     else:
-        total_timesteps = np.sum([r["timesteps_total"] for r in last_results])
+        total_timesteps = np.sum(
+            [r[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"] for r in last_results]
+        )
         total_time = np.sum([r["time_total_s"] for r in last_results])
-        desired_speed = stop["timesteps_total"] / stop["time_total_s"]
+        desired_speed = stop[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"] / stop["time_total_s"]
         actual_speed = total_timesteps / total_time
         # We stopped because we reached the time limit ->
         # Means throughput is too slow (time steps not reached).
         if actual_speed < desired_speed:
             raise ValueError(
                 "`stop-timesteps` of {} not reached in {}sec!".format(
-                    stop["timesteps_total"], stop["time_total_s"]
+                    stop[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"], stop["time_total_s"]
                 )
             )
 
