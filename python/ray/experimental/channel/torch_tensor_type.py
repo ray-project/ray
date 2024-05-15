@@ -39,6 +39,12 @@ class TorchTensorType(ChannelOutputType):
         A type hint that can be used to annotate DAG nodes that return a
         torch.Tensor.
 
+        NOTE: Use of this type in the DAG will register a custom serializer for
+        torch.Tensor that moves the tensor to the correct device on the
+        receiver. If you are using ray.cloudpickle to serialize objects and you
+        do not want this behavior, you should deregister the custom serializer
+        using ray.util.serialization.deregister_serializer(torch.Tensor).
+
         Args:
             shape: The expected shape of the torch.Tensor. "auto" (default)
                 means that the shape will be dynamically inferred. For tensors
