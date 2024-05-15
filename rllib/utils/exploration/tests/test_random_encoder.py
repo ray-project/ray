@@ -7,6 +7,10 @@ from ray.rllib.utils.test_utils import framework_iterator
 import ray.rllib.algorithms.ppo as ppo
 import ray.rllib.algorithms.sac as sac
 from ray.rllib.algorithms.callbacks import RE3UpdateCallbacks
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MAX,
+)
 
 
 class TestRE3(unittest.TestCase):
@@ -60,7 +64,7 @@ class TestRE3(unittest.TestCase):
             for i in range(num_iterations):
                 result = algo.train()
                 print(result)
-                if result["episode_reward_max"] > -900.0:
+                if result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MAX] > -900.0:
                     print("Reached goal after {} iters!".format(i))
                     learnt = True
                     break

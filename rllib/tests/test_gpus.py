@@ -2,6 +2,7 @@ import unittest
 
 import ray
 from ray import air
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import framework_iterator
@@ -77,7 +78,7 @@ class TestGPUs(unittest.TestCase):
                                     "PPO",
                                     param_space=config,
                                     run_config=air.RunConfig(
-                                        stop={"training_iteration": 0}
+                                        stop={TRAINING_ITERATION: 0}
                                     ),
                                 ).fit()
         ray.shutdown()
@@ -105,7 +106,7 @@ class TestGPUs(unittest.TestCase):
                     tune.Tuner(
                         "PPO",
                         param_space=config,
-                        run_config=air.RunConfig(stop={"training_iteration": 0}),
+                        run_config=air.RunConfig(stop={TRAINING_ITERATION: 0}),
                     ).fit()
 
         ray.shutdown()
