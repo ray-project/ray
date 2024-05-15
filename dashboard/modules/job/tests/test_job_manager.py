@@ -308,9 +308,6 @@ async def test_runtime_env_setup_logged_to_job_driver_logs(
     )
     job_manager = JobManager(gcs_aio_client, tmp_path)
 
-    # Shorten the iteration period so the finished message can be logged before the
-    # job finishes.
-    job_manager.JOB_MONITOR_LOOP_PERIOD_S = 0
     job_id = await job_manager.submit_job(
         entrypoint="echo hello 1", submission_id="test_runtime_env_setup_logs"
     )
