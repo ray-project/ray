@@ -259,8 +259,11 @@ class TorchTensorNcclChannel(ChannelInterface):
             meta = self._write_single_tensor(tensors)
             if meta is not None:
                 self._meta_channel.write(meta)
+        elif isinstance(tensors, ray.exceptions.RayTaskError):
+            # TODO(swang): Write exceptions to the meta channel if it is
+            # available.
+            raise tensors
         else:
-            # TODO(swang): Handle exceptions being written to the meta channel.
             meta_list = []
             for tensor in tensors:
                 meta_list.append(self._write_single_tensor(tensor))
