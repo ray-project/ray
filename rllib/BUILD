@@ -296,10 +296,10 @@ py_test(
 
 py_test(
     name = "learning_tests_cartpole_dqn",
-    main = "tuned_examples/dqn/cartpole_dqn_envrunner.py",
+    main = "tuned_examples/dqn/cartpole_dqn.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_cartpole", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
     size = "large",
-    srcs = ["tuned_examples/dqn/cartpole_dqn_envrunner.py"],
+    srcs = ["tuned_examples/dqn/cartpole_dqn.py"],
     args = ["--as-test", "--enable-new-api-stack"]
 )
 
@@ -375,10 +375,10 @@ py_test(
 # PPO
 py_test(
     name = "learning_tests_cartpole_ppo",
-    main = "tuned_examples/ppo/cartpole_ppo_envrunner.py",
+    main = "tuned_examples/ppo/cartpole_ppo.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "no_tf_static_graph"],
     size = "large",
-    srcs = ["tuned_examples/ppo/cartpole_ppo_envrunner.py"],
+    srcs = ["tuned_examples/ppo/cartpole_ppo.py"],
     args = ["--as-test", "--enable-new-api-stack"]
 )
 
@@ -393,10 +393,10 @@ py_test(
 
 py_test(
     name = "learning_tests_pendulum_ppo",
-    main = "tuned_examples/ppo/pendulum_ppo_envrunner.py",
+    main = "tuned_examples/ppo/pendulum_ppo.py",
     tags = ["torch_only", "team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
     size = "large",
-    srcs = ["tuned_examples/ppo/pendulum_ppo_envrunner.py"],
+    srcs = ["tuned_examples/ppo/pendulum_ppo.py"],
     args = ["--as-test", "--enable-new-api-stack"]
 )
 
@@ -413,10 +413,10 @@ py_test(
 
 py_test(
     name = "learning_tests_multi_agent_pendulum_ppo",
-    main = "tuned_examples/ppo/multi_agent_pendulum_ppo_envrunner.py",
+    main = "tuned_examples/ppo/multi_agent_pendulum_ppo.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "torch_only"],
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-    srcs = ["tuned_examples/ppo/multi_agent_pendulum_ppo_envrunner.py"],
+    srcs = ["tuned_examples/ppo/multi_agent_pendulum_ppo.py"],
     args = ["--as-test", "--enable-new-api-stack"]
 )
 
@@ -445,10 +445,10 @@ py_test(
 # SAC
 py_test(
     name = "learning_tests_pendulum_sac",
-    main = "tuned_examples/sac/pendulum_sac_envrunner.py",
+    main = "tuned_examples/sac/pendulum_sac.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_pendulum", "learning_tests_continuous"],
     size = "large",
-    srcs = ["tuned_examples/sac/pendulum_sac_envrunner.py"],
+    srcs = ["tuned_examples/sac/pendulum_sac.py"],
     args = ["--as-test", "--enable-new-api-stack"]
 )
 
@@ -2337,7 +2337,7 @@ py_test(
 )
 
 py_test(
-    name = "examples/evaluation/evaluation_parallel_to_training_duration_auto_torch_envrunner",
+    name = "examples/evaluation/evaluation_parallel_to_training_duration_auto_torch",
     main = "examples/evaluation/evaluation_parallel_to_training.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
@@ -2346,7 +2346,7 @@ py_test(
 )
 
 py_test(
-    name = "examples/evaluation/evaluation_parallel_to_training_multi_agent_duration_auto_torch_envrunner",
+    name = "examples/evaluation/evaluation_parallel_to_training_multi_agent_duration_auto_torch",
     main = "examples/evaluation/evaluation_parallel_to_training.py",
     tags = ["team:rllib", "exclusive", "examples", "examples_use_all_core"],
     size = "large",
@@ -2355,7 +2355,7 @@ py_test(
 )
 
 py_test(
-    name = "examples/evaluation/evaluation_parallel_to_training_511_ts_torch_envrunner",
+    name = "examples/evaluation/evaluation_parallel_to_training_511_ts_torch",
     main = "examples/evaluation/evaluation_parallel_to_training.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
@@ -2364,7 +2364,7 @@ py_test(
 )
 
 py_test(
-    name = "examples/evaluation/evaluation_parallel_to_training_multi_agent_1001_ts_torch_envrunner",
+    name = "examples/evaluation/evaluation_parallel_to_training_multi_agent_1001_ts_torch",
     main = "examples/evaluation/evaluation_parallel_to_training.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
@@ -2373,7 +2373,7 @@ py_test(
 )
 
 py_test(
-    name = "examples/evaluation/evaluation_parallel_to_training_13_episodes_torch_envrunner",
+    name = "examples/evaluation/evaluation_parallel_to_training_13_episodes_torch",
     main = "examples/evaluation/evaluation_parallel_to_training.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
@@ -2382,7 +2382,7 @@ py_test(
 )
 
 py_test(
-    name = "examples/evaluation/evaluation_parallel_to_training_multi_agent_10_episodes_torch_envrunner",
+    name = "examples/evaluation/evaluation_parallel_to_training_multi_agent_10_episodes_torch",
     main = "examples/evaluation/evaluation_parallel_to_training.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
@@ -2392,7 +2392,7 @@ py_test(
 
 # @OldAPIStack
 py_test(
-    name = "examples/evaluation/evaluation_parallel_to_training_13_episodes_tf",
+    name = "examples/evaluation/evaluation_parallel_to_training_13_episodes_tf_old_api_stack",
     main = "examples/evaluation/evaluation_parallel_to_training.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
@@ -2402,7 +2402,7 @@ py_test(
 
 # @OldAPIStack
 py_test(
-    name = "examples/evaluation/evaluation_parallel_to_training_duration_auto_tf",
+    name = "examples/evaluation/evaluation_parallel_to_training_duration_auto_tf_old_api_stack",
     main = "examples/evaluation/evaluation_parallel_to_training.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
@@ -2412,7 +2412,7 @@ py_test(
 
 # @OldAPIStack
 py_test(
-    name = "examples/evaluation/evaluation_parallel_to_training_duration_auto_torch",
+    name = "examples/evaluation/evaluation_parallel_to_training_duration_auto_torch_old_api_stack",
     main = "examples/evaluation/evaluation_parallel_to_training.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
@@ -2422,7 +2422,7 @@ py_test(
 
 # @OldAPIStack
 py_test(
-    name = "examples/evaluation/evaluation_parallel_to_training_duration_auto_tf2",
+    name = "examples/evaluation/evaluation_parallel_to_training_duration_auto_tf2_old_api_stack",
     main = "examples/evaluation/evaluation_parallel_to_training.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
@@ -2432,7 +2432,7 @@ py_test(
 
 # @OldAPIStack
 py_test(
-    name = "examples/evaluation/evaluation_parallel_to_training_211_ts_torch",
+    name = "examples/evaluation/evaluation_parallel_to_training_211_ts_torch_old_api_stack",
     main = "examples/evaluation/evaluation_parallel_to_training.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
@@ -2773,7 +2773,7 @@ py_test(
 )
 
 py_test(
-    name = "examples/multi_agent/self_play_with_open_spiel_connect_4_ppo_torch_envrunner",
+    name = "examples/multi_agent/self_play_with_open_spiel_connect_4_ppo_torch",
     main = "examples/multi_agent/self_play_with_open_spiel.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
@@ -2782,7 +2782,7 @@ py_test(
 )
 
 py_test(
-    name = "examples/multi_agent/self_play_league_based_with_open_spiel_connect_4_ppo_torch_envrunner",
+    name = "examples/multi_agent/self_play_league_based_with_open_spiel_connect_4_ppo_torch",
     main = "examples/multi_agent/self_play_league_based_with_open_spiel.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "large",
@@ -2792,7 +2792,7 @@ py_test(
 
 # @OldAPIStack
 py_test(
-    name = "examples/multi_agent/two_algorithms_tf",
+    name = "examples/multi_agent/two_algorithms_tf_old_api_stack",
     main = "examples/multi_agent/two_algorithms.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
@@ -2802,7 +2802,7 @@ py_test(
 
 # @OldAPIStack
 py_test(
-    name = "examples/multi_agent/two_algorithms_torch",
+    name = "examples/multi_agent/two_algorithms_torch_old_api_stack",
     main = "examples/multi_agent/two_algorithms.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
@@ -2834,7 +2834,7 @@ py_test(
 
 #@OldAPIStack
 py_test(
-    name = "examples/offline_rl/offline_rl_torch",
+    name = "examples/offline_rl/offline_rl_torch_old_api_stack",
     main = "examples/offline_rl/offline_rl.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
@@ -2884,12 +2884,13 @@ py_test(
 # ....................................
 #@OldAPIStack @HybridAPIStack
 py_test(
-    name = "examples/rl_modules/classes/mobilenet_rlm",
+    name = "examples/rl_modules/classes/mobilenet_rlm_hybrid_api_stack",
     main = "examples/rl_modules/classes/mobilenet_rlm.py",
     tags = ["team:rllib", "examples", "no_main"],
     size = "small",
     srcs = ["examples/rl_modules/classes/mobilenet_rlm.py"],
 )
+
 py_test(
     name = "examples/rl_modules/pretraining_single_agent_training_multi_agent_rlm",
     main = "examples/rl_modules/pretraining_single_agent_training_multi_agent_rlm.py",
