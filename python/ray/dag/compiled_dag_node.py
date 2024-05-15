@@ -9,6 +9,7 @@ import copy
 import ray
 from ray.exceptions import RayTaskError
 from ray.experimental.channel import (
+    ChannelContext,
     ChannelInterface,
     ChannelOutputType,
     ReaderInterface,
@@ -120,6 +121,9 @@ def _prep_task(self, task: "ExecutableTask") -> None:
         typ_hint.register_custom_serializer()
     task.output_type_hint.register_custom_serializer()
 
+    ctx = ChannelContext.get_current()
+    self._serialization_ctx = ctx.serialization_context
+
     input_reader: ReaderInterface = SynchronousReader(task.input_channels)
     output_writer: WriterInterface = SynchronousWriter(task.output_channel)
     self._input_readers.append(input_reader)
@@ -138,6 +142,8 @@ def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
     Returns:
         True if we are done executing all tasks of this actor, False otherwise.
     """
+    self._serialization_ctx.set_use_external_transport(task.output_type_hint.requires_nccl())
+
     # TODO: for cases where output is passed as input to a task on
     # the same actor, introduce a "LocalChannel" to avoid the overhead
     # of serialization/deserialization and synchronization.
@@ -668,6 +674,9 @@ class CompiledDAG:
         input_task = self.idx_to_task[self.input_task_idx]
         # Register custom serializers for inputs provided to dag.execute().
         input_task.dag_node.type_hint.register_custom_serializer()
+        ctx = ChannelContext.get_current()
+        self.serialization_ctx = ctx.serialization_context
+        self.serialization_ctx.set_use_external_transport(input_task.dag_node.type_hint.requires_nccl())
 
         self.dag_input_channel = input_task.output_channel
 

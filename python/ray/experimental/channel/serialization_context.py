@@ -1,8 +1,11 @@
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List, Optional, Union
 
 if TYPE_CHECKING:
     import numpy as np
     import torch
+
+    from ray.experimenal.channel import ChannelOutputType
+    from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
 
 class _SerializationContext:
@@ -10,6 +13,9 @@ class _SerializationContext:
         self.torch_device: Optional["torch.device"] = None
         self.use_external_transport: bool = False
         self.tensors: List["torch.Tensor"] = []
+
+    def set_use_external_transport(self, use_external_transport: bool) -> None:
+        self.use_external_transport = use_external_transport
 
     def set_torch_device(self, torch_device: "torch.device") -> None:
         self.torch_device = torch_device
@@ -19,7 +25,19 @@ class _SerializationContext:
         self.tensors = tensors
         return prev_tensors
 
-    def serialize_tensor(self, tensor: "torch.Tensor") -> "np.ndarray":
+    def serialize_tensor(self, tensor: "torch.Tensor") -> Union[int, "np.ndarray"]:
+        from ray.experimental.channel.torch_tensor_type import TorchTensorType
+
+        if self.use_external_transport:
+            # Add the actual tensor to a buffer. The buffer of tensors should
+            # later be popped by the caller and sent via external transport.
+            self.tensors.append(tensor)
+            # Return a placeholder.
+            return len(self.tensors) - 1
+
+        return self.serialize_to_numpy(tensor)
+
+    def serialize_to_numpy(self, tensor: "torch.Tensor") -> "np.ndarray":
         # Transfer through Ray's shared memory store for now.
         # TODO(swang): This requires two copies, one to transfer from GPU to
         # CPU and another from CPU to shared memory. Ideally we should elide
@@ -30,7 +48,15 @@ class _SerializationContext:
 
         return tensor.numpy()
 
-    def deserialize_tensor(self, np_array: "np.ndarray"):
+    def deserialize_tensor(self, val: Union["np.ndarray", int]):
+        # Found a placeholder for a tensor that was serialized via NCCL.
+        # Replace it with the corresponding deserialized tensor.
+        if isinstance(val, int):
+            return self.tensors[val]
+
+        return self.deserialize_from_numpy(val)
+
+    def deserialize_from_numpy(self, np_array: "np.ndarray"):
         import torch
 
         # TODO(swang): Support local P2P transfers if available.

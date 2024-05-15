@@ -16,13 +16,26 @@ _context_lock = threading.Lock()
 
 @PublicAPI(stability="alpha")
 class ChannelOutputType:
+    def __init__(self):
+        self._contains_type: Optional["ChannelOutputType"] = None
+
     def register_custom_serializer(self) -> None:
         """
-        Register any custom serializers needed to pass data of this type. This
-        method should be run on the reader(s) and writer of a channel, which
-        are the driver and/or Ray actors.
+        Register any custom serializers needed to pass data of this type.
         """
-        pass
+        if self._contains_type is not None:
+            self._contains_type.register_custom_serializer()
+
+    @property
+    def contains_type(self) -> "ChannelOutputType":
+        return self._contains_type
+
+    def set_contains_type(self, typ: "ChannelOutputType") -> None:
+        from ray.experimental.channel.torch_tensor_type import TorchTensorType
+
+        if typ is not None and not isinstance(typ, TorchTensorType):
+            raise ValueError("Contained type must be of type TorchTensorType")
+        self._contains_type = typ
 
     def create_channel(
         self,
@@ -44,6 +57,10 @@ class ChannelOutputType:
         raise NotImplementedError
 
     def requires_nccl(self) -> bool:
+        if self._contains_type is not None:
+            if self._contains_type.requires_nccl():
+                return True
+
         # By default, channels do not require NCCL.
         return False
 
