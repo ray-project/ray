@@ -295,11 +295,11 @@ py_test(
 # )
 
 py_test(
-    name = "learning_tests_cartpole_dqn_envrunner",
-    main = "tuned_examples/dqn/cartpole_dqn.py",
+    name = "learning_tests_cartpole_dqn",
+    main = "tuned_examples/dqn/cartpole_dqn_envrunner.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_cartpole", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
     size = "large",
-    srcs = ["tuned_examples/dqn/cartpole_dqn.py"],
+    srcs = ["tuned_examples/dqn/cartpole_dqn_envrunner.py"],
     args = ["--as-test", "--enable-new-api-stack"]
 )
 
@@ -375,10 +375,10 @@ py_test(
 # PPO
 py_test(
     name = "learning_tests_cartpole_ppo",
-    main = "tuned_examples/ppo/cartpole_ppo.py",
+    main = "tuned_examples/ppo/cartpole_ppo_envrunner.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "no_tf_static_graph"],
     size = "large",
-    srcs = ["tuned_examples/ppo/cartpole_ppo.py"],
+    srcs = ["tuned_examples/ppo/cartpole_ppo_envrunner.py"],
     args = ["--as-test", "--enable-new-api-stack"]
 )
 
@@ -393,10 +393,10 @@ py_test(
 
 py_test(
     name = "learning_tests_pendulum_ppo",
-    main = "tuned_examples/ppo/pendulum_ppo.py",
+    main = "tuned_examples/ppo/pendulum_ppo_envrunner.py",
     tags = ["torch_only", "team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
     size = "large",
-    srcs = ["tuned_examples/ppo/pendulum_ppo.py"],
+    srcs = ["tuned_examples/ppo/pendulum_ppo_envrunner.py"],
     args = ["--as-test", "--enable-new-api-stack"]
 )
 
@@ -413,10 +413,10 @@ py_test(
 
 py_test(
     name = "learning_tests_multi_agent_pendulum_ppo",
-    main = "tuned_examples/ppo/multi_agent_pendulum_ppo.py",
+    main = "tuned_examples/ppo/multi_agent_pendulum_ppo_envrunner.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "torch_only"],
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-    srcs = ["tuned_examples/ppo/multi_agent_pendulum_ppo.py"],
+    srcs = ["tuned_examples/ppo/multi_agent_pendulum_ppo_envrunner.py"],
     args = ["--as-test", "--enable-new-api-stack"]
 )
 
@@ -445,10 +445,10 @@ py_test(
 # SAC
 py_test(
     name = "learning_tests_pendulum_sac",
-    main = "tuned_examples/sac/pendulum_sac.py",
+    main = "tuned_examples/sac/pendulum_sac_envrunner.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_pendulum", "learning_tests_continuous"],
     size = "large",
-    srcs = ["tuned_examples/sac/pendulum_sac.py"],
+    srcs = ["tuned_examples/sac/pendulum_sac_envrunner.py"],
     args = ["--as-test", "--enable-new-api-stack"]
 )
 
