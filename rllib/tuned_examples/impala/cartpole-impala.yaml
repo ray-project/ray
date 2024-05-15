@@ -2,7 +2,7 @@ cartpole-impala:
     env: CartPole-v1
     run: IMPALA
     stop:
-        sampler_results/episode_reward_mean: 150
+        env_runners/episode_return_mean: 150
         timesteps_total: 500000
     config:
         enable_rl_module_and_learner: true

@@ -2,7 +2,7 @@ pong-deterministic-rainbow:
     env: ALE/Pong-v5
     run: DQN
     stop:
-        sampler_results/episode_reward_mean: 20
+        env_runners/episode_return_mean: 20
     config:
         # Make analogous to old v4 + NoFrameskip.
         env_config:

@@ -1,5 +1,6 @@
 import time
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
+from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME
 from ray.tune.schedulers.pb2 import PB2
 from ray import train, tune
 
@@ -17,26 +18,26 @@ from ray import train, tune
 #   AgileRL: https://github.com/AgileRL/AgileRL?tab=readme-ov-file#benchmarks
 benchmark_envs = {
     "HalfCheetah-v4": {
-        "timesteps_total": 1000000,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 1000000,
     },
     "Hopper-v4": {
-        "timesteps_total": 1000000,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 1000000,
     },
     "InvertedPendulum-v4": {
-        "timesteps_total": 1000000,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 1000000,
     },
     "InvertedDoublePendulum-v4": {
-        "timesteps_total": 1000000,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 1000000,
     },
-    "Reacher-v4": {"timesteps_total": 1000000},
-    "Swimmer-v4": {"timesteps_total": 1000000},
+    "Reacher-v4": {f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 1000000},
+    "Swimmer-v4": {f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 1000000},
     "Walker2d-v4": {
-        "timesteps_total": 1000000,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 1000000,
     },
 }
 
 pb2_scheduler = PB2(
-    time_attr="timesteps_total",
+    time_attr=f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}",
     metric="episode_reward_mean",
     mode="max",
     perturbation_interval=50000,
