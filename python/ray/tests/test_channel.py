@@ -170,30 +170,26 @@ def test_resize_channel_on_same_node(ray_start_regular):
     sys.platform != "linux" and sys.platform != "darwin",
     reason="Requires Linux or Mac.",
 )
-def test_resize_channel_on_different_nodes(ray_start_regular):
+def test_resize_channel_on_same_node_with_actor(ray_start_regular):
     @ray.remote
     class Actor:
         def __init__(self):
             pass
 
-        def send_channel(self, channel):
-            self._channel = channel
-
-        def read(self, val):
-            read_val = self._channel.begin_read()
+        def read(self, channel, val):
+            read_val = channel.begin_read()
             if isinstance(val, np.ndarray):
                 assert np.array_equal(read_val, val)
             else:
                 assert read_val == val
-            self._channel.end_read()
+            channel.end_read()
 
     def _test(channel, actor, val):
         channel.write(val)
-        ray.get(actor.read.remote(val))
+        ray.get(actor.read.remote(channel, val))
 
     a = Actor.remote()
     chan = ray_channel.Channel(None, [a], 1000)
-    ray.get(a.send_channel.remote(chan))
 
     # `np.random.rand(100)` requires more than 1000 bytes of storage. The channel is
     # allocated above with a backing store size of 1000 bytes.

@@ -373,10 +373,12 @@ class Channel(ChannelInterface):
                 self._reader_ref = ray.get(
                     fn.remote(_create_channel_ref, self._typ.buffer_size_bytes)
                 )
+            else:
+                self._reader_ref = self._writer_ref
 
             # Write a special message to the channel so that the readers know to
             # stop using the current reader_ref.
-            special_message = ResizeChannel(self._writer_ref)
+            special_message = ResizeChannel(self._reader_ref)
             special_message_serialized = (
                 self._worker.get_serialization_context().serialize(special_message)
             )
