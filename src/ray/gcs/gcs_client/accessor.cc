@@ -441,27 +441,30 @@ Status NodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info,
   return Status::OK();
 }
 
-Status NodeInfoAccessor::DrainSelf() {
+void NodeInfoAccessor::UnregisterSelf(const rpc::NodeDeathInfo &node_death_info,
+                                      std::function<void()> unregister_done_callback) {
   if (local_node_id_.IsNil()) {
-    RAY_LOG(INFO) << "The node is already drained.";
-    // This node is already drained.
-    return Status::OK();
+    RAY_LOG(INFO) << "The node is already unregistered.";
+    return;
   }
-  NodeID node_id = NodeID::FromBinary(local_node_info_.node_id());
-  RAY_LOG(INFO) << "Unregistering node info, node id = " << node_id;
-  rpc::DrainNodeRequest request;
-  auto draining_request = request.add_drain_node_data();
-  draining_request->set_node_id(local_node_info_.node_id());
-  client_impl_->GetGcsRpcClient().DrainNode(
-      request, [this, node_id](const Status &status, const rpc::DrainNodeReply &reply) {
+  auto node_id = NodeID::FromBinary(local_node_info_.node_id());
+  RAY_LOG(INFO) << "Unregistering node, node id = " << node_id;
+
+  rpc::UnregisterNodeRequest request;
+  request.set_node_id(local_node_info_.node_id());
+  request.mutable_node_death_info()->CopyFrom(node_death_info);
+  client_impl_->GetGcsRpcClient().UnregisterNode(
+      request,
+      [this, node_id, unregister_done_callback](const Status &status,
+                                                const rpc::UnregisterNodeReply &reply) {
         if (status.ok()) {
           local_node_info_.set_state(GcsNodeInfo::DEAD);
           local_node_id_ = NodeID::Nil();
         }
         RAY_LOG(INFO) << "Finished unregistering node info, status = " << status
                       << ", node id = " << node_id;
+        unregister_done_callback();
       });
-  return Status::OK();
 }
 
 const NodeID &NodeInfoAccessor::GetSelfId() const { return local_node_id_; }

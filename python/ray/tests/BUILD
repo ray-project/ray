@@ -299,6 +299,7 @@ py_test_module_list(
     "test_metrics_agent_2.py",
     "test_microbenchmarks.py",
     "test_mini.py",
+    "test_node_death.py",
     "test_numba.py",
     "test_raylet_output.py",
     "test_top_level_api.py",

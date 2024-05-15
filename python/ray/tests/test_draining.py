@@ -4,7 +4,7 @@ import pytest
 import ray
 import time
 from ray._raylet import GcsClient
-from ray.core.generated import autoscaler_pb2
+from ray.core.generated import autoscaler_pb2, gcs_pb2
 from ray._private.test_utils import wait_for_condition
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
@@ -72,6 +72,12 @@ def test_idle_termination(ray_start_cluster):
         == {head_node_id}
     )
 
+    worker_node = [node for node in ray.nodes() if node["NodeID"] == worker_node_id][0]
+    assert worker_node["DeathReason"] == gcs_pb2.NodeDeathInfo.Reason.Value(
+        "AUTOSCALER_DRAIN_IDLE"
+    )
+    assert worker_node["DeathReasonMessage"] == "idle for long enough"
+
     # Draining a dead node is always accepted.
     is_accepted, _ = gcs_client.drain_node(
         worker_node_id,
@@ -137,6 +143,12 @@ def test_preemption(ray_start_cluster):
         lambda: {node["NodeID"] for node in ray.nodes() if (node["Alive"])}
         == {head_node_id}
     )
+
+    worker_node = [node for node in ray.nodes() if node["NodeID"] == worker_node_id][0]
+    assert worker_node["DeathReason"] == gcs_pb2.NodeDeathInfo.Reason.Value(
+        "AUTOSCALER_DRAIN_PREEMPTED"
+    )
+    assert worker_node["DeathReasonMessage"] == "preemption"
 
 
 def test_scheduling_placement_groups_during_draining(ray_start_cluster):
