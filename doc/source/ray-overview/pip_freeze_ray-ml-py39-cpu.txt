@@ -379,7 +379,8 @@ PyYAML==6.0.1
 pyzmq==24.0.1
 qpd==0.4.4
 querystring-parser==1.2.4
-ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=09ecb310c8877fd3a5eac7c0b33052a4dd2231f71a7b57434e0f77f1f9e997a7
+ray @ file:///home/ray/ray-2.22.0-cp39-cp39-manylinux2014_x86_64.whl#sha256=4e9993ce502ed3152cb846eaaf47a6cb7aabb17622a62df6d7ed8139138f4b35
+ray-cpp==2.22.0
 recsim==0.2.4
 redis==3.5.3
 referencing==0.35.1
