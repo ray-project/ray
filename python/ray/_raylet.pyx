@@ -2881,7 +2881,7 @@ cdef class GcsClient:
         return result
 
     @_auto_reconnect
-    def get_all_job_info(self, timeout=None):
+    def get_all_job_info(self, timeout=None) -> Dict[bytes, JobTableData]:
         # Ideally we should use json_format.MessageToDict(job_info),
         # but `job_info` is a cpp pb message not a python one.
         # Manually converting each and every protobuf field is out of question,
@@ -4854,6 +4854,11 @@ cdef class CoreWorker:
     def current_actor_max_concurrency(self):
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
                 .CurrentActorMaxConcurrency())
+
+    def get_current_root_detached_actor_id(self) -> ActorID:
+        # This is only used in test
+        return ActorID(CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
+                       .GetRootDetachedActorID().Binary())
 
     def get_queued_future(self, task_id: Optional[TaskID]) -> ConcurrentFuture:
         """Get a asyncio.Future that's queued in the event loop."""

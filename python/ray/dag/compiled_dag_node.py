@@ -1,6 +1,6 @@
 import asyncio
 from collections import defaultdict
-from typing import Any, Callable, Dict, List, Tuple, Union, Optional
+from typing import Any, Callable, Dict, List, Tuple, Union, Optional, Set
 import logging
 import traceback
 import threading
@@ -8,16 +8,26 @@ import threading
 import ray
 from ray.exceptions import RayTaskError
 from ray.experimental.channel import (
-    Channel,
+    _do_register_custom_serializers,
+    ChannelInterface,
+    ChannelOutputType,
     ReaderInterface,
     SynchronousReader,
     WriterInterface,
     SynchronousWriter,
     AwaitableBackgroundReader,
     AwaitableBackgroundWriter,
+    _init_nccl_group,
 )
 from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray.dag.experimental.types import _do_register_custom_dag_serializers
+
+from ray.experimental.channel.shared_memory_channel import (
+    SharedMemoryType,
+)
+from ray.experimental.channel.torch_tensor_type import (
+    TorchTensorType,
+    _TorchTensorWrapper,
+)
 
 MAX_BUFFER_SIZE = int(100 * 1e6)  # 100MB
 
@@ -28,8 +38,8 @@ logger = logging.getLogger(__name__)
 def do_allocate_channel(
     self,
     readers: List[Optional["ray.actor.ActorHandle"]],
-    buffer_size_bytes: int,
-) -> Channel:
+    typ: ChannelOutputType,
+) -> ChannelInterface:
     """Generic actor method to allocate an output channel.
 
     Args:
@@ -39,7 +49,17 @@ def do_allocate_channel(
     Returns:
         The allocated channel.
     """
-    output_channel = Channel(readers, buffer_size_bytes)
+    self_actor = None
+    try:
+        self_actor = ray.get_runtime_context().current_actor
+    except RuntimeError:
+        # This is the driver so there is no current actor handle.
+        pass
+
+    output_channel = typ.create_channel(
+        self_actor,
+        readers,
+    )
     return output_channel
 
 
@@ -47,7 +67,7 @@ def do_allocate_channel(
 def do_exec_tasks(
     self,
     tasks: List["ExecutableTask"],
-    has_type_hints: bool,
+    type_hints: List[type],
 ) -> None:
     """Generic actor method to begin executing the tasks belonging to an actor.
     This runs an infinite loop to run each task in turn (following the order specified
@@ -58,8 +78,7 @@ def do_exec_tasks(
         tasks: the executable tasks corresponding to the actor methods.
     """
     try:
-        if has_type_hints:
-            _do_register_custom_dag_serializers(self)
+        _do_register_custom_serializers(self, type_hints)
 
         self._input_readers = []
         self._output_writers = []
@@ -93,7 +112,7 @@ def _prep_task(self, task: "ExecutableTask") -> None:
     """
     # Add placeholders for input channels.
     for idx, inp in enumerate(task.resolved_args):
-        if isinstance(inp, Channel):
+        if isinstance(inp, ChannelInterface):
             task.input_channels.append(inp)
             task.input_channel_idxs.append(idx)
             task.resolved_inputs.append(None)
@@ -127,14 +146,17 @@ def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
     res = None
     try:
         res = input_reader.begin_read()
-    except ValueError as exc:
-        # ValueError is raised if a type hint was set and the returned
-        # type did not match the hint.
+    except IOError:
+        # Channel closed. Exit the loop.
+        return True
+    except Exception as exc:
+        # Previous task raised an application-level exception.
+        # Propagate it and skip the actual task. We don't need to wrap the
+        # exception in a RayTaskError here because it has already been wrapped
+        # by the previous task.
         output_writer.write(exc)
         input_reader.end_read()
         return False
-    except IOError:
-        return True
 
     for idx, output in zip(task.input_channel_idxs, res):
         task.resolved_inputs[idx] = output
@@ -201,32 +223,22 @@ class CompiledTask:
             idx: A unique index into the original DAG.
             dag_node: The original DAG node created by the user.
         """
-        from ray.dag.experimental.types import (
-            TorchTensorType,
-            _TorchTensorWrapper,
-        )
-
         self.idx = idx
         self.dag_node = dag_node
         self.arg_idx_to_tensor_meta: Dict[int, Dict[str, Any]] = {}
 
-        self.downstream_node_idxs = set()
+        self.downstream_node_idxs: Dict[int, "ray.actor.ActorHandle"] = {}
         self.output_channel = None
 
         # If set, a lambda to apply to the task output. This can be used to
         # check type hints, if any.
         self.output_wrapper_fn = None
         if self.dag_node.type_hint is not None:
-            print(self.dag_node.type_hint)
             if isinstance(self.dag_node.type_hint, TorchTensorType):
                 # Wrap outputs produced by this task to indicate that it
                 # should be specially serialized.
                 self.output_wrapper_fn = lambda t: _TorchTensorWrapper(
                     t, self.dag_node.type_hint
-                )
-            else:
-                raise ValueError(
-                    "DAGNode.with_type_hint may only be called on " "TorchTensorType"
                 )
 
     @property
@@ -270,9 +282,9 @@ class ExecutableTask:
         self.output_wrapper_fn = task.output_wrapper_fn
         self.resolved_args = resolved_args
 
-        self.resolved_inputs = []
-        self.input_channels = []
-        self.input_channel_idxs = []
+        self.resolved_inputs: List[Union[Any, ChannelInterface]] = []
+        self.input_channels: List[ChannelInterface] = []
+        self.input_channel_idxs: List[int] = []
 
 
 @DeveloperAPI
@@ -314,6 +326,9 @@ class CompiledDAG:
         self._buffer_size_bytes: Optional[int] = buffer_size_bytes
         if self._buffer_size_bytes is None:
             self._buffer_size_bytes = MAX_BUFFER_SIZE
+        self._default_type_hint: ChannelOutputType = SharedMemoryType(
+            self._buffer_size_bytes
+        )
         if not isinstance(self._buffer_size_bytes, int) or self._buffer_size_bytes <= 0:
             raise ValueError(
                 "`buffer_size_bytes` must be a positive integer, found "
@@ -345,8 +360,8 @@ class CompiledDAG:
         self.actor_task_count: Dict["ray._raylet.ActorID", int] = defaultdict(int)
 
         # Cached attributes that are set during compilation.
-        self.dag_input_channel: Optional[Channel] = None
-        self.dag_output_channels: Optional[List[Channel]] = None
+        self.dag_input_channel: Optional[ChannelInterface] = None
+        self.dag_output_channels: Optional[List[ChannelInterface]] = None
         self._dag_submitter: Optional[WriterInterface] = None
         self._dag_output_fetcher: Optional[ReaderInterface] = None
 
@@ -391,6 +406,8 @@ class CompiledDAG:
         self.actor_task_count.clear()
         self._type_hints.clear()
 
+        nccl_actors: Set["ray.actor.ActorHandle"] = set()
+
         # For each task node, set its upstream and downstream task nodes.
         # Also collect the set of tasks that produce torch.tensors.
         for node_idx, task in self.idx_to_task.items():
@@ -425,10 +442,30 @@ class CompiledDAG:
                     )
                 self.actor_task_count[actor_handle._actor_id] += 1
 
-            for arg in task.args:
-                if isinstance(arg, DAGNode):
-                    arg_node_idx = self.dag_node_to_idx[arg]
-                    self.idx_to_task[arg_node_idx].downstream_node_idxs.add(node_idx)
+                if (
+                    isinstance(dag_node.type_hint, TorchTensorType)
+                    and dag_node.type_hint.transport == "nccl"
+                ):
+                    # Add all writers to the NCCL group.
+                    nccl_actors.add(actor_handle)
+
+            for arg_idx, arg in enumerate(task.args):
+                if not isinstance(arg, DAGNode):
+                    continue
+
+                upstream_node_idx = self.dag_node_to_idx[arg]
+                upstream_node = self.idx_to_task[upstream_node_idx]
+                downstream_actor_handle = None
+                if isinstance(task.dag_node, ClassMethodNode):
+                    downstream_actor_handle = task.dag_node._get_actor_handle()
+                upstream_node.downstream_node_idxs[node_idx] = downstream_actor_handle
+
+                if (
+                    isinstance(upstream_node.dag_node.type_hint, TorchTensorType)
+                    and upstream_node.dag_node.type_hint.transport == "nccl"
+                ):
+                    # Add all readers to the NCCL group.
+                    nccl_actors.add(downstream_actor_handle)
 
             if dag_node.type_hint is not None:
                 self._type_hints.append(dag_node.type_hint)
@@ -462,6 +499,14 @@ class CompiledDAG:
             # now.
             self._preprocess()
 
+        # If there were type hints indicating transport via NCCL, initialize
+        # the NCCL group on the participating actors.
+        nccl_actors = list(nccl_actors)
+        if None in nccl_actors:
+            raise ValueError("Driver cannot participate in the NCCL group.")
+        if nccl_actors:
+            _init_nccl_group(nccl_actors)
+
     def _get_or_compile(
         self,
     ) -> None:
@@ -493,13 +538,14 @@ class CompiledDAG:
                 continue
             visited.add(cur_idx)
 
-            # TODO: Check for GPU arguments. Find the actor upstream to that
-            # GPU argument. If both writer and reader actors are on GPUs, then
-            # add them.
-
             task = self.idx_to_task[cur_idx]
             # Create an output buffer for the actor method.
             assert task.output_channel is None
+
+            type_hint = task.dag_node.type_hint
+            if type_hint is None:
+                type_hint = self._default_type_hint
+
             if isinstance(task.dag_node, ClassMethodNode):
                 readers = [self.idx_to_task[idx] for idx in task.downstream_node_idxs]
                 assert len(readers) == 1
@@ -533,7 +579,7 @@ class CompiledDAG:
                     fn.remote(
                         do_allocate_channel,
                         reader_handles,
-                        buffer_size_bytes=self._buffer_size_bytes,
+                        typ=type_hint,
                     )
                 )
                 actor_handle = task.dag_node._get_actor_handle()
@@ -553,9 +599,10 @@ class CompiledDAG:
                         )
                     reader_handles_set.add(reader_handle)
                     reader_handles.append(reader_handle)
-                task.output_channel = Channel(
+                task.output_channel = do_allocate_channel(
+                    self,
                     reader_handles,
-                    buffer_size_bytes=self._buffer_size_bytes,
+                    typ=type_hint,
                 )
             else:
                 assert isinstance(task.dag_node, MultiOutputNode)
@@ -621,15 +668,14 @@ class CompiledDAG:
             ] = worker_fn.options(concurrency_group="_ray_system").remote(
                 do_exec_tasks,
                 executable_tasks,
-                has_type_hints=bool(self._type_hints),
+                type_hints=list(set(self._type_hints)),
             )
 
         # Wrapper function for inputs provided to dag.execute().
         input_task = self.idx_to_task[self.input_task_idx]
         self.input_wrapper_fn = input_task.output_wrapper_fn
         self.dag_input_channel = input_task.output_channel
-        if self._type_hints:
-            _do_register_custom_dag_serializers(self)
+        _do_register_custom_serializers(self, list(set(self._type_hints)))
 
         self.dag_output_channels = []
         for output in self.idx_to_task[self.output_task_idx].args:
@@ -747,7 +793,7 @@ class CompiledDAG:
         self,
         *args,
         **kwargs,
-    ) -> Union[Channel, List[Channel]]:
+    ) -> ReaderInterface:
         """Execute this DAG using the compiled execution path.
 
         Args:
