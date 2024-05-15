@@ -67,7 +67,9 @@ steps:
     if: build.branch == "master"
     instance_type: small
     commands:
-      - bazel run //ci/ray_ci/automation:determine_microcheck_tests -- {{matrix}} 100 --production
+      - bazel run //ci/ray_ci/automation:determine_microcheck_tests -- {{matrix}} 100 --test-prefix linux:__ --production
+      - bazel run //ci/ray_ci/automation:determine_microcheck_tests -- {{matrix}} 100 --test-prefix darwin:__ --production
+      - bazel run //ci/ray_ci/automation:determine_microcheck_tests -- {{matrix}} 100 --test-prefix windows:__ --production
     matrix:
       - "core"
       - "serverless"
