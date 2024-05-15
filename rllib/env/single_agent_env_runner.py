@@ -19,6 +19,13 @@ from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import (
+    EPISODE_DURATION_SEC_MEAN,
+    EPISODE_LEN_MAX,
+    EPISODE_LEN_MEAN,
+    EPISODE_LEN_MIN,
+    EPISODE_RETURN_MAX,
+    EPISODE_RETURN_MEAN,
+    EPISODE_RETURN_MIN,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_SAMPLED,
@@ -777,9 +784,9 @@ class SingleAgentEnvRunner(EnvRunner):
         # To mimick the old API stack behavior, we'll use `window` here for
         # these particular stats (instead of the default EMA).
         win = self.config.metrics_num_episodes_for_smoothing
-        self.metrics.log_value("episode_len_mean", length, window=win)
-        self.metrics.log_value("episode_return_mean", ret, window=win)
-        self.metrics.log_value("episode_duration_sec_mean", sec, window=win)
+        self.metrics.log_value(EPISODE_LEN_MEAN, length, window=win)
+        self.metrics.log_value(EPISODE_RETURN_MEAN, ret, window=win)
+        self.metrics.log_value(EPISODE_DURATION_SEC_MEAN, sec, window=win)
         # Per-agent returns.
         self.metrics.log_value(
             ("agent_episode_returns_mean", DEFAULT_AGENT_ID), ret, window=win
@@ -790,7 +797,7 @@ class SingleAgentEnvRunner(EnvRunner):
         )
 
         # For some metrics, log min/max as well.
-        self.metrics.log_value("episode_len_min", length, reduce="min")
-        self.metrics.log_value("episode_return_min", ret, reduce="min")
-        self.metrics.log_value("episode_len_max", length, reduce="max")
-        self.metrics.log_value("episode_return_max", ret, reduce="max")
+        self.metrics.log_value(EPISODE_LEN_MIN, length, reduce="min")
+        self.metrics.log_value(EPISODE_RETURN_MIN, ret, reduce="min")
+        self.metrics.log_value(EPISODE_LEN_MAX, length, reduce="max")
+        self.metrics.log_value(EPISODE_RETURN_MAX, ret, reduce="max")

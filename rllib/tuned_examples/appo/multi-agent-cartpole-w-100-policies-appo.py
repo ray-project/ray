@@ -2,6 +2,7 @@ import numpy as np
 
 from ray.rllib.algorithms.appo import APPOConfig
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
+from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME
 from ray.tune.registry import register_env
 
 
@@ -70,5 +71,5 @@ config = (
 # Define some stopping criteria.
 stop = {
     "evaluation/policy_reward_mean/pol0": 50.0,
-    "timesteps_total": 500000,
+    f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 500000,
 }

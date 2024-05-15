@@ -173,7 +173,7 @@ Quick First Experiment
     # we can expect to reach an optimal episode reward of 0.0.
     for i in range(1):
         results = algo.train()
-        print(f"Iter: {i}; avg. reward={results['episode_reward_mean']}")
+        print(f"Iter: {i}; avg. return={results['env_runners/episode_return_mean']}")
 
 .. testoutput::
     :options: +MOCK

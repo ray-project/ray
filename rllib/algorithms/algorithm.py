@@ -31,6 +31,7 @@ from typing import (
 import tree  # pip install dm_tree
 
 import ray
+from ray.air.constants import TRAINING_ITERATION
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.actor import ActorHandle
 from ray.train import Checkpoint
@@ -92,6 +93,9 @@ from ray.rllib.utils.metrics import (
     ALL_MODULES,
     ENV_RUNNER_RESULTS,
     ENV_RUNNER_SAMPLING_TIMER,
+    EPISODE_RETURN_MAX,
+    EPISODE_RETURN_MEAN,
+    EPISODE_RETURN_MIN,
     EVALUATION_ITERATION_TIMER,
     EVALUATION_RESULTS,
     FAULT_TOLERANCE_STATS,
@@ -540,13 +544,13 @@ class Algorithm(Trainable, AlgorithmBase):
         self.evaluation_metrics = {
             # TODO: Don't dump sampler results into top-level.
             "evaluation": {
-                "episode_reward_max": np.nan,
-                "episode_reward_min": np.nan,
-                "episode_reward_mean": np.nan,
-                "sampler_results": {
-                    "episode_reward_max": np.nan,
-                    "episode_reward_min": np.nan,
-                    "episode_reward_mean": np.nan,
+                EPISODE_RETURN_MAX: np.nan,
+                EPISODE_RETURN_MIN: np.nan,
+                EPISODE_RETURN_MEAN: np.nan,
+                ENV_RUNNER_RESULTS: {
+                    EPISODE_RETURN_MAX: np.nan,
+                    EPISODE_RETURN_MIN: np.nan,
+                    EPISODE_RETURN_MEAN: np.nan,
                 },
             },
         }
@@ -643,7 +647,7 @@ class Algorithm(Trainable, AlgorithmBase):
             default_policy_class=self.get_default_policy_class(self.config),
             config=self.config,
             num_workers=self.config.num_env_runners,
-            local_worker=True,
+            local_env_runner=True,
             logdir=self.logdir,
         )
 
@@ -2873,7 +2877,7 @@ class Algorithm(Trainable, AlgorithmBase):
             state["counters"] = self._counters
 
         # Save current `training_iteration`.
-        state["training_iteration"] = self.training_iteration
+        state[TRAINING_ITERATION] = self.training_iteration
 
         return state
 
@@ -2946,8 +2950,8 @@ class Algorithm(Trainable, AlgorithmBase):
         if "counters" in state:
             self._counters = state["counters"]
 
-        if "training_iteration" in state:
-            self._iteration = state["training_iteration"]
+        if TRAINING_ITERATION in state:
+            self._iteration = state[TRAINING_ITERATION]
 
     @staticmethod
     def _checkpoint_info_to_algorithm_state(
@@ -3339,7 +3343,7 @@ class Algorithm(Trainable, AlgorithmBase):
 
         # Warn if results are empty, it could be that this is because the eval timesteps
         # are not enough to run through one full episode.
-        if eval_results["sampler_results"][NUM_EPISODES] == 0:
+        if eval_results[ENV_RUNNER_RESULTS][NUM_EPISODES] == 0:
             logger.warning(
                 "This evaluation iteration resulted in an empty set of episode summary "
                 "results! It's possible that your configured duration timesteps are not"
@@ -3481,7 +3485,7 @@ class Algorithm(Trainable, AlgorithmBase):
             self.config.keep_per_episode_custom_metrics,
         )
         # TODO: Don't dump sampler results into top-level.
-        results.update(results["sampler_results"])
+        results.update(results[ENV_RUNNER_RESULTS])
 
         results["num_healthy_workers"] = self.workers.num_healthy_remote_workers()
         results["num_in_flight_async_reqs"] = self.workers.num_in_flight_async_reqs()
