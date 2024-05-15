@@ -18,14 +18,14 @@ LOG_MODE_DICT = {
         },
         "handlers": {
             "console": {
-                "level": "WARNING",
+                "level": "INFO",
                 "class": "logging.StreamHandler",
                 "formatter": "logfmt",
                 "filters": ["core_context"],
             },
         },
         "root": {
-            "level": "WARNING",
+            "level": "INFO",
             "handlers": ["console"],
         },
     },
