@@ -35,8 +35,8 @@ class TorchTensorType(ChannelOutputType):
 
     def __init__(
         self,
-        shape: Union[int, Tuple[int], str],
-        dtype: "torch.dtype",
+        shape: Union[int, Tuple[int], str] = AUTO,
+        dtype: "torch.dtype" = AUTO,
         transport: Optional[str] = None,
     ):
         super().__init__()
@@ -55,10 +55,18 @@ class TorchTensorType(ChannelOutputType):
         ctx = ChannelContext.get_current()
         ctx.serialization_context.set_torch_device(default_device)
 
+        def serialize(t):
+            ctx = ChannelContext.get_current()
+            return ctx.serialization_context.serialize_tensor(t)
+
+        def deserialize(b):
+            ctx = ChannelContext.get_current()
+            return ctx.serialization_context.deserialize_tensor(b)
+
         ray.util.serialization.register_serializer(
             torch.Tensor,
-            serializer=ctx.serialization_context.serialize_tensor,
-            deserializer=ctx.serialization_context.deserialize_tensor,
+            serializer=serialize,
+            deserializer=deserialize,
         )
 
     def create_channel(

@@ -60,7 +60,6 @@ def do_allocate_channel(
         # This is the driver so there is no current actor handle.
         pass
 
-    typ.register_custom_serializer()
     output_channel = typ.create_channel(
         self_actor,
         readers,
@@ -121,6 +120,13 @@ def _prep_task(self, task: "ExecutableTask") -> None:
         else:
             task.resolved_inputs.append(inp)
 
+    for typ_hint in task.input_type_hints:
+        typ_hint.register_custom_serializer()
+    task.output_type_hint.register_custom_serializer()
+
+    ctx = ChannelContext.get_current()
+    self._serialization_ctx = ctx.serialization_context
+
     input_reader: ReaderInterface = SynchronousReader(task.input_channels)
     output_writer: WriterInterface = SynchronousWriter(task.output_channel)
     self._input_readers.append(input_reader)
@@ -139,9 +145,7 @@ def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
     Returns:
         True if we are done executing all tasks of this actor, False otherwise.
     """
-    ctx = ChannelContext.get_current()
-    self.serialization_ctx = ctx.serialization_context
-    self.serialization_ctx.set_serialize_type(task.type_hint)
+    self._serialization_ctx.set_serialize_type(task.output_type_hint)
 
     # TODO: for cases where output is passed as input to a task on
     # the same actor, introduce a "LocalChannel" to avoid the overhead
@@ -228,10 +232,10 @@ class CompiledTask:
         """
         self.idx = idx
         self.dag_node = dag_node
-        self.arg_idx_to_tensor_meta: Dict[int, Dict[str, Any]] = {}
 
         self.downstream_node_idxs: Dict[int, "ray.actor.ActorHandle"] = {}
         self.output_channel = None
+        self.arg_type_hints: List["ChannelOutputType"] = []
 
     @property
     def args(self) -> Tuple[Any]:
@@ -272,7 +276,8 @@ class ExecutableTask:
         self.bind_index = task.dag_node._get_bind_index()
         self.output_channel = task.output_channel
         self.resolved_args = resolved_args
-        self.type_hint = task.dag_node.type_hint
+        self.input_type_hints: List["ChannelOutputType"] = task.arg_type_hints
+        self.output_type_hint: "ChannelOutputType"  = task.dag_node.type_hint
 
         self.resolved_inputs: List[Union[Any, ChannelInterface]] = []
         self.input_channels: List[ChannelInterface] = []
@@ -451,6 +456,7 @@ class CompiledDAG:
                 if isinstance(task.dag_node, ClassMethodNode):
                     downstream_actor_handle = task.dag_node._get_actor_handle()
                 upstream_node.downstream_node_idxs[node_idx] = downstream_actor_handle
+                task.arg_type_hints.append(upstream_node.dag_node.type_hint)
 
                 if upstream_node.dag_node.type_hint.requires_nccl():
                     # Add all readers to the NCCL group.
@@ -663,6 +669,7 @@ class CompiledDAG:
 
         input_task = self.idx_to_task[self.input_task_idx]
         # Register custom serializers for inputs provided to dag.execute().
+        input_task.dag_node.type_hint.register_custom_serializer()
         ctx = ChannelContext.get_current()
         self.serialization_ctx = ctx.serialization_context
         self.serialization_ctx.set_serialize_type(input_task.dag_node.type_hint)
@@ -674,6 +681,8 @@ class CompiledDAG:
             assert isinstance(output, DAGNode)
             output_idx = self.dag_node_to_idx[output]
             self.dag_output_channels.append(self.idx_to_task[output_idx].output_channel)
+            # Register custom serializers for DAG outputs.
+            output.type_hint.register_custom_serializer()
 
         assert self.dag_input_channel
         assert self.dag_output_channels
