@@ -6,6 +6,10 @@ import unittest
 import ray
 from ray.rllib.algorithms import cql
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+)
 from ray.rllib.utils.test_utils import (
     check_compute_single_action,
     check_train_results,
@@ -80,7 +84,8 @@ class TestCQL(unittest.TestCase):
                 print(results)
                 eval_results = results["evaluation"]
                 print(
-                    f"iter={algo.iteration} " f"R={eval_results['episode_reward_mean']}"
+                    f"iter={algo.iteration} "
+                    f"R={eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]}"
                 )
             check_compute_single_action(algo)
 

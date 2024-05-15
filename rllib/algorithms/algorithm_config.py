@@ -2141,7 +2141,7 @@ class AlgorithmConfig(_Config):
                 it wastes no extra time for evaluation - causes the evaluation results
                 to lag one iteration behind the rest of the training results. This is
                 important when picking a good checkpoint. For example, if iteration 42
-                reports a good evaluation `episode_reward_mean`, be aware that these
+                reports a good evaluation `episode_return_mean`, be aware that these
                 results were achieved on the weights trained in iteration 41, so you
                 should probably pick the iteration 41 checkpoint instead.
             evaluation_force_reset_envs_before_iteration: Whether all environments

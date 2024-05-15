@@ -32,7 +32,7 @@ click==8.1.7
 cloudpickle==2.2.0
 colorful==0.5.5
 commonmark==0.9.1
-conda @ file:///croot/conda_1714403036266/work
+conda @ file:///home/conda/feedstock_root/build_artifacts/conda_1714990897816/work
 conda-content-trust @ file:///croot/conda-content-trust_1714483159009/work
 conda-libmamba-solver @ file:///croot/conda-libmamba-solver_1706733287605/work/src
 conda-package-handling @ file:///croot/conda-package-handling_1714483155348/work
@@ -126,7 +126,7 @@ python-dotenv==1.0.1
 pytz==2022.7.1
 PyWavelets==1.5.0
 PyYAML==6.0.1
-ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=6d0b481ea6083b9b319b6e6226155c32b8240edd02e9929b0c0af891bdadef4c
+ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=70227b0c3ff3294e988d6e1e826eecab3e9e1c312d94efe3e146e3b2097cad85
 redis==3.5.3
 requests @ file:///croot/requests_1707355572290/work
 requests-oauthlib==2.0.0

@@ -11,6 +11,7 @@ from typing import Mapping
 
 import ray
 from ray import tune
+from ray.air.constants import TRAINING_ITERATION
 from ray.train import RunConfig, FailureConfig
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
@@ -129,7 +130,7 @@ def train_ppo_agent_from_checkpointed_module(
         "PPO",
         param_space=config.to_dict(),
         run_config=RunConfig(
-            stop={"training_iteration": 20},
+            stop={TRAINING_ITERATION: 20},
             failure_config=FailureConfig(fail_fast="raise"),
             verbose=2,
         ),

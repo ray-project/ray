@@ -30,6 +30,7 @@ import yaml
 
 import ray
 from ray import air, tune
+from ray.air.constants import TRAINING_ITERATION
 from ray.air.integrations.wandb import WandbLoggerCallback
 from ray.rllib.common import SupportedFileType
 from ray.rllib.env.wrappers.atari_wrappers import is_atari, wrap_deepmind
@@ -40,10 +41,12 @@ from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_
 from ray.rllib.utils.metrics import (
     DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
     ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
     EVALUATION_RESULTS,
-    NUM_ENV_STEPS_SAMPLED,
-    NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_TRAINED,
+    NUM_ENV_STEPS_TRAINED_LIFETIME,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+    NUM_EPISODES_LIFETIME,
 )
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import ResultDict
@@ -620,8 +623,8 @@ def check_learning_achieved(
     Args:
         tune_results: The tune.Tuner().fit() returned results object.
         min_reward: The min reward that must be reached.
-        evaluation: If True, use `evaluation/sampler_results/[metric]`, if False, use
-            `sampler_results/[metric]`, if None, use evaluation sampler results if
+        evaluation: If True, use `evaluation/env_runners/[metric]`, if False, use
+            `env_runners/[metric]`, if None, use evaluation sampler results if
             available otherwise, use train sampler results.
 
     Raises:
@@ -723,7 +726,7 @@ def check_train_results_new_api_stack(train_results: ResultDict) -> None:
         NUM_AGENT_STEPS_SAMPLED_LIFETIME,
         NUM_ENV_STEPS_SAMPLED_LIFETIME,
         TIMERS,
-        "training_iteration",
+        TRAINING_ITERATION,
         "config",
     ]:
         assert (
@@ -1070,9 +1073,9 @@ def run_learning_tests_from_yaml_or_py(
 
             check_eval = should_check_eval(e)
             episode_reward_key = (
-                "sampler_results/episode_reward_mean"
+                f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
                 if not check_eval
-                else "evaluation/sampler_results/episode_reward_mean"
+                else f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
             )
 
             # For smoke-tests, we just run for n min.
@@ -1146,13 +1149,16 @@ def run_learning_tests_from_yaml_or_py(
             verbose=2,
             progress_reporter=CLIReporter(
                 metric_columns={
-                    "training_iteration": "iter",
+                    TRAINING_ITERATION: "iter",
                     "time_total_s": "time_total_s",
-                    NUM_ENV_STEPS_SAMPLED: "ts (sampled)",
-                    NUM_ENV_STEPS_TRAINED: "ts (trained)",
-                    "episodes_this_iter": "train_episodes",
-                    "episode_reward_mean": "reward_mean",
-                    "evaluation/episode_reward_mean": "eval_reward_mean",
+                    NUM_ENV_STEPS_SAMPLED_LIFETIME: "ts (sampled)",
+                    NUM_ENV_STEPS_TRAINED_LIFETIME: "ts (trained)",
+                    NUM_EPISODES_LIFETIME: "train_episodes",
+                    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": "reward_mean",
+                    (
+                        f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/"
+                        f"{EPISODE_RETURN_MEAN}"
+                    ): "eval_reward_mean",
                 },
                 parameter_columns=["framework"],
                 sort_by_metric=True,
@@ -1195,7 +1201,8 @@ def run_learning_tests_from_yaml_or_py(
                     episode_reward_mean = np.mean(
                         [
                             t.metric_analysis[
-                                "evaluation/sampler_results/episode_reward_mean"
+                                f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/"
+                                f"{EPISODE_RETURN_MEAN}"
                             ]["max"]
                             for t in trials_for_experiment
                         ]
@@ -1203,9 +1210,9 @@ def run_learning_tests_from_yaml_or_py(
                 else:
                     episode_reward_mean = np.mean(
                         [
-                            t.metric_analysis["sampler_results/episode_reward_mean"][
-                                "max"
-                            ]
+                            t.metric_analysis[
+                                f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
+                            ]["max"]
                             for t in trials_for_experiment
                         ]
                     )
@@ -1308,7 +1315,7 @@ def run_rllib_example_script_experiment(
     `args.no_tune` is set to True) using the stopping criteria in `stop`.
 
     At the end of the experiment, if `args.as_test` is True, checks, whether the
-    Algorithm reached the `success_metric` (if None, use `env_runner_results/
+    Algorithm reached the `success_metric` (if None, use `env_runners/
     episode_return_mean` with a minimum value of `args.stop_reward`).
 
     See https://github.com/ray-project/ray/tree/master/rllib/examples for an overview
@@ -1325,18 +1332,18 @@ def run_rllib_example_script_experiment(
             `no_tune`, `verbose`, `checkpoint_freq`, `as_test`. Optionally, for WandB
             logging: `wandb_key`, `wandb_project`, `wandb_run_name`.
         stop: An optional dict mapping ResultDict key strings (using "/" in case of
-            nesting, e.g. "env_runner_results/episode_return_mean" for referring to
-            `result_dict['env_runner_results']['episode_return_mean']` to minimum
+            nesting, e.g. "env_runners/episode_return_mean" for referring to
+            `result_dict['env_runners']['episode_return_mean']` to minimum
             values, reaching of which will stop the experiment). Default is:
             {
-            "env_runner_results/episode_return_mean": args.stop_reward,
+            "env_runners/episode_return_mean": args.stop_reward,
             "training_iteration": args.stop_iters,
-            "timesteps_total": args.stop_timesteps,
+            "num_env_steps_sampled_lifetime": args.stop_timesteps,
             }
         success_metric: Only relevant if `args.as_test` is True.
             A dict mapping a single(!) ResultDict key string (using "/" in
-            case of nesting, e.g. "env_runner_results/episode_return_mean" for referring
-            to `result_dict['env_runner_results']['episode_return_mean']` to a single(!)
+            case of nesting, e.g. "env_runners/episode_return_mean" for referring
+            to `result_dict['env_runners']['episode_return_mean']` to a single(!)
             minimum value to be reached in order for the experiment to count as
             successful. If `args.as_test` is True AND this `success_metric` is not
             reached with the bounds defined by `stop`, will raise an Exception.
@@ -1362,7 +1369,7 @@ def run_rllib_example_script_experiment(
         stop = {
             f"{ENV_RUNNER_RESULTS}/episode_return_mean": args.stop_reward,
             f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": args.stop_timesteps,
-            "training_iteration": args.stop_iters,
+            TRAINING_ITERATION: args.stop_iters,
         }
 
     # Enhance the `base_config`, based on provided `args`.
@@ -1398,10 +1405,10 @@ def run_rllib_example_script_experiment(
         algo = config.build()
         for _ in range(stop.get("training_iteration", args.stop_iters)):
             results = algo.train()
-            print(f"R={results[ENV_RUNNER_RESULTS]['episode_return_mean']}", end="")
+            print(f"R={results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]}", end="")
             if EVALUATION_RESULTS in results:
                 Reval = results[EVALUATION_RESULTS][ENV_RUNNER_RESULTS][
-                    "episode_return_mean"
+                    EPISODE_RETURN_MEAN
                 ]
                 print(f" R(eval)={Reval}", end="")
             print()
@@ -1443,10 +1450,10 @@ def run_rllib_example_script_experiment(
         progress_reporter = CLIReporter(
             metric_columns={
                 **{
-                    "training_iteration": "iter",
+                    TRAINING_ITERATION: "iter",
                     "time_total_s": "total time (s)",
-                    "num_env_steps_sampled_lifetime": "ts",
-                    f"{ENV_RUNNER_RESULTS}/episode_return_mean": "combined return",
+                    NUM_ENV_STEPS_SAMPLED_LIFETIME: "ts",
+                    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": "combined return",
                 },
                 **{
                     (
@@ -1614,9 +1621,7 @@ def check_reproducibilty(
     from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
     from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 
-    stop_dict = {
-        "training_iteration": training_iteration,
-    }
+    stop_dict = {TRAINING_ITERATION: training_iteration}
     # use 0 and 2 workers (for more that 4 workers we have to make sure the instance
     # type in ci build has enough resources)
     for num_workers in [0, 2]:
