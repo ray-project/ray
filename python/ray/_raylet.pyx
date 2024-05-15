@@ -208,6 +208,8 @@ import ray._private.profiling as profiling
 from ray._private.utils import decode, DeferSigint
 from ray.util.annotations import PublicAPI
 
+import ray._private.structured_logging.utils as logging_utils
+
 cimport cpython
 
 include "includes/object_ref.pxi"
@@ -2582,6 +2584,17 @@ def maybe_initialize_job_config():
         # Print on both .out and .err
         print(job_id_magic_token, end="")
         print(job_id_magic_token, file=sys.stderr, end="")
+
+        # Configure worker process's Python logging.
+        log_config_dict = {}
+        log_config_str = core_worker.get_job_config().log_config_str
+        if log_config_str:
+            log_config_dict = logging_utils.get_log_config(log_config_str)
+        serialized_log_config_dict = core_worker.get_job_config().serialized_log_config_dict
+        if not log_config_dict and serialized_log_config_dict:
+            log_config_dict = pickle.loads(serialized_log_config_dict)
+        if log_config_dict:
+            logging.config.dictConfig(log_config_dict)
 
         job_config_initialized = True
 
