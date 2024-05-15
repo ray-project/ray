@@ -143,7 +143,7 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
   const std::string session_name_ = "";
 
   /// Gcs node manager that provides node status information.
-  const GcsNodeManager &gcs_node_manager_;
+  GcsNodeManager &gcs_node_manager_;
 
   /// Gcs actor manager that provides actor information.
   GcsActorManager &gcs_actor_manager_;

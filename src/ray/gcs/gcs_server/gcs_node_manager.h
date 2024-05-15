@@ -101,6 +101,13 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// \param node The info of the node to be added.
   void AddNode(std::shared_ptr<rpc::GcsNodeInfo> node);
 
+  /// Add a draining node.
+  ///
+  /// \param node_id The ID of the draining node. This node must already be in the alive
+  /// nodes. \param request The drain node request.
+  void GcsNodeManager::AddDrainingNode(const NodeID &node_id,
+                                       const rpc::autoscaler::DrainNodeRequest &request);
+
   /// Remove from alive nodes.
   ///
   /// \param node_id The ID of the node to be removed.
@@ -173,6 +180,11 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
 
   /// Alive nodes.
   absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes_;
+  /// Draining nodes.
+  /// This map is used to store the nodes which have received the drain request.
+  /// Invariant: its keys should alway be a subset of the keys of `alive_nodes_`,
+  /// and entry in it should be removed whenever a node is removed from `alive_nodes_`.
+  absl::flat_hash_map<NodeID, rpc::autoscaler::DrainNodeRequest> draining_nodes_;
   /// Dead nodes.
   absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> dead_nodes_;
   /// The nodes are sorted according to the timestamp, and the oldest is at the head of

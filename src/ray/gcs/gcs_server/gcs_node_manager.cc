@@ -246,6 +246,21 @@ void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
   }
 }
 
+void GcsNodeManager::AddDrainingNode(
+    const NodeID &node_id, const rpc::autoscaler::DrainNodeRequest &drain_request) {
+  auto maybe_node = GetAliveNode(node_id);
+  RAY_CHECK(maybe_node.has_value());
+  auto iter = draining_nodes_.find(node_id);
+  if (iter == draining_nodes_.end()) {
+    draining_nodes_.emplace(node_id, drain_request);
+  } else {
+    RAY_LOG(INFO) << "Drain request for node " << node_id << " already exists. "
+                  << "Overwriting the existing request " << iter->second.DebugString()
+                  << " with the new request " << drain_request.DebugString();
+    iter->second = drain_request;
+  }
+}
+
 std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
     const ray::NodeID &node_id, bool is_intended /*= false*/) {
   std::shared_ptr<rpc::GcsNodeInfo> removed_node;
@@ -259,6 +274,8 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
     // Remove from alive nodes.
     alive_nodes_.erase(iter);
     node_map_.left.erase(node_id);
+    // Remove from draining nodes if present.
+    draining_nodes_.erase(node_id);
     if (!is_intended) {
       // Broadcast a warning to all of the drivers indicating that the node
       // has been marked as dead.
@@ -293,18 +310,40 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
 
 void GcsNodeManager::OnNodeFailure(const NodeID &node_id,
                                    const StatusCallback &node_table_updated_callback) {
-  if (auto node = RemoveNode(node_id, /* is_intended = */ false)) {
+  auto iter = draining_nodes_.find(node_id);
+  bool caused_by_draining =
+      (iter != draining_nodes_.end())
+      // Note that the following also covers the case that
+      // request.deadline_timestamp == 0 (no deadline):
+      // we also consider the failure to be caused by draining.
+      && (current_sys_time_ms() >= iter->second.deadline_timestamp_ms());
+
+  if (auto node = RemoveNode(node_id, caused_by_draining /* is_intended */)) {
     node->set_state(rpc::GcsNodeInfo::DEAD);
     node->set_end_time_ms(current_sys_time_ms());
-    if (node->death_info().reason() == rpc::NodeDeathInfo::UNSPECIFIED) {
-      // There was no drain in progress.
-      node->mutable_death_info()->set_reason(rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
+
+    auto node_death_info = node->mutable_death_info();
+    if (caused_by_draining) {
+      if (iter->second.reason() ==
+          rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION) {
+        node_death_info->set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
+        node_death_info->set_reason_message("Force termination by autoscaler.");
+      } else {
+        node_death_info->set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_IDLE);
+        node_death_info->set_reason_message("Force termination by autoscaler.");
+      }
+    } else {
+      node_death_info->set_reason(rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
+      node_death_info->set_reason_message(
+          "Health check failed: missing too many heartbeats.");
     }
+
     AddDeadNodeToCache(node);
     auto node_info_delta = std::make_shared<rpc::GcsNodeInfo>();
     node_info_delta->set_node_id(node->node_id());
     node_info_delta->set_state(node->state());
     node_info_delta->set_end_time_ms(node->end_time_ms());
+    node_info_delta->mutable_death_info()->CopyFrom(node->death_info());
 
     auto on_done = [this, node_id, node_table_updated_callback, node_info_delta](
                        const Status &status) {
