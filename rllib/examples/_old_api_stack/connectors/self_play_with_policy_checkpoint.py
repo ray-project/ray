@@ -1,3 +1,4 @@
+# @OldAPIStack
 """Example showing how one can restore a connector enabled TF policy
 checkpoint for a new self-play PyTorch training job.
 The checkpointed policy may be trained with a different algorithm too.

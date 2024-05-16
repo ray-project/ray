@@ -1,4 +1,4 @@
-# TODO (sven): Move this example script into the new API stack.
+# @OldAPIStack
 
 """Example of hierarchical training using the multi-agent API.
 

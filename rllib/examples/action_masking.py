@@ -1,3 +1,5 @@
+# @OldAPIStack
+
 """Example showing how to use "action masking" in RLlib.
 
 "Action masking" allows the agent to select actions based on the current

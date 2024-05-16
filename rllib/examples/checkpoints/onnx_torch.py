@@ -1,4 +1,4 @@
-# TODO (sven): Move this example script into the new API stack.
+# @OldAPIStack
 
 from packaging.version import Version
 import numpy as np

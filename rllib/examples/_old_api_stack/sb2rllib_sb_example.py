@@ -1,3 +1,4 @@
+# @OldAPIStack
 """
 Example script on how to train, save, load, and test a stable baselines 2 agent.
 Code taken and adjusted from SB2 docs:

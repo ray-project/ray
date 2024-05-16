@@ -1,0 +1,1 @@
+TODO: add note about connectors vs connectorV2

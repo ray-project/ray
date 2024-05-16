@@ -1,4 +1,4 @@
-# TODO (sven): Move this example script into the new API stack.
+# @OldAPIStack
 
 """
 Example of running an RLlib Algorithm against a locally running Unity3D editor

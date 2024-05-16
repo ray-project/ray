@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# TODO (sven): Move this example script into the new API stack.
+# @OldAPIStack
 
 import numpy as np
 import os

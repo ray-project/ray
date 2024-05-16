@@ -1,3 +1,4 @@
+# @OldAPIStack
 """
 This file implements a MobileNet v2 Encoder.
 It uses MobileNet v2 to encode images into a latent space of 1000 dimensions.

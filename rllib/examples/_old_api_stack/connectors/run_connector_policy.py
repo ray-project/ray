@@ -1,3 +1,4 @@
+# @OldAPIStack
 """This example script shows how to load a connector enabled policy,
 and use it in a serving/inference setting.
 """

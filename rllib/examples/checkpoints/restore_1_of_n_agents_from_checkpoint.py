@@ -1,4 +1,4 @@
-# TODO (sven): Move this example script into the new API stack.
+# @OldAPIStack
 
 """Simple example of how to restore only one of n agents from a trained
 multi-agent Algorithm using Ray tune.

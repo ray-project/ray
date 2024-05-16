@@ -1,4 +1,4 @@
-# TODO (sven): Move this example script into the new API stack.
+# @OldAPIStack
 
 # ***********************************************************************************
 # IMPORTANT NOTE: This script is using the old API stack and will soon be replaced by

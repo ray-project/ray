@@ -1,4 +1,5 @@
-# TODO (sven): Move this example script into the new API stack.
+# @OldAPIStack
+
 # TODO (sven): Move this script to `examples/rl_modules/...`
 
 import argparse

@@ -1,4 +1,4 @@
-# TODO (sven): Move this example script into the new API stack.
+# @OldAPIStack
 
 """Simple example of writing experiences to a file using JsonWriter."""
 

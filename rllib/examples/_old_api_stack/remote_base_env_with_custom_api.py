@@ -1,3 +1,4 @@
+# @OldAPIStack
 """
 This script demonstrates how to specify custom env APIs in
 combination with RLlib's `remote_worker_envs` setting, which

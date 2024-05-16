@@ -1,4 +1,4 @@
-# TODO (sven): Move this example script into the new API stack.
+# @OldAPIStack
 
 """Example of define custom tokenizers for recurrent models in RLModules.
 

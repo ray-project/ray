@@ -1,3 +1,5 @@
+# @OldAPIStack
+
 """Example of using a custom training workflow.
 
 This example creates a number of CartPole agents, some of which are trained with
