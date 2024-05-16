@@ -2263,7 +2263,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "multi_gpu", "examples"],
     size = "medium",
     srcs = ["examples/debugging/deterministic_training.py"],
-    args = ["--as-test", "--stop-iters=1", "--framework=torch", "--num-gpus=1", "--num-gpus-per-worker=1"]
+    args = ["--as-test", "--stop-iters=1", "--framework=torch", "--num-gpus=1", "--num-gpus-per-env-runner=1"]
 )
 
 # subdirectory: envs/

@@ -38,10 +38,11 @@ def main(
     ]
     logger.info(f"Analyzing {len(tests)} tests for team {team}")
 
-    test_to_prs = {
-        test.get_name(): _get_failed_prs(test, test_history_length) for test in tests
+    test_to_commits = {
+        test.get_name(): _get_failed_commits(test, test_history_length)
+        for test in tests
     }
-    high_impact_tests = _get_test_with_minimal_coverage(test_to_prs, coverage)
+    high_impact_tests = _get_test_with_minimal_coverage(test_to_commits, coverage)
     if consider_master_branch:
         high_impact_tests = high_impact_tests.union(
             _get_failed_tests_from_master_branch(tests, test_history_length)
@@ -99,54 +100,52 @@ def _get_failed_tests_from_master_branch(
 
 
 def _get_test_with_minimal_coverage(
-    test_to_prs: Dict[str, Set[str]], coverage: int
+    test_to_commits: Dict[str, Set[str]], coverage: int
 ) -> Set[str]:
     """
     Get the minimal set of tests that cover a certain percentage of PRs
     """
-    all_prs = set()
+    all_commits = set()
     high_impact_tests = set()
-    for prs in test_to_prs.values():
-        all_prs.update(prs)
-    if not all_prs:
+    for commits in test_to_commits.values():
+        all_commits.update(commits)
+    if not all_commits:
         return set()
 
-    covered_prs = set()
-    covered_pr_count = 0
-    while 100 * len(covered_prs) / len(all_prs) < coverage:
-        most_impact_test = _get_most_impact_test(test_to_prs, covered_prs)
+    covered_commits = set()
+    covered_commit_count = 0
+    while 100 * len(covered_commits) / len(all_commits) < coverage:
+        most_impact_test = _get_most_impact_test(test_to_commits, covered_commits)
         high_impact_tests.add(most_impact_test)
-        covered_prs.update(test_to_prs[most_impact_test])
-        assert covered_pr_count < len(covered_prs), "No progress in coverage"
-        covered_pr_count = len(covered_prs)
+        covered_commits.update(test_to_commits[most_impact_test])
+        assert covered_commit_count < len(covered_commits), "No progress in coverage"
+        covered_commit_count = len(covered_commits)
 
     return high_impact_tests
 
 
 def _get_most_impact_test(
-    test_to_prs: Dict[str, Set[str]],
-    already_covered_prs: Set[str],
+    test_to_commits: Dict[str, Set[str]],
+    already_covered_commits: Set[str],
 ) -> str:
     """
-    Get the test that covers the most PRs, excluding the PRs that have already been
-    covered
+    Get the test that covers the most PR revisions, excluding the revisions that have
+    already been covered
     """
     most_impact_test = None
-    for test, prs in test_to_prs.items():
-        if most_impact_test is None or len(prs - already_covered_prs) > len(
-            test_to_prs[most_impact_test] - already_covered_prs
+    for test, prs in test_to_commits.items():
+        if most_impact_test is None or len(prs - already_covered_commits) > len(
+            test_to_commits[most_impact_test] - already_covered_commits
         ):
             most_impact_test = test
 
     return most_impact_test
 
 
-def _get_failed_prs(test: Test, test_history_length: int) -> Set[str]:
+def _get_failed_commits(test: Test, test_history_length: int) -> Set[str]:
     """
-    Get the failed PRs for a test. Currently we use the branch name as an identifier
-    for a PR.
-
-    TODO (can): Use the PR number instead of the branch name
+    Get the failed PRs for a test. We use the commit to account for all revisions
+    of a PR.
     """
     logger.info(f"Analyzing test {test.get_name()}")
     results = [
@@ -159,7 +158,7 @@ def _get_failed_prs(test: Test, test_history_length: int) -> Set[str]:
         )
         if result.status == ResultStatus.ERROR.value
     ]
-    return {result.branch for result in results if result.branch}
+    return {result.commit for result in results if result.commit}
 
 
 if __name__ == "__main__":
