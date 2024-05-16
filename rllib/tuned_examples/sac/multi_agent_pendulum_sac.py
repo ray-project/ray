@@ -59,12 +59,13 @@ config = (
         metrics_num_episodes_for_smoothing=5,
         min_sample_timesteps_per_iteration=1000,
     )
-    # TODO (simon): If using only a single agent this leads to errors.
-    .multi_agent(
-        policy_mapping_fn=lambda aid, *arg, **kw: f"p{aid}",
-        policies={"p0", "p1"},
-    )
 )
+
+if args.num_agents:
+    config.multi_agent(
+        policy_mapping_fn=lambda aid, *arg, **kw: f"p{aid}",
+        policies={f"p{i}" for i in range(args.num_agents)},
+    )
 
 stop = {
     NUM_ENV_STEPS_SAMPLED_LIFETIME: 500000,
@@ -73,20 +74,6 @@ stop = {
 }
 
 if __name__ == "__main__":
-    # from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
+    from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
 
-    # run_rllib_example_script_experiment(config, args, stop=stop)
-
-    from ray import train, tune
-    import ray
-
-    #ray.init(local_mode=True)
-    tuner = tune.Tuner(
-        "SAC",
-        param_space=config,
-        run_config=train.RunConfig(
-            stop=stop,
-            verbose=2,
-        ),
-    )
-    tuner.fit()
+    run_rllib_example_script_experiment(config, args, stop=stop)

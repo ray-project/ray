@@ -3,7 +3,7 @@ from collections import defaultdict
 from gymnasium.core import ActType, ObsType
 import numpy as np
 import scipy
-from typing import Any, Dict, List, Optional, Set,  Tuple, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 from ray.rllib.core.columns import Columns
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
@@ -130,7 +130,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
                 single episode or a list of episodes.
         """
         episodes: List["MultiAgentEpisode"] = force_list(episodes)
-        
+
         new_episode_ids: List[str] = {eps.id_ for eps in episodes}
         total_env_timesteps = sum([eps.env_steps() for eps in episodes])
         self._num_timesteps += total_env_timesteps
@@ -152,7 +152,11 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
             # TODO (sven, simon): Should we just treat such an episode chunk
             # as a new episode?
             if evicted_episode.id_ in new_episode_ids:
-                idx = next(i for i, eps in enumerate(episodes) if eps.id_ == evicted_episode.id_)
+                idx = next(
+                    i
+                    for i, eps in enumerate(episodes)
+                    if eps.id_ == evicted_episode.id_
+                )
                 new_eps_to_evict = episodes.pop(idx)
                 self._num_timesteps -= new_eps_to_evict.env_steps()
                 self._num_timesteps_added -= new_eps_to_evict.env_steps()
@@ -473,9 +477,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
             B = 0
             while B < batch_size_B:
                 # Now sample from the single-agent timesteps.
-                index_tuple = module_indices[
-                    self.rng.integers(len(module_indices))
-                ]
+                index_tuple = module_indices[self.rng.integers(len(module_indices))]
 
                 # This will be an agent timestep (not env timestep).
                 # TODO (simon, sven): Maybe deprecate sa_episode_idx (_) in the index
@@ -539,7 +541,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
                         sa_episode_ts + actual_n_step >= len(sa_episode)
                         and sa_episode.is_terminated
                     ),
-                    truncated=(                    
+                    truncated=(
                         sa_episode_ts + actual_n_step >= len(sa_episode)
                         and sa_episode.is_truncated
                     ),
