@@ -1439,8 +1439,8 @@ class AlgorithmConfig(_Config):
 
     def api_stack(
         self,
-        enable_rl_module_and_learner: Optional[str] = NotProvided,
-        enable_env_runner_and_connector_v2: Optional[str] = NotProvided,
+        enable_rl_module_and_learner: Optional[bool] = NotProvided,
+        enable_env_runner_and_connector_v2: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's API stack settings.
 
