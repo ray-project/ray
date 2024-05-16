@@ -58,69 +58,84 @@ Catalogs
 Checkpoints
 -----------
 
-.. include:: catalogs/README.rst
+.. include:: checkpoints/README.rst
 
 Connectors
 ----------
 
 .. include:: connectors/README.rst
 
-
 Curriculum Learning
 -------------------
 
+.. include:: curriculum/README.rst
 
 Debugging
 ---------
 
+.. include:: debugging/README.rst
 
 Environments
 ------------
 
+.. include:: envs/README.rst
+
 Evaluation
 ----------
+
+.. include:: evaluation/README.rst
 
 GPU (for Training and Sampling)
 -------------------------------
 
+.. include:: gpus/README.rst
 
 Hierarchical Training
 ---------------------
 
+.. include:: hierarchical/README.rst
 
 Inference (of Models/Policies)
 ------------------------------
 
+.. include:: inference/README.rst
 
 Learners
 --------
 
+.. include:: learners/README.rst
 
 Multi-Agent RL
 --------------
 
+.. include:: multi_agent/README.rst
+
 Offline RL
 ----------
+
+.. include:: offline/README.rst
 
 Ray Serve and RLlib
 -------------------
 
+.. include:: ray_serve/README.rst
+
 Ray Tune and RLlib
 ------------------
+
+.. include:: ray_tune/README.rst
 
 RLModules
 ---------
 
+.. include:: rl_modules/README.rst
 
 
-
-
-
-
-TODO: Link to tuned_examples, which should have their own README.rst
 
 Tuned Examples
---------------
+++++++++++++++
+
+
 
 - `Tuned examples <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples>`__:
    Collection of tuned hyperparameters sorted by algorithm.
@@ -167,9 +182,6 @@ Training Workflows
 
 - `Custom training workflows <https://github.com/ray-project/ray/blob/master/rllib/examples/ray_tune/custom_train_function.py>`__:
    Example of how to use Tune's support for custom training functions to implement custom training workflows.
-- `Curriculum learning with the TaskSettableEnv API <https://github.com/ray-project/ray/blob/master/rllib/examples/curriculum/curriculum_learning.py>`__:
-   Example of how to advance the environment through different phases (tasks) over time.
-   Also see the `curriculum learning how-to <rllib-training.html#example-curriculum-learning>`__ from the documentation here.
 - `Custom logger <https://github.com/ray-project/ray/blob/master/rllib/examples/ray_tune/custom_logger.py>`__:
    How to setup a custom Logger object in RLlib.
 - `Custom metrics <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_metrics_and_callbacks.py>`__:
