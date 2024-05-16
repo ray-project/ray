@@ -247,7 +247,8 @@ void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
 }
 
 void GcsNodeManager::AddDrainingNode(
-    const NodeID &node_id, const rpc::autoscaler::DrainNodeRequest &drain_request) {
+    const NodeID &node_id,
+    std::shared_ptr<rpc::autoscaler::DrainNodeRequest> drain_request) {
   auto maybe_node = GetAliveNode(node_id);
   RAY_CHECK(maybe_node.has_value());
   auto iter = draining_nodes_.find(node_id);
@@ -255,8 +256,8 @@ void GcsNodeManager::AddDrainingNode(
     draining_nodes_.emplace(node_id, drain_request);
   } else {
     RAY_LOG(INFO) << "Drain request for node " << node_id << " already exists. "
-                  << "Overwriting the existing request " << iter->second.DebugString()
-                  << " with the new request " << drain_request.DebugString();
+                  << "Overwriting the existing request " << iter->second->DebugString()
+                  << " with the new request " << drain_request->DebugString();
     iter->second = drain_request;
   }
 }
@@ -316,27 +317,34 @@ void GcsNodeManager::OnNodeFailure(const NodeID &node_id,
       // Note that the following also covers the case that
       // request.deadline_timestamp == 0 (no deadline):
       // we also consider the failure to be caused by draining.
-      && (current_sys_time_ms() >= iter->second.deadline_timestamp_ms());
+      && (current_sys_time_ms() >= iter->second->deadline_timestamp_ms());
+  std::shared_ptr<rpc::autoscaler::DrainNodeRequest> drain_request =
+      caused_by_draining ? iter->second : nullptr;
 
-  if (auto node = RemoveNode(node_id, caused_by_draining /* is_intended */)) {
+  if (auto node = RemoveNode(node_id, /* is_intended = */ caused_by_draining)) {
     node->set_state(rpc::GcsNodeInfo::DEAD);
     node->set_end_time_ms(current_sys_time_ms());
 
     auto node_death_info = node->mutable_death_info();
     if (caused_by_draining) {
-      if (iter->second.reason() ==
+      if (drain_request->reason() ==
           rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION) {
         node_death_info->set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
-        node_death_info->set_reason_message("Force termination by autoscaler.");
+        node_death_info->set_reason_message(drain_request->reason_message() +
+                                            " (Node was forcibly terminated)");
       } else {
         node_death_info->set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_IDLE);
-        node_death_info->set_reason_message("Force termination by autoscaler.");
+        node_death_info->set_reason_message(drain_request->reason_message() +
+                                            " (Node was forcibly terminated)");
       }
     } else {
       node_death_info->set_reason(rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
       node_death_info->set_reason_message(
           "Health check failed: missing too many heartbeats.");
     }
+    RAY_LOG(INFO) << "Setting death info for node " << node_id << ": Reason = "
+                  << rpc::NodeDeathInfo_Reason_Name(node_death_info->reason())
+                  << ", message = " << node_death_info->reason_message();
 
     AddDeadNodeToCache(node);
     auto node_info_delta = std::make_shared<rpc::GcsNodeInfo>();

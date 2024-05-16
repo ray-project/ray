@@ -151,6 +151,136 @@ def test_preemption(ray_start_cluster):
     assert worker_node["DeathReasonMessage"] == "preemption"
 
 
+def test_preemption_after_draining_deadline(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(resources={"head": 1})
+    ray.init(address=cluster.address)
+    worker_node = cluster.add_node(resources={"worker": 1})
+    cluster.wait_for_nodes()
+
+    @ray.remote
+    def get_node_id():
+        return ray.get_runtime_context().get_node_id()
+
+    head_node_id = ray.get(get_node_id.options(resources={"head": 1}).remote())
+    worker_node_id = ray.get(get_node_id.options(resources={"worker": 1}).remote())
+
+    wait_for_condition(
+        lambda: {node["NodeID"] for node in ray.nodes() if (node["Alive"])}
+        == {head_node_id, worker_node_id}
+    )
+
+    @ray.remote(num_cpus=1, resources={"worker": 1})
+    class Actor:
+        def ping(self):
+            pass
+
+    actor = Actor.remote()
+    ray.get(actor.ping.remote())
+
+    gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+
+    # Set draining deadline as 2 seconds later.
+    delay_seconds = 2
+    draining_deadline_timestamp_ms = int(time.time() * 1000.0) + delay_seconds * 1000
+
+    # The worker node is not idle but the drain request should be still accepted.
+    is_accepted, _ = gcs_client.drain_node(
+        worker_node_id,
+        autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
+        "preemption",
+        draining_deadline_timestamp_ms,
+    )
+    assert is_accepted
+
+    # Simulate node provider forcefully terminates the worker node
+    # after the draining timeline.
+    time.sleep(delay_seconds)
+    cluster.remove_node(worker_node, False)
+
+    # Use a larger timeout to wait for GCS health checker
+    # marks the worker node as dead.
+    wait_for_condition(
+        lambda: {node["NodeID"] for node in ray.nodes() if (node["Alive"])}
+        == {head_node_id},
+        timeout=100,
+    )
+
+    worker_node = [node for node in ray.nodes() if node["NodeID"] == worker_node_id][0]
+    assert worker_node["DeathReason"] == gcs_pb2.NodeDeathInfo.Reason.Value(
+        "AUTOSCALER_DRAIN_PREEMPTED"
+    )
+    assert (
+        worker_node["DeathReasonMessage"] == "preemption (Node was forcibly terminated)"
+    )
+
+
+def test_node_death_before_draining_deadline(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(resources={"head": 1})
+    ray.init(address=cluster.address)
+    worker_node = cluster.add_node(resources={"worker": 1})
+    cluster.wait_for_nodes()
+
+    @ray.remote
+    def get_node_id():
+        return ray.get_runtime_context().get_node_id()
+
+    head_node_id = ray.get(get_node_id.options(resources={"head": 1}).remote())
+    worker_node_id = ray.get(get_node_id.options(resources={"worker": 1}).remote())
+
+    wait_for_condition(
+        lambda: {node["NodeID"] for node in ray.nodes() if (node["Alive"])}
+        == {head_node_id, worker_node_id}
+    )
+
+    @ray.remote(num_cpus=1, resources={"worker": 1})
+    class Actor:
+        def ping(self):
+            pass
+
+    actor = Actor.remote()
+    ray.get(actor.ping.remote())
+
+    gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+
+    # Set draining deadline as 60 seconds later.
+    delay_seconds = 60
+    draining_deadline_timestamp_ms = int(time.time() * 1000.0) + delay_seconds * 1000
+    print(f"draining_deadline_timestamp_ms: {draining_deadline_timestamp_ms}")
+
+    # The worker node is not idle but the drain request should be still accepted.
+    is_accepted, _ = gcs_client.drain_node(
+        worker_node_id,
+        autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
+        "preemption",
+        draining_deadline_timestamp_ms,
+    )
+    assert is_accepted
+
+    # Simulate the worker node crashes before the draining timeline.
+    cluster.remove_node(worker_node, False)
+
+    # Use a larger timeout to wait for GCS health checker
+    # marks the worker node as dead.
+    wait_for_condition(
+        lambda: {node["NodeID"] for node in ray.nodes() if (node["Alive"])}
+        == {head_node_id},
+        timeout=100,
+    )
+
+    # Since worker node failure is detected to be before the draining deadline,
+    # this is considered as an unexpected termination.
+    worker_node = [node for node in ray.nodes() if node["NodeID"] == worker_node_id][0]
+    assert worker_node["DeathReason"] == gcs_pb2.NodeDeathInfo.Reason.Value(
+        "UNEXPECTED_TERMINATION"
+    )
+    assert (
+        worker_node["DeathReasonMessage"]
+        == "Health check failed: missing too many heartbeats."
+    )
+
+
 def test_scheduling_placement_groups_during_draining(ray_start_cluster):
     """Test that the draining node is unschedulable for new pgs."""
     cluster = ray_start_cluster

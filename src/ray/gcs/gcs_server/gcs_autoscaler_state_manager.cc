@@ -25,7 +25,7 @@ namespace gcs {
 
 GcsAutoscalerStateManager::GcsAutoscalerStateManager(
     const std::string &session_name,
-    const GcsNodeManager &gcs_node_manager,
+    GcsNodeManager &gcs_node_manager,
     GcsActorManager &gcs_actor_manager,
     const GcsPlacementGroupManager &gcs_placement_group_manager,
     std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool)
@@ -401,12 +401,13 @@ void GcsAutoscalerStateManager::HandleDrainNode(
       request.reason(),
       request.reason_message(),
       draining_deadline_timestamp_ms,
-      [this, &request, reply, send_reply_callback, node_id](
+      [this, request, reply, send_reply_callback, node_id](
           const Status &status, const rpc::DrainRayletReply &raylet_reply) {
         reply->set_is_accepted(raylet_reply.is_accepted());
 
         if (raylet_reply.is_accepted()) {
-          gcs_node_manager_.AddDrainingNode(node_id, request);
+          gcs_node_manager_.AddDrainingNode(
+              node_id, std::make_shared<rpc::autoscaler::DrainNodeRequest>(request));
         } else {
           reply->set_rejection_reason_message(raylet_reply.rejection_reason_message());
         }
