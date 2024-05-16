@@ -10,6 +10,17 @@ How to run this script
 `python [script file name].py --enable-new-api-stack --num-learner-workers=
 [number of Learner workers, e.g. 1] --num-gpus-per-learner [some fraction <1.0]`
 
+The following command line combinations been tested on a 4 NVIDIA T4 GPUs (16 vCPU)
+machine.
+Note that for each run, 4 tune trials will be setup; see tune.grid_search over 4
+learning rates in the `base_config` below:
+1) --num-learners=1 --num-gpus-per-learner=0.5 (2.0 GPUs used).
+2) --num-learners=1 --num-gpus-per-learner=0.3 (1.2 GPUs used).
+3) --num-learners=1 --num-gpus-per-learner=0.25 (1.0 GPU used).
+4) non-sensical setting: --num-learners=2 --num-gpus-per-learner=0.5 (expect an
+NCCL-related error due to the fact that torch will try to perform DDP sharding,
+but notices that the shards sit on the same GPU).
+
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`
 which should allow you to set breakpoints anywhere in the RLlib code and
@@ -25,15 +36,38 @@ For logging to your WandB account, use:
 You can visualize experiment results in ~/ray_results using TensorBoard.
 
 
+Results to expect
+-----------------
+In the console output, you can see that only fractional GPUs are being used by RLlib:
 
+== Status ==
+...
+Logical resource usage: 12.0/16 CPUs, 1.0/4 GPUs (...)
+...
+Number of trials: 4/4 (4 RUNNING)
+
+The final output should look something like this:
++-----------------------------+------------+-----------------+--------+--------+
+| Trial name                  | status     | loc             |     lr |   iter |
+|                             |            |                 |        |        |
+|-----------------------------+------------+-----------------+--------+--------+
+| PPO_CartPole-v1_7104b_00000 | TERMINATED | 10.0.0.39:31197 | 0.005  |     10 |
+| PPO_CartPole-v1_7104b_00001 | TERMINATED | 10.0.0.39:31202 | 0.003  |     11 |
+| PPO_CartPole-v1_7104b_00002 | TERMINATED | 10.0.0.39:31203 | 0.001  |     10 |
+| PPO_CartPole-v1_7104b_00003 | TERMINATED | 10.0.0.39:31204 | 0.0001 |     11 |
++-----------------------------+------------+-----------------+--------+--------+
+
++----------------+----------------------+----------------------+----------------------+
+| total time (s) | num_env_steps_sample | num_env_steps_traine | num_episodes_lifetim |
+|                |           d_lifetime |           d_lifetime |                    e |
+|----------------+----------------------+----------------------+----------------------|
+|        101.002 |                40000 |                40000 |                  346 |
+|        110.03  |                44000 |                44000 |                  395 |
+|        101.171 |                40000 |                40000 |                  328 |
+|        110.091 |                44000 |                44000 |                  478 |
++----------------+----------------------+----------------------+----------------------+
 """
 from ray import tune
-from ray.air.constants import TRAINING_ITERATION
-from ray.rllib.utils.metrics import (
-    ENV_RUNNER_RESULTS,
-    EPISODE_RETURN_MEAN,
-    NUM_ENV_STEPS_SAMPLED_LIFETIME,
-)
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
@@ -54,22 +88,6 @@ if __name__ == "__main__":
     assert (
         args.enable_new_api_stack
     ), "Must set --enable-new-api-stack when running this script!"
-
-    # These configs have been tested on a p2.8xlarge machine (8 GPUs, 16 CPUs),
-    # where ray was started using only one of these GPUs:
-    # $ ray start --num-gpus=1 --head
-
-    # Tested arg combinations (4 tune trials will be setup; see
-    # tune.grid_search over 4 learning rates below):
-    # - num_gpus=0.5 (2 tune trials should run in parallel).
-    # - num_gpus=0.3 (3 tune trials should run in parallel).
-    # - num_gpus=0.25 (4 tune trials should run in parallel)
-    # - num_gpus=0.2 + num_gpus_per_worker=0.1 (1 worker) -> 0.3
-    #   -> 3 tune trials should run in parallel.
-    # - num_gpus=0.2 + num_gpus_per_worker=0.1 (2 workers) -> 0.4
-    #   -> 2 tune trials should run in parallel.
-    # - num_gpus=0.4 + num_gpus_per_worker=0.1 (2 workers) -> 0.6
-    #   -> 1 tune trial should run in parallel.
 
     base_config = (
         get_trainable_cls(args.algo)
