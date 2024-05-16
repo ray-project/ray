@@ -321,16 +321,16 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     return status.ok();
   }
 
-  bool DrainSelf() {
-    Status status = gcs_client_->Nodes().DrainSelf();
-    return status.ok();
-  }
-
   bool RegisterNode(const rpc::GcsNodeInfo &node_info) {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncRegister(
         node_info, [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  void UnregisterSelf(const rpc::NodeDeathInfo &node_death_info,
+                      std::function<void()> unregister_done_callback) {
+    gcs_client_->Nodes().UnregisterSelf(node_death_info, unregister_done_callback);
   }
 
   std::vector<rpc::GcsNodeInfo> GetNodeInfoList() {
@@ -552,21 +552,47 @@ TEST_P(GcsClientTest, TestNodeInfo) {
   ASSERT_TRUE(gcs_client_->Nodes().Get(node1_id));
   EXPECT_EQ(gcs_client_->Nodes().GetAll().size(), 2);
 
-  // Cancel registration of local node to GCS.
-  ASSERT_TRUE(DrainSelf());
-
-  // Cancel registration of a node to GCS.
+  // Cancel registration of both nodes to GCS.
+  ASSERT_TRUE(DrainNode(node1_id));
   ASSERT_TRUE(DrainNode(node2_id));
   WaitForExpectedCount(unregister_count, 2);
 
   // Get information of all nodes from GCS.
   node_list = GetNodeInfoList();
   EXPECT_EQ(node_list.size(), 2);
-  EXPECT_EQ(node_list[0].state(),
-            rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
-  EXPECT_EQ(node_list[1].state(),
-            rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
+  EXPECT_EQ(node_list[0].state(), rpc::GcsNodeInfo::DEAD);
+  EXPECT_EQ(node_list[1].state(), rpc::GcsNodeInfo::DEAD);
+  ASSERT_TRUE(gcs_client_->Nodes().IsRemoved(node1_id));
   ASSERT_TRUE(gcs_client_->Nodes().IsRemoved(node2_id));
+}
+
+TEST_P(GcsClientTest, TestUnregisterNode) {
+  // Create gcs node info.
+  auto gcs_node_info = Mocker::GenNodeInfo();
+  NodeID node_id = NodeID::FromBinary(gcs_node_info->node_id());
+
+  // Register local node to GCS.
+  ASSERT_TRUE(RegisterSelf(*gcs_node_info));
+  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+  EXPECT_EQ(gcs_client_->Nodes().GetSelfId(), node_id);
+  EXPECT_EQ(gcs_client_->Nodes().GetSelfInfo().node_id(), gcs_node_info->node_id());
+  EXPECT_EQ(gcs_client_->Nodes().GetSelfInfo().state(), gcs_node_info->state());
+
+  // Unregister local node from GCS.
+  rpc::NodeDeathInfo node_death_info;
+  node_death_info.set_reason(rpc::NodeDeathInfo::EXPECTED_TERMINATION);
+  auto reason_message = "Testing unregister node from GCS.";
+  node_death_info.set_reason_message(reason_message);
+
+  std::promise<bool> promise;
+  UnregisterSelf(node_death_info, [&promise]() { promise.set_value(true); });
+  WaitReady(promise.get_future(), timeout_ms_);
+
+  auto node_list = GetNodeInfoList();
+  EXPECT_EQ(node_list.size(), 1);
+  EXPECT_EQ(node_list[0].state(), rpc::GcsNodeInfo::DEAD);
+  EXPECT_EQ(node_list[0].death_info().reason(), rpc::NodeDeathInfo::EXPECTED_TERMINATION);
+  EXPECT_EQ(node_list[0].death_info().reason_message(), reason_message);
 }
 
 TEST_P(GcsClientTest, TestGetAllAvailableResources) {

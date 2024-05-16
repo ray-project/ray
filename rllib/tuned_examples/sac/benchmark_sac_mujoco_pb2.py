@@ -1,5 +1,10 @@
 import time
 from ray.rllib.algorithms.sac.sac import SACConfig
+from ray.rllib.utils.metrics import (
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+)
 from ray.tune.schedulers.pb2 import PB2
 from ray import train, tune
 
@@ -17,23 +22,23 @@ from ray import train, tune
 #   AgileRL: https://github.com/AgileRL/AgileRL?tab=readme-ov-file#benchmarks
 benchmark_envs = {
     "HalfCheetah-v4": {
-        "timesteps_total": 3000000,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 3000000,
     },
     "Hopper-v4": {
-        "timesteps_total": 1000000,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 1000000,
     },
     "Humanoid-v4": {
-        "timesteps_total": 10000000,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 10000000,
     },
-    "Ant-v4": {"timesteps_total": 3000000},
+    "Ant-v4": {f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 3000000},
     "Walker2d-v4": {
-        "timesteps_total": 3000000,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 3000000,
     },
 }
 
 pb2_scheduler = PB2(
-    time_attr="timesteps_total",
-    metric="episode_reward_mean",
+    time_attr=NUM_ENV_STEPS_SAMPLED_LIFETIME,
+    metric=f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}",
     mode="max",
     perturbation_interval=50000,
     # Copy bottom % with top % weights.

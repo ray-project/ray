@@ -8,14 +8,20 @@ The environment we use here is configured to crash with a certain probability on
 """
 from ray.rllib.algorithms.appo import APPOConfig
 from ray.rllib.examples.envs.classes.cartpole_crashing import CartPoleCrashing
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    EVALUATION_RESULTS,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
 from ray import tune
 
 tune.register_env("env", lambda cfg: CartPoleCrashing(cfg))
 
 
 stop = {
-    "evaluation/sampler_results/episode_reward_mean": 400.0,
-    "num_env_steps_sampled": 250000,
+    f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 400.0,
+    f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 250000,
 }
 
 config = (

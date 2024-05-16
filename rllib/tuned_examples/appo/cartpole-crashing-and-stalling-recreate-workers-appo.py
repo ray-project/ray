@@ -11,6 +11,12 @@ from gymnasium.wrappers import TimeLimit
 
 from ray.rllib.algorithms.appo import APPOConfig
 from ray.rllib.examples.envs.classes.cartpole_crashing import CartPoleCrashing
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    EVALUATION_RESULTS,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
 from ray import tune
 
 
@@ -67,8 +73,8 @@ config = (
 )
 
 stop = {
-    "evaluation/sampler_results/episode_reward_mean": 500.0,
-    "num_env_steps_sampled": 2000000,
+    f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 500.0,
+    f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 2000000,
 }
 
 if __name__ == "__main__":

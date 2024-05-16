@@ -2,7 +2,7 @@ cartpole-appo-w-rl-modules-and-learner:
     env: CartPole-v1
     run: APPO
     stop:
-        sampler_results/episode_reward_mean: 150
+        env_runners/episode_return_mean: 150
         timesteps_total: 200000
     config:
         # Run with Learner- and RLModule API (new stack).

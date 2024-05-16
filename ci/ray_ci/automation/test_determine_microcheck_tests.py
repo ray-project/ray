@@ -7,6 +7,7 @@ import pytest
 from ci.ray_ci.automation.determine_microcheck_tests import (
     _get_failed_prs,
     _get_test_with_minimal_coverage,
+    _get_failed_tests_from_master_branch,
     _update_high_impact_tests,
 )
 from ci.ray_ci.utils import ci_init
@@ -26,7 +27,7 @@ class MockTest(dict):
         return self.get("name", "")
 
     def get_test_results(
-        self, limit: int, aws_bucket: str, use_async: bool
+        self, limit: int, aws_bucket: str, use_async: bool, refresh: bool
     ) -> List[TestResult]:
         return self.get("test_results", [])
 
@@ -81,6 +82,44 @@ def test_get_failed_prs():
         ),
         1,
     ) == {"w00t", "f00"}
+
+
+def test_get_failed_tests_from_master_branch():
+    failed_test_01 = MockTest(
+        {
+            "name": "test_01",
+            "test_results": [
+                stub_test_result(ResultStatus.ERROR, "master"),
+                stub_test_result(ResultStatus.SUCCESS, "master"),
+                stub_test_result(ResultStatus.ERROR, "master"),
+                stub_test_result(ResultStatus.ERROR, "master"),
+            ],
+        },
+    )
+    failed_test_02 = MockTest(
+        {
+            "name": "test_02",
+            "test_results": [
+                stub_test_result(ResultStatus.ERROR, "non_master"),
+                stub_test_result(ResultStatus.SUCCESS, "non_master"),
+                stub_test_result(ResultStatus.ERROR, "non_master"),
+                stub_test_result(ResultStatus.ERROR, "non_master"),
+            ],
+        },
+    )
+    failed_test_03 = MockTest(
+        {
+            "name": "test_03",
+            "test_results": [
+                stub_test_result(ResultStatus.ERROR, "master"),
+                stub_test_result(ResultStatus.SUCCESS, "master"),
+                stub_test_result(ResultStatus.ERROR, "master"),
+            ],
+        },
+    )
+    _get_failed_tests_from_master_branch(
+        [failed_test_01, failed_test_02, failed_test_03], 2
+    ) == {"test_01"}
 
 
 def test_get_test_with_minimal_coverage():

@@ -17,6 +17,7 @@ import os
 
 import ray
 from ray import air, tune
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env import BaseEnv
@@ -197,9 +198,7 @@ if __name__ == "__main__":
     tuner = tune.Tuner(
         "PPO",
         run_config=air.RunConfig(
-            stop={
-                "training_iteration": args.stop_iters,
-            },
+            stop={TRAINING_ITERATION: args.stop_iters},
         ),
         param_space=config,
     )
