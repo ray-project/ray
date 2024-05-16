@@ -14,6 +14,10 @@ from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.evaluation.evaluation_parallel_to_training import (
     AssertEvalCallback,
 )
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+)
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.test_utils import check, framework_iterator
 
@@ -268,7 +272,8 @@ class TestAlgorithm(unittest.TestCase):
             self.assertTrue("evaluation" in r1)
             self.assertFalse("evaluation" in r2)
             self.assertTrue("evaluation" in r3)
-            self.assertTrue("episode_reward_mean" in r1["evaluation"])
+            self.assertTrue(ENV_RUNNER_RESULTS in r1["evaluation"])
+            self.assertTrue(EPISODE_RETURN_MEAN in r1["evaluation"][ENV_RUNNER_RESULTS])
             self.assertNotEqual(r1["evaluation"], r3["evaluation"])
 
     def test_evaluation_option_always_attach_eval_metrics(self):
@@ -331,7 +336,10 @@ class TestAlgorithm(unittest.TestCase):
             config.create_env_on_local_worker = True
             algo_w_env_on_local_worker = config.build()
             results = algo_w_env_on_local_worker.evaluate()
-            assert "episode_reward_mean" in results
+            assert (
+                ENV_RUNNER_RESULTS in results
+                and EPISODE_RETURN_MEAN in results[ENV_RUNNER_RESULTS]
+            )
             algo_w_env_on_local_worker.stop()
             config.create_env_on_local_worker = False
 

@@ -3,7 +3,7 @@ from collections import defaultdict
 from gymnasium.core import ActType, ObsType
 import numpy as np
 import scipy
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 from ray.rllib.core.columns import Columns
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
@@ -131,40 +131,42 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
         """
         episodes: List["MultiAgentEpisode"] = force_list(episodes)
 
-        new_episode_ids: List[str] = []
-        for eps in episodes:
-            new_episode_ids.append(eps.id_)
-            self._num_timesteps += eps.env_steps()
-            self._num_timesteps_added += eps.env_steps()
+        new_episode_ids: List[str] = {eps.id_ for eps in episodes}
+        total_env_timesteps = sum([eps.env_steps() for eps in episodes])
+        self._num_timesteps += total_env_timesteps
+        self._num_timesteps_added += total_env_timesteps
 
         # Evict old episodes.
-        eps_evicted: List["MultiAgentEpisode"] = []
-        eps_evicted_ids: List[Union[str, int]] = []
-        eps_evicted_idxs: List[int] = []
+        eps_evicted_ids: Set[Union[str, int]] = set()
+        eps_evicted_idxs: Set[int] = set()
         while (
             self._num_timesteps > self.capacity
             and self._num_remaining_episodes(new_episode_ids, eps_evicted_ids) != 1
         ):
             # Evict episode.
             evicted_episode = self.episodes.popleft()
-            eps_evicted.append(evicted_episode)
-            eps_evicted_ids.append(evicted_episode.id_)
-            eps_evicted_idxs.append(self.episode_id_to_index.pop(evicted_episode.id_))
+            eps_evicted_ids.add(evicted_episode.id_)
+            eps_evicted_idxs.add(self.episode_id_to_index.pop(evicted_episode.id_))
             # If this episode has a new chunk in the new episodes added,
             # we subtract it again.
             # TODO (sven, simon): Should we just treat such an episode chunk
             # as a new episode?
             if evicted_episode.id_ in new_episode_ids:
-                new_eps_to_evict = episodes[new_episode_ids.index(evicted_episode.id_)]
+                idx = next(
+                    i
+                    for i, eps in enumerate(episodes)
+                    if eps.id_ == evicted_episode.id_
+                )
+                new_eps_to_evict = episodes.pop(idx)
                 self._num_timesteps -= new_eps_to_evict.env_steps()
                 self._num_timesteps_added -= new_eps_to_evict.env_steps()
-                episodes.remove(new_eps_to_evict)
             # Remove the timesteps of the evicted episode from the counter.
             self._num_timesteps -= evicted_episode.env_steps()
             self._num_agent_timesteps -= evicted_episode.agent_steps()
             self._num_episodes_evicted += 1
             # Remove the module timesteps of the evicted episode from the counters.
             self._evict_module_episodes(evicted_episode)
+            del evicted_episode
 
         # Add agent and module steps.
         for eps in episodes:
@@ -175,33 +177,32 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
 
         # Remove corresponding indices, if episodes were evicted.
         if eps_evicted_idxs:
-            new_indices = []
-            # Each index 2-tuple is of the form (ma_episode_idx, timestep) and
+            # If the episode is not exvicted, we keep the index.
+            # Note, ach index 2-tuple is of the form (ma_episode_idx, timestep) and
             # refers to a certain environment timestep in a certain multi-agent
             # episode.
-            for idx_tuple in self._indices:
-                # If episode index is not from an evicted episode, keep it.
-                if idx_tuple[0] not in eps_evicted_idxs:
-                    new_indices.append(idx_tuple)
-            # Assign the new list of indices.
-            self._indices = new_indices
+            self._indices = [
+                idx_tuple
+                for idx_tuple in self._indices
+                if idx_tuple[0] not in eps_evicted_idxs
+            ]
             # Also remove corresponding module indices.
             for module_id, module_indices in self._module_to_indices.items():
-                new_module_indices = []
                 # Each index 3-tuple is of the form
                 # (ma_episode_idx, agent_id, timestep) and refers to a certain
                 # agent timestep in a certain multi-agent episode.
-                for idx_triplet in module_indices:
-                    if idx_triplet[0] not in eps_evicted_idxs:
-                        new_module_indices.append(idx_triplet)
-                self._module_to_indices[module_id] = new_module_indices
+                self._module_to_indices[module_id] = [
+                    idx_triplet
+                    for idx_triplet in module_indices
+                    if idx_triplet[0] not in eps_evicted_idxs
+                ]
 
         for eps in episodes:
             eps = copy.deepcopy(eps)
             # If the episode is part of an already existing episode, concatenate.
             if eps.id_ in self.episode_id_to_index:
                 eps_idx = self.episode_id_to_index[eps.id_]
-                existing_eps = self.episodes[eps_idx]
+                existing_eps = self.episodes[eps_idx - self._num_episodes_evicted]
                 existing_len = len(existing_eps)
                 self._indices.extend(
                     [
@@ -458,30 +459,25 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
         gamma: float,
         include_infos: bool,
         include_extra_model_outputs: bool,
-        modules_to_sample: Optional[List[ModuleID]],
-    ) -> Union[List["MultiAgentEpisode"], List["SingleAgentEpisode"]]:
+        modules_to_sample: Optional[Set[ModuleID]],
+    ) -> SampleBatchType:
         """Samples a batch of independent multi-agent transitions."""
 
         actual_n_step = n_step or 1
         # Sample the n-step if necessary.
-        if isinstance(n_step, tuple):
-            # Use random n-step sampling.
-            random_n_step = True
-        else:
-            random_n_step = False
+        random_n_step = isinstance(n_step, tuple)
 
         sampled_episodes = []
         # TODO (simon): Ensure that the module has data and if not, skip it.
         #  TODO (sven): Should we then error out or skip? I think the Learner
         #  should handle this case when a module has no train data.
-        for module_id in modules_to_sample or self._module_to_indices.keys():
-
+        modules_to_sample = modules_to_sample or set(self._module_to_indices.keys())
+        for module_id in modules_to_sample:
+            module_indices = self._module_to_indices[module_id]
             B = 0
             while B < batch_size_B:
                 # Now sample from the single-agent timesteps.
-                index_tuple = self._module_to_indices[module_id][
-                    self.rng.integers(len(self._module_to_indices[module_id]))
-                ]
+                index_tuple = module_indices[self.rng.integers(len(module_indices))]
 
                 # This will be an agent timestep (not env timestep).
                 # TODO (simon, sven): Maybe deprecate sa_episode_idx (_) in the index
@@ -542,14 +538,12 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
                     # last time step, check, if the single-agent episode is terminated
                     # or truncated.
                     terminated=(
-                        False
-                        if sa_episode_ts + actual_n_step < len(sa_episode)
-                        else sa_episode.is_terminated
+                        sa_episode_ts + actual_n_step >= len(sa_episode)
+                        and sa_episode.is_terminated
                     ),
                     truncated=(
-                        False
-                        if sa_episode_ts + actual_n_step < len(sa_episode)
-                        else sa_episode.is_truncated
+                        sa_episode_ts + actual_n_step >= len(sa_episode)
+                        and sa_episode.is_truncated
                     ),
                     extra_model_outputs={
                         "weights": [1.0],
@@ -872,7 +866,9 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
                 sa_episode_in_buffer = False
             if sa_episode_in_buffer:
                 existing_eps_len = len(
-                    self.episodes[episode_idx].agent_episodes[agent_id]
+                    self.episodes[
+                        episode_idx - self._num_episodes_evicted
+                    ].agent_episodes[agent_id]
                 )
             else:
                 existing_eps_len = 0

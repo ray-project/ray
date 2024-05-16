@@ -63,6 +63,8 @@ class ClusterResourceScheduler {
       std::function<bool(scheduling::NodeID)> is_node_available_fn,
       std::function<int64_t(void)> get_used_object_store_memory = nullptr,
       std::function<bool(void)> get_pull_manager_at_capacity = nullptr,
+      std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully =
+          nullptr,
       const absl::flat_hash_map<std::string, std::string> &local_node_labels = {});
 
   /// Schedule the specified resources to the cluster nodes.
@@ -133,7 +135,8 @@ class ClusterResourceScheduler {
   void Init(instrumented_io_context &io_service,
             const NodeResources &local_node_resources,
             std::function<int64_t(void)> get_used_object_store_memory,
-            std::function<bool(void)> get_pull_manager_at_capacity);
+            std::function<bool(void)> get_pull_manager_at_capacity,
+            std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully);
 
   bool NodeAvailable(scheduling::NodeID node_id) const;
 

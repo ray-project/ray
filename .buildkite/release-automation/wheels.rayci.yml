@@ -1,6 +1,7 @@
 group: Upload & Validate wheels
 steps:
   - block: "Upload wheels from S3 to TestPyPI"
+    key: block-upload-wheels-testpypi
     depends_on: 
       - forge
 
@@ -14,10 +15,10 @@ steps:
         --commit_hash="$BUILDKITE_COMMIT"
         --pypi_env=test
 
-  - block: "Download & validate Ray wheels from TestPyPI"
+  - block: "Download & validate Ray wheels from TestPyPI Linux x86_64"
+    key: block-validate-linux-x86_64-wheels
     depends_on:
       - forge
-      - forge_arm64
 
   - label: "Linux x86_64 Python {{matrix}}"
     key: validate-linux-x86_64-wheels
@@ -30,6 +31,11 @@ steps:
       - "3.9"
       - "3.10"
       - "3.11"
+
+  - block: "Download & validate Ray wheels from TestPyPI Linux arm64"
+    key: block-validate-linux-arm64-wheels
+    depends_on:
+      - forge-arm64
 
   - label: "Linux arm64 Python {{matrix}}"
     key: validate-linux-arm64-wheels
@@ -44,6 +50,9 @@ steps:
       - "3.10"
       - "3.11"
 
+  - block: "Download & validate Ray wheels from TestPyPI Mac"
+    key: block-validate-macos-wheels
+  
   - label: "MacOS x86_64"
     key: validate-macos-x86_64-wheels
     job_env: MACOS
@@ -59,11 +68,7 @@ steps:
       - ./.buildkite/release-automation/verify-macos-wheels.sh arm64
 
   - block: "Upload wheels to PyPI"
-    depends_on: 
-      - validate-linux-x86-64-wheels
-      - validate-linux-arm64-wheels
-      - validate-macos-x86-64-wheels
-      - validate-macos-arm64-wheels
+    key: block-upload-wheels-pypi
 
   - label: "Upload wheels to PyPI"
     key: upload-wheels-pypi

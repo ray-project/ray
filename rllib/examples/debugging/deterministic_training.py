@@ -8,6 +8,7 @@ import argparse
 
 import ray
 from ray import air, tune
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.examples.envs.classes.env_using_remote_actor import (
     CartPoleWithRemoteParamServer,
@@ -63,9 +64,7 @@ if __name__ == "__main__":
         # Simplify to run this example script faster.
         config.training(sgd_minibatch_size=10, num_sgd_iter=5)
 
-    stop = {
-        "training_iteration": args.stop_iters,
-    }
+    stop = {TRAINING_ITERATION: args.stop_iters}
 
     results1 = tune.Tuner(
         args.run,

@@ -2,6 +2,11 @@ import gymnasium as gym
 
 from ray.rllib.algorithms.dqn.dqn import DQNConfig
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
 from ray.tune import Stopper
 from ray import train, tune
 
@@ -14,220 +19,220 @@ from ray import train, tune
 
 benchmark_envs = {
     "AlienNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 6022.9,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 6022.9,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "AmidarNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 202.8,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 202.8,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "AssaultNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 14491.7,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 14491.7,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "AsterixNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 280114.0,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 280114.0,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "AsteroidsNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 2249.4,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 2249.4,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "AtlantisNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 814684.0,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 814684.0,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "BankHeistNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 826.0,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 826.0,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "BattleZoneNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 52040.0,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 52040.0,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "BeamRiderNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 21768.5,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 21768.5,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "BerzerkNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 1793.4,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 1793.4,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "BowlingNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 39.4,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 39.4,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "BoxingNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 54.9,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 54.9,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "BreakoutNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 379.5,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 379.5,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "CentipedeNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 7160.9,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 7160.9,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "ChopperCommandNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 10916.0,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 10916.0,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "CrazyClimberNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 143962.0,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 143962.0,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "DefenderNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 47671.3,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 47671.3,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "DemonAttackNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 109670.7,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 109670.7,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "DoubleDunkNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": -0.6,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": -0.6,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "EnduroNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 2061.1,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 2061.1,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "FishingDerbyNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 22.6,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 22.6,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "FreewayNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 29.1,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 29.1,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "FrostbiteNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 4141.1,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 4141.1,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "GopherNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 72595.7,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 72595.7,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "GravitarNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 567.5,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 567.5,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "HeroNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 50496.8,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 50496.8,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "IceHockeyNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": -11685.8,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": -11685.8,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "KangarooNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 10841.0,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 10841.0,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "KrullNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 6715.5,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 6715.5,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "KungFuMasterNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 28999.8,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 28999.8,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "MontezumaRevengeNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 154.0,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 154.0,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "MsPacmanNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 2570.2,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 2570.2,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "NameThisGameNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 11686.5,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 11686.5,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "PhoenixNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 103061.6,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 103061.6,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "PitfallNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": -37.6,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": -37.6,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "PongNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 19.0,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 19.0,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "PrivateEyeNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 1704.4,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 1704.4,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "QbertNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 18397.6,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 18397.6,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "RoadRunnerNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 54261.0,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 54261.0,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "RobotankNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 55.2,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 55.2,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "SeaquestNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 19176.0,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 19176.0,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "SkiingNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": -11685.8,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": -11685.8,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "SolarisNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 2860.7,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 2860.7,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "SpaceInvadersNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 12629.0,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 12629.0,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "StarGunnerNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 123853.0,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 123853.0,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "SurroundNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 7.0,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 7.0,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "TennisNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": -2.2,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": -2.2,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "TimePilotNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 11190.5,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 11190.5,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "TutankhamNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 126.9,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 126.9,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "VentureNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 45.0,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 45.0,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "VideoPinballNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 506817.2,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 506817.2,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "WizardOfWorNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 14631.5,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 14631.5,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "YarsRevengeNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 93007.9,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 93007.9,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
     "ZaxxonNoFrameskip-v4": {
-        "sampler_results/episode_reward_mean": 19658.0,
-        "timesteps_total": 200000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 19658.0,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000000,
     },
 }
 
@@ -249,14 +254,16 @@ class BenchmarkStopper(Stopper):
     def __call__(self, trial_id, result):
         # Stop training if the mean reward is reached.
         if (
-            result["sampler_results"]["episode_reward_mean"]
-            >= self.benchmark_envs[result["env"]]["sampler_results/episode_reward_mean"]
+            result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
+            >= self.benchmark_envs[result["env"]][
+                f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
+            ]
         ):
             return True
         # Otherwise check, if the total number of timesteps is exceeded.
         elif (
-            result["timesteps_total"]
-            >= self.benchmark_envs[result["env"]]["timesteps_total"]
+            result[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"]
+            >= self.benchmark_envs[result["env"]][f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"]
         ):
             return True
         # Otherwise continue training.
