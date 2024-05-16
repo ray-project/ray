@@ -16,7 +16,7 @@ args = parser.parse_args()
 
 register_env(
     "multi_agent_pendulum",
-    lambda _: MultiAgentPendulum({"num_agents": args.num_agents or 2}),
+    lambda _: MultiAgentPendulum({"num_agents": 2})#args.num_agents or 2}),
 )
 
 config = (
@@ -30,7 +30,6 @@ config = (
             "post_fcnet_activation": None,
             "post_fcnet_weights_initializer": "orthogonal_",
             "post_fcnet_weights_initializer_config": {"gain": 0.01},
-            "uses_new_env_runners": True,
         }
     )
     .api_stack(
@@ -64,10 +63,10 @@ config = (
     )
 )
 
-if args.num_agents:
-    config.multi_agent(
+if True:#args.num_agents:
+        config.multi_agent(
         policy_mapping_fn=lambda aid, *arg, **kw: f"p{aid}",
-        policies={f"p{i}" for i in range(args.num_agents)},
+        policies={"p0", "p1"},
     )
 
 stop = {
@@ -83,38 +82,13 @@ if __name__ == "__main__":
     from ray import tune, train
     import ray
 
-    import cProfile
-    import pstats
-
-    algo = config.build()
-    # Create a profiler object
-    profiler = cProfile.Profile()
-    profiler.enable()
-
-    # ray.init(local_mode=True)
-    # tuner = tune.Tuner(
-    #     "SAC",
-    #     param_space=config,
-    #     run_config=train.RunConfig(
-    #         stop=stop,
-    #     ),
-    # )
-    # tuner.fit()
-
-    for i in range(1):
-        print("------------- Training iteration: ", i)
-        results = algo.train()
-        print("Results: ", results)
-    print("Stopped training")
-    # Disable the profiler after the function execution
-    profiler.disable()
-
-    # Create Stats object
-    stats = pstats.Stats(profiler)
-
-    # Sort the statistics by the cumulative time spent in the function
-    stats.sort_stats("cumulative")
-
-    # Print out all the statistics
-    # You can limit the output to the top significant lines using 'print_stats(number_of_lines)'
-    stats.print_stats(40)  # This will print the top 10 entries
+    
+    tuner = tune.Tuner(
+        "SAC",
+        param_space=config,
+        run_config=train.RunConfig(
+            stop=stop,
+            verbose=2,
+        ),
+    )
+    tuner.fit()

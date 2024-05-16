@@ -4,7 +4,7 @@ import scipy
 
 from collections import defaultdict, deque
 from numpy.typing import NDArray
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Set, Tuple, Union
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils import force_list
@@ -85,44 +85,46 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
             weight = self._max_priority
         elif isinstance(dict, weight):
             weight_per_module = weight
-            weight = np.mean(weight.values())
+            weight = np.mean(list(weight.values()))
 
         episodes = force_list(episodes)
 
-        new_episode_ids: List[str] = []
-        for eps in episodes:
-            new_episode_ids.append(eps.id_)
-            self._num_timesteps += eps.env_steps()
-            self._num_timesteps_added += eps.env_steps()
+        new_episode_ids: List[str] = [eps.id_ for eps in episodes]
+        total_env_timesteps = sum([eps.env_steps() for eps in episodes])
+        self._num_timesteps += total_env_timesteps
+        self._num_timesteps_added += total_env_timesteps
 
         # Evict old episodes.
-        eps_evicted: List["MultiAgentEpisode"] = []
-        eps_evicted_ids: List[Union[str, int]] = []
-        eps_evicted_idxs: List[int] = []
+        eps_evicted_ids: Set[Union[str, int]] = set()
+        eps_evicted_idxs: Set[int] = set()
         while (
             self._num_timesteps > self.capacity
             and self._num_remaining_episodes(new_episode_ids, eps_evicted_ids) != 1
         ):
             # Evict episode.
             evicted_episode = self.episodes.popleft()
-            eps_evicted.append(evicted_episode)
-            eps_evicted_ids.append(evicted_episode.id_)
-            eps_evicted_idxs.append(self.episode_id_to_index.pop(evicted_episode.id_))
+            eps_evicted_ids.add(evicted_episode.id_)
+            eps_evicted_idxs.add(self.episode_id_to_index.pop(evicted_episode.id_))
             # If this episode has a new chunk in the new episodes added,
             # we subtract it again.
             # TODO (sven, simon): Should we just treat such an episode chunk
             # as a new episode?
             if evicted_episode.id_ in new_episode_ids:
-                new_eps_to_evict = episodes[new_episode_ids.index(evicted_episode.id_)]
+                idx = next(
+                    i
+                    for i, eps in enumerate(episodes)
+                    if eps.id_ == evicted_episode.id_
+                )
+                new_eps_to_evict = episodes.pop(idx)
                 self._num_timesteps -= new_eps_to_evict.env_steps()
-                self._num_timesteps_added -= new_eps_to_evict.env_steps()
-                episodes.remove(new_eps_to_evict)
+                self._num_timesteps_added -= new_eps_to_evict.env_steps()                
             # Remove the timesteps of the evicted episode from the counter.
             self._num_timesteps -= evicted_episode.env_steps()
             self._num_agent_timesteps -= evicted_episode.agent_steps()
             self._num_episodes_evicted += 1
             # Remove the module timesteps of the evicted episode from the counters.
             self._evict_module_episodes(evicted_episode)
+            del evicted_episode
 
         # Add agent and module steps.
         for eps in episodes:
@@ -178,15 +180,18 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
                             if self._module_to_max_idx[module_id] == idx_quadlet[3]
                             else 0
                         )
+                        sample_idx = self._module_to_tree_idx_to_sample_idx[module_id][idx_quadlet[3]]
                         self._module_to_sum_segment[module_id][idx_quadlet[3]] = 0.0
                         self._module_to_min_segment[module_id][idx_quadlet[3]] = float(
                             "inf"
                         )
+                        self._module_to_tree_idx_to_sample_idx[module_id].pop(sample_idx)
                     else:
                         new_module_indices.append(idx_quadlet)
                         self._module_to_tree_idx_to_sample_idx[module_id][
                             idx_quadlet[3]
                         ] = i
+                        i += 1
                 # Assign the new list of indices for the module.
                 self._module_to_indices[module_id] = new_module_indices
 
@@ -196,7 +201,7 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
             # If the episode is part of an already existing episode, concatenate.
             if eps.id_ in self.episode_id_to_index:
                 eps_idx = self.episode_id_to_index[eps.id_]
-                existing_eps = self.episodes[eps_idx]
+                existing_eps = self.episodes[eps_idx - self._num_episodes_evicted]
                 existing_len = len(existing_eps)
                 self._indices.extend(
                     [
@@ -234,7 +239,7 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
     def _add_new_module_indices(
         self,
         ma_episode: MultiAgentEpisode,
-        episode_idx: int,
+        ma_episode_idx: int,
         exists: bool = True,
         weight: Optional[Union[float, Dict[ModuleID, float]]] = None,
     ) -> None:
@@ -253,36 +258,32 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
             # Check if the module episode is already in the buffer.
             if exists:
                 old_ma_episode = self.episodes[
-                    self.episode_id_to_index[ma_episode.id_]
-                    - self._num_episodes_evicted
+                    ma_episode_idx
                 ]
                 # Is the agent episode already in the buffer?
-                sa_episode_in_buffer = agent_id in old_ma_episode.agent_episodes
+                # Note, at this point we have not yet concatenated the new 
+                # multi-agent episode.
+                existing_eps_len = len(old_ma_episode.agent_episodes[agent_id])
             else:
                 # This agent episode is new. The agent might have just entered
                 # the environment.
-                sa_episode_in_buffer = False
-            if sa_episode_in_buffer:
-                existing_eps_len = len(
-                    self.episodes[episode_idx].agent_episodes[agent_id]
-                )
-            else:
                 existing_eps_len = 0
             # Add new module indices.
             module_weight = weight.get(
                 module_id, self._module_to_max_priority[module_id]
             )
+            j = len(self._module_to_indices[module_id])
             self._module_to_indices[module_id].extend(
                 [
                     (
-                        # Keep the MAE index for sampling
-                        episode_idx,
+                        # Keep the MAE index for sampling.
+                        ma_episode_idx,
                         agent_id,
                         existing_eps_len + i,
                         # Get the index in the segment trees.
                         self._get_free_node_per_module_and_assign(
                             module_id,
-                            existing_eps_len + i,
+                            j + i,
                             module_weight,
                         ),
                     )
@@ -349,7 +350,7 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
         # Add the weight to the segments.
         # TODO (simon): Allow alpha to be chosen per module.
         self._module_to_sum_segment[module_id][idx] = weight**self._alpha
-        self._module_to_min_segment[idx] = weight**self._alpha
+        self._module_to_min_segment[module_id][idx] = weight**self._alpha
         # Map the index in the trees to the index in `self._indices`.
         self._module_to_tree_idx_to_sample_idx[module_id][idx] = sample_index
         # Return the index.
@@ -439,13 +440,14 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
         # TODO (simon): Ensure that the module has data and if not, skip it.
         #  TODO (sven): Should we then error out or skip? I think the Learner
         #  should handle this case when a module has no train data.
-        for module_id in modules_to_sample or self._module_to_indices.keys():
+        modules_to_sample = modules_to_sample or set(self._module_to_indices.keys())
+        for module_id in modules_to_sample:
             # Sample proportionally from the replay buffer's module segments using the
             # respective weights.
             module_total_segment_sum = self._module_to_sum_segment[module_id].sum()
-            module_p_min = self._min_segment.min() / module_total_segment_sum
+            module_p_min = self._module_to_min_segment[module_id].min() / module_total_segment_sum
             # TODO (simon): Allow individual betas per module.
-            module_max_weight = (module_p_min * self.get_num_timesteps()) ** (-beta)
+            module_max_weight = (module_p_min * self.get_num_timesteps(module_id)) ** (-beta)
             B = 0
             while B < batch_size_B:
                 # First, draw a random sample from Uniform(0, sum over all weights).
@@ -464,7 +466,7 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
                 )
                 # Get the theoretical probability mass for drawing this sample.
                 module_p_sample = (
-                    self._sum_segment[module_idx] / module_total_segment_sum
+                    self._module_to_sum_segment[module_id][module_idx] / module_total_segment_sum
                 )
                 # Compute the importance sampling weight.
                 module_weight = (
