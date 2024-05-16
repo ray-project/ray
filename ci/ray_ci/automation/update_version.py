@@ -1,4 +1,6 @@
 import click
+import os
+from typing import Optional
 
 from ci.ray_ci.automation.update_version_lib import (
     get_current_version,
@@ -7,12 +9,15 @@ from ci.ray_ci.automation.update_version_lib import (
 
 
 @click.command()
-@click.option("--root_dir", required=True, type=str)
 @click.option("--new_version", required=True, type=str)
-def main(root_dir: str, new_version: str):
+@click.option("--root_dir", required=False, type=str)
+def main(new_version: str, root_dir: Optional[str] = None):
     """
     Update the version in the files to the specified version.
     """
+    if not root_dir:
+        root_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
+
     main_version, java_version = get_current_version(root_dir)
 
     update_file_version(
