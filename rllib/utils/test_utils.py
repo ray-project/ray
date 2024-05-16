@@ -1355,8 +1355,8 @@ def run_rllib_example_script_experiment(
             list.
         keep_config: Set this to True, if you don't want this utility to change the
             given `base_config` in any way and leave it as-is. This is helpful
-            for example script that want to demonstrate how to set those settings
-            that are usually taken care of automatically in this function (e.g.
+            for those example scripts which demonstrate how to set config settings
+            that are taken care of automatically in this function otherwise (e.g.
             `num_env_runners`).
 
     Returns:

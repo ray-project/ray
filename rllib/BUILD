@@ -2443,18 +2443,18 @@ py_test(
 py_test(
     name = "examples/gpus/fractional_0.5_gpus_per_learner",
     main = "examples/gpus/fractional_gpus_per_learner.py",
-    tags = ["team:rllib", "exclusive", "examples", "gpu"],
+    tags = ["team:rllib", "exclusive", "examples", "multi_gpu"],
     size = "medium",
     srcs = ["examples/gpus/fractional_gpus_per_learner.py"],
     args = ["--enable-new-api-stack", --as-test", "--stop-reward=40.0", "--num-learners=1", "--num-gpus-per-learner=0.5"]
 )
 py_test(
-    name = "examples/gpus/fractional_0.3_gpus_per_learner",
+    name = "examples/gpus/fractional_0.2_gpus_per_learner",
     main = "examples/gpus/fractional_gpus_per_learner.py",
     tags = ["team:rllib", "exclusive", "examples", "gpu"],
     size = "medium",
     srcs = ["examples/gpus/fractional_gpus_per_learner.py"],
-    args = ["--enable-new-api-stack", --as-test", "--stop-reward=40.0", "--num-learners=1", "--num-gpus-per-learner=0.3"]
+    args = ["--enable-new-api-stack", --as-test", "--stop-reward=40.0", "--num-learners=1", "--num-gpus-per-learner=0.2"]
 )
 
 # subdirectory: hierarchical/
