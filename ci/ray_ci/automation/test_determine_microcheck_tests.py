@@ -5,7 +5,7 @@ from typing import List
 import pytest
 
 from ci.ray_ci.automation.determine_microcheck_tests import (
-    _get_failed_prs,
+    _get_failed_commits,
     _get_test_with_minimal_coverage,
     _get_failed_tests_from_master_branch,
     _update_high_impact_tests,
@@ -35,11 +35,11 @@ class MockTest(dict):
         DB[self["name"]] = json.dumps(self)
 
 
-def stub_test_result(status: ResultStatus, branch: str) -> TestResult:
+def stub_test_result(status: ResultStatus, branch: str, commit: str = "") -> TestResult:
     return TestResult(
         status=status.value,
         branch=branch,
-        commit="",
+        commit=commit,
         url="",
         timestamp=0,
         pull_request="",
@@ -67,21 +67,21 @@ def test_update_high_impact_tests():
     assert json.loads(DB["bad_test"])[Test.KEY_IS_HIGH_IMPACT] == "false"
 
 
-def test_get_failed_prs():
-    assert _get_failed_prs(
+def test_get_failed_commits():
+    assert _get_failed_commits(
         MockTest(
             {
                 "name": "test",
                 "test_results": [
-                    stub_test_result(ResultStatus.ERROR, "w00t"),
-                    stub_test_result(ResultStatus.ERROR, "w00t"),
-                    stub_test_result(ResultStatus.SUCCESS, "hi"),
-                    stub_test_result(ResultStatus.ERROR, "f00"),
+                    stub_test_result(ResultStatus.ERROR, "w00t", commit="1w00t2"),
+                    stub_test_result(ResultStatus.ERROR, "w00t", commit="2w00t3"),
+                    stub_test_result(ResultStatus.SUCCESS, "hi", commit="5hi7"),
+                    stub_test_result(ResultStatus.ERROR, "f00", commit="1f003"),
                 ],
             }
         ),
         1,
-    ) == {"w00t", "f00"}
+    ) == {"1w00t2", "2w00t3", "1f003"}
 
 
 def test_get_failed_tests_from_master_branch():

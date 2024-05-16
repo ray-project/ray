@@ -84,11 +84,11 @@ After all, running on Ray Clusters is what RLlib was built for.
 
 ### Running tuned examples
 
-Let's run the example next!
-After showing how to start the training run, we give you some sample output of it below.
-Note that by default, RLlib will create an indicative experiment name for you, and logs
-important metrics such as the `reward`, the `episode_reward_max`, or the
-`episode_reward_min`.
+Run the example next.
+After following the instructions for starting the training run, see some sample output below.
+Note that by default, RLlib creates an indicative experiment name for you, and logs
+important metrics such as the `return`, the `episode_return_max`, or the
+`episode_return_min`.
 
 ```{raw} html
 
@@ -100,7 +100,7 @@ important metrics such as the `reward`, the `episode_reward_max`, or the
     </span>
     <span data-ty>
     ... | Trial name                  | status  | ...
-    |   reward |   episode_reward_max |   episode_reward_min | ...
+    |   reward |   episode_return_max |   episode_return_min | ...
     </span>
     <span data-ty>
     ... | PPO_CartPole-v0_9931e_00000 | RUNNING | ...
