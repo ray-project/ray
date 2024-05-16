@@ -184,6 +184,13 @@ except ImportError:
                     learner_bundles = [
                         {"GPU": cf.num_learner_workers * cf.num_gpus_per_learner_worker}
                     ]
+                elif cf.custom_resources_per_learner_worker:
+                    learner_bundles = [
+                        {
+                            k: cf.num_learner_workers * v
+                            for k, v in cf.custom_resources_per_learner_worker.items()
+                        }
+                    ]
                 elif cf.num_cpus_per_learner_worker:
                     learner_bundles = [
                         {
@@ -200,6 +207,7 @@ except ImportError:
                             cf.num_cpus_per_learner_worker, cf.num_cpus_for_local_worker
                         ),
                         "GPU": cf.num_gpus_per_learner_worker,
+                        **cf.custom_resources_per_learner_worker,
                     }
                 ]
             return learner_bundles
@@ -2509,6 +2517,7 @@ class Algorithm(Trainable, AlgorithmBase):
             driver = {
                 "CPU": cf.num_cpus_for_local_worker,
                 "GPU": 0 if cf._fake_gpus else cf.num_gpus,
+                **cf.custom_resources,
             }
 
         # resources for remote rollout env samplers

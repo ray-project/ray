@@ -146,13 +146,22 @@ class LearnerGroup:
             #  https://github.com/ray-project/ray/issues/35409 for more details.
             num_cpus_per_worker = (
                 self.config.num_cpus_per_learner_worker
-                if not self.config.num_gpus_per_learner_worker
+                if (
+                    not self.config.num_gpus_per_learner_worker
+                    and not sum(
+                        self.config.custom_resources_per_learner_worker.values()
+                    )
+                )
                 else 0
             )
             num_gpus_per_worker = self.config.num_gpus_per_learner_worker
+            custom_resources_per_worker = (
+                self.config.custom_resources_per_learner_worker
+            )
             resources_per_worker = {
                 "CPU": num_cpus_per_worker,
                 "GPU": num_gpus_per_worker,
+                **custom_resources_per_worker,
             }
 
             backend_executor = BackendExecutor(
