@@ -8,6 +8,7 @@ Run example: python sb2rllib_rllib_example.py
 import gymnasium as gym
 from ray import tune, air
 import ray.rllib.algorithms.ppo as ppo
+from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME
 
 # settings used for both stable baselines and rllib
 env_name = "CartPole-v1"
@@ -19,7 +20,7 @@ save_dir = "saved_models"
 analysis = tune.Tuner(
     "PPO",
     run_config=air.RunConfig(
-        stop={"num_env_steps_sampled_lifetime": train_steps},
+        stop={NUM_ENV_STEPS_SAMPLED_LIFETIME: train_steps},
         local_dir=save_dir,
         checkpoint_config=air.CheckpointConfig(
             checkpoint_at_end=True,

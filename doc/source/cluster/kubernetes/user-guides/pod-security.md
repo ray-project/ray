@@ -23,7 +23,7 @@ This tutorial requires several files in the repository.
 
 ```bash
 # Path: kuberay/
-kind create cluster --config ray-operator/config/security/kind-config.yaml --image=kindest/node:v1.24.0
+kind create cluster --config ray-operator/config/security/kind-config.yaml --image=kindest/node:v1.26.0
 ```
 
 The `kind-config.yaml` enables audit logging with the audit policy defined in `audit-policy.yaml`. The `audit-policy.yaml`

@@ -4,7 +4,7 @@ appo-pongnoframeskip-v5:
     env: ALE/Pong-v5
     run: APPO
     stop:
-        sampler_results/episode_reward_mean: 18.0
+        env_runners/episode_return_mean: 18.0
         timesteps_total: 20000000
     config:
         # Run with Learner- and RLModule API (new stack).

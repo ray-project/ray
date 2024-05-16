@@ -1,4 +1,10 @@
 from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    EVALUATION_RESULTS,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
 
 
 config = (
@@ -32,6 +38,6 @@ config = (
 )
 
 stop = {
-    "num_env_steps_sampled_lifetime": 100000,
-    "evaluation_results/env_runner_results/episode_return_mean": 150.0,
+    f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 100000,
+    f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 150.0,
 }

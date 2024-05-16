@@ -36,6 +36,10 @@ def test_put_local_get(ray_start_regular):
 def test_set_error_before_read(ray_start_regular):
     @ray.remote
     class Actor:
+        def create_channel(self, writer, readers):
+            self._channel = ray_channel.Channel(writer, readers, 1000)
+            return self._channel
+
         def pass_channel(self, channel):
             self._channel = channel
 
@@ -55,8 +59,7 @@ def test_set_error_before_read(ray_start_regular):
         a = Actor.remote()
         b = Actor.remote()
 
-        chan = ray_channel.Channel([b], 1000)
-        ray.get(a.pass_channel.remote(chan))
+        chan = ray.get(a.create_channel.remote(a, [b]))
         ray.get(b.pass_channel.remote(chan))
 
         # Indirectly registers the channel for both the writer and the reader.
@@ -84,15 +87,17 @@ def test_set_error_before_read(ray_start_regular):
 def test_errors(ray_start_regular):
     @ray.remote
     class Actor:
-        def make_chan(self, do_write=True):
-            self.chan = ray_channel.Channel(None, [None], 1000)
+        def make_chan(self, readers, do_write=True):
+            self.chan = ray_channel.Channel(
+                ray.get_runtime_context().current_actor, readers, 1000
+            )
             if do_write:
                 self.chan.write(b"hello")
             return self.chan
 
     a = Actor.remote()
     # Multiple consecutive reads from the same process are fine.
-    chan = ray.get(a.make_chan.remote(do_write=True))
+    chan = ray.get(a.make_chan.remote([None], do_write=True))
     assert chan.begin_read() == b"hello"
     chan.end_read()
 
@@ -104,9 +109,9 @@ def test_errors(ray_start_regular):
         def read(self, chan):
             return chan.begin_read()
 
-    # Multiple reads from n different processes, where n > num_readers, errors.
-    chan = ray.get(a.make_chan.remote(do_write=True))
     readers = [Reader.remote(), Reader.remote()]
+    # Multiple reads from n different processes, where n > num_readers, errors.
+    chan = ray.get(a.make_chan.remote([readers[0]], do_write=True))
     # At least 1 reader
     with pytest.raises(ray.exceptions.RayTaskError) as exc_info:
         ray.get([reader.read.remote(chan) for reader in readers])

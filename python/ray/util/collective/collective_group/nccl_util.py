@@ -45,6 +45,7 @@ if torch_available():
     import torch.utils.dlpack
 
     TORCH_NCCL_DTYPE_MAP = {
+        torch.bool: nccl.NCCL_INT8,
         # INT types
         torch.int: nccl.NCCL_INT,
         torch.uint8: nccl.NCCL_UINT8,
@@ -55,6 +56,7 @@ if torch_available():
         # FLOAT types
         torch.half: nccl.NCCL_HALF,
         torch.float: nccl.NCCL_FLOAT,
+        torch.bfloat16: nccl.NCCL_BFLOAT16,
         torch.float16: nccl.NCCL_FLOAT16,
         torch.float32: nccl.NCCL_FLOAT32,
         torch.float64: nccl.NCCL_FLOAT64,

@@ -31,9 +31,18 @@ class TorchTensorType(ChannelOutputType):
     def register_custom_serializer(outer: Any) -> None:
         # Helper method to run on the DAG driver and actors to register custom
         # serializers.
+        import torch
+
         from ray.air._internal import torch_utils
 
-        default_device = torch_utils.get_devices()[0]
+        if ray.get_gpu_ids():
+            default_device = torch_utils.get_devices()[0]
+        else:
+            # torch_utils defaults to returning GPU 0 if no
+            # GPU IDs were assigned by Ray. We instead want
+            # the default to be CPU.
+            default_device = torch.device("cpu")
+
         torch_tensor_serializer = _TorchTensorSerializer(default_device)
 
         CUSTOM_SERIALIZERS = (

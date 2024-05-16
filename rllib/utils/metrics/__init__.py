@@ -1,10 +1,8 @@
 # Algorithm ResultDict keys.
-# TODO (sven): Change the actual strings into more fitting ones (e.g. `sampler_results`
-#  -> `env_runners` and `learner_stats` -> `learners`).
-EVALUATION_RESULTS = "evaluation_results"
-ENV_RUNNER_RESULTS = "env_runner_results"
-LEARNER_RESULTS = "learner_results"
-FAULT_TOLERANCE_STATS = "fault_tolerance_stats"
+EVALUATION_RESULTS = "evaluation"
+ENV_RUNNER_RESULTS = "env_runners"
+LEARNER_RESULTS = "learners"
+FAULT_TOLERANCE_STATS = "fault_tolerance"
 TIMERS = "timers"
 # ALGORITHM_RESULTS = "algorithm"
 
@@ -21,6 +19,14 @@ NUM_ENV_STEPS_SAMPLED_FOR_EVALUATION_THIS_ITER = (
 )
 NUM_MODULE_STEPS_SAMPLED = "num_module_steps_sampled"
 NUM_MODULE_STEPS_SAMPLED_LIFETIME = "num_module_steps_sampled_lifetime"
+
+EPISODE_DURATION_SEC_MEAN = "episode_duration_sec_mean"
+EPISODE_LEN_MEAN = "episode_len_mean"
+EPISODE_LEN_MAX = "episode_len_max"
+EPISODE_LEN_MIN = "episode_len_min"
+EPISODE_RETURN_MEAN = "episode_return_mean"
+EPISODE_RETURN_MAX = "episode_return_max"
+EPISODE_RETURN_MIN = "episode_return_min"
 NUM_EPISODES = "num_episodes"
 NUM_EPISODES_LIFETIME = "num_episodes_lifetime"
 
