@@ -5,8 +5,6 @@ import shutil
 import tempfile
 import unittest
 
-import pytest
-
 import ray
 from ray import tune
 from ray.train import CheckpointConfig

@@ -81,13 +81,12 @@ def test_hdfs_train_checkpointing(tmp_path, monkeypatch, setup_hdfs):
     restored_trainer = DataParallelTrainer.restore(path=storage_path + exp_name)
     result = restored_trainer.fit()
 
-    with monkeypatch.context() as m:
-        # This is so that the `resume_from_checkpoint` run doesn't mess up the
-        # assertions later for the `storage_path=None` case.
-        _resume_from_checkpoint(
-            result.checkpoint,
-            expected_state={"iter": TestConstants.NUM_ITERATIONS - 1},
-        )
+    # This is so that the `resume_from_checkpoint` run doesn't mess up the
+    # assertions later for the `storage_path=None` case.
+    _resume_from_checkpoint(
+        result.checkpoint,
+        expected_state={"iter": TestConstants.NUM_ITERATIONS - 1},
+    )
 
     local_inspect_dir, storage_fs_path = _get_local_inspect_dir(
         root_local_path=tmp_path,
