@@ -152,12 +152,12 @@ if __name__ == "__main__":
     if args.stop_timesteps:
         stop[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"] = args.stop_timesteps
     if args.stop_reward:
-        stop["episode_reward_mean"] = args.stop_reward
+        stop[f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"] = args.stop_reward
     if args.stop_time:
         stop["time_total_s"] = args.stop_time
 
     # Invalid pass criteria.
-    if stop.get("episode_reward_mean") is None and (
+    if stop.get(ENV_RUNNER_RESULTS, {}).get(EPISODE_RETURN_MEAN) is None and (
         stop.get(f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}") is None
         or stop.get("time_total_s") is None
     ):

@@ -783,32 +783,38 @@ def check_train_results(train_results: ResultDict):
 
     # Assert that some keys are where we would expect them.
     for key in [
-        "agent_timesteps_total",
         "config",
         "custom_metrics",
+        ENV_RUNNER_RESULTS,
+        "info",
+        "iterations_since_restore",
+        "num_healthy_workers",
+        "perf",
+        "time_since_restore",
+        "time_this_iter_s",
+        "timers",
+        "time_total_s",
+        TRAINING_ITERATION,
+    ]:
+        assert (
+            key in train_results
+        ), f"'{key}' not found in `train_results` ({train_results})!"
+
+    for key in [
         "episode_len_mean",
         "episode_reward_max",
         "episode_reward_mean",
         "episode_reward_min",
         "hist_stats",
-        "info",
-        "iterations_since_restore",
-        "num_healthy_workers",
-        "perf",
         "policy_reward_max",
         "policy_reward_mean",
         "policy_reward_min",
         "sampler_perf",
-        "time_since_restore",
-        "time_this_iter_s",
-        "timesteps_total",
-        "timers",
-        "time_total_s",
-        "training_iteration",
     ]:
-        assert (
-            key in train_results
-        ), f"'{key}' not found in `train_results` ({train_results})!"
+        assert key in train_results[ENV_RUNNER_RESULTS], (
+            f"'{key}' not found in `train_results[ENV_RUNNER_RESULTS]` "
+            f"({train_results[ENV_RUNNER_RESULTS]})!"
+        )
 
     # Make sure, `config` is an actual dict, not an AlgorithmConfig object.
     assert isinstance(
@@ -1192,7 +1198,7 @@ def run_learning_tests_from_yaml_or_py(
             else:
                 # Use best_result's reward to check min_reward.
                 if check_eval:
-                    episode_reward_mean = np.mean(
+                    episode_return_mean = np.mean(
                         [
                             t.metric_analysis[
                                 f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/"
@@ -1202,7 +1208,7 @@ def run_learning_tests_from_yaml_or_py(
                         ]
                     )
                 else:
-                    episode_reward_mean = np.mean(
+                    episode_return_mean = np.mean(
                         [
                             t.metric_analysis[
                                 f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
@@ -1232,7 +1238,7 @@ def run_learning_tests_from_yaml_or_py(
 
                 # Record performance.
                 stats[experiment] = {
-                    "episode_reward_mean": float(episode_reward_mean),
+                    "episode_reward_mean": float(episode_return_mean),
                     "throughput": (
                         float(throughput) if throughput is not None else 0.0
                     ),
@@ -1244,12 +1250,12 @@ def run_learning_tests_from_yaml_or_py(
                 )
 
                 # We failed to reach desired reward or the desired throughput.
-                if (desired_reward and episode_reward_mean < desired_reward) or (
+                if (desired_reward and episode_return_mean < desired_reward) or (
                     desired_throughput and throughput < desired_throughput
                 ):
                     print(
                         " ... Not successful: Actual "
-                        f"reward={episode_reward_mean}; "
+                        f"return={episode_return_mean}; "
                         f"actual throughput={throughput}"
                     )
                     checks[experiment]["failures"] += 1
@@ -1257,7 +1263,7 @@ def run_learning_tests_from_yaml_or_py(
                 else:
                     print(
                         " ... Successful: (mark ok). Actual "
-                        f"reward={episode_reward_mean}; "
+                        f"return={episode_return_mean}; "
                         f"actual throughput={throughput}"
                     )
                     checks[experiment]["passed"] = True
@@ -1639,7 +1645,10 @@ def check_reproducibilty(
             results2 = results2.get_best_result().metrics
 
             # Test rollout behavior.
-            check(results1["hist_stats"], results2["hist_stats"])
+            check(
+                results1[ENV_RUNNER_RESULTS]["hist_stats"],
+                results2[ENV_RUNNER_RESULTS]["hist_stats"],
+            )
             # As well as training behavior (minibatch sequence during SGD
             # iterations).
             # As well as training behavior (minibatch sequence during SGD
