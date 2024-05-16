@@ -539,7 +539,7 @@ class Algorithm(Trainable, AlgorithmBase):
         self.evaluation_workers: Optional[EnvRunnerGroup] = None
         # Initialize common evaluation_metrics to nan, before they become
         # available. We want to make sure the metrics are always present
-        # (although their values may be nan), so that Tune does not complain
+        # (although their values may be nan), so that Tune doesn't complain
         # when we use these as stopping criteria.
         self.evaluation_metrics = {
             "evaluation": {

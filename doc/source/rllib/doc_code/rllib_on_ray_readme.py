@@ -71,7 +71,7 @@ algo = config.build()
 # Train for n iterations and report results (mean episode rewards).
 # Since we have to move at least 19 times in the env to reach the goal and
 # each move gives us -0.1 reward (except the last move at the end: +1.0),
-# we can expect to reach an optimal episode reward of -0.1*18 + 1.0 = -0.8
+# Expect to reach an optimal episode reward of `-0.1*18 + 1.0 = -0.8`.
 for i in range(5):
     results = algo.train()
     print(f"Iter: {i}; avg. return={results['env_runners']['episode_return_mean']}")

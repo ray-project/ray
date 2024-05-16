@@ -34,7 +34,7 @@ class SelfPlayLeagueBasedCallbackOldAPIStack(DefaultCallbacks):
         _trainable_policies = self.trainable_policies
 
         # Get the win rate for the train batch.
-        # Note that normally, one should set up a proper evaluation config,
+        # Note that normally, you should set up a proper evaluation config,
         # such that evaluation always happens on the already updated policy,
         # instead of on the already used train_batch.
         for policy_id, rew in result[ENV_RUNNER_RESULTS]["hist_stats"].items():
