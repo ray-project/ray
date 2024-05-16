@@ -25,7 +25,7 @@ parser.add_argument("--seed", type=int, default=42)
 parser.add_argument("--as-test", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=2)
 parser.add_argument("--num-gpus", type=float, default=0)
-parser.add_argument("--num-gpus-per-worker", type=float, default=0)
+parser.add_argument("--num-gpus-per-env-runner", type=float, default=0)
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -44,14 +44,16 @@ if __name__ == "__main__":
             num_env_runners=1,
             num_envs_per_env_runner=2,
             rollout_fragment_length=50,
+            num_gpus_per_env_runner=args.num_gpus_per_env_runner,
         )
+        # The new Learner API.
+        .learners(
+            num_learners=int(args.num_gpus),
+            num_gpus_per_learner=int(args.num_gpus > 0),
+        )
+        # Old gpu-training API.
         .resources(
-            num_gpus_per_worker=args.num_gpus_per_worker,
-            # Old gpu-training API
             num_gpus=args.num_gpus,
-            # The new Learner API
-            num_learner_workers=int(args.num_gpus),
-            num_gpus_per_learner_worker=int(args.num_gpus > 0),
         )
         # Make sure every environment gets a fixed seed.
         .debugging(seed=args.seed)
