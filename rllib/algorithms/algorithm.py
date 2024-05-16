@@ -542,11 +542,7 @@ class Algorithm(Trainable, AlgorithmBase):
         # (although their values may be nan), so that Tune does not complain
         # when we use these as stopping criteria.
         self.evaluation_metrics = {
-            # TODO: Don't dump sampler results into top-level.
             "evaluation": {
-                EPISODE_RETURN_MAX: np.nan,
-                EPISODE_RETURN_MIN: np.nan,
-                EPISODE_RETURN_MEAN: np.nan,
                 ENV_RUNNER_RESULTS: {
                     EPISODE_RETURN_MAX: np.nan,
                     EPISODE_RETURN_MIN: np.nan,
@@ -1050,7 +1046,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 ) = self._evaluate_with_fixed_duration()
         # Can't find a good way to run this evaluation -> Wait for next iteration.
         else:
-            pass
+            eval_results = {}
 
         if self.config.enable_env_runner_and_connector_v2:
             # Lifetime eval counters.
@@ -1070,10 +1066,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 key=EVALUATION_RESULTS, return_stats_obj=False
             )
         else:
-            eval_results = dict(
-                {"sampler_results": eval_results, ENV_RUNNER_RESULTS: eval_results},
-                **eval_results,
-            )
+            eval_results = {ENV_RUNNER_RESULTS: eval_results}
             eval_results[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps
             eval_results[NUM_ENV_STEPS_SAMPLED_THIS_ITER] = env_steps
             eval_results["timesteps_this_iter"] = env_steps
@@ -3326,8 +3319,6 @@ class Algorithm(Trainable, AlgorithmBase):
                     self.evaluation_config.keep_per_episode_custom_metrics
                 ),
             )
-            # TODO: Don't dump sampler results into top-level.
-            eval_results = dict({"sampler_results": eval_results}, **eval_results)
             eval_results[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps
             eval_results[NUM_ENV_STEPS_SAMPLED_THIS_ITER] = env_steps
             # TODO: Remove this key at some point. Here for backward compatibility.
@@ -3479,13 +3470,11 @@ class Algorithm(Trainable, AlgorithmBase):
         self._episode_history = self._episode_history[
             -self.config.metrics_num_episodes_for_smoothing :
         ]
-        results["sampler_results"] = results[ENV_RUNNER_RESULTS] = summarize_episodes(
+        results[ENV_RUNNER_RESULTS] = summarize_episodes(
             episodes_for_metrics,
             episodes_this_iter,
             self.config.keep_per_episode_custom_metrics,
         )
-        # TODO: Don't dump sampler results into top-level.
-        results.update(results[ENV_RUNNER_RESULTS])
 
         results["num_healthy_workers"] = self.workers.num_healthy_remote_workers()
         results["num_in_flight_async_reqs"] = self.workers.num_in_flight_async_reqs()
