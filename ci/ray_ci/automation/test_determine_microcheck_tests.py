@@ -6,6 +6,7 @@ import pytest
 
 from ci.ray_ci.automation.determine_microcheck_tests import (
     _get_failed_commits,
+    _get_flaky_tests,
     _get_test_with_minimal_coverage,
     _get_failed_tests_from_master_branch,
     _update_high_impact_tests,
@@ -122,9 +123,51 @@ def test_get_failed_tests_from_master_branch():
     ) == {"test_01"}
 
 
+def test_get_flaky_tests():
+    good_test = MockTest(
+        {
+            "name": "good_test",
+            "test_results": [
+                stub_test_result(ResultStatus.SUCCESS, "master"),
+                stub_test_result(ResultStatus.SUCCESS, "master"),
+                stub_test_result(ResultStatus.SUCCESS, "master"),
+            ],
+        },
+    )
+    flaky_test = MockTest(
+        {
+            "name": "flaky_test",
+            "test_results": [
+                stub_test_result(ResultStatus.SUCCESS, "master"),
+                stub_test_result(ResultStatus.ERROR, "master"),
+                stub_test_result(ResultStatus.SUCCESS, "master"),
+                stub_test_result(ResultStatus.ERROR, "master"),
+                stub_test_result(ResultStatus.SUCCESS, "master"),
+                stub_test_result(ResultStatus.ERROR, "master"),
+                stub_test_result(ResultStatus.SUCCESS, "master"),
+            ],
+        },
+    )
+    bad_test = MockTest(
+        {
+            "name": "flaky_test",
+            "test_results": [
+                stub_test_result(ResultStatus.SUCCESS, "master"),
+                stub_test_result(ResultStatus.ERROR, "master"),
+                stub_test_result(ResultStatus.ERROR, "master"),
+                stub_test_result(ResultStatus.ERROR, "master"),
+                stub_test_result(ResultStatus.SUCCESS, "master"),
+                stub_test_result(ResultStatus.SUCCESS, "master"),
+                stub_test_result(ResultStatus.SUCCESS, "master"),
+            ],
+        },
+    )
+    assert _get_flaky_tests([good_test, flaky_test, bad_test], 2) == {"flaky_test"}
+
+
 def test_get_test_with_minimal_coverage():
     # empty cases
-    assert _get_test_with_minimal_coverage({}, 50) == set()
+    assert _get_test_with_minimal_coverage({}, {}, 50) == set()
 
     # normal cases
     test_to_prs = {
@@ -133,11 +176,15 @@ def test_get_test_with_minimal_coverage():
         "test3": {"c"},
         "test4": {"d"},
     }
-    assert _get_test_with_minimal_coverage(test_to_prs, 0) == set()
-    assert _get_test_with_minimal_coverage(test_to_prs, 50) == {"test2"}
-    assert _get_test_with_minimal_coverage(test_to_prs, 75) == {
-        "test2",
+    assert _get_test_with_minimal_coverage(test_to_prs, {"test2"}, 0) == set()
+    assert _get_test_with_minimal_coverage(test_to_prs, {"test2"}, 50) == {
+        "test1",
         "test3",
+    }
+    assert _get_test_with_minimal_coverage(test_to_prs, {"test2"}, 75) == {
+        "test1",
+        "test3",
+        "test4",
     }
 
     # one beat all cases
@@ -146,8 +193,8 @@ def test_get_test_with_minimal_coverage():
         "test2": {"a", "b"},
         "test3": {"a", "b", "c"},
     }
-    assert _get_test_with_minimal_coverage(test_to_prs, 50) == {"test3"}
-    assert _get_test_with_minimal_coverage(test_to_prs, 75) == {"test3"}
+    assert _get_test_with_minimal_coverage(test_to_prs, {}, 50) == {"test3"}
+    assert _get_test_with_minimal_coverage(test_to_prs, {}, 75) == {"test3"}
 
     # equal distribution cases
     test_to_prs = {
@@ -155,8 +202,20 @@ def test_get_test_with_minimal_coverage():
         "test2": {"b"},
         "test3": {"c"},
     }
-    assert _get_test_with_minimal_coverage(test_to_prs, 100) == {
+    assert _get_test_with_minimal_coverage(test_to_prs, {}, 100) == {
         "test1",
+        "test2",
+        "test3",
+    }
+
+    # one beat all but flaky test cases
+    test_to_prs = {
+        "test1": {"a"},
+        "test2": {"a", "b"},
+        "test3": {"a", "b", "c"},
+    }
+    assert _get_test_with_minimal_coverage(test_to_prs, {"test3"}, 50) == {"test2"}
+    assert _get_test_with_minimal_coverage(test_to_prs, {"test3"}, 75) == {
         "test2",
         "test3",
     }
