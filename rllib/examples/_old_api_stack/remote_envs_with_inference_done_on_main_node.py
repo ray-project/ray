@@ -146,7 +146,7 @@ if __name__ == "__main__":
             num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")),
             # Set the number of CPUs used by the (local) worker, aka "driver"
             # to match the number of Ray remote envs.
-            num_cpus_for_local_worker=args.num_envs_per_worker + 1,
+            num_cpus_for_main_process=args.num_envs_per_worker + 1,
         )
     )
 

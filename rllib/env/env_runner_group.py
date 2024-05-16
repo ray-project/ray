@@ -127,10 +127,10 @@ class EnvRunnerGroup:
         self._policy_class = default_policy_class
         self._remote_config = config
         self._remote_args = {
-            "num_cpus": self._remote_config.num_cpus_per_worker,
-            "num_gpus": self._remote_config.num_gpus_per_worker,
-            "resources": self._remote_config.custom_resources_per_worker,
-            "max_restarts": config.max_num_worker_restarts,
+            "num_cpus": self._remote_config.num_cpus_per_env_runner,
+            "num_gpus": self._remote_config.num_gpus_per_env_runner,
+            "resources": self._remote_config.custom_resources_per_env_runner,
+            "max_restarts": config.max_num_env_runner_restarts,
         }
 
         # Set the EnvRunner subclass to be used as "workers". Default: RolloutWorker.
