@@ -11,7 +11,7 @@ args = parser.parse_args()
 
 register_env(
     "multi_agent_pendulum",
-    lambda _: MultiAgentPendulum({"num_agents": args.num_agents or 1}),
+    lambda _: MultiAgentPendulum({"num_agents": args.num_agents or 2}),
 )
 
 config = (
@@ -54,6 +54,7 @@ config = (
         metrics_num_episodes_for_smoothing=5,
         min_sample_timesteps_per_iteration=1000,
     )
+    # TODO (simon): If using only a single agent this leads to errors.
     .multi_agent(
         policy_mapping_fn=lambda aid, *arg, **kw: f"p{aid}",
         policies={"p0", "p1"},
@@ -67,6 +68,19 @@ stop = {
 }
 
 if __name__ == "__main__":
-    from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
+    # from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
 
-    run_rllib_example_script_experiment(config, args, stop=stop)
+    # run_rllib_example_script_experiment(config, args, stop=stop)
+
+    from ray import train, tune
+    import ray
+
+    ray.init(local_mode=True)
+    tuner = tune.Tuner(
+        "SAC",
+        param_space=config,
+        run_config=train.RunConfig(
+            stop=stop,
+        ),
+    )
+    tuner.fit()
