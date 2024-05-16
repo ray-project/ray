@@ -1296,6 +1296,7 @@ def run_rllib_example_script_experiment(
     success_metric: Optional[Dict] = None,
     trainable: Optional[Type] = None,
     tune_callbacks: Optional[List] = None,
+    keep_config: bool = False,
 ) -> Union[ResultDict, tune.result_grid.ResultGrid]:
     """Given an algorithm config and some command line args, runs an experiment.
 
@@ -1346,6 +1347,11 @@ def run_rllib_example_script_experiment(
         tune_callbacks: A list of Tune callbacks to configure with the tune.Tuner.
             In case `args.wandb_key` is provided, will append a WandB logger to this
             list.
+        keep_config: Set this to True, if you don't want this utility to change the
+            given `base_config` in any way and leave it as-is. This is helpful
+            for example script that want to demonstrate how to set those settings
+            that are usually taken care of automatically in this function (e.g.
+            `num_env_runners`).
 
     Returns:
         The last ResultDict from a --no-tune run OR the tune.Tuner.fit()
@@ -1363,26 +1369,33 @@ def run_rllib_example_script_experiment(
         }
 
     # Enhance the `base_config`, based on provided `args`.
-    config = (
-        # Set the framework.
-        base_config.framework(args.framework)
-        # Enable the new API stack?
-        .api_stack(
-            enable_rl_module_and_learner=args.enable_new_api_stack,
-            enable_env_runner_and_connector_v2=args.enable_new_api_stack,
-        )
-        # Define EnvRunner/RolloutWorker scaling and behavior.
-        .env_runners(num_env_runners=args.num_env_runners)
-        # Define compute resources used.
-        .resources(
+    if keep_config:
+        config = base_config
+    else:
+        config = (
+            # Set the framework.
+            base_config.framework(args.framework)
+            # Enable the new API stack?
+            .api_stack(
+                enable_rl_module_and_learner=args.enable_new_api_stack,
+                enable_env_runner_and_connector_v2=args.enable_new_api_stack,
+            )
+            # Define EnvRunner/RolloutWorker scaling and behavior.
+            .env_runners(num_env_runners=args.num_env_runners)
+            # Define Learner scaling and behavior.
+            .learners(
+                num_learners=getattr(args, "num_learners", args.num_gpus),
+                num_gpus_per_learner=getattr(
+                    args,
+                    "num_gpus_per_learner",
+                    1 if torch.cuda.is_available() else 0,
+                ),
+            )
             # Old stack.
-            num_gpus=0 if args.enable_new_api_stack else args.num_gpus,
-            # New stack.
-            num_learner_workers=args.num_gpus,
-            num_gpus_per_learner_worker=1 if torch.cuda.is_available() else 0,
-            num_cpus_for_local_worker=1,
+            .resources(
+                num_gpus=0 if args.enable_new_api_stack else args.num_gpus,
+            )
         )
-    )
 
     # Run the experiment w/o Tune (directly operate on the RLlib Algorithm object).
     if args.no_tune:
