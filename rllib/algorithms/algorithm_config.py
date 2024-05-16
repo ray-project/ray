@@ -406,6 +406,7 @@ class AlgorithmConfig(_Config):
         self.exploration_config = {}
 
         # `self.multi_agent()`
+        self._enable_multi_agent = "auto"
         # Module ID specific config overrides.
         self.algorithm_config_overrides_per_module = {}
         # Cached, actual AlgorithmConfig objects derived from
@@ -421,10 +422,10 @@ class AlgorithmConfig(_Config):
         # Soon to be Deprecated.
         self.policies = {DEFAULT_POLICY_ID: PolicySpec()}
         self.policy_map_capacity = 100
-        self.policy_mapping_fn = self.DEFAULT_POLICY_MAPPING_FN
         self.policies_to_train = None
         self.policy_states_are_swappable = False
         self.observation_fn = None
+        self._policy_mapping_fn = "auto"
 
         # `self.offline_data()`
         self.input_ = "sampler"
@@ -1405,8 +1406,8 @@ class AlgorithmConfig(_Config):
 
     def api_stack(
         self,
-        enable_rl_module_and_learner: Optional[str] = NotProvided,
-        enable_env_runner_and_connector_v2: Optional[str] = NotProvided,
+        enable_rl_module_and_learner: Optional[bool] = NotProvided,
+        enable_env_runner_and_connector_v2: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's API stack settings.
 
@@ -2382,7 +2383,8 @@ class AlgorithmConfig(_Config):
     def multi_agent(
         self,
         *,
-        policies=NotProvided,
+        enable_multi_agent: Optional[Union[bool, str]] = NotProvided,
+        policies: Optional[Dict] = NotProvided,
         algorithm_config_overrides_per_module: Optional[
             Dict[ModuleID, PartialAlgorithmConfigDict]
         ] = NotProvided,
@@ -2409,6 +2411,17 @@ class AlgorithmConfig(_Config):
         of IDs is properly converted into a dict mapping these IDs to PolicySpecs.
 
         Args:
+            enable_multi_agent: Whether multi-agent mode should be manually enabled
+                (True) or disabled (False). If the user does not touch this setting
+                or sets it manually to "auto", RLlib will try to automatically infer
+                whether the configured algo is in multi- or single-agent mode.
+                There are some situations, in which such an auto-check will falsely
+                infer single-agent mode, for example if your `MultiAgentEnv` is
+                registered through `tune.register_env` (meaning RLlib does not see,
+                which exact class you are using as env) AND you only use the
+                `DEFAULT_MODULE_ID` in your RLModule (meaning RLlib does not see any
+                indication of a multi-agent setup). In such cases, you should simply set
+                this flag to True manually.
             policies: Map of type MultiAgentPolicyConfigDict from policy ids to either
                 4-tuples of (policy_cls, obs_space, act_space, config) or PolicySpecs.
                 These tuples or PolicySpecs define the class of the policy, the
@@ -2464,6 +2477,14 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
+        if enable_multi_agent != NotProvided:
+            if enable_multi_agent not in ["auto", True, False]:
+                raise ValueError(
+                    "`enable_multi_agent` must be one of [True, False, 'auto'], "
+                    f"but is {enable_multi_agent}!"
+                )
+            self._enable_multi_agent = enable_multi_agent
+
         if policies is not NotProvided:
             # Make sure our Policy IDs are ok (this should work whether `policies`
             # is a dict or just any Sequence).
@@ -2513,7 +2534,7 @@ class AlgorithmConfig(_Config):
             # yaml files.
             if isinstance(policy_mapping_fn, dict):
                 policy_mapping_fn = from_config(policy_mapping_fn)
-            self.policy_mapping_fn = policy_mapping_fn
+            self._policy_mapping_fn = policy_mapping_fn
 
         if observation_fn is not NotProvided:
             self.observation_fn = observation_fn
@@ -2573,7 +2594,12 @@ class AlgorithmConfig(_Config):
             True, if a) >1 policies defined OR b) 1 policy defined, but its ID is NOT
             DEFAULT_POLICY_ID.
         """
-        return len(self.policies) > 1 or DEFAULT_POLICY_ID not in self.policies
+        # User manually provided multi-agent or single-agent mode.
+        if self._enable_multi_agent != "auto":
+            return self._enable_multi_agent
+        # Try to infer multi-agent/single-agent mode automatically.
+        else:
+            return len(self.policies) > 1 or DEFAULT_POLICY_ID not in self.policies
 
     def reporting(
         self,
@@ -3034,6 +3060,19 @@ class AlgorithmConfig(_Config):
             return self.train_batch_size_per_learner * (self.num_learner_workers or 1)
         else:
             return self.train_batch_size
+
+    @property
+    def policy_mapping_fn(self):
+        if self._policy_mapping_fn != "auto":
+            return self._policy_mapping_fn
+        elif self.enable_env_runner_and_connector_v2:
+            return self.DEFAULT_AGENT_TO_MODULE_MAPPING_FN
+        else:
+            return self.DEFAULT_POLICY_MAPPING_FN
+
+    @policy_mapping_fn.setter
+    def policy_mapping_fn(self, value):
+        self._policy_mapping_fn = value
 
     # TODO: Make rollout_fragment_length as read-only property and replace the current
     #  self.rollout_fragment_length a private variable.
