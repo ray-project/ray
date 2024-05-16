@@ -17,12 +17,14 @@ LINUX_TEST_PREFIX = "linux:__"
 @click.option("--test-history-length", default=500, type=int)
 @click.option("--test-prefix", default=LINUX_TEST_PREFIX, type=str)
 @click.option("--production", is_flag=True, default=False)
+@click.option("--consider-master-branch", is_flag=True, default=False)
 def main(
     team: str,
     coverage: int,
     test_history_length: int,
     test_prefix: str,
     production: bool,
+    consider_master_branch: bool,
 ) -> None:
     """
     This script determines the tests that need to be run to cover a certain percentage
@@ -40,6 +42,10 @@ def main(
         test.get_name(): _get_failed_prs(test, test_history_length) for test in tests
     }
     high_impact_tests = _get_test_with_minimal_coverage(test_to_prs, coverage)
+    if consider_master_branch:
+        high_impact_tests = high_impact_tests.union(
+            _get_failed_tests_from_master_branch(tests, test_history_length)
+        )
     if production:
         _update_high_impact_tests(tests, high_impact_tests)
 
@@ -58,6 +64,38 @@ def _update_high_impact_tests(tests: List[Test], high_impact_tests: Set[str]) ->
             f"Mark test {test_name} as high impact: {test[Test.KEY_IS_HIGH_IMPACT]}"
         )
         test.persist_to_s3()
+
+
+def _get_failed_tests_from_master_branch(
+    tests: List[Test], test_history_length: int
+) -> Set[str]:
+    """
+    Get the tests that failed on the master branch
+    """
+    failed_tests = set()
+    for test in tests:
+        results = [
+            result
+            for result in test.get_test_results(
+                limit=test_history_length,
+                aws_bucket=get_global_config()["state_machine_branch_aws_bucket"],
+                use_async=True,
+                refresh=True,
+            )
+            if result.branch == "master"
+        ]
+        consecutive_failures = 0
+        # If a test fails 2 times in a row, we consider it as a failed test
+        for result in results:
+            if result.status == ResultStatus.ERROR.value:
+                consecutive_failures += 1
+            else:
+                consecutive_failures = 0
+            if consecutive_failures == 2:
+                failed_tests.add(test.get_name())
+                break
+
+    return failed_tests
 
 
 def _get_test_with_minimal_coverage(
@@ -117,6 +155,7 @@ def _get_failed_prs(test: Test, test_history_length: int) -> Set[str]:
             limit=test_history_length,
             aws_bucket=get_global_config()["state_machine_pr_aws_bucket"],
             use_async=True,
+            refresh=True,
         )
         if result.status == ResultStatus.ERROR.value
     ]
