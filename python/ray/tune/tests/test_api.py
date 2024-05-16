@@ -876,8 +876,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testAllValuesReceived(self):
         results1 = [
-            dict(timesteps_total=(i + 1), my_score=i**2, done=i == 4)
-            for i in range(5)
+            dict(timesteps_total=(i + 1), my_score=i**2, done=i == 4) for i in range(5)
         ]
 
         logs1, _ = self.checkAndReturnConsistentLogs(results1)
@@ -1857,7 +1856,7 @@ def test_local_dir_deprecation(ray_start_2_cpus, tmp_path, monkeypatch):
 
     monkeypatch.setenv("TUNE_RESULT_DIR", str(tmp_path))
     with pytest.raises(DeprecationWarning):
-        ray.tune.Tuner(lambda _: None)
+        ray.tune.Tuner(lambda _: None).fit()
     monkeypatch.delenv("TUNE_RESULT_DIR")
 
     with pytest.raises(DeprecationWarning):

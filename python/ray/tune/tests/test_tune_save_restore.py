@@ -38,10 +38,6 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
                 extra_data = pickle.load(f)
             self.state.update(extra_data)
 
-    @pytest.fixture(autouse=True)
-    def setLocalDir(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path / "ray_results"))
-
     def setUp(self):
         self.absolute_local_dir = None
         ray.init(num_cpus=1, num_gpus=0, local_mode=self.local_mode)
