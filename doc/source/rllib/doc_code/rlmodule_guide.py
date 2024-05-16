@@ -176,47 +176,6 @@ class DiscreteBCTorchModule(TorchRLModule):
 # __write-custom-sa-rlmodule-torch-end__
 
 
-# __write-custom-sa-rlmodule-tf-begin__
-from typing import Mapping, Any
-from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
-from ray.rllib.core.rl_module.rl_module import RLModuleConfig
-from ray.rllib.utils.nested_dict import NestedDict
-
-import tensorflow as tf
-
-
-class DiscreteBCTfModule(TfRLModule):
-    def __init__(self, config: RLModuleConfig) -> None:
-        super().__init__(config)
-
-    def setup(self):
-        input_dim = self.config.observation_space.shape[0]
-        hidden_dim = self.config.model_config_dict["fcnet_hiddens"][0]
-        output_dim = self.config.action_space.n
-
-        self.policy = tf.keras.Sequential(
-            [
-                tf.keras.layers.Dense(hidden_dim, activation="relu"),
-                tf.keras.layers.Dense(output_dim),
-            ]
-        )
-
-        self.input_dim = input_dim
-
-    def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
-        return self._forward_train(batch)
-
-    def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
-        return self._forward_train(batch)
-
-    def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
-        action_logits = self.policy(batch["obs"])
-        return {"action_dist": tf.distributions.Categorical(logits=action_logits)}
-
-
-# __write-custom-sa-rlmodule-tf-end__
-
-
 # __extend-spec-checking-single-level-begin__
 class DiscreteBCTorchModule(TorchRLModule):
     ...
