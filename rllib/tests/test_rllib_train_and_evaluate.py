@@ -115,7 +115,7 @@ def learn_test_plus_evaluate(algo: str, env="CartPole-v1"):
             + eval_
             + fw_
             + '}" '
-            + '--stop="{\\"env_runner/episode_return_mean\\": 100.0}"'
+            + '--stop="{\\"env_runners/episode_return_mean\\": 100.0}"'
             + " --env={}".format(env)
         )
 

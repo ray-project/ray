@@ -24,6 +24,7 @@ from ray.rllib.env import BaseEnv
 from ray.rllib.evaluation import Episode, RolloutWorker
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -206,7 +207,7 @@ if __name__ == "__main__":
     result = tuner.fit().get_best_result()
 
     # Verify episode-related custom metrics are there.
-    custom_metrics = result.metrics["custom_metrics"]
+    custom_metrics = result.metrics[ENV_RUNNER_RESULTS]["custom_metrics"]
     print(custom_metrics)
     assert "pole_angle_mean" in custom_metrics
     assert "pole_angle_var" in custom_metrics

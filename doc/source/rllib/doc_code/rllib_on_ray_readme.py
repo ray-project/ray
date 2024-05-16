@@ -74,7 +74,7 @@ algo = config.build()
 # we can expect to reach an optimal episode reward of -0.1*18 + 1.0 = -0.8
 for i in range(5):
     results = algo.train()
-    print(f"Iter: {i}; avg. return={results['env_runenrs']['episode_return_mean']}")
+    print(f"Iter: {i}; avg. return={results['env_runners']['episode_return_mean']}")
 
 # Perform inference (action computations) based on given env observations.
 # Note that we are using a slightly different env here (len 10 instead of 20),
