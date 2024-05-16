@@ -14,6 +14,8 @@
 
 #include "ray/core_worker/experimental_mutable_object_provider.h"
 
+#include <fstream>
+
 #include "absl/strings/str_format.h"
 
 namespace ray {
@@ -72,22 +74,20 @@ void MutableObjectProvider::HandleRegisterMutableObject(
     const ObjectID &writer_object_id,
     int64_t num_readers,
     const ObjectID &reader_object_id) {
+  std::ofstream f;
+  f.open("/tmp/blah", std::ofstream::app);
+  f << "HandleRegisterMutableObject, writer_object_id " << writer_object_id
+    << ", reader_object_id " << reader_object_id << std::endl;
   absl::MutexLock guard(&remote_writer_object_to_local_reader_lock_);
 
-  if (remote_writer_object_to_local_reader_.count(writer_object_id)) {
-    // Channel already exists.
-    remote_writer_object_to_local_reader_[writer_object_id].num_readers += num_readers;
-  } else {
-    // Channel does not exist.
-    LocalReaderInfo info;
-    info.num_readers = num_readers;
-    info.local_object_id = reader_object_id;
-    bool success =
-        remote_writer_object_to_local_reader_.insert({writer_object_id, info}).second;
-    RAY_CHECK(success);
+  LocalReaderInfo info;
+  info.num_readers = num_readers;
+  info.local_object_id = reader_object_id;
+  bool success =
+      remote_writer_object_to_local_reader_.insert({writer_object_id, info}).second;
+  RAY_CHECK(success);
 
-    RegisterReaderChannel(reader_object_id);
-  }
+  RegisterReaderChannel(reader_object_id);
 }
 
 void MutableObjectProvider::HandlePushMutableObject(
@@ -96,8 +96,11 @@ void MutableObjectProvider::HandlePushMutableObject(
   {
     const ObjectID writer_object_id = ObjectID::FromBinary(request.writer_object_id());
     absl::MutexLock guard(&remote_writer_object_to_local_reader_lock_);
+    RAY_LOG(WARNING) << "HandlePushMutableObject A";
     auto it = remote_writer_object_to_local_reader_.find(writer_object_id);
+    RAY_LOG(WARNING) << "HandlePushMutableObject B";
     RAY_CHECK(it != remote_writer_object_to_local_reader_.end());
+    RAY_LOG(WARNING) << "HandlePushMutableObject C";
     info = it->second;
   }
   size_t data_size = request.data_size();
