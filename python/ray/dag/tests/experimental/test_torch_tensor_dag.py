@@ -3,6 +3,7 @@ import logging
 import os
 import sys
 import torch
+import time
 
 import pytest
 
@@ -251,40 +252,6 @@ def test_torch_tensor_nccl_dynamic(ray_start_regular):
     compiled_dag.teardown()
 
 
-def test_torch_tensor_nccl_wrong_shape(ray_start_regular):
-    if not USE_GPU:
-        pytest.skip("NCCL tests require GPUs")
-
-    assert (
-        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
-    ), "This test requires at least 2 GPUs"
-
-    actor_cls = TorchTensorWorker.options(num_gpus=1)
-
-    sender = actor_cls.remote()
-    receiver = actor_cls.remote()
-
-    shape = (10,)
-    dtype = torch.float16
-
-    # Passing tensors of the wrong shape will error.
-    with InputNode() as inp:
-        dag = sender.send.bind(shape, dtype, inp)
-        dag = dag.with_type_hint(TorchTensorType((20,), dtype, transport="nccl"))
-        dag = receiver.recv.bind(dag)
-
-    compiled_dag = dag.experimental_compile()
-
-    output_channel = compiled_dag.execute(1)
-    with pytest.raises(OSError):
-        output_channel.begin_read()
-
-    compiled_dag.teardown()
-
-    ray.kill(sender)
-    ray.kill(receiver)
-
-
 def test_torch_tensor_nccl_nested(ray_start_regular):
     """
     Test nested torch.Tensor passed via NCCL. Its shape and dtype is statically
@@ -369,6 +336,40 @@ def test_torch_tensor_nccl_nested_dynamic(ray_start_regular):
         output_channel.end_read()
 
     compiled_dag.teardown()
+
+
+def test_torch_tensor_nccl_wrong_shape(ray_start_regular):
+    if not USE_GPU:
+        pytest.skip("NCCL tests require GPUs")
+
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
+    ), "This test requires at least 2 GPUs"
+
+    actor_cls = TorchTensorWorker.options(num_gpus=1)
+
+    sender = actor_cls.remote()
+    receiver = actor_cls.remote()
+
+    shape = (10,)
+    dtype = torch.float16
+
+    # Passing tensors of the wrong shape will error.
+    with InputNode() as inp:
+        dag = sender.send.bind(shape, dtype, inp)
+        dag = dag.with_type_hint(TorchTensorType((20,), dtype, transport="nccl"))
+        dag = receiver.recv.bind(dag)
+
+    compiled_dag = dag.experimental_compile()
+
+    output_channel = compiled_dag.execute(1)
+    with pytest.raises(OSError):
+        output_channel.begin_read()
+
+    compiled_dag.teardown()
+
+    # TODO(swang): This test causes a segfault without this sleep statement.
+    time.sleep(3)
 
 
 if __name__ == "__main__":
