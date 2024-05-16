@@ -1228,7 +1228,7 @@ class AlgorithmConfig(_Config):
         num_cpus_per_learner_worker=DEPRECATED_VALUE,  # moved to `learners`
         num_gpus_per_learner_worker=DEPRECATED_VALUE,  # moved to `learners`
         local_gpu_idx=DEPRECATED_VALUE,  # moved to `learners`
-        num_cpus_for_local_worker = DEPRECATED_VALUE,
+        num_cpus_for_local_worker=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Specifies resources allocated for an Algorithm and its ray actors/workers.
 
@@ -2432,7 +2432,7 @@ class AlgorithmConfig(_Config):
                 raise ValueError(
                     msg.format(
                         "num_cpus_per_read_task",
-                        "config.resources(num_cpus_per_worker=..)",
+                        "config.env_runners(num_cpus_per_env_runner=..)",
                     )
                 )
             if input_config.get("parallelism") is not None:
@@ -4013,16 +4013,13 @@ class AlgorithmConfig(_Config):
         # TODO @Avnishn: This is a short-term work around due to
         #  https://github.com/ray-project/ray/issues/35409
         #  Remove this once we are able to specify placement group bundle index in RLlib
-        if (
-            self.num_cpus_per_learner_worker > 1
-            and self.num_gpus_per_learner > 0
-        ):
+        if self.num_cpus_per_learner > 1 and self.num_gpus_per_learner > 0:
             raise ValueError(
-                "Cannot set both `num_cpus_per_learner_worker` > 1 and "
+                "Cannot set both `num_cpus_per_learner` > 1 and "
                 " `num_gpus_per_learner` > 0! Either set "
-                "`num_cpus_per_learner_worker` > 1 (and `num_gpus_per_learner`"
+                "`num_cpus_per_learner` > 1 (and `num_gpus_per_learner`"
                 "=0) OR set `num_gpus_per_learner` > 0 (and leave "
-                "`num_cpus_per_learner_worker` at its default value of 1). "
+                "`num_cpus_per_learner` at its default value of 1). "
                 "This is due to issues with placement group fragmentation. See "
                 "https://github.com/ray-project/ray/issues/35409 for more details."
             )
@@ -4030,8 +4027,8 @@ class AlgorithmConfig(_Config):
         # Make sure the resource requirements for learner_group is valid.
         if self.num_learners == 0 and self.num_gpus_per_env_runner > 1:
             raise ValueError(
-                "num_gpus_per_worker must be 0 (cpu) or 1 (gpu) when using local mode "
-                "(i.e. num_learners = 0)"
+                "num_gpus_per_env_runner must be 0 (cpu) or 1 (gpu) when using local "
+                "mode (i.e. `num_learners=0`)"
             )
 
     def _validate_multi_agent_settings(self):
@@ -4138,12 +4135,12 @@ class AlgorithmConfig(_Config):
         if self.input_ == "dataset":
             # If we need to read a ray dataset set the parallelism and
             # num_cpus_per_read_task from rollout worker settings
-            self.input_config["num_cpus_per_read_task"] = self.num_cpus_per_worker
+            self.input_config["num_cpus_per_read_task"] = self.num_cpus_per_env_runner
             if self.in_evaluation:
                 # If using dataset for evaluation, the parallelism gets set to
                 # evaluation_num_env_runners for backward compatibility and num_cpus
-                # gets set to num_cpus_per_worker from rollout worker. User only needs
-                # to set evaluation_num_env_runners.
+                # gets set to num_cpus_per_env_runner from rollout worker. User only
+                # needs to set evaluation_num_env_runners.
                 self.input_config["parallelism"] = self.evaluation_num_env_runners or 1
             else:
                 # If using dataset for training, the parallelism and num_cpus gets set
@@ -4439,7 +4436,7 @@ class AlgorithmConfig(_Config):
         elif key == "lambda":
             key = "lambda_"
         elif key == "num_cpus_for_driver":
-            key = "num_cpus_for_local_worker"
+            key = "num_cpus_for_main_process"
         elif key == "num_workers":
             key = "num_env_runners"
 

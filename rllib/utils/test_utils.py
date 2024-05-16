@@ -217,7 +217,7 @@ def add_rllib_example_script_args(
 
     # Learner scaling options.
     # Old API stack: config.num_gpus.
-    # New API stack: config.num_learner_workers (w/ num_gpus_per_learner_worker=1).
+    # New API stack: config.num_learner_workers (w/ num_gpus_per_learner=1).
     parser.add_argument("--num-gpus", type=int, default=0)
 
     # Ray init options.
@@ -1374,13 +1374,15 @@ def run_rllib_example_script_experiment(
         # Define EnvRunner/RolloutWorker scaling and behavior.
         .env_runners(num_env_runners=args.num_env_runners)
         # Define compute resources used.
+        # New stack.
+        .learners(
+            num_learners=args.num_gpus,
+            num_gpus_per_learner=1 if torch.cuda.is_available() else 0,
+        )
+        # Old stack.
         .resources(
-            # Old stack.
             num_gpus=0 if args.enable_new_api_stack else args.num_gpus,
-            # New stack.
-            num_learner_workers=args.num_gpus,
-            num_gpus_per_learner_worker=1 if torch.cuda.is_available() else 0,
-            num_cpus_for_local_worker=1,
+            num_cpus_for_main_process=1,
         )
     )
 
@@ -1601,14 +1603,17 @@ def check_reproducibilty(
     # type in ci build has enough resources)
     for num_workers in [0, 2]:
         algo_config = (
-            algo_config.debugging(seed=42)
-            .resources(
-                # old API
-                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-                # new API
-                num_gpus_per_learner_worker=int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+            algo_config.debugging(seed=42).env_runners(
+                num_env_runners=num_workers, num_envs_per_env_runner=2
             )
-            .env_runners(num_env_runners=num_workers, num_envs_per_env_runner=2)
+            # new API
+            .learners(
+                num_gpus_per_learner=int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+            )
+            # old API
+            .resources(
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+            )
         )
 
         for fw in framework_iterator(algo_config, **fw_kwargs):
