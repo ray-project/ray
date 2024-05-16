@@ -29,7 +29,7 @@ analysis = tune.Tuner(
     param_space={"env": env_name, "lr": learning_rate},
 ).fit()
 # retrieve the checkpoint path
-analysis.default_metric = "episode_reward_mean"
+analysis.default_metric = "episode_return_mean"
 analysis.default_mode = "max"
 checkpoint_path = analysis.get_best_checkpoint(trial=analysis.get_best_trial())
 print(f"Trained model saved at {checkpoint_path}")

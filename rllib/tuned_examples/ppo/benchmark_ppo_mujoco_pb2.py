@@ -38,7 +38,7 @@ benchmark_envs = {
 
 pb2_scheduler = PB2(
     time_attr=f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}",
-    metric="episode_reward_mean",
+    metric="env_runners/episode_return_mean",
     mode="max",
     perturbation_interval=50000,
     # Copy bottom % with top % weights.
