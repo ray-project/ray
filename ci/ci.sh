@@ -29,29 +29,6 @@ suppress_xtrace() {
   { return "${status}"; } 2> /dev/null
 }
 
-# If provided the names of one or more environment variables, returns 0 if any of them is triggered.
-# Usage: should_run_job [VAR_NAME]...
-should_run_job() {
-  local skip=0
-  if [ -n "${1-}" ]; then  # were any triggers provided? (if not, then the job will always run)
-    local envvar active_triggers=()
-    for envvar in "$@"; do
-      if [ "${!envvar}" = 1 ]; then
-        # success! we found at least one of the given triggers is occurring
-        active_triggers+=("${envvar}=${!envvar}")
-      fi
-    done
-    if [ 0 -eq "${#active_triggers[@]}" ]; then
-      echo "Job is not triggered by any of $1; skipping job."
-      sleep 15  # make sure output is flushed
-      skip=1
-    else
-      echo "Job is triggered by: ${active_triggers[*]}"
-    fi
-  fi
-  return "${skip}"
-}
-
 # Idempotent environment loading
 reload_env() {
   # Try to only modify CI-specific environment variables here (TRAVIS_... or GITHUB_...),
@@ -542,47 +519,6 @@ build_wheels_and_jars() {
   esac
 }
 
-_check_job_triggers() {
-  local job_names
-  job_names="$1"
-
-  local variable_definitions
-  if command -v python3; then
-    # shellcheck disable=SC2031
-    variable_definitions=($(python3 "${ROOT_DIR}"/pipeline/determine_tests_to_run.py))
-  else
-    # shellcheck disable=SC2031
-    variable_definitions=($(python "${ROOT_DIR}"/pipeline/determine_tests_to_run.py))
-  fi
-  if [ 0 -lt "${#variable_definitions[@]}" ]; then
-    local expression restore_shell_state=""
-    if [ -o xtrace ]; then set +x; restore_shell_state="set -x;"; fi  # Disable set -x (noisy here)
-    {
-      expression="$(printf "%q " "${variable_definitions[@]}")"
-      printf "%s\n" "${expression}" >> ~/.bashrc
-    }
-    eval "${restore_shell_state}" "${expression}"  # Restore set -x, then evaluate expression
-  fi
-
-  # shellcheck disable=SC2086
-  if ! (set +x && should_run_job ${job_names//,/ }); then
-    if [ "${GITHUB_ACTIONS-}" = true ]; then
-      # If this job is to be skipped, emit 'exit' into .bashrc to quickly exit all following steps.
-      # This isn't needed on Travis (since everything runs in one shell), but is on GitHub Actions.
-      cat <<EOF1 >> ~/.bashrc
-      cat <<EOF2 1>&2
-Exiting shell as no triggers were active for this job:
-  ${job_names//,/}
-The active triggers during job initialization were the following:
-  ${variable_definitions[*]}
-EOF2
-      exit 0
-EOF1
-    fi
-    exit 0
-  fi
-}
-
 configure_system() {
   git config --global advice.detachedHead false
   git config --global core.askpass ""
@@ -590,7 +526,7 @@ configure_system() {
   git config --global credential.modalprompt false
 
   # Requests library need root certificates.
-  if [ "${OSTYPE}" = msys ]; then
+  if [[ "${OSTYPE}" == "msys" ]]; then
     certutil -generateSSTFromWU roots.sst && certutil -addstore -f root roots.sst && rm roots.sst
   fi
 }
@@ -607,11 +543,6 @@ configure_system() {
 # Usage: init [JOB_NAMES]
 # - JOB_NAMES (optional): Comma-separated list of job names to trigger on.
 init() {
-  # TODO(jjyao): fix it for windows
-  if [ "${OSTYPE}" != msys ]; then
-    _check_job_triggers "${1-}"
-  fi
-
   configure_system
 
   "${ROOT_DIR}/env/install-dependencies.sh"
