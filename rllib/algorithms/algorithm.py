@@ -646,7 +646,7 @@ class Algorithm(Trainable, AlgorithmBase):
             validate_env=self.validate_env,
             default_policy_class=self.get_default_policy_class(self.config),
             config=self.config,
-            num_workers=self.config.num_env_runners,
+            num_env_runners=self.config.num_env_runners,
             local_env_runner=True,
             logdir=self.logdir,
         )
@@ -676,7 +676,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 validate_env=None,
                 default_policy_class=self.get_default_policy_class(self.config),
                 config=self.evaluation_config,
-                num_workers=self.config.evaluation_num_env_runners,
+                num_env_runners=self.config.evaluation_num_env_runners,
                 logdir=self.logdir,
             )
 
