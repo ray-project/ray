@@ -44,16 +44,13 @@ class LanceDatasource(Datasource):
             if len(fragments) <= 0:
                 continue
 
-            num_rows = sum([f.count_rows() for f in fragments])
-            input_files = [
-                data_file.path() for f in fragments for data_file in f.data_files()
-            ]
-
             # TODO(chengsu): Take column projection into consideration for schema.
+            # NOTE: avoid calling `fragment.count_rows()` which opens the actual file,
+            # so it would be slow when number of fragments are large.
             metadata = BlockMetadata(
-                num_rows=num_rows,
+                num_rows=None,
                 schema=fragments[0].schema,
-                input_files=input_files,
+                input_files=None,
                 size_bytes=None,
                 exec_stats=None,
             )
