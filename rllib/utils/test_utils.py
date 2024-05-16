@@ -1391,11 +1391,13 @@ def run_rllib_example_script_experiment(
             enable_env_runner_and_connector_v2=True,
         )
 
+    # Define EnvRunner/RolloutWorker scaling and behavior.
+    if args.num_env_runners is not None:
+        config.env_runners(num_env_runners=args.num_env_runners)
+
     # Define compute resources used automatically (only using the --num-gpus arg).
     # New stack.
     if config.enable_rl_module_and_learner:
-        # Define EnvRunner/RolloutWorker scaling and behavior.
-        config.env_runners(num_env_runners=args.num_env_runners)
         # Define compute resources used.
         config.learners(
             num_learners=args.num_gpus,
