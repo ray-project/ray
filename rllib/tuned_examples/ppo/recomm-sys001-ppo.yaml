@@ -2,7 +2,7 @@ recomm-sys001-ppo:
     env: ray.rllib.examples.envs.classes.recommender_system_envs.RecommSys001
     run: PPO
     stop:
-        #evaluation/sampler_results/episode_reward_mean: 48.0
+        #evaluation/env_runners/episode_return_mean: 48.0
         timesteps_total: 200000
     config:
         framework: torch

@@ -6,6 +6,18 @@ steps:
   # builds
   - name: corebuild
     wanda: ci/docker/core.build.py39.wanda.yaml
+    env:
+      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_build
+      IMAGE_TO: corebuild
+      RAYCI_IS_GPU_BUILD: "false"
+
+  - name: coregpubuild
+    wanda: ci/docker/core.build.py39.wanda.yaml
+    depends_on: oss-ci-base_gpu
+    env:
+      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_gpu
+      IMAGE_TO: coregpubuild
+      RAYCI_IS_GPU_BUILD: "true"
 
   - name: corebuild-multipy
     label: "wanda: corebuild-py{{matrix}}"
@@ -315,3 +327,17 @@ steps:
       - forge
       - raycpubase
       - corebuild
+
+  - label: ":ray: core: multi gpu tests"
+    tags:
+      - accelerated_dag
+      - gpu
+    instance_type: gpu-large
+    commands:
+      # This machine has 4 GPUs, and we need 2 GPUs, so allow 2 tests to run in
+      # parallel.
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... core
+        --parallelism-per-worker 2 --gpus 2
+        --build-name coregpubuild
+        --only-tags multi_gpu
+    depends_on: coregpubuild

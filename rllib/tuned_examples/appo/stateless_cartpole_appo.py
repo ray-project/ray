@@ -1,5 +1,10 @@
 from ray.rllib.algorithms.appo.appo import APPOConfig
 from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
 
 
 config = (
@@ -23,6 +28,6 @@ config = (
 )
 
 stop = {
-    "timesteps_total": 500000,
-    "sampler_results/episode_reward_mean": 150.0,
+    f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 500000,
+    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 150.0,
 }

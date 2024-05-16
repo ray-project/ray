@@ -5,8 +5,9 @@ from typing import List
 import pytest
 
 from ci.ray_ci.automation.determine_microcheck_tests import (
-    _get_failed_prs,
+    _get_failed_commits,
     _get_test_with_minimal_coverage,
+    _get_failed_tests_from_master_branch,
     _update_high_impact_tests,
 )
 from ci.ray_ci.utils import ci_init
@@ -25,18 +26,20 @@ class MockTest(dict):
     def get_name(self) -> str:
         return self.get("name", "")
 
-    def get_test_results(self, limit: int, aws_bucket: str) -> List[TestResult]:
+    def get_test_results(
+        self, limit: int, aws_bucket: str, use_async: bool, refresh: bool
+    ) -> List[TestResult]:
         return self.get("test_results", [])
 
     def persist_to_s3(self) -> None:
         DB[self["name"]] = json.dumps(self)
 
 
-def stub_test_result(status: ResultStatus, branch: str) -> TestResult:
+def stub_test_result(status: ResultStatus, branch: str, commit: str = "") -> TestResult:
     return TestResult(
         status=status.value,
         branch=branch,
-        commit="",
+        commit=commit,
         url="",
         timestamp=0,
         pull_request="",
@@ -64,21 +67,59 @@ def test_update_high_impact_tests():
     assert json.loads(DB["bad_test"])[Test.KEY_IS_HIGH_IMPACT] == "false"
 
 
-def test_get_failed_prs():
-    assert _get_failed_prs(
+def test_get_failed_commits():
+    assert _get_failed_commits(
         MockTest(
             {
                 "name": "test",
                 "test_results": [
-                    stub_test_result(ResultStatus.ERROR, "w00t"),
-                    stub_test_result(ResultStatus.ERROR, "w00t"),
-                    stub_test_result(ResultStatus.SUCCESS, "hi"),
-                    stub_test_result(ResultStatus.ERROR, "f00"),
+                    stub_test_result(ResultStatus.ERROR, "w00t", commit="1w00t2"),
+                    stub_test_result(ResultStatus.ERROR, "w00t", commit="2w00t3"),
+                    stub_test_result(ResultStatus.SUCCESS, "hi", commit="5hi7"),
+                    stub_test_result(ResultStatus.ERROR, "f00", commit="1f003"),
                 ],
             }
         ),
         1,
-    ) == {"w00t", "f00"}
+    ) == {"1w00t2", "2w00t3", "1f003"}
+
+
+def test_get_failed_tests_from_master_branch():
+    failed_test_01 = MockTest(
+        {
+            "name": "test_01",
+            "test_results": [
+                stub_test_result(ResultStatus.ERROR, "master"),
+                stub_test_result(ResultStatus.SUCCESS, "master"),
+                stub_test_result(ResultStatus.ERROR, "master"),
+                stub_test_result(ResultStatus.ERROR, "master"),
+            ],
+        },
+    )
+    failed_test_02 = MockTest(
+        {
+            "name": "test_02",
+            "test_results": [
+                stub_test_result(ResultStatus.ERROR, "non_master"),
+                stub_test_result(ResultStatus.SUCCESS, "non_master"),
+                stub_test_result(ResultStatus.ERROR, "non_master"),
+                stub_test_result(ResultStatus.ERROR, "non_master"),
+            ],
+        },
+    )
+    failed_test_03 = MockTest(
+        {
+            "name": "test_03",
+            "test_results": [
+                stub_test_result(ResultStatus.ERROR, "master"),
+                stub_test_result(ResultStatus.SUCCESS, "master"),
+                stub_test_result(ResultStatus.ERROR, "master"),
+            ],
+        },
+    )
+    _get_failed_tests_from_master_branch(
+        [failed_test_01, failed_test_02, failed_test_03], 2
+    ) == {"test_01"}
 
 
 def test_get_test_with_minimal_coverage():

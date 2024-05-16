@@ -3,7 +3,7 @@ pendulum-ppo:
     env: ray.rllib.examples.envs.classes.transformed_action_space_env.TransformedActionPendulum
     run: PPO
     stop:
-        sampler_results/episode_reward_mean: -500
+        env_runners/episode_return_mean: -500
         timesteps_total: 400000
     config:
         # Works for both torch and tf.

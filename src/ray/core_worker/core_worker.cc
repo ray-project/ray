@@ -97,14 +97,32 @@ ObjectLocation CreateObjectLocation(
     node_ids.push_back(NodeID::FromBinary(object_info.node_ids(i)));
   }
   bool is_spilled = !object_info.spilled_url().empty();
+  // If the object size is unknown it's unset, and we use -1 to indicate that.
+  int64_t object_size = object_info.object_size() == 0 ? -1 : object_info.object_size();
   return ObjectLocation(NodeID::FromBinary(object_info.primary_node_id()),
-                        object_info.object_size(),
+                        object_size,
                         std::move(node_ids),
                         is_spilled,
                         object_info.spilled_url(),
                         NodeID::FromBinary(object_info.spilled_node_id()),
                         object_info.did_spill());
 }
+
+std::optional<ObjectLocation> TryGetLocalObjectLocation(
+    ReferenceCounter &reference_counter, const ObjectID &object_id) {
+  if (!reference_counter.HasReference(object_id)) {
+    return std::nullopt;
+  }
+  rpc::WorkerObjectLocationsPubMessage object_info;
+  reference_counter.FillObjectInformation(object_id, &object_info);
+  // Note: there can be a TOCTOU race condition: HasReference returned true, but before
+  // FillObjectInformation the object is released. Hence we check the ref_removed field.
+  if (object_info.ref_removed()) {
+    return std::nullopt;
+  }
+  return CreateObjectLocation(object_info);
+}
+
 }  // namespace
 
 CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_id)
@@ -2175,10 +2193,15 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       /*generator_backpressure_num_objects*/
                       task_options.generator_backpressure_num_objects,
                       /*enable_task_event*/ task_options.enable_task_events);
+  ActorID root_detached_actor_id;
+  if (!worker_context_.GetRootDetachedActorID().IsNil()) {
+    root_detached_actor_id = worker_context_.GetRootDetachedActorID();
+  }
   builder.SetNormalTaskSpec(max_retries,
                             retry_exceptions,
                             serialized_retry_exception_allowlist,
-                            scheduling_strategy);
+                            scheduling_strategy,
+                            root_detached_actor_id);
   TaskSpecification task_spec = builder.Build();
   RAY_LOG(DEBUG) << "Submitting normal task " << task_spec.DebugString();
   std::vector<rpc::ObjectReference> returned_refs;
@@ -2283,6 +2306,12 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_creation_options.enable_task_events);
   std::string serialized_actor_handle;
   actor_handle->Serialize(&serialized_actor_handle);
+  ActorID root_detached_actor_id;
+  if (is_detached) {
+    root_detached_actor_id = actor_id;
+  } else if (!worker_context_.GetRootDetachedActorID().IsNil()) {
+    root_detached_actor_id = worker_context_.GetRootDetachedActorID();
+  }
   builder.SetActorCreationTaskSpec(actor_id,
                                    serialized_actor_handle,
                                    actor_creation_options.scheduling_strategy,
@@ -2296,7 +2325,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                                    actor_creation_options.is_asyncio,
                                    actor_creation_options.concurrency_groups,
                                    extension_data,
-                                   actor_creation_options.execute_out_of_order);
+                                   actor_creation_options.execute_out_of_order,
+                                   root_detached_actor_id);
   // Add the actor handle before we submit the actor creation task, since the
   // actor handle must be in scope by the time the GCS sends the
   // WaitForActorOutOfScopeRequest.
@@ -3868,6 +3898,20 @@ void CoreWorker::ProcessSubscribeObjectLocations(
   reference_counter_->PublishObjectLocationSnapshot(object_id);
 }
 
+Status CoreWorker::GetLocalObjectLocations(
+    const std::vector<ObjectID> &object_ids,
+    std::vector<std::optional<ObjectLocation>> *results) {
+  results->clear();
+  results->reserve(object_ids.size());
+  if (object_ids.empty()) {
+    return Status::OK();
+  }
+  for (size_t i = 0; i < object_ids.size(); i++) {
+    results->emplace_back(TryGetLocalObjectLocation(*reference_counter_, object_ids[i]));
+  }
+  return Status::OK();
+}
+
 void CoreWorker::HandleGetObjectLocationsOwner(
     rpc::GetObjectLocationsOwnerRequest request,
     rpc::GetObjectLocationsOwnerReply *reply,
@@ -3878,7 +3922,7 @@ void CoreWorker::HandleGetObjectLocationsOwner(
   }
   for (int i = 0; i < request.object_ids_size(); ++i) {
     auto object_id = ObjectID::FromBinary(request.object_ids(i));
-    auto object_info = reply->add_object_location_infos();
+    auto *object_info = reply->add_object_location_infos();
     reference_counter_->FillObjectInformation(object_id, object_info);
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -4300,26 +4344,31 @@ void CoreWorker::HandleDeleteSpilledObjects(rpc::DeleteSpilledObjectsRequest req
 void CoreWorker::HandleExit(rpc::ExitRequest request,
                             rpc::ExitReply *reply,
                             rpc::SendReplyCallback send_reply_callback) {
-  bool own_objects = reference_counter_->OwnObjects();
-  int64_t pins_in_flight = local_raylet_client_->GetPinsInFlight();
+  const bool own_objects = reference_counter_->OwnObjects();
+  const size_t num_pending_tasks = task_manager_->NumPendingTasks();
+  const int64_t pins_in_flight = local_raylet_client_->GetPinsInFlight();
   // We consider the worker to be idle if it doesn't own any objects and it doesn't have
-  // any object pinning RPCs in flight.
-  bool is_idle = !own_objects && pins_in_flight == 0;
+  // any object pinning RPCs in flight and it doesn't have pending tasks.
+  bool is_idle = !own_objects && (pins_in_flight == 0) && (num_pending_tasks == 0);
   bool force_exit = request.force_exit();
   RAY_LOG(DEBUG) << "Exiting: is_idle: " << is_idle << " force_exit: " << force_exit;
   if (!is_idle && force_exit) {
     RAY_LOG(INFO) << "Force exiting worker that owns object. This may cause other "
                      "workers that depends on the object to lose it. "
                   << "Own objects: " << own_objects
-                  << " # Pins in flight: " << pins_in_flight;
+                  << " # Pins in flight: " << pins_in_flight
+                  << " # pending tasks: " << num_pending_tasks;
   }
   bool will_exit = is_idle || force_exit;
   reply->set_success(will_exit);
   send_reply_callback(
       Status::OK(),
-      [this, will_exit]() {
+      [this, will_exit, force_exit]() {
         // If the worker is idle, we exit.
-        if (will_exit) {
+        if (force_exit) {
+          ForceExit(rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
+                    "Worker force exits because its job has finished");
+        } else if (will_exit) {
           Exit(rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
                "Worker exits because it was idle (it doesn't have objects it owns while "
                "no task or actor has been scheduled) for a long time.");

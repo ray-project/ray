@@ -395,6 +395,7 @@ void GcsAutoscalerStateManager::HandleDrainNode(
   } else {
     death_info->set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_IDLE);
   }
+  death_info->set_reason_message(request.reason_message());
   if (RayConfig::instance().enable_reap_actor_death()) {
     gcs_actor_manager_.SetPreemptedAndPublish(node_id);
   }
