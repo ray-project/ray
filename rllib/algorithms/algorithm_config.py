@@ -268,7 +268,7 @@ class AlgorithmConfig(_Config):
         self.placement_strategy = "PACK"
         self.num_gpus = 0  # @OldAPIStack
         self._fake_gpus = False  # @OldAPIStack
-        self.num_cpus_for_local_worker = 1
+        self.num_cpus_for_main_process = 1
 
         # `self.framework()`
         self.framework_str = "torch"
@@ -568,7 +568,7 @@ class AlgorithmConfig(_Config):
 
         Returns:
             A complete AlgorithmConfigDict, usable in backward-compatible Tune/RLlib
-            use cases, e.g. w/ `tune.Tuner().fit()`.
+            use cases.
         """
         config = copy.deepcopy(vars(self))
         config.pop("algo_class")
@@ -606,10 +606,17 @@ class AlgorithmConfig(_Config):
         config["create_env_on_driver"] = config.pop("create_env_on_local_worker", 1)
         config["custom_eval_function"] = config.pop("custom_evaluation_function", None)
         config["framework"] = config.pop("framework_str", None)
-        config["num_cpus_for_driver"] = config.pop("num_cpus_for_local_worker", 1)
+        config["num_cpus_for_driver"] = config.pop(
+            "num_cpus_for_local_worker", config.pop("num_cpus_for_main_process", 1)
+        )
         config["num_workers"] = config.pop(
             "num_env_runners", config.pop("num_rollout_workers", 0)
         )
+        config["num_cpus_per_worker"] = config.pop("num_cpus_per_env_runner", 1)
+        config["num_gpus_per_worker"] = config.pop("num_gpus_per_env_runner", 0)
+        config["num_learner_workers"] = config.pop("num_learners", 0)
+        config["num_cpus_per_learner_worker"] = config.pop("num_cpus_per_learner", 1)
+        config["num_gpus_per_learner_worker"] = config.pop("num_gpus_per_learner", 0)
 
         # Simplify: Remove all deprecated keys that have as value `DEPRECATED_VALUE`.
         # These would be useless in the returned dict anyways.
@@ -1209,9 +1216,9 @@ class AlgorithmConfig(_Config):
     def resources(
         self,
         *,
+        num_cpus_for_main_process: Optional[int] = NotProvided,
         num_gpus: Optional[Union[float, int]] = NotProvided,  # @OldAPIStack
         _fake_gpus: Optional[bool] = NotProvided,  # @OldAPIStack
-        num_cpus_for_local_worker: Optional[int] = NotProvided,
         placement_strategy: Optional[str] = NotProvided,
         # Deprecated args.
         num_cpus_per_worker=DEPRECATED_VALUE,  # moved to `env_runners`
@@ -1220,11 +1227,16 @@ class AlgorithmConfig(_Config):
         num_learner_workers=DEPRECATED_VALUE,  # moved to `learners`
         num_cpus_per_learner_worker=DEPRECATED_VALUE,  # moved to `learners`
         num_gpus_per_learner_worker=DEPRECATED_VALUE,  # moved to `learners`
-        local_gpu_idx=DEPRECATED_VALUE  # moved to `learners`
+        local_gpu_idx=DEPRECATED_VALUE,  # moved to `learners`
+        num_cpus_for_local_worker = DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Specifies resources allocated for an Algorithm and its ray actors/workers.
 
         Args:
+            num_cpus_for_main_process: Number of CPUs to allocate for the main algorithm
+                process that runs `Algorithm.training_step()`.
+                Note: This is only relevant when running RLlib through Tune. Otherwise,
+                `Algorithm.training_step()` runs in the main program (driver).
             num_gpus: Number of GPUs to allocate to the algorithm process.
                 Note that not all algorithms can take advantage of GPUs.
                 Support for multi-GPU is currently only available for
@@ -1233,9 +1245,6 @@ class AlgorithmConfig(_Config):
                 CPU machine. GPU towers will be simulated by graphs located on
                 CPUs in this case. Use `num_gpus` to test for different numbers of
                 fake GPUs.
-            num_cpus_for_local_worker: Number of CPUs to allocate for the algorithm.
-                Note: this only takes effect when running in Tune. Otherwise,
-                the algorithm runs in the main program (driver).
             placement_strategy: The strategy for the placement group factory returned by
                 `Algorithm.default_resource_request()`. A PlacementGroup defines, which
                 devices (resources) should always be co-located on the same node.
@@ -1311,12 +1320,20 @@ class AlgorithmConfig(_Config):
             )
             self.local_gpu_idx = local_gpu_idx
 
+        if num_cpus_for_local_worker != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.resources(num_cpus_for_local_worker)",
+                new="AlgorithmConfig.resources(num_cpus_for_main_process)",
+                error=False,
+            )
+            self.num_cpus_for_main_process = num_cpus_for_local_worker
+
+        if num_cpus_for_main_process is not NotProvided:
+            self.num_cpus_for_main_process = num_cpus_for_main_process
         if num_gpus is not NotProvided:
             self.num_gpus = num_gpus
         if _fake_gpus is not NotProvided:
             self._fake_gpus = _fake_gpus
-        if num_cpus_for_local_worker is not NotProvided:
-            self.num_cpus_for_local_worker = num_cpus_for_local_worker
         if placement_strategy is not NotProvided:
             self.placement_strategy = placement_strategy
 
@@ -1944,7 +1961,7 @@ class AlgorithmConfig(_Config):
         num_gpus_per_learner: Optional[Union[float, int]] = NotProvided,
         local_gpu_idx: Optional[int] = NotProvided,
     ):
-        """Sets Learner worker related configuration.
+        """Sets LearnerGroup and Learner worker related configurations.
 
         Args:
             num_learners: Number of Learner workers used for updating the RLModule.
@@ -4803,6 +4820,20 @@ class AlgorithmConfig(_Config):
             error=False,
         )
         self.num_gpus_per_learner = value
+
+    @property
+    @Deprecated(new="AlgorithmConfig.num_cpus_for_local_worker", error=False)
+    def num_cpus_for_local_worker(self):
+        return self.num_cpus_for_main_process
+
+    @num_cpus_for_local_worker.setter
+    def num_cpus_for_local_worker(self, value):
+        deprecation_warning(
+            old="AlgorithmConfig.num_cpus_for_local_worker",
+            new="AlgorithmConfig.num_cpus_for_main_process",
+            error=False,
+        )
+        self.num_cpus_for_main_process = value
 
 
 class TorchCompileWhatToCompile(str, Enum):
