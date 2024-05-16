@@ -43,7 +43,7 @@ class TestAlgorithm(unittest.TestCase):
                     },
                 },
             )
-            .resources(num_cpus_per_worker=0.1)
+            .env_runners(num_cpus_per_env_runner=0.1)
             .training(
                 train_batch_size=100,
                 sgd_minibatch_size=50,
@@ -63,7 +63,7 @@ class TestAlgorithm(unittest.TestCase):
             )
             .evaluation(
                 evaluation_num_env_runners=1,
-                evaluation_config=ppo.PPOConfig.overrides(num_cpus_per_worker=0.1),
+                evaluation_config=ppo.PPOConfig.overrides(num_cpus_per_env_runner=0.1),
             )
         )
 
