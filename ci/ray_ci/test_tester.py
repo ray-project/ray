@@ -263,7 +263,10 @@ def test_get_high_impact_test_targets() -> None:
             )
 
 
-@mock.patch.dict(os.environ, {"BUILDKITE_PULL_REQUEST_BASE_BRANCH": "base", "BUILDKITE_COMMIT": "commit"})
+@mock.patch.dict(
+    os.environ,
+    {"BUILDKITE_PULL_REQUEST_BASE_BRANCH": "base", "BUILDKITE_COMMIT": "commit"},
+)
 @mock.patch("subprocess.check_call")
 @mock.patch("subprocess.check_output")
 def test_get_changed_files(mock_check_output, mock_check_call) -> None:
@@ -284,7 +287,10 @@ def test_get_changed_tests(
     assert _get_changed_tests() == {"//t1", "//t2"}
 
 
-@mock.patch.dict(os.environ, {"BUILDKITE_PULL_REQUEST_BASE_BRANCH": "base", "BUILDKITE_COMMIT": "commit"})
+@mock.patch.dict(
+    os.environ,
+    {"BUILDKITE_PULL_REQUEST_BASE_BRANCH": "base", "BUILDKITE_COMMIT": "commit"},
+)
 @mock.patch("subprocess.check_call")
 @mock.patch("subprocess.check_output")
 def test_get_human_specified_tests(mock_check_output, mock_check_call) -> None:

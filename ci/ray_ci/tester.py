@@ -441,6 +441,7 @@ def _get_human_specified_tests() -> Set[str]:
     for message in messages.decode().splitlines():
         if message.startswith(MICROCHECK_COMMAND):
             tests = tests.union(message[len(MICROCHECK_COMMAND) :].strip().split(" "))
+    logger.info(f"Human specified tests: {tests}")
 
     return tests
 
