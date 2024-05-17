@@ -121,12 +121,12 @@ class JobSupervisor:
         self._startup_timeout_s = startup_timeout_s
 
         self._started_at: float = time.time()
-        self._driver_last_running_at: float = -1
+        self._executor_last_running_at: float = -1
 
         self.event_logger: Optional[EventLoggerAdapter] = self._create_job_events_logger(logs_dir)
 
-    async def _check_driver_running(self) -> bool:
-        """Checks whether the job driver is currently running"""
+    async def _check_executor_running(self) -> bool:
+        """Checks whether the job executor is currently running"""
         if self._job_executor is None:
             return False
 
@@ -141,7 +141,7 @@ class JobSupervisor:
             self._waiting_task.result()
             return False
 
-        self._driver_last_running_at = time.time()
+        self._executor_last_running_at = time.time()
 
         return True
 
@@ -248,7 +248,7 @@ class JobSupervisor:
         error_message: Optional[str] = None
 
         try:
-            runner = await self._create_runner_actor(
+            executor = await self._create_executor_actor(
                 runtime_env=runtime_env,
                 metadata=metadata,
                 entrypoint_num_cpus=entrypoint_num_cpus,
@@ -262,7 +262,7 @@ class JobSupervisor:
                 # Block in PENDING state until start signal received.
                 await _start_signal_actor.wait.remote()
 
-            driver_node_info: JobDriverNodeInfo = await runner.get_node_info.remote()
+            driver_node_info: JobDriverNodeInfo = await executor.get_node_info.remote()
             driver_agent_http_address = f"http://{driver_node_info.node_ip}:{driver_node_info.dashboard_agent_port}"
 
             # TODO mark as running only after driver has been launched
@@ -281,7 +281,7 @@ class JobSupervisor:
                     f"Ray job {self._job_id} transitions to {JobStatus.RUNNING}", submission_id=self._job_id
                 )
 
-            result: JobExecutionResult = await runner.execute_sync.remote()
+            result: JobExecutionResult = await executor.execute_sync.remote()
 
             exit_code = result.driver_exit_code
             message = result.message
@@ -344,7 +344,7 @@ class JobSupervisor:
 
             return status
 
-    async def _create_runner_actor(
+    async def _create_executor_actor(
         self,
         *,
         runtime_env: Optional[Dict[str, Any]],
@@ -478,7 +478,7 @@ class JobSupervisor:
                 job_status = job_info.status if job_info else None
 
                 # Check if job driver is running
-                running = await self._check_driver_running()
+                running = await self._check_executor_running()
 
                 if running:
                     # In case job executor is running successfully, reachable and responsive, log
@@ -523,7 +523,7 @@ class JobSupervisor:
                     break
 
                 else:
-                    duration_since_last_running_s = time.time() - self._driver_last_running_at
+                    duration_since_last_running_s = time.time() - self._executor_last_running_at
                     # In case, when job has not yet reached terminal state, but job executor runner
                     # isn't running anymore monitoring loop assumes job failed (after expiration of
                     # `JOB_STATUS_FINALIZATION_TIMEOUT_S` period)
