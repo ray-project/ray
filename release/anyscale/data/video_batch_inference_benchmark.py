@@ -1,5 +1,6 @@
 import os
 from typing import Dict
+import argparse
 
 import numpy as np
 import ray
@@ -18,13 +19,16 @@ DATA_URI = "s3://anonymous@ray-example-data/static-videos"
 NUM_FILES = 91  # 50GiB / 562.4 MiB/file ~= 91 files
 
 
-def main():
+def main(args):
     """Read in NUM_FILES video files from a flat S3 bucket,
     apply preprocessing on a partial set of video frames,
     and perform object detection as the batch inference task.
     Reports the time taken and throughput (# frames/second)."""
     ray.init()
-    actor_pool_size = int(ray.cluster_resources().get("GPU"))
+    if args.min_gpus is not None:
+        actor_pool_concurrency = (args.min_gpus, args.max_gpus)
+    else:
+        actor_pool_concurrency = int(ray.cluster_resources().get("GPU"))
     paths = [f"{DATA_URI}/000.mp4" for _ in range(NUM_FILES)]
     dataset = (
         ray.data.read_datasource(VideoDatasource(paths=paths, include_paths=True))
@@ -33,7 +37,7 @@ def main():
         .map(transform_frame)
         .map_batches(
             DetectObjects,
-            compute=ray.data.ActorPoolStrategy(size=actor_pool_size),
+            concurrency=actor_pool_concurrency,
             batch_size=4,
             num_gpus=1,
         )
@@ -74,5 +78,28 @@ class DetectObjects:
         }
 
 
+def parse_cli_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--min-gpus",
+        required=False,
+        type=int,
+        help="Minimum number of GPUs to use for batch inference.",
+    )
+    parser.add_argument(
+        "--max-gpus",
+        required=False,
+        type=int,
+        help="Maximum number of GPUs to use for batch inference.",
+    )
+    args = parser.parse_args()
+    if args.min_gpus is not None:
+        assert args.min_gpus > 0
+    if args.max_gpus is not None:
+        assert args.min_gpus is not None
+        assert args.max_gpus > args.min_gpus
+    return args
+
+
 if __name__ == "__main__":
-    main()
+    main(parse_cli_args())

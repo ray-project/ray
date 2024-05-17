@@ -87,6 +87,24 @@
   variations:
     - __suffix__: aws
 
+- name: batch_inference_job_autoscaling_benchmark
+  group: data-tests
+  working_dir: anyscale/data
+
+  frequency: nightly
+  team: data
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: batch_inference_job_autoscaling_benchmark_compute.yaml
+
+  run:
+    timeout: 3600
+    script: python video_batch_inference_benchmark.py --min-gpus 1 --max-gpus 32
+
+  variations:
+    - __suffix__: aws
+
 ###############
 # Rllib tests
 ###############

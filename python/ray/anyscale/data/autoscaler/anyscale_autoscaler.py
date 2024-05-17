@@ -99,9 +99,13 @@ class AnyscaleAutoscaler(Autoscaler):
         termination.
 
     * Actor pool autoscaling:
-      * For each actor pool, check actor pool utilization and other factors (see
+      * For each actor pool, check the average actor pool utilization in a time window
+        (`actor_pool_util_avg_window_s`) and other factors (see
         `_actor_pool_should_scale_up/down`) to decide whether to scale up or down
         the actor pool.
+      * The actor pool size will be increased by `_actor_pool_scaling_up_factor`
+        each time when scaling up. And will be decreased by 1
+        each time when scaling down.
 
     Notes:
       * For now, we assume GPUs are only used by actor pools. So cluster autoscaling
@@ -112,9 +116,16 @@ class AnyscaleAutoscaler(Autoscaler):
     """
 
     # Default threshold of actor pool utilization to trigger scaling up.
-    DEFAULT_ACTOR_POOL_SCALING_UP_THRESHOLD: float = 0.8
+    DEFAULT_ACTOR_POOL_SCALING_UP_THRESHOLD: float = 0.85
     # Default threshold of actor pool utilization to trigger scaling down.
     DEFAULT_ACTOR_POOL_SCALING_DOWN_THRESHOLD: float = 0.5
+    # Default interval in seconds to check actor pool utilization.
+    DEFAULT_ACTOR_POOL_UTIL_CHECK_INTERVAL_S: float = 0.5
+    # Default time window in seconds to calculate the average of
+    # actor pool utilization.
+    DEFAULT_ACTOR_POOL_UTIL_AVG_WINDOW_S: int = 10
+    # Default scaling up factor for actor pool autoscaling.
+    DEFAULT_ACTOR_POOL_SCALING_UP_FACTOR: float = 2.0
 
     # Default cluster utilization threshold to trigger scaling up.
     DEFAULT_CLUSTER_SCALING_UP_UTIL_THRESHOLD: float = 0.85
@@ -135,14 +146,28 @@ class AnyscaleAutoscaler(Autoscaler):
         execution_id: str,
         actor_pool_scaling_up_threshold: float = DEFAULT_ACTOR_POOL_SCALING_UP_THRESHOLD,  # noqa: E501
         actor_pool_scaling_down_threshold: float = DEFAULT_ACTOR_POOL_SCALING_DOWN_THRESHOLD,  # noqa: E501
+        actor_pool_scaling_up_factor: float = DEFAULT_ACTOR_POOL_SCALING_UP_FACTOR,
+        actor_pool_util_avg_window_s: float = DEFAULT_ACTOR_POOL_UTIL_AVG_WINDOW_S,
+        actor_pool_util_check_interval_s: float = DEFAULT_ACTOR_POOL_UTIL_CHECK_INTERVAL_S,  # noqa: E501
         cluster_scaling_up_util_threshold: float = DEFAULT_CLUSTER_SCALING_UP_UTIL_THRESHOLD,  # noqa: E501
         cluster_scaling_up_factor: float = DEFAULT_CLUSTER_SCALING_UP_FACTOR,
-        cluster_util_avg_window_s: int = DEFAULT_CLUSTER_UTIL_AVG_WINDOW_S,
+        cluster_util_avg_window_s: float = DEFAULT_CLUSTER_UTIL_AVG_WINDOW_S,
         cluster_util_check_interval_s: float = DEFAULT_CLUSTER_UTIL_CHECK_INTERVAL_S,
     ):
         assert actor_pool_scaling_down_threshold < actor_pool_scaling_up_threshold
         self._actor_pool_scaling_up_threshold = actor_pool_scaling_up_threshold
         self._actor_pool_scaling_down_threshold = actor_pool_scaling_down_threshold
+        assert actor_pool_scaling_up_factor > 1
+        self._actor_pool_scaling_up_factor = actor_pool_scaling_up_factor
+        assert actor_pool_util_avg_window_s > 0
+        self._actor_pool_util_calculators = defaultdict(
+            lambda: _TimeWindowAverageCalculator(window_s=actor_pool_util_avg_window_s)
+        )
+        assert actor_pool_util_check_interval_s >= 0
+        self._actor_pool_util_check_interval_s = actor_pool_util_check_interval_s
+        # Last time when the actor pool utilization was checked.
+        self._last_actor_pool_util_check_time = 0
+
         # Threshold of cluster utilization to trigger scaling up.
         self._cluster_scaling_up_util_threshold = cluster_scaling_up_util_threshold
         # TODO(hchen): Use proportion-based scaling up factors
@@ -158,7 +183,7 @@ class AnyscaleAutoscaler(Autoscaler):
         self._cluster_mem_util_calculator = _TimeWindowAverageCalculator(
             window_s=cluster_util_avg_window_s,
         )
-        assert cluster_util_check_interval_s > 0
+        assert cluster_util_check_interval_s >= 0
         self._cluster_util_check_interval_s = cluster_util_check_interval_s
         # Last time when the cluster utilization was checked.
         self._last_cluster_util_check_time = 0
@@ -172,16 +197,22 @@ class AnyscaleAutoscaler(Autoscaler):
 
     def _calculate_actor_pool_util(self, actor_pool: AutoscalingActorPool):
         """Calculate the utilization of the given actor pool."""
-        if actor_pool.current_size() == 0:
-            return 0
-        else:
-            return actor_pool.num_active_actors() / actor_pool.current_size()
+        if actor_pool.num_running_actors() == 0:
+            return None
+        # Calculate the utilization based on the used task slots
+        # of running actors.
+        util = actor_pool.current_in_flight_tasks() / (
+            actor_pool.num_running_actors() * actor_pool.max_tasks_in_flight_per_actor()
+        )
+        self._actor_pool_util_calculators[actor_pool].report(util)
+        return self._actor_pool_util_calculators[actor_pool].get_average()
 
     def _actor_pool_should_scale_up(
         self,
         actor_pool: AutoscalingActorPool,
         op: "PhysicalOperator",
         op_state: "OpState",
+        util: float,
     ):
         # Do not scale up, if the op is completed or no more inputs are coming.
         if op.completed() or (op._inputs_complete and op.internal_queue_size() == 0):
@@ -198,14 +229,17 @@ class AnyscaleAutoscaler(Autoscaler):
         # Do not scale up, if the op has enough free slots for the existing inputs.
         if op_state.num_queued() <= actor_pool.num_free_task_slots():
             return False
+        if actor_pool.num_pending_actors() > 0:
+            # Do not scale up, if the last scale-up hasn't finished.
+            return False
         # Determine whether to scale up based on the actor pool utilization.
-        util = self._calculate_actor_pool_util(actor_pool)
         return util > self._actor_pool_scaling_up_threshold
 
     def _actor_pool_should_scale_down(
         self,
         actor_pool: AutoscalingActorPool,
         op: "PhysicalOperator",
+        util: float,
     ):
         # Scale down, if the op is completed or no more inputs are coming.
         if op.completed() or (op._inputs_complete and op.internal_queue_size() == 0):
@@ -217,31 +251,66 @@ class AnyscaleAutoscaler(Autoscaler):
             # Do not scale down, if the actor pool is already at min size.
             return False
         # Determine whether to scale down based on the actor pool utilization.
-        util = self._calculate_actor_pool_util(actor_pool)
         return util < self._actor_pool_scaling_down_threshold
 
     def _try_scale_up_or_down_actor_pool(self):
+        now = time.time()
+        if (
+            now - self._last_actor_pool_util_check_time
+            < self._actor_pool_util_check_interval_s
+        ):
+            return
+
+        self._last_actor_pool_util_check_time = now
+
         for op, state in self._topology.items():
             actor_pools = op.get_autoscaling_actor_pools()
             for actor_pool in actor_pools:
-                while True:
-                    # Try to scale up or down the actor pool.
-                    should_scale_up = self._actor_pool_should_scale_up(
-                        actor_pool,
-                        op,
-                        state,
+                util = self._calculate_actor_pool_util(actor_pool)
+                if util is None:
+                    continue
+                # Try to scale up or down the actor pool.
+                should_scale_up = self._actor_pool_should_scale_up(
+                    actor_pool,
+                    op,
+                    state,
+                    util,
+                )
+                should_scale_down = self._actor_pool_should_scale_down(
+                    actor_pool, op, util
+                )
+
+                current_size = actor_pool.current_size()
+                # scale-down has higher priority than scale-up, because when the op
+                # is completed, we should scale down the actor pool regardless the
+                # utilization.
+                if should_scale_down:
+                    if actor_pool.scale_down(1):
+                        logger.debug(
+                            "Scaled down actor pool %s: %d -> %d, current util: %.2f",
+                            op.name,
+                            current_size,
+                            current_size - 1,
+                            util,
+                        )
+                elif should_scale_up:
+                    num_to_scale_up = (
+                        min(
+                            math.ceil(
+                                current_size * self._actor_pool_scaling_up_factor
+                            ),
+                            actor_pool.max_size(),
+                        )
+                        - current_size
                     )
-                    should_scale_down = self._actor_pool_should_scale_down(
-                        actor_pool, op
+                    new_size = actor_pool.scale_up(num_to_scale_up) + current_size
+                    logger.debug(
+                        "Scaled up actor pool %s: %d -> %d, current util: %.2f",
+                        op.name,
+                        current_size,
+                        new_size,
+                        util,
                     )
-                    if should_scale_up and not should_scale_down:
-                        if actor_pool.scale_up(1) == 0:
-                            break
-                    elif should_scale_down and not should_scale_up:
-                        if actor_pool.scale_down(1) == 0:
-                            break
-                    else:
-                        break
 
     def _get_node_resource_spec_and_count(self) -> Dict[_NodeResourceSpec, int]:
         """Get the unique node resource specs and their count in the cluster.
@@ -270,7 +339,7 @@ class AnyscaleAutoscaler(Autoscaler):
 
     def _get_cluster_cpu_and_mem_util(self) -> Tuple[Optional[float], Optional[float]]:
         """Return CPU and memory utilization of the cluster, or None if
-        `cluster_util_avg_window_s` seconds have not passed since the start or
+        no data was reported in the last `cluster_util_avg_window_s` seconds or
         `_cluster_util_check_interval_s` seconds have not yet passed since the
         last check.
 
