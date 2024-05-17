@@ -18,6 +18,7 @@ from ci.ray_ci.tester import (
     _get_tag_matcher,
     _get_changed_files,
     _get_changed_tests,
+    _get_human_specified_tests,
 )
 from ray_release.test import Test, TestState
 
@@ -214,6 +215,7 @@ def test_get_high_impact_test_targets() -> None:
         {
             "input": [],
             "new_tests": set(),
+            "human_tests": set(),
             "output": set(),
         },
         {
@@ -232,9 +234,11 @@ def test_get_high_impact_test_targets() -> None:
                 ),
             ],
             "new_tests": {"//core_new"},
+            "human_tests": {"//human_test"},
             "output": {
                 "//core_good",
                 "//core_new",
+                "//human_test",
             },
         },
     ]
@@ -245,6 +249,9 @@ def test_get_high_impact_test_targets() -> None:
         ), mock.patch(
             "ci.ray_ci.tester._get_changed_tests",
             return_value=test["new_tests"],
+        ), mock.patch(
+            "ci.ray_ci.tester._get_human_specified_tests",
+            return_value=test["human_tests"],
         ):
             assert (
                 _get_high_impact_test_targets(
@@ -256,7 +263,10 @@ def test_get_high_impact_test_targets() -> None:
             )
 
 
-@mock.patch.dict(os.environ, {"BUILDKITE_PULL_REQUEST_BASE_BRANCH": "base"})
+@mock.patch.dict(
+    os.environ,
+    {"BUILDKITE_PULL_REQUEST_BASE_BRANCH": "base", "BUILDKITE_COMMIT": "commit"},
+)
 @mock.patch("subprocess.check_call")
 @mock.patch("subprocess.check_output")
 def test_get_changed_files(mock_check_output, mock_check_call) -> None:
@@ -275,6 +285,17 @@ def test_get_changed_tests(
     )
 
     assert _get_changed_tests() == {"//t1", "//t2"}
+
+
+@mock.patch.dict(
+    os.environ,
+    {"BUILDKITE_PULL_REQUEST_BASE_BRANCH": "base", "BUILDKITE_COMMIT": "commit"},
+)
+@mock.patch("subprocess.check_call")
+@mock.patch("subprocess.check_output")
+def test_get_human_specified_tests(mock_check_output, mock_check_call) -> None:
+    mock_check_output.return_value = b"hi\n@microcheck //test01 //test02\nthere"
+    assert _get_human_specified_tests() == {"//test01", "//test02"}
 
 
 def test_get_flaky_test_targets() -> None:
