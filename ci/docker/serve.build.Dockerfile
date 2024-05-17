@@ -28,7 +28,7 @@ pip install -U -c python/requirements_compiled.txt \
   tensorflow tensorflow-probability torch torchvision \
   transformers aioboto3
 
-# Add vllm for llm test
+# Install vLLM for documentation example tests (doc/source/serve/doc_code).
 pip install vllm==0.4.2 
 
 git clone https://github.com/wg/wrk.git /tmp/wrk && pushd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin && popd
