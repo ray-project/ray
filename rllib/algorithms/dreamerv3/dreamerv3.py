@@ -37,15 +37,14 @@ from ray.rllib.utils.metrics import (
     ALL_MODULES,
     GARBAGE_COLLECTION_TIMER,
     LEARN_ON_BATCH_TIMER,
-    NUM_AGENT_STEPS_SAMPLED,
-    NUM_AGENT_STEPS_TRAINED,
-    NUM_ENV_STEPS_SAMPLED,
-    NUM_ENV_STEPS_TRAINED,
+    LEARNER_RESULTS,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+    NUM_ENV_STEPS_TRAINED_LIFETIME,
     NUM_GRAD_UPDATES_LIFETIME,
     NUM_SYNCH_WORKER_WEIGHTS,
-    NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS,
     SAMPLE_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
+    TIMERS,
 )
 from ray.rllib.utils.replay_buffers.episode_replay_buffer import EpisodeReplayBuffer
 from ray.rllib.utils.typing import LearningRateOrSchedule, ResultDict
@@ -506,8 +505,6 @@ class DreamerV3(Algorithm):
 
     @override(Algorithm)
     def training_step(self) -> ResultDict:
-        results = {}
-
         env_runner = self.workers.local_worker()
 
         # Push enough samples into buffer initially before we start training.
@@ -520,7 +517,7 @@ class DreamerV3(Algorithm):
 
         # Have we sampled yet in this `training_step()` call?
         have_sampled = False
-        with self._timers[SAMPLE_TIMER]:
+        with self.metrics.log_time((TIMERS, SAMPLE_TIMER)):
             # Continue sampling from the actual environment (and add collected samples
             # to our replay buffer) as long as we:
             while (
@@ -551,7 +548,7 @@ class DreamerV3(Algorithm):
 
                 # If we have never sampled before (just started the algo and not
                 # recovered from a checkpoint), sample B random actions first.
-                if self._counters[NUM_AGENT_STEPS_SAMPLED] == 0:
+                if self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0) == 0:
                     d_, o_ = env_runner.sample(
                         num_timesteps=(
                             self.config.batch_size_B * self.config.batch_length_T
@@ -562,12 +559,13 @@ class DreamerV3(Algorithm):
                     self.replay_buffer.add(episodes=d_ + o_)
                     total_sampled += sum(len(eps) for eps in d_ + o_)
 
-                self._counters[NUM_AGENT_STEPS_SAMPLED] += total_sampled
-                self._counters[NUM_ENV_STEPS_SAMPLED] += total_sampled
+                self.metrics.log_value(
+                    NUM_ENV_STEPS_SAMPLED_LIFETIME, total_sampled, reduce="sum"
+                )
 
         # Summarize environment interaction and buffer data.
-        results[ALL_MODULES] = report_sampling_and_replay_buffer(
-            replay_buffer=self.replay_buffer,
+        report_sampling_and_replay_buffer(
+            metrics=self.metrics, replay_buffer=self.replay_buffer
         )
 
         # Continue sampling batch_size_B x batch_length_T sized batches from the buffer
@@ -584,7 +582,7 @@ class DreamerV3(Algorithm):
             replayed_steps_this_iter / env_steps_last_regular_sample
         ) < self.config.training_ratio:
             # Time individual batch updates.
-            with self._timers[LEARN_ON_BATCH_TIMER]:
+            with self.metrics.log_time((TIMERS, LEARN_ON_BATCH_TIMER)):
                 logger.info(f"\tSub-iteration {self.training_iteration}/{sub_iter})")
 
                 # Draw a new sample from the replay buffer.
@@ -605,17 +603,17 @@ class DreamerV3(Algorithm):
                 # Perform the actual update via our learner group.
                 train_results = self.learner_group.update_from_batch(
                     batch=SampleBatch(sample).as_multi_agent(),
-                    reduce_fn=self._reduce_results,
                 )
-                self._counters[NUM_AGENT_STEPS_TRAINED] += replayed_steps
-                self._counters[NUM_ENV_STEPS_TRAINED] += replayed_steps
+                self.metrics.log_n_dicts(train_results, key=LEARNER_RESULTS)
+                self.metrics.log_value(
+                    NUM_ENV_STEPS_TRAINED_LIFETIME, replayed_steps, reduce="sum"
+                )
 
                 # Perform additional (non-gradient updates), such as the critic EMA-copy
                 # update.
-                with self._timers["critic_ema_update"]:
+                with self.metrics.log_time((TIMERS, "critic_ema_update")):
                     self.learner_group.additional_update(
-                        timestep=self._counters[NUM_ENV_STEPS_SAMPLED],
-                        reduce_fn=self._reduce_results,
+                        timestep=self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME),
                     )
 
                 if self.config.report_images_and_videos:
@@ -648,18 +646,15 @@ class DreamerV3(Algorithm):
                 logger.info(msg)
 
                 sub_iter += 1
-                self._counters[NUM_GRAD_UPDATES_LIFETIME] += 1
+                self.metrics.log_value(NUM_GRAD_UPDATES_LIFETIME, 1, reduce="sum")
 
         # Update weights - after learning on the LearnerGroup - on all EnvRunner
         # workers.
-        with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+        with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
             # Only necessary if RLModule is not shared between (local) EnvRunner and
             # (local) Learner.
             if not self.config.share_module_between_env_runner_and_learner:
-                self._counters[
-                    NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS
-                ] = 0
-                self._counters[NUM_SYNCH_WORKER_WEIGHTS] += 1
+                self.metrics.log_value(NUM_SYNCH_WORKER_WEIGHTS, 1, reduce="sum")
                 self.workers.sync_weights(
                     from_worker_or_learner_group=self.learner_group
                 )
@@ -669,7 +664,7 @@ class DreamerV3(Algorithm):
         if self.config.gc_frequency_train_steps and (
             self.training_iteration % self.config.gc_frequency_train_steps == 0
         ):
-            with self._timers[GARBAGE_COLLECTION_TIMER]:
+            with self.metrics.log_time((TIMERS, GARBAGE_COLLECTION_TIMER)):
                 gc.collect()
 
         # Add train results and the actual training ratio to stats. The latter should
@@ -678,7 +673,7 @@ class DreamerV3(Algorithm):
         results[ALL_MODULES]["actual_training_ratio"] = self.training_ratio
 
         # Return all results.
-        return results
+        return self.metrics.reduce()
 
     @property
     def training_ratio(self) -> float:
@@ -688,13 +683,9 @@ class DreamerV3(Algorithm):
         trained thus far (replayed from the buffer) over the total number of actual
         env steps taken thus far.
         """
-        return self._counters[NUM_ENV_STEPS_TRAINED] / (
-            self._counters[NUM_ENV_STEPS_SAMPLED]
+        return self.metrics.peek(NUM_ENV_STEPS_TRAINED_LIFETIME, default=0) / (
+            self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0.001)
         )
-
-    @staticmethod
-    def _reduce_results(results: List[Dict[str, Any]]):
-        return tree.map_structure(lambda *s: np.mean(s, axis=0), *results)
 
     # TODO (sven): Remove this once DreamerV3 is on the new SingleAgentEnvRunner.
     @PublicAPI

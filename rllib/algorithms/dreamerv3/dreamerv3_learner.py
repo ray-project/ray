@@ -24,31 +24,6 @@ class DreamerV3Learner(Learner):
     """
 
     @override(Learner)
-    def compile_results(
-        self,
-        *,
-        batch: MultiAgentBatch,
-        fwd_out: Dict[str, Any],
-        loss_per_module: Dict[str, TensorType],
-        metrics_per_module: DefaultDict[ModuleID, Dict[str, Any]],
-    ) -> Dict[str, Any]:
-        results = super().compile_results(
-            batch=batch,
-            fwd_out=fwd_out,
-            loss_per_module=loss_per_module,
-            metrics_per_module=metrics_per_module,
-        )
-
-        # Add the predicted obs distributions for possible (video) summarization.
-        if self.config.report_images_and_videos:
-            for module_id, res in results.items():
-                if module_id in fwd_out:
-                    res["WORLD_MODEL_fwd_out_obs_distribution_means_BxT"] = fwd_out[
-                        module_id
-                    ]["obs_distribution_means_BxT"]
-        return results
-
-    @override(Learner)
     def additional_update_for_module(
         self,
         *,
@@ -63,5 +38,8 @@ class DreamerV3Learner(Learner):
             module_id=module_id, config=config, timestep=timestep
         )
 
+        #TODO: Move the below somehow into DreamerV3.training_step, so we won't need additional_update anymore at all.
+        # similar to new IMPALA.
+        a=1
         # Update EMA weights of the critic.
         self.module[module_id].critic.update_ema()

@@ -242,6 +242,14 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
             key=module_id,
             window=1,  # <- single items (should not be mean/ema-reduced over time).
         )
+
+        # Add the predicted obs distributions for possible (video) summarization.
+        if config.report_images_and_videos:
+            self.metrics.log_value(
+                "WORLD_MODEL_fwd_out_obs_distribution_means_BxT",
+                fwd_out["obs_distribution_means_BxT"],
+            )
+
         if config.report_individual_batch_item_stats:
             # Log important world-model loss stats.
             self.metrics.log_dict(
