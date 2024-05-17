@@ -68,7 +68,6 @@ config = (
 )
 
 
-
 stop = {
     NUM_ENV_STEPS_SAMPLED_LIFETIME: 500000,
     # `episode_return_mean` is the sum of all agents/policies' returns.

@@ -13,9 +13,7 @@ parser = add_rllib_example_script_args()
 # and (if needed) use their values toset up `config` below.
 args = parser.parse_args()
 
-register_env(
-    "multi_agent_cartpole", lambda _: MultiAgentCartPole({"num_agents": 2})
-)
+register_env("multi_agent_cartpole", lambda _: MultiAgentCartPole({"num_agents": 2}))
 
 config = (
     DQNConfig()
