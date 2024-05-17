@@ -40,6 +40,7 @@ import os
 
 import ray
 from ray import air, tune
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.examples.envs.classes.correlated_actions_env import CorrelatedActionsEnv
 from ray.rllib.examples._old_api_stack.models.autoregressive_action_model import (
     AutoregressiveActionModel,
@@ -50,6 +51,11 @@ from ray.rllib.examples._old_api_stack.models.autoregressive_action_dist import 
     TorchBinaryAutoregressiveDistribution,
 )
 from ray.rllib.models import ModelCatalog
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.logger import pretty_print
 from ray.tune.registry import get_trainable_cls
@@ -159,9 +165,9 @@ if __name__ == "__main__":
 
     # use stop conditions passed via CLI (or defaults)
     stop = {
-        "training_iteration": args.stop_iters,
-        "num_env_steps_sampled_lifetime": args.stop_timesteps,
-        "env_runner_results/episode_return_mean": args.stop_reward,
+        TRAINING_ITERATION: args.stop_iters,
+        NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
     }
 
     # manual training loop using PPO without ``Tuner.fit()``.
@@ -178,8 +184,8 @@ if __name__ == "__main__":
             print(pretty_print(result))
             # stop training if the target train steps or reward are reached
             if (
-                result["timesteps_total"] >= args.stop_timesteps
-                or result["episode_reward_mean"] >= args.stop_reward
+                result[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"] >= args.stop_timesteps
+                or result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN] >= args.stop_reward
             ):
                 break
 
