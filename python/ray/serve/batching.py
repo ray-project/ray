@@ -460,7 +460,7 @@ class _SyncBatchingMethod(Protocol, Generic[SelfType, T, R]):
 
 
 class _AsyncBatchingMethod(Protocol, Generic[SelfType, T, R]):
-    async def __call__(_, self: SelfType, __batch: List[T], /) -> List[R]:
+    async def __call__(self, self_: SelfType, __batch: List[T], /) -> List[R]:
         ...
 
 
