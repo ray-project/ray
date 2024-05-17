@@ -30,15 +30,21 @@ class Actor:
         self.fail_after = fail_after
         self.sys_exit = sys_exit
 
-    def inc(self, x):
-        self.i += x
-        if self.fail_after and self.i > self.fail_after:
+        self.count = 0
+
+    def _fail_if_needed(self):
+        if self.fail_after and self.count > self.fail_after:
             # Randomize the failures to better cover multi actor scenarios.
             if random.random() > 0.5:
                 if self.sys_exit:
                     os._exit(1)
                 else:
-                    raise ValueError("injected fault")
+                    raise RuntimeError("injected fault")
+
+    def inc(self, x):
+        self.i += x
+        self.count += 1
+        self._fail_if_needed()
         return self.i
 
     def double_and_inc(self, x):
@@ -47,6 +53,8 @@ class Actor:
         return self.i
 
     def echo(self, x):
+        self.count += 1
+        self._fail_if_needed()
         return x
 
     def append_to(self, lst):
@@ -286,6 +294,54 @@ def test_dag_errors(ray_start_regular):
         dag.experimental_compile()
 
 
+def test_dag_fault_tolerance_chain(ray_start_regular_shared):
+    actors = [
+        Actor.remote(0, fail_after=100 if i == 0 else None, sys_exit=False)
+        for i in range(4)
+    ]
+    with InputNode() as i:
+        dag = i
+        for a in actors:
+            dag = a.echo.bind(dag)
+
+    compiled_dag = dag.experimental_compile()
+
+    for i in range(99):
+        output_channels = compiled_dag.execute(i)
+        # TODO(swang): Replace with fake ObjectRef.
+        results = output_channels.begin_read()
+        assert results == i
+        output_channels.end_read()
+
+    with pytest.raises(RuntimeError):
+        for i in range(99):
+            output_channels = compiled_dag.execute(i)
+            output_channels.begin_read()
+            output_channels.end_read()
+
+    compiled_dag.teardown()
+
+    # All actors are still alive.
+    ray.get([actor.sleep.remote(0) for actor in actors])
+
+    # Remaining actors can be reused.
+    actors.pop(0)
+    with InputNode() as i:
+        dag = i
+        for a in actors:
+            dag = a.echo.bind(dag)
+
+    compiled_dag = dag.experimental_compile()
+    for i in range(100):
+        output_channels = compiled_dag.execute(i)
+        # TODO(swang): Replace with fake ObjectRef.
+        results = output_channels.begin_read()
+        assert results == i
+        output_channels.end_read()
+
+    compiled_dag.teardown()
+
+
 def test_dag_fault_tolerance(ray_start_regular_shared):
     actors = [
         Actor.remote(0, fail_after=100 if i == 0 else None, sys_exit=False)
@@ -304,7 +360,7 @@ def test_dag_fault_tolerance(ray_start_regular_shared):
         assert results == [i + 1] * 4
         output_channels.end_read()
 
-    with pytest.raises(ValueError):
+    with pytest.raises(RuntimeError):
         for i in range(99):
             output_channels = compiled_dag.execute(1)
             output_channels.begin_read()
@@ -313,7 +369,7 @@ def test_dag_fault_tolerance(ray_start_regular_shared):
     compiled_dag.teardown()
 
     # All actors are still alive.
-    ray.get([actor.echo.remote("hello") for actor in actors])
+    ray.get([actor.sleep.remote(0) for actor in actors])
 
     # Remaining actors can be reused.
     actors.pop(0)
@@ -456,7 +512,7 @@ def test_asyncio_exceptions(ray_start_regular_shared, max_queue_size):
             async with output_channel as result:
                 if isinstance(result, Exception):
                     exc = result
-        assert isinstance(exc, ValueError), exc
+        assert isinstance(exc, RuntimeError), exc
 
         # Using begin_read() / end_read().
         exc = None
@@ -467,7 +523,7 @@ def test_asyncio_exceptions(ray_start_regular_shared, max_queue_size):
             except Exception as e:
                 exc = e
             output_channel.end_read()
-        assert isinstance(exc, ValueError), exc
+        assert isinstance(exc, RuntimeError), exc
 
     loop.run_until_complete(main())
     # Note: must teardown before starting a new Ray session, otherwise you'll get

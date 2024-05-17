@@ -17,7 +17,6 @@
 #include <thread>
 
 #include "ray/common/ray_config.h"
-#include "ray/raylet/raylet_util.h"
 #include "ray/util/event.h"
 #include "ray/util/event_label.h"
 #include "ray/util/logging.h"
@@ -96,7 +95,11 @@ void AgentManager::StartAgent() {
              "https://docs.ray.io/en/master/ray-observability/user-guides/"
              "configure-logging.html#logging-directory-structure.\n"
              "- The agent is killed by the OS (e.g., out of memory).";
-      ShutdownRayletGracefully();
+      rpc::NodeDeathInfo node_death_info;
+      node_death_info.set_reason(rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
+      node_death_info.set_reason_message(options_.agent_name +
+                                         " failed and raylet fate-shares with it.");
+      shutdown_raylet_gracefully_(node_death_info);
       // If the process is not terminated within 10 seconds, forcefully kill raylet
       // itself.
       delay_executor_([]() { QuickExit(); }, /*ms*/ 10000);

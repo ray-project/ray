@@ -4,6 +4,7 @@ import numpy as np
 
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS
 
 
 class SelfPlayCallback(DefaultCallbacks):
@@ -23,8 +24,8 @@ class SelfPlayCallback(DefaultCallbacks):
         # Note that normally, one should set up a proper evaluation config,
         # such that evaluation always happens on the already updated policy,
         # instead of on the already used train_batch.
-        main_rew = result["hist_stats"].pop("policy_main_reward")
-        opponent_rew = list(result["hist_stats"].values())[0]
+        main_rew = result[ENV_RUNNER_RESULTS]["hist_stats"].pop("policy_main_reward")
+        opponent_rew = list(result[ENV_RUNNER_RESULTS]["hist_stats"].values())[0]
         assert len(main_rew) == len(opponent_rew)
         won = 0
         for r_main, r_opponent in zip(main_rew, opponent_rew):

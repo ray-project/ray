@@ -178,8 +178,20 @@ void MutableObjectManager::DestroySemaphores(const ObjectID &object_id) {
   RAY_CHECK_EQ(sem_close(sem.object_sem), 0);
 
   std::string name = GetSemaphoreName(GetHeader(object_id));
-  RAY_CHECK_EQ(sem_unlink(GetSemaphoreHeaderName(name).c_str()), 0);
-  RAY_CHECK_EQ(sem_unlink(GetSemaphoreObjectName(name).c_str()), 0);
+  // The core worker and the raylet each have their own MutableObjectManager instance, and
+  // when both a reader and a writer are on the same machine, the reader and writer will
+  // each register the same object with separate MutableObjectManager instances. Thus,
+  // when the second instance is destructed, it will call sem_unlink() on the same two
+  // semaphores below. As the two semaphores have already been unlinked by the first
+  // instance, the sem_unlink() calls below will both fail with ENOENT.
+  int ret = sem_unlink(GetSemaphoreHeaderName(name).c_str());
+  if (ret) {
+    RAY_CHECK_EQ(errno, ENOENT);
+  }
+  ret = sem_unlink(GetSemaphoreObjectName(name).c_str());
+  if (ret) {
+    RAY_CHECK_EQ(errno, ENOENT);
+  }
 
   semaphores_.erase(object_id);
 }

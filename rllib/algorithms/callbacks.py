@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Type, Union
 import gymnasium as gym
 import numpy as np
 
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
@@ -832,5 +833,5 @@ class RE3UpdateCallbacks(DefaultCallbacks):
     def on_train_result(self, *, result: dict, algorithm=None, **kwargs) -> None:
         # TODO(gjoliver): Remove explicit _step tracking and pass
         #  Algorithm._iteration as a parameter to on_learn_on_batch() call.
-        RE3UpdateCallbacks._step = result["training_iteration"]
+        RE3UpdateCallbacks._step = result[TRAINING_ITERATION]
         super().on_train_result(algorithm=algorithm, result=result, **kwargs)

@@ -615,7 +615,6 @@ ray_cc_library(
     ),
     hdrs = glob(
         [
-            "src/ray/raylet/raylet_util.h",
             "src/ray/raylet/scheduling/**/*.h",
             "src/ray/core_worker/common.h",
         ],
