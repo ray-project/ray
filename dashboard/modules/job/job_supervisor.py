@@ -102,8 +102,8 @@ class JobSupervisor:
 
         self._job_info_client = JobInfoStorageClient(GcsAioClient(address=gcs_address))
 
-        self._runner_actor_cls = ray.remote(JobRunner)
-        self._runner: Optional[ActorHandle] = None
+        self._job_executor_actor_cls = ray.remote(JobExecutor)
+        self._job_executor: Optional[ActorHandle] = None
 
         # Logger object to persist supervisor logs in a special file
         # (for easier discovery)
@@ -127,11 +127,11 @@ class JobSupervisor:
 
     async def _check_driver_running(self) -> bool:
         """Checks whether the job driver is currently running"""
-        if self._runner is None:
+        if self._job_executor is None:
             return False
 
         # Check if job's driver runner actor is alive and responsive
-        await self._runner.ping.remote()
+        await self._job_executor.ping.remote()
         # Check whether job's driver completed execution
         if self._waiting_task is None:
             return False
@@ -147,12 +147,12 @@ class JobSupervisor:
 
     async def stop(self):
         """Proxies request to job runner"""
-        if self._runner is None:
+        if self._job_executor is None:
             self._logger.info("Stopping of the job has been requested, but driver is already stopped; no action")
         else:
             self._logger.info("Stopping the job")
             # Stop the job runner actor & killing the driver process
-            await self._runner.stop.remote()
+            await self._job_executor.stop.remote()
 
     async def launch(
         self,
@@ -365,7 +365,7 @@ class JobSupervisor:
 
         driver_scheduling_strategy = self._get_driver_scheduling_strategy(resources_specified)
 
-        self._runner = self._runner_actor_cls.options(
+        self._job_executor = self._job_executor_actor_cls.options(
             name=JOB_EXECUTOR_ACTOR_NAME_TEMPLATE.format(job_id=self._job_id),
             num_cpus=entrypoint_num_cpus,
             num_gpus=entrypoint_num_gpus,
@@ -385,7 +385,7 @@ class JobSupervisor:
             entrypoint_resources_specified=resources_specified,
         )
 
-        return self._runner
+        return self._job_executor
 
     def _get_driver_scheduling_strategy(self, resources_specified: bool) -> SchedulingStrategyT:
         """Get the scheduling strategy for the job.
@@ -642,7 +642,7 @@ class JobExecutionResult:
     stopped: bool = False
 
 
-class JobRunner:
+class JobExecutor:
     """
     TODO elaborate
     """
