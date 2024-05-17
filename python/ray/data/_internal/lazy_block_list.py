@@ -396,30 +396,6 @@ class LazyBlockList(BlockList):
         return [meta for meta_list in metadata for meta in meta_list]
 
 
-def _execute_read_task_nosplit(
-    i: int,
-    task: ReadTask,
-    context: DataContext,
-    stats_uuid: str,
-    stats_actor: ray.actor.ActorHandle,
-) -> Tuple[Block, BlockMetadata]:
-    DataContext._set_current(context)
-    stats = BlockExecStats.builder()
-
-    # Execute the task. Expect only one block returned when dynamic block splitting is
-    # not enabled.
-    blocks = list(task())
-    assert len(blocks) == 1
-    block = blocks[0]
-
-    metadata = task.get_metadata()
-    metadata = BlockAccessor.for_block(block).get_metadata(
-        input_files=metadata.input_files, exec_stats=stats.build()
-    )
-    stats_actor.record_task.remote(stats_uuid, i, [metadata])
-    return block, metadata
-
-
 def _execute_read_task_split(
     i: int,
     task: ReadTask,
