@@ -1,7 +1,4 @@
-import math
-from typing import Iterator, List, Optional, Tuple
-
-import numpy as np
+from typing import Iterator, List, Tuple
 
 from ray.data._internal.memory_tracing import trace_allocation
 from ray.data.block import Block, BlockMetadata
