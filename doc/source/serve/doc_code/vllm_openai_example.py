@@ -140,7 +140,7 @@ if __name__ == "__main__":
     # Note: not all OpenAI client arguments are supported and some may be ignored.
     client = OpenAI(
         # Replace the URL if deploying your application remotely
-        # (e.g., on Anyscale or Kuberay).
+        # (e.g., on Anyscale or KubeRay).
         base_url="http://localhost:8000/v1",
         api_key="NOT A REAL KEY",
     )
