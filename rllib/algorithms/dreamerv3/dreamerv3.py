@@ -601,25 +601,27 @@ class DreamerV3(Algorithm):
                     )
 
                 # Perform the actual update via our learner group.
-                train_results = self.learner_group.update_from_batch(
+                learner_results = self.learner_group.update_from_batch(
                     batch=SampleBatch(sample).as_multi_agent(),
                 )
-                self.metrics.log_n_dicts(train_results, key=LEARNER_RESULTS)
+                self.metrics.log_n_dicts(learner_results, key=LEARNER_RESULTS)
                 self.metrics.log_value(
                     NUM_ENV_STEPS_TRAINED_LIFETIME, replayed_steps, reduce="sum"
                 )
 
+                # TODO: do additional update somewhere
+                a=1
                 # Perform additional (non-gradient updates), such as the critic EMA-copy
                 # update.
-                with self.metrics.log_time((TIMERS, "critic_ema_update")):
-                    self.learner_group.additional_update(
-                        timestep=self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME),
-                    )
+                #with self.metrics.log_time((TIMERS, "critic_ema_update")):
+                    #self.learner_group.additional_update(
+                    #    timestep=self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME),
+                    #)
 
                 if self.config.report_images_and_videos:
                     report_predicted_vs_sampled_obs(
                         # TODO (sven): DreamerV3 is single-agent only.
-                        results=train_results[DEFAULT_MODULE_ID],
+                        metrics=self.metrics,
                         sample=sample,
                         batch_size_B=self.config.batch_size_B,
                         batch_length_T=self.config.batch_length_T,
@@ -629,21 +631,21 @@ class DreamerV3(Algorithm):
                         ),
                     )
 
-                res = train_results[DEFAULT_MODULE_ID]
-                logger.info(
-                    f"\t\tWORLD_MODEL_L_total={res['WORLD_MODEL_L_total']:.5f} ("
-                    f"L_pred={res['WORLD_MODEL_L_prediction']:.5f} ("
-                    f"decoder/obs={res['WORLD_MODEL_L_decoder']} "
-                    f"L_rew={res['WORLD_MODEL_L_reward']} "
-                    f"L_cont={res['WORLD_MODEL_L_continue']}); "
-                    f"L_dyn/rep={res['WORLD_MODEL_L_dynamics']:.5f})"
-                )
-                msg = "\t\t"
-                if self.config.train_actor:
-                    msg += f"L_actor={res['ACTOR_L_total']:.5f} "
-                if self.config.train_critic:
-                    msg += f"L_critic={res['CRITIC_L_total']:.5f} "
-                logger.info(msg)
+                #res = train_results[DEFAULT_MODULE_ID]
+                #logger.info(
+                #    f"\t\tWORLD_MODEL_L_total={res['WORLD_MODEL_L_total']:.5f} ("
+                #    f"L_pred={res['WORLD_MODEL_L_prediction']:.5f} ("
+                #    f"decoder/obs={res['WORLD_MODEL_L_decoder']} "
+                #    f"L_rew={res['WORLD_MODEL_L_reward']} "
+                #    f"L_cont={res['WORLD_MODEL_L_continue']}); "
+                #    f"L_dyn/rep={res['WORLD_MODEL_L_dynamics']:.5f})"
+                #)
+                #msg = "\t\t"
+                #if self.config.train_actor:
+                #    msg += f"L_actor={res['ACTOR_L_total']:.5f} "
+                #if self.config.train_critic:
+                #    msg += f"L_critic={res['CRITIC_L_total']:.5f} "
+                #logger.info(msg)
 
                 sub_iter += 1
                 self.metrics.log_value(NUM_GRAD_UPDATES_LIFETIME, 1, reduce="sum")
@@ -669,8 +671,8 @@ class DreamerV3(Algorithm):
 
         # Add train results and the actual training ratio to stats. The latter should
         # be close to the configured `training_ratio`.
-        results.update(train_results)
-        results[ALL_MODULES]["actual_training_ratio"] = self.training_ratio
+        #results.update(train_results)
+        self.metrics.log_value("actual_training_ratio", self.training_ratio, window=1)
 
         # Return all results.
         return self.metrics.reduce()
