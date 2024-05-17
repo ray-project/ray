@@ -360,7 +360,7 @@ def gen_high_impact_tests(mock_gen_from_s3) -> None:
             "name": "data_test_02",
             Test.KEY_IS_HIGH_IMPACT: "true",
             "test_results": [
-                _stub_test_result(rayci_step_id="databuild", commit="321"),
+                _stub_test_result(rayci_step_id="databuild", commit="789"),
             ],
         }
     )
