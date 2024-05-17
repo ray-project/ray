@@ -72,12 +72,21 @@ if sys.platform == "win32":
 
 class JobSupervisor:
     """
-    Ray actor created by JobManager for each submitted job, responsible to
-    setup runtime_env, execute given shell command in subprocess, update job
-    status, persist job logs and manage subprocess group cleaning.
+    Ray Actor created for each submitted Ray Job responsible for handling
+    and monitoring of the job execution.
 
-    One job supervisor actor maps to one subprocess, for one job_id.
-    Job supervisor actor should fate share with subprocess it created.
+    Actual provisioning of runtime environment, launching job's driver (entrypoint)
+    is done by `JobExecutor`.
+
+    Is responsible for:
+
+        1. Orchestrating Ray job execution (creating and managing JobExecutor)
+        2. Job execution monitoring
+        3. Updating job's status in GCS
+
+    NOTE: JobSupervisor maps to JobExecutor 1:1 for every job.
+    NOTE: Both JobSupervisor and JobExecutor fate-share with the job, as well as the other way around (ie
+          Ray job will be terminated if any of the actors is forcibly terminated)
     """
 
     # Interval of the monitoring loop iterations
@@ -113,7 +122,8 @@ class JobSupervisor:
 
         # Job driver completion is tracked by a completion-waiting task
         self._waiting_task: Optional[asyncio.Task] = None
-        # TODO elaborate why monitoring loop is started in ctor
+        # NOTE: Monitoring loop is started immediately in a ctor to provide for
+        #       an invariant that as soon as `JobSupervisor` is created,
         self._monitoring_task: asyncio.Task = self._loop.create_task(
             self._monitor_job_internal()
         )
@@ -644,7 +654,16 @@ class JobExecutionResult:
 
 class JobExecutor:
     """
-    TODO elaborate
+    Ray Actor created for each submitted Ray Job responsible for launching job's driver/entrypoint.
+
+    Is responsible for:
+
+        1. Setting up runtime environment (if any) for the job
+        2. Executing given job's entrypoint (driver) in a subprocess, monitoring it, returning
+            its exit-code upon completion
+        3. Providing capability to interrupt (and terminate) the job if needed
+
+    NOTE: JobExecutor maps to job's driver subprocess 1:1 for every job.
     """
 
     DEFAULT_RAY_JOB_STOP_WAIT_TIME_S = 3

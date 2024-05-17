@@ -99,12 +99,19 @@ class JobManager:
         """
         Submits Ray Job for execution on a Ray cluster.
 
-        Ray jobs are executed asynchronously in a set of following steps
+        Ray Job execution workflow looks like following:
 
-        1. `JobSupervisor` actor is created, orchestrating execution (and monitoring)
-           of the Ray job (NOTE: supervisor is scheduled on a head-node!).
-        2. `JobSupervisor` subsequently creates `JobRunner` actor launching job's entrypoint, managing
-            its lifecycle and reporting its status.
+        JobManager
+            |--> JobSupervisor (Actor on Head-node)
+                    |--> JobExecutor (Actor on Head/Worker-node)
+                            |--> (subprocess) Job's driver entrypoint
+
+            1. JobManager instantiates JobSupervisor actor (guaranteed to be running on a Head-node) orchestrating
+                execution (and monitoring)
+            2. JobSupervisor upon request launches JobExecutor and "joins" it (similar to `Thread.join`)
+                awaiting on the results returned from the job's driver
+            3. JobExecutor launches job's driver's entrypoint (as subprocess), managing
+                its lifecycle and reporting its status.
 
         While, job execution process is asynchronous, we want to provide reasonable guarantees to the
         caller about the status of the job execution process by the time job submission completes.
