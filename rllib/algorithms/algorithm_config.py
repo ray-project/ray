@@ -624,7 +624,10 @@ class AlgorithmConfig(_Config):
 
         # Handle deprecated settings gracefully.
         for deprecated_key, deprecation_rules in self.DEPRECATED_KEYS.items():
+            # Make sure a config dict always has the old, deprecated keys set.
             if deprecated_key not in config:
+                if isinstance(deprecation_rules, str) and deprecation_rules in config:
+                    config[deprecated_key] = config[deprecation_rules]
                 continue
 
             # Simplify: Remove all deprecated keys that have as value
@@ -634,10 +637,9 @@ class AlgorithmConfig(_Config):
                 if config[deprecated_key] == DEPRECATED_VALUE:
                     del config[deprecated_key]
 
-            # Switch out deprecated vs new config keys.
+            # Set both deprecated AND new config keys.
             elif isinstance(deprecation_rules, str):
                 config[deprecation_rules] = config[deprecated_key]
-                del config[deprecated_key]
 
         return config
 
