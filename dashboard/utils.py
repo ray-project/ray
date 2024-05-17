@@ -654,3 +654,30 @@ def get_address_for_submission_client(address: Optional[str]) -> str:
         address = ray_address_to_api_server_url(address)
     logger.debug(f"Using API server address {address}.")
     return address
+
+
+def compose_node_message(death_info_dict: dict) -> str:
+    """Compose node message based on death information.
+
+    Args:
+        death_info_dict: the node_death field in GcsNodeInfo, in dict type.
+    """
+    death_reason = death_info_dict.get("reason", None)
+    if death_reason == "EXPECTED_TERMINATION":
+        node_message = "Expected termination"
+    elif death_reason == "UNEXPECTED_TERMINATION":
+        node_message = "Unexpected termination"
+    elif death_reason == "AUTOSCALER_DRAIN_PREEMPTED":
+        node_message = "Terminated due to preemption"
+    elif death_reason == "AUTOSCALER_DRAIN_IDLE":
+        node_message = "Terminated due to idle"
+    else:
+        node_message = None
+
+    death_reason_message = death_info_dict.get("reasonMessage", None)
+    if death_reason_message:
+        if node_message:
+            node_message += f": ({death_reason_message})"
+        else:
+            node_message = death_reason_message
+    return node_message

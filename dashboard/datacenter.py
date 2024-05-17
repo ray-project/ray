@@ -4,8 +4,9 @@ import ray.dashboard.consts as dashboard_consts
 
 from ray.dashboard.utils import (
     Dict,
-    async_loop_forever,
     MutableNotificationDict,
+    async_loop_forever,
+    compose_node_message,
 )
 
 logger = logging.getLogger(__name__)
@@ -134,10 +135,10 @@ class DataOrganizer:
         node_info["raylet"].update(ray_stats)
 
         node_info["status"] = node["stateSnapshot"]["state"]
-        node_info["message"] = node["deathInfo"]["reasonMessage"]
 
         # Merge GcsNodeInfo to node physical stats
         node_info["raylet"].update(node)
+        node_info["raylet"]["message"] = compose_node_message(node.get("deathInfo", {}))
 
         if not get_summary:
             # Merge actors to node physical stats

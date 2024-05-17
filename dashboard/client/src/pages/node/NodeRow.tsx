@@ -77,6 +77,9 @@ const useStyles = makeStyles((theme) =>
     labels: {
       maxWidth: 200,
     },
+    message: {
+      maxWidth: 200,
+    },
   }),
 );
 
@@ -128,7 +131,11 @@ export const NodeRow = ({
         <StatusChip type="node" status={raylet.state} />
       </TableCell>
       <TableCell>
-        <Box minWidth={TEXT_COL_MIN_WIDTH}>{raylet.message}</Box>
+        <CodeDialogButtonWithPreview
+          className={classes.message}
+          title="Message"
+          code={raylet.message}
+        />
       </TableCell>
       <TableCell align="center">
         <Tooltip title={raylet.nodeId} arrow>
