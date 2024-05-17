@@ -24,7 +24,7 @@ from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
-from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
+from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.execution.train_ops import (
     train_one_step,
     multi_gpu_train_one_step,
@@ -317,7 +317,7 @@ class DQNConfig(AlgorithmConfig):
             training_intensity: The intensity with which to update the model (vs
                 collecting samples from the env).
                 If None, uses "natural" values of:
-                `train_batch_size` / (`rollout_fragment_length` x `num_workers` x
+                `train_batch_size` / (`rollout_fragment_length` x `num_env_runners` x
                 `num_envs_per_env_runner`).
                 If not None, will make sure that the ratio between timesteps inserted
                 into and sampled from the buffer matches the given values.
@@ -325,7 +325,7 @@ class DQNConfig(AlgorithmConfig):
                 training_intensity=1000.0
                 train_batch_size=250
                 rollout_fragment_length=1
-                num_workers=1 (or 0)
+                num_env_runners=1 (or 0)
                 num_envs_per_env_runner=1
                 -> natural value = 250 / 1 = 250.0
                 -> will make sure that replay+train op will be executed 4x asoften as
@@ -656,24 +656,20 @@ class DQN(Algorithm):
                 self.learner_group.foreach_learner(lambda lrnr: lrnr._reset_noise())
             # Run multiple sample-from-buffer and update iterations.
             for _ in range(sample_and_train_weight):
-                # Sample training batch from replay_buffer.
-                # TODO (simon): Use sample_with_keys() here.
+                # Sample a list of episodes used for learning from the replay buffer.
                 with self.metrics.log_time((TIMERS, REPLAY_BUFFER_SAMPLE_TIMER)):
-                    train_dict = self.local_replay_buffer.sample(
+                    episodes = self.local_replay_buffer.sample(
                         num_items=self.config.train_batch_size,
                         n_step=self.config.n_step,
                         gamma=self.config.gamma,
                         beta=self.config.replay_buffer_config["beta"],
                     )
-                    train_batch = SampleBatch(train_dict)
-                    # Convert to multi-agent batch as `LearnerGroup` depends on it.
-                    # TODO (sven, simon): Remove this conversion once the `LearnerGroup`
-                    #  supports dict.
-                    train_batch = train_batch.as_multi_agent()
 
                 # Perform an update on the buffer-sampled train batch.
                 with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
-                    learner_results = self.learner_group.update_from_batch(train_batch)
+                    learner_results = self.learner_group.update_from_episodes(
+                        episodes=episodes,
+                    )
                     # Isolate TD-errors from result dicts (we should not log these to
                     # disk or WandB, they might be very large).
                     td_errors = defaultdict(list)
@@ -713,10 +709,8 @@ class DQN(Algorithm):
                 # Update replay buffer priorities.
                 with self.metrics.log_time((TIMERS, REPLAY_BUFFER_UPDATE_PRIOS_TIMER)):
                     update_priorities_in_episode_replay_buffer(
-                        self.local_replay_buffer,
-                        self.config,
-                        train_batch,
-                        td_errors,
+                        replay_buffer=self.local_replay_buffer,
+                        td_errors=td_errors,
                     )
 
                 # Update the target networks, if necessary.

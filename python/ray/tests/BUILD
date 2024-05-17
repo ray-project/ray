@@ -190,6 +190,7 @@ py_test_module_list(
     "test_shuffle.py",
     "test_state_api_log.py",
     "test_state_api_summary.py",
+    "test_structured_logging.py",
     "test_tempfile.py",
     "test_tensorflow.py",
     "test_tls_auth.py",
@@ -298,6 +299,7 @@ py_test_module_list(
     "test_metrics_agent_2.py",
     "test_microbenchmarks.py",
     "test_mini.py",
+    "test_node_death.py",
     "test_numba.py",
     "test_raylet_output.py",
     "test_top_level_api.py",
@@ -315,7 +317,7 @@ py_test_module_list(
     "test_channel.py",
   ],
   size = "medium",
-  tags = ["exclusive", "team:core"],
+  tags = ["exclusive", "accelerated_dag", "no_windows", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 

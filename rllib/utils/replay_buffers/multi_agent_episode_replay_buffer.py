@@ -591,7 +591,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
                 Columns.TERMINATEDS: np.array(is_terminated),
                 Columns.TRUNCATEDS: np.array(is_truncated),
                 "weights": np.array(weights),
-                "n_steps": np.array(n_steps),
+                "n_step": np.array(n_steps),
             }
             # Include infos if necessary.
             if include_infos:
@@ -804,7 +804,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
                     Columns.TERMINATEDS: np.array(is_terminated[module_id]),
                     Columns.TRUNCATEDS: np.array(is_truncated[module_id]),
                     "weights": np.array(weights[module_id]),
-                    "n_steps": np.array(n_steps[module_id]),
+                    "n_step": np.array(n_steps[module_id]),
                 }
                 for module_id in observations.keys()
             }

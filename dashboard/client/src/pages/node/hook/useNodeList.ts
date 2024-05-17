@@ -44,13 +44,11 @@ export const useNodeList = () => {
   const nodeList = data?.summary ?? [];
   const nodeLogicalResources = data?.nodeLogicalResources ?? {};
 
-  const nodeListWithAdditionalInfo = nodeList
-    .map((e) => ({
-      ...e,
-      state: e.raylet.state,
-      logicalResources: nodeLogicalResources[e.raylet.nodeId],
-    }))
-    .sort(sorterFunc);
+  const nodeListWithAdditionalInfo = nodeList.map((e) => ({
+    ...e,
+    state: e.raylet.state,
+    logicalResources: nodeLogicalResources[e.raylet.nodeId],
+  }));
 
   const sortedList = _.sortBy(nodeListWithAdditionalInfo, (node) => {
     // After sorting by user specified field, stable sort by
@@ -62,7 +60,7 @@ export const useNodeList = () => {
     const isHeadNodeOrder = node.raylet.isHeadNode ? "0" : "1";
     const nodeIdOrder = node.raylet.nodeId;
     return [nodeStateOrder, isHeadNodeOrder, nodeIdOrder];
-  });
+  }).sort(sorterFunc);
 
   return {
     nodeList: sortedList.filter((node) =>
