@@ -120,9 +120,11 @@ class AlgorithmConfig(_Config):
     DEPRECATED_KEYS = {
         "monitor": None,
         "evaluation_num_episodes": None,
+        "evaluation_num_workers": "evaluation_num_env_runners",
         "metrics_smoothing_episodes": None,
         "timesteps_per_iteration": None,
         "min_iter_time_s": None,
+        "num_envs_per_worker": "num_envs_per_env_runner",
         "collect_metrics_timeout": None,
         "buffer_size": None,
         "prioritized_replay": None,
@@ -137,34 +139,29 @@ class AlgorithmConfig(_Config):
         "min_sample_timesteps_per_reporting": None,
         "input_evaluation": None,
         "_enable_new_api_stack": None,
-        "callbacks": {
-            "new": "callbacks_class",
-            "default": DefaultCallbacks,
-        },
-        "create_env_on_driver": {
-            "new": "create_env_on_local_worker",
-            "default": False,
-        },
-        "custom_eval_function": {
-            "new": "custom_evaluation_function",
-            "default": None,
-        },
-        "framework": {
-            "new": "framework_str",
-            "default": "torch",
-        },
-        "num_cpus_for_driver": {
-            "new": "num_cpus_for_main_process",
-            "default": 1,
-        },
-        "num_workers": {
-            "new": "num_env_runners",
-            "default": 0,
-        },
-        "num_rollout_workers": {
-            "new": "num_env_runners",
-            "default": 0,
-        },
+        "callbacks": "callbacks_class",
+        "create_env_on_driver": "create_env_on_local_worker",
+        "custom_eval_function": "custom_evaluation_function",
+        "framework": "framework_str",
+        "num_cpus_for_driver": "num_cpus_for_main_process",
+        "num_cpus_for_local_worker": "num_cpus_for_main_process",
+        "num_workers": "num_env_runners",
+        "num_rollout_workers": "num_env_runners",
+        "num_cpus_per_worker": "num_cpus_per_env_runner",
+        "num_gpus_per_worker": "num_gpus_per_env_runner",
+        "custom_resources_per_worker": "custom_resources_per_env_runner",
+        "num_learner_workers": "num_learners",
+        "num_cpus_per_learner_worker": "num_cpus_per_learner",
+        "num_gpus_per_learner_worker": "num_gpus_per_learner",
+        "ignore_worker_failures": "ignore_env_runner_failures",
+        "recreate_failed_workers": "recreate_failed_env_runners",
+        "max_num_worker_restarts": "max_num_env_runner_restarts",
+        "delay_between_worker_restarts_s": "delay_between_env_runner_restarts_s",
+        "num_consecutive_worker_failures_tolerance": (
+            "num_consecutive_env_runner_failures_tolerance"
+        ),
+        "worker_health_probe_timeout_s": "env_runner_health_probe_timeout_s",
+        "worker_restore_timeout_s": "env_runner_restore_timeout_s",
     }
 
     @staticmethod
@@ -629,6 +626,7 @@ class AlgorithmConfig(_Config):
         for deprecated_key, deprecation_rules in self.DEPRECATED_KEYS.items():
             if deprecated_key not in config:
                 continue
+
             # Simplify: Remove all deprecated keys that have as value `DEPRECATED_VALUE`.
             # These would be useless in the returned dict either way.
             if deprecation_rules is None:
