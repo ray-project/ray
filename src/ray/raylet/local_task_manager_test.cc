@@ -2,16 +2,17 @@
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+
 #include <memory>
 #include <string>
 
+#include "mock/ray/gcs/gcs_client/gcs_client.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/test/util.h"
-#include "mock/ray/gcs/gcs_client/gcs_client.h"
 
 namespace ray {
 namespace raylet {
@@ -114,33 +115,33 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
   return scheduler;
 }
 
-RayTask CreateTask(
-    const std::unordered_map<std::string, double> &required_resources,
-    const std::string &task_name = "default") {
+RayTask CreateTask(const std::unordered_map<std::string, double> &required_resources,
+                   const std::string &task_name = "default") {
   TaskSpecBuilder spec_builder;
   TaskID id = RandomTaskId();
   JobID job_id = RandomJobId();
   rpc::Address address;
-  spec_builder.SetCommonTaskSpec(id,
-                                 task_name,
-                                 Language::PYTHON,
-                                 FunctionDescriptorBuilder::BuildPython(task_name, "", "", ""),
-                                 job_id,
-                                 rpc::JobConfig(),
-                                 TaskID::Nil(),
-                                 0,
-                                 TaskID::Nil(),
-                                 address,
-                                 0,
-                                 /*returns_dynamic=*/false,
-                                 /*is_streaming_generator*/ false,
-                                 /*generator_backpressure_num_objects*/ -1,
-                                 required_resources,
-                                 {},
-                                 "",
-                                 0,
-                                 TaskID::Nil(),
-                                 nullptr);
+  spec_builder.SetCommonTaskSpec(
+      id,
+      task_name,
+      Language::PYTHON,
+      FunctionDescriptorBuilder::BuildPython(task_name, "", "", ""),
+      job_id,
+      rpc::JobConfig(),
+      TaskID::Nil(),
+      0,
+      TaskID::Nil(),
+      address,
+      0,
+      /*returns_dynamic=*/false,
+      /*is_streaming_generator*/ false,
+      /*generator_backpressure_num_objects*/ -1,
+      required_resources,
+      {},
+      "",
+      0,
+      TaskID::Nil(),
+      nullptr);
 
   spec_builder.SetNormalTaskSpec(0, false, "", rpc::SchedulingStrategy(), ActorID::Nil());
 
@@ -150,10 +151,19 @@ RayTask CreateTask(
 class MockObjectManager : public ObjectManagerInterface {
  public:
   MockObjectManager() {}
-  uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs, BundlePriority priority, const TaskMetricsKey &metrics_key) override { return 0; }
+  uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs,
+                BundlePriority priority,
+                const TaskMetricsKey &metrics_key) override {
+    return 0;
+  }
   void CancelPull(uint64_t request_id) override {}
-  bool PullRequestActiveOrWaitingForMetadata(uint64_t request_id) const override { return false; }
-  int64_t PullManagerNumInactivePullsByTaskName(const TaskMetricsKey &metrics_key) const override { return 0; }
+  bool PullRequestActiveOrWaitingForMetadata(uint64_t request_id) const override {
+    return false;
+  }
+  int64_t PullManagerNumInactivePullsByTaskName(
+      const TaskMetricsKey &metrics_key) const override {
+    return 0;
+  }
 };
 
 class LocalTaskManagerTest : public ::testing::Test {
@@ -168,9 +178,7 @@ class LocalTaskManagerTest : public ::testing::Test {
             id_,
             scheduler_,
             dependency_manager_, /* is_owner_alive= */
-            [this](const WorkerID &worker_id, const NodeID &node_id) {
-              return true;
-            },
+            [this](const WorkerID &worker_id, const NodeID &node_id) { return true; },
             /* get_node_info= */
             [this](const NodeID &node_id) -> const rpc::GcsNodeInfo * {
               if (node_info_.count(node_id) != 0) {
@@ -229,16 +237,17 @@ class LocalTaskManagerTest : public ::testing::Test {
 
 TEST_F(LocalTaskManagerTest, TestTaskDispatchingOrder) {
   RAY_LOG(INFO) << "Starting TestTaskDispatchingOrder";
-  
 
   // Initial setup: 3 CPUs available.
-  std::shared_ptr<MockWorker> worker1 = std::make_shared<MockWorker>(WorkerID::FromRandom(), 0);
-  std::shared_ptr<MockWorker> worker2 = std::make_shared<MockWorker>(WorkerID::FromRandom(), 0);
-  std::shared_ptr<MockWorker> worker3 = std::make_shared<MockWorker>(WorkerID::FromRandom(), 0);
+  std::shared_ptr<MockWorker> worker1 =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0);
+  std::shared_ptr<MockWorker> worker2 =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0);
+  std::shared_ptr<MockWorker> worker3 =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker1));
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker2));
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker3));
-
 
   // First batch of tasks: 2 'f' tasks
   auto task_f1 = CreateTask({{ray::kCPU_ResourceLabel, 1}}, "f");
@@ -250,14 +259,22 @@ TEST_F(LocalTaskManagerTest, TestTaskDispatchingOrder) {
                       Status, std::function<void()>, std::function<void()>) {
     *callback_occurred_ptr = true;
   };
-  local_task_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(task_f1, false, false, &reply, [callback] {
-        callback(Status::OK(), nullptr, nullptr);
-      },internal::WorkStatus::WAITING));
+  local_task_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(
+      task_f1,
+      false,
+      false,
+      &reply,
+      [callback] { callback(Status::OK(), nullptr, nullptr); },
+      internal::WorkStatus::WAITING));
   local_task_manager_->ScheduleAndDispatchTasks();
   pool_.TriggerCallbacks();
-  local_task_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(task_f2, false, false, &reply, [callback] {
-        callback(Status::OK(), nullptr, nullptr);
-      },internal::WorkStatus::WAITING));
+  local_task_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(
+      task_f2,
+      false,
+      false,
+      &reply,
+      [callback] { callback(Status::OK(), nullptr, nullptr); },
+      internal::WorkStatus::WAITING));
   local_task_manager_->ScheduleAndDispatchTasks();
   pool_.TriggerCallbacks();
 
@@ -266,26 +283,39 @@ TEST_F(LocalTaskManagerTest, TestTaskDispatchingOrder) {
   auto task_f4 = CreateTask({{ray::kCPU_ResourceLabel, 1}}, "f");
   auto task_f5 = CreateTask({{ray::kCPU_ResourceLabel, 1}}, "f");
   auto task_g1 = CreateTask({{ray::kCPU_ResourceLabel, 1}}, "g");
-  local_task_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(task_f3, false, false, &reply, [callback] {
-        callback(Status::OK(), nullptr, nullptr);
-      },internal::WorkStatus::WAITING));
-  local_task_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(task_f4, false, false, &reply, [callback] {
-        callback(Status::OK(), nullptr, nullptr);
-      },internal::WorkStatus::WAITING));
-  local_task_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(task_f5, false, false, &reply, [callback] {
-        callback(Status::OK(), nullptr, nullptr);
-      },internal::WorkStatus::WAITING));
-  local_task_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(task_g1, false, false, &reply, [callback] {
-        callback(Status::OK(), nullptr, nullptr);
-      },internal::WorkStatus::WAITING));
+  local_task_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(
+      task_f3,
+      false,
+      false,
+      &reply,
+      [callback] { callback(Status::OK(), nullptr, nullptr); },
+      internal::WorkStatus::WAITING));
+  local_task_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(
+      task_f4,
+      false,
+      false,
+      &reply,
+      [callback] { callback(Status::OK(), nullptr, nullptr); },
+      internal::WorkStatus::WAITING));
+  local_task_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(
+      task_f5,
+      false,
+      false,
+      &reply,
+      [callback] { callback(Status::OK(), nullptr, nullptr); },
+      internal::WorkStatus::WAITING));
+  local_task_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(
+      task_g1,
+      false,
+      false,
+      &reply,
+      [callback] { callback(Status::OK(), nullptr, nullptr); },
+      internal::WorkStatus::WAITING));
   local_task_manager_->ScheduleAndDispatchTasks();
   pool_.TriggerCallbacks();
   auto tasks_to_dispatch_ = local_task_manager_->GetTaskToDispatch();
   // Only task f in queue now.
   ASSERT_EQ(tasks_to_dispatch_.size(), 1);
-  
-
-  
 }
 
 int main(int argc, char **argv) {
