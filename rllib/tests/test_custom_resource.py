@@ -21,8 +21,11 @@ def test_custom_resource(algorithm):
         .get_default_config()
         .environment("CartPole-v1")
         .framework("torch")
-        .env_runners(num_env_runners=1)
-        .resources(num_gpus=0, custom_resources_per_worker={"custom_resource": 0.01})
+        .env_runners(
+            num_env_runners=1,
+            custom_resources_per_env_runner={"custom_resource": 0.01},
+        )
+        .resources(num_gpus=0)
     )
     stop = {TRAINING_ITERATION: 1}
 

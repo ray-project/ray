@@ -1,3 +1,4 @@
+# @OldAPIStack
 # TransformedActionPendulum SAC can attain -150+ reward in 6-7k
 # Configurations are the similar to original softlearning/sac codebase
 transformed-actions-pendulum-sac-dummy-torch:
