@@ -904,6 +904,36 @@ class TestAsyncAPI:
             data = await job_manager.get_job_info(job_id)
             assert data.driver_exit_code is None
 
+    async def test_failing_job_executor_actor_in_pending(self, job_manager):
+        """
+        Kick off a job that is in PENDING state, kill the job actor and ensure
+
+        1) Job can correctly be stop immediately with correct JobStatus
+        2) No dangling subprocess left.
+        """
+        start_signal_actor = SignalActor.remote(error=RuntimeError("Encountered failure"))
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            pid_file, _, job_id = await _run_hanging_command(
+                job_manager, tmp_dir, start_signal_actor=start_signal_actor
+            )
+
+            assert not os.path.exists(pid_file), (
+                "driver subprocess should NOT be running while job is " "still PENDING."
+            )
+
+            # Unblock signal actor to raise an error
+            start_signal_actor.send.remote()
+
+            await async_wait_for_condition_async_predicate(
+                check_job_failed, job_manager=job_manager, job_id=job_id
+            )
+
+            data = await job_manager.get_job_info(job_id)
+
+            assert data.driver_exit_code is None
+            assert 'RuntimeError(\'Encountered failure\')' in data.message
+
     async def test_stop_job_subprocess_cleanup_upon_stop(self, job_manager):
         """
         Ensure driver scripts' subprocess is cleaned up properly when we
