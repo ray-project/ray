@@ -117,7 +117,7 @@ def _prep_task(self, task: "ExecutableTask") -> None:
             task.resolved_inputs.append(inp)
 
     for type_hint in task.input_type_hints:
-        typ_hint.register_custom_serializer()
+        type_hint.register_custom_serializer()
     task.output_type_hint.register_custom_serializer()
 
     input_reader: ReaderInterface = SynchronousReader(task.input_channels)
