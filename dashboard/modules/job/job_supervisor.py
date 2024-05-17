@@ -275,8 +275,10 @@ class JobSupervisor:
             driver_node_info: JobDriverNodeInfo = await executor.get_node_info.remote()
             driver_agent_http_address = f"http://{driver_node_info.node_ip}:{driver_node_info.dashboard_agent_port}"
 
-            # TODO mark as running only after driver has been launched
-            # Mark job as running
+            # First, launch job's entrypoint (driver)
+            await executor.start.remote()
+
+            # Mark job as RUNNING and record corresponding job's event
             await self._job_info_client.put_status(
                 self._job_id,
                 JobStatus.RUNNING,
@@ -285,13 +287,13 @@ class JobSupervisor:
                     "driver_node_id": driver_node_info.node_id,
                 },
             )
-            # Record corresponding job's event
             if self.event_logger:
                 self.event_logger.info(
                     f"Ray job {self._job_id} transitions to {JobStatus.RUNNING}", submission_id=self._job_id
                 )
 
-            result: JobExecutionResult = await executor.execute_sync.remote()
+            # Join executor blocking until job's entrypoint completes
+            result: JobExecutionResult = await executor.join.remote()
 
             exit_code = result.driver_exit_code
             message = result.message
@@ -689,7 +691,9 @@ class JobExecutor:
         self._metadata = {JOB_ID_METADATA_KEY: job_id, JOB_NAME_METADATA_KEY: job_id}
         self._metadata.update(user_metadata)
 
-        # fire and forget call from outer job manager to this actor
+        # Job's driver's subprocess (if running)
+        self._driver_process = None
+
         self._stop_event = asyncio.Event()
 
         # Windows Job Object used to handle stopping the child processes.
@@ -885,7 +889,7 @@ class JobExecutor:
                 # Process is already dead
                 pass
 
-    async def execute_sync(self) -> JobExecutionResult:
+    async def start(self):
         """
         TODO update
         Stop and start both happen asynchronously, coordinated by asyncio event
@@ -908,7 +912,28 @@ class JobExecutor:
             log_path = self._log_client.get_log_file_path(self._job_id)
 
             # Execute job's entrypoint in the subprocess
-            child_process = self._exec_entrypoint(log_path)
+            self._driver_process = self._exec_entrypoint(log_path)
+
+        except Exception as e:
+            self._logger.error(
+                f"Got unexpected exception while executing job's entrypoint: {repr(e)}",
+                exc_info=e,
+            )
+
+    async def join(self) -> JobExecutionResult:
+        """
+        Joins job execution blocking until either of the following conditions is true
+
+        1. Job driver has completed (subprocess exited)
+        2. Job has been interrupted (due to Ray job being stopped)
+
+        NOTE: This method should only be called after `JobExecutor.start`
+        """
+
+        try:
+            assert self._driver_process, "Job's driver is not running"
+
+            child_process = self._driver_process
 
             # Block until either of the following occurs:
             #   - Process executing job's entrypoint completes (exits, returning specific exit-code)
@@ -968,15 +993,15 @@ class JobExecutor:
                     message=message,
                 )
 
-        except Exception:
-            exception_message = traceback.format_exc()
+        except Exception as e:
             self._logger.error(
-                f"Got unexpected exception while executing driver for job command: {exception_message}"
+                f"Got unexpected exception while awaiting for job's driver to complete: {repr(e)}",
+                exc_info=e,
             )
 
             return JobExecutionResult(
                 driver_exit_code=None,
-                message=exception_message,
+                message=traceback.format_exc(),
             )
 
     async def stop_process(self, child_pid: int):
