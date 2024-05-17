@@ -832,9 +832,14 @@ def generate_system_config_map(**kwargs):
 
 @ray.remote(num_cpus=0)
 class SignalActor:
-    def __init__(self):
+    def __init__(self, *, error: Optional[Exception] = None):
+        """
+        :param error: exception to be raised immediately once actor is unblocked
+        """
+
         self.ready_event = asyncio.Event()
         self.num_waiters = 0
+        self.error = error
 
     def send(self, clear=False):
         self.ready_event.set()
@@ -846,6 +851,9 @@ class SignalActor:
             self.num_waiters += 1
             await self.ready_event.wait()
             self.num_waiters -= 1
+
+            if self.error:
+                raise self.error
 
     async def cur_num_waiters(self):
         return self.num_waiters
