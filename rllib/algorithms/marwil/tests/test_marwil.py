@@ -13,6 +13,7 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
+    EVALUATION_RESULTS,
 )
 from ray.rllib.utils.test_utils import (
     check,
@@ -76,7 +77,7 @@ class TestMARWIL(unittest.TestCase):
                 check_train_results(results)
                 print(results)
 
-                eval_results = results.get("evaluation")
+                eval_results = results.get(EVALUATION_RESULTS)
                 if eval_results:
                     print(
                         "iter={} R={} ".format(

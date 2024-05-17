@@ -1,3 +1,4 @@
+# @OldAPIStack
 """
 Tests, whether APPO can learn in a fault-tolerant fashion in a
 multi-agent setting.

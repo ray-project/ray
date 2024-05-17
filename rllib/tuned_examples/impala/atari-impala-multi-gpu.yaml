@@ -1,3 +1,4 @@
+# @OldAPIStack
 # Runs on a p2.8xlarge single head node machine.
 # Should reach ~400 reward in about 1h and after 15-20M ts.
 atari-impala:
