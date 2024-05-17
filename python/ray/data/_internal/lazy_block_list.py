@@ -214,15 +214,6 @@ class LazyBlockList(BlockList):
         blocks, metadata = self._get_blocks_with_metadata()
         return BlockList(blocks, metadata, owned_by_consumer=self._owned_by_consumer)
 
-    def compute_first_block(self):
-        """Kick off computation for the first block in the list.
-
-        This is useful if looking to support rapid lightweight interaction with a small
-        amount of the dataset.
-        """
-        if self._tasks:
-            self._get_or_compute(0)
-
     def ensure_metadata_for_first_block(self) -> Optional[BlockMetadata]:
         """Ensure that the metadata is fetched and set for the first block.
 
