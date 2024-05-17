@@ -194,7 +194,13 @@ def test_torch_tensor_nccl(ray_start_regular):
     with InputNode() as inp:
         torch_inp = inp.with_type_hint(TorchTensorType(shape, dtype, transport="nccl"))
         dag = receiver.recv.bind(torch_inp)
-    with pytest.raises(ValueError, match=r"DAG inputs cannot be transferred via NCCL"):
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"DAG inputs cannot be transferred "
+            "via NCCL because the driver cannot participate in the NCCL group"
+        ),
+    ):
         compiled_dag = dag.experimental_compile()
 
     # Test that actors can be reused for a valid DAG.

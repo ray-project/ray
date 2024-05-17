@@ -4,7 +4,6 @@ from typing import Any, Dict, List, Tuple, Union, Optional, Set
 import logging
 import traceback
 import threading
-import copy
 
 import ray
 from ray.exceptions import RayTaskError
@@ -367,8 +366,8 @@ class CompiledDAG:
         # Type hints specified by the user for DAG (intermediate) outputs.
         self._type_hints = []
 
-        # Uniquely identifies the _NCCLGroup that will be used within this DAG,
-        # if any.
+        # Uniquely identifies the NCCL communicator that will be used within
+        # this DAG, if any.
         self._nccl_group_id: Optional[str] = None
 
     def _add_node(self, node: "ray.dag.DAGNode") -> None:
@@ -438,13 +437,15 @@ class CompiledDAG:
                     nccl_actors.add(actor_handle)
             elif isinstance(dag_node, InputNode):
                 if dag_node.type_hint.requires_nccl():
-                    raise ValueError("DAG inputs cannot be transferred via NCCL")
+                    raise ValueError(
+                        "DAG inputs cannot be transferred via NCCL because "
+                        "the driver cannot participate in the NCCL group"
+                    )
 
             if type(task.dag_node.type_hint) == ChannelOutputType:
                 # No type hint specified by the user. Replace
                 # with the default type hint for this DAG.
-                default_type_hint = copy.deepcopy(self._default_type_hint)
-                task.dag_node.with_type_hint(default_type_hint)
+                task.dag_node.with_type_hint(self._default_type_hint)
 
             for arg_idx, arg in enumerate(task.args):
                 if not isinstance(arg, DAGNode):

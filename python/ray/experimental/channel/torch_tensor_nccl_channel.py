@@ -9,6 +9,7 @@ from ray.experimental.channel import ChannelContext
 from ray.experimental.channel.common import ChannelInterface
 from ray.experimental.channel.nccl_group import _NcclGroup
 from ray.experimental.channel.shared_memory_channel import SharedMemoryType
+from ray.experimental.channel.torch_tensor_type import TENSOR_METADATA_SIZE_BYTES
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
@@ -41,7 +42,6 @@ class TorchTensorNcclChannel(ChannelInterface):
         )
 
         self.torch: ModuleType = torch
-        self.TorchTensorType = TorchTensorType
 
         self._writer = writer
         self._writer_rank: Optional[int] = None
@@ -55,7 +55,6 @@ class TorchTensorNcclChannel(ChannelInterface):
 
         assert isinstance(typ, TorchTensorType)
         assert typ.transport == typ.NCCL
-        self._typ = typ
         self._typ: "TorchTensorType" = typ
 
         ctx = ChannelContext.get_current()
@@ -87,21 +86,23 @@ class TorchTensorNcclChannel(ChannelInterface):
         if (
             self._meta_channel is None
             and self._writer_registered
-            and (
-                self._typ.shape == TorchTensorType.AUTO
-                or self._typ.dtype == TorchTensorType.AUTO
-            )
+            and not self.has_static_type()
         ):
-            # Allocate 1KiB for metadata.
-            metadata_type = SharedMemoryType(buffer_size_bytes=1_000)
+            # We are the writer and the shape and/or dtype of the tensor was
+            # not statically declared. Therefore, we also need to allocate a
+            # metadata channel that will be used to send the shape and dtype of
+            # the tensor to the receiver(s).
+            metadata_type = SharedMemoryType(
+                buffer_size_bytes=TENSOR_METADATA_SIZE_BYTES
+            )
             self._meta_channel = metadata_type.create_channel(
                 self._writer,
                 self._readers,
             )
 
         if self._meta_channel is None:
-            # If there is no metadata channel, then we can only pass tensors of
-            # static shape and dtype.
+            # Check that if there is no metadata channel, then we will only
+            # pass tensors of static shape and dtype.
             assert self.has_static_type()
 
     def ensure_registered_as_writer(self):
@@ -121,6 +122,8 @@ class TorchTensorNcclChannel(ChannelInterface):
         )
 
     def _get_tensor_meta(self, tensor: "torch.Tensor") -> Optional["TorchTensorType"]:
+        from ray.experimental.channel.torch_tensor_type import TorchTensorType
+
         if not isinstance(tensor, self.torch.Tensor):
             raise ValueError("Task must return torch.Tensors")
 
@@ -130,11 +133,10 @@ class TorchTensorNcclChannel(ChannelInterface):
             )
 
         meta: Optional["TorchTensorType"] = None
-        if (
-            self._typ.shape == self.TorchTensorType.AUTO
-            or self._typ.dtype == self.TorchTensorType.AUTO
-        ):
-            meta = self.TorchTensorType(shape=tensor.shape, dtype=tensor.dtype)
+        if not self.has_static_type():
+            # User did not declare a static type, so we must send the metadata
+            # for this tensor.
+            meta = TorchTensorType(shape=tensor.shape, dtype=tensor.dtype)
         elif tensor.shape != self._typ.shape:
             raise ValueError(
                 f"torch.Tensor has shape {tensor.shape}, expected {self._typ.shape}"
@@ -196,9 +198,11 @@ class TorchTensorNcclChannel(ChannelInterface):
             del ctx.nccl_groups[self._nccl_group_id]
 
     def has_static_type(self) -> bool:
+        from ray.experimental.channel.torch_tensor_type import TorchTensorType
+
         return (
-            self._typ.shape != self.TorchTensorType.AUTO
-            and self._typ.dtype != self.TorchTensorType.AUTO
+            self._typ.shape != TorchTensorType.AUTO
+            and self._typ.dtype != TorchTensorType.AUTO
         )
 
 

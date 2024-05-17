@@ -194,6 +194,8 @@ class _NcclGroup:
                 "Destructing NCCL group on actor: "
                 f"{ray.get_runtime_context().current_actor}"
             )
-            # Abort *after* setting the _closed flag.
+            # Abort *after* setting the _closed flag. This ensures that NCCL
+            # ops that were blocked on a remote peer will see that the _closed
+            # flag is True when they exit from the abort.
             self._comm.abort()
             self._comm.destroy()

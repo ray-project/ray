@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     import numpy as np
@@ -9,15 +9,9 @@ class _SerializationContext:
     def __init__(self):
         self.torch_device: Optional["torch.device"] = None
         self.use_external_transport: bool = False
-        self.tensors: List["torch.Tensor"] = []
 
     def set_torch_device(self, torch_device: "torch.device") -> None:
         self.torch_device = torch_device
-
-    def reset_tensors(self, tensors: List["torch.Tensor"]) -> List["torch.Tensor"]:
-        prev_tensors = self.tensors
-        self.tensors = tensors
-        return prev_tensors
 
     def serialize_tensor(self, tensor: "torch.Tensor") -> "np.ndarray":
         # Transfer through Ray's shared memory store for now.
