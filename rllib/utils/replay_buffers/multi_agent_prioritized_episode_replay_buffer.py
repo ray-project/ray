@@ -117,7 +117,7 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
                 )
                 new_eps_to_evict = episodes.pop(idx)
                 self._num_timesteps -= new_eps_to_evict.env_steps()
-                self._num_timesteps_added -= new_eps_to_evict.env_steps()                
+                self._num_timesteps_added -= new_eps_to_evict.env_steps()
             # Remove the timesteps of the evicted episode from the counter.
             self._num_timesteps -= evicted_episode.env_steps()
             self._num_agent_timesteps -= evicted_episode.agent_steps()
@@ -180,12 +180,16 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
                             if self._module_to_max_idx[module_id] == idx_quadlet[3]
                             else 0
                         )
-                        sample_idx = self._module_to_tree_idx_to_sample_idx[module_id][idx_quadlet[3]]
+                        sample_idx = self._module_to_tree_idx_to_sample_idx[module_id][
+                            idx_quadlet[3]
+                        ]
                         self._module_to_sum_segment[module_id][idx_quadlet[3]] = 0.0
                         self._module_to_min_segment[module_id][idx_quadlet[3]] = float(
                             "inf"
                         )
-                        self._module_to_tree_idx_to_sample_idx[module_id].pop(sample_idx)
+                        self._module_to_tree_idx_to_sample_idx[module_id].pop(
+                            sample_idx
+                        )
                     else:
                         new_module_indices.append(idx_quadlet)
                         self._module_to_tree_idx_to_sample_idx[module_id][
@@ -257,11 +261,9 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
             module_eps = ma_episode.agent_episodes[agent_id]
             # Check if the module episode is already in the buffer.
             if exists:
-                old_ma_episode = self.episodes[
-                    ma_episode_idx
-                ]
+                old_ma_episode = self.episodes[ma_episode_idx]
                 # Is the agent episode already in the buffer?
-                # Note, at this point we have not yet concatenated the new 
+                # Note, at this point we have not yet concatenated the new
                 # multi-agent episode.
                 existing_eps_len = len(old_ma_episode.agent_episodes[agent_id])
             else:
@@ -445,9 +447,13 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
             # Sample proportionally from the replay buffer's module segments using the
             # respective weights.
             module_total_segment_sum = self._module_to_sum_segment[module_id].sum()
-            module_p_min = self._module_to_min_segment[module_id].min() / module_total_segment_sum
+            module_p_min = (
+                self._module_to_min_segment[module_id].min() / module_total_segment_sum
+            )
             # TODO (simon): Allow individual betas per module.
-            module_max_weight = (module_p_min * self.get_num_timesteps(module_id)) ** (-beta)
+            module_max_weight = (module_p_min * self.get_num_timesteps(module_id)) ** (
+                -beta
+            )
             B = 0
             while B < batch_size_B:
                 # First, draw a random sample from Uniform(0, sum over all weights).
@@ -466,7 +472,8 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
                 )
                 # Get the theoretical probability mass for drawing this sample.
                 module_p_sample = (
-                    self._module_to_sum_segment[module_id][module_idx] / module_total_segment_sum
+                    self._module_to_sum_segment[module_id][module_idx]
+                    / module_total_segment_sum
                 )
                 # Compute the importance sampling weight.
                 module_weight = (
@@ -536,14 +543,12 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
                     # last time step, check, if the single-agent episode is terminated
                     # or truncated.
                     terminated=(
-                        False
-                        if sa_episode_ts + actual_n_step < len(sa_episode)
-                        else sa_episode.is_terminated
+                        sa_episode_ts + actual_n_step >= len(sa_episode)
+                        and sa_episode.is_terminated
                     ),
                     truncated=(
-                        False
-                        if sa_episode_ts + actual_n_step < len(sa_episode)
-                        else sa_episode.is_truncated
+                        sa_episode_ts + actual_n_step >= len(sa_episode)
+                        and sa_episode.is_truncated
                     ),
                     extra_model_outputs={
                         "weights": [
@@ -598,6 +603,7 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
         """
 
         assert len(priorities) == len(self._module_to_last_sampled_indices[module_id])
+
         for idx, priority in zip(
             self._module_to_last_sampled_indices[module_id], priorities
         ):
