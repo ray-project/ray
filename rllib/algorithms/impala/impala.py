@@ -792,16 +792,16 @@ class Impala(Algorithm):
                     # from RolloutWorkers (n rollout workers map to m
                     # aggregation workers, where m < n) and always use 1 CPU
                     # each.
-                    "CPU": cf.num_cpus_for_local_worker + cf.num_aggregation_workers,
+                    "CPU": cf.num_cpus_for_main_process + cf.num_aggregation_workers,
                     "GPU": 0 if cf._fake_gpus else cf.num_gpus,
                 }
             ]
             + [
                 {
                     # RolloutWorkers.
-                    "CPU": cf.num_cpus_per_worker,
-                    "GPU": cf.num_gpus_per_worker,
-                    **cf.custom_resources_per_worker,
+                    "CPU": cf.num_cpus_per_env_runner,
+                    "GPU": cf.num_gpus_per_env_runner,
+                    **cf.custom_resources_per_env_runner,
                 }
                 for _ in range(cf.num_env_runners)
             ]
@@ -811,9 +811,9 @@ class Impala(Algorithm):
                         # Evaluation (remote) workers.
                         # Note: The local eval worker is located on the driver
                         # CPU or not even created iff >0 eval workers.
-                        "CPU": eval_config.num_cpus_per_worker,
-                        "GPU": eval_config.num_gpus_per_worker,
-                        **eval_config.custom_resources_per_worker,
+                        "CPU": eval_config.num_cpus_per_env_runner,
+                        "GPU": eval_config.num_gpus_per_env_runner,
+                        **eval_config.custom_resources_per_env_runner,
                     }
                     for _ in range(cf.evaluation_num_env_runners)
                 ]
