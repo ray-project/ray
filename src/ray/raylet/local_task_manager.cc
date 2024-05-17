@@ -109,7 +109,7 @@ bool LocalTaskManager::WaitForTaskArgsRequests(std::shared_ptr<internal::Work> w
     if (args_ready) {
       RAY_LOG(DEBUG) << "Args already ready, task can be dispatched " << task_id;
       tasks_to_dispatch_[scheduling_key].push_back(work);
-      // UpdateCpuRequests(work, true);
+      UpdateCpuRequests(work, true);
     } else {
       RAY_LOG(DEBUG) << "Waiting for args for task: "
                      << task.GetTaskSpecification().TaskId();
@@ -121,7 +121,7 @@ bool LocalTaskManager::WaitForTaskArgsRequests(std::shared_ptr<internal::Work> w
     RAY_LOG(DEBUG) << "No args, task can be dispatched "
                    << task.GetTaskSpecification().TaskId();
     tasks_to_dispatch_[scheduling_key].push_back(work);
-    // UpdateCpuRequests(work, true);
+    UpdateCpuRequests(work, true);
   }
   return can_dispatch;
 }
@@ -246,7 +246,7 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
           // try to spill to a node that can run it.
           bool did_spill = TrySpillback(work, is_infeasible);
           if (did_spill) {
-            // UpdateCpuRequests(*work_it, false);
+            UpdateCpuRequests(*work_it, false);
             work_it = dispatch_queue.erase(work_it);
             continue;
           }
@@ -265,7 +265,7 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
           // Insert the task at the head of the waiting queue because we
           // prioritize spilling from the end of the queue.
           // TODO(scv119): where does pulling happen?
-          // UpdateCpuRequests(*work_it, false);
+          UpdateCpuRequests(*work_it, false);
           auto it = waiting_task_queue_.insert(waiting_task_queue_.begin(),
                                                std::move(*work_it));
           RAY_CHECK(waiting_tasks_index_.emplace(task_id, it).second);
@@ -302,7 +302,7 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
           task_dependency_manager_.RemoveTaskDependencies(task_id);
         }
         ReleaseTaskArgs(task_id);
-        // UpdateCpuRequests(*work_it, false);
+        UpdateCpuRequests(*work_it, false);
         work_it = dispatch_queue.erase(work_it);
         continue;
       }
@@ -328,7 +328,7 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
               internal::UnscheduledWorkCause::WAITING_FOR_RESOURCES_AVAILABLE);
           break;
         }
-        // UpdateCpuRequests(*work_it, false);
+        UpdateCpuRequests(*work_it, false);
         work_it = dispatch_queue.erase(work_it);
       } else {
         // Force us to recalculate the next update time the next time a task
@@ -540,7 +540,7 @@ bool LocalTaskManager::PoppedWorkerHandler(
     for (auto work_it = dispatch_queue.begin(); work_it != dispatch_queue.end();
          work_it++) {
       if (*work_it == work) {
-        // UpdateCpuRequests(*work_it, false);
+        UpdateCpuRequests(*work_it, false);
         dispatch_queue.erase(work_it);
         erased = true;
         break;
@@ -689,7 +689,7 @@ void LocalTaskManager::TasksUnblocked(const std::vector<TaskID> &ready_ids) {
       RAY_LOG(DEBUG) << "Args ready, task can be dispatched "
                      << task.GetTaskSpecification().TaskId();
       tasks_to_dispatch_[scheduling_key].push_back(work);
-      // UpdateCpuRequests(work, true);
+      UpdateCpuRequests(work, true);
       waiting_task_queue_.erase(it->second);
       waiting_tasks_index_.erase(it);
     }
