@@ -137,6 +137,21 @@ Learn more
 
     .. grid-item-card::
 
+        **Ray Distributed Debugger**
+        ^^^
+
+        VSCode extension designed to streamline the debugging process for Ray users.
+
+        +++
+        .. button-link:: https://www.anyscale.com/blog/ray-distributed-debugger
+            :color: primary
+            :outline:
+            :expand:
+
+            Download for free
+
+    .. grid-item-card::
+
         **More Frameworks**
         ^^^
 
