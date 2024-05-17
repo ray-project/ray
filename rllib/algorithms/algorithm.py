@@ -339,23 +339,17 @@ class Algorithm(Trainable, AlgorithmBase):
             # User did not provide unserializable function with this call
             # (`policy_mapping_fn`). Note that if `policies_to_train` is None, it
             # defaults to training all policies (so it's ok to not provide this here).
-            if policy_mapping_fn is None:
-                # Only DEFAULT_POLICY_ID present in this algorithm, provide default
-                # implementations of these two functions.
-                if checkpoint_info["policy_ids"] == {DEFAULT_POLICY_ID}:
-                    policy_mapping_fn = AlgorithmConfig.DEFAULT_POLICY_MAPPING_FN
-                # Provide meaningful error message.
-                else:
-                    raise ValueError(
-                        "You are trying to restore a multi-agent algorithm from a "
-                        "`msgpack` formatted checkpoint, which do NOT store the "
-                        "`policy_mapping_fn` or `policies_to_train` "
-                        "functions! Make sure that when using the "
-                        "`Algorithm.from_checkpoint()` utility, you also pass the "
-                        "args: `policy_mapping_fn` and `policies_to_train` with your "
-                        "call. You might leave `policies_to_train=None` in case "
-                        "you would like to train all policies anyways."
-                    )
+            if policy_mapping_fn is None and checkpoint_info["policy_ids"] != {DEFAULT_POLICY_ID}:
+                logger.warning(
+                    "You are trying to restore a multi-agent algorithm from a "
+                    "`msgpack` formatted checkpoint, which do NOT store the "
+                    "`policy_mapping_fn` or `policies_to_train` "
+                    "functions! Make sure that when using the "
+                    "`Algorithm.from_checkpoint()` utility, you also pass the "
+                    "args: `policy_mapping_fn` and `policies_to_train` with your "
+                    "call. You might leave `policies_to_train=None` in case "
+                    "you would like to train all policies anyways."
+                )
 
         state = Algorithm._checkpoint_info_to_algorithm_state(
             checkpoint_info=checkpoint_info,

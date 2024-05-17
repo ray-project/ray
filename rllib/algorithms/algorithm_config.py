@@ -4356,8 +4356,8 @@ class AlgorithmConfig(_Config):
         if isinstance(config.get("policies"), (set, tuple)):
             config["policies"] = list(config["policies"])
         # Do NOT serialize functions/lambdas.
-        if config.get("policy_mapping_fn"):
-            config["policy_mapping_fn"] = NOT_SERIALIZABLE
+        if config.get("_policy_mapping_fn") and config["_policy_mapping_fn"] != "auto":
+            config["_policy_mapping_fn"] = NOT_SERIALIZABLE
         if config.get("policies_to_train"):
             config["policies_to_train"] = NOT_SERIALIZABLE
 
