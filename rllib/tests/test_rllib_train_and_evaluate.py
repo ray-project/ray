@@ -309,9 +309,9 @@ class TestCLISmokeTests(unittest.TestCase):
     def test_python_run(self):
         assert os.popen(
             f"python {rllib_dir}/scripts.py train file tuned_examples/ppo/"
-            f"cartpole_ppo_envrunner.py "
-            f"--stop={{'num_env_steps_sampled_lifetime': 50000, "
-            f"'env_runners/episode_return_mean': 200}}"
+            f"cartpole_ppo.py "
+            f"--stop=\"{{'num_env_steps_sampled_lifetime': 50000, "
+            f"'env_runners/episode_return_mean': 200}}\""
         ).read()
 
     def test_all_example_files_exist(self):

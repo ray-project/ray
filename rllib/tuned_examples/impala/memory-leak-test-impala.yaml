@@ -1,3 +1,4 @@
+# @OldAPIStack
 memory-leak-test-impala:
     stop:
         timesteps_total: 150000
