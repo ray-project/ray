@@ -179,16 +179,15 @@ except ImportError:
             Returns:
                 A list of resource bundles for the learner workers.
             """
-            if cf.num_learner_workers > 0:
-                if cf.num_gpus_per_learner_worker:
+            if cf.num_learners > 0:
+                if cf.num_gpus_per_learner:
                     learner_bundles = [
-                        {"GPU": cf.num_learner_workers * cf.num_gpus_per_learner_worker}
+                        {"GPU": cf.num_learners * cf.num_gpus_per_learner}
                     ]
-                elif cf.num_cpus_per_learner_worker:
+                elif cf.num_cpus_per_learner:
                     learner_bundles = [
                         {
-                            "CPU": cf.num_cpus_per_learner_worker
-                            * cf.num_learner_workers,
+                            "CPU": cf.num_cpus_per_learner * cf.num_learners,
                         }
                     ]
             else:
@@ -197,9 +196,9 @@ except ImportError:
                         # sampling and training is not done concurrently when local is
                         # used, so pick the max.
                         "CPU": max(
-                            cf.num_cpus_per_learner_worker, cf.num_cpus_for_local_worker
+                            cf.num_cpus_per_learner, cf.num_cpus_for_main_process
                         ),
-                        "GPU": cf.num_gpus_per_learner_worker,
+                        "GPU": cf.num_gpus_per_learner,
                     }
                 ]
             return learner_bundles
@@ -253,6 +252,7 @@ class Algorithm(Trainable, AlgorithmBase):
         "env_config",
         "model",
         "optimizer",
+        "custom_resources_per_env_runner",
         "custom_resources_per_worker",
         "evaluation_config",
         "exploration_config",
@@ -539,14 +539,10 @@ class Algorithm(Trainable, AlgorithmBase):
         self.evaluation_workers: Optional[EnvRunnerGroup] = None
         # Initialize common evaluation_metrics to nan, before they become
         # available. We want to make sure the metrics are always present
-        # (although their values may be nan), so that Tune does not complain
+        # (although their values may be nan), so that Tune doesn't complain
         # when we use these as stopping criteria.
         self.evaluation_metrics = {
-            # TODO: Don't dump sampler results into top-level.
             "evaluation": {
-                EPISODE_RETURN_MAX: np.nan,
-                EPISODE_RETURN_MIN: np.nan,
-                EPISODE_RETURN_MEAN: np.nan,
                 ENV_RUNNER_RESULTS: {
                     EPISODE_RETURN_MAX: np.nan,
                     EPISODE_RETURN_MIN: np.nan,
@@ -646,7 +642,7 @@ class Algorithm(Trainable, AlgorithmBase):
             validate_env=self.validate_env,
             default_policy_class=self.get_default_policy_class(self.config),
             config=self.config,
-            num_workers=self.config.num_env_runners,
+            num_env_runners=self.config.num_env_runners,
             local_env_runner=True,
             logdir=self.logdir,
         )
@@ -676,7 +672,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 validate_env=None,
                 default_policy_class=self.get_default_policy_class(self.config),
                 config=self.evaluation_config,
-                num_workers=self.config.evaluation_num_env_runners,
+                num_env_runners=self.config.evaluation_num_env_runners,
                 logdir=self.logdir,
             )
 
@@ -1050,7 +1046,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 ) = self._evaluate_with_fixed_duration()
         # Can't find a good way to run this evaluation -> Wait for next iteration.
         else:
-            pass
+            eval_results = {}
 
         if self.config.enable_env_runner_and_connector_v2:
             # Lifetime eval counters.
@@ -1070,10 +1066,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 key=EVALUATION_RESULTS, return_stats_obj=False
             )
         else:
-            eval_results = dict(
-                {"sampler_results": eval_results, ENV_RUNNER_RESULTS: eval_results},
-                **eval_results,
-            )
+            eval_results = {ENV_RUNNER_RESULTS: eval_results}
             eval_results[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps
             eval_results[NUM_ENV_STEPS_SAMPLED_THIS_ITER] = env_steps
             eval_results["timesteps_this_iter"] = env_steps
@@ -2481,9 +2474,9 @@ class Algorithm(Trainable, AlgorithmBase):
     ) -> Union[Resources, PlacementGroupFactory]:
         # Default logic for RLlib Algorithms:
         # Create one bundle per individual worker (local or remote).
-        # Use `num_cpus_for_local_worker` and `num_gpus` for the local worker and
-        # `num_cpus_per_worker` and `num_gpus_per_worker` for the remote
-        # workers to determine their CPU/GPU resource needs.
+        # Use `num_cpus_for_main_process` and `num_gpus` for the local worker and
+        # `num_cpus_per_env_runner` and `num_gpus_per_env_runner` for the remote
+        # EnvRunners to determine their CPU/GPU resource needs.
 
         # Convenience config handles.
         cf = cls.get_default_config().update_from_dict(config)
@@ -2497,26 +2490,26 @@ class Algorithm(Trainable, AlgorithmBase):
 
         # resources for the driver of this trainable
         if cf.enable_rl_module_and_learner:
-            if cf.num_learner_workers == 0:
+            if cf.num_learners == 0:
                 # in this case local_worker only does sampling and training is done on
                 # local learner worker
                 driver = cls._get_learner_bundles(cf)[0]
             else:
                 # in this case local_worker only does sampling and training is done on
                 # remote learner workers
-                driver = {"CPU": cf.num_cpus_for_local_worker, "GPU": 0}
+                driver = {"CPU": cf.num_cpus_for_main_process, "GPU": 0}
         else:
             driver = {
-                "CPU": cf.num_cpus_for_local_worker,
+                "CPU": cf.num_cpus_for_main_process,
                 "GPU": 0 if cf._fake_gpus else cf.num_gpus,
             }
 
         # resources for remote rollout env samplers
         rollout_bundles = [
             {
-                "CPU": cf.num_cpus_per_worker,
-                "GPU": cf.num_gpus_per_worker,
-                **cf.custom_resources_per_worker,
+                "CPU": cf.num_cpus_per_env_runner,
+                "GPU": cf.num_gpus_per_env_runner,
+                **cf.custom_resources_per_env_runner,
             }
             for _ in range(cf.num_env_runners)
         ]
@@ -2527,9 +2520,9 @@ class Algorithm(Trainable, AlgorithmBase):
             # Note: The local eval worker is located on the driver CPU.
             evaluation_bundles = [
                 {
-                    "CPU": eval_cf.num_cpus_per_worker,
-                    "GPU": eval_cf.num_gpus_per_worker,
-                    **eval_cf.custom_resources_per_worker,
+                    "CPU": eval_cf.num_cpus_per_env_runner,
+                    "GPU": eval_cf.num_gpus_per_env_runner,
+                    **eval_cf.custom_resources_per_env_runner,
                 }
                 for _ in range(eval_cf.evaluation_num_env_runners)
             ]
@@ -2551,7 +2544,7 @@ class Algorithm(Trainable, AlgorithmBase):
 
         # resources for remote learner workers
         learner_bundles = []
-        if cf.enable_rl_module_and_learner and cf.num_learner_workers > 0:
+        if cf.enable_rl_module_and_learner and cf.num_learners > 0:
             learner_bundles = cls._get_learner_bundles(cf)
 
         bundles = [driver] + rollout_bundles + evaluation_bundles + learner_bundles
@@ -2694,9 +2687,10 @@ class Algorithm(Trainable, AlgorithmBase):
     def resource_help(cls, config: Union[AlgorithmConfig, AlgorithmConfigDict]) -> str:
         return (
             "\n\nYou can adjust the resource requests of RLlib Algorithms by calling "
-            "`AlgorithmConfig.resources("
-            "num_gpus=.., num_cpus_per_worker=.., num_gpus_per_worker=.., ..)` or "
-            "`AgorithmConfig.env_runners(num_env_runners=..)`. See "
+            "`AlgorithmConfig.env_runners("
+            "num_env_runners=.., num_cpus_per_env_runner=.., "
+            "num_gpus_per_env_runner=.., ..)` and "
+            "`AgorithmConfig.learners(num_learners=.., num_gpus_per_learner=..)`. See "
             "the `ray.rllib.algorithms.algorithm_config.AlgorithmConfig` classes "
             "(each Algorithm has its own subclass of this class) for more info.\n\n"
             f"The config of this Algorithm is: {config}"
@@ -3326,8 +3320,6 @@ class Algorithm(Trainable, AlgorithmBase):
                     self.evaluation_config.keep_per_episode_custom_metrics
                 ),
             )
-            # TODO: Don't dump sampler results into top-level.
-            eval_results = dict({"sampler_results": eval_results}, **eval_results)
             eval_results[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps
             eval_results[NUM_ENV_STEPS_SAMPLED_THIS_ITER] = env_steps
             # TODO: Remove this key at some point. Here for backward compatibility.
@@ -3479,13 +3471,11 @@ class Algorithm(Trainable, AlgorithmBase):
         self._episode_history = self._episode_history[
             -self.config.metrics_num_episodes_for_smoothing :
         ]
-        results["sampler_results"] = results[ENV_RUNNER_RESULTS] = summarize_episodes(
+        results[ENV_RUNNER_RESULTS] = summarize_episodes(
             episodes_for_metrics,
             episodes_this_iter,
             self.config.keep_per_episode_custom_metrics,
         )
-        # TODO: Don't dump sampler results into top-level.
-        results.update(results[ENV_RUNNER_RESULTS])
 
         results["num_healthy_workers"] = self.workers.num_healthy_remote_workers()
         results["num_in_flight_async_reqs"] = self.workers.num_in_flight_async_reqs()
