@@ -116,7 +116,7 @@ def _prep_task(self, task: "ExecutableTask") -> None:
         else:
             task.resolved_inputs.append(inp)
 
-    for typ_hint in task.input_type_hints:
+    for type_hint in task.input_type_hints:
         typ_hint.register_custom_serializer()
     task.output_type_hint.register_custom_serializer()
 
