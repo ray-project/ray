@@ -791,6 +791,7 @@ def read_images(
     file_extensions: Optional[List[str]] = ImageDatasource._FILE_EXTENSIONS,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    max_image_pixels: Optional[int] = None,
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from image files.
 
@@ -888,6 +889,8 @@ def read_images(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+        max_image_pixels: The maximum allowable image size to download. The value
+            is used to configure PIL.Image.MAX_IMAGE_PIXELS.
 
     Returns:
         A :class:`~ray.data.Dataset` producing tensors that represent the images at
@@ -914,6 +917,7 @@ def read_images(
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
         file_extensions=file_extensions,
+        max_image_pixels=max_image_pixels,
     )
     return read_datasource(
         datasource,

@@ -41,6 +41,7 @@ class ImageDatasource(FileBasedDatasource):
         paths: Union[str, List[str]],
         size: Optional[Tuple[int, int]] = None,
         mode: Optional[str] = None,
+        max_image_pixels: Optional[int] = None,
         **file_based_datasource_kwargs,
     ):
         super().__init__(paths, **file_based_datasource_kwargs)
@@ -60,6 +61,7 @@ class ImageDatasource(FileBasedDatasource):
 
         self.size = size
         self.mode = mode
+        self.max_image_pixels = max_image_pixels
 
         meta_provider = file_based_datasource_kwargs.get("meta_provider", None)
         if isinstance(meta_provider, _ImageFileMetadataProvider):
@@ -74,6 +76,9 @@ class ImageDatasource(FileBasedDatasource):
         path: str,
     ) -> Iterator[Block]:
         from PIL import Image, UnidentifiedImageError
+
+        if self.max_image_pixels is not None:
+            Image.MAX_IMAGE_PIXELS = self.max_image_pixels
 
         data = f.readall()
 
