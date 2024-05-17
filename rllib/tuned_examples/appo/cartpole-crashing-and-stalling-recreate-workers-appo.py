@@ -1,3 +1,4 @@
+# @OldAPIStack
 """
 Tests, whether APPO can learn in a fault-tolerant fashion.
 
@@ -76,8 +77,3 @@ stop = {
     f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 500.0,
     f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 2000000,
 }
-
-if __name__ == "__main__":
-    algo = config.framework("tf2").build()
-    for _ in range(1000):
-        print(algo.train())
