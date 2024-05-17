@@ -1,3 +1,4 @@
+# @OldAPIStack
 # Our implementation of SAC discrete can reach up
 # to ~750 reward in 40k timesteps. Run e.g. on a g3.4xlarge with `num_gpus=1`.
 # Uses the hyperparameters published in [2] (see rllib/agents/sac/README.md).
