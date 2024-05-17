@@ -433,14 +433,14 @@ def _get_human_specified_tests() -> Set[str]:
         return set()
 
     tests = set()
-    subprocess.check_call(["git", "fetch", "origin", base], cwd=bazel_workspace_dir)
     messages = subprocess.check_output(
-        ["git", "rev-list", "--format=%B", f"origin/{base}...{head}"],
+        ["git", "rev-list", "--format=%b", f"origin/{base}...{head}"],
         cwd=bazel_workspace_dir,
     )
     for message in messages.decode().splitlines():
         if message.startswith(MICROCHECK_COMMAND):
             tests = tests.union(message[len(MICROCHECK_COMMAND) :].strip().split(" "))
+    logger.info(f"Human specified tests: {tests}")
 
     return tests
 
@@ -497,7 +497,6 @@ def _get_changed_files() -> Set[str]:
         # if not in a PR, return an empty set
         return set()
 
-    subprocess.check_call(["git", "fetch", "origin", base], cwd=bazel_workspace_dir)
     changes = subprocess.check_output(
         ["git", "diff", "--name-only", f"origin/{base}...{head}"],
         cwd=bazel_workspace_dir,
