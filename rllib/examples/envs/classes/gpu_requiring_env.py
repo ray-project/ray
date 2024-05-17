@@ -1,5 +1,10 @@
+import numpy as np
+
 import ray
 from ray.rllib.examples.envs.classes.simple_corridor import SimpleCorridor
+from ray.rllib.utils.framework import try_import_torch
+
+torch, _ = try_import_torch()
 
 
 class GPURequiringEnv(SimpleCorridor):
@@ -24,4 +29,11 @@ class GPURequiringEnv(SimpleCorridor):
         # if `config.worker_index != 0`.
         gpus_available = ray.get_gpu_ids()
         assert len(gpus_available) > 0, "Not enough GPUs for this env!"
-        print("Env can see these GPUs: {}".format(gpus_available))
+
+        print(f"{type(self).__name__} can see GPUs={gpus_available}")
+
+        # Create a dummy tensor on the GPU.
+        if torch:
+            self._tensor = torch.from_numpy(
+                np.random.random_sample(size=(42, 42), dtype=np.float64)
+            ).to(f"cuda:{gpus_available[0]}")

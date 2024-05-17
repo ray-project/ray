@@ -9,7 +9,11 @@ from typing import DefaultDict, Dict, List, Optional
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.rl_module.marl_module import ModuleID, MultiAgentRLModuleSpec
+from ray.rllib.core.rl_module.marl_module import (
+    ModuleID,
+    MultiAgentRLModule,
+    MultiAgentRLModuleSpec,
+)
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -92,7 +96,8 @@ class MultiAgentEnvRunner(EnvRunner):
         self._cached_to_module = None
 
         # Construct the RLModule.
-        self.module = self._make_module()
+        self.module: Optional[MultiAgentRLModule] = None
+        self.make_module()
 
         # Create the two connector pipelines: env-to-module and module-to-env.
         self._module_to_env = self.config.build_module_to_env_connector(self.env)
@@ -761,13 +766,8 @@ class MultiAgentEnvRunner(EnvRunner):
             env_context=env_ctx,
         )
 
-    @override(EnvRunner)
-    def stop(self):
-        # Note, `MultiAgentEnv` inherits `close()`-method from `gym.Env`.
-        self.env.close()
-
-    def _make_module(self):
-        # Create our own instance of the (single-agent) `RLModule` (which
+    def make_module(self):
+        # Create our own instance of the `MultiAgentRLModule` (which
         # the needs to be weight-synched) each iteration.
         # TODO (sven, simon): We have to rebuild the `AlgorithmConfig` to work on
         #  `RLModule`s and not `Policy`s. Like here `policies`->`modules`.
@@ -785,11 +785,16 @@ class MultiAgentEnvRunner(EnvRunner):
             )
 
             # Build the module from its spec.
-            return ma_rlm_spec.build()
+            self.module = ma_rlm_spec.build()
 
         # This error could be thrown, when only random actions are used.
         except NotImplementedError:
-            return None
+            pass
+
+    @override(EnvRunner)
+    def stop(self):
+        # Note, `MultiAgentEnv` inherits `close()`-method from `gym.Env`.
+        self.env.close()
 
     def _setup_metrics(self):
         self.metrics = MetricsLogger()

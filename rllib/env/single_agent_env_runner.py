@@ -6,6 +6,7 @@ from collections import defaultdict
 from functools import partial
 from typing import DefaultDict, Dict, List, Optional
 
+import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.core import DEFAULT_AGENT_ID, DEFAULT_MODULE_ID
@@ -86,28 +87,10 @@ class SingleAgentEnvRunner(EnvRunner):
         # required in the learning step.
         self._cached_to_module = None
 
-        # Create our own instance of the (single-agent) `RLModule` (which
-        # the needs to be weight-synched) each iteration.
-        try:
-            module_spec: SingleAgentRLModuleSpec = self.config.rl_module_spec
-            module_spec.observation_space = self._env_to_module.observation_space
-            # TODO (simon): The `gym.Wrapper` for `gym.vector.VectorEnv` should
-            #  actually hold the spaces for a single env, but for boxes the
-            #  shape is (1, 1) which brings a problem with the action dists.
-            #  shape=(1,) is expected.
-            module_spec.action_space = self.env.envs[0].action_space
-            module_spec.model_config_dict = self.config.model_config
-            # Only load a light version of the module, if available. This is useful
-            # if the the module has target or critic networks not needed in sampling
-            # or inference.
-            # TODO (simon): Once we use `get_marl_module_spec` here, we can remove
-            # this line here as the function takes care of this flag.
-            module_spec.model_config_dict[INFERENCE_ONLY] = True
-            self.module: RLModule = module_spec.build()
-        except NotImplementedError:
-            self.module = None
+        self.module: Optional[RLModule] = None
+        self.make_module()
 
-        # Create the two connector pipelines: env-to-module and module-to-env.
+        # Create the module-to-env connector pipeline.
         self._module_to_env = self.config.build_module_to_env_connector(self.env)
 
         # This should be the default.
@@ -717,6 +700,49 @@ class SingleAgentEnvRunner(EnvRunner):
             env=self.env,
             env_context=env_ctx,
         )
+
+    def make_module(self):
+        # Create our own instance of the (single-agent) `RLModule` (which
+        # the needs to be weight-synched) each iteration.
+        try:
+            module_spec: SingleAgentRLModuleSpec = self.config.rl_module_spec
+            module_spec.observation_space = self._env_to_module.observation_space
+            # TODO (simon): The `gym.Wrapper` for `gym.vector.VectorEnv` should
+            #  actually hold the spaces for a single env, but for boxes the
+            #  shape is (1, 1) which brings a problem with the action dists.
+            #  shape=(1,) is expected.
+            module_spec.action_space = self.env.envs[0].action_space
+            module_spec.model_config_dict = self.config.model_config
+            # Only load a light version of the module, if available. This is useful
+            # if the the module has target or critic networks not needed in sampling
+            # or inference.
+            # TODO (simon): Once we use `get_marl_module_spec` here, we can remove
+            # this line here as the function takes care of this flag.
+            module_spec.model_config_dict[INFERENCE_ONLY] = True
+            self.module = module_spec.build()
+
+            # We should have GPUs on this EnvRunner -> Check whether we need to move the
+            # module to a GPU.
+            if self.worker_index > 0 and self.config.num_gpus_per_env_runner > 0:
+                # We are a remote worker (WORKER_MODE=1):
+                if ray._private.worker._mode() == ray._private.worker.WORKER_MODE:
+                    # GPUs should be assigned to us by ray.
+                    gpu_ids = ray.get_gpu_ids()
+                    if len(gpu_ids) < self.config.num_gpus_per_env_runner:
+                        raise RuntimeError(
+                            f"Number of Ray-assigned GPUs on {type(self).__name__} is "
+                            f"smaller than config.num_gpus_per_env_runner "
+                            f"({self.config.num_gpus_per_env_runner})!"
+                        )
+                    if self.config.framework_str == "torch":
+                        # TODO (sven): Maybe make this a RLModule API?
+                        # TODO (sven): What if a model requires more than 1 GPU?
+                        #  Basically, offer pipelining/model-parallelism in RLModule.
+                        self.module = self.module.to(f"cuda:{gpu_ids[0]}")
+
+        # This error could be thrown, when only random actions are used.
+        except NotImplementedError:
+            pass
 
     @override(EnvRunner)
     def stop(self):

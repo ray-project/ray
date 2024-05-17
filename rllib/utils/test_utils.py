@@ -1506,6 +1506,15 @@ def run_rllib_example_script_experiment(
         tune_config=tune.TuneConfig(num_samples=args.num_samples),
     ).fit()
 
+    # Error out, if Tuner.fit() failed to run. Otherwise, erroneous examples might pass
+    # the CI tests w/o us knowing that they are broken (b/c some examples do not have
+    # a --as-test flag and/or any passing criteris).
+    if results.errors:
+        raise RuntimeError(
+            "Running the example script resulted in one or more errors! "
+            f"{[e.args[0].args[2] for e in results.errors]}"
+        )
+
     # If run as a test, check whether we reached the specified success criteria.
     if args.as_test:
         # Success metric not provided, try extracting it from `stop`.
