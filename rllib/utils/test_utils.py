@@ -223,7 +223,7 @@ def add_rllib_example_script_args(
 
     # Learner scaling options.
     # Old API stack: config.num_gpus.
-    # New API stack: config.num_learner_workers (w/ num_gpus_per_learner=1).
+    # New API stack: config.num_learners (w/ num_gpus_per_learner=1).
     parser.add_argument("--num-gpus", type=int, default=0)
 
     # Ray init options.
@@ -1308,6 +1308,7 @@ def run_rllib_example_script_experiment(
     success_metric: Optional[Dict] = None,
     trainable: Optional[Type] = None,
     tune_callbacks: Optional[List] = None,
+    keep_config: bool = False,
 ) -> Union[ResultDict, tune.result_grid.ResultGrid]:
     """Given an algorithm config and some command line args, runs an experiment.
 
@@ -1358,6 +1359,11 @@ def run_rllib_example_script_experiment(
         tune_callbacks: A list of Tune callbacks to configure with the tune.Tuner.
             In case `args.wandb_key` is provided, will append a WandB logger to this
             list.
+        keep_config: Set this to True, if you don't want this utility to change the
+            given `base_config` in any way and leave it as-is. This is helpful
+            for those example scripts which demonstrate how to set config settings
+            that are taken care of automatically in this function otherwise (e.g.
+            `num_env_runners`).
 
     Returns:
         The last ResultDict from a --no-tune run OR the tune.Tuner.fit()
@@ -1378,41 +1384,42 @@ def run_rllib_example_script_experiment(
             TRAINING_ITERATION: args.stop_iters,
         }
 
+    config = base_config
+
     # Enhance the `base_config`, based on provided `args`.
-    # Set the framework.
-    config = base_config.framework(args.framework)
-    # Add an env specifier?
-    if args.env is not None:
-        config.environment(args.env)
-    # Enable the new API stack?
-    if args.enable_new_api_stack:
-        config.api_stack(
-            enable_rl_module_and_learner=True,
-            enable_env_runner_and_connector_v2=True,
-        )
+    if not keep_config:
+        # Set the framework.
+        config.framework(args.framework)
 
-    # Define EnvRunner/RolloutWorker scaling and behavior.
-    if args.num_env_runners is not None:
-        config.env_runners(num_env_runners=args.num_env_runners)
+        # Add an env specifier?
+        if args.env is not None:
+            config.environment(args.env)
 
-    # Define compute resources used automatically (only using the --num-gpus arg).
-    # New stack.
-    if config.enable_rl_module_and_learner:
-        # Define compute resources used.
-        config.learners(
-            num_learners=args.num_gpus,
-            num_gpus_per_learner=1 if torch.cuda.is_available() else 0,
-        )
-    # Old stack.
-    else:
-        config.resources(
-            num_gpus=args.num_gpus,
-            num_cpus_for_main_process=1,
-        )
+        # Enable the new API stack?
+        if args.enable_new_api_stack:
+            config.api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            )
 
-    # Define EnvRunner/RolloutWorker scaling and behavior.
-    if args.num_env_runners is not None:
-        config.env_runners(num_env_runners=args.num_env_runners)
+        # Define EnvRunner/RolloutWorker scaling and behavior.
+        if args.num_env_runners is not None:
+            config.env_runners(num_env_runners=args.num_env_runners)
+
+        # Define compute resources used automatically (only using the --num-gpus arg).
+        # New stack.
+        if config.enable_rl_module_and_learner:
+            # Define compute resources used.
+            config.learners(
+                num_learners=args.num_gpus,
+                num_gpus_per_learner=1 if torch.cuda.is_available() else 0,
+            )
+        # Old stack.
+        else:
+            config.resources(
+                num_gpus=args.num_gpus,
+                num_cpus_for_main_process=1,
+            )
 
     # Run the experiment w/o Tune (directly operate on the RLlib Algorithm object).
     if args.no_tune:
