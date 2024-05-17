@@ -258,7 +258,7 @@ class ImpalaConfig(AlgorithmConfig):
                 broadcasted to rollout workers that are sampled during any iteration.
             num_aggregation_workers: Use n (`num_aggregation_workers`) extra Actors for
                 multi-level aggregation of the data produced by the m RolloutWorkers
-                (`num_workers`). Note that n should be much smaller than m.
+                (`num_env_runners`). Note that n should be much smaller than m.
                 This can make sense if ingesting >2GB/s of samples, or if
                 the data requires decompression.
             grad_clip: If specified, clip the global norm of gradients by this amount.
@@ -944,7 +944,7 @@ class Impala(Algorithm):
             self.batches_to_place_on_learner.clear()
             # If there are no learner workers and learning is directly on the driver
             # Then we can't do async updates, so we need to block.
-            async_update = self.config.num_learner_workers > 0
+            async_update = self.config.num_learners > 0
             results = []
             for batch in batches:
                 result = self.learner_group.update_from_batch(

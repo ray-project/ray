@@ -223,7 +223,7 @@ def add_rllib_example_script_args(
 
     # Learner scaling options.
     # Old API stack: config.num_gpus.
-    # New API stack: config.num_learner_workers (w/ num_gpus_per_learner=1).
+    # New API stack: config.num_learners (w/ num_gpus_per_learner=1).
     parser.add_argument("--num-gpus", type=int, default=0)
 
     # Ray init options.

@@ -73,7 +73,7 @@ class TestAttentionNets(unittest.TestCase):
             "train_batch_size": 200,
             "sgd_minibatch_size": 50,
             "rollout_fragment_length": 100,
-            "num_workers": 1,
+            "num_env_runners": 1,
         }
         for _ in framework_iterator(config):
             tune.Tuner(
@@ -87,7 +87,7 @@ class TestAttentionNets(unittest.TestCase):
         config = dict(
             self.config,
             **{
-                "num_workers": 0,
+                "num_env_runners": 0,
                 "entropy_coeff": 0.001,
                 "vf_loss_coeff": 1e-5,
                 "num_sgd_iter": 5,
@@ -119,7 +119,7 @@ class TestAttentionNets(unittest.TestCase):
         # ModelCatalog.register_custom_model("attention_net", GTrXLNet)
         # config = dict(
         #    self.config, **{
-        #        "num_workers": 4,
+        #        "num_env_runners": 4,
         #        "num_gpus": 0,
         #        "entropy_coeff": 0.01,
         #        "vf_loss_coeff": 0.001,
