@@ -36,12 +36,14 @@ class LanceDatasource(Datasource):
         self.storage_options = storage_options
 
         self.lance_ds = lance.dataset(uri=uri, storage_options=storage_options)
-        self.fragments = self.lance_ds.get_fragments()
+        fragments = self.lance_ds.get_fragments()
+        self.fragment_ids = [f.metadata.id for f in fragments]
+        self.schema = fragments[0].schema if len(fragments) > 0 else None
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         read_tasks = []
-        for fragments in np.array_split(self.fragments, parallelism):
-            if len(fragments) <= 0:
+        for fragment_ids in np.array_split(self.fragment_ids, parallelism):
+            if len(fragment_ids) <= 0:
                 continue
 
             # TODO(chengsu): Take column projection into consideration for schema.
@@ -49,16 +51,17 @@ class LanceDatasource(Datasource):
             # so it would be slow when number of fragments are large.
             metadata = BlockMetadata(
                 num_rows=None,
-                schema=fragments[0].schema,
+                schema=self.schema,
                 input_files=None,
                 size_bytes=None,
                 exec_stats=None,
             )
             columns = self.columns
             row_filter = self.filter
+            lance_ds = self.lance_ds
 
             read_task = ReadTask(
-                lambda f=fragments: _read_fragments(f, columns, row_filter),
+                lambda f=fragment_ids: _read_fragments(f, lance_ds, columns, row_filter),
                 metadata,
             )
             read_tasks.append(read_task)
@@ -70,11 +73,12 @@ class LanceDatasource(Datasource):
         return None
 
 
-def _read_fragments(fragments, columns, row_filter) -> Iterator["pyarrow.Table"]:
+def _read_fragments(fragment_ids, lance_ds, columns, row_filter) -> Iterator["pyarrow.Table"]:
     """Read Lance fragments in batches."""
     import pyarrow
 
-    for fragment in fragments:
+    for fragment_id in fragment_ids:
+        fragment = lance_ds.get_fragment(fragment_id)
         batches = fragment.to_batches(columns=columns, filter=row_filter)
         for batch in batches:
             yield pyarrow.Table.from_batches([batch])
