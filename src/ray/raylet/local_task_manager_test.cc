@@ -192,7 +192,7 @@ class LocalTaskManagerTest : public ::testing::Test {
             id_,
             scheduler_,
             dependency_manager_, /* is_owner_alive= */
-            [this](const WorkerID &worker_id, const NodeID &node_id) { return true; },
+            [](const WorkerID &worker_id, const NodeID &node_id) { return true; },
             /* get_node_info= */
             [this](const NodeID &node_id) -> const rpc::GcsNodeInfo * {
               if (node_info_.count(node_id) != 0) {
