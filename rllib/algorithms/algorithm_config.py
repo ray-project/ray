@@ -627,8 +627,9 @@ class AlgorithmConfig(_Config):
             if deprecated_key not in config:
                 continue
 
-            # Simplify: Remove all deprecated keys that have as value `DEPRECATED_VALUE`.
-            # These would be useless in the returned dict either way.
+            # Simplify: Remove all deprecated keys that have as value
+            # `DEPRECATED_VALUE`. These would be useless in the returned dict either
+            # way.
             if deprecation_rules is None:
                 if config[deprecated_key] == DEPRECATED_VALUE:
                     del config[deprecated_key]
@@ -4410,7 +4411,7 @@ class AlgorithmConfig(_Config):
     @staticmethod
     def _serialize_dict(config):
         # Serialize classes to classpaths:
-        config["callbacks"] = serialize_type(config["callbacks"])
+        config["callbacks_class"] = serialize_type(config["callbacks_class"])
         config["sample_collector"] = serialize_type(config["sample_collector"])
         if isinstance(config["env"], type):
             config["env"] = serialize_type(config["env"])
@@ -4435,8 +4436,10 @@ class AlgorithmConfig(_Config):
             if isinstance(ma_config.get("policies"), (set, tuple)):
                 ma_config["policies"] = list(ma_config["policies"])
             # Do NOT serialize functions/lambdas.
-            if ma_config.get("policy_mapping_fn"):
-                ma_config["policy_mapping_fn"] = NOT_SERIALIZABLE
+            if ma_config.get("_policy_mapping_fn") and (
+                ma_config["_policy_mapping_fn"] != "auto"
+            ):
+                ma_config["_policy_mapping_fn"] = NOT_SERIALIZABLE
             if ma_config.get("policies_to_train"):
                 ma_config["policies_to_train"] = NOT_SERIALIZABLE
         # However, if these "multiagent" settings have been provided directly
@@ -4445,89 +4448,22 @@ class AlgorithmConfig(_Config):
         if isinstance(config.get("policies"), (set, tuple)):
             config["policies"] = list(config["policies"])
         # Do NOT serialize functions/lambdas.
-        if (
-            config.get("policy_mapping_fn")
-                and not isinstance(config["policy_mapping_fn"], str)
-        ):
-            config["policy_mapping_fn"] = NOT_SERIALIZABLE
+        if config.get("_policy_mapping_fn") and config["_policy_mapping_fn"] != "auto":
+            config["_policy_mapping_fn"] = NOT_SERIALIZABLE
         if config.get("policies_to_train"):
             config["policies_to_train"] = NOT_SERIALIZABLE
 
         return config
 
-    @staticmethod
-    def _translate_special_keys(key: str, warn_deprecated: bool = True) -> str:
+    @classmethod
+    def _translate_special_keys(cls, key: str, warn_deprecated: bool = True) -> str:
         # Handle special key (str) -> `AlgorithmConfig.[some_property]` cases.
-        if key == "callbacks":
-            key = "callbacks_class"
-        elif key == "create_env_on_driver":
-            key = "create_env_on_local_worker"
-        elif key == "custom_eval_function":
-            key = "custom_evaluation_function"
-        elif key == "framework":
-            key = "framework_str"
-        elif key == "input":
-            key = "input_"
-        elif key == "lambda":
-            key = "lambda_"
-        elif key == "num_cpus_for_driver":
-            key = "num_cpus_for_main_process"
-        elif key == "num_workers":
-            key = "num_env_runners"
-
-        # Deprecated keys.
-        if warn_deprecated:
-            if key == "collect_metrics_timeout":
-                deprecation_warning(
-                    old="collect_metrics_timeout",
-                    new="metrics_episode_collection_timeout_s",
-                    error=True,
-                )
-            elif key == "metrics_smoothing_episodes":
-                deprecation_warning(
-                    old="config.metrics_smoothing_episodes",
-                    new="config.metrics_num_episodes_for_smoothing",
-                    error=True,
-                )
-            elif key == "min_iter_time_s":
-                deprecation_warning(
-                    old="config.min_iter_time_s",
-                    new="config.min_time_s_per_iteration",
-                    error=True,
-                )
-            elif key == "min_time_s_per_reporting":
-                deprecation_warning(
-                    old="config.min_time_s_per_reporting",
-                    new="config.min_time_s_per_iteration",
-                    error=True,
-                )
-            elif key == "min_sample_timesteps_per_reporting":
-                deprecation_warning(
-                    old="config.min_sample_timesteps_per_reporting",
-                    new="config.min_sample_timesteps_per_iteration",
-                    error=True,
-                )
-            elif key == "min_train_timesteps_per_reporting":
-                deprecation_warning(
-                    old="config.min_train_timesteps_per_reporting",
-                    new="config.min_train_timesteps_per_iteration",
-                    error=True,
-                )
-            elif key == "timesteps_per_iteration":
-                deprecation_warning(
-                    old="config.timesteps_per_iteration",
-                    new="`config.min_sample_timesteps_per_iteration` OR "
-                    "`config.min_train_timesteps_per_iteration`",
-                    error=True,
-                )
-            elif key == "evaluation_num_episodes":
-                deprecation_warning(
-                    old="config.evaluation_num_episodes",
-                    new="`config.evaluation_duration` and "
-                    "`config.evaluation_duration_unit=episodes`",
-                    error=True,
-                )
-
+        if key in cls.DEPRECATED_KEYS:
+            if isinstance(cls.DEPRECATED_KEYS[key], str):
+                key = cls.DEPRECATED_KEYS[key]
+            # Deprecated keys not replaced with anything (setting invalid).
+            elif cls.DEPRECATED_KEYS[key] is None and warn_deprecated:
+                deprecation_warning(old=key, error=True)
         return key
 
     def _check_if_correct_nn_framework_installed(self, _tf1, _tf, _torch):

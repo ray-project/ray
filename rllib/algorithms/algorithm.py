@@ -334,23 +334,6 @@ class Algorithm(Trainable, AlgorithmBase):
                 f"version v{checkpoint_info['checkpoint_version']}."
             )
 
-        # This is a msgpack checkpoint.
-        if checkpoint_info["format"] == "msgpack":
-            # User did not provide unserializable function with this call
-            # (`policy_mapping_fn`). Note that if `policies_to_train` is None, it
-            # defaults to training all policies (so it's ok to not provide this here).
-            if policy_mapping_fn is None and checkpoint_info["policy_ids"] != {DEFAULT_POLICY_ID}:
-                logger.warning(
-                    "You are trying to restore a multi-agent algorithm from a "
-                    "`msgpack` formatted checkpoint, which do NOT store the "
-                    "`policy_mapping_fn` or `policies_to_train` "
-                    "functions! Make sure that when using the "
-                    "`Algorithm.from_checkpoint()` utility, you also pass the "
-                    "args: `policy_mapping_fn` and `policies_to_train` with your "
-                    "call. You might leave `policies_to_train=None` in case "
-                    "you would like to train all policies anyways."
-                )
-
         state = Algorithm._checkpoint_info_to_algorithm_state(
             checkpoint_info=checkpoint_info,
             policy_ids=policy_ids,
@@ -536,7 +519,7 @@ class Algorithm(Trainable, AlgorithmBase):
         # (although their values may be nan), so that Tune doesn't complain
         # when we use these as stopping criteria.
         self.evaluation_metrics = {
-            "evaluation": {
+            EVALUATION_RESULTS: {
                 ENV_RUNNER_RESULTS: {
                     EPISODE_RETURN_MAX: np.nan,
                     EPISODE_RETURN_MIN: np.nan,

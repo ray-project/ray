@@ -1219,9 +1219,9 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 will keep the existing mapping function in place.
         """
         if policy_mapping_fn is not None:
+            if not callable(policy_mapping_fn):
+                policy_mapping_fn = self.config.policy_mapping_fn
             self.policy_mapping_fn = policy_mapping_fn
-            if not callable(self.policy_mapping_fn):
-                raise ValueError("`policy_mapping_fn` must be a callable!")
 
     def set_is_policy_to_train(
         self,
