@@ -223,6 +223,8 @@ class JobSupervisor:
         # Job driver (entrypoint) is executed in an synchronous fashion,
         # therefore is performed as a background operation updating Ray Job's
         # state asynchronously upon job's driver completing the execution
+        #
+        # NOTE: This task is not shielded b/c it's never being awaited on
         self._waiting_task = self._loop.create_task(
             self._execute_sync(
                 runtime_env=runtime_env,
