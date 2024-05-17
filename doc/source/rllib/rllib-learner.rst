@@ -60,7 +60,7 @@ arguments in the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConf
         PPOConfig()
         .api_stack(enable_rl_module_and_learner=True)
         .learners(
-            num_learners=0  # Set this to greater than 1 to allow for DDP style updates.
+            num_learners=0,  # Set this to greater than 1 to allow for DDP style updates.
             num_gpus_per_learner=0,  # Set this to 1 to enable GPU training.
             num_cpus_per_learner=1,
         )

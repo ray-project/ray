@@ -94,12 +94,10 @@ if __name__ == "__main__":
         .get_default_config()
         # This script only works on the new API stack.
         .api_stack(
-            enable_rl_module_and_learner=args.enable_new_api_stack,
-            enable_env_runner_and_connector_v2=args.enable_new_api_stack,
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
         )
         .environment("CartPole-v1")
-        # Define EnvRunner scaling.
-        .env_runners(num_env_runners=args.num_env_runners)
         # Define Learner scaling.
         .learners(
             # How many Learner workers do we need? If you have more than 1 GPU, you

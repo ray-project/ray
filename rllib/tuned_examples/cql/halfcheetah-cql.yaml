@@ -1,3 +1,4 @@
+# @OldAPIStack
 halfcheetah_cql:
     env: 
         grid_search:
@@ -35,7 +36,7 @@ halfcheetah_cql:
             actor_learning_rate: 0.0001
             critic_learning_rate: 0.0003
             entropy_learning_rate: 0.0001
-        num_workers: 0
+        num_env_runners: 0
         num_gpus: 1
         metrics_num_episodes_for_smoothing: 5
         # CQL Configs
