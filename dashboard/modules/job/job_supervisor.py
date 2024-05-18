@@ -520,14 +520,7 @@ class JobSupervisor:
                     # In case job executor is running successfully, reachable and responsive, log
                     # running status of the job's driver every JOB_STATUS_LOG_FREQUENCY_SECONDS
                     # (to keep it as heart-beat check, but avoid logging it on every iteration)
-                    if (
-                        i
-                        % int(
-                            self.JOB_STATUS_LOG_INTERVAL_S
-                            / self.JOB_MONITOR_LOOP_INTERVAL_S
-                        )
-                        == 0
-                    ):
+                    if self._should_report_running(i):
                         self._logger.info(
                             f"({self._job_id}) Job driver is still running (job status: {job_status}"
                         )
@@ -661,6 +654,11 @@ class JobSupervisor:
         #       no corresponding  record in the GCS, we assume Job Supervisor
         #       start-up timestamp as job's one
         return job_info.start_time / 1000 if job_info else self._started_at
+
+    def _should_report_running(self, iteration: int):
+        return (
+            iteration % int(self.JOB_STATUS_LOG_INTERVAL_S / self.JOB_MONITOR_LOOP_INTERVAL_S) == 0
+        )
 
     @staticmethod
     def _has_entrypoint_resources_set(job_info: JobInfo):
