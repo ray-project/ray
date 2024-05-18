@@ -60,13 +60,14 @@ class TorchTensorWorker:
         return
 
 
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_p2p(ray_start_regular):
     if USE_GPU:
         assert sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 0
 
     actor_cls = TorchTensorWorker
     if USE_GPU:
-        actor_cls = TorchTensorWorker.options(num_gpus=1)
+        actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
 
     sender = actor_cls.remote()
     receiver = actor_cls.remote()
@@ -116,13 +117,14 @@ def test_torch_tensor_p2p(ray_start_regular):
     compiled_dag.teardown()
 
 
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_as_dag_input(ray_start_regular):
     if USE_GPU:
         assert sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 0
 
     actor_cls = TorchTensorWorker
     if USE_GPU:
-        actor_cls = TorchTensorWorker.options(num_gpus=1)
+        actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
 
     receiver = actor_cls.remote()
 
@@ -157,6 +159,7 @@ def test_torch_tensor_as_dag_input(ray_start_regular):
     compiled_dag.teardown()
 
 
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl(ray_start_regular):
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
@@ -165,7 +168,7 @@ def test_torch_tensor_nccl(ray_start_regular):
         sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
     ), "This test requires at least 2 GPUs"
 
-    actor_cls = TorchTensorWorker.options(num_gpus=1)
+    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
 
     sender = actor_cls.remote()
     receiver = actor_cls.remote()
@@ -224,6 +227,7 @@ def test_torch_tensor_nccl(ray_start_regular):
     # ray.get(receiver.ping.remote())
 
 
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_dynamic(ray_start_regular):
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
@@ -232,7 +236,7 @@ def test_torch_tensor_nccl_dynamic(ray_start_regular):
         sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
     ), "This test requires at least 2 GPUs"
 
-    actor_cls = TorchTensorWorker.options(num_gpus=1)
+    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
 
     sender = actor_cls.remote()
     receiver = actor_cls.remote()
@@ -257,6 +261,7 @@ def test_torch_tensor_nccl_dynamic(ray_start_regular):
     compiled_dag.teardown()
 
 
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_wrong_shape(ray_start_regular):
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
@@ -265,7 +270,7 @@ def test_torch_tensor_nccl_wrong_shape(ray_start_regular):
         sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
     ), "This test requires at least 2 GPUs"
 
-    actor_cls = TorchTensorWorker.options(num_gpus=1)
+    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
 
     sender = actor_cls.remote()
     receiver = actor_cls.remote()
