@@ -172,9 +172,11 @@ class JobManager:
                 await self._get_head_node_scheduling_strategy()
             )
 
+            supervisor_actor_name = JOB_ACTOR_NAME_TEMPLATE.format(job_id=submission_id)
+
             supervisor = self._supervisor_actor_cls.options(
                 lifetime="detached",
-                name=JOB_ACTOR_NAME_TEMPLATE.format(job_id=submission_id),
+                name=supervisor_actor_name,
                 num_cpus=0,
                 scheduling_strategy=head_node_scheduling_strategy,
                 namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
@@ -188,7 +190,7 @@ class JobManager:
 
             # Job execution process is async, however we await on the
             # `launch` method here to propagate right away any failures
-            # raised during job driver's launching sequence
+            # raised during job's launching sequence
             await supervisor.launch.remote(
                 runtime_env=runtime_env,
                 metadata=metadata,
@@ -201,11 +203,15 @@ class JobManager:
 
         except Exception as e:
             logger.error(
-                f"Failed to start Job Supervisor and launch driver for job {submission_id}: {e}"
+                f"Failed to start Job Supervisor and launch driver for job {submission_id}",
+                exc_info=e,
             )
 
             if supervisor is not None:
                 ray.kill(supervisor, no_restart=True)
+
+            if isinstance(e, ValueError) and f"The name {supervisor_actor_name} (namespace={SUPERVISOR_ACTOR_RAY_NAMESPACE}) is already taken" in str(e):
+                raise ValueError(f"Job with submission id {submission_id} already exists")
 
             raise e
 
