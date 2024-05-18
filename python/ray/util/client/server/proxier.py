@@ -22,6 +22,7 @@ import ray.core.generated.agent_manager_pb2 as agent_manager_pb2
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 import ray.core.generated.runtime_env_agent_pb2 as runtime_env_agent_pb2
+from ray._private import net
 from ray._private.client_mode_hook import disable_client_hook
 from ray._raylet import GcsClient
 from ray._private.parameter import RayParams
@@ -145,7 +146,7 @@ class ProxyManager:
             num_ports = len(self._free_ports)
             for _ in range(num_ports):
                 port = self._free_ports.pop(0)
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s = net._get_socket_dualstack_fallback_single_stack_laddr()
                 try:
                     s.bind(("", port))
                 except OSError:
@@ -199,11 +200,12 @@ class ProxyManager:
                 self.servers.get(client_id) is None
             ), f"Server already created for Client: {client_id}"
             port = self._get_unused_port()
+            local_ip = net._get_addrinfo_from_sock_kind_ipv4_fallback_ipv6("localhost", socket.SOCK_STREAM)[0][1]
             server = SpecificServer(
                 port=port,
                 process_handle_future=futures.Future(),
                 channel=ray._private.utils.init_grpc_channel(
-                    f"127.0.0.1:{port}", options=GRPC_OPTIONS
+                    f"{local_ip}:{port}", options=GRPC_OPTIONS
                 ),
             )
             self.servers[client_id] = server

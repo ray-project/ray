@@ -2,7 +2,6 @@
 import logging
 import os
 import pickle
-import socket
 import sys
 import time
 
@@ -13,6 +12,7 @@ import ray
 import ray._private.utils
 import ray.cluster_utils
 import ray.util.accelerators
+from ray._private import net
 from ray._private.test_utils import check_call_ray, wait_for_num_actors
 
 import setproctitle
@@ -311,7 +311,7 @@ def test_raylet_is_robust_to_random_messages(ray_start_regular):
     assert node_manager_address
     assert node_manager_port
     # Try to bring down the node manager:
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s = net._get_sock_stream_from_host(node_manager_address)
     s.connect((node_manager_address, node_manager_port))
     s.send(1000 * b"asdf")
 

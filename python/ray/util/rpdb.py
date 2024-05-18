@@ -20,6 +20,7 @@ from typing import Callable
 import setproctitle
 
 import ray
+from ray._private import net
 from ray._private import ray_constants
 from ray.experimental.internal_kv import _internal_kv_del, _internal_kv_put
 from ray.util.annotations import DeveloperAPI
@@ -102,7 +103,7 @@ class _RemotePdb(Pdb):
         self._breakpoint_uuid = breakpoint_uuid
         self._quiet = quiet
         self._patch_stdstreams = patch_stdstreams
-        self._listen_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._listen_socket = net._get_sock_stream_from_host(host)
         self._listen_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
         self._listen_socket.bind((host, port))
         self._ip_address = ip_address
@@ -338,7 +339,7 @@ def _post_mortem():
 
 
 def _connect_pdb_client(host, port):
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s = net._get_sock_stream_from_host(host)
     s.connect((host, port))
 
     while True:

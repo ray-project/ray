@@ -6,6 +6,7 @@ from time import sleep
 import pytest
 
 import ray
+from ray._private import net
 from ray._private.utils import get_or_create_event_loop
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 import ray._private.gcs_utils as gcs_utils
@@ -774,7 +775,7 @@ def test_redis_failureover(redis_replicas, ray_start_cluster_head_with_external_
     import redis
 
     redis_addr = os.environ.get("RAY_REDIS_ADDRESS")
-    ip, port = redis_addr.split(":")
+    ip, port = net._parse_ip_port(redis_addr)
     redis_cli = redis.Redis(ip, port)
 
     def get_connected_nodes():
@@ -790,7 +791,7 @@ def test_redis_failureover(redis_replicas, ray_start_cluster_head_with_external_
     leader_cli = None
     follower_cli = []
     for addr in nodes:
-        ip, port = addr.split(":")
+        ip, port = net._parse_ip_port(addr)
         cli = redis.Redis(ip, port)
         meta = nodes[addr]
         flags = meta["flags"].split(",")
@@ -979,7 +980,7 @@ def test_redis_data_loss_no_leak(ray_start_regular_with_external_redis):
     redis_addr = os.environ.get("RAY_REDIS_ADDRESS")
     import redis
 
-    ip, port = redis_addr.split(":")
+    ip, port = net._parse_ip_port(redis_addr)
     cli = redis.Redis(ip, port)
     cli.flushall()
     raylet_proc = ray._private.worker._global_node.all_processes[

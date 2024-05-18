@@ -24,6 +24,7 @@ import yaml
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
+from ray._private import net
 from ray._private.utils import (
     check_ray_client_dependencies_installed,
     parse_resources_json,
@@ -177,7 +178,7 @@ def continue_debug_session(live_jobs: Set[str]):
                             key, namespace=ray_constants.KV_NAMESPACE_PDB
                         )
                         return
-                    host, port = session["pdb_address"].split(":")
+                    host, port = net._parse_ip_port(session["pdb_address"])
                     ray.util.rpdb._connect_pdb_client(host, int(port))
                     ray.experimental.internal_kv._internal_kv_del(
                         key, namespace=ray_constants.KV_NAMESPACE_PDB
@@ -265,7 +266,7 @@ def debug(address):
                     active_sessions[index], namespace=ray_constants.KV_NAMESPACE_PDB
                 )
             )
-            host, port = session["pdb_address"].split(":")
+            host, port = net._parse_ip_port(session["pdb_address"])
             ray.util.rpdb._connect_pdb_client(host, int(port))
 
 
