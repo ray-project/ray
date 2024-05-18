@@ -179,15 +179,15 @@ except ImportError:
             Returns:
                 A list of resource bundles for the learner workers.
             """
-            if cf.num_learner_workers > 0:
+            if cf.num_learners > 0:
                 if cf.num_gpus_per_learner:
                     learner_bundles = [
-                        {"GPU": cf.num_learner_workers * cf.num_gpus_per_learner}
+                        {"GPU": cf.num_learners * cf.num_gpus_per_learner}
                     ]
                 elif cf.num_cpus_per_learner:
                     learner_bundles = [
                         {
-                            "CPU": cf.num_cpus_per_learner * cf.num_learner_workers,
+                            "CPU": cf.num_cpus_per_learner * cf.num_learners,
                         }
                     ]
             else:
@@ -2490,7 +2490,7 @@ class Algorithm(Trainable, AlgorithmBase):
 
         # resources for the driver of this trainable
         if cf.enable_rl_module_and_learner:
-            if cf.num_learner_workers == 0:
+            if cf.num_learners == 0:
                 # in this case local_worker only does sampling and training is done on
                 # local learner worker
                 driver = cls._get_learner_bundles(cf)[0]
@@ -2544,7 +2544,7 @@ class Algorithm(Trainable, AlgorithmBase):
 
         # resources for remote learner workers
         learner_bundles = []
-        if cf.enable_rl_module_and_learner and cf.num_learner_workers > 0:
+        if cf.enable_rl_module_and_learner and cf.num_learners > 0:
             learner_bundles = cls._get_learner_bundles(cf)
 
         bundles = [driver] + rollout_bundles + evaluation_bundles + learner_bundles
