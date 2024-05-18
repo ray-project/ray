@@ -527,7 +527,7 @@ async def test_simultaneous_with_same_id(job_manager):
             job_manager.submit_job(entrypoint="echo hello", submission_id="1"),
             job_manager.submit_job(entrypoint="echo hello", submission_id="1"),
         )
-    assert "Job with submission_id 1 already exists" in str(excinfo.value)
+    assert "Job with submission id 1 already exists" in str(excinfo.value)
     # Check that the (first) job can still succeed.
     await async_wait_for_condition_async_predicate(
         check_job_succeeded, job_manager=job_manager, job_id="1"
