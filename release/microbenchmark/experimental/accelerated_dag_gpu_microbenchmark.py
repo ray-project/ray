@@ -11,13 +11,10 @@ import ray
 from ray.air._internal import torch_utils
 import ray.cluster_utils
 from ray.dag import InputNode
-from ray.tests.conftest import *  # noqa
 from ray.util.collective.collective_group import nccl_util
 
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray._private.ray_microbenchmark_helpers import timeit
-
-# from ray.experimental.torch_serializer import TorchTensor
 
 
 logger = logging.getLogger(__name__)
