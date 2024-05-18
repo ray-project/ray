@@ -174,6 +174,8 @@ if __name__ == "__main__":
                 changed_file.startswith("python/ray/serve")
                 or changed_file == ".buildkite/serve.rayci.yml"
                 or changed_file == "ci/docker/serve.build.Dockerfile"
+                or changed_file == "ci/docker/serve.gpu.build.Dockerfile"
+                or changed_file == "ci/docker/serve.gpu.build.wanda.yaml"
             ):
                 RAY_CI_SERVE_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1

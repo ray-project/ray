@@ -28,7 +28,7 @@ pip install vllm==0.4.2 transformers==4.40.0 torch==2.3.0+cu118 \
   torch-sparse==0.6.18+pt23cu118 torch-cluster==1.6.3+pt23cu118 \
   torch-spline-conv==1.2.2+pt23cu118 \
   --extra-index-url https://download.pytorch.org/whl/cu118  \
-  --find-links https://data.pyg.org/whl/torch-2.0.1+cu118.html 
+  --find-links https://data.pyg.org/whl/torch-2.3.0+cu118.html 
 
 EOF
 

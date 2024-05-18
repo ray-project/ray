@@ -9,6 +9,7 @@ steps:
 
   - name: servegpubuild
     wanda: ci/docker/serve.gpu.build.wanda.yaml
+    depends_on: oss-ci-base_gpu
 
   - name: servebuild-multipy
     label: "wanda: servebuild-py{{matrix}}"
@@ -169,6 +170,7 @@ steps:
       - servebuild
 
   - label: ":ray-serve: serve: doc gpu tests"
+    key: serve-doc-gpu
     tags: 
       - serve
       - doc
