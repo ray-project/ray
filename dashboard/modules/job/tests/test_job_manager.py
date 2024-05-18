@@ -23,8 +23,12 @@ from ray._private.test_utils import (
     async_wait_for_condition_async_predicate,
     wait_for_condition,
 )
-from ray.dashboard.modules.job.common import JOB_ID_METADATA_KEY, JOB_NAME_METADATA_KEY, _get_supervisor_actor_for_job, \
-    _get_executor_actor_for_job
+from ray.dashboard.modules.job.common import (
+    JOB_ID_METADATA_KEY,
+    JOB_NAME_METADATA_KEY,
+    _get_supervisor_actor_for_job,
+    _get_executor_actor_for_job,
+)
 from ray.dashboard.modules.job.job_supervisor import JobExecutor, JobSupervisor
 from ray.dashboard.modules.job.job_manager import (
     JobLogStorageClient,
@@ -269,8 +273,8 @@ async def test_job_supervisor_logs_saved(
     call_ray_start, tmp_path, capsys  # noqa: F811
 ):
     """Test
-        - JobSupervisor logs are saved to jobs/job-supervisor-{submission_id}.log
-        - JobRunner logs are saved to jobs/job-runner-{submission_id}.log
+    - JobSupervisor logs are saved to jobs/job-supervisor-{submission_id}.log
+    - JobRunner logs are saved to jobs/job-runner-{submission_id}.log
     """
     address_info = ray.init(address=call_ray_start)
     gcs_aio_client = GcsAioClient(
@@ -291,7 +295,7 @@ async def test_job_supervisor_logs_saved(
         ray._private.worker._global_node.get_logs_dir_path(),
         f"jobs/job-supervisor-{job_id}.log",
     )
-    expected_supervisor_file_contents = '(job_1) Starting job monitoring loop (interval 1s)\n(job_1) Starting job\n(job_1) Creating executor actor for job\n(job_1) Updating job status to SUCCEEDED (exit code is 0)\n'
+    expected_supervisor_file_contents = "(job_1) Starting job monitoring loop (interval 1s)\n(job_1) Starting job\n(job_1) Creating executor actor for job\n(job_1) Updating job status to SUCCEEDED (exit code is 0)\n"
 
     with open(supervisor_log_path, "r") as f:
         logs = f.read()
@@ -302,7 +306,7 @@ async def test_job_supervisor_logs_saved(
         ray._private.worker._global_node.get_logs_dir_path(),
         f"jobs/job-runner-{job_id}.log",
     )
-    expected_runner_file_contents = '(job_1) Executing job driver\'s entrypoint\n(job_1) Job driver\'s entrypoint command exited with code 0\n'
+    expected_runner_file_contents = "(job_1) Executing job driver's entrypoint\n(job_1) Job driver's entrypoint command exited with code 0\n"
 
     with open(runner_log_path, "r") as f:
         logs = f.read()
@@ -921,7 +925,9 @@ class TestAsyncAPI:
         1) Job can correctly be stop immediately with correct JobStatus
         2) No dangling subprocess left.
         """
-        start_signal_actor = SignalActor.remote(error=RuntimeError("Encountered failure"))
+        start_signal_actor = SignalActor.remote(
+            error=RuntimeError("Encountered failure")
+        )
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             pid_file, _, job_id = await _run_hanging_command(
@@ -942,7 +948,7 @@ class TestAsyncAPI:
             data = await job_manager.get_job_info(job_id)
 
             assert data.driver_exit_code is None
-            assert 'RuntimeError(\'Encountered failure\')' in data.message
+            assert "RuntimeError('Encountered failure')" in data.message
 
     async def test_stop_job_subprocess_cleanup_upon_stop(self, job_manager):
         """
@@ -1334,7 +1340,10 @@ async def test_job_pending_timeout(job_manager, monkeypatch):
     job_info = await job_manager.get_job_info(job_id)
 
     assert job_info.status == JobStatus.FAILED
-    assert "Job driver failed to start within 0.1 seconds. This timeout can be configured by setting the environment variable RAY_JOB_START_TIMEOUT_SECONDS." in job_info.message
+    assert (
+        "Job driver failed to start within 0.1 seconds. This timeout can be configured by setting the environment variable RAY_JOB_START_TIMEOUT_SECONDS."
+        in job_info.message
+    )
     assert job_info.driver_exit_code is None
 
 

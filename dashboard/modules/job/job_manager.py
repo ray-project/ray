@@ -9,12 +9,16 @@ import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.gcs_utils import GcsAioClient
 from ray.actor import ActorHandle
-from ray.dashboard.consts import RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR, DEFAULT_JOB_START_TIMEOUT_SECONDS
+from ray.dashboard.consts import (
+    RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR,
+    DEFAULT_JOB_START_TIMEOUT_SECONDS,
+)
 from ray.dashboard.modules.job.common import (
     JOB_ACTOR_NAME_TEMPLATE,
     SUPERVISOR_ACTOR_RAY_NAMESPACE,
     JobInfo,
-    JobInfoStorageClient, _get_supervisor_actor_for_job,
+    JobInfoStorageClient,
+    _get_supervisor_actor_for_job,
 )
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.dashboard.modules.job.job_supervisor import JobSupervisor
@@ -165,7 +169,9 @@ class JobManager:
         try:
             startup_timeout_s = _get_job_startup_timeout_s()
 
-            logger.info(f"Submitting job {submission_id} with entrypoint `{entrypoint}` (startup timeout set at {startup_timeout_s}s)")
+            logger.info(
+                f"Submitting job {submission_id} with entrypoint `{entrypoint}` (startup timeout set at {startup_timeout_s}s)"
+            )
 
             # NOTE: JobSupervisor is *always* scheduled onto the head-node
             head_node_scheduling_strategy = (
@@ -185,7 +191,7 @@ class JobManager:
                 entrypoint=entrypoint,
                 gcs_address=self._gcs_address,
                 logs_dir=self._logs_dir,
-                startup_timeout_s=startup_timeout_s
+                startup_timeout_s=startup_timeout_s,
             )
 
             # Job execution process is async, however we await on the
@@ -210,8 +216,14 @@ class JobManager:
             if supervisor is not None:
                 ray.kill(supervisor, no_restart=True)
 
-            if isinstance(e, ValueError) and f"The name {supervisor_actor_name} (namespace={SUPERVISOR_ACTOR_RAY_NAMESPACE}) is already taken" in str(e):
-                raise ValueError(f"Job with submission id {submission_id} already exists")
+            if isinstance(
+                e, ValueError
+            ) and f"The name {supervisor_actor_name} (namespace={SUPERVISOR_ACTOR_RAY_NAMESPACE}) is already taken" in str(
+                e
+            ):
+                raise ValueError(
+                    f"Job with submission id {submission_id} already exists"
+                )
 
             raise e
 
@@ -287,4 +299,3 @@ def _get_job_startup_timeout_s() -> float:
             DEFAULT_JOB_START_TIMEOUT_SECONDS,
         )
     )
-

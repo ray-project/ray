@@ -4,8 +4,7 @@ from typing import Optional, AsyncGenerator
 
 
 async def sleep_till(wake_time: float) -> None:
-    """Sleeps until designated time, unless designated time is in the past
-    """
+    """Sleeps until designated time, unless designated time is in the past"""
     delta = wake_time - time.time()
     if delta > 0:
         await asyncio.sleep(delta)
