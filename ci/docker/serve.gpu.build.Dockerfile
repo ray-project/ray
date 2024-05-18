@@ -22,6 +22,8 @@ pip install -c python/requirements_compiled.txt \
   -r python/requirements.txt \
   -r python/requirements/test-requirements.txt
 
+# TODO (can): the following torch versions deviate from the ones in ray-ml image; we 
+# should align them in a future PR
 pip install vllm==0.4.2 transformers==4.40.0 torch==2.3.0+cu118 \
   torchvision==0.18.0+cu118 torch-scatter==2.1.2+pt23cu118 \
   torch-sparse==0.6.18+pt23cu118 torch-cluster==1.6.3+pt23cu118 \
