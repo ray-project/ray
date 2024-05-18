@@ -71,7 +71,17 @@ async def test_get_scheduling_strategy(
     if resources_specified:
         assert strategy == "DEFAULT"
     else:
-        expected_strategy = NodeAffinitySchedulingStrategy("123456", soft=False)
+        gcs_aio_client = GcsAioClient(address=gcs_address)
+
+        head_node_id_bytes = await gcs_aio_client.internal_kv_get(
+            "head_node_id".encode(),
+            namespace=ray.ray_constants.KV_NAMESPACE_JOB,
+            timeout=30,
+        )
+
+        head_node_id = head_node_id_bytes.decode()
+        expected_strategy = NodeAffinitySchedulingStrategy(head_node_id, soft=True)
+
         assert expected_strategy.node_id == strategy.node_id
         assert expected_strategy.soft == strategy.soft
 
