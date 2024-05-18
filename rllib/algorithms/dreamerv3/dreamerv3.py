@@ -28,6 +28,7 @@ from ray.rllib.algorithms.dreamerv3.utils.summaries import (
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import deep_update
 from ray.rllib.utils.annotations import override, PublicAPI
@@ -35,12 +36,20 @@ from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import one_hot
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
+    ENV_RUNNER_RESULTS,
     GARBAGE_COLLECTION_TIMER,
     LEARN_ON_BATCH_TIMER,
     LEARNER_RESULTS,
+    NUM_AGENT_STEPS_SAMPLED,
+    NUM_AGENT_STEPS_SAMPLED_LIFETIME,
+    NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_TRAINED_LIFETIME,
+    NUM_EPISODES,
+    NUM_EPISODES_LIFETIME,
     NUM_GRAD_UPDATES_LIFETIME,
+    NUM_MODULE_STEPS_SAMPLED,
+    NUM_MODULE_STEPS_SAMPLED_LIFETIME,
     NUM_SYNCH_WORKER_WEIGHTS,
     SAMPLE_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
@@ -532,35 +541,63 @@ class DreamerV3(Algorithm):
                 or not have_sampled
             ):
                 # Sample using the env runner's module.
-                done_episodes, ongoing_episodes = env_runner.sample()
+                episodes, env_runner_results = synchronous_parallel_sample(
+                    worker_set=self.workers,
+                    max_agent_steps=(
+                        self.config.rollout_fragment_length
+                        * self.config.num_envs_per_env_runner
+                    ),
+                    sample_timeout_s=self.config.sample_timeout_s,
+                    _uses_new_env_runners=True,
+                    _return_metrics=True,
+                )
+                self.metrics.log_n_dicts(env_runner_results, key=ENV_RUNNER_RESULTS)
                 # Add ongoing and finished episodes into buffer. The buffer will
                 # automatically take care of properly concatenating (by episode IDs)
                 # the different chunks of the same episodes, even if they come in via
                 # separate `add()` calls.
-                self.replay_buffer.add(episodes=done_episodes + ongoing_episodes)
+                self.replay_buffer.add(episodes=episodes)
                 have_sampled = True
 
                 # We took B x T env steps.
                 env_steps_last_regular_sample = sum(
-                    len(eps) for eps in done_episodes + ongoing_episodes
+                    len(eps) for eps in episodes
                 )
                 total_sampled = env_steps_last_regular_sample
 
                 # If we have never sampled before (just started the algo and not
                 # recovered from a checkpoint), sample B random actions first.
                 if self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0) == 0:
-                    d_, o_ = env_runner.sample(
-                        num_timesteps=(
+                    _episodes, _env_runner_results = synchronous_parallel_sample(
+                        worker_set=self.workers,
+                        max_agent_steps=(
                             self.config.batch_size_B * self.config.batch_length_T
-                        )
-                        - env_steps_last_regular_sample,
+                            - env_steps_last_regular_sample
+                        ),
+                        sample_timeout_s=self.config.sample_timeout_s,
                         random_actions=True,
+                        _uses_new_env_runners=True,
+                        _return_metrics=True,
                     )
-                    self.replay_buffer.add(episodes=d_ + o_)
-                    total_sampled += sum(len(eps) for eps in d_ + o_)
+                    self.metrics.log_n_dicts(_env_runner_results, key=ENV_RUNNER_RESULTS)
+                    self.replay_buffer.add(episodes=_episodes)
+                    total_sampled += sum(len(eps) for eps in _episodes)
 
-                self.metrics.log_value(
-                    NUM_ENV_STEPS_SAMPLED_LIFETIME, total_sampled, reduce="sum"
+                # Update lifetime counts (now that we gathered results from all
+                # EnvRunners).
+                self.metrics.log_dict(
+                    {
+                        NUM_AGENT_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
+                            ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED
+                        ),
+                        NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
+                            ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED
+                        ),
+                        NUM_EPISODES_LIFETIME: self.metrics.peek(
+                            ENV_RUNNER_RESULTS, NUM_EPISODES
+                        ),
+                    },
+                    reduce="sum",
                 )
 
         # Summarize environment interaction and buffer data.
@@ -569,9 +606,9 @@ class DreamerV3(Algorithm):
         )
 
         # Continue sampling batch_size_B x batch_length_T sized batches from the buffer
-        # and using these to update our models (`LearnerGroup.update()`) until the
-        # computed `training_ratio` is larger than the configured one, meaning we should
-        # go back and collect more samples again from the actual environment.
+        # and using these to update our models (`LearnerGroup.update_from_batch()`)
+        # until the computed `training_ratio` is larger than the configured one, meaning
+        # we should go back and collect more samples again from the actual environment.
         # However, when calculating the `training_ratio` here, we use only the
         # trained steps in this very `training_step()` call over the most recent sample
         # amount (`env_steps_last_regular_sample`), not the global values. This is to
@@ -608,7 +645,7 @@ class DreamerV3(Algorithm):
                     #  at the end, like for EnvRunner global env step counts.
                     #  Maybe when we request the state from the Learners, we can - at the
                     #  same time - send the current globally summed/reduced-timesteps.
-                    timesteps={NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(NUM_ENV_STEPS_TRAINED_LIFETIME, default=0)}
+                    timesteps={NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)}
                 )
                 self.metrics.log_n_dicts(learner_results, key=LEARNER_RESULTS)
                 self.metrics.log_value(
@@ -655,7 +692,8 @@ class DreamerV3(Algorithm):
             if not self.config.share_module_between_env_runner_and_learner:
                 self.metrics.log_value(NUM_SYNCH_WORKER_WEIGHTS, 1, reduce="sum")
                 self.workers.sync_weights(
-                    from_worker_or_learner_group=self.learner_group
+                    from_worker_or_learner_group=self.learner_group,
+                    inference_only=True,
                 )
 
         # Try trick from https://medium.com/dive-into-ml-ai/dealing-with-memory-leak-
@@ -676,14 +714,15 @@ class DreamerV3(Algorithm):
 
     @property
     def training_ratio(self) -> float:
-        """Returns the actual training ratio of this Algorithm.
+        """Returns the actual training ratio of this Algorithm (not the configured one).
 
         The training ratio is copmuted by dividing the total number of steps
         trained thus far (replayed from the buffer) over the total number of actual
         env steps taken thus far.
         """
+        eps = 0.0001
         return self.metrics.peek(NUM_ENV_STEPS_TRAINED_LIFETIME, default=0) / (
-            self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0.001)
+             (self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=eps) or eps)
         )
 
     # TODO (sven): Remove this once DreamerV3 is on the new SingleAgentEnvRunner.

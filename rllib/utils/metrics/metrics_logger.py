@@ -183,6 +183,20 @@ class MetricsLogger:
         else:
             self._get_key(key).push(value)
 
+    #def log_pit_value(self, key, value) -> None:
+    #    """Logs a "point-in-time" value; shortcut for self.log_value(..., window=1).
+
+    #    A point-in-time value is one that should NOT be reduced or smoothed over some
+    #    window or using EMA. Instead, it's a single value that stands for itself and
+    #    was recorded at a certain point in time. Use this method for example to log
+    #    loss values (which should probably not be smoothed over, normally).
+
+    #    Args:
+    #        key: The key (or nested key-tuple) to log the `value` under.
+    #        value: The value to log as a point-in-time value.
+    #    """
+    #    self.log_value(key, value, window=1)
+
     def log_dict(
         self,
         stats_dict,

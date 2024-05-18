@@ -14,6 +14,7 @@ from ray.rllib.algorithms.dreamerv3.utils.debugging import (
     create_frozenlake_dream_image,
 )
 from ray.rllib.core.columns import Columns
+from ray.rllib.utils.metrics import REPLAY_BUFFER_RESULTS
 from ray.rllib.utils.tf_utils import inverse_symlog
 
 
@@ -218,12 +219,12 @@ def report_sampling_and_replay_buffer(*, metrics, replay_buffer):
 
     # Summarize buffer, sampling, and train ratio stats.
     metrics.log_dict({
-        "BUFFER_capacity": replay_buffer.capacity,
-        "BUFFER_size_num_episodes": episodes_in_buffer,
-        "BUFFER_size_timesteps": ts_in_buffer,
-        "BUFFER_replayed_steps": replayed_steps,
-        "BUFFER_added_steps": added_steps,
-    }, window=1)  # window=1 b/c these are current (total count/state) values.
+        "capacity": replay_buffer.capacity,
+        "size_num_episodes": episodes_in_buffer,
+        "size_timesteps": ts_in_buffer,
+        "replayed_steps": replayed_steps,
+        "added_steps": added_steps,
+    }, key=REPLAY_BUFFER_RESULTS, window=1)  # window=1 b/c these are current (total count/state) values.
 
 
 def _report_obs(

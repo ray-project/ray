@@ -618,6 +618,11 @@ class DQN(Algorithm):
             # Reduce EnvRunner metrics over the n EnvRunners.
             self.metrics.log_n_dicts(env_runner_results, key=ENV_RUNNER_RESULTS)
 
+        self.metrics.log_dict(
+            self.metrics.peek(ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED, default={}),
+            key=NUM_AGENT_STEPS_SAMPLED_LIFETIME,
+            reduce="sum",
+        )
         self.metrics.log_value(
             NUM_ENV_STEPS_SAMPLED_LIFETIME,
             self.metrics.peek(ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED, default=0),
@@ -626,11 +631,6 @@ class DQN(Algorithm):
         self.metrics.log_value(
             NUM_EPISODES_LIFETIME,
             self.metrics.peek(ENV_RUNNER_RESULTS, NUM_EPISODES, default=0),
-            reduce="sum",
-        )
-        self.metrics.log_dict(
-            self.metrics.peek(ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED, default={}),
-            key=NUM_AGENT_STEPS_SAMPLED_LIFETIME,
             reduce="sum",
         )
         self.metrics.log_dict(

@@ -513,7 +513,6 @@ class PPO(Algorithm):
                     # Sync weights from learner_group to all rollout workers.
                     from_worker_or_learner_group=self.learner_group,
                     policies=modules_to_update,
-                    global_vars=None,
                     inference_only=True,
                 )
             else:

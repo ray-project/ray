@@ -16,7 +16,7 @@ import numpy as np
 import tree  # pip install dm_tree
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.core import DEFAULT_MODULE_ID
+from ray.rllib.core import DEFAULT_AGENT_ID, DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
@@ -33,6 +33,13 @@ from ray.rllib.utils.metrics import (
     EPISODE_RETURN_MAX,
     EPISODE_RETURN_MEAN,
     EPISODE_RETURN_MIN,
+    NUM_AGENT_STEPS_SAMPLED,
+    NUM_AGENT_STEPS_SAMPLED_LIFETIME,
+    NUM_EPISODES,
+    NUM_ENV_STEPS_SAMPLED,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+    NUM_MODULE_STEPS_SAMPLED,
+    NUM_MODULE_STEPS_SAMPLED_LIFETIME,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.numpy import one_hot
@@ -170,7 +177,6 @@ class DreamerV3EnvRunner(EnvRunner):
         #  via its replay buffer, etc..).
         self._done_episodes_for_metrics = []
         self._ongoing_episodes_for_metrics = defaultdict(list)
-        self._ts_since_last_metrics = 0
 
     @override(EnvRunner)
     def sample(
@@ -240,7 +246,7 @@ class DreamerV3EnvRunner(EnvRunner):
         explore: bool = True,
         random_actions: bool = False,
         force_reset: bool = False,
-    ) -> Tuple[List[SingleAgentEpisode], List[SingleAgentEpisode]]:
+    ) -> List[SingleAgentEpisode]:
         """Helper method to run n timesteps.
 
         See docstring of self.sample() for more details.
@@ -368,9 +374,9 @@ class DreamerV3EnvRunner(EnvRunner):
         for eps in ongoing_episodes:
             self._ongoing_episodes_for_metrics[eps.id_].append(eps)
 
-        self._ts_since_last_metrics += ts
+        self._increase_sampled_metrics(ts)
 
-        return done_episodes_to_return, ongoing_episodes
+        return done_episodes_to_return + ongoing_episodes
 
     def _sample_episodes(
         self,
@@ -460,11 +466,13 @@ class DreamerV3EnvRunner(EnvRunner):
                     is_first[i] = False
 
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
-        self._ts_since_last_metrics += sum(len(eps) for eps in done_episodes_to_return)
 
         # If user calls sample(num_timesteps=..) after this, we must reset again
         # at the beginning.
         self._needs_initial_reset = True
+
+        ts = sum(map(len, done_episodes_to_return))
+        self._increase_sampled_metrics(ts)
 
         return done_episodes_to_return
 
@@ -489,7 +497,6 @@ class DreamerV3EnvRunner(EnvRunner):
                 episode_length, episode_return, episode_duration_s
             )
 
-
         # Log num episodes counter for this iteration.
         self.metrics.log_value(
             NUM_EPISODES,
@@ -501,7 +508,6 @@ class DreamerV3EnvRunner(EnvRunner):
 
         # Now that we have logged everything, clear cache of done episodes.
         self._done_episodes_for_metrics.clear()
-        self._ts_since_last_metrics = 0
 
         # Return reduced metrics.
         return self.metrics.reduce()
@@ -524,6 +530,37 @@ class DreamerV3EnvRunner(EnvRunner):
     def stop(self):
         # Close our env object via gymnasium's API.
         self.env.close()
+
+    def _increase_sampled_metrics(self, num_steps):
+        # Per sample cycle stats.
+        self.metrics.log_value(
+            NUM_ENV_STEPS_SAMPLED, num_steps, reduce="sum", clear_on_reduce=True
+        )
+        self.metrics.log_value(
+            (NUM_AGENT_STEPS_SAMPLED, DEFAULT_AGENT_ID),
+            num_steps,
+            reduce="sum",
+            clear_on_reduce=True,
+        )
+        self.metrics.log_value(
+            (NUM_MODULE_STEPS_SAMPLED, DEFAULT_MODULE_ID),
+            num_steps,
+            reduce="sum",
+            clear_on_reduce=True,
+        )
+        # Lifetime stats.
+        self.metrics.log_value(NUM_ENV_STEPS_SAMPLED_LIFETIME, num_steps, reduce="sum")
+        self.metrics.log_value(
+            (NUM_AGENT_STEPS_SAMPLED_LIFETIME, DEFAULT_AGENT_ID),
+            num_steps,
+            reduce="sum",
+        )
+        self.metrics.log_value(
+            (NUM_MODULE_STEPS_SAMPLED_LIFETIME, DEFAULT_MODULE_ID),
+            num_steps,
+            reduce="sum",
+        )
+        return num_steps
 
     def _log_episode_metrics(self, length, ret, sec):
         # Log general episode metrics.
