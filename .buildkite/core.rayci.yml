@@ -340,4 +340,5 @@ steps:
         --parallelism-per-worker 2 --gpus 2
         --build-name coregpubuild
         --only-tags multi_gpu
+      - sleep 1000000
     depends_on: coregpubuild
