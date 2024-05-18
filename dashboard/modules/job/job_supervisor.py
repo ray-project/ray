@@ -135,7 +135,7 @@ class JobSupervisor:
 
         self.event_logger: Optional[EventLoggerAdapter] = self._create_job_events_logger(logs_dir)
 
-    async def _check_executor_running(self) -> bool:
+    async def _check_job_driver_running(self) -> bool:
         """Checks whether the job executor is currently running"""
         if self._job_executor is None:
             return False
@@ -149,9 +149,13 @@ class JobSupervisor:
             self._executing_task.result()
             return False
 
-        self._executor_last_running_at = time.time()
+        # Check if job's driver runner actor is alive and responsive
+        is_running = await self._job_executor.check_running.remote()
 
-        return True
+        if is_running:
+            self._executor_last_running_at = time.time()
+
+        return is_running
 
     async def stop(self):
         """Proxies request to job runner"""
@@ -492,9 +496,7 @@ class JobSupervisor:
                 job_status = job_info.status if job_info else None
 
                 # Check if job driver is running
-                running = await self._check_executor_running()
-
-                print(">>> [DBG] status: ", running)
+                running = await self._check_job_driver_running()
 
                 if running:
                     # In case job executor is running successfully, reachable and responsive, log
@@ -742,9 +744,9 @@ class JobExecutor:
         """Set step_event and let run() handle the rest in its asyncio.wait()."""
         self._stop_event.set()
 
-    async def ping(self):
-        """Used to check the health of the actor."""
-        pass
+    async def check_running(self):
+        """Used to check whether the job driver is currently running"""
+        return self._driver_process is not None
 
     def _exec_entrypoint(self, logs_path: str) -> subprocess.Popen:
         """
