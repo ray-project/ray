@@ -122,11 +122,7 @@ class JobSupervisor:
 
         # Job driver completion is tracked by a completion-waiting task
         self._executing_task: Optional[asyncio.Task] = None
-        # NOTE: Monitoring loop is started immediately in a ctor to provide for
-        #       an invariant that as soon as `JobSupervisor` is created,
-        self._monitoring_task: asyncio.Task = self._loop.create_task(
-            self._monitor_job_internal()
-        )
+        self._monitoring_task: Optional[asyncio.Task] = None
 
         self._startup_timeout_s = startup_timeout_s
 
@@ -222,7 +218,12 @@ class JobSupervisor:
                 "Please use a different submission_id."
             )
 
-        # Job driver (entrypoint) is executed in an synchronous fashion,
+        # Start monitoring loop
+        self._monitoring_task: asyncio.Task = self._loop.create_task(
+            self._monitor_job_internal()
+        )
+
+        # Job driver (entrypoint) is executed in a synchronous fashion,
         # therefore is performed as a background operation updating Ray Job's
         # state asynchronously upon job's driver completing the execution
         #
@@ -498,7 +499,11 @@ class JobSupervisor:
                 # Check if job driver is running
                 running = await self._check_job_driver_running()
 
+                print(">>> [DBG] status: ", running)
+
                 if running:
+                    assert job_status == JobStatus.RUNNING
+
                     # In case job executor is running successfully, reachable and responsive, log
                     # running status of the job's driver every JOB_STATUS_LOG_FREQUENCY_SECONDS
                     # (to keep it as heart-beat check, but avoid logging it on every iteration)
