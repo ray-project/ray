@@ -34,14 +34,16 @@ from ray.dashboard.modules.job.common import (
     JOB_EXECUTOR_ACTOR_NAME_TEMPLATE,
     SUPERVISOR_ACTOR_RAY_NAMESPACE,
     JobInfoStorageClient,
-    JobInfo, _get_supervisor_actor_for_job,
+    JobInfo,
+    _get_supervisor_actor_for_job,
 )
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.exceptions import RuntimeEnvSetupError, ActorUnschedulableError, ActorDiedError
 from ray.job_submission import JobStatus
 from ray.runtime_env import RuntimeEnvConfig
 from ray.util.scheduling_strategies import (
-    SchedulingStrategyT, NodeAffinitySchedulingStrategy,
+    SchedulingStrategyT,
+    NodeAffinitySchedulingStrategy,
 )
 from ray.util.ticker import ticker
 
@@ -129,7 +131,9 @@ class JobSupervisor:
         self._started_at: float = time.time()
         self._executor_last_running_at: float = -1
 
-        self.event_logger: Optional[EventLoggerAdapter] = self._create_job_events_logger(logs_dir)
+        self.event_logger: Optional[
+            EventLoggerAdapter
+        ] = self._create_job_events_logger(logs_dir)
 
     async def _check_job_driver_running(self) -> bool:
         """Checks whether the job executor is currently running"""
@@ -156,7 +160,9 @@ class JobSupervisor:
     async def stop(self):
         """Proxies request to job runner"""
         if self._job_executor is None:
-            self._logger.info(f"({self._job_id}) Stopping of the job has been requested, but driver is already stopped; no action")
+            self._logger.info(
+                f"({self._job_id}) Stopping of the job has been requested, but driver is already stopped; no action"
+            )
         else:
             self._logger.info(f"({self._job_id}) Stopping the job")
             # Stop the job runner actor & killing the driver process
@@ -271,7 +277,7 @@ class JobSupervisor:
                 entrypoint_num_cpus=entrypoint_num_cpus,
                 entrypoint_num_gpus=entrypoint_num_gpus,
                 entrypoint_memory=entrypoint_memory,
-                entrypoint_resources=entrypoint_resources
+                entrypoint_resources=entrypoint_resources,
             )
 
             # NOTE: This is only used in testing
@@ -296,7 +302,8 @@ class JobSupervisor:
             )
             if self.event_logger:
                 self.event_logger.info(
-                    f"Ray job {self._job_id} transitions to {JobStatus.RUNNING}", submission_id=self._job_id
+                    f"Ray job {self._job_id} transitions to {JobStatus.RUNNING}",
+                    submission_id=self._job_id,
                 )
 
             # Join executor blocking until job's entrypoint completes
@@ -339,7 +346,9 @@ class JobSupervisor:
             exit_code = None
 
         finally:
-            self._logger.info(f"({self._job_id}) Updating job status to {status} (exit code is {exit_code})")
+            self._logger.info(
+                f"({self._job_id}) Updating job status to {status} (exit code is {exit_code})"
+            )
 
             # Update job status in GCS
             await self._job_info_client.put_status(
@@ -353,12 +362,12 @@ class JobSupervisor:
                 if error_message:
                     self.event_logger.error(
                         f"Ray job {self._job_id} completed with status {status}: {error_message}",
-                        submission_id=self._job_id
+                        submission_id=self._job_id,
                     )
                 else:
                     self.event_logger.info(
                         f"Ray job {self._job_id} completed with status {status}",
-                        submission_id=self._job_id
+                        submission_id=self._job_id,
                     )
 
             return status
@@ -382,7 +391,9 @@ class JobSupervisor:
             ]
         )
 
-        driver_scheduling_strategy = self._get_driver_scheduling_strategy(resources_specified)
+        driver_scheduling_strategy = self._get_driver_scheduling_strategy(
+            resources_specified
+        )
 
         self._job_executor = self._job_executor_actor_cls.options(
             name=JOB_EXECUTOR_ACTOR_NAME_TEMPLATE.format(job_id=self._job_id),
@@ -406,7 +417,9 @@ class JobSupervisor:
 
         return self._job_executor
 
-    def _get_driver_scheduling_strategy(self, resources_specified: bool) -> SchedulingStrategyT:
+    def _get_driver_scheduling_strategy(
+        self, resources_specified: bool
+    ) -> SchedulingStrategyT:
         """Get the scheduling strategy for the job.
 
         If resources_specified is true, or if the environment variable is set to
@@ -435,7 +448,9 @@ class JobSupervisor:
         # env var, we will run the driver on the head node.
         #
         # NOTE: This is preserved for compatibility reasons
-        return NodeAffinitySchedulingStrategy(node_id=ray.worker.global_worker.current_node_id.hex(), soft=True)
+        return NodeAffinitySchedulingStrategy(
+            node_id=ray.worker.global_worker.current_node_id.hex(), soft=True
+        )
 
     def _get_runner_runtime_env(
         self,
@@ -487,7 +502,9 @@ class JobSupervisor:
         return runtime_env
 
     async def _monitor_job_internal(self):
-        self._logger.info(f"({self._job_id}) Starting job monitoring loop (interval {self.JOB_MONITOR_LOOP_INTERVAL_S}s)")
+        self._logger.info(
+            f"({self._job_id}) Starting job monitoring loop (interval {self.JOB_MONITOR_LOOP_INTERVAL_S}s)"
+        )
 
         failure_reason: Optional[str] = None
 
@@ -503,15 +520,26 @@ class JobSupervisor:
                     # In case job executor is running successfully, reachable and responsive, log
                     # running status of the job's driver every JOB_STATUS_LOG_FREQUENCY_SECONDS
                     # (to keep it as heart-beat check, but avoid logging it on every iteration)
-                    if i % int(self.JOB_STATUS_LOG_INTERVAL_S / self.JOB_MONITOR_LOOP_INTERVAL_S) == 0:
-                        self._logger.info(f"({self._job_id}) Job driver is still running (job status: {job_status}")
+                    if (
+                        i
+                        % int(
+                            self.JOB_STATUS_LOG_INTERVAL_S
+                            / self.JOB_MONITOR_LOOP_INTERVAL_S
+                        )
+                        == 0
+                    ):
+                        self._logger.info(
+                            f"({self._job_id}) Job driver is still running (job status: {job_status}"
+                        )
 
                 elif job_status is None or job_status == JobStatus.PENDING:
                     # In case of executor not running and job still remaining in PENDING state (ie
                     # job's driver not started successfully yet), check whether job should be
                     # considered failed to start up w/in predetermined period defined via
                     # `RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR`
-                    pending_duration_s = time.time() - self._get_job_started_at(job_info)
+                    pending_duration_s = time.time() - self._get_job_started_at(
+                        job_info
+                    )
 
                     if pending_duration_s >= self._startup_timeout_s:
                         failure_reason = (
@@ -538,11 +566,15 @@ class JobSupervisor:
                 elif job_status.is_terminal():
                     # In case job already reached terminal state we can conclude monitoring
                     # loop
-                    self._logger.info(f"({self._job_id}) Job reached terminal state (status: {job_status})")
+                    self._logger.info(
+                        f"({self._job_id}) Job reached terminal state (status: {job_status})"
+                    )
                     break
 
                 else:
-                    duration_since_last_running_s = time.time() - self._executor_last_running_at
+                    duration_since_last_running_s = (
+                        time.time() - self._executor_last_running_at
+                    )
                     # In case, when job has not yet reached terminal state, but job executor runner
                     # isn't running anymore monitoring loop assumes job failed (after expiration of
                     # `JOB_STATUS_FINALIZATION_TIMEOUT_S` period)
@@ -551,12 +583,17 @@ class JobSupervisor:
                     #       loop mark job as failed to avoid race-conditions with execution sequence,
                     #       giving it `JOB_STATUS_FINALIZATION_TIMEOUT_S` to finalize state job after
                     #       the job execution has completed
-                    if duration_since_last_running_s > self.JOB_STATUS_FINALIZATION_TIMEOUT_S:
+                    if (
+                        duration_since_last_running_s
+                        > self.JOB_STATUS_FINALIZATION_TIMEOUT_S
+                    ):
                         self._logger.error(
                             f"({self._job_id}) Job driver has not been running for {duration_since_last_running_s}s but job has not finished yet (status: {job_status}))"
                         )
 
-                        failure_reason = "Unexpected error occurred: job driver is not running"
+                        failure_reason = (
+                            "Unexpected error occurred: job driver is not running"
+                        )
                         # Break out of the monitoring loop
                         break
 
@@ -569,7 +606,9 @@ class JobSupervisor:
             if isinstance(e, ActorDiedError):
                 failure_reason = f"Job executor actor is dead: {repr(e)}"
             else:
-                failure_reason = f"Unexpected failure in supervisor monitoring loop: {repr(e)}"
+                failure_reason = (
+                    f"Unexpected failure in supervisor monitoring loop: {repr(e)}"
+                )
 
         finally:
             # NOTE: Though we refresh the state of the job before deciding whether
@@ -582,7 +621,9 @@ class JobSupervisor:
             #   - Failure-reason is set
             #   - Job has not reached terminal state yet
             if failure_reason and job_status and not job_status.is_terminal():
-                self._logger.info(f"({self._job_id}) Updating job status to {job_status.FAILED} (current: {job_status})")
+                self._logger.info(
+                    f"({self._job_id}) Updating job status to {job_status.FAILED} (current: {job_status})"
+                )
 
                 # Update job's status in GCS
                 await self._job_info_client.put_status(
@@ -594,10 +635,12 @@ class JobSupervisor:
                 if self.event_logger:
                     self.event_logger.error(
                         f"Completed Ray job {self._job_id} with a status {JobStatus.FAILED}: {failure_reason}",
-                        submission_id=self._job_id
+                        submission_id=self._job_id,
                     )
 
-            self._logger.info(f"({self._job_id}) Exiting job supervisor's monitoring loop")
+            self._logger.info(
+                f"({self._job_id}) Exiting job supervisor's monitoring loop"
+            )
 
             # Kill the actor defensively to avoid leaking actors in unexpected error cases
             self._take_poison_pill()
@@ -609,7 +652,9 @@ class JobSupervisor:
 
             ray.kill(job_supervisor_handle, no_restart=True)
         else:
-            self._logger.info(f"({self._job_id}) Job Supervisor actor not found, assuming it already shutdown")
+            self._logger.info(
+                f"({self._job_id}) Job Supervisor actor not found, assuming it already shutdown"
+            )
 
     def _get_job_started_at(self, job_info: Optional[JobInfo]) -> float:
         # NOTE: Job start-up time is captured in millis. However, if there's
@@ -954,7 +999,9 @@ class JobExecutor:
             )
 
             if self._stop_event.is_set():
-                self._logger.info(f"({self._job_id}) Job driver's has been interrupted (job stopped)")
+                self._logger.info(
+                    f"({self._job_id}) Job driver's has been interrupted (job stopped)"
+                )
 
                 # Cancel task polling the subprocess (unless already finished)
                 if not polling_task.done():

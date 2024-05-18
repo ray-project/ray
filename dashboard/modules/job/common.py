@@ -263,9 +263,13 @@ class JobInfoStorageClient:
         )
         if old_info is not None:
             if status != old_info.status and old_info.status.is_terminal():
-                logger.error(f"Trying to update job {job_id} that already reached terminal state {old_info.status}")
+                logger.error(
+                    f"Trying to update job {job_id} that already reached terminal state {old_info.status}"
+                )
 
-                raise ValueError(f"Attempted to change job status from a terminal state (state: {old_info.status})")
+                raise ValueError(
+                    f"Attempted to change job status from a terminal state (state: {old_info.status})"
+                )
 
             new_info = replace(old_info, **jobinfo_replace_kwargs)
         else:
