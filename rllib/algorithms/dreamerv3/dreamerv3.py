@@ -603,20 +603,17 @@ class DreamerV3(Algorithm):
                 # Perform the actual update via our learner group.
                 learner_results = self.learner_group.update_from_batch(
                     batch=SampleBatch(sample).as_multi_agent(),
+
+                    #TODO(sven): Maybe we should do this broadcase of global timesteps
+                    #  at the end, like for EnvRunner global env step counts.
+                    #  Maybe when we request the state from the Learners, we can - at the
+                    #  same time - send the current globally summed/reduced-timesteps.
+                    timesteps={NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(NUM_ENV_STEPS_TRAINED_LIFETIME, default=0)}
                 )
                 self.metrics.log_n_dicts(learner_results, key=LEARNER_RESULTS)
                 self.metrics.log_value(
                     NUM_ENV_STEPS_TRAINED_LIFETIME, replayed_steps, reduce="sum"
                 )
-
-                # TODO: do additional update somewhere
-                a=1
-                # Perform additional (non-gradient updates), such as the critic EMA-copy
-                # update.
-                #with self.metrics.log_time((TIMERS, "critic_ema_update")):
-                    #self.learner_group.additional_update(
-                    #    timestep=self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME),
-                    #)
 
                 if self.config.report_images_and_videos:
                     report_predicted_vs_sampled_obs(

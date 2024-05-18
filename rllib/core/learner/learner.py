@@ -43,6 +43,7 @@ from ray.rllib.utils.deprecation import (
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_TRAINED,
     NUM_MODULE_STEPS_TRAINED,
 )
@@ -287,6 +288,10 @@ class Learner:
         # and return the resulting (reduced) dict.
         self.metrics = MetricsLogger()
 
+    # TODO (sven): Do we really need this API? It seems like LearnerGroup constructs
+    #  all Learner workers and then immediately builds them any ways? Seems to make
+    #  thing more complicated. Unless there is a reason related to Train worker group
+    #  setup.
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def build(self) -> None:
         """Builds the Learner.
@@ -1029,7 +1034,6 @@ class Learner:
         module_id: ModuleID,
         config: Optional["AlgorithmConfig"] = None,
         timestep: int,
-        hps=None,
         **kwargs,
     ) -> None:
         """Apply additional non-gradient based updates for a single module.
@@ -1045,36 +1049,13 @@ class Learner:
         Returns:
             A dictionary of results from the update
         """
-        if hps is not None:
-            deprecation_warning(
-                old="Learner.additional_update_for_module(.., hps=..)",
-                help="Deprecated argument. Use `config` (AlgorithmConfig) instead.",
-                error=True,
-            )
-
-        # Only cover the optimizer mapped to this particular module.
-        for optimizer_name, optimizer in self.get_optimizers_for_module(module_id):
-            # Only update this optimizer's lr, if a scheduler has been registered
-            # along with it.
-            if optimizer in self._optimizer_lr_schedules:
-                new_lr = self._optimizer_lr_schedules[optimizer].update(
-                    timestep=timestep
-                )
-                self._set_optimizer_lr(optimizer, lr=new_lr)
-
-                # Make sure our returned results differentiate by optimizer name
-                # (if not the default name).
-                stats_name = LEARNER_RESULTS_CURR_LR_KEY
-                if optimizer_name != DEFAULT_OPTIMIZER:
-                    stats_name += "_" + optimizer_name
-                self.metrics.log_value(
-                    key=(module_id, stats_name), value=new_lr, window=1
-                )
+        pass
 
     def update_from_batch(
         self,
         batch: MultiAgentBatch,
         *,
+        timesteps=None, #TODO
         # TODO (sven): Deprecate these in favor of config attributes for only those
         #  algos that actually need (and know how) to do minibatching.
         minibatch_size: Optional[int] = None,
@@ -1113,7 +1094,7 @@ class Learner:
             )
         return self._update_from_batch_or_episodes(
             batch=batch,
-            episodes=None,
+            timesteps=timesteps,
             minibatch_size=minibatch_size,
             num_iters=num_iters,
         )
@@ -1122,6 +1103,7 @@ class Learner:
         self,
         episodes: List[EpisodeType],
         *,
+        timesteps=None, #TODO
         # TODO (sven): Deprecate these in favor of config attributes for only those
         #  algos that actually need (and know how) to do minibatching.
         minibatch_size: Optional[int] = None,
@@ -1167,8 +1149,8 @@ class Learner:
                 error=True,
             )
         return self._update_from_batch_or_episodes(
-            batch=None,
             episodes=episodes,
+            timesteps=timesteps,
             minibatch_size=minibatch_size,
             num_iters=num_iters,
             min_total_mini_batches=min_total_mini_batches,
@@ -1270,17 +1252,15 @@ class Learner:
         #  as well for simplicity.
         batch: Optional[MultiAgentBatch] = None,
         episodes: Optional[List[EpisodeType]] = None,
+        timesteps=None,
         # TODO (sven): Deprecate these in favor of config attributes for only those
         #  algos that actually need (and know how) to do minibatching.
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
         min_total_mini_batches: int = 0,
     ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
-        self._check_is_built()
 
-        if num_iters < 1:
-            # We must do at least one pass on the batch for training.
-            raise ValueError("`num_iters` must be >= 1")
+        self._check_is_built()
 
         # Call the learner connector.
         if self._learner_connector is not None and episodes is not None:
@@ -1310,6 +1290,7 @@ class Learner:
                 f"Found IDs: {unknown_module_ids}"
             )
 
+        # TODO: Move this into LearnerConnector pipeline?
         # Filter out those RLModules from the final train batch that should not be
         # updated.
         for module_id in list(batch.policy_batches.keys()):
@@ -1326,14 +1307,10 @@ class Learner:
                 {
                     (ALL_MODULES, NUM_ENV_STEPS_TRAINED): batch.env_steps(),
                     (ALL_MODULES, NUM_MODULE_STEPS_TRAINED): batch.agent_steps(),
-                },
-                reduce="sum",
-                clear_on_reduce=True,
-            )
-            self.metrics.log_dict(
-                {
-                    (mid, NUM_MODULE_STEPS_TRAINED): len(b)
-                    for mid, b in batch.policy_batches.items()
+                    **{
+                        (mid, NUM_MODULE_STEPS_TRAINED): len(b)
+                        for mid, b in batch.policy_batches.items()
+                    },
                 },
                 reduce="sum",
                 clear_on_reduce=True,
@@ -1388,21 +1365,49 @@ class Learner:
 
         self._set_slicing_by_batch_id(batch, value=False)
 
-        # Log all current learning rates of all our optimizers (registered under the
-        # different ModuleIDs).
-        self.metrics.log_dict(
-            {
-                (mid, f"{full_name[len(mid) + 1 :]}_lr"): convert_to_numpy(
-                    self._get_optimizer_lr(self._named_optimizers[full_name])
-                )
-                for mid, full_names in self._module_optimizers.items()
-                for full_name in full_names
-            },
-            window=1,
-        )
+        # Already done in `additional_update`.
+        ## Log all current learning rates of all our optimizers (registered under the
+        ## different ModuleIDs).
+        #self.metrics.log_dict(
+        #    {
+        #        (mid, f"{full_name[len(mid) + 1 :]}_lr"): convert_to_numpy(
+        #            self._get_optimizer_lr(self._named_optimizers[full_name])
+        #        )
+        #        for mid, full_names in self._module_optimizers.items()
+        #        for full_name in full_names
+        #    },
+        #    window=1,
+        #)
+
+        self._after_update(timesteps)
 
         # Reduce results across all minibatch update steps.
         return self.metrics.reduce()
+
+    # TODO (sven): Document and design this new approach in order to replace
+    #  `additional_update()`.
+    def _after_update(self, timesteps):
+        # Only update this optimizer's lr, if a scheduler has been registered
+        # along with it.
+        for module_id, optimizer_names in self._module_optimizers.items():
+            for optimizer_name in optimizer_names:
+                optimizer = self._named_optimizers[optimizer_name]
+                lr_schedule = self._optimizer_lr_schedules.get(optimizer)
+                if lr_schedule is None:
+                    continue
+                new_lr = lr_schedule.update(
+                    timestep=timesteps[NUM_ENV_STEPS_SAMPLED_LIFETIME]
+                )
+                self._set_optimizer_lr(optimizer, lr=new_lr)
+
+                # Make sure our returned results differentiate by optimizer name
+                # (if not the default name).
+                stats_name = LEARNER_RESULTS_CURR_LR_KEY
+                if optimizer_name != DEFAULT_OPTIMIZER:
+                    stats_name += "_" + optimizer_name
+                self.metrics.log_value(
+                    key=(module_id, stats_name), value=new_lr, window=1
+                )
 
     def _set_slicing_by_batch_id(
         self, batch: MultiAgentBatch, *, value: bool
