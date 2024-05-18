@@ -18,8 +18,7 @@ RUN <<EOF
 
 set -euo pipefail
 
-pip install --ignore-installed \
-  -c python/requirements_compiled.txt \
+pip install -c python/requirements_compiled.txt \
   -r python/requirements.txt \
   -r python/requirements/test-requirements.txt
 
