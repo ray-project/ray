@@ -497,13 +497,9 @@ class JobSupervisor:
                 job_status = job_info.status if job_info else None
 
                 # Check if job driver is running
-                running = await self._check_job_driver_running()
+                job_driver_running = await self._check_job_driver_running()
 
-                print(">>> [DBG] status: ", running)
-
-                if running:
-                    assert job_status == JobStatus.RUNNING
-
+                if job_status == JobStatus.RUNNING and job_driver_running:
                     # In case job executor is running successfully, reachable and responsive, log
                     # running status of the job's driver every JOB_STATUS_LOG_FREQUENCY_SECONDS
                     # (to keep it as heart-beat check, but avoid logging it on every iteration)
