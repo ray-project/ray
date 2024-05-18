@@ -484,7 +484,7 @@ class JobSupervisor:
         return runtime_env
 
     async def _monitor_job_internal(self):
-        self._logger.info(f"({self._job_id}) Starting job monitoring loop")
+        self._logger.info(f"({self._job_id}) Starting job monitoring loop (interval {self.JOB_MONITOR_LOOP_INTERVAL_S}s)")
 
         failure_reason: Optional[str] = None
 
