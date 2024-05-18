@@ -163,6 +163,10 @@ class JobManager:
         supervisor: Optional[ActorHandle] = None
 
         try:
+            startup_timeout_s = _get_job_startup_timeout_s()
+
+            logger.info(f"Submitting job {submission_id} with entrypoint `{entrypoint}` (startup timeout set at {startup_timeout_s}s)")
+
             # NOTE: JobSupervisor is *always* scheduled onto the head-node
             head_node_scheduling_strategy = (
                 await self._get_head_node_scheduling_strategy()
@@ -179,7 +183,7 @@ class JobManager:
                 entrypoint=entrypoint,
                 gcs_address=self._gcs_address,
                 logs_dir=self._logs_dir,
-                startup_timeout_s=_get_job_startup_timeout_s()
+                startup_timeout_s=startup_timeout_s
             )
 
             # Job execution process is async, however we await on the
