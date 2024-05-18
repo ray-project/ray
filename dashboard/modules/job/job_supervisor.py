@@ -121,7 +121,7 @@ class JobSupervisor:
         self._loop = asyncio.get_running_loop()
 
         # Job driver completion is tracked by a completion-waiting task
-        self._waiting_task: Optional[asyncio.Task] = None
+        self._executing_task: Optional[asyncio.Task] = None
         # NOTE: Monitoring loop is started immediately in a ctor to provide for
         #       an invariant that as soon as `JobSupervisor` is created,
         self._monitoring_task: asyncio.Task = self._loop.create_task(
@@ -140,15 +140,13 @@ class JobSupervisor:
         if self._job_executor is None:
             return False
 
-        # Check if job's driver runner actor is alive and responsive
-        await self._job_executor.ping.remote()
         # Check whether job's driver completed execution
-        if self._waiting_task is None:
+        if self._executing_task is None:
             return False
-        elif self._waiting_task.done():
+        elif self._executing_task.done():
             # NOTE: In case there was exception while awaiting
             #       job's driver to complete its execution, we need to bubble it up
-            self._waiting_task.result()
+            self._executing_task.result()
             return False
 
         self._executor_last_running_at = time.time()
@@ -225,8 +223,8 @@ class JobSupervisor:
         # state asynchronously upon job's driver completing the execution
         #
         # NOTE: This task is not shielded b/c it's never being awaited on
-        self._waiting_task = self._loop.create_task(
-            self._execute_sync(
+        self._executing_task = self._loop.create_task(
+            self._execute(
                 runtime_env=runtime_env,
                 metadata=metadata,
                 entrypoint_num_cpus=entrypoint_num_cpus,
@@ -242,7 +240,7 @@ class JobSupervisor:
                 f"Started Ray job {self._job_id}", submission_id=self._job_id
             )
 
-    async def _execute_sync(
+    async def _execute(
         self,
         *,
         runtime_env: Optional[Dict[str, Any]] = None,
@@ -495,6 +493,8 @@ class JobSupervisor:
 
                 # Check if job driver is running
                 running = await self._check_executor_running()
+
+                print(">>> [DBG] status: ", running)
 
                 if running:
                     # In case job executor is running successfully, reachable and responsive, log
