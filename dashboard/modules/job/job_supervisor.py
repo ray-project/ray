@@ -179,7 +179,11 @@ class JobSupervisor:
         entrypoint_resources: Optional[Dict[str, float]] = None,
         _start_signal_actor: Optional[ActorHandle] = None,
     ):
-        """Launches actual Ray Job driver
+        """Launches execution of the Ray Job
+
+        NOTE: Actual Ray job execution is asynchronous, entailing that after launching
+              the job corresponding JobInfo object will be created in GCS and needs to be
+              polled for determining the up-to-date status of the ongoing job
 
         Args:
             runtime_env: Runtime environment used to execute driver command,
