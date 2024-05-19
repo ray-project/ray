@@ -386,11 +386,23 @@ void GcsAutoscalerStateManager::HandleDrainNode(
     return;
   }
 
+  auto node = std::move(maybe_node.value());
+
+  // Set the death reason of the node.
+  // TODO: clean this up and set the node death reason at UnregisterNode(),
+  // once we introduce a better way to expose actor death info.
+  auto death_info = node->mutable_death_info();
+  if (request.reason() == DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION) {
+    death_info->set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
+  } else {
+    death_info->set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_IDLE);
+  }
+  death_info->set_reason_message(request.reason_message());
+
   if (RayConfig::instance().enable_reap_actor_death()) {
     gcs_actor_manager_.SetPreemptedAndPublish(node_id);
   }
 
-  auto node = std::move(maybe_node.value());
   rpc::Address raylet_address;
   raylet_address.set_raylet_id(node->node_id());
   raylet_address.set_ip_address(node->node_manager_address());
@@ -410,6 +422,14 @@ void GcsAutoscalerStateManager::HandleDrainNode(
               node_id, std::make_shared<rpc::autoscaler::DrainNodeRequest>(request));
         } else {
           reply->set_rejection_reason_message(raylet_reply.rejection_reason_message());
+          // Unset the death reason of the node if the drain was rejected.
+          // TODO: clean this up once we introduce a better way to expose
+          // actor death info.
+          auto node = gcs_node_manager_.GetAliveNode(node_id);
+          if (node.has_value()) {
+            auto death_info = node.value()->mutable_death_info();
+            death_info->set_reason(rpc::NodeDeathInfo::UNSPECIFIED);
+          }
         }
         send_reply_callback(status, nullptr, nullptr);
       });
