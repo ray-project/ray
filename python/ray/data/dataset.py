@@ -57,6 +57,7 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
     RandomizeBlocks,
     RandomShuffle,
     Repartition,
+    RepartitionByColumn,
     Sort,
 )
 from ray.data._internal.logical.operators.count_operator import Count
@@ -1984,6 +1985,49 @@ class Dataset:
             )
 
         return self.split_at_indices(split_indices)
+
+    @AllToAllAPI
+    def repartition_by_column(
+        self,
+        keys: Union[str, List[str]],
+        concurrency: Optional[int] = None,
+        ray_remote_args: Dict[str, Any] = None,
+    ) -> "Dataset":
+        """Split the :ref:`blocks <dataset_concept>` of this :class:`Dataset` into
+        one more sub-blocks based on the columns.
+
+        This is an experimental API for testing out splitting blocks in streaming
+        execution.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.from_items([1, 1, 1, 2, 2, 2, 3, 3, 3], parallelism=1)
+            >>> ds.repartition_by_column("items").num_blocks()
+            3
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            keys: one or more columns for splitting
+            concurrency: The number of Ray workers to use concurrently. For a fixed-sized
+                worker pool of size ``n``, specify ``concurrency=n``. Autoscaling is not
+                currently supported.
+
+        Returns:
+            The repartitioned :class:`Dataset`.
+        """  # noqa: E501
+
+        plan = self._plan.copy()
+
+        logical_plan = self._logical_plan
+        op = RepartitionByColumn(
+            logical_plan.dag,
+            keys=keys,
+            concurrency=concurrency,
+            ray_remote_args=ray_remote_args,
+        )
+        logical_plan = LogicalPlan(op)
+        return Dataset(plan, logical_plan)
 
     @ConsumptionAPI
     @PublicAPI(api_group=SMD_API_GROUP)

@@ -1,7 +1,10 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
+from ray.data._internal.planner.exchange.repartition_task_spec import (
+    RepartitionByColumnTaskSpec,
+)
 from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
 from ray.data.aggregate import AggregateFn
@@ -111,6 +114,30 @@ class Repartition(AbstractAllToAll):
     def aggregate_output_metadata(self) -> BlockMetadata:
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
         return self._input_dependencies[0].aggregate_output_metadata()
+
+
+class RepartitionByColumn(AbstractAllToAll):
+    """Logical operator for repartition."""
+
+    def __init__(
+        self,
+        input_op: LogicalOperator,
+        keys: Union[str, List[str]],
+        concurrency: int,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+    ):
+        super().__init__(
+            "RepartitionByColumn",
+            input_op,
+            num_outputs=None,
+            sub_progress_bar_names=[
+                RepartitionByColumnTaskSpec.SPLIT_SUB_PROGRESS_BAR_NAME,
+                RepartitionByColumnTaskSpec.MERGE_SUB_PROGRESS_BAR_NAME,
+            ],
+            ray_remote_args=ray_remote_args,
+        )
+        self._keys = keys
+        self._concurrency = concurrency
 
 
 class Sort(AbstractAllToAll):

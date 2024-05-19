@@ -10,12 +10,16 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
     RandomizeBlocks,
     RandomShuffle,
     Repartition,
+    RepartitionByColumn,
     Sort,
 )
 from ray.data._internal.planner.aggregate import generate_aggregate_fn
 from ray.data._internal.planner.random_shuffle import generate_random_shuffle_fn
 from ray.data._internal.planner.randomize_blocks import generate_randomize_blocks_fn
 from ray.data._internal.planner.repartition import generate_repartition_fn
+from ray.data._internal.planner.repartition_by_column import (
+    generate_repartition_by_column_fn,
+)
 from ray.data._internal.planner.sort import generate_sort_fn
 from ray.data.context import DataContext
 
@@ -61,6 +65,13 @@ def plan_all_to_all_op(
             op._shuffle,
             debug_limit_shuffle_execution_to_num_blocks,
         )
+    elif isinstance(op, RepartitionByColumn):
+        fn = generate_repartition_by_column_fn(
+            op._keys,
+            op._concurrency,
+            op._ray_remote_args,
+        )
+        target_max_block_size = None
     elif isinstance(op, Sort):
         debug_limit_shuffle_execution_to_num_blocks = data_context.get_config(
             "debug_limit_shuffle_execution_to_num_blocks", None

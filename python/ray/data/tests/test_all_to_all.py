@@ -105,6 +105,34 @@ def test_repartition_shuffle_arrow(ray_start_regular_shared):
     assert large._block_num_rows() == [500] * 20
 
 
+@pytest.mark.parametrize("num_actors", [1, 2])
+def test_repartition_by_column_single(ray_start_regular_shared, num_actors):
+    ctx = DataContext.get_current()
+    ctx.execution_options.preserve_order = True
+
+    ds = ray.data.from_numpy(
+        [np.repeat([2, 3, 1], [2, 3, 4]), np.repeat([4, 5, 6], [1, 2, 3])]
+    )
+
+    assert ds.num_blocks() == 2
+    assert ds.count() == 15
+    result = ds.repartition_by_column("data", concurrency=num_actors).map_batches(
+        fn=lambda x: {
+            "key": [x["data"][0]],
+            "len": [len(x["data"])],
+        },
+        batch_size=None,
+    )
+    assert result.take_all() == [
+        {"key": 2, "len": 2},
+        {"key": 3, "len": 3},
+        {"key": 1, "len": 4},
+        {"key": 4, "len": 1},
+        {"key": 5, "len": 2},
+        {"key": 6, "len": 3},
+    ]
+
+
 def test_unique(ray_start_regular_shared):
     ds = ray.data.from_items([3, 2, 3, 1, 2, 3])
     assert set(ds.unique("item")) == {1, 2, 3}
