@@ -1,3 +1,4 @@
+# @OldAPIStack
 # Can expect improvement to -140 reward in ~300-500k timesteps.
 pendulum-ppo:
     env: Pendulum-v1
@@ -10,7 +11,7 @@ pendulum-ppo:
         framework: torch
         train_batch_size: 512
         vf_clip_param: 10.0
-        num_workers: 0
+        num_env_runners: 0
         num_envs_per_env_runner: 20
         lambda: 0.1
         gamma: 0.95

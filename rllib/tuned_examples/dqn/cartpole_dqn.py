@@ -1,10 +1,16 @@
 from ray.rllib.algorithms.dqn import DQNConfig
+from ray.rllib.utils.test_utils import add_rllib_example_script_args
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
     EVALUATION_RESULTS,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
+
+parser = add_rllib_example_script_args()
+# Use `parser` to add your own custom command line options to this script
+# and (if needed) use their values toset up `config` below.
+args = parser.parse_args()
 
 config = (
     DQNConfig()
@@ -27,6 +33,7 @@ config = (
     )
     .training(
         # Settings identical to old stack.
+        train_batch_size_per_learner=32,
         replay_buffer_config={
             "type": "PrioritizedEpisodeReplayBuffer",
             "capacity": 50000,
@@ -58,3 +65,9 @@ stop = {
     f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 450.0,
     NUM_ENV_STEPS_SAMPLED_LIFETIME: 100000,
 }
+
+
+if __name__ == "__main__":
+    from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
+
+    run_rllib_example_script_experiment(config, args, stop=stop)

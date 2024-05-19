@@ -1,5 +1,6 @@
 import itertools
 import os
+import subprocess
 import sys
 from typing import List, Set, Tuple, Optional
 
@@ -17,7 +18,7 @@ from ci.ray_ci.builder_container import (
 from ci.ray_ci.linux_tester_container import LinuxTesterContainer
 from ci.ray_ci.windows_tester_container import WindowsTesterContainer
 from ci.ray_ci.tester_container import TesterContainer
-from ci.ray_ci.utils import docker_login, ci_init
+from ci.ray_ci.utils import docker_login, ci_init, logger
 from ray_release.test import Test, TestState
 
 CUDA_COPYRIGHT = """
@@ -37,6 +38,7 @@ A copy of this license is made available in this container at /NGC-DL-CONTAINER-
 """  # noqa: E501
 
 DEFAULT_EXCEPT_TAGS = {"manual"}
+MICROCHECK_COMMAND = "@microcheck"
 
 # Gets the path of product/tools/docker (i.e. the parent of 'common')
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
@@ -414,23 +416,92 @@ def _get_high_impact_test_targets(
         for test in itertools.chain.from_iterable(step_id_to_tests.values())
         if test.get_oncall() == team
     }
-    new_tests = _get_new_tests(os_prefix, container)
+    changed_tests = _get_changed_tests()
+    human_specified_tests = _get_human_specified_tests()
 
-    return high_impact_tests.union(new_tests)
+    return high_impact_tests.union(changed_tests).union(human_specified_tests)
 
 
-def _get_new_tests(prefix: str, container: TesterContainer) -> Set[str]:
+def _get_human_specified_tests() -> Set[str]:
     """
-    Get all local test targets that are not in database
+    Get all test targets that are specified by humans
     """
-    local_test_targets = set(
-        container.run_script_with_output(['bazel query "tests(//...)"'])
-        .strip()
-        .split(os.linesep)
+    base = os.environ.get("BUILDKITE_PULL_REQUEST_BASE_BRANCH")
+    head = os.environ.get("BUILDKITE_COMMIT")
+    if not base or not head:
+        # if not in a PR, return an empty set
+        return set()
+
+    tests = set()
+    messages = subprocess.check_output(
+        ["git", "rev-list", "--format=%b", f"origin/{base}...{head}"],
+        cwd=bazel_workspace_dir,
     )
-    db_test_targets = {test.get_target() for test in Test.gen_from_s3(prefix=prefix)}
+    for message in messages.decode().splitlines():
+        if message.startswith(MICROCHECK_COMMAND):
+            tests = tests.union(message[len(MICROCHECK_COMMAND) :].strip().split(" "))
+    logger.info(f"Human specified tests: {tests}")
 
-    return local_test_targets.difference(db_test_targets)
+    return tests
+
+
+def _get_changed_tests() -> Set[str]:
+    """
+    Get all changed tests in the current PR
+    """
+    changed_files = _get_changed_files()
+    logger.info(f"Changed files: {changed_files}")
+    return set(
+        itertools.chain.from_iterable(
+            [_get_test_targets_per_file(file) for file in _get_changed_files()]
+        )
+    )
+
+
+def _get_test_targets_per_file(file: str) -> Set[str]:
+    """
+    Get the test target from a file path
+    """
+    try:
+        package = (
+            subprocess.check_output(["bazel", "query", file], cwd=bazel_workspace_dir)
+            .decode()
+            .strip()
+        )
+        if not package:
+            return set()
+        targets = subprocess.check_output(
+            ["bazel", "query", f"tests(attr('srcs', {package}, //...))"],
+            cwd=bazel_workspace_dir,
+        )
+        targets = {
+            target.strip()
+            for target in targets.decode().splitlines()
+            if target is not None
+        }
+        logger.info(f"Found test targets for file {file}: {targets}")
+
+        return targets
+    except subprocess.CalledProcessError:
+        logger.info(f"File {file} is not a test target")
+        return set()
+
+
+def _get_changed_files() -> Set[str]:
+    """
+    Get all changed files in the current PR
+    """
+    base = os.environ.get("BUILDKITE_PULL_REQUEST_BASE_BRANCH")
+    head = os.environ.get("BUILDKITE_COMMIT")
+    if not base or not head:
+        # if not in a PR, return an empty set
+        return set()
+
+    changes = subprocess.check_output(
+        ["git", "diff", "--name-only", f"origin/{base}...{head}"],
+        cwd=bazel_workspace_dir,
+    )
+    return {file.strip() for file in changes.decode().splitlines() if file is not None}
 
 
 def _get_flaky_test_targets(

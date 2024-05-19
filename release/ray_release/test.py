@@ -204,10 +204,19 @@ class Test(dict):
         ]
         step_id_to_tests = {}
         for test in high_impact_tests:
-            step_id = test.get_test_results(limit=1)[0].rayci_step_id
-            if not step_id:
+            recent_results = test.get_test_results()
+            if not recent_results:
                 continue
-            step_id_to_tests[step_id] = step_id_to_tests.get(step_id, []) + [test]
+            recent_commit = recent_results[0].commit
+            for result in recent_results:
+                # consider all results with the same recent commit; this is to make sure
+                # we will include different job flavors of the same test
+                if result.commit != recent_commit:
+                    continue
+                step_id = result.rayci_step_id
+                if not step_id:
+                    continue
+                step_id_to_tests[step_id] = step_id_to_tests.get(step_id, []) + [test]
 
         return step_id_to_tests
 

@@ -113,9 +113,15 @@ def add_rllib_example_script_args(
         help="The DL framework specifier.",
     )
     parser.add_argument(
+        "--env",
+        type=str,
+        default=None,
+        help="The gym.Env identifier to run the experiment with.",
+    )
+    parser.add_argument(
         "--num-env-runners",
         type=int,
-        default=2,
+        default=None,
         help="The number of (remote) EnvRunners to use for the experiment.",
     )
     parser.add_argument(
@@ -217,7 +223,7 @@ def add_rllib_example_script_args(
 
     # Learner scaling options.
     # Old API stack: config.num_gpus.
-    # New API stack: config.num_learner_workers (w/ num_gpus_per_learner_worker=1).
+    # New API stack: config.num_learners (w/ num_gpus_per_learner=1).
     parser.add_argument("--num-gpus", type=int, default=0)
 
     # Ray init options.
@@ -783,32 +789,38 @@ def check_train_results(train_results: ResultDict):
 
     # Assert that some keys are where we would expect them.
     for key in [
-        "agent_timesteps_total",
         "config",
         "custom_metrics",
+        ENV_RUNNER_RESULTS,
+        "info",
+        "iterations_since_restore",
+        "num_healthy_workers",
+        "perf",
+        "time_since_restore",
+        "time_this_iter_s",
+        "timers",
+        "time_total_s",
+        TRAINING_ITERATION,
+    ]:
+        assert (
+            key in train_results
+        ), f"'{key}' not found in `train_results` ({train_results})!"
+
+    for key in [
         "episode_len_mean",
         "episode_reward_max",
         "episode_reward_mean",
         "episode_reward_min",
         "hist_stats",
-        "info",
-        "iterations_since_restore",
-        "num_healthy_workers",
-        "perf",
         "policy_reward_max",
         "policy_reward_mean",
         "policy_reward_min",
         "sampler_perf",
-        "time_since_restore",
-        "time_this_iter_s",
-        "timesteps_total",
-        "timers",
-        "time_total_s",
-        "training_iteration",
     ]:
-        assert (
-            key in train_results
-        ), f"'{key}' not found in `train_results` ({train_results})!"
+        assert key in train_results[ENV_RUNNER_RESULTS], (
+            f"'{key}' not found in `train_results[ENV_RUNNER_RESULTS]` "
+            f"({train_results[ENV_RUNNER_RESULTS]})!"
+        )
 
     # Make sure, `config` is an actual dict, not an AlgorithmConfig object.
     assert isinstance(
@@ -1192,7 +1204,7 @@ def run_learning_tests_from_yaml_or_py(
             else:
                 # Use best_result's reward to check min_reward.
                 if check_eval:
-                    episode_reward_mean = np.mean(
+                    episode_return_mean = np.mean(
                         [
                             t.metric_analysis[
                                 f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/"
@@ -1202,7 +1214,7 @@ def run_learning_tests_from_yaml_or_py(
                         ]
                     )
                 else:
-                    episode_reward_mean = np.mean(
+                    episode_return_mean = np.mean(
                         [
                             t.metric_analysis[
                                 f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
@@ -1232,7 +1244,7 @@ def run_learning_tests_from_yaml_or_py(
 
                 # Record performance.
                 stats[experiment] = {
-                    "episode_reward_mean": float(episode_reward_mean),
+                    "episode_reward_mean": float(episode_return_mean),
                     "throughput": (
                         float(throughput) if throughput is not None else 0.0
                     ),
@@ -1244,12 +1256,12 @@ def run_learning_tests_from_yaml_or_py(
                 )
 
                 # We failed to reach desired reward or the desired throughput.
-                if (desired_reward and episode_reward_mean < desired_reward) or (
+                if (desired_reward and episode_return_mean < desired_reward) or (
                     desired_throughput and throughput < desired_throughput
                 ):
                     print(
                         " ... Not successful: Actual "
-                        f"reward={episode_reward_mean}; "
+                        f"return={episode_return_mean}; "
                         f"actual throughput={throughput}"
                     )
                     checks[experiment]["failures"] += 1
@@ -1257,7 +1269,7 @@ def run_learning_tests_from_yaml_or_py(
                 else:
                     print(
                         " ... Successful: (mark ok). Actual "
-                        f"reward={episode_reward_mean}; "
+                        f"return={episode_return_mean}; "
                         f"actual throughput={throughput}"
                     )
                     checks[experiment]["passed"] = True
@@ -1290,12 +1302,13 @@ def run_learning_tests_from_yaml_or_py(
 #  - example scripts
 def run_rllib_example_script_experiment(
     base_config: "AlgorithmConfig",
-    args: argparse.Namespace,
+    args: Optional[argparse.Namespace] = None,
     *,
     stop: Optional[Dict] = None,
     success_metric: Optional[Dict] = None,
     trainable: Optional[Type] = None,
     tune_callbacks: Optional[List] = None,
+    keep_config: bool = False,
 ) -> Union[ResultDict, tune.result_grid.ResultGrid]:
     """Given an algorithm config and some command line args, runs an experiment.
 
@@ -1346,11 +1359,20 @@ def run_rllib_example_script_experiment(
         tune_callbacks: A list of Tune callbacks to configure with the tune.Tuner.
             In case `args.wandb_key` is provided, will append a WandB logger to this
             list.
+        keep_config: Set this to True, if you don't want this utility to change the
+            given `base_config` in any way and leave it as-is. This is helpful
+            for those example scripts which demonstrate how to set config settings
+            that are taken care of automatically in this function otherwise (e.g.
+            `num_env_runners`).
 
     Returns:
         The last ResultDict from a --no-tune run OR the tune.Tuner.fit()
         results.
     """
+    if args is None:
+        parser = add_rllib_example_script_args()
+        args = parser.parse_args()
+
     # Initialize Ray.
     ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
 
@@ -1362,32 +1384,47 @@ def run_rllib_example_script_experiment(
             TRAINING_ITERATION: args.stop_iters,
         }
 
+    config = base_config
+
     # Enhance the `base_config`, based on provided `args`.
-    config = (
+    if not keep_config:
         # Set the framework.
-        base_config.framework(args.framework)
+        config.framework(args.framework)
+
+        # Add an env specifier?
+        if args.env is not None:
+            config.environment(args.env)
+
         # Enable the new API stack?
-        .api_stack(
-            enable_rl_module_and_learner=args.enable_new_api_stack,
-            enable_env_runner_and_connector_v2=args.enable_new_api_stack,
-        )
+        if args.enable_new_api_stack:
+            config.api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            )
+
         # Define EnvRunner/RolloutWorker scaling and behavior.
-        .env_runners(num_env_runners=args.num_env_runners)
-        # Define compute resources used.
-        .resources(
-            # Old stack.
-            num_gpus=0 if args.enable_new_api_stack else args.num_gpus,
-            # New stack.
-            num_learner_workers=args.num_gpus,
-            num_gpus_per_learner_worker=1 if torch.cuda.is_available() else 0,
-            num_cpus_for_local_worker=1,
-        )
-    )
+        if args.num_env_runners is not None:
+            config.env_runners(num_env_runners=args.num_env_runners)
+
+        # Define compute resources used automatically (only using the --num-gpus arg).
+        # New stack.
+        if config.enable_rl_module_and_learner:
+            # Define compute resources used.
+            config.learners(
+                num_learners=args.num_gpus,
+                num_gpus_per_learner=1 if torch.cuda.is_available() else 0,
+            )
+        # Old stack.
+        else:
+            config.resources(
+                num_gpus=args.num_gpus,
+                num_cpus_for_main_process=1,
+            )
 
     # Run the experiment w/o Tune (directly operate on the RLlib Algorithm object).
     if args.no_tune:
         algo = config.build()
-        for _ in range(args.stop_iters):
+        for _ in range(stop.get(TRAINING_ITERATION, args.stop_iters)):
             results = algo.train()
             print(f"R={results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]}", end="")
             if EVALUATION_RESULTS in results:
@@ -1471,16 +1508,25 @@ def run_rllib_example_script_experiment(
 
     # If run as a test, check whether we reached the specified success criteria.
     if args.as_test:
+        # Success metric not provided, try extracting it from `stop`.
         if success_metric is None:
-            success_metric = {
-                f"{ENV_RUNNER_RESULTS}/episode_return_mean": args.stop_reward,
-            }
+            for try_it in [
+                f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/episode_return_mean",
+                f"{ENV_RUNNER_RESULTS}/episode_return_mean",
+            ]:
+                if try_it in stop:
+                    success_metric = {try_it: stop[try_it]}
+                    break
+            if success_metric is None:
+                success_metric = {
+                    f"{ENV_RUNNER_RESULTS}/episode_return_mean": args.stop_reward,
+                }
         # TODO (sven): Make this work for more than one metric (AND-logic?).
         metric = next(iter(success_metric.keys()))
         check_learning_achieved(
             tune_results=results,
-            min_value=success_metric[metric],
             metric=metric,
+            min_value=success_metric[metric],
         )
     ray.shutdown()
     return results
@@ -1601,14 +1647,17 @@ def check_reproducibilty(
     # type in ci build has enough resources)
     for num_workers in [0, 2]:
         algo_config = (
-            algo_config.debugging(seed=42)
-            .resources(
-                # old API
-                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-                # new API
-                num_gpus_per_learner_worker=int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+            algo_config.debugging(seed=42).env_runners(
+                num_env_runners=num_workers, num_envs_per_env_runner=2
             )
-            .env_runners(num_env_runners=num_workers, num_envs_per_env_runner=2)
+            # new API
+            .learners(
+                num_gpus_per_learner=int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+            )
+            # old API
+            .resources(
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+            )
         )
 
         for fw in framework_iterator(algo_config, **fw_kwargs):
@@ -1634,7 +1683,10 @@ def check_reproducibilty(
             results2 = results2.get_best_result().metrics
 
             # Test rollout behavior.
-            check(results1["hist_stats"], results2["hist_stats"])
+            check(
+                results1[ENV_RUNNER_RESULTS]["hist_stats"],
+                results2[ENV_RUNNER_RESULTS]["hist_stats"],
+            )
             # As well as training behavior (minibatch sequence during SGD
             # iterations).
             # As well as training behavior (minibatch sequence during SGD

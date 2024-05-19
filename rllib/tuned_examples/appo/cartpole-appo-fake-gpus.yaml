@@ -1,3 +1,4 @@
+# @OldAPIStack
 cartpole-appo-vtrace-fake-gpus:
     env: CartPole-v1
     run: APPO
@@ -8,7 +9,7 @@ cartpole-appo-vtrace-fake-gpus:
         # Works for both torch and tf.
         framework: torch
         num_envs_per_env_runner: 5
-        num_workers: 1
+        num_env_runners: 1
         observation_filter: MeanStdFilter
         num_sgd_iter: 6
         vf_loss_coeff: 0.01
