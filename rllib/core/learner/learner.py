@@ -533,7 +533,6 @@ class Learner:
         module_id: ModuleID,
         config: Optional["AlgorithmConfig"] = None,
         module_gradients_dict: ParamDict,
-        hps=None,
     ) -> ParamDict:
         """Applies postprocessing operations on the gradients of the given module.
 
@@ -552,13 +551,6 @@ class Learner:
             A dictionary with the updated gradients and the exact same (flat) structure
             as the incoming `module_gradients_dict` arg.
         """
-        if hps is not None:
-            deprecation_warning(
-                old="Learner.postprocess_gradients_for_module(.., hps=..)",
-                help="Deprecated argument. Use `config` (AlgorithmConfig) instead.",
-                error=True,
-            )
-
         postprocessed_grads = {}
 
         if config.grad_clip is None:
