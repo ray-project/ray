@@ -151,7 +151,8 @@ def exec_ray_dag_ipc(label, sender, receiver, use_nccl=False):
         dag = sender.send.bind(SHAPE, DTYPE, inp)
         dag = receiver.recv.bind(
             dag,
-            SHAPE[0] * DTYPE.itemsize,
+            # torch.float16 has item size of 2 bytes.
+            SHAPE[0] * 2,
             SHAPE,
             nccl_util.TORCH_NUMPY_DTYPE_MAP[DTYPE],
         )
