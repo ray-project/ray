@@ -24,7 +24,8 @@
 #include "ray/common/asio/asio_util.h"
 
 void instrumented_io_context::post(std::function<void()> handler,
-                                   const std::string name) {
+                                   const std::string name,
+                                   int64_t delay_us) {
   if (RayConfig::instance().event_stats()) {
     // References are only invalidated upon deletion of the corresponding item from the
     // table, which we won't do until this io_context is deleted. Provided that
@@ -36,36 +37,12 @@ void instrumented_io_context::post(std::function<void()> handler,
       EventTracker::RecordExecution(handler, std::move(stats_handle));
     };
   }
-  auto defer_us = ray::asio::testing::get_delay_us(name);
-  if (defer_us == 0) {
+  delay_us += ray::asio::testing::get_delay_us(name);
+  if (delay_us == 0) {
     boost::asio::io_context::post(std::move(handler));
   } else {
-    RAY_LOG(DEBUG) << "Deferring " << name << " by " << defer_us << "us";
-    execute_after(*this, std::move(handler), std::chrono::microseconds(defer_us));
-  }
-}
-
-void instrumented_io_context::post(std::function<void()> handler,
-                                   std::shared_ptr<StatsHandle> stats_handle) {
-  size_t defer_us = 0;
-  if (stats_handle) {
-    defer_us = ray::asio::testing::get_delay_us(stats_handle->event_name);
-  }
-  if (RayConfig::instance().event_stats()) {
-    // Reset the handle start time, so that we effectively measure the queueing
-    // time only and not the time delay from RecordStart().
-    // TODO(ekl) it would be nice to track this delay too,.
-    stats_handle->ZeroAccumulatedQueuingDelay();
-    handler = [handler = std::move(handler), stats_handle = stats_handle]() {
-      EventTracker::RecordExecution(handler, std::move(stats_handle));
-    };
-  }
-  if (defer_us == 0) {
-    return boost::asio::io_context::post(std::move(handler));
-  } else {
-    RAY_LOG(DEBUG) << "Deferring " << stats_handle->event_name << " by " << defer_us
-                   << "us";
-    execute_after(*this, std::move(handler), std::chrono::microseconds(defer_us));
+    RAY_LOG(DEBUG) << "Deferring " << name << " by " << delay_us << "us";
+    execute_after(*this, std::move(handler), std::chrono::microseconds(delay_us));
   }
 }
 

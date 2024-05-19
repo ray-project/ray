@@ -1,11 +1,6 @@
-import {
-  Button,
-  createStyles,
-  makeStyles,
-  MenuItem,
-  Paper,
-  TextField,
-} from "@material-ui/core";
+import { Box, Button, MenuItem, Paper, TextField } from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import React, { useContext, useEffect, useState } from "react";
 import { RiExternalLinkLine } from "react-icons/ri";
 import { GlobalContext } from "../../App";
@@ -33,7 +28,7 @@ const useStyles = makeStyles((theme) =>
       overflow: "hidden",
       [theme.breakpoints.up("md")]: {
         // Calculate max width based on 1/3 of the total width minus gap between cards
-        width: `calc((100% - ${theme.spacing(3)}px * 2) / 3)`,
+        width: `calc((100% - ${theme.spacing(3)} * 2) / 3)`,
       },
     },
     grafanaEmbed: {
@@ -86,7 +81,7 @@ export const ServeReplicaMetricsSection = ({
   className,
 }: ServeDeploymentMetricsSectionProps) => {
   const classes = useStyles();
-  const { grafanaHost, prometheusHealth, dashboardUids } =
+  const { grafanaHost, prometheusHealth, dashboardUids, dashboardDatasource } =
     useContext(GlobalContext);
   const grafanaServeDashboardUid =
     dashboardUids?.serveDeployment ?? "rayServeDashboard";
@@ -117,7 +112,7 @@ export const ServeReplicaMetricsSection = ({
     !replicaButtonUrl ? null : (
     <CollapsibleSection className={className} title="Metrics" startExpanded>
       <div>
-        <Paper className={classes.topBar}>
+        <Box className={classes.topBar}>
           <Button
             href={replicaButtonUrl}
             target="_blank"
@@ -142,19 +137,20 @@ export const ServeReplicaMetricsSection = ({
               </MenuItem>
             ))}
           </TextField>
-        </Paper>
+        </Box>
         <div className={classes.grafanaEmbedsContainer}>
           {METRICS_CONFIG.map(({ title, pathParams }) => {
             const path =
               `/d-solo/${grafanaServeDashboardUid}?${pathParams}` +
               `&refresh${timeRangeParams}&var-Deployment=${encodeURIComponent(
                 deploymentName,
-              )}&var-Replica=${encodeURIComponent(replicaId)}`;
+              )}&var-Replica=${encodeURIComponent(
+                replicaId,
+              )}&var-datasource=${dashboardDatasource}`;
             return (
               <Paper
                 key={pathParams}
                 className={classes.chart}
-                elevation={1}
                 variant="outlined"
               >
                 <iframe
@@ -177,7 +173,7 @@ export const useViewServeDeploymentMetricsButtonUrl = (
   deploymentName: string,
   replicaId?: string,
 ) => {
-  const { grafanaHost, prometheusHealth, dashboardUids } =
+  const { grafanaHost, prometheusHealth, dashboardUids, dashboardDatasource } =
     useContext(GlobalContext);
   const grafanaServeDashboardUid =
     dashboardUids?.serveDeployment ?? "rayServeDashboard";
@@ -190,5 +186,5 @@ export const useViewServeDeploymentMetricsButtonUrl = (
     ? null
     : `${grafanaHost}/d/${grafanaServeDashboardUid}?var-Deployment=${encodeURIComponent(
         deploymentName,
-      )}${replicaStr}`;
+      )}${replicaStr}&var-datasource=${dashboardDatasource}`;
 };

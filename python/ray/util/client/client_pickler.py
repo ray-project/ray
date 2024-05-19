@@ -22,7 +22,6 @@ ServerUnpickler loads stubs from the server into their client counterparts.
 """
 
 import io
-import sys
 
 from typing import NamedTuple
 from typing import Any
@@ -41,13 +40,7 @@ from ray.util.client.common import OptionWrapper
 from ray.util.client.common import InProgressSentinel
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 
-if sys.version_info < (3, 8):
-    try:
-        import pickle5 as pickle  # noqa: F401
-    except ImportError:
-        import pickle  # noqa: F401
-else:
-    import pickle  # noqa: F401
+import pickle  # noqa: F401
 
 
 # NOTE(barakmich): These PickleStubs are really close to

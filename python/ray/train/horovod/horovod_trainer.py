@@ -1,17 +1,11 @@
-from typing import Dict, Callable, Optional, Union, TYPE_CHECKING
+from typing import Any, Callable, Dict, Optional, Union
 
-from ray.air.config import ScalingConfig, RunConfig
-from ray.train import DataConfig
-from ray.train.trainer import GenDataset
-from ray.air.checkpoint import Checkpoint
-
-
+from ray.air.config import RunConfig, ScalingConfig
+from ray.train import Checkpoint, DataConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.horovod.config import HorovodConfig
+from ray.train.trainer import GenDataset
 from ray.util.annotations import PublicAPI
-
-if TYPE_CHECKING:
-    from ray.data.preprocessor import Preprocessor
 
 
 @PublicAPI(stability="beta")
@@ -46,7 +40,7 @@ class HorovodTrainer(DataParallelTrainer):
     ``ray.train.get_dataset_shard(...)`` will return the the entire Dataset.
 
     Inside the ``train_loop_per_worker`` function, you can use any of the
-    :ref:`Ray AIR session methods <air-session-ref>`.
+    :ref:`Ray Train loop methods <train-loop-api>`.
 
     .. testcode::
 
@@ -86,15 +80,18 @@ class HorovodTrainer(DataParallelTrainer):
     .. testcode::
         :skipif: True
 
+        import os
+        import tempfile
+
         import ray
-        import ray.train as train
-        import ray.train.torch. # Need this to use `train.torch.get_device()`
         import horovod.torch as hvd
         import torch
         import torch.nn as nn
+
+        from ray import train
+        import ray.train.torch  # Need this to use `train.torch.get_device()`
+        from ray.train import Checkpoint, ScalingConfig
         from ray.train.horovod import HorovodTrainer
-        from ray.train.torch import TorchCheckpoint
-        from ray.air.config import ScalingConfig
 
         # If using GPUs, set this to True.
         use_gpu = False
@@ -140,12 +137,16 @@ class HorovodTrainer(DataParallelTrainer):
                     loss.backward()
                     optimizer.step()
                     print(f"epoch: {epoch}, loss: {loss.item()}")
-                train.report(
-                    {},
-                    checkpoint=TorchCheckpoint.from_state_dict(
-                        model.state_dict()
-                    ),
-                )
+
+                # Save a model checkpoint at the end of each epoch
+                with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+                    ckpt_path = os.path.join(temp_checkpoint_dir, "model.pt")
+                    torch.save(model.state_dict(), ckpt_path)
+                    train.report(
+                        {"loss": loss.item(), "epoch": epoch},
+                        checkpoint=Checkpoint.from_directory(temp_checkpoint_dir),
+                    )
+
         train_dataset = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
         scaling_config = ScalingConfig(num_workers=3, use_gpu=use_gpu)
         trainer = HorovodTrainer(
@@ -168,12 +169,11 @@ class HorovodTrainer(DataParallelTrainer):
         run_config: Configuration for the execution of the training run.
         datasets: Any Datasets to use for training. Use
             the key "train" to denote which dataset is the training
-            dataset. If a ``preprocessor`` is provided and has not already been fit,
-            it will be fit on the training dataset. All datasets will be transformed
-            by the ``preprocessor`` if one is provided.
-        preprocessor: A ray.data.Preprocessor to preprocess the
-            provided datasets.
+            dataset.
         resume_from_checkpoint: A checkpoint to resume training from.
+        metadata: Dict that should be made available via
+            `ray.train.get_context().get_metadata()` and in `checkpoint.get_metadata()`
+            for checkpoints saved from this Trainer. Must be JSON-serializable.
     """
 
     def __init__(
@@ -186,7 +186,7 @@ class HorovodTrainer(DataParallelTrainer):
         dataset_config: Optional[DataConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
-        preprocessor: Optional["Preprocessor"] = None,
+        metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
         super().__init__(
@@ -197,6 +197,6 @@ class HorovodTrainer(DataParallelTrainer):
             dataset_config=dataset_config,
             run_config=run_config,
             datasets=datasets,
-            preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
+            metadata=metadata,
         )

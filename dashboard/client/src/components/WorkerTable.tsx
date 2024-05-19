@@ -1,3 +1,4 @@
+import { KeyboardArrowDown, KeyboardArrowRight } from "@mui/icons-material";
 import {
   Button,
   Grid,
@@ -8,8 +9,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-} from "@material-ui/core";
-import { KeyboardArrowDown, KeyboardArrowRight } from "@material-ui/icons";
+} from "@mui/material";
 import React, {
   PropsWithChildren,
   ReactNode,
@@ -20,7 +20,7 @@ import React, {
 import { Link } from "react-router-dom";
 import { GlobalContext } from "../App";
 import { formatDateFromTimeMs } from "../common/formatUtils";
-import { Actor } from "../type/actor";
+import { ActorDetail } from "../type/actor";
 import { CoreWorkerStats, Worker } from "../type/worker";
 import { memoryConverter } from "../util/converter";
 import { longTextCut } from "../util/func";
@@ -67,6 +67,7 @@ export const ExpandableTableRow = ({
           <IconButton
             style={{ color: "inherit" }}
             onClick={() => setIsExpanded(!isExpanded)}
+            size="large"
           >
             {length}
             {isExpanded ? <KeyboardArrowDown /> : <KeyboardArrowRight />}
@@ -87,10 +88,10 @@ const WorkerDetailTable = ({
   actorMap,
   coreWorkerStats,
 }: {
-  actorMap: { [actorId: string]: Actor };
+  actorMap: { [actorId: string]: ActorDetail };
   coreWorkerStats: CoreWorkerStats[];
 }) => {
-  const actors = {} as { [actorId: string]: Actor };
+  const actors = {} as { [actorId: string]: ActorDetail };
   (coreWorkerStats || [])
     .filter((e) => actorMap[e.actorId])
     .forEach((e) => (actors[e.actorId] = actorMap[e.actorId]));
@@ -112,12 +113,12 @@ const RayletWorkerTable = ({
   mini,
 }: {
   workers: Worker[];
-  actorMap: { [actorId: string]: Actor };
+  actorMap: { [actorId: string]: ActorDetail };
   mini?: boolean;
 }) => {
   const { changeFilter, filterFunc } = useFilter();
   const [key, setKey] = useState("");
-  const { nodeMapByIp, ipLogMap } = useContext(GlobalContext);
+  const { nodeMapByIp } = useContext(GlobalContext);
   const open = () => setKey(`ON${Math.random()}`);
   const close = () => setKey(`OFF${Math.random()}`);
 
@@ -227,13 +228,13 @@ const RayletWorkerTable = ({
                   </TableCell>
                   <TableCell align="center">
                     <Grid container spacing={2}>
-                      {ipLogMap[coreWorkerStats[0]?.ipAddress] && (
+                      {coreWorkerStats[0] && (
                         <Grid item>
                           <Link
                             target="_blank"
-                            to={`/logs/${encodeURIComponent(
-                              ipLogMap[coreWorkerStats[0]?.ipAddress],
-                            )}?fileName=${
+                            to={`/logs/?nodeId=${encodeURIComponent(
+                              nodeMapByIp[coreWorkerStats[0].ipAddress],
+                            )}&fileName=${
                               coreWorkerStats[0].jobId || ""
                             }-${pid}`}
                           >
@@ -282,7 +283,7 @@ const RayletWorkerTable = ({
                     {nodeMapByIp[coreWorkerStats[0]?.ipAddress] ? (
                       <Link
                         target="_blank"
-                        to={`/node/${
+                        to={`/cluster/nodes/${
                           nodeMapByIp[coreWorkerStats[0]?.ipAddress]
                         }`}
                       >

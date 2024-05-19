@@ -12,10 +12,10 @@ from ray.rllib.utils.typing import (
     StateBatches,
     TensorStructType,
 )
-from ray.util.annotations import PublicAPI
+from ray.rllib.utils.annotations import OldAPIStack
 
 
-@PublicAPI(stability="alpha")
+@OldAPIStack
 def register_lambda_action_connector(
     name: str, fn: Callable[[TensorStructType, StateBatches, Dict], PolicyOutputType]
 ) -> Type[ActionConnector]:
@@ -64,7 +64,7 @@ def register_lambda_action_connector(
 
 
 # Convert actions and states into numpy arrays if necessary.
-ConvertToNumpyConnector = PublicAPI(stability="alpha")(
+ConvertToNumpyConnector = OldAPIStack(
     register_lambda_action_connector(
         "ConvertToNumpyConnector",
         lambda actions, states, fetches: (

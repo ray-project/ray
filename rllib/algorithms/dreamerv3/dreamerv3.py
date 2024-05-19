@@ -7,11 +7,11 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 D. Hafner, T. Lillicrap, M. Norouzi, J. Ba
 https://arxiv.org/pdf/2010.02193.pdf
 """
-import dataclasses
+
 import gc
 import logging
 import tree  # pip install dm_tree
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import gymnasium as gym
 import numpy as np
@@ -19,20 +19,18 @@ import numpy as np
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dreamerv3.dreamerv3_catalog import DreamerV3Catalog
-from ray.rllib.algorithms.dreamerv3.dreamerv3_learner import (
-    DreamerV3LearnerHyperparameters,
-)
 from ray.rllib.algorithms.dreamerv3.utils import do_symlog_obs
 from ray.rllib.algorithms.dreamerv3.utils.env_runner import DreamerV3EnvRunner
 from ray.rllib.algorithms.dreamerv3.utils.summaries import (
     report_predicted_vs_sampled_obs,
     report_sampling_and_replay_buffer,
 )
-from ray.rllib.core.learner.learner import LearnerHyperparameters
+from ray.rllib.core import DEFAULT_MODULE_ID
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import deep_update
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import one_hot
 from ray.rllib.utils.metrics import (
@@ -50,7 +48,7 @@ from ray.rllib.utils.metrics import (
     SYNCH_WORKER_WEIGHTS_TIMER,
 )
 from ray.rllib.utils.replay_buffers.episode_replay_buffer import EpisodeReplayBuffer
-from ray.rllib.utils.typing import ResultDict
+from ray.rllib.utils.typing import LearningRateOrSchedule, ResultDict
 
 
 logger = logging.getLogger(__name__)
@@ -61,38 +59,36 @@ _, tf, _ = try_import_tf()
 class DreamerV3Config(AlgorithmConfig):
     """Defines a configuration class from which a DreamerV3 can be built.
 
-    Example:
-        >>> from ray.rllib.algorithms.dreamerv3 import DreamerV3Config
-        >>> config = DreamerV3Config()
-        >>> config = config.training(  # doctest: +SKIP
-        ...     batch_size_B=8, model_size="M"
-        ... )
-        >>> config = config.resources(num_learner_workers=4)  # doctest: +SKIP
-        >>> print(config.to_dict())  # doctest: +SKIP
-        >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
-        >>> algo.train()  # doctest: +SKIP
+    .. testcode::
 
-    Example:
-        >>> from ray.rllib.algorithms.dreamerv3 import DreamerV3Config
-        >>> from ray import air
-        >>> from ray import tune
-        >>> config = DreamerV3Config()
-        >>> # Print out some default values.
-        >>> print(config.training_ratio)  # doctest: +SKIP
-        >>> # Update the config object.
-        >>> config = config.training(   # doctest: +SKIP
-        ...     training_ratio=tune.grid_search([256, 512, 1024])
-        ... )
-        >>> # Set the config object's env.
-        >>> config = config.environment(env="CartPole-v1")  # doctest: +SKIP
-        >>> # Use to_dict() to get the old-style python config dict
-        >>> # when running with tune.
-        >>> tune.Tuner(  # doctest: +SKIP
-        ...     "DreamerV3",
-        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
-        ...     param_space=config.to_dict(),
-        ... ).fit()
+        from ray.rllib.algorithms.dreamerv3 import DreamerV3Config
+        config = (
+            DreamerV3Config()
+            .environment("CartPole-v1")
+            .training(
+                model_size="XS",
+                training_ratio=1,
+                # TODO
+                model={
+                    "batch_size_B": 1,
+                    "batch_length_T": 1,
+                    "horizon_H": 1,
+                    "gamma": 0.997,
+                    "model_size": "XS",
+                },
+            )
+        )
+
+        config = config.learners(num_learners=0)
+        # Build a Algorithm object from the config and run 1 training iteration.
+        algo = config.build()
+        # algo.train()
+        del algo
+
+    .. testoutput::
+        :hide:
+
+        ...
     """
 
     def __init__(self, algo_class=None):
@@ -125,6 +121,9 @@ class DreamerV3Config(AlgorithmConfig):
         self.world_model_grad_clip_by_global_norm = 1000.0
         self.critic_grad_clip_by_global_norm = 100.0
         self.actor_grad_clip_by_global_norm = 100.0
+        self.symlog_obs = "auto"
+        self.use_float16 = False
+        self.use_curiosity = False
 
         # Reporting.
         # DreamerV3 is super sample efficient and only needs very few episodes
@@ -144,17 +143,24 @@ class DreamerV3Config(AlgorithmConfig):
         # Do not use! Set `batch_size_B` and `batch_length_T` instead.
         self.train_batch_size = None
         self.env_runner_cls = DreamerV3EnvRunner
-        self.num_rollout_workers = 0
+        self.num_env_runners = 0
         self.rollout_fragment_length = 1
         # Since we are using a gymnasium-based EnvRunner, we can utilitze its
         # vectorization capabilities w/o suffering performance losses (as we would
         # with RLlib's `RemoteVectorEnv`).
         self.remote_worker_envs = True
         # Dreamer only runs on the new API stack.
-        self._enable_learner_api = True
-        self._enable_rl_module_api = True
+        self.enable_rl_module_and_learner = True
+        self.enable_env_runner_and_connector_v2 = True
         # __sphinx_doc_end__
         # fmt: on
+
+    @property
+    def batch_size_B_per_learner(self):
+        """Returns the batch_size_B per Learner worker.
+
+        Needed by some of the DreamerV3 loss math."""
+        return self.batch_size_B // (self.num_learners or 1)
 
     @override(AlgorithmConfig)
     def training(
@@ -172,10 +178,16 @@ class DreamerV3Config(AlgorithmConfig):
         train_critic: Optional[bool] = NotProvided,
         train_actor: Optional[bool] = NotProvided,
         intrinsic_rewards_scale: Optional[float] = NotProvided,
+        world_model_lr: Optional[LearningRateOrSchedule] = NotProvided,
+        actor_lr: Optional[LearningRateOrSchedule] = NotProvided,
+        critic_lr: Optional[LearningRateOrSchedule] = NotProvided,
         world_model_grad_clip_by_global_norm: Optional[float] = NotProvided,
         critic_grad_clip_by_global_norm: Optional[float] = NotProvided,
         actor_grad_clip_by_global_norm: Optional[float] = NotProvided,
+        symlog_obs: Optional[Union[bool, str]] = NotProvided,
+        use_float16: Optional[bool] = NotProvided,
         replay_buffer_config: Optional[dict] = NotProvided,
+        use_curiosity: Optional[bool] = NotProvided,
         **kwargs,
     ) -> "DreamerV3Config":
         """Sets the training related configuration.
@@ -225,11 +237,21 @@ class DreamerV3Config(AlgorithmConfig):
                 must also be True (cannot train actor w/o training the critic).
             intrinsic_rewards_scale: The factor to multiply intrinsic rewards with
                 before adding them to the extrinsic (environment) rewards.
+            world_model_lr: The learning rate or schedule for the world model optimizer.
+            actor_lr: The learning rate or schedule for the actor optimizer.
+            critic_lr: The learning rate or schedule for the critic optimizer.
             world_model_grad_clip_by_global_norm: World model grad clipping value
                 (by global norm).
             critic_grad_clip_by_global_norm: Critic grad clipping value
                 (by global norm).
             actor_grad_clip_by_global_norm: Actor grad clipping value (by global norm).
+            symlog_obs: Whether to symlog observations or not. If set to "auto"
+                (default), will check for the environment's observation space and then
+                only symlog if not an image space.
+            use_float16: Whether to train with mixed float16 precision. In this mode,
+                model parameters are stored as float32, but all computations are
+                performed in float16 space (except for losses and distribution params
+                and outputs).
             replay_buffer_config: Replay buffer config.
                 Only serves in DreamerV3 to set the capacity of the replay buffer.
                 Note though that in the paper ([1]) a size of 1M is used for all
@@ -244,6 +266,13 @@ class DreamerV3Config(AlgorithmConfig):
         Returns:
             This updated AlgorithmConfig object.
         """
+        # Not fully supported/tested yet.
+        if use_curiosity is not NotProvided:
+            raise ValueError(
+                "`DreamerV3Config.curiosity` is not fully supported and tested yet! "
+                "It thus remains disabled for now."
+            )
+
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
@@ -271,6 +300,12 @@ class DreamerV3Config(AlgorithmConfig):
             self.train_actor = train_actor
         if intrinsic_rewards_scale is not NotProvided:
             self.intrinsic_rewards_scale = intrinsic_rewards_scale
+        if world_model_lr is not NotProvided:
+            self.world_model_lr = world_model_lr
+        if actor_lr is not NotProvided:
+            self.actor_lr = actor_lr
+        if critic_lr is not NotProvided:
+            self.critic_lr = critic_lr
         if world_model_grad_clip_by_global_norm is not NotProvided:
             self.world_model_grad_clip_by_global_norm = (
                 world_model_grad_clip_by_global_norm
@@ -279,6 +314,10 @@ class DreamerV3Config(AlgorithmConfig):
             self.critic_grad_clip_by_global_norm = critic_grad_clip_by_global_norm
         if actor_grad_clip_by_global_norm is not NotProvided:
             self.actor_grad_clip_by_global_norm = actor_grad_clip_by_global_norm
+        if symlog_obs is not NotProvided:
+            self.symlog_obs = symlog_obs
+        if use_float16 is not NotProvided:
+            self.use_float16 = use_float16
         if replay_buffer_config is not NotProvided:
             # Override entire `replay_buffer_config` if `type` key changes.
             # Update, if `type` key remains the same or is not specified.
@@ -345,20 +384,18 @@ class DreamerV3Config(AlgorithmConfig):
             raise ValueError("DreamerV3 does NOT support multi-agent setups yet!")
 
         # Make sure, we are configure for the new API stack.
-        if not (self._enable_learner_api and self._enable_rl_module_api):
+        if not self.enable_rl_module_and_learner:
             raise ValueError(
-                "DreamerV3 must be run with `config._enable_learner_api`=True AND "
-                "with `config._enable_rl_module_api`=True!"
+                "DreamerV3 must be run with `config.api_stack("
+                "enable_rl_module_and_learner=True)`!"
             )
 
         # If run on several Learners, the provided batch_size_B must be a multiple
-        # of `num_learner_workers`.
-        if self.num_learner_workers > 1 and (
-            self.batch_size_B % self.num_learner_workers != 0
-        ):
+        # of `num_learners`.
+        if self.num_learners > 1 and (self.batch_size_B % self.num_learners != 0):
             raise ValueError(
                 f"Your `batch_size_B` ({self.batch_size_B}) must be a multiple of "
-                f"`num_learner_workers` ({self.num_learner_workers}) in order for "
+                f"`num_learners` ({self.num_learners}) in order for "
                 "DreamerV3 to be able to split batches evenly across your Learner "
                 "processes."
             )
@@ -381,38 +418,6 @@ class DreamerV3Config(AlgorithmConfig):
                 "DreamerV3 must be run with the `EpisodeReplayBuffer` type! None "
                 "other supported."
             )
-
-    @override(AlgorithmConfig)
-    def get_learner_hyperparameters(self) -> LearnerHyperparameters:
-        base_hps = super().get_learner_hyperparameters()
-        return DreamerV3LearnerHyperparameters(
-            model_size=self.model_size,
-            training_ratio=self.training_ratio,
-            batch_size_B=self.batch_size_B // (self.num_learner_workers or 1),
-            batch_length_T=self.batch_length_T,
-            horizon_H=self.horizon_H,
-            gamma=self.gamma,
-            gae_lambda=self.gae_lambda,
-            entropy_scale=self.entropy_scale,
-            return_normalization_decay=self.return_normalization_decay,
-            train_actor=self.train_actor,
-            train_critic=self.train_critic,
-            world_model_lr=self.world_model_lr,
-            intrinsic_rewards_scale=self.intrinsic_rewards_scale,
-            actor_lr=self.actor_lr,
-            critic_lr=self.critic_lr,
-            world_model_grad_clip_by_global_norm=(
-                self.world_model_grad_clip_by_global_norm
-            ),
-            actor_grad_clip_by_global_norm=self.actor_grad_clip_by_global_norm,
-            critic_grad_clip_by_global_norm=self.critic_grad_clip_by_global_norm,
-            report_individual_batch_item_stats=(
-                self.report_individual_batch_item_stats
-            ),
-            report_dream_data=self.report_dream_data,
-            report_images_and_videos=self.report_images_and_videos,
-            **dataclasses.asdict(base_hps),
-        )
 
     @override(AlgorithmConfig)
     def get_default_learner_class(self):
@@ -452,14 +457,36 @@ class DreamerV3Config(AlgorithmConfig):
 
     @property
     def share_module_between_env_runner_and_learner(self) -> bool:
-        # If we only have one local Learner (num_learner_workers=0) and only
-        # one local EnvRunner (num_rollout_workers=0), share the RLModule
+        # If we only have one local Learner (num_learners=0) and only
+        # one local EnvRunner (num_env_runners=0), share the RLModule
         # between these two to avoid having to sync weights, ever.
-        return self.num_learner_workers == 0 and self.num_rollout_workers == 0
+        return self.num_learners == 0 and self.num_env_runners == 0
+
+    @property
+    @override(AlgorithmConfig)
+    def _model_config_auto_includes(self) -> Dict[str, Any]:
+        return super()._model_config_auto_includes | {
+            "gamma": self.gamma,
+            "horizon_H": self.horizon_H,
+            "model_size": self.model_size,
+            "symlog_obs": self.symlog_obs,
+            "use_float16": self.use_float16,
+            "batch_length_T": self.batch_length_T,
+        }
 
 
 class DreamerV3(Algorithm):
     """Implementation of the model-based DreamerV3 RL algorithm described in [1]."""
+
+    # TODO (sven): Deprecate/do-over the Algorithm.compute_single_action() API.
+    @override(Algorithm)
+    def compute_single_action(self, *args, **kwargs):
+        raise NotImplementedError(
+            "DreamerV3 does not support the `compute_single_action()` API. Refer to the"
+            " README here (https://github.com/ray-project/ray/tree/master/rllib/"
+            "algorithms/dreamerv3) to find more information on how to run action "
+            "inference with this algorithm."
+        )
 
     @classmethod
     @override(Algorithm)
@@ -475,7 +502,7 @@ class DreamerV3(Algorithm):
         if self.config.share_module_between_env_runner_and_learner:
             assert self.workers.local_worker().module is None
             self.workers.local_worker().module = self.learner_group._learner.module[
-                DEFAULT_POLICY_ID
+                DEFAULT_MODULE_ID
             ]
 
         # Summarize (single-agent) RLModule (only once) here.
@@ -519,21 +546,36 @@ class DreamerV3(Algorithm):
                 # c) we have not sampled at all yet in this `training_step()` call.
                 or not have_sampled
             ):
+                # Sample using the env runner's module.
                 done_episodes, ongoing_episodes = env_runner.sample()
-                have_sampled = True
-
-                # We took B x T env steps.
-                env_steps_last_sample = sum(
-                    len(eps) for eps in done_episodes + ongoing_episodes
-                )
-                self._counters[NUM_AGENT_STEPS_SAMPLED] += env_steps_last_sample
-                self._counters[NUM_ENV_STEPS_SAMPLED] += env_steps_last_sample
-
                 # Add ongoing and finished episodes into buffer. The buffer will
                 # automatically take care of properly concatenating (by episode IDs)
                 # the different chunks of the same episodes, even if they come in via
                 # separate `add()` calls.
                 self.replay_buffer.add(episodes=done_episodes + ongoing_episodes)
+                have_sampled = True
+
+                # We took B x T env steps.
+                env_steps_last_regular_sample = sum(
+                    len(eps) for eps in done_episodes + ongoing_episodes
+                )
+                total_sampled = env_steps_last_regular_sample
+
+                # If we have never sampled before (just started the algo and not
+                # recovered from a checkpoint), sample B random actions first.
+                if self._counters[NUM_AGENT_STEPS_SAMPLED] == 0:
+                    d_, o_ = env_runner.sample(
+                        num_timesteps=(
+                            self.config.batch_size_B * self.config.batch_length_T
+                        )
+                        - env_steps_last_regular_sample,
+                        random_actions=True,
+                    )
+                    self.replay_buffer.add(episodes=d_ + o_)
+                    total_sampled += sum(len(eps) for eps in d_ + o_)
+
+                self._counters[NUM_AGENT_STEPS_SAMPLED] += total_sampled
+                self._counters[NUM_ENV_STEPS_SAMPLED] += total_sampled
 
         # Summarize environment interaction and buffer data.
         results[ALL_MODULES] = report_sampling_and_replay_buffer(
@@ -546,14 +588,13 @@ class DreamerV3(Algorithm):
         # go back and collect more samples again from the actual environment.
         # However, when calculating the `training_ratio` here, we use only the
         # trained steps in this very `training_step()` call over the most recent sample
-        # amount (`env_steps_last_sample`), not the global values. This is to avoid a
-        # heavy overtraining at the very beginning when we have just pre-filled the
-        # buffer with the minimum amount of samples.
+        # amount (`env_steps_last_regular_sample`), not the global values. This is to
+        # avoid a heavy overtraining at the very beginning when we have just pre-filled
+        # the buffer with the minimum amount of samples.
         replayed_steps_this_iter = sub_iter = 0
         while (
-            replayed_steps_this_iter / env_steps_last_sample
+            replayed_steps_this_iter / env_steps_last_regular_sample
         ) < self.config.training_ratio:
-
             # Time individual batch updates.
             with self._timers[LEARN_ON_BATCH_TIMER]:
                 logger.info(f"\tSub-iteration {self.training_iteration}/{sub_iter})")
@@ -566,20 +607,16 @@ class DreamerV3(Algorithm):
                 replayed_steps = self.config.batch_size_B * self.config.batch_length_T
                 replayed_steps_this_iter += replayed_steps
 
-                # Convert some bool columns to float32 and one-hot actions.
-                sample["is_first"] = sample["is_first"].astype(np.float32)
-                sample["is_last"] = sample["is_last"].astype(np.float32)
-                sample["is_terminated"] = sample["is_terminated"].astype(np.float32)
                 if isinstance(env_runner.env.single_action_space, gym.spaces.Discrete):
-                    sample["actions_ints"] = sample[SampleBatch.ACTIONS]
-                    sample[SampleBatch.ACTIONS] = one_hot(
+                    sample["actions_ints"] = sample[Columns.ACTIONS]
+                    sample[Columns.ACTIONS] = one_hot(
                         sample["actions_ints"],
                         depth=env_runner.env.single_action_space.n,
                     )
 
                 # Perform the actual update via our learner group.
-                train_results = self.learner_group.update(
-                    SampleBatch(sample).as_multi_agent(),
+                train_results = self.learner_group.update_from_batch(
+                    batch=SampleBatch(sample).as_multi_agent(),
                     reduce_fn=self._reduce_results,
                 )
                 self._counters[NUM_AGENT_STEPS_TRAINED] += replayed_steps
@@ -589,24 +626,24 @@ class DreamerV3(Algorithm):
                 # update.
                 with self._timers["critic_ema_update"]:
                     self.learner_group.additional_update(
-                        timestep=self._counters[NUM_ENV_STEPS_TRAINED],
+                        timestep=self._counters[NUM_ENV_STEPS_SAMPLED],
                         reduce_fn=self._reduce_results,
                     )
 
                 if self.config.report_images_and_videos:
                     report_predicted_vs_sampled_obs(
                         # TODO (sven): DreamerV3 is single-agent only.
-                        results=train_results[DEFAULT_POLICY_ID],
+                        results=train_results[DEFAULT_MODULE_ID],
                         sample=sample,
                         batch_size_B=self.config.batch_size_B,
                         batch_length_T=self.config.batch_length_T,
                         symlog_obs=do_symlog_obs(
                             env_runner.env.single_observation_space,
-                            self.config.model.get("symlog_obs", "auto"),
+                            self.config.symlog_obs,
                         ),
                     )
 
-                res = train_results[DEFAULT_POLICY_ID]
+                res = train_results[DEFAULT_MODULE_ID]
                 logger.info(
                     f"\t\tWORLD_MODEL_L_total={res['WORLD_MODEL_L_total']:.5f} ("
                     f"L_pred={res['WORLD_MODEL_L_prediction']:.5f} ("
@@ -670,3 +707,28 @@ class DreamerV3(Algorithm):
     @staticmethod
     def _reduce_results(results: List[Dict[str, Any]]):
         return tree.map_structure(lambda *s: np.mean(s, axis=0), *results)
+
+    # TODO (sven): Remove this once DreamerV3 is on the new SingleAgentEnvRunner.
+    @PublicAPI
+    def __setstate__(self, state) -> None:
+        """Sts the algorithm to the provided state
+
+        Args:
+            state: The state dictionary to restore this `DreamerV3` instance to.
+                `state` may have been returned by a call to an `Algorithm`'s
+                `__getstate__()` method.
+        """
+        # Call the `Algorithm`'s `__setstate__()` method.
+        super().__setstate__(state=state)
+
+        # Assign the module to the local `EnvRunner` if sharing is enabled.
+        # Note, in `Learner.load_state()` the module is first deleted
+        # and then a new one is built - therefore the worker has no
+        # longer a copy of the learner.
+        if self.config.share_module_between_env_runner_and_learner:
+            assert id(self.workers.local_worker().module) != id(
+                self.learner_group._learner.module[DEFAULT_MODULE_ID]
+            )
+            self.workers.local_worker().module = self.learner_group._learner.module[
+                DEFAULT_MODULE_ID
+            ]

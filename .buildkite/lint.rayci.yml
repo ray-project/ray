@@ -1,0 +1,42 @@
+group: lint
+steps:
+  - label: ":lint-roller: lint: {{matrix}}"
+    key: lint-small
+    depends_on:
+      - forge
+    commands:
+      - ./ci/lint/lint.sh {{matrix}}
+    matrix:
+      - clang_format
+      - code_format
+      - untested_code_snippet
+      - banned_words
+      - doc_readme
+      - dashboard_format
+      - copyright_format
+      - bazel_team
+      - bazel_buildifier
+      - pytest_format
+      - test_coverage
+      - documentation_style
+
+  - label: ":lint-roller: lint: {{matrix}}"
+    key: lint-medium
+    instance_type: medium
+    depends_on:
+      - forge
+    commands:
+      - ./ci/lint/lint.sh {{matrix}}
+    matrix:
+      - api_annotations
+
+  - label: ":lint-roller: lint: linkcheck"
+    instance_type: medium
+    commands:
+      - make -C doc/ linkcheck_all
+    depends_on: docbuild
+    job_env: docbuild
+    tags:
+      - oss
+      - skip-on-premerge
+    soft_fail: true

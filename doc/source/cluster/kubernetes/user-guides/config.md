@@ -168,19 +168,24 @@ for more about Pod-to-Node assignment.
 #### image
 The Ray container images specified in the `RayCluster` CR should carry
 the same Ray version as the CR's `spec.rayVersion`.
-If you are using a nightly or development Ray image, it is fine to specify Ray's
+If you are using a nightly or development Ray image, you can specify Ray's
 latest release version under `spec.rayVersion`.
 
-Code dependencies for a given Ray task or actor must be installed on each Ray node that
+For Apple M1 or M2 MacBooks, see [Use ARM-based docker images for Apple M1 or M2 MacBooks](docker-image-for-apple-macbooks) to specify the 
+correct image.
+
+You must install code dependencies for a given Ray task or actor on each Ray node that
 might run the task or actor.
-To achieve this, it is simplest to use the same Ray image for the Ray head and all worker groups.
+The simplest way to achieve this configuration is to use the same Ray image for the Ray head and all worker groups.
 In any case, do make sure that all Ray images in your CR carry the same Ray version and
 Python version.
 To distribute custom code dependencies across your cluster, you can build a custom container image,
-using one of the [official Ray images](https://hub.docker.com/r/rayproject/ray>) as the base.
+using one of the [official Ray images](https://hub.docker.com/r/rayproject/ray) as the base.
 See {ref}`this guide <docker-images>` to learn more about the official Ray images.
 For dynamic dependency management geared towards iteration and developement,
 you can also use {ref}`Runtime Environments <runtime-environments>`.
+
+For `kuberay-operator` versions 1.1.0 and later, the Ray container image must have `wget` installed in it.
 
 #### metadata.name and metadata.generateName
 The KubeRay operator will ignore the values of `metadata.name` and `metadata.generateName` set by users.
@@ -323,4 +328,4 @@ lifecycle:
 ```
 To ensure graceful termination, `ray stop` is executed prior to the Ray pod's termination.
 
-[IngressDoc]: https://ray-project.github.io/kuberay/guidance/ingress/
+[IngressDoc]: kuberay-ingress

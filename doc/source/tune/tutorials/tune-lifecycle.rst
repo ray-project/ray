@@ -112,8 +112,12 @@ Tune's Architecture
 
 The blue boxes refer to internal components, while green boxes are public-facing.
 
-Tune's main components consist of ``TrialRunner``, ``Trial`` objects, ``TrialExecutor``, ``SearchAlg``,
-``TrialScheduler``, and ``Trainable``.
+Tune's main components consist of
+the :class:`~ray.tune.execution.tune_controller.TuneController`,
+:class:`~ray.tune.experiment.trial.Trial` objects,
+a :class:`~ray.tune.search.search_algorithm.SearchAlgorithm`,
+a :class:`~ray.tune.schedulers.trial_scheduler.TrialScheduler`,
+and a :class:`~ray.tune.trainable.trainable.Trainable`,
 
 .. _trial-runner-flow:
 
@@ -125,26 +129,26 @@ This is an illustration of the high-level training flow and how some of the comp
     :class: horizontal-scroll
 
 
-TrialRunner
-~~~~~~~~~~~
+TuneController
+~~~~~~~~~~~~~~
 
-[`source code <https://github.com/ray-project/ray/blob/master/python/ray/tune/execution/trial_runner.py>`__]
+[`source code <https://github.com/ray-project/ray/blob/master/python/ray/tune/execution/tune_controller.py>`__]
 This is the main driver of the training loop. This component
 uses the TrialScheduler to prioritize and execute trials,
 queries the SearchAlgorithm for new
 configurations to evaluate, and handles the fault tolerance logic.
 
-**Fault Tolerance**: The TrialRunner executes checkpointing if ``checkpoint_freq``
+**Fault Tolerance**: The TuneController executes checkpointing if ``checkpoint_freq``
 is set, along with automatic trial restarting in case of trial failures (if ``max_failures`` is set).
 For example, if a node is lost while a trial (specifically, the corresponding
 Trainable of the trial) is still executing on that node and checkpointing
 is enabled, the trial will then be reverted to a ``"PENDING"`` state and resumed
 from the last available checkpoint when it is run.
-The TrialRunner is also in charge of checkpointing the entire experiment execution state
+The TuneController is also in charge of checkpointing the entire experiment execution state
 upon each loop iteration. This allows users to restart their experiment
 in case of machine failure.
 
-See the docstring at :ref:`trialrunner-docstring`.
+See the docstring at :class:`~ray.tune.execution.tune_controller.TuneController`.
 
 Trial objects
 ~~~~~~~~~~~~~
@@ -157,15 +161,6 @@ the following states: ``"PENDING"``, ``"RUNNING"``, ``"PAUSED"``, ``"ERRORED"``,
 ``"TERMINATED"``.
 
 See the docstring at :ref:`trial-docstring`.
-
-RayTrialExecutor
-~~~~~~~~~~~~~~~~
-[`source code <https://github.com/ray-project/ray/blob/master/python/ray/tune/execution/ray_trial_executor.py>`__]
-The RayTrialExecutor is a component that interacts with the underlying execution framework.
-It also manages resources to ensure the cluster isn't overloaded.
-
-See the docstring at :ref:`raytrialexecutor-docstring`.
-
 
 SearchAlg
 ~~~~~~~~~

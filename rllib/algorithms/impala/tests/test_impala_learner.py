@@ -5,7 +5,6 @@ import tree  # pip install dm_tree
 
 import ray
 from ray.rllib.algorithms.impala import ImpalaConfig
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch, try_import_tf
 from ray.rllib.utils.test_utils import framework_iterator
@@ -59,9 +58,10 @@ class TestImpalaLearner(unittest.TestCase):
         """
         config = (
             ImpalaConfig()
+            .api_stack(enable_rl_module_and_learner=True)
             .environment("CartPole-v1")
-            .rollouts(
-                num_rollout_workers=0,
+            .env_runners(
+                num_env_runners=0,
                 rollout_fragment_length=frag_length,
             )
             .resources(num_gpus=0)
@@ -72,10 +72,6 @@ class TestImpalaLearner(unittest.TestCase):
                     fcnet_activation="linear",
                     vf_share_layers=False,
                 ),
-                _enable_learner_api=True,
-            )
-            .rl_module(
-                _enable_rl_module_api=True,
             )
         )
         # TODO (Artur): See if setting Impala's default to {} pose any issues.
@@ -84,7 +80,6 @@ class TestImpalaLearner(unittest.TestCase):
 
         for fw in framework_iterator(config, frameworks=["torch", "tf2"]):
             algo = config.build()
-            policy = algo.get_policy()
 
             if fw == "torch":
                 train_batch = convert_to_torch_tensor(SampleBatch(FAKE_BATCH))
@@ -94,22 +89,12 @@ class TestImpalaLearner(unittest.TestCase):
                 )
 
             algo_config = config.copy(copy_frozen=False)
-            algo_config.validate()
-            algo_config.freeze()
-
-            learner_group_config = algo_config.get_learner_group_config(
-                SingleAgentRLModuleSpec(
-                    module_class=algo_config.rl_module_spec.module_class,
-                    observation_space=policy.observation_space,
-                    action_space=policy.action_space,
-                    model_config_dict=policy.config["model"],
-                    catalog_class=algo_config.rl_module_spec.catalog_class,
-                )
+            algo_config.num_learners = 0
+            learner_group = algo_config.build_learner_group(
+                env=algo.workers.local_worker().env
             )
-            learner_group_config.num_learner_workers = 0
-            learner_group = learner_group_config.build()
             learner_group.set_weights(algo.get_weights())
-            learner_group.update(train_batch.as_multi_agent())
+            learner_group.update_from_batch(batch=train_batch.as_multi_agent())
 
             algo.stop()
 

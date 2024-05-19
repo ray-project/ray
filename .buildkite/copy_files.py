@@ -4,7 +4,6 @@ import subprocess
 import sys
 import time
 from collections import OrderedDict
-from typing import List
 
 import requests
 from aws_requests_auth.boto_utils import BotoAWSRequestsAuth
@@ -51,7 +50,7 @@ def handle_docker_login(resp):
     )
 
 
-def gather_paths(dir_path) -> List[str]:
+def gather_paths(dir_path):
     dir_path = dir_path.replace("/", os.path.sep)
     assert os.path.exists(dir_path)
     if os.path.isdir(dir_path):
@@ -102,6 +101,10 @@ if __name__ == "__main__":
     parser.add_argument("--path", type=str, required=False)
     parser.add_argument("--destination", type=str)
     args = parser.parse_args()
+
+    if os.environ.get("RAYCI_SKIP_UPLOAD", "false") == "true":
+        print("Skipping upload.")
+        sys.exit(0)
 
     assert args.destination in {
         "branch_jars",

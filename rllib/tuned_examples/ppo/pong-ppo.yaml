@@ -20,11 +20,11 @@ pong-ppo:
         vf_clip_param: 10.0
         entropy_coeff: 0.01
         train_batch_size: 5000
-        rollout_fragment_length: 20
+        rollout_fragment_length: auto
         sgd_minibatch_size: 500
         num_sgd_iter: 10
-        num_workers: 32
-        num_envs_per_worker: 5
+        num_env_runners: 32
+        num_envs_per_env_runner: 5
         batch_mode: truncate_episodes
         observation_filter: NoFilter
         num_gpus: 1

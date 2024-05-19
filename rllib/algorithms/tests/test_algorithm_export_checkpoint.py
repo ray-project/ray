@@ -4,7 +4,7 @@ import shutil
 import unittest
 
 import ray
-from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import framework_iterator
@@ -29,9 +29,7 @@ def save_test(alg_name, framework="tf", multi_agent=False):
     )
 
     if alg_name in RLMODULE_SUPPORTED_ALGOS:
-        config = config.rl_module(_enable_rl_module_api=False).training(
-            _enable_learner_api=False
-        )
+        config = config.api_stack(enable_rl_module_and_learner=False)
 
     if "DDPG" in alg_name or "SAC" in alg_name:
         config.environment("Pendulum-v1")
@@ -57,8 +55,9 @@ def save_test(alg_name, framework="tf", multi_agent=False):
         ray._private.utils.get_user_temp_dir(), "export_dir_%s" % alg_name
     )
 
+    algo.train()
     print("Exporting algo checkpoint", alg_name, export_dir)
-    export_dir = algo.save(export_dir)
+    export_dir = algo.save(export_dir).checkpoint.path
     model_dir = os.path.join(
         export_dir,
         "policies",

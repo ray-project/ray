@@ -4,11 +4,10 @@ import tempfile
 import unittest
 
 import ray
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.learner.learner import Learner
-from ray.rllib.core.testing.testing_learner import BaseTestingLearnerHyperparameters
-from ray.rllib.core.testing.utils import get_learner, get_module_spec
-from ray.rllib.core.learner.learner import FrameworkHyperparameters
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.core.testing.testing_learner import BaseTestingAlgorithmConfig
+
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import (
@@ -36,14 +35,16 @@ class TestLearner(unittest.TestCase):
 
     def test_end_to_end_update(self):
 
-        for fw in framework_iterator(frameworks=("torch", "tf2")):
-            learner = get_learner(framework=fw, env=self.ENV)
+        config = BaseTestingAlgorithmConfig()
+
+        for _ in framework_iterator(config, frameworks=("torch", "tf2")):
+            learner = config.build_learner(env=self.ENV)
             reader = get_cartpole_dataset_reader(batch_size=512)
 
             min_loss = float("inf")
             for iter_i in range(1000):
                 batch = reader.next()
-                results = learner.update(batch.as_multi_agent())
+                results = learner.update_from_batch(batch=batch.as_multi_agent())
 
             loss = results[ALL_MODULES][Learner.TOTAL_LOSS_KEY]
             min_loss = min(loss, min_loss)
@@ -60,10 +61,12 @@ class TestLearner(unittest.TestCase):
         Tests that if we sum all the trainable variables the gradient of output w.r.t.
         the weights is all ones.
         """
-        for fw in framework_iterator(frameworks=("torch", "tf2")):
-            learner = get_learner(framework=fw, env=self.ENV)
+        config = BaseTestingAlgorithmConfig()
 
-            params = learner.get_parameters(learner.module[DEFAULT_POLICY_ID])
+        for fw in framework_iterator(config, frameworks=("torch", "tf2")):
+            learner = config.build_learner(env=self.ENV)
+
+            params = learner.get_parameters(learner.module[DEFAULT_MODULE_ID])
 
             tape = None
             if fw == "torch":
@@ -85,23 +88,17 @@ class TestLearner(unittest.TestCase):
     def test_postprocess_gradients(self):
         """Tests the base grad clipping logic in `postprocess_gradients()`."""
 
-        for fw in framework_iterator(frameworks=("torch", "tf2")):
-            # Clip by value only.
-            hps = BaseTestingLearnerHyperparameters(
-                learning_rate=0.0003,
-                grad_clip=0.75,
-                grad_clip_by="value",
-            )
+        # Clip by value only.
+        config = BaseTestingAlgorithmConfig().training(
+            lr=0.0003, grad_clip=0.75, grad_clip_by="value"
+        )
 
-            learner = get_learner(
-                framework=fw,
-                env=self.ENV,
-                learner_hps=hps,
-            )
+        for fw in framework_iterator(config, frameworks=("torch", "tf2")):
+            learner = config.build_learner(env=self.ENV)
             # Pretend our computed gradients are our weights + 1.0.
             grads = {
                 learner.get_param_ref(v): v + 1.0
-                for v in learner.get_parameters(learner.module[DEFAULT_POLICY_ID])
+                for v in learner.get_parameters(learner.module[DEFAULT_MODULE_ID])
             }
             # Call the learner's postprocessing method.
             processed_grads = list(learner.postprocess_gradients(grads).values())
@@ -109,23 +106,20 @@ class TestLearner(unittest.TestCase):
             # No single gradient must be larger than 0.1 or smaller than -0.1:
             self.assertTrue(
                 all(
-                    np.max(grad) <= hps.grad_clip and np.min(grad) >= -hps.grad_clip
+                    np.max(grad) <= config.grad_clip
+                    and np.min(grad) >= -config.grad_clip
                     for grad in convert_to_numpy(processed_grads)
                 )
             )
 
             # Clip by norm.
-            hps.grad_clip = 1.0
-            hps.grad_clip_by = "norm"
-            learner = get_learner(
-                framework=fw,
-                env=self.ENV,
-                learner_hps=hps,
-            )
+            config.grad_clip = 1.0
+            config.grad_clip_by = "norm"
+            learner = config.build_learner(env=self.ENV)
             # Pretend our computed gradients are our weights + 1.0.
             grads = {
                 learner.get_param_ref(v): v + 1.0
-                for v in learner.get_parameters(learner.module[DEFAULT_POLICY_ID])
+                for v in learner.get_parameters(learner.module[DEFAULT_MODULE_ID])
             }
             # Call the learner's postprocessing method.
             processed_grads = list(learner.postprocess_gradients(grads).values())
@@ -135,23 +129,17 @@ class TestLearner(unittest.TestCase):
                 convert_to_numpy(list(grads.values())),
             ):
                 l2_norm = np.sqrt(np.sum(grad**2.0))
-                if l2_norm > hps.grad_clip:
-                    check(proc_grad, grad * (hps.grad_clip / l2_norm))
+                if l2_norm > config.grad_clip:
+                    check(proc_grad, grad * (config.grad_clip / l2_norm))
 
             # Clip by global norm.
-            hps.grad_clip = 5.0
-            hps.grad_clip_by = "global_norm"
-            framework_hps = FrameworkHyperparameters(eager_tracing=True)
-            learner = get_learner(
-                framework=fw,
-                framework_hps=framework_hps,
-                env=self.ENV,
-                learner_hps=hps,
-            )
+            config.grad_clip = 5.0
+            config.grad_clip_by = "global_norm"
+            learner = config.build_learner(env=self.ENV)
             # Pretend our computed gradients are our weights + 1.0.
             grads = {
                 learner.get_param_ref(v): v + 1.0
-                for v in learner.get_parameters(learner.module[DEFAULT_POLICY_ID])
+                for v in learner.get_parameters(learner.module[DEFAULT_MODULE_ID])
             }
             # Call the learner's postprocessing method.
             processed_grads = list(learner.postprocess_gradients(grads).values())
@@ -162,12 +150,12 @@ class TestLearner(unittest.TestCase):
                     for grad in convert_to_numpy(list(grads.values()))
                 )
             )
-            if global_norm > hps.grad_clip:
+            if global_norm > config.grad_clip:
                 for proc_grad, grad in zip(
                     convert_to_numpy(processed_grads),
                     grads.values(),
                 ):
-                    check(proc_grad, grad * (hps.grad_clip / global_norm))
+                    check(proc_grad, grad * (config.grad_clip / global_norm))
 
     def test_apply_gradients(self):
         """Tests the apply_gradients correctness.
@@ -175,23 +163,18 @@ class TestLearner(unittest.TestCase):
         Tests that if we apply gradients of all ones, the new params are equal to the
         standard SGD/Adam update rule.
         """
+        config = BaseTestingAlgorithmConfig().training(lr=0.0003)
 
-        for fw in framework_iterator(frameworks=("torch", "tf2")):
-            framework_hps = FrameworkHyperparameters(eager_tracing=True)
-            learner = get_learner(
-                framework=fw,
-                framework_hps=framework_hps,
-                env=self.ENV,
-                learner_hps=BaseTestingLearnerHyperparameters(learning_rate=0.0003),
-            )
+        for fw in framework_iterator(config, frameworks=("torch", "tf2")):
+            learner = config.build_learner(env=self.ENV)
 
             # calculated the expected new params based on gradients of all ones.
-            params = learner.get_parameters(learner.module[DEFAULT_POLICY_ID])
+            params = learner.get_parameters(learner.module[DEFAULT_MODULE_ID])
             n_steps = 100
             expected = [
                 (
                     convert_to_numpy(param)
-                    - n_steps * learner.hps.learning_rate * np.ones(param.shape)
+                    - n_steps * learner.config.lr * np.ones(param.shape)
                 )
                 for param in params
             ]
@@ -215,21 +198,18 @@ class TestLearner(unittest.TestCase):
         from default), and remove the default module, with a loss that is the sum of
         all variables the updated parameters follow the SGD update rule.
         """
-        for fw in framework_iterator(frameworks=("torch", "tf2")):
-            framework_hps = FrameworkHyperparameters(eager_tracing=True)
-            learner = get_learner(
-                framework=fw,
-                framework_hps=framework_hps,
-                env=self.ENV,
-                learner_hps=BaseTestingLearnerHyperparameters(learning_rate=0.0003),
-            )
+        config = BaseTestingAlgorithmConfig().training(lr=0.0003)
 
+        for fw in framework_iterator(config, frameworks=("torch", "tf2")):
+            learner = config.build_learner(env=self.ENV)
+            rl_module_spec = config.get_default_rl_module_spec()
+            rl_module_spec.observation_space = self.ENV.observation_space
+            rl_module_spec.action_space = self.ENV.action_space
             learner.add_module(
                 module_id="test",
-                module_spec=get_module_spec(framework=fw, env=self.ENV),
+                module_spec=rl_module_spec,
             )
-
-            learner.remove_module(DEFAULT_POLICY_ID)
+            learner.remove_module(DEFAULT_MODULE_ID)
 
             # only test module should be left
             self.assertEqual(set(learner.module.keys()), {"test"})
@@ -239,7 +219,7 @@ class TestLearner(unittest.TestCase):
             n_steps = 100
             expected = [
                 convert_to_numpy(param)
-                - n_steps * learner.hps.learning_rate * np.ones(param.shape)
+                - n_steps * learner.config.lr * np.ones(param.shape)
                 for param in params
             ]
             for _ in range(n_steps):
@@ -262,27 +242,26 @@ class TestLearner(unittest.TestCase):
 
     def test_save_load_state(self):
         """Tests, whether a Learner's state is properly saved and restored."""
-        for fw in framework_iterator(frameworks=("torch", "tf2")):
+        config = BaseTestingAlgorithmConfig()
+
+        for fw in framework_iterator(config, frameworks=("torch", "tf2")):
             # Get a Learner instance for the framework and env.
-            framework_hps = FrameworkHyperparameters(eager_tracing=True)
-            learner1 = get_learner(
-                framework=fw, framework_hps=framework_hps, env=self.ENV
-            )
+            learner1 = config.build_learner(env=self.ENV)
             with tempfile.TemporaryDirectory() as tmpdir:
                 learner1.save_state(tmpdir)
 
-                framework_hps = FrameworkHyperparameters(eager_tracing=True)
-                learner2 = get_learner(
-                    framework=fw, framework_hps=framework_hps, env=self.ENV
-                )
+                learner2 = config.build_learner(env=self.ENV)
                 learner2.load_state(tmpdir)
                 self._check_learner_states(fw, learner1, learner2)
 
             # Add a module then save/load and check states.
             with tempfile.TemporaryDirectory() as tmpdir:
+                rl_module_spec = config.get_default_rl_module_spec()
+                rl_module_spec.observation_space = self.ENV.observation_space
+                rl_module_spec.action_space = self.ENV.action_space
                 learner1.add_module(
                     module_id="test",
-                    module_spec=get_module_spec(framework=fw, env=self.ENV),
+                    module_spec=rl_module_spec,
                 )
                 learner1.save_state(tmpdir)
                 learner2.load_state(tmpdir)
@@ -290,7 +269,7 @@ class TestLearner(unittest.TestCase):
 
             # Remove a module then save/load and check states.
             with tempfile.TemporaryDirectory() as tmpdir:
-                learner1.remove_module(module_id=DEFAULT_POLICY_ID)
+                learner1.remove_module(module_id=DEFAULT_MODULE_ID)
                 learner1.save_state(tmpdir)
                 learner2.load_state(tmpdir)
                 self._check_learner_states(fw, learner1, learner2)

@@ -75,10 +75,12 @@ class BaseID {
 
  protected:
   BaseID(const std::string &binary) {
-    RAY_CHECK(binary.size() == Size() || binary.size() == 0)
-        << "expected size is " << Size() << ", but got data " << binary << " of size "
-        << binary.size();
-    std::memcpy(const_cast<uint8_t *>(this->Data()), binary.data(), binary.size());
+    if (!binary.empty()) {
+      RAY_CHECK(binary.size() == Size())
+          << "expected size is " << Size() << ", but got data " << binary << " of size "
+          << binary.size();
+      std::memcpy(const_cast<uint8_t *>(this->Data()), binary.data(), Size());
+    }
   }
   // All IDs are immutable for hash evaluations. MutableData is only allow to use
   // in construction time, so this function is protected.
@@ -395,15 +397,18 @@ std::ostream &operator<<(std::ostream &os, const PlacementGroupID &id);
     type() : UniqueID() {}                                                               \
     static type FromRandom() { return type(UniqueID::FromRandom()); }                    \
     static type FromBinary(const std::string &binary) { return type(binary); }           \
+    static type FromHex(const std::string &hex) { return type(UniqueID::FromHex(hex)); } \
     static type Nil() { return type(UniqueID::Nil()); }                                  \
     static constexpr size_t Size() { return kUniqueIDSize; }                             \
                                                                                          \
    private:                                                                              \
     explicit type(const std::string &binary) {                                           \
-      RAY_CHECK(binary.size() == Size() || binary.size() == 0)                           \
-          << "expected size is " << Size() << ", but got data " << binary << " of size " \
-          << binary.size();                                                              \
-      std::memcpy(&id_, binary.data(), binary.size());                                   \
+      if (!binary.empty()) {                                                             \
+        RAY_CHECK(binary.size() == Size())                                               \
+            << "expected size is " << Size() << ", but got data " << binary              \
+            << " of size " << binary.size();                                             \
+        std::memcpy(&id_, binary.data(), Size());                                        \
+      }                                                                                  \
     }                                                                                    \
   };
 
@@ -413,27 +418,6 @@ std::ostream &operator<<(std::ostream &os, const PlacementGroupID &id);
 
 // Restore the compiler alignment to default (8 bytes).
 #pragma pack(pop)
-
-struct SafeClusterID {
- private:
-  mutable absl::Mutex m_;
-  ClusterID id_ GUARDED_BY(m_);
-
- public:
-  SafeClusterID(const ClusterID &id) : id_(id) {}
-
-  const ClusterID load() const {
-    absl::MutexLock l(&m_);
-    return id_;
-  }
-
-  ClusterID exchange(const ClusterID &newId) {
-    absl::MutexLock l(&m_);
-    ClusterID old = id_;
-    id_ = newId;
-    return old;
-  }
-};
 
 template <typename T>
 BaseID<T>::BaseID() {
@@ -451,10 +435,14 @@ T BaseID<T>::FromRandom() {
 
 template <typename T>
 T BaseID<T>::FromBinary(const std::string &binary) {
-  RAY_CHECK(binary.size() == T::Size() || binary.size() == 0)
-      << "expected size is " << T::Size() << ", but got data size is " << binary.size();
   T t;
-  std::memcpy(t.MutableData(), binary.data(), binary.size());
+  if (binary.empty()) {
+    return t;  // nil
+  }
+  RAY_CHECK(binary.size() == T::Size())
+      << "expected size is " << T::Size() << ", but got data size is " << binary.size();
+
+  std::memcpy(t.MutableData(), binary.data(), T::Size());
   return t;
 }
 
@@ -505,8 +493,7 @@ const T &BaseID<T>::Nil() {
 
 template <typename T>
 bool BaseID<T>::IsNil() const {
-  static T nil_id = T::Nil();
-  return *this == nil_id;
+  return *this == T::Nil();
 }
 
 template <typename T>

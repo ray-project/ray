@@ -1,0 +1,176 @@
+group: data tests
+depends_on:
+  - forge
+  - oss-ci-base_ml
+steps:
+  # builds
+  - name: data6build
+    wanda: ci/docker/data6.build.wanda.yaml
+
+  - name: data15build
+    wanda: ci/docker/data15.build.wanda.yaml
+
+  - name: databuild-multipy
+    label: "wanda: databuild-py{{matrix}}"
+    wanda: ci/docker/data.build.wanda.yaml
+    matrix: ["3.10"]
+    env:
+      PYTHON: "{{matrix}}"
+    depends_on: oss-ci-base_ml-multipy
+
+  - name: datanbuild
+    wanda: ci/docker/datan.build.wanda.yaml
+
+  - name: datamongobuild
+    wanda: ci/docker/datamongo.build.wanda.yaml
+
+  - name: datatfxbslbuild
+    wanda: ci/docker/datatfxbsl.build.wanda.yaml
+
+  # tests
+  - label: ":database: data: arrow 6 tests"
+    tags: 
+      - python
+      - data
+    instance_type: medium
+    parallelism: 2
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data 
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" 
+        --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
+        --build-name data6build
+        --except-tags data_integration,doctest
+    depends_on: data6build
+
+  - label: ":database: data: arrow 15 tests"
+    tags: 
+      - python
+      - data
+    instance_type: medium
+    parallelism: 2
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" 
+        --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
+        --build-name data15build
+        --except-tags data_integration,doctest
+    depends_on: data15build
+
+  - label: ":database: data: arrow nightly tests"
+    tags: 
+      - python
+      - data
+      - skip-on-premerge
+    instance_type: medium
+    parallelism: 2
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data 
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" 
+        --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
+        --build-name datanbuild
+        --except-tags data_integration,doctest
+    depends_on: datanbuild
+  
+  - label: ":database: data: TFRecords (tfx-bsl) tests"
+    tags: 
+      - python
+      - data
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data
+        --parallelism-per-worker 3
+        --build-name datatfxbslbuild
+        --only-tags tfxbsl
+    depends_on: datatfxbslbuild
+
+  - label: ":database: data: doc tests"
+    tags: 
+      - data
+      - doc
+    instance_type: medium
+    commands:
+      # doc tests
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/... //doc/... data 
+        --build-name data15build
+        --except-tags gpu
+        --only-tags doctest
+        --parallelism-per-worker 2
+      # doc examples
+      - bazel run //ci/ray_ci:test_in_docker -- //doc/... data 
+        --build-name data15build
+        --except-tags gpu,post_wheel_build,doctest
+        --parallelism-per-worker 2
+        --skip-ray-installation
+    depends_on: data15build
+
+  - label: ":database: data: doc gpu tests"
+    tags: 
+      - data
+      - doc
+      - gpu
+    instance_type: gpu-large
+    commands:
+      # doc tests
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //doc/... data 
+        --build-name docgpubuild
+        --only-tags doctest
+        --except-tags cpu
+      # doc examples
+      - bazel run //ci/ray_ci:test_in_docker -- //doc/... data 
+        --build-name docgpubuild
+        --except-tags doctest
+        --only-tags gpu
+        --skip-ray-installation
+    depends_on: docgpubuild
+
+  - label: ":database: data: integration tests"
+    tags:
+      - python
+      - data
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data 
+        --build-name datamongobuild
+        --build-type java
+        --only-tags data_integration
+        --except-tags doctest
+    depends_on: datamongobuild
+
+  - label: ":database: data: dashboard tests"
+    tags:
+      - python
+      - data
+      - dashboard
+    instance_type: small
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... data
+        --build-name data15build
+        --parallelism-per-worker 3
+    depends_on: data15build
+
+  - label: ":database: data: flaky tests"
+    tags: 
+      - python
+      - data
+      - skip-on-premerge
+    instance_type: medium
+    soft_fail: true
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //... data --run-flaky-tests 
+        --parallelism-per-worker 3
+        --build-name data15build
+        --except-tags gpu_only,gpu
+    depends_on: data15build
+
+  - label: ":database: data: flaky gpu tests"
+    tags: 
+      - python
+      - data
+      - skip-on-premerge
+    instance_type: gpu-large
+    soft_fail: true
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //... data --run-flaky-tests 
+        --build-name docgpubuild
+        --only-tags gpu,gpu_only
+    depends_on: docgpubuild

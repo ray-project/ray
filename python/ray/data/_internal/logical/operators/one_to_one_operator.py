@@ -13,6 +13,7 @@ class AbstractOneToOne(LogicalOperator):
         self,
         name: str,
         input_op: Optional[LogicalOperator],
+        num_outputs: Optional[int] = None,
     ):
         """
         Args:
@@ -21,7 +22,7 @@ class AbstractOneToOne(LogicalOperator):
             input_op: The operator preceding this operator in the plan DAG. The outputs
                 of `input_op` will be the inputs to this operator.
         """
-        super().__init__(name, [input_op] if input_op else [])
+        super().__init__(name, [input_op] if input_op else [], num_outputs)
 
     @property
     def input_dependency(self) -> LogicalOperator:

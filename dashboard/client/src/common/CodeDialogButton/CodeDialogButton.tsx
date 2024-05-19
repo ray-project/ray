@@ -1,10 +1,6 @@
-import {
-  Card,
-  createStyles,
-  Link,
-  makeStyles,
-  Typography,
-} from "@material-ui/core";
+import { Card, Link, Typography } from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import classNames from "classnames";
 import yaml from "js-yaml";
 import React, { useState } from "react";
@@ -108,7 +104,9 @@ export const CodeDialogButtonWithPreview = ({
   const classes = useCodeDialogButtonWithPreviewStyles();
 
   const codeText =
-    typeof code === "string" ? code : yaml.dump(code, { indent: 2 });
+    typeof code === "string"
+      ? code
+      : yaml.dump(code, { indent: 2, sortKeys: true });
 
   const buttonTextToPass = buttonText ?? "Expand";
 

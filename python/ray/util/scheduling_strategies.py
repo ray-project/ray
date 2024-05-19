@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 # "SPREAD": Spread scheduling on a best effort basis.
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 class PlacementGroupSchedulingStrategy:
     """Placement group based scheduling strategy.
 
@@ -37,7 +37,7 @@ class PlacementGroupSchedulingStrategy:
         self.placement_group_capture_child_tasks = placement_group_capture_child_tasks
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 class NodeAffinitySchedulingStrategy:
     """Static scheduling strategy used to run a task or actor on a particular node.
 
@@ -146,6 +146,14 @@ class NodeLabelSchedulingStrategy:
     ):
         self.hard = _convert_map_to_expressions(hard, "hard")
         self.soft = _convert_map_to_expressions(soft, "soft")
+        self._check_usage()
+
+    def _check_usage(self):
+        if not (self.hard or self.soft):
+            raise ValueError(
+                "The `hard` and `soft` parameter "
+                "of NodeLabelSchedulingStrategy cannot both be empty."
+            )
 
 
 def _convert_map_to_expressions(map_expressions: LabelMatchExpressionsT, param: str):

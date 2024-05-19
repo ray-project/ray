@@ -1,0 +1,26 @@
+# Run this experiment by doing:
+# $ rllib train file [this very file]
+
+frozenlake-pg:
+    env: FrozenLake-v1
+    run: PG
+    stop:
+        sampler_results/episode_reward_mean: 0.99
+        timesteps_total: 1000000
+    config:
+        # Works for both torch and tf.
+        framework: tf
+
+        # Sparse reward environment (short horizon).
+        env_config:
+            map_name: 4x4
+                #- "SFFFFFFF"
+                #- "FFFFFFFF"
+                #- "FFFFFFFF"
+                #- "FFFFFFFF"
+                #- "FFFFFFFF"
+                #- "FFFFFFFF"
+                #- "FFFFFFFF"
+                #- "FFFFFFFG"
+            is_slippery: false
+            #max_episode_steps: 16

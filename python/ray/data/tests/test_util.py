@@ -1,13 +1,17 @@
+from typing import Any, Dict, Optional
+
 import numpy as np
 import pytest
 
 import ray
+from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.memory_tracing import (
     leak_report,
     trace_allocation,
     trace_deallocation,
 )
 from ray.data._internal.util import _check_pyarrow_version, _split_list
+from ray.data.datasource.parquet_datasource import ParquetDatasource
 from ray.data.tests.conftest import *  # noqa: F401, F403
 
 
@@ -85,6 +89,46 @@ def test_list_splits():
     assert _split_list(list(range(5)), 1) == [[0, 1, 2, 3, 4]]
     assert _split_list(["foo", 1, [0], None], 2) == [["foo", 1], [[0], None]]
     assert _split_list(["foo", 1, [0], None], 3) == [["foo", 1], [[0]], [None]]
+
+
+def get_parquet_read_logical_op(
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    **read_kwargs,
+) -> Read:
+    datasource = ParquetDatasource(paths="example://iris.parquet")
+    if "parallelism" not in read_kwargs:
+        read_kwargs["parallelism"] = 10
+    mem_size = None
+    if "mem_size" in read_kwargs:
+        mem_size = read_kwargs.pop("mem_size")
+    read_op = Read(
+        datasource=datasource,
+        datasource_or_legacy_reader=datasource,
+        mem_size=mem_size,
+        ray_remote_args=ray_remote_args,
+        **read_kwargs,
+    )
+    return read_op
+
+
+@ray.remote(num_cpus=0)
+class ConcurrencyCounter:
+    def __init__(self):
+        self.concurrency = 0
+        self.max_concurrency = 0
+
+    def inc(self):
+        self.concurrency += 1
+        if self.concurrency > self.max_concurrency:
+            self.max_concurrency = self.concurrency
+        return self.concurrency
+
+    def decr(self):
+        self.concurrency -= 1
+        return self.concurrency
+
+    def get_max_concurrency(self):
+        return self.max_concurrency
 
 
 if __name__ == "__main__":

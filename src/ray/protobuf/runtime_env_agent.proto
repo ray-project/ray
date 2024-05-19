@@ -59,11 +59,3 @@ message GetRuntimeEnvsInfoReply {
   // Length of the corresponding resource without truncation.
   int64 total = 2;
 }
-
-service RuntimeEnvService {
-  rpc GetOrCreateRuntimeEnv(GetOrCreateRuntimeEnvRequest)
-      returns (GetOrCreateRuntimeEnvReply);
-  rpc DeleteRuntimeEnvIfPossible(DeleteRuntimeEnvIfPossibleRequest)
-      returns (DeleteRuntimeEnvIfPossibleReply);
-  rpc GetRuntimeEnvsInfo(GetRuntimeEnvsInfoRequest) returns (GetRuntimeEnvsInfoReply);
-}

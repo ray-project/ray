@@ -16,15 +16,14 @@ rules:
         - "python/ray/train/**/*.py"
         - "doc/source/train/**/*.rst"
       exclude:
-        # FIXME(@matthewdeng): We're ignoring the examples for now since they'll likely
-        # get re-written.
-        - "doc/source/train/examples/pytorch/torch_data_prefetch_benchmark/benchmark_example.rst"
-        - "doc/source/train/dl_guide.rst"
+        # These files use the :emphasize-lines: option, which isn't supported by testcode.
+        - "doc/source/train/getting-started-pytorch-lightning.rst"
+        - "doc/source/train/getting-started-pytorch.rst"
+        - "doc/source/train/getting-started-transformers.rst"
+        - "doc/source/train/user-guides/data-loading-preprocessing.rst"
 
     languages:
       - generic
-    message: > 
-      Don't use 'code-block:: python', it's not tested! Use 'testcode' instead! For more 
-      information, see https://docs.ray.io/en/master/ray-contribute/writing-code-snippets.html.
+    message: "Don't use 'code-block:: python', it's not tested! Use 'testcode' instead! For more information, see https://docs.ray.io/en/master/ray-contribute/writing-code-snippets.html."
     pattern: "code-block:: python"
     severity: ERROR

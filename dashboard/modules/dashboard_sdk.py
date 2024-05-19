@@ -7,7 +7,7 @@ import yaml
 from pathlib import Path
 import tempfile
 from typing import Any, Dict, List, Optional, Union
-from pkg_resources import packaging
+import packaging.version
 import ray
 import ssl
 

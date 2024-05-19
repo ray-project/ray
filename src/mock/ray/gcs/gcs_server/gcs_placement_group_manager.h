@@ -72,6 +72,11 @@ class MockGcsPlacementGroupManager : public GcsPlacementGroupManager {
               (const NodeID &node_id),
               (const, override));
 
+  MOCK_METHOD((std::shared_ptr<rpc::PlacementGroupLoad>),
+              GetPlacementGroupLoad,
+              (),
+              (const, override));
+
   instrumented_io_context context_;
 };
 

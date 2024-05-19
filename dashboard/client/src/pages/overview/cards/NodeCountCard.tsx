@@ -1,4 +1,6 @@
-import { createStyles, makeStyles, Typography } from "@material-ui/core";
+import { Typography } from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import classNames from "classnames";
 import React, { useContext } from "react";
 import { GlobalContext } from "../../../App";
@@ -44,10 +46,11 @@ export const NodeCountCard = ({ className }: NodeCountCardProps) => {
     prometheusHealth,
     sessionName,
     dashboardUids,
+    dashboardDatasource,
   } = useContext(GlobalContext);
   const grafanaDefaultDashboardUid =
     dashboardUids?.default ?? "rayDefaultDashboard";
-  const path = `/d-solo/${grafanaDefaultDashboardUid}/default-dashboard?orgId=1&theme=light&panelId=24`;
+  const path = `/d-solo/${grafanaDefaultDashboardUid}/default-dashboard?orgId=1&theme=light&panelId=24&var-datasource=${dashboardDatasource}`;
   const timeRangeParams = "&from=now-30m&to=now";
 
   if (!metricsContextLoaded || grafanaHost === "DISABLED") {

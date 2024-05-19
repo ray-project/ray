@@ -277,14 +277,15 @@ def test_run_driver_twice(ray_start_regular):
     address_info = ray_start_regular
     driver_script = """
 import ray
+import ray.train
 import ray.tune as tune
 import os
 import time
 
-def train_func(config, reporter):  # add a reporter arg
+def train_func(config):
     for i in range(2):
         time.sleep(0.1)
-        reporter(timesteps_total=i, mean_accuracy=i+97)  # report metrics
+        ray.train.report(dict(timesteps_total=i, mean_accuracy=i+97))  # report metrics
 
 os.environ["TUNE_RESUME_PROMPT_OFF"] = "True"
 ray.init(address="{}", namespace="default_test_namespace")

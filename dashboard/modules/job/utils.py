@@ -2,6 +2,7 @@ import dataclasses
 import logging
 import os
 import re
+import time
 import traceback
 from dataclasses import dataclass
 from typing import Iterator, List, Optional, Any, Dict, Tuple, Union
@@ -19,24 +20,13 @@ from ray._private import ray_constants
 from ray._private.gcs_utils import GcsAioClient
 from ray.dashboard.modules.job.common import (
     validate_request_type,
-    JOB_ACTOR_NAME_TEMPLATE,
-    SUPERVISOR_ACTOR_RAY_NAMESPACE,
     JobInfoStorageClient,
 )
-from ray.core.generated import gcs_service_pb2
-
-try:
-    # package `pydantic` is not in ray's minimal dependencies
-    from ray.dashboard.modules.job.pydantic_models import (
-        DriverInfo,
-        JobDetails,
-        JobType,
-    )
-except Exception:
-    DriverInfo = None
-    JobDetails = None
-    JobType = None
-
+from ray.dashboard.modules.job.pydantic_models import (
+    DriverInfo,
+    JobDetails,
+    JobType,
+)
 from ray.dashboard.modules.job.common import (
     JobStatus,
     JOB_ID_METADATA_KEY,
@@ -80,45 +70,44 @@ def file_tail_iterator(path: str) -> Iterator[Optional[List[str]]]:
         logger.debug(f"Path {path} doesn't exist yet.")
         yield None
 
+    EOF = ""
+
     with open(path, "r") as f:
         lines = []
+
         chunk_char_count = 0
         curr_line = None
+
         while True:
-            if curr_line is None:
-                # Only read the next line in the file
-                # if there's no remaining "curr_line" to process
-                curr_line = f.readline()
-            new_chunk_char_count = chunk_char_count + len(curr_line)
-            if new_chunk_char_count > MAX_CHUNK_CHAR_LENGTH:
-                # Too many characters, return 20000 in this chunk, and then
-                # continue loop with remaining characters in curr_line
-                truncated_line = curr_line[0 : MAX_CHUNK_CHAR_LENGTH - chunk_char_count]
-                lines.append(truncated_line)
-                # Set remainder of current line to process next
-                curr_line = curr_line[MAX_CHUNK_CHAR_LENGTH - chunk_char_count :]
-                yield lines or None
-                lines = []
-                chunk_char_count = 0
-            elif len(lines) >= 9:
+            # We want to flush current chunk in following cases:
+            #   - We accumulated 10 lines
+            #   - We accumulated at least MAX_CHUNK_CHAR_LENGTH total chars
+            #   - We reached EOF
+            if (
+                len(lines) >= 10
+                or chunk_char_count > MAX_CHUNK_CHAR_LENGTH
+                or curr_line == EOF
+            ):
                 # Too many lines, return 10 lines in this chunk, and then
                 # continue reading the file.
-                lines.append(curr_line)
                 yield lines or None
+
                 lines = []
                 chunk_char_count = 0
-                curr_line = None
-            elif curr_line:
+
+            # Read next line
+            curr_line = f.readline()
+
+            # `readline` will return
+            #   - '' for EOF
+            #   - '\n' for an empty line in the file
+            if curr_line != EOF:
                 # Add line to current chunk
                 lines.append(curr_line)
-                chunk_char_count = new_chunk_char_count
-                curr_line = None
+                chunk_char_count += len(curr_line)
             else:
-                # readline() returns empty string when there's no new line.
-                yield lines or None
-                lines = []
-                chunk_char_count = 0
-                curr_line = None
+                # If EOF is reached sleep for 1s before continuing
+                time.sleep(1)
 
 
 async def parse_and_validate_request(
@@ -161,11 +150,11 @@ async def get_driver_jobs(
     It's keyed by the submission job's submission id.
     Only the last driver of a submission job is returned.
     """
-    reply = await gcs_aio_client.get_all_job_info(timeout=timeout)
+    job_infos = await gcs_aio_client.get_all_job_info(timeout=timeout)
 
     jobs = {}
     submission_job_drivers = {}
-    for job_table_entry in reply.job_info_list:
+    for job_table_entry in job_infos.values():
         if job_table_entry.config.ray_namespace.startswith(
             ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX
         ):
@@ -248,13 +237,3 @@ async def find_job_by_ids(
         return job
 
     return None
-
-
-async def get_supervisor_actor_into(
-    gcs_aio_client: GcsAioClient, job_submission_id: str
-) -> gcs_service_pb2.GetNamedActorInfoReply:
-    actor_info = await gcs_aio_client.get_named_actor_info(
-        JOB_ACTOR_NAME_TEMPLATE.format(job_id=job_submission_id),
-        SUPERVISOR_ACTOR_RAY_NAMESPACE,
-    )
-    return actor_info

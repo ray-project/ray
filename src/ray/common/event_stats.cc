@@ -62,15 +62,16 @@ std::string to_human_readable(int64_t duration) {
 std::shared_ptr<StatsHandle> EventTracker::RecordStart(
     const std::string &name, int64_t expected_queueing_delay_ns) {
   auto stats = GetOrCreate(name);
+  int64_t cum_count = 0;
   int64_t curr_count = 0;
   {
     absl::MutexLock lock(&(stats->mutex));
-    stats->stats.cum_count++;
+    cum_count = ++stats->stats.cum_count;
     curr_count = ++stats->stats.curr_count;
   }
 
   if (RayConfig::instance().event_stats_metrics()) {
-    ray::stats::STATS_operation_count.Record(curr_count, name);
+    ray::stats::STATS_operation_count.Record(cum_count, name);
     ray::stats::STATS_operation_active_count.Record(curr_count, name);
   }
 
@@ -81,8 +82,26 @@ std::shared_ptr<StatsHandle> EventTracker::RecordStart(
       global_stats_);
 }
 
+void EventTracker::RecordEnd(std::shared_ptr<StatsHandle> handle) {
+  RAY_CHECK(!handle->end_or_execution_recorded);
+  absl::MutexLock lock(&(handle->handler_stats->mutex));
+  const auto curr_count = --handle->handler_stats->stats.curr_count;
+  const auto execution_time_ns = absl::GetCurrentTimeNanos() - handle->start_time;
+  handle->handler_stats->stats.cum_execution_time += execution_time_ns;
+
+  if (RayConfig::instance().event_stats_metrics()) {
+    // Update event-specific stats.
+    ray::stats::STATS_operation_run_time_ms.Record(execution_time_ns / 1000000,
+                                                   handle->event_name);
+    ray::stats::STATS_operation_active_count.Record(curr_count, handle->event_name);
+  }
+
+  handle->end_or_execution_recorded = true;
+}
+
 void EventTracker::RecordExecution(const std::function<void()> &fn,
                                    std::shared_ptr<StatsHandle> handle) {
+  RAY_CHECK(!handle->end_or_execution_recorded);
   int64_t start_execution = absl::GetCurrentTimeNanos();
   // Update running count
   {
@@ -96,17 +115,24 @@ void EventTracker::RecordExecution(const std::function<void()> &fn,
   // Update execution time stats.
   const auto execution_time_ns = end_execution - start_execution;
   int64_t curr_count;
+  const auto queue_time_ns = start_execution - handle->start_time;
   {
     auto &stats = handle->handler_stats;
     absl::MutexLock lock(&(stats->mutex));
     // Event-specific execution stats.
     stats->stats.cum_execution_time += execution_time_ns;
+    stats->stats.cum_queue_time += queue_time_ns;
+    if (stats->stats.min_queue_time > queue_time_ns) {
+      stats->stats.min_queue_time = queue_time_ns;
+    }
+    if (stats->stats.max_queue_time < queue_time_ns) {
+      stats->stats.max_queue_time = queue_time_ns;
+    }
     // Event-specific current count.
     curr_count = --stats->stats.curr_count;
     // Event-specific running count.
     stats->stats.running_count--;
   }
-  const auto queue_time_ns = start_execution - handle->start_time;
 
   if (RayConfig::instance().event_stats_metrics()) {
     // Update event-specific stats.
@@ -130,7 +156,7 @@ void EventTracker::RecordExecution(const std::function<void()> &fn,
       global_stats->stats.max_queue_time = queue_time_ns;
     }
   }
-  handle->execution_recorded = true;
+  handle->end_or_execution_recorded = true;
 }
 
 std::shared_ptr<GuardedEventStats> EventTracker::GetOrCreate(const std::string &name) {
@@ -211,11 +237,17 @@ std::string EventTracker::StatsString() const {
     if (entry.second.running_count > 0) {
       event_stats_stream << ", " << entry.second.running_count << " running";
     }
-    event_stats_stream << "), CPU time: mean = "
+    event_stats_stream << "), Execution time: mean = "
                        << to_human_readable(entry.second.cum_execution_time /
                                             static_cast<double>(entry.second.cum_count))
                        << ", total = "
-                       << to_human_readable(entry.second.cum_execution_time);
+                       << to_human_readable(entry.second.cum_execution_time)
+                       << ", Queueing time: mean = "
+                       << to_human_readable(entry.second.cum_queue_time /
+                                            static_cast<double>(entry.second.cum_count))
+                       << ", max = " << to_human_readable(entry.second.max_queue_time)
+                       << ", min = " << to_human_readable(entry.second.min_queue_time)
+                       << ", total = " << to_human_readable(entry.second.cum_queue_time);
   }
   const auto global_stats = get_global_stats();
   std::stringstream stats_stream;

@@ -9,7 +9,11 @@ from ray.util.spark.utils import (
     _calc_mem_per_ray_worker_node,
     _get_avail_mem_per_ray_worker_node,
 )
-from ray.util.spark.cluster_init import _convert_ray_node_options, _verify_node_options
+from ray.util.spark.cluster_init import (
+    _convert_ray_node_options,
+    _verify_node_options,
+    _append_default_spilling_dir_config,
+)
 
 pytestmark = pytest.mark.skipif(
     not sys.platform.startswith("linux"),
@@ -27,25 +31,36 @@ def test_get_spark_task_assigned_physical_gpus():
 
 
 @patch("ray._private.ray_constants.OBJECT_STORE_MINIMUM_MEMORY_BYTES", 1)
-def test_calc_mem_per_ray_worker_node():
-    assert _calc_mem_per_ray_worker_node(4, 1000000, 400000, 100000) == (
+def test_calc_mem_per_ray_worker_node(monkeypatch):
+    assert _calc_mem_per_ray_worker_node(4, 1000000, 400000, None, 100000) == (
         120000,
         80000,
         None,
     )
-    assert _calc_mem_per_ray_worker_node(4, 1000000, 400000, 70000) == (
+    assert _calc_mem_per_ray_worker_node(4, 1000000, 400000, None, 70000) == (
         130000,
         70000,
         None,
     )
-    assert _calc_mem_per_ray_worker_node(4, 1000000, 400000, None) == (
+    assert _calc_mem_per_ray_worker_node(4, 1000000, 400000, None, None) == (
         140000,
         60000,
         None,
     )
-    assert _calc_mem_per_ray_worker_node(4, 1000000, 200000, None) == (
+    assert _calc_mem_per_ray_worker_node(4, 1000000, 200000, None, None) == (
         160000,
         40000,
+        None,
+    )
+    assert _calc_mem_per_ray_worker_node(4, 1000000, 400000, 150000, 70000) == (
+        150000,
+        70000,
+        None,
+    )
+    monkeypatch.setenv("RAY_OBJECT_STORE_ALLOW_SLOW_STORAGE", "1")
+    assert _calc_mem_per_ray_worker_node(4, 1000000, 400000, None, 100000) == (
+        100000,
+        100000,
         None,
     )
 
@@ -60,32 +75,44 @@ def test_get_avail_mem_per_ray_worker_node(monkeypatch):
     assert _get_avail_mem_per_ray_worker_node(
         num_cpus_per_node=1,
         num_gpus_per_node=2,
+        heap_memory_per_node=None,
         object_store_memory_per_node=None,
     ) == (140000, 60000, None, None)
 
     assert _get_avail_mem_per_ray_worker_node(
         num_cpus_per_node=1,
         num_gpus_per_node=2,
+        heap_memory_per_node=None,
         object_store_memory_per_node=80000,
     ) == (120000, 80000, None, None)
 
     assert _get_avail_mem_per_ray_worker_node(
         num_cpus_per_node=1,
         num_gpus_per_node=2,
+        heap_memory_per_node=None,
         object_store_memory_per_node=120000,
     ) == (100000, 100000, None, None)
 
     assert _get_avail_mem_per_ray_worker_node(
         num_cpus_per_node=2,
         num_gpus_per_node=2,
+        heap_memory_per_node=None,
         object_store_memory_per_node=None,
     ) == (280000, 120000, None, None)
 
     assert _get_avail_mem_per_ray_worker_node(
         num_cpus_per_node=1,
         num_gpus_per_node=4,
+        heap_memory_per_node=None,
         object_store_memory_per_node=None,
     ) == (280000, 120000, None, None)
+
+    assert _get_avail_mem_per_ray_worker_node(
+        num_cpus_per_node=1,
+        num_gpus_per_node=2,
+        heap_memory_per_node=150000,
+        object_store_memory_per_node=70000,
+    ) == (150000, 70000, None, None)
 
 
 def test_convert_ray_node_options():
@@ -130,6 +157,36 @@ def test_verify_node_options():
             block_keys={"not_permitted": "permitted"},
             node_type="worker",
         )
+
+
+def test_append_default_spilling_dir_config():
+    assert _append_default_spilling_dir_config({}, "/xx/yy") == {
+        "system_config": {
+            "object_spilling_config": '{"type": "filesystem", "params": {"directory_path": "/xx/yy"}}'  # noqa: E501
+        }
+    }
+    assert _append_default_spilling_dir_config(
+        {"system_config": {"a": 3}}, "/xx/yy"
+    ) == {
+        "system_config": {
+            "a": 3,
+            "object_spilling_config": '{"type": "filesystem", "params": {"directory_path": "/xx/yy"}}',  # noqa: E501
+        }
+    }
+    assert _append_default_spilling_dir_config(
+        {
+            "system_config": {
+                "a": 4,
+                "object_spilling_config": '{"type": "filesystem", "params": {"directory_path": "/aa/bb"}}',  # noqa: E501
+            },
+        },
+        "/xx/yy",
+    ) == {
+        "system_config": {
+            "a": 4,
+            "object_spilling_config": '{"type": "filesystem", "params": {"directory_path": "/aa/bb"}}',  # noqa: E501
+        }
+    }
 
 
 if __name__ == "__main__":

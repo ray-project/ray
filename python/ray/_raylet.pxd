@@ -102,7 +102,6 @@ cdef class ObjectRef(BaseID):
 
     cdef CObjectID native(self)
 
-
 cdef class ActorID(BaseID):
     cdef CActorID data
 
@@ -125,6 +124,9 @@ cdef class CoreWorker:
         object eventloop_for_default_cg
         object thread_for_default_cg
         object fd_to_cgname_dict
+        object _task_id_to_future_lock
+        dict _task_id_to_future
+        object event_loop_executor
 
     cdef _create_put_buffer(self, shared_ptr[CBuffer] &metadata,
                             size_t data_size, ObjectRef object_ref,
@@ -132,14 +134,16 @@ cdef class CoreWorker:
                             CObjectID *c_object_id, shared_ptr[CBuffer] *data,
                             c_bool created_by_worker,
                             owner_address=*,
-                            c_bool inline_small_object=*)
+                            c_bool inline_small_object=*,
+                            c_bool is_experimental_channel=*)
     cdef unique_ptr[CAddress] _convert_python_address(self, address=*)
     cdef store_task_output(
             self, serialized_object,
             const CObjectID &return_id,
             const CObjectID &generator_id,
             size_t data_size, shared_ptr[CBuffer] &metadata, const c_vector[CObjectID]
-            &contained_id, int64_t *task_output_inlined_bytes,
+            &contained_id, const CAddress &caller_address,
+            int64_t *task_output_inlined_bytes,
             shared_ptr[CRayObject] *return_ptr)
     cdef store_task_outputs(
             self,
@@ -147,7 +151,6 @@ cdef class CoreWorker:
             const CAddress &caller_address,
             c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
             CObjectID ref_generator_id=*)
-    cdef yield_current_fiber(self, CFiberEvent &fiber_event)
     cdef make_actor_handle(self, ActorHandleSharedPtr c_actor_handle)
     cdef c_function_descriptors_to_python(
         self, const c_vector[CFunctionDescriptor] &c_function_descriptors)

@@ -1,11 +1,11 @@
 import copy
 from typing import Optional
 
-from ray.rllib.utils.annotations import PublicAPI
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.typing import EnvConfigDict
 
 
-@PublicAPI
+@OldAPIStack
 class EnvContext(dict):
     """Wraps env configurations to include extra rllib metadata.
 
@@ -42,7 +42,7 @@ class EnvContext(dict):
                 0 if only a local worker exists.
             recreated_worker: Whether the worker that holds this env is a recreated one.
                 This means that it replaced a previous (failed) worker when
-                `recreate_failed_workers=True` in the Algorithm's config.
+                `recreate_failed_env_runners=True` in the Algorithm's config.
         """
         # Store the env_config in the (super) dict.
         dict.__init__(self, env_config)
@@ -78,8 +78,8 @@ class EnvContext(dict):
                 the one from the source (self).
             recreated_worker: Optional flag, indicating, whether the worker that holds
                 the env is a recreated one. This means that it replaced a previous
-                (failed) worker when `recreate_failed_workers=True` in the Algorithm's
-                config.
+                (failed) worker when `recreate_failed_env_runners=True` in the
+                Algorithm's config.
 
         Returns:
             A new EnvContext object as a copy of self plus the provided
@@ -104,11 +104,16 @@ class EnvContext(dict):
             defaults: The key/value pairs to add to self, but only for those
                 keys in `defaults` that don't exist yet in self.
 
-        Examples:
-            >>> from ray.rllib.env.env_context import EnvContext
-            >>> env_ctx = EnvContext({"a": 1, "b": 2}, worker_index=0)  # doctest: +SKIP
-            >>> env_ctx.set_defaults({"a": -42, "c": 3}) # doctest: +SKIP
-            >>> print(env_ctx) # doctest: +SKIP
+        .. testcode::
+            :skipif: True
+
+            from ray.rllib.env.env_context import EnvContext
+            env_ctx = EnvContext({"a": 1, "b": 2}, worker_index=0)
+            env_ctx.set_defaults({"a": -42, "c": 3})
+            print(env_ctx)
+
+        .. testoutput::
+
             {"a": 1, "b": 2, "c": 3}
         """
         for key, value in defaults.items():

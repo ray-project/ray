@@ -1,8 +1,9 @@
-from collections import defaultdict
 import logging
 import os
 import random
 import time
+from collections import defaultdict
+from pathlib import Path
 from typing import Dict
 
 from ray.tune.callback import Callback
@@ -22,7 +23,7 @@ class FailureInjectorCallback(Callback):
         disable=False,
     ):
         self.probability = probability
-        self.config_path = os.path.expanduser(config_path)
+        self.config_path = Path(config_path).expanduser().as_posix()
         self.disable = disable
 
         self.time_between_checks = time_between_checks
@@ -36,6 +37,7 @@ class FailureInjectorCallback(Callback):
             return
         self.last_fail_check = time.monotonic()
         import click
+
         from ray.autoscaler._private.commands import kill_node
 
         failures = 0

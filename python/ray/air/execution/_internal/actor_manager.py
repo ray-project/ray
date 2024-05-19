@@ -2,20 +2,19 @@ import logging
 import random
 import time
 import uuid
-from collections import defaultdict, Counter
+from collections import Counter, defaultdict
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Type, Union
 
 import ray
 from ray.air.execution._internal.event_manager import RayEventManager
+from ray.air.execution._internal.tracked_actor import TrackedActor
+from ray.air.execution._internal.tracked_actor_task import TrackedActorTask
 from ray.air.execution.resources import (
     AcquiredResources,
     ResourceManager,
     ResourceRequest,
 )
-
-from ray.air.execution._internal.tracked_actor import TrackedActor
-from ray.air.execution._internal.tracked_actor_task import TrackedActorTask
-from ray.exceptions import RayTaskError, RayActorError
+from ray.exceptions import RayActorError, RayTaskError
 
 logger = logging.getLogger(__name__)
 
@@ -324,7 +323,7 @@ class RayActorManager:
 
         # Iterate through all resource requests
         for resource_request in self._resource_request_to_pending_actors:
-            if max_actors and started_actors >= max_actors:
+            if max_actors is not None and started_actors >= max_actors:
                 break
 
             # While we have resources ready and there are actors left to schedule
@@ -400,6 +399,8 @@ class RayActorManager:
                 )
 
                 self._enqueue_cached_actor_tasks(tracked_actor=tracked_actor)
+
+                started_actors += 1
 
         return started_actors
 

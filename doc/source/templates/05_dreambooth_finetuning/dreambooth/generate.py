@@ -1,22 +1,19 @@
 import hashlib
 from os import path
 
-from diffusers import DiffusionPipeline
 import time
 import torch
 import ray
 
 from flags import run_model_flags
+from generate_utils import get_pipeline
 
 
 def run(args):
     class StableDiffusionCallable:
-        def __init__(self, model_dir, output_dir):
+        def __init__(self, model_dir, output_dir, lora_weights_dir=None):
             print(f"Loading model from {model_dir}")
-
-            self.pipeline = DiffusionPipeline.from_pretrained(
-                model_dir, torch_dtype=torch.float16
-            )
+            self.pipeline = get_pipeline(model_dir, lora_weights_dir)
             self.pipeline.set_progress_bar_config(disable=True)
             if torch.cuda.is_available():
                 self.pipeline.to("cuda")
@@ -65,7 +62,7 @@ def run(args):
     else:
         # Generate images one by one
         stable_diffusion_predictor = StableDiffusionCallable(
-            args.model_dir, args.output_dir
+            args.model_dir, args.output_dir, args.lora_weights_dir
         )
         for prompt in prompts:
             for i in range(args.num_samples_per_prompt):

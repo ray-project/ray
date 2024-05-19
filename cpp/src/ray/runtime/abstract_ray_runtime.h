@@ -54,6 +54,12 @@ class AbstractRayRuntime : public RayRuntime {
 
   std::vector<std::shared_ptr<msgpack::sbuffer>> Get(const std::vector<std::string> &ids);
 
+  std::shared_ptr<msgpack::sbuffer> Get(const std::string &object_id,
+                                        const int &timeout_ms);
+
+  std::vector<std::shared_ptr<msgpack::sbuffer>> Get(const std::vector<std::string> &ids,
+                                                     const int &timeout_ms);
+
   std::vector<bool> Wait(const std::vector<std::string> &ids,
                          int num_objects,
                          int timeout_ms);

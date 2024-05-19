@@ -1,0 +1,224 @@
+load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
+load("@py_deps_buildkite//:requirements.bzl", ci_require = "requirement")
+
+py_library(
+    name = "automation",
+    srcs = glob(
+        ["*.py"],
+        exclude = [
+            "test_*.py",
+        ],
+    ),
+    visibility = ["//ci/ray_ci/automation:__subpackages__"],
+    deps = [
+        "//ci/ray_ci:ray_ci_lib",
+    ],
+)
+
+py_binary(
+    name = "determine_microcheck_tests",
+    srcs = ["determine_microcheck_tests.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    deps = [
+        ci_require("click"),
+        ":automation",
+    ],
+)
+
+py_binary(
+    name = "determine_microcheck_step_ids",
+    srcs = ["determine_microcheck_step_ids.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    deps = [
+        ci_require("click"),
+        "//ci/ray_ci:ray_ci_lib",
+    ],
+)
+
+py_binary(
+    name = "test_db_bot",
+    srcs = ["test_db_bot.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    deps = [
+        ci_require("click"),
+        "//ci/ray_ci:ray_ci_lib",
+    ],
+)
+
+py_binary(
+    name = "weekly_green_metric",
+    srcs = ["weekly_green_metric.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    deps = [
+        ci_require("boto3"),
+        ci_require("click"),
+        "//ci/ray_ci:ray_ci_lib",
+    ],
+)
+
+py_binary(
+    name = "filter_tests",
+    srcs = ["filter_tests.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    deps = [
+        ci_require("click"),
+        "//ci/ray_ci:ray_ci_lib",
+        "//release:ray_release",
+    ],
+)
+
+py_library(
+    name = "update_version_lib",
+    srcs = ["update_version_lib.py"],
+    visibility = ["//ci/ray_ci/automation:__subpackages__"],
+    deps = [],
+)
+
+py_test(
+    name = "test_update_version_lib",
+    size = "small",
+    srcs = ["test_update_version_lib.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ci_require("pytest"),
+        ":update_version_lib",
+    ],
+)
+
+py_binary(
+    name = "update_version",
+    srcs = ["update_version.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    deps = [
+        ci_require("click"),
+        ":update_version_lib",
+    ],
+)
+
+py_library(
+    name = "docker_tags_lib",
+    srcs = ["docker_tags_lib.py"],
+    data = [
+        "@crane_linux_x86_64//:file",
+    ],
+    visibility = ["//ci/ray_ci/automation:__subpackages__"],
+    deps = [
+        ci_require("requests"),
+        "//ci/ray_ci:ray_ci_lib",
+        ci_require("bazel-runfiles"),
+    ],
+)
+
+py_test(
+    name = "test_docker_tags_lib",
+    size = "small",
+    srcs = ["test_docker_tags_lib.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ci_require("pytest"),
+        ci_require("docker"),
+        ":docker_tags_lib",
+    ],
+)
+
+py_library(
+    name = "ray_wheels_lib",
+    srcs = ["ray_wheels_lib.py"],
+    visibility = ["//ci/ray_ci/automation:__subpackages__"],
+    deps = [
+        ci_require("boto3"),
+        "//ci/ray_ci:ray_ci_lib",
+    ],
+)
+
+py_test(
+    name = "test_ray_wheels_lib",
+    srcs = ["test_ray_wheels_lib.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ci_require("pytest"),
+        ":ray_wheels_lib",
+    ],
+)
+
+py_library(
+    name = "pypi_lib",
+    srcs = ["pypi_lib.py"],
+    visibility = ["//ci/ray_ci/automation:__subpackages__"],
+    deps = [
+        "//release:ray_release",
+        ci_require("twine"),
+    ],
+)
+
+py_test(
+    name = "test_pypi_lib",
+    srcs = ["test_pypi_lib.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ci_require("pytest"),
+        ":pypi_lib",
+    ],
+)
+
+py_binary(
+    name = "upload_wheels_pypi",
+    srcs = ["upload_wheels_pypi.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    deps = [
+        ":pypi_lib",
+        ":ray_wheels_lib",
+        ci_require("click"),
+    ],
+)
+
+py_binary(
+    name = "list_docker_tags",
+    srcs = ["list_docker_tags.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    deps = [
+        ":docker_tags_lib",
+        ci_require("click"),
+    ],
+)
+
+py_binary(
+    name = "check_nightly_ray_commit",
+    srcs = ["check_nightly_ray_commit.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    deps = [
+        ":docker_tags_lib",
+        ci_require("click"),
+        ci_require("docker"),
+    ],
+)
+
+py_test(
+    name = "test_determine_microcheck_tests",
+    srcs = ["test_determine_microcheck_tests.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ci_require("pytest"),
+        ":automation",
+    ],
+)

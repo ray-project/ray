@@ -43,10 +43,12 @@ class TypeSpec(Spec):
     Args:
         dtype: The type of the object.
 
-    Examples:
-        >>> spec = TypeSpec(tf.Tensor)
-        >>> spec.validate(tf.ones((2, 3))) # passes
-        >>> spec.validate(torch.ones((2, 3))) # ValueError
+    .. testcode::
+        :skipif: True
+
+        spec = TypeSpec(tf.Tensor)
+        spec.validate(tf.ones((2, 3))) # passes
+        spec.validate(torch.ones((2, 3))) # ValueError
     """
 
     def __init__(self, dtype: Type) -> None:
@@ -88,12 +90,14 @@ class TensorSpec(Spec):
             the shape of the tensor is (B, 3). B is to be determined during
             run-time but C is fixed to 3.
 
-    Examples:
-        >>> spec = TensorSpec("b, d", d=128, dtype=tf.float32)
-        >>> spec.shape  # ('b', 128)
-        >>> spec.validate(torch.rand(32, 128, dtype=torch.float32))  # passes
-        >>> spec.validate(torch.rand(32, 64, dtype=torch.float32))   # raises ValueError
-        >>> spec.validate(torch.rand(32, 128, dtype=torch.float64))  # raises ValueError
+    .. testcode::
+        :skipif: True
+
+        spec = TensorSpec("b, d", d=128, dtype=tf.float32)
+        spec.shape  # ('b', 128)
+        spec.validate(torch.rand(32, 128, dtype=torch.float32))  # passes
+        spec.validate(torch.rand(32, 64, dtype=torch.float32))   # raises ValueError
+        spec.validate(torch.rand(32, 128, dtype=torch.float64))  # raises ValueError
 
     Public Methods:
         validate: Checks if the shape and dtype of the tensor matches the

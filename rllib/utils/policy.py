@@ -27,7 +27,6 @@ from ray.rllib.utils.typing import (
     AgentConnectorDataType,
     AgentConnectorsOutput,
     PartialAlgorithmConfigDict,
-    PolicyID,
     PolicyState,
     TensorStructType,
     TensorType,
@@ -314,12 +313,9 @@ def compute_log_likelihoods_from_input_dict(
     return log_likelihoods
 
 
-@Deprecated(new="Policy.from_checkpoint([checkpoint path], [policy IDs]?)", error=False)
-def load_policies_from_checkpoint(
-    path: str, policy_ids: Optional[List[PolicyID]] = None
-) -> Dict[PolicyID, "Policy"]:
-
-    return Policy.from_checkpoint(path, policy_ids)
+@Deprecated(new="Policy.from_checkpoint([checkpoint path], [policy IDs]?)", error=True)
+def load_policies_from_checkpoint(path, policy_ids=None):
+    pass
 
 
 def __check_atari_obs_space(obs):

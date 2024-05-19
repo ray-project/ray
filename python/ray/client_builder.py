@@ -14,7 +14,7 @@ from ray._private.ray_constants import (
     RAY_NAMESPACE_ENVIRONMENT_VARIABLE,
     RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE,
 )
-from ray._private.utils import split_address
+from ray._private.utils import check_ray_client_dependencies_installed, split_address
 from ray._private.worker import BaseContext
 from ray._private.worker import init as ray_driver_init
 from ray.job_config import JobConfig
@@ -33,15 +33,17 @@ CLIENT_DOCS_URL = (
 class ClientContext(BaseContext):
     """
     Basic context manager for a ClientBuilder connection.
+
+    `protocol_version` is no longer used.
     """
 
     dashboard_url: Optional[str]
     python_version: str
     ray_version: str
     ray_commit: str
-    protocol_version: Optional[str]
     _num_clients: int
     _context_to_restore: Optional[ray.util.client.RayAPIStub]
+    protocol_version: Optional[str] = None  # Deprecated
 
     def __enter__(self) -> "ClientContext":
         self._swap_context()
@@ -95,6 +97,12 @@ class ClientBuilder:
     """
 
     def __init__(self, address: Optional[str]) -> None:
+        if not check_ray_client_dependencies_installed():
+            raise ValueError(
+                "Ray Client requires pip package `ray[client]`. "
+                "If you installed the minimal Ray (e.g. `pip install ray`), "
+                "please reinstall by executing `pip install ray[client]`."
+            )
         self.address = address
         self._job_config = JobConfig()
         self._remote_init_kwargs = {}
@@ -179,7 +187,6 @@ class ClientBuilder:
             python_version=client_info_dict["python_version"],
             ray_version=client_info_dict["ray_version"],
             ray_commit=client_info_dict["ray_commit"],
-            protocol_version=client_info_dict["protocol_version"],
             _num_clients=client_info_dict["num_clients"],
             _context_to_restore=ray.util.client.ray.get_context(),
         )
@@ -302,7 +309,6 @@ class _LocalClientBuilder(ClientBuilder):
             ),
             ray_version=ray.__version__,
             ray_commit=ray.__commit__,
-            protocol_version=None,
             _num_clients=1,
             _context_to_restore=None,
         )

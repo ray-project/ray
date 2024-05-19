@@ -1,4 +1,4 @@
-# This is a RayCluster configuration for exploration of the 100Gi Ray AIR XGBoostTrainer benchmark.
+# This is a RayCluster configuration for exploration of the 100Gi Ray XGBoostTrainer benchmark.
 
 # The configuration includes 1 Ray head pod and 9 Ray worker pods.
 # Each Ray container requests 54 Gi memory and 14 CPU.

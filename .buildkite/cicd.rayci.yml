@@ -1,0 +1,14 @@
+group: reef tests
+steps:
+  - label: ":coral: reef: ci+release tooling tests"
+    key: reef-tests
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //ci/ray_ci/... //release/... ci
+          --only-tags=release_unit,ci_unit
+          --parallelism-per-worker 2
+          --build-name oss-ci-base_test
+          --build-type skip
+    instance_type: small
+    depends_on:
+      - oss-ci-base_test
+      - forge

@@ -2,6 +2,7 @@ import logging
 import os
 import subprocess
 import time
+import traceback
 from threading import Thread
 
 import click
@@ -87,10 +88,17 @@ class NodeUpdater:
         restart_only=False,
         for_recovery=False,
     ):
-
         self.log_prefix = "NodeUpdater: {}: ".format(node_id)
-        use_internal_ip = use_internal_ip or provider_config.get(
-            "use_internal_ips", False
+        # Three cases:
+        # 1) use_internal_ip arg is True -> use_internal_ip is True
+        # 2) worker node -> use value of provider_config["use_internal_ips"]
+        # 3) head node -> use value of provider_config["use_internal_ips"] unless
+        #                 overriden by provider_config["use_external_head_ip"]
+        use_internal_ip = use_internal_ip or (
+            provider_config.get("use_internal_ips", False)
+            and not (
+                is_head_node and provider_config.get("use_external_head_ip", False)
+            )
         )
         self.cmd_runner = provider.get_command_runner(
             self.log_prefix,
@@ -164,16 +172,19 @@ class NodeUpdater:
 
             cli_logger.error("!!!")
             if hasattr(e, "cmd"):
+                stderr_output = getattr(e, "stderr", "No stderr available")
                 cli_logger.error(
-                    "Setup command `{}` failed with exit code {}. stderr:",
+                    "Setup command `{}` failed with exit code {}. stderr: {}",
                     cf.bold(e.cmd),
                     e.returncode,
+                    stderr_output,
                 )
             else:
-                cli_logger.verbose_error("{}", str(vars(e)))
+                cli_logger.verbose_error("Exception details: {}", str(vars(e)))
+                full_traceback = traceback.format_exc()
+                cli_logger.error("Full traceback: {}", full_traceback)
                 # todo: handle this better somehow?
-                cli_logger.error("{}", str(e))
-            # todo: print stderr here
+                cli_logger.error("Error message: {}", str(e))
             cli_logger.error("!!!")
             cli_logger.newline()
 
@@ -267,7 +278,6 @@ class NodeUpdater:
             "Waiting for SSH to become available", _numbered=("[]", 1, NUM_SETUP_STEPS)
         ):
             with LogTimer(self.log_prefix + "Got remote shell"):
-
                 cli_logger.print("Running `{}` as a test.", cf.bold("uptime"))
                 first_conn_refused_time = None
                 while True:
@@ -461,7 +471,6 @@ class NodeUpdater:
                         with LogTimer(
                             self.log_prefix + "Setup commands", show_status=True
                         ):
-
                             total = len(self.setup_commands)
                             for i, cmd in enumerate(self.setup_commands):
                                 global_event_system.execute_callback(
@@ -497,7 +506,6 @@ class NodeUpdater:
             global_event_system.execute_callback(CreateClusterEvent.start_ray_runtime)
             with LogTimer(self.log_prefix + "Ray start commands", show_status=True):
                 for cmd in self.ray_start_commands:
-
                     env_vars = {}
                     if self.is_head_node:
                         if usage_lib.usage_stats_enabled():

@@ -100,6 +100,7 @@ ObjectManager::ObjectManager(
       object_manager_server_("ObjectManager",
                              config_.object_manager_port,
                              config_.object_manager_address == "127.0.0.1",
+                             ClusterID::Nil(),
                              config_.rpc_service_threads_number),
       object_manager_service_(rpc_service_, *this),
       client_call_manager_(
@@ -490,7 +491,7 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id,
                   rpc_client,
                   [=](const Status &status) {
                     // Post back to the main event loop because the
-                    // PushManager is thread-safe.
+                    // PushManager is not thread-safe.
                     main_service_->post(
                         [this, node_id, object_id]() {
                           push_manager_->OnChunkComplete(node_id, object_id);
@@ -779,6 +780,10 @@ void ObjectManager::FillObjectStoreStats(rpc::GetNodeStatsReply *reply) const {
   stats->set_object_store_bytes_avail(config_.object_store_memory);
   stats->set_num_local_objects(local_objects_.size());
   stats->set_consumed_bytes(plasma::plasma_store_runner->GetConsumedBytes());
+  stats->set_cumulative_created_objects(
+      plasma::plasma_store_runner->GetCumulativeCreatedObjects());
+  stats->set_cumulative_created_bytes(
+      plasma::plasma_store_runner->GetCumulativeCreatedBytes());
   stats->set_object_pulls_queued(pull_manager_->HasPullsQueued());
 }
 

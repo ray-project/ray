@@ -1,0 +1,17 @@
+name: "oss-ci-base_build-py$PYTHON"
+froms: ["cr.ray.io/rayproject/oss-ci-base_test-py$PYTHON"]
+dockerfile: ci/docker/base.build.Dockerfile
+srcs:
+  - .bazelrc
+  - ci/ci.sh
+  - ci/env/install-dependencies.sh
+  - ci/env/install-llvm-binaries.sh
+  - ci/pipeline/determine_tests_to_run.py
+  - ci/suppress_output
+  - python/requirements.txt
+  - python/requirements_compiled.txt
+  - python/requirements/test-requirements.txt
+build_args:
+  - DOCKER_IMAGE_BASE_TEST=cr.ray.io/rayproject/oss-ci-base_test-py$PYTHON
+tags:
+  - cr.ray.io/rayproject/oss-ci-base_build-py$PYTHON

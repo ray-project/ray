@@ -1,3 +1,5 @@
+# TODO (sven): Move this example script into the new API stack.
+
 """Example of using RLlib's debug callbacks.
 
 Here we use callbacks to track the average CartPole pole angle magnitude as a
@@ -15,12 +17,14 @@ import os
 
 import ray
 from ray import air, tune
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env import BaseEnv
 from ray.rllib.evaluation import Episode, RolloutWorker
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.algorithms.pg.pg import PGConfig
+from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -66,7 +70,7 @@ class MyCallbacks(DefaultCallbacks):
         policies: Dict[str, Policy],
         episode: Episode,
         env_index: int,
-        **kwargs
+        **kwargs,
     ):
         # Make sure this episode has just been started (only initial obs
         # logged so far).
@@ -86,7 +90,7 @@ class MyCallbacks(DefaultCallbacks):
         policies: Dict[str, Policy],
         episode: Episode,
         env_index: int,
-        **kwargs
+        **kwargs,
     ):
         # Make sure this episode is ongoing.
         assert episode.length > 0, (
@@ -111,7 +115,7 @@ class MyCallbacks(DefaultCallbacks):
         policies: Dict[str, Policy],
         episode: Episode,
         env_index: int,
-        **kwargs
+        **kwargs,
     ):
         # Check if there are multiple episodes in a batch, i.e.
         # "batch_mode": "truncate_episodes".
@@ -129,7 +133,9 @@ class MyCallbacks(DefaultCallbacks):
 
     def on_sample_end(self, *, worker: RolloutWorker, samples: SampleBatch, **kwargs):
         # We can also do our own sanity checks here.
-        assert samples.count == 200, "I was expecting 200 here!"
+        assert (
+            samples.count == 2000
+        ), f"I was expecting 2000 here, but got {samples.count}!"
 
     def on_train_result(self, *, algorithm, result: dict, **kwargs):
         # you can mutate the result dict to add new fields to return
@@ -139,14 +145,15 @@ class MyCallbacks(DefaultCallbacks):
         # of the given metric.
         # For the sake of this example, we will instead compute the variance and mean
         # of the pole angle over the evaluation episodes.
-        pole_angle = result["custom_metrics"]["pole_angle"]
+        custom_metrics = result[ENV_RUNNER_RESULTS]["custom_metrics"]
+        pole_angle = custom_metrics["pole_angle"]
         var = np.var(pole_angle)
         mean = np.mean(pole_angle)
-        result["custom_metrics"]["pole_angle_var"] = var
-        result["custom_metrics"]["pole_angle_mean"] = mean
+        custom_metrics["pole_angle_var"] = var
+        custom_metrics["pole_angle_mean"] = mean
         # We are not interested in these original values
-        del result["custom_metrics"]["pole_angle"]
-        del result["custom_metrics"]["num_batches"]
+        del custom_metrics["pole_angle"]
+        del custom_metrics["num_batches"]
 
     def on_learn_on_batch(
         self, *, policy: Policy, train_batch: SampleBatch, result: dict, **kwargs
@@ -169,7 +176,7 @@ class MyCallbacks(DefaultCallbacks):
         policies: Dict[str, Policy],
         postprocessed_batch: SampleBatch,
         original_batches: Dict[str, Tuple[Policy, SampleBatch]],
-        **kwargs
+        **kwargs,
     ):
         if "num_batches" not in episode.custom_metrics:
             episode.custom_metrics["num_batches"] = 0
@@ -180,22 +187,20 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     config = (
-        PGConfig()
+        PPOConfig()
         .environment(CustomCartPole)
         .framework(args.framework)
         .callbacks(MyCallbacks)
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
-        .rollouts(enable_connectors=False)
+        .env_runners(enable_connectors=False)
         .reporting(keep_per_episode_custom_metrics=True)
     )
 
     ray.init(local_mode=True)
     tuner = tune.Tuner(
-        "PG",
+        "PPO",
         run_config=air.RunConfig(
-            stop={
-                "training_iteration": args.stop_iters,
-            },
+            stop={TRAINING_ITERATION: args.stop_iters},
         ),
         param_space=config,
     )
@@ -203,7 +208,7 @@ if __name__ == "__main__":
     result = tuner.fit().get_best_result()
 
     # Verify episode-related custom metrics are there.
-    custom_metrics = result.metrics["custom_metrics"]
+    custom_metrics = result.metrics["env_runners"]["custom_metrics"]
     print(custom_metrics)
     assert "pole_angle_mean" in custom_metrics
     assert "pole_angle_var" in custom_metrics

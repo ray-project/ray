@@ -48,7 +48,7 @@ def test_mars(ray_start_regular):
     cluster.stop()
 
 
-def test_from_mars_e2e(ray_start_regular, enable_optimizer):
+def test_from_mars_e2e(ray_start_regular):
     import pandas as pd
 
     cluster = mars.new_cluster_in_ray(worker_num=2, worker_cpu=1)

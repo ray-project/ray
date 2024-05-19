@@ -8,6 +8,7 @@ from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
 import requests
 
+import ray
 from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 from ray.dashboard.utils import (
     get_address_for_submission_client,
@@ -433,8 +434,8 @@ class StateApiClient(SubmissionClient):
 
         if total != num_after_truncation:
             raise RayStateApiException(
-                f"Failed to retrieve all {resource.value} from the cluster because "
-                "they are not reachable due to data truncation. It happens "
+                f"Failed to retrieve all {total} {resource.value} from the cluster "
+                "because they are not reachable due to data truncation. It happens "
                 "when the returned data is too large "
                 # When the data is truncated, the truncation
                 # threshold == num_after_truncation. We cannot set this to env
@@ -710,7 +711,7 @@ def get_worker(
 
 @DeveloperAPI
 def get_task(
-    id: str,
+    id: Union[str, "ray.ObjectRef"],
     address: Optional[str] = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
@@ -718,7 +719,7 @@ def get_task(
     """Get task attempts of a task by id.
 
     Args:
-        id: Id of the task
+        id: String id of the task or ObjectRef that corresponds to task
         address: Ray bootstrap address, could be `auto`, `localhost:6379`.
             If None, it will be resolved automatically from an initialized ray.
         timeout: Max timeout value for the state APIs requests made.
@@ -734,9 +735,14 @@ def get_task(
         Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>` if the CLI
             failed to query the data.
     """  # noqa: E501
+    str_id: str
+    if isinstance(id, str):
+        str_id = id
+    else:
+        str_id = id.task_id().hex()
     return StateApiClient(address=address).get(
         StateResource.TASKS,
-        id,
+        str_id,
         GetApiOptions(timeout=timeout),
         _explain=_explain,
     )
@@ -795,6 +801,7 @@ def list_actors(
             If None, it will be resolved automatically from an initialized ray.
         filters: List of tuples of filter key, predicate (=, or !=), and
             the filter value. E.g., `("id", "=", "abcd")`
+            String filter values are case-insensitive.
         limit: Max number of entries returned by the state backend.
         timeout: Max timeout value for the state APIs requests made.
         detail: When True, more details info (specified in `ActorState`)
@@ -843,6 +850,7 @@ def list_placement_groups(
             If None, it will be resolved automatically from an initialized ray.
         filters: List of tuples of filter key, predicate (=, or !=), and
             the filter value. E.g., `("state", "=", "abcd")`
+            String filter values are case-insensitive.
         limit: Max number of entries returned by the state backend.
         timeout: Max timeout value for the state APIs requests made.
         detail: When True, more details info (specified in `PlacementGroupState`)
@@ -887,6 +895,7 @@ def list_nodes(
             If None, it will be resolved automatically from an initialized ray.
         filters: List of tuples of filter key, predicate (=, or !=), and
             the filter value. E.g., `("node_name", "=", "abcd")`
+            String filter values are case-insensitive.
         limit: Max number of entries returned by the state backend.
         timeout: Max timeout value for the state APIs requests made.
         detail: When True, more details info (specified in `NodeState`)
@@ -925,13 +934,14 @@ def list_jobs(
     raise_on_missing_output: bool = True,
     _explain: bool = False,
 ) -> List[JobState]:
-    """List jobs submitted to the cluster by :ref: `ray job submission <jobs-overview>`.
+    """List jobs submitted to the cluster by :ref:`ray job submission <jobs-overview>`.
 
     Args:
         address: Ray bootstrap address, could be `auto`, `localhost:6379`.
             If None, it will be resolved automatically from an initialized ray.
         filters: List of tuples of filter key, predicate (=, or !=), and
             the filter value. E.g., `("status", "=", "abcd")`
+            String filter values are case-insensitive.
         limit: Max number of entries returned by the state backend.
         timeout: Max timeout value for the state APIs requests made.
         detail: When True, more details info (specified in `JobState`)
@@ -977,6 +987,7 @@ def list_workers(
             If None, it will be resolved automatically from an initialized ray.
         filters: List of tuples of filter key, predicate (=, or !=), and
             the filter value. E.g., `("is_alive", "=", "True")`
+            String filter values are case-insensitive.
         limit: Max number of entries returned by the state backend.
         timeout: Max timeout value for the state APIs requests made.
         detail: When True, more details info (specified in `WorkerState`)
@@ -1022,11 +1033,12 @@ def list_tasks(
             If None, it will be resolved automatically from an initialized ray.
         filters: List of tuples of filter key, predicate (=, or !=), and
             the filter value. E.g., `("is_alive", "=", "True")`
+            String filter values are case-insensitive.
         limit: Max number of entries returned by the state backend.
         timeout: Max timeout value for the state APIs requests made.
-        detail: When True, more details info (specified in `WorkerState`)
+        detail: When True, more details info (specified in `TaskState`)
             will be queried and returned. See
-            :class:`WorkerState <ray.util.state.common.WorkerState>`.
+            :class:`TaskState <ray.util.state.common.TaskState>`.
         raise_on_missing_output: When True, exceptions will be raised if
             there is missing data due to truncation/data source unavailable.
         _explain: Print the API information such as API latency or
@@ -1067,6 +1079,7 @@ def list_objects(
             If None, it will be resolved automatically from an initialized ray.
         filters: List of tuples of filter key, predicate (=, or !=), and
             the filter value. E.g., `("ip", "=", "0.0.0.0")`
+            String filter values are case-insensitive.
         limit: Max number of entries returned by the state backend.
         timeout: Max timeout value for the state APIs requests made.
         detail: When True, more details info (specified in `ObjectState`)
@@ -1112,6 +1125,7 @@ def list_runtime_envs(
             If None, it will be resolved automatically from an initialized ray.
         filters: List of tuples of filter key, predicate (=, or !=), and
             the filter value. E.g., `("node_id", "=", "abcdef")`
+            String filter values are case-insensitive.
         limit: Max number of entries returned by the state backend.
         timeout: Max timeout value for the state APIs requests made.
         detail: When True, more details info (specified in `RuntimeEnvState`)
@@ -1347,6 +1361,7 @@ def list_logs(
     r = requests.get(
         f"{api_server_url}/api/v0/logs?{urllib.parse.urlencode(options_dict)}"
     )
+    # TODO(rickyx): we could do better at error handling here.
     r.raise_for_status()
 
     response = r.json()

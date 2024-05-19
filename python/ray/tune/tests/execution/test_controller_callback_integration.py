@@ -1,11 +1,12 @@
+import sys
 from typing import Dict, Optional
 
 import pytest
-import sys
 
 import ray
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
-from ray.tune import Callback
+from ray.train.tests.util import mock_storage_context
+from ray.tune import Callback, ResumeConfig
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
 
@@ -43,23 +44,18 @@ def test_callback_save_restore(
 
     Legacy test: test_trial_runner_3.py::TrialRunnerTest::testCallbackSaveRestore
     """
-    runner = TuneController(
-        callbacks=[StatefulCallback()],
-        experiment_path=str(tmpdir),
-    )
-    runner.add_trial(Trial("__fake", stub=True))
+    storage = mock_storage_context()
+    runner = TuneController(callbacks=[StatefulCallback()], storage=storage)
+    runner.add_trial(Trial("__fake", stub=True, storage=storage))
     for i in range(3):
         runner._callbacks.on_trial_result(
             iteration=i, trials=None, trial=None, result=None
         )
-    runner.checkpoint(force=True)
+    runner.checkpoint(force=True, wait=True)
     callback = StatefulCallback()
-    runner2 = TuneController(
-        callbacks=[callback],
-        experiment_path=str(tmpdir),
-    )
+    runner2 = TuneController(callbacks=[callback], storage=storage)
     assert callback.counter == 0
-    runner2.resume()
+    runner2.resume(resume_config=ResumeConfig())
     assert callback.counter == 3
 
 

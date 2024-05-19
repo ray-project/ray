@@ -36,7 +36,7 @@ class TfRLModule(tf.keras.Model, RLModule):
         return self.forward_train(batch)
 
     @override(RLModule)
-    def get_state(self) -> Mapping[str, Any]:
+    def get_state(self, inference_only: bool = False) -> Mapping[str, Any]:
         return self.get_weights()
 
     @override(RLModule)

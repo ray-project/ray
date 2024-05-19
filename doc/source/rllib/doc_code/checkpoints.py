@@ -4,19 +4,19 @@
 import tempfile
 
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.algorithms.simple_q import SimpleQConfig
+from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.utils.checkpoints import convert_to_msgpack_checkpoint
 
 
 # Base config used for both pickle-based checkpoint and msgpack-based one.
-config = SimpleQConfig().environment("CartPole-v1")
+config = DQNConfig().environment("CartPole-v1")
 # Build algorithm object.
 algo1 = config.build()
 
 # Create standard (pickle-based) checkpoint.
 with tempfile.TemporaryDirectory() as pickle_cp_dir:
     # Note: `save()` always creates a pickle based checkpoint.
-    pickle_cp_dir = algo1.save(checkpoint_dir=pickle_cp_dir)
+    algo1.save(checkpoint_dir=pickle_cp_dir)
 
     # But we can convert this pickle checkpoint to a msgpack one using an RLlib utility
     # function.

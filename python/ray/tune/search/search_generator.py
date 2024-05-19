@@ -3,18 +3,17 @@ import logging
 from typing import Dict, List, Optional, Union
 
 from ray.tune.error import TuneError
-from ray.tune.experiment import Experiment, _convert_to_experiment_list
-from ray.tune.experiment.config_parser import _make_parser, _create_trial_from_spec
+from ray.tune.experiment import Experiment, Trial, _convert_to_experiment_list
+from ray.tune.experiment.config_parser import _create_trial_from_spec, _make_parser
 from ray.tune.search.search_algorithm import SearchAlgorithm
-from ray.tune.search import Searcher
+from ray.tune.search.searcher import Searcher
 from ray.tune.search.util import _set_search_properties_backwards_compatible
-from ray.tune.search.variant_generator import format_vars, _resolve_nested_dict
-from ray.tune.experiment import Trial
+from ray.tune.search.variant_generator import _resolve_nested_dict, format_vars
 from ray.tune.utils.util import (
-    flatten_dict,
-    merge_dicts,
     _atomic_save,
     _load_newest_checkpoint,
+    flatten_dict,
+    merge_dicts,
 )
 from ray.util.annotations import DeveloperAPI
 
@@ -97,14 +96,10 @@ class SearchGenerator(SearchAlgorithm):
             Trial: Returns a single trial.
         """
         if not self.is_finished():
-            return self.create_trial_if_possible(
-                self._experiment.spec, self._experiment.dir_name
-            )
+            return self.create_trial_if_possible(self._experiment.spec)
         return None
 
-    def create_trial_if_possible(
-        self, experiment_spec: Dict, output_path: str
-    ) -> Optional[Trial]:
+    def create_trial_if_possible(self, experiment_spec: Dict) -> Optional[Trial]:
         logger.debug("creating trial")
         trial_id = Trial.generate_id()
         suggested_config = self.searcher.suggest(trial_id)
@@ -124,7 +119,6 @@ class SearchGenerator(SearchAlgorithm):
         tag = "{0}_{1}".format(str(self._counter), format_vars(flattened_config))
         trial = _create_trial_from_spec(
             spec,
-            output_path,
             self._parser,
             evaluated_params=flatten_dict(suggested_config),
             experiment_tag=tag,
@@ -215,7 +209,7 @@ class SearchGenerator(SearchAlgorithm):
                     if key.startswith("name:")
                 ]
                 logger.warning(
-                    "{} was not found in the experiment checkpoint "
+                    "{} was not found in the experiment "
                     "state when restoring. Found {}.".format(searcher_name, names)
                 )
             else:

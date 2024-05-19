@@ -16,11 +16,8 @@ cc_library(
     ]),
     copts = COPTS,
     linkopts = select({
-        "@bazel_tools//src/conditions:windows": [
-        ],
-        "//conditions:default": [
-            "-lpthread",
-        ],
+        "@platforms//os:windows": [],
+        "//conditions:default": ["-lpthread"],
     }),
     strip_include_prefix = "//src",
     visibility = ["//visibility:public"],
@@ -42,4 +39,3 @@ cc_library(
         "@nlohmann_json",
     ],
 )
-

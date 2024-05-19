@@ -7,9 +7,7 @@ debian_packages:
 
 python:
   pip_packages: [
-    torch==2.0.0,
-    torchvision==0.15.1,
-    torchaudio==2.0.1,
+    peft==0.7.0,
     deepspeed,
     fairscale,
     transformers>=4.31.0,
@@ -28,6 +26,8 @@ python:
   conda_packages: []
 
 post_build_cmds:
+  - pip uninstall bitsandbytes -y || true
+  - pip install torch==2.1.1 --index-url https://download.pytorch.org/whl/cu118
   # Install Ray
   - pip3 uninstall -y ray || true && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}

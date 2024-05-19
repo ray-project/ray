@@ -1,23 +1,20 @@
 import asyncio
-from collections import OrderedDict
 import inspect
 import logging
 import time
+from collections import OrderedDict
 from typing import Any, Callable, List, Set
 
-from ray._private.async_compat import sync_to_async
-from ray.serve._private.constants import (
-    SERVE_LOGGER_NAME,
-    PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S,
-)
-from ray.serve.context import (
-    get_global_client,
-    get_internal_replica_context,
-)
-from ray.serve._private.common import MultiplexedReplicaInfo
-from ray.serve._private.utils import MetricsPusher
 from ray.serve import metrics
-
+from ray.serve._private.common import MultiplexedReplicaInfo
+from ray.serve._private.constants import (
+    DEFAULT_LATENCY_BUCKET_MS,
+    PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S,
+    SERVE_LOGGER_NAME,
+)
+from ray.serve._private.metrics_utils import MetricsPusher
+from ray.serve._private.usage import ServeUsageTag
+from ray.serve.context import _get_global_client, _get_internal_replica_context
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -37,6 +34,8 @@ class _ModelMultiplexWrapper:
 
     """
 
+    _PUSH_MULTIPLEXED_MODEL_IDS_TASK_NAME = "push_multiplexed_model_ids"
+
     def __init__(
         self,
         model_load_func: Callable[[str], Any],
@@ -51,24 +50,38 @@ class _ModelMultiplexWrapper:
                 current replica. If it is -1, there is no limit for the number of models
                 per replica.
         """
+
+        ServeUsageTag.MULTIPLEXED_API_USED.record("1")
+
         self.models = OrderedDict()
         self._func: Callable = model_load_func
         self.self_arg: Any = self_arg
         self.max_num_models_per_replica: int = max_num_models_per_replica
 
-        self.model_load_latency_s = metrics.Gauge(
-            "serve_multiplexed_model_load_latency_s",
+        self.model_load_latency_ms = metrics.Histogram(
+            "serve_multiplexed_model_load_latency_ms",
             description="The time it takes to load a model.",
+            boundaries=DEFAULT_LATENCY_BUCKET_MS,
         )
-        self.model_unload_latency_s = metrics.Gauge(
-            "serve_multiplexed_model_unload_latency_s",
+        self.model_unload_latency_ms = metrics.Histogram(
+            "serve_multiplexed_model_unload_latency_ms",
             description="The time it takes to unload a model.",
+            boundaries=DEFAULT_LATENCY_BUCKET_MS,
         )
-        self.num_models = metrics.Gauge(
+        self.num_models_gauge = metrics.Gauge(
             "serve_num_multiplexed_models",
             description="The number of models loaded on the current replica.",
         )
 
+        self.registered_model_gauge = metrics.Gauge(
+            "serve_registered_multiplexed_model_id",
+            description="The model id registered on the current replica.",
+            tag_keys=("model_id",),
+        )
+        self.get_model_requests_counter = metrics.Counter(
+            "serve_multiplexed_get_model_requests_counter",
+            description="The counter for get model requests on the current replica.",
+        )
         self.models_unload_counter = metrics.Counter(
             "serve_multiplexed_models_unload_counter",
             description="The counter for unloaded models on the current replica.",
@@ -78,14 +91,16 @@ class _ModelMultiplexWrapper:
             description="The counter for loaded models on the current replica.",
         )
 
-        context = get_internal_replica_context()
+        context = _get_internal_replica_context()
         if context is None:
             raise RuntimeError(
-                "Fail to retrieve serve replica context, the model multiplexer ",
-                "can only be used within `Deployment`.",
+                "`@serve.multiplex` can only be used within a deployment "
+                "(failed to retrieve Serve replica context)."
             )
+
+        self._app_name: str = context.app_name
         self._deployment_name: str = context.deployment
-        self._replica_tag: str = context.replica_tag
+        self._replica_id: str = context.replica_id
 
         # Whether to push the multiplexed replica info to the controller.
         self._push_multiplexed_replica_info: bool = False
@@ -99,7 +114,8 @@ class _ModelMultiplexWrapper:
         self._model_load_tasks: Set[str] = set()
 
         self.metrics_pusher = MetricsPusher()
-        self.metrics_pusher.register_task(
+        self.metrics_pusher.register_or_update_task(
+            self._PUSH_MULTIPLEXED_MODEL_IDS_TASK_NAME,
             self._push_model_ids_info,
             PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S,
         )
@@ -117,11 +133,15 @@ class _ModelMultiplexWrapper:
     def _push_model_ids_info(self):
         """Push the multiplexed replica info to the controller."""
         try:
+            self.num_models_gauge.set(len(self.models))
+
+            for model_id in self.models:
+                self.registered_model_gauge.set(1, tags={"model_id": model_id})
+
             if self._push_multiplexed_replica_info:
-                get_global_client().record_multiplexed_replica_info(
+                _get_global_client().record_multiplexed_replica_info(
                     MultiplexedReplicaInfo(
-                        self._deployment_name,
-                        self._replica_tag,
+                        self._replica_id,
                         self._get_loading_and_loaded_model_ids(),
                     )
                 )
@@ -143,7 +163,8 @@ class _ModelMultiplexWrapper:
                 )
 
     async def load_model(self, model_id: str) -> Any:
-        """Load the model if it is not loaded yet, and return the user-constructed model object.
+        """Load the model if it is not loaded yet, and return
+            the user-constructed model object.
 
         Args:
             model_id: the model ID.
@@ -158,7 +179,7 @@ class _ModelMultiplexWrapper:
         if not model_id:
             raise ValueError("The model ID cannot be empty.")
 
-        self.num_models.set(len(self.models))
+        self.get_model_requests_counter.inc()
 
         if model_id in self.models:
             # Move the model to the end of the OrderedDict to ensure LRU caching.
@@ -198,12 +219,13 @@ class _ModelMultiplexWrapper:
                         self.models[model_id] = await self._func(
                             self.self_arg, model_id
                         )
-                    loaded_time = time.time() - load_start_time
+                    load_latency_ms = (time.time() - load_start_time) * 1000.0
                     logger.info(
-                        f"Successfully loaded model '{model_id}' in {loaded_time}s."
+                        f"Successfully loaded model '{model_id}' in "
+                        f"{load_latency_ms:.1f}ms."
                     )
                     self._model_load_tasks.discard(model_id)
-                    self.model_load_latency_s.set(time.time() - load_start_time)
+                    self.model_load_latency_ms.observe(load_latency_ms)
                     return self.models[model_id]
                 except Exception as e:
                     logger.error(
@@ -226,8 +248,11 @@ class _ModelMultiplexWrapper:
             if not inspect.iscoroutinefunction(model.__del__):
                 await asyncio.get_running_loop().run_in_executor(None, model.__del__)
             else:
-                await sync_to_async(model.__del__)()
+                await model.__del__()
             setattr(model, "__del__", lambda _: None)
-        unloaded_time = time.time() - unload_start_time
-        self.model_unload_latency_s.set(unloaded_time)
-        logger.info(f"Successfully unloaded model '{model_id}' in {unloaded_time}s.")
+        unload_latency_ms = (time.time() - unload_start_time) * 1000.0
+        self.model_unload_latency_ms.observe(unload_latency_ms)
+        logger.info(
+            f"Successfully unloaded model '{model_id}' in {unload_latency_ms:.1f}ms."
+        )
+        self.registered_model_gauge.set(0, tags={"model_id": model_id})

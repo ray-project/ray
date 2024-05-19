@@ -1,17 +1,14 @@
-import { createStyles, makeStyles } from "@material-ui/core";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import classNames from "classnames";
 import React from "react";
-import {
-  RiCloseCircleFill,
-  RiRecordCircleFill,
-  RiStopCircleFill,
-} from "react-icons/ri";
-import { ServeApplication } from "../type/serve";
+import { RiCloseCircleFill, RiRecordCircleFill } from "react-icons/ri";
+import { ServeDeployment } from "../type/serve";
 import { JobRunningIcon } from "./JobStatus";
 import { ClassNameProps } from "./props";
 
 type ServeStatusIconProps = {
-  app: ServeApplication;
+  deployment: ServeDeployment;
   small: boolean;
 } & ClassNameProps;
 
@@ -36,42 +33,31 @@ const useServeStatusIconStyles = makeStyles((theme) =>
 );
 
 export const ServeStatusIcon = ({
-  app,
+  deployment,
   small,
   className,
 }: ServeStatusIconProps) => {
   const classes = useServeStatusIconStyles();
 
-  switch (app.status) {
-    case "RUNNING":
+  switch (deployment.status) {
+    case "HEALTHY":
       return (
         <RiRecordCircleFill
-          data-testid="serve-status-icon"
           className={classNames(classes.icon, classes.colorSuccess)}
+          title="Healthy"
         />
       );
-    case "NOT_STARTED":
-      return (
-        <RiStopCircleFill
-          data-testid="serve-status-icon"
-          className={classes.icon}
-        />
-      );
-    case "DEPLOY_FAILED":
+    case "UNHEALTHY":
       return (
         <RiCloseCircleFill
-          data-testid="serve-status-icon"
           className={classNames(classes.icon, classes.colorError)}
+          title="Unhealthy"
         />
       );
     default:
-      // DEPLOYING || DELETEING
+      // UPDATING
       return (
-        <JobRunningIcon
-          data-testid="serve-status-icon"
-          className={className}
-          small={small}
-        />
+        <JobRunningIcon className={className} small={small} title="Updating" />
       );
   }
 };

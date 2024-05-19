@@ -18,7 +18,7 @@ model = GradientBoostingClassifier()
 model.fit(iris_dataset["data"], iris_dataset["target"])
 
 
-@serve.deployment(route_prefix="/iris")
+@serve.deployment
 class BoostingModel:
     def __init__(self, model):
         self.model = model
@@ -34,7 +34,7 @@ class BoostingModel:
 
 
 # Deploy model.
-serve.run(BoostingModel.bind(model))
+serve.run(BoostingModel.bind(model), route_prefix="/iris")
 
 # Query it!
 sample_request_input = {"vector": [1.2, 1.0, 1.1, 0.9]}

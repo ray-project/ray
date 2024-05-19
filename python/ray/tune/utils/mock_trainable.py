@@ -1,6 +1,7 @@
 import json
-import numpy as np
 import os
+
+import numpy as np
 
 from ray.tune import Trainable
 
@@ -28,8 +29,8 @@ class MyTrainableClass(Trainable):
         path = os.path.join(checkpoint_dir, "checkpoint")
         with open(path, "w") as f:
             f.write(json.dumps({"timestep": self.timestep}))
-        return path
 
-    def load_checkpoint(self, checkpoint_path):
-        with open(checkpoint_path) as f:
+    def load_checkpoint(self, checkpoint_dir):
+        path = os.path.join(checkpoint_dir, "checkpoint")
+        with open(path, "r") as f:
             self.timestep = json.loads(f.read())["timestep"]

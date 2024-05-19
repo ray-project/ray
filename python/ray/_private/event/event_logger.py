@@ -10,9 +10,10 @@ import threading
 from typing import Dict, Optional
 from datetime import datetime
 
-from google.protobuf.json_format import MessageToDict, Parse
+from google.protobuf.json_format import Parse
 
 from ray.core.generated.event_pb2 import Event
+from ray._private.protobuf_compat import message_to_dict
 
 global_logger = logging.getLogger(__name__)
 
@@ -48,6 +49,12 @@ class EventLoggerAdapter:
         """
         with self.lock:
             self.global_context = {} if not global_context else global_context
+
+    def trace(self, message: str, **kwargs):
+        self._emit(Event.Severity.TRACE, message, **kwargs)
+
+    def debug(self, message: str, **kwargs):
+        self._emit(Event.Severity.DEBUG, message, **kwargs)
 
     def info(self, message: str, **kwargs):
         self._emit(Event.Severity.INFO, message, **kwargs)
@@ -85,9 +92,9 @@ class EventLoggerAdapter:
 
         self.logger.info(
             json.dumps(
-                MessageToDict(
+                message_to_dict(
                     event,
-                    including_default_value_fields=True,
+                    always_print_fields_with_no_presence=True,
                     preserving_proto_field_name=True,
                     use_integers_for_enums=False,
                 )
@@ -157,3 +164,33 @@ def parse_event(event_str: str) -> Optional[Event]:
     except Exception:
         global_logger.exception(f"Failed to parse event: {event_str}")
         return None
+
+
+def filter_event_by_level(event: Event, filter_event_level: str) -> bool:
+    """Filter an event based on event level.
+
+    Args:
+        event: The event to filter.
+        filter_event_level: The event level string to filter by. Any events
+            that are lower than this level will be filtered.
+
+    Returns:
+        True if the event should be filtered, else False.
+    """
+
+    event_levels = {
+        Event.Severity.TRACE: 0,
+        Event.Severity.DEBUG: 1,
+        Event.Severity.INFO: 2,
+        Event.Severity.WARNING: 3,
+        Event.Severity.ERROR: 4,
+        Event.Severity.FATAL: 5,
+    }
+
+    filter_event_level = filter_event_level.upper()
+    filter_event_level = Event.Severity.Value(filter_event_level)
+
+    if event_levels[event.severity] < event_levels[filter_event_level]:
+        return True
+
+    return False

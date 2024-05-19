@@ -1,21 +1,17 @@
 import math
-
 import os
-import torch
-from filelock import FileLock
 
 import pytorch_lightning as pl
-
-
+import torch
+from filelock import FileLock
 from torch.nn import functional as F
 from torch.utils.data import DataLoader, random_split
 from torchmetrics import Accuracy
 from torchvision import transforms
 from torchvision.datasets import MNIST
-from ray.tune.integration.pytorch_lightning import TuneReportCallback
 
 from ray import train, tune
-
+from ray.tune.integration.pytorch_lightning import TuneReportCheckpointCallback
 
 PATH_DATASETS = os.environ.get("PATH_DATASETS", ".")
 
@@ -125,7 +121,11 @@ def train_mnist_tune(config, num_epochs=10, num_gpus=0):
         # If fractional GPUs passed in, convert to int.
         gpus=math.ceil(num_gpus),
         enable_progress_bar=False,
-        callbacks=[TuneReportCallback(metrics, on="validation_end")],
+        callbacks=[
+            TuneReportCheckpointCallback(
+                metrics, on="validation_end", save_checkpoints=False
+            )
+        ],
     )
     trainer.fit(model, dm)
 

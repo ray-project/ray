@@ -1,12 +1,13 @@
-import numpy as np
 import time
+
+import numpy as np
 import torch
 
 import ray
-from ray import train, tune
 import ray.train.torch
-from ray.train.horovod import HorovodTrainer
+from ray import train, tune
 from ray.train import ScalingConfig
+from ray.train.horovod import HorovodTrainer
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 
@@ -48,8 +49,8 @@ class Net(torch.nn.Module):
 
 
 def train_loop_per_worker(config):
-    import torch
     import horovod.torch as hvd
+    import torch
 
     hvd.init()
     device = ray.train.torch.get_device()

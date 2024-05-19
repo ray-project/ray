@@ -1,12 +1,17 @@
 from typing import TYPE_CHECKING, List, Union
 
+from packaging.version import parse as parse_version
+
+from ray._private.utils import _get_pyarrow_version
+
 try:
     import pyarrow
 except ImportError:
     pyarrow = None
 
+
 if TYPE_CHECKING:
-    from ray.data._internal.sort import SortKey
+    from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 
 
 def sort(table: "pyarrow.Table", sort_key: "SortKey") -> "pyarrow.Table":
@@ -251,7 +256,13 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
         table.validate()
     else:
         # No extension array columns, so use built-in pyarrow.concat_tables.
-        table = pyarrow.concat_tables(blocks, promote=True)
+        if parse_version(_get_pyarrow_version()) >= parse_version("14.0.0"):
+            # `promote` was superseded by `promote_options='default'` in Arrow 14. To
+            # prevent `FutureWarning`s, we manually check the Arrow version and use the
+            # appropriate parameter.
+            table = pyarrow.concat_tables(blocks, promote_options="default")
+        else:
+            table = pyarrow.concat_tables(blocks, promote=True)
     return table
 
 

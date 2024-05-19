@@ -1,21 +1,20 @@
 from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import TorchPolicy
-from ray.rllib.utils.annotations import DeveloperAPI, override
-from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.schedules import PiecewiseSchedule
 
 torch, nn = try_import_torch()
 
 
-@Deprecated(error=False)
+@OldAPIStack
 class LearningRateSchedule:
     """Mixin for TorchPolicy that adds a learning rate schedule."""
 
-    @DeveloperAPI
-    def __init__(self, lr, lr_schedule):
+    def __init__(self, lr, lr_schedule, lr2=None, lr2_schedule=None):
         self._lr_schedule = None
+        self._lr2_schedule = None
         # Disable any scheduling behavior related to learning if Learner API is active.
         # Schedules are handled by Learner class.
         if lr_schedule is None:
@@ -25,28 +24,41 @@ class LearningRateSchedule:
                 lr_schedule, outside_value=lr_schedule[-1][-1], framework=None
             )
             self.cur_lr = self._lr_schedule.value(0)
+        if lr2_schedule is None:
+            self.cur_lr2 = lr2
+        else:
+            self._lr2_schedule = PiecewiseSchedule(
+                lr2_schedule, outside_value=lr2_schedule[-1][-1], framework=None
+            )
+            self.cur_lr2 = self._lr2_schedule.value(0)
 
     @override(Policy)
     def on_global_var_update(self, global_vars):
         super().on_global_var_update(global_vars)
-        if self._lr_schedule and not self.config.get("_enable_learner_api", False):
-            self.cur_lr = self._lr_schedule.value(global_vars["timestep"])
-            for opt in self._optimizers:
+        if not self.config.get("enable_rl_module_and_learner", False):
+            if self._lr_schedule:
+                self.cur_lr = self._lr_schedule.value(global_vars["timestep"])
+                for opt in self._optimizers:
+                    for p in opt.param_groups:
+                        p["lr"] = self.cur_lr
+            if self._lr2_schedule:
+                assert len(self._optimizers) == 2
+                self.cur_lr2 = self._lr2_schedule.value(global_vars["timestep"])
+                opt = self._optimizers[1]
                 for p in opt.param_groups:
-                    p["lr"] = self.cur_lr
+                    p["lr"] = self.cur_lr2
 
 
-@Deprecated(error=False)
+@OldAPIStack
 class EntropyCoeffSchedule:
     """Mixin for TorchPolicy that adds entropy coeff decay."""
 
-    @DeveloperAPI
     def __init__(self, entropy_coeff, entropy_coeff_schedule):
         self._entropy_coeff_schedule = None
         # Disable any scheduling behavior related to learning if Learner API is active.
         # Schedules are handled by Learner class.
         if entropy_coeff_schedule is None or (
-            self.config.get("_enable_learner_api", False)
+            self.config.get("enable_rl_module_and_learner", False)
         ):
             self.entropy_coeff = entropy_coeff
         else:
@@ -75,7 +87,7 @@ class EntropyCoeffSchedule:
             )
 
 
-@Deprecated(error=False)
+@OldAPIStack
 class KLCoeffMixin:
     """Assigns the `update_kl()` method to a TorchPolicy.
 
@@ -114,7 +126,7 @@ class KLCoeffMixin:
         super().set_state(state)
 
 
-@Deprecated(error=False)
+@OldAPIStack
 class ValueNetworkMixin:
     """Assigns the `_value()` method to a TorchPolicy.
 
@@ -174,7 +186,7 @@ class ValueNetworkMixin:
         }
 
 
-@Deprecated(error=False)
+@OldAPIStack
 class TargetNetworkMixin:
     """Mixin class adding a method for (soft) target net(s) synchronizations.
 
@@ -198,7 +210,7 @@ class TargetNetworkMixin:
         # Support partial (soft) synching.
         # If tau == 1.0: Full sync from Q-model to target Q-model.
 
-        if self.config.get("_enable_rl_module_api", False):
+        if self.config.get("enable_rl_module_and_learner", False):
             target_current_network_pairs = self.model.get_target_network_pairs()
             for target_network, current_network in target_current_network_pairs:
                 current_state_dict = current_network.state_dict()

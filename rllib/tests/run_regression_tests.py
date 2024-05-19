@@ -20,14 +20,22 @@ import argparse
 import os
 from pathlib import Path
 import sys
+import re
 import yaml
 
 import ray
-from ray.tune import run_experiments
+from ray import air
+from ray.air.integrations.wandb import WandbLoggerCallback
 from ray.rllib import _register_all
 from ray.rllib.common import SupportedFileType
 from ray.rllib.train import load_experiments_from_file
 from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    EVALUATION_RESULTS,
+)
+from ray.tune import run_experiments
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -68,9 +76,51 @@ parser.add_argument(
     type=float,
     default=0.0,
     help=(
-        "Override "
-        "the mean reward specified by the yaml file in the stopping criteria. This "
-        "is particularly useful for timed tests."
+        "Override the mean reward specified by the yaml file in the stopping criteria. "
+        "This is particularly useful for timed tests."
+    ),
+)
+parser.add_argument(
+    "--verbose",
+    type=int,
+    default=2,
+    help="The verbosity level for the main `tune.run_experiments()` call.",
+)
+parser.add_argument(
+    "--wandb-key",
+    type=str,
+    default=None,
+    help="The WandB API key to use for uploading results.",
+)
+parser.add_argument(
+    "--wandb-project",
+    type=str,
+    default=None,
+    help="The WandB project name to use.",
+)
+parser.add_argument(
+    "--wandb-run-name",
+    type=str,
+    default=None,
+    help="The WandB run name to use.",
+)
+# parser.add_argument(
+#    "--wandb-from-checkpoint",
+#    type=str,
+#    default=None,
+#    help=(
+#        "The WandB checkpoint location (e.g. `[team name]/[project name]/checkpoint_"
+#        "[run name]:v[version]`) from which to resume an experiment."
+#    ),
+# )
+parser.add_argument(
+    "--checkpoint-freq",
+    type=int,
+    default=0,
+    help=(
+        "The frequency (in training iterations) with which to create checkpoints. "
+        "Note that if --wandb-key is provided, these checkpoints will automatically "
+        "be uploaded to WandB."
     ),
 )
 
@@ -81,8 +131,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.yaml_dir != "":
-        deprecation_warning(old="--yaml-dir", new="--dir", error=False)
-        args.dir = args.yaml_dir
+        deprecation_warning(old="--yaml-dir", new="--dir", error=True)
 
     # Bazel regression test mode: Get path to look for yaml files.
     # Get the path or single file to use.
@@ -125,9 +174,14 @@ if __name__ == "__main__":
         ), "Error, can only run a single experiment per file!"
 
         exp = list(experiments.values())[0]
+        exp_name = list(experiments.keys())[0]
 
         # Set the number of samples to run.
         exp["num_samples"] = args.num_samples
+
+        # Make sure there is a config and a stopping criterium.
+        exp["config"] = exp.get("config", {})
+        exp["stop"] = exp.get("stop", {})
 
         # Override framework setting with the command line one, if provided.
         # Otherwise, will use framework setting in file (or default: torch).
@@ -135,20 +189,23 @@ if __name__ == "__main__":
             exp["config"]["framework"] = args.framework
         # Override env setting if given on command line.
         if args.env is not None:
-            exp["config"]["env"] = exp["env"] = args.env
+            exp["config"]["env"] = args.env
+        else:
+            exp["config"]["env"] = exp["env"]
 
         # Override the mean reward if specified. This is used by the ray ci
         # for overriding the episode reward mean for tf2 tests for off policy
         # long learning tests such as sac and ddpg on the pendulum environment.
         if args.override_mean_reward != 0.0:
             exp["stop"][
-                "sampler_results/episode_reward_mean"
+                f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
             ] = args.override_mean_reward
 
-        # QMIX does not support tf yet -> skip.
-        if exp["run"] == "QMIX" and args.framework != "torch":
-            print(f"Skipping framework='{args.framework}' for QMIX.")
-            continue
+        # Checkpoint settings.
+        exp["checkpoint_config"] = air.CheckpointConfig(
+            checkpoint_frequency=args.checkpoint_freq,
+            checkpoint_at_end=args.checkpoint_freq > 0,
+        )
 
         # Always run with eager-tracing when framework=tf2, if not in local-mode
         # and unless the yaml explicitly tells us to disable eager tracing.
@@ -168,6 +225,24 @@ if __name__ == "__main__":
             print("== Test config ==")
             print(yaml.dump(experiments))
 
+        callbacks = None
+        if args.wandb_key is not None:
+            project = args.wandb_project or (
+                exp["run"].lower()
+                + "-"
+                + re.sub("\\W+", "-", exp["config"]["env"].lower())
+                if config_is_python
+                else list(experiments.keys())[0]
+            )
+            callbacks = [
+                WandbLoggerCallback(
+                    api_key=args.wandb_key,
+                    project=project,
+                    upload_checkpoints=True,
+                    **({"name": args.wandb_run_name} if args.wandb_run_name else {}),
+                )
+            ]
+
         # Try running each test 3 times and make sure it reaches the given
         # reward.
         passed = False
@@ -180,7 +255,12 @@ if __name__ == "__main__":
                 ray.init()
             else:
                 try:
-                    trials = run_experiments(experiments, resume=False, verbose=2)
+                    trials = run_experiments(
+                        experiments,
+                        resume=False,
+                        verbose=args.verbose,
+                        callbacks=callbacks,
+                    )
                 finally:
                     ray.shutdown()
                     _register_all()
@@ -189,33 +269,36 @@ if __name__ == "__main__":
                 # If we have evaluation workers, use their rewards.
                 # This is useful for offline learning tests, where
                 # we evaluate against an actual environment.
-                check_eval = exp["config"].get("evaluation_interval", None) is not None
+                check_eval = bool(exp["config"].get("evaluation_interval"))
                 reward_mean = (
-                    t.last_result["evaluation"]["sampler_results"][
-                        "episode_reward_mean"
+                    t.last_result[EVALUATION_RESULTS][ENV_RUNNER_RESULTS][
+                        EPISODE_RETURN_MEAN
                     ]
                     if check_eval
                     else (
-                        # Some algos don't store sampler results under `sampler_results`
+                        # Some algos don't store sampler results under `env_runners`
                         # e.g. ARS. Need to keep this logic around for now.
-                        t.last_result["sampler_results"]["episode_reward_mean"]
-                        if "sampler_results" in t.last_result
-                        else t.last_result["episode_reward_mean"]
+                        t.last_result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
+                        if ENV_RUNNER_RESULTS in t.last_result
+                        else t.last_result[EPISODE_RETURN_MEAN]
                     )
                 )
 
                 # If we are using evaluation workers, we may have
                 # a stopping criterion under the "evaluation/" scope. If
-                # not, use `episode_reward_mean`.
+                # not, use `episode_return_mean`.
                 if check_eval:
                     min_reward = t.stopping_criterion.get(
-                        "evaluation/sampler_results/episode_reward_mean",
-                        t.stopping_criterion.get("sampler_results/episode_reward_mean"),
+                        f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/"
+                        f"{EPISODE_RETURN_MEAN}",
+                        t.stopping_criterion.get(
+                            f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
+                        ),
                     )
-                # Otherwise, expect `episode_reward_mean` to be set.
+                # Otherwise, expect `env_runners/episode_return_mean` to be set.
                 else:
                     min_reward = t.stopping_criterion.get(
-                        "sampler_results/episode_reward_mean"
+                        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
                     )
 
                 # If min reward not defined, always pass.

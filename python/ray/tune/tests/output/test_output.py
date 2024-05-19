@@ -1,31 +1,28 @@
 import argparse
-
+import sys
 from unittest import mock
 
 import pytest
-import sys
-
 from freezegun import freeze_time
 
 from ray import tune
 from ray.air.constants import TRAINING_ITERATION
+from ray.tune.experiment.trial import Trial
 from ray.tune.experimental.output import (
-    _get_time_str,
-    _get_trials_by_state,
-    _get_trial_info,
-    _infer_user_metrics,
-    _max_len,
-    _current_best_trial,
-    _best_trial_str,
-    _get_trial_table_data,
-    _get_dict_as_table_data,
-    _infer_params,
     AirVerbosity,
     TrainReporter,
     TuneTerminalReporter,
+    _best_trial_str,
+    _current_best_trial,
+    _get_dict_as_table_data,
+    _get_time_str,
+    _get_trial_info,
+    _get_trial_table_data,
+    _get_trials_by_state,
+    _infer_params,
+    _infer_user_metrics,
+    _max_len,
 )
-from ray.tune.experiment.trial import Trial
-
 
 LAST_RESULT = {
     "custom_metrics": {},
@@ -99,7 +96,7 @@ def test_get_trials_by_state():
 
 def test_infer_user_metrics():
     t = Trial("__fake", stub=True)
-    t.last_result = LAST_RESULT
+    t.run_metadata.last_result = LAST_RESULT
     result = [
         "episode_reward_max",
         "episode_reward_min",
@@ -119,15 +116,15 @@ def test_max_len():
 def test_current_best_trial():
     t1 = Trial("__fake", stub=True)
     t2 = Trial("__fake", stub=True)
-    t1.last_result = {"metric": 2}
-    t2.last_result = {"metric": 1}
+    t1.run_metadata.last_result = {"metric": 2}
+    t2.run_metadata.last_result = {"metric": 1}
     assert _current_best_trial([t1, t2], metric="metric", mode="min") == (t2, "metric")
 
 
 def test_best_trial_str():
     t = Trial("__fake", stub=True)
     t.trial_id = "18ae7_00005"
-    t.last_result = {
+    t.run_metadata.last_result = {
         "loss": 0.5918508041056858,
         "config": {"train_loop_config": {"lr": 0.059253447253394785}},
     }
@@ -142,7 +139,7 @@ def test_get_trial_info():
     t = Trial("__fake", stub=True)
     t.trial_id = "af42b609"
     t.set_status(Trial.RUNNING)
-    t.last_result = LAST_RESULT
+    t.run_metadata.last_result = LAST_RESULT
     assert _get_trial_info(
         t,
         param_keys=[],
@@ -162,7 +159,7 @@ def test_get_trial_table_data_less_than_20():
         t = Trial("__fake", stub=True)
         t.trial_id = str(i)
         t.set_status(Trial.RUNNING)
-        t.last_result = {"episode_reward_mean": 100 + i}
+        t.run_metadata.last_result = {"episode_reward_mean": 100 + i}
         t.config = {"param": i}
         trials.append(t)
     table_data = _get_trial_table_data(trials, ["param"], ["episode_reward_mean"])
@@ -182,7 +179,7 @@ def test_get_trial_table_data_more_than_20():
             t = Trial("__fake", stub=True)
             t.trial_id = str(i)
             t.set_status(status)
-            t.last_result = {"episode_reward_mean": 100 + i}
+            t.run_metadata.last_result = {"episode_reward_mean": 100 + i}
             t.config = {"param": i}
             trials.append(t)
     table_data = _get_trial_table_data(trials, ["param"], ["episode_reward_mean"])

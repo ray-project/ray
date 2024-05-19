@@ -25,7 +25,7 @@
 #include "ray/common/function_descriptor.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
-#include "ray/common/scheduling/scheduling_resources.h"
+#include "ray/common/scheduling/resource_set.h"
 #include "ray/common/task/task_common.h"
 #include "ray/util/container_util.h"
 
@@ -238,6 +238,9 @@ static inline rpc::ObjectReference GetReferenceForActorDummyObject(
   return ref;
 };
 
+/// Task attempt is a task with a specific attempt number.
+using TaskAttempt = std::pair<TaskID, int32_t>;
+
 /// Wrapper class of protobuf `TaskSpec`, see `common.proto` for details.
 /// TODO(ekl) we should consider passing around std::unique_ptr<TaskSpecification>
 /// instead `const TaskSpecification`, since this class is actually mutable.
@@ -284,6 +287,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   TaskID ParentTaskId() const;
 
+  ActorID RootDetachedActorId() const;
+
   TaskID SubmitterTaskId() const;
 
   size_t ParentCounter() const;
@@ -328,6 +333,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   bool IsStreamingGenerator() const;
 
+  int64_t GeneratorBackpressureNumObjects() const;
+
   std::vector<ObjectID> DynamicReturnIds() const;
 
   void AddDynamicReturnId(const ObjectID &dynamic_return_id);
@@ -339,6 +346,9 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   const uint8_t *ArgMetadata(size_t arg_index) const;
 
   size_t ArgMetadataSize(size_t arg_index) const;
+
+  /// Return true if the task should be retried upon exceptions.
+  bool ShouldRetryExceptions() const;
 
   /// Return the ObjectRefs that were inlined in this task argument.
   const std::vector<rpc::ObjectReference> ArgInlinedRefs(size_t arg_index) const;
@@ -481,6 +491,9 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   void EmitTaskMetrics() const;
 
+  /// \return true if task events from this task should be reported.
+  bool EnableTaskEvents() const;
+
  private:
   void ComputeResources();
 
@@ -498,10 +511,10 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   static absl::Mutex mutex_;
   /// Keep global static id mappings for SchedulingClass for performance.
   static absl::flat_hash_map<SchedulingClassDescriptor, SchedulingClass> sched_cls_to_id_
-      GUARDED_BY(mutex_);
+      ABSL_GUARDED_BY(mutex_);
   static absl::flat_hash_map<SchedulingClass, SchedulingClassDescriptor> sched_id_to_cls_
-      GUARDED_BY(mutex_);
-  static int next_sched_id_ GUARDED_BY(mutex_);
+      ABSL_GUARDED_BY(mutex_);
+  static int next_sched_id_ ABSL_GUARDED_BY(mutex_);
 };
 
 /// \class WorkerCacheKey
@@ -516,12 +529,17 @@ class WorkerCacheKey {
   /// worker. \param required_resources The required resouce.
   /// worker. \param is_actor Whether the worker will be an actor. This is set when
   ///         task type isolation between workers is enabled.
-  /// worker. \param iis_gpu Whether the worker will be using GPUs. This is set when
+  /// worker. \param is_gpu Whether the worker will be using GPUs. This is set when
   ///         resource type isolation between workers is enabled.
+  /// worker. \param is_root_detached_actor Whether the worker will be running
+  ///         tasks or actors whose root ancestor is a detached actor. This is set
+  ///         to prevent worker reuse between tasks whose root is the driver process
+  ///         and tasks whose root is a detached actor.
   WorkerCacheKey(const std::string serialized_runtime_env,
                  const absl::flat_hash_map<std::string, double> &required_resources,
                  bool is_actor,
-                 bool is_gpu);
+                 bool is_gpu,
+                 bool is_root_detached_actor);
 
   bool operator==(const WorkerCacheKey &k) const;
 
@@ -553,6 +571,9 @@ class WorkerCacheKey {
   const bool is_actor;
   /// Whether the worker is to use a GPU.
   const bool is_gpu;
+  /// Whether the worker is to run tasks or actors
+  /// whose root is a detached actor.
+  const bool is_root_detached_actor;
   /// The hash of the worker's environment.  This is set to 0
   /// for unspecified or empty environments.
   const std::size_t hash_ = 0;

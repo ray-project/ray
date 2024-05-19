@@ -29,29 +29,6 @@ suppress_xtrace() {
   { return "${status}"; } 2> /dev/null
 }
 
-# If provided the names of one or more environment variables, returns 0 if any of them is triggered.
-# Usage: should_run_job [VAR_NAME]...
-should_run_job() {
-  local skip=0
-  if [ -n "${1-}" ]; then  # were any triggers provided? (if not, then the job will always run)
-    local envvar active_triggers=()
-    for envvar in "$@"; do
-      if [ "${!envvar}" = 1 ]; then
-        # success! we found at least one of the given triggers is occurring
-        active_triggers+=("${envvar}=${!envvar}")
-      fi
-    done
-    if [ 0 -eq "${#active_triggers[@]}" ]; then
-      echo "Job is not triggered by any of $1; skipping job."
-      sleep 15  # make sure output is flushed
-      skip=1
-    else
-      echo "Job is triggered by: ${active_triggers[*]}"
-    fi
-  fi
-  return "${skip}"
-}
-
 # Idempotent environment loading
 reload_env() {
   # Try to only modify CI-specific environment variables here (TRAVIS_... or GITHUB_...),
@@ -91,6 +68,7 @@ NEED_WHEELS="$(_need_wheels)"
 
 compile_pip_dependencies() {
   # Compile boundaries
+  TARGET="${1-requirements_compiled.txt}"
 
   if [[ "${HOSTTYPE}" == "aarch64" || "${HOSTTYPE}" = "arm64" ]]; then
     # Resolution currently does not work on aarch64 as some pinned packages
@@ -99,6 +77,8 @@ compile_pip_dependencies() {
     echo "Skipping for aarch64"
     return 0
   fi
+
+  echo "Target file: $TARGET"
 
   # shellcheck disable=SC2262
   alias pip="python -m pip"
@@ -109,33 +89,39 @@ compile_pip_dependencies() {
   python -c "import torch" 2>/dev/null && HAS_TORCH=1
   pip install --no-cache-dir numpy torch
 
-  if [ -f "${WORKSPACE_DIR}/python/requirements_compiled.txt" ]; then
-    echo requirements_compiled already exists
-  else
-    pip-compile --resolver=backtracking -q \
-       --pip-args --no-deps --strip-extras --no-annotate --no-header -o \
-      "${WORKSPACE_DIR}/python/requirements_compiled.txt" \
-      "${WORKSPACE_DIR}/python/requirements.txt" \
-      "${WORKSPACE_DIR}/python/requirements/lint-requirements.txt" \
-      "${WORKSPACE_DIR}/python/requirements/test-requirements.txt" \
-      "${WORKSPACE_DIR}/python/requirements/docker/ray-docker-requirements.txt" \
-      "${WORKSPACE_DIR}/python/requirements/ml/core-requirements.txt" \
-      "${WORKSPACE_DIR}/python/requirements/ml/data-requirements.txt" \
-      "${WORKSPACE_DIR}/python/requirements/ml/data-test-requirements.txt" \
-      "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt" \
-      "${WORKSPACE_DIR}/python/requirements/ml/rllib-requirements.txt" \
-      "${WORKSPACE_DIR}/python/requirements/ml/rllib-test-requirements.txt" \
-      "${WORKSPACE_DIR}/python/requirements/ml/train-requirements.txt" \
-      "${WORKSPACE_DIR}/python/requirements/ml/train-test-requirements.txt" \
-      "${WORKSPACE_DIR}/python/requirements/ml/tune-requirements.txt" \
-      "${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt"
-  fi
+  pip-compile --verbose --resolver=backtracking \
+     --pip-args --no-deps --strip-extras --no-header -o \
+    "${WORKSPACE_DIR}/python/$TARGET" \
+    "${WORKSPACE_DIR}/python/requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/lint-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/test-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/anyscale-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/docker/ray-docker-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/ml/core-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/ml/data-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/ml/data-test-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/ml/rllib-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/ml/rllib-test-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/ml/train-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/ml/train-test-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/ml/tune-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt"
 
   # Remove some pins from upstream dependencies:
   # ray, xgboost-ray, lightgbm-ray, tune-sklearn
-  sed -i "/^ray==/d;/^xgboost-ray==/d;/^lightgbm-ray==/d;/^tune-sklearn==/d" "${WORKSPACE_DIR}/python/requirements_compiled.txt"
+  sed -i "/^ray==/d;/^xgboost-ray==/d;/^lightgbm-ray==/d;/^tune-sklearn==/d" "${WORKSPACE_DIR}/python/$TARGET"
 
-  cat "${WORKSPACE_DIR}/python/requirements_compiled.txt"
+  # Delete local installation
+  sed -i "/@ file/d" "${WORKSPACE_DIR}/python/$TARGET"
+
+  # Remove +cpu and +pt20cpu suffixes e.g. for torch dependencies
+  # This is needed because we specify the requirements as torch==version, but
+  # the resolver adds the device-specific version tag. If this is not removed,
+  # pip install will complain about irresolvable constraints.
+  sed -i -E 's/==([\.0-9]+)\+[^\b]*cpu/==\1/g' "${WORKSPACE_DIR}/python/$TARGET"
+
+  cat "${WORKSPACE_DIR}/python/$TARGET"
 
   if [ "$HAS_TORCH" -eq 0 ]; then
     pip uninstall -y torch
@@ -149,7 +135,6 @@ test_core() {
   case "${OSTYPE}" in
     msys)
       args+=(
-        -//:core_worker_test
         -//src/ray/util/tests:event_test
         -//:gcs_server_rpc_test
         -//src/ray/common/test:ray_syncer_test # TODO (iycheng): it's flaky on windows. Add it back once we figure out the cause
@@ -162,74 +147,66 @@ test_core() {
   bazel test --config=ci --build_tests_only $(./ci/run/bazel_export_options) -- "${args[@]}"
 }
 
-prepare_docker() {
-    rm "${WORKSPACE_DIR}"/python/dist/* ||:
-    pushd "${WORKSPACE_DIR}/python"
-    pip install -e . --verbose
-    python setup.py bdist_wheel
-    tmp_dir="/tmp/prepare_docker_$RANDOM"
-    mkdir -p $tmp_dir
-    cp "${WORKSPACE_DIR}"/python/dist/*.whl $tmp_dir
-    wheel=$(ls "${WORKSPACE_DIR}"/python/dist/)
-    base_image=$(python -c "import sys; print(f'rayproject/ray-deps:nightly-py{sys.version_info[0]}{sys.version_info[1]}-cpu')")
-    echo "
-    FROM $base_image
-
-    ENV LC_ALL=C.UTF-8
-    ENV LANG=C.UTF-8
-    COPY ./*.whl /
-    EXPOSE 8000
-    EXPOSE 10001
-    RUN pip install /${wheel}[serve]
-    RUN (sudo apt update || true) && sudo apt install curl -y
-    " > $tmp_dir/Dockerfile
-
-    pushd $tmp_dir
-    docker build . -t ray_ci:v1
-    popd
-
-    popd
-}
-
-# For running Python tests on Windows.
-test_python() {
-  local pathsep=":" args=()
+# For running Serve tests on Windows.
+test_serve() {
   if [ "${OSTYPE}" = msys ]; then
-    pathsep=";"
     args+=(
       python/ray/serve/...
+      -python/ray/serve/tests:test_cross_language # Ray java not built on Windows yet.
+      -python/ray/serve/tests:test_gcs_failure # Fork not supported in windows
+      -python/ray/serve/tests:test_standalone_2 # Multinode not supported on Windows
+      -python/ray/serve/tests:test_gradio
+      -python/ray/serve/tests:test_fastapi
+    )
+  fi
+  if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
+    install_ray
+
+    # Shard the args.
+    BUILDKITE_PARALLEL_JOB=${BUILDKITE_PARALLEL_JOB:-'0'}
+    BUILDKITE_PARALLEL_JOB_COUNT=${BUILDKITE_PARALLEL_JOB_COUNT:-'1'}
+    test_shard_selection=$(python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}" "${args[@]}")
+
+    # shellcheck disable=SC2046,SC2086
+    bazel test --config=ci \
+      --build_tests_only $(./ci/run/bazel_export_options) \
+      --test_env=CI="1" \
+      --test_env=RAY_CI_POST_WHEEL_TESTS="1" \
+      --test_env=USERPROFILE="${USERPROFILE}" \
+      --test_output=streamed \
+      -- \
+      ${test_shard_selection};
+  fi
+}
+
+# For running Python tests on Windows (excluding Serve).
+test_python() {
+  if [ "${OSTYPE}" = msys ]; then
+    args+=(
       python/ray/tests/...
-      -python/ray/serve:conda_env # pip field in runtime_env not supported
-      -python/ray/serve:test_cross_language # Ray java not built on Windows yet.
-      -python/ray/serve:test_gcs_failure # Fork not supported in windows
-      -python/ray/serve:test_standalone_2 # Multinode not supported on Windows
-      -python/ray/serve:test_gradio
-      -python/ray/serve:test_gradio_visualization
-      -python/ray/serve:test_air_integrations_gpu
-      -python/ray/serve:test_fastapi
       -python/ray/tests:test_actor_advanced  # crashes in shutdown
       -python/ray/tests:test_autoscaler # We don't support Autoscaler on Windows
       -python/ray/tests:test_autoscaler_aws
       -python/ray/tests:test_cli
       -python/ray/tests:test_client_init # timeout
       -python/ray/tests:test_command_runner # We don't support Autoscaler on Windows
+      -python/ray/tests:test_gcp_tpu_command_runner # We don't support Autoscaler on Windows
       -python/ray/tests:test_gcs_fault_tolerance # flaky
-      -python/ray/serve:test_get_deployment # address violation
       -python/ray/tests:test_global_gc
       -python/ray/tests:test_job
       -python/ray/tests:test_memstat
       -python/ray/tests:test_multi_node_3
-      -python/ray/tests:test_multiprocessing_client_mode # Flaky on Windows
       -python/ray/tests:test_object_manager # OOM on test_object_directory_basic
       -python/ray/tests:test_resource_demand_scheduler
       -python/ray/tests:test_stress  # timeout
       -python/ray/tests:test_stress_sharded  # timeout
       -python/ray/tests:test_tracing  # tracing not enabled on windows
       -python/ray/tests:kuberay/test_autoscaling_e2e # irrelevant on windows
+      -python/ray/tests:vsphere/test_vsphere_node_provider # irrelevant on windows
+      -python/ray/tests:vsphere/test_vsphere_sdk_provider # irrelevant on windows
       -python/ray/tests/xgboost/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/lightgbm/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/horovod/... # Requires ML dependencies, should not be run on Windows
-      -python/ray/tests/ml_py37_compat/... # Required ML dependencies, should not be run on Windows
       -python/ray/tests:test_batch_node_provider_unit.py # irrelevant on windows
       -python/ray/tests:test_batch_node_provider_integration.py # irrelevant on windows
     )
@@ -240,16 +217,38 @@ test_python() {
     # Shard the args.
     BUILDKITE_PARALLEL_JOB=${BUILDKITE_PARALLEL_JOB:-'0'}
     BUILDKITE_PARALLEL_JOB_COUNT=${BUILDKITE_PARALLEL_JOB_COUNT:-'1'}
-    test_shard_selection=$(python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}" "${args[@]}")
+    test_shard_selection=$(python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}" "${args[@]}")
 
-    # TODO(mehrdadn): We set PYTHONPATH here to let Python find our pickle5 under pip install -e.
-    # It's unclear to me if this should be necessary, but this is to make tests run for now.
-    # Check why this issue doesn't arise on Linux/Mac.
-    # Ideally importing ray.cloudpickle should import pickle5 automatically.
     # shellcheck disable=SC2046,SC2086
     bazel test --config=ci \
       --build_tests_only $(./ci/run/bazel_export_options) \
-      --test_env=PYTHONPATH="${PYTHONPATH-}${pathsep}${WORKSPACE_DIR}/python/ray/pickle5_files" \
+      --test_env=CI="1" \
+      --test_env=RAY_CI_POST_WHEEL_TESTS="1" \
+      --test_env=USERPROFILE="${USERPROFILE}" \
+      --test_output=streamed \
+      -- \
+      ${test_shard_selection};
+  fi
+}
+
+# For running Python tests on Windows (excluding Serve).
+test_train_windows() {
+  if [ "${OSTYPE}" = msys ]; then
+    args+=(
+      python/ray/train:test_windows
+    )
+  fi
+  if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
+    install_ray
+
+    # Shard the args.
+    BUILDKITE_PARALLEL_JOB=${BUILDKITE_PARALLEL_JOB:-'0'}
+    BUILDKITE_PARALLEL_JOB_COUNT=${BUILDKITE_PARALLEL_JOB_COUNT:-'1'}
+    test_shard_selection=$(python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}" "${args[@]}")
+
+    # shellcheck disable=SC2046,SC2086
+    bazel test --config=ci \
+      --build_tests_only $(./ci/run/bazel_export_options) \
       --test_env=CI="1" \
       --test_env=RAY_CI_POST_WHEEL_TESTS="1" \
       --test_env=USERPROFILE="${USERPROFILE}" \
@@ -280,10 +279,12 @@ test_cpp() {
     --test_arg=--ray_redis_password="1234"
   bazel test --test_output=all //cpp:test_python_call_cpp
 
-  # run the cpp example
-  rm -rf ray-template
-  ray cpp --generate-bazel-project-template-to ray-template
-  pushd ray-template && bash run.sh
+  # run the cpp example, currently does not work on mac
+  if [[ "${OSTYPE}" != darwin* ]]; then
+    rm -rf ray-template
+    ray cpp --generate-bazel-project-template-to ray-template
+    pushd ray-template && bash run.sh
+  fi
 }
 
 test_wheels() {
@@ -332,7 +333,6 @@ build_dashboard_front_end() {
 }
 
 build_sphinx_docs() {
-  _bazel_build_protobuf
   install_ray
 
   (
@@ -340,7 +340,7 @@ build_sphinx_docs() {
     if [ "${OSTYPE}" = msys ]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
-      FAST=True make html
+      make html
       pip install datasets==2.0.0
     fi
   )
@@ -352,7 +352,7 @@ check_sphinx_links() {
     if [ "${OSTYPE}" = msys ]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
-      FAST=True make linkcheck
+      make linkcheck
     fi
   )
 }
@@ -360,9 +360,7 @@ check_sphinx_links() {
 _bazel_build_before_install() {
   local target
   if [ "${OSTYPE}" = msys ]; then
-    # On Windows, we perform as full of a build as possible, to ensure the repository always remains buildable on Windows.
-    # (Pip install will not perform a full build.)
-    target="//:*"
+    target="//:ray_pkg"
   else
     # Just build Python on other platforms.
     # This because pip install captures & suppresses the build output, which causes a timeout on CI.
@@ -383,10 +381,6 @@ _bazel_build_before_install() {
   fi
 }
 
-
-_bazel_build_protobuf() {
-  bazel build "//:install_py_proto"
-}
 
 install_ray() {
   # TODO(mehrdadn): This function should be unified with the one in python/build-wheel-windows.sh.
@@ -428,7 +422,7 @@ validate_wheels_commit_str() {
       continue
     fi
 
-    WHL_COMMIT=$(unzip -p "$whl" "*ray/__init__.py" | grep "^__commit__" | awk -F'"' '{print $2}')
+    WHL_COMMIT=$(unzip -p "$whl" "*ray/_version.py" | grep "^commit" | awk -F'"' '{print $2}')
 
     if [ "${WHL_COMMIT}" != "${EXPECTED_COMMIT}" ]; then
       echo "Wheel ${basename} has incorrect commit: (${WHL_COMMIT}) is not expected commit (${EXPECTED_COMMIT}). Aborting."
@@ -461,7 +455,7 @@ build_wheels_and_jars() {
         -e "TRAVIS_PULL_REQUEST=${TRAVIS_PULL_REQUEST:-false}"
         -e "TRAVIS_COMMIT=${TRAVIS_COMMIT}"
         -e "CI=${CI}"
-        -e "RAY_INSTALL_JAVA=${RAY_INSTALL_JAVA:-}"
+        -e "RAY_INSTALL_JAVA=${RAY_INSTALL_JAVA:-1}"
         -e "BUILDKITE=${BUILDKITE:-}"
         -e "BUILDKITE_PULL_REQUEST=${BUILDKITE_PULL_REQUEST:-}"
         -e "BUILDKITE_BAZEL_CACHE_URL=${BUILDKITE_BAZEL_CACHE_URL:-}"
@@ -525,47 +519,6 @@ build_wheels_and_jars() {
   esac
 }
 
-_check_job_triggers() {
-  local job_names
-  job_names="$1"
-
-  local variable_definitions
-  if command -v python3; then
-    # shellcheck disable=SC2031
-    variable_definitions=($(python3 "${ROOT_DIR}"/pipeline/determine_tests_to_run.py))
-  else
-    # shellcheck disable=SC2031
-    variable_definitions=($(python "${ROOT_DIR}"/pipeline/determine_tests_to_run.py))
-  fi
-  if [ 0 -lt "${#variable_definitions[@]}" ]; then
-    local expression restore_shell_state=""
-    if [ -o xtrace ]; then set +x; restore_shell_state="set -x;"; fi  # Disable set -x (noisy here)
-    {
-      expression="$(printf "%q " "${variable_definitions[@]}")"
-      printf "%s\n" "${expression}" >> ~/.bashrc
-    }
-    eval "${restore_shell_state}" "${expression}"  # Restore set -x, then evaluate expression
-  fi
-
-  # shellcheck disable=SC2086
-  if ! (set +x && should_run_job ${job_names//,/ }); then
-    if [ "${GITHUB_ACTIONS-}" = true ]; then
-      # If this job is to be skipped, emit 'exit' into .bashrc to quickly exit all following steps.
-      # This isn't needed on Travis (since everything runs in one shell), but is on GitHub Actions.
-      cat <<EOF1 >> ~/.bashrc
-      cat <<EOF2 1>&2
-Exiting shell as no triggers were active for this job:
-  ${job_names//,/}
-The active triggers during job initialization were the following:
-  ${variable_definitions[*]}
-EOF2
-      exit 0
-EOF1
-    fi
-    exit 0
-  fi
-}
-
 configure_system() {
   git config --global advice.detachedHead false
   git config --global core.askpass ""
@@ -573,7 +526,7 @@ configure_system() {
   git config --global credential.modalprompt false
 
   # Requests library need root certificates.
-  if [ "${OSTYPE}" = msys ]; then
+  if [[ "${OSTYPE}" == "msys" ]]; then
     certutil -generateSSTFromWU roots.sst && certutil -addstore -f root roots.sst && rm roots.sst
   fi
 }
@@ -590,15 +543,9 @@ configure_system() {
 # Usage: init [JOB_NAMES]
 # - JOB_NAMES (optional): Comma-separated list of job names to trigger on.
 init() {
-  # TODO(jjyao): fix it for windows
-  if [ "${OSTYPE}" != msys ]; then
-    _check_job_triggers "${1-}"
-  fi
-
   configure_system
 
-  # shellcheck disable=SC2031
-  . "${ROOT_DIR}"/env/install-dependencies.sh  # Script is sourced to propagate up environment changes
+  "${ROOT_DIR}/env/install-dependencies.sh"
 }
 
 build() {

@@ -20,8 +20,10 @@
 #include <functional>
 #include <iostream>
 #include <memory>
+#include <queue>
 #include <string>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_format.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
@@ -53,17 +55,9 @@ namespace {
 // Spirit from
 // https://www.boost.org/doc/libs/develop/libs/beast/example/http/client/async/http_client_async.cpp
 class Session : public std::enable_shared_from_this<Session> {
-  tcp::resolver resolver_;
-  beast::tcp_stream stream_;
-  std::string host_;
-  std::string port_;
-  std::function<void(std::string)> succ_callback_;
-  std::function<void(ray::Status)> fail_callback_;
-  beast::flat_buffer buffer_;  // (Must persist between reads)
-  http::request<http::string_body> req_;
-  http::response<http::string_body> res_;
-
  public:
+  using FinishedCallback = std::function<void(std::shared_ptr<Session>)>;
+
   // Factory method.
   // Not exposing ctor because it's expected to always be in a shared_ptr.
   static std::shared_ptr<Session> Create(net::io_context &ioc,
@@ -87,7 +81,10 @@ class Session : public std::enable_shared_from_this<Session> {
   // Runs the session asynchrounously. Immediately returns.
   // It's ok to release a shared_ptr to `this` because the io context will hold a
   // shared_ptr that holds a reference to `this`.
-  void run() {
+  //
+  // This method should only be called once.
+  void run(FinishedCallback finished_callback) {
+    finished_callback_ = finished_callback;
     // Starts the state machine by looking up the domain name.
     resolver_.async_resolve(
         host_,
@@ -121,9 +118,19 @@ class Session : public std::enable_shared_from_this<Session> {
     req_.content_length(req_.body().size());
   }
 
+  void Failed(ray::Status status) {
+    fail_callback_(std::move(status));
+    finished_callback_(shared_from_this());
+  }
+
+  void Succeeded(std::string body) {
+    succ_callback_(std::move(body));
+    finished_callback_(shared_from_this());
+  }
+
   void on_resolve(beast::error_code ec, tcp::resolver::results_type results) {
     if (ec) {
-      fail_callback_(ray::Status::NotFound("on_resolve " + ec.message()));
+      Failed(ray::Status::NotFound("on_resolve " + ec.message()));
       return;
     }
 
@@ -134,7 +141,7 @@ class Session : public std::enable_shared_from_this<Session> {
 
   void on_connect(beast::error_code ec, tcp::resolver::results_type::endpoint_type) {
     if (ec) {
-      fail_callback_(ray::Status::NotFound("on_connect " + ec.message()));
+      Failed(ray::Status::NotFound("on_connect " + ec.message()));
       return;
     }
 
@@ -147,7 +154,7 @@ class Session : public std::enable_shared_from_this<Session> {
     boost::ignore_unused(bytes_transferred);
 
     if (ec) {
-      fail_callback_(ray::Status::IOError("on_write " + ec.message()));
+      Failed(ray::Status::IOError("on_write " + ec.message()));
       return;
     }
 
@@ -162,16 +169,16 @@ class Session : public std::enable_shared_from_this<Session> {
     boost::ignore_unused(bytes_transferred);
 
     if (ec) {
-      fail_callback_(ray::Status::IOError("on_read " + ec.message()));
+      Failed(ray::Status::IOError("on_read " + ec.message()));
       return;
     }
     if (http::to_status_class(res_.result()) == http::status_class::successful) {
-      succ_callback_(std::move(res_).body());
+      Succeeded(std::move(res_).body());
     } else {
-      fail_callback_(ray::Status::IOError(absl::StrCat("POST result non-ok status code ",
-                                                       res_.result_int(),
-                                                       ", body",
-                                                       std::move(res_).body())));
+      Failed(ray::Status::IOError(absl::StrCat("POST result non-ok status code ",
+                                               res_.result_int(),
+                                               ", body",
+                                               std::move(res_).body())));
     }
 
     // Gracefully close the socket
@@ -181,6 +188,59 @@ class Session : public std::enable_shared_from_this<Session> {
       RAY_LOG(INFO) << "on_read error after response body received: " << ec.message();
     }
   }
+
+  tcp::resolver resolver_;
+  beast::tcp_stream stream_;
+  std::string host_;
+  std::string port_;
+  std::function<void(std::string)> succ_callback_;
+  std::function<void(ray::Status)> fail_callback_;
+  beast::flat_buffer buffer_;  // (Must persist between reads)
+  http::request<http::string_body> req_;
+  http::response<http::string_body> res_;
+  FinishedCallback finished_callback_;
+};
+
+// A pool of sessions with a fixed max concurrency. Each session can handle 1 concurrent
+// request.
+// Users can post a session to this pool, but should not *run* them. The Session pool runs
+// them if the concurrency is not exceeding the desired value.
+//
+// Once a session is done, remove it from the pool.
+//
+// NOT thread safe: if the methods or the fallbacks are invoked in different threads, the
+// workloads may be lost or the running order may not be fair.
+class SessionPool {
+ public:
+  explicit SessionPool(size_t max_concurrency)
+      : max_concurrency_(max_concurrency), running_sessions_(), pending_sessions_() {}
+
+  void enqueue(std::shared_ptr<Session> session) {
+    if (running_sessions_.size() < max_concurrency_) {
+      running_sessions_.insert(session);
+      session->run(/*finished_callback=*/[this](std::shared_ptr<Session> session) {
+        this->remove_session_from_running(session);
+      });
+    } else {
+      pending_sessions_.push(session);
+    }
+  }
+
+ private:
+  // Removes 1 session from running. After that, we have 1 free session slot so we can
+  // enqueue one.
+  void remove_session_from_running(std::shared_ptr<Session> session) {
+    running_sessions_.erase(session);
+    if (pending_sessions_.size() > 0) {
+      auto pending = pending_sessions_.front();
+      pending_sessions_.pop();
+      enqueue(pending);
+    }
+  }
+
+  const size_t max_concurrency_;
+  absl::flat_hash_set<std::shared_ptr<Session>> running_sessions_;
+  std::queue<std::shared_ptr<Session>> pending_sessions_;
 };
 
 inline constexpr std::string_view HTTP_PATH_GET_OR_CREATE_RUNTIME_ENV =
@@ -190,17 +250,22 @@ inline constexpr std::string_view HTTP_PATH_DELETE_RUNTIME_ENV_IF_POSSIBLE =
 
 class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
  public:
-  HttpRuntimeEnvAgentClient(instrumented_io_context &io_context,
-                            const std::string &address,
-                            int port,
-                            std::function<std::shared_ptr<boost::asio::deadline_timer>(
-                                std::function<void()>, uint32_t delay_ms)> delay_executor,
-                            uint32_t agent_register_timeout_ms,
-                            uint32_t agent_manager_retry_interval_ms)
+  HttpRuntimeEnvAgentClient(
+      instrumented_io_context &io_context,
+      const std::string &address,
+      int port,
+      std::function<std::shared_ptr<boost::asio::deadline_timer>(
+          std::function<void()>, uint32_t delay_ms)> delay_executor,
+      std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
+      uint32_t agent_register_timeout_ms,
+      uint32_t agent_manager_retry_interval_ms,
+      uint32_t session_pool_size = 10)
       : io_context_(io_context),
+        session_pool_(session_pool_size),
         address_(address),
         port_str_(std::to_string(port)),
         delay_executor_(delay_executor),
+        shutdown_raylet_gracefully_(shutdown_raylet_gracefully),
         agent_register_timeout_ms_(agent_register_timeout_ms),
         agent_manager_retry_interval_ms_(agent_manager_retry_interval_ms) {}
   ~HttpRuntimeEnvAgentClient() = default;
@@ -211,19 +276,19 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   template <typename T>
   using TryInvokeOnce = std::function<void(SuccCallback<T>, FailCallback)>;
 
-  void Suicide() {
+  void ExitImmediately() {
     RAY_LOG(ERROR)
         << "The raylet exited immediately because the runtime env agent timed out when "
            "Raylet try to connect to it. This can happen because the runtime env agent "
            "was never started, or is listening to the wrong port. Read the log `cat "
            "/tmp/ray/session_latest/logs/runtime_env_agent.log`. You can find the log "
            "file structure here "
-           "https://docs.ray.io/en/master/ray-observability/"
-           "ray-logging.html#logging-directory-structure.\n";
-    // Sending a SIGTERM to itself is equivalent to gracefully shutting down raylet.
-    RAY_CHECK(std::raise(SIGTERM) == 0) << "There was a failure while sending a "
-                                           "sigterm to itself. The process will not "
-                                           "gracefully shutdown.";
+           "https://docs.ray.io/en/master/ray-observability/user-guides/"
+           "configure-logging.html#logging-directory-structure.\n";
+    rpc::NodeDeathInfo node_death_info;
+    node_death_info.set_reason(rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
+    node_death_info.set_reason_message("Raylet could not connect to Runtime Env Agent");
+    shutdown_raylet_gracefully_(node_death_info);
     // If the process is not terminated within 10 seconds, forcefully kill itself.
     delay_executor_([]() { QuickExit(); }, /*ms*/ 10000);
   }
@@ -235,10 +300,10 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   /// Note that retry only happens on network errors. Application errors returned by the
   /// server are not retried.
   ///
-  /// If the retries took so long and exceeded deadline, Raylet suicides. Note the check
-  /// happens after `try_invoke_once` returns. This means if you have a successful but
-  /// very long connection (e.g. runtime env agent is busy downloading from s3), you are
-  /// safe.
+  /// If the retries took so long and exceeded deadline, Raylet exits immediately. Note
+  /// the check happens after `try_invoke_once` returns. This means if you have a
+  /// successful but very long connection (e.g. runtime env agent is busy downloading
+  /// from s3), you are safe.
   ///
   /// @tparam T the return type on success.
   /// @param try_invoke_once
@@ -259,7 +324,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
                        << agent_register_timeout_ms_ << "ms. Status: " << status
                        << ", address: " << this->address_ << ", port: " << this->port_str_
                        << ", Suiciding...";
-        Suicide();
+        ExitImmediately();
       } else {
         RAY_LOG(INFO) << "Runtime Env Agent network error: " << status
                       << ", the server may be still starting or is already failed. "
@@ -362,7 +427,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
           }
         },
         fail_callback);
-    session->run();
+    session_pool_.enqueue(session);
   }
 
   // Making HTTP call.
@@ -428,17 +493,19 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
           }
         },
         fail_callback);
-    session->run();
+    session_pool_.enqueue(session);
   }
 
  private:
   boost::asio::io_context &io_context_;
+  SessionPool session_pool_;
 
   const std::string address_;
   const std::string port_str_;
   std::function<std::shared_ptr<boost::asio::deadline_timer>(std::function<void()>,
                                                              uint32_t delay_ms)>
       delay_executor_;
+  std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully_;
   const uint32_t agent_register_timeout_ms_;
   const uint32_t agent_manager_retry_interval_ms_;
 };
@@ -450,12 +517,14 @@ std::shared_ptr<RuntimeEnvAgentClient> RuntimeEnvAgentClient::Create(
     int port,
     std::function<std::shared_ptr<boost::asio::deadline_timer>(
         std::function<void()>, uint32_t delay_ms)> delay_executor,
+    std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
     uint32_t agent_register_timeout_ms,
     uint32_t agent_manager_retry_interval_ms) {
   return std::make_shared<HttpRuntimeEnvAgentClient>(io_context,
                                                      address,
                                                      port,
                                                      delay_executor,
+                                                     shutdown_raylet_gracefully,
                                                      agent_register_timeout_ms,
                                                      agent_manager_retry_interval_ms);
 }

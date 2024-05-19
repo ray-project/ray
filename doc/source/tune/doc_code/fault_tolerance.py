@@ -1,6 +1,10 @@
 # flake8: noqa
 
 # __ft_initial_run_start__
+import json
+import os
+import tempfile
+
 from ray import train, tune
 from ray.train import Checkpoint
 
@@ -8,30 +12,42 @@ from ray.train import Checkpoint
 def trainable(config):
     # Checkpoint loading
     checkpoint = train.get_checkpoint()
-    start = 1 if not checkpoint else checkpoint.to_dict()["epoch"] + 1
+    start = 1
+    if checkpoint:
+        with checkpoint.as_directory() as checkpoint_dir:
+            with open(os.path.join(checkpoint_dir, "checkpoint.json"), "r") as f:
+                state = json.load(f)
+        start = state["epoch"] + 1
 
     for epoch in range(start, config["num_epochs"]):
         # Do some training...
 
         # Checkpoint saving
-        train.report(
-            {"epoch": epoch}, checkpoint=Checkpoint.from_dict({"epoch": epoch})
-        )
+        with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+            with open(os.path.join(temp_checkpoint_dir, "checkpoint.json"), "w") as f:
+                json.dump({"epoch": epoch}, f)
+            train.report(
+                {"epoch": epoch},
+                checkpoint=Checkpoint.from_directory(temp_checkpoint_dir),
+            )
 
 
 tuner = tune.Tuner(
     trainable,
     param_space={"num_epochs": 10},
     run_config=train.RunConfig(
-        storage_path="~/ray_results", name="tune_fault_tolerance_guide"
+        storage_path=os.path.expanduser("~/ray_results"),
+        name="tune_fault_tolerance_guide",
     ),
 )
-tuner.fit()
+result_grid = tuner.fit()
 # __ft_initial_run_end__
+
+assert not result_grid.errors
 
 # __ft_restored_run_start__
 tuner = tune.Tuner.restore(
-    "~/ray_results/tune_fault_tolerance_guide",
+    os.path.expanduser("~/ray_results/tune_fault_tolerance_guide"),
     trainable=trainable,
     resume_errored=True,
 )
@@ -40,7 +56,7 @@ tuner.fit()
 
 # __ft_restore_options_start__
 tuner = tune.Tuner.restore(
-    "~/ray_results/tune_fault_tolerance_guide",
+    os.path.expanduser("~/ray_results/tune_fault_tolerance_guide"),
     trainable=trainable,
     resume_errored=True,
     restart_errored=False,
@@ -52,7 +68,7 @@ tuner = tune.Tuner.restore(
 import os
 from ray import train, tune
 
-storage_path = "~/ray_results"
+storage_path = os.path.expanduser("~/ray_results")
 exp_name = "tune_fault_tolerance_guide"
 path = os.path.join(storage_path, exp_name)
 
@@ -106,7 +122,7 @@ tuner = tune.Tuner(
     # Tune over the object references!
     param_space={"model_ref": tune.grid_search(model_refs)},
     run_config=train.RunConfig(
-        storage_path="~/ray_results", name="restore_object_refs"
+        storage_path=os.path.expanduser("~/ray_results"), name="restore_object_refs"
     ),
 )
 tuner.fit()
@@ -122,7 +138,7 @@ param_space = {
 }
 
 tuner = tune.Tuner.restore(
-    "~/ray_results/restore_object_refs",
+    os.path.expanduser("~/ray_results/restore_object_refs"),
     trainable=train_fn,
     # Re-specify the `param_space` to update the object references.
     param_space=param_space,
@@ -138,7 +154,7 @@ tuner = tune.Tuner(
     trainable,
     param_space={"num_epochs": 10},
     run_config=train.RunConfig(
-        storage_path="~/ray_results",
+        storage_path=os.path.expanduser("~/ray_results"),
         name="trial_fault_tolerance",
         failure_config=train.FailureConfig(max_failures=3),
     ),

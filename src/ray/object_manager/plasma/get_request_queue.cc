@@ -64,9 +64,15 @@ void GetRequestQueue::AddRequest(const std::shared_ptr<ClientInterface> &client,
     auto entry = object_lifecycle_mgr_.GetObject(object_id);
     if (entry && entry->Sealed()) {
       // Update the get request to take into account the present object.
-      entry->ToPlasmaObject(&get_request->objects[object_id], /* checksealed */ true);
+      auto *plasma_object = &get_request->objects[object_id];
+      entry->ToPlasmaObject(plasma_object, /* checksealed */ true);
       get_request->num_unique_objects_satisfied += 1;
-      object_satisfied_callback_(object_id, get_request);
+
+      std::optional<MEMFD_TYPE> fallback_allocated_fd = std::nullopt;
+      if (entry->GetAllocation().fallback_allocated) {
+        fallback_allocated_fd = entry->GetAllocation().fd;
+      }
+      object_satisfied_callback_(object_id, fallback_allocated_fd, get_request);
     } else {
       // Add a placeholder plasma object to the get request to indicate that the
       // object is not present. This will be parsed by the client. We set the
@@ -164,9 +170,15 @@ void GetRequestQueue::MarkObjectSealed(const ObjectID &object_id) {
     auto get_request = get_requests[index];
     auto entry = object_lifecycle_mgr_.GetObject(object_id);
     RAY_CHECK(entry != nullptr);
-    entry->ToPlasmaObject(&get_request->objects[object_id], /* check sealed */ true);
+    auto *plasma_object = &get_request->objects[object_id];
+    entry->ToPlasmaObject(plasma_object, /* check sealed */ true);
     get_request->num_unique_objects_satisfied += 1;
-    object_satisfied_callback_(object_id, get_request);
+
+    std::optional<MEMFD_TYPE> fallback_allocated_fd = std::nullopt;
+    if (entry->GetAllocation().fallback_allocated) {
+      fallback_allocated_fd = entry->GetAllocation().fd;
+    }
+    object_satisfied_callback_(object_id, fallback_allocated_fd, get_request);
     // If this get request is done, reply to the client.
     if (get_request->num_unique_objects_satisfied ==
         get_request->num_unique_objects_to_wait_for) {

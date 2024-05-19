@@ -3,12 +3,17 @@ import unittest
 from unittest.mock import patch
 
 import ray
-from ray.tune import register_trainable, run_experiments, run, choice
+import ray.train
+from ray.tune import choice, register_trainable, run, run_experiments
+from ray.tune.experiment import Experiment, Trial
 from ray.tune.result import TIMESTEPS_TOTAL
-from ray.tune.experiment import Experiment
 from ray.tune.search.hyperopt import HyperOptSearch
-from ray.tune.experiment import Trial
 from ray.util.client.ray_client_helpers import ray_start_client_server
+
+
+def train_fn(config):
+    for i in range(100):
+        ray.train.report(dict(timesteps_total=i))
 
 
 class RemoteTest(unittest.TestCase):
@@ -16,11 +21,7 @@ class RemoteTest(unittest.TestCase):
         ray.shutdown()
 
     def testRemoteRunExperiments(self):
-        def train(config, reporter):
-            for i in range(100):
-                reporter(timesteps_total=i)
-
-        register_trainable("f1", train)
+        register_trainable("f1", train_fn)
         exp1 = Experiment(
             **{
                 "name": "foo",
@@ -32,26 +33,18 @@ class RemoteTest(unittest.TestCase):
         self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
 
     def testRemoteRun(self):
-        def train(config, reporter):
-            for i in range(100):
-                reporter(timesteps_total=i)
-
-        analysis = run(train, _remote=True)
+        analysis = run(train_fn, _remote=True)
         [trial] = analysis.trials
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
 
     def testRemoteRunArguments(self):
-        def train(config, reporter):
-            for i in range(100):
-                reporter(timesteps_total=i)
-
         def mocked_run(*args, **kwargs):
             capture_args_kwargs = (args, kwargs)
             return run(*args, **kwargs), capture_args_kwargs
 
         with patch("ray.tune.tune.run", mocked_run):
-            analysis, capture_args_kwargs = run(train, _remote=True)
+            analysis, capture_args_kwargs = run(train_fn, _remote=True)
         args, kwargs = capture_args_kwargs
         self.assertFalse(args)
         kwargs.pop("run_or_experiment")
@@ -68,12 +61,8 @@ class RemoteTest(unittest.TestCase):
         self.assertDictEqual(kwargs, default_kwargs)
 
     def testRemoteRunWithSearcher(self):
-        def train(config, reporter):
-            for i in range(100):
-                reporter(timesteps_total=i)
-
         analysis = run(
-            train,
+            train_fn,
             search_alg=HyperOptSearch(),
             config={"a": choice(["a", "b"])},
             metric="timesteps_total",
@@ -90,11 +79,7 @@ class RemoteTest(unittest.TestCase):
         with ray_start_client_server():
             assert ray.util.client.ray.is_connected()
 
-            def train(config, reporter):
-                for i in range(100):
-                    reporter(timesteps_total=i)
-
-            register_trainable("f1", train)
+            register_trainable("f1", train_fn)
             exp1 = Experiment(
                 **{
                     "name": "foo",
@@ -111,18 +96,15 @@ class RemoteTest(unittest.TestCase):
         with ray_start_client_server():
             assert ray.util.client.ray.is_connected()
 
-            def train(config, reporter):
-                for i in range(100):
-                    reporter(timesteps_total=i)
-
-            analysis = run(train)
+            analysis = run(train_fn)
             [trial] = analysis.trials
             self.assertEqual(trial.status, Trial.TERMINATED)
             self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

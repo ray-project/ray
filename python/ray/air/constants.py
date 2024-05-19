@@ -13,9 +13,6 @@ EVALUATION_DATASET_KEY = "evaluation"
 # This is the dataset that the preprocessor is fit on.
 TRAIN_DATASET_KEY = "train"
 
-# Key to denote all user-specified auxiliary datasets in DatasetConfig.
-WILDCARD_KEY = "*"
-
 # Name to use for the column when representing tensors in table format.
 TENSOR_COLUMN_NAME = "__value__"
 
@@ -88,24 +85,10 @@ COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV = (
     "TRAIN_COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING"
 )
 
-# Integer value which if set will disable lazy checkpointing
-# (avoiding unnecessary serialization if worker is on the same node
-# as Trainable)
-DISABLE_LAZY_CHECKPOINTING_ENV = "TRAIN_DISABLE_LAZY_CHECKPOINTING"
-
-# TODO(ml-team): [Deprecation - head node syncing]
-# Whether or not the sync-to-head behavior is enabled by default.
-# If unset, running AIR on a multi-node cluster with checkpointing will raise
-# an error telling the user to switch to cloud/NFS.
-REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE = "RAY_AIR_REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE"
-
 # NOTE: When adding a new environment variable, please track it in this list.
 # TODO(ml-team): Most env var constants should get moved here.
 AIR_ENV_VARS = {
-    REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE,
     COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
-    DISABLE_LAZY_CHECKPOINTING_ENV,
     "RAY_AIR_FULL_TRACEBACKS",
     "RAY_AIR_NEW_OUTPUT",
-    "RAY_AIR_RICH_LAYOUT",
 }

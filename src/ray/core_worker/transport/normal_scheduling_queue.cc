@@ -39,7 +39,7 @@ void NormalSchedulingQueue::Add(
     int64_t seq_no,
     int64_t client_processed_up_to,
     std::function<void(rpc::SendReplyCallback)> accept_request,
-    std::function<void(rpc::SendReplyCallback)> reject_request,
+    std::function<void(const Status &, rpc::SendReplyCallback)> reject_request,
     rpc::SendReplyCallback send_reply_callback,
     const std::string &concurrency_group_name,
     const FunctionDescriptor &function_descriptor,
@@ -68,7 +68,7 @@ bool NormalSchedulingQueue::CancelTaskIfFound(TaskID task_id) {
        it != pending_normal_tasks_.rend();
        ++it) {
     if (it->TaskID() == task_id) {
-      it->Cancel();
+      it->Cancel(Status::OK());
       pending_normal_tasks_.erase(std::next(it).base());
       return true;
     }

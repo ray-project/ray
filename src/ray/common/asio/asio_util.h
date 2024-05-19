@@ -17,6 +17,8 @@
 #include <boost/asio.hpp>
 #include <chrono>
 
+#include "ray/common/asio/instrumented_io_context.h"
+
 template <typename Duration>
 std::shared_ptr<boost::asio::deadline_timer> execute_after(
     instrumented_io_context &io_context,

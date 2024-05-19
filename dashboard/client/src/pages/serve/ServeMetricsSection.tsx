@@ -1,11 +1,6 @@
-import {
-  Button,
-  createStyles,
-  makeStyles,
-  MenuItem,
-  Paper,
-  TextField,
-} from "@material-ui/core";
+import { Box, Button, MenuItem, Paper, TextField } from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import React, { useContext, useEffect, useState } from "react";
 import { RiExternalLinkLine } from "react-icons/ri";
 import { GlobalContext } from "../../App";
@@ -33,7 +28,7 @@ const useStyles = makeStyles((theme) =>
       overflow: "hidden",
       [theme.breakpoints.up("md")]: {
         // Calculate max width based on 1/3 of the total width minus padding between cards
-        width: `calc((100% - ${theme.spacing(3)}px * 2) / 3)`,
+        width: `calc((100% - ${theme.spacing(3)} * 2) / 3)`,
       },
     },
     grafanaEmbed: {
@@ -60,28 +55,59 @@ const useStyles = makeStyles((theme) =>
 );
 
 // NOTE: please keep the titles here in sync with dashboard/modules/metrics/dashboards/serve_dashboard_panels.py
-const METRICS_CONFIG: MetricConfig[] = [
+export const APPS_METRICS_CONFIG: MetricConfig[] = [
   {
-    title: "QPS per route",
+    title: "QPS per application",
     pathParams: "orgId=1&theme=light&panelId=7",
   },
   {
-    title: "Error QPS per route",
+    title: "Error QPS per application",
     pathParams: "orgId=1&theme=light&panelId=8",
   },
   {
-    title: "P90 latency per route",
+    title: "P90 latency per application",
     pathParams: "orgId=1&theme=light&panelId=15",
   },
 ];
 
-type ServeMetricsSectionProps = ClassNameProps;
+// NOTE: please keep the titles here in sync with dashboard/modules/metrics/dashboards/serve_dashboard_panels.py
+export const SERVE_SYSTEM_METRICS_CONFIG: MetricConfig[] = [
+  {
+    title: "Ongoing HTTP Requests",
+    pathParams: "orgId=1&theme=light&panelId=20",
+  },
+  {
+    title: "Ongoing gRPC Requests",
+    pathParams: "orgId=1&theme=light&panelId=21",
+  },
+  {
+    title: "Scheduling Tasks",
+    pathParams: "orgId=1&theme=light&panelId=22",
+  },
+  {
+    title: "Scheduling Tasks in Backoff",
+    pathParams: "orgId=1&theme=light&panelId=23",
+  },
+  {
+    title: "Controller Control Loop Duration",
+    pathParams: "orgId=1&theme=light&panelId=24",
+  },
+  {
+    title: "Number of Control Loops",
+    pathParams: "orgId=1&theme=light&panelId=25",
+  },
+];
+
+type ServeMetricsSectionProps = ClassNameProps & {
+  metricsConfig: MetricConfig[];
+};
 
 export const ServeMetricsSection = ({
   className,
+  metricsConfig,
 }: ServeMetricsSectionProps) => {
   const classes = useStyles();
-  const { grafanaHost, prometheusHealth, dashboardUids } =
+  const { grafanaHost, prometheusHealth, dashboardUids, dashboardDatasource } =
     useContext(GlobalContext);
   const grafanaServeDashboardUid = dashboardUids?.serve ?? "rayServeDashboard";
 
@@ -104,9 +130,9 @@ export const ServeMetricsSection = ({
   return grafanaHost === undefined || !prometheusHealth ? null : (
     <CollapsibleSection className={className} title="Metrics" startExpanded>
       <div>
-        <Paper className={classes.topBar}>
+        <Box className={classes.topBar}>
           <Button
-            href={`${grafanaHost}/d/${grafanaServeDashboardUid}`}
+            href={`${grafanaHost}/d/${grafanaServeDashboardUid}?var-datasource=${dashboardDatasource}`}
             target="_blank"
             rel="noopener noreferrer"
             endIcon={<RiExternalLinkLine />}
@@ -129,18 +155,18 @@ export const ServeMetricsSection = ({
               </MenuItem>
             ))}
           </TextField>
-        </Paper>
+        </Box>
         <div className={classes.grafanaEmbedsContainer}>
-          {METRICS_CONFIG.map(({ title, pathParams }) => {
+          {metricsConfig.map(({ title, pathParams }) => {
             const path =
               `/d-solo/${grafanaServeDashboardUid}?${pathParams}` +
-              `&refresh${timeRangeParams}`;
+              `&refresh${timeRangeParams}&var-datasource=${dashboardDatasource}`;
             return (
               <Paper
                 key={pathParams}
                 className={classes.chart}
-                elevation={1}
                 variant="outlined"
+                elevation={0}
               >
                 <iframe
                   key={title}
