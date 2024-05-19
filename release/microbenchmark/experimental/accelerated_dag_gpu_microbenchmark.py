@@ -332,7 +332,6 @@ def main():
     results += exec_ray_core_gpu()
     results += exec_ray_dag_gpu_cpu_gpu()
     results += exec_ray_dag_gpu_nccl()
-    results += exec_ray_dag_gpu_ipc_gpu()
 
 
 if __name__ == "__main__":
