@@ -64,7 +64,7 @@ def auto_http_archive(
         ]
         urls.insert(0 if prefer_url_over_mirrors else len(urls), canonical_url)
     else:
-        print("No implicit mirrors used because urls were explicitly provided")
+        print("No implicit mirrors used for %s because urls were explicitly provided" % name)
 
     if strip_prefix == True:
         prefix_without_v = url_filename_parts[0]
@@ -125,7 +125,7 @@ def ray_deps_setup():
         ],
     )
 
-    auto_http_archive(
+    http_archive(
         name = "com_github_spdlog",
         build_file = "@com_github_ray_project_ray//bazel:BUILD.spdlog",
         urls = ["https://github.com/gabime/spdlog/archive/v1.12.0.zip"],
@@ -211,13 +211,11 @@ def ray_deps_setup():
 
     # OpenCensus depends on Abseil so we have to explicitly pull it in.
     # This is how diamond dependencies are prevented.
-    auto_http_archive(
+    http_archive(
         name = "com_google_absl",
         sha256 = "5366d7e7fa7ba0d915014d387b66d0d002c03236448e1ba9ef98122c13b35c36",
         strip_prefix = "abseil-cpp-20230125.3",
-        urls = [
-            "https://github.com/abseil/abseil-cpp/archive/20230125.3.tar.gz",
-        ],
+        urls = ["https://github.com/abseil/abseil-cpp/archive/20230125.3.tar.gz"],
     )
 
     # OpenCensus depends on jupp0r/prometheus-cpp
@@ -340,17 +338,6 @@ def ray_deps_setup():
         url = "https://github.com/Tencent/rapidjson/archive/v1.1.0.zip",
         build_file = True,
         sha256 = "8e00c38829d6785a2dfb951bb87c6974fa07dfe488aa5b25deec4b8bc0f6a3ab",
-    )
-
-    # The following should be removed after this commit
-    # (https://github.com/bazelbuild/bazel/commit/676a0c8dea0e7782e47a386396e386a51566087f) released.
-    http_archive(
-        name = "platforms",
-        urls = [
-            "https://mirror.bazel.build/github.com/bazelbuild/platforms/releases/download/0.0.5/platforms-0.0.5.tar.gz",
-            "https://github.com/bazelbuild/platforms/releases/download/0.0.5/platforms-0.0.5.tar.gz",
-        ],
-        sha256 = "379113459b0feaf6bfbb584a91874c065078aa673222846ac765f86661c27407",
     )
 
     # Hedron's Compile Commands Extractor for Bazel

@@ -1,6 +1,7 @@
 workspace(name = "com_github_ray_project_ray")
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
 load("//bazel:ray_deps_setup.bzl", "ray_deps_setup")
 
 ray_deps_setup()
